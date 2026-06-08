@@ -130,13 +130,14 @@ function buildExecutorRuntimesByVariant({
   for (const variant of variants) {
     if (runtimes[variant]) continue;
     const artifact = artifacts.find((a) => a.name === variant);
-    // git artifact 无在盘 skillDir(content 经 SDK 注入),与 baseline 一样取 null —— 与主路径
-    // extractSkillDir 的判定一致,避免 git variant 的 runtime fingerprint 被 cwd 的 node_modules 污染。
-    const fallbackSkillDir = artifact?.kind === 'baseline' || artifact?.source === 'git'
-      ? null
-      : artifact?.locator
-        ? dirname(artifact.locator)
-        : request?.skillDir;
+    // 与主路径 extractSkillDir 一致:dir-skill 优先隔离副本 execRoot(副本无 node_modules、PATH 不污染);
+    // 否则 baseline / git 文件-skill 取 null,本地文件-skill 取 .md 所在目录。
+    const fallbackSkillDir = artifact?.execRoot
+      ?? (artifact?.kind === 'baseline' || artifact?.source === 'git'
+        ? null
+        : artifact?.locator
+          ? dirname(artifact.locator)
+          : request?.skillDir);
     runtimes[variant] = getExecutorRuntimeFingerprint(executorName, model, {
       skillDir: fallbackSkillDir,
     });
@@ -276,9 +277,10 @@ export function aggregateReport({
       timestamp: new Date().toISOString(),
       cliVersion: getCliVersion(),
       nodeVersion: process.version,
-      // schemaVersion 2 起,artifactHashes 语义为整棵可分发树哈(之前是仅 SKILL.md 正文文本哈)。
-      // 作判别位:消费方(sample --fix 漂移 / evolve lineage)对缺位/旧报告不拿旧文本哈与当前树哈错配比对。
-      schemaVersion: 2,
+      // schemaVersion 3 起,所有 dir-skill(本地 + git)都经隔离副本物化、整棵可分发树哈,与 install
+      // 受管记录 contentHash 同空间(evidence 全绑)。2 是过渡纪元(本地 dir-skill 树哈、git dir-skill
+      // 仅 SKILL.md 字节、不绑);git dir-skill 的 v2 与 v3 不可比。作判别位:消费方对缺位/旧报告不错配比对。
+      schemaVersion: 3,
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),

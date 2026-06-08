@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
@@ -171,9 +171,9 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     assert.ok(!artifacts[0].content?.startsWith('tree '), '绝不能把 git 树清单当 skill 内容');
   });
 
-  it('git dir-skill 的 contentHash 只随 SKILL.md 变,不含 references/ 资产(指纹 == 实际测量输入)', () => {
-    // git eval 只把 SKILL.md 注入 system,cwd / skillDir 均 null,agent 读不到磁盘上的 references/。
-    // 故指纹只取 SKILL.md:改资产不影响测量、指纹不该变(避免 over-claim);改 SKILL.md 才变。
+  it('git dir-skill 忠实执行:整树指纹覆盖 references/ 资产,execRoot 锚隔离副本', () => {
+    // git eval 物化整树到内容寻址隔离副本,executor cwd 锚 execRoot、agent 读得到 references/。
+    // 资产是真实测量输入:改资产 → 整树指纹变(消除 over-claim 的反面);改 SKILL.md 也变。
     mkRepo();
     mkdirSync(join(repo, 'review', 'references'), { recursive: true });
     writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v1\n');
@@ -184,18 +184,22 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     };
     commit('v1');
     process.chdir(repo);
-    const h1 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    const a1 = resolveArtifacts(repo, ['git:HEAD:review'])[0];
+    const h1 = a1.contentHash;
     assert.ok(h1, 'git dir-skill 必须有 contentHash');
+    assert.ok(a1.execRoot, 'git dir-skill 必须有 execRoot(隔离副本执行根)');
+    // 副本含 references 资产,agent 经 cwd 读得到
+    assert.equal(readFileSync(join(a1.execRoot!, 'references', 'rules.md'), 'utf-8'), 'rule v1\n');
 
-    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v2 changed\n'); // 只改资产
+    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v2 changed\n'); // 改资产
     commit('asset change');
     const h2 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
-    assert.equal(h2, h1, '改 references/ 资产不该改变 git eval 指纹(executor 测不到资产)');
+    assert.notEqual(h2, h1, '改 references/ 资产必须改变 git 整树指纹(资产现在是真实测量输入)');
 
     writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v2 changed\n'); // 改 SKILL.md
     commit('skill change');
     const h3 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
-    assert.notEqual(h3, h1, '改 SKILL.md 必须改变 git eval 指纹(SKILL.md 是被注入的测量输入)');
+    assert.notEqual(h3, h2, '改 SKILL.md 也改变整树指纹');
   });
 
   it('从仓库外调用:git 上下文锚定 skillDir 所属 repo,而非进程 cwd', () => {

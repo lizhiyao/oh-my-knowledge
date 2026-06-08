@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
+import { materializeIsolatedCopy } from './materialize-copy.js';
 import type { Artifact } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
@@ -480,6 +481,17 @@ export function variantExprToSkillName(expr: string): string {
 /** variant 输入:纯 artifact 表达式字符串,或结构化的 `{expr, cwd?}`。cwd 不再编码进 expr。 */
 export type VariantInput = string | { expr: string; cwd?: string };
 
+/**
+ * 把一个目录-skill 的本地树落地成内容寻址隔离副本,返回执行根 + 整树指纹 + SKILL.md 正文。
+ * 本地源 localDir 是真源目录;git 源 localDir 是 materializeGitSkillTree 物化出的临时目录。
+ * execRoot(副本)供 executor cwd / skillDir 锚定;skillRoot(真源)由各分支自行保留。
+ */
+function isolateDirSkill(localDir: string, name: string): { execRoot: string; contentHash: string; content: string } {
+  const copy = materializeIsolatedCopy(localDir, true, name);
+  const content = readFileSync(join(copy.copyRoot, 'SKILL.md'), 'utf-8').trim();
+  return { execRoot: copy.copyRoot, contentHash: copy.contentHash, content };
+}
+
 export function resolveArtifacts(
   skillDir: string,
   variants: VariantInput[],
@@ -528,28 +540,43 @@ export function resolveArtifacts(
       if (!resolved) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
-      const skillMdSpec = resolved.isDir ? gitJoin(resolved.treePath, 'SKILL.md') : resolved.fileSkillPath;
-      // 一次取原始字节:指纹用原始字节(与 install 单文件分支「不 trim」一致),content 由同一份字节
-      // utf-8 解码后 trim(等价 gitShowFile,省一次 git 子进程、也杜绝两次读之间的发散)。
-      const skillMdBytes = gitShowBytes(ref, skillMdSpec, gitCtx.repoRoot);
+      if (resolved.isDir) {
+        // git 目录-skill 忠实执行:物化整树到临时目录 → 落地内容寻址隔离副本 → executor cwd 锚副本,
+        // agent 读得到 references/ 资产、资产成为真实运行时输入。整树指纹与 install 受管记录的
+        // contentHash 落同一空间 → evidence 可绑(见 docs/specs/evidence-gated-management.md §9)。
+        const mat = materializeGitSkillTree(ref, resolved, gitCtx.repoRoot);
+        let isolated: { execRoot: string; contentHash: string; content: string };
+        try {
+          isolated = isolateDirSkill(mat.localRoot, resolved.name);
+        } finally {
+          mat.cleanup(); // 临时物化树只为喂副本,落地完即删
+        }
+        artifacts.push({
+          name: variantName,
+          kind: 'skill',
+          source: 'git',
+          content: isolated.content,
+          contentHash: isolated.contentHash,
+          locator: name,
+          ref,
+          cwd: variantCwd,
+          execRoot: isolated.execRoot,
+        });
+        continue;
+      }
+      // git 文件-skill:单个 .md 字节(与 install 单文件分支「不 trim」一致),无资产、本就与本地 /
+      // file 源同空间可绑,不走副本。
+      const skillMdBytes = gitShowBytes(ref, resolved.fileSkillPath, gitCtx.repoRoot);
       const content = skillMdBytes !== null ? skillMdBytes.toString('utf-8').trim() : null;
       if (!skillMdBytes || !content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
-      // 内容指纹只取 SKILL.md 字节,**不**含 references/ 资产 —— git eval 只把 SKILL.md 注入 system,
-      // cwd / skillDir 均为 null(见 execution-strategy extractSkillDir:git → null),agent 根本读不到
-      // 磁盘上的 references/。指纹必须等于「executor 实际测到的输入」,否则报告会声称测了整棵树、实际没测,
-      // 形成 over-claim;改 git skill 的某个 reference 不影响测量、指纹也就不该变。
-      // 代价:git dir-skill 的 eval 指纹与 install 受管记录的整树 contentHash 不在同一空间,故 git dir-skill
-      // 的 evidence 绑定要等「git eval 物化整树并经 cwd 暴露给 executor」落地(后续工作);git file-skill 与
-      // 本地 / file 源仍可绑定。详见 docs/specs/evidence-gated-management.md §9。
-      const contentHash = hashBytes(skillMdBytes);
       artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'git',
         content,
-        contentHash,
+        contentHash: hashBytes(skillMdBytes),
         locator: name,
         ref,
         cwd: variantCwd,
@@ -572,19 +599,32 @@ export function resolveArtifacts(
       const content = readFileSync(filePath, 'utf-8').trim();
       const isSkillMd = basename(filePath) === 'SKILL.md';
       const name = skillNameFromPath(filePath);
-      // dir-skill(显式 SKILL.md)哈整树;裸 .md 哈单文件字节——与 install 单文件分支一致。
-      const contentHash = isSkillMd
-        ? hashArtifactSource(dirname(filePath), true)
-        : hashArtifactSource(filePath, false);
+      if (isSkillMd) {
+        // dir-skill:落地隔离副本,执行根锚副本(agent 读 references)、整树指纹;skillRoot 仍记真源(doctor 等用)。
+        const isolated = isolateDirSkill(dirname(filePath), name);
+        artifacts.push({
+          name,
+          kind: 'skill',
+          source: 'file-path',
+          content: isolated.content,
+          contentHash: isolated.contentHash,
+          locator: filePath,
+          cwd: variantCwd,
+          skillRoot: dirname(filePath),
+          execRoot: isolated.execRoot,
+          metadata: buildMetadata(isolated.content),
+        });
+        continue;
+      }
+      // 裸 .md 文件-skill:单文件字节,无资产不 copy。
       artifacts.push({
         name,
         kind: 'skill',
         source: 'file-path',
         content,
-        contentHash,
+        contentHash: hashArtifactSource(filePath, false),
         locator: filePath,
         cwd: variantCwd,
-        ...(isSkillMd && { skillRoot: dirname(filePath) }),
         metadata: buildMetadata(content),
       });
       continue;
@@ -606,18 +646,20 @@ export function resolveArtifacts(
         metadata: buildMetadata(content),
       });
     } else if (existsSync(dirSkillPath)) {
-      // directory-skill:SKILL.md 引相对路径 assets,cwd 默认锚到 skill 根目录
-      const content = readFileSync(dirSkillPath, 'utf-8').trim();
+      // directory-skill:SKILL.md 引相对路径 assets;落地隔离副本,executor cwd 锚副本读 references,
+      // skillRoot 仍记真源(doctor / dependency-checker 用)。
+      const isolated = isolateDirSkill(dirname(dirSkillPath), variantName);
       artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'variant-name',
-        content,
-        contentHash: hashArtifactSource(dirname(dirSkillPath), true),
+        content: isolated.content,
+        contentHash: isolated.contentHash,
         locator: dirSkillPath,
         cwd: variantCwd,
         skillRoot: dirname(dirSkillPath),
-        metadata: buildMetadata(content),
+        execRoot: isolated.execRoot,
+        metadata: buildMetadata(isolated.content),
       });
     } else if (variantCwd) {
       artifacts.push({
