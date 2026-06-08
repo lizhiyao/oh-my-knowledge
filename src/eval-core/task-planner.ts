@@ -64,7 +64,8 @@ export function buildTasksFromArtifacts(samples: Sample[], artifacts: Artifact[]
         assertions: sample.assertions || null,
         dimensions: sample.dimensions || null,
         artifactContent: artifact.content,
-        cwd: artifact.cwd || artifact.skillRoot || sample.cwd || null,
+        // 用户显式 cwd > execRoot(隔离副本,dir-skill 执行根) > skillRoot(真源,兜底) > sample.cwd
+        cwd: artifact.cwd || artifact.execRoot || artifact.skillRoot || sample.cwd || null,
         _sample: sample,
       });
     }

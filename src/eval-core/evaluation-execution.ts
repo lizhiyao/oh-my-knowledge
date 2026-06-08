@@ -184,6 +184,9 @@ export async function executeTasks({
       executionPlan.input.mocks,
       executionPlan.input.mocksStrict,
       effort,
+      // artifact 内容指纹进 key:本地 dir-skill 改 references/ 资产只动 contentHash,system 不变,
+      // 不进 key 会命中旧输出贴到新 artifactHashes(静默污染)。
+      task.artifact.contentHash,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();

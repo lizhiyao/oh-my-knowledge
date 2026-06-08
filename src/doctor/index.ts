@@ -40,10 +40,10 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
     const skillsDir = join(cwd, 'skills');
     if (existsSync(skillsDir) && statSync(skillsDir).isDirectory()) {
       const variants = discoverVariants(skillsDir).filter((v) => v !== 'baseline');
-      return variants.length > 0 ? resolveArtifacts(skillsDir, variants, { strictBaseline: false }) : [];
+      return variants.length > 0 ? resolveArtifacts(skillsDir, variants, { strictBaseline: false, materialize: false }) : [];
     }
     const variants = discoverVariants(cwd).filter((v) => v !== 'baseline');
-    return variants.length > 0 ? resolveArtifacts(cwd, variants, { strictBaseline: false }) : [];
+    return variants.length > 0 ? resolveArtifacts(cwd, variants, { strictBaseline: false, materialize: false }) : [];
   }
 
   const absTarget = resolve(target);
@@ -53,7 +53,7 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
   const stat = statSync(absTarget);
   if (stat.isFile() && absTarget.endsWith('.md')) {
     // 单文件:用 file-path 模式(走 resolveArtifacts 的 "包含 /" 分支)
-    return resolveArtifacts(dirname(absTarget), [absTarget], { strictBaseline: false });
+    return resolveArtifacts(dirname(absTarget), [absTarget], { strictBaseline: false, materialize: false });
   }
   if (stat.isDirectory()) {
     // 目录自身就是 directory-skill (含 SKILL.md): 按单个 skill 解析,
@@ -63,10 +63,10 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
     // skillRoot 丢失,assets/foo.md 这类相对依赖会锚到 doctor 的 cwd 而不是
     // skill 目录, 误报缺文件。
     if (existsSync(join(absTarget, 'SKILL.md'))) {
-      return resolveArtifacts(dirname(absTarget), [basename(absTarget)], { strictBaseline: false });
+      return resolveArtifacts(dirname(absTarget), [basename(absTarget)], { strictBaseline: false, materialize: false });
     }
     const variants = discoverVariants(absTarget).filter((v) => v !== 'baseline');
-    return variants.length > 0 ? resolveArtifacts(absTarget, variants, { strictBaseline: false }) : [];
+    return variants.length > 0 ? resolveArtifacts(absTarget, variants, { strictBaseline: false, materialize: false }) : [];
   }
   throw new Error(`doctor target must be a .md file or directory: ${target}`);
 }

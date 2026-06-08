@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -15,6 +17,8 @@ export default defineConfig({
     // loadSamples] ⚠ lenient mode" stderr lines that appear during test runs
     // are diagnostic noise — they confirm which fixtures contain legacy-style
     // text-class assertions and are not failures.
-    env: { OMK_LENIENT_ASSERTIONS: '1' },
+    // 把隔离副本根重定向到临时目录:测试解析 dir-skill 时(materialize 默认 true)不写用户真实
+    // ~/.oh-my-knowledge/trees。需要断言「无 .tmp- 残留」等全局扫描的用例再各自 per-test 覆盖。
+    env: { OMK_LENIENT_ASSERTIONS: '1', OMK_TREES_DIR: join(tmpdir(), 'omk-test-trees') },
   },
 });

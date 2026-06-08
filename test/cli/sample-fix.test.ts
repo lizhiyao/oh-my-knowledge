@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSamples } from '../../src/inputs/load-samples.js';
-import { hashSample, hashString } from '../../src/eval-core/evaluation-reporting.js';
+import { hashSample } from '../../src/eval-core/evaluation-reporting.js';
+import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 import { assertFixReportMatchesCurrentInputs, collectSampleDesignFailureIds, writeFixedSamplesToSources } from '../../src/cli/commands/sample.js';
 import type { Report, Sample, VariantResult } from '../../src/types/index.js';
 
@@ -34,7 +35,13 @@ function makeVariantResult(rootCause: Array<'sample_design' | 'llm_misread'>): V
   };
 }
 
-function makeReport(treatmentName: string, skillContent: string, samples: Sample[]): Pick<Report, 'meta' | 'results'> {
+// contentHash 直接传入(整树哈,由调用方算好);schemaVersion 默认 2(树哈纪元),传 undefined 模拟旧报告。
+function makeReport(
+  treatmentName: string,
+  contentHash: string,
+  samples: Sample[],
+  schemaVersion: number | null = 2, // null = 模拟无 schemaVersion 字段的旧报告(显式 undefined 会触发默认值 2)
+): Pick<Report, 'meta' | 'results'> {
   return {
     meta: {
       variants: [treatmentName],
@@ -46,7 +53,8 @@ function makeReport(treatmentName: string, skillContent: string, samples: Sample
       timestamp: '2026-05-14T00:00:00.000Z',
       cliVersion: 'test',
       nodeVersion: process.version,
-      artifactHashes: { [treatmentName]: hashString(skillContent) },
+      ...(schemaVersion !== null ? { schemaVersion } : {}),
+      artifactHashes: { [treatmentName]: contentHash },
       sampleHashes: Object.fromEntries(samples.map((sample) => [sample.sample_id, hashSample(sample)])),
       judgeModels: [{ executor: 'claude', model: 'haiku' }],
     },
@@ -92,7 +100,7 @@ describe('sample --fix source writes', () => {
 
 describe('sample --fix report fingerprint guard', () => {
   it('collects only sample_design failures for the requested treatment', () => {
-    const report = makeReport('skill-a', 'skill content', [
+    const report = makeReport('skill-a', 'hash-a', [
       { sample_id: 's1', prompt: 'one' },
       { sample_id: 's2', prompt: 'two' },
     ]);
@@ -101,14 +109,14 @@ describe('sample --fix report fingerprint guard', () => {
     assert.deepEqual([...collectSampleDesignFailureIds(report, 'skill-a')], ['s1']);
   });
 
-  it('accepts a report whose skill and affected sample hashes match current inputs', () => {
+  it('accepts a report whose skill tree hash and affected sample hashes match current inputs', () => {
     const samples: Sample[] = [{ sample_id: 's1', prompt: 'one', rubric: 'rubric' }];
-    const report = makeReport('skill-a', 'skill content', samples);
+    const report = makeReport('skill-a', 'tree-hash-a', samples);
 
     assert.doesNotThrow(() => assertFixReportMatchesCurrentInputs({
       report,
       treatmentName: 'skill-a',
-      skillContent: 'skill content',
+      currentContentHash: 'tree-hash-a',
       samples,
       sampleIds: new Set(['s1']),
       lang: 'zh',
@@ -118,18 +126,63 @@ describe('sample --fix report fingerprint guard', () => {
   it('rejects stale reports before writing fixes to current samples', () => {
     const reportSamples: Sample[] = [{ sample_id: 's1', prompt: 'old prompt', rubric: 'rubric' }];
     const currentSamples: Sample[] = [{ sample_id: 's1', prompt: 'new prompt', rubric: 'rubric' }];
-    const report = makeReport('skill-a', 'old skill', reportSamples);
+    const report = makeReport('skill-a', 'old-tree-hash', reportSamples);
 
     assert.throws(
       () => assertFixReportMatchesCurrentInputs({
         report,
         treatmentName: 'skill-a',
-        skillContent: 'new skill',
+        currentContentHash: 'new-tree-hash',
         samples: currentSamples,
         sampleIds: new Set(['s1']),
         lang: 'zh',
       }),
       /报告与当前输入不一致[\s\S]*skill 指纹不一致[\s\S]*用例指纹不一致：s1[\s\S]*重新运行 omk eval/,
+    );
+  });
+
+  it('改 references/ 资产后,当前树哈漂移被报为 skill 指纹不一致(资产敏感)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-asset-drift-'));
+    const root = join(dir, 'review');
+    mkdirSync(join(root, 'references'), { recursive: true });
+    writeFileSync(join(root, 'SKILL.md'), '# review\n');
+    writeFileSync(join(root, 'references', 'cmd.md'), 'asset v1\n');
+    const reportHash = hashArtifactSource(root, true); // 报告记的是资产 v1 时的整树哈
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'one', rubric: 'rubric' }];
+    const report = makeReport('review', reportHash, samples);
+
+    writeFileSync(join(root, 'references', 'cmd.md'), 'asset v2\n'); // 只改资产,SKILL.md 正文不变
+    const currentHash = hashArtifactSource(root, true);
+    assert.notEqual(reportHash, currentHash, '资产改动必须改变整树哈');
+
+    assert.throws(
+      () => assertFixReportMatchesCurrentInputs({
+        report,
+        treatmentName: 'review',
+        currentContentHash: currentHash,
+        samples,
+        sampleIds: new Set(['s1']),
+        lang: 'zh',
+      }),
+      /skill 指纹不一致/,
+    );
+  });
+
+  it('schemaVersion < 2 的旧报告命中树哈纪元 guard,不拿旧文本哈错配比对', () => {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'one', rubric: 'rubric' }];
+    // 旧报告(无 schemaVersion):即便 contentHash 字面与 current 相等也应走 guard,不做等值比对。
+    const report = makeReport('skill-a', 'same-hash', samples, null);
+
+    assert.throws(
+      () => assertFixReportMatchesCurrentInputs({
+        report,
+        treatmentName: 'skill-a',
+        currentContentHash: 'same-hash',
+        samples,
+        sampleIds: new Set(['s1']),
+        lang: 'zh',
+      }),
+      /早于树哈纪元[\s\S]*重新运行 omk eval/,
     );
   });
 });

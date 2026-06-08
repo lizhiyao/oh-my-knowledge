@@ -335,7 +335,7 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 | EvaluandKind | ArtifactKind | 对象类别 |
 | evaluands | artifacts | 请求中的对象列表 |
 | task.evaluand | task.artifact | 单个任务绑定的对象 |
-| evaluandHashes | artifactHashes | artifact 内容哈希 |
+| evaluandHashes | artifactHashes | artifact 整棵可分发树的内容哈希（报告 `schemaVersion >= 2`，与 install 受管记录的 `contentHash` 同一空间）|
 | skillHashes | artifactHashes | report 中的统一对象哈希 |
 | skill 作为总称 | artifact | skill 退回为具体子类 |
 | agent 作为总称 | artifact / agent runtime | 视语义选择 |

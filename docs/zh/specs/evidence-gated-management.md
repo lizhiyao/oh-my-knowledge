@@ -196,7 +196,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 ## 9. 开放问题
 
 - **已定**：管理记录用 per-record 文件 `.omk/managed/<id>.json`（原子 tmp+rename，镜像 report-store），不用单一聚合文件。
-- 统一 artifact 内容指纹以让证据可绑定：`install` 记的是 `hashArtifactSource`（整树），`eval` 报告记的是 `hashString(SKILL.md 正文)`，因此 `evidence.contentHash === record.contentHash` 门控目前无法匹配真实报告证据。见 #214 —— 这是证据驱动的 `list` / `promote` 的承重前置。
+- **已定（#214，已完成）**：artifact 内容指纹已统一、证据可绑定，口径锚在「executor 实际测到的输入」。每个目录-skill——本地**与** git——在测量前都物化成内容寻址隔离副本（`materializeIsolatedCopy`），executor 的 `cwd` 锚到副本，`references/` 资产成为真实运行时输入。`eval` 记的是与 `install` 同一套整树 `hashArtifactSource`（报告 `schemaVersion >= 3`），故所有目录-skill 的 `evidence.contentHash === record.contentHash` 落在同一空间（executor cache key 带同一指纹，改资产即令 cache 失效）。file-skill（本地或 git）哈单个 `.md` 字节，同样可绑定。隔离副本也意味着被测 agent 跑在副本上、不碰用户真实 skill 目录。`schemaVersion 2` 是过渡纪元（本地目录-skill 树哈、git 目录-skill 仅 `SKILL.md` 字节、不绑）；git 目录-skill 的 v2 哈与 v3 不可比。`schemaVersion < 2` 的旧报告携带旧「SKILL.md 正文」文本哈，被漂移 / lineage 消费方视为不可比（请重跑 `eval`）。真正把 eval→managed 证据写入仍是后续工作。
 - git ref 与 omk 证据记录如何协作（漂移检查时,分支 ref 重物化 vs 固定 SHA）？
 - `evolve` 的工作目录快照该用什么布局？对当前依赖「evolve 把胜出版本写回源文件」的用户，deprecation 路径是什么？（决策 B 的迁移机制）
 - 默认允许哪些 verdict 转正：只允许 `PROGRESS`，还是允许带 caveat 的 `CAUTIOUS`？

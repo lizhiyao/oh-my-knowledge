@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
@@ -81,6 +81,19 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].source, 'file-path');
     assert.equal(artifacts[0].skillRoot, dirname(skillMd));
+  });
+
+  it('materialize 默认 true 设 execRoot;materialize:false(doctor/loadSkills)只算指纹不落副本', () => {
+    const skillMd = join(MULTI_SKILL_DIR, 'classifier', 'SKILL.md');
+    const withCopy = resolveArtifacts(SKILL_DIR, [skillMd])[0];
+    assert.ok(withCopy.execRoot, 'eval 默认 materialize → 有 execRoot(隔离副本)');
+    assert.ok(withCopy.contentHash, '有整树指纹');
+    assert.equal(withCopy.skillRoot, dirname(skillMd), 'skillRoot 始终是真源');
+
+    const noCopy = resolveArtifacts(SKILL_DIR, [skillMd], { materialize: false })[0];
+    assert.equal(noCopy.execRoot, undefined, 'materialize:false 不设 execRoot');
+    assert.equal(noCopy.contentHash, withCopy.contentHash, '指纹仍算且与落副本同值');
+    assert.equal(noCopy.skillRoot, dirname(skillMd), 'skillRoot 仍是真源');
   });
 
   it('file-path 指向单文件 .md 不设 skillRoot', () => {
@@ -169,6 +182,37 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     const artifacts = resolveArtifacts(repo, ['git:HEAD:foo']);
     assert.ok(artifacts[0].content?.includes('real foo'), '应回退到 foo/SKILL.md');
     assert.ok(!artifacts[0].content?.startsWith('tree '), '绝不能把 git 树清单当 skill 内容');
+  });
+
+  it('git dir-skill 忠实执行:整树指纹覆盖 references/ 资产,execRoot 锚隔离副本', () => {
+    // git eval 物化整树到内容寻址隔离副本,executor cwd 锚 execRoot、agent 读得到 references/。
+    // 资产是真实测量输入:改资产 → 整树指纹变(消除 over-claim 的反面);改 SKILL.md 也变。
+    mkRepo();
+    mkdirSync(join(repo, 'review', 'references'), { recursive: true });
+    writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v1\n');
+    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v1\n');
+    const commit = (msg: string): void => {
+      execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['commit', '-q', '-m', msg], { cwd: repo, stdio: 'ignore' });
+    };
+    commit('v1');
+    process.chdir(repo);
+    const a1 = resolveArtifacts(repo, ['git:HEAD:review'])[0];
+    const h1 = a1.contentHash;
+    assert.ok(h1, 'git dir-skill 必须有 contentHash');
+    assert.ok(a1.execRoot, 'git dir-skill 必须有 execRoot(隔离副本执行根)');
+    // 副本含 references 资产,agent 经 cwd 读得到
+    assert.equal(readFileSync(join(a1.execRoot!, 'references', 'rules.md'), 'utf-8'), 'rule v1\n');
+
+    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v2 changed\n'); // 改资产
+    commit('asset change');
+    const h2 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    assert.notEqual(h2, h1, '改 references/ 资产必须改变 git 整树指纹(资产现在是真实测量输入)');
+
+    writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v2 changed\n'); // 改 SKILL.md
+    commit('skill change');
+    const h3 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    assert.notEqual(h3, h2, '改 SKILL.md 也改变整树指纹');
   });
 
   it('从仓库外调用:git 上下文锚定 skillDir 所属 repo,而非进程 cwd', () => {

@@ -38,9 +38,24 @@ describe('cacheKey', () => {
     assert.equal(a, b);
   });
 
-  it('cache key 带 v5: 前缀(invalidates older cache entries — effort 加进 key)', () => {
+  it('cache key 带 v6: 前缀(invalidates older cache entries — contentHash 加进 key)', () => {
     const key = cacheKey('sonnet', '', 'p', '/tmp/p');
-    assert.match(key, /^v5:/);
+    assert.match(key, /^v6:/);
+  });
+
+  // artifact contentHash 必须进 cache key:本地 dir-skill 改 references/ 资产时,system(SKILL.md 文本)
+  // 与 prompt / cwd 都不变,只有 contentHash(整树哈)变;不进 key 会命中旧输出、贴到新 artifactHashes 上
+  // 形成静默测量污染(改了 skill 行为依赖、cached rerun 却复用旧结果)。
+  it('contentHash 进 cache key:同 system/prompt/cwd 下改资产(contentHash 变)→ 不同键', () => {
+    const before = cacheKey('sonnet', '# skill', 'p', '/tmp/skill', undefined, 'claude', 'rt1', undefined, undefined, undefined, 'treehash-v1');
+    const after = cacheKey('sonnet', '# skill', 'p', '/tmp/skill', undefined, 'claude', 'rt1', undefined, undefined, undefined, 'treehash-v2');
+    assert.notEqual(before, after);
+  });
+
+  it('contentHash 进 cache key:undefined 跟空串等价(baseline / 无 skill)', () => {
+    const noHash = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1');
+    const emptyHash = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1', undefined, undefined, undefined, '');
+    assert.equal(noHash, emptyHash);
   });
 
   // effort 必须进 cache key:同 model/prompt 不同 effort('low' vs 'high')改变 LLM 思考预算,

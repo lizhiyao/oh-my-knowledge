@@ -211,10 +211,24 @@ export interface ReportMeta {
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
+  /** Per-artifact content fingerprint (variantName → SHA256-12, or 'no-skill' for baseline).
+   *  schemaVersion >= 3: hashes exactly the executor-visible input, and EVERY dir-skill (local OR
+   *  git) is materialized into an isolated content-addressed copy whose whole distributable tree
+   *  (SKILL.md + references/ assets, excluding .omk/.git/node_modules/evolve) is exposed to the
+   *  executor via cwd — so the fingerprint covers the whole tree and lives in the same space as the
+   *  install managed-record contentHash (evidence binds for all dir-skills). File-skill (local or
+   *  git) → the single .md bytes (also binds). schemaVersion 2 was a transitional era where local
+   *  dir-skills were tree-hashed but git dir-skills hashed SKILL.md bytes only (did not bind);
+   *  v2 git-dir-skill hashes are NOT comparable to v3. schemaVersion < 2 / absent: legacy
+   *  SKILL.md-body-text hash — NOT comparable to either. */
   artifactHashes: Record<string, string>;
-  /** v0.21 — Report JSON schema version. Reports without this field are treated as v0
-   *  (legacy field semantics: pre-v0.21 `gapRate`/`weightedGapRate` map to `evalGapRate`/
-   *  `evalWeightedGapRate` for eval-side reports). v0.21+ writes 1. */
+  /** Report JSON schema version. Reports without this field are treated as v0 (legacy field
+   *  semantics: pre-v0.21 `gapRate`/`weightedGapRate` map to `evalGapRate`/`evalWeightedGapRate`
+   *  for eval-side reports). Value 1 was specified for v0.21+ but never emitted in practice.
+   *  Value 2 marked the artifactHashes tree-hash era for local dir-skills (git dir-skills still
+   *  SKILL.md-only). Value 3 extends whole-tree hashing to git dir-skills via isolated copies
+   *  (all dir-skills bind). Drift / lineage consumers gate on `>= 2` (tree-hash era); git-dir-skill
+   *  binding additionally requires `>= 3`. */
   schemaVersion?: number;
   /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
   sampleHashes?: Record<string, string>;

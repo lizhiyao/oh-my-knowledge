@@ -6,6 +6,7 @@ import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId, hashString } from '..
 import { createFileStore } from '../server/report-store.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
+import { hashArtifactSource } from '../inputs/content-hash.js';
 import { buildVariantSummary } from '../eval-core/schema.js';
 import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 import { fixSamples } from './sample-fixer.js';
@@ -108,7 +109,7 @@ function singleVariantReport(report: Report, variantKey: string): Report {
 }
 
 async function findReusableBaselineReport(opts: {
-  skillContent: string;
+  artifactHash: string;
   samplesPath: string;
   model: string;
   executorName: string;
@@ -118,9 +119,12 @@ async function findReusableBaselineReport(opts: {
 }): Promise<Report | null> {
   const store = createFileStore(DEFAULT_OUTPUT_DIR);
   const { samples } = loadSamples(opts.samplesPath);
-  const artifactHash = hashString(opts.skillContent);
+  const artifactHash = opts.artifactHash;
   const reports = await store.findByArtifactHash(artifactHash);
   for (const report of reports) {
+    // schemaVersion < 2 的报告 artifactHashes 是旧文本哈,与当前树哈不同空间:即便值偶合也不该复用
+    // (口径不同会让 lineage 串错身份)。直接跳过,让旧 baseline 重跑出树哈报告。
+    if ((report.meta.schemaVersion ?? 0) < 2) continue;
     if (report.meta.model !== opts.model || report.meta.executor !== opts.executorName) continue;
     if ((report.meta.effort ?? undefined) !== (opts.effort ?? undefined)) continue;
     if (report.meta.noJudge) continue;
@@ -946,10 +950,14 @@ export async function evolveSkill({
   const reportHasUnreportedCost = (rep: Report): boolean =>
     Object.values(rep.summary).some((v) => v.execCostReported === false || v.judgeCostReported === false);
 
-  // Round 0: baseline evaluation
+  // Round 0: baseline evaluation。复用查询键走整树哈,与 eval 报告口径一致:round 0 的 currentBest 即
+  // 磁盘上原始 skill,树哈取自磁盘(dir-skill 哈整目录、单文件 .md 哈单文件)。evolve 只改 SKILL.md 正文、
+  // 不动 references/ 资产,故磁盘树哈即该 baseline 的权威指纹。
+  const baselineIsDirSkill = basename(absSkillPath) === 'SKILL.md';
+  const baselineArtifactHash = hashArtifactSource(baselineIsDirSkill ? skillDir : absSkillPath, baselineIsDirSkill);
   let baselineReport = reuseLatestEval
     ? await findReusableBaselineReport({
-      skillContent: currentBest,
+      artifactHash: baselineArtifactHash,
       samplesPath: absSamplesPath,
       model,
       executorName,
