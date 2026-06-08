@@ -212,9 +212,13 @@ export interface ReportMeta {
   cliVersion: string;
   nodeVersion: string;
   /** Per-artifact content fingerprint (variantName → SHA256-12, or 'no-skill' for baseline).
-   *  schemaVersion >= 2: whole distributable-tree hash (SKILL.md + references/ assets), same
-   *  space as the install managed-record contentHash. schemaVersion < 2 / absent: legacy
-   *  SKILL.md-body-text hash — NOT comparable to tree hashes, and blind to asset changes. */
+   *  schemaVersion >= 2: hashes exactly the executor-visible input. Local dir-skill → whole
+   *  distributable tree (SKILL.md + references/ assets; cwd=skillRoot exposes them), same space
+   *  as the install managed-record contentHash. File-skill (local or git) → the single .md bytes.
+   *  Git dir-skill → SKILL.md bytes only, because git eval injects just SKILL.md (cwd/skillDir
+   *  null, references/ never exposed) — so the fingerprint stays equal to what was measured and
+   *  does NOT bind to the install whole-tree record (deferred; see evidence-gated-management §9).
+   *  schemaVersion < 2 / absent: legacy SKILL.md-body-text hash — NOT comparable to the above. */
   artifactHashes: Record<string, string>;
   /** Report JSON schema version. Reports without this field are treated as v0 (legacy field
    *  semantics: pre-v0.21 `gapRate`/`weightedGapRate` map to `evalGapRate`/`evalWeightedGapRate`

@@ -2,8 +2,8 @@
  * Executor result cache.
  *
  * Caches successful executor results to disk to avoid redundant API calls.
- * Cache key v5 = sha256(model + system + prompt + cwd + allowedSkills + executor +
- *                       runtime + mocks + mocksStrict + effort).
+ * Cache key v6 = sha256(model + system + prompt + cwd + allowedSkills + executor +
+ *                       runtime + mocks + mocksStrict + effort + artifactContentHash).
  * Loaded into memory on init, flushed to disk on save().
  *
  * Prefix bumps intentionally invalidate old entries when construct-validity
@@ -15,6 +15,11 @@
  *       报告 meta 标的 effort 跟实际跑的 effort 不一致 — 测量可比性污染);
  *       同时 cache.set 不再砍 turns / toolCalls — 工具类断言 + diagnostic 要看 trace,
  *       砍掉的话 cached rerun 会让工具断言为空、diagnostic 没真实证据,跟 cold run 不一致
+ * - v6: artifact 内容指纹(contentHash)。`system` 只含 SKILL.md 正文,但本地 dir-skill 的
+ *       references/ 资产是真实运行时输入(cwd=skillRoot,agent 可读),改资产只动 contentHash、
+ *       不动 system → 旧 key 会命中旧输出、贴到新 artifactHashes 上,形成静默测量污染。把
+ *       contentHash 纳入 key,资产变即重跑。git skill 的 contentHash 只随 SKILL.md 变(其资产不
+ *       暴露给 executor、本就不该触发重跑),口径自洽
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -123,6 +128,9 @@ export function cacheKey(
    *  输出/工具调用/分数都可能不同,跨 effort 共享 cache 会让报告 meta 标的 effort
    *  跟实际生成的 effort 不一致,违反"两份报告比分数前先比 cliVersion / effort"语义。 */
   effort?: string,
+  /** artifact 内容指纹(整树 / 单文件哈)。本地 dir-skill 改 references/ 资产只动此值、不动 system,
+   *  不进 key 会让改资产后命中旧输出 → 静默污染。空(baseline / 无 skill)等价无指纹。 */
+  artifactContentHash?: string,
 ): string {
   // allowedSkills 序列化:undefined → "" / [] → "[]" / [...] → 排序后 JSON。
   // 排序保证 ["a","b"] 和 ["b","a"] 命中同一缓存(语义等价)。
@@ -139,8 +147,8 @@ export function cacheKey(
   // executor + runtime + effort 进 cache key:同 model 名走不同 executor 或同 executor
   // 换 binary/SDK 版本时输出可能不同,旧 cache 不可复用。
   const hash = createHash('sha256')
-    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}\n${isoStr}\n${executor || ''}\n${runtimeFingerprint || ''}\n${mockStr}\n${strictStr}\n${effortStr}`)
+    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}\n${isoStr}\n${executor || ''}\n${runtimeFingerprint || ''}\n${mockStr}\n${strictStr}\n${effortStr}\n${artifactContentHash || ''}`)
     .digest('hex')
     .slice(0, 16);
-  return `v5:${hash}`;
+  return `v6:${hash}`;
 }

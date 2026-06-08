@@ -171,6 +171,33 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     assert.ok(!artifacts[0].content?.startsWith('tree '), '绝不能把 git 树清单当 skill 内容');
   });
 
+  it('git dir-skill 的 contentHash 只随 SKILL.md 变,不含 references/ 资产(指纹 == 实际测量输入)', () => {
+    // git eval 只把 SKILL.md 注入 system,cwd / skillDir 均 null,agent 读不到磁盘上的 references/。
+    // 故指纹只取 SKILL.md:改资产不影响测量、指纹不该变(避免 over-claim);改 SKILL.md 才变。
+    mkRepo();
+    mkdirSync(join(repo, 'review', 'references'), { recursive: true });
+    writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v1\n');
+    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v1\n');
+    const commit = (msg: string): void => {
+      execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['commit', '-q', '-m', msg], { cwd: repo, stdio: 'ignore' });
+    };
+    commit('v1');
+    process.chdir(repo);
+    const h1 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    assert.ok(h1, 'git dir-skill 必须有 contentHash');
+
+    writeFileSync(join(repo, 'review', 'references', 'rules.md'), 'rule v2 changed\n'); // 只改资产
+    commit('asset change');
+    const h2 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    assert.equal(h2, h1, '改 references/ 资产不该改变 git eval 指纹(executor 测不到资产)');
+
+    writeFileSync(join(repo, 'review', 'SKILL.md'), '# review v2 changed\n'); // 改 SKILL.md
+    commit('skill change');
+    const h3 = resolveArtifacts(repo, ['git:HEAD:review'])[0].contentHash;
+    assert.notEqual(h3, h1, '改 SKILL.md 必须改变 git eval 指纹(SKILL.md 是被注入的测量输入)');
+  });
+
   it('从仓库外调用:git 上下文锚定 skillDir 所属 repo,而非进程 cwd', () => {
     // 进程 cwd 停在 omk 仓库(测试运行目录),skillDir 指向另一个临时 repo,且**不 chdir 进去**。
     // 修复前 rev-parse 在进程 cwd 跑 → 拿 omk repo 的 root/HEAD → not_found 或评测错 repo 的同名内容。

@@ -3,7 +3,7 @@ import { resolve, join, relative, dirname, basename, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
-import { hashArtifactSource, isDistributablePath } from './content-hash.js';
+import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import type { Artifact } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
@@ -528,29 +528,22 @@ export function resolveArtifacts(
       if (!resolved) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
-      const content = resolved.isDir
-        ? gitShowFile(ref, gitJoin(resolved.treePath, 'SKILL.md'), gitCtx.repoRoot)
-        : gitShowFile(ref, resolved.fileSkillPath, gitCtx.repoRoot);
-      if (!content) {
+      const skillMdSpec = resolved.isDir ? gitJoin(resolved.treePath, 'SKILL.md') : resolved.fileSkillPath;
+      // 一次取原始字节:指纹用原始字节(与 install 单文件分支「不 trim」一致),content 由同一份字节
+      // utf-8 解码后 trim(等价 gitShowFile,省一次 git 子进程、也杜绝两次读之间的发散)。
+      const skillMdBytes = gitShowBytes(ref, skillMdSpec, gitCtx.repoRoot);
+      const content = skillMdBytes !== null ? skillMdBytes.toString('utf-8').trim() : null;
+      if (!skillMdBytes || !content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
-      // 内容指纹走整树哈:与 install 共用 materializeGitSkillTree + hashArtifactSource,保证同一
-      // git skill 装出来与测出来落在同一空间。eval 不需落盘树(内容由 SDK 注入、skillDir=null),
-      // 仅为算哈而物化,算完即 cleanup。
-      const contentHash = ((): string => {
-        let mat;
-        try {
-          mat = materializeGitSkillTree(ref, resolved, gitCtx.repoRoot);
-        } catch (err) {
-          const detail = err instanceof SourceResolveError ? err.messageKey : String(err);
-          throw new Error(`无法物化 git skill ${ref}:${name} 以计算内容指纹：${detail}`);
-        }
-        try {
-          return hashArtifactSource(mat.localRoot, mat.isDirectorySkill);
-        } finally {
-          mat.cleanup();
-        }
-      })();
+      // 内容指纹只取 SKILL.md 字节,**不**含 references/ 资产 —— git eval 只把 SKILL.md 注入 system,
+      // cwd / skillDir 均为 null(见 execution-strategy extractSkillDir:git → null),agent 根本读不到
+      // 磁盘上的 references/。指纹必须等于「executor 实际测到的输入」,否则报告会声称测了整棵树、实际没测,
+      // 形成 over-claim;改 git skill 的某个 reference 不影响测量、指纹也就不该变。
+      // 代价:git dir-skill 的 eval 指纹与 install 受管记录的整树 contentHash 不在同一空间,故 git dir-skill
+      // 的 evidence 绑定要等「git eval 物化整树并经 cwd 暴露给 executor」落地(后续工作);git file-skill 与
+      // 本地 / file 源仍可绑定。详见 docs/specs/evidence-gated-management.md §9。
+      const contentHash = hashBytes(skillMdBytes);
       artifacts.push({
         name: variantName,
         kind: 'skill',

@@ -49,9 +49,14 @@ export function isDistributablePath(segments: string[]): boolean {
  * 用 createHash 直接喂 Buffer(字节级,二进制资产也稳;分隔符是运行时字节,源码里不引入任何不可见字符)。
  * 读时(list / drift 检查 / eval 报告)用同一函数重算比对。
  */
+/** sha256 前 12 位的字节摘要 —— 单文件 / 单 blob 内容指纹的共用底座(整树哈、git 单文件哈都走它)。 */
+export function hashBytes(buf: Buffer): string {
+  return createHash('sha256').update(buf).digest('hex').slice(0, 12);
+}
+
 export function hashArtifactSource(source: string, isDirectorySkill: boolean): string {
   if (!isDirectorySkill) {
-    return createHash('sha256').update(readFileSync(source)).digest('hex').slice(0, 12);
+    return hashBytes(readFileSync(source));
   }
   const rels: string[] = [];
   const walk = (dir: string, segments: string[]): void => {
