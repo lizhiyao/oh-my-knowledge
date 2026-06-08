@@ -89,6 +89,7 @@ omk eval [flags]
 - `--no-cache` `boolean`:跳过 executor cache
 - `--no-debias-length` `boolean`:关 length-debias（默认开）
 - `--no-diagnostic` `boolean`:关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+- `--no-evidence` `boolean`:不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
 - `--no-gate` `boolean`:关 verdict gate
 - `--no-judge` `boolean`:跳过 LLM judge
 - `--no-serve` `boolean`:不启 report server

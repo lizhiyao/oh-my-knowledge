@@ -3,3 +3,4 @@
  * 不直接依赖内部文件布局。
  */
 export * from './store.js';
+export * from './evidence.js';

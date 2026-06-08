@@ -67,11 +67,37 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
   return 0;
 }
 
-async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues): Promise<number> {
+async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues, lang: CliLang): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
   console.log(formatVerdictText(result, { verbose: true }));
+  await recordEvidenceSafely(report, result.level, values, lang);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
+}
+
+/**
+ * 把本次评测写成证据追加进**已纳管**记录(让 install 过的 skill 走到 measurable)。
+ * 永不致命:管理是 eval 的旁路,写入失败 / 无匹配记录都不影响 verdict 与 exit code。
+ * `--no-evidence` 关闭。仅对实际写入的记录打一行提示(无匹配则全静默)。
+ */
+async function recordEvidenceSafely(
+  report: EvaluationReport,
+  verdict: string,
+  values: ParsedValues,
+  lang: CliLang,
+): Promise<void> {
+  if (values['no-evidence'] === true) return;
+  try {
+    const { recordEvalEvidence } = await import('../../../managed/index.js');
+    const written = recordEvalEvidence(report, verdict, new Date().toISOString());
+    for (const w of written) {
+      process.stderr.write(
+        tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name }),
+      );
+    }
+  } catch {
+    // 证据写入是旁路,任何异常都不该让评测失败
+  }
 }
 
 function batchItemFallbackReport(
@@ -130,6 +156,11 @@ async function emitBatchVerdict(
     treatment: child.meta.variants[1] ?? child.id,
     verdict: computeVerdict(child, verdictOptions(values)),
   }));
+  // batch 每个子报告各自是一份独立 skill 的评测 → 各自写证据。
+  for (const child of childReports) {
+    const v = results.find((r) => r.id === child.id)?.verdict.level ?? 'SOLO';
+    await recordEvidenceSafely(child, v, values, lang);
+  }
   const passed = results.filter((r) => verdictPasses(r.verdict.level, r.verdict.headline)).length;
   const failed = results.length - passed;
 
@@ -332,7 +363,7 @@ async function runEval(
     if (filePath) {
       await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
     }
-    const exitCode = await emitEvaluationVerdict(report, values);
+    const exitCode = await emitEvaluationVerdict(report, values, lang);
     throw new CliExit(applyGateExitCode(exitCode, values, lang));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
@@ -543,6 +574,12 @@ export default class Eval extends BaseCommand {
     }),
     'no-gate': Flags.boolean({
       description: bilingual({ zh: '关 verdict gate', en: 'Disable verdict gate' }),
+    }),
+    'no-evidence': Flags.boolean({
+      description: bilingual({
+        zh: '不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。',
+        en: 'Do not append this run as evidence to managed records (auto-written for installed skills by default).',
+      }),
     }),
   };
 

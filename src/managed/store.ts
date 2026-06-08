@@ -9,6 +9,7 @@ import type {
   ManagedArtifactRecord,
   ManagedArtifactSource,
   ManagedDistributionTarget,
+  ManagedEvidenceRef,
 } from '../types/index.js';
 
 /**
@@ -113,6 +114,18 @@ export function loadAllManagedRecords(dir: string = managedDir()): ManagedArtifa
 }
 
 /**
+ * 哪个 managed 目录是权威(有记录的那个):项目目录非空取项目,否则全局非空取全局,都空回项目。
+ * 与 `loadAllManagedRecords` 的 project→global 回退**同口径** —— 写方(append evidence)据此写回
+ * 读方实际取记录的同一目录,避免"读全局、写项目"把证据落到空目录。
+ */
+export function resolveManagedDir(dir: string = managedDir()): string {
+  if (readRecordsFromDir(dir).length > 0) return dir;
+  const global = globalManagedDir();
+  if (dir !== global && readRecordsFromDir(global).length > 0) return global;
+  return dir;
+}
+
+/**
  * 纯合并逻辑(无 IO):install 写的是事实,绝不动 evidence/decisions(那是 eval/promote 的地盘)。
  *   - distribution 按 path 去重(同路径以新值替换);
  *   - evidence / decisions 一律保留旧值(install 带来的恒为空)——这是设计要的"版本历史 + 附带证据",
@@ -153,6 +166,36 @@ export function upsertManagedRecord(dir: string, record: ManagedArtifactRecord):
   const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
   writeFileSync(tmp, JSON.stringify(merged, null, 2));
   renameSync(tmp, path);
+  return merged;
+}
+
+/**
+ * 追加一条评测证据(append-only)。与 install 的 upsert 路径相反——`mergeManagedRecord` 刻意**保留旧
+ * evidence、丢弃 next.evidence**(install 只写事实),所以证据写入不能走 upsert,必须独立 load→push→
+ * 原子重写。按 `(reportId, contentHash)` 去重:重跑同一份 eval 不堆重复条目(reportId 含运行身份,
+ * 同内容重测会是新 reportId → 新条目,正是要的版本史)。记录不存在(未 install / 名字不匹配)返回
+ * null —— 这是"管理是 install 显式 opt-in"的体现:eval 绝不为未纳管的 skill 凭空建记录。
+ */
+export function appendManagedEvidence(
+  dir: string,
+  recordId: string,
+  evidence: ManagedEvidenceRef,
+): ManagedArtifactRecord | null {
+  const prev = loadManagedRecord(dir, recordId);
+  if (!prev) return null;
+  const dup = prev.evidence.some(
+    (e) => e.reportId === evidence.reportId && e.contentHash === evidence.contentHash,
+  );
+  const merged: ManagedArtifactRecord = dup
+    ? prev
+    : { ...prev, evidence: [...prev.evidence, evidence] };
+  if (!dup) {
+    mkdirSync(dir, { recursive: true });
+    const path = recordPath(dir, recordId);
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    writeFileSync(tmp, JSON.stringify(merged, null, 2));
+    renameSync(tmp, path);
+  }
   return merged;
 }
 
