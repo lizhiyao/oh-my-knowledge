@@ -1,5 +1,5 @@
-import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync, readdirSync, statSync, utimesSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync, readdirSync, statSync, utimesSync, writeFileSync, unlinkSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { hashArtifactSource, distributableCopyFilter } from './content-hash.js';
 
@@ -26,9 +26,9 @@ export function treesDir(): string {
 /** 内容寻址副本默认上限(distinct 内容版本数);超出按 LRU(mtime)淘汰。
  *  `OMK_TREES_MAX_ENTRIES` 调整:0 / 负数 = 不限。 */
 const DEFAULT_TREES_MAX_ENTRIES = 200;
-/** 淘汰宽限:mtime 在此窗口内(近期物化 / 命中触碰)的副本一律不动 —— 兜底「正在跑的 eval 的 cwd 不被删」。
- *  取 24h:没有 eval 会跑这么久,active run 的副本恒在窗口内、绝不被淘汰;只有久未用的才回收。 */
-const TREES_GRACE_MS = 24 * 60 * 60 * 1000;
+/** 淘汰宽限:mtime 在此窗口内的副本不动。这是**第二道**保护(覆盖物化→落锁那几毫秒的窗口);
+ *  真正挡住「删掉正在跑的 eval 的 cwd」靠下面的 pid 占用锁,不靠「没有 eval 跑这么久」的假设。 */
+const TREES_GRACE_MS = 60 * 60 * 1000;
 
 function treesCap(): number {
   const raw = process.env.OMK_TREES_MAX_ENTRIES;
@@ -39,11 +39,71 @@ function treesCap(): number {
   return Math.floor(n);
 }
 
+/** 占用锁目录:`<treesDir>/.locks/<hash>.<pid>`。dotfile → 不计入 cap、不被当副本删。 */
+function locksDir(): string {
+  return join(treesDir(), '.locks');
+}
+
+function isPidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0); // 信号 0:只探活、不真发信号
+    return true;
+  } catch (err) {
+    // EPERM = 进程存在但无权限(仍算活);ESRCH = 不存在
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 /**
- * 内容寻址副本的 LRU 回收:`<treesDir>/<hash>` 数超过上限时,按 mtime 从旧到新淘汰,直到回到上限内;
- * **跳过** mtime 在 grace 窗口内的副本(近期用过、可能是正在跑的 eval 的 cwd,删了会断 active run)。
- * 因此是「软上限」—— 一次性物化的大批新副本会暂时超限,待其老化出 grace 后再被回收。`.tmp-` 暂存不计、不删。
- * materializeIsolatedCopy 命中走 utimes 触碰(LRU touch)、未命中落盘后调本函数;也可独立调用(测试 / 后续 GC)。
+ * 标记本进程正在用某内容寻址副本作 executor cwd —— 落一个 `<treesDir>/.locks/<hash>.<pid>` 占用锁。
+ * pruneTreesDir 见到**活 pid** 的锁就绝不删对应副本(真实跨进程 liveness,不靠 mtime 猜)。进程崩溃也安全:
+ * 锁不显式回收,prune 惰性按 pid 探活清理死锁。同 hash 同 pid 幂等(覆盖写)。
+ */
+function markCopyInUse(contentHash: string): void {
+  try {
+    const dir = locksDir();
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${contentHash}.${process.pid}`), '');
+  } catch {
+    // 落锁失败不致命:还有 grace 窗口兜底
+  }
+}
+
+/** 扫 `.locks/`:返回被**活进程**占用的 hash 集合;顺带惰性清理死 pid 的锁。 */
+function liveLockedHashes(): Set<string> {
+  const dir = locksDir();
+  const live = new Set<string>();
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return live; // 无锁目录
+  }
+  for (const name of names) {
+    const dot = name.lastIndexOf('.');
+    if (dot <= 0) continue;
+    const hash = name.slice(0, dot);
+    const pid = Number(name.slice(dot + 1));
+    if (isPidAlive(pid)) {
+      live.add(hash);
+    } else {
+      try {
+        unlinkSync(join(dir, name)); // 死 pid 的锁惰性回收
+      } catch {
+        // 清理失败不致命
+      }
+    }
+  }
+  return live;
+}
+
+/**
+ * 内容寻址副本的 LRU 回收:`<treesDir>/<hash>` 数超过上限时,按 mtime 从旧到新淘汰,直到回到上限内。
+ * **绝不删**被活进程占用的副本(`.locks/<hash>.<pid>` 且 pid 在世)—— 这才是「正在跑的 eval 的 cwd 不被删」
+ * 的真实保证(不靠 mtime 当 liveness)。grace 窗口是第二道兜底。软上限:被占用/grace 内的大批新副本会暂时
+ * 超限,待其释放/老化后回收。`.tmp-` 暂存与 `.locks` 不计、不删。
+ * materializeIsolatedCopy 命中走 utimes 触碰(LRU touch)+ 落锁;未命中落盘后落锁并调本函数;也可独立调用。
  */
 export function pruneTreesDir(opts: { maxEntries?: number; graceMs?: number } = {}): void {
   const cap = opts.maxEntries ?? treesCap();
@@ -57,7 +117,7 @@ export function pruneTreesDir(opts: { maxEntries?: number; graceMs?: number } = 
     return; // 目录不存在 = 无可回收
   }
   const dirs = names
-    .filter((n) => !n.startsWith('.')) // 排除 .tmp- 暂存
+    .filter((n) => !n.startsWith('.')) // 排除 .tmp- 暂存与 .locks
     .map((n) => {
       try {
         return { path: join(root, n), mtimeMs: statSync(join(root, n)).mtimeMs };
@@ -67,12 +127,14 @@ export function pruneTreesDir(opts: { maxEntries?: number; graceMs?: number } = 
     })
     .filter((x): x is { path: string; mtimeMs: number } => x !== null);
   if (dirs.length <= cap) return;
+  const locked = liveLockedHashes();
   dirs.sort((a, b) => a.mtimeMs - b.mtimeMs); // 最旧在前
   const cutoff = Date.now() - graceMs;
   let removable = dirs.length - cap;
   for (const d of dirs) {
     if (removable <= 0) break;
-    if (d.mtimeMs > cutoff) continue; // grace 内:近期用过 / 可能是 active cwd,保护
+    if (locked.has(basename(d.path))) continue; // 活进程占用(可能是 active cwd),绝不删
+    if (d.mtimeMs > cutoff) continue; // grace 内:第二道兜底
     try {
       rmSync(d.path, { recursive: true, force: true });
       removable--;
@@ -97,13 +159,14 @@ export function materializeIsolatedCopy(localRoot: string, isDirectorySkill: boo
   const target = join(root, contentHash);
   const copyRoot = isDirectorySkill ? target : join(target, `${name}.md`);
   if (existsSync(target)) {
-    // 命中:零 copy。utimes 触碰 mtime 作 LRU 标记(并把它移出 prune 的淘汰窗口)。
+    // 命中:零 copy。utimes 触碰 mtime 作 LRU 标记 + 落 pid 占用锁(本进程将拿它当 cwd,prune 不许删)。
     try {
       const now = new Date();
       utimesSync(target, now, now);
     } catch {
       // 触碰失败不致命
     }
+    markCopyInUse(contentHash);
     return { copyRoot, contentHash, isDirectorySkill };
   }
 
@@ -116,7 +179,8 @@ export function materializeIsolatedCopy(localRoot: string, isDirectorySkill: boo
       copyFileSync(localRoot, join(tmp, `${name}.md`));
     }
     renameSync(tmp, target);
-    pruneTreesDir(); // 落盘新副本后回收超限的旧副本(LRU + grace 保护 active run)
+    markCopyInUse(contentHash); // 先落占用锁,再 prune —— 保证本进程刚落的副本绝不被自己的 prune 删
+    pruneTreesDir(); // 回收超限的旧副本(跳过活进程占用 + grace)
     return { copyRoot, contentHash, isDirectorySkill };
   } catch (err) {
     rmSync(tmp, { recursive: true, force: true });

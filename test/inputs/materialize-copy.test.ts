@@ -140,4 +140,38 @@ describe('materialize-copy', () => {
     pruneTreesDir({ maxEntries: 1, graceMs: 0 });
     assert.ok(existsSync(join(treesDir(), '.tmp-keep')), '.tmp- 暂存不参与淘汰');
   });
+
+  function writeLock(hash: string, pid: number): string {
+    const dir = join(treesDir(), '.locks');
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, `${hash}.${pid}`);
+    writeFileSync(p, '');
+    return p;
+  }
+
+  it('pruneTreesDir:活进程占用锁的副本绝不被淘汰(即便超 grace + 超上限)', () => {
+    const a = mkTreeAged('aaaaaaaaaaaa', 48 * 60 * 60 * 1000); // 旧 + 本进程占用
+    const b = mkTreeAged('bbbbbbbbbbbb', 47 * 60 * 60 * 1000); // 旧 + 无锁
+    writeLock('aaaaaaaaaaaa', process.pid); // 活 pid
+    pruneTreesDir({ maxEntries: 0, graceMs: 0 }); // 强淘汰一切未保护的
+    assert.ok(existsSync(a), '活进程占用锁的副本(可能是 active cwd)绝不删');
+    assert.ok(!existsSync(b), '无锁的旧副本被淘汰');
+  });
+
+  it('pruneTreesDir:死 pid 的锁不保护、且被惰性清理', () => {
+    const a = mkTreeAged('cccccccccccc', 48 * 60 * 60 * 1000);
+    const deadPid = 2_000_000_000; // 远超 max pid → process.kill(pid,0) 抛 ESRCH
+    const lock = writeLock('cccccccccccc', deadPid);
+    pruneTreesDir({ maxEntries: 0, graceMs: 0 });
+    assert.ok(!existsSync(a), '死 pid 锁不保护 → 副本被淘汰');
+    assert.ok(!existsSync(lock), '死 pid 的锁被惰性回收');
+  });
+
+  it('materializeIsolatedCopy:物化落本进程 pid 占用锁', () => {
+    const src = mkDirSkill('e', 'asset\n');
+    const copy = materializeIsolatedCopy(src, true, 'e');
+    created.push(copy.copyRoot);
+    const lock = join(treesDir(), '.locks', `${copy.contentHash}.${process.pid}`);
+    assert.ok(existsSync(lock), '物化后落了本进程的占用锁(prune 据此保护 active cwd)');
+  });
 });
