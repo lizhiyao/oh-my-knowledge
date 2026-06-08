@@ -20,7 +20,7 @@ omk doctor [target] [flags]
 
 **Flags:**
 
-- `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。
+- `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。
 - `--effort` `option`:LLM 推理 effort：low / medium / high / xhigh / max。
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
 - `--fix` `boolean`:交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。

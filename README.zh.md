@@ -49,11 +49,13 @@ Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。�
 
 ```bash
 omk eval
-omk evolve skills/my-skill.md
+omk evolve skills/my-skill.md   # 一键:体检 →(无用例则自动生成)→ 自迭代
 omk sample skills/my-skill.md
 ```
 
 也可以直接用自然语言描述目标，例如「比较 v1 和 v2 的评测差异」、「为这个 skill 生成评测用例」。
+
+> `omk evolve` 是一键闭环：默认先跑 doctor 体检，目标 skill 没有评测用例时会自动生成一批，再进入多轮自迭代。全新 skill 直接 `omk evolve skills/foo.md` 即可。
 
 ## 为什么需要这个工具
 

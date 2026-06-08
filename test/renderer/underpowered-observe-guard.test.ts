@@ -54,10 +54,13 @@ describe('underpowered observe — Studio 列表口径', () => {
 describe('underpowered observe — Studio 详情口径', () => {
   it('hero 走中性灰「未评估」,既不落红也不落绿「健康」', () => {
     const html = renderSkillDetail(underpoweredEntry(), null, 'zh');
-    // 断言 hero 元素实际套用的 class(而非 <style> 里的色带定义)。
-    assert.match(html, /class="si-hero-grade si-hero-grade--gray"/);
-    assert.doesNotMatch(html, /class="si-hero-grade si-hero-grade--red"/);
-    assert.doesNotMatch(html, /class="si-hero-grade si-hero-grade--green"/);
+    // 只在 hero 区块内断言（整页别处的红绿色不算）。
+    const heroMatch = /<div class="sd-hero">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/.exec(html);
+    const hero = heroMatch ? heroMatch[0] : html.slice(0, html.indexOf('sd-hero-grade-hint') + 200);
+    // unscored 时 hero 综合分用中性灰 #9ca3af，不落硬红 / 硬绿。
+    assert.match(hero, /color:#9ca3af/);
+    assert.doesNotMatch(hero, /color:#dc2626/);
+    assert.doesNotMatch(hero, /color:#1f9d63/);
   });
 
   it('三视角速览 observe 标「样本不足」而非「X% 稳定」', () => {

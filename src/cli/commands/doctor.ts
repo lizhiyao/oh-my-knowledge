@@ -7,7 +7,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
-import type { Sample } from '../../types/index.js';
+import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
@@ -142,8 +142,8 @@ export default class Doctor extends BaseCommand {
     }),
     dimensions: Flags.string({
       description: bilingual({
-        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。',
-        en: 'Custom dimensions config file (YAML), appended after builtin 7 dimensions.',
+        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。',
+        en: 'Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service).',
       }),
     }),
     'static-only': Flags.boolean({
@@ -218,9 +218,13 @@ export default class Doctor extends BaseCommand {
       const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
       const { isComposerRule } = await import('../../types/doctor.js');
+      // 在线检查(LLM health composer + endpoint 自定义维度)默认跑;--static-only
+      // 离线模式只跑纯静态的内置 rule(无网络 / LLM)。endpoint rule 标了 external=true。
+      const isOnline = (r: DoctorRuleLike): boolean =>
+        isComposerRule(r) || (r as DoctorRule).external === true;
       const rulesOverride = staticOnly
-        ? getRegisteredRules().filter((r) => !isComposerRule(r))
-        : getRegisteredRules().filter(isComposerRule);
+        ? getRegisteredRules().filter((r) => !isOnline(r))
+        : getRegisteredRules().filter(isOnline);
 
       let report;
       try {

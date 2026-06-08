@@ -98,6 +98,10 @@ export interface DoctorRule {
   severity: DoctorSeverity;
   /** i18n key,terminal 渲染时用作 rule 标题。 */
   labelKey: string;
+  /** true = 需要外部 I/O(网络 / LLM)的"在线"检查,跟 skill_health composer 同档:
+   *  默认 `omk doctor` 会跑,`--static-only` 离线模式跳过。endpoint 自定义维度置 true。
+   *  缺省(undefined/false)= 纯静态低成本检查(内置 4 条),静态模式才跑。 */
+  external?: boolean;
   check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome>;
 }
 

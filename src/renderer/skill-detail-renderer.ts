@@ -24,9 +24,6 @@ import type {
   InsightIllustration,
 } from '../types/index.js';
 
-const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
-  green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪',
-};
 
 // v6 之前的 insight × audience × 三视角 抽象在 v7 详情页砍掉了,只保留 sample 维度
 // (renderEvalSection 直接读 evalReport.results,不再走 detectInsights / audience 分组)。
@@ -46,13 +43,6 @@ function relTime(ts: string | null | undefined, lang: Lang): string {
   } catch { return ''; }
 }
 
-function fmtDateShort(ts: string | null | undefined): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts);
-    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-  } catch { return ''; }
-}
 
 // ────────── 健康等级评估 ──────────
 
@@ -144,140 +134,53 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
 
 // ────────── Hero:健康等级 + 名称 + 摘要 ──────────
 
-function renderHero(entry: SkillIndexEntry, insights: Insight[], lastTs: string | undefined, reportCount: number, lang: Lang): string {
+function scoreGrade(score: number): string {
+  if (score >= 80) return 'A';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  return 'D';
+}
+
+function scoreColor2(score: number): string {
+  return score >= 100 ? '#1f9d63' : score >= 60 ? '#d97706' : '#dc2626';
+}
+
+function renderHero(entry: SkillIndexEntry, insights: Insight[], lastTs: string | undefined, _reportCount: number, lang: Lang): string {
   const h = assessHealth(entry, insights, lang);
-  const scoreTip = lang === 'zh'
-    ? '参考分:doctor 通过率、eval 综合分、observe 稳定度归一到 0-100 后取平均(warn/告警按 0.5 折算)。同一 skill 跨时间可比;不同 skill 之间因 sample 难度不同不严格可比'
-    : 'Reference score: average of doctor pass-rate, eval composite, and observe stability normalized to 0-100. Comparable within a skill over time; not strictly comparable across skills (sample difficulty differs)';
-  const scoreBlock = h.score != null
-    ? `<span class="si-hero-score" title="${e(scoreTip)}"><span class="si-hero-score-num">${h.score}</span><span class="si-hero-score-unit">/100</span></span>`
-    : `<span class="si-hero-score si-hero-score--empty" title="${e(scoreTip)}">—</span>`;
+  const zh = lang === 'zh';
+  const color = h.score != null ? scoreColor2(h.score) : '#9ca3af';
+  const grade = h.score != null ? scoreGrade(h.score) : '—';
+  const gradeLabel = h.score != null
+    ? (h.score >= 70 ? (zh ? '通过' : 'Pass') : h.score >= 50 ? (zh ? '待改进' : 'Fair') : (zh ? '不合格' : 'Fail'))
+    : '';
+  const size = 96, sw = 7, r = (size - sw) / 2, c = 2 * Math.PI * r;
+  const offset = c * (1 - (h.score ?? 0) / 100);
 
-  return `<div class="si-hero">
-    <div class="si-hero-grade si-hero-grade--${h.color}">
-      <span class="si-hero-grade-emoji">${h.emoji}</span>
-      <span class="si-hero-grade-label">${e(h.label)}</span>
-      ${scoreBlock}
+  return `<div class="sd-hero">
+    <div class="sd-hero-left">
+      <h1 class="sd-hero-name">${e(entry.skillName)}</h1>
+      <div class="sd-hero-meta">${zh ? '最后更新' : 'Updated'} ${relTime(lastTs, lang)}</div>
     </div>
-    <div class="si-hero-info">
-      <div class="si-hero-name">${e(entry.skillName)}</div>
-      <div class="si-hero-summary">${renderHealthSummary(entry, insights, lang)}</div>
+    <div class="sd-hero-score">
+      <div style="position:relative;width:${size}px;height:${size}px">
+        <svg width="${size}" height="${size}">
+          <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#edf0f7" stroke-width="${sw}"/>
+          ${h.score != null ? `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}"
+            stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"
+            stroke-linecap="round" transform="rotate(-90 ${size / 2} ${size / 2})" style="transition:stroke-dashoffset .6s"/>` : ''}
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <span style="font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:${color}">${h.score ?? '—'}</span>
+        </div>
+      </div>
+      <div class="sd-hero-grade">
+        <div class="sd-hero-grade-label">${zh ? '综合健康分' : 'Health Score'}</div>
+        <div class="sd-hero-grade-value" style="color:${color}"><strong>${grade}</strong> <span>${gradeLabel}</span></div>
+        <div class="sd-hero-grade-hint">${zh ? '综合 = (健康体检 + 用例评测) / 2' : 'Score = (Doctor + Eval) / 2'}</div>
+      </div>
     </div>
-    <div class="si-hero-meta">${reportCount}/3 · ${relTime(lastTs, lang)}</div>
   </div>`;
 }
-
-function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
-  const issues: string[] = [];
-  if (entry.doctor) {
-    if (entry.doctor.failCount > 0) issues.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
-    else if (entry.doctor.warnCount > 0) issues.push(lang === 'zh' ? `doctor ${entry.doctor.warnCount} 项告警` : `doctor ${entry.doctor.warnCount} warn`);
-  }
-  if (entry.eval) {
-    const total = entry.eval.passCount + entry.eval.failCount;
-    if (total > 0) {
-      const pct = Math.round((entry.eval.passCount / total) * 100);
-      if (entry.eval.failCount > 0) issues.push(lang === 'zh' ? `eval 通过率 ${pct}%(${entry.eval.failCount} 条挂)` : `eval ${pct}% pass (${entry.eval.failCount} fail)`);
-    }
-  }
-  const obIssueBand = effectiveObserveBand(entry.observe);
-  if (entry.observe && obIssueBand !== 'green' && obIssueBand !== 'gray') {
-    issues.push(lang === 'zh' ? `observe ${BAND_DOT[obIssueBand]}` : `observe ${BAND_DOT[obIssueBand]}`);
-  }
-  if (entry.observe && entry.observe.confidence === 'underpowered') {
-    // 低 N observe 既不算「全绿」也不下硬结论,跟列表口径一致标注仅供参考,避免摘要谎报三视角全绿。
-    issues.push(lang === 'zh' ? 'observe 样本不足（仅供参考）' : 'observe low N (indicative)');
-  }
-  const high = insights.filter((i) => i.severity === 'high').length;
-  const med = insights.filter((i) => i.severity === 'medium').length;
-  if (high > 0 || med > 0) {
-    const parts: string[] = [];
-    if (high > 0) parts.push(lang === 'zh' ? `${high} 个高优` : `${high} high`);
-    if (med > 0) parts.push(lang === 'zh' ? `${med} 个中优` : `${med} medium`);
-    issues.push(lang === 'zh' ? `检出 ${insights.length} 个待优化(${parts.join('，')})` : `${insights.length} issue(s) (${parts.join(', ')})`);
-  }
-
-  if (issues.length === 0) {
-    const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
-    if (ran === 0) return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
-    return lang === 'zh' ? '✅ 三视角全绿，无告警' : '✅ All three views green';
-  }
-  return issues.join(lang === 'zh' ? '，' : ', ');
-}
-
-// ────────── 左栏:问题列表 ──────────
-
-// ────────── 右栏:趋势大图 + 阶段卡 ──────────
-
-interface TrendDatum {
-  x: string;
-  doctorPct: number | null;
-  evalPct: number | null;
-  observePct: number | null;
-  /** 该时间点 doctor 报告 id(无对应单独页面,记下供 tooltip 用)。 */
-  doctorReportId: string | null;
-  evalReportId: string | null;
-  observeAnalysisId: string | null;
-}
-
-function buildTrendData(entry: SkillIndexEntry): TrendDatum[] {
-  const dateMap = new Map<string, TrendDatum>();
-  const dateOf = (ts: string): string => ts.slice(0, 10);
-  const get = (date: string): TrendDatum => {
-    if (!dateMap.has(date)) {
-      dateMap.set(date, { x: date, doctorPct: null, evalPct: null, observePct: null, doctorReportId: null, evalReportId: null, observeAnalysisId: null });
-    }
-    return dateMap.get(date)!;
-  };
-  for (const h of entry.doctorHistory) {
-    const total = h.passCount + h.warnCount + h.failCount;
-    const d = get(dateOf(h.timestamp));
-    d.doctorPct = total > 0 ? (h.passCount / total) * 100 : null;
-    d.doctorReportId = h.reportId;
-  }
-  for (const h of entry.evalHistory) {
-    const c = h.compositeScore;
-    const d = get(dateOf(h.timestamp));
-    d.evalPct = c != null ? (c / 5) * 100 : null;
-    d.evalReportId = h.reportId;
-  }
-  for (const h of entry.observeHistory) {
-    const d = get(dateOf(h.generatedAt));
-    d.observePct = (1 - h.gapRate) * 100;
-    d.observeAnalysisId = h.analysisId;
-  }
-  return Array.from(dateMap.values()).sort((a, b) => a.x.localeCompare(b.x));
-}
-
-function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
-  const data = buildTrendData(entry);
-  const labelDoctor = lang === 'zh' ? '🩺 健康度' : '🩺 Structure';
-  const labelEval = lang === 'zh' ? '🧪 评测结果' : '🧪 Test score';
-  const labelObserve = lang === 'zh' ? '👁 线上观测' : '👁 Live stability';
-
-  if (data.length < 2) {
-    return `<div class="si-trend-empty">${lang === 'zh' ? '📈 还没有足够的历史数据画趋势(至少 2 个时间点)' : '📈 Need at least 2 data points for trend'}</div>`;
-  }
-  const linksDoctor = data.map(() => null);
-  const linksEval = data.map((d) => d.evalReportId ? `/reports/${d.evalReportId}${langQ}` : null);
-  const linksObserve = data.map((d) => d.observeAnalysisId ? `/analyses/${d.observeAnalysisId}${langQ}` : null);
-  const explainDoctor = lang === 'zh' ? 'omk doctor 通过率' : 'omk doctor pass-rate';
-  const explainEval = lang === 'zh' ? 'omk eval 综合分(归一)' : 'omk eval composite (normalized)';
-  const explainObserve = lang === 'zh' ? 'omk observe 真实使用稳定度' : 'omk observe production stability';
-  const json = JSON.stringify({
-    labels: data.map((d) => fmtDateShort(d.x)),
-    datasets: [
-      { label: labelDoctor, data: data.map((d) => d.doctorPct), borderColor: '#5e8252', backgroundColor: 'rgba(94,130,82,.1)', tension: 0.3, spanGaps: true, _hint: explainDoctor },
-      { label: labelEval, data: data.map((d) => d.evalPct), borderColor: '#5a7a93', backgroundColor: 'rgba(90,122,147,.1)', tension: 0.3, spanGaps: true, _hint: explainEval },
-      { label: labelObserve, data: data.map((d) => d.observePct), borderColor: '#b08030', backgroundColor: 'rgba(176,128,48,.1)', tension: 0.3, spanGaps: true, _hint: explainObserve },
-    ],
-  });
-  const links = JSON.stringify([linksDoctor, linksEval, linksObserve]);
-  return `<div class="si-trend-canvas-wrap">
-    <canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}' data-links='${links.replace(/'/g, '&#39;')}'></canvas>
-  </div>`;
-}
-
 
 // ────────── Modal:单条 insight 详情(v6 sample 视角)──────────
 
@@ -340,29 +243,21 @@ function renderSampleBody(s: FailedSampleDetail, lang: Lang): string {
 // ────────── CSS ──────────
 
 const SKILL_DETAIL_CSS = `
-.si-back { display:inline-block;margin-bottom:8px;color:var(--text-muted);font-size:13px;text-decoration:none }
+.si-back { display:inline-block;margin-bottom:12px;color:var(--text-muted);font-size:13px;text-decoration:none }
 .si-back:hover { color:var(--text-primary) }
 
-/* Hero — grade 卡 + 信息块,grid 布局让 grade 卡固定宽度 */
-.si-hero { display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:14px 18px;background:var(--bg-surface);border-radius:8px;box-shadow:var(--shadow-sm);margin:8px 0 14px }
-@media(max-width:640px){ .si-hero { grid-template-columns:auto 1fr;gap:12px } .si-hero-meta { grid-column:1/-1;text-align:right } }
-
-/* 健康等级卡 — 左侧色卡,emoji + 等级 + 参考分纵向堆叠 */
-.si-hero-grade { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:96px;padding:10px 14px;border-radius:8px;background:var(--bg-soft);border-left:4px solid var(--border) }
-.si-hero-grade--green { border-left-color:#5e8252;background:rgba(94,130,82,.08) }
-.si-hero-grade--yellow { border-left-color:#b08030;background:rgba(176,128,48,.08) }
-.si-hero-grade--red { border-left-color:#9c4a3f;background:rgba(156,74,63,.08) }
-.si-hero-grade--gray { border-left-color:var(--border);background:var(--bg-soft) }
-.si-hero-grade-emoji { font-size:20px;line-height:1 }
-.si-hero-grade-label { font-size:13px;font-weight:600;color:var(--text-primary);letter-spacing:0.02em }
-.si-hero-score { font-variant-numeric:tabular-nums;cursor:help;display:flex;align-items:baseline;gap:1px;margin-top:1px }
-.si-hero-score-num { font-size:22px;font-weight:700;line-height:1 }
-.si-hero-grade--green  .si-hero-score-num { color:#5e8252 }
-.si-hero-grade--yellow .si-hero-score-num { color:#b08030 }
-.si-hero-grade--red    .si-hero-score-num { color:#9c4a3f }
-.si-hero-grade--gray   .si-hero-score-num { color:var(--text-muted) }
-.si-hero-score-unit { font-size:11px;color:var(--text-muted);font-weight:500 }
-.si-hero-score--empty { font-size:18px;color:var(--text-muted) }
+/* Hero — skill 名 + 综合分圆环 + 等级 */
+.sd-hero { display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 24px;background:#fff;border:1px solid #e4e8f1;border-radius:12px;box-shadow:0 8px 24px rgba(31,41,55,4%);margin-bottom:16px }
+@media(max-width:640px){ .sd-hero { flex-direction:column;text-align:center } }
+.sd-hero-left { display:flex;flex-direction:column;gap:4px;min-width:0 }
+.sd-hero-name { margin:0;font-size:18px;font-weight:700;color:#182033 }
+.sd-hero-meta { font-size:12px;color:#637083 }
+.sd-hero-score { display:flex;align-items:center;gap:16px }
+.sd-hero-grade { display:flex;flex-direction:column;gap:2px }
+.sd-hero-grade-label { font-size:12px;color:#637083;font-weight:500 }
+.sd-hero-grade-value { display:flex;align-items:baseline;gap:6px;font-size:24px;font-weight:800;line-height:1 }
+.sd-hero-grade-value span { font-size:12px;font-weight:500;color:#637083 }
+.sd-hero-grade-hint { font-size:11px;color:#94a3b8 }
 
 .si-hero-info { display:flex;flex-direction:column;gap:4px;min-width:0 }
 .si-hero-name { font-size:20px;font-weight:600;color:var(--text-primary);line-height:1.3 }
@@ -378,7 +273,7 @@ const SKILL_DETAIL_CSS = `
 
 /* 空态 — 不喊"恭喜",用已有数据证明它健康 + 给可补充的下一步,有视觉重量 */
 .si-empty { display:flex;flex-direction:column;gap:14px;padding:6px 4px }
-.si-empty-h { display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(94,130,82,.08);border-left:3px solid #5e8252;border-radius:6px }
+.si-empty-h { display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(31,157,99,.08);border-left:3px solid #1f9d63;border-radius:6px }
 .si-empty-emoji { font-size:22px;line-height:1 }
 .si-empty-title { font-size:14px;font-weight:600;color:var(--text-primary) }
 .si-empty-section-h { font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:0.04em;margin-bottom:6px;text-transform:uppercase }
@@ -386,7 +281,7 @@ const SKILL_DETAIL_CSS = `
 .si-empty-list li { display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start;font-size:13px;line-height:1.55;color:var(--text-primary) }
 .si-empty-list code { background:var(--bg-soft);padding:1px 6px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text-primary) }
 .si-empty-icon { font-weight:700;text-align:center }
-.si-empty-list--pass .si-empty-icon { color:#5e8252 }
+.si-empty-list--pass .si-empty-icon { color:#1f9d63 }
 .si-empty-list--next .si-empty-icon { color:var(--accent) }
 .si-aud { margin-bottom:12px }
 .si-aud:last-child { margin-bottom:0 }
@@ -402,13 +297,13 @@ const SKILL_DETAIL_CSS = `
 .si-row:focus-visible { outline:2px solid var(--accent);outline-offset:1px }
 .si-row-num { font-size:11px;font-weight:700;color:var(--text-muted);font-variant-numeric:tabular-nums;background:var(--bg-soft);padding:1px 6px;border-radius:3px;min-width:28px;text-align:center }
 .si-row-sev { font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;letter-spacing:0.02em }
-.si-row-sev--high { background:rgba(156,74,63,.16);color:#9c4a3f }
-.si-row-sev--medium { background:rgba(176,128,48,.14);color:#b08030 }
-.si-row-sev--low { background:rgba(94,130,82,.16);color:#5e8252 }
+.si-row-sev--high { background:rgba(220,38,38,.16);color:#dc2626 }
+.si-row-sev--medium { background:rgba(217,119,6,.14);color:#d97706 }
+.si-row-sev--low { background:rgba(31,157,99,.16);color:#1f9d63 }
 .si-row-title { font-size:13.5px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 .si-row-meta { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums }
 .si-row-arrow { color:var(--text-muted);font-size:14px;font-weight:300 }
-.si-row--high { border-left:3px solid #9c4a3f;padding-left:7px }
+.si-row--high { border-left:3px solid #dc2626;padding-left:7px }
 
 /* 右栏 */
 .si-right { display:flex;flex-direction:column;gap:12px }
@@ -422,7 +317,7 @@ const SKILL_DETAIL_CSS = `
 .si-trend-hint { font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:6px;font-style:italic }
 .si-trend-fallback { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bg-soft);border-radius:6px;padding:14px;text-align:center }
 .si-trend-fallback-icon { font-size:24px;line-height:1 }
-.si-trend-fallback-msg { font-size:13px;font-weight:600;color:#9c4a3f }
+.si-trend-fallback-msg { font-size:13px;font-weight:600;color:#dc2626 }
 .si-trend-fallback-hint { font-size:11px;color:var(--text-muted);max-width:80% }
 
 /* 三视角当前状态区:跟趋势图区域并列,加标题让用户一眼知道这是"当前快照速览" */
@@ -436,9 +331,9 @@ const SKILL_DETAIL_CSS = `
 .si-stagecard { all:unset;cursor:pointer;display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg-surface);border-radius:7px;box-shadow:var(--shadow-sm);transition:transform .12s,box-shadow .12s;border-left:4px solid var(--border) }
 .si-stagecard:hover { transform:translateX(2px);box-shadow:var(--shadow-md) }
 .si-stagecard:focus-visible { outline:2px solid var(--accent);outline-offset:1px }
-.si-stagecard--green   { border-left-color:#5e8252 }
-.si-stagecard--yellow  { border-left-color:#b08030 }
-.si-stagecard--red     { border-left-color:#9c4a3f }
+.si-stagecard--green   { border-left-color:#1f9d63 }
+.si-stagecard--yellow  { border-left-color:#d97706 }
+.si-stagecard--red     { border-left-color:#dc2626 }
 .si-stagecard--gray    { border-left-color:var(--border) }
 .si-stagecard-icon { font-size:22px;line-height:1 }
 .si-stagecard-body { display:flex;flex-direction:column;gap:2px }
@@ -456,7 +351,7 @@ const SKILL_DETAIL_CSS = `
 /* 失败用例 section(sample 视角主信息)*/
 .si-failures { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
 .si-failures-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
-.si-failure-item { background:rgba(156,74,63,.04);border-radius:5px;margin-bottom:8px;border-left:3px solid #9c4a3f }
+.si-failure-item { background:rgba(220,38,38,.04);border-radius:5px;margin-bottom:8px;border-left:3px solid #dc2626 }
 .si-failure-item:last-child { margin-bottom:0 }
 /* 两行布局:第一行 id + tags + 右对齐 trace;第二行 summary 独占 */
 .si-failure-head { display:flex;flex-direction:column;gap:6px;padding:10px 12px;cursor:default }
@@ -467,24 +362,24 @@ details.si-failure-item > summary.si-failure-head::-webkit-details-marker { disp
 details.si-failure-item[open] > summary > .si-failure-row1::before { content:'▾ ' }
 .si-failure-row2 { font-size:14px;color:var(--text-secondary);line-height:1.55;padding-left:16px;white-space:pre-wrap;word-break:break-word }
 .si-failure-spacer { flex:1 }
-.si-failure-id { font-size:12.5px;font-weight:600;color:#9c4a3f;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
+.si-failure-id { font-size:12.5px;font-weight:600;color:#dc2626;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
 .si-failure-modes { display:flex;gap:4px;flex-wrap:wrap }
-.si-failure-mode { font-size:12px;color:#b08030;background:rgba(176,128,48,.14);padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap }
+.si-failure-mode { font-size:12px;color:#d97706;background:rgba(217,119,6,.14);padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap }
 .si-failure-trace { font-size:12px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
 .si-failure-trace:hover { text-decoration:underline }
 
 /* 通过 / 诱错 sample 紧凑行 */
 .si-pass-item { display:flex;gap:10px;align-items:center;padding:5px 8px;border-radius:4px;font-size:14px;line-height:1.5 }
 .si-pass-item:hover { background:var(--bg-soft) }
-.si-pass-card { background:var(--bg-surface);border-radius:5px;margin-bottom:6px;border-left:3px solid #5e8252 }
+.si-pass-card { background:var(--bg-surface);border-radius:5px;margin-bottom:6px;border-left:3px solid #1f9d63 }
 .si-pass-card > summary { list-style:none;cursor:pointer;user-select:none }
 .si-pass-card > summary::-webkit-details-marker { display:none }
 .si-pass-head { display:flex;flex-direction:column;gap:4px;padding:8px 12px }
 .si-pass-row1 { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
 .si-pass-row1::before { content:'▸ ';color:var(--text-muted);font-size:11px;margin-right:-4px }
 details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
-.si-pass-id { font-size:12px;font-weight:600;color:#5e8252;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;flex-shrink:0 }
-.si-pass-score { font-size:12px;font-weight:600;color:#5e8252;background:rgba(94,130,82,.1);padding:1px 7px;border-radius:10px }
+.si-pass-id { font-size:12px;font-weight:600;color:#1f9d63;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;flex-shrink:0 }
+.si-pass-score { font-size:12px;font-weight:600;color:#1f9d63;background:rgba(31,157,99,.1);padding:1px 7px;border-radius:10px }
 .si-pass-prompt-preview { font-size:13px;color:var(--text-secondary);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
 .si-pass-body { padding:0 12px 10px 28px;display:flex;flex-direction:column;gap:8px }
 .si-pass-section { }
@@ -504,9 +399,9 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .se-score-label { font-size:12px;color:var(--text-muted);margin-bottom:4px }
 .se-score-bar { height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:4px }
 .se-score-fill { height:100%;border-radius:2px }
-.se-score-fill--good { background:#5e8252 }
-.se-score-fill--mid { background:#b08030 }
-.se-score-fill--low { background:#9c4a3f }
+.se-score-fill--good { background:#1f9d63 }
+.se-score-fill--mid { background:#d97706 }
+.se-score-fill--low { background:#dc2626 }
 .se-score-val { font-size:16px;font-weight:600;color:var(--text-primary) }
 .se-score-max { font-size:12px;font-weight:400;color:var(--text-muted) }
 .si-pass-preview { flex:1;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0 }
@@ -515,33 +410,21 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .si-failure-detail .si-illustration { border-left:none;background:transparent;padding:8px 0 0 0 }
 .si-failure-no-detail { padding:6px 0;font-size:13px;color:var(--text-muted);font-style:italic }
 
-/* v7:顶部全景区 — 左 3 个 donut ring + 右趋势图,两栏同高 */
-.si-overview { display:grid;grid-template-columns:3fr 2fr;gap:18px;margin:10px 0 22px;align-items:stretch }
-@media(max-width:880px){ .si-overview { grid-template-columns:1fr } }
-.si-overview-cards { background:var(--bg-surface);border-radius:10px;padding:18px 14px;box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:space-around;gap:8px }
-.si-overview-trend { background:var(--bg-surface);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column }
-
-/* 三视角 ring + label(锚定到下面对应 section);内容自身居中,被 cards 容器垂直拉伸时上下留白对称 */
-.si-vs { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:8px 4px;text-decoration:none;color:var(--text-primary);border-radius:8px;transition:background .15s }
-.si-vs:hover { background:var(--bg-soft);text-decoration:none }
-.si-ring { display:block }
-.si-vs-h { display:flex;align-items:baseline;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:4px }
-.si-vs-icon { font-size:15px;line-height:1 }
-.si-vs-label { font-size:13.5px;font-weight:600;color:var(--text-primary) }
-.si-vs-sublabel { font-size:11px;color:var(--text-muted) }
-.si-vs-stat { font-size:12.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;line-height:1.45 }
-.si-vs-spark { display:block;margin-top:2px }
-@media(max-width:560px){
-  .si-overview-cards { flex-direction:column;align-items:stretch }
-  .si-vs { flex-direction:row;justify-content:flex-start;text-align:left;gap:14px;align-items:center }
-  .si-vs-h, .si-vs-stat, .si-vs-spark { margin:0 }
-}
+/* 三栏摘要卡 v2 */
+.si-scard-v2 { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:16px 20px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:var(--text-primary);transition:box-shadow .15s,transform .12s }
+.si-scard-v2:hover { box-shadow:var(--shadow-md);transform:translateY(-1px);text-decoration:none }
+.si-scard-v2-h { display:flex;align-items:center;gap:8px }
+.si-scard-v2-icon { font-size:16px }
+.si-scard-v2-title { font-size:13px;font-weight:600;color:var(--text-secondary);flex:1 }
+.si-scard-v2-score { font-size:22px;font-weight:700;font-variant-numeric:tabular-nums }
+.si-scard-v2-stat { font-size:13px;color:var(--text-secondary);line-height:1.5;flex:1 }
+.si-scard-v2-link { font-size:12px;color:var(--accent);font-weight:500;margin-top:auto;padding-top:8px;border-top:1px solid var(--border) }
 
 /* 三视角 section(下方主体) */
 .si-sect { background:var(--bg-surface);border-radius:8px;padding:14px 18px;box-shadow:var(--shadow-sm);margin-bottom:14px;border-left:4px solid var(--border);scroll-margin-top:16px }
-.si-sect--green   { border-left-color:#5e8252 }
-.si-sect--yellow  { border-left-color:#b08030 }
-.si-sect--red     { border-left-color:#9c4a3f }
+.si-sect--green   { border-left-color:#1f9d63 }
+.si-sect--yellow  { border-left-color:#d97706 }
+.si-sect--red     { border-left-color:#dc2626 }
 .si-sect--gray    { border-left-color:var(--border) }
 .si-sect-h { display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap }
 .si-sect-title { font-size:15px;font-weight:600;color:var(--text-primary) }
@@ -549,7 +432,7 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .si-sect-body { display:flex;flex-direction:column;gap:6px }
 .si-sect-empty { font-size:13px;color:var(--text-muted);font-style:italic;padding:8px 0 }
 .si-sect-line { font-size:14px;color:var(--text-secondary);margin-bottom:4px }
-.si-sect-allpass { font-size:14px;color:#5e8252;padding:6px 10px;background:rgba(94,130,82,.07);border-radius:4px }
+.si-sect-allpass { font-size:14px;color:#1f9d63;padding:6px 10px;background:rgba(31,157,99,.07);border-radius:4px }
 .si-sect-link { display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);text-decoration:none;font-weight:500 }
 .si-sect-link:hover { text-decoration:underline }
 .si-sect-fold { margin-top:8px;border-top:1px dashed var(--border);padding-top:6px }
@@ -562,9 +445,9 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 /* doctor 规则展示(用在 doctor section 和 observe section) */
 .sd-grid { display:flex;flex-direction:column;gap:4px }
 .sd-dim { border-radius:6px;border:1px solid var(--border);overflow:hidden }
-.sd-dim--err { border-color:rgba(156,74,63,.3) }
-.sd-dim--warn { border-color:rgba(176,128,48,.3) }
-.sd-dim--pass { border-color:rgba(94,130,82,.25);background:rgba(94,130,82,.04) }
+.sd-dim--err { border-color:rgba(220,38,38,.3) }
+.sd-dim--warn { border-color:rgba(217,119,6,.3) }
+.sd-dim--pass { border-color:rgba(31,157,99,.25);background:rgba(31,157,99,.04) }
 .sd-dim--skip { border-color:var(--border);opacity:.6 }
 .sd-dim > summary { list-style:none;cursor:pointer }
 .sd-dim > summary::-webkit-details-marker { display:none }
@@ -573,14 +456,14 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sd-dim-name { font-weight:600;color:var(--text-primary);flex:1;min-width:0 }
 .sd-dim-badges { display:flex;gap:6px;flex-shrink:0 }
 .sd-badge { font-size:12px;padding:1px 7px;border-radius:10px;font-weight:500 }
-.sd-badge--err { background:rgba(156,74,63,.1);color:#9c4a3f }
-.sd-badge--warn { background:rgba(176,128,48,.1);color:#b08030 }
+.sd-badge--err { background:rgba(220,38,38,.1);color:#dc2626 }
+.sd-badge--warn { background:rgba(217,119,6,.1);color:#d97706 }
 .sd-dim-body { padding:0 12px 10px;display:flex;flex-direction:column;gap:6px }
 .sd-item { padding:8px 10px;border-radius:4px;font-size:14px;line-height:1.6 }
-.sd-item--err { background:rgba(156,74,63,.05);border-left:2px solid #9c4a3f }
-.sd-item--warn { background:rgba(176,128,48,.05);border-left:2px solid #b08030 }
+.sd-item--err { background:rgba(220,38,38,.05);border-left:2px solid #dc2626 }
+.sd-item--warn { background:rgba(217,119,6,.05);border-left:2px solid #d97706 }
 .sd-item-desc { color:var(--text-primary);word-break:break-word }
-.sd-item-sug { margin-top:4px;font-size:13px;color:var(--text-secondary);padding:4px 8px;background:rgba(94,130,82,.05);border-radius:4px;word-break:break-word }
+.sd-item-sug { margin-top:4px;font-size:13px;color:var(--text-secondary);padding:4px 8px;background:rgba(31,157,99,.05);border-radius:4px;word-break:break-word }
 .sd-warn-fold { margin-top:6px }
 .sd-warn-list { display:flex;flex-direction:column;gap:6px;margin-top:6px }
 .sd-warn-toggle { cursor:pointer;font-size:13px;color:var(--text-muted);user-select:none;list-style:none;padding:2px 0 }
@@ -599,12 +482,12 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-sb { display:flex;flex-direction:column;gap:10px;padding:10px 0 }
 .si-sb-block { padding:10px 12px;border-radius:5px;background:var(--bg-soft) }
 .si-sb-block--prompt   { background:var(--bg-soft) }
-.si-sb-block--expected { background:rgba(94,130,82,.06) }
-.si-sb-block--actual   { background:rgba(176,128,48,.07) }
+.si-sb-block--expected { background:rgba(31,157,99,.06) }
+.si-sb-block--actual   { background:rgba(217,119,6,.07) }
 .si-sb-block--suggest  { background:rgba(122,107,137,.07) }
 .si-sb-label { font-size:12px;font-weight:700;color:var(--text-secondary);letter-spacing:0.02em;margin-bottom:5px }
-.si-sb-block--expected .si-sb-label { color:#5e8252 }
-.si-sb-block--actual   .si-sb-label { color:#b08030 }
+.si-sb-block--expected .si-sb-label { color:#1f9d63 }
+.si-sb-block--actual   .si-sb-label { color:#d97706 }
 .si-sb-block--suggest  .si-sb-label { color:#7a6b89 }
 .si-sb-text { font-size:13px;color:var(--text-primary);line-height:1.6;white-space:pre-wrap;word-break:break-word }
 .si-sb-block--prompt .si-sb-text { font-family:"SF Mono",Menlo,monospace;font-size:12.5px;max-height:200px;overflow-y:auto }
@@ -617,14 +500,14 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 /* 单条 sample 的"期望 vs 实际 vs 卡在哪"diff 对照视图(已被 v6 sb 视图替代,保留 placeholder)*/
 .si-diff { display:flex;flex-direction:column;gap:8px;padding:10px 0 }
 .si-diff-row { display:grid;grid-template-columns:24px 50px 1fr;gap:10px;align-items:start;padding:8px 12px;border-radius:5px;line-height:1.55 }
-.si-diff-row--expected { background:rgba(94,130,82,.07);border-left:3px solid #5e8252 }
-.si-diff-row--actual   { background:rgba(176,128,48,.08);border-left:3px solid #b08030 }
-.si-diff-row--failed   { background:rgba(156,74,63,.07);border-left:3px solid #9c4a3f }
+.si-diff-row--expected { background:rgba(31,157,99,.07);border-left:3px solid #1f9d63 }
+.si-diff-row--actual   { background:rgba(217,119,6,.08);border-left:3px solid #d97706 }
+.si-diff-row--failed   { background:rgba(220,38,38,.07);border-left:3px solid #dc2626 }
 .si-diff-icon { font-size:14px;line-height:1.5 }
 .si-diff-label { font-size:11.5px;font-weight:700;letter-spacing:0.04em;color:var(--text-secondary);padding-top:2px }
-.si-diff-row--expected .si-diff-label { color:#5e8252 }
-.si-diff-row--actual   .si-diff-label { color:#b08030 }
-.si-diff-row--failed   .si-diff-label { color:#9c4a3f }
+.si-diff-row--expected .si-diff-label { color:#1f9d63 }
+.si-diff-row--actual   .si-diff-label { color:#d97706 }
+.si-diff-row--failed   .si-diff-label { color:#dc2626 }
 .si-diff-text { color:var(--text-primary);font-size:13px;word-break:break-word }
 .si-diff-text--mono { font-family:"SF Mono",Menlo,monospace;font-size:12px;background:var(--bg-surface);padding:2px 7px;border-radius:3px;width:fit-content }
 /* 原始 prompt/output 降级到二级折叠 */
@@ -635,13 +518,13 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-diff-raw-body { padding:6px 0 }
 
 /* 占位符标识 */
-.si-placeholder { background:rgba(176,128,48,.20);color:#7a5810;padding:1px 4px;border-radius:3px;font-weight:600;font-style:italic }
-.si-rec-patch-hint { font-size:11.5px;color:#7a5810;background:rgba(176,128,48,.10);padding:6px 10px;border-radius:4px;margin-bottom:6px;line-height:1.5 }
-.si-rec-patch-hint .si-placeholder { background:rgba(176,128,48,.30) }
+.si-placeholder { background:rgba(217,119,6,.20);color:#7a5810;padding:1px 4px;border-radius:3px;font-weight:600;font-style:italic }
+.si-rec-patch-hint { font-size:11.5px;color:#7a5810;background:rgba(217,119,6,.10);padding:6px 10px;border-radius:4px;margin-bottom:6px;line-height:1.5 }
+.si-rec-patch-hint .si-placeholder { background:rgba(217,119,6,.30) }
 
 /* 第一条建议的"⭐ 推荐先做"标记 */
-.si-rec-item--primary { border-left-color:#5e8252;background:rgba(94,130,82,.06) }
-.si-rec-star { font-size:10.5px;font-weight:700;color:#5e8252;background:rgba(94,130,82,.16);padding:2px 8px;border-radius:9px;letter-spacing:0.02em;flex-shrink:0 }
+.si-rec-item--primary { border-left-color:#1f9d63;background:rgba(31,157,99,.06) }
+.si-rec-star { font-size:10.5px;font-weight:700;color:#1f9d63;background:rgba(31,157,99,.16);padding:2px 8px;border-radius:9px;letter-spacing:0.02em;flex-shrink:0 }
 
 /* 建议 + patch 直接铺(去掉 details 折叠)*/
 .si-recs { margin:14px 0 }
@@ -651,9 +534,9 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-rec-head { display:flex;align-items:flex-start;gap:8px;margin-bottom:8px }
 .si-rec-num { font-size:11px;font-weight:700;color:var(--text-muted);background:var(--bg-surface);padding:1px 7px;border-radius:9px;flex-shrink:0;margin-top:1px;font-variant-numeric:tabular-nums }
 .si-rec-pri { padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:600;flex-shrink:0;margin-top:1px }
-.si-rec-pri--high { background:rgba(156,74,63,.14);color:#9c4a3f }
-.si-rec-pri--medium { background:rgba(176,128,48,.12);color:#b08030 }
-.si-rec-pri--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-rec-pri--high { background:rgba(220,38,38,.14);color:#dc2626 }
+.si-rec-pri--medium { background:rgba(217,119,6,.12);color:#d97706 }
+.si-rec-pri--low { background:rgba(31,157,99,.14);color:#1f9d63 }
 .si-rec-action { flex:1;color:var(--text-primary);font-size:13px;line-height:1.55 }
 .si-rec-patch { margin-left:0 }
 .si-rec-patch-meta { display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-muted);margin-bottom:5px;flex-wrap:wrap }
@@ -661,7 +544,7 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-rec-patch-loc { font-family:"SF Mono",Menlo,monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 .si-rec-patch-copy { background:var(--accent);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:500;transition:background .1s;flex-shrink:0 }
 .si-rec-patch-copy:hover { background:var(--accent-hover) }
-.si-rec-patch-copy.copied { background:#5e8252 }
+.si-rec-patch-copy.copied { background:#1f9d63 }
 .si-rec-patch-snippet { background:var(--bg-surface);padding:10px 12px;border-radius:4px;border-left:2px solid var(--accent);font-size:11.5px;line-height:1.55;overflow-x:auto;margin:0 }
 .si-rec-patch-snippet code { font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);white-space:pre;display:block }
 
@@ -685,9 +568,9 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-modal-empty { color:var(--text-muted);font-size:13px;padding:18px;text-align:center;font-style:italic }
 
 .si-sev-tag { padding:2px 9px;border-radius:11px;font-size:11px;font-weight:600 }
-.si-sev-tag--high { background:rgba(156,74,63,.14);color:#9c4a3f }
-.si-sev-tag--medium { background:rgba(176,128,48,.12);color:#b08030 }
-.si-sev-tag--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-sev-tag--high { background:rgba(220,38,38,.14);color:#dc2626 }
+.si-sev-tag--medium { background:rgba(217,119,6,.12);color:#d97706 }
+.si-sev-tag--low { background:rgba(31,157,99,.14);color:#1f9d63 }
 
 /* 证据 */
 .si-evidence { background:var(--bg-soft);padding:10px 12px;border-radius:6px;margin-bottom:12px }
@@ -695,7 +578,7 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-ev { padding:4px 0;font-size:13px;line-height:1.55 }
 .si-ev-line { display:grid;grid-template-columns:24px 100px 1fr;gap:10px;align-items:start }
 .si-ev-icon { text-align:center;font-weight:600 }
-.si-ev--flagged .si-ev-icon { color:#9c4a3f }
+.si-ev--flagged .si-ev-icon { color:#dc2626 }
 .si-ev--blind .si-ev-icon { color:#7a6b89 }
 .si-ev--silent .si-ev-icon { color:#7a9270 }
 .si-ev--na .si-ev-icon { color:var(--text-muted) }
@@ -713,7 +596,7 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-ill-row { display:grid;grid-template-columns:80px 1fr;gap:8px;align-items:start;margin-bottom:3px }
 .si-ill-label { color:var(--text-muted);font-size:10.5px;font-weight:500 }
 .si-ill-text { color:var(--text-primary);font-size:11.5px;background:var(--bg-soft);padding:3px 6px;border-radius:3px;white-space:pre-wrap;word-break:break-word }
-.si-ill-text--mono { font-family:"SF Mono",Menlo,monospace;background:rgba(156,74,63,.10);color:#9c4a3f }
+.si-ill-text--mono { font-family:"SF Mono",Menlo,monospace;background:rgba(220,38,38,.10);color:#dc2626 }
 .si-ill-tools { margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:2px }
 .si-ill-tools li { font-family:"SF Mono",Menlo,monospace;font-size:10.5px;background:var(--bg-soft);padding:2px 5px;border-radius:3px }
 
@@ -722,9 +605,9 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-recs li { font-size:13px;line-height:1.55 }
 .si-rec-line { display:flex;gap:8px;align-items:flex-start }
 .si-rec-pri { padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:600;flex-shrink:0;margin-top:1px }
-.si-rec-pri--high { background:rgba(156,74,63,.14);color:#9c4a3f }
-.si-rec-pri--medium { background:rgba(176,128,48,.12);color:#b08030 }
-.si-rec-pri--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-rec-pri--high { background:rgba(220,38,38,.14);color:#dc2626 }
+.si-rec-pri--medium { background:rgba(217,119,6,.12);color:#d97706 }
+.si-rec-pri--low { background:rgba(31,157,99,.14);color:#1f9d63 }
 .si-rec-action { color:var(--text-primary);flex:1 }
 .si-recs-h { font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;margin-top:0 }
 .si-patch { margin-top:6px;margin-left:24px }
@@ -742,12 +625,12 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 /* Modal 内的 doctor rule list */
 .si-rules { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px }
 .si-rule { display:flex;gap:10px;font-size:13px;line-height:1.55;align-items:flex-start;padding:8px 10px;border-radius:4px }
-.si-rule--warn { background:rgba(176,128,48,.07) }
-.si-rule--fail { background:rgba(156,74,63,.08) }
+.si-rule--warn { background:rgba(217,119,6,.07) }
+.si-rule--fail { background:rgba(220,38,38,.08) }
 .si-rule-icon { flex-shrink:0;font-weight:700;width:16px;text-align:center;font-size:14px }
-.si-rule--pass .si-rule-icon { color:#5e8252 }
-.si-rule--warn .si-rule-icon { color:#b08030 }
-.si-rule--fail .si-rule-icon { color:#9c4a3f }
+.si-rule--pass .si-rule-icon { color:#1f9d63 }
+.si-rule--warn .si-rule-icon { color:#d97706 }
+.si-rule--fail .si-rule-icon { color:#dc2626 }
 .si-rule-body { flex:1;min-width:0 }
 .si-rule-id { font-size:11px;color:var(--text-muted);background:var(--bg-soft);padding:1px 5px;border-radius:3px;margin-right:6px }
 .si-rule-msg { color:var(--text-primary) }
@@ -756,12 +639,12 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 /* Sample list (eval modal — 全部用例清单)。复用 si-history-row 大部分样式,只重写 grid */
 .si-sample-list { max-height:340px;overflow-y:auto }
 .si-sample-row { grid-template-columns:18px 100px 56px 1fr auto !important;gap:8px !important }
-.si-sample-row--pass { background:rgba(94,130,82,.06) }
-.si-sample-row--fail { background:rgba(156,74,63,.06);border-left:2px solid #9c4a3f }
+.si-sample-row--pass { background:rgba(31,157,99,.06) }
+.si-sample-row--fail { background:rgba(220,38,38,.06);border-left:2px solid #dc2626 }
 .si-sample-row--tripwire { background:rgba(122,107,137,.06);border-left:2px solid #7a6b89 }
 .si-sample-icon { font-weight:700;text-align:center;font-size:13px }
-.si-sample-icon--pass { color:#5e8252 }
-.si-sample-icon--fail { color:#9c4a3f }
+.si-sample-icon--pass { color:#1f9d63 }
+.si-sample-icon--fail { color:#dc2626 }
 .si-sample-icon--tripwire { color:#7a6b89 }
 .si-sample-id { font-size:11px;color:var(--text-secondary);background:transparent;padding:0;font-family:"SF Mono",Menlo,monospace;font-weight:600 }
 .si-sample-score { font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-secondary);font-weight:600;text-align:right }
@@ -788,9 +671,9 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-history-date { font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-secondary) }
 .si-history-meta { color:var(--text-secondary);font-variant-numeric:tabular-nums }
 .si-history-status { font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;letter-spacing:0.02em;justify-self:end }
-.si-history-status--green { background:rgba(94,130,82,.18);color:#5e8252 }
-.si-history-status--yellow { background:rgba(176,128,48,.16);color:#b08030 }
-.si-history-status--red { background:rgba(156,74,63,.18);color:#9c4a3f }
+.si-history-status--green { background:rgba(31,157,99,.18);color:#1f9d63 }
+.si-history-status--yellow { background:rgba(217,119,6,.16);color:#d97706 }
+.si-history-status--red { background:rgba(220,38,38,.18);color:#dc2626 }
 .si-history-arrow { color:var(--text-muted);font-size:14px;font-weight:300 }
 @media(max-width:640px){
   .si-history-row { grid-template-columns:56px 1fr auto;gap:6px }
@@ -810,19 +693,19 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-layer-lbl { color:var(--text-secondary) }
 .si-layer-bar { background:var(--bg-surface);border-radius:4px;height:8px;overflow:hidden }
 .si-layer-fill { height:100%;border-radius:4px }
-.si-layer-fill--pass { background:#5e8252 }
-.si-layer-fill--warn { background:#b08030 }
-.si-layer-fill--fail { background:#9c4a3f }
+.si-layer-fill--pass { background:#1f9d63 }
+.si-layer-fill--warn { background:#d97706 }
+.si-layer-fill--fail { background:#dc2626 }
 .si-layer-num { font-variant-numeric:tabular-nums;font-weight:600;text-align:right;font-size:12px }
-.si-layer-num--pass { color:#5e8252 }
-.si-layer-num--warn { color:#b08030 }
-.si-layer-num--fail { color:#9c4a3f }
+.si-layer-num--pass { color:#1f9d63 }
+.si-layer-num--warn { color:#d97706 }
+.si-layer-num--fail { color:#dc2626 }
 .si-eval-link { display:inline-block;color:var(--accent);font-size:12.5px;text-decoration:none;font-weight:500 }
 .si-eval-link:hover { text-decoration:underline }
 .si-failed-list { margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px }
-.si-failed-list li { font-size:12.5px;line-height:1.55;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:8px 10px;border-radius:4px;background:rgba(156,74,63,.06);border-left:2px solid #9c4a3f }
-.si-fs-id { font-size:11px;background:var(--bg-surface);padding:1px 5px;border-radius:3px;color:#9c4a3f;font-weight:600 }
-.si-fs-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
+.si-failed-list li { font-size:12.5px;line-height:1.55;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:8px 10px;border-radius:4px;background:rgba(220,38,38,.06);border-left:2px solid #dc2626 }
+.si-fs-id { font-size:11px;background:var(--bg-surface);padding:1px 5px;border-radius:3px;color:#dc2626;font-weight:600 }
+.si-fs-mode { font-size:10.5px;color:#d97706;background:rgba(217,119,6,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
 .si-fs-summary { color:var(--text-secondary);font-size:12px;flex-basis:100% }
 
 /* Eval history table */
@@ -933,106 +816,8 @@ const TREND_INIT_SCRIPT = `
 })();
 </script>`;
 
-// ────────── v7:三视角顶层全景 + 各 section 直铺 ──────────
-
-/** 紧凑 inline sparkline(供顶部速览卡每张里用,显示该视角历史走向)。
- *  values 是 0-100 归一化数组(空数组返回占位)。 */
-function renderInlineSpark(values: number[], color: string): string {
-  if (!values || values.length === 0) {
-    return `<svg class="si-vs-spark" width="80" height="22" viewBox="0 0 80 22" xmlns="http://www.w3.org/2000/svg"><text x="50%" y="55%" text-anchor="middle" fill="#a8a8a8" font-size="9">no data</text></svg>`;
-  }
-  const w = 80, h = 22, pad = 2;
-  const min = Math.min(...values, 0);
-  const max = Math.max(...values, 100);
-  const range = (max - min) || 1;
-  const dx = values.length > 1 ? (w - 2 * pad) / (values.length - 1) : 0;
-  const pts = values.map((v, i) => {
-    const x = pad + i * dx;
-    const y = pad + (h - 2 * pad) * (1 - (v - min) / range);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return `<svg class="si-vs-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-/** Donut ring SVG:中央显示百分比,弧色按 band。半径 38,周长 ~239。 */
-function renderDonutRing(pct: number | null, color: string, label: string): string {
-  const r = 38, c = 2 * Math.PI * r;
-  const safePct = pct == null ? 0 : Math.max(0, Math.min(100, pct));
-  const dashOffset = c * (1 - safePct / 100);
-  const centerText = pct == null ? '—' : `${Math.round(safePct)}%`;
-  return `<svg class="si-ring" width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${e(label)}">
-    <circle cx="50" cy="50" r="${r}" fill="none" stroke="var(--bg-soft)" stroke-width="8"/>
-    ${pct != null ? `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8"
-      stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${dashOffset.toFixed(2)}"
-      stroke-linecap="round" transform="rotate(-90 50 50)"/>` : ''}
-    <text x="50" y="56" text-anchor="middle" font-size="19" font-weight="700" fill="${pct == null ? 'var(--text-muted)' : color}" font-family="-apple-system,BlinkMacSystemFont,sans-serif">${centerText}</text>
-  </svg>`;
-}
-
-/** 三视角顶部全景:3 个 Apple-watch 风 donut ring,每个 ring 下面带 emoji + label + 状态 + sparkline */
-function renderViewSummaryCards(entry: SkillIndexEntry, lang: Lang): string {
-  // doctor
-  const docBand: 'green' | 'yellow' | 'red' | 'gray' = entry.doctor
-    ? (entry.doctor.status === 'fail' ? 'red' : entry.doctor.status === 'warn' ? 'yellow' : 'green') : 'gray';
-  const docColor = docBand === 'green' ? '#5e8252' : docBand === 'yellow' ? '#b08030' : docBand === 'red' ? '#9c4a3f' : '#a8a8a8';
-  const docPct = entry.doctor && (entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount) > 0
-    ? (entry.doctor.passCount / (entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount)) * 100
-    : null;
-  const docPassRates = entry.doctorHistory.map((h) => {
-    const tot = h.passCount + h.warnCount + h.failCount;
-    return tot > 0 ? (h.passCount / tot) * 100 : 0;
-  });
-  const docStat = entry.doctor
-    ? `${entry.doctor.passCount}✓ ${entry.doctor.warnCount}⚠ ${entry.doctor.failCount}✗`
-    : (lang === 'zh' ? '未运行' : 'not run');
-
-  // eval
-  const evalBand: 'green' | 'yellow' | 'red' | 'gray' = entry.eval
-    ? (entry.eval.failCount === 0 ? 'green' : entry.eval.passCount === 0 ? 'red' : 'yellow') : 'gray';
-  const evalColor = evalBand === 'green' ? '#5e8252' : evalBand === 'yellow' ? '#b08030' : evalBand === 'red' ? '#9c4a3f' : '#a8a8a8';
-  const evalPct = entry.eval && entry.eval.compositeScore != null
-    ? (entry.eval.compositeScore / 5) * 100
-    : null;
-  const evalCompositeRates = entry.evalHistory.map((h) => (h.compositeScore ?? 0) / 5 * 100);
-  const evalStat = entry.eval && (entry.eval.passCount + entry.eval.failCount) > 0
-    ? `${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}%${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
-    : (lang === 'zh' ? '未运行' : 'not run');
-
-  // observe
-  const obsBand: 'green' | 'yellow' | 'red' | 'gray' = effectiveObserveBand(entry.observe);
-  const obsColor = obsBand === 'green' ? '#5e8252' : obsBand === 'yellow' ? '#b08030' : obsBand === 'red' ? '#9c4a3f' : '#a8a8a8';
-  const obsPct = entry.observe ? (1 - entry.observe.gapRate) * 100 : null;
-  // underpowered 历史点不进趋势 spark:低 N 的 stability 仅供参考,不该当作可信趋势顶点(口径同参考分)。
-  const obsStabilityRates = entry.observeHistory
-    .filter((h) => h.confidence !== 'underpowered')
-    .map((h) => (1 - h.gapRate) * 100);
-  const obsStat = !entry.observe
-    ? (lang === 'zh' ? '未运行' : 'not run')
-    // 低 N 不报「X% 稳定」硬指标,只标段数 + 仅供参考,跟列表卡口径一致。
-    : entry.observe.confidence === 'underpowered'
-      ? `${entry.observe.segmentCount} ${lang === 'zh' ? '段 · 样本不足' : 'segs · low N'}`
-      : `${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% ${lang === 'zh' ? '稳定' : 'stable'}`;
-
-  const node = (icon: string, label: string, sublabel: string, band: string, pct: number | null, color: string, stat: string, sparkRates: number[], anchor: string): string => `<a class="si-vs si-vs--${band}" href="#${anchor}">
-    ${renderDonutRing(pct, color, `${label} ${sublabel}`)}
-    <div class="si-vs-h">
-      <span class="si-vs-icon">${icon}</span>
-      <span class="si-vs-label">${e(label)}</span>
-      <span class="si-vs-sublabel">${e(sublabel)}</span>
-    </div>
-    <div class="si-vs-stat">${e(stat)}</div>
-    ${renderInlineSpark(sparkRates, color)}
-  </a>`;
-
-  return `${node('🩺', lang === 'zh' ? '健康度' : 'Structure', '(doctor)', docBand, docPct, docColor, docStat, docPassRates, 'section-doctor')}
-    ${node('🧪', lang === 'zh' ? '评测结果' : 'Test score', '(eval)', evalBand, evalPct, evalColor, evalStat, evalCompositeRates, 'section-eval')}
-    ${node('👁', lang === 'zh' ? '线上观测' : 'Live stability', '(observe)', obsBand, obsPct, obsColor, obsStat, obsStabilityRates, 'section-observe')}`;
-}
-
 /** doctor section:展示告警 / 失败规则;通过的规则折叠到底部 */
-function renderDoctorSection(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
+function renderDoctorSection(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], skillName: string, lang: Lang): string {
   if (!snap) {
     return `<section id="section-doctor" class="si-sect si-sect--gray">
       <div class="si-sect-h">🩺 ${lang === 'zh' ? '健康度 (doctor)' : 'Structure (doctor)'}</div>
@@ -1115,6 +900,7 @@ function renderDoctorSection(snap: SkillDoctorSnapshot | null, history: SkillDoc
         </details>`
         : ''}
     </div>
+    <a class="si-sect-link" href="/doctors/${e(snap.reportId)}?skill=${encodeURIComponent(skillName)}${lang === DEFAULT_LANG ? '' : `&lang=${lang}`}">${lang === 'zh' ? '完整体检报告 →' : 'Full doctor report →'}</a>
     ${renderDoctorHistory(history, lang)}
   </section>`;
 }
@@ -1404,20 +1190,9 @@ export function renderSkillDetail(
 
   return layout(entry.skillName, `
     <main>
-      <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
+      <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skill 列表' : '← Back to Skills'}</a>
       ${renderHero(entry, insights, lastTs, reportCount, lang)}
-
-      <div class="si-overview">
-        <section class="si-overview-cards" aria-label="${lang === 'zh' ? '三视角速览' : 'View summary'}">
-          ${renderViewSummaryCards(entry, lang)}
-        </section>
-        <section class="si-overview-trend">
-          <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(0-100%)' : 'Trend (0-100%)'}</div>
-          ${renderTrendChart(entry, langQ, lang)}
-        </section>
-      </div>
-
-      ${renderDoctorSection(entry.doctor, entry.doctorHistory, lang)}
+      ${renderDoctorSection(entry.doctor, entry.doctorHistory, entry.skillName, lang)}
       ${renderEvalSection(entry.eval, evalReport, entry.evalHistory, langQ, lang)}
       ${renderObserveSection(entry.observe, langQ, lang)}
     </main>

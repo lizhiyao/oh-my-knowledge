@@ -39,7 +39,7 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
-  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7 dimensions.
+  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service).
   --effort <value>      LLM reasoning effort: low / medium / high / xhigh / max.
   --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
   --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
@@ -58,6 +58,27 @@ For full descriptions: `omk doctor --help`.
 <!-- omk:cli:doctor:flags:end -->
 
 LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
+
+Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimension** (`promptSection` — folded into the health LLM call) or an **endpoint dimension** (`endpoint` — doctor POSTs the skill snapshot to your service and maps the response). The two are mutually exclusive per dimension. Endpoint dimensions are "online" checks (run by default, skipped under `--static-only`), letting you do deep checks that prompts can't express — e.g. calling an external security-audit service.
+
+```yaml
+dimensions:
+  # LLM dimension
+  - id: tone-check
+    displayName: 语气检查
+    severity: warn
+    promptSection: 检查 skill 文案是否礼貌、无歧义。
+  # endpoint dimension
+  - id: deep-security-audit
+    displayName: 深度安全审查
+    severity: fatal
+    endpoint: https://my-service.com/audit   # POST here
+    headers: { Authorization: "Bearer xxx" }  # optional auth headers
+    params: { env: production }               # optional, passed through verbatim
+    includeFiles: true                        # optional (default true): bundle references/scripts
+```
+
+Request body (doctor → endpoint): `{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` — `files` is a relative-path → content map of the skill's sub-files (text only; large files truncated, total payload capped at 2MB). Response (endpoint → doctor): `{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`. Any network error / non-2xx / protocol violation maps to a `fail` so problems surface instead of silently passing.
 
 Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate`.
 
@@ -239,6 +260,8 @@ For full descriptions: `omk evolve --help`.
 <!-- omk:cli:evolve:flags:end -->
 
 Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
+
+`omk evolve` is a one-shot loop: it runs the doctor gate before each round by default (`--skip-doctor` to bypass), and **if the target skill has no eval samples yet, it auto-generates a batch first** (equivalent to running `omk sample`) before evolving. So for a brand-new skill, `omk evolve skills/foo.md` alone walks the full "doctor → generate samples → self-iterate" path. Existing samples are used as-is, never regenerated.
 
 ## `omk sample`
 

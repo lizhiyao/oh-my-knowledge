@@ -393,56 +393,59 @@ function langToggleButton(lang: Lang): string {
 
 export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
-  const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="16" cy="16" r="15" fill="#0f172a"/><circle cx="16" cy="16" r="8" stroke="url(#g)" stroke-width="3.5" fill="none"/></svg>');
+  const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs><circle cx="16" cy="16" r="15" fill="#182033"/><circle cx="16" cy="16" r="8" stroke="url(#g)" stroke-width="3.5" fill="none"/></svg>');
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
-/* Pantone-inspired light theme(2026-05 全站浅色化)。
-   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
-   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
+/* 跨文档 view transition：同源 MPA 导航(如维度 chip 跳转)淡入淡出,消除白屏闪烁(Chromium)。 */
+@view-transition{navigation:auto}
+/* 滚动条始终预留 gutter:短页无滚动条、长页有,切换时内容宽度会跳;stable 让宽度恒定。 */
+html{scrollbar-gutter:stable}
+/* 参照 aima-knowledge SkillHealth 配色（2026-06）。
+   设计原则：冷白底 + indigo 强调色 + 精确匹配参考系统色板。 */
 :root{
-  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-base:rgb(246,248,251);    /* 页面底 */
   --bg-surface:#ffffff;          /* 卡片白 */
-  --bg-elevated:rgba(58,58,58,.025);
-  --bg-soft:rgba(58,58,58,.04);
-  --border:#e8e3da;              /* 暖灰分隔 */
-  --border-hover:#d4ccbf;
-  --text-primary:#3a3a3a;        /* 深炭灰 */
-  --text-secondary:#7a7a7a;
-  --text-muted:#a8a8a8;
-  --text-faint:#c8c8c8;
-  --accent:#5a7a93;              /* 板岩蓝(slate) */
-  --accent-hover:#3f5d76;
-  --green:#5e8252;               /* 鼠尾草绿(sage) */
-  --green-bg:rgba(94,130,82,.10);
-  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
-  --red-bg:rgba(156,74,63,.10);
-  --yellow:#b08030;              /* 暖琥珀 */
-  --yellow-bg:rgba(176,128,48,.10);
-  --info-bg:rgba(90,122,147,.08);
-  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
-  --chart-1:#5a7a93;
-  --chart-2:#7a6b89;
-  --chart-3:#5e8252;
-  --chart-4:#b08030;
-  --chart-5:#9c6478;
-  --chart-6:#937846;
+  --bg-elevated:#f8f9fd;         /* 浅面板 */
+  --bg-soft:#f8fafc;             /* 柔和背景 */
+  --border:#e4e8f1;              /* 分隔线 */
+  --border-hover:#d1d5db;
+  --text-primary:#182033;        /* 主文字 */
+  --text-secondary:#637083;      /* 次文字 */
+  --text-muted:#9ca3af;
+  --text-faint:#b0b8c5;
+  --accent:#4f46e5;              /* 品牌 indigo-600 */
+  --accent-hover:#4338ca;
+  --green:#1f9d63;               /* 通过绿 */
+  --green-bg:rgba(31,157,99,.14);
+  --red:#dc2626;                 /* 失败红 */
+  --red-bg:rgba(220,38,38,.14);
+  --yellow:#d97706;              /* 警告琥珀 */
+  --yellow-bg:rgba(217,119,6,.16);
+  --info-bg:rgba(79,70,229,.06);
+  /* 图表色 */
+  --chart-1:#4f46e5;
+  --chart-2:#7c3aed;
+  --chart-3:#059669;
+  --chart-4:#d97706;
+  --chart-5:#ec4899;
+  --chart-6:#06b6d4;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  /* 字号 */
   --fs-micro:12px;
   --fs-detail:13px;
   --fs-label:13px;
-  --fs-body:14.5px;
-  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
-  --shadow-md:0 2px 8px rgba(58,58,58,.10);
+  --fs-body:14px;
+  --shadow-sm:0 8px 24px rgba(31,41,55,.04);
+  --shadow-md:0 8px 28px rgba(79,70,229,.08);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1440px;margin:0 auto;font-size:var(--fs-body)}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:12px 16px 20px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1440px;margin:0 auto;font-size:var(--fs-body)}
 h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
 h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
 .subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
@@ -596,12 +599,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
    颜色严格按 level 编码: PROGRESS 绿, REGRESS 红, CAUTIOUS/UNDERPOWERED 黄,
    NOISE/SOLO 用 secondary 而非 muted (深底下保证对比度). border-left 4px 是
    status 视觉信号, 不堆边框/卡片 — 整体融入页面排版. */
-.verdict-banner{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:12px 18px;margin:12px 0 0;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
-.verdict-banner.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
-.verdict-banner.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
-.verdict-banner.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
-.verdict-banner.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
-.verdict-banner.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.verdict-banner{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:12px 18px;margin:12px 0 0;border-left:4px solid var(--text-secondary);background:rgba(99,112,131,.06);border-radius:var(--radius)}
+.verdict-banner.verdict-PROGRESS{border-left-color:var(--green);background:rgba(31,157,99,.07)}
+.verdict-banner.verdict-REGRESS{border-left-color:var(--red);background:rgba(220,38,38,.07)}
+.verdict-banner.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(217,119,6,.07)}
+.verdict-banner.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(217,119,6,.04)}
+.verdict-banner.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(99,112,131,.06)}
 .verdict-banner.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
 .verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
 .verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
@@ -610,32 +613,28 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
    行 1: enum + ship-action badge (PROGRESS · SHIP) + 自然语言 ("明显更好,可以发布")
    行 2: Δ / 95% CI / N / CV — 测量学核心数字, 不需要滚到下方表才看到.
    颜色按 level 编码 (PROGRESS 绿 / REGRESS 红 / CAUTIOUS+UNDERPOWERED 黄 / NOISE+SOLO 中性). */
-.page-verdict{display:flex;flex-direction:column;gap:10px;margin:12px 0 18px;padding:14px 18px;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
-.page-verdict.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
-.page-verdict.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
-.page-verdict.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
-.page-verdict.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
-.page-verdict.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
-.page-verdict.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
-.page-verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;letter-spacing:0.04em;padding:3px 10px;border-radius:14px;background:rgba(148,163,184,0.14);color:var(--text-primary);white-space:nowrap}
-.verdict-PROGRESS .page-verdict-badge{background:rgba(74,222,128,0.18);color:var(--green)}
-.verdict-REGRESS .page-verdict-badge{background:rgba(248,113,113,0.18);color:var(--red)}
+/* 结论卡内的 verdict —— 不再用「卡中卡」式的 tint 盒子,改成干净的一行结论:
+   level 色 chip + 一句话。颜色靠 chip 传达,无外框/无左色条。 */
+.page-verdict{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
+.page-verdict-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:13px;background:var(--bg-soft);color:var(--text-secondary);white-space:nowrap;letter-spacing:.01em}
+.verdict-PROGRESS .page-verdict-badge{background:var(--green-bg);color:var(--green)}
+.verdict-REGRESS .page-verdict-badge{background:var(--red-bg);color:var(--red)}
 .verdict-CAUTIOUS .page-verdict-badge,
-.verdict-UNDERPOWERED .page-verdict-badge{background:rgba(251,191,36,0.18);color:var(--yellow)}
+.verdict-UNDERPOWERED .page-verdict-badge{background:var(--yellow-bg);color:var(--yellow)}
 .verdict-NOISE .page-verdict-badge,
-.verdict-SOLO .page-verdict-badge{background:rgba(148,163,184,0.16);color:var(--text-secondary)}
+.verdict-SOLO .page-verdict-badge{background:var(--bg-soft);color:var(--text-secondary)}
 .page-verdict-badge-dot{font-size:8px;line-height:1}
-.page-verdict-text{font-size:15px;font-weight:500;color:var(--text-primary);line-height:1.5;flex:1 1 auto;min-width:0}
+.page-verdict-text{font-size:14.5px;font-weight:500;color:var(--text-primary);line-height:1.55;flex:1 1 auto;min-width:0}
 .page-verdict-metrics{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;padding-top:2px}
 .verdict-metric{display:inline-flex;align-items:baseline;gap:6px}
 .verdict-metric-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
 .verdict-metric-value{font-size:15px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 
 .verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
-.verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
-.verdict-cta.verdict-cta-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.04)}
-.verdict-cta.verdict-cta-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(31,157,99,.04)}
+.verdict-cta.verdict-cta-REGRESS{border-left-color:var(--red);background:rgba(220,38,38,.04)}
+.verdict-cta.verdict-cta-CAUTIOUS{border-left-color:var(--yellow);background:rgba(217,119,6,.04)}
 .verdict-cta.verdict-cta-NOISE,
 .verdict-cta.verdict-cta-UNDERPOWERED,
 .verdict-cta.verdict-cta-SOLO{border-left-color:var(--text-secondary)}
@@ -653,18 +652,18 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 /* v0.21 B.4 — 列表页 RUN ID 旁的 verdict status pill. inline-flex 紧凑 pill,
    颜色编码同 banner, 字号微小但对比清晰. 鼠标悬停/键盘聚焦时不抢戏 — 它只是
    "这个 run 是什么 status" 的一眼瞥. */
-.run-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:var(--radius);margin-right:8px;line-height:1.5;letter-spacing:-0.005em;white-space:nowrap;color:var(--text-secondary);background:rgba(148,163,184,0.1);vertical-align:1px}
+.run-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:var(--radius);margin-right:8px;line-height:1.5;letter-spacing:-0.005em;white-space:nowrap;color:var(--text-secondary);background:rgba(99,112,131,.1);vertical-align:1px}
 .run-status .run-status-dot{font-size:8px;line-height:1}
-.run-status.verdict-PROGRESS{color:var(--green);background:rgba(74,222,128,0.12)}
-.run-status.verdict-REGRESS{color:var(--red);background:rgba(248,113,113,0.12)}
+.run-status.verdict-PROGRESS{color:var(--green);background:rgba(31,157,99,.12)}
+.run-status.verdict-REGRESS{color:var(--red);background:rgba(220,38,38,.12)}
 .run-status.verdict-CAUTIOUS{color:var(--yellow);background:rgba(251,191,36,0.12)}
 .run-status.verdict-UNDERPOWERED{color:var(--yellow);background:rgba(251,191,36,0.08)}
-.run-status.verdict-NOISE{color:var(--text-secondary);background:rgba(148,163,184,0.1)}
+.run-status.verdict-NOISE{color:var(--text-secondary);background:rgba(99,112,131,.1)}
 .run-status.verdict-SOLO{color:var(--text-muted);background:transparent;border:1px solid var(--border)}
 
 @media print{
   .verdict-banner,.verdict-cta{break-inside:avoid;page-break-inside:avoid}
-  .run-status{border:1px solid #cbd5e1;background:transparent !important}
+  .run-status{border:1px solid #d1d5db;background:transparent !important}
 }
 
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
@@ -700,7 +699,7 @@ th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-ali
 td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
 td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(148,163,184,0.04)}
+tr:hover td{background:rgba(99,112,131,.04)}
 
 /* Badges */
 .badge{display:inline-block;padding:2px 8px;border-radius:var(--radius);font-size:11px;font-weight:600}
@@ -732,8 +731,8 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 /* Forms */
 input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
 input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
-/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
-   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete,
+   .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
 button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -774,7 +773,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .badge-ok,.badge-pass{background:#dcfce7;color:#166534}
   .badge-err,.badge-fail{background:#fee2e2;color:#991b1b}
   .badge-muted{background:#f8fafc;color:#94a3b8;border-color:#e2e8f0}
-  .dim-tag{background:#f1f5f9;color:#3b82f6}
+  .dim-tag{background:#eef2ff;color:#6366f1}
   .meta-tag{background:#f8fafc;border-color:#e2e8f0;color:#475569}
   .bar-fill{opacity:1}
   a{color:#1e293b;text-decoration:none}

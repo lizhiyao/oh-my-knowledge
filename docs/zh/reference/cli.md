@@ -39,7 +39,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
-  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。
+  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。
   --effort <value>      LLM 推理 effort：low / medium / high / xhigh / max。
   --executor <value>    执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --fix                 交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
@@ -239,6 +239,8 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 <!-- omk:cli:evolve:flags:end -->
 
 让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 样本 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
+
+`omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
 
 ## `omk sample`
 

@@ -290,9 +290,12 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
       if (data?.kind !== 'doctor' || !Array.isArray(data.skills)) continue;
       const ts = data.timestamp;
       for (const sr of data.skills) {
-        const passN = sr.results.filter((r) => r.status === 'pass').length;
-        const warnN = sr.results.filter((r) => r.status === 'warn').length;
-        const failN = sr.results.filter((r) => r.status === 'fail').length;
+        // 排除 composer 汇总行(:_summary):它不是真实规则,计入会让 pass/warn/fail
+        // 计数比详情页(同样过滤)多 1,导致弹框分数与 doctor 详情页分数对不上。
+        const realRules = sr.results.filter((r) => !r.ruleId.endsWith(':_summary'));
+        const passN = realRules.filter((r) => r.status === 'pass').length;
+        const warnN = realRules.filter((r) => r.status === 'warn').length;
+        const failN = realRules.filter((r) => r.status === 'fail').length;
         const snap: SkillDoctorSnapshot = {
           reportId: data.id, timestamp: ts, status: sr.status,
           passCount: passN, warnCount: warnN, failCount: failN, results: sr.results,

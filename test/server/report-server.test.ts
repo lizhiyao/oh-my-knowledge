@@ -390,8 +390,9 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
-    // 跳转走 /skills/<name>,不再直接暴露 reportId。
-    assert.ok(res.body.includes('/skills/v1') || res.body.includes('/skills/v2'));
+    // 点行直接进该 skill 的报告(eval 优先,否则 doctor),不再走中间 hub(/skills 已下线)。
+    assert.ok(res.body.includes("location.href='/reports/") || res.body.includes("location.href='/doctors/"));
+    assert.ok(!res.body.includes("location.href='/skills/"));
   });
 
   it('GET /reports/:id returns HTML detail page', async () => {
@@ -405,8 +406,8 @@ describe('report-server', () => {
     const list = await fetch(`${baseUrl}/?lang=en`);
     assert.equal(list.status, 200);
     assert.ok(list.body.includes('data-lang="en"'));
-    // skill 列表卡片链接到 /skills/<name> 并保留 ?lang=en
-    assert.ok(list.body.includes('/skills/v2?lang=en') || list.body.includes('/skills/v1?lang=en'));
+    // 列表行链接到报告(reports/doctors)并保留 ?lang=en
+    assert.ok(/location\.href='\/(reports|doctors)\/[^']*lang=en/.test(list.body));
 
     const detail = await fetch(`${baseUrl}/reports/test-run-001?lang=en`);
     assert.equal(detail.status, 200);

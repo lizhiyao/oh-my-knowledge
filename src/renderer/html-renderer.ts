@@ -15,9 +15,9 @@ import {
   levelLabel,
   levelTooltip,
 } from './summary.js';
-import { renderSampleTable } from './table.js';
 import { renderTestView, TEST_VIEW_CSS, TEST_VIEW_JS } from './test-view.js';
 import { renderTrendsBody } from './trends.js';
+import { reportShell, bandHex, type SkillReportContext } from './report-shell.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
 import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
 
@@ -347,7 +347,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   `, lang);
 }
 
-export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
+export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DEFAULT_LANG, skillContext?: SkillReportContext): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   if (!report) {
     return layout(t('title', lang), `
@@ -361,12 +361,20 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   const m = report.meta;
   const variants = m.variants || [];
   const summary = report.summary || {};
-  const results = report.results || [];
 
   const cards = renderSummaryCards(variants, summary, lang, report.variance);
   const methodologyAudit = renderMethodologyAudit(report, variants, summary, lang);
-  const verdictPill = renderVerdictPill(report, lang);
-  const sampleTable = renderSampleTable(variants, results, lang);
+  // 单 variant(SOLO)不显示 verdict — 对照才有的概念,单组是噪音/误导(见融合设计)。
+  const verdictPill = variants.length > 1 ? renderVerdictPill(report, lang) : '';
+
+  // Hero：综合分 ring（取 treatment = 最后一个 variant 的综合分）+ skill 名 + 时间戳。
+  const treatmentName = variants[variants.length - 1];
+  const heroComposite = treatmentName ? (summary[treatmentName]?.avgCompositeScore ?? null) : null;
+  const heroScore100 = heroComposite != null ? Math.round((heroComposite / 5) * 100) : null;
+  const heroSkillName = report.meta.evolve?.skillName ?? treatmentName ?? report.id;
+  const heroTs = (() => {
+    try { const d = new Date(report.meta.timestamp); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; } catch { return ''; }
+  })();
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   // 任一 variant exec cost 未报告 → 总 cost 不可靠,renderer 显示「—」+ tooltip。
   // 全部 reported(undefined / true)才正常显示 USD 数字。
@@ -457,15 +465,6 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
 
   // v0.30 重设计 — 评分/单测各自独立 title + meta strip(不共享头部)。
   // 顶部只保留极简身份带:返回链接 + run-id pill。完整 H1 + meta tags 移进各自 tab 面板。
-  const idStamp = (() => {
-    const idMatch = /^.+?-(\d{8})-(\d{4})$/.exec(report.id);
-    if (idMatch) {
-      const [, ymd, hm] = idMatch;
-      return `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2, 4)}`;
-    }
-    return '';
-  })();
-
   // ──────────── 评分 tab 的 meta tags(原版全部留这里) ────────────
   const scoreMetaTags = `<div class="meta-tags">
     <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
@@ -506,66 +505,67 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       </div>
     </div>` : '';
 
-  // ──────────── 单测 tab 的 meta tags(只有 sample 维度数据,不含 cost / model) ────────────
-  const sampleSnaps = report.sampleSnapshots ?? {};
-  let testPassed = 0; let testFailed = 0; let testTripwire = 0;
-  for (const r of (report.results || [])) {
-    const v = m.variants?.[0] ? r.variants[m.variants[0]] : null;
-    if (!v) continue;
-    const passed = (v.assertions?.details ?? []).every((d) => d.passed);
-    if (passed) testPassed += 1;
-    else if (sampleSnaps[r.sample_id]?.tripwire || (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')) testTripwire += 1;
-    else testFailed += 1;
-  }
-  const testMetaTags = `<div class="meta-tags">
-    <span class="meta-tag">${m.sampleCount} ${lang === 'zh' ? '用例' : 'samples'}</span>
-    <span class="meta-tag" style="color:var(--green)">✓ ${testPassed} ${lang === 'zh' ? '通过' : 'passed'}</span>
-    ${testFailed > 0 ? `<span class="meta-tag" style="color:var(--red)">✗ ${testFailed} ${lang === 'zh' ? '失败' : 'failed'}</span>` : ''}
-    ${testTripwire > 0 ? `<span class="meta-tag" style="color:#7a6b89">◆ ${testTripwire} ${lang === 'zh' ? '诱错触发' : 'tripwire'}</span>` : ''}
-    <span class="meta-tag">${(m.variants || []).join(' · ')}</span>
-  </div>`;
+  // ──────────── 融合单页:Hero → 结论(verdict+六维) → 折叠次要区 → 统一逐用例 ────────────
+  const agentOverview = renderAgentOverview(variants, summary, lang);
+  const varianceSection = renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary);
+  const analysisSection = renderAnalysis(report, lang);
+  const knowledgeSection = renderKnowledgeInteractionSection(report.analysis?.coverage, report.analysis?.gapReports, lang);
 
-  return layout(`${report.id}`, `
-    <main>
-    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
-    <div class="report-id-line">
-      <code class="report-id-pill">${e(report.id)}</code>
-      ${idStamp ? `<span class="report-id-stamp">${e(idStamp)}</span>` : ''}
-    </div>
+  // 折叠区 A:实验如何跑的(配置 / 运行参数 / Agent 概览 / 审计指纹)— 复现/审计才看。
+  const setupInner = [
+    scoreMetaTags,
+    (variantConfigSection || agentOverview) ? `<div class="ctx-strip">${variantConfigSection}${agentOverview}</div>` : '',
+    auditFingerprints,
+  ].filter(Boolean).join('');
+  const setupFold = setupInner
+    ? `<details class="ev-fold"><summary>${lang === 'zh' ? '实验配置与运行参数' : 'Experiment setup & run params'}</summary><div class="ev-fold-body">${setupInner}</div></details>`
+    : '';
 
-    <div class="omk-view-tabs" role="tablist">
-      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">${lang === 'zh' ? '📊 评测视角' : '📊 Score view'}</button>
-      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">${lang === 'zh' ? '✅ 功能视角' : '✅ Functional view'}</button>
-    </div>
+  // 折叠区 B:深入分析(方法学审计 / 方差 / 自动分析 / 知识交互)— 想验证测量学时展开。
+  const analysisInner = [methodologyAudit, varianceSection, analysisSection, knowledgeSection].filter(Boolean).join('');
+  const analysisFold = analysisInner
+    ? `<details class="ev-fold"><summary>${lang === 'zh' ? '方法学审计 · 方差 · 自动分析 · 知识交互' : 'Methodology audit · variance · analysis · knowledge'}</summary><div class="ev-fold-body">${analysisInner}</div></details>`
+    : '';
 
-    <div class="omk-view-panel" data-view="score">
-    <p class="subtitle">${lang === 'zh' ? '主观质量打分(judge)+ 客观断言聚合,产出综合评分与 verdict' : 'Subjective judge + objective assertions aggregated into composite + verdict'}</p>
-    ${verdictPill}
-    ${scoreMetaTags}
+  // 「结论」panel:多 variant = verdict 一句话领头 + 六维表;单 variant = 直接六维分布。
+  const conclusionPanel = `<section class="ev-conclusion">${verdictPill}${cards}</section>`;
+
+  const samplesSubtitle = lang === 'zh'
+    ? '每条用例既是评分卡也是功能测试:综合分 + 三层分布、断言、诊断与执行轨迹合一'
+    : 'Each sample is both a score card and a functional test: composite + layered scores, assertions, diagnostics, and trace combined';
+
+  const body = `
+    ${conclusionPanel}
     ${blindReveal}
+    ${setupFold}
+    ${analysisFold}
+    <section class="ev-samples">
+      <h2 class="ev-samples-h">${lang === 'zh' ? '逐用例' : 'Per-sample'}</h2>
+      <p class="subtitle ev-samples-sub">${samplesSubtitle}</p>
+      ${renderTestView(report, lang)}
+    </section>${TEST_VIEW_JS ? `<script>${TEST_VIEW_JS}</script>` : ''}`;
 
-    <section>${cards}</section>
-    <div class="ctx-strip">${variantConfigSection}${renderAgentOverview(variants, summary, lang)}</div>
-    ${auditFingerprints}
-    ${methodologyAudit}
-
-    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary)}
-
-    ${renderAnalysis(report, lang)}
-
-    ${renderKnowledgeInteractionSection(report.analysis?.coverage, report.analysis?.gapReports, lang)}
-
-    <section>${sampleTable}</section>
-    </div>
-
-    <div class="omk-view-panel" data-view="test" hidden>
-    <p class="subtitle">${lang === 'zh' ? '每条用例当一条功能测试看:期望(rubric/assertions/mocks)、实际执行(trace)、失败时给诊断建议' : 'Each sample as a functional test: expected(rubric/assertions/mocks), actual(trace), diagnostic suggestions on failure'}</p>
-    ${testMetaTags}
-    ${renderTestView(report, lang)}
-    </div>
-
-    <style>${TEST_VIEW_CSS}
-/* Context strip — 实验配置 + Agent 概览并排,作为辅助元数据,视觉权重低于综合分 hero / 六维 / 用例详情 */
+  const evalCss = `${TEST_VIEW_CSS}
+/* 结论 panel — verdict(多 variant)+ 六维,白底卡片成「答案」模块,与 hero / fold 同一视觉语言 */
+.ev-conclusion{background:#fff;border:1px solid #e4e8f1;border-radius:12px;box-shadow:0 8px 24px rgba(31,41,55,4%);padding:18px 24px 20px;margin:0 0 16px}
+.ev-conclusion>:first-child{margin-top:0}
+.ev-conclusion>h2:first-child{margin-top:2px}
+/* 次要折叠区 — 实验配置 / 方法学 / 方差 / 分析,默认收起,审计/复现时展开 */
+.ev-fold{margin:10px 0;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)}
+.ev-fold>summary{cursor:pointer;list-style:none;font-size:13px;font-weight:500;color:var(--text-secondary);padding:12px 16px}
+.ev-fold>summary::-webkit-details-marker{display:none}
+.ev-fold>summary::before{content:'▸ ';color:var(--text-muted)}
+.ev-fold[open]>summary::before{content:'▾ '}
+.ev-fold[open]>summary{border-bottom:1px solid var(--border);color:var(--text-primary)}
+.ev-fold>summary:hover{color:var(--text-primary)}
+.ev-fold-body{padding:8px 16px 16px}
+.ev-fold-body>section:first-child,.ev-fold-body>.audit-fingerprints:first-child{margin-top:0}
+.ev-fold-body .meta-tags{margin-top:8px}
+/* 逐用例 section 标题 */
+.ev-samples{margin-top:28px}
+.ev-samples-h{font-size:1.4rem;margin:0 0 4px;color:var(--text-primary)}
+.ev-samples-sub{font-size:13.5px;color:var(--text-secondary);margin:0 0 8px;line-height:1.6}
+/* Context strip — 实验配置 + Agent 概览并排,辅助元数据 */
 .ctx-strip { display:grid;gap:14px;grid-template-columns:1fr 1fr;margin:14px 0 24px }
 @media (max-width:760px) { .ctx-strip { grid-template-columns:1fr } }
 .ctx-block { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 16px }
@@ -575,26 +575,31 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
 .ctx-row { padding:8px 12px;background:var(--bg-soft);border-radius:4px;display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.5;flex-wrap:wrap }
 .ctx-row-name { font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,monospace;font-size:12.5px;letter-spacing:-0.01em }
 .ctx-row-bits { color:var(--text-secondary);flex:1;min-width:0;font-size:12.5px }
-.ctx-sep { color:var(--text-muted);margin:0 2px;opacity:0.6 }
-/* 报告身份带 — 极简一行,run-id pill + 时间戳 + verdict pill。完整 H1 + meta 移进各 tab 自己的 panel。 */
-.report-id-line { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 18px }
-.report-id-pill { font-size:14px;font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);background:var(--bg-surface);padding:5px 12px;border-radius:14px;border:1px solid var(--border);letter-spacing:-0.01em;font-weight:500 }
-.report-id-stamp { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
-/* 顶部 tab 切换器 — 显式 reset border-radius / appearance / outline,
-   防止全局 button 规则给底部加奇怪圆角和深色背景。 */
-.omk-view-tabs { display:flex;gap:0;margin:16px 0 24px;border-bottom:1px solid var(--border) }
-.omk-view-tab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;font-size:14px;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px;font-family:inherit }
-.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
-.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-primary) }
-.omk-view-tab:focus-visible { outline:2px solid var(--accent);outline-offset:-4px;border-radius:4px }
-/* tab 面板内的 H1 — 跟列表 H1 同级别但加 emoji 区分视角 */
-.omk-view-panel h1 { font-size:1.5rem;margin:0 0 6px }
-.omk-view-panel .subtitle { font-size:14px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6 }
-    </style>
-    <script>${TEST_VIEW_JS}</script>
+.ctx-sep { color:var(--text-muted);margin:0 2px;opacity:0.6 }`;
 
-    </main>
-  `, lang);
+  return reportShell({
+    dim: 'eval',
+    icon: '🧪',
+    kindTitle: lang === 'zh' ? '用例评测报告' : 'Eval Report',
+    // 头部用规范 skill 名(skill-index entry),与 doctor/observe 一致;无 context 时回退到 report 推导名。
+    skillName: skillContext?.skillName ?? heroSkillName,
+    metaItems: [`⏱ ${e(heroTs)}`, `⚙ ${e(m.model)}`, e(report.id)],
+    // Hero 展示「综合健康」总分(跨 doctor/eval/observe,与首页同口径),切 tab 不变;
+    // 本次 eval 的综合分(4.09/5)在下方结论卡。无 skillContext(batch/孤儿报告)时回退显 eval 综合分。
+    score: skillContext ? skillContext.overall.score : heroScore100,
+    scoreText: skillContext
+      ? (skillContext.overall.score != null ? String(skillContext.overall.score) : undefined)
+      : (heroComposite != null ? heroComposite.toFixed(2) : undefined),
+    ringColor: skillContext
+      ? bandHex(skillContext.overall.band)
+      : (heroComposite != null ? (heroComposite >= 4 ? '#1f9d63' : heroComposite >= 3 ? '#d97706' : '#dc2626') : undefined),
+    scoreLabel: skillContext ? (lang === 'zh' ? '综合健康' : 'Health') : (lang === 'zh' ? '综合分 / 5' : 'Composite / 5'),
+    backHref: `/${langQ}`,
+    backLabel: lang === 'zh' ? '返回列表' : 'Back to list',
+    body,
+    skillContext,
+    extraCss: evalCss,
+  }, lang);
 }
 
 export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
@@ -684,11 +689,11 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
   `, lang);
 }
 
-export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG): string {
+export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG, skillContext?: SkillReportContext): string {
   if (!report) return renderRunDetail(null, lang);
   return report.kind === 'batch-evaluation'
     ? renderBatchEvaluationDetail(report, lang)
-    : renderRunDetail(report, lang);
+    : renderRunDetail(report, lang, skillContext);
 }
 
 export function renderTrendsPage(variantName: string, runs: Report[], lang: Lang = DEFAULT_LANG): string {

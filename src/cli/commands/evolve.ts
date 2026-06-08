@@ -1,5 +1,5 @@
-import { resolve, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, join, dirname, extname } from 'node:path';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -85,14 +85,52 @@ export async function runEvolve(
     samplesFile = resolvedInput.samplesPath;
   }
 
-  const { evolveSkill } = await import('../../authoring/evolver.js');
+  // 参数校验必须早于任何昂贵副作用(自动生成用例 / LLM 调用)。
   const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config.js');
-
   const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
     throw new CliExit(2);
   }
+
+  // 无用例时自动生成 —— 让 omk evolve 成为「检测(doctor) → 生成用例 → 自迭代」一键命令。
+  // 已有用例(且非空)则原样使用;生成失败按普通错误退出。
+  const samplesAbs = resolve(samplesFile);
+  let hasSamples = false;
+  try {
+    const { loadSamples } = await import('../../inputs/load-samples.js');
+    hasSamples = loadSamples(samplesAbs).samples.length > 0;
+  } catch { hasSamples = false; }
+
+  if (!hasSamples) {
+    try {
+      const { generateSamples } = await import('../../authoring/generator.js');
+      const skillContent = readFileSync(resolve(skillPath), 'utf-8');
+      // samplesAbs 可能是 .omk/ 目录(无后缀 fallback) → 落到目录内的 samples.json;
+      // 否则按给定文件路径写。loadSamples 目录模式会自动发现生成的文件。
+      const outFile = extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'samples.json');
+      process.stderr.write(lang === 'zh'
+        ? `未发现评测用例，正在自动生成到 ${outFile} …\n`
+        : `No samples found; auto-generating to ${outFile} …\n`);
+      const { samples, costUSD } = await generateSamples({
+        skillContent,
+        model: flags.model,
+        executorName: flags.executor,
+      });
+      mkdirSync(dirname(outFile), { recursive: true });
+      writeFileSync(outFile, JSON.stringify(samples, null, 2));
+      const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(lang === 'zh'
+        ? `已生成 ${samples.length} 条用例${cost}，开始自迭代。\n`
+        : `Generated ${samples.length} samples${cost}; starting evolution.\n`);
+    } catch (err: unknown) {
+      if (err instanceof CliExit) throw err;
+      console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
+      throw new CliExit(1);
+    }
+  }
+
+  const { evolveSkill } = await import('../../authoring/evolver.js');
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
