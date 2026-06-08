@@ -102,15 +102,16 @@ observe → studio
 
 ### `install`
 
-`install` 是管理支柱的入口。三种源已经落地：
+`install` 是管理支柱的入口。当前可用的源：
 
 ```bash
 omk install omk-agent-skill            # 保留内置 id：omk 官方 Agent Skill（onboarding）
 omk install ./skills/review            # 本地 skill（目录或 .md）
 omk install git:<ref>:skills/review    # 当前仓库某个 ref 上的 skill
+omk install --git-url <url> --git-ref <ref> skills/review   # 远端 git 仓库的 skill
 ```
 
-内置 id 是保留的 onboarding skill，不是 registry 包，也不是用户自己的被测 artifact。安装**用户自己的** skill（本地路径或 `git:`）时，除分发到已检测的 agent 目标外，还会写一条管理记录到 `.omk/managed/<id>.json`。
+内置 id 是保留的 onboarding skill，不是 registry 包，也不是用户自己的被测 artifact。安装**用户自己的** skill（本地路径、`git:` 或远端 `--git-url`）时，除分发到已检测的 agent 目标外，还会写一条管理记录到 `.omk/managed/<id>.json`。远端源会记录结构化 `url` 加**钉死的 SHA**（分支 / tag 会漂，SHA 可复现）。远端 URL 以结构化 `url`/`ref`/`spec` 字段流转，绝不拼进 `git:<ref>:<spec>` 的冒号语法（其 `:` / `@` 会切碎 `https://` 或 `git@host:` 形式的 URL）。eval 侧经 `eval.yaml`（`variants[].git: { url, ref, spec }`）接受对称的结构化写法；eval CLI 的 `--control`/`--treatment` 会拒绝远端 URL 字符串并指向 `eval.yaml`，因为它们的逗号 / `@cwd` 解析无法安全携带 URL。
 
 未来受管输入范围（尚不支持 —— 当前 `install` 对非 skill kind 直接报错）：
 

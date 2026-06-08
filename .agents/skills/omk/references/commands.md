@@ -341,6 +341,12 @@ omk install ./skills/review
 omk install git:main:skills/review
 ```
 
+> 从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证；记录钉实际 SHA）
+
+```bash
+omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review
+```
+
 ## omk observe
 
 分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。

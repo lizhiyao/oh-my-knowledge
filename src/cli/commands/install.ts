@@ -289,6 +289,13 @@ export default class Install extends BaseCommand {
       }),
       command: '<%= config.bin %> install git:main:skills/review',
     },
+    {
+      description: bilingual({
+        zh: '从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证；记录钉实际 SHA）',
+        en: 'Install a skill from a remote git repo (positional arg is the in-repo path; auth via local git credentials; record pins the actual SHA)',
+      }),
+      command: '<%= config.bin %> install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review',
+    },
   ];
 
   static args = {
