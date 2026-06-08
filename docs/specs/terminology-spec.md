@@ -335,7 +335,7 @@ Two caveats:
 | EvaluandKind | ArtifactKind | object category |
 | evaluands | artifacts | object list in the request |
 | task.evaluand | task.artifact | the object a single task binds to |
-| evaluandHashes | artifactHashes | content hash of the artifact |
+| evaluandHashes | artifactHashes | whole distributable-tree content hash of the artifact (report `schemaVersion >= 2`; same space as the install managed-record `contentHash`) |
 | skillHashes | artifactHashes | unified object hash in the report |
 | skill as the umbrella | artifact | skill falls back to a concrete subtype |
 | agent as the umbrella | artifact / agent runtime | choose by semantics |

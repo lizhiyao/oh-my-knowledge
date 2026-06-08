@@ -164,7 +164,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: '覆盖',
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
-    artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(不含路径/时间/git),用于辨别报告对应哪一版 skill;同文件多次跑指纹不变,改一字节就变——防止"改动效果"和"随机波动"混淆',
+    artifactHashTooltip: '整棵可分发树的 SHA-256 前 12 位(SKILL.md + references/ 资产,排除 .omk/.git/evolve;不含路径/时间/git),用于辨别报告对应哪一版 skill;同一棵树指纹不变,改 SKILL.md 或任意资产都会变——防止"改动效果"和"随机波动"混淆',
     switchLang: '英文',
   },
   en: {
@@ -277,7 +277,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: 'Coverage',
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
-    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies which version of the skill this report ran — same file = same fingerprint, any byte change = different fingerprint. Keeps "intentional change" separate from "random variance"',
+    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the whole distributable tree (SKILL.md + references/ assets, excluding .omk/.git/evolve; content-only: no path/time/git); identifies which version of the skill this report ran — same tree = same fingerprint, any change to SKILL.md or any asset = different fingerprint. Keeps "intentional change" separate from "random variance"',
     switchLang: 'Chinese',
   },
 };

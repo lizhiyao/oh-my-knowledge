@@ -211,10 +211,16 @@ export interface ReportMeta {
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
+  /** Per-artifact content fingerprint (variantName → SHA256-12, or 'no-skill' for baseline).
+   *  schemaVersion >= 2: whole distributable-tree hash (SKILL.md + references/ assets), same
+   *  space as the install managed-record contentHash. schemaVersion < 2 / absent: legacy
+   *  SKILL.md-body-text hash — NOT comparable to tree hashes, and blind to asset changes. */
   artifactHashes: Record<string, string>;
-  /** v0.21 — Report JSON schema version. Reports without this field are treated as v0
-   *  (legacy field semantics: pre-v0.21 `gapRate`/`weightedGapRate` map to `evalGapRate`/
-   *  `evalWeightedGapRate` for eval-side reports). v0.21+ writes 1. */
+  /** Report JSON schema version. Reports without this field are treated as v0 (legacy field
+   *  semantics: pre-v0.21 `gapRate`/`weightedGapRate` map to `evalGapRate`/`evalWeightedGapRate`
+   *  for eval-side reports). Value 1 was specified for v0.21+ but never emitted in practice;
+   *  eval reports first start writing schemaVersion at 2, which also marks the artifactHashes
+   *  tree-hash era (drift / lineage consumers gate on `>= 2`). */
   schemaVersion?: number;
   /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
   sampleHashes?: Record<string, string>;

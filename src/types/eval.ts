@@ -143,6 +143,11 @@ export interface Artifact {
   kind: ArtifactKind;
   source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
   content: string | null;
+  // 整树内容指纹(hashArtifactSource:目录-skill 覆盖整棵可分发树、文件-skill 为单文件字节)。
+  // 解析期算好挂在这里,供 report 的 artifactHashes 与 install 受管记录的 contentHash 落在同一空间
+  // (证据随 artifact 走的前提)。与 `content`(executor 注入的 trim 文本)解耦——指纹不依赖正文文本。
+  // baseline / 无 skill 留空。
+  contentHash?: string;
   locator?: string;
   ref?: string;
   cwd?: string;

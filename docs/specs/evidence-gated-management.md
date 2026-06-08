@@ -196,7 +196,7 @@ Done in #208 / PR #207:
 ## 9. Open questions
 
 - **Decided:** management records live in per-record files `.omk/managed/<id>.json` (atomic tmp+rename, mirroring report-store), not a single aggregate file.
-- Unifying the artifact content hash so evidence can bind: `install` records `hashArtifactSource` (whole-tree) while `eval` reports `hashString(SKILL.md text)`, so the `evidence.contentHash === record.contentHash` gate cannot match real report evidence yet. Tracked in #214 — this is the load-bearing blocker for evidence-backed `list` / `promote`.
+- **Decided (#214):** the artifact content hash is unified so evidence can bind. `eval` now records the same whole-tree `hashArtifactSource` as `install` (report `schemaVersion >= 2`), so `evidence.contentHash === record.contentHash` lives in one space; the eval fingerprint is also no longer blind to `references/` assets. Reports with `schemaVersion < 2` carry the legacy SKILL.md-text hash and are treated as incomparable by drift / lineage consumers (re-run `eval`). Actually writing eval→managed evidence remains future work.
 - How should git refs and omk evidence records interact (re-materialize a moving branch vs a pinned SHA on drift checks)?
 - What snapshot layout should `evolve` write under its working directory, and what is the deprecation path for users who currently rely on `evolve` writing the winner back to the source file (decision B migration mechanics)?
 - Which verdicts are acceptable for promotion by default: only `PROGRESS`, or `CAUTIOUS` with explicit caveats?

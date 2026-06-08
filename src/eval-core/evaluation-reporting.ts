@@ -228,8 +228,12 @@ export function aggregateReport({
     }
   }
 
+  // 整树内容指纹:解析期已由 resolveArtifacts 用 hashArtifactSource 算好挂在 artifact.contentHash 上
+  // (目录-skill 覆盖整棵可分发树含 references/ 资产、文件-skill 为单文件字节),与 install 受管记录的
+  // contentHash 落在同一空间——证据可绑定的前提,也修掉「只哈 SKILL.md 正文、改资产指纹不变」的资产瞎。
+  // baseline / 无 skill 记 'no-skill'。
   const artifactHashes = Object.fromEntries(
-    artifacts.map((artifact) => [artifact.name, artifact.content ? hashString(artifact.content) : 'no-skill']),
+    artifacts.map((artifact) => [artifact.name, artifact.contentHash ?? 'no-skill']),
   );
 
   const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
@@ -272,6 +276,9 @@ export function aggregateReport({
       timestamp: new Date().toISOString(),
       cliVersion: getCliVersion(),
       nodeVersion: process.version,
+      // schemaVersion 2 起,artifactHashes 语义为整棵可分发树哈(之前是仅 SKILL.md 正文文本哈)。
+      // 作判别位:消费方(sample --fix 漂移 / evolve lineage)对缺位/旧报告不拿旧文本哈与当前树哈错配比对。
+      schemaVersion: 2,
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
