@@ -26,6 +26,7 @@ export type InstallMessageKey =
   | 'cli.install.remote_fetch_failed'
   | 'cli.install.remote_ref_not_found'
   | 'cli.install.remote_skill_not_found'
+  | 'cli.install.git_ref_needs_url'
   | 'cli.install.next_hint';
 
 export const installDict: Record<InstallMessageKey, CliMessage> = {
@@ -128,6 +129,10 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.remote_skill_not_found': {
     zh: '在远端 {url} 的 ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
     en: 'Skill {name} not found at ref {ref} of remote {url} (neither {name}/SKILL.md nor {name}.md).',
+  },
+  'cli.install.git_ref_needs_url': {
+    zh: '--git-ref 需要配 --git-url 一起用（远端 git 源 = URL + ref + 仓库内路径）。',
+    en: '--git-ref requires --git-url (a remote git source = URL + ref + in-repo path).',
   },
   'cli.install.next_hint': {
     zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',

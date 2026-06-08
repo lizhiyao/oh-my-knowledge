@@ -363,6 +363,10 @@ export default class Install extends BaseCommand {
     const lang = this.lang;
 
     await this.runWithCliExit(async () => {
+      // --git-ref 必须配 --git-url(否则静默丢弃、误把 spec 当本地路径解析,报错令人困惑)。
+      if (flags['git-ref'] && !flags['git-url']) {
+        throw new Error(tCli('cli.install.git_ref_needs_url', lang));
+      }
       // 远端 git:--git-url 在场时,位置参数是仓库内 spec(repo 相对路径),先于其它分支判定。
       if (flags['git-url']) {
         this.installManagedSkill(args.input, flags.kind, flags, lang, {

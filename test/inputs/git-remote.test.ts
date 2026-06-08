@@ -74,6 +74,18 @@ describe('git-remote', () => {
     );
   });
 
+  it('安全:恶意 ref(--upload-pack=…)不执行任意命令,fail-closed', () => {
+    const marker = join(tmpdir(), `omk-pwned-${process.pid}`);
+    rmSync(marker, { force: true });
+    const evilRef = `--upload-pack=touch ${marker};true`;
+    assert.throws(
+      () => fetchRemoteGitRef(repo, evilRef),
+      (e: unknown) => e instanceof SourceResolveError,
+      '恶意 ref 应 fail-closed(非法 refspec)',
+    );
+    assert.ok(!existsSync(marker), 'ref 注入的命令绝不能执行(git fetch 的 -- 隔断)');
+  });
+
   it('非法 URL → invalid_remote_url', () => {
     assert.throws(
       () => fetchRemoteGitRef('not-a-url', 'HEAD'),

@@ -342,9 +342,12 @@ export function fetchRemoteGitRef(url: string, ref: string): RemoteGitCheckout {
   try {
     execFileSync('git', ['init', '--bare', '--quiet', bare], { stdio: GIT_PROBE_STDIO });
     try {
+      // `--` 隔断:git fetch 会扫描**全部** argv 找带短横的选项,不止第一个。少了 `--`,一个形如
+      // `--upload-pack=<cmd>` 的 ref 会被当成选项执行任意命令(RCE)。`--` 后一切按位置参数
+      // (repository + refspec)解析,恶意 ref 退化成非法 refspec、fail-closed。url 也一并护在 `--` 后。
       execFileSync(
         'git',
-        ['--git-dir', bare, 'fetch', '--depth', '1', '--quiet', url, `${ref}:refs/omk/fetched`],
+        ['--git-dir', bare, 'fetch', '--depth', '1', '--quiet', '--', url, `${ref}:refs/omk/fetched`],
         { stdio: GIT_PROBE_STDIO },
       );
     } catch {
