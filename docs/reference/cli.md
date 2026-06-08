@@ -139,6 +139,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
   --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
+  --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server

@@ -139,6 +139,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --no-cache                      跳过 executor cache
   --no-debias-length              关 length-debias（默认开）
   --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+  --no-evidence                   不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server

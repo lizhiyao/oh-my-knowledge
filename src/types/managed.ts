@@ -24,13 +24,32 @@ export interface ManagedDistributionTarget {
   copiedAt: string;
 }
 
-/** 指向一份 Report 的引用——不是 verdict 本体。install 时为空,eval/promote 追加。 */
+/** 指向一份 Report 的引用 + 该 report 的最小可比性快照——不是 verdict 本体。install 时为空,
+ *  eval 完成后追加(见 `src/managed/evidence.ts`)。
+ *
+ *  `reportId` / `contentHash` 是承重的两根(读时门控只认这俩,validator 也只硬查这俩);其余三项是
+ *  `evidence-gated-management.md` §5 的 mandatory bundle —— **denormalize** 进记录(而非读时回 report
+ *  解析),让受管记录自解释、可 grep、不依赖 report 文件仍在盘。旧记录(eval 写入前)无这三项,按
+ *  optional 读;deriveManagedState 不依赖它们,故缺失不影响生命周期推导。 */
 export interface ManagedEvidenceRef {
   reportId: string;
   /** 该 report 测的是哪份内容(artifact contentHash)。读时只把与记录当前 contentHash 匹配的
    *  evidence 算作当前有效证据——重装到新内容后旧证据保留供回滚,但不让新内容显得已测。 */
   contentHash: string;
   recordedAt: string;
+  /** §5 mandatory:report 时计算的 verdict 等级(PROGRESS / CAUTIOUS / REGRESS / NOISE /
+   *  UNDERPOWERED / SOLO)。存字符串而非 import VerdictLevel —— 保 types 层为叶子、不依赖 eval-core。
+   *  measurable 不看 verdict(任何评测都算"已测");verdict 是 promote 门控的事。 */
+  verdict?: string;
+  /** §5 mandatory:样本集覆盖。`count`=被测样本数,`hash`=report 的 sampleHashes 排序后摘要
+   *  (同一样本集 ⇒ 同 hash),供 promote / list 不加载重 report 即可判覆盖与"同一用例集"。 */
+  sampleCoverage?: { count: number; hash: string };
+  /** §5 mandatory:可比性 marker。跨 report 比 verdict / Δ 前必须三者一致,否则不可比。 */
+  comparability?: {
+    cliVersion: string;
+    judgePromptHash?: string;
+    debiasMode?: Array<'length' | 'position'>;
+  };
 }
 
 export type ManagedDecisionKind = 'promote' | 'reject' | 'rollback';

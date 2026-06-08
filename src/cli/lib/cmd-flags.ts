@@ -122,6 +122,7 @@ export interface EvalFlags {
   'trivial-diff'?: string;
   'report-only'?: boolean;
   'no-gate'?: boolean;
+  'no-evidence'?: boolean;
 }
 
 // ── evolve ────────────────────────────────────────────────────────────────────
