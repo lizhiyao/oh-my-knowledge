@@ -97,7 +97,7 @@ describe('git-remote', () => {
     assert.equal(a.source, 'git');
     assert.ok(a.execRoot, '远端 dir-skill 有 execRoot(隔离副本)');
     assert.equal(a.cwd, '/tmp/proj-x', 'cwd 结构化保留,未被 URL 的 @ / : 干扰');
-    assert.ok(a.locator.startsWith(`git+${repo}@`), 'locator 身份串 git+<url>@<sha>:<spec>');
+    assert.ok(a.locator!.startsWith(`git+${repo}@`), 'locator 身份串 git+<url>@<sha>:<spec>');
     assert.equal(readFileSync(join(a.execRoot!, 'references', 'rules.md'), 'utf-8'), 'rule v1\n');
     assert.equal(a.contentHash, hashArtifactSource(join(repo, 'skills', 'review'), true), '整树指纹与真源同值(可绑)');
   });
