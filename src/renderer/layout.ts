@@ -164,7 +164,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: '覆盖',
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
-    artifactHashTooltip: 'skill 内容指纹的 SHA-256 前 12 位(不含路径/时间/git):本地目录-skill 覆盖整棵可分发树(SKILL.md + references/ 资产,排除 .omk/.git/evolve;改任意资产都变),git skill 取注入的 SKILL.md;用于辨别报告对应哪一版 skill,同输入指纹不变——防止"改动效果"和"随机波动"混淆',
+    artifactHashTooltip: 'skill 内容指纹的 SHA-256 前 12 位(不含路径/时间/git):目录-skill(本地或 git)覆盖整棵可分发树(SKILL.md + references/ 资产,排除 .omk/.git/node_modules/evolve;改任意资产都变,git 源经隔离副本物化、整树暴露给 executor),单文件-skill 取该 .md 字节;用于辨别报告对应哪一版 skill,同输入指纹不变——防止"改动效果"和"随机波动"混淆',
     switchLang: '英文',
   },
   en: {
@@ -277,7 +277,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: 'Coverage',
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
-    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill content (content-only: no path/time/git): a local directory-skill covers the whole distributable tree (SKILL.md + references/ assets, excluding .omk/.git/evolve; any asset change flips it), a git skill covers the injected SKILL.md. Identifies which version of the skill this report ran — same input = same fingerprint. Keeps "intentional change" separate from "random variance"',
+    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill content (content-only: no path/time/git): a directory-skill (local or git) covers the whole distributable tree (SKILL.md + references/ assets, excluding .omk/.git/node_modules/evolve; any asset change flips it; git sources are materialized into an isolated copy whose whole tree is exposed to the executor), a file-skill covers the single .md bytes. Identifies which version of the skill this report ran — same input = same fingerprint. Keeps "intentional change" separate from "random variance"',
     switchLang: 'Chinese',
   },
 };
