@@ -5,10 +5,10 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, utimesSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { materializeIsolatedCopy, treesDir } from '../../src/inputs/materialize-copy.js';
+import { materializeIsolatedCopy, treesDir, pruneTreesDir } from '../../src/inputs/materialize-copy.js';
 import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 
 describe('materialize-copy', () => {
@@ -102,5 +102,88 @@ describe('materialize-copy', () => {
     created.push(copy.copyRoot);
     const leftovers = readdirSync(treesDir()).filter((n) => n.startsWith('.tmp-'));
     assert.equal(leftovers.length, 0, '不留临时物化目录');
+  });
+
+  // 直接在 treesDir 造若干 <hash> 目录并设 mtime,验证 LRU 回收
+  function mkTreeAged(name: string, ageMs: number): string {
+    const p = join(treesDir(), name);
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, 'SKILL.md'), '# x\n');
+    const t = new Date(Date.now() - ageMs);
+    utimesSync(p, t, t);
+    return p;
+  }
+
+  it('pruneTreesDir:超上限时按 mtime 从旧到新淘汰(graceMs:0 纯 LRU)', () => {
+    const a = mkTreeAged('aaa', 30_000); // 最旧
+    const b = mkTreeAged('bbb', 20_000);
+    const c = mkTreeAged('ccc', 10_000); // 最新
+    pruneTreesDir({ maxEntries: 1, graceMs: 0 });
+    assert.ok(!existsSync(a), '最旧被淘汰');
+    assert.ok(!existsSync(b), '次旧被淘汰');
+    assert.ok(existsSync(c), '最新保留');
+  });
+
+  it('pruneTreesDir:grace 窗口内的副本一律不动(保护 active run 的 cwd)', () => {
+    const old = mkTreeAged('old', 48 * 60 * 60 * 1000); // 2 天前
+    const fresh = mkTreeAged('fresh', 1_000);           // 刚刚
+    // cap=1、grace=24h:old 出窗口可淘汰,fresh 在窗口内受保护
+    pruneTreesDir({ maxEntries: 1 });
+    assert.ok(!existsSync(old), 'grace 外的旧副本被回收');
+    assert.ok(existsSync(fresh), 'grace 内的新副本绝不被删(可能是正在跑的 eval 的 cwd)');
+  });
+
+  it('pruneTreesDir:.tmp- 暂存不计数、不被删', () => {
+    mkdirSync(join(treesDir(), '.tmp-keep'), { recursive: true });
+    mkTreeAged('h1', 30_000);
+    mkTreeAged('h2', 20_000);
+    pruneTreesDir({ maxEntries: 1, graceMs: 0 });
+    assert.ok(existsSync(join(treesDir(), '.tmp-keep')), '.tmp- 暂存不参与淘汰');
+  });
+
+  function writeLock(hash: string, pid: number): string {
+    const dir = join(treesDir(), '.locks');
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, `${hash}.${pid}`);
+    writeFileSync(p, '');
+    return p;
+  }
+
+  it('pruneTreesDir:活进程占用锁的副本绝不被淘汰(即便超 grace + 超上限)', () => {
+    const a = mkTreeAged('aaaaaaaaaaaa', 48 * 60 * 60 * 1000); // 旧 + 本进程占用
+    const b = mkTreeAged('bbbbbbbbbbbb', 47 * 60 * 60 * 1000); // 旧 + 无锁
+    writeLock('aaaaaaaaaaaa', process.pid); // 活 pid
+    pruneTreesDir({ maxEntries: 0, graceMs: 0 }); // 强淘汰一切未保护的
+    assert.ok(existsSync(a), '活进程占用锁的副本(可能是 active cwd)绝不删');
+    assert.ok(!existsSync(b), '无锁的旧副本被淘汰');
+  });
+
+  it('pruneTreesDir:死 pid 的锁不保护、且被惰性清理', () => {
+    const a = mkTreeAged('cccccccccccc', 48 * 60 * 60 * 1000);
+    const deadPid = 2_000_000_000; // 远超 max pid → process.kill(pid,0) 抛 ESRCH
+    const lock = writeLock('cccccccccccc', deadPid);
+    pruneTreesDir({ maxEntries: 0, graceMs: 0 });
+    assert.ok(!existsSync(a), '死 pid 锁不保护 → 副本被淘汰');
+    assert.ok(!existsSync(lock), '死 pid 的锁被惰性回收');
+  });
+
+  it('materializeIsolatedCopy:物化落本进程 pid 占用锁', () => {
+    const src = mkDirSkill('e', 'asset\n');
+    const copy = materializeIsolatedCopy(src, true, 'e');
+    created.push(copy.copyRoot);
+    const lock = join(treesDir(), '.locks', `${copy.contentHash}.${process.pid}`);
+    assert.ok(existsSync(lock), '物化后落了本进程的占用锁(prune 据此保护 active cwd)');
+  });
+
+  it('物化(under-cap、不触发 prune)也会回收死 pid 的锁(不靠 prune 才清)', () => {
+    // 先种一个死 pid 的锁
+    const deadLock = writeLock('deadbeef0000', 2_000_000_000);
+    assert.ok(existsSync(deadLock));
+    // 一次普通物化:trees 远未超上限、prune 早返回不淘汰,但死锁仍应被回收
+    const src = mkDirSkill('f', 'asset\n');
+    const copy = materializeIsolatedCopy(src, true, 'f');
+    created.push(copy.copyRoot);
+    assert.ok(!existsSync(deadLock), 'under-cap 物化也清死 pid 锁(否则死锁无界堆积)');
+    assert.ok(existsSync(join(treesDir(), '.locks', `${copy.contentHash}.${process.pid}`)), '本进程活锁保留');
   });
 });
