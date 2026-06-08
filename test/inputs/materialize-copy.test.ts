@@ -174,4 +174,16 @@ describe('materialize-copy', () => {
     const lock = join(treesDir(), '.locks', `${copy.contentHash}.${process.pid}`);
     assert.ok(existsSync(lock), '物化后落了本进程的占用锁(prune 据此保护 active cwd)');
   });
+
+  it('物化(under-cap、不触发 prune)也会回收死 pid 的锁(不靠 prune 才清)', () => {
+    // 先种一个死 pid 的锁
+    const deadLock = writeLock('deadbeef0000', 2_000_000_000);
+    assert.ok(existsSync(deadLock));
+    // 一次普通物化:trees 远未超上限、prune 早返回不淘汰,但死锁仍应被回收
+    const src = mkDirSkill('f', 'asset\n');
+    const copy = materializeIsolatedCopy(src, true, 'f');
+    created.push(copy.copyRoot);
+    assert.ok(!existsSync(deadLock), 'under-cap 物化也清死 pid 锁(否则死锁无界堆积)');
+    assert.ok(existsSync(join(treesDir(), '.locks', `${copy.contentHash}.${process.pid}`)), '本进程活锁保留');
+  });
 });

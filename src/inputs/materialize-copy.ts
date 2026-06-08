@@ -68,10 +68,13 @@ function markCopyInUse(contentHash: string): void {
   } catch {
     // 落锁失败不致命:还有 grace 窗口兜底
   }
+  reapDeadLocks(); // 每次落锁顺带清死 pid 的锁 —— 不依赖 prune(prune 仅 cache-miss + 超上限才跑,
+  //                  under-cap 的常见情形下永不触发,死锁会无界堆积)。readdir 小目录,开销可忽略。
 }
 
-/** 扫 `.locks/`:返回被**活进程**占用的 hash 集合;顺带惰性清理死 pid 的锁。 */
-function liveLockedHashes(): Set<string> {
+/** 扫 `.locks/`:删掉死 pid 的锁、返回被**活进程**占用的 hash 集合。每次物化(markCopyInUse)无条件调用,
+ *  保证死锁惰性回收的路径始终可达;pruneTreesDir 也用其返回的 live 集合保护 active cwd。 */
+function reapDeadLocks(): Set<string> {
   const dir = locksDir();
   const live = new Set<string>();
   let names: string[];
@@ -127,7 +130,7 @@ export function pruneTreesDir(opts: { maxEntries?: number; graceMs?: number } = 
     })
     .filter((x): x is { path: string; mtimeMs: number } => x !== null);
   if (dirs.length <= cap) return;
-  const locked = liveLockedHashes();
+  const locked = reapDeadLocks();
   dirs.sort((a, b) => a.mtimeMs - b.mtimeMs); // 最旧在前
   const cutoff = Date.now() - graceMs;
   let removable = dirs.length - cap;
