@@ -86,6 +86,9 @@ function batchItemFallbackReport(
       variants: ['baseline', item.name],
       sampleCount: item.sampleCount,
       totalCostUSD: item.totalCostUSD,
+      // item.artifactHash 来自子报告(走 aggregateReport 的整树哈),故 fallback 也标 schemaVersion 2,
+      // 与 artifactHashes 的口径一致——避免「树哈 artifactHashes + 无 schemaVersion 标记」的错配。
+      schemaVersion: 2,
       artifactHashes: item.artifactHash ? { [item.name]: item.artifactHash } : {},
     },
     summary: item.summary,
