@@ -199,10 +199,20 @@ export interface VariantConfig {
   allowedSkills?: string[];
 }
 
+/** 远端 git 源的结构化引用 —— url/ref/spec 分字段,永不拼成单串再 split(避开 parseGitInput 的 `:`
+ *  与 parseVariantCwd 的 `@`)。eval 经 eval.yaml 结构化携带,install 经 --git-url/--git-ref。 */
+export interface RemoteGitRef {
+  url: string;
+  ref?: string;   // 默认 HEAD
+  spec: string;   // 仓库相对 skill 路径
+}
+
 export interface VariantSpec {
   name: string;           // variant 显示名,从 expr 提取
   role: ExperimentRole;
   expr: string;           // artifact 身份表达式(git: 前缀等),不再编码 @cwd
+  // 远端 git 源(结构化);present 时取代 expr 的本地解析,走 resolveRemoteGitSource。
+  git?: RemoteGitRef;
   // runtime context cwd,在 CLI/config 边界解析一次后随 spec 结构化携带,内部不再传播 name@cwd 串。
   cwd?: string;
   // 显式 skill 隔离声明(来自 eval.yaml variant.allowedSkills)。随 spec 一起走,
@@ -213,7 +223,9 @@ export interface VariantSpec {
 export interface EvalConfigVariant {
   name: string;
   role: ExperimentRole;
-  artifact: string;
+  // artifact(本地路径 / 裸名 / git:<ref>:<spec>)与 git(远端结构化)二选一。
+  artifact?: string;
+  git?: RemoteGitRef;
   cwd?: string;
   // 显式 skill 隔离声明。优先级高于 --strict-baseline default。
   //   写 [] 完全禁用 skill 发现;写 [name1, name2] 白名单;不写 = 默认行为。

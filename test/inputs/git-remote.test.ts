@@ -9,9 +9,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { isPlausibleGitUrl, fetchRemoteGitRef } from '../../src/inputs/git-remote.js';
+import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../src/inputs/skill-loader.js';
 import { resolveRemoteGitSource } from '../../src/inputs/source-resolver.js';
-import { SourceResolveError } from '../../src/inputs/skill-loader.js';
+import { resolveVariantSpecs } from '../../src/cli/lib/parse-run-config/variant-resolution.js';
 import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 
 const git = (repo: string, args: string[]): string =>
@@ -86,5 +86,42 @@ describe('git-remote', () => {
       () => resolveRemoteGitSource(repo, 'HEAD', 'skills/nonexistent'),
       (e: unknown) => e instanceof SourceResolveError && (e as SourceResolveError).messageKey === 'cli.install.remote_skill_not_found',
     );
+  });
+
+  it('eval resolveArtifacts 远端结构化:execRoot 锚副本、整树指纹绑定、cwd 不被 URL 串台', () => {
+    const arts = resolveArtifacts(repo, [
+      { git: { url: repo, ref: 'HEAD', spec: 'skills/review' }, cwd: '/tmp/proj-x', name: 'review-remote' },
+    ]);
+    const a = arts[0];
+    assert.equal(a.name, 'review-remote');
+    assert.equal(a.source, 'git');
+    assert.ok(a.execRoot, '远端 dir-skill 有 execRoot(隔离副本)');
+    assert.equal(a.cwd, '/tmp/proj-x', 'cwd 结构化保留,未被 URL 的 @ / : 干扰');
+    assert.ok(a.locator.startsWith(`git+${repo}@`), 'locator 身份串 git+<url>@<sha>:<spec>');
+    assert.equal(readFileSync(join(a.execRoot!, 'references', 'rules.md'), 'utf-8'), 'rule v1\n');
+    assert.equal(a.contentHash, hashArtifactSource(join(repo, 'skills', 'review'), true), '整树指纹与真源同值(可绑)');
+  });
+
+  it('resolveVariantSpecs(config) 保留 spec.git 到下游(config→spec 不丢远端字段)', () => {
+    const cfg = {
+      samples: 's.json',
+      variants: [
+        { name: 'remote', role: 'treatment', git: { url: repo, spec: 'skills/review' } },
+        { name: 'base', role: 'control', artifact: 'baseline' },
+      ],
+    } as unknown as Parameters<typeof resolveVariantSpecs>[1];
+    const specs = resolveVariantSpecs({}, cfg, repo);
+    const remote = specs.find((s) => s.name === 'remote')!;
+    assert.deepEqual(remote.git, { url: repo, spec: 'skills/review' });
+  });
+
+  it('CLI --control 传远端 URL(协议 / scp 形式)fail-closed,指向 eval.yaml', () => {
+    for (const url of ['https://github.com/o/r.git', 'git@github.com:o/r.git']) {
+      assert.throws(
+        () => resolveVariantSpecs({ control: url }, null, repo),
+        /eval\.yaml/,
+        `远端 URL ${url} 应被 CLI 拒并指向 eval.yaml`,
+      );
+    }
   });
 });

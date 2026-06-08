@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
-import type { Artifact } from '../types/index.js';
+import type { Artifact, RemoteGitRef } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -300,6 +300,73 @@ export function materializeGitSkillTree(ref: string, resolved: GitSkillRef, repo
   }
 }
 
+export interface RemoteGitCheckout {
+  /** 临时 bare 仓库路径,作为 git helper 的 cwd(repoRoot)。 */
+  repoRoot: string;
+  /** fetch 落地后 rev-parse 出的**实际 SHA**(branch/tag 会漂,记录与重取都钉 SHA)。 */
+  ref: string;
+  /** 删临时 bare 仓库;调用方务必 try/finally 调用。 */
+  cleanup: () => void;
+}
+
+/**
+ * 远端 git URL 形态校验:接受 https(s):// / ssh:// / git:// / file:// 协议 URL、scp 形式
+ * `user@host:path`、绝对本地路径(file 远端 / 测试)。明显非法(空、相对裸串)拒。
+ */
+export function isPlausibleGitUrl(url: string): boolean {
+  if (!url) return false;
+  if (/^(https?|ssh|git|file):\/\//i.test(url)) return true;
+  if (/^[\w.-]+@[\w.-]+:/.test(url)) return true;
+  if (/^\//.test(url)) return true;
+  return false;
+}
+
+/**
+ * 远端 git:clone 某 ref 到临时 bare 仓库、pin 实际 SHA —— **install 与 eval 共用此一处**,远端只是
+ * 把下游 git helper(classifyGitSkillRef / materializeGitSkillTree)的 repoRoot 从「当前仓库」换成
+ * 「fetch 下来的临时 bare」,其余一字不改。`git init --bare` + `git fetch --depth 1`(省带宽,只取该
+ * ref 的 tip 树);ref 为 branch/tag/HEAD 通用,裸 SHA 取决于服务端是否允许 reachable-SHA fetch。
+ * 认证依赖本机 git 凭证(SSH agent / credential helper),omk 不自管 token。失败 fail-closed
+ * (SourceResolveError),由调用方本地化;eval 侧捕获后改抛中文 Error。
+ */
+export function fetchRemoteGitRef(url: string, ref: string): RemoteGitCheckout {
+  if (!isPlausibleGitUrl(url)) throw new SourceResolveError('cli.install.invalid_remote_url', { url });
+  const bare = mkdtempSync(join(tmpdir(), 'omk-git-remote-'));
+  const cleanup = (): void => {
+    try {
+      rmSync(bare, { recursive: true, force: true });
+    } catch {
+      // 临时目录清理失败不致命
+    }
+  };
+  try {
+    execFileSync('git', ['init', '--bare', '--quiet', bare], { stdio: GIT_PROBE_STDIO });
+    try {
+      execFileSync(
+        'git',
+        ['--git-dir', bare, 'fetch', '--depth', '1', '--quiet', url, `${ref}:refs/omk/fetched`],
+        { stdio: GIT_PROBE_STDIO },
+      );
+    } catch {
+      throw new SourceResolveError('cli.install.remote_fetch_failed', { url, ref });
+    }
+    let sha: string;
+    try {
+      sha = execFileSync('git', ['--git-dir', bare, 'rev-parse', 'refs/omk/fetched'], {
+        encoding: 'utf-8',
+        stdio: GIT_PROBE_STDIO,
+      }).trim();
+    } catch {
+      throw new SourceResolveError('cli.install.remote_ref_not_found', { url, ref });
+    }
+    if (!sha) throw new SourceResolveError('cli.install.remote_ref_not_found', { url, ref });
+    return { repoRoot: bare, ref: sha, cleanup };
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
+}
+
 export function discoverVariants(skillDir: string): string[] {
   if (!existsSync(skillDir)) return [];
 
@@ -447,7 +514,8 @@ export function variantIdentity(expr: string, skillDir?: string, cwd?: string): 
   // expr 已是纯 artifact 身份(@cwd 在 CLI/config 边界已剥离);cwd 结构化显式传入。
   const name = expr;
   let id: string;
-  if (name.startsWith('git:')) {
+  if (name.startsWith('git:') || name.startsWith('git+')) {
+    // 本地 git:<ref>:<spec> 与远端 git+<url>@<sha>:<spec> 都是稳定身份串,原样作 key,绝不再 split。
     id = name;
   } else if (name === 'baseline') {
     id = 'baseline';
@@ -482,8 +550,12 @@ export function variantExprToSkillName(expr: string): string {
   return skillNameFromPath(canonicalSkillAnchor(resolve(expr))) || expr;
 }
 
-/** variant 输入:纯 artifact 表达式字符串,或结构化的 `{expr, cwd?}`。cwd 不再编码进 expr。 */
-export type VariantInput = string | { expr: string; cwd?: string };
+/** variant 输入:纯 artifact 表达式字符串、结构化 `{expr, cwd?}`、或远端 git 结构化 `{git, cwd?, name}`
+ *  (url/ref/spec 分字段,绝不拼成单串再经 parseGitInput/parseVariantCwd 切分)。 */
+export type VariantInput =
+  | string
+  | { expr: string; cwd?: string }
+  | { git: RemoteGitRef; cwd?: string; name: string };
 
 /**
  * 解析一个目录-skill 的整树指纹 + SKILL.md 正文;`materialize` 为真时另落地内容寻址隔离副本、返回执行根。
@@ -501,6 +573,70 @@ function isolateDirSkill(localDir: string, name: string, materialize: boolean): 
   return { contentHash: hashArtifactSource(localDir, true), content };
 }
 
+/**
+ * 远端 git variant:fetch 到临时 bare → classify → materialize 临时树 → 隔离副本(dir,materialize 时)
+ * 或单文件字节(file)。url/ref/spec 全程结构化,locator 落 `git+<url>@<sha>:<spec>` 身份串。
+ * SourceResolveError(install 口径的 messageKey)在此转成 eval 的中文 Error。临时树与 bare 用完即清。
+ */
+function resolveRemoteGitVariant(
+  input: { git: RemoteGitRef; cwd?: string; name: string },
+  materialize: boolean,
+  artifacts: Artifact[],
+): void {
+  const { url, spec } = input.git;
+  const ref = input.git.ref ?? 'HEAD';
+  let checkout: RemoteGitCheckout;
+  try {
+    checkout = fetchRemoteGitRef(url, ref);
+  } catch (err) {
+    if (err instanceof SourceResolveError) {
+      const zh = err.messageKey === 'cli.install.invalid_remote_url'
+        ? `不是合法的 git 远端 URL：${url}`
+        : `从远端 ${url} 拉取 ref ${ref} 失败，请检查 URL / ref 是否存在与本机 git 凭证。`;
+      throw new Error(zh);
+    }
+    throw err;
+  }
+  try {
+    const resolved = classifyGitSkillRef(checkout.ref, '', spec, checkout.repoRoot);
+    if (!resolved) throw new Error(`在远端 ${url} 的 ref ${ref} 下找不到 skill ${spec}（既无 ${spec}/SKILL.md 也无 ${spec}.md）。`);
+    const mat = materializeGitSkillTree(checkout.ref, resolved, checkout.repoRoot);
+    try {
+      const locator = `git+${url}@${checkout.ref}:${spec}`;
+      if (resolved.isDir) {
+        const iso = isolateDirSkill(mat.localRoot, resolved.name, materialize);
+        artifacts.push({
+          name: input.name,
+          kind: 'skill',
+          source: 'git',
+          content: iso.content,
+          contentHash: iso.contentHash,
+          locator,
+          ref: checkout.ref,
+          cwd: input.cwd,
+          ...(iso.execRoot ? { execRoot: iso.execRoot } : {}),
+        });
+      } else {
+        const bytes = readFileSync(mat.localRoot);
+        artifacts.push({
+          name: input.name,
+          kind: 'skill',
+          source: 'git',
+          content: bytes.toString('utf-8').trim(),
+          contentHash: hashArtifactSource(mat.localRoot, false),
+          locator,
+          ref: checkout.ref,
+          cwd: input.cwd,
+        });
+      }
+    } finally {
+      mat.cleanup();
+    }
+  } finally {
+    checkout.cleanup();
+  }
+}
+
 export function resolveArtifacts(
   skillDir: string,
   variants: VariantInput[],
@@ -512,6 +648,12 @@ export function resolveArtifacts(
   let gitCtx: GitRepoContext | null = null;
 
   for (const rawVariant of variants) {
+    // 远端 git 结构化输入:url/ref/spec 分字段,fetch 到临时 bare 后复用 classify/materialize/隔离副本,
+    // URL 全程不经任何字符串切分(避开 parseGitInput 的 `:` 与 parseVariantCwd 的 `@`)。
+    if (typeof rawVariant === 'object' && 'git' in rawVariant) {
+      resolveRemoteGitVariant(rawVariant, materialize, artifacts);
+      continue;
+    }
     // 字符串即纯 expr(无 cwd);结构化对象直接取 expr/cwd。不再 split @cwd。
     const variantName = typeof rawVariant === 'string' ? rawVariant : rawVariant.expr;
     const variantCwd = typeof rawVariant === 'string' ? undefined : rawVariant.cwd;

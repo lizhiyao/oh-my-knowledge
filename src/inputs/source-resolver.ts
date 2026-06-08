@@ -1,7 +1,6 @@
 import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, materializeGitSkillTree, skillNameFromPath, SourceResolveError } from './skill-loader.js';
-import { fetchRemoteGitRef } from './git-remote.js';
+import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, materializeGitSkillTree, skillNameFromPath, SourceResolveError, fetchRemoteGitRef } from './skill-loader.js';
 
 /**
  * 安装源解析器 —— 把"各种源"物化成统一的本地形态,让 install / managed 主干**源无关**。
