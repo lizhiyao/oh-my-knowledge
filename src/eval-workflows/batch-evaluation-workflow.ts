@@ -263,7 +263,6 @@ export function buildBatchEvaluationReport({
   }));
 
   const report: BatchEvaluationReport = {
-    reportKind: 'batch-evaluation',
     kind: 'batch-evaluation',
     id: batchRunId,
     mode: 'skill',

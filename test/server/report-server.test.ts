@@ -15,7 +15,7 @@ const ANALYSES_DIR = join(tmpdir(), `omk-test-analyses-${Date.now()}`);
 const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
 
 const SAMPLE_REPORT = {
-  reportKind: 'evaluation',
+  kind: 'evaluation',
   id: 'test-run-001',
   meta: {
     variants: ['v1', 'v2'],
@@ -145,7 +145,7 @@ describe('report-server', () => {
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
     writeFileSync(join(OBSERVATIONS_DIR, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
-      reportKind: 'observe-inbox',
+      kind: 'observe-inbox',
       schemaVersion: 1,
       meta: {
         tracePath: '/tmp/trace',

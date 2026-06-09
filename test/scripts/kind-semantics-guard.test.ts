@@ -1,8 +1,9 @@
 /**
  * issue #206 护栏:裸 `kind` 字段只允许 `ArtifactKind`。
  *
- * 产品语义里不带限定词的 `kind` 一律指 knowledge artifact 类型(`Artifact.kind: ArtifactKind`)。
- * 其它判别字段必须用限定名(`reportKind` / `eventKind` / `runtimeKind` / `standardKind` ...)。
+ * 产品语义里不带限定词的 `kind` 默认指 knowledge artifact 类型(`Artifact.kind: ArtifactKind`)。
+ * 例外是已经发布并落盘/对外暴露的 public schema（如 report.kind）；其它判别字段必须用限定名
+ * (`reportKind` / `eventKind` / `runtimeKind` / `standardKind` ...)。
  *
  * 本测试用 TypeScript AST 扫 `src/**\/*.ts` 里**每个名为 `kind` 的字段声明**
  * (interface / type-literal 的 PropertySignature、class 的 PropertyDeclaration —— 不含
@@ -36,7 +37,7 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
   "src/types/report.ts::EvaluationReport::'evaluation'",
   "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
-  "src/server/report-store.ts::RunListItem::ReportDocument['reportKind']",
+  "src/server/report-store.ts::RunListItem::ReportDocument['kind']",
   // —— 持久化 observe / experience JSON ——
   'src/types/observability.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
   'src/types/observability.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',

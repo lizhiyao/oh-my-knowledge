@@ -39,53 +39,52 @@ export function createFileStore(dir: string): ReportStore {
     }
   }
 
-  function withLegacyReportKind<T extends ReportDocument>(report: T): T {
-    return { ...report, kind: report.reportKind } as T;
-  }
-
   function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    const reportKind = record.reportKind === 'evaluation' || record.reportKind === 'batch-evaluation'
-      ? record.reportKind
-      : record.kind === 'evaluation' || record.kind === 'batch-evaluation'
-        ? record.kind
+    const rest = { ...record };
+    delete rest.reportKind;
+    const kind = record.kind === 'evaluation' || record.kind === 'batch-evaluation'
+      ? record.kind
+      : record.reportKind === 'evaluation' || record.reportKind === 'batch-evaluation'
+        ? record.reportKind
         : undefined;
-    if (reportKind === 'evaluation') {
+    if (kind === 'evaluation') {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
-      return withLegacyReportKind({
-        ...record,
-        reportKind,
+      return {
+        ...rest,
+        kind,
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument);
+      } as unknown as ReportDocument;
     }
-    if (reportKind === 'batch-evaluation') {
+    if (kind === 'batch-evaluation') {
       if (!record.meta || !Array.isArray(record.items)) return null;
-      return withLegacyReportKind({
-        ...record,
-        reportKind,
+      return {
+        ...rest,
+        kind,
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument);
+      } as unknown as ReportDocument;
     }
     if (
       record.kind === undefined
+      && record.reportKind === undefined
       && record.overview === undefined
       && record.artifacts === undefined
       && record.meta
       && record.summary
       && Array.isArray(record.results)
     ) {
-      return withLegacyReportKind({
-        ...record,
-        reportKind: 'evaluation',
+      return {
+        ...rest,
+        kind: 'evaluation',
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument);
+      } as unknown as ReportDocument;
     }
     return null;
   }
 
   function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
-    return report.reportKind === 'evaluation';
+    return report.kind === 'evaluation';
   }
 
   // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .json 同步 readFile +
@@ -153,7 +152,7 @@ export function createFileStore(dir: string): ReportStore {
   async function save(id: string, report: ReportDocument): Promise<void> {
     await ensureDir();
     const tmpPath = join(dir, `${id}.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
-    await writeFile(tmpPath, JSON.stringify(withLegacyReportKind(report), null, 2));
+    await writeFile(tmpPath, JSON.stringify(report, null, 2));
     await rename(tmpPath, join(dir, `${id}.json`));
   }
 
@@ -247,9 +246,7 @@ export async function queryJob(jobStore: JobStore, id: string): Promise<Evaluati
 
 export interface RunListItem {
   id: string;
-  reportKind: ReportDocument['reportKind'];
-  /** Legacy wire alias kept for external consumers that still read run.kind. */
-  kind: ReportDocument['reportKind'];
+  kind: ReportDocument['kind'];
   meta: ReportDocument['meta'];
   summary?: EvaluationReport['summary'];
   items?: BatchEvaluationReport['items'];
@@ -275,10 +272,9 @@ export interface TrendQueryResult {
 export async function queryRunList(reportStore: ReportStore): Promise<RunListItem[]> {
   return (await reportStore.list()).map((report) => ({
     id: report.id,
-    reportKind: report.reportKind,
-    kind: report.reportKind,
+    kind: report.kind,
     meta: report.meta,
-    ...(report.reportKind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
+    ...(report.kind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
   }));
 }
 

@@ -105,7 +105,6 @@ function batchItemFallbackReport(
   item: BatchEvaluationReport['items'][number],
 ): EvaluationReport {
   return {
-    reportKind: 'evaluation',
     kind: 'evaluation',
     id: item.reportId,
     meta: {
@@ -134,7 +133,7 @@ async function loadBatchChildReports(
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
     const loaded = await store.get(item.reportId);
-    if (loaded?.reportKind === 'evaluation') {
+    if (loaded?.kind === 'evaluation') {
       reports.push(loaded);
     } else {
       process.stderr.write(tCli('cli.run.batch_child_report_missing', lang, { id: item.reportId }));
@@ -193,7 +192,7 @@ async function announceSavedReport({
   lang: CliLang;
 }): Promise<void> {
   const tally = computeRunTally(report);
-  process.stderr.write(tCli(report.reportKind === 'batch-evaluation' ? 'cli.run.batch_complete' : 'cli.run.eval_complete', lang));
+  process.stderr.write(tCli(report.kind === 'batch-evaluation' ? 'cli.run.batch_complete' : 'cli.run.eval_complete', lang));
   process.stderr.write(tCli('cli.run.tally', lang, tally));
   process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
