@@ -8,11 +8,14 @@ import Landing from './Landing.vue'
 export default {
   extends: DefaultTheme,
   Layout() {
-    const { frontmatter } = useData()
+    const { frontmatter, lang } = useData()
+    // key 绑定 lang:中英首页都是 landing 页、共用同一 layout-top 槽位,SPA 切换语言时
+    // Vue 会复用同一个 Landing 实例导致内容停在旧语言;key 变化强制重新挂载,
+    // 让 setup 按新 locale 重算 HTML、onMounted 重跑交互 JS。
     return h(
       DefaultTheme.Layout,
       null,
-      frontmatter.value.landing ? { 'layout-top': () => h(Landing) } : {},
+      frontmatter.value.landing ? { 'layout-top': () => h(Landing, { key: lang.value }) } : {},
     )
   },
 }
