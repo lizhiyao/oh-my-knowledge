@@ -139,13 +139,17 @@ function truncate(s: string, max: number): string {
   return `${out}…`;
 }
 
-/** 洗控制字符:managed JSON 可随仓库分发,name / sourceLabel / verdict 等字段塞进表格前必须先洗,
- *  否则换行 / 回车 / ANSI / OSC 转义会破坏表格甚至伪造后续终端输出。把 C0(含 ESC / 换行 / TAB)、DEL、
- *  C1 全替换为可见占位 —— ESC 一旦被替换,任何 ANSI/OSC 序列即失效。`--json` 路径保留原值给脚本。 */
+/** 洗不可信显示字符:managed JSON 可随仓库分发,name / sourceLabel / verdict 等字段塞进表格前必须先洗,
+ *  否则会破坏表格甚至伪造终端输出。一律映射到可见 U+FFFD(--json 路径保留原值给脚本):
+ *    - C0(含 ESC / 换行 / 回车 / TAB)+ DEL + C1 → 杀 ANSI / OSC 转义与终端控制;
+ *    - BiDi 控制 / 隔离(U+202A–202E / 2066–2069 / 200E–200F / 061C)→ 防 Trojan-Source 视觉重排伪造;
+ *    - 零宽 / 不可见格式符(U+200B–200D / 2060–2064 / FEFF / 00AD)→ 防零宽隐藏 / 分割;
+ *    - 组合附加符(U+0300–036F / 20D0–20FF / FE20–FE2F)→ 变可见,避免零前进宽度令 dispWidth 与终端列错位。 */
 export function sanitizeCell(s: string): string {
-  // C0 (U+0000–U+001F, 含 ESC / 换行 / 回车 / TAB) + DEL (U+007F) + C1 (U+0080–U+009F) → U+FFFD;
-  // ESC 一旦被替换,任何 ANSI / OSC 序列即失效。
-  return s.replace(/[\u0000-\u001f\u007f-\u009f]/g, '\ufffd');
+  return s.replace(
+    /[\u0000-\u001f\u007f-\u009f\u00ad\u0300-\u036f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\u20d0-\u20ff\ufe20-\ufe2f\ufeff]/g,
+    '\ufffd',
+  );
 }
 
 function renderTable(rows: ManagedListRow[], lang: CliLang): string {

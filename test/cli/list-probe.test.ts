@@ -92,7 +92,17 @@ describe('sanitizeCell', () => {
     assert.ok(out.includes('red') && out.includes('tail'), '可见正文保留');
   });
 
-  it('普通字符串原样', () => {
+  it('洗掉 BiDi 重排 / 隔离 / 零宽 / 组合附加符(防 Trojan-Source 视觉伪造 + 宽度错位)', () => {
+    // U+202E RLO、U+2066 隔离、U+200B 零宽、U+0300 组合附加符、U+FEFF BOM —— 都不该出现在表格单元里。
+    const evil = 'PASS\u202e drowssap\u2066x\u2069\u200bhidde\u0300n\ufeff';
+    const out = sanitizeCell(evil);
+    for (const cp of ['\u202e', '\u2066', '\u2069', '\u200b', '\u0300', '\ufeff']) {
+      assert.ok(!out.includes(cp), 'invisible/reordering char stripped: U+' + cp.codePointAt(0)!.toString(16));
+    }
+    assert.ok(out.includes('PASS') && out.includes('hidde') && out.includes('n'), '可见正文保留');
+  });
+
+  it('普通字符串原样(含 CJK / 路径)', () => {
     assert.equal(sanitizeCell('./skills/review'), './skills/review');
     assert.equal(sanitizeCell('git:HEAD:skills/审查'), 'git:HEAD:skills/审查');
   });
