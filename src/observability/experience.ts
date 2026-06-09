@@ -343,7 +343,7 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
   const report = value as Record<string, unknown>;
   const kind = report.kind === 'observe-experience' ? report.kind : null;
   if (!kind) return null;
-  if (report.schemaVersion !== 1 && report.schemaVersion !== 2) return null;
+  if (report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION) return null;
   if (report.scope !== 'evidence-only') return null;
   if (typeof report.generatedAt !== 'string' || !report.meta || typeof report.meta !== 'object') return null;
   if (!Array.isArray(report.goalSlices) || !Array.isArray(report.invocations) || !Array.isArray(report.sessions) || !Array.isArray(report.skills)) {

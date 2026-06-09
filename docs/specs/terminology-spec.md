@@ -325,7 +325,7 @@ For other discriminants, use a qualified name when the field is new or safe to r
 
 Two caveats:
 
-- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.)
+- **The persisted report / observe / doctor / diagnosis top-level discriminant is `kind`, cut over from the old `reportKind` in a deliberate BREAKING-SCHEMA change.** The cutover is hard — no dual-read, no migration shim: files written by older versions (top-level `reportKind`, no `kind`) are simply not read and are skipped. This is serialization back-compat, not statistical comparability — the field name changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat further changes there with the usual schema care.)
 - Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
 
 ## 6. Term mapping

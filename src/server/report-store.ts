@@ -31,16 +31,6 @@ async function withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
  * Create a file-system-based report store.
  */
 export function createFileStore(dir: string): ReportStore {
-  const LEGACY_EVALUATION_TOP_LEVEL_KEYS = new Set([
-    'id',
-    'meta',
-    'summary',
-    'results',
-    'sampleSnapshots',
-    'analysis',
-    'variance',
-  ]);
-
   async function ensureDir(): Promise<void> {
     try {
       await access(dir);
@@ -71,21 +61,8 @@ export function createFileStore(dir: string): ReportStore {
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
     }
-    if (
-      record.kind === undefined
-      && record.overview === undefined
-      && record.artifacts === undefined
-      && record.meta
-      && record.summary
-      && Array.isArray(record.results)
-      && Object.keys(record).every((key) => LEGACY_EVALUATION_TOP_LEVEL_KEYS.has(key))
-    ) {
-      return {
-        ...record,
-        kind: 'evaluation',
-        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument;
-    }
+    // 只认 canonical 顶层 `kind`(evaluation / batch-evaluation)。不再为旧格式(无判别字段 / 旧
+    // reportKind)做读兼容 —— 顶层 kind cutover 是硬切换,旧文件直接判脏丢弃。
     return null;
   }
 

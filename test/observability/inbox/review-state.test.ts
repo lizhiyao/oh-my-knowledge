@@ -421,7 +421,7 @@ describe('observe inbox - review state', () => {
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
       kind: 'observe-skill-derived-standards',
-      schemaVersion: 1,
+      schemaVersion: 2,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
       model: 'sonnet',
@@ -501,7 +501,7 @@ describe('observe inbox - review state', () => {
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
       kind: 'observe-skill-derived-standards',
-      schemaVersion: 1,
+      schemaVersion: 2,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
       model: 'sonnet',

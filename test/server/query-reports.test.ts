@@ -74,8 +74,8 @@ describe('queryRunList', () => {
   });
 });
 
-describe('createFileStore legacy report loading', () => {
-  it('把无 kind 的历史普通报告归一化为 evaluation', async () => {
+describe('createFileStore kind-only report loading（无旧格式读兼容）', () => {
+  it('无顶层 kind 的历史普通报告不再读取（硬切换、无旧格式兼容）', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-report-'));
     try {
       const legacy = makeReport('legacy-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
@@ -84,18 +84,14 @@ describe('createFileStore legacy report loading', () => {
       writeFileSync(join(dir, 'legacy-run.json'), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
-      const report = await store.get('legacy-run');
-      assert.equal(report?.kind, 'evaluation');
-      assert.equal(report?.id, 'legacy-run');
-      const list = await store.list();
-      assert.equal(list.length, 1);
-      assert.equal(list[0].kind, 'evaluation');
+      assert.equal(await store.get('legacy-run'), null);
+      assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('不兼容带额外未知顶层判别字段的历史普通报告', async () => {
+  it('带额外未知顶层判别字段的历史普通报告不读取', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-extra-discriminant-report-'));
     try {
       const legacy = makeReport('legacy-extra-discriminant-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;

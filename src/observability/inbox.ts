@@ -597,7 +597,7 @@ function normalizeObservationInboxReport(value: unknown): ObservationInboxReport
   const report = value as Record<string, unknown>;
   const kind = report.kind === 'observe-inbox' ? report.kind : null;
   if (!kind) return null;
-  if (report.schemaVersion !== 1 && report.schemaVersion !== 2) return null;
+  if (report.schemaVersion !== OBSERVATION_INBOX_SCHEMA_VERSION) return null;
   if (!report.meta || typeof report.meta !== 'object' || !Array.isArray(report.items)) return null;
   const experience = report.experience === undefined
     ? undefined

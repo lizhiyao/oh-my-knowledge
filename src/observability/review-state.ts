@@ -135,7 +135,7 @@ function normalizeObservationReviewState(value: unknown): ObservationReviewState
   const parsed = value as Record<string, unknown>;
   const kind = parsed.kind === 'observe-review-state' ? parsed.kind : null;
   if (!kind) return null;
-  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) return null;
+  if (parsed.schemaVersion !== OBSERVATION_REVIEW_STATE_SCHEMA_VERSION) return null;
   if (!parsed.entries || typeof parsed.entries !== 'object') return null;
   return {
     kind: 'observe-review-state',
