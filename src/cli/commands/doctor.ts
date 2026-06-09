@@ -296,9 +296,15 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
   mkdirSync(dir, { recursive: true });
   const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {
+    const counts: Record<string, number> = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+    for (const r of skill.results) {
+      const s = r.status;
+      if (s in counts) counts[s]++;
+    }
     const perSkill = {
       ...report,
       skills: [skill],
+      ruleStats: { ...counts, total: skill.results.length },
       totals: {
         pass: skill.status === 'pass' ? 1 : 0,
         warn: skill.status === 'warn' ? 1 : 0,
