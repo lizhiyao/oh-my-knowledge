@@ -110,7 +110,7 @@ omk promote review --force --reason "已人工复核"   # 越门，记为人工�
 
 <!-- omk:cli:promote:flags:end -->
 
-把受管 skill 的当前版本按证据门禁接受为 `promoted`，并往记录里追加一条带证据指针的人工决定。门禁对最新一条**当前**证据判定（`contentHash` 与记录匹配）：源不能漂移/不可达、必须有当前证据（无证据即拦，`--force` 也无从锚定）、证据的 `judgePromptHash`（若有）须仍属当前评委模板、verdict 须为 `PROGRESS`（或加 `--accept-cautious` 接受 `CAUTIOUS`）。`--force` 可越过 drift / 不可比 / verdict 类拦截并把被越过的 verdict 记在决定里；对已 promote 的当前版本重跑是幂等无操作。promote 是 `omk list` 的写侧对应。参见[证据门控管理](../specs/evidence-gated-management.md)。
+把受管 skill 的当前版本按证据门禁接受为 `promoted`，并往记录里追加一条带证据指针的人工决定。门禁对最新一条**当前**证据判定（`contentHash` 与记录匹配）：源不能漂移/不可达、必须有当前证据（无证据即拦，`--force` 也无从锚定）、证据的 `judgePromptHash`（若有）须仍属当前评委模板、verdict 须为 `PROGRESS`（或加 `--accept-cautious` 接受 `CAUTIOUS`）。`--force` 必须配合非空 `--reason`，只可越过源不可达、不同比或 verdict 类拦截；不能越过缺当前证据，也不能越过源可达但内容 hash 已变的场景，因为 decision 仍会指向旧的受管基线。对已 promote 的当前版本重跑是幂等无操作。promote 是 `omk list` 的写侧对应。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 
