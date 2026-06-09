@@ -52,7 +52,10 @@ const GIT_PROBE_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore
 // 由 resolveGitRepoContext 解出 repoRoot 后逐处显式传入。
 export function gitShowFile(ref: string, filePath: string, cwd: string = process.cwd()): string | null {
   try {
-    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+    // `--` 隔断 tree-ish:ref 可能来自盘上受管记录的 locator(用户可手改 / 随仓库分发,被 omk list 等只读
+    // 命令喂进来),前缀 `-` 的 ref 不得被当成 git 选项解析(与 #219 fetch 路径同口径,见
+    // feedback_git_subprocess_dashdash)。加 `--` 后 dash-ref 退化为「非法 object name」fail-closed,普通 ref 输出不变。
+    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
   } catch {
     return null;
   }
@@ -64,7 +67,7 @@ export function gitShowFile(ref: string, filePath: string, cwd: string = process
  */
 export function gitShowBytes(ref: string, filePath: string, cwd: string = process.cwd()): Buffer | null {
   try {
-    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { cwd, stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
+    return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer;`--` 隔断同 gitShowFile
   } catch {
     return null;
   }
@@ -87,7 +90,7 @@ export interface GitTreeEntry {
 export function gitLsTreeBlobs(ref: string, treePath: string, cwd: string = process.cwd()): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', `${ref}:${treePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', '--', `${ref}:${treePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
   } catch {
     return [];
   }

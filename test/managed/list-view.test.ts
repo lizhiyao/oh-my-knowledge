@@ -29,10 +29,14 @@ function ev(over: Partial<ManagedEvidenceRef> = {}): ManagedEvidenceRef {
 }
 
 describe('buildManagedListRow', () => {
+  const reach = (hash: string) => ({ reachable: true as const, hash });
+  const unreach = { reachable: false as const };
+
   it('installed:无证据、源哈与记录一致 → installed,verdict —,证据 0/0', () => {
-    const row = buildManagedListRow(rec(), 'hashAAA');
+    const row = buildManagedListRow(rec(), reach('hashAAA'));
     assert.equal(row.state, 'installed');
     assert.equal(row.drifted, false);
+    assert.equal(row.reachable, true);
     assert.equal(row.latestVerdict, undefined);
     assert.equal(row.currentEvidenceCount, 0);
     assert.equal(row.totalEvidenceCount, 0);
@@ -40,7 +44,7 @@ describe('buildManagedListRow', () => {
   });
 
   it('measurable:有当前证据(同哈)→ measurable + 带 verdict/可比性,证据 1/1', () => {
-    const row = buildManagedListRow(rec({ evidence: [ev()] }), 'hashAAA');
+    const row = buildManagedListRow(rec({ evidence: [ev()] }), reach('hashAAA'));
     assert.equal(row.state, 'measurable');
     assert.equal(row.latestVerdict, 'PROGRESS');
     assert.equal(row.comparability?.cliVersion, '0.35.0');
@@ -48,18 +52,27 @@ describe('buildManagedListRow', () => {
     assert.equal(row.totalEvidenceCount, 1);
   });
 
-  it('stale:源哈漂移(≠ 记录)→ stale + drifted,旧证据仍计入 total 但不计 current', () => {
-    const row = buildManagedListRow(rec({ evidence: [ev()] }), 'hashDRIFTED');
+  it('stale:reachable 且源哈漂移(≠ 记录)→ stale + drifted,旧证据仍计入 total 但不计 current', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()] }), reach('hashDRIFTED'));
     assert.equal(row.state, 'stale');
     assert.equal(row.drifted, true);
+    assert.equal(row.reachable, true);
     assert.equal(row.currentEvidenceCount, 1, '证据 contentHash 仍等于 record.contentHash');
     assert.equal(row.totalEvidenceCount, 1);
   });
 
-  it('stale:源已不在(currentHash undefined)→ stale', () => {
-    const row = buildManagedListRow(rec(), undefined);
-    assert.equal(row.state, 'stale');
-    assert.equal(row.drifted, true);
+  it('不可达 ≠ stale:probe.reachable=false → 按证据给 installed,drifted=false,reachable=false', () => {
+    const row = buildManagedListRow(rec(), unreach);
+    assert.equal(row.state, 'installed', '源不可达不当 stale —— 修 cwd-fragile 误报(CR P1)');
+    assert.equal(row.drifted, false, '不可达不打 drift');
+    assert.equal(row.reachable, false);
+  });
+
+  it('不可达 + 有当前证据 → measurable(不是 stale),reachable=false', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()] }), unreach);
+    assert.equal(row.state, 'measurable');
+    assert.equal(row.drifted, false);
+    assert.equal(row.reachable, false);
   });
 
   it('多条当前证据 → 取 recordedAt 最新那条的 verdict', () => {
@@ -68,7 +81,7 @@ describe('buildManagedListRow', () => {
         ev({ reportId: 'old', recordedAt: '2026-06-07T00:00:00.000Z', verdict: 'NOISE' }),
         ev({ reportId: 'new', recordedAt: '2026-06-09T00:00:00.000Z', verdict: 'PROGRESS' }),
       ],
-    }), 'hashAAA');
+    }), reach('hashAAA'));
     assert.equal(row.latestVerdict, 'PROGRESS');
     assert.equal(row.recordedAt, '2026-06-09T00:00:00.000Z');
     assert.equal(row.currentEvidenceCount, 2);
@@ -77,7 +90,7 @@ describe('buildManagedListRow', () => {
   it('旧内容证据(哈不等)不计 current、不取其 verdict', () => {
     const row = buildManagedListRow(rec({
       evidence: [ev({ contentHash: 'hashOLD', verdict: 'REGRESS', recordedAt: '2026-06-10T00:00:00.000Z' })],
-    }), 'hashAAA');
+    }), reach('hashAAA'));
     assert.equal(row.currentEvidenceCount, 0);
     assert.equal(row.totalEvidenceCount, 1);
     assert.equal(row.latestVerdict, undefined, '旧内容证据不冒充当前 verdict');
@@ -87,7 +100,7 @@ describe('buildManagedListRow', () => {
   it('远端 git:sourceLabel 取 url', () => {
     const row = buildManagedListRow(rec({
       source: { sourceKind: 'git', locator: 'git+https://x/r.git@sha1:review', ref: 'sha1', url: 'https://x/r.git', isDirectorySkill: true },
-    }), 'hashAAA');
+    }), reach('hashAAA'));
     assert.equal(row.sourceKind, 'git');
     assert.equal(row.sourceLabel, 'https://x/r.git');
   });
@@ -97,17 +110,22 @@ describe('buildManagedListRows', () => {
   it('按 name 排序', () => {
     const rows = buildManagedListRows(
       [rec({ id: 'b', name: 'lint' }), rec({ id: 'a', name: 'apply' }), rec({ id: 'c', name: 'review' })],
-      () => 'hashAAA',
+      () => ({ reachable: true, hash: 'hashAAA' }),
     );
     assert.deepEqual(rows.map((r) => r.name), ['apply', 'lint', 'review']);
   });
 
-  it('currentHashOf 按记录分别解析', () => {
+  it('probeOf 按记录分别探测:一致 → installed;不可达 → installed + reachable=false(非 stale)', () => {
     const rows = buildManagedListRows(
       [rec({ id: 'a', name: 'a', contentHash: 'h1' }), rec({ id: 'b', name: 'b', contentHash: 'h2' })],
-      (r) => (r.name === 'a' ? 'h1' : undefined), // a 一致,b 源没了
+      (r) => (r.name === 'a' ? { reachable: true, hash: 'h1' } : { reachable: false }),
     );
-    assert.equal(rows.find((r) => r.name === 'a')!.state, 'installed');
-    assert.equal(rows.find((r) => r.name === 'b')!.state, 'stale');
+    const a = rows.find((r) => r.name === 'a')!;
+    const b = rows.find((r) => r.name === 'b')!;
+    assert.equal(a.state, 'installed');
+    assert.equal(a.reachable, true);
+    assert.equal(b.state, 'installed');
+    assert.equal(b.reachable, false, '源不可达不误报 stale');
+    assert.equal(b.drifted, false);
   });
 });

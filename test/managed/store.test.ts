@@ -131,6 +131,37 @@ describe('managed store', () => {
     assert.equal(loadManagedRecord(store, id), null, 'source 缺 sourceKind 应判脏');
   });
 
+  it('validator 收窄运行时类型:畸形记录判脏丢弃(防下游 omk list 等崩溃)', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    const write = (over: Record<string, unknown>) => writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), ...over }));
+
+    // source.url 是对象(非 string)—— 旧 validator 只查 locator/sourceKind 是 string 会放行,
+    // 随后 omk list 的 sourceLabel ?? url 变对象、dispWidth(对象) 抛 TypeError。
+    write({ source: { sourceKind: 'git', locator: 'git:HEAD:x', url: {}, isDirectorySkill: true } });
+    assert.equal(loadManagedRecord(store, id), null, 'source.url 非 string 判脏');
+
+    write({ source: { sourceKind: 'evil', locator: '/abs/x', isDirectorySkill: true } });
+    assert.equal(loadManagedRecord(store, id), null, 'sourceKind 非 file|git 判脏');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/x' } });
+    assert.equal(loadManagedRecord(store, id), null, 'isDirectorySkill 缺失判脏');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/x', isDirectorySkill: 'yes' } });
+    assert.equal(loadManagedRecord(store, id), null, 'isDirectorySkill 非 boolean 判脏');
+
+    write({ kind: 'baseline' });
+    assert.equal(loadManagedRecord(store, id), null, 'kind 非可安装 ArtifactKind 判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: 1 } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'evidence.comparability.cliVersion 非 string 判脏');
+
+    // 合法记录仍放行(含完整 evidence bundle)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' } }] });
+    assert.ok(loadManagedRecord(store, id), '合法记录正常加载');
+  });
+
   it('loadAllManagedRecords:跳过损坏文件,只收合法记录', () => {
     const store = managedDir(dir);
     upsertManagedRecord(store, makeRecord());

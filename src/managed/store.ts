@@ -48,9 +48,18 @@ function isStringField(v: unknown): v is string {
   return typeof v === 'string';
 }
 
-// 校验到元素级:记录文件是用户可手改的(透明性是设计价值),`evidence:[null]` / 缺字段的 distribution
-// 都是现实的坏手改;若只查 Array.isArray,坏元素会在 deriveManagedState / mergeManagedRecord 里
-// 解引用崩溃(且在 load 的 try/catch 之外)。这里直接判脏 → load 丢弃该文件,消费方永远拿不到半成品。
+/** 仅当字段缺省或是 string 才放行(可选 string 字段的脏值守卫,如 source.url / evidence.verdict)。 */
+function isOptionalString(v: unknown): boolean {
+  return v === undefined || typeof v === 'string';
+}
+
+// 受管记录可安装的 kind(managed 记录绝不是 baseline)。
+const MANAGED_KINDS = new Set(['skill', 'prompt', 'agent', 'workflow']);
+
+// 校验到**运行时实际收窄**的边界,不止「字段是 string」:记录文件是用户可手改、且可能随仓库分发(被
+// loadAllManagedRecords 无 opt-in 读到)的不可信输入。若只查 string,畸形记录(如 source.url 是对象、
+// sourceKind 是任意串)会绕过 validator,在下游(omk list 的 sourceLabel ?? → dispWidth(对象) 等)
+// 抛 TypeError 让命令崩溃。这里把 source / evidence 收窄到 list 等消费方实际解引用的类型,判脏即丢弃该文件。
 function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord {
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<ManagedArtifactRecord>;
@@ -58,18 +67,32 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     && r.schemaVersion === 2
     && isStringField(r.id)
     && isStringField(r.name)
-    && isStringField(r.kind)
+    && isStringField(r.kind) && MANAGED_KINDS.has(r.kind)
     && isStringField(r.contentHash)
     && r.source && typeof r.source === 'object'
-    && isStringField((r.source as { locator?: unknown }).locator)
-    && isStringField((r.source as { sourceKind?: unknown }).sourceKind)
     && Array.isArray(r.distribution)
     && Array.isArray(r.evidence)
     && Array.isArray(r.decisions))) return false;
+  const src = r.source as unknown as Record<string, unknown>;
+  if (!(isStringField(src.locator)
+    && (src.sourceKind === 'file' || src.sourceKind === 'git')
+    && typeof src.isDirectorySkill === 'boolean'
+    && isOptionalString(src.url)
+    && isOptionalString(src.ref))) return false;
   const okDist = r.distribution.every((d) => d && typeof d === 'object'
     && isStringField((d as { path?: unknown }).path) && isStringField((d as { contentHash?: unknown }).contentHash));
-  const okEv = r.evidence.every((e) => e && typeof e === 'object'
-    && isStringField((e as { reportId?: unknown }).reportId) && isStringField((e as { contentHash?: unknown }).contentHash));
+  const okEv = r.evidence.every((e) => {
+    if (!e || typeof e !== 'object') return false;
+    const ev = e as unknown as Record<string, unknown>;
+    if (!(isStringField(ev.reportId) && isStringField(ev.contentHash) && isStringField(ev.recordedAt))) return false;
+    if (!isOptionalString(ev.verdict)) return false;
+    // comparability 若存在:必须是带 string cliVersion 的对象(list / promote 会读它)。
+    if (ev.comparability !== undefined) {
+      const c = ev.comparability as Record<string, unknown>;
+      if (!c || typeof c !== 'object' || !isStringField(c.cliVersion)) return false;
+    }
+    return true;
+  });
   const okDec = r.decisions.every((d) => d && typeof d === 'object'
     && isStringField((d as { decisionKind?: unknown }).decisionKind));
   return okDist && okEv && okDec;
