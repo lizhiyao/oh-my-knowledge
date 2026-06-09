@@ -3,16 +3,11 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
+import { icon } from './icons.js';
 import type { Lang, SkillIndex, SkillIndexEntry, Insight } from '../types/index.js';
 
-// ── icons (Lucide SVG inline, size=14) ──
+// ── icons (Lucide SVG inline) ── 维度/状态图标统一走共享 icons.ts;此处仅保留弹框用的 help 图标。
 const IC = {
-  stethoscope: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>',
-  testTubes: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v17.5A2.5 2.5 0 0 1 6.5 22v0A2.5 2.5 0 0 1 4 19.5V2"/><path d="M20 2v17.5a2.5 2.5 0 0 1-2.5 2.5v0a2.5 2.5 0 0 1-2.5-2.5V2"/><path d="M3 2h7"/><path d="M14 2h7"/><path d="M9 16H4"/><path d="M20 16h-5"/></svg>',
-  eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
-  checkCircle: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-  alertTri: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-  xCircle: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
   helpCircle: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
 };
 
@@ -24,7 +19,9 @@ function fmtShort(ts: string | null | undefined): string {
   if (!ts) return '-';
   try { const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; } catch { return '-'; }
 }
-function scoreColor(s: number): string { return s >= 100 ? '#1f9d63' : s >= 60 ? '#d97706' : '#dc2626'; }
+// 综合健康配色:≥85 绿 / ≥60 琥珀 / 其余红。与 report-shell.healthColor 同口径,
+// 保证同一个分数在首页列表与报告页 Hero 颜色一致(90 两处都是绿,不再首页橙、详情红)。
+function scoreColor(s: number): string { return s >= 85 ? '#1f9d63' : s >= 60 ? '#d97706' : '#dc2626'; }
 
 interface Agg { totalSkills: number; dP: number; dW: number; dF: number; eP: number; eF: number; eSamples: number; eAvg: number | null; eAssertP: number; eAssertT: number; withObs: number; lastTs: string | null; gc: Record<string, number>; greenCt: number; composite: number | null; dHist: number[]; eHist: number[]; oHist: number[] }
 
@@ -47,92 +44,53 @@ function aggregate(entries: SkillIndexEntry[], iMap: Map<string, Insight[]>, lan
   return { totalSkills: entries.length, dP, dW, dF, eP, eF, eSamples, eAvg: eCt > 0 ? eSum / eCt : null, eAssertP, eAssertT, withObs, lastTs: entries.flatMap((x) => [x.doctor?.timestamp, x.eval?.timestamp, x.observe?.generatedAt]).filter((x): x is string => Boolean(x)).sort().pop() ?? null, gc, greenCt: gc.good + gc.excellent, composite: hCt > 0 ? Math.round(hSum / hCt) : null, dHist: dH, eHist: eH, oHist: oH };
 }
 
-function spark(vals: number[], w: number, h: number): string {
-  if (vals.length < 2) return `<div class="ep-chart"><span class="ep-chart-empty">暂无历史数据</span></div>`;
-  const p = 6, pw = w - p * 2, ph = h - p * 2;
-  const mn = Math.min(...vals), mx = Math.max(...vals), rg = mx - mn || 1;
-  const coords = vals.map((v, i) => [p + (i / (vals.length - 1)) * pw, p + ph - ((v - mn) / rg) * ph]);
-  const clr = vals[vals.length - 1] >= vals[0] ? '#1f9d63' : '#dc2626';
-  let d = `M${coords[0][0].toFixed(1)},${coords[0][1].toFixed(1)}`;
-  for (let i = 1; i < coords.length; i++) {
-    const [x0, y0] = coords[i - 1], [x1, y1] = coords[i];
-    const cp = (x1 - x0) * 0.4;
-    d += ` C${(x0 + cp).toFixed(1)},${y0.toFixed(1)} ${(x1 - cp).toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
-  }
-  return `<div class="ep-chart"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${clr}" stroke-width="1.5" stroke-linecap="round"/></svg></div>`;
-}
-
 function ring(score: number | null, size: number, sw: number): string {
   const r = (size - sw) / 2, c = 2 * Math.PI * r, off = c * (1 - (score ?? 0) / 100), clr = score != null ? scoreColor(score) : '#9ca3af', cx = size / 2;
-  return `<div style="position:relative;width:${size}px;height:${size}px"><svg width="${size}" height="${size}"><circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#edf0f7" stroke-width="${sw}"/>${score != null ? `<circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${clr}" stroke-width="${sw}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cx})" style="transition:stroke-dashoffset .6s"/>` : ''}</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:${clr}">${score ?? '—'}</span></div></div>`;
-}
-
-function bar(score: number | null): string {
-  const p = score ?? 0, c = score != null ? scoreColor(score) : '#edf0f7';
-  return `<div class="ep-bar"><div class="ep-bar-fill" style="width:${p}%;background:${c}"></div></div>`;
+  return `<div style="position:relative;width:${size}px;height:${size}px"><svg width="${size}" height="${size}"><circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#edf0f7" stroke-width="${sw}"/>${score != null ? `<circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${clr}" stroke-width="${sw}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cx})" style="transition:stroke-dashoffset .6s"/>` : ''}</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:${Math.round(size * 0.36)}px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:${clr}">${score ?? '—'}</span></div></div>`;
 }
 
 function renderPanel(a: Agg, lang: Lang): string {
   const zh = lang === 'zh';
   const dTotal = a.dP + a.dW + a.dF;
   const dScore = dTotal > 0 ? Math.round(((a.dP + a.dW * 0.5) / dTotal) * 100) : null;
-  const eScore = a.eAvg != null ? Math.round((a.eAvg / 5) * 100) : null;
-  const dClr = dScore != null ? scoreColor(dScore) : '#9ca3af';
-  const eClr = eScore != null ? scoreColor(eScore) : '#9ca3af';
 
-  return `<div class="ep">
-  <div class="ep-grad"></div>
-  <div class="ep-top">
-    <div class="ep-top-left">
-      <div class="ep-title-row">
-        <span class="ep-brand">Omk 评测</span>
-        <h1>${zh ? 'Skill 健康评测工作台' : 'Skill Health Dashboard'}</h1>
-      </div>
-      <span class="ep-meta">⏱ ${fmtDate(a.lastTs)} &nbsp;&nbsp; 📋 ${a.totalSkills} skill</span>
-    </div>
-  </div>
-  <div class="ep-strip">
-    <div class="ep-strip-score">
-      ${ring(a.composite, 86, 6)}
-      <span class="ep-score-lbl" onclick="document.getElementById('ep-help-modal').style.display='flex'">${zh ? '综合健康' : 'Health'} ${IC.helpCircle}</span>
-    </div>
-    <div class="ep-sep"></div>
-    <div class="ep-dims">
+  // 页头(品牌已在常驻顶栏,这里不再重复 brand badge)。
+  const phead = `<div class="phead">
+    <h1>${zh ? 'Skill 健康评测工作台' : 'Skill Health Dashboard'}</h1>
+    <span class="phead-sub">${a.totalSkills} ${zh ? '个 skill' : 'skills'}</span>
+    <span class="phead-when">${icon('clock', { size: 13 })} ${zh ? '更新于' : 'updated'} ${fmtDate(a.lastTs)}</span>
+  </div>`;
 
-      <div class="ep-dim">
-        <div class="ep-dim-hd">${IC.stethoscope}<span>${zh ? '健康体检' : 'Doctor'}</span><strong style="color:${dClr}">${dScore ?? '—'}</strong></div>
-        ${bar(dScore)}
-        <div class="ep-dim-chk">${dTotal > 0
-          ? `<span class="c-pass">${IC.checkCircle} ${zh ? '通过' : 'Pass'} <b>${a.dP}</b></span><span class="c-warn">${IC.alertTri} ${zh ? '警告' : 'Warn'} <b>${a.dW}</b></span><span class="c-fail">${IC.xCircle} ${zh ? '失败' : 'Fail'} <b>${a.dF}</b></span>`
-          : `<span class="c-na">${zh ? '未运行' : 'Not run'}</span>`}</div>
-        <div class="ep-dim-hint">${zh ? '检查 skill 结构合规性：文件规范、配置完整性等' : 'Structural compliance checks'}</div>
-        ${spark(a.dHist.slice(-10), 200, 32)}
-      </div>
+  // 综合健康(细线总览首格):ring + 标签 + 说明入口。
+  const ovMain = `<div class="ov-cell ov-main">
+    ${ring(a.composite, 60, 6)}
+    <div class="ov-main-lbl"><b>${zh ? '综合健康' : 'Overall health'}<span class="ov-help" onclick="document.getElementById('ep-help-modal').style.display='flex'">${IC.helpCircle}</span></b><span>${zh ? '加权 体检 / 评测 / 观察' : 'Weighted doctor / eval / observe'}</span></div>
+  </div>`;
 
-      <div class="ep-dim">
-        <div class="ep-dim-hd">${IC.testTubes}<span>${zh ? '用例评测' : 'Eval'}</span><strong style="color:${eClr}">${eScore ?? '—'}</strong></div>
-        ${bar(eScore)}
-        <div class="ep-dim-chk">${a.eAssertT > 0
-          ? `<span class="c-pass">${IC.checkCircle} ${zh ? '断言通过' : 'Assert'} <b>${a.eAssertP}/${a.eAssertT}</b></span><span class="c-na">${zh ? '均分' : 'Avg'} <b>${a.eAvg != null ? a.eAvg.toFixed(1) : '—'}/5</b></span><span class="c-na">${zh ? '用例数' : 'Samples'} <b>${a.eSamples}</b></span>`
-          : `<span class="c-na">${zh ? '未运行' : 'Not run'}</span>`}</div>
-        <div class="ep-dim-hint">${zh ? '执行测试用例验证 skill 输出质量与断言准确率' : 'Test sample quality & assertion accuracy'}</div>
-        ${spark(a.eHist.slice(-10), 200, 32)}
-      </div>
+  const doctorCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('doctor', { size: 15, cls: 'ov-ico' })}<span>${zh ? '健康体检' : 'Doctor'}</span></div>
+    ${dScore != null
+      ? `<div class="ov-big" style="color:${scoreColor(dScore)}">${dScore}<small> / 100</small></div>
+         <div class="ov-meta"><span class="c-pass">${zh ? '通过' : 'Pass'} <i>${a.dP}</i></span><span class="c-warn">${zh ? '警告' : 'Warn'} <i>${a.dW}</i></span><span class="c-fail">${zh ? '失败' : 'Fail'} <i>${a.dF}</i></span></div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '未运行' : 'Not run'}</div>`}
+  </div>`;
 
-      <div class="ep-dim">
-        <div class="ep-dim-hd">${IC.eye}<span>${zh ? '生产观察' : 'Observe'}</span><strong class="ep-dim-na">${a.withObs > 0 ? a.withObs : (zh ? '暂无数据' : 'N/A')}</strong></div>
-        ${a.withObs > 0 ? bar(null) : ''}
-        ${a.withObs > 0
-          ? `<div class="ep-dim-chk"><span class="c-pass">${a.withObs} ${zh ? '个 skill 有数据' : 'with data'}</span></div>`
-          : `<div class="ep-dim-empty">${zh ? '尚无线上调用记录，数据将在 skill 被调用后自动采集' : 'No traces yet. Auto-collected when skills are invoked.'}</div>`}
-        <div class="ep-dim-hint">${zh ? '线上工具调用成功率与调用量统计' : 'Online tool call metrics'}</div>
-        ${spark(a.oHist.slice(-10), 200, 32)}
-      </div>
+  const evalCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('eval', { size: 15, cls: 'ov-ico' })}<span>${zh ? '用例评测' : 'Eval'}</span></div>
+    ${a.eAvg != null
+      ? `<div class="ov-big" style="color:${scoreColor(Math.round((a.eAvg / 5) * 100))}">${a.eAvg.toFixed(1)}<small> / 5</small></div>
+         <div class="ov-meta"><span>${zh ? '断言' : 'Assert'} <i>${a.eAssertP}/${a.eAssertT}</i></span><span>${zh ? '用例' : 'Samples'} <i>${a.eSamples}</i></span></div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '未运行' : 'Not run'}</div>`}
+  </div>`;
 
-    </div>
-  </div>
-  <div class="ep-footer">💡 ${zh ? '以上为评测汇总指标，如需查看失败原因等明细，请点击下方 skill 进入详情页查看' : 'Click a skill below for details'}</div>
-</div>
+  const obsCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('observe', { size: 15, cls: 'ov-ico' })}<span>${zh ? '生产观察' : 'Observe'}</span></div>
+    ${a.withObs > 0
+      ? `<div class="ov-big">${a.withObs}<small> skill</small></div><div class="ov-meta ov-meta--muted">${zh ? '个 skill 有线上数据' : 'with traces'}</div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '暂无数据' : 'No data'}</div><div class="ov-meta ov-meta--muted">${zh ? '接入线上调用后自动采集' : 'Auto-collected once invoked'}</div>`}
+  </div>`;
+
+  return `${phead}<div class="ov">${ovMain}${doctorCell}${evalCell}${obsCell}</div>
 
 <div id="ep-help-modal" class="ep-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
   <div class="ep-modal">
@@ -198,41 +156,30 @@ function renderRow(entry: SkillIndexEntry, insights: Insight[], langQ: string, l
 }
 
 const CSS = `
-/* ═══ Eval Panel ═══ */
-.ep{position:relative;margin-bottom:14px;background:#fff;border:1px solid rgba(79,70,229,18%);border-radius:10px;box-shadow:0 8px 28px rgba(79,70,229,8%);overflow:hidden}
-.ep-grad{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#4f46e5,#7c3aed,#06b6d4)}
-.ep-top{padding:14px 16px 0}
-.ep-top-left{display:flex;flex-direction:column;gap:4px}
-.ep-title-row{display:flex;align-items:center;gap:10px}
-.ep-brand{display:inline-block;padding:2px 8px;color:#fff;font-size:14px;font-weight:800;letter-spacing:.04em;line-height:1.4;background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:4px}
-.ep-top h1{margin:0;color:#182033;font-size:18px;font-weight:700;line-height:1.3}
-.ep-meta{color:#637083;font-size:12px}
-.ep-strip{display:flex;align-items:stretch;gap:0;padding:10px 16px 12px}
-.ep-strip-score{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;flex-shrink:0}
-.ep-score-lbl{display:inline-flex;align-items:center;gap:3px;color:#637083;font-size:12px;font-weight:600;cursor:pointer}
-.ep-score-lbl:hover{color:#4f46e5}
-.ep-sep{width:1px;margin:0 14px;background:#e4e8f1;flex-shrink:0}
-.ep-dims{display:flex;gap:10px;flex:1;min-width:0}
-.ep-dim{flex:1;min-width:180px;padding:8px 10px;display:flex;flex-direction:column;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:7px}
-.ep-dim-hd{display:flex;align-items:center;gap:5px;margin-bottom:4px;color:#4f46e5}
-.ep-dim-hd span{color:#182033;font-size:14px;font-weight:700}
-.ep-dim-hd strong{margin-left:auto;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
-.ep-dim-na{color:#637083!important;font-size:12px!important;font-weight:500!important}
-.ep-bar{height:6px;background:#edf0f7;border-radius:3px;overflow:hidden;margin-top:4px}
-.ep-bar-fill{height:100%;border-radius:3px;transition:width .4s}
-.ep-dim-chk{display:flex;flex-wrap:nowrap;gap:12px;margin-top:6px;margin-bottom:2px;align-items:center}
-.ep-dim-chk span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:#637083;font-size:12px}
-.ep-dim-chk b{color:#182033;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.c-pass{color:#1f9d63!important}.c-pass b{color:#1f9d63!important}
-.c-warn{color:#d97706!important}.c-warn b{color:#d97706!important}
-.c-fail{color:#dc2626!important}.c-fail b{color:#dc2626!important}
-.c-na{color:#9ca3af!important}
-.ep-dim-hint{margin-top:4px;padding:3px 8px;color:#94a3b8;font-size:11px;line-height:1.4;background:rgba(100,116,139,6%);border-radius:4px}
-.ep-dim-empty{margin-top:6px;padding:8px 10px;color:#637083;font-size:12px;line-height:1.5;background:rgba(100,116,139,6%);border-radius:4px}
-.ep-chart{height:32px;margin-top:4px;background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center}
-.ep-chart svg{display:block;width:100%;height:32px}
-.ep-chart-empty{color:#9ca3af;font-size:11px}
-.ep-footer{display:flex;align-items:center;gap:6px;padding:8px 20px;background:linear-gradient(135deg,rgba(99,102,241,6%) 0%,rgba(139,92,246,6%) 100%);border-top:1px solid rgba(99,102,241,12%);font-size:12px;color:#637083}
+/* ═══ 总览(细线 4 格,低饱和) ═══ */
+.phead{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+.phead h1{font-size:20px;font-weight:700;margin:0;color:var(--text-primary);letter-spacing:-.01em}
+.phead-sub{color:var(--text-muted);font-size:13px}
+.phead-when{margin-left:auto;color:var(--text-muted);font-size:12.5px;display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.phead-when svg{color:var(--text-faint)}
+.ov{display:grid;grid-template-columns:220px 1fr 1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px;box-shadow:0 8px 24px rgba(31,41,55,4%)}
+.ov-cell{background:#fff;padding:18px 20px}
+.ov-main{display:flex;align-items:center;gap:16px}
+.ov-main-lbl b{display:flex;align-items:center;gap:5px;font-size:13.5px;color:var(--text-primary);font-weight:600;margin-bottom:3px}
+.ov-main-lbl span{font-size:12px;color:var(--text-secondary)}
+.ov-help{display:inline-flex;color:var(--text-faint);cursor:pointer}
+.ov-help:hover{color:var(--accent)}
+.ov-top{display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:12.5px;font-weight:500;margin-bottom:12px}
+.ov-ico{color:var(--text-muted)}
+.ov-big{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.ov-big small{font-size:13px;color:var(--text-muted);font-weight:500}
+.ov-empty-v{font-size:14px;color:var(--text-muted);font-weight:500}
+.ov-meta{margin-top:10px;display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-secondary)}
+.ov-meta i{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+.ov-meta--muted{color:var(--text-muted)}
+.c-pass{color:#1f9d63!important}.c-warn{color:#d97706!important}.c-fail{color:#dc2626!important}.c-na{color:#9ca3af!important}
+@media(max-width:860px){.ov{grid-template-columns:1fr 1fr}.ov-main{grid-column:1 / -1}}
+@media(max-width:560px){.ov{grid-template-columns:1fr}.ov-main{grid-column:auto}}
 
 /* ═══ Help Modal ═══ */
 .ep-modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.45);align-items:center;justify-content:center}
@@ -376,7 +323,7 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
   const zh = lang === 'zh';
 
   if (idx.entries.length === 0) {
-    return layout('OMK Studio', `<main><div class="t-panel"><div style="display:flex;align-items:center;gap:16px;padding:24px 20px"><div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;color:#637083;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:8px;font-size:24px">📋</div><div><strong style="color:#182033;font-size:14px">${zh ? '暂无 skill 报告' : 'No skill reports'}</strong><br><span style="color:#637083;font-size:12px">${zh ? '先跑一次评测：' : 'Run:'} <code style="padding:1px 6px;background:rgba(79,70,229,10%);color:#4f46e5;font-size:12px;border-radius:4px">omk eval --treatment my-skill</code></span></div></div></div></main><style>${CSS}</style>`, lang);
+    return layout('OMK Studio', `<main><div class="t-panel"><div style="display:flex;align-items:center;gap:16px;padding:24px 20px"><div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;color:#637083;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:8px">${icon('eval', { size: 24 })}</div><div><strong style="color:#182033;font-size:14px">${zh ? '暂无 skill 报告' : 'No skill reports'}</strong><br><span style="color:#637083;font-size:12px">${zh ? '先跑一次评测：' : 'Run:'} <code style="padding:1px 6px;background:rgba(79,70,229,10%);color:#4f46e5;font-size:12px;border-radius:4px">omk eval --treatment my-skill</code></span></div></div></div></main><style>${CSS}</style>`, lang);
   }
 
   const rows = idx.entries.map((ent) => renderRow(ent, iMap.get(ent.skillName) ?? [], langQ, lang)).join('');
@@ -385,7 +332,7 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
     ${renderPanel(a, lang)}
     <div class="t-panel">
       <div class="t-head">
-        <div class="t-head-l"><h2>📋 Skill ${zh ? '明细' : 'Details'}</h2><span class="t-head-ct">${a.totalSkills} skill</span></div>
+        <div class="t-head-l"><h2>Skill ${zh ? '明细' : 'Details'}</h2><span class="t-head-ct">${a.totalSkills} skill</span></div>
         <div class="t-filters">
           <input type="text" class="t-search" id="t-search" placeholder="${zh ? '搜索 skill 名称...' : 'Search...'}" />
           <div class="t-seg">

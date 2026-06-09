@@ -8,7 +8,14 @@
  *   - 主次分明：Hero 综合结论在最上，明细按 fail→warn→pass 排序，通过项折叠
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
+import { icon, dimIconName } from './icons.js';
 import type { Lang } from '../types/index.js';
+
+/** 维度中/英文名(面包屑、历史分组等复用)。 */
+function dimLabel(dim: keyof typeof DIM_COLORS, lang: Lang): string {
+  const zh = lang === 'zh';
+  return dim === 'doctor' ? (zh ? '体检' : 'Doctor') : dim === 'eval' ? (zh ? '评测' : 'Eval') : (zh ? '观察' : 'Observe');
+}
 
 export const DIM_COLORS = {
   doctor: '#2563eb',
@@ -18,6 +25,14 @@ export const DIM_COLORS = {
 
 export function scoreColor(s: number): string {
   return s >= 100 ? '#1f9d63' : s >= 60 ? '#d97706' : '#dc2626';
+}
+
+/** 跨维度「综合健康」0-100 配色:≥85 绿 / ≥60 琥珀 / 其余红 / null 灰。
+ *  与 scoreColor(doctor 严格「100 才绿」)分开 —— 综合健康是聚合分,90 应读作"好"(绿),
+ *  而不是 doctor 那种"非满分即有问题"。Hero ring 与首页列表统一用它,避免同一个数两种颜色。 */
+export function healthColor(score: number | null): string {
+  if (score == null) return '#9ca3af';
+  return score >= 85 ? '#1f9d63' : score >= 60 ? '#d97706' : '#dc2626';
 }
 
 /** band → 十六进制色(绿/黄/红/灰)。供 hero 综合健康 ring、chip 状态点等复用。 */
@@ -96,8 +111,6 @@ function renderSkillContext(ctx: SkillReportContext, lang: Lang): string {
 
   if (ctx.history.length === 0) return bar;
 
-  const dimLabel = (dim: keyof typeof DIM_COLORS): string =>
-    dim === 'doctor' ? (zh ? '体检' : 'Doctor') : dim === 'eval' ? (zh ? '评测' : 'Eval') : (zh ? '观察' : 'Observe');
   const groups = (['eval', 'doctor'] as const).map((dim) => {
     const items = ctx.history.filter((h) => h.dim === dim);
     if (items.length === 0) return '';
@@ -107,7 +120,7 @@ function renderSkillContext(ctx: SkillReportContext, lang: Lang): string {
       <span class="rs-hist-meta">${e(h.metaText)}</span>
       <span class="rs-hist-go">${h.current ? (zh ? '当前' : 'current') : '→'}</span>
     </a>`).join('');
-    return `<div class="rs-hist-group"><div class="rs-hist-group-h"><span class="rs-hist-group-dot" style="background:${DIM_COLORS[dim]}"></span>${e(dimLabel(dim))} <small>${items.length}</small></div>${rows}</div>`;
+    return `<div class="rs-hist-group"><div class="rs-hist-group-h"><span class="rs-hist-group-dot" style="background:${DIM_COLORS[dim]}"></span>${e(dimLabel(dim, lang))} <small>${items.length}</small></div>${rows}</div>`;
   }).join('');
 
   const modal = `<div id="rs-hist" class="rs-hist-overlay" onclick="if(event.target===this)this.style.display='none'">
@@ -152,10 +165,11 @@ export interface ReportShellOpts {
 
 export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): string {
   const accent = DIM_COLORS[opts.dim];
+  const zh = lang === 'zh';
   const clr = opts.ringColor ?? (opts.score != null ? scoreColor(opts.score) : '#9ca3af');
   const hero = `<div class="rs-hero rs-hero--${opts.dim}">
     <div class="rs-hero-left">
-      <div class="rs-hero-kind"><span class="rs-hero-icon" style="color:${accent}">${opts.icon}</span> ${e(opts.kindTitle)}</div>
+      <div class="rs-hero-kind"><span class="rs-hero-icon" style="color:${accent}">${icon(dimIconName(opts.dim), { size: 14 }) || e(opts.icon)}</span> ${e(opts.kindTitle)}</div>
       <h1 class="rs-hero-name">${e(opts.skillName)}</h1>
       <div class="rs-hero-meta">${opts.metaItems.map((m) => `<span>${m}</span>`).join('')}</div>
     </div>
@@ -165,9 +179,18 @@ export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): s
     </div>` : ''}
   </div>`;
 
+  // 面包屑 — 替掉孤零零的「← 返回列表」,让导航有上下文(工作台 › 维度 › skill)。
+  const crumb = `<nav class="rs-crumb">
+    <a class="rs-crumb-link" href="/">${icon('home', { size: 14 })}${zh ? '工作台' : 'Workbench'}</a>
+    <span class="rs-crumb-sep">›</span><span class="rs-crumb-dim">${e(dimLabel(opts.dim, lang))}</span>
+    <span class="rs-crumb-sep">›</span><span class="rs-crumb-cur">${e(opts.skillName)}</span>
+    <span class="rs-crumb-spacer"></span>
+    <a class="rs-crumb-back" href="${e(opts.backHref)}">${icon('chevron-left', { size: 14 })}${e(opts.backLabel.replace(/^←\s*/, ''))}</a>
+  </nav>`;
+
   return layout(`${opts.kindTitle} · ${opts.skillName}`, `
     <main>
-      <a class="rs-back" href="${e(opts.backHref)}">← ${e(opts.backLabel)}</a>
+      ${crumb}
       ${hero}
       ${opts.skillContext ? renderSkillContext(opts.skillContext, lang) : ''}
       ${opts.body}
@@ -177,8 +200,18 @@ export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): s
 }
 
 export const REPORT_SHELL_CSS = `
-.rs-back{display:inline-block;margin-bottom:12px;color:#9ca3af;font-size:13px;text-decoration:none}
-.rs-back:hover{color:#4f46e5}
+/* ── 面包屑(替掉裸返回链接) ── */
+.rs-crumb{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13px;color:#637083}
+.rs-crumb-link{display:inline-flex;align-items:center;gap:6px;color:#637083;text-decoration:none}
+.rs-crumb-link:hover{color:#4f46e5;text-decoration:none}
+.rs-crumb-link svg{color:#9ca3af}
+.rs-crumb-link:hover svg{color:#4f46e5}
+.rs-crumb-sep{color:#c0c6d2}
+.rs-crumb-dim{color:#637083}
+.rs-crumb-cur{color:#182033;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-crumb-spacer{flex:1}
+.rs-crumb-back{display:inline-flex;align-items:center;gap:5px;color:#9ca3af;text-decoration:none;flex-shrink:0}
+.rs-crumb-back:hover{color:#4f46e5;text-decoration:none}
 
 /* ── skill 维度切换器(doctor/eval/observe 互链)— 分段控件风 ── */
 .rs-dims{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 16px}
@@ -222,7 +255,7 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 @media(max-width:640px){.rs-hero{flex-direction:column;align-items:flex-start}}
 .rs-hero-left{display:flex;flex-direction:column;gap:4px;min-width:0}
 .rs-hero-kind{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#637083}
-.rs-hero-icon{font-size:14px}
+.rs-hero-icon{display:inline-flex;align-items:center}
 .rs-hero-name{margin:0;font-size:20px;font-weight:700;color:#182033;letter-spacing:-.2px}
 .rs-hero-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;color:#9ca3af;font-size:12px;font-variant-numeric:tabular-nums}
 .rs-hero-meta span{display:inline-flex;align-items:center;gap:4px}
@@ -249,14 +282,15 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-panel-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#182033;margin-bottom:14px}
 .rs-panel-title small{font-size:12px;font-weight:400;color:#9ca3af;margin-left:4px}
 
-/* ── 规则 / 用例卡片 ── */
-.rs-card{border:1px solid #e4e8f1;border-radius:10px;margin-bottom:10px;overflow:hidden}
-.rs-card:last-child{margin-bottom:0}
-.rs-card--fail{border-color:rgba(220,38,38,25%);background:rgba(220,38,38,3%)}
-.rs-card--warn{border-color:rgba(217,119,6,25%);background:rgba(217,119,6,3%)}
-.rs-card--pass{border-color:#e4e8f1}
-.rs-card-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;list-style:none}
+/* ── 规则 / 用例:面板内的 hairline 列表项(无 tint 盒子,状态靠左侧色点) ── */
+.rs-card{border-bottom:1px solid #eef1f6;background:transparent;border-radius:8px;transition:background .12s}
+.rs-card:last-child{border-bottom:none}
+details.rs-card:not([open]):hover{background:#f9fafc}
+details.rs-card[open]{background:#fafbfd}
+.rs-card-head{display:flex;align-items:center;gap:10px;padding:12px 6px;cursor:pointer;list-style:none}
 .rs-card-head::-webkit-details-marker{display:none}
+details.rs-card>.rs-card-head::after{content:'›';margin-left:4px;color:#c0c6d2;font-size:16px;transition:transform .15s;flex-shrink:0}
+details.rs-card[open]>.rs-card-head::after{transform:rotate(90deg)}
 .rs-card-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .rs-card-dot--fail{background:#dc2626}
 .rs-card-dot--warn{background:#d97706}
@@ -268,12 +302,10 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-badge--fail{color:#dc2626;background:rgba(220,38,38,10%)}
 .rs-badge--warn{color:#d97706;background:rgba(217,119,6,10%)}
 .rs-badge--pass{color:#1f9d63;background:rgba(31,157,99,10%)}
-.rs-card-body{padding:0 14px 12px;border-top:1px solid rgba(0,0,0,4%)}
-.rs-finding{padding:10px 12px;margin-top:10px;border-radius:8px;font-size:13px;line-height:1.6}
-.rs-finding--err{background:rgba(220,38,38,5%);border-left:2px solid #dc2626}
-.rs-finding--warn{background:rgba(217,119,6,5%);border-left:2px solid #d97706}
-.rs-finding-desc{color:#182033;word-break:break-word}
-.rs-finding-sug{margin-top:6px;padding:6px 10px;background:rgba(79,70,229,5%);border-radius:6px;color:#4f46e5;font-size:12.5px;word-break:break-word}
+.rs-card-body{padding:0 6px 14px 24px}
+.rs-finding{margin-top:10px;font-size:13.5px;line-height:1.65}
+.rs-finding-desc{color:#374151;word-break:break-word}
+.rs-finding-sug{margin-top:6px;padding:8px 12px;background:rgba(79,70,229,.05);border-radius:6px;color:#4f46e5;font-size:12.5px;line-height:1.6;word-break:break-word}
 
 /* ── 折叠通过项 ── */
 .rs-fold{margin-top:10px}

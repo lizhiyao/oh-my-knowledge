@@ -4,7 +4,8 @@
  * 主次：Hero 综合健康分 → 统计条（通过/警告/失败）→ 规则列表（失败/警告高亮在前，
  * 通过项折叠）。每条规则展开显示 finding 描述 + 修复建议。
  */
-import { reportShell, scoreColor, bandHex, type SkillReportContext } from './report-shell.js';
+import { reportShell, healthColor, type SkillReportContext } from './report-shell.js';
+import { icon as svgIcon } from './icons.js';
 import { e, DEFAULT_LANG } from './layout.js';
 import type { Lang, DoctorReport, DoctorSkillReport, DoctorRuleResult } from '../types/index.js';
 
@@ -46,10 +47,12 @@ function renderRuleCard(r: DoctorRuleResult, lang: Lang, forceOpen = false): str
 
   const findingHtml = allFindings.map((f) => {
     const isErr = f.level === '错误';
-    const icon = isErr ? '❌' : f.level === '警告' ? '⚠️' : '💡';
+    const mIcon = isErr
+      ? svgIcon('x', { size: 14, style: 'color:#dc2626;vertical-align:-2px;margin-right:5px' })
+      : svgIcon('warn', { size: 14, style: `color:${f.level === '警告' ? '#d97706' : '#637083'};vertical-align:-2px;margin-right:5px` });
     return `<div class="rs-finding rs-finding--${isErr ? 'err' : 'warn'}">
-      <div class="rs-finding-desc">${icon} ${e(f.description ?? '')}</div>
-      ${f.suggestion ? `<div class="rs-finding-sug">💡 ${e(f.suggestion)}</div>` : ''}
+      <div class="rs-finding-desc">${mIcon}${e(f.description ?? '')}</div>
+      ${f.suggestion ? `<div class="rs-finding-sug">${svgIcon('bulb', { size: 13, style: 'vertical-align:-2px;margin-right:5px' })}${e(f.suggestion)}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -109,12 +112,12 @@ export function renderDoctorDetail(report: DoctorReport, skillName: string, lang
     icon: '🩺',
     kindTitle: zh ? '健康体检报告' : 'Doctor Report',
     skillName: targetSkill?.skillName ?? skillName,
-    metaItems: [`⏱ ${fmtTs(report.timestamp)}`, `⚙ ${e(report.model)}`, e(report.id)],
+    metaItems: [`${svgIcon('clock', { size: 13 })} ${fmtTs(report.timestamp)}`, `${svgIcon('chip', { size: 13 })} ${e(report.model)}`, e(report.id)],
     // Hero 展示「综合健康」总分(跨维度,与首页同口径),切 tab 不变;本次体检明细(规则/计数)在 body。
     // 无 skillContext 时回退显本次体检健康分。
     score: skillContext ? skillContext.overall.score : score,
     scoreText: skillContext && skillContext.overall.score != null ? String(skillContext.overall.score) : undefined,
-    ringColor: skillContext ? bandHex(skillContext.overall.band) : undefined,
+    ringColor: skillContext ? healthColor(skillContext.overall.score) : undefined,
     scoreLabel: skillContext ? (zh ? '综合健康' : 'Health') : scoreLabel,
     backHref: `/${langQ}`,
     backLabel: zh ? '返回列表' : 'Back to list',
@@ -123,5 +126,3 @@ export function renderDoctorDetail(report: DoctorReport, skillName: string, lang
   }, lang);
 }
 
-// silence unused import warning for scoreColor if tree-shaken
-void scoreColor;

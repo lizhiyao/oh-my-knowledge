@@ -17,7 +17,8 @@ import {
 } from './summary.js';
 import { renderTestView, TEST_VIEW_CSS, TEST_VIEW_JS } from './test-view.js';
 import { renderTrendsBody } from './trends.js';
-import { reportShell, bandHex, type SkillReportContext } from './report-shell.js';
+import { reportShell, healthColor, type SkillReportContext } from './report-shell.js';
+import { icon } from './icons.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
 import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
 
@@ -583,7 +584,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     kindTitle: lang === 'zh' ? '用例评测报告' : 'Eval Report',
     // 头部用规范 skill 名(skill-index entry),与 doctor/observe 一致;无 context 时回退到 report 推导名。
     skillName: skillContext?.skillName ?? heroSkillName,
-    metaItems: [`⏱ ${e(heroTs)}`, `⚙ ${e(m.model)}`, e(report.id)],
+    metaItems: [`${icon('clock', { size: 13 })} ${e(heroTs)}`, `${icon('chip', { size: 13 })} ${e(m.model)}`, e(report.id)],
     // Hero 展示「综合健康」总分(跨 doctor/eval/observe,与首页同口径),切 tab 不变;
     // 本次 eval 的综合分(4.09/5)在下方结论卡。无 skillContext(batch/孤儿报告)时回退显 eval 综合分。
     score: skillContext ? skillContext.overall.score : heroScore100,
@@ -591,7 +592,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       ? (skillContext.overall.score != null ? String(skillContext.overall.score) : undefined)
       : (heroComposite != null ? heroComposite.toFixed(2) : undefined),
     ringColor: skillContext
-      ? bandHex(skillContext.overall.band)
+      ? healthColor(skillContext.overall.score)
       : (heroComposite != null ? (heroComposite >= 4 ? '#1f9d63' : heroComposite >= 3 ? '#d97706' : '#dc2626') : undefined),
     scoreLabel: skillContext ? (lang === 'zh' ? '综合健康' : 'Health') : (lang === 'zh' ? '综合分 / 5' : 'Composite / 5'),
     backHref: `/${langQ}`,

@@ -1049,6 +1049,11 @@ export const TEST_VIEW_CSS = `
 .tv-root .tv-row:hover, .tv-root .tv-card:hover { background:var(--tv-bg-soft) }
 .tv-root .tv-row[open], .tv-root .tv-card[open] { background:var(--tv-bg-soft);border-bottom-color:transparent }
 .tv-root .tv-rows .tv-row:last-child, .tv-root .tv-card:last-child { border-bottom:none }
+/* 聚焦:展开某条用例时,其余收起的行淡化,突出当前;hover 被淡化的行可临时恢复。 */
+.tv-root:has(.tv-card[open], .tv-row[open]) .tv-card:not([open]),
+.tv-root:has(.tv-card[open], .tv-row[open]) .tv-row:not([open]) { opacity:.42;transition:opacity .15s }
+.tv-root:has(.tv-card[open], .tv-row[open]) .tv-card:not([open]):hover,
+.tv-root:has(.tv-card[open], .tv-row[open]) .tv-row:not([open]):hover { opacity:1 }
 .tv-root .tv-row-h, .tv-root .tv-card-h { display:flex;align-items:center;gap:13px;padding:14px;cursor:pointer;list-style:none;font-size:14.5px }
 .tv-root .tv-row-h::-webkit-details-marker, .tv-root .tv-card-h::-webkit-details-marker { display:none }
 .tv-root .tv-row-h::after, .tv-root .tv-card-h::after { content:'›';margin-left:4px;color:var(--tv-text-3);font-size:17px;transition:transform .15s }

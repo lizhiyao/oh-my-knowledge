@@ -1,4 +1,5 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
+import { icon as svgIcon } from './icons.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { computeVerdict, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
@@ -407,7 +408,17 @@ interface RadarEntry {
  * 归一化口径:事实/行为/评委 = 分÷5(绝对);成本/效率按绝对软参考($1/用例、120s/次
  * 记为 0,越省越外);稳定性 = 1 − CV/0.3。null(未测量/单组无对照)画空心点、中性半径。
  */
-function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; label: string; emoji: string }>, lang: Lang): string {
+/** 六维 i18n key → SVG 图标名(替代内嵌 emoji)。 */
+const DIM_ICON: Record<string, string> = {
+  dimFact: 'fact', dimBehavior: 'behavior', dimJudge: 'judge',
+  dimCost: 'cost', dimEfficiency: 'efficiency', dimStability: 'stability', dimQuality: 'quality',
+};
+/** 取维度标签并去掉历史内嵌 emoji 前缀(i18n 串形如「📋 事实」,图标改由 SVG 渲染)。 */
+function dimText(key: string, lang: Lang): string {
+  return t(key, lang).replace(/^\S+\s+/, '');
+}
+
+function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; label: string }>, lang: Lang): string {
   const W = 300, H = 250, cx = 150, cy = 118, R = 82;
   const n = dims.length;
   const ang = (i: number): number => (-90 + (360 / n) * i) * Math.PI / 180;
@@ -420,7 +431,7 @@ function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; labe
   const labels = dims.map((d, i) => {
     const [x, y] = pt(1.22, i);
     const anchor = x < cx - 4 ? 'end' : x > cx + 4 ? 'start' : 'middle';
-    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="rad-label">${d.emoji} ${e(d.label)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="rad-label">${e(d.label)}</text>`;
   }).join('');
   const polys = entries.map((en) => {
     const ptsStr = dims.map((d, i) => fmtPt(en.g[d.key] == null ? 0.5 : Math.max(0.04, en.g[d.key]!), i)).join(' ');
@@ -444,22 +455,22 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const baselineComposite = summary[variants[0]]?.avgCompositeScore;
   const scoringModalId = 'guide-scoring';
   const headerCols = [
-    { key: 'dimFact', label: t('dimFact', lang) },
-    { key: 'dimBehavior', label: t('dimBehavior', lang) },
-    { key: 'dimJudge', label: t('dimJudge', lang) },
-    { key: 'dimCost', label: t('dimCost', lang) },
-    { key: 'dimEfficiency', label: t('dimEfficiency', lang) },
-    { key: 'dimStability', label: t('dimStability', lang) },
+    { key: 'dimFact', label: dimText('dimFact', lang) },
+    { key: 'dimBehavior', label: dimText('dimBehavior', lang) },
+    { key: 'dimJudge', label: dimText('dimJudge', lang) },
+    { key: 'dimCost', label: dimText('dimCost', lang) },
+    { key: 'dimEfficiency', label: dimText('dimEfficiency', lang) },
+    { key: 'dimStability', label: dimText('dimStability', lang) },
   ];
 
   const compositeHint = `<button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button>`;
-  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th><th>${lang === 'zh' ? '综合' : 'Composite'} ${compositeHint}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
+  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th><th>${lang === 'zh' ? '综合' : 'Composite'} ${compositeHint}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${svgIcon(DIM_ICON[c.key], { size: 13, cls: 'sm-th-ico' })}${c.label}</th>`).join('')}</tr>`;
 
   // 一维的展示数据:可渲染成表格 cell(多 variant 对比)或指标行(单 variant)。
-  interface DimDisplay { label: string; value: string; valueColor: string; primary: boolean; bg: string; detailLines: string[]; title?: string }
+  interface DimDisplay { label: string; value: string; valueColor: string; primary: boolean; bg: string; detailLines: string[]; title?: string; icon?: string }
   // 质量层(事实/行为/评委)cell — 1-5 分。只给数值上色(绿/黄/红),不再填单元格底色(底色块突兀;
   // 维度强弱形状已由左侧雷达图传达,表格只需精确数值)。
-  const layerDim = (label: string, varianceMean: number | undefined, summaryValue: number | undefined, detailLines: string[] = []): DimDisplay => {
+  const layerDim = (label: string, varianceMean: number | undefined, summaryValue: number | undefined, detailLines: string[] = [], iconName?: string): DimDisplay => {
     const v = varianceMean ?? summaryValue;
     const has = typeof v === 'number' && v > 0;
     return {
@@ -469,6 +480,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       bg: '',
       primary: true,
       detailLines,
+      icon: iconName,
     };
   };
   const dimCell = (d: DimDisplay): string => {
@@ -478,7 +490,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   };
   const dimMetric = (d: DimDisplay): string => {
     const detail = d.detailLines.length > 0 ? `<span class="sm-metric-detail">${d.detailLines.join(' · ')}</span>` : '';
-    return `<div class="sm-metric"${d.title ? ` title="${e(d.title)}"` : ''}><span class="sm-metric-label">${d.label}</span><span class="sm-metric-val" style="color:${d.valueColor}">${d.value}</span>${detail}</div>`;
+    const ico = d.icon ? svgIcon(d.icon, { size: 14, cls: 'sm-mico' }) : '';
+    return `<div class="sm-metric"${d.title ? ` title="${e(d.title)}"` : ''}><span class="sm-metric-label">${ico}${d.label}</span><span class="sm-metric-val" style="color:${d.valueColor}">${d.value}</span>${detail}</div>`;
   };
 
   // 综合分 cell(表格首列,大字号 + delta vs baseline)。
@@ -521,8 +534,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const costPerSample = (s.totalSamples || 0) > 0 ? execCost / s.totalSamples : execCost;
     const tokenDetail = `${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}`;
     const costDim: DimDisplay = hasCost
-      ? { label: t('dimCost', lang), value: costReported ? fmtCost(execCost) : fmtCost(0, false), valueColor: costReported ? 'var(--text-primary)' : 'var(--text-muted)', primary: false, bg: '', detailLines: [tokenDetail], title: costReported ? undefined : costUnreportedTooltip }
-      : { label: t('dimCost', lang), value: 'N/A', valueColor: 'var(--text-muted)', primary: false, bg: '', detailLines: [] };
+      ? { label: dimText('dimCost', lang), value: costReported ? fmtCost(execCost) : fmtCost(0, false), valueColor: costReported ? 'var(--text-primary)' : 'var(--text-muted)', primary: false, bg: '', detailLines: [tokenDetail], title: costReported ? undefined : costUnreportedTooltip, icon: 'cost' }
+      : { label: dimText('dimCost', lang), value: 'N/A', valueColor: 'var(--text-muted)', primary: false, bg: '', detailLines: [], icon: 'cost' };
 
     // Efficiency — 主值是每次耗时;轮次/工具压成一条紧凑副行(去掉「总计」那条,留白更清爽)。
     const effParts: string[] = [];
@@ -533,7 +546,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       effParts.push(`${s.avgToolCalls} ${lang === 'zh' ? '工具' : 'tools'}${srPct}`);
     }
     const durSec = (s.avgDurationMs || 0) / 1000;
-    const effDim: DimDisplay = { label: t('dimEfficiency', lang), value: `${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span>`, valueColor: 'var(--text-primary)', primary: false, bg: '', detailLines: effParts.length > 0 ? [effParts.join(' · ')] : [] };
+    const effDim: DimDisplay = { label: dimText('dimEfficiency', lang), value: `${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span>`, valueColor: 'var(--text-primary)', primary: false, bg: '', detailLines: effParts.length > 0 ? [effParts.join(' · ')] : [], icon: 'efficiency' };
 
     // Stability — 多次运行分数一致性(test-retest reliability)。无 --repeat 时显「未测量」不虚报。
     const total = s.totalSamples || 0;
@@ -562,12 +575,12 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     if (errorCount > 0) {
       stabDetails.unshift(`<span style="color:var(--red)">${successRate.toFixed(1)}% ${lang === 'zh' ? '完成率' : 'completed'} · ${errorCount} ${t('errors', lang)}</span>`);
     }
-    const stabDim: DimDisplay = { label: t('dimStability', lang), value: stabValue, valueColor: stabColor, primary: false, bg: '', detailLines: stabDetails };
+    const stabDim: DimDisplay = { label: dimText('dimStability', lang), value: stabValue, valueColor: stabColor, primary: false, bg: '', detailLines: stabDetails, icon: 'stability' };
 
     const dims: DimDisplay[] = [
-      layerDim(t('dimFact', lang), vd?.byLayer?.fact?.mean, s.avgFactScore, factDetailParts),
-      layerDim(t('dimBehavior', lang), vd?.byLayer?.behavior?.mean, s.avgBehaviorScore),
-      layerDim(t('dimJudge', lang), vd?.byLayer?.judge?.mean, s.avgJudgeScore),
+      layerDim(dimText('dimFact', lang), vd?.byLayer?.fact?.mean, s.avgFactScore, factDetailParts, 'fact'),
+      layerDim(dimText('dimBehavior', lang), vd?.byLayer?.behavior?.mean, s.avgBehaviorScore, [], 'behavior'),
+      layerDim(dimText('dimJudge', lang), vd?.byLayer?.judge?.mean, s.avgJudgeScore, [], 'judge'),
       costDim,
       effDim,
       stabDim,
@@ -595,7 +608,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     `<tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:${pv.color}"></span><strong>${e(pv.name)}</strong></td>${renderCompositeCell(pv.composite, i)}${pv.dims.map(dimCell).join('')}</tr>`).join('');
 
   const stabFootnote = anyStabUnmeasured
-    ? `<p class="sm-foot">🛡️ ${lang === 'zh' ? '稳定性需 <code>--repeat ≥ 2</code> 才能测(本次为单轮评测)' : 'Stability needs <code>--repeat ≥ 2</code> (single-run here)'}</p>`
+    ? `<p class="sm-foot">${svgIcon('stability', { size: 13, cls: 'sm-foot-ico' })}${lang === 'zh' ? '稳定性需 <code>--repeat ≥ 2</code> 才能测(本次为单轮评测)' : 'Stability needs <code>--repeat ≥ 2</code> (single-run here)'}</p>`
     : '';
 
   // 指标行列表(单 variant):综合分 + 六维竖排,免去单行表格的空旷/表头冗余。
@@ -610,12 +623,12 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const metricList = `<div class="sm-metrics">${compositeMetric}<div class="sm-metric-grid">${(perVariant[0]?.dims ?? []).map(dimMetric).join('')}</div></div>`;
 
   const radarDims = [
-    { key: 'fact', label: lang === 'zh' ? '事实' : 'Fact', emoji: '📋' },
-    { key: 'behavior', label: lang === 'zh' ? '行为' : 'Behavior', emoji: '🛠️' },
-    { key: 'judge', label: lang === 'zh' ? '评委' : 'Judge', emoji: '💬' },
-    { key: 'cost', label: lang === 'zh' ? '成本' : 'Cost', emoji: '💰' },
-    { key: 'efficiency', label: lang === 'zh' ? '效率' : 'Effic', emoji: '⚡' },
-    { key: 'stability', label: lang === 'zh' ? '稳定' : 'Stab', emoji: '🛡️' },
+    { key: 'fact', label: lang === 'zh' ? '事实' : 'Fact' },
+    { key: 'behavior', label: lang === 'zh' ? '行为' : 'Behavior' },
+    { key: 'judge', label: lang === 'zh' ? '评委' : 'Judge' },
+    { key: 'cost', label: lang === 'zh' ? '成本' : 'Cost' },
+    { key: 'efficiency', label: lang === 'zh' ? '效率' : 'Effic' },
+    { key: 'stability', label: lang === 'zh' ? '稳定' : 'Stab' },
   ];
   const radar = renderRadarChart(perVariant.map((pv) => ({ name: pv.name, color: pv.color, g: pv.g })), radarDims, lang);
 
@@ -629,7 +642,12 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const radarNote = lang === 'zh'
     ? '雷达归一化口径：事实/行为/评委 = 分÷5;成本、效率按绝对参考折算(约 $1/用例、120s/次 记为最低,越省越靠外);稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。'
     : 'Radar normalization: Fact/Behavior/Judge = score÷5; Cost/Efficiency use absolute references (~$1/sample, 120s/req map to 0 — cheaper/faster reaches outward); Stability = 1 − CV/0.3. Hollow dots = not measured or single-variant (no comparison). The table below is the source of truth for exact values.';
-  const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
+  // 六维说明弹框的行首图标:把历史 emoji 映射到统一 SVG 图标(未命中则保留原 emoji 兜底)。
+  const EMOJI_ICON: Record<string, string> = { '📋': 'fact', '🛠️': 'behavior', '💬': 'judge', '💰': 'cost', '⚡': 'efficiency', '🛡️': 'stability' };
+  const icon = (emoji: string): string => {
+    const name = EMOJI_ICON[emoji];
+    return name ? svgIcon(name, { size: 14, style: 'color:var(--text-secondary);vertical-align:-2px;margin-right:4px' }) : `<span aria-hidden="true">${emoji}</span>`;
+  };
   // 维度分隔加粗(border-top 2px),让六维的视觉边界更明显。sub 缩进从 28 收到 22。
   const dim = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"';
   const dimDesc = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-secondary)"';
@@ -706,7 +724,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     .sm-metrics { display:flex;flex-direction:column }
     .sm-metric { display:flex;align-items:baseline;gap:12px;padding:9px 4px }
     .sm-metric--composite { padding:4px 4px 12px;margin-bottom:6px;border-bottom:2px solid var(--border) }
-    .sm-metric-label { flex:0 0 auto;min-width:92px;color:var(--text-secondary);font-size:13.5px }
+    .sm-metric-label { display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-width:92px;color:var(--text-secondary);font-size:13.5px }
+    .sm-mico { color:var(--text-muted);flex-shrink:0 }
+    .sm-th-ico { color:var(--text-muted);vertical-align:-2px;margin-right:5px }
+    .sm-foot-ico { color:var(--text-muted);vertical-align:-2px;margin-right:5px }
     .sm-metric--composite .sm-metric-label { color:var(--text-primary);font-weight:600;font-size:14px }
     .sm-metric-val { flex:0 0 auto;min-width:60px;font-weight:700;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;font-size:15px }
     .sm-metric--composite .sm-metric-val { font-size:30px;line-height:1 }

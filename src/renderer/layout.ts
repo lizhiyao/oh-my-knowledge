@@ -1,4 +1,5 @@
 import type { Lang } from '../types/index.js';
+import { icon } from './icons.js';
 
 export function e(text: unknown): string {
   return String(text)
@@ -397,6 +398,7 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark">${icon('brand', { size: 14, sw: 2.2 })}</span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -445,7 +447,18 @@ html{scrollbar-gutter:stable}
   --shadow-md:0 8px 28px rgba(79,70,229,.08);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:12px 16px 20px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1440px;margin:0 auto;font-size:var(--fs-body)}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:0;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;margin:0;font-size:var(--fs-body);letter-spacing:-.005em}
+
+/* ── 常驻品牌栏(白玻璃,无菜单)— 让品牌身份贯穿首页与所有详情页 ── */
+.app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
+.app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
+.app-brand:hover{color:var(--text-primary);text-decoration:none}
+.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
+.app-bar-spacer{flex:1}
+/* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
+.app-main{max-width:1280px;margin:0 auto;padding:18px 20px 24px}
+@media(max-width:768px){.app-main{padding:14px 14px 20px}.app-bar{padding:0 14px}}
 h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
 h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
 .subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
@@ -781,5 +794,5 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body>${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>${langToggleScript()}</body></html>`;
+</style></head><body>${appBar}<div class="app-main">${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer></div>${langToggleScript()}</body></html>`;
 }
