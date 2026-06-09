@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
@@ -68,42 +68,6 @@ describe('observe inbox - review state', () => {
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
-  });
-
-  it('loads legacy reportKind review-state and rewrites it as schemaVersion 2 on update', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-legacy-'));
-    const legacyKey = observationReviewStateKey('skill', 'legacy-audit');
-    writeFileSync(join(dir, 'review-state.json'), JSON.stringify({
-      reportKind: 'observe-review-state',
-      schemaVersion: 1,
-      updatedAt: '2026-05-10T00:00:00.000Z',
-      entries: {
-        [legacyKey]: {
-          targetType: 'skill',
-          targetId: 'legacy-audit',
-          verdict: 'reviewed',
-          reviewedAt: '2026-05-10T00:00:00.000Z',
-        },
-      },
-    }, null, 2));
-
-    const loaded = loadObservationReviewState(dir);
-    assert.equal(loaded.kind, 'observe-review-state');
-    assert.equal(loaded.schemaVersion, 2);
-    assert.equal(loaded.entries[legacyKey].verdict, 'reviewed');
-
-    const updated = updateObservationReviewState(dir, {
-      targetType: 'skill',
-      targetId: 'fresh-audit',
-      verdict: 'not_issue',
-    }, '2026-05-10T00:01:00.000Z');
-    assert.equal(updated.entries[legacyKey].verdict, 'reviewed');
-    assert.equal(updated.entries[observationReviewStateKey('skill', 'fresh-audit')].verdict, 'not_issue');
-
-    const persisted = JSON.parse(readFileSync(join(dir, 'review-state.json'), 'utf-8')) as Record<string, unknown>;
-    assert.equal(persisted.kind, 'observe-review-state');
-    assert.equal('reportKind' in persisted, false);
-    assert.equal(persisted.schemaVersion, 2);
   });
 
   it('scopes relative metric annotations by skill segment while keeping message metrics shared', () => {
@@ -456,7 +420,7 @@ describe('observe inbox - review state', () => {
     };
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
-      reportKind: 'observe-skill-derived-standards',
+      kind: 'observe-skill-derived-standards',
       schemaVersion: 1,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
@@ -536,7 +500,7 @@ describe('observe inbox - review state', () => {
     };
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
-      reportKind: 'observe-skill-derived-standards',
+      kind: 'observe-skill-derived-standards',
       schemaVersion: 1,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
@@ -584,48 +548,6 @@ describe('observe inbox - review state', () => {
     assert.equal(second.standards.length, 1);
     assert.equal(second.standards[0].id, 'soft-only-confirmed');
     assert.equal(second.standards[0].status, 'stale');
-  });
-
-  it('updates legacy reportKind soft standards without treating them as missing', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-legacy-update-'));
-    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
-    const file = skillDerivedStandardsPath(dir, 'legacy-skill');
-    writeFileSync(file, JSON.stringify({
-      reportKind: 'observe-skill-derived-standards',
-      schemaVersion: 1,
-      skillName: 'legacy-skill',
-      generatedAt: '2026-05-18T00:00:00.000Z',
-      model: 'sonnet',
-      executor: 'test-executor',
-      promptId: 'llm-enhanced-review',
-      promptVersion: '2026-05-18.v1',
-      standards: [{
-        id: 'legacy-rule',
-        kind: 'workflow_candidate',
-        status: 'pending_review',
-        title: '旧流程建议',
-        body: '这是一条 legacy soft standard。',
-        source: 'llm_soft_standard',
-        confidence: 'medium',
-        evidence: ['旧记录'],
-      }],
-    }, null, 2));
-
-    const updated = updateSkillDerivedStandardStatus(
-      dir,
-      'legacy-skill',
-      'legacy-rule',
-      'author_confirmed',
-      '2026-05-18T00:01:00.000Z',
-    );
-    assert.equal(updated.schemaVersion, 2);
-    assert.equal(updated.standards[0].standardKind, 'workflow_candidate');
-    assert.equal(updated.standards[0].status, 'author_confirmed');
-
-    const persisted = JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>;
-    assert.equal(persisted.kind, 'observe-skill-derived-standards');
-    assert.equal('reportKind' in persisted, false);
-    assert.equal(persisted.schemaVersion, 2);
   });
 
   it('prepends required ownerSuggestions so they survive the 10-item cap', async () => {

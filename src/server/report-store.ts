@@ -31,6 +31,16 @@ async function withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
  * Create a file-system-based report store.
  */
 export function createFileStore(dir: string): ReportStore {
+  const LEGACY_EVALUATION_TOP_LEVEL_KEYS = new Set([
+    'id',
+    'meta',
+    'summary',
+    'results',
+    'sampleSnapshots',
+    'analysis',
+    'variance',
+  ]);
+
   async function ensureDir(): Promise<void> {
     try {
       await access(dir);
@@ -63,12 +73,12 @@ export function createFileStore(dir: string): ReportStore {
     }
     if (
       record.kind === undefined
-      && record.reportKind === undefined
       && record.overview === undefined
       && record.artifacts === undefined
       && record.meta
       && record.summary
       && Array.isArray(record.results)
+      && Object.keys(record).every((key) => LEGACY_EVALUATION_TOP_LEVEL_KEYS.has(key))
     ) {
       return {
         ...record,

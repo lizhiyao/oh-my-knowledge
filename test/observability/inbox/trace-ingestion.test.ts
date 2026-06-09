@@ -649,47 +649,6 @@ describe('observe inbox - trace ingestion', () => {
     assert.ok(tracePaths.has('/tmp/B'));
   });
 
-  it('loads legacy reportKind observe-inbox files and canonicalizes nested experience reports', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-legacy-'));
-    writeFileSync(join(dir, '2026-05-07T12-00-00-observe-inbox.json'), JSON.stringify({
-      reportKind: 'observe-inbox',
-      schemaVersion: 1,
-      meta: {
-        generatedAt: '2026-05-07T12:00:00.111Z',
-        tracePath: '/tmp/legacy-trace',
-        sessionCount: 1,
-        segmentCount: 1,
-        itemCount: 1,
-      },
-      items: [baseItem({ id: 'legacy', skillName: 'legacy_skill', lastSeen: '2026-05-07T12:00:00.111Z' })],
-      experience: {
-        reportKind: 'observe-experience',
-        schemaVersion: 1,
-        scope: 'evidence-only',
-        generatedAt: '2026-05-07T12:00:00.111Z',
-        meta: {
-          sessionCount: 1,
-          skillCount: 1,
-          invocationCount: 1,
-          goalSliceCount: 0,
-          noteCodes: ['no_llm_judge', 'no_auto_verdict', 'default_goal_slice_is_allowed', 'deterministic_assistive_inference'],
-        },
-        goalSlices: [],
-        invocations: [],
-        sessions: [],
-        skills: [],
-      },
-    }, null, 2));
-
-    const [report] = loadObservationInboxReports(dir);
-    assert.ok(report);
-    assert.equal(report.kind, 'observe-inbox');
-    assert.equal(report.schemaVersion, 2);
-    assert.equal('reportKind' in report, false);
-    assert.equal(report.experience?.kind, 'observe-experience');
-    assert.equal(report.experience?.schemaVersion, 2);
-  });
-
   it('uses a dedicated reason code for skill asset read failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');

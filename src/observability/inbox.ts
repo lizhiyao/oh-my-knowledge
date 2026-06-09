@@ -595,11 +595,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
 function normalizeObservationInboxReport(value: unknown): ObservationInboxReport | null {
   if (!value || typeof value !== 'object') return null;
   const report = value as Record<string, unknown>;
-  const kind = report.kind === 'observe-inbox'
-    ? report.kind
-    : report.reportKind === 'observe-inbox'
-      ? report.reportKind
-      : null;
+  const kind = report.kind === 'observe-inbox' ? report.kind : null;
   if (!kind) return null;
   if (report.schemaVersion !== 1 && report.schemaVersion !== 2) return null;
   if (!report.meta || typeof report.meta !== 'object' || !Array.isArray(report.items)) return null;

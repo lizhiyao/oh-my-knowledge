@@ -227,10 +227,10 @@ export interface ReportMeta {
    *  for eval-side reports). Value 1 was specified for v0.21+ but never emitted in practice.
    *  Value 2 marked the artifactHashes tree-hash era for local dir-skills (git dir-skills still
    *  SKILL.md-only). Value 3 extends whole-tree hashing to git dir-skills via isolated copies
-   *  (all dir-skills bind). Value 4 keeps the v3 hash/binding semantics but renames the top-level
-   *  report discriminant from `reportKind` to `kind`, so external consumers can version-gate the
-   *  JSON shape. Drift / lineage consumers gate on `>= 2` (tree-hash era); git-dir-skill binding
-   *  additionally requires `>= 3`. */
+   *  (all dir-skills bind). Value 4 keeps the v3 hash/binding semantics but marks the canonical
+   *  top-level discriminant era, so external consumers can version-gate the JSON shape. Drift /
+   *  lineage consumers gate on `>= 2` (tree-hash era); git-dir-skill binding additionally
+   *  requires `>= 3`. */
   schemaVersion?: number;
   /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
   sampleHashes?: Record<string, string>;
@@ -354,7 +354,7 @@ export type Report = EvaluationReport;
 export interface BatchEvaluationMeta {
   mode: 'skill';
   /** Batch report JSON schema version. Kept in lockstep with child EvaluationReport top-level
-   *  shape so external consumers can distinguish `reportKind` vs `kind` payloads. */
+   *  shape so external consumers can identify the canonical discriminant era. */
   schemaVersion: number;
   model: string;
   executor: string;

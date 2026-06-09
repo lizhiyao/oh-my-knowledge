@@ -279,9 +279,9 @@ export function aggregateReport({
       cliVersion: getCliVersion(),
       nodeVersion: process.version,
       // schemaVersion 3 起,所有 dir-skill(本地 + git)都经隔离副本物化、整棵可分发树哈,与 install
-      // 受管记录 contentHash 同空间(evidence 全绑)。4 延续 v3 的哈/绑定义,但把顶层判别字段
-      // 从 reportKind 统一为 kind,方便外部消费方按版本识别 JSON 形状。2 是过渡纪元(本地
-      // dir-skill 树哈、git dir-skill 仅 SKILL.md 字节、不绑);git dir-skill 的 v2 与 v3+ 不可比。
+      // 受管记录 contentHash 同空间(evidence 全绑)。4 延续 v3 的哈/绑定义,并作为当前 canonical
+      // 顶层判别字段纪元,方便外部消费方按版本识别 JSON 形状。2 是过渡纪元(本地 dir-skill 树哈、
+      // git dir-skill 仅 SKILL.md 字节、不绑);git dir-skill 的 v2 与 v3+ 不可比。
       schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
       artifactHashes,
       sampleHashes,

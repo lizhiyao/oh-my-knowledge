@@ -133,11 +133,7 @@ export function updateObservationReviewState(
 function normalizeObservationReviewState(value: unknown): ObservationReviewState | null {
   if (!value || typeof value !== 'object') return null;
   const parsed = value as Record<string, unknown>;
-  const kind = parsed.kind === 'observe-review-state'
-    ? parsed.kind
-    : parsed.reportKind === 'observe-review-state'
-      ? parsed.reportKind
-      : null;
+  const kind = parsed.kind === 'observe-review-state' ? parsed.kind : null;
   if (!kind) return null;
   if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) return null;
   if (!parsed.entries || typeof parsed.entries !== 'object') return null;

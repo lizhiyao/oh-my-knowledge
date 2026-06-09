@@ -186,30 +186,6 @@ describe('buildSkillIndex 模块级缓存', () => {
     assert.notEqual(idx2, idx1, 'explicit reset bypasses fingerprint-eq check');
   });
 
-  it('legacy reportKind doctor JSON 仍会进入 skill index 的 doctor snapshot', () => {
-    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-observations-'));
-    cleanupDirs.push(observationsDir);
-    writeFileSync(join(doctorsDir, 'legacy-doctor.json'), JSON.stringify({
-      reportKind: 'doctor',
-      schemaVersion: '2.0.0',
-      id: 'legacy-doctor',
-      timestamp: '2026-05-11T00:00:00.000Z',
-      skills: [{
-        skillName: 'audit',
-        status: 'warn',
-        results: [{ status: 'warn' }],
-      }],
-      totals: { pass: 0, warn: 1, fail: 0 },
-      outcome: 'warnings_only',
-      ruleStats: { pass: 0, warn: 1, fail: 0, skipped: 0, total: 1 },
-    }, null, 2));
-
-    const idx = buildSkillIndex([], analysesDir, doctorsDir, observationsDir);
-    assert.equal(idx.summary.withDoctor, 1);
-    assert.equal(idx.entries[0]?.doctor?.reportId, 'legacy-doctor');
-    assert.equal(idx.entries[0]?.doctor?.status, 'warn');
-  });
-
   it('case 4 (P2-a 核心 — analysesDir 里 same-name JSON 内容原地 in-place 覆写之后 fingerprint 必须 invalidate cache):reviewer 5/11 描述的"同份 analysis JSON 把 toolFailureRate 从 0 改成 0.9, server 进程内二次 buildSkillIndex 返回 same object reference 仍是旧值"那条 ship-blocker 锁定', () => {
     const reports = [mkReport('r1', '2026-05-11T00:00:00Z', 'foo')];
     const analysisJsonPath = join(analysesDir, 'health-2026-05-11.json');

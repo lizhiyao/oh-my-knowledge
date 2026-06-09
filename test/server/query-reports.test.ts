@@ -68,7 +68,6 @@ describe('queryRunList', () => {
     assert.equal(list.length, 1);
     assert.equal(list[0].id, 'r1');
     assert.equal(list[0].kind, 'evaluation');
-    assert.equal('reportKind' in list[0], false);
     assert.ok(list[0].meta);
     assert.ok(list[0].summary);
     assert.equal(list[0].meta.model, 'sonnet');
@@ -96,17 +95,17 @@ describe('createFileStore legacy report loading', () => {
     }
   });
 
-  it('不再兼容仅带 reportKind 的历史普通报告', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-reportKind-report-'));
+  it('不兼容带额外未知顶层判别字段的历史普通报告', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-extra-discriminant-report-'));
     try {
-      const legacy = makeReport('legacy-reportKind-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
-      legacy.reportKind = 'evaluation';
+      const legacy = makeReport('legacy-extra-discriminant-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
+      legacy.legacyDiscriminant = 'evaluation';
       delete legacy.kind;
       delete legacy.id;
-      writeFileSync(join(dir, 'legacy-reportKind-run.json'), JSON.stringify(legacy, null, 2));
+      writeFileSync(join(dir, 'legacy-extra-discriminant-run.json'), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
-      assert.equal(await store.get('legacy-reportKind-run'), null);
+      assert.equal(await store.get('legacy-extra-discriminant-run'), null);
       assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -121,18 +120,17 @@ describe('createFileStore legacy report loading', () => {
 
       const raw = JSON.parse(readFileSync(join(dir, 'new-run.json'), 'utf-8')) as Record<string, unknown>;
       assert.equal(raw.kind, 'evaluation');
-      assert.equal('reportKind' in raw, false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('不再兼容仅带 reportKind 的历史批量报告', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-reportKind-batch-report-'));
+  it('不兼容带额外未知顶层判别字段的历史批量报告', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-extra-discriminant-batch-report-'));
     try {
       const legacyBatch = {
-        reportKind: 'batch-evaluation',
-        id: 'legacy-reportKind-batch',
+        legacyDiscriminant: 'batch-evaluation',
+        id: 'legacy-extra-discriminant-batch',
         mode: 'skill',
         meta: {
           mode: 'skill',
@@ -150,10 +148,10 @@ describe('createFileStore legacy report loading', () => {
         },
         items: [],
       };
-      writeFileSync(join(dir, 'legacy-reportKind-batch.json'), JSON.stringify(legacyBatch, null, 2));
+      writeFileSync(join(dir, 'legacy-extra-discriminant-batch.json'), JSON.stringify(legacyBatch, null, 2));
 
       const store = createFileStore(dir);
-      assert.equal(await store.get('legacy-reportKind-batch'), null);
+      assert.equal(await store.get('legacy-extra-discriminant-batch'), null);
       assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });

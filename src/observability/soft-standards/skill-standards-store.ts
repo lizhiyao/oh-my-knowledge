@@ -154,11 +154,7 @@ export function isSkillDerivedStandards(value: unknown): value is SkillDerivedSt
 function normalizeSkillDerivedStandards(value: unknown): SkillDerivedStandards | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const item = value as Record<string, unknown>;
-  const kind = item.kind === 'observe-skill-derived-standards'
-    ? item.kind
-    : item.reportKind === 'observe-skill-derived-standards'
-      ? item.reportKind
-      : null;
+  const kind = item.kind === 'observe-skill-derived-standards' ? item.kind : null;
   if (!kind) return undefined;
   if (item.schemaVersion !== 1 && item.schemaVersion !== 2) return undefined;
   if (typeof item.skillName !== 'string' || typeof item.generatedAt !== 'string' || typeof item.model !== 'string' || typeof item.executor !== 'string') {
