@@ -81,7 +81,7 @@ omk list --json          # 机器可读输出，含完整可比性 marker
 
 <!-- omk:cli:list:flags:end -->
 
-列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 携带完整可比性 marker（`cliVersion` / `judgePromptHash` / `debiasMode`）供脚本消费。参见[证据门控管理](../specs/evidence-gated-management.md)。
+列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 输出版本化信封 `{ schemaVersion, rows }`（每行携带完整可比性 marker `cliVersion` / `judgePromptHash` / `debiasMode`），让脚本能检测形态变更。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 

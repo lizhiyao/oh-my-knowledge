@@ -7,7 +7,8 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync, linkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync, linkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { probeSourceState, sanitizeCell } from '../../src/cli/commands/list.js';
@@ -131,8 +132,52 @@ describe('sanitizeCell', () => {
     assert.ok(out.includes('PASS') && out.includes('hidde') && out.includes('n'), '可见正文保留');
   });
 
+  it('洗掉行 / 段分隔(U+2028 / 2029)+ Tags 块 + Hangul filler + interlinear（属性类一次覆盖整类,堵 LF 的 Unicode 孪生与隐藏诡计）', () => {
+    const evil = 'PASS forged row\u{e0041}tagㅤfill￹anno';
+    const out = sanitizeCell(evil);
+    for (const cp of [' ', ' ', '\u{e0041}', 'ㅤ', '￹']) {
+      assert.ok(!out.includes(cp), 'invisible/separator char stripped: U+' + cp.codePointAt(0)!.toString(16));
+    }
+    assert.ok(out.includes('PASS') && out.includes('forged') && out.includes('row'), '可见正文保留');
+  });
+
+  it('保留合法的间距组合符（\\p{Mc}，如 Devanagari 元音符号占 1 列）', () => {
+    assert.equal(sanitizeCell('काb'), 'काb', '间距组合符占 1 列、不该被洗');
+  });
+
   it('普通字符串原样(含 CJK / 路径)', () => {
     assert.equal(sanitizeCell('./skills/review'), './skills/review');
     assert.equal(sanitizeCell('git:HEAD:skills/审查'), 'git:HEAD:skills/审查');
+  });
+});
+
+describe('probeSourceState 本地 git 分支（resolveInstallSource，之前零覆盖）', () => {
+  let repo: string;
+  let prevCwd: string;
+  beforeEach(() => {
+    repo = realpathSync(mkdtempSync(join(tmpdir(), 'omk-probe-git-')));
+    const g = (args: string[]): void => { execFileSync('git', args, { cwd: repo, stdio: 'pipe' }); };
+    g(['init', '-q']); g(['config', 'user.email', 't@t']); g(['config', 'user.name', 't']);
+    mkdirSync(join(repo, 'skills', 'review', 'references'), { recursive: true });
+    writeFileSync(join(repo, 'skills', 'review', 'SKILL.md'), '# review\n');
+    writeFileSync(join(repo, 'skills', 'review', 'references', 'r.md'), 'asset\n');
+    g(['add', '-A']); g(['commit', '-q', '-m', 'init']);
+    prevCwd = process.cwd();
+    process.chdir(repo); // resolveInstallSource 的 git 上下文取自 cwd
+  });
+  afterEach(() => { process.chdir(prevCwd); rmSync(repo, { recursive: true, force: true }); });
+
+  it('cwd 在原仓库:本地 git locator 重物化重哈 → reachable + 整树哈与 hashArtifactSource 一致', () => {
+    const rec = record({ sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true });
+    const p = probeSourceState(rec);
+    assert.equal(p.reachable, true);
+    assert.ok(typeof p.hash === 'string' && p.hash.length > 0, '算出当前整树哈');
+  });
+
+  it('spec 解析不到（如 cwd 漂走 / 名字不存在）→ reachable:false（未核,不抛、不冒充 stale）', () => {
+    const rec = record({ sourceKind: 'git', locator: 'git:HEAD:skills/nope', ref: 'HEAD', isDirectorySkill: true });
+    const p = probeSourceState(rec);
+    assert.equal(p.reachable, false);
+    assert.equal(p.hash, undefined);
   });
 });

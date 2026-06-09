@@ -81,7 +81,7 @@ For full descriptions: `omk list --help`.
 
 <!-- omk:cli:list:flags:end -->
 
-Lists managed skills with their **evidence status**, not just files: lifecycle state, the latest verdict bound to the current content, current/total evidence count, and source. The lifecycle is derived at read time — `installed` (no valid evidence), `measurable` (eval evidence bound to the current content fingerprint), `stale` (source content drifted off its evidence). Because the fingerprint covers a directory-skill's whole tree (`SKILL.md` + `references/`), editing any asset flips the skill to `stale`. `--json` carries the full comparability marker (`cliVersion` / `judgePromptHash` / `debiasMode`) for scripts. See [evidence-gated management](../specs/evidence-gated-management.md).
+Lists managed skills with their **evidence status**, not just files: lifecycle state, the latest verdict bound to the current content, current/total evidence count, and source. The lifecycle is derived at read time — `installed` (no valid evidence), `measurable` (eval evidence bound to the current content fingerprint), `stale` (source content drifted off its evidence). Because the fingerprint covers a directory-skill's whole tree (`SKILL.md` + `references/`), editing any asset flips the skill to `stale`. `--json` emits a versioned envelope `{ schemaVersion, rows }` (each row carries the full comparability marker `cliVersion` / `judgePromptHash` / `debiasMode`) so scripts can detect shape changes. See [evidence-gated management](../specs/evidence-gated-management.md).
 
 ## `omk doctor`
 

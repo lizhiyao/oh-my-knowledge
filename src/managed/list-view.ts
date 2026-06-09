@@ -46,8 +46,15 @@ export interface ManagedListRow {
 function latestCurrentEvidence(record: ManagedArtifactRecord) {
   const current = record.evidence.filter((e) => e.contentHash === record.contentHash);
   if (current.length === 0) return undefined;
-  // recordedAt 是 ISO 串,字典序即时间序;并列取后出现的。
-  return current.reduce((a, b) => (b.recordedAt >= a.recordedAt ? b : a));
+  // 取 recordedAt 最新的一条。omk 自写恒 UTC `Z`、字典序即时间序;但记录可手改 / 随仓库分发,异偏移
+  // 或异精度的 ISO 串字典序会乱 → 优先按解析后的真实时刻比,两端都可解析才用;否则退回字典序(不劣化
+  // omk 自写场景)。并列取后出现的。
+  const ms = (s: string): number | null => { const n = Date.parse(s); return Number.isNaN(n) ? null : n; };
+  return current.reduce((a, b) => {
+    const ta = ms(a.recordedAt); const tb = ms(b.recordedAt);
+    if (ta !== null && tb !== null) return tb >= ta ? b : a;
+    return b.recordedAt >= a.recordedAt ? b : a;
+  });
 }
 
 export function buildManagedListRow(record: ManagedArtifactRecord, probe: SourceProbe): ManagedListRow {
@@ -85,7 +92,11 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
 
 /**
  * 组装全部行。`probeOf` 给每条记录探测当前源(三态,见文件头)。
- * 按 name 排序(稳定、可读);同名再按 kind。
+ * 按 name 排序(稳定、可读);name collation 相等再按 kind。排序对机读出口(--json)也生效,故:
+ *   - **钉死 locale**(`'en'`):缺省 locale 随宿主 LANG / LC_COLLATE 漂,会让两台机器对同一批记录排出不同
+ *     JSON 顺序,破坏 omk「确定、可比」的底色。
+ *   - 平级判定用**同一 collation 度量**(localeCompare 结果是否为 0)而非 `===`:NFC / NFD 等价的同显示名
+ *     在 `===` 下不等、却 collation 相等,用 `===` 会漏掉 kind 平级 tiebreak、令顺序退回 readdir 序(不定)。
  */
 export function buildManagedListRows(
   records: ManagedArtifactRecord[],
@@ -93,5 +104,8 @@ export function buildManagedListRows(
 ): ManagedListRow[] {
   return records
     .map((r) => buildManagedListRow(r, probeOf(r)))
-    .sort((a, b) => (a.name === b.name ? a.kind.localeCompare(b.kind) : a.name.localeCompare(b.name)));
+    .sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, 'en');
+      return byName !== 0 ? byName : a.kind.localeCompare(b.kind, 'en');
+    });
 }

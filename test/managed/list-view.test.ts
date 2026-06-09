@@ -111,6 +111,26 @@ describe('buildManagedListRow', () => {
     }), reach('hashAAA'));
     assert.equal(row.sourceLabel, '/abs/private.md', 'file 源永不显示 url —— 显示的就是 probe 实际读取的 locator');
   });
+
+  it('本地 git(无 url):sourceLabel 取 git locator,不显 url（守住 `&& url` 守卫的 false 分支）', () => {
+    const row = buildManagedListRow(rec({
+      source: { sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true },
+    }), reach('hashAAA'));
+    assert.equal(row.sourceKind, 'git');
+    assert.equal(row.sourceLabel, 'git:HEAD:skills/review');
+  });
+
+  it('证据 tie-break 按真实时刻而非字典序:异偏移 ISO 串取 chronologically 最新那条', () => {
+    const row = buildManagedListRow(rec({
+      evidence: [
+        // 字典序 '08:00+08:00' > '01:00Z',但真实时刻 00:00Z < 01:00Z → 应取后者(NEW)。
+        ev({ reportId: 'old', recordedAt: '2026-01-01T08:00:00+08:00', verdict: 'OLD' }),
+        ev({ reportId: 'new', recordedAt: '2026-01-01T01:00:00Z', verdict: 'NEW' }),
+      ],
+    }), reach('hashAAA'));
+    assert.equal(row.latestVerdict, 'NEW', '按解析时刻取最新,不被异偏移字典序骗');
+    assert.equal(row.recordedAt, '2026-01-01T01:00:00Z');
+  });
 });
 
 describe('buildManagedListRows', () => {
@@ -120,6 +140,18 @@ describe('buildManagedListRows', () => {
       () => ({ reachable: true, hash: 'hashAAA' }),
     );
     assert.deepEqual(rows.map((r) => r.name), ['apply', 'lint', 'review']);
+  });
+
+  it('确定性排序:NFC / NFD 同显示名(collation 相等但 !==)仍触发 kind tiebreak,输入顺序不影响输出', () => {
+    const nfc = 'café';        // U+00E9
+    const nfd = 'café';       // U+0065 U+0301,与 nfc collation 相等但 !==
+    const mk = (name: string, kind: 'skill' | 'agent') => rec({ id: `${kind}-${name}`, name, kind });
+    const probe = () => ({ reachable: true as const, hash: 'hashAAA' });
+    // 两种输入顺序应排出同一结果(kind:agent < skill);旧的 === gate 会漏 tiebreak、退回输入序。
+    const a = buildManagedListRows([mk(nfc, 'skill'), mk(nfd, 'agent')], probe).map((r) => r.kind);
+    const b = buildManagedListRows([mk(nfd, 'agent'), mk(nfc, 'skill')], probe).map((r) => r.kind);
+    assert.deepEqual(a, ['agent', 'skill'], 'collation 相等 → 按 kind 确定排序');
+    assert.deepEqual(a, b, '输入顺序不影响输出(确定性)');
   });
 
   it('probeOf 按记录分别探测:一致 → installed;不可达 → installed + reachable=false(非 stale)', () => {
