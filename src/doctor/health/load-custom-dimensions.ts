@@ -48,7 +48,7 @@ export function loadAndRegisterCustomDimensions(filePath: string): number {
       throw new Error(`自定义维度缺少必填字段（id/displayName）: ${JSON.stringify(dim).slice(0, 100)}`);
     }
     if (dim.endpoint && dim.promptSection) {
-      throw new Error(`自定义维度 ${dim.id} 不能同时配置 endpoint 与 promptSection(二选一)`);
+      throw new Error(`自定义维度 ${dim.id} 不能同时配置 endpoint 与 promptSection（二选一）`);
     }
     const severity = resolveSeverity(dim.severity);
 

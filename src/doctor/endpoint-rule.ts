@@ -24,7 +24,7 @@
  *   { "status": "pass" | "warn" | "fail", "message": "...", "hint"?: "...", "detail"?: {...} }
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   DoctorRule,
@@ -98,18 +98,24 @@ function collectFiles(
       const full = join(dir, entry);
       const relPath = rel ? `${rel}/${entry}` : entry;
       let st;
-      try { st = statSync(full); } catch { continue; }
+      // lstat(不跟随 symlink):跳过符号链接,防止 skillRoot 下的 link 指向 root 外
+      // (如 /etc/passwd)被读取并随 payload 外发。
+      try { st = lstatSync(full); } catch { continue; }
+      if (st.isSymbolicLink()) continue;
       if (st.isDirectory()) {
         walk(full, relPath, depth + 1);
       } else if (st.isFile()) {
         if (SKIP_EXTENSIONS.has(extOf(entry))) continue;
-        let content: string;
-        try { content = readFileSync(full, 'utf-8'); } catch { continue; }
-        if (Buffer.byteLength(content, 'utf-8') > maxFileBytes) {
-          content = content.slice(0, maxFileBytes) + '\n…[truncated]';
-        }
-        files[relPath] = content;
-        total += Buffer.byteLength(content, 'utf-8');
+        let buf: Buffer;
+        try { buf = readFileSync(full); } catch { continue; }
+        // 内容嗅探:含 NUL 字节 → 二进制,跳过(扩展名漏网的 binary 兜底)。
+        if (buf.includes(0)) continue;
+        // 按字节截断(中文等多字节内容也不会冲穿上限);超限只收 maxFileBytes 字节,
+        // toString 丢弃尾部可能被切断的半个 UTF-8 字符。
+        const over = buf.length > maxFileBytes;
+        const slice = over ? buf.subarray(0, maxFileBytes) : buf;
+        files[relPath] = slice.toString('utf-8') + (over ? '\n…[truncated]' : '');
+        total += slice.length;
       }
     }
   };
@@ -222,7 +228,8 @@ export function makeEndpointRule(
             'response missing required field status (pass/warn/fail) or message',
           ),
           hint: hintProto(ctx),
-          detail: { endpoint: spec.endpoint, received: parsed },
+          // received 截断:接口可能返回超大 body,避免无界塞进 report JSON。
+          detail: { endpoint: spec.endpoint, received: JSON.stringify(parsed).slice(0, 2000) },
         };
       }
 
@@ -243,7 +250,7 @@ function failMsg(ctx: DoctorContext, spec: EndpointDimensionSpec, zh: string, en
 
 function hintNet(ctx: DoctorContext, endpoint: string): string {
   return ctx.lang === 'zh'
-    ? `确认接口 ${endpoint} 可达、鉴权 header 正确,或调大 --timeout`
+    ? `确认接口 ${endpoint} 可达、鉴权 header 正确，或调大 --timeout`
     : `Verify endpoint ${endpoint} is reachable, auth headers are correct, or raise --timeout`;
 }
 

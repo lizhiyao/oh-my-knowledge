@@ -142,8 +142,8 @@ export default class Doctor extends BaseCommand {
     }),
     dimensions: Flags.string({
       description: bilingual({
-        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。',
-        en: 'Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service).',
+        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。',
+        en: 'Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.',
       }),
     }),
     'static-only': Flags.boolean({
