@@ -66,3 +66,22 @@ export function icon(name: string, opts: IconOpts = {}): string {
 export function dimIconName(dim: 'doctor' | 'eval' | 'observe'): IconName {
   return dim;
 }
+
+/**
+ * 品牌 logo —— 圆形「omk」标记(深底 + 蓝紫渐变 o 环)。自带配色,不走 currentColor。
+ * 内联(不外链内网地址),保证报告离线/换机仍自包含。gradient id 用 `omkAccent` 防与页面其它 svg 撞 id。
+ */
+const BRAND_LOGO_INNER =
+  '<defs><linearGradient id="omkAccent" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>' +
+  '<circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>' +
+  '<path d="M24 60 A12 12 0 1 1 36 72" stroke="url(#omkAccent)" stroke-width="3.5" stroke-linecap="round" fill="none"/>' +
+  '<path d="M56 72 V57 Q56 48 61.5 48 Q67 48 67 57 V72 M67 57 Q67 48 72.5 48 Q78 48 78 57 V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>' +
+  '<path d="M86 48 V72 M86 60 L96 48 M86 60 L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+
+/** 品牌 logo 的完整 `<svg>`(给定像素尺寸)。 */
+export function brandLogo(size = 28): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 120 120" fill="none" aria-label="omk">${BRAND_LOGO_INNER}</svg>`;
+}
+
+/** 品牌 logo 的原始 `<svg>`(无尺寸,供 favicon data URI 编码用)。 */
+export const BRAND_LOGO_RAW = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">${BRAND_LOGO_INNER}</svg>`;

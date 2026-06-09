@@ -252,8 +252,6 @@ const CSS = `
 .t-pg-info{font-variant-numeric:tabular-nums}
 
 /* ═══ Legacy ═══ */
-.t-legacy{margin-top:14px;text-align:center;font-size:11px;color:#b0b8c5}
-.t-legacy a{color:#4f46e5}
 
 /* ═══ Skill Detail Modal ═══ */
 .sd-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.45);align-items:center;justify-content:center}
@@ -353,7 +351,6 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
       </div>
       <div class="t-pager" id="t-pager"></div>
     </div>
-    <div class="t-legacy">${zh ? '找老的 run 列表？' : 'Old run list?'} <a href="/runs${langQ}">/runs</a></div>
   </main><style>${CSS}</style>
   <script>!function(){
     var PS=10,pg=1,bs=document.querySelectorAll('.t-seg-btn'),s=document.getElementById('t-search'),pgr=document.getElementById('t-pager');

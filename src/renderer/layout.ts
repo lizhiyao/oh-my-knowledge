@@ -1,5 +1,5 @@
 import type { Lang } from '../types/index.js';
-import { icon } from './icons.js';
+import { brandLogo, BRAND_LOGO_RAW } from './icons.js';
 
 export function e(text: unknown): string {
   return String(text)
@@ -394,11 +394,11 @@ function langToggleButton(lang: Lang): string {
 
 export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
-  const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs><circle cx="16" cy="16" r="15" fill="#182033"/><circle cx="16" cy="16" r="8" stroke="url(#g)" stroke-width="3.5" fill="none"/></svg>');
+  const favicon = encodeURIComponent(BRAND_LOGO_RAW);
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
-  const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark">${icon('brand', { size: 14, sw: 2.2 })}</span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -453,7 +453,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
-.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
+.app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */

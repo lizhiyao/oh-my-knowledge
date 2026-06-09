@@ -2,7 +2,7 @@
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] = `
 "<!doctype html><html lang="en" data-lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · Eval Report · v2</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234f46e5%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%23182033%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20120%20120%22%20fill%3D%22none%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22omkAccent%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%220%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%2256%22%20fill%3D%22%230f172a%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%221.5%22%2F%3E%3Cpath%20d%3D%22M24%2060%20A12%2012%200%201%201%2036%2072%22%20stroke%3D%22url(%23omkAccent)%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M56%2072%20V57%20Q56%2048%2061.5%2048%20Q67%2048%2067%2057%20V72%20M67%2057%20Q67%2048%2072.5%2048%20Q78%2048%2078%2057%20V72%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M86%2048%20V72%20M86%2060%20L96%2048%20M86%2060%20L96%2072%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
   // button becomes the first tab stop when a modal opens.
@@ -109,7 +109,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
-.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
+.app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
@@ -450,7 +451,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg></span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
+</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 120 120" fill="none" aria-label="omk"><defs><linearGradient id="omkAccent" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/><path d="M24 60 A12 12 0 1 1 36 72" stroke="url(#omkAccent)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72 V57 Q56 48 61.5 48 Q67 48 67 57 V72 M67 57 Q67 48 72.5 48 Q78 48 78 57 V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48 V72 M86 60 L96 48 M86 60 L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
     <main>
       <nav class="rs-crumb">
     <a class="rs-crumb-link" href="/"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-7 9 7v9a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2z"/></svg>Workbench</a>
@@ -1147,7 +1148,7 @@ details.rs-card[open]>.rs-card-head::after{transform:rotate(90deg)}
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] = `
 "<!doctype html><html lang="zh-CN" data-lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · 用例评测报告 · v2</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234f46e5%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%23182033%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20120%20120%22%20fill%3D%22none%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22omkAccent%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%220%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%2256%22%20fill%3D%22%230f172a%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%221.5%22%2F%3E%3Cpath%20d%3D%22M24%2060%20A12%2012%200%201%201%2036%2072%22%20stroke%3D%22url(%23omkAccent)%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M56%2072%20V57%20Q56%2048%2061.5%2048%20Q67%2048%2067%2057%20V72%20M67%2057%20Q67%2048%2072.5%2048%20Q78%2048%2078%2057%20V72%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M86%2048%20V72%20M86%2060%20L96%2048%20M86%2060%20L96%2072%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
   // button becomes the first tab stop when a modal opens.
@@ -1254,7 +1255,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
-.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
+.app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
@@ -1595,7 +1597,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg></span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
+</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 120 120" fill="none" aria-label="omk"><defs><linearGradient id="omkAccent" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/><path d="M24 60 A12 12 0 1 1 36 72" stroke="url(#omkAccent)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72 V57 Q56 48 61.5 48 Q67 48 67 57 V72 M67 57 Q67 48 72.5 48 Q78 48 78 57 V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48 V72 M86 60 L96 48 M86 60 L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
     <main>
       <nav class="rs-crumb">
     <a class="rs-crumb-link" href="/"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-7 9 7v9a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2z"/></svg>工作台</a>
@@ -2292,7 +2294,7 @@ details.rs-card[open]>.rs-card-head::after{transform:rotate(90deg)}
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunList en 1`] = `
 "<!doctype html><html lang="en" data-lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · Evaluation Reports</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234f46e5%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%23182033%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20120%20120%22%20fill%3D%22none%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22omkAccent%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%220%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%2256%22%20fill%3D%22%230f172a%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%221.5%22%2F%3E%3Cpath%20d%3D%22M24%2060%20A12%2012%200%201%201%2036%2072%22%20stroke%3D%22url(%23omkAccent)%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M56%2072%20V57%20Q56%2048%2061.5%2048%20Q67%2048%2067%2057%20V72%20M67%2057%20Q67%2048%2072.5%2048%20Q78%2048%2078%2057%20V72%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M86%2048%20V72%20M86%2060%20L96%2048%20M86%2060%20L96%2072%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
   // button becomes the first tab stop when a modal opens.
@@ -2399,7 +2401,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
-.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
+.app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
@@ -2740,7 +2743,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg></span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
+</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 120 120" fill="none" aria-label="omk"><defs><linearGradient id="omkAccent" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/><path d="M24 60 A12 12 0 1 1 36 72" stroke="url(#omkAccent)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72 V57 Q56 48 61.5 48 Q67 48 67 57 V72 M67 57 Q67 48 72.5 48 Q78 48 78 57 V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48 V72 M86 60 L96 48 M86 60 L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
     <main>
     <h1>Evaluation Reports</h1>
     <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs</p>
@@ -2888,7 +2891,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunList zh 1`] = `
 "<!doctype html><html lang="zh-CN" data-lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · 评测报告</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234f46e5%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%237c3aed%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%23182033%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20120%20120%22%20fill%3D%22none%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22omkAccent%22%20x1%3D%220%25%22%20y1%3D%220%25%22%20x2%3D%22100%25%22%20y2%3D%220%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%2256%22%20fill%3D%22%230f172a%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%221.5%22%2F%3E%3Cpath%20d%3D%22M24%2060%20A12%2012%200%201%201%2036%2072%22%20stroke%3D%22url(%23omkAccent)%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M56%2072%20V57%20Q56%2048%2061.5%2048%20Q67%2048%2067%2057%20V72%20M67%2057%20Q67%2048%2072.5%2048%20Q78%2048%2078%2057%20V72%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M86%2048%20V72%20M86%2060%20L96%2048%20M86%2060%20L96%2072%22%20stroke%3D%22%23e2e8f0%22%20stroke-width%3D%223.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
   // button becomes the first tab stop when a modal opens.
@@ -2995,7 +2998,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei
 .app-bar{position:sticky;top:0;z-index:30;height:52px;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 22px}
 .app-brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.02em;color:var(--text-primary);text-decoration:none}
 .app-brand:hover{color:var(--text-primary);text-decoration:none}
-.app-brand-mark{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#6e6ee0,#4f46e5);display:grid;place-items:center;color:#fff;flex-shrink:0}
+.app-brand-logo{display:inline-flex;align-items:center;flex-shrink:0}
+.app-brand-logo svg{display:block;border-radius:50%}
 .app-brand-tag{font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
 .app-bar-spacer{flex:1}
 /* 内容容器:居中、留出页边距(原本在 body 上,现下移到 main 容器) */
@@ -3336,7 +3340,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg></span>omk<span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
+</style></head><body><header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo"><svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 120 120" fill="none" aria-label="omk"><defs><linearGradient id="omkAccent" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/><path d="M24 60 A12 12 0 1 1 36 72" stroke="url(#omkAccent)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72 V57 Q56 48 61.5 48 Q67 48 67 57 V72 M67 57 Q67 48 72.5 48 Q78 48 78 57 V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48 V72 M86 60 L96 48 M86 60 L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header><div class="app-main">
     <main>
     <h1>评测报告</h1>
     <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测</p>
