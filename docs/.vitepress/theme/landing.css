@@ -183,7 +183,7 @@
     box-shadow:inset 0 1.5px 1px rgba(255,255,255,.3),inset 0 -5px 12px rgba(37,99,235,.25),inset 2px 0 6px rgba(255,255,255,.18),0 10px 26px -8px rgba(37,99,235,.55),0 2px 6px rgba(0,0,0,.4)}
   .omk-landing .thumb-g::after{content:"";position:absolute;left:8%;right:8%;top:2px;height:46%;border-radius:14px;
     background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,0));pointer-events:none}
-  .dark .omk-landing .thumb-g::after{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,0))}
+  .dark .omk-landing .thumb-g::after{background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,0))}
   .omk-landing .thumb-g::before{content:"";position:absolute;left:0;right:0;bottom:0;height:40%;border-radius:0 0 15px 15px;
     background:linear-gradient(0deg,rgba(255,255,255,.35),transparent);pointer-events:none}
   .omk-landing .thumb.liq .thumb-g{animation:liq .52s cubic-bezier(.22,1,.36,1)}
@@ -196,6 +196,9 @@
   .omk-landing .seg.done .ph{color:#5FA89B} .omk-landing .seg.done .nm{color:var(--teal)} .omk-landing .seg.done .nm .ic{filter:grayscale(0);opacity:.9}
   .omk-landing .seg.active .ph{color:var(--blue)} .omk-landing .seg.active .nm{color:var(--blue-d)}
   .omk-landing .seg.active .nm .ic{filter:grayscale(0);opacity:1;transform:scale(1.12)}
+  /* 暗色:选中段文字提亮 —— 中蓝 .ph 落在蓝色玻璃滑块 + 顶部高光上会糊,改用更亮的蓝/近白 */
+  .dark .omk-landing .seg.active .ph{color:#BFD4FF}
+  .dark .omk-landing .seg.active .nm{color:#EEF3FF}
   .omk-landing .seg:not(.active):hover .nm{color:var(--ink)}
   .omk-landing .rail-cap{font-size:13px;color:var(--muted);text-align:center;transition:.3s}
   .omk-landing .rail-cap b{color:var(--body);font-weight:600}
