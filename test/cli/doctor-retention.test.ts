@@ -12,7 +12,7 @@ function seedDoctorHistory(dir: string, skillName: string, count: number): strin
     const timestamp = `2026-05-${String(10 + i).padStart(2, '0')}T00:00:00.000Z`;
     const file = `${skillName}-r${String(i).padStart(3, '0')}.json`;
     writeFileSync(join(dir, file), JSON.stringify({
-      kind: 'doctor',
+      reportKind: 'doctor',
       id: `r${i}`,
       timestamp,
       skills: [{ skillName, status: 'pass', results: [] }],
@@ -66,7 +66,7 @@ describe('pruneDoctorHistory', () => {
   it('清理遗留 `{name}.json` 命名:同 skill 旧文件也参与轮换', () => {
     // 旧 schema:文件名是 {skill}.json,timestamp 是早期
     writeFileSync(join(dir, 'code-review.json'), JSON.stringify({
-      kind: 'doctor',
+      reportKind: 'doctor',
       id: 'legacy',
       timestamp: '2025-01-01T00:00:00.000Z',
       skills: [{ skillName: 'code-review', status: 'pass', results: [] }],
@@ -83,9 +83,9 @@ describe('pruneDoctorHistory', () => {
   });
 
   it('忽略 non-doctor / 多 skill / 损坏 JSON', () => {
-    writeFileSync(join(dir, 'eval-report.json'), JSON.stringify({ kind: 'evaluation' }));
+    writeFileSync(join(dir, 'eval-report.json'), JSON.stringify({ reportKind: 'evaluation' }));
     writeFileSync(join(dir, 'multi-skill.json'), JSON.stringify({
-      kind: 'doctor',
+      reportKind: 'doctor',
       skills: [{ skillName: 'a' }, { skillName: 'b' }],
     }));
     writeFileSync(join(dir, 'corrupt.json'), '{ not json');

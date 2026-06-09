@@ -33,7 +33,7 @@ commit-message convention, and validation requirements.
 - [ ] Commit message follows the repo convention (`type(scope): subject`)
 - [ ] PR title / description note user-facing impact + migration if BREAKING (release notes are auto-generated from PR list)
 - [ ] No secrets / internal URLs / personal data in the diff
-- [ ] If CLI surface or user-facing behavior changed: README.md / README.zh.md / `.claude/skills/omk/SKILL.md` (+ `references/commands.md`) / quickstart docs all updated as needed
+- [ ] If CLI surface or user-facing behavior changed: README.md / README.zh.md / `.agents/skills/omk/SKILL.md` (+ `references/commands.md`) / quickstart docs all updated as needed
 - [ ] Bilingual parity: en (`README.md`, `docs/*.md`) and zh (`README.zh.md`, `docs/zh/*.md`) versions stay in sync — never update one language without the other
 
 ## Additional context

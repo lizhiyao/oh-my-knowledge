@@ -54,7 +54,7 @@ function mkResult(sampleId: string, variant: string, opts: {
 
 function mkEvalReport(variant: string, results: ResultEntry[]): EvaluationReport {
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id: `${variant}-test-id`,
     meta: {
       variants: ['baseline', variant],
@@ -295,7 +295,7 @@ describe('detectInsights — production-instability', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'yellow', failureRate: 0.3, segmentCount: 10, gapRate: 0,
+        healthBand: 'yellow', failureRate: 0.3, segmentCount: 10, gapRate: 0, confidence: 'low',
       },
     });
     const insights = detectInsights(entry, null);
@@ -338,7 +338,7 @@ describe('detectInsights — Diagnosis projection', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0,
+        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0, confidence: 'low',
       },
     });
     const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
@@ -356,7 +356,7 @@ describe('detectInsights — Diagnosis projection', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0, confidence: 'high',
       },
     });
     const insights = detectInsights(entry, null, { diagnostics: [] });
@@ -377,7 +377,7 @@ describe('detectInsights — Diagnosis projection', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0, confidence: 'high',
       },
     });
     const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
@@ -471,7 +471,7 @@ describe('detectInsights — skill-too-long', () => {
       },
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'yellow', failureRate: 0.1, segmentCount: 18, gapRate: 0.35,
+        healthBand: 'yellow', failureRate: 0.1, segmentCount: 18, gapRate: 0.35, confidence: 'low',
       },
     });
     const insights = detectInsights(entry, null);
@@ -522,7 +522,7 @@ describe('detectInsights — coverage-gap', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'yellow', failureRate: 0.05, segmentCount: 10, gapRate: 0.25,
+        healthBand: 'yellow', failureRate: 0.05, segmentCount: 10, gapRate: 0.25, confidence: 'low',
       },
     });
     const report = mkEvalReport('test-skill', [mkResult('s1', 'test-skill', { passedAssertions: true })]);
@@ -548,7 +548,7 @@ describe('detectInsights — coverage-gap', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0,
+        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0, confidence: 'low',
       },
     });
     const insights = detectInsights(entry, null);

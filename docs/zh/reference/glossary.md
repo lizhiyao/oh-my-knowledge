@@ -1,6 +1,6 @@
 <!--
 title: 术语对照表 — 业内通用 ML / 统计 / omk 名词的中英对照
-description: 给 omk 文档读者用的术语速查。覆盖 bootstrap CI / Δ / Pearson / Krippendorff α / 综合分 / executor / 测评可信度 等业内通用术语,以及 omk 内部命名(artifact / verdict / 外验集 等)。每条给一句话定义 + 在哪用到。
+description: 给 omk 文档读者用的术语速查。覆盖 bootstrap CI / Δ / Pearson / Krippendorff α / 综合分 / executor / 测评可信度 等业内通用术语，以及 omk 内部命名(artifact / verdict / 外验集 等)。每条给一句话定义 + 在哪用到。
 -->
 
 # 术语对照表
@@ -9,7 +9,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 > **定位**：读者速查表，不是设计规范。omk 维护者写新文档时遵循这份用语。
 >
-> **姊妹文档**：[术语规范 (terminology-spec.md)](../../specs/terminology-spec.md)（维护者内部决策归档）/ [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md)
+> **姊妹文档**：[术语规范 (terminology-spec.md)](../specs/terminology-spec.md)（维护者内部决策归档）/ [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md)
 
 ---
 
@@ -22,7 +22,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | 95% CI | 95% 可信区间 | 真实均值有 95% 概率落在这个区间。CI 不含 0 = 显著差异 | hero tooltip；配对对比表 |
 | significant | 显著差异 / 显著 | CI 不含 0（差距不是偶然） | 测评可信度 ✓ 差异显著 badge |
 | Pearson r | 皮尔逊（相关）系数 | 1=完全同向 / 0=无关 / -1=完全反向 | 多评委 ensemble 的「跨用例评委一致性」表 |
-| MAD | 平均绝对差 | 多个评委对同一样本打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
+| MAD | 平均绝对差 | 多个评委对同一用例打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
 | Krippendorff α | Krippendorff α / 一致性系数 | 序数加权多评委一致性，α ≥ 0.8 高度一致 / 0.667-0.8 可接受 / < 0.4 低 | 人工锚点 (Human gold) section |
 | p-value | p 值 | 「这种差距碰巧出现」的概率，越小越显著（一般 0.05 阈值） | t-test 部分（omk 不主推，bootstrap 优先） |
 | effect size | 效应量 | 差距相对于波动的比例（Cohen's d / Hedges' g），刻度化「差距有多大」 | 波动 / 显著性表的 Cohen's d 列 |
@@ -41,25 +41,28 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 | 英文 | 中文 | 一句话定义 | 在 omk 哪用到 |
 |---|---|---|---|
-| artifact | 知识载体 | omk 的「被评测对象」统一抽象：skill / prompt / agent / workflow / baseline | 由实验角色决定（`--control` / `--treatment` / baseline），非单独 flag |
-| executor | 执行器 | 跑模型的方式：claude / codex / openai-api / gemini | `--executor` 参数；执行环境指纹 |
+| [artifact](./artifact-layout.md) | 知识载体 | omk 的「被评测对象」统一抽象：skill / prompt / agent / workflow / baseline | 由实验角色决定（`--control` / `--treatment` / baseline），非单独 flag |
+| [executor](./executors.md) | 执行器 | 跑模型的方式：claude / codex / openai-api / gemini | `--executor` 参数；执行环境指纹 |
 | ensemble (judge) | 集成评委 / 多评委 | 多个 LLM 同时当评委独立打分，组合结果 | `--judge-models claude:opus,claude:sonnet` |
 | judge | 评委 | LLM 当评委按 rubric 打分（zh 译作「评委」，**不要**译作「判官」） | judge model 参数；evidence 表 |
 | rubric | 评分规则 | judge 打分时遵循的细则（应识别 X / 必须包含 Y / 至少 N 项 / ...） | sample 配置的 rubric 字段 |
 | anchor | 锚点 | 用人工标准校准 LLM judge 的方法 | `--gold-dir` 人工锚点 |
 | gate (layer gate) | 闸门 / 层独立闸门 | 三层独立显著性检验（fact / behavior / judge），任一层退步即触发 CAUTIOUS+ | verdict 算法；报告页「波动 / 显著性」表 |
-| verdict | 判定 | PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六档 | hero badge；CLI verdict 输出 |
+| [verdict](../specs/scoring.md#六档-verdict-一览) | 判定 | PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六档 | hero badge；CLI verdict 输出 |
 | sample (evaluation sample) | 评测用例 | omk user-facing zh 统一用「用例」（英文 sample 保留） | eval-samples.json |
-| eval-samples | 评测用例集 / 评测样本文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
+| [eval-samples](./eval-sample-format.md) | 评测用例集 / 评测用例文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
 | baseline (reserved variant) | 基线 / 对照（保留字） | 不注入 skill 的对照组，omk 保留变体名 | `--control baseline` |
 | treatment | 实验组 | 注入 skill 的对比组 | `--treatment <name>` |
 | control | 对照组 | baseline 的别名 | `--control <name>` |
-| composite (score) | 综合分 | fact / behavior / judge 三层等权均值，1-5 制（详见 scoring.md） | 六维对比表第一列 |
+| [composite (score)](../specs/scoring.md) | 综合分 | fact / behavior / judge 三层等权均值，1-5 制 | 六维对比表第一列 |
 | fact (layer) | 事实层 | assertion 通过率经 `1 + ratio*4` 映射到 1-5 | 六维对比表「📋 事实」 |
 | behavior (layer) | 行为层 | 执行过程类断言（工具调用 / 轮次 / 成本上限）通过率 | 六维对比表「🛠️ 行为」 |
 | judge (layer) | LLM 评价层 | 评委按 rubric 直接给的 1-5 分 | 六维对比表「💬 LLM 评价」 |
 | dimension | 维度 | capability-aligned 评分维度（v0.x 后期落地，未进 composite） | 五层评分管道架构 |
 | reliability check | 测评可信度 | 评委一致 / 差异显著 / 已饱和 / 人工对齐四块证据，可折叠展开 | 报告页 details 块 |
+| [managed record](../specs/evidence-gated-management.md) | 受管记录 | `omk install` 建的 `.omk/managed/<id>.json` 事实记录（源 / contentHash / 分发 / 证据 / 决定） | `omk install`；证据门控管理 |
+| lifecycle | 生命周期（installed / measurable / stale） | 受管 skill 的读时状态：`installed`（无有效证据）→ `measurable`（eval 证据已绑）→ `stale`（内容漂移脱离证据） | `deriveManagedState`；`omk eval`「→ measurable」 |
+| evidence (managed) | 证据 | eval 跑完追加进受管记录的 `ManagedEvidenceRef`，绑定它测的内容指纹（report id / 样本覆盖 / verdict / 可比性） | `omk eval` 自动写入 |
 
 ---
 
@@ -80,17 +83,9 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 ---
 
-## 4. 架构 / omk 三阶段闭环
+## 4. omk 三阶段
 
-omk 长期定位是「知识评测 + 管理 + 洞察」三位一体，对应 **检查 / 评测 / 观测** 三阶段闭环：
-
-| 阶段 | omk 命令 | 回答的问题 |
-|---|---|---|
-| 检查 (inspect) | `omk doctor` | skill 写得行不行（静态健康度，LLM-judge 7 维体检） |
-| 评测 (evaluate) | `omk eval` | skill 在样本上有没有用（A/B 对比 + 显著性 + 稳定性） |
-| 观测 (observe) | `omk observe` | skill 上线后真实表现怎么样（即将完整上线） |
-
-每个阶段对应不同 verdict 闸门 + 不同的报告 UI 路径。详见 [Roadmap](../roadmap.md)。
+omk 闭环分三阶段 —— **doctor**（前置健康检查）→ **eval**（离线 A/B + verdict）→ **observe**（生产 trace）—— 合起来覆盖知识**评测 + 管理 + 洞察**。完整心智模型见[三阶段](../explanation/three-stage-workflow.md)。
 
 ---
 
@@ -100,14 +95,10 @@ omk 文档（README.zh / docs/zh / SKILL.md / CLI zh 字符串 / PR description�
 
 - **业内通用术语英文保留**：bootstrap CI / Δ / Pearson / executor / fingerprint 等。强行中文化会显得文章在「翻译外文」。
 - **第一次出现时给中文括注**：例如「外验集（holdout set，即 skill 显式没写过的独立验证用例）」，第二次以后用中文。
-- **omk 内部命名按 [terminology-spec.md](../../specs/terminology-spec.md)**：artifact / executor / variant / verdict 等。
+- **omk 内部命名按 [terminology-spec.md](../specs/terminology-spec.md)**：artifact / executor / variant / verdict 等。
 - **特殊翻译规则**：
   - LLM judge → **评委**（不要译作「判官」）
   - sample → **用例**（不要用「样本」）
   - composite score → **综合分**（不要用「总分」/「合成分」）
   - methodology audit → **测评可信度**（不要用「方法学审计」，外行不懂）
 - **标点符号**遵循 GB/T 15834：全角 `，。：；！？（）「」`，破折号 `——`（双字符）；半角仅限技术混排（代码块、文件路径、命令行、URL、英文术语括注）。
-
----
-
-姊妹文档：[术语规范](../../specs/terminology-spec.md) / [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md) / [Roadmap](../roadmap.md)

@@ -27,6 +27,15 @@ import type { EvalConfig, ExperimentRole, VariantSpec } from '../../../types/ind
  *  引导用户改用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。git 修订语法 `@{...}`
  *  由 parseVariantCwd 保护、不误判。cwd 由调用方在边界注入(见 eval-runner)。 */
 function cliVariantSpec(rawExpr: string, role: ExperimentRole, cwd?: string): VariantSpec {
+  // 远端 git 不走 CLI 字符串(URL 的 `:`/`@` 会被 parseGitInput / parseVariantCwd 误切)——
+  // 先于 @cwd guard 拦协议 URL 与 scp 形式 `git@host:path`,给明确的「走 eval.yaml」指引,
+  // 而非让 scp 形式落到下面 @cwd 的迁移报错(误导)。绝对本地路径 `/abs/skill.md` 不在此列。
+  if (/^(https?|ssh|git):\/\//i.test(rawExpr) || /^[\w.-]+@[\w.-]+:/.test(rawExpr)) {
+    throw new Error(
+      `远端 git 源不支持经 --${role} 字符串传入: "${rawExpr}"。请在 eval.yaml 的 variant 上用结构化 `
+      + `git: { url, ref, spec } 字段(避开 URL 里的 : / @ 被误切),CLI 仅支持本地路径与 git:<ref>:<spec>。`,
+    );
+  }
   // 探测旧 name@cwd 形态报错。注:含合法 `@`(非 `@{`)的路径(如 /x/@dir/skill.md)会被一并
   // 误判 —— 属 pre-existing 限制(这类路径本就不被 @cwd 支持),报错文案仍指向迁移指引。
   if (parseVariantCwd(rawExpr).cwd !== undefined) {
@@ -87,7 +96,7 @@ export function resolveVariantSpecs(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk eval --control baseline --treatment my-skill${hint}\n`
       + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
-      + `  术语见 docs/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
+      + `  术语见 docs/zh/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }
 

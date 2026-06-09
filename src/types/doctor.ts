@@ -13,7 +13,7 @@ export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
 
 /** Bumped whenever DoctorReport schema changes in a way CI consumers should
  *  be able to detect. CI can pin/check this when parsing the JSON. */
-export const DOCTOR_REPORT_SCHEMA_VERSION = '1.0.0';
+export const DOCTOR_REPORT_SCHEMA_VERSION = '2.0.0';
 
 export interface DoctorRuleResult {
   ruleId: string;
@@ -48,11 +48,11 @@ export interface ComposerOutcome extends DoctorRuleCheckOutcome {
 }
 
 /** 复合 rule:一次 checkAll() 产出多条 result,适合"单次 LLM 调用 → N 个维度结果"
- *  这类场景。doctor engine 检测 kind === 'composer' 时把数组结果展开,每条共享
+ *  这类场景。doctor engine 检测 ruleKind === 'composer' 时把数组结果展开,每条共享
  *  同一个 groupId(= composer.id)以便 renderer 分组。 */
 export interface ComposerRule {
   id: string;
-  kind: 'composer';
+  ruleKind: 'composer';
   /** 默认 severity(子 outcome 未指定时用)。 */
   severity: DoctorSeverity;
   /** 默认 labelKey(子 outcome 未指定时用,通常是 composer 整体的标签)。 */
@@ -64,7 +64,7 @@ export interface ComposerRule {
 export type DoctorRuleLike = DoctorRule | ComposerRule;
 
 export function isComposerRule(r: DoctorRuleLike): r is ComposerRule {
-  return (r as ComposerRule).kind === 'composer';
+  return (r as ComposerRule).ruleKind === 'composer';
 }
 
 export interface DoctorContext {
@@ -113,7 +113,7 @@ export interface DoctorSkillReport {
 }
 
 export interface DoctorReport {
-  kind: 'doctor';
+  reportKind: 'doctor';
   /** Schema version the JSON consumer can pin/check. Bumped on any
    *  user-visible change to this report's shape. See DOCTOR_REPORT_SCHEMA_VERSION. */
   schemaVersion: string;

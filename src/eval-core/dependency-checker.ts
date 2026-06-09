@@ -185,8 +185,11 @@ function buildPreflightEnv(artifacts?: Artifact[]): NodeJS.ProcessEnv {
   if (!artifacts) return process.env;
   const extraPaths: string[] = [];
   for (const a of artifacts) {
-    if (!a.locator) continue;
-    const dir = dirname(a.locator);
+    // 与 extractSkillDir 一致:dir-skill 优先隔离副本 execRoot(副本无 node_modules、.bin 检查恒不命中);
+    // 否则本地文件-skill 取 .md 所在目录。git 文件-skill 的 locator 是 git spec、非在盘目录,无 execRoot
+    // 时跳过(取 dirname 会得伪路径)。
+    const dir = a.execRoot ?? (a.locator && a.source !== 'git' ? dirname(a.locator) : null);
+    if (!dir) continue;
     const nodeBin = join(dir, 'node_modules', '.bin');
     if (existsSync(nodeBin)) extraPaths.push(nodeBin);
   }

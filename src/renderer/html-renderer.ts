@@ -39,7 +39,7 @@ function levelDot(level: VerdictLevel): string {
 type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeModels' | 'noJudge'>;
 
 function isEvaluationReport(document: ReportDocument): document is EvaluationReport {
-  return document.kind === 'evaluation';
+  return document.reportKind === 'evaluation';
 }
 
 function scoreOf(summary: VariantSummary | undefined): number | null {
@@ -114,7 +114,7 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
   return [
     `executor=${runtime.executor}`,
     `model=${runtime.model}`,
-    `kind=${runtime.kind}`,
+    `kind=${runtime.runtimeKind}`,
     `system=${runtime.capabilities.systemPrompt}`,
     `cost=${runtime.capabilities.costUSD}`,
     `trace=${runtime.capabilities.trace}`,
@@ -185,7 +185,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   };
 
   const cards = runs.map((run) => {
-    if (run.kind === 'batch-evaluation') {
+    if (run.reportKind === 'batch-evaluation') {
       const m = run.meta;
       const scores = run.items.length > 0
         ? run.items.map((item) => {
@@ -692,7 +692,7 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
 
 export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG, skillContext?: SkillReportContext): string {
   if (!report) return renderRunDetail(null, lang);
-  return report.kind === 'batch-evaluation'
+  return report.reportKind === 'batch-evaluation'
     ? renderBatchEvaluationDetail(report, lang)
     : renderRunDetail(report, lang, skillContext);
 }

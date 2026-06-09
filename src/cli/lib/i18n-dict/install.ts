@@ -1,0 +1,141 @@
+import type { CliMessage } from './types.js';
+
+export type InstallMessageKey =
+  | 'cli.install.asset_missing'
+  | 'cli.install.unknown_input'
+  | 'cli.install.unknown_target'
+  | 'cli.install.invalid_target_combo'
+  | 'cli.install.no_detected_targets'
+  | 'cli.install.target_exists'
+  | 'cli.install.plan'
+  | 'cli.install.plan_skill'
+  | 'cli.install.installed'
+  | 'cli.install.kind_unsupported'
+  | 'cli.install.copied'
+  | 'cli.install.adopted'
+  | 'cli.install.registered'
+  | 'cli.install.target_overlaps_source'
+  | 'cli.install.path_not_found'
+  | 'cli.install.skillmd_missing'
+  | 'cli.install.skillmd_is_symlink'
+  | 'cli.install.not_a_skill'
+  | 'cli.install.not_a_git_repo'
+  | 'cli.install.git_skill_not_found'
+  | 'cli.install.git_unsafe_path'
+  | 'cli.install.invalid_remote_url'
+  | 'cli.install.remote_fetch_failed'
+  | 'cli.install.remote_ref_not_found'
+  | 'cli.install.remote_skill_not_found'
+  | 'cli.install.git_ref_needs_url'
+  | 'cli.install.next_hint';
+
+export const installDict: Record<InstallMessageKey, CliMessage> = {
+  'cli.install.asset_missing': {
+    zh: '未找到打包内置资源：{path}。请先运行 yarn build，或确认 npm 包包含 dist/assets/agent-skills/omk。',
+    en: 'Packaged built-in asset not found: {path}. Run yarn build first, or verify the npm package includes dist/assets/agent-skills/omk.',
+  },
+  'cli.install.unknown_input': {
+    zh: 'install 接受内置 id omk-agent-skill、本地 skill 路径（如 ./skills/review、./review.md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。无法识别的输入：{input}',
+    en: 'install accepts the built-in id omk-agent-skill, a local skill path (e.g. ./skills/review or ./review.md), or git:<ref>:<name> (a skill at a ref of the current repo). Unrecognized input: {input}',
+  },
+  'cli.install.unknown_target': {
+    zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
+    en: 'Unknown install target: {target}. Use auto, codex, claude, all; or pass --dest <dir> for a custom skill root.',
+  },
+  'cli.install.invalid_target_combo': {
+    zh: '安装目标组合不合法：{target}。auto 和 all 必须单独使用；如需多个明确目标，请写 codex,claude。',
+    en: 'Invalid install target combination: {target}. auto and all must be used alone; use codex,claude for multiple explicit targets.',
+  },
+  'cli.install.no_detected_targets': {
+    zh: '未检测到本机支持的 agent skill 目录。请用 --to codex / --to claude / --to all 明确目标，或用 --dest <dir> 指定 skill 根目录。',
+    en: 'No supported local agent skill directory was detected. Pass --to codex / --to claude / --to all, or pass --dest <dir> for a custom skill root.',
+  },
+  'cli.install.target_exists': {
+    zh: '目标已存在：{path}。如要覆盖，请加 --force。',
+    en: 'Target already exists: {path}. Pass --force to overwrite.',
+  },
+  'cli.install.plan': {
+    zh: '将安装 omk Agent Skill 到：{path}',
+    en: 'Will install the omk Agent Skill to: {path}',
+  },
+  'cli.install.plan_skill': {
+    zh: '将安装 skill {name} 到：{path}',
+    en: 'Will install skill {name} to: {path}',
+  },
+  'cli.install.installed': {
+    zh: '已安装 omk Agent Skill：{path}',
+    en: 'Installed omk Agent Skill: {path}',
+  },
+  'cli.install.kind_unsupported': {
+    zh: '暂不支持安装 kind 为 {kind} 的知识输入；当前仅支持 skill（prompt / agent / workflow 的 artifact 模型尚未定义）。',
+    en: 'Installing a {kind} knowledge input is not yet supported; only skill is supported today (the artifact model for prompt / agent / workflow is not yet defined).',
+  },
+  'cli.install.copied': {
+    zh: '已安装 skill {name}：{path}',
+    en: 'Installed skill {name}: {path}',
+  },
+  'cli.install.adopted': {
+    zh: '已就地接管 skill {name}（已在目标位置，未改动文件）：{path}',
+    en: 'Adopted skill {name} in place (already at target, files untouched): {path}',
+  },
+  'cli.install.registered': {
+    zh: '已登记受管记录 {id}：{store}',
+    en: 'Registered managed record {id}: {store}',
+  },
+  'cli.install.target_overlaps_source': {
+    zh: '安装目标与源相互嵌套，拒绝执行（会删掉源或自我复制）。源：{source}；目标：{target}。请换一个不与源重叠的 --dest。',
+    en: 'Install target overlaps the source (would delete the source or copy into itself); refused. Source: {source}; target: {target}. Use a --dest that does not overlap the source.',
+  },
+  'cli.install.path_not_found': {
+    zh: '找不到要安装的 skill 路径：{path}',
+    en: 'Skill path to install not found: {path}',
+  },
+  'cli.install.skillmd_missing': {
+    zh: '目录下没有 SKILL.md，不是一个 directory-skill：{path}',
+    en: 'No SKILL.md in the directory; not a directory-skill: {path}',
+  },
+  'cli.install.not_a_skill': {
+    zh: '不是 skill 文件（需要 .md 或含 SKILL.md 的目录）：{path}',
+    en: 'Not a skill file (expected a .md file or a directory containing SKILL.md): {path}',
+  },
+  'cli.install.skillmd_is_symlink': {
+    zh: 'SKILL.md 是指向 {target} 的软链，分发会跳过软链、装出来的 skill 会缺 SKILL.md。请直接 install 真源位置：{target}',
+    en: 'SKILL.md is a symlink to {target}; symlinks are skipped during distribution, so the installed skill would be missing its SKILL.md. Install the real source instead: {target}',
+  },
+  'cli.install.not_a_git_repo': {
+    zh: '当前目录不在 git 仓库内，无法解析 git: 源。请在仓库内执行，或改用本地路径。',
+    en: 'Current directory is not inside a git repo; cannot resolve a git: source. Run inside the repo, or use a local path.',
+  },
+  'cli.install.git_skill_not_found': {
+    zh: '在 git ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
+    en: 'Skill {name} not found at git ref {ref} (neither {name}/SKILL.md nor {name}.md).',
+  },
+  'cli.install.git_unsafe_path': {
+    zh: 'git tree 含越界路径 {path}（.. / 绝对路径 / 空段），拒绝物化以防写出临时目录。该 skill 的 git tree 可能被手工构造，请核查来源。',
+    en: 'git tree contains an out-of-bounds path {path} (.. / absolute / empty segment); refusing to materialize to avoid escaping the temp dir. The skill git tree may be hand-crafted; verify the source.',
+  },
+  'cli.install.invalid_remote_url': {
+    zh: '不是合法的 git 远端 URL：{url}。支持 https:// / ssh:// / git:// / file:// 或 scp 形式 git@host:path。',
+    en: 'Not a valid git remote URL: {url}. Supported: https:// / ssh:// / git:// / file:// or scp-form git@host:path.',
+  },
+  'cli.install.remote_fetch_failed': {
+    zh: '从远端 {url} 拉取 ref {ref} 失败。请检查 URL、ref 是否存在、以及本机 git 凭证（SSH key / credential helper）。',
+    en: 'Failed to fetch ref {ref} from remote {url}. Check the URL, whether the ref exists, and your local git credentials (SSH key / credential helper).',
+  },
+  'cli.install.remote_ref_not_found': {
+    zh: '远端 {url} 上解析不到 ref {ref}。',
+    en: 'Could not resolve ref {ref} on remote {url}.',
+  },
+  'cli.install.remote_skill_not_found': {
+    zh: '在远端 {url} 的 ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
+    en: 'Skill {name} not found at ref {ref} of remote {url} (neither {name}/SKILL.md nor {name}.md).',
+  },
+  'cli.install.git_ref_needs_url': {
+    zh: '--git-ref 需要配 --git-url 一起用（远端 git 源 = URL + ref + 仓库内路径）。',
+    en: '--git-ref requires --git-url (a remote git source = URL + ref + in-repo path).',
+  },
+  'cli.install.next_hint': {
+    zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',
+    en: 'You can now ask your coding agent: "use omk to evaluate this skill".',
+  },
+};

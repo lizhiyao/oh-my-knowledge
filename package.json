@@ -1,6 +1,7 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.33.0",
+  "version": "0.35.0",
+  "packageManager": "yarn@4.16.0",
   "description": "Evaluation framework for LLM knowledge inputs — prompts, RAG corpora, skills, agent workflows. Fix the model, vary the artifact. Built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves.",
   "type": "module",
   "bin": {
@@ -20,6 +21,9 @@
     "build:assets": "node scripts/copy-assets.cjs",
     "build:docs": "node dist-scripts/build-docs.js --write",
     "build:docs:check": "node dist-scripts/build-docs.js --check",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
@@ -80,7 +84,7 @@
     "type": "git",
     "url": "git@github.com:lizhiyao/oh-my-knowledge.git"
   },
-  "homepage": "https://github.com/lizhiyao/oh-my-knowledge#readme",
+  "homepage": "https://oh-my-knowledge.pages.dev",
   "bugs": {
     "url": "https://github.com/lizhiyao/oh-my-knowledge/issues"
   },
@@ -88,11 +92,11 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.143",
-    "@anthropic-ai/sdk": "^0.100.1",
+    "@anthropic-ai/sdk": "^0.102.0",
     "@inquirer/prompts": "^8.4.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@oclif/core": "^4",
-    "@openai/codex-sdk": "0.135.0",
+    "@openai/codex-sdk": "0.137.0",
     "ajv": "^8.18.0",
     "chart.js": "^4.5.1",
     "js-yaml": "^4.1.1",
@@ -111,6 +115,7 @@
     "npm-run-all2": "^9.0.1",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",
+    "vitepress": "^1.6.4",
     "vitest": "^4.1.3"
   }
 }

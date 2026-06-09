@@ -26,7 +26,7 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
     },
   };
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id,
     meta: {
       variants: [variant],
@@ -78,17 +78,17 @@ describe('createFileStore legacy report loading', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-report-'));
     try {
       const legacy = makeReport('legacy-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
-      delete legacy.kind;
+      delete legacy.reportKind;
       delete legacy.id;
       writeFileSync(join(dir, 'legacy-run.json'), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
       const report = await store.get('legacy-run');
-      assert.equal(report?.kind, 'evaluation');
+      assert.equal(report?.reportKind, 'evaluation');
       assert.equal(report?.id, 'legacy-run');
       const list = await store.list();
       assert.equal(list.length, 1);
-      assert.equal(list[0].kind, 'evaluation');
+      assert.equal(list[0].reportKind, 'evaluation');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -98,7 +98,7 @@ describe('createFileStore legacy report loading', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-batch-'));
     try {
       const legacyBatch = makeReport('legacy-batch', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
-      delete legacyBatch.kind;
+      delete legacyBatch.reportKind;
       legacyBatch.overview = { totalArtifacts: 1, totalSamples: 1, totalCostUSD: 0, artifacts: [] };
       legacyBatch.artifacts = [];
       writeFileSync(join(dir, 'legacy-batch.json'), JSON.stringify(legacyBatch, null, 2));

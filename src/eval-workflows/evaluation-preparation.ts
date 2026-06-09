@@ -25,7 +25,6 @@ export async function prepareEvaluationRun({
   samplesPath,
   skillDir,
   variantSpecs,
-  artifacts,
   dryRun,
   mcpConfig,
   strictBaseline,
@@ -33,7 +32,6 @@ export async function prepareEvaluationRun({
   samplesPath: string;
   skillDir: string;
   variantSpecs: VariantSpec[];
-  artifacts?: Artifact[];
   dryRun: boolean;
   mcpConfig?: string;
   /**  — default true, baseline-kind 自动 allowedSkills=[]。 */
@@ -41,44 +39,28 @@ export async function prepareEvaluationRun({
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires, baseDir: samplesBaseDir, sourceFiles: samplesSourceFiles } = loadSamples(samplesPath);
 
-  // 结构化传入 {expr, cwd}(顺序一一对应),cwd 不再编码进 expr 字符串。
-  const variantInputs = variantSpecs.map((spec) => ({ expr: spec.expr, cwd: spec.cwd }));
-  // 不把 variantAllowedSkills 透进 resolveArtifacts:那里按解析出的 artifact 名查,
-  // 与 eval.yaml 的自定义 variant 名不一致时会漏绑。allowedSkills 统一在下面按 spec 绑定。
-  // resolveArtifacts 只保留 strictBaseline 默认(baseline → [])。
-  const resolvedArtifacts = artifacts || resolveArtifacts(
-    resolve(skillDir),
-    variantInputs,
-    { strictBaseline },
-  );
+  // 结构化传入 {expr, cwd}(与 variantSpecs 顺序一一对应),cwd 不再编码进 expr 字符串。
+  // resolveArtifacts 只保留 strictBaseline 默认(baseline → []);per-variant 隔离声明走
+  // spec.allowedSkills,在下面按 spec 身份绑定。
+  const variantInputs = variantSpecs.map((spec) =>
+    spec.git
+      ? { git: spec.git, cwd: spec.cwd, name: spec.name }
+      : { expr: spec.expr, cwd: spec.cwd });
+  const resolvedArtifacts = resolveArtifacts(resolve(skillDir), variantInputs, { strictBaseline });
 
-  // Attach experimentRole to each artifact.
-  //   - 当 artifacts 由本函数从 variantSpecs.map(spec => spec.expr) 解析时(eval 单跑与 batch
-  //     都走这支),两者顺序一一对应,按 index 绑定 role,并把 spec.name 同步成消歧后的最终唯一名。
-  //     不能按 spec.name 匹配 artifact.name:同 basename 的 variant 被 ensureUniqueVariantNames
-  //     消歧后(v1/greeter / v2/greeter)就和 spec 的派生短名(greeter)对不上,会丢 role。
-  //   - 当 artifacts 由外部直接传入(role 可能已预置)时,index 无法对齐,退回按 name 匹配,
-  //     且 if-already-set 守卫会保留预置 role。这是 runEvaluation({artifacts}) 直调 API 的兜底,
-  //     当前生产路径都走上面的 spec 解析,不进这支。
-  if (!artifacts && variantSpecs.length === resolvedArtifacts.length) {
-    variantSpecs.forEach((spec, i) => {
-      const artifact = resolvedArtifacts[i];
-      if (!artifact.experimentRole) artifact.experimentRole = spec.role;
-      // allowedSkills 按 spec 身份绑定:spec.allowedSkills 是隔离声明的单一来源
-      //（eval.yaml 经 configVariantsToSpecs、batch 经 buildBatchVariantSpecs 都挂到 spec 上),
-      // 显式声明优先于 strictBaseline 默认。
-      if (spec.allowedSkills !== undefined) artifact.allowedSkills = spec.allowedSkills;
-      spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
-    });
-  } else {
-    const roleByName: Record<string, VariantSpec['role']> = {};
-    for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
-    for (const artifact of resolvedArtifacts) {
-      if (artifact.experimentRole) continue;  // preserve if caller pre-set it on the passed-in artifact
-      const role = roleByName[artifact.name];
-      if (role) artifact.experimentRole = role;
-    }
-  }
+  // experimentRole / allowedSkills 按 spec 身份绑定。variantSpecs 与 resolvedArtifacts 顺序
+  // 一一对应(resolveArtifacts 每个 input 产出一个 artifact),按 index 绑定,并把 spec.name
+  // 同步成消歧后的最终唯一名。不能按 spec.name 匹配 artifact.name:同 basename 的 variant 被
+  // ensureUniqueVariantNames 消歧后(v1/greeter / v2/greeter)就和 spec 的派生短名(greeter)
+  // 对不上,会丢 role。
+  variantSpecs.forEach((spec, i) => {
+    const artifact = resolvedArtifacts[i];
+    artifact.experimentRole = spec.role;
+    // spec.allowedSkills 是隔离声明的单一来源(eval.yaml 经 configVariantsToSpecs、batch 经
+    // buildBatchVariantSpecs 都挂到 spec 上),显式声明优先于 strictBaseline 默认。
+    if (spec.allowedSkills !== undefined) artifact.allowedSkills = spec.allowedSkills;
+    spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
+  });
 
   if (!dryRun) {
     const mcpServers: McpServers | null = loadMcpConfig(mcpConfig);

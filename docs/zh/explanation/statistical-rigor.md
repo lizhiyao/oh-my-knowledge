@@ -83,7 +83,7 @@ baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染�
 
 `eval.yaml` 的 `allowedSkills` 支持 per-variant 白名单给高级场景。没有隔离时，任何"v2 比 baseline 好"的结论都可疑 —— baseline 可能通过这三条路径之一已经看到 v2 的 SKILL.md。
 
-详见：[docs/specs/sample-design-spec.md](../../specs/sample-design-spec.md) 的相关用例设计。
+详见：[docs/zh/specs/sample-design-spec.md](../specs/sample-design-spec.md) 的相关用例设计。
 
 ---
 
@@ -92,8 +92,8 @@ baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染�
 每份报告携带：
 - omk 版本(`reportMeta.cliVersion`)
 - Node 版本(`reportMeta.nodeVersion`)
-- 评委模型 + hash(`reportMeta.judgeModel` / `reportMeta.judgePromptHash`)
-- Executor runtime 指纹(`reportMeta.executorRuntime` / `reportMeta.judgeRuntime`)
+- 评委模型 + hash(`reportMeta.judgeModels`，每条携带该评委的模型与 runtime 指纹；以及 `reportMeta.judgePromptHash`)
+- Executor runtime 指纹(`reportMeta.executorRuntime`)
 - 用例指纹(`reportMeta.sampleHashes`)
 - skill 隔离快照(`reportMeta.skillIsolation`)
 - Schema 版本(`reportMeta.schemaVersion`)

@@ -109,9 +109,24 @@ verdict 算法（精简版）：
     (inter-judge Pearson < 0.4,对照或实验组任一)  → CAUTIOUS · 评委信号不可靠
 ```
 
-**意义**：composite 单分 +2.78 不能让 omk 给出 SHIP 判定，必须 **三层都 pass**。这削弱（不是消除）composite ad hoc 聚合的误导风险。
+**意义**：composite 单分 +2.78 不能让 omk 给出 `PROGRESS`（可安全发布）判定，必须 **每个存在的层都过自己的 gate**（没数据的层会被剔除，跟它从 composite 均值里被剔除一样；三层全缺则 gate 直接 FAIL）。这削弱（不是消除）composite ad hoc 聚合的误导风险。
 
 「方法学审计」section 里的 4 个 badge（评委一致 / 差异显著 / 已饱和 / 人工对齐）就是把这套独立检验的结论可视化，让用户在 review 时能 spot 到「composite 看上去不错但某层有问题」的情况。其中「评委一致」（inter-judge Pearson）不只是可视化：多评委强烈分歧（Pearson < 0.4）会把本应 PROGRESS 的判定降级为 CAUTIOUS —— 评委自己都谈不拢时，驱动这次「变好」的评委层信号不可靠。
+
+### 六档 verdict 一览
+
+报告顶部 pill（以及 `omk eval` 的 exit 信号）给出的 verdict 是六档之一：
+
+| Verdict | 含义 | 该怎么办 |
+|---|---|---|
+| **PROGRESS** | diff CI 显示真实正向位移，无层回退 | 发布 |
+| **CAUTIOUS** | 有正向位移，但某层破了 gate、评委 ensemble 强烈分歧、或还没到功效 | 发布前先查 |
+| **REGRESS** | diff CI 明确为负，或某层掉了 gate | 别发 |
+| **NOISE** | diff CI 含 0 —— 改动与噪声分不开 | 不确定；需要更多信号 |
+| **UNDERPOWERED** | N 太小（低于前置功效带）/ 饱和低可信、无信号 | 补用例或 `--repeat` |
+| **SOLO** | 单变体报告；没有可对比对象 | 加一个对照变体 |
+
+来源：`src/eval-core/verdict.ts` 的 `computeVerdict`。同一套规则引擎同时驱动简洁的 CLI 行和报告 verdict pill，二者永远一致。
 
 ---
 
@@ -165,4 +180,3 @@ verdict 算法（精简版）：
 
 - [统计严谨性](../explanation/statistical-rigor.md) —— Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线
 - [omk vs 同类工具](../reference/comparison.md)
-- [Roadmap](../roadmap.md)

@@ -163,7 +163,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [passingRule],
     });
-    assert.equal(report.kind, 'doctor');
+    assert.equal(report.reportKind, 'doctor');
     assert.ok(report.skills.length >= 2);
     assert.equal(report.outcome, 'passed');
     assert.equal(report.totals.pass, report.skills.length);
@@ -652,7 +652,7 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     };
     const composer: ComposerRule = {
       id: 'test_composer',
-      kind: 'composer',
+      ruleKind: 'composer',
       severity: 'fatal',
       labelKey: 'cli.doctor.rule.skill_readable',
       async checkAll() {
@@ -702,7 +702,7 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     };
     const crashing: ComposerRule = {
       id: 'crash_composer',
-      kind: 'composer',
+      ruleKind: 'composer',
       severity: 'fatal',
       labelKey: 'cli.doctor.rule.skill_readable',
       async checkAll() { throw new Error('composer exploded'); },

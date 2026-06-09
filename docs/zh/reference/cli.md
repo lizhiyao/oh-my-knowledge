@@ -1,8 +1,8 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由 7 个顶层命令构成完整闭环：`init`（脚手架）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
-> 本文件里的 Flags 区块由 `scripts/build-docs.ts` 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。
+<!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
 ## `omk init`
 
@@ -23,6 +23,41 @@ omk init [目录]
 <!-- omk:cli:init:flags:end -->
 
 生成一个评测项目脚手架，包含两版 starter skill 和 `eval-samples.json`。
+
+## `omk install`
+
+```bash
+omk install omk-agent-skill            # 内置 omk 官方 Agent Skill（onboarding）
+omk install omk-agent-skill --to all
+omk install ./skills/review            # 登记并分发本地 skill（写一条受管记录）
+omk install git:main:skills/review     # 从当前仓库某个 ref 安装（SHA 不可变、分支随 ref 漂移）
+omk install ./skills/review --dest ~/.my-agent/skills
+```
+
+<!-- omk:cli:install:flags:start -->
+
+**Flags:**
+
+```text
+  --dest <value>                  自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
+  --dry-run                       只打印安装目标，不写文件。
+  --force                         覆盖目标位置已存在的 skill。
+  --git-ref <value>               远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
+  --git-url <value>               远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
+  --kind <skill|prompt|agent|workflow>用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
+  --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / claude / all。
+```
+
+完整描述见 `omk install --help`。
+
+<!-- omk:cli:install:flags:end -->
+
+安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
+
+安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
+
+默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
 
 ## `omk doctor`
 
@@ -48,7 +83,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
   --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>       LLM model 名，默认 sonnet。
   --output-dir <value>  报告输出目录，默认 ~/.oh-my-knowledge/doctors。
-  --samples <value>     样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
+  --samples <value>     用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
   --static-only         离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
   --timeout <value>     单次 LLM 会话超时秒数，默认 600(10 分钟）。
 ```
@@ -104,6 +139,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --no-cache                      跳过 executor cache
   --no-debias-length              关 length-debias（默认开）
   --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+  --no-evidence                   不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server
@@ -113,13 +149,13 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
   --resume <value>                从某次失败 run 续跑
   --retry <value>                 失败 sample 重试次数
-  --samples <value>               样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
+  --samples <value>               用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
   --skill-dir <value>             skill 目录，默认 skills
   --skip-connectivity             跳 LLM 连通性预检
   --skip-doctor                   escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
   --strict-baseline               强制 baseline 隔离（default true）
   --threshold <value>             verdict 阈值，默认 3.5
-  --timeout <value>               单样本超时秒，默认 600
+  --timeout <value>               单用例超时秒，默认 600
   --treatment <value>             treatment variant 列表，逗号分隔（仅 artifact 身份）
   --treatment-cwd <value>         treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
   --trivial-diff <value>          可忽略 diff 容差，0 表示不启用容差
@@ -131,8 +167,8 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 <!-- omk:cli:eval:flags:end -->
 
 HTML 报告有两个 tab：
-- **📊 评分视角** — verdict 驱动的 A/B 对比（事实/行为/judge 三层、bootstrap CI、length-debias）。
-- **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../../specs/sample-design-spec.md)。
+- **📊 评分视角** — verdict 驱动的 A/B 对比（[事实/行为/judge 三层](../specs/scoring)、bootstrap CI、length-debias）。
+- **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
 
 ## `omk observe`
 
@@ -166,7 +202,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 <!-- omk:cli:observe:flags:end -->
 
-把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、gap 信号、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
 ### B. observe inbox：reviewer 闭环
 
@@ -214,6 +250,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 ```text
   --auto-fix-samples              每轮先修 skill，再修 sample，随后一起评估候选结果
   --concurrency <value>           评测并发数，默认 1
+  --edit-budget <value>           单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
   --executor <value>              执行器名，默认 claude
   --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
@@ -223,22 +260,27 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>                 被评测的 LLM，默认 sonnet
   --no-diagnostic                 关 LLM diagnostic 调用
+  --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
+  --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
+  --no-significance-gate          关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）
   --reuse-latest-eval             复用可比的最新 eval 报告作为 round-0
   --rounds <value>                最大迭代轮数，默认 5
   --sample-fix-max-attempts <value>每条 sample 自动修复最多尝试次数（默认：2）
-  --samples <value>               样本文件路径，默认 eval-samples.json
+  --samples <value>               用例文件路径，默认 eval-samples.json
+  --significance-alpha <value>    显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
   --skip-connectivity             跳过 LLM 连通性预检
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-  --stop-on-assertions-pass       普通样本断言全过时提前停止
+  --stop-on-assertions-pass       普通用例断言全过时提前停止
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
-  --timeout <value>               单样本超时秒，默认 600
+  --test-ratio <value>            锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
+  --timeout <value>               单用例超时秒，默认 600
 ```
 
 完整描述见 `omk evolve --help`。
 
 <!-- omk:cli:evolve:flags:end -->
 
-让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 样本 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
+让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 用例 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
 
 `omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
 
@@ -255,7 +297,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 
 ```text
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
-  --count <value>             生成样本条数。不传由 LLM 按 skill 类型自动决定。
+  --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
   --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
@@ -304,6 +346,6 @@ omk studio --no-open
 
 <!-- omk:cli:studio:flags:end -->
 
-启动本地知识工作台浏览报告。verdict、样本回退、跨样本 diff、饱和曲线、单样本 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
+启动本地知识工作台浏览报告。verdict、用例回退、跨用例 diff、饱和曲线、单用例 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
 
 Studio 是 skill-centric 信息架构 — 列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势，详情页（`/skills/<name>`）左栏列关键问题清单（skill 优化 / 用例优化 / 工具反馈三档），右栏画 chart.js 健康趋势 + 三个紧凑阶段卡（doctor / eval / observe），细节走 modal。旧的 run 列表挪到 `/runs`。访问 `/observations/inbox` 查看 observe inbox 看板：按 skill 资产视图（rollup）+ reviewer 待办建议 + 当前可观测漏斗 + 单 observation 详情面板（含事件三元组）。

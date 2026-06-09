@@ -61,7 +61,7 @@ const variantSummary = (score: number): VariantSummary => ({
 });
 
 const buildProductTreeReport = (): Report => ({
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'cli-tree-report',
   meta: {
     variants: ['baseline', 'v1'],
@@ -313,8 +313,8 @@ describe('CLI', () => {
   });
 
   it('Claude Code SKILL manifest uses current product commands', async () => {
-    const body = await readFile(join(PROJECT_ROOT, 'SKILL.md'), 'utf8');
-    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|observe|sample|studio> [options]"'));
+    const body = await readFile(join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md'), 'utf8');
+    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|observe|sample|studio> [options]"'));
     assert.ok(body.includes('omk eval --batch'));
     assert.ok(body.includes('omk sample --batch'));
     assert.ok(body.includes('omk evolve'));

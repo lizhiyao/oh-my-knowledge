@@ -19,7 +19,7 @@ describe('buildObserveDiagnostics', () => {
         {
           skillName: 'prd-create',
           id: 'workflow-step-1',
-          kind: 'workflowNode',
+          nodeKind: 'workflowNode',
           status: 'manual_review',
           title: 'Workflow node needs review',
           reason: 'runtime did not show the expected step',
@@ -28,7 +28,7 @@ describe('buildObserveDiagnostics', () => {
         {
           skillName: 'prd-create',
           id: 'hardrule-ok',
-          kind: 'hardRule',
+          nodeKind: 'hardRule',
           status: 'passed',
         },
       ],
@@ -74,7 +74,7 @@ describe('buildObserveDiagnostics', () => {
         {
           skillName: 'prd-create',
           id: 'standard-1',
-          kind: 'workflow_candidate',
+          standardKind: 'workflow_candidate',
           status: 'pending_review',
           title: 'Demo generation workflow should be declared',
           source: 'llm_soft_standard',
@@ -83,7 +83,7 @@ describe('buildObserveDiagnostics', () => {
         {
           skillName: 'prd-create',
           id: 'standard-2',
-          kind: 'hard_rule_candidate',
+          standardKind: 'hard_rule_candidate',
           status: 'author_confirmed',
           title: 'Use source document before generating demo',
           source: 'manual',
@@ -123,7 +123,7 @@ describe('buildObserveDiagnostics', () => {
         { skillName: 'audit', code: 'skill_md_not_found' },
       ],
       derivedStandards: [
-        { skillName: 'audit', id: 'confirmed-1', kind: 'hard_rule_candidate', status: 'author_confirmed', title: 'Confirmed rule' },
+        { skillName: 'audit', id: 'confirmed-1', standardKind: 'hard_rule_candidate', status: 'author_confirmed', title: 'Confirmed rule' },
       ],
     });
 
@@ -209,9 +209,9 @@ describe('activeStudioDiagnostics — lifecycle 口径', () => {
     const bundle = buildObserveDiagnostics({
       generatedAt: 't',
       derivedStandards: [
-        { skillName: 'a', id: 's1', kind: 'hard_rule_candidate', status: 'pending_review', title: 'pending(candidate)' },
-        { skillName: 'a', id: 's2', kind: 'hard_rule_candidate', status: 'author_confirmed', title: 'confirmed(→resolved)' },
-        { skillName: 'a', id: 's3', kind: 'hard_rule_candidate', status: 'rejected', title: 'rejected' },
+        { skillName: 'a', id: 's1', standardKind: 'hard_rule_candidate', status: 'pending_review', title: 'pending(candidate)' },
+        { skillName: 'a', id: 's2', standardKind: 'hard_rule_candidate', status: 'author_confirmed', title: 'confirmed(→resolved)' },
+        { skillName: 'a', id: 's3', standardKind: 'hard_rule_candidate', status: 'rejected', title: 'rejected' },
       ],
     });
     const active = activeStudioDiagnostics(bundle);

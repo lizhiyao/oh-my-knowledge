@@ -96,7 +96,7 @@ describe('aggregateReport — reproducibility metadata', () => {
     const report = aggregateReport({ ...baseOpts, executorName: 'codex-sdk', model: 'gpt-5', noJudge: true });
     assert.equal(report.meta.executorRuntime?.executor, 'codex-sdk');
     assert.equal(report.meta.executorRuntime?.model, 'gpt-5');
-    assert.equal(report.meta.executorRuntime?.kind, 'agent-sdk');
+    assert.equal(report.meta.executorRuntime?.runtimeKind, 'agent-sdk');
     assert.match(report.meta.executorRuntime!.fingerprint, /^[0-9a-f]{12}$/);
     assert.equal(report.meta.executorRuntime?.sdk?.name, '@openai/codex-sdk');
     assert.equal(report.meta.executorRuntime?.binary?.source, 'bundled');

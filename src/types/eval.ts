@@ -143,13 +143,23 @@ export interface Artifact {
   kind: ArtifactKind;
   source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
   content: string | null;
+  // 整树内容指纹(hashArtifactSource:目录-skill 覆盖整棵可分发树、文件-skill 为单文件字节)。
+  // 解析期算好挂在这里,供 report 的 artifactHashes 与 install 受管记录的 contentHash 落在同一空间
+  // (证据随 artifact 走的前提)。与 `content`(executor 注入的 trim 文本)解耦——指纹不依赖正文文本。
+  // baseline / 无 skill 留空。
+  contentHash?: string;
   locator?: string;
   ref?: string;
   cwd?: string;
-  // SKILL.md 约定的 directory-skill 根目录(skill 自带 assets / 引相对路径时,
-  // 默认 cwd / preflight 路径解析的锚点)。只对 directory-skill 填,file-skill 留空。
-  // 优先级:用户显式 cwd(@/path) > skillRoot > sample.cwd > null。
+  // SKILL.md 约定的 directory-skill **真源**根目录(doctor 校验、dependency-checker 解析、
+  // 同名 variant 消歧都以此为准)。只对 directory-skill 填,file-skill 留空。
   skillRoot?: string;
+  // directory-skill 的**隔离执行根**:eval 测量前 copy 出的内容寻址副本(materializeIsolatedCopy)。
+  // executor 的 cwd / skillDir 锚到这里 —— 被测 agent 在隔离副本里跑、不碰真源,references/ 资产
+  // 是真实运行时输入。与 skillRoot(真源)分离:doctor 等校验真源不受副本影响;execRoot 不序列化进
+  // report(只 artifact.cwd 进 variantConfig),故副本路径不污染可比性。
+  // task.cwd 优先级:用户显式 cwd(@/path) > execRoot > skillRoot > sample.cwd > null。
+  execRoot?: string;
   // run-time 属性:variant 在当次实验中扮演的角色(由 CLI --control/--treatment 或 eval.yaml 注入)
   // 不是 artifact 文件的固有属性;同一 artifact 在不同 run 可以扮演不同角色
   experimentRole?: ExperimentRole;
@@ -189,10 +199,20 @@ export interface VariantConfig {
   allowedSkills?: string[];
 }
 
+/** 远端 git 源的结构化引用 —— url/ref/spec 分字段,永不拼成单串再 split(避开 parseGitInput 的 `:`
+ *  与 parseVariantCwd 的 `@`)。eval 经 eval.yaml 结构化携带,install 经 --git-url/--git-ref。 */
+export interface RemoteGitRef {
+  url: string;
+  ref?: string;   // 默认 HEAD
+  spec: string;   // 仓库相对 skill 路径
+}
+
 export interface VariantSpec {
   name: string;           // variant 显示名,从 expr 提取
   role: ExperimentRole;
   expr: string;           // artifact 身份表达式(git: 前缀等),不再编码 @cwd
+  // 远端 git 源(结构化);present 时取代 expr 的本地解析,走 resolveRemoteGitSource。
+  git?: RemoteGitRef;
   // runtime context cwd,在 CLI/config 边界解析一次后随 spec 结构化携带,内部不再传播 name@cwd 串。
   cwd?: string;
   // 显式 skill 隔离声明(来自 eval.yaml variant.allowedSkills)。随 spec 一起走,
@@ -203,7 +223,9 @@ export interface VariantSpec {
 export interface EvalConfigVariant {
   name: string;
   role: ExperimentRole;
-  artifact: string;
+  // artifact(本地路径 / 裸名 / git:<ref>:<spec>)与 git(远端结构化)二选一。
+  artifact?: string;
+  git?: RemoteGitRef;
   cwd?: string;
   // 显式 skill 隔离声明。优先级高于 --strict-baseline default。
   //   写 [] 完全禁用 skill 发现;写 [name1, name2] 白名单;不写 = 默认行为。

@@ -100,7 +100,6 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   samplesPath: string;
   skillDir: string;
   variantSpecs?: VariantSpec[];
-  artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
   retry?: number;
@@ -163,7 +162,6 @@ export async function runEvaluation({
   samplesPath,
   skillDir,
   variantSpecs = [],
-  artifacts,
   model = DEFAULT_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
@@ -211,7 +209,6 @@ export async function runEvaluation({
     samplesPath,
     skillDir,
     variantSpecs,
-    artifacts,
     dryRun,
     mcpConfig,
     strictBaseline,
@@ -294,7 +291,7 @@ export async function runEvaluation({
     const { createFileStore } = await import('../server/report-store.js');
     const store = createFileStore(resolve(outputDir || DEFAULT_OUTPUT_DIR));
     const existing = await store.get(resume);
-    if (existing?.kind === 'evaluation') {
+    if (existing?.reportKind === 'evaluation') {
       existingResults = {};
       for (const entry of existing.results || []) {
         existingResults[entry.sample_id] = entry.variants;
@@ -320,7 +317,7 @@ export async function runEvaluation({
           + `   新 entries 不隔离 → 与现有 entries 不可比。建议恢复默认 strict-baseline。\n`,
         );
       }
-    } else if (existing?.kind === 'batch-evaluation') {
+    } else if (existing?.reportKind === 'batch-evaluation') {
       process.stderr.write(`\n⚠️  report ${resume} is a BatchEvaluationReport; resume needs a child EvaluationReport, starting from scratch\n`);
     } else {
       process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);

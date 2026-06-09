@@ -173,6 +173,7 @@ export type {
   ExperienceTimelineEvent,
   ExperienceTimelineTree,
   ObservationExperienceReport,
+  ObservationReviewState,
 };
 
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
@@ -317,7 +318,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
   const skills = summarizeExperienceSkills(sessions, invocations);
 
   return {
-    kind: 'observe-experience',
+    reportKind: 'observe-experience',
     schemaVersion: 1,
     scope: 'evidence-only',
     generatedAt: input.generatedAt,

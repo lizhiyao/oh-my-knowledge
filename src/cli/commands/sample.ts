@@ -9,7 +9,8 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
-import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
+import { hashSample } from '../../eval-core/evaluation-reporting.js';
+import { hashArtifactSource } from '../../inputs/content-hash.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
 import type { Report, Sample as SampleType } from '../../types/index.js';
 
@@ -62,25 +63,33 @@ export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, t
 export function assertFixReportMatchesCurrentInputs(params: {
   report: Pick<Report, 'meta'>;
   treatmentName: string;
-  skillContent: string;
+  currentContentHash: string;
   samples: SampleType[];
   sampleIds: Set<string>;
   lang?: CliLang;
 }): void {
-  const { report, treatmentName, skillContent, samples, sampleIds } = params;
+  const { report, treatmentName, currentContentHash, samples, sampleIds } = params;
   const lang = params.lang ?? 'zh';
   const issues: string[] = [];
 
-  const expectedSkillHash = report.meta.artifactHashes?.[treatmentName];
-  const currentSkillHash = hashString(skillContent);
-  if (!expectedSkillHash) {
+  // schemaVersion < 2 的报告:artifactHashes 是旧「仅 SKILL.md 正文文本」哈,与当前「整棵可分发树」哈
+  // 不同空间,直接比对会必然误报不一致。识别后给可见提示(归入 issues → 触发「请先重跑 eval」),
+  // 不拿旧文本哈与当前树哈错配比对。sample 指纹口径未变,下面照常校。
+  if ((report.meta.schemaVersion ?? 0) < 2) {
     issues.push(lang === 'zh'
-      ? `报告缺少 ${treatmentName} 的 skill 指纹，无法确认诊断对应当前 SKILL.md。`
-      : `Report is missing the skill hash for ${treatmentName}; cannot verify it matches the current SKILL.md.`);
-  } else if (expectedSkillHash !== currentSkillHash) {
-    issues.push(lang === 'zh'
-      ? `skill 指纹不一致：报告 ${expectedSkillHash}，当前 ${currentSkillHash}。`
-      : `Skill hash mismatch: report ${expectedSkillHash}, current ${currentSkillHash}.`);
+      ? `报告早于树哈纪元（skill 指纹口径已从「仅 SKILL.md 文本」改为「整棵可分发树」），无法与当前指纹比对。`
+      : `Report predates the tree-hash era (skill fingerprint changed from SKILL.md-body-text to whole-tree); cannot compare against the current fingerprint.`);
+  } else {
+    const expectedSkillHash = report.meta.artifactHashes?.[treatmentName];
+    if (!expectedSkillHash) {
+      issues.push(lang === 'zh'
+        ? `报告缺少 ${treatmentName} 的 skill 指纹，无法确认诊断对应当前 SKILL.md。`
+        : `Report is missing the skill hash for ${treatmentName}; cannot verify it matches the current SKILL.md.`);
+    } else if (expectedSkillHash !== currentContentHash) {
+      issues.push(lang === 'zh'
+        ? `skill 指纹不一致：报告 ${expectedSkillHash}，当前 ${currentContentHash}。`
+        : `Skill hash mismatch: report ${expectedSkillHash}, current ${currentContentHash}.`);
+    }
   }
 
   const reportSampleHashes = report.meta.sampleHashes;
@@ -239,11 +248,15 @@ async function runSampleFix(
     return;
   }
 
+  // 当前内容指纹走整树哈,与 eval 报告口径一致:dir-skill(用户传 .../SKILL.md)哈整棵 skill 目录、
+  // 单文件 .md 哈单文件字节。
+  const currentContentHash = hashArtifactSource(isDir ? skillDir : resolvedSkillPath, isDir);
+
   try {
     assertFixReportMatchesCurrentInputs({
       report,
       treatmentName,
-      skillContent,
+      currentContentHash,
       samples,
       sampleIds: sampleDesignIds,
       lang,
@@ -518,7 +531,7 @@ export default class Sample extends BaseCommand {
   static examples = [
     {
       description: bilingual({
-        zh: '为单个 skill 生成默认数量的样本',
+        zh: '为单个 skill 生成默认数量的用例',
         en: 'Generate default-count samples for a single skill',
       }),
       command: '<%= config.bin %> sample skills/my-skill/SKILL.md',
@@ -567,7 +580,7 @@ export default class Sample extends BaseCommand {
     }),
     count: Flags.string({
       description: bilingual({
-        zh: '生成样本条数。不传由 LLM 按 skill 类型自动决定。',
+        zh: '生成用例条数。不传由 LLM 按 skill 类型自动决定。',
         en: 'Number of samples to generate. Defaults to LLM auto-selection by skill type.',
       }),
       parse: integerStringParser('--count', { min: 1 }),

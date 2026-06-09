@@ -76,7 +76,7 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
   for (const rule of skillChain.healthCheck.hardRules.rules) {
     active.push({
       id: rule.id,
-      kind: 'hard_rule',
+      standardKind: 'hard_rule',
       title: rule.rule,
       body: rule.expectedBehavior,
       source: 'frontmatter',
@@ -86,7 +86,7 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
     for (const node of workflow.nodes) {
       active.push({
         id: `${workflow.id}.${node.id}`,
-        kind: 'workflow',
+        standardKind: 'workflow',
         title: `${workflow.id} / ${node.id}`,
         body: node.action,
         source: 'frontmatter',
@@ -95,11 +95,11 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
   }
 
   for (const standard of derived?.standards ?? []) {
-    const kind: ResolvedSkillStandardKind = standard.kind === 'workflow_candidate' ? 'workflow' : 'hard_rule';
+    const kind: ResolvedSkillStandardKind = standard.standardKind === 'workflow_candidate' ? 'workflow' : 'hard_rule';
     const blockedByFrontmatter = kind === 'hard_rule' ? hasFrontmatterHardRules : hasFrontmatterWorkflows;
     const resolved: ResolvedSkillStandard = {
       id: standard.id,
-      kind,
+      standardKind: kind,
       title: standard.title,
       body: standard.body,
       source: standard.status === 'author_confirmed' ? 'confirmed_soft' : 'pending_soft',
@@ -146,7 +146,7 @@ export function markStale(record: SkillDerivedStandards, generatedAt: string): S
 export function isSkillDerivedStandards(value: unknown): value is SkillDerivedStandards {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<SkillDerivedStandards>;
-  return item.kind === 'observe-skill-derived-standards'
+  return item.reportKind === 'observe-skill-derived-standards'
     && item.schemaVersion === 1
     && typeof item.skillName === 'string'
     && Array.isArray(item.standards);

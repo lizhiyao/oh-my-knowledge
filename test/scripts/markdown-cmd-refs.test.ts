@@ -27,7 +27,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 // 测量学 fixture(test/__snapshots__)、生成文件(dist/)、依赖(node_modules/)不进。
 const SCAN_DIRS = [
   'docs',
-  '.claude/skills/omk',
+  '.agents/skills/omk',
 ];
 const SCAN_FILES = [
   'README.md',
@@ -149,10 +149,8 @@ describe('markdown `omk <cmd>` 引用 grep gate', () => {
 //
 // 只校验出现在 `omk ...` 调用里的 flag:prose 里描述 codex 的 `--ephemeral`、
 // git 的 `--pretty`、claude 的 `--disallowedTools` 等不在 omk 调用上,天然排除。
-// roadmap 文档故意描述尚未实现的 flag(如 `omk sample --from-traces`),整文件跳过。
+// 整文件跳过清单(如某文档故意描述尚未实现的 flag)放这里;当前为空。
 const FLAG_SCAN_EXCLUDE = new Set<string>([
-  'docs/roadmap.md',
-  'docs/zh/roadmap.md',
 ]);
 
 // omk 调用形态:用户向的 `omk <cmd>`,以及 dev 文档里的 `node dist/cli/index.js <cmd>`。

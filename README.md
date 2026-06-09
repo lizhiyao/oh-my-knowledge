@@ -11,6 +11,8 @@
 **Did your prompt actually get better?**
 A/B test your prompts and skills with statistical rigor — bootstrap CI and length-debias on by default, Krippendorff α the moment you add a gold set.
 
+📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
+
 ![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
 
 ## Quick start
@@ -27,9 +29,17 @@ That's it — no editing required. `omk init` scaffolds two skill variants and t
 
 Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
 
-Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors & artifact layout](docs/reference/executors.md)
+Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
 ## Use inside AI Coding Agents
+
+Install the official omk Agent Skill to let your coding agent run omk workflows from natural language:
+
+```bash
+omk install omk-agent-skill
+```
+
+By default, omk installs only into detected local targets it explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ### Use inside Claude Code
 
@@ -71,7 +81,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 | Saturation curve | ✓ | ✗ | ✗ | ✗ |
 | Three-layer scoring isolation | ✓ | ✗ | partial | ✗ |
 | Per-variant skill isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ |
-| Native Claude Code skill | ✓ | ✗ | ✗ | ✗ |
+| Native Agent Skill | ✓ | ✗ | ✗ | ✗ |
 | Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✓ |
 
 omk's moat is **default-on safety net** — Bootstrap CI and length-debias aren't advanced flags; they're the default, and judge ↔ human α comes free the moment you add a gold set. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
@@ -92,6 +102,8 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
+| **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
+| **Evidence-gated management** | `omk install` registers a managed record; `omk eval` auto-writes evidence bound by content fingerprint, moving a skill `installed → measurable`. [spec →](docs/specs/evidence-gated-management.md) |
 | **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
@@ -103,14 +115,18 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 ## Documentation
 
+The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** — searchable, with an English / 简体中文 switcher. Key pages:
+
 - **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
-- **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
-- **[Executors & artifact layout](docs/reference/executors.md)** — built-in / custom executors, agent evaluation, common model configs (Claude / OpenAI / GLM / Qwen / DeepSeek / Moonshot / Ollama)
+- **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
+- **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
+- **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
 - **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
-- **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / LangSmith / Langfuse / Braintrust etc.
+- **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai
+- **[Evidence-gated management](docs/specs/evidence-gated-management.md)** — managed records, lifecycle states (installed / measurable / stale), install → eval → measurable
 
 ## Environment variables
 

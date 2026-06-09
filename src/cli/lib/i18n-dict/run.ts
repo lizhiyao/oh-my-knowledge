@@ -26,6 +26,8 @@ export type RunMessageKey =
   | 'cli.run.eval_complete'
   | 'cli.run.tally'
   | 'cli.run.report_saved'
+  | 'cli.run.evidence_recorded'
+  | 'cli.run.evidence_recorded_unbound'
   | 'cli.run.report_only_gate_skipped'
   | 'cli.run.report_server_running'
   | 'cli.run.report_server_view'
@@ -137,6 +139,14 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.report_saved': {
     zh: '📄 报告已保存到: {path}\n',
     en: '📄 Report saved to: {path}\n',
+  },
+  'cli.run.evidence_recorded': {
+    zh: '🔖 已为受管 skill「{name}」记录评测证据 → measurable\n',
+    en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable\n',
+  },
+  'cli.run.evidence_recorded_unbound': {
+    zh: '🔖 受管 skill「{name}」：评测内容与当前安装版本指纹不一致，证据已留存但不绑当前版本\n',
+    en: '🔖 Managed skill "{name}": eval content differs from the installed version; evidence kept but not bound to current\n',
   },
   'cli.run.report_only_gate_skipped': {
     zh: 'ℹ 已启用 report-only 模式：保留 verdict 输出，但本次不使用 verdict 改写 exit code。\n',

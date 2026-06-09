@@ -15,6 +15,7 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 - 不要直接在 `main` 上提交；不要再把新工作提交到 `develop`。
 - commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `doctor` / `release` / `agents-md`（早期 git history 用过 `claude-md`，rename 后统一用 `agents-md`）。
 - 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
+- 裸 `kind` 留给 `ArtifactKind`（skill / prompt / agent / workflow）。其它判别字段用限定名（`reportKind` / `eventKind` / `runtimeKind` / `standardKind`）；已序列化进 report / observe / doctor / diagnosis JSON 的 `kind` 是落盘字段名，改名会破坏读取已有文件、要走数据 / schema 迁移（序列化向后兼容，非统计可比性），本轮冻结。细节见 `docs/specs/terminology-spec.md` §5.4，CI 有 `test/scripts/kind-semantics-guard.test.ts` 拦新裸 `kind`。
 
 ## 测量学不变量
 
@@ -45,21 +46,34 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 
 ## omk 自带 skill 安装（跨 agent）
 
-仓库根 `.claude/skills/omk/` 是 omk 智能代理 skill 的**单一来源**。Claude Code 用户 clone 仓库即可自动加载，无需额外操作。其它 agent 用户按下面拷贝到工具约定的 skill 目录：
+仓库根 `.agents/skills/omk/` 是 omk 智能代理 skill 的**单一来源**——中性路径，跟 [AGENTS.md 标准](https://agents.md/)同源。在本仓库里 clone 即用，无需额外操作：
+
+- **Codex**：原生加载 `.agents/skills/omk/`（Codex 从 cwd 向上扫到仓库根的 `.agents/skills/`）。
+- **Claude Code**：通过软链 `.claude/skills/omk` → `.agents/skills/omk` 加载。
+
+用户安装 npm 包后，推荐用内置安装命令把 omk 官方 Agent Skill 装到本机 agent 工具：
 
 ```bash
-# Codex
-cp -r .claude/skills/omk ~/.codex/agents/skills/omk
-
-# Cursor / Aider / Gemini CLI 等
-# 按各工具文档,把 .claude/skills/omk 放到对应 skill 目录即可
+omk install omk-agent-skill
 ```
 
-skill 内容跟 agent 解耦（不依赖 Claude Code 专属能力），可在任意支持 markdown skill 的 agent 里工作。
+默认只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。需要强制写入当前 omk 已知的全部目标时，用 `--to all`；需要自定义 skill 根目录时，用 `--dest`。
+
+仓库开发或手动复用时，也可以把 `.agents/skills/omk/` 整目录拷到对应工具的 skill 目录：
+
+```bash
+# Claude Code（全局）
+cp -r .agents/skills/omk ~/.claude/skills/omk
+# Codex（全局）
+cp -r .agents/skills/omk ~/.agents/skills/omk
+# Cursor / Aider / Gemini CLI 等：按各工具文档放到对应 skill 目录
+```
+
+skill 内容跟 agent 解耦（不依赖任何工具专属能力），可在任意支持 markdown skill 的 agent 里工作。跨多个评测项目大规模复用时，再考虑抽成 plugin / 独立发布包。
 
 ## 参考
 
 - 用户文档：`README.md` / `README.zh.md`
-- omk skill 入场：`.claude/skills/omk/SKILL.md`（单一来源，见上节）
+- omk skill 入场：`.agents/skills/omk/SKILL.md`（单一来源，见上节）
 - 设计 spec：`docs/`
 - 分支 / 发版 / 贡献细节：`CONTRIBUTING.md`

@@ -1,8 +1,8 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cover the full loop: `init` (scaffold) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
-> Flag tables in this file are auto-generated from the oclif command source by `scripts/build-docs.ts`. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift.
+<!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
 ## `omk init`
 
@@ -23,6 +23,41 @@ For full descriptions: `omk init --help`.
 <!-- omk:cli:init:flags:end -->
 
 Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
+
+## `omk install`
+
+```bash
+omk install omk-agent-skill            # built-in official omk Agent Skill (onboarding)
+omk install omk-agent-skill --to all
+omk install ./skills/review            # register + distribute a local skill (writes a managed record)
+omk install git:main:skills/review     # install from a ref of the current repo (SHA is immutable, a branch drifts)
+omk install ./skills/review --dest ~/.my-agent/skills
+```
+
+<!-- omk:cli:install:flags:start -->
+
+**Flags:**
+
+```text
+  --dest <value>                  Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).
+  --dry-run                       Print install targets without writing files.
+  --force                         Overwrite an existing skill at the target location.
+  --git-ref <value>               Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.
+  --git-url <value>               Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
+  --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --to <value>                    Install target: auto (default, detected local targets) / codex / claude / all.
+```
+
+For full descriptions: `omk install --help`.
+
+<!-- omk:cli:install:flags:end -->
+
+Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
+
+Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
+
+The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ## `omk doctor`
 
@@ -125,6 +160,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
   --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
+  --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server
@@ -152,7 +188,7 @@ For full descriptions: `omk eval --help`.
 <!-- omk:cli:eval:flags:end -->
 
 The HTML report has two tabs:
-- **📊 Score view** — the verdict-driven A/B comparison (fact / behavior / judge layers, bootstrap CI, length-debias).
+- **📊 Score view** — the verdict-driven A/B comparison ([fact / behavior / judge layers](../specs/scoring), bootstrap CI, length-debias).
 - **✅ Functional view** — each sample as a unit test: design (prompt / rubric / mocks / environment) + execution trace + assertion results + actionable diagnostic. Diagnostic emits root cause (skill_doc_unclear / llm_misread / sample_design / tripwire_intentional / ...), workflow checks (rubric step ✓/✗ with evidence), and failure-mode tags (工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他). For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
 
 ## `omk observe`
@@ -187,7 +223,7 @@ For full descriptions: `omk observe --help`.
 
 <!-- omk:cli:observe:flags:end -->
 
-Turns real Claude Code session traces into skill-health reports: knowledge usage, gap signals, execution stability, tokens, and latency. This is production observation, not production scoring.
+Turns real Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
 ### B. observe inbox: reviewer loop
 
@@ -235,6 +271,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 ```text
   --auto-fix-samples              Fix the skill, then fix samples, then evaluate the combined candidate
   --concurrency <value>           Eval concurrency, default 1
+  --edit-budget <value>           Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name, default claude
   --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
@@ -244,14 +281,19 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>                 Evaluated LLM, default sonnet
   --no-diagnostic                 Disable diagnostic LLM call
+  --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
+  --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
+  --no-significance-gate          Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)
   --reuse-latest-eval             Reuse the latest comparable eval report as round-0
   --rounds <value>                Max iteration rounds, default 5
   --sample-fix-max-attempts <value>Max auto-fix attempts per sample (default: 2)
   --samples <value>               Samples file, default eval-samples.json
+  --significance-alpha <value>    Significance level for the accept gate diff CI (default 0.05 = 95% CI)
   --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
   --stop-on-assertions-pass       Stop early when normal samples pass assertions
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
+  --test-ratio <value>            Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score
   --timeout <value>               Per-sample timeout sec, default 600
 ```
 

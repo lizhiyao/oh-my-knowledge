@@ -5,24 +5,32 @@
 ## 我想用 omk
 
 - [快速上手](./quickstart-skill-eval.md) —— 5 分钟跑完第一次评测
+- [安装 omk Agent Skill](./quickstart-skill-eval.md) —— 用 `omk install omk-agent-skill` 开启 agent 驱动工作流
 - [CLI 参考](./reference/cli.md)
-- [评测样本格式](./reference/eval-sample-format.md)
-- [执行器与 artifact 布局](./reference/executors.md)
+- [评测用例格式](./reference/eval-sample-format.md)
+- [执行器](./reference/executors.md)
+- [指定被测对象(artifact / variant)](./reference/artifact-layout.md)
 - [7 工具对比](./reference/comparison.md)
 - [术语表](./reference/glossary.md)
 
+## 操作指南
+
+- [doctor 体检](./guides/run-doctor-checks.md)
+- [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
+- [自动迭代 skill](./guides/auto-improve-skills.md)
+- [观测生产 trace](./guides/observe-production.md)
+- [使用非 Claude 模型（GLM / 通义 / DeepSeek / Moonshot / Ollama）](./guides/non-claude-models.md)
+
 ## 我想懂工作原理
 
+- [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [工作原理](./explanation/architecture.md)
 - [统计严谨性](./explanation/statistical-rigor.md)
 - [评分公式](./specs/scoring.md)
 
 ## 我想贡献 / 看设计 spec
 
-- [用例设计科学性指南](../specs/sample-design-spec.md)
-- [知识缺口信号规范](../specs/knowledge-gap-signal-spec.md)
-- [RAG metrics 规范](../specs/rag-metrics-spec.md)
-- [术语规范](../specs/terminology-spec.md)
-- [Roadmap](./roadmap.md) —— 内部 planning，ZH-only by design
-- [敏感信息扫描](../dev/sensitive-scan.md)（dev 工具）
-- [SIGINT propagation 手动验证](../dev/sigint-validation.md)（dev 工具）
+- [用例设计科学性指南](./specs/sample-design-spec.md)
+- [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
+- [RAG metrics 规范](./specs/rag-metrics-spec.md)
+- [术语规范](./specs/terminology-spec.md)

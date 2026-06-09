@@ -33,7 +33,7 @@ export interface SkillChainAdvisorySource {
 export interface ObservationRuntimeCheckSource {
   skillName: string;
   id: string;
-  kind: 'hardRule' | 'workflowNode';
+  nodeKind: 'hardRule' | 'workflowNode';
   status: 'passed' | 'attention' | 'manual_review';
   title?: string;
   expectation?: string;
@@ -71,7 +71,7 @@ export interface ExperienceReviewerReportFindingSource {
 export interface SkillDerivedStandardSource {
   skillName: string;
   id: string;
-  kind: 'hard_rule_candidate' | 'workflow_candidate';
+  standardKind: 'hard_rule_candidate' | 'workflow_candidate';
   status: 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
   title: string;
   body?: string;
@@ -154,13 +154,13 @@ function advisoryToDiagnosis(generatedAt: string, advisory: SkillChainAdvisorySo
 
 function runtimeCheckToDiagnosis(generatedAt: string, check: ObservationRuntimeCheckSource): Diagnosis | null {
   if (check.status === 'passed') return null;
-  const target = check.kind === 'hardRule' ? `runtime:hardRule:${check.id}` : `runtime:workflowNode:${check.id}`;
+  const target = check.nodeKind === 'hardRule' ? `runtime:hardRule:${check.id}` : `runtime:workflowNode:${check.id}`;
   return makeDiagnosis(generatedAt, {
     skillName: check.skillName,
     type: 'runtime_issue',
-    signal: check.kind === 'hardRule' ? 'runtime_hard_rule_review' : 'runtime_workflow_review',
+    signal: check.nodeKind === 'hardRule' ? 'runtime_hard_rule_review' : 'runtime_workflow_review',
     target,
-    title: check.title ?? (check.kind === 'hardRule' ? 'Hard rule runtime check needs review' : 'Workflow runtime check needs review'),
+    title: check.title ?? (check.nodeKind === 'hardRule' ? 'Hard rule runtime check needs review' : 'Workflow runtime check needs review'),
     summary: check.reason ?? check.expectation,
     severity: check.status === 'manual_review' ? 'medium' : 'low',
     audience: 'reviewer',
@@ -220,14 +220,14 @@ function derivedStandardToDiagnosis(generatedAt: string, standard: SkillDerivedS
   return makeDiagnosis(generatedAt, {
     skillName: standard.skillName,
     type: 'standard_candidate',
-    signal: standard.kind,
-    target: `standard:${standard.kind}:${standard.id}`,
+    signal: standard.standardKind,
+    target: `standard:${standard.standardKind}:${standard.id}`,
     title: standard.title,
     summary: standard.body,
     severity: standard.status === 'author_confirmed' ? 'info' : 'low',
     audience: 'skill-author',
     lifecycle: lifecycleFromStandardStatus(standard.status),
-    sourceKind: standard.kind,
+    sourceKind: standard.standardKind,
     sourceId: standard.id,
     evidenceRefs: [],
     producer: standard.source === 'manual' ? 'manual' : 'llm_soft',

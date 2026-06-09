@@ -29,7 +29,7 @@ omk doctor [target] [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
 - `--output-dir` `option`:报告输出目录，默认 ~/.oh-my-knowledge/doctors。
-- `--samples` `option`:样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
+- `--samples` `option`:用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
 - `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
 - `--timeout` `option`:单次 LLM 会话超时秒数，默认 600(10 分钟）。
 
@@ -89,6 +89,7 @@ omk eval [flags]
 - `--no-cache` `boolean`:跳过 executor cache
 - `--no-debias-length` `boolean`:关 length-debias（默认开）
 - `--no-diagnostic` `boolean`:关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+- `--no-evidence` `boolean`:不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
 - `--no-gate` `boolean`:关 verdict gate
 - `--no-judge` `boolean`:跳过 LLM judge
 - `--no-serve` `boolean`:不启 report server
@@ -98,13 +99,13 @@ omk eval [flags]
 - `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:从某次失败 run 续跑
 - `--retry` `option`:失败 sample 重试次数
-- `--samples` `option`:样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
+- `--samples` `option`:用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
 - `--skill-dir` `option`:skill 目录，默认 skills
 - `--skip-connectivity` `boolean`:跳 LLM 连通性预检
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
 - `--threshold` `option`:verdict 阈值，默认 3.5
-- `--timeout` `option`:单样本超时秒，默认 600
+- `--timeout` `option`:单用例超时秒，默认 600
 - `--treatment` `option`:treatment variant 列表，逗号分隔（仅 artifact 身份）
 - `--treatment-cwd` `option`:treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
@@ -213,6 +214,7 @@ omk evolve <skillPath> [flags]
 
 - `--auto-fix-samples` `boolean`:每轮先修 skill，再修 sample，随后一起评估候选结果
 - `--concurrency` `option` (默认 `1`):评测并发数，默认 1
+- `--edit-budget` `option` (默认 `0.2`):单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
 - `--effort` `option`:reasoning effort: low/medium/high/xhigh/max
 - `--executor` `option` (默认 `claude`):执行器名，默认 claude
 - `--holdout-ratio` `option` (默认 `0`):留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
@@ -222,15 +224,20 @@ omk evolve <skillPath> [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `sonnet`):被评测的 LLM，默认 sonnet
 - `--no-diagnostic` `boolean`:关 LLM diagnostic 调用
+- `--no-edit-budget` `boolean`:关掉 edit budget 约束（允许任意大小的单轮改动）
+- `--no-reject-memory` `boolean`:关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
+- `--no-significance-gate` `boolean`:关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）
 - `--reuse-latest-eval` `boolean`:复用可比的最新 eval 报告作为 round-0
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
 - `--sample-fix-max-attempts` `option` (默认 `2`):每条 sample 自动修复最多尝试次数（默认：2）
-- `--samples` `option` (默认 `eval-samples.json`):样本文件路径，默认 eval-samples.json
+- `--samples` `option` (默认 `eval-samples.json`):用例文件路径，默认 eval-samples.json
+- `--significance-alpha` `option` (默认 `0.05`):显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
 - `--skip-connectivity` `boolean`:跳过 LLM 连通性预检
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-- `--stop-on-assertions-pass` `boolean`:普通样本断言全过时提前停止
+- `--stop-on-assertions-pass` `boolean`:普通用例断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
-- `--timeout` `option` (默认 `600`):单样本超时秒，默认 600
+- `--test-ratio` `option` (默认 `0`):锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
+- `--timeout` `option` (默认 `600`):单用例超时秒，默认 600
 
 **示例:**
 
@@ -276,6 +283,69 @@ omk init
 
 ```bash
 omk init my-project
+```
+
+## omk install
+
+安装 omk 官方 Agent Skill，或登记并分发用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标；安装用户 skill 时同时登记一条受管记录。
+
+**用法:**
+
+```bash
+omk install <input> [flags]
+```
+
+**参数:**
+
+- `input`(必填):要安装的知识输入：内置 id omk-agent-skill，本地 skill 路径（目录或 .md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。
+
+**Flags:**
+
+- `--dest` `option`:自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
+- `--dry-run` `boolean`:只打印安装目标，不写文件。
+- `--force` `boolean`:覆盖目标位置已存在的 skill。
+- `--git-ref` `option`:远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
+- `--git-url` `option`:远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
+- `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
+
+**示例:**
+
+> 安装 omk 官方 Agent Skill 到默认本机目标
+
+```bash
+omk install omk-agent-skill
+```
+
+> 强制安装到当前 omk 已知的所有目标
+
+```bash
+omk install omk-agent-skill --to all
+```
+
+> 安装到自定义 skill 根目录
+
+```bash
+omk install omk-agent-skill --dest ~/.my-agent/skills
+```
+
+> 登记并分发用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）
+
+```bash
+omk install ./skills/review
+```
+
+> 从当前仓库某个 ref 安装 skill（可复现；SHA 不可变、分支会随 ref 漂移）
+
+```bash
+omk install git:main:skills/review
+```
+
+> 从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证；记录钉实际 SHA）
+
+```bash
+omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review
 ```
 
 ## omk observe
@@ -390,7 +460,7 @@ omk sample [skillPath] [flags]
 **Flags:**
 
 - `--batch` `boolean`:批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
-- `--count` `option`:生成样本条数。不传由 LLM 按 skill 类型自动决定。
+- `--count` `option`:生成用例条数。不传由 LLM 按 skill 类型自动决定。
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
 - `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
@@ -404,7 +474,7 @@ omk sample [skillPath] [flags]
 
 **示例:**
 
-> 为单个 skill 生成默认数量的样本
+> 为单个 skill 生成默认数量的用例
 
 ```bash
 omk sample skills/my-skill/SKILL.md

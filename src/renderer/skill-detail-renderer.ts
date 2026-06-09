@@ -223,12 +223,12 @@ function renderSampleBody(s: FailedSampleDetail, lang: Lang): string {
   }
   const suggestionBlock = sugParts.length > 0
     ? `<div class="si-sb-block si-sb-block--suggest">
-        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条样本)' : 'Suggestion (per-sample)'}</div>
+        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条用例)' : 'Suggestion (per-sample)'}</div>
         <div class="si-sb-text">${sugParts.join('')}</div>
       </div>`
     : `<div class="si-sb-block si-sb-block--suggest si-sb-block--empty">
-        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条样本)' : 'Suggestion (per-sample)'}</div>
-        <div class="si-sb-text si-sb-empty">${lang === 'zh' ? '诊断 LLM 没给出针对这条样本的建议(可能输出截断或样本本身是诱错样本,无需改动)' : 'Diagnostic LLM did not return a per-sample suggestion'}</div>
+        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条用例)' : 'Suggestion (per-sample)'}</div>
+        <div class="si-sb-text si-sb-empty">${lang === 'zh' ? '诊断 LLM 没给出针对这条用例的建议(可能输出截断或用例本身是诱错样本,无需改动)' : 'Diagnostic LLM did not return a per-sample suggestion'}</div>
       </div>`;
   return `<div class="si-sb">
     ${block('📝', lang === 'zh' ? '用例 prompt' : 'Prompt', s.prompt, 'prompt')}

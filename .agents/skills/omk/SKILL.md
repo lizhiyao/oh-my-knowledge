@@ -1,8 +1,10 @@
 ---
 name: omk
-description: oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。 Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
+description: |
+  oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
+  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
 user-invocable: true
-argument-hint: "<eval|evolve|sample|doctor|studio> [options]"
+argument-hint: "<doctor|eval|evolve|init|install|observe|sample|studio> [options]"
 ---
 
 # OMK — 知识载体评测
@@ -17,7 +19,7 @@ argument-hint: "<eval|evolve|sample|doctor|studio> [options]"
 npm i oh-my-knowledge -g
 ```
 
-omk CLI 顶层命令固定为 7 个：`init` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
+omk CLI 顶层命令包括：`init` / `install` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
 ## 第二步：理解用户意图
 
@@ -88,7 +90,11 @@ omk eval --config eval.yaml
 ```bash
 omk evolve skills/my-skill.md --rounds 5
 omk evolve skills/my-skill.md --rounds 10 --target 4.5
+# 严格留出 + 锁定 test：按 val 显著性接受、收尾给无偏泛化分
+omk evolve skills/my-skill.md --holdout-ratio 0.2 --test-ratio 0.2
 ```
+
+evolve 默认开**显著性接受门**：候选只在相对当前最优**统计显著更好**时才被接受（`bootstrapDiffCI` 的 95% CI 排除 0），而不是「分数高一点点就收」—— 拒绝与评委噪声不可分的提升。决策样本太少时退回点估计并 warn；`--no-significance-gate` 可关。配 `--holdout-ratio` 留出 val 选择集、`--test-ratio` 再锁一份全程不参与选择的 test 集，收尾读一次给无偏泛化分。改动过大的候选评测前直接判拒（`--edit-budget`，默认 0.2）。
 
 **重要：evolve 必须在前台运行（不要用 `run_in_background`）。** 原因：evolve 自带实时进度输出，每个 sample 执行时会打印 `[1/5] s001/... ⏳ 执行中...`，每轮完成会打印 `Round N: score=... ✓ ACCEPT / ✗ REJECT`。前台运行时用户能实时看到这些进度，无需手动询问。设置足够长的 timeout（建议 600000ms）以确保命令不会中途超时。
 

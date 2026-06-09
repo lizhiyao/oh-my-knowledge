@@ -9,15 +9,13 @@ npm i oh-my-knowledge -g
 omk --version    # 能输出版本号即装好
 ```
 
-如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk skill 装到你的 agent 工具里。Claude Code 用户：
+如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk Agent Skill 装到你的 agent 工具里：
 
 ```bash
-git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
-mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.claude/skills/omk ~/.claude/skills/
+omk install omk-agent-skill
 ```
 
-Codex 用户改 `~/.codex/agents/skills/`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
 
 ## 准备 skill（1 分钟）
 
@@ -73,7 +71,7 @@ omk studio                                          # 启动报告浏览器
 
 报告浏览器自动弹出（默认 `http://127.0.0.1:7799/`），重点看三个地方：
 
-**verdict**（跨版本结论）：`PROGRESS`（变好）/ `NOISE`（差距在置信区间内不可区分）/ `REGRESSION`（变差）/ `CAUTIOUS`（趋势好但置信不足）。这是你能直接拿出去对焦的一句话结论。
+**verdict**（跨版本结论）：`PROGRESS`（变好）/ `NOISE`（差距在置信区间内不可区分）/ `REGRESS`（变差）/ `CAUTIOUS`（趋势好但置信不足）；外加两档边界情况 `UNDERPOWERED`（用例太少不足以下结论）与 `SOLO`（单变体，无可对比）。这是你能直接拿出去对焦的一句话结论。
 
 **综合分**：每版 0-5 分平均，跟基线比 `+Δ` 多少。Δ 旁边的 95% 置信区间决定 verdict 落点。
 
@@ -108,7 +106,9 @@ omk studio                                          # 启动报告浏览器
 
 ## 更深的玩法
 
-- 详细 CLI / executor / judge / observe 参考：[README.zh.md](../../README.zh.md)
+- 心智模型 —— [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
+- 一次运行到底怎么跑：[工作原理](./explanation/architecture.md)
+- 详细 CLI / executor / judge / observe 参考：[README.zh.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.zh.md)
 - 评分管道（assertion / llm / judge / dimension / composite 五层）：[scoring.md](./specs/scoring.md)
 - 测量学严谨性（Bootstrap CI / Krippendorff α / length-debias 等）：[statistical-rigor.md](./explanation/statistical-rigor.md)
-- 用例设计规范（mocks / environment / tripwire / mocksStrict）：[sample-design-spec.md](../specs/sample-design-spec.md)
+- 用例设计规范（mocks / environment / tripwire / mocksStrict）：[sample-design-spec.md](./specs/sample-design-spec.md)

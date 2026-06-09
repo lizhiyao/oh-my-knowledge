@@ -26,8 +26,12 @@ interface ExecError extends Error {
  * --help 会在网络 I/O 之前 resolve;反之会被拖到 ~3s timeout。
  * 阈值给得宽松(800ms),既能挡住 1100ms 回归又不被偶发 GC / IO 抖动误判。
  */
-const HOSTILE_ENV = {
-  ...process.env,
+const HOSTILE_ENV: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH,
+  HOME: process.env.HOME,
+  USER: process.env.USER,
+  TMPDIR: process.env.TMPDIR,
+  LANG: process.env.LANG,
   npm_config_registry: 'http://127.0.0.1:1/',
 };
 const STARTUP_BUDGET_MS = 800;

@@ -5,23 +5,32 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 ## I want to use omk
 
 - [Quickstart](./quickstart-skill-eval.md) — first eval in 5 minutes
+- [Install the omk Agent Skill](./quickstart-skill-eval.md) — agent-driven onboarding with `omk install omk-agent-skill`
 - [CLI reference](./reference/cli.md)
 - [Eval sample format](./reference/eval-sample-format.md)
-- [Executors & artifact layout](./reference/executors.md)
+- [Executors](./reference/executors.md)
+- [Artifact & variant layout](./reference/artifact-layout.md)
 - [Comparison with 7 tools](./reference/comparison.md)
-- [术语表 / Glossary](./zh/reference/glossary.md) (中文版)
+- [Glossary](./reference/glossary.md)
+
+## How-to guides
+
+- [Run doctor checks](./guides/run-doctor-checks.md)
+- [Evaluate an agent (project-level runtime context)](./guides/agent-eval.md)
+- [Auto-improve a skill](./guides/auto-improve-skills.md)
+- [Observe production traces](./guides/observe-production.md)
+- [Use non-Claude models (GLM / Qwen / DeepSeek / Moonshot / Ollama)](./guides/non-claude-models.md)
 
 ## I want to understand how it works
 
+- [The three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [Architecture](./explanation/architecture.md)
 - [Statistical rigor](./explanation/statistical-rigor.md)
-- [评分公式 / Scoring](./zh/specs/scoring.md) (中文版)
+- [Scoring pipeline](./specs/scoring.md)
 
 ## I want to contribute / read design specs
 
-- [Sample design spec](./specs/sample-design-spec.md) (中文)
-- [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md) (中文)
-- [RAG metrics spec](./specs/rag-metrics-spec.md) (中文)
-- [Terminology spec](./specs/terminology-spec.md) (中文)
-- [Sensitive scan](./dev/sensitive-scan.md) (中文)
-- [SIGINT validation](./dev/sigint-validation.md) (中文)
+- [Sample design spec](./specs/sample-design-spec.md)
+- [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
+- [RAG metrics spec](./specs/rag-metrics-spec.md)
+- [Terminology spec](./specs/terminology-spec.md)

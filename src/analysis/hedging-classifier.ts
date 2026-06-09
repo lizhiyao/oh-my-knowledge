@@ -34,7 +34,7 @@ export interface ClassifyResult {
 
 const DEFAULT_MAX_CANDIDATES = 50;
 const DEFAULT_BATCH_SIZE = 10;
-const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_MODEL = 'claude-haiku-4-5';
 
 // in-memory cache,进程内复用。key = sha256(sentence)。
 const verdictCache = new Map<string, HedgingVerdict>();

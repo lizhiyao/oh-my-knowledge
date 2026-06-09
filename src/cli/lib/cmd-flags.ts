@@ -122,6 +122,7 @@ export interface EvalFlags {
   'trivial-diff'?: string;
   'report-only'?: boolean;
   'no-gate'?: boolean;
+  'no-evidence'?: boolean;
 }
 
 // ── evolve ────────────────────────────────────────────────────────────────────
@@ -150,6 +151,12 @@ export interface EvolveFlags {
   'reuse-latest-eval': boolean;
   'improve-mode': string;
   'holdout-ratio': string;
+  'no-significance-gate': boolean;
+  'significance-alpha': string;
+  'test-ratio': string;
+  'edit-budget': string;
+  'no-edit-budget': boolean;
+  'no-reject-memory': boolean;
 }
 
 // ── sample ────────────────────────────────────────────────────────────────────

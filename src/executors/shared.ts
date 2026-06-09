@@ -137,7 +137,7 @@ export interface CodexEvent {
     content?: string;
     query?: string;
     results?: unknown[];
-    changes?: Array<{ path?: string; kind?: string }>;
+    changes?: Array<{ path?: string }>;
     server?: string;
     tool?: string;
     arguments?: unknown;

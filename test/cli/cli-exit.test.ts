@@ -29,6 +29,13 @@ describe('CliExit dispatch', () => {
         'sample-fix-max-attempts': '2',
         'reuse-latest-eval': false,
         'improve-mode': 'agent',
+        'holdout-ratio': '0',
+        'no-significance-gate': false,
+        'significance-alpha': '0.05',
+        'test-ratio': '0',
+        'edit-budget': '0.2',
+        'no-edit-budget': false,
+        'no-reject-memory': false,
       },
       'zh',
     ).then(() => null, (e: unknown) => e);

@@ -21,6 +21,16 @@ Delete the topic branch after its PR is merged.
 
 ## Typical workflow
 
+### Prerequisites
+
+This repo uses **Yarn 4** (Berry), pinned via the `packageManager` field and driven by [Corepack](https://nodejs.org/api/corepack.html). Node ships Corepack but leaves it disabled, so enable it once:
+
+```bash
+corepack enable    # makes `yarn` in this repo resolve to the pinned Yarn 4
+```
+
+Node ≥ 22 is required (`engines`). After that, the `yarn` commands below Just Work — Corepack downloads the pinned Yarn version on first use.
+
 ### Everyday feature / fix
 
 ```bash
@@ -167,7 +177,7 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
 3. CliExit 边界:业务 `throw new CliExit(code)` 通过每个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
-5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
+5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.agents/skills/omk/references/commands.md`（见下一节）
 
 ### CLI 文档 codegen（#109）
 
@@ -175,9 +185,9 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 | 目标 | marker | 输出 | 语言 |
 |---|---|---|---|
-| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
-| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
-| `README.zh.md` | 同上 | 同上 | zh |
+| `.agents/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
+| `docs/reference/cli.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->` | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
+| `docs/zh/reference/cli.md` | 同上 | 同上 | zh |
 
 `SKILL.md` 不走 codegen（agent prompt 指令塞结构化命令清单跟 commands.md 重复,还撑大 agent context）。改用 `test/scripts/build-docs.test.ts` 的 vitest case 锁 frontmatter `argument-hint` 跟 oclif 顶层命令 id set（`TOP_LEVEL_IDS`）严格一致——历史上漂过 2 次（`bench run` → `eval`、`improve` → `evolve`),这条 test 把同类 drift 拦在 CI。
 
@@ -185,8 +195,8 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
 - 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
-- README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
-- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
+- CLI reference 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
+- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 `docs/reference/cli.md` / `docs/zh/reference/cli.md` 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
 - 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
 
 ### 加新 sub-sub topic 命令
@@ -230,7 +240,7 @@ oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分�
 - `docs/specs/` — design specs read by contributors (sample design, gap signal, RAG metrics, terminology, ...)
 - `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
 - `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
-- EN/ZH symmetry is **not** mandatory. Several docs are currently ZH-only (e.g. `docs/specs/*`, `docs/dev/*`, `docs/zh/reference/glossary.md`, `docs/zh/specs/scoring.md`, `docs/zh/roadmap.md` — the last is intentionally ZH-only internal planning). Indexes annotate cross-language links with `(中文版) / (英文版)` instead of TODO promises
+- **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Prefer putting design rationale and decision records *inside* the relevant published spec (e.g. as an appendix) so users see the full reasoning — keep notes outside `docs/` only when they are genuinely maintainer-only, where they stay exempt from the bilingual rule
 
 ## Scope
 

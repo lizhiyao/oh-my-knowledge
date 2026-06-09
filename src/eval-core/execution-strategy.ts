@@ -63,7 +63,7 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
   if (!artifact.experimentRole) {
     throw new Error(
       `artifact "${artifact.name}" 缺少 experimentRole:应该由 CLI --control/--treatment、`
-      + `--config eval.yaml 或 batch workflow 显式注入。参见 docs/specs/terminology-spec.md 三-4。`,
+      + `--config eval.yaml 或 batch workflow 显式注入。参见 docs/zh/specs/terminology-spec.md 三-4。`,
     );
   }
   return {
@@ -84,7 +84,12 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
 }
 
 function extractSkillDir(artifact: Artifact): string | null {
-  if (!artifact.locator) return null;
+  // dir-skill(任意源)优先用隔离副本执行根 execRoot:agent cwd 锚副本、skillDir 也指副本。副本经
+  // distributable filter 物化、不含 node_modules → buildExecEnv 的 .bin 检查恒不命中 → PATH 不被污染。
+  if (artifact.execRoot) return artifact.execRoot;
+  // git 文件-skill 无 execRoot 且 locator 是 git spec(`review` / `skills/review`)非磁盘目录,取 dirname
+  // 会得伪 skillDir 污染 PATH/runtime fingerprint → 与 baseline 一样返回 null。本地文件-skill 取 .md 所在目录。
+  if (!artifact.locator || artifact.source === 'git') return null;
   return dirname(artifact.locator);
 }
 

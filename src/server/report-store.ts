@@ -42,11 +42,11 @@ export function createFileStore(dir: string): ReportStore {
   function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    if (record.kind === 'evaluation') {
+    if (record.reportKind === 'evaluation') {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
       return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
-    if (record.kind === 'batch-evaluation') {
+    if (record.reportKind === 'batch-evaluation') {
       if (!record.meta || !Array.isArray(record.items)) return null;
       return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
@@ -60,7 +60,7 @@ export function createFileStore(dir: string): ReportStore {
     ) {
       return {
         ...record,
-        kind: 'evaluation',
+        reportKind: 'evaluation',
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
     }
@@ -68,7 +68,7 @@ export function createFileStore(dir: string): ReportStore {
   }
 
   function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
-    return report.kind === 'evaluation';
+    return report.reportKind === 'evaluation';
   }
 
   // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .json 同步 readFile +
@@ -230,7 +230,7 @@ export async function queryJob(jobStore: JobStore, id: string): Promise<Evaluati
 
 export interface RunListItem {
   id: string;
-  kind: ReportDocument['kind'];
+  reportKind: ReportDocument['reportKind'];
   meta: ReportDocument['meta'];
   summary?: EvaluationReport['summary'];
   items?: BatchEvaluationReport['items'];
@@ -256,9 +256,9 @@ export interface TrendQueryResult {
 export async function queryRunList(reportStore: ReportStore): Promise<RunListItem[]> {
   return (await reportStore.list()).map((report) => ({
     id: report.id,
-    kind: report.kind,
+    reportKind: report.reportKind,
     meta: report.meta,
-    ...(report.kind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
+    ...(report.reportKind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
   }));
 }
 

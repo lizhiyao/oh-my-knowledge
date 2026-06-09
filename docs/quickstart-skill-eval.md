@@ -9,15 +9,13 @@ npm i oh-my-knowledge -g
 omk --version    # prints a version number once installed
 ```
 
-If you want the **agent-driven workflow** (recommended), also install the omk skill into your coding agent. For Claude Code users:
+If you want the **agent-driven workflow** (recommended), also install the omk Agent Skill into your coding agent:
 
 ```bash
-git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
-mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.claude/skills/omk ~/.claude/skills/
+omk install omk-agent-skill
 ```
 
-Codex users: copy into `~/.codex/agents/skills/` instead. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
+By default, this installs only into detected local targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
 
 ## Prepare your skill (1 minute)
 
@@ -73,7 +71,7 @@ omk studio                                          # open the report browser
 
 The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
-**Verdict** (cross-version conclusion): `PROGRESS` (better) / `NOISE` (diff inside the confidence band, undecidable) / `REGRESSION` (worse) / `CAUTIOUS` (trends look good but confidence is thin). This is the one-line answer to bring to a review meeting.
+**Verdict** (cross-version conclusion): `PROGRESS` (better) / `NOISE` (diff inside the confidence band, undecidable) / `REGRESS` (worse) / `CAUTIOUS` (trends look good but confidence is thin) — plus two edge cases, `UNDERPOWERED` (too few samples to conclude) and `SOLO` (single variant, nothing to compare against). This is the one-line answer to bring to a review meeting.
 
 **Composite score**: each variant's average on a 0–5 scale, with a `+Δ` against the control. The 95% confidence interval next to Δ is what decides where the verdict lands.
 
@@ -108,6 +106,9 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
 ## Going deeper
 
-- Full CLI / executor / judge / observe reference: [README.md](../README.md)
-- Five-layer scoring pipeline (assertion / LLM / judge / dimension / composite): [statistical-rigor.md](./explanation/statistical-rigor.md)
+- The mental model — [the three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
+- How a run actually works: [architecture](./explanation/architecture.md)
+- Full CLI / executor / judge / observe reference: [README.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.md)
+- Five-layer scoring pipeline (assertion / llm / judge / dimension / composite): [scoring.md](./specs/scoring.md)
+- Statistical rigor (Bootstrap CI / Krippendorff α / length-debias): [statistical-rigor.md](./explanation/statistical-rigor.md)
 - Sample design spec (`mocks` / `environment` / `tripwire` / `mocksStrict`): [sample-design-spec.md](./specs/sample-design-spec.md)

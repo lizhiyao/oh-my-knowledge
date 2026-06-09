@@ -79,7 +79,7 @@ export function observationReviewStatePath(observationsDir: string): string {
 
 export function emptyObservationReviewState(now = new Date().toISOString()): ObservationReviewState {
   return {
-    kind: 'observe-review-state',
+    reportKind: 'observe-review-state',
     schemaVersion: 1,
     updatedAt: now,
     entries: {},
@@ -91,11 +91,11 @@ export function loadObservationReviewState(observationsDir: string): Observation
   if (!existsSync(path)) return emptyObservationReviewState();
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<ObservationReviewState>;
-    if (parsed.kind !== 'observe-review-state' || parsed.schemaVersion !== 1 || !parsed.entries || typeof parsed.entries !== 'object') {
+    if (parsed.reportKind !== 'observe-review-state' || parsed.schemaVersion !== 1 || !parsed.entries || typeof parsed.entries !== 'object') {
       return emptyObservationReviewState();
     }
     return {
-      kind: 'observe-review-state',
+      reportKind: 'observe-review-state',
       schemaVersion: 1,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
       entries: Object.fromEntries(
