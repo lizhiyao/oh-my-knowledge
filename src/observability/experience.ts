@@ -176,6 +176,8 @@ export type {
   ObservationReviewState,
 };
 
+export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 2;
+
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
   if (statuses.includes('degraded')) return 'degraded';
   if (statuses.includes('failed')) return 'failed';
@@ -318,8 +320,8 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
   const skills = summarizeExperienceSkills(sessions, invocations);
 
   return {
-    reportKind: 'observe-experience',
-    schemaVersion: 1,
+    kind: 'observe-experience',
+    schemaVersion: OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
     scope: 'evidence-only',
     generatedAt: input.generatedAt,
     meta: {
@@ -333,6 +335,30 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     invocations,
     sessions,
     skills,
+  };
+}
+
+export function normalizeObservationExperienceReport(value: unknown): ObservationExperienceReport | null {
+  if (!value || typeof value !== 'object') return null;
+  const report = value as Record<string, unknown>;
+  const kind = report.kind === 'observe-experience' ? report.kind : null;
+  if (!kind) return null;
+  if (report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION) return null;
+  if (report.scope !== 'evidence-only') return null;
+  if (typeof report.generatedAt !== 'string' || !report.meta || typeof report.meta !== 'object') return null;
+  if (!Array.isArray(report.goalSlices) || !Array.isArray(report.invocations) || !Array.isArray(report.sessions) || !Array.isArray(report.skills)) {
+    return null;
+  }
+  return {
+    kind: 'observe-experience',
+    schemaVersion: OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
+    scope: 'evidence-only',
+    generatedAt: report.generatedAt,
+    meta: report.meta as ObservationExperienceReport['meta'],
+    goalSlices: report.goalSlices as ObservationExperienceReport['goalSlices'],
+    invocations: report.invocations as ObservationExperienceReport['invocations'],
+    sessions: report.sessions as ObservationExperienceReport['sessions'],
+    skills: report.skills as ObservationExperienceReport['skills'],
   };
 }
 

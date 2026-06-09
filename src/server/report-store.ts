@@ -42,37 +42,32 @@ export function createFileStore(dir: string): ReportStore {
   function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    // 兼容旧报告:判别字段曾是 `kind`(#210 BREAKING-SERIALIZATION 改名为 reportKind),
-    // studio 读取侧在 reportKind 缺失时回退到旧 `kind`,让历史 .json 仍能展示;
-    // 输出统一带上 reportKind,下游一律按新字段消费。写入侧不变(仍写 reportKind)。
-    const effKind = record.reportKind ?? record.kind;
-    if (effKind === 'evaluation') {
+    const kind = record.kind === 'evaluation' || record.kind === 'batch-evaluation'
+      ? record.kind
+      : undefined;
+    if (kind === 'evaluation') {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
-      return { ...record, reportKind: 'evaluation', id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
-    }
-    if (effKind === 'batch-evaluation') {
-      if (!record.meta || !Array.isArray(record.items)) return null;
-      return { ...record, reportKind: 'batch-evaluation', id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
-    }
-    if (
-      effKind === undefined
-      && record.overview === undefined
-      && record.artifacts === undefined
-      && record.meta
-      && record.summary
-      && Array.isArray(record.results)
-    ) {
       return {
         ...record,
-        reportKind: 'evaluation',
+        kind,
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
     }
+    if (kind === 'batch-evaluation') {
+      if (!record.meta || !Array.isArray(record.items)) return null;
+      return {
+        ...record,
+        kind,
+        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
+      } as unknown as ReportDocument;
+    }
+    // 只认 canonical 顶层 `kind`(evaluation / batch-evaluation)。不再为旧格式(顶层无该判别字段的
+    // 历史文件)做读兼容 —— 顶层 kind cutover 是硬切换,旧文件直接判脏丢弃。
     return null;
   }
 
   function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
-    return report.reportKind === 'evaluation';
+    return report.kind === 'evaluation';
   }
 
   // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .json 同步 readFile +
@@ -234,7 +229,7 @@ export async function queryJob(jobStore: JobStore, id: string): Promise<Evaluati
 
 export interface RunListItem {
   id: string;
-  reportKind: ReportDocument['reportKind'];
+  kind: ReportDocument['kind'];
   meta: ReportDocument['meta'];
   summary?: EvaluationReport['summary'];
   items?: BatchEvaluationReport['items'];
@@ -260,9 +255,9 @@ export interface TrendQueryResult {
 export async function queryRunList(reportStore: ReportStore): Promise<RunListItem[]> {
   return (await reportStore.list()).map((report) => ({
     id: report.id,
-    reportKind: report.reportKind,
+    kind: report.kind,
     meta: report.meta,
-    ...(report.reportKind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
+    ...(report.kind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
   }));
 }
 

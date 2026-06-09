@@ -131,6 +131,54 @@ describe('managed store', () => {
     assert.equal(loadManagedRecord(store, id), null, 'source 缺 sourceKind 应判脏');
   });
 
+  it('validator 收窄运行时类型:畸形记录判脏丢弃(防下游 omk list 等崩溃)', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    const write = (over: Record<string, unknown>) => writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), ...over }));
+
+    // source.url 是对象(非 string)—— 旧 validator 只查 locator/sourceKind 是 string 会放行,
+    // 随后 omk list 的 sourceLabel ?? url 变对象、dispWidth(对象) 抛 TypeError。
+    write({ source: { sourceKind: 'git', locator: 'git:HEAD:x', url: {}, isDirectorySkill: true } });
+    assert.equal(loadManagedRecord(store, id), null, 'source.url 非 string 判脏');
+
+    write({ source: { sourceKind: 'evil', locator: '/abs/x', isDirectorySkill: true } });
+    assert.equal(loadManagedRecord(store, id), null, 'sourceKind 非 file|git 判脏');
+
+    // file 源不得携带 git-only 的 url / ref —— 否则 list 的 sourceLabel 显示假 url、掩盖真实被读的 locator。
+    write({ source: { sourceKind: 'file', locator: '/abs/private.md', url: 'https://example.com/safe.git', isDirectorySkill: false } });
+    assert.equal(loadManagedRecord(store, id), null, 'file 源带 url 判脏(防假 sourceLabel 掩盖真实读取路径)');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/private.md', ref: 'deadbeef', isDirectorySkill: false } });
+    assert.equal(loadManagedRecord(store, id), null, 'file 源带 ref 判脏');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/x' } });
+    assert.equal(loadManagedRecord(store, id), null, 'isDirectorySkill 缺失判脏');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/x', isDirectorySkill: 'yes' } });
+    assert.equal(loadManagedRecord(store, id), null, 'isDirectorySkill 非 boolean 判脏');
+
+    write({ kind: 'baseline' });
+    assert.equal(loadManagedRecord(store, id), null, 'kind 非可安装 ArtifactKind 判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: 1 } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'evidence.comparability.cliVersion 非 string 判脏');
+
+    // comparability 的可选 marker 同样收窄(否则任意类型脏值穿过 validator 进 list --json / 未来 promote)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', judgePromptHash: { nested: true } } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.judgePromptHash 非 string 判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: 42 } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 非数组判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: ['length', 'evil'] } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 含非法枚举值判脏');
+
+    // 合法记录仍放行(含完整 evidence bundle + 合法 comparability marker,确认没把合法值误伤)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] } }] });
+    assert.ok(loadManagedRecord(store, id), '合法记录正常加载');
+  });
+
   it('loadAllManagedRecords:跳过损坏文件,只收合法记录', () => {
     const store = managedDir(dir);
     upsertManagedRecord(store, makeRecord());

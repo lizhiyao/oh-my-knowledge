@@ -327,7 +327,8 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
     if (!file.endsWith('.json')) continue;
     try {
       const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as import('../../types/doctor.js').DoctorReport;
-      if (data?.reportKind !== 'doctor' || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
+      const kind = data?.kind === 'doctor' ? data.kind : null;
+      if (!kind || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
       if (data.skills[0].skillName !== skillName) continue;
       candidates.push({ file, timestamp: data.timestamp });
     } catch { /* skip corrupt / unrelated json */ }

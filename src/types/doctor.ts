@@ -13,7 +13,7 @@ export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
 
 /** Bumped whenever DoctorReport schema changes in a way CI consumers should
  *  be able to detect. CI can pin/check this when parsing the JSON. */
-export const DOCTOR_REPORT_SCHEMA_VERSION = '2.0.0';
+export const DOCTOR_REPORT_SCHEMA_VERSION = '3.0.0';
 
 export interface DoctorRuleResult {
   ruleId: string;
@@ -113,7 +113,7 @@ export interface DoctorSkillReport {
 }
 
 export interface DoctorReport {
-  reportKind: 'doctor';
+  kind: 'doctor';
   /** Schema version the JSON consumer can pin/check. Bumped on any
    *  user-visible change to this report's shape. See DOCTOR_REPORT_SCHEMA_VERSION. */
   schemaVersion: string;

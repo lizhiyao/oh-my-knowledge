@@ -113,10 +113,8 @@ function loadDoctorReport(dir: string, id: string): DoctorReport | null {
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport & { kind?: string };
-      // 兼容旧报告:判别字段曾是 `kind`(#210 改名为 reportKind),读取侧回退到旧 `kind`。
-      const rk = data?.reportKind ?? data?.kind;
-      if (rk === 'doctor' && data.id === id) return { ...data, reportKind: 'doctor' };
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
+      if (data?.kind === 'doctor' && data.id === id) return data;
     } catch { /* skip */ }
   }
   return null;
@@ -949,7 +947,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         const reportId = decodeURIComponent(reportPageMatch[1]);
         const report = await queryRun(reportStore, reportId);
         let ctx: SkillReportContext | undefined;
-        if (report && report.reportKind === 'evaluation') {
+        if (report && report.kind === 'evaluation') {
           const runs = await reportStore.list();
           const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
           // 按 evalHistory 匹配(非仅最新),历史 eval 报告也能定位到所属 skill。

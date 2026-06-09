@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -58,6 +58,30 @@ omk install ./skills/review --dest ~/.my-agent/skills
 安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
 
 默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+
+## `omk list`
+
+```bash
+omk list                 # 当前项目的受管 skill（.omk/managed）
+omk list --global        # 全局受管 skill（~/.oh-my-knowledge/managed）
+omk list --json          # 机器可读输出，含完整可比性 marker
+```
+
+<!-- omk:cli:list:flags:start -->
+
+**Flags:**
+
+```text
+  --global        看全局受管目录（~/.oh-my-knowledge/managed）而非项目 .omk/managed
+  --json          输出 JSON（含完整可比性 marker），供脚本消费
+  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+```
+
+完整描述见 `omk list --help`。
+
+<!-- omk:cli:list:flags:end -->
+
+列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 输出版本化信封 `{ schemaVersion, rows }`（有当前有效证据的行携带可比性 marker —— `cliVersion`，可选 `judgePromptHash` / `debiasMode`），让脚本能检测形态变更。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 

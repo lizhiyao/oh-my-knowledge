@@ -16,6 +16,7 @@ import {
   hashText,
   loadExisting,
   markStale,
+  SKILL_DERIVED_STANDARDS_SCHEMA_VERSION,
   skillDerivedStandardsDir,
   skillDerivedStandardsPath,
 } from './skill-standards-store.js';
@@ -91,8 +92,8 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     source: 'llm_soft_standard' as const,
   }));
   const record: SkillDerivedStandards = {
-    reportKind: 'observe-skill-derived-standards',
-    schemaVersion: 1,
+    kind: 'observe-skill-derived-standards',
+    schemaVersion: SKILL_DERIVED_STANDARDS_SCHEMA_VERSION,
     skillName: skillChain.skillName,
     sourceSkillPath: skillChain.definition.path,
     sourceHash,

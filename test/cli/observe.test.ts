@@ -9,8 +9,8 @@ describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
     writeFileSync(join(dir, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
-      reportKind: 'observe-inbox',
-      schemaVersion: 1,
+      kind: 'observe-inbox',
+      schemaVersion: 2,
       meta: {
         tracePath: '/tmp/trace',
         generatedAt: '2026-05-07T00:00:00.000Z',

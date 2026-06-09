@@ -130,8 +130,8 @@ describe('observe inbox - review state', () => {
     assert.ok(correction);
     const targetId = observationMetricAnnotationTargetId({ ...correction.evidenceRef, metricScopeId: session.id }, 'user_correction');
     const reviewState = {
-      reportKind: 'observe-review-state' as const,
-      schemaVersion: 1 as const,
+      kind: 'observe-review-state' as const,
+      schemaVersion: 2 as const,
       updatedAt: '2026-05-11T02:00:03.000Z',
       entries: {
         [observationReviewStateKey('evidence_metric', targetId)]: {
@@ -420,8 +420,8 @@ describe('observe inbox - review state', () => {
     };
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
-      reportKind: 'observe-skill-derived-standards',
-      schemaVersion: 1,
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 2,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
       model: 'sonnet',
@@ -500,8 +500,8 @@ describe('observe inbox - review state', () => {
     };
     mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
     writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
-      reportKind: 'observe-skill-derived-standards',
-      schemaVersion: 1,
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 2,
       skillName: chain.skillName,
       generatedAt: '2026-05-18T00:00:00.000Z',
       model: 'sonnet',

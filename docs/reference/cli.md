@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -58,6 +58,30 @@ Installs a knowledge input (skill) and distributes it to local supported coding-
 Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
 
 The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+
+## `omk list`
+
+```bash
+omk list                 # managed skills in the current project (.omk/managed)
+omk list --global        # globally managed skills (~/.oh-my-knowledge/managed)
+omk list --json          # machine-readable output with full comparability markers
+```
+
+<!-- omk:cli:list:flags:start -->
+
+**Flags:**
+
+```text
+  --global        Show the global managed dir (~/.oh-my-knowledge/managed) instead of project .omk/managed
+  --json          Output JSON (with full comparability markers) for scripts
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+```
+
+For full descriptions: `omk list --help`.
+
+<!-- omk:cli:list:flags:end -->
+
+Lists managed skills with their **evidence status**, not just files: lifecycle state, the latest verdict bound to the current content, current/total evidence count, and source. The lifecycle is derived at read time — `installed` (no valid evidence), `measurable` (eval evidence bound to the current content fingerprint), `stale` (source content drifted off its evidence). Because the fingerprint covers a directory-skill's whole tree (`SKILL.md` + `references/`), editing any asset flips the skill to `stale`. `--json` emits a versioned envelope `{ schemaVersion, rows }` (rows with current valid evidence carry a comparability marker — `cliVersion`, optionally `judgePromptHash` / `debiasMode`) so scripts can detect shape changes. See [evidence-gated management](../specs/evidence-gated-management.md).
 
 ## `omk doctor`
 

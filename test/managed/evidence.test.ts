@@ -34,7 +34,7 @@ function makeReport(over: {
   debiasMode?: Array<'length' | 'position'>;
 } = {}): EvaluationReport {
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id: over.id ?? 'report-abc',
     meta: {
       variants: over.variants ?? ['baseline', 'review'],
