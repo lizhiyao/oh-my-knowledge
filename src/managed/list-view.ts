@@ -69,8 +69,11 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     state = d.label;
     drifted = d.drifted;
   } else {
-    // 不可达:不据此判 stale —— 只按证据给 installed/measurable,drift 标未核。
-    state = currentEvidenceCount > 0 ? 'measurable' : 'installed';
+    // 不可达:不据此判 stale。promote 决定是**内容锚定**的(只看 record.decisions + record.contentHash,
+    // 不依赖源能否被 probe),故当前内容有 promote 决定时仍保留 promoted —— 它比 evidence 更不该因源不可达
+    // 丢失(deriveManagedState 的 promoted 分支同理)。否则按证据给 measurable/installed,drift 标未核。
+    const promoted = record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
+    state = promoted ? 'promoted' : currentEvidenceCount > 0 ? 'measurable' : 'installed';
     drifted = false;
   }
   const latest = latestCurrentEvidence(record);

@@ -114,6 +114,8 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     if (dec.override !== undefined) {
       const o = dec.override as Record<string, unknown>;
       if (!o || typeof o !== 'object' || !isStringField(o.verdict)) return false;
+      if (o.overriddenBlocks !== undefined
+        && !(Array.isArray(o.overriddenBlocks) && o.overriddenBlocks.every((b) => typeof b === 'string'))) return false;
     }
     return true;
   });

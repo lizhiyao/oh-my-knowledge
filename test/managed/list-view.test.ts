@@ -75,6 +75,25 @@ describe('buildManagedListRow', () => {
     assert.equal(row.reachable, false);
   });
 
+  const promoteDecision = { decisionKind: 'promote' as const, actor: 't', decidedAt: '2026-06-09T00:00:00.000Z', contentHash: 'hashAAA' };
+
+  it('reachable + 当前内容有 promote 决定 → promoted', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision] }), reach('hashAAA'));
+    assert.equal(row.state, 'promoted');
+    assert.equal(row.drifted, false);
+  });
+
+  it('不可达 + promote 决定 → 仍 promoted(promote 决定内容锚定、不依赖源 probe)', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision] }), unreach);
+    assert.equal(row.state, 'promoted', '不可达不应把已接受降级成 measurable');
+    assert.equal(row.reachable, false);
+  });
+
+  it('源漂移时 promote 决定不冒充当前 → stale(drift 优先)', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision] }), reach('hashDRIFTED'));
+    assert.equal(row.state, 'stale');
+  });
+
   it('多条当前证据 → 取 recordedAt 最新那条的 verdict', () => {
     const row = buildManagedListRow(rec({
       evidence: [

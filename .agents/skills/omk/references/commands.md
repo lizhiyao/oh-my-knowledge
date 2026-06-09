@@ -350,7 +350,7 @@ omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/re
 
 ## omk list
 
-列出受管 skill 及其证据状态：生命周期（installed / measurable / stale）、最新 verdict、证据数、源。
+列出受管 skill 及其证据状态：生命周期（installed / measurable / promoted / stale）、最新 verdict、证据数、源。
 
 **用法:**
 

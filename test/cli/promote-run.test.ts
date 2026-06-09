@@ -50,7 +50,7 @@ describe('omk promote 端到端', () => {
     writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
   }
 
-  function readRecord(): { decisions: Array<{ decisionKind: string; contentHash?: string; override?: { verdict: string } }> } {
+  function readRecord(): { decisions: Array<{ decisionKind: string; contentHash?: string; override?: { verdict: string; overriddenBlocks?: string[] } }> } {
     return JSON.parse(readFileSync(join(managed, `${recId}.json`), 'utf-8'));
   }
 
@@ -122,7 +122,9 @@ describe('omk promote 端到端', () => {
     const r = await run(['promote', 'review', '--force', '--reason', '已人工复核']);
     assert.equal(r.code, 0, r.stderr);
     assert.ok(r.stdout.includes('force-promoted'), `越门成功行在 stdout:${r.stdout}`);
-    assert.equal(readRecord().decisions[0].override?.verdict, 'NOISE', '记下被越过的 verdict');
+    const dec = readRecord().decisions[0];
+    assert.equal(dec.override?.verdict, 'NOISE', '记下被越过的 verdict');
+    assert.deepEqual(dec.override?.overriddenBlocks, ['verdict_blocked'], '记下被越过的判据');
   });
 
   it('源漂移(contentHash 不匹配)→ 退 1 drifted;--force 越门 → 退 0', async () => {
@@ -163,5 +165,51 @@ describe('omk promote 端到端', () => {
     assert.equal(parsed.promoted.name, 'review');
     assert.equal(parsed.promoted.verdict, 'PROGRESS');
     assert.equal(parsed.promoted.override, false);
+  });
+
+  it('评委已变(judgePromptHash 失配)→ 退 1 incomparable;--force 越门记 override', async () => {
+    writeRecord({ verdict: 'PROGRESS', judgeHash: 'STALE_JUDGE_NOT_CURRENT' });
+    const blocked = await run(['promote', 'review']);
+    assert.equal(blocked.code, 1);
+    assert.ok(blocked.stderr.includes('not the current judge'), `incomparable 拦截:${blocked.stderr}`);
+    assert.equal(readRecord().decisions.length, 0);
+    const forced = await run(['promote', 'review', '--force', '--reason', 'ok']);
+    assert.equal(forced.code, 0, forced.stderr);
+    assert.deepEqual(readRecord().decisions[0].override?.overriddenBlocks, ['incomparable'], 'override 标明越过 incomparable');
+  });
+
+  it('--json:拦截出版本化信封 { schemaVersion:1, blocked:{ reasons:[{blockKind,detail}] } }', async () => {
+    writeRecord({ verdict: 'NOISE' });
+    const r = await run(['promote', 'review', '--json']);
+    assert.equal(r.code, 1);
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.schemaVersion, 1);
+    assert.equal(parsed.blocked.name, 'review');
+    assert.equal(parsed.blocked.reasons[0].blockKind, 'verdict_blocked');
+    assert.equal(parsed.blocked.reasons[0].detail.verdict, 'NOISE');
+  });
+
+  it('--json:幂等出 alreadyPromoted 信封', async () => {
+    writeRecord({ verdict: 'PROGRESS' });
+    await run(['promote', 'review']);
+    const r = await run(['promote', 'review', '--json']);
+    assert.equal(r.code, 0);
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.schemaVersion, 1);
+    assert.equal(parsed.alreadyPromoted.name, 'review');
+    assert.equal(parsed.alreadyPromoted.contentHash, curHash);
+  });
+
+  it('不可信受管 JSON 的 verdict 含 ANSI/控制符 → 文本输出洗成 U+FFFD,不喷转义', async () => {
+    // verdict 写成带 ESC/OSC/CR 的串(validator 只卡「是字符串」),走 verdict_blocked 拦截分支打到 stderr。
+    writeRecord({ verdict: '\x1b[2J\x1b]0;PWNED\x07\rNOISE' });
+    const r = await run(['promote', 'review']);
+    assert.equal(r.code, 1);
+    assert.ok(!r.stderr.includes('\x1b'), 'ESC 不得原样喷到终端');
+    assert.ok(!r.stderr.includes('\x07'), 'BEL 不得原样喷出');
+    assert.ok(r.stderr.includes('�'), '控制符应映射为 U+FFFD');
+    // --json 路径保留原值(脚本消费要原始),仅文本路径洗。
+    const j = await run(['promote', 'review', '--json']);
+    assert.ok(JSON.parse(j.stdout).blocked.reasons[0].detail.verdict.includes('\x1b'), '--json 保留原值');
   });
 });

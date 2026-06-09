@@ -65,9 +65,11 @@ export interface ManagedDecision {
   contentHash?: string;
   /** 该决定锚定的证据 report(promote 取 latestCurrentEvidence 那条的 reportId)——可回溯「凭什么 ship」。 */
   reportId?: string;
-  /** 越门记录:门禁本应拦下(verdict 不在接受集 / 不可比 / 已 drift),经 --force 显式越过时,记下被越过的
-   *  verdict 供审计(spec §7「Overrides must be explicit and recorded」)。无此字段 = 正常通过门禁。 */
-  override?: { verdict: string };
+  /** 越门记录:门禁本应拦下,经 --force 显式越过时记下供审计(spec §7「Overrides must be explicit and
+   *  recorded」)。无此字段 = 正常通过门禁。`verdict` 是越门时证据的 verdict(上下文);`overriddenBlocks`
+   *  是真正被越过的判据(drifted / incomparable / verdict_blocked),让审计能回答「越过了什么」—— 只看
+   *  verdict 会误导(仅因 drift 越门时 verdict 可能仍是 PROGRESS)。 */
+  override?: { verdict: string; overriddenBlocks?: string[] };
 }
 
 export interface ManagedArtifactSource {

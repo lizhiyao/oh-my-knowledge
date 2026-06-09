@@ -153,7 +153,9 @@ MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本�
 - 可比性：证据的 `judgePromptHash`（若有）仍属当前评委模板（评委提示词变了 ⇒ 旧 verdict 不可比 ⇒ 拦）;缺指纹只 warn 不拦;`cliVersion` 仅展示、不硬卡（否则每次发版即全失效）。
 - verdict 默认仅 `PROGRESS`;`CAUTIOUS` 需显式 `--accept-cautious`;其余一律拦。
 
-`--force` 可越过非「无证据」类拦截（drift / 不可比 / verdict），在决定里记 `override.verdict` 与人工 `--reason`（不变量：override 必须显式且留痕）。对已 promote 的当前版本重跑 promote 是幂等无操作。
+§5 的四项 mandatory,MVP 门禁在 promote 时核三项（report id 经「存在当前证据」、verdict、可比性 marker）;**样本集覆盖**由 `eval`（§9、#221）denormalize 进证据 bundle、在此被信任——门禁不重算也不重核。（§5 的「mandatory」说的是 `eval` 必须写进 bundle 的内容,不是 promote 时另起一道核查。）
+
+`--force` 可越过非「无证据」类拦截（drift / 不可比 / verdict），在决定里记 `override.verdict`（外加 `override.overriddenBlocks` 标明被越过了哪几条判据）与人工 `--reason`（不变量：override 必须显式且留痕）。对已 promote 的当前版本重跑 promote 是幂等无操作。
 
 ### `rollback`
 

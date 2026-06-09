@@ -5,6 +5,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { probeSourceState } from '../lib/source-probe.js';
+import { sanitizeCell } from '../lib/cell-format.js';
 import { getJudgePromptHash } from '../../grading/judge.js';
 import {
   appendManagedDecision,
@@ -31,7 +32,13 @@ function resolveActor(flagActor: string | undefined): string {
   return process.env.USER || process.env.LOGNAME || 'unknown';
 }
 
-/** blockKind → i18n key(细节 detail 直接作为 tCli params)。 */
+/** 洗 detail 里来自受管 JSON 的不可信值(verdict / judgePromptHash),文本输出防 ANSI/OSC 注入。 */
+function safeDetail(detail: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!detail) return undefined;
+  return Object.fromEntries(Object.entries(detail).map(([k, v]) => [k, sanitizeCell(v)]));
+}
+
+/** blockKind → i18n key(细节 detail 作为 tCli params,文本路径经 safeDetail 洗白)。 */
 const BLOCK_KEY: Record<PromoteBlock['blockKind'], PromoteMessageKey> = {
   drifted: 'cli.promote.drifted',
   no_current_evidence: 'cli.promote.no_current_evidence',
@@ -117,7 +124,7 @@ export default class Promote extends BaseCommand {
         contentHash: record.contentHash,
         ...(evidence.reportId ? { reportId: evidence.reportId } : {}),
         ...(flags.reason ? { reason: flags.reason } : {}),
-        ...(overridden ? { override: { verdict: evidence.verdict ?? 'UNKNOWN' } } : {}),
+        ...(overridden ? { override: { verdict: evidence.verdict ?? 'UNKNOWN', overriddenBlocks: gate.blocked.map((b) => b.blockKind) } } : {}),
       };
       appendManagedDecision(dir, record.id, decision);
 
@@ -134,7 +141,8 @@ export default class Promote extends BaseCommand {
       return;
     }
     process.stderr.write(tCli('cli.promote.blocked_header', lang, { name }) + '\n');
-    for (const b of gate.blocked) process.stderr.write(tCli(BLOCK_KEY[b.blockKind], lang, b.detail) + '\n');
+    // detail 里的 verdict / judgePromptHash 来自不可信受管 JSON,文本路径先洗(与 list 同口径,防 ANSI/OSC 注入)。
+    for (const b of gate.blocked) process.stderr.write(tCli(BLOCK_KEY[b.blockKind], lang, safeDetail(b.detail)) + '\n');
     if (gate.warnings.length > 0) process.stderr.write(tCli('cli.promote.incomparable_unverified', lang) + '\n');
     // 有可锚定证据(非「无证据」终态)才提示 --force 可越门。
     if (gate.evidence !== undefined) process.stderr.write(tCli('cli.promote.force_hint', lang) + '\n');
@@ -149,8 +157,10 @@ export default class Promote extends BaseCommand {
       }, null, 2));
       return;
     }
-    const short = hash.slice(0, 12);
-    if (overridden) this.log(tCli('cli.promote.forced_override', lang, { name, hash: short, verdict: verdict ?? 'UNKNOWN' }));
-    else this.log(tCli('cli.promote.promoted', lang, { name, hash: short, verdict: verdict ?? 'UNKNOWN', reportId: reportId ?? '—' }));
+    // hash / verdict / reportId 来自不可信受管 JSON,文本路径先洗(--json 路径上面已 return、保留原值)。
+    const short = sanitizeCell(hash.slice(0, 12));
+    const safeVerdict = sanitizeCell(verdict ?? 'UNKNOWN');
+    if (overridden) this.log(tCli('cli.promote.forced_override', lang, { name, hash: short, verdict: safeVerdict }));
+    else this.log(tCli('cli.promote.promoted', lang, { name, hash: short, verdict: safeVerdict, reportId: sanitizeCell(reportId ?? '—') }));
   }
 }

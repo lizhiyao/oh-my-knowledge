@@ -305,6 +305,9 @@ describe('managed store', () => {
     // override 非 {verdict:string} → 脏。
     writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [{ decisionKind: 'promote', actor: 'x', decidedAt: 't', override: { verdict: 123 } }] }));
     assert.equal(loadManagedRecord(store, id), null, 'override.verdict 非 string 应判脏');
+    // override.overriddenBlocks 非 string[] → 脏。
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [{ decisionKind: 'promote', actor: 'x', decidedAt: 't', override: { verdict: 'NOISE', overriddenBlocks: [1, 2] } }] }));
+    assert.equal(loadManagedRecord(store, id), null, 'overriddenBlocks 非 string[] 应判脏');
     // contentHash 非 string → 脏。
     writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [{ decisionKind: 'promote', actor: 'x', decidedAt: 't', contentHash: 42 }] }));
     assert.equal(loadManagedRecord(store, id), null, 'decision.contentHash 非 string 应判脏');

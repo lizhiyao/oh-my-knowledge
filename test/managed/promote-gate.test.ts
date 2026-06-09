@@ -76,6 +76,33 @@ describe('evaluatePromoteGate', () => {
     assert.ok(g.warnings.some((w) => w.blockKind === 'incomparable'));
   });
 
+  it('judgePromptHash 在场但 currentJudgeHashes 省略 → 静默放行(取不到当前评委时跳过核对,不 block 不 warn)', () => {
+    const g = evaluatePromoteGate({ record: rec({ evidence: [ev()] }), currentContentHash: CUR });
+    assert.equal(g.ok, true);
+    assert.equal(g.blocked.length, 0, '取不到当前评委 → 不误 block');
+    assert.equal(g.warnings.length, 0, '证据有 hash → 不走 marker 缺失 warn');
+  });
+
+  it('judgePromptHash 在场但 currentJudgeHashes 为空集 → 静默放行(同上,不 block 不 warn)', () => {
+    const g = evaluatePromoteGate({ record: rec({ evidence: [ev()] }), currentContentHash: CUR, currentJudgeHashes: new Set() });
+    assert.equal(g.ok, true);
+    assert.equal(g.blocked.length, 0);
+    assert.equal(g.warnings.length, 0);
+  });
+
+  it('组合:incomparable + verdict 同时拦(§3 命中不 return、继续走 §4),各记一条且 detail 各自正确', () => {
+    const g = evaluatePromoteGate({
+      record: rec({ evidence: [ev({ verdict: 'NOISE', comparability: { cliVersion: '0.30.0', judgePromptHash: 'STALE_JUDGE' } })] }),
+      currentContentHash: CUR, currentJudgeHashes: judgeSet,
+    });
+    assert.equal(g.ok, false);
+    const inc = g.blocked.find((b) => b.blockKind === 'incomparable');
+    const vb = g.blocked.find((b) => b.blockKind === 'verdict_blocked');
+    assert.equal(inc?.detail?.judgePromptHash, 'STALE_JUDGE');
+    assert.equal(vb?.detail?.verdict, 'NOISE');
+    assert.ok(g.evidence, '有证据 → force 可越');
+  });
+
   it('verdict=NOISE → verdict_blocked,带回被拦 verdict', () => {
     const g = evaluatePromoteGate({ record: rec({ evidence: [ev({ verdict: 'NOISE' })] }), currentContentHash: CUR, currentJudgeHashes: judgeSet });
     assert.equal(g.ok, false);

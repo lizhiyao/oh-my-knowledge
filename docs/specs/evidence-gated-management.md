@@ -153,7 +153,9 @@ Default gate (resolved against the latest **current** evidence — `contentHash`
 - comparability: the evidence's `judgePromptHash`, if present, is still a current judge-prompt template (a changed judge prompt ⇒ the old verdict is incomparable ⇒ blocked); a missing fingerprint warns but does not block; `cliVersion` is shown, not hard-gated (else every release would invalidate all evidence)
 - verdict is `PROGRESS` by default; `CAUTIOUS` only with explicit `--accept-cautious`; everything else is blocked
 
-`--force` overrides a non-evidence block (drift / incomparable / verdict), recorded on the decision as `override.verdict` with the human's `--reason` (spec invariant: overrides must be explicit and recorded). Re-running promote on an already-promoted current version is an idempotent no-op.
+Of §5's four mandatory items, the MVP gate checks three at promote time (report id via "current evidence exists", verdict, and the comparability marker); **sample-set coverage** is denormalized into the evidence bundle by `eval` (§9, #221) and trusted here — the gate does not re-derive or re-check it. (§5's "mandatory" framing is about what `eval` must write into the bundle, not a separate promote-time re-check.)
+
+`--force` overrides a non-evidence block (drift / incomparable / verdict), recorded on the decision as `override.verdict` (plus `override.overriddenBlocks` naming which checks were waved through) with the human's `--reason` (spec invariant: overrides must be explicit and recorded). Re-running promote on an already-promoted current version is an idempotent no-op.
 
 ### `rollback`
 
