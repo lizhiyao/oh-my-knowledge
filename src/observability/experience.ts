@@ -318,7 +318,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
   const skills = summarizeExperienceSkills(sessions, invocations);
 
   return {
-    reportKind: 'observe-experience',
+    kind: 'observe-experience',
     schemaVersion: 1,
     scope: 'evidence-only',
     generatedAt: input.generatedAt,

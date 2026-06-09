@@ -317,6 +317,8 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 其它判别字段如果是新字段，或能安全改名，就用限定名。已经发布、已落盘或已有外部消费方依赖的 `kind` 字段保持原样，除非单独做 migration：
 
 - `report.kind` 保持为 report public schema 的 canonical 字段
+- `doctor.kind` 保持为 doctor report 的 canonical 字段
+- `observe-*.kind` 保持为 observe report 的 canonical 字段
 - `event.kind` → `eventKind`
 - `executorRuntime.kind` → `runtimeKind`
 - `standard.kind` → `standardKind`

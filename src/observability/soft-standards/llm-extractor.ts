@@ -91,7 +91,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     source: 'llm_soft_standard' as const,
   }));
   const record: SkillDerivedStandards = {
-    reportKind: 'observe-skill-derived-standards',
+    kind: 'observe-skill-derived-standards',
     schemaVersion: 1,
     skillName: skillChain.skillName,
     sourceSkillPath: skillChain.definition.path,

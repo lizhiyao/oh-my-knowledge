@@ -443,7 +443,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
   const items = finishInboxAggregation(aggregationState);
   const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
   const report: ObservationInboxReport = {
-    reportKind: 'observe-inbox',
+    kind: 'observe-inbox',
     schemaVersion: 1,
     meta: {
       tracePath,
@@ -584,7 +584,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
         return null;
       }
     })
-    .filter((r): r is ObservationInboxReport => r?.reportKind === 'observe-inbox');
+    .filter((r): r is ObservationInboxReport => r?.kind === 'observe-inbox');
 }
 
 export function loadLatestObservationInboxReport(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport | null {

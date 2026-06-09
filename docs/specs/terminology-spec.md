@@ -317,6 +317,8 @@ In omk's product vocabulary, bare `kind` defaults to `Artifact.kind` (`ArtifactK
 For other discriminants, use a qualified name when the field is new or safe to rename. Existing published `kind` fields that are already persisted or externally consumed stay as-is unless a dedicated migration changes them:
 
 - `report.kind` stays the canonical public report-schema field
+- `doctor.kind` stays the canonical doctor-report field
+- `observe-*.kind` stays the canonical observe-report field
 - `event.kind` → `eventKind`
 - `executorRuntime.kind` → `runtimeKind`
 - `standard.kind` → `standardKind`

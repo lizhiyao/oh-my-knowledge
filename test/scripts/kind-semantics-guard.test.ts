@@ -2,8 +2,8 @@
  * issue #206 护栏:裸 `kind` 字段只允许 `ArtifactKind`。
  *
  * 产品语义里不带限定词的 `kind` 默认指 knowledge artifact 类型(`Artifact.kind: ArtifactKind`)。
- * 例外是已经发布并落盘/对外暴露的 public schema（如 report.kind）；其它判别字段必须用限定名
- * (`reportKind` / `eventKind` / `runtimeKind` / `standardKind` ...)。
+ * 例外是已经发布并落盘/对外暴露的 public schema（如 report / doctor / observe 的顶层
+ * kind）；其它判别字段必须用限定名（`eventKind` / `runtimeKind` / `standardKind` ...）。
  *
  * 本测试用 TypeScript AST 扫 `src/**\/*.ts` 里**每个名为 `kind` 的字段声明**
  * (interface / type-literal 的 PropertySignature、class 的 PropertyDeclaration —— 不含
@@ -38,6 +38,11 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/types/report.ts::EvaluationReport::'evaluation'",
   "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
   "src/server/report-store.ts::RunListItem::ReportDocument['kind']",
+  "src/types/doctor.ts::DoctorReport::'doctor'",
+  "src/types/observability.ts::ObservationReviewState::'observe-review-state'",
+  "src/types/observability.ts::ObservationInboxReport::'observe-inbox'",
+  "src/types/observability.ts::ObservationExperienceReport::'observe-experience'",
+  "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
   // —— 持久化 observe / experience JSON ——
   'src/types/observability.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
   'src/types/observability.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',
@@ -129,7 +134,7 @@ describe('issue #206: 裸 kind 护栏', () => {
       [],
       `发现未登记的裸 \`kind\` 字段声明(issue #206)。裸 kind 留给 ArtifactKind:\n` +
         `${offenders.join('\n')}\n\n` +
-        `修法:改成限定名(reportKind / eventKind / runtimeKind / standardKind 等);` +
+        `修法:改成限定名(eventKind / runtimeKind / standardKind / recordKind 等);` +
         `或——若确为新的持久化判别字段——把上面的 key 加进 FROZEN_KIND_EXCEPTIONS 并在 PR 说明理由。`,
     );
     assert.deepEqual(

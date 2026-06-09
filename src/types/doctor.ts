@@ -109,7 +109,7 @@ export interface DoctorSkillReport {
 }
 
 export interface DoctorReport {
-  reportKind: 'doctor';
+  kind: 'doctor';
   /** Schema version the JSON consumer can pin/check. Bumped on any
    *  user-visible change to this report's shape. See DOCTOR_REPORT_SCHEMA_VERSION. */
   schemaVersion: string;

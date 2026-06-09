@@ -80,7 +80,7 @@ export interface ObservationReviewStateEntry {
 }
 
 export interface ObservationReviewState {
-  reportKind: 'observe-review-state';
+  kind: 'observe-review-state';
   schemaVersion: 1;
   updatedAt: string;
   entries: Record<string, ObservationReviewStateEntry>;
@@ -285,7 +285,7 @@ export interface ObservationSessionTimeRange {
 }
 
 export interface ObservationInboxReport {
-  reportKind: 'observe-inbox';
+  kind: 'observe-inbox';
   schemaVersion: 1;
   meta: {
     tracePath: string;
@@ -928,7 +928,7 @@ export interface ExperienceSkillSummary {
 }
 
 export interface ObservationExperienceReport {
-  reportKind: 'observe-experience';
+  kind: 'observe-experience';
   schemaVersion: 1;
   scope: 'evidence-only';
   generatedAt: string;
