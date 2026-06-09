@@ -106,6 +106,7 @@ function batchItemFallbackReport(
 ): EvaluationReport {
   return {
     reportKind: 'evaluation',
+    kind: 'evaluation',
     id: item.reportId,
     meta: {
       ...batch.meta,

@@ -314,9 +314,9 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 在 omk 的产品语义里，裸 `kind` 留给 `Artifact.kind`（`ArtifactKind`：`baseline` / `skill` / `prompt` / `agent` / `workflow`）。`baseline` 表示 eval 里的空 artifact；实验角色仍然看 `control` / `treatment`。命令行设计同理：`omk install` 上的 `--kind` flag 表示 artifact kind（对齐 `Artifact.kind`），而不是安装目标、report 类型或 observe event 类型。
 
-其它判别字段如果是新字段，或能安全改名，就用限定名。已经落盘的既有 `kind` 字段保持原样，除非单独做 migration：
+其它判别字段如果是新字段，或能安全改名，就用限定名。已经落盘的既有 `kind` 字段作为 legacy wire alias 保持，除非单独做 migration：
 
-- `report.kind` → `reportKind` / `documentKind`
+- `report.kind` → 内部主字段 `reportKind` / `documentKind`；report JSON 保留 `kind` 作为外部消费方的 legacy alias
 - `event.kind` → `eventKind`
 - `executorRuntime.kind` → `runtimeKind`
 - `standard.kind` → `standardKind`

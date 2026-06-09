@@ -264,6 +264,7 @@ export function aggregateReport({
 
   return {
     reportKind: 'evaluation',
+    kind: 'evaluation',
     id: runId,
     meta: {
       variants,

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createFileStore, queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
@@ -67,6 +67,8 @@ describe('queryRunList', () => {
     const list = await queryRunList(store);
     assert.equal(list.length, 1);
     assert.equal(list[0].id, 'r1');
+    assert.equal(list[0].reportKind, 'evaluation');
+    assert.equal(list[0].kind, 'evaluation');
     assert.ok(list[0].meta);
     assert.ok(list[0].summary);
     assert.equal(list[0].meta.model, 'sonnet');
@@ -89,6 +91,77 @@ describe('createFileStore legacy report loading', () => {
       const list = await store.list();
       assert.equal(list.length, 1);
       assert.equal(list[0].reportKind, 'evaluation');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('兼容带 kind 的历史普通报告', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-kind-report-'));
+    try {
+      const legacy = makeReport('legacy-kind-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
+      legacy.kind = 'evaluation';
+      delete legacy.reportKind;
+      delete legacy.id;
+      writeFileSync(join(dir, 'legacy-kind-run.json'), JSON.stringify(legacy, null, 2));
+
+      const store = createFileStore(dir);
+      const report = await store.get('legacy-kind-run');
+      assert.equal(report?.reportKind, 'evaluation');
+      assert.equal(report?.kind, 'evaluation');
+      assert.equal(report?.id, 'legacy-kind-run');
+      const list = await store.list();
+      assert.equal(list.length, 1);
+      assert.equal(list[0].reportKind, 'evaluation');
+      assert.equal(list[0].kind, 'evaluation');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('保存 report 时双写 reportKind 和 legacy kind', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-dual-kind-report-'));
+    try {
+      const store = createFileStore(dir);
+      await store.save('new-run', makeReport('new-run', 'v1', '2024-01-01T00:00:00Z', 0.8));
+
+      const raw = JSON.parse(readFileSync(join(dir, 'new-run.json'), 'utf-8')) as Record<string, unknown>;
+      assert.equal(raw.reportKind, 'evaluation');
+      assert.equal(raw.kind, 'evaluation');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('兼容带 kind 的历史批量报告', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-kind-batch-report-'));
+    try {
+      const legacyBatch = {
+        kind: 'batch-evaluation',
+        id: 'legacy-kind-batch',
+        mode: 'skill',
+        meta: {
+          mode: 'skill',
+          model: 'sonnet',
+          executor: 'claude',
+          skillDir: 'skills',
+          sampleCount: 1,
+          taskCount: 2,
+          totalArtifacts: 1,
+          totalCostUSD: 0,
+          timestamp: '2024-01-01T00:00:00Z',
+          cliVersion: '0.8.1',
+          nodeVersion: '20.0.0',
+          judgeModels: [{ executor: 'claude', model: 'haiku' }],
+        },
+        items: [],
+      };
+      writeFileSync(join(dir, 'legacy-kind-batch.json'), JSON.stringify(legacyBatch, null, 2));
+
+      const store = createFileStore(dir);
+      const report = await store.get('legacy-kind-batch');
+      assert.equal(report?.reportKind, 'batch-evaluation');
+      assert.equal(report?.kind, 'batch-evaluation');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

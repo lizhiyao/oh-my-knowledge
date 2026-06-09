@@ -336,6 +336,8 @@ export interface SampleSnapshot {
 
 export interface EvaluationReport {
   reportKind: 'evaluation';
+  /** Legacy wire alias kept for external JSON consumers that still read report.kind. */
+  kind?: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
@@ -393,6 +395,8 @@ export interface BatchEvaluationItem {
 
 export interface BatchEvaluationReport {
   reportKind: 'batch-evaluation';
+  /** Legacy wire alias kept for external JSON consumers that still read report.kind. */
+  kind?: 'batch-evaluation';
   id: string;
   mode: 'skill';
   meta: BatchEvaluationMeta;
