@@ -24,7 +24,8 @@ export interface ManagedListRow {
   /** artifact 类型,直取自记录(裸 kind 留给 ArtifactKind,见 terminology-spec §5.4)。 */
   kind: ArtifactKind;
   sourceKind: 'file' | 'git';
-  /** 展示用源标识:远端 git 优先 url、否则 locator。 */
+  /** 展示用源标识:仅远端 git(sourceKind==='git' 且带 url)显 url,其余一律显 locator —— 保证「显示的」
+   *  就是「被 probe / 读取的」路径,file 源即便混入 url(validator 已拒)也不显示它。 */
   sourceLabel: string;
   state: ManagedLifecycleLabel;
   drifted: boolean;
@@ -69,7 +70,7 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     name: record.name,
     kind: record.kind,
     sourceKind: record.source.sourceKind,
-    sourceLabel: record.source.url ?? record.source.locator,
+    sourceLabel: record.source.sourceKind === 'git' && record.source.url ? record.source.url : record.source.locator,
     state,
     drifted,
     reachable: probe.reachable,

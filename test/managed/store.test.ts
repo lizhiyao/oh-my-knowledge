@@ -145,6 +145,13 @@ describe('managed store', () => {
     write({ source: { sourceKind: 'evil', locator: '/abs/x', isDirectorySkill: true } });
     assert.equal(loadManagedRecord(store, id), null, 'sourceKind 非 file|git 判脏');
 
+    // file 源不得携带 git-only 的 url / ref —— 否则 list 的 sourceLabel 显示假 url、掩盖真实被读的 locator。
+    write({ source: { sourceKind: 'file', locator: '/abs/private.md', url: 'https://example.com/safe.git', isDirectorySkill: false } });
+    assert.equal(loadManagedRecord(store, id), null, 'file 源带 url 判脏(防假 sourceLabel 掩盖真实读取路径)');
+
+    write({ source: { sourceKind: 'file', locator: '/abs/private.md', ref: 'deadbeef', isDirectorySkill: false } });
+    assert.equal(loadManagedRecord(store, id), null, 'file 源带 ref 判脏');
+
     write({ source: { sourceKind: 'file', locator: '/abs/x' } });
     assert.equal(loadManagedRecord(store, id), null, 'isDirectorySkill 缺失判脏');
 
@@ -157,8 +164,18 @@ describe('managed store', () => {
     write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: 1 } }] });
     assert.equal(loadManagedRecord(store, id), null, 'evidence.comparability.cliVersion 非 string 判脏');
 
-    // 合法记录仍放行(含完整 evidence bundle)。
-    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' } }] });
+    // comparability 的可选 marker 同样收窄(否则任意类型脏值穿过 validator 进 list --json / 未来 promote)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', judgePromptHash: { nested: true } } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.judgePromptHash 非 string 判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: 42 } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 非数组判脏');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: ['length', 'evil'] } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 含非法枚举值判脏');
+
+    // 合法记录仍放行(含完整 evidence bundle + 合法 comparability marker,确认没把合法值误伤)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] } }] });
     assert.ok(loadManagedRecord(store, id), '合法记录正常加载');
   });
 

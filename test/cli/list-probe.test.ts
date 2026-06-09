@@ -7,7 +7,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync, linkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { probeSourceState, sanitizeCell } from '../../src/cli/commands/list.js';
@@ -53,6 +53,35 @@ describe('probeSourceState', () => {
     // 直接把 locator 指到 /dev/zero(非软链路径):lstat 判非常规文件 → 拒读。
     const p = probeSourceState(record({ sourceKind: 'file', locator: '/dev/zero', isDirectorySkill: false }));
     assert.equal(p.reachable, false);
+  });
+
+  it('安全:单文件源 locator 非 .md(任意小 regular file,如 /etc/passwd / id_rsa)→ reachable:false', () => {
+    const secret = join(dir, 'id_rsa'); writeFileSync(secret, 'PRIVATE KEY\n'); // 常规文件但非 .md
+    const p = probeSourceState(record({ sourceKind: 'file', locator: secret, isDirectorySkill: false }));
+    assert.equal(p.reachable, false, '非 .md 形态被拒,不把任意本地文件读进进程参与 hash');
+    assert.equal(p.hash, undefined);
+  });
+
+  it('安全:单文件源 locator 是相对路径(非 install 写出形态)→ reachable:false', () => {
+    const p = probeSourceState(record({ sourceKind: 'file', locator: 'relative/note.md', isDirectorySkill: false }));
+    assert.equal(p.reachable, false, '相对 locator 非 install 产物,拒(不按 cwd 解析到项目外)');
+  });
+
+  it('安全:单文件源是 .md 命名、指向非 .md 敏感文件的硬链 → reachable:false(nlink>1 拒,堵硬链别名读)', () => {
+    const secret = join(dir, 'secret.txt'); writeFileSync(secret, 'PRIVATE\n');
+    const alias = join(dir, 'alias.md'); linkSync(secret, alias); // 硬链:同 inode、nlink=2、isSymbolicLink()=false
+    const p = probeSourceState(record({ sourceKind: 'file', locator: alias, isDirectorySkill: false }));
+    assert.equal(p.reachable, false, '硬链 nlink>1 被拒,绝不读别名的树外敏感文件');
+    assert.equal(p.hash, undefined);
+  });
+
+  it('安全:目录-skill 树内含指向树外敏感文件的硬链 → reachable:false(不读整树)', () => {
+    const sk = join(dir, 'dirskill'); mkdirSync(sk, { recursive: true });
+    writeFileSync(join(sk, 'SKILL.md'), '# s\n');
+    const secret = join(dir, 'outside.txt'); writeFileSync(secret, 'SECRET\n');
+    linkSync(secret, join(sk, 'leak.md')); // 树内硬链别名树外 inode
+    const p = probeSourceState(record({ sourceKind: 'file', locator: sk, isDirectorySkill: true }));
+    assert.equal(p.reachable, false, '树内硬链文件被 nlink 守卫拦下,整树拒读');
   });
 
   it('源不存在 → reachable:false(未核,不冒充 stale)', () => {

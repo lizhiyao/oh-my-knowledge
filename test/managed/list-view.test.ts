@@ -104,6 +104,13 @@ describe('buildManagedListRow', () => {
     assert.equal(row.sourceKind, 'git');
     assert.equal(row.sourceLabel, 'https://x/r.git');
   });
+
+  it('防御层:file 源即便混入 url(已被 validator 拒)→ sourceLabel 取 locator 不取 url(显示=被读路径)', () => {
+    const row = buildManagedListRow(rec({
+      source: { sourceKind: 'file', locator: '/abs/private.md', url: 'https://example.com/safe.git', isDirectorySkill: false } as ManagedArtifactRecord['source'],
+    }), reach('hashAAA'));
+    assert.equal(row.sourceLabel, '/abs/private.md', 'file 源永不显示 url —— 显示的就是 probe 实际读取的 locator');
+  });
 });
 
 describe('buildManagedListRows', () => {

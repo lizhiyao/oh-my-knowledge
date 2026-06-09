@@ -79,6 +79,9 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     && typeof src.isDirectorySkill === 'boolean'
     && isOptionalString(src.url)
     && isOptionalString(src.ref))) return false;
+  // url / ref 是 git-only 字段。file 源带 url 时,list 的 sourceLabel 会显示假 url、掩盖真实被 probe /
+  // 读取的 locator(畸形但可通过上面 string 校验)→ 「读了什么」与「显示什么」不一致。判脏丢弃。
+  if (src.sourceKind === 'file' && (src.url !== undefined || src.ref !== undefined)) return false;
   const okDist = r.distribution.every((d) => d && typeof d === 'object'
     && isStringField((d as { path?: unknown }).path) && isStringField((d as { contentHash?: unknown }).contentHash));
   const okEv = r.evidence.every((e) => {
@@ -86,10 +89,15 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     const ev = e as unknown as Record<string, unknown>;
     if (!(isStringField(ev.reportId) && isStringField(ev.contentHash) && isStringField(ev.recordedAt))) return false;
     if (!isOptionalString(ev.verdict)) return false;
-    // comparability 若存在:必须是带 string cliVersion 的对象(list / promote 会读它)。
+    // comparability 若存在:必须是带 string cliVersion 的对象(list / promote 会读它)。可选 marker
+    // judgePromptHash / debiasMode 同样收窄到声明类型 —— 否则任意类型脏值会穿过 validator 原样进 `omk list
+    // --json`(及未来 promote gate)消费方。
     if (ev.comparability !== undefined) {
       const c = ev.comparability as Record<string, unknown>;
       if (!c || typeof c !== 'object' || !isStringField(c.cliVersion)) return false;
+      if (!isOptionalString(c.judgePromptHash)) return false;
+      if (c.debiasMode !== undefined
+        && !(Array.isArray(c.debiasMode) && c.debiasMode.every((m) => m === 'length' || m === 'position'))) return false;
     }
     return true;
   });

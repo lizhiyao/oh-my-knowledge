@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readdirSync, type Dirent } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -41,7 +41,7 @@ function boundedDirSkillHash(abs: string): string | null {
   } catch {
     return null; // 无 SKILL.md → 不是 skill 目录,拒
   }
-  if (md.isSymbolicLink() || !md.isFile()) return null; // SKILL.md 必须是常规文件、非软链
+  if (md.isSymbolicLink() || !md.isFile() || md.nlink !== 1) return null; // SKILL.md 必须是常规、非软链、非硬链
   let files = 0;
   let bytes = 0;
   const within = (dir: string, segs: string[], depth: number): boolean => {
@@ -60,7 +60,9 @@ function boundedDirSkillHash(abs: string): string | null {
       } else if (e.isFile()) { // 软链 Dirent 既非 isFile 也非 isDirectory → 天然跳过
         if (++files > MAX_DIR_SOURCE_FILES) return false;
         try {
-          bytes += lstatSync(join(dir, e.name)).size;
+          const fst = lstatSync(join(dir, e.name));
+          if (fst.nlink !== 1) return false; // 硬链(nlink>1)可在树内别名树外敏感 inode → 拒读整树
+          bytes += fst.size;
         } catch {
           return false;
         }
@@ -97,7 +99,9 @@ export function probeSourceState(record: ManagedArtifactRecord): SourceProbe {
         resolved.cleanup();
       }
     }
-    // 本地 file 源:守卫后再读。
+    // 本地 file 源:守卫后再读。locator 必须是 install 实际写出的形态(绝对路径) —— 受管 JSON 随仓库
+    // 分发、无 opt-in 即被读到,相对 locator 不是 install 产物,拒,避免按 cwd 解析到项目外。
+    if (!isAbsolute(s.locator)) return { reachable: false };
     const abs = resolve(s.locator);
     if (!existsSync(abs)) return { reachable: false };
     const st = lstatSync(abs); // lstat:不跟随软链 —— 软链直接拒(防 evil.md → /dev/zero)
@@ -107,7 +111,11 @@ export function probeSourceState(record: ManagedArtifactRecord): SourceProbe {
       const hash = boundedDirSkillHash(abs); // 形态校验 + 成本边界(防任意目录递归读 / 目录 DoS)
       return hash === null ? { reachable: false } : { reachable: true, hash };
     }
-    if (!st.isFile() || st.size > MAX_FILE_SOURCE_BYTES) return { reachable: false }; // 非常规文件 / 超大 → 拒读
+    // 单文件-skill:恢复 install(resolveFileSource)的形态约束 —— 必须是 `.md` 常规文件、非硬链、≤ size cap。
+    // 否则攻击者可写 locator:`/etc/passwd` / `~/.ssh/id_rsa`(非 .md 直接拒),或用 `.md` 命名的**硬链**别名
+    // 树外敏感文件绕过扩展名 / 软链守卫(lstat 分不出硬链)→ 诱 list 把任意本地文件读进进程参与 hash。install
+    // 写出的是 nlink=1 的全新副本,拒 nlink>1 不误伤合法源。非 install 形态一律 reachable:false。
+    if (!/\.md$/i.test(abs) || !st.isFile() || st.nlink !== 1 || st.size > MAX_FILE_SOURCE_BYTES) return { reachable: false };
     return { reachable: true, hash: hashArtifactSource(abs, false) };
   } catch {
     return { reachable: false };
