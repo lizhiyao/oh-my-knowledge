@@ -20,7 +20,7 @@ omk doctor [target] [flags]
 
 **Flags:**
 
-- `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。
+- `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
 - `--effort` `option`:LLM 推理 effort：low / medium / high / xhigh / max。
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
 - `--fix` `boolean`:交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
@@ -222,7 +222,7 @@ omk evolve <skillPath> [flags]
 - `--improve-model` `option` (默认 `sonnet`):负责重写 skill 的 LLM，默认 sonnet
 - `--judge-models` `option` (默认 `claude:haiku`):评委 model（单评委约束），格式 executor:model。默认 claude:haiku
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--model` `option` (默认 `sonnet`):被评测的 LLM，默认 sonnet
+- `--model` `option` (默认 `sonnet`):被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。
 - `--no-diagnostic` `boolean`:关 LLM diagnostic 调用
 - `--no-edit-budget` `boolean`:关掉 edit budget 约束（允许任意大小的单轮改动）
 - `--no-reject-memory` `boolean`:关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）

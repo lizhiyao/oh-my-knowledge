@@ -995,7 +995,8 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       }
 
       // /skills/<name> 详情页(hub)已下线 — 首页点行直接进 eval/doctor 报告,跨维度靠报告页 chip 条 +
-      // 「全部历史」弹框,不再有中间汇总页。老书签 301 跳到该 skill 最新 eval(无则最新 doctor)。
+      // 「全部历史」弹框,不再有中间汇总页。老书签 302 跳到该 skill 最新 eval(无则最新 doctor);
+      // 用 302 不用 301 —— target 随时间变(最新报告会变),不能被浏览器永久缓存。
       const skillDetailMatch = path.match(/^\/skills\/(.+)$/);
       if (skillDetailMatch) {
         const skillName = decodeURIComponent(skillDetailMatch[1]);

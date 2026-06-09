@@ -98,7 +98,7 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
-  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service).
+  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.
   --effort <value>      LLM reasoning effort: low / medium / high / xhigh / max.
   --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
   --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
@@ -303,7 +303,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --improve-model <value>         LLM that rewrites the skill, default sonnet
   --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>                 Evaluated LLM, default sonnet
+  --model <value>                 Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.
   --no-diagnostic                 Disable diagnostic LLM call
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)

@@ -98,7 +98,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
-  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection(走 LLM 体检) 或 endpoint(POST skill 快照给接口判定)。
+  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
   --effort <value>      LLM 推理 effort：low / medium / high / xhigh / max。
   --executor <value>    执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --fix                 交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
@@ -282,7 +282,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>                 被评测的 LLM，默认 sonnet
+  --model <value>                 被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。
   --no-diagnostic                 关 LLM diagnostic 调用
   --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
   --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
