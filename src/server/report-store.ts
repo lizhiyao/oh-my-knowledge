@@ -42,16 +42,20 @@ export function createFileStore(dir: string): ReportStore {
   function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    if (record.reportKind === 'evaluation') {
+    // 兼容旧报告:判别字段曾是 `kind`(#210 BREAKING-SERIALIZATION 改名为 reportKind),
+    // studio 读取侧在 reportKind 缺失时回退到旧 `kind`,让历史 .json 仍能展示;
+    // 输出统一带上 reportKind,下游一律按新字段消费。写入侧不变(仍写 reportKind)。
+    const effKind = record.reportKind ?? record.kind;
+    if (effKind === 'evaluation') {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
-      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
+      return { ...record, reportKind: 'evaluation', id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
-    if (record.reportKind === 'batch-evaluation') {
+    if (effKind === 'batch-evaluation') {
       if (!record.meta || !Array.isArray(record.items)) return null;
-      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
+      return { ...record, reportKind: 'batch-evaluation', id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
     if (
-      record.kind === undefined
+      effKind === undefined
       && record.overview === undefined
       && record.artifacts === undefined
       && record.meta

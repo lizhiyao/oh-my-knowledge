@@ -113,8 +113,10 @@ function loadDoctorReport(dir: string, id: string): DoctorReport | null {
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      if (data?.reportKind === 'doctor' && data.id === id) return data;
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport & { kind?: string };
+      // 兼容旧报告:判别字段曾是 `kind`(#210 改名为 reportKind),读取侧回退到旧 `kind`。
+      const rk = data?.reportKind ?? data?.kind;
+      if (rk === 'doctor' && data.id === id) return { ...data, reportKind: 'doctor' };
     } catch { /* skip */ }
   }
   return null;
