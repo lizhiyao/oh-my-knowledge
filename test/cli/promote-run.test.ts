@@ -100,6 +100,17 @@ describe('omk promote 端到端', () => {
     assert.equal(readRecord().decisions.length, 1, '不重复追加');
   });
 
+  it('幂等:已 promote 后源不可达 → 仍 no-op,不误走 drift gate', async () => {
+    writeRecord({ verdict: 'PROGRESS' });
+    await run(['promote', 'review']);
+    rmSync(srcPath, { force: true });
+
+    const r = await run(['promote', 'review']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stderr.includes('already promoted'), `不可达已 promoted 应仍幂等:${r.stderr}`);
+    assert.equal(readRecord().decisions.length, 1, '不可达 no-op 不堆第二条决定');
+  });
+
   it('verdict=NOISE → 退 1,拦截原因走 stderr,记录不变', async () => {
     writeRecord({ verdict: 'NOISE' });
     const r = await run(['promote', 'review']);

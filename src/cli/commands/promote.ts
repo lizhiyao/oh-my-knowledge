@@ -93,10 +93,11 @@ export default class Promote extends BaseCommand {
 
       const probe = probeSourceState(record);
       const currentContentHash = probe.reachable ? probe.hash : undefined;
-      const drifted = currentContentHash === undefined || currentContentHash !== record.contentHash;
+      const sourceHashMismatch = probe.reachable && currentContentHash !== record.contentHash;
 
-      // 幂等:当前内容(非 drift)已 promote 过 → 无操作成功退出,不堆冗余事件。
-      const alreadyPromoted = !drifted
+      // 幂等：当前内容已 promote 过 → 无操作成功退出，不堆冗余事件。与 list 的不可达分支同口径：
+      // 源不可达不代表内容已变；只有源可达且 hash 已变时，才不把旧 promote 当作当前 no-op。
+      const alreadyPromoted = !sourceHashMismatch
         && record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
       if (alreadyPromoted) {
         if (flags.json) this.log(JSON.stringify({ schemaVersion: 1, alreadyPromoted: { name, contentHash: record.contentHash } }, null, 2));
@@ -109,7 +110,6 @@ export default class Promote extends BaseCommand {
 
       // 拦截：无当前证据 force 也越不过；源可达但 hash 已变也不可越门，因为 decision 仍锚在
       // record.contentHash，越过去后 list 仍会按当前源 hash 判 stale。源不可达则可作为人工未核越门。
-      const sourceHashMismatch = probe.reachable && currentContentHash !== record.contentHash;
       const forceable = gate.evidence !== undefined && !sourceHashMismatch;
       const reason = flags.reason?.trim();
       if (!gate.ok && flags.force && forceable && !reason) {
