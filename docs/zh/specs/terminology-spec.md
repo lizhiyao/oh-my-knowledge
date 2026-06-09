@@ -325,7 +325,7 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 两条注意：
 
-- **持久化判别字段 —— report / observe / doctor / diagnosis 的顶层判别字段是 `kind`，由旧的 `reportKind` 经一次有意的 BREAKING-SCHEMA 硬切换而来。** 硬切换不做双读、不留迁移垫片：旧版本写的文件（顶层是 `reportKind`、无 `kind`）直接不读、跳过。这是序列化向后兼容，不是统计可比性 —— 改字段名不改任何测量数字。（`report.kind` 另外还在 Report schema 不变量清单里，后续改动按常规 schema 谨慎处理。）
+- **持久化判别字段 —— report / observe / doctor / diagnosis 的顶层判别字段是 `kind`，由它早先的限定名字段经一次有意的 BREAKING-SCHEMA 硬切换而来。** 硬切换不做双读、不留迁移垫片：旧版本写的文件（顶层是旧的限定名判别字段、无 `kind`）直接不读、跳过。这是序列化向后兼容，不是统计可比性 —— 改字段名不改任何测量数字。（`report.kind` 另外还在 Report schema 不变量清单里，后续改动按常规 schema 谨慎处理。）
 - 内部非持久字段的改名是渐进式的 —— 改到那块代码时顺手做，不搞一次性大扫除。一个 CI 护栏冻结当前裸 `kind` 声明点的集合，防止新的不加限定的 `kind` 混进来。
 
 ## 六、术语映射

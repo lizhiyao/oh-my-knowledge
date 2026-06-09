@@ -61,8 +61,8 @@ export function createFileStore(dir: string): ReportStore {
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
     }
-    // 只认 canonical 顶层 `kind`(evaluation / batch-evaluation)。不再为旧格式(无判别字段 / 旧
-    // reportKind)做读兼容 —— 顶层 kind cutover 是硬切换,旧文件直接判脏丢弃。
+    // 只认 canonical 顶层 `kind`(evaluation / batch-evaluation)。不再为旧格式(顶层无该判别字段的
+    // 历史文件)做读兼容 —— 顶层 kind cutover 是硬切换,旧文件直接判脏丢弃。
     return null;
   }
 
