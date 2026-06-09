@@ -134,7 +134,7 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
   // safeDirJsonContentFingerprint 返回的 "{dir-mtime}|{file1}:{m}:{s},..."
   // content-aware 字符串。
-  const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}:${r.reportKind === 'evaluation' ? r.meta.evolve?.skillName ?? '' : ''}`).join(',');
+  const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}:${r.kind === 'evaluation' ? r.meta.evolve?.skillName ?? '' : ''}`).join(',');
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
   const observationsFp = safeDirJsonContentFingerprint(observationsDir);
@@ -287,7 +287,8 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
     if (!file.endsWith('.json')) continue;
     try {
       const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      if (data?.reportKind !== 'doctor' || !Array.isArray(data.skills)) continue;
+      const kind = data?.kind === 'doctor' ? data.kind : null;
+      if (!kind || !Array.isArray(data.skills)) continue;
       const ts = data.timestamp;
       for (const sr of data.skills) {
         const passN = sr.results.filter((r) => r.status === 'pass').length;
@@ -327,7 +328,7 @@ export function buildSkillIndex(
   // ── eval 聚合(历史 list)─────────────────────────────────
   const evalBy: Record<string, SkillEvalSnapshot[]> = {};
   for (const r of reports) {
-    if (r.reportKind !== 'evaluation') continue;
+    if (r.kind !== 'evaluation') continue;
     const variants = r.meta.variants || [];
     for (const v of variants) {
       const skillName = skillNameForEvalVariant(r, v);
@@ -412,7 +413,7 @@ export function buildSkillIndex(
   // list 页对每个 entry 跑 detectInsights 的 CPU 开销迁移到这里,只 miss 时算一次。
   const insightsBySkill = new Map<string, Insight[]>();
   for (const ent of entries) {
-    const evalReport = ent.eval ? reports.find((r) => r.id === ent.eval!.reportId && r.reportKind === 'evaluation') as EvaluationReport | undefined : undefined;
+    const evalReport = ent.eval ? reports.find((r) => r.id === ent.eval!.reportId && r.kind === 'evaluation') as EvaluationReport | undefined : undefined;
     insightsBySkill.set(ent.skillName, detectInsights(ent, evalReport ?? null, {
       diagnostics: diagnosisBundle.bySkill[ent.skillName] ?? [],
     }));

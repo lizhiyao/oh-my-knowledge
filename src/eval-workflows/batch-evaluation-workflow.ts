@@ -1,5 +1,12 @@
 import { dirname } from 'node:path';
-import { DEFAULT_OUTPUT_DIR, generateRunId, getCliVersion, getGitInfo, persistReport } from '../eval-core/evaluation-reporting.js';
+import {
+  DEFAULT_OUTPUT_DIR,
+  EVALUATION_REPORT_SCHEMA_VERSION,
+  generateRunId,
+  getCliVersion,
+  getGitInfo,
+  persistReport,
+} from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
@@ -263,11 +270,12 @@ export function buildBatchEvaluationReport({
   }));
 
   const report: BatchEvaluationReport = {
-    reportKind: 'batch-evaluation',
+    kind: 'batch-evaluation',
     id: batchRunId,
     mode: 'skill',
     meta: {
       mode: 'skill',
+      schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
       model,
       executor: executorName,
       skillDir,

@@ -38,7 +38,7 @@ describe('omk doctor CLI', () => {
     assert.ok(!stdout.includes('健康度'));
   });
 
-  it('--json on example skill outputs valid DoctorReport with reportKind=doctor', async () => {
+  it('--json on example skill outputs valid DoctorReport with kind=doctor', async () => {
     const { stdout } = await execFileAsync('node', [
       CLI,
       'doctor',
@@ -47,7 +47,7 @@ describe('omk doctor CLI', () => {
       '--executor', DOCTOR_FIXTURE,
     ]);
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.reportKind, 'doctor');
+    assert.equal(parsed.kind, 'doctor');
     assert.ok(Array.isArray(parsed.skills));
     assert.ok(parsed.skills.length >= 1);
     assert.equal(parsed.outcome, 'passed');
@@ -62,7 +62,7 @@ describe('omk doctor CLI', () => {
       '--executor', DOCTOR_FIXTURE,
     ]);
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.reportKind, 'doctor');
+    assert.equal(parsed.kind, 'doctor');
     assert.ok(parsed.skills.length >= 2, 'should batch multiple skills from the dir');
   });
 
@@ -196,7 +196,7 @@ describe('omk doctor CLI', () => {
       '--static-only',
     ]);
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.reportKind, 'doctor');
+    assert.equal(parsed.kind, 'doctor');
     assert.ok(parsed.skills.length >= 1);
     // Static rules present, composer (skill_health) absent under --static-only.
     const staticRuleIds = parsed.skills[0].results.map((r: { ruleId: string }) => r.ruleId);

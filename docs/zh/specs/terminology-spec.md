@@ -312,18 +312,20 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 ### 4. 裸 `kind` 留给 `ArtifactKind`
 
-在 omk 的产品语义里，裸 `kind` 留给 `Artifact.kind`（`ArtifactKind`：`baseline` / `skill` / `prompt` / `agent` / `workflow`）。`baseline` 表示 eval 里的空 artifact；实验角色仍然看 `control` / `treatment`。命令行设计同理：`omk install` 上的 `--kind` flag 表示 artifact kind（对齐 `Artifact.kind`），而不是安装目标、report 类型或 observe event 类型。
+在 omk 的产品语义里，裸 `kind` 默认指 `Artifact.kind`（`ArtifactKind`：`baseline` / `skill` / `prompt` / `agent` / `workflow`）。`baseline` 表示 eval 里的空 artifact；实验角色仍然看 `control` / `treatment`。命令行设计同理：`omk install` 上的 `--kind` flag 表示 artifact kind（对齐 `Artifact.kind`），而不是安装目标、report 类型或 observe event 类型。
 
-其它判别字段如果是新字段，或能安全改名，就用限定名。已经落盘的既有 `kind` 字段保持原样，除非单独做 migration：
+其它判别字段如果是新字段，或能安全改名，就用限定名。已经发布、已落盘或已有外部消费方依赖的 `kind` 字段保持原样，除非单独做 migration：
 
-- `report.kind` → `reportKind` / `documentKind`
+- `report.kind` 保持为 report public schema 的 canonical 字段
+- `doctor.kind` 保持为 doctor report 的 canonical 字段
+- `observe-*.kind` 保持为 observe report 的 canonical 字段
 - `event.kind` → `eventKind`
 - `executorRuntime.kind` → `runtimeKind`
 - `standard.kind` → `standardKind`
 
 两条注意：
 
-- **持久化判别字段冻结。** 任何已经序列化进 report / observe / doctor / diagnosis JSON 的 `kind` 都是落盘格式里的字段名：改名会破坏反序列化磁盘上已有的文件，所以要单独走数据 / schema 迁移（本轮不做）。这是序列化向后兼容，不是统计可比性 —— 改字段名不改任何测量数字。（`report.kind` 另外还在 Report schema 不变量清单里，改它按常规 schema 谨慎处理。）
+- **持久化判别字段 —— report / observe / doctor / diagnosis 的顶层判别字段是 `kind`，由它早先的限定名字段经一次有意的 BREAKING-SCHEMA 硬切换而来。** 硬切换不做双读、不留迁移垫片：旧版本写的文件（顶层是旧的限定名判别字段、无 `kind`）直接不读、跳过。这是序列化向后兼容，不是统计可比性 —— 改字段名不改任何测量数字。（`report.kind` 另外还在 Report schema 不变量清单里，后续改动按常规 schema 谨慎处理。）
 - 内部非持久字段的改名是渐进式的 —— 改到那块代码时顺手做，不搞一次性大扫除。一个 CI 护栏冻结当前裸 `kind` 声明点的集合，防止新的不加限定的 `kind` 混进来。
 
 ## 六、术语映射
