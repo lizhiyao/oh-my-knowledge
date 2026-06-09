@@ -348,6 +348,42 @@ omk install git:main:skills/review
 omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review
 ```
 
+## omk list
+
+列出受管 skill 及其证据状态：生命周期（installed / measurable / stale）、最新 verdict、证据数、源。
+
+**用法:**
+
+```bash
+omk list [flags]
+```
+
+**Flags:**
+
+- `--global` `boolean`:看全局受管目录（~/.oh-my-knowledge/managed）而非项目 .omk/managed
+- `--json` `boolean`:输出 JSON（含完整可比性 marker），供脚本消费
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+
+**示例:**
+
+> 列出当前项目的受管 skill
+
+```bash
+omk list
+```
+
+> 列出全局受管 skill
+
+```bash
+omk list --global
+```
+
+> 机器可读 JSON 输出
+
+```bash
+omk list --json
+```
+
 ## omk observe
 
 分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。

@@ -4,3 +4,4 @@
  */
 export * from './store.js';
 export * from './evidence.js';
+export * from './list-view.js';

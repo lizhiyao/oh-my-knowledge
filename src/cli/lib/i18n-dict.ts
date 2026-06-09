@@ -57,6 +57,7 @@ import { genDict, type GenMessageKey } from './i18n-dict/gen.js';
 import { helpDict, type HelpMessageKey } from './i18n-dict/help.js';
 import { initDict, type InitMessageKey } from './i18n-dict/init.js';
 import { installDict, type InstallMessageKey } from './i18n-dict/install.js';
+import { listDict, type ListMessageKey } from './i18n-dict/list.js';
 import { runDict, type RunMessageKey } from './i18n-dict/run.js';
 import type { CliMessage } from './i18n-dict/types.js';
 
@@ -69,6 +70,7 @@ export type CliMessageKey =
   | HelpMessageKey
   | InitMessageKey
   | InstallMessageKey
+  | ListMessageKey
   | RunMessageKey;
 
 export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
@@ -78,5 +80,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   ...helpDict,
   ...initDict,
   ...installDict,
+  ...listDict,
   ...runDict,
 };

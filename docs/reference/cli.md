@@ -59,6 +59,30 @@ Installing **your own** skill (local path or git source) also writes a **managed
 
 The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
+## `omk list`
+
+```bash
+omk list                 # managed skills in the current project (.omk/managed)
+omk list --global        # globally managed skills (~/.oh-my-knowledge/managed)
+omk list --json          # machine-readable output with full comparability markers
+```
+
+<!-- omk:cli:list:flags:start -->
+
+**Flags:**
+
+```text
+  --global        Show the global managed dir (~/.oh-my-knowledge/managed) instead of project .omk/managed
+  --json          Output JSON (with full comparability markers) for scripts
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+```
+
+For full descriptions: `omk list --help`.
+
+<!-- omk:cli:list:flags:end -->
+
+Lists managed skills with their **evidence status**, not just files: lifecycle state, the latest verdict bound to the current content, current/total evidence count, and source. The lifecycle is derived at read time — `installed` (no valid evidence), `measurable` (eval evidence bound to the current content fingerprint), `stale` (source content drifted off its evidence). Because the fingerprint covers a directory-skill's whole tree (`SKILL.md` + `references/`), editing any asset flips the skill to `stale`. `--json` emits a versioned envelope `{ schemaVersion, rows }` (each row carries the full comparability marker `cliVersion` / `judgePromptHash` / `debiasMode`) so scripts can detect shape changes. See [evidence-gated management](../specs/evidence-gated-management.md).
+
 ## `omk doctor`
 
 ```bash
