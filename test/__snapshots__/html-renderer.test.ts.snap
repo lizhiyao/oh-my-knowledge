@@ -86,11 +86,11 @@ html{scrollbar-gutter:stable}
   --info-bg:rgba(79,70,229,.06);
   /* 图表色 */
   --chart-1:#4f46e5;
-  --chart-2:#7c3aed;
+  --chart-2:#d97706;
   --chart-3:#059669;
-  --chart-4:#d97706;
-  --chart-5:#ec4899;
-  --chart-6:#06b6d4;
+  --chart-4:#ec4899;
+  --chart-5:#06b6d4;
+  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
@@ -467,13 +467,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 2026-03-25 18:00</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-1000</span></div>
     </div>
     <div class="rs-hero-score">
-      <div class="rs-ring" style="width:88px;height:88px">
-    <svg width="88" height="88">
-      <circle cx="44" cy="44" r="40" fill="none" stroke="#edf0f7" stroke-width="8"/>
-      <circle cx="44" cy="44" r="40" fill="none" stroke="#1f9d63" stroke-width="8" stroke-dasharray="251.33" stroke-dashoffset="10.05" stroke-linecap="round" transform="rotate(-90 44 44)"/>
-    </svg>
-    <div class="rs-ring-inner"><span style="color:#1f9d63">4.80</span></div>
-  </div>
+      <div class="rs-hero-num" style="color:#1f9d63">4.80</div>
       <div class="rs-hero-grade" style="color:#1f9d63">Composite / 5</div>
     </div>
   </div>
@@ -528,15 +522,18 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     </div>
   </div>
     <div class="sm-vis">
-      <div class="sm-radar"><svg viewBox="0 0 300 250" class="rad-svg" role="img" aria-label="Six-dimension radar"><polygon points="150.0,97.5 167.8,107.8 167.8,128.3 150.0,138.5 132.2,128.3 132.2,107.8" class="rad-grid"/><polygon points="150.0,77.0 185.5,97.5 185.5,138.5 150.0,159.0 114.5,138.5 114.5,97.5" class="rad-grid"/><polygon points="150.0,56.5 203.3,87.3 203.3,148.8 150.0,179.5 96.7,148.8 96.7,87.3" class="rad-grid"/><polygon points="150.0,36.0 221.0,77.0 221.0,159.0 150.0,200.0 79.0,159.0 79.0,77.0" class="rad-grid"/><line x1="150" y1="118" x2="150.0" y2="36.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="77.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="150.0" y2="200.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="77.0" class="rad-spoke"/><polygon points="150.0,49.1 206.8,85.2 204.0,149.2 150.0,199.2 80.2,158.3 114.5,97.5" class="rad-area" style="fill:var(--chart-1);stroke:var(--chart-1)"/><circle cx="150.0" cy="49.1" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Fact</title></circle><circle cx="206.8" cy="85.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Behavior</title></circle><circle cx="204.0" cy="149.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Judge</title></circle><circle cx="150.0" cy="199.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Cost</title></circle><circle cx="80.2" cy="158.3" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Effic</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v1 · Stab n/a</title></circle><polygon points="150.0,36.0 218.2,78.6 215.3,155.7 150.0,199.3 80.8,158.0 114.5,97.5" class="rad-area" style="fill:var(--chart-2);stroke:var(--chart-2)"/><circle cx="150.0" cy="36.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Fact</title></circle><circle cx="218.2" cy="78.6" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Behavior</title></circle><circle cx="215.3" cy="155.7" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Judge</title></circle><circle cx="150.0" cy="199.3" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Cost</title></circle><circle cx="80.8" cy="158.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Effic</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v2 · Stab n/a</title></circle><text x="150.0" y="18.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">Fact</text><text x="236.6" y="68.0" text-anchor="start" dominant-baseline="middle" class="rad-label">Behavior</text><text x="236.6" y="168.0" text-anchor="start" dominant-baseline="middle" class="rad-label">Judge</text><text x="150.0" y="218.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">Cost</text><text x="63.4" y="168.0" text-anchor="end" dominant-baseline="middle" class="rad-label">Effic</text><text x="63.4" y="68.0" text-anchor="end" dominant-baseline="middle" class="rad-label">Stab</text></svg></div>
+      <div class="sm-radar"><svg viewBox="0 0 300 250" class="rad-svg" role="img" aria-label="Six-dimension radar"><polygon points="150.0,97.5 167.8,107.8 167.8,128.3 150.0,138.5 132.2,128.3 132.2,107.8" class="rad-grid"/><polygon points="150.0,77.0 185.5,97.5 185.5,138.5 150.0,159.0 114.5,138.5 114.5,97.5" class="rad-grid"/><polygon points="150.0,56.5 203.3,87.3 203.3,148.8 150.0,179.5 96.7,148.8 96.7,87.3" class="rad-grid"/><polygon points="150.0,36.0 221.0,77.0 221.0,159.0 150.0,200.0 79.0,159.0 79.0,77.0" class="rad-grid"/><line x1="150" y1="118" x2="150.0" y2="36.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="77.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="150.0" y2="200.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="77.0" class="rad-spoke"/><g class="rad-series" data-idx="0"><polygon points="150.0,49.1 206.8,85.2 204.0,149.2 150.0,199.2 80.2,158.3 114.5,97.5" class="rad-area" style="fill:var(--chart-1);stroke:var(--chart-1)"/><circle cx="150.0" cy="49.1" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Fact</title></circle><circle cx="206.8" cy="85.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Behavior</title></circle><circle cx="204.0" cy="149.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Judge</title></circle><circle cx="150.0" cy="199.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Cost</title></circle><circle cx="80.2" cy="158.3" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · Eff</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v1 · Stab n/a</title></circle></g><g class="rad-series" data-idx="1"><polygon points="150.0,36.0 218.2,78.6 215.3,155.7 150.0,199.3 80.8,158.0 114.5,97.5" class="rad-area" style="fill:var(--chart-2);stroke:var(--chart-2)"/><circle cx="150.0" cy="36.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Fact</title></circle><circle cx="218.2" cy="78.6" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Behavior</title></circle><circle cx="215.3" cy="155.7" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Judge</title></circle><circle cx="150.0" cy="199.3" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Cost</title></circle><circle cx="80.8" cy="158.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · Eff</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v2 · Stab n/a</title></circle></g><text x="150.0" y="18.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">Fact</text><text x="236.6" y="68.0" text-anchor="start" dominant-baseline="middle" class="rad-label">Behavior</text><text x="236.6" y="168.0" text-anchor="start" dominant-baseline="middle" class="rad-label">Judge</text><text x="150.0" y="218.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">Cost</text><text x="63.4" y="168.0" text-anchor="end" dominant-baseline="middle" class="rad-label">Eff</text><text x="63.4" y="68.0" text-anchor="end" dominant-baseline="middle" class="rad-label">Stab</text></svg><div class="rad-legend"><button type="button" class="rad-leg" data-idx="0" aria-pressed="true" style="--c:var(--chart-1)"><span class="rad-leg-dot"></span>v1</button><button type="button" class="rad-leg" data-idx="1" aria-pressed="true" style="--c:var(--chart-2)"><span class="rad-leg-dot"></span>v2</button><script>
+if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');b.setAttribute('aria-pressed',String(!off));if(g)g.style.display=off?'none':'';});}
+</script></div></div>
       <div class="table-wrap"><table class="summary-table"><thead><tr><th data-i18n="variants">Variant</th><th>Composite <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Fact</th><th data-i18n="dimBehavior"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Behavior</th><th data-i18n="dimJudge"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z"/></svg>LLM judge</th><th data-i18n="dimCost"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>Exec cost</th><th data-i18n="dimEfficiency"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Efficiency</th><th data-i18n="dimStability"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>Stability</th></tr></thead><tbody><tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:var(--chart-1)"></span><strong>v1</strong></td><td class="summary-cell sm-composite-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">$0.0200</div><div class="summary-detail">600 tokens/req</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">2.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-muted)">n/a</div></td></tr><tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:var(--chart-2)"></span><strong>v2</strong></td><td class="summary-cell sm-composite-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div><div class="sm-delta" style="color:var(--green)">+0.80 ↑</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">$0.0180</div><div class="summary-detail">720 tokens/req</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">3.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-muted)">n/a</div></td></tr></tbody></table></div>
     </div>
     <p class="sm-foot"><svg class="sm-foot-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>Stability needs <code>--repeat ≥ 2</code> (single-run here)</p>
     <style>
     /* 对比表减负:行距更松、副行更淡更小、名字列左对齐去掉左色条(行首色点已是图例) */
     .summary-table td { padding:13px 14px }
-    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px }
-    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.45 }
+    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px;max-width:200px;overflow:hidden;text-overflow:ellipsis }
+    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.4;white-space:nowrap }
+    .summary-table .summary-detail + .summary-detail { margin-top:2px }
     .summary-table .summary-value { font-weight:600 }
     .sm-foot { font-size:11.5px;color:var(--text-muted);margin:10px 2px 0;line-height:1.5 }
     .sm-foot code { font-size:11px }
@@ -578,6 +575,13 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     .rad-area { fill-opacity:0.13;stroke-width:2;stroke-linejoin:round }
     .rad-dot { stroke:#fff;stroke-width:1 }
     .rad-dot--na { fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5 }
+    .rad-series { transition:opacity .12s }
+    .rad-legend { display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;margin-top:10px }
+    .rad-leg { display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:none;border:1px solid var(--border);border-radius:999px;padding:3px 11px;cursor:pointer;transition:.15s }
+    .rad-leg-dot { width:9px;height:9px;border-radius:50%;background:var(--c);flex:none }
+    .rad-leg:hover { border-color:var(--c);color:var(--text-primary) }
+    .rad-leg.off { opacity:.45;text-decoration:line-through }
+    .rad-leg.off .rad-leg-dot { background:var(--text-faint) }
     /* 数值表 — 综合分首列大字号;行首颜色点对应雷达多边形;hover 不盖热力底色 */
     .sm-row-dot { display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle }
     .sm-composite-cell .summary-value-primary { font-size:1.35rem }
@@ -802,13 +806,9 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-hero-name{margin:0;font-size:20px;font-weight:700;color:#182033;letter-spacing:-.2px}
 .rs-hero-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;color:#9ca3af;font-size:12px;font-variant-numeric:tabular-nums}
 .rs-hero-meta span{display:inline-flex;align-items:center;gap:4px}
-.rs-hero-score{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
-.rs-hero-grade{font-size:13px;font-weight:700}
-
-/* ── Score ring ── */
-.rs-ring{position:relative}
-.rs-ring-inner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.rs-ring-inner span{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.rs-hero-score{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;line-height:1}
+.rs-hero-num{font-size:40px;font-weight:800;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;line-height:1}
+.rs-hero-grade{font-size:12px;font-weight:600;color:#637083}
 
 /* ── 统计条 ── */
 .rs-stats{display:flex;flex-wrap:wrap;gap:20px;padding:14px 20px;background:#fff;border:1px solid #e4e8f1;border-radius:10px;box-shadow:0 8px 24px rgba(31,41,55,4%);margin-bottom:16px}
@@ -1232,11 +1232,11 @@ html{scrollbar-gutter:stable}
   --info-bg:rgba(79,70,229,.06);
   /* 图表色 */
   --chart-1:#4f46e5;
-  --chart-2:#7c3aed;
+  --chart-2:#d97706;
   --chart-3:#059669;
-  --chart-4:#d97706;
-  --chart-5:#ec4899;
-  --chart-6:#06b6d4;
+  --chart-4:#ec4899;
+  --chart-5:#06b6d4;
+  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
@@ -1613,13 +1613,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> 2026-03-25 18:00</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-1000</span></div>
     </div>
     <div class="rs-hero-score">
-      <div class="rs-ring" style="width:88px;height:88px">
-    <svg width="88" height="88">
-      <circle cx="44" cy="44" r="40" fill="none" stroke="#edf0f7" stroke-width="8"/>
-      <circle cx="44" cy="44" r="40" fill="none" stroke="#1f9d63" stroke-width="8" stroke-dasharray="251.33" stroke-dashoffset="10.05" stroke-linecap="round" transform="rotate(-90 44 44)"/>
-    </svg>
-    <div class="rs-ring-inner"><span style="color:#1f9d63">4.80</span></div>
-  </div>
+      <div class="rs-hero-num" style="color:#1f9d63">4.80</div>
       <div class="rs-hero-grade" style="color:#1f9d63">综合分 / 5</div>
     </div>
   </div>
@@ -1639,7 +1633,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
           <strong id="guide-six-dims-title" style="font-size:1rem">如何阅读六维对比？</strong>
           <button type="button" class="modal-close" onclick="closeModal('guide-six-dims')" aria-label="关闭">✕</button>
         </div>
-        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">雷达图把六维归一化（越外越好）看强弱形状,下方表格给精确数值。各维含义：</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">雷达图把六维归一化（越外越好）看强弱形状，下方表格给精确数值。各维含义：</p>
         <table class="modal-table"><tbody>
     <tr><td style="padding:4px 0 4px;color:var(--text-primary);font-weight:600"><svg style="color:var(--text-secondary);vertical-align:-2px;margin-right:4px" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg> <strong>事实</strong></td><td style="padding:4px 0 4px;color:var(--text-secondary)">任务执行模型的输出说得对不对（事实声明层面）。靠规则断言判：关键词是否出现、JSON 格式是否合法等，答错了直接不给分。</td></tr>
     <tr><td style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"><svg style="color:var(--text-secondary);vertical-align:-2px;margin-right:4px" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg> <strong>行为</strong></td><td style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-secondary)">任务执行模型做事的过程有没有走对路。靠规则断言判：该调的工具有没有调、有没有超过轮次/成本上限。</td></tr>
@@ -1652,7 +1646,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <tr><td style="padding:2px 0 2px 22px;font-size:12px;color:var(--text-secondary);font-weight:500">CV</td><td style="padding:2px 0;font-size:12px;color:var(--text-muted)">分数抖动幅度占平均分的比例（例：CV 2% = 分数波动大约是平均分的 2%）</td></tr>
     <tr><td style="padding:2px 0 2px 22px;font-size:12px;color:var(--text-secondary);font-weight:500">95% CI</td><td style="padding:2px 0;font-size:12px;color:var(--text-muted)">如果跑无数次求平均，真实平均分有 95% 概率落在这个范围里——范围越窄，这次测出的均值越可信</td></tr>
   </tbody></table>
-        <p style="font-size:12px;color:var(--text-muted);margin:14px 0 0;line-height:1.6;border-top:1px solid var(--border);padding-top:12px">雷达归一化口径：事实/行为/评委 = 分÷5;成本、效率按绝对参考折算(约 $1/用例、120s/次 记为最低,越省越靠外);稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。</p>
+        <p style="font-size:12px;color:var(--text-muted);margin:14px 0 0;line-height:1.6;border-top:1px solid var(--border);padding-top:12px">雷达归一化口径：事实/行为/评委 = 分÷5；成本、效率按绝对参考折算（约 $1/用例、120s/次 记为最低，越省越靠外）；稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。</p>
       </div>
     </div>
     <div id="guide-scoring" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-scoring-title" onclick="if(event.target===this)closeModal('guide-scoring')">
@@ -1674,15 +1668,18 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     </div>
   </div>
     <div class="sm-vis">
-      <div class="sm-radar"><svg viewBox="0 0 300 250" class="rad-svg" role="img" aria-label="六维雷达图"><polygon points="150.0,97.5 167.8,107.8 167.8,128.3 150.0,138.5 132.2,128.3 132.2,107.8" class="rad-grid"/><polygon points="150.0,77.0 185.5,97.5 185.5,138.5 150.0,159.0 114.5,138.5 114.5,97.5" class="rad-grid"/><polygon points="150.0,56.5 203.3,87.3 203.3,148.8 150.0,179.5 96.7,148.8 96.7,87.3" class="rad-grid"/><polygon points="150.0,36.0 221.0,77.0 221.0,159.0 150.0,200.0 79.0,159.0 79.0,77.0" class="rad-grid"/><line x1="150" y1="118" x2="150.0" y2="36.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="77.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="150.0" y2="200.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="77.0" class="rad-spoke"/><polygon points="150.0,49.1 206.8,85.2 204.0,149.2 150.0,199.2 80.2,158.3 114.5,97.5" class="rad-area" style="fill:var(--chart-1);stroke:var(--chart-1)"/><circle cx="150.0" cy="49.1" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 事实</title></circle><circle cx="206.8" cy="85.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 行为</title></circle><circle cx="204.0" cy="149.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 评委</title></circle><circle cx="150.0" cy="199.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 成本</title></circle><circle cx="80.2" cy="158.3" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 效率</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v1 · 稳定 未测量/无对照</title></circle><polygon points="150.0,36.0 218.2,78.6 215.3,155.7 150.0,199.3 80.8,158.0 114.5,97.5" class="rad-area" style="fill:var(--chart-2);stroke:var(--chart-2)"/><circle cx="150.0" cy="36.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 事实</title></circle><circle cx="218.2" cy="78.6" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 行为</title></circle><circle cx="215.3" cy="155.7" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 评委</title></circle><circle cx="150.0" cy="199.3" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 成本</title></circle><circle cx="80.8" cy="158.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 效率</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v2 · 稳定 未测量/无对照</title></circle><text x="150.0" y="18.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">事实</text><text x="236.6" y="68.0" text-anchor="start" dominant-baseline="middle" class="rad-label">行为</text><text x="236.6" y="168.0" text-anchor="start" dominant-baseline="middle" class="rad-label">评委</text><text x="150.0" y="218.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">成本</text><text x="63.4" y="168.0" text-anchor="end" dominant-baseline="middle" class="rad-label">效率</text><text x="63.4" y="68.0" text-anchor="end" dominant-baseline="middle" class="rad-label">稳定</text></svg></div>
+      <div class="sm-radar"><svg viewBox="0 0 300 250" class="rad-svg" role="img" aria-label="六维雷达图"><polygon points="150.0,97.5 167.8,107.8 167.8,128.3 150.0,138.5 132.2,128.3 132.2,107.8" class="rad-grid"/><polygon points="150.0,77.0 185.5,97.5 185.5,138.5 150.0,159.0 114.5,138.5 114.5,97.5" class="rad-grid"/><polygon points="150.0,56.5 203.3,87.3 203.3,148.8 150.0,179.5 96.7,148.8 96.7,87.3" class="rad-grid"/><polygon points="150.0,36.0 221.0,77.0 221.0,159.0 150.0,200.0 79.0,159.0 79.0,77.0" class="rad-grid"/><line x1="150" y1="118" x2="150.0" y2="36.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="77.0" class="rad-spoke"/><line x1="150" y1="118" x2="221.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="150.0" y2="200.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="159.0" class="rad-spoke"/><line x1="150" y1="118" x2="79.0" y2="77.0" class="rad-spoke"/><g class="rad-series" data-idx="0"><polygon points="150.0,49.1 206.8,85.2 204.0,149.2 150.0,199.2 80.2,158.3 114.5,97.5" class="rad-area" style="fill:var(--chart-1);stroke:var(--chart-1)"/><circle cx="150.0" cy="49.1" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 事实</title></circle><circle cx="206.8" cy="85.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 行为</title></circle><circle cx="204.0" cy="149.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 评委</title></circle><circle cx="150.0" cy="199.2" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 成本</title></circle><circle cx="80.2" cy="158.3" r="3" class="rad-dot" style="fill:var(--chart-1)"><title>v1 · 效率</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v1 · 稳定 未测量/无对照</title></circle></g><g class="rad-series" data-idx="1"><polygon points="150.0,36.0 218.2,78.6 215.3,155.7 150.0,199.3 80.8,158.0 114.5,97.5" class="rad-area" style="fill:var(--chart-2);stroke:var(--chart-2)"/><circle cx="150.0" cy="36.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 事实</title></circle><circle cx="218.2" cy="78.6" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 行为</title></circle><circle cx="215.3" cy="155.7" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 评委</title></circle><circle cx="150.0" cy="199.3" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 成本</title></circle><circle cx="80.8" cy="158.0" r="3" class="rad-dot" style="fill:var(--chart-2)"><title>v2 · 效率</title></circle><circle cx="114.5" cy="97.5" r="3" class="rad-dot rad-dot--na"><title>v2 · 稳定 未测量/无对照</title></circle></g><text x="150.0" y="18.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">事实</text><text x="236.6" y="68.0" text-anchor="start" dominant-baseline="middle" class="rad-label">行为</text><text x="236.6" y="168.0" text-anchor="start" dominant-baseline="middle" class="rad-label">评委</text><text x="150.0" y="218.0" text-anchor="middle" dominant-baseline="middle" class="rad-label">成本</text><text x="63.4" y="168.0" text-anchor="end" dominant-baseline="middle" class="rad-label">效率</text><text x="63.4" y="68.0" text-anchor="end" dominant-baseline="middle" class="rad-label">稳定</text></svg><div class="rad-legend"><button type="button" class="rad-leg" data-idx="0" aria-pressed="true" style="--c:var(--chart-1)"><span class="rad-leg-dot"></span>v1</button><button type="button" class="rad-leg" data-idx="1" aria-pressed="true" style="--c:var(--chart-2)"><span class="rad-leg-dot"></span>v2</button><script>
+if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');b.setAttribute('aria-pressed',String(!off));if(g)g.style.display=off?'none':'';});}
+</script></div></div>
       <div class="table-wrap"><table class="summary-table"><thead><tr><th data-i18n="variants">实验分组</th><th>综合 <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>事实</th><th data-i18n="dimBehavior"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>行为</th><th data-i18n="dimJudge"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.5 7.2L4 21l1.8-5.5A8 8 0 1121 12z"/></svg>LLM 评价</th><th data-i18n="dimCost"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>执行成本</th><th data-i18n="dimEfficiency"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>效率</th><th data-i18n="dimStability"><svg class="sm-th-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>稳定性</th></tr></thead><tbody><tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:var(--chart-1)"></span><strong>v1</strong></td><td class="summary-cell sm-composite-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">$0.0200</div><div class="summary-detail">600 tokens/次</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">2.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-muted)">未测量</div></td></tr><tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:var(--chart-2)"></span><strong>v2</strong></td><td class="summary-cell sm-composite-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div><div class="sm-delta" style="color:var(--green)">+0.80 ↑</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">$0.0180</div><div class="summary-detail">720 tokens/次</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-primary)">3.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--text-muted)">未测量</div></td></tr></tbody></table></div>
     </div>
-    <p class="sm-foot"><svg class="sm-foot-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>稳定性需 <code>--repeat ≥ 2</code> 才能测(本次为单轮评测)</p>
+    <p class="sm-foot"><svg class="sm-foot-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>稳定性需 <code>--repeat ≥ 2</code> 才能测（本次为单轮评测）</p>
     <style>
     /* 对比表减负:行距更松、副行更淡更小、名字列左对齐去掉左色条(行首色点已是图例) */
     .summary-table td { padding:13px 14px }
-    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px }
-    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.45 }
+    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px;max-width:200px;overflow:hidden;text-overflow:ellipsis }
+    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.4;white-space:nowrap }
+    .summary-table .summary-detail + .summary-detail { margin-top:2px }
     .summary-table .summary-value { font-weight:600 }
     .sm-foot { font-size:11.5px;color:var(--text-muted);margin:10px 2px 0;line-height:1.5 }
     .sm-foot code { font-size:11px }
@@ -1724,6 +1721,13 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     .rad-area { fill-opacity:0.13;stroke-width:2;stroke-linejoin:round }
     .rad-dot { stroke:#fff;stroke-width:1 }
     .rad-dot--na { fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5 }
+    .rad-series { transition:opacity .12s }
+    .rad-legend { display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;margin-top:10px }
+    .rad-leg { display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:none;border:1px solid var(--border);border-radius:999px;padding:3px 11px;cursor:pointer;transition:.15s }
+    .rad-leg-dot { width:9px;height:9px;border-radius:50%;background:var(--c);flex:none }
+    .rad-leg:hover { border-color:var(--c);color:var(--text-primary) }
+    .rad-leg.off { opacity:.45;text-decoration:line-through }
+    .rad-leg.off .rad-leg-dot { background:var(--text-faint) }
     /* 数值表 — 综合分首列大字号;行首颜色点对应雷达多边形;hover 不盖热力底色 */
     .sm-row-dot { display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle }
     .sm-composite-cell .summary-value-primary { font-size:1.35rem }
@@ -1812,7 +1816,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <h2 class="ev-samples-h">逐用例</h2>
       <p class="subtitle ev-samples-sub">每条用例既是评分卡也是功能测试:综合分 + 三层分布、断言、诊断与执行轨迹合一</p>
       <div class="tv-root"><div class="tv-warn">⚠ 该 report 缺 sampleSnapshots(早期版本生成),只能展示执行结果,无设计信息</div>
-    <div class="tv-multi-hint">以主轮(最新)状态分组;展开看各轮分数轨迹与逐轮对比</div>
+    <div class="tv-multi-hint">以主轮（最新）状态分组；展开看各轮分数轨迹与逐轮对比</div>
     <div class="tv-variant-stats">
     <span class="tv-primary-note">主轮 v2</span>
     <span class="tv-stat tv-stat--pass"><span class="tv-stat-num">1</span>通过</span>
@@ -1948,13 +1952,9 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-hero-name{margin:0;font-size:20px;font-weight:700;color:#182033;letter-spacing:-.2px}
 .rs-hero-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;color:#9ca3af;font-size:12px;font-variant-numeric:tabular-nums}
 .rs-hero-meta span{display:inline-flex;align-items:center;gap:4px}
-.rs-hero-score{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
-.rs-hero-grade{font-size:13px;font-weight:700}
-
-/* ── Score ring ── */
-.rs-ring{position:relative}
-.rs-ring-inner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.rs-ring-inner span{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.rs-hero-score{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;line-height:1}
+.rs-hero-num{font-size:40px;font-weight:800;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;line-height:1}
+.rs-hero-grade{font-size:12px;font-weight:600;color:#637083}
 
 /* ── 统计条 ── */
 .rs-stats{display:flex;flex-wrap:wrap;gap:20px;padding:14px 20px;background:#fff;border:1px solid #e4e8f1;border-radius:10px;box-shadow:0 8px 24px rgba(31,41,55,4%);margin-bottom:16px}
@@ -2378,11 +2378,11 @@ html{scrollbar-gutter:stable}
   --info-bg:rgba(79,70,229,.06);
   /* 图表色 */
   --chart-1:#4f46e5;
-  --chart-2:#7c3aed;
+  --chart-2:#d97706;
   --chart-3:#059669;
-  --chart-4:#d97706;
-  --chart-5:#ec4899;
-  --chart-6:#06b6d4;
+  --chart-4:#ec4899;
+  --chart-5:#06b6d4;
+  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
@@ -2975,11 +2975,11 @@ html{scrollbar-gutter:stable}
   --info-bg:rgba(79,70,229,.06);
   /* 图表色 */
   --chart-1:#4f46e5;
-  --chart-2:#7c3aed;
+  --chart-2:#d97706;
   --chart-3:#059669;
-  --chart-4:#d97706;
-  --chart-5:#ec4899;
-  --chart-6:#06b6d4;
+  --chart-4:#ec4899;
+  --chart-5:#06b6d4;
+  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;

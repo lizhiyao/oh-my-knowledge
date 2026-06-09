@@ -112,7 +112,7 @@ export function renderDoctorDetail(report: DoctorReport, skillName: string, lang
     icon: '🩺',
     kindTitle: zh ? '健康体检报告' : 'Doctor Report',
     skillName: targetSkill?.skillName ?? skillName,
-    metaItems: [`${svgIcon('clock', { size: 13 })} ${fmtTs(report.timestamp)}`, `${svgIcon('chip', { size: 13 })} ${e(report.model)}`, e(report.id)],
+    metaItems: [`${svgIcon('clock', { size: 13 })} ${e(fmtTs(report.timestamp))}`, `${svgIcon('chip', { size: 13 })} ${e(report.model)}`, e(report.id)],
     // Hero 展示「综合健康」总分(跨维度,与首页同口径),切 tab 不变;本次体检明细(规则/计数)在 body。
     // 无 skillContext 时回退显本次体检健康分。
     score: skillContext ? skillContext.overall.score : score,

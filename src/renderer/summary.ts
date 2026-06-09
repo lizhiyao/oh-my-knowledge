@@ -420,7 +420,7 @@ function dimText(key: string, lang: Lang): string {
 
 // 雷达图例点击切换:全局只挂一次 document 委托,toggle 对应 .rad-series 的显隐。
 const RADAR_TOGGLE_SCRIPT = `<script>
-if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');if(g)g.style.display=off?'none':'';});}
+if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');b.setAttribute('aria-pressed',String(!off));if(g)g.style.display=off?'none':'';});}
 </script>`;
 
 function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; label: string }>, lang: Lang): string {
@@ -451,7 +451,7 @@ function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; labe
   const svg = `<svg viewBox="0 0 ${W} ${H}" class="rad-svg" role="img" aria-label="${lang === 'zh' ? '六维雷达图' : 'Six-dimension radar'}">${rings}${spokes}${polys}${labels}</svg>`;
   // 多 variant 时给一排可点击图例,点击切换该 variant 多边形显隐(单独看 / 对比子集)。
   const legend = entries.length > 1
-    ? `<div class="rad-legend">${entries.map((en, idx) => `<button type="button" class="rad-leg" data-idx="${idx}" style="--c:${en.color}"><span class="rad-leg-dot"></span>${e(en.name)}</button>`).join('')}${RADAR_TOGGLE_SCRIPT}</div>`
+    ? `<div class="rad-legend">${entries.map((en, idx) => `<button type="button" class="rad-leg" data-idx="${idx}" aria-pressed="true" style="--c:${en.color}"><span class="rad-leg-dot"></span>${e(en.name)}</button>`).join('')}${RADAR_TOGGLE_SCRIPT}</div>`
     : '';
   return `<div class="sm-radar">${svg}${legend}</div>`;
 }
@@ -491,6 +491,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       icon: iconName,
     };
   };
+  // 注意:detailLines 是「已转义/可信 HTML」契约 —— 既有纯文本(数字 metric)也有原始
+  // HTML(如 stabDetails 的 <span>),dimCell/dimMetric 都不再转义。caller push 的内容
+  // 里凡含 user 字符串(skill 名 / 用例文本)必须先过 e()。当前全是数字,安全。
   const dimCell = (d: DimDisplay): string => {
     const cls = d.primary ? 'summary-value summary-value-primary' : 'summary-value';
     const detail = d.detailLines.map((l) => `<div class="summary-detail">${l}</div>`).join('');
@@ -554,7 +557,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       effParts.push(`${s.avgToolCalls} ${lang === 'zh' ? '工具' : 'tools'}${srPct}`);
     }
     const durSec = (s.avgDurationMs || 0) / 1000;
-    const effDim: DimDisplay = { label: dimText('dimEfficiency', lang), value: `${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span>`, valueColor: 'var(--text-primary)', primary: false, bg: '', detailLines: effParts.length > 0 ? [effParts.join(' · ')] : [], icon: 'efficiency' };
+    // 副行拆成多条堆叠(表格窄列里逐条独占一行,避免「轮/工具」挤在一行从中间难看换行);
+    // solo 的 dimMetric 仍用 ' · ' 合并成一行(够宽)。
+    const effDim: DimDisplay = { label: dimText('dimEfficiency', lang), value: `${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span>`, valueColor: 'var(--text-primary)', primary: false, bg: '', detailLines: effParts, icon: 'efficiency' };
 
     // Stability — 多次运行分数一致性(test-retest reliability)。无 --repeat 时显「未测量」不虚报。
     const total = s.totalSamples || 0;
@@ -616,7 +621,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     `<tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:${pv.color}"></span><strong>${e(pv.name)}</strong></td>${renderCompositeCell(pv.composite, i)}${pv.dims.map(dimCell).join('')}</tr>`).join('');
 
   const stabFootnote = anyStabUnmeasured
-    ? `<p class="sm-foot">${svgIcon('stability', { size: 13, cls: 'sm-foot-ico' })}${lang === 'zh' ? '稳定性需 <code>--repeat ≥ 2</code> 才能测(本次为单轮评测)' : 'Stability needs <code>--repeat ≥ 2</code> (single-run here)'}</p>`
+    ? `<p class="sm-foot">${svgIcon('stability', { size: 13, cls: 'sm-foot-ico' })}${lang === 'zh' ? '稳定性需 <code>--repeat ≥ 2</code> 才能测（本次为单轮评测）' : 'Stability needs <code>--repeat ≥ 2</code> (single-run here)'}</p>`
     : '';
 
   // 指标行列表(单 variant):综合分 + 六维竖排,免去单行表格的空旷/表头冗余。
@@ -635,7 +640,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     { key: 'behavior', label: lang === 'zh' ? '行为' : 'Behavior' },
     { key: 'judge', label: lang === 'zh' ? '评委' : 'Judge' },
     { key: 'cost', label: lang === 'zh' ? '成本' : 'Cost' },
-    { key: 'efficiency', label: lang === 'zh' ? '效率' : 'Effic' },
+    { key: 'efficiency', label: lang === 'zh' ? '效率' : 'Eff' },
     { key: 'stability', label: lang === 'zh' ? '稳定' : 'Stab' },
   ];
   const radar = renderRadarChart(perVariant.map((pv) => ({ name: pv.name, color: pv.color, g: pv.g })), radarDims, lang);
@@ -645,10 +650,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const sectionTitle = lang === 'zh' ? (isMulti ? '六维对比' : '六维评分') : (isMulti ? 'Six-Dimension Comparison' : 'Six-Dimension Scores');
   const guideTitle = lang === 'zh' ? `如何阅读${sectionTitle}？` : `How to read these six dimensions?`;
   const guideIntro = lang === 'zh'
-    ? '雷达图把六维归一化（越外越好）看强弱形状,下方表格给精确数值。各维含义：'
+    ? '雷达图把六维归一化（越外越好）看强弱形状，下方表格给精确数值。各维含义：'
     : 'The radar normalizes the six dimensions (outer = better) to show shape; the table below gives exact values. The dimensions:';
   const radarNote = lang === 'zh'
-    ? '雷达归一化口径：事实/行为/评委 = 分÷5;成本、效率按绝对参考折算(约 $1/用例、120s/次 记为最低,越省越靠外);稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。'
+    ? '雷达归一化口径：事实/行为/评委 = 分÷5；成本、效率按绝对参考折算（约 $1/用例、120s/次 记为最低，越省越靠外）；稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。'
     : 'Radar normalization: Fact/Behavior/Judge = score÷5; Cost/Efficiency use absolute references (~$1/sample, 120s/req map to 0 — cheaper/faster reaches outward); Stability = 1 − CV/0.3. Hollow dots = not measured or single-variant (no comparison). The table below is the source of truth for exact values.';
   // 六维说明弹框的行首图标:把历史 emoji 映射到统一 SVG 图标(未命中则保留原 emoji 兜底)。
   const EMOJI_ICON: Record<string, string> = { '📋': 'fact', '🛠️': 'behavior', '💬': 'judge', '💰': 'cost', '⚡': 'efficiency', '🛡️': 'stability' };
@@ -713,8 +718,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <style>
     /* 对比表减负:行距更松、副行更淡更小、名字列左对齐去掉左色条(行首色点已是图例) */
     .summary-table td { padding:13px 14px }
-    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px }
-    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.45 }
+    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px;max-width:200px;overflow:hidden;text-overflow:ellipsis }
+    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.4;white-space:nowrap }
+    .summary-table .summary-detail + .summary-detail { margin-top:2px }
     .summary-table .summary-value { font-weight:600 }
     .sm-foot { font-size:11.5px;color:var(--text-muted);margin:10px 2px 0;line-height:1.5 }
     .sm-foot code { font-size:11px }

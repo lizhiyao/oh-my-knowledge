@@ -40,23 +40,6 @@ export function bandHex(band: 'green' | 'yellow' | 'red' | 'gray'): string {
   return band === 'green' ? '#1f9d63' : band === 'yellow' ? '#d97706' : band === 'red' ? '#dc2626' : '#9ca3af';
 }
 
-/** 综合分 score ring（数字叠在圆环中心）。
- *  score = 0-100,只决定**弧度填充比例**;centerText 覆盖圆心显示文字(如 eval 显原生 "4.09" 而非 82);
- *  color 覆盖弧/数字颜色(让 eval 按 /5 色档着色,而不是 0-100 阈值)。 */
-export function scoreRing(score: number | null, size = 88, sw = 8, centerText?: string, color?: string): string {
-  const r = (size - sw) / 2, c = 2 * Math.PI * r;
-  const pct = score ?? 0, off = c * (1 - pct / 100);
-  const clr = color ?? (score != null ? scoreColor(score) : '#9ca3af');
-  const display = centerText ?? (score != null ? String(score) : '—');
-  const cx = size / 2;
-  return `<div class="rs-ring" style="width:${size}px;height:${size}px">
-    <svg width="${size}" height="${size}">
-      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#edf0f7" stroke-width="${sw}"/>
-      ${score != null ? `<circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${clr}" stroke-width="${sw}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cx})"/>` : ''}
-    </svg>
-    <div class="rs-ring-inner"><span style="color:${clr}">${e(display)}</span></div>
-  </div>`;
-}
 
 /** 一个维度 chip（doctor / eval / observe）。score 0-100,null=无分;href=null 表示当前页或无数据。 */
 export interface SkillReportContextChip {
@@ -262,11 +245,6 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-hero-score{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;line-height:1}
 .rs-hero-num{font-size:40px;font-weight:800;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;line-height:1}
 .rs-hero-grade{font-size:12px;font-weight:600;color:#637083}
-
-/* ── Score ring ── */
-.rs-ring{position:relative}
-.rs-ring-inner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.rs-ring-inner span{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
 
 /* ── 统计条 ── */
 .rs-stats{display:flex;flex-wrap:wrap;gap:20px;padding:14px 20px;background:#fff;border:1px solid #e4e8f1;border-radius:10px;box-shadow:0 8px 24px rgba(31,41,55,4%);margin-bottom:16px}

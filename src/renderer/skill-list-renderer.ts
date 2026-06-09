@@ -364,7 +364,7 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
       var rs=vis(),t=rs.length,pp=Math.max(1,Math.ceil(t/PS));if(pg>pp)pg=pp;
       var st=(pg-1)*PS,en=st+PS;
       rs.forEach(function(r,i){r.classList.toggle('t-row--hidden',i<st||i>=en)});
-      if(pgr)pgr.innerHTML=t<=PS?'':\`<span class="t-pg-info">\${st+1}-\${Math.min(en,t)} / \${t}</span><button class="t-pg-btn" onclick="window.__pg(-1)" \${pg<=1?'disabled':''}>‹ 上一页</button><button class="t-pg-btn" onclick="window.__pg(1)" \${pg>=pp?'disabled':''}>下一页 ›</button>\`
+      if(pgr)pgr.innerHTML=t<=PS?'':\`<span class="t-pg-info">\${st+1}-\${Math.min(en,t)} / \${t}</span><button class="t-pg-btn" onclick="window.__pg(-1)" \${pg<=1?'disabled':''}>‹ ${zh ? '上一页' : 'Prev'}</button><button class="t-pg-btn" onclick="window.__pg(1)" \${pg>=pp?'disabled':''}>${zh ? '下一页' : 'Next'} ›</button>\`
     }
     window.__pg=function(d){pg+=d;page()};
     bs.forEach(function(b){b.addEventListener('click',function(){bs.forEach(function(x){x.classList.remove('t-seg-btn--on')});b.classList.add('t-seg-btn--on');filt()})});

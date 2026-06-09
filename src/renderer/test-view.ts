@@ -798,7 +798,7 @@ function renderMultiSampleCard(sample_id: string, snapshot: SampleSnapshot | und
     ? `<div class="tv-tripwire-banner">
         <div class="tv-tripwire-banner-title">${lang === 'zh' ? '◆ 这是诱错样本' : '◆ This is a tripwire sample'}</div>
         <div class="tv-tripwire-banner-body">${lang === 'zh'
-          ? '用户 prompt 故意诱导 LLM 走错。LLM 失败 = 已记录的 LLM 边界数据点,不是要修的 bug。'
+          ? '用户 prompt 故意诱导 LLM 走错。LLM 失败 = 已记录的 LLM 边界数据点，不是要修的 bug。'
           : 'The user prompt intentionally misdirects the LLM. A failure here is a recorded LLM-susceptibility data point — not a bug to fix.'}</div>
        </div>`
     : '';
@@ -939,7 +939,7 @@ export function renderTestView(report: EvaluationReport, lang: Lang): string {
   const stats = computeVariantStats(report, primaryName);
   const primaryNote = `<span class="tv-primary-note">${lang === 'zh' ? `主轮 ${e(primaryName)}` : `Primary ${e(primaryName)}`}</span>`;
   return `<div class="tv-root">${fallbackBanner}
-    <div class="tv-multi-hint">${lang === 'zh' ? '以主轮(最新)状态分组;展开看各轮分数轨迹与逐轮对比' : 'Grouped by primary (latest) status; expand for per-round score trajectory and comparison'}</div>
+    <div class="tv-multi-hint">${lang === 'zh' ? '以主轮（最新）状态分组；展开看各轮分数轨迹与逐轮对比' : 'Grouped by primary (latest) status; expand for per-round score trajectory and comparison'}</div>
     ${renderStatsBar(stats, lang, primaryNote)}
     ${failSection}
     ${tripwireSection}
