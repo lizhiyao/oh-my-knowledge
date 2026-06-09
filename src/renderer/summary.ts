@@ -418,6 +418,11 @@ function dimText(key: string, lang: Lang): string {
   return t(key, lang).replace(/^\S+\s+/, '');
 }
 
+// 雷达图例点击切换:全局只挂一次 document 委托,toggle 对应 .rad-series 的显隐。
+const RADAR_TOGGLE_SCRIPT = `<script>
+if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');if(g)g.style.display=off?'none':'';});}
+</script>`;
+
 function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; label: string }>, lang: Lang): string {
   const W = 300, H = 250, cx = 150, cy = 118, R = 82;
   const n = dims.length;
@@ -433,7 +438,7 @@ function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; labe
     const anchor = x < cx - 4 ? 'end' : x > cx + 4 ? 'start' : 'middle';
     return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="rad-label">${e(d.label)}</text>`;
   }).join('');
-  const polys = entries.map((en) => {
+  const polys = entries.map((en, idx) => {
     const ptsStr = dims.map((d, i) => fmtPt(en.g[d.key] == null ? 0.5 : Math.max(0.04, en.g[d.key]!), i)).join(' ');
     const dots = dims.map((d, i) => {
       const g = en.g[d.key];
@@ -441,11 +446,14 @@ function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; labe
       const na = g == null;
       return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="rad-dot${na ? ' rad-dot--na' : ''}"${na ? '' : ` style="fill:${en.color}"`}><title>${e(en.name)} · ${e(d.label)}${na ? (lang === 'zh' ? ' 未测量/无对照' : ' n/a') : ''}</title></circle>`;
     }).join('');
-    return `<polygon points="${ptsStr}" class="rad-area" style="fill:${en.color};stroke:${en.color}"/>${dots}`;
+    return `<g class="rad-series" data-idx="${idx}"><polygon points="${ptsStr}" class="rad-area" style="fill:${en.color};stroke:${en.color}"/>${dots}</g>`;
   }).join('');
-  // 仅返回 svg。图例不单独画 —— 与右侧数值表并排时,表格每行的颜色点 + 综合分就是图例。
   const svg = `<svg viewBox="0 0 ${W} ${H}" class="rad-svg" role="img" aria-label="${lang === 'zh' ? '六维雷达图' : 'Six-dimension radar'}">${rings}${spokes}${polys}${labels}</svg>`;
-  return `<div class="sm-radar">${svg}</div>`;
+  // 多 variant 时给一排可点击图例,点击切换该 variant 多边形显隐(单独看 / 对比子集)。
+  const legend = entries.length > 1
+    ? `<div class="rad-legend">${entries.map((en, idx) => `<button type="button" class="rad-leg" data-idx="${idx}" style="--c:${en.color}"><span class="rad-leg-dot"></span>${e(en.name)}</button>`).join('')}${RADAR_TOGGLE_SCRIPT}</div>`
+    : '';
+  return `<div class="sm-radar">${svg}${legend}</div>`;
 }
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
@@ -748,6 +756,13 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     .rad-area { fill-opacity:0.13;stroke-width:2;stroke-linejoin:round }
     .rad-dot { stroke:#fff;stroke-width:1 }
     .rad-dot--na { fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5 }
+    .rad-series { transition:opacity .12s }
+    .rad-legend { display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;margin-top:10px }
+    .rad-leg { display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:none;border:1px solid var(--border);border-radius:999px;padding:3px 11px;cursor:pointer;transition:.15s }
+    .rad-leg-dot { width:9px;height:9px;border-radius:50%;background:var(--c);flex:none }
+    .rad-leg:hover { border-color:var(--c);color:var(--text-primary) }
+    .rad-leg.off { opacity:.45;text-decoration:line-through }
+    .rad-leg.off .rad-leg-dot { background:var(--text-faint) }
     /* 数值表 — 综合分首列大字号;行首颜色点对应雷达多边形;hover 不盖热力底色 */
     .sm-row-dot { display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle }
     .sm-composite-cell .summary-value-primary { font-size:1.35rem }

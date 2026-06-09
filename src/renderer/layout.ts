@@ -430,11 +430,11 @@ html{scrollbar-gutter:stable}
   --info-bg:rgba(79,70,229,.06);
   /* 图表色 */
   --chart-1:#4f46e5;
-  --chart-2:#7c3aed;
+  --chart-2:#d97706;
   --chart-3:#059669;
-  --chart-4:#d97706;
-  --chart-5:#ec4899;
-  --chart-6:#06b6d4;
+  --chart-4:#ec4899;
+  --chart-5:#06b6d4;
+  --chart-6:#7c3aed;
   --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;

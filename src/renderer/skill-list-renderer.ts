@@ -330,7 +330,7 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
     ${renderPanel(a, lang)}
     <div class="t-panel">
       <div class="t-head">
-        <div class="t-head-l"><h2>Skill ${zh ? '明细' : 'Details'}</h2><span class="t-head-ct">${a.totalSkills} skill</span></div>
+        <div class="t-head-l"><h2>${zh ? '明细' : 'Details'}</h2><span class="t-head-ct">${a.totalSkills} skill</span></div>
         <div class="t-filters">
           <input type="text" class="t-search" id="t-search" placeholder="${zh ? '搜索 skill 名称...' : 'Search...'}" />
           <div class="t-seg">

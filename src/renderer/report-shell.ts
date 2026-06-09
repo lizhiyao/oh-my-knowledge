@@ -174,7 +174,7 @@ export function reportShell(opts: ReportShellOpts, lang: Lang = DEFAULT_LANG): s
       <div class="rs-hero-meta">${opts.metaItems.map((m) => `<span>${m}</span>`).join('')}</div>
     </div>
     ${opts.score != null ? `<div class="rs-hero-score">
-      ${scoreRing(opts.score, 88, 8, opts.scoreText, opts.ringColor)}
+      <div class="rs-hero-num" style="color:${clr}">${e(opts.scoreText ?? String(opts.score))}</div>
       ${opts.scoreLabel ? `<div class="rs-hero-grade" style="color:${clr}">${e(opts.scoreLabel)}</div>` : ''}
     </div>` : ''}
   </div>`;
@@ -259,8 +259,9 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-hero-name{margin:0;font-size:20px;font-weight:700;color:#182033;letter-spacing:-.2px}
 .rs-hero-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;color:#9ca3af;font-size:12px;font-variant-numeric:tabular-nums}
 .rs-hero-meta span{display:inline-flex;align-items:center;gap:4px}
-.rs-hero-score{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
-.rs-hero-grade{font-size:13px;font-weight:700}
+.rs-hero-score{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;line-height:1}
+.rs-hero-num{font-size:40px;font-weight:800;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;line-height:1}
+.rs-hero-grade{font-size:12px;font-weight:600;color:#637083}
 
 /* ── Score ring ── */
 .rs-ring{position:relative}
