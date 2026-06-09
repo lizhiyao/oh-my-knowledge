@@ -6,7 +6,7 @@ import type { ExperienceSessionStoryAnswer } from '../../src/observability/exper
 
 const emptyReviewState: ObservationReviewState = {
   kind: 'observe-review-state',
-  schemaVersion: 1,
+  schemaVersion: 2,
   updatedAt: '2026-05-18T00:00:00.000Z',
   entries: {},
 };

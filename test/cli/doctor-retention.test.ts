@@ -66,7 +66,7 @@ describe('pruneDoctorHistory', () => {
   it('清理遗留 `{name}.json` 命名:同 skill 旧文件也参与轮换', () => {
     // 旧 schema:文件名是 {skill}.json,timestamp 是早期
     writeFileSync(join(dir, 'code-review.json'), JSON.stringify({
-      kind: 'doctor',
+      reportKind: 'doctor',
       id: 'legacy',
       timestamp: '2025-01-01T00:00:00.000Z',
       skills: [{ skillName: 'code-review', status: 'pass', results: [] }],

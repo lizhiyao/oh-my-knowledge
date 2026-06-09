@@ -28,7 +28,7 @@ workflows:
 `);
       const report = {
         kind: 'observe-inbox',
-        schemaVersion: 1,
+        schemaVersion: 2,
         meta: {
           tracePath: '/tmp/synthetic-trace',
           generatedAt: '2026-05-15T00:00:00.000Z',
@@ -40,7 +40,7 @@ workflows:
         items: [],
         experience: {
           kind: 'observe-experience',
-          schemaVersion: 1,
+          schemaVersion: 2,
           scope: 'evidence-only',
           generatedAt: '2026-05-15T00:00:00.000Z',
           meta: {
@@ -168,7 +168,7 @@ hardRules:
       try {
         const report = {
           kind: 'observe-inbox',
-          schemaVersion: 1,
+          schemaVersion: 2,
           meta: {
             tracePath: '/tmp/trace-b',
             generatedAt: '2026-05-15T00:00:00.000Z',
@@ -217,7 +217,7 @@ hardRules:
       try {
         const report = {
           kind: 'observe-inbox',
-          schemaVersion: 1,
+          schemaVersion: 2,
           meta: {
             tracePath: '/tmp/trace-clean',
             generatedAt: '2026-05-15T00:00:00.000Z',
@@ -229,7 +229,7 @@ hardRules:
           items: [],
           experience: {
             kind: 'observe-experience',
-            schemaVersion: 1,
+            schemaVersion: 2,
             scope: 'evidence-only',
             generatedAt: '2026-05-15T00:00:00.000Z',
             meta: { sessionCount: 1, skillCount: 1, invocationCount: 1, goalSliceCount: 1, noteCodes: [] },
@@ -291,7 +291,7 @@ hardRules:
     // 跟 cwd 无关的诊断。
     const report = {
       kind: 'observe-inbox',
-      schemaVersion: 1,
+      schemaVersion: 2,
       meta: {
         tracePath: '/tmp/trace',
         generatedAt: '2026-05-15T00:00:00.000Z',

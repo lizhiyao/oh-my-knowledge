@@ -298,7 +298,7 @@ describe('observe inbox - signal detection', () => {
     const artifactTargetId = observationMetricAnnotationTargetId(artifactEvent, 'deliverable_artifact');
     const reviewState = {
       kind: 'observe-review-state' as const,
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       updatedAt: '2026-05-10T00:00:00.000Z',
       entries: {
         [observationReviewStateKey('evidence_metric', artifactTargetId)]: {

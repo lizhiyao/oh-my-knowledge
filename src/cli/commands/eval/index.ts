@@ -12,6 +12,7 @@ import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback 
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from '../../lib/shared.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
+import { EVALUATION_REPORT_SCHEMA_VERSION } from '../../../eval-core/evaluation-reporting.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -112,9 +113,9 @@ function batchItemFallbackReport(
       variants: ['baseline', item.name],
       sampleCount: item.sampleCount,
       totalCostUSD: item.totalCostUSD,
-      // item.artifactHash 来自子报告(走 aggregateReport 的整树哈),故 fallback 与之一致标 schemaVersion 3,
-      // 避免「树哈 artifactHashes + 错位 schemaVersion」的错配。
-      schemaVersion: 3,
+      // item.artifactHash 来自子报告(走 aggregateReport 的整树哈),故 fallback 与之一致标当前 eval
+      // report schemaVersion,避免「树哈 artifactHashes + 错位 schemaVersion」的错配。
+      schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
       artifactHashes: item.artifactHash ? { [item.name]: item.artifactHash } : {},
     },
     summary: item.summary,

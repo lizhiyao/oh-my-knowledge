@@ -201,13 +201,13 @@ describe('observe inbox - experience report', () => {
       latestSeenLabel: '2026-05-01 00:00:04',
       reviewState: {
         kind: 'observe-review-state',
-        schemaVersion: 1,
+        schemaVersion: 2,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
       resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
         kind: 'observe-review-state',
-        schemaVersion: 1,
+        schemaVersion: 2,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       }),
@@ -279,7 +279,7 @@ describe('observe inbox - experience report', () => {
     const annotatedReport = buildObservationInboxReport(file, {
       reviewState: {
         kind: 'observe-review-state',
-        schemaVersion: 1,
+        schemaVersion: 2,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {
           [observationReviewStateKey('evidence_metric', correctionTargetId)]: {

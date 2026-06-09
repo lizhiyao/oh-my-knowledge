@@ -77,10 +77,12 @@ export function observationReviewStatePath(observationsDir: string): string {
   return join(observationsDir, 'review-state.json');
 }
 
+const OBSERVATION_REVIEW_STATE_SCHEMA_VERSION = 2;
+
 export function emptyObservationReviewState(now = new Date().toISOString()): ObservationReviewState {
   return {
     kind: 'observe-review-state',
-    schemaVersion: 1,
+    schemaVersion: OBSERVATION_REVIEW_STATE_SCHEMA_VERSION,
     updatedAt: now,
     entries: {},
   };
@@ -90,18 +92,8 @@ export function loadObservationReviewState(observationsDir: string): Observation
   const path = observationReviewStatePath(observationsDir);
   if (!existsSync(path)) return emptyObservationReviewState();
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<ObservationReviewState>;
-    if (parsed.kind !== 'observe-review-state' || parsed.schemaVersion !== 1 || !parsed.entries || typeof parsed.entries !== 'object') {
-      return emptyObservationReviewState();
-    }
-    return {
-      kind: 'observe-review-state',
-      schemaVersion: 1,
-      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
-      entries: Object.fromEntries(
-        Object.entries(parsed.entries).filter(([, entry]) => isReviewStateEntry(entry)),
-      ),
-    };
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+    return normalizeObservationReviewState(parsed) ?? emptyObservationReviewState();
   } catch {
     return emptyObservationReviewState();
   }
@@ -136,6 +128,27 @@ export function updateObservationReviewState(
   mkdirSync(observationsDir, { recursive: true });
   writeFileSync(observationReviewStatePath(observationsDir), JSON.stringify(state, null, 2));
   return state;
+}
+
+function normalizeObservationReviewState(value: unknown): ObservationReviewState | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as Record<string, unknown>;
+  const kind = parsed.kind === 'observe-review-state'
+    ? parsed.kind
+    : parsed.reportKind === 'observe-review-state'
+      ? parsed.reportKind
+      : null;
+  if (!kind) return null;
+  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) return null;
+  if (!parsed.entries || typeof parsed.entries !== 'object') return null;
+  return {
+    kind: 'observe-review-state',
+    schemaVersion: OBSERVATION_REVIEW_STATE_SCHEMA_VERSION,
+    updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+    entries: Object.fromEntries(
+      Object.entries(parsed.entries).filter(([, entry]) => isReviewStateEntry(entry)),
+    ),
+  };
 }
 
 export function deleteObservationReviewState(

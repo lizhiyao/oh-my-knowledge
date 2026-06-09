@@ -286,8 +286,9 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      if (data?.kind !== 'doctor' || !Array.isArray(data.skills)) continue;
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport & { reportKind?: unknown };
+      const kind = data?.kind === 'doctor' ? data.kind : data?.reportKind === 'doctor' ? data.reportKind : null;
+      if (!kind || !Array.isArray(data.skills)) continue;
       const ts = data.timestamp;
       for (const sr of data.skills) {
         const passN = sr.results.filter((r) => r.status === 'pass').length;

@@ -13,7 +13,7 @@ export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
 
 /** Bumped whenever DoctorReport schema changes in a way CI consumers should
  *  be able to detect. CI can pin/check this when parsing the JSON. */
-export const DOCTOR_REPORT_SCHEMA_VERSION = '2.0.0';
+export const DOCTOR_REPORT_SCHEMA_VERSION = '3.0.0';
 
 export interface DoctorRuleResult {
   ruleId: string;

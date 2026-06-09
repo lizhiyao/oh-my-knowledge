@@ -22,7 +22,7 @@ export interface SkillDerivedStandard {
 
 export interface SkillDerivedStandards {
   kind: 'observe-skill-derived-standards';
-  schemaVersion: 1;
+  schemaVersion: 2;
   skillName: string;
   sourceSkillPath?: string;
   sourceHash?: string;
