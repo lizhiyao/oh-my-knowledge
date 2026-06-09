@@ -2,7 +2,7 @@
  * `omk promote` 端到端编排测(execFile 打到 dist):锁住门禁 + 写决定 + 生命周期跃迁的闭环契约 ——
  *   - PROGRESS + 可比 + 不漂 → 退 0、记录追加 promote 决定、`omk list` 显 promoted ✓;
  *   - verdict 不达标 / 源漂移 / 记录不存在 → 退 1,拦截原因走 stderr;
- *   - --force 越门 → 退 0 且决定带 override;无当前证据 → force 也退 1;
+ *   - --force 越门 → 退 0 且决定带 override;无当前证据 / 可达源 hash 已变 → force 也退 1;
  *   - --json 出版本化信封。
  * 证据 fixture 的 judgePromptHash 取自真实 getJudgePromptHash,contentHash 取自真实 hashArtifactSource,
  * 故门禁的可比性 / drift 判定都打到真实口径而非 mock。HOME 指临时空目录,避免回退本机全局受管目录。
@@ -50,7 +50,7 @@ describe('omk promote 端到端', () => {
     writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
   }
 
-  function readRecord(): { decisions: Array<{ decisionKind: string; contentHash?: string; override?: { verdict: string; overriddenBlocks?: string[] } }> } {
+  function readRecord(): { decisions: Array<{ decisionKind: string; contentHash?: string; reason?: string; override?: { verdict: string; overriddenBlocks?: string[] } }> } {
     return JSON.parse(readFileSync(join(managed, `${recId}.json`), 'utf-8'));
   }
 
@@ -125,15 +125,40 @@ describe('omk promote 端到端', () => {
     const dec = readRecord().decisions[0];
     assert.equal(dec.override?.verdict, 'NOISE', '记下被越过的 verdict');
     assert.deepEqual(dec.override?.overriddenBlocks, ['verdict_blocked'], '记下被越过的判据');
+    assert.equal(dec.reason, '已人工复核', 'override 必须留 reason');
   });
 
-  it('源漂移(contentHash 不匹配)→ 退 1 drifted;--force 越门 → 退 0', async () => {
+  it('--force 越门但缺 reason → 退 1,不写决定', async () => {
+    writeRecord({ verdict: 'NOISE' });
+    const r = await run(['promote', 'review', '--force']);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('--force requires'), `缺 reason 提示:${r.stderr}`);
+    assert.equal(readRecord().decisions.length, 0, '缺 reason 不得写 override 决定');
+  });
+
+  it('源可达但 contentHash 不匹配 → 退 1 drifted;--force 也越不过', async () => {
     writeRecord({ verdict: 'PROGRESS', contentHash: 'DRIFTED00000' }); // 记录基线与真源不一致
     const blocked = await run(['promote', 'review']);
     assert.equal(blocked.code, 1);
     assert.ok(blocked.stderr.includes('drifted or unreachable'), `drift 拦截:${blocked.stderr}`);
+    assert.ok(!blocked.stderr.includes('To override anyway'), 'hash 已变不是可越门场景,不提示 --force');
     const forced = await run(['promote', 'review', '--force', '--reason', 'ok']);
+    assert.equal(forced.code, 1, forced.stderr);
+    assert.equal(readRecord().decisions.length, 0, 'hash 已变 force 也不得写旧 hash promote 决定');
+  });
+
+  it('源不可达但当前证据存在 → --force + reason 可越门,并在 list 保持 promoted', async () => {
+    writeRecord({ verdict: 'PROGRESS' });
+    rmSync(srcPath, { force: true });
+    const blocked = await run(['promote', 'review']);
+    assert.equal(blocked.code, 1);
+    assert.ok(blocked.stderr.includes('To override anyway'), `不可达但有证据应允许人工越门:${blocked.stderr}`);
+    const forced = await run(['promote', 'review', '--force', '--reason', '源在另一台机器已核对']);
     assert.equal(forced.code, 0, forced.stderr);
+    const list = await run(['list', '--json']);
+    const row = JSON.parse(list.stdout).rows[0];
+    assert.equal(row.state, 'promoted');
+    assert.equal(row.reachable, false, 'promoted 但仍标明当前环境源未核');
   });
 
   it('无当前证据 → 退 1,force 也越不过', async () => {

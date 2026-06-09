@@ -155,7 +155,7 @@ Default gate (resolved against the latest **current** evidence — `contentHash`
 
 Of §5's four mandatory items, the MVP gate checks three at promote time (report id via "current evidence exists", verdict, and the comparability marker); **sample-set coverage** is denormalized into the evidence bundle by `eval` (§9, #221) and trusted here — the gate does not re-derive or re-check it. (§5's "mandatory" framing is about what `eval` must write into the bundle, not a separate promote-time re-check.)
 
-`--force` overrides a non-evidence block (drift / incomparable / verdict), recorded on the decision as `override.verdict` (plus `override.overriddenBlocks` naming which checks were waved through) with the human's `--reason` (spec invariant: overrides must be explicit and recorded). Re-running promote on an already-promoted current version is an idempotent no-op.
+`--force` overrides only forceable non-evidence blocks (source unreachable / incomparable / verdict), recorded on the decision as `override.verdict` (plus `override.overriddenBlocks` naming which checks were waved through) with the human's required `--reason` (spec invariant: overrides must be explicit and recorded). A reachable source whose content hash differs from the managed baseline is not forceable: the decision would still point at the old `record.contentHash`, so users must re-run `omk eval` / reinstall instead. Re-running promote on an already-promoted current version is an idempotent no-op.
 
 ### `rollback`
 

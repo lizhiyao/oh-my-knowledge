@@ -10,6 +10,7 @@ export type PromoteMessageKey =
   | 'cli.promote.incomparable_unverified'
   | 'cli.promote.verdict_blocked'
   | 'cli.promote.force_hint'
+  | 'cli.promote.force_reason_required'
   | 'cli.promote.promoted'
   | 'cli.promote.forced_override'
   | 'cli.promote.already_promoted';
@@ -50,6 +51,10 @@ export const promoteDict: Record<PromoteMessageKey, CliMessage> = {
   'cli.promote.force_hint': {
     zh: '如确需越门，加 --force 并用 --reason 写明理由（会记为人工 override 决定）。',
     en: 'To override anyway, pass --force with --reason (recorded as a human override decision).',
+  },
+  'cli.promote.force_reason_required': {
+    zh: '--force 必须同时提供非空 --reason，说明人工越门理由。',
+    en: '--force requires a non-empty --reason explaining the human override.',
   },
   'cli.promote.promoted': {
     zh: '已 promote {name}：接受内容 {hash}（verdict={verdict},report={reportId}）。',

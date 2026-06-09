@@ -497,7 +497,7 @@ omk promote <name> [flags]
 
 - `--accept-cautious` `boolean`:把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
 - `--actor` `option`:决定的 actor（默认取 git config user.name）
-- `--force` `boolean`:越过门禁强制 promote，记为人工 override 决定（无当前证据时仍拒）
+- `--force` `boolean`:越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
 - `--global` `boolean`:操作全局受管目录而非项目 .omk/managed
 - `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
 - `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）

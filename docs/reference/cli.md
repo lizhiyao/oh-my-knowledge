@@ -98,7 +98,7 @@ omk promote review --force --reason "manually reviewed"   # override the gate, r
 ```text
   --accept-cautious  also accept CAUTIOUS (default PROGRESS only)
   --actor <value>    decision actor (defaults to git config user.name)
-  --force            override the gate and force-promote, recorded as a human override (still refused with no current evidence)
+  --force            override forceable gate blocks and force-promote, recorded as a human override (still refused with no current evidence or changed source hash)
   --global           operate on the global managed dir instead of project .omk/managed
   --json             output JSON (versioned envelope) for scripts
   --kind <value>     artifact kind (only skill today)

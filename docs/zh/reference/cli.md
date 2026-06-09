@@ -98,7 +98,7 @@ omk promote review --force --reason "已人工复核"   # 越门，记为人工�
 ```text
   --accept-cautious  把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
   --actor <value>    决定的 actor（默认取 git config user.name）
-  --force            越过门禁强制 promote，记为人工 override 决定（无当前证据时仍拒）
+  --force            越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
   --global           操作全局受管目录而非项目 .omk/managed
   --json             输出 JSON（版本化信封）供脚本消费
   --kind <value>     artifact 类型（当前仅 skill）

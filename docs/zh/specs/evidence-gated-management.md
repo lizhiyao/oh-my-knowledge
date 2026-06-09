@@ -155,7 +155,7 @@ MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本�
 
 §5 的四项 mandatory,MVP 门禁在 promote 时核三项（report id 经「存在当前证据」、verdict、可比性 marker）;**样本集覆盖**由 `eval`（§9、#221）denormalize 进证据 bundle、在此被信任——门禁不重算也不重核。（§5 的「mandatory」说的是 `eval` 必须写进 bundle 的内容,不是 promote 时另起一道核查。）
 
-`--force` 可越过非「无证据」类拦截（drift / 不可比 / verdict），在决定里记 `override.verdict`（外加 `override.overriddenBlocks` 标明被越过了哪几条判据）与人工 `--reason`（不变量：override 必须显式且留痕）。对已 promote 的当前版本重跑 promote 是幂等无操作。
+`--force` 只可越过可越门的非「无证据」类拦截（源不可达 / 不可比 / verdict），在决定里记 `override.verdict`（外加 `override.overriddenBlocks` 标明被越过了哪几条判据）与必填的人工 `--reason`（不变量：override 必须显式且留痕）。若源可达但内容 hash 已不同，则不可越门：decision 仍会指向旧的 `record.contentHash`，用户必须重新跑 `omk eval` / 重新 install。对已 promote 的当前版本重跑 promote 是幂等无操作。
 
 ### `rollback`
 

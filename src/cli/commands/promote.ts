@@ -66,7 +66,7 @@ export default class Promote extends BaseCommand {
     lang: LANG_FLAG,
     kind: Flags.string({ description: bilingual({ zh: 'artifact 类型（当前仅 skill）', en: 'artifact kind (only skill today)' }), default: 'skill' }),
     'accept-cautious': Flags.boolean({ description: bilingual({ zh: '把 CAUTIOUS 也算可接受（默认仅 PROGRESS）', en: 'also accept CAUTIOUS (default PROGRESS only)' }) }),
-    force: Flags.boolean({ description: bilingual({ zh: '越过门禁强制 promote，记为人工 override 决定（无当前证据时仍拒）', en: 'override the gate and force-promote, recorded as a human override (still refused with no current evidence)' }) }),
+    force: Flags.boolean({ description: bilingual({ zh: '越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）', en: 'override forceable gate blocks and force-promote, recorded as a human override (still refused with no current evidence or changed source hash)' }) }),
     reason: Flags.string({ description: bilingual({ zh: 'promote / 越门的理由（写入决定）', en: 'reason for the promotion / override (stored on the decision)' }) }),
     actor: Flags.string({ description: bilingual({ zh: '决定的 actor（默认取 git config user.name）', en: 'decision actor (defaults to git config user.name)' }) }),
     global: Flags.boolean({ description: bilingual({ zh: '操作全局受管目录而非项目 .omk/managed', en: 'operate on the global managed dir instead of project .omk/managed' }) }),
@@ -107,10 +107,18 @@ export default class Promote extends BaseCommand {
       const currentJudgeHashes = new Set([getJudgePromptHash(true), getJudgePromptHash(false)]);
       const gate = evaluatePromoteGate({ record, currentContentHash, acceptCautious: flags['accept-cautious'], currentJudgeHashes });
 
-      // 拦截:无当前证据(force 也越不过) 或 (有拦截但未 --force)。
-      const forceable = gate.evidence !== undefined;
+      // 拦截：无当前证据 force 也越不过；源可达但 hash 已变也不可越门，因为 decision 仍锚在
+      // record.contentHash，越过去后 list 仍会按当前源 hash 判 stale。源不可达则可作为人工未核越门。
+      const sourceHashMismatch = probe.reachable && currentContentHash !== record.contentHash;
+      const forceable = gate.evidence !== undefined && !sourceHashMismatch;
+      const reason = flags.reason?.trim();
+      if (!gate.ok && flags.force && forceable && !reason) {
+        if (flags.json) this.log(JSON.stringify({ schemaVersion: 1, blocked: { name, reasons: [{ blockKind: 'force_reason_required' }] } }, null, 2));
+        else process.stderr.write(tCli('cli.promote.force_reason_required', lang) + '\n');
+        throw new CliExit(1);
+      }
       if (!gate.ok && !(flags.force && forceable)) {
-        this.emitBlocked(name, gate, lang, flags.json);
+        this.emitBlocked(name, gate, lang, flags.json, forceable);
         throw new CliExit(1);
       }
 
@@ -123,7 +131,7 @@ export default class Promote extends BaseCommand {
         decidedAt: new Date().toISOString(),
         contentHash: record.contentHash,
         ...(evidence.reportId ? { reportId: evidence.reportId } : {}),
-        ...(flags.reason ? { reason: flags.reason } : {}),
+        ...(reason ? { reason } : {}),
         ...(overridden ? { override: { verdict: evidence.verdict ?? 'UNKNOWN', overriddenBlocks: gate.blocked.map((b) => b.blockKind) } } : {}),
       };
       appendManagedDecision(dir, record.id, decision);
@@ -135,7 +143,7 @@ export default class Promote extends BaseCommand {
     });
   }
 
-  private emitBlocked(name: string, gate: ReturnType<typeof evaluatePromoteGate>, lang: CliLang, json: boolean): void {
+  private emitBlocked(name: string, gate: ReturnType<typeof evaluatePromoteGate>, lang: CliLang, json: boolean, forceable: boolean): void {
     if (json) {
       this.log(JSON.stringify({ schemaVersion: 1, blocked: { name, reasons: gate.blocked.map((b) => ({ blockKind: b.blockKind, ...(b.detail ? { detail: b.detail } : {}) })) } }, null, 2));
       return;
@@ -145,7 +153,7 @@ export default class Promote extends BaseCommand {
     for (const b of gate.blocked) process.stderr.write(tCli(BLOCK_KEY[b.blockKind], lang, safeDetail(b.detail)) + '\n');
     if (gate.warnings.length > 0) process.stderr.write(tCli('cli.promote.incomparable_unverified', lang) + '\n');
     // 有可锚定证据(非「无证据」终态)才提示 --force 可越门。
-    if (gate.evidence !== undefined) process.stderr.write(tCli('cli.promote.force_hint', lang) + '\n');
+    if (forceable) process.stderr.write(tCli('cli.promote.force_hint', lang) + '\n');
   }
 
   private emitPromoted(name: string, record: ManagedArtifactRecord, verdict: string | undefined, reportId: string | undefined, overridden: boolean, lang: CliLang, json: boolean): void {
