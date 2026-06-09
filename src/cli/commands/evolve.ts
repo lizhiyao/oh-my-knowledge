@@ -1,5 +1,5 @@
 import { resolve, join, dirname, extname } from 'node:path';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -66,6 +66,17 @@ interface EvolveResult {
   reportId?: string;
 }
 
+/** 路径处是否已存在「用例源」:文件直接看存在;目录看是否含候选用例文件
+ *  (排除 report/health/_ 前缀,对齐 sample.ts 的发现约定)。用于区分
+ *  「损坏文件(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。 */
+function sampleSourceExists(p: string): boolean {
+  if (!existsSync(p)) return false;
+  if (extname(p)) return true;
+  try {
+    return readdirSync(p).some((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
+  } catch { return false; }
+}
+
 // runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
 // in-process import 验证业务,Command.run() body 直接调它。
 export async function runEvolve(
@@ -112,10 +123,21 @@ export async function runEvolve(
   // 已有用例(且非空)则原样使用;生成失败按普通错误退出。
   const samplesAbs = resolve(samplesFile);
   let hasSamples = false;
+  let loadErr: Error | null = null;
   try {
     const { loadSamples } = await import('../../inputs/load-samples.js');
     hasSamples = loadSamples(samplesAbs).samples.length > 0;
-  } catch { hasSamples = false; }
+  } catch (err) { loadErr = err as Error; }
+
+  // 用例源已存在却解析失败(JSON/YAML 语法错、duplicate id 等)= 损坏文件,
+  // 绝不用 LLM 生成内容覆盖它 —— 报错退出,让用户先修。只有真的没有用例源(文件
+  // 不存在 / 目录无候选用例文件)才进入自动生成。
+  if (loadErr && sampleSourceExists(samplesAbs)) {
+    console.error(lang === 'zh'
+      ? `评测用例文件解析失败，evolve 不会覆盖它，请先修复：${samplesAbs}\n  原因：${loadErr.message}`
+      : `Failed to parse the samples source; evolve will not overwrite it. Fix it first: ${samplesAbs}\n  reason: ${loadErr.message}`);
+    throw new CliExit(1);
+  }
 
   if (!hasSamples) {
     try {
@@ -132,6 +154,14 @@ export async function runEvolve(
         model: flags.model,
         executorName: flags.executor,
       });
+      // 模型可能保守返回 0 条 —— 不写空文件再空跑迭代,直接报错让用户改用
+      // `omk sample --focus` 引导生成或手写用例。
+      if (samples.length === 0) {
+        console.error(lang === 'zh'
+          ? '自动生成返回 0 条用例，已中止。请用 `omk sample <skill> --focus "…"` 引导生成，或手写后重试。'
+          : 'Auto-generation produced 0 samples; aborting. Use `omk sample <skill> --focus "…"` to guide generation, or write samples manually.');
+        throw new CliExit(1);
+      }
       mkdirSync(dirname(outFile), { recursive: true });
       writeFileSync(outFile, JSON.stringify(samples, null, 2));
       const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -303,8 +333,8 @@ export default class Evolve extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: '被评测的 LLM，默认 sonnet',
-        en: 'Evaluated LLM, default sonnet',
+        zh: '被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。',
+        en: 'Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.',
       }),
       default: 'sonnet',
     }),
