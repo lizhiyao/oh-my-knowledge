@@ -636,7 +636,7 @@ describe('runBatchEvaluation', () => {
           // 不兜底——find 落空就 undefined.name 抛错,把误绑暴露成测试失败。
           const treatment = options.variantSpecs.find((spec) => spec.role === 'treatment')!.name;
           const report: Report = {
-            reportKind: 'evaluation',
+            kind: 'evaluation',
             id: options.runId!,
             meta: {
               variants: ['baseline', treatment],
@@ -674,7 +674,7 @@ describe('runBatchEvaluation', () => {
         },
       });
 
-      assert.equal(result.report.reportKind, 'batch-evaluation');
+      assert.equal(result.report.kind, 'batch-evaluation');
       assert.equal(result.report.mode, 'skill');
       assert.equal(result.report.meta.request?.batch, true);
       assert.equal(result.report.meta.request?.noCache, true);
@@ -734,7 +734,7 @@ describe('runBatchEvaluation', () => {
         runSingleEvaluation: async (options) => {
           capturedSpecs = options.variantSpecs;
           const report: Report = {
-            reportKind: 'evaluation',
+            kind: 'evaluation',
             id: options.runId!,
             meta: {
               variants: ['baseline', 'greeter'],
@@ -796,7 +796,7 @@ describe('runBatchEvaluation', () => {
         runSingleEvaluation: async (options) => {
           capturedSpecs = options.variantSpecs;
           const report: Report = {
-            reportKind: 'evaluation',
+            kind: 'evaluation',
             id: options.runId!,
             meta: {
               variants: ['baseline', 'greeter'],

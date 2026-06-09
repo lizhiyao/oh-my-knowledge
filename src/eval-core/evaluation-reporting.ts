@@ -43,6 +43,7 @@ function findPackageJson(startDir: string): string {
 const PKG: { version: string } = JSON.parse(readFileSync(findPackageJson(__dirname), 'utf-8')) as { version: string };
 
 export const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
+export const EVALUATION_REPORT_SCHEMA_VERSION = 4;
 
 export function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 12);
@@ -263,7 +264,7 @@ export function aggregateReport({
     variant.execCostReported !== false && variant.judgeCostReported !== false);
 
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id: runId,
     meta: {
       variants,
@@ -278,9 +279,10 @@ export function aggregateReport({
       cliVersion: getCliVersion(),
       nodeVersion: process.version,
       // schemaVersion 3 起,所有 dir-skill(本地 + git)都经隔离副本物化、整棵可分发树哈,与 install
-      // 受管记录 contentHash 同空间(evidence 全绑)。2 是过渡纪元(本地 dir-skill 树哈、git dir-skill
-      // 仅 SKILL.md 字节、不绑);git dir-skill 的 v2 与 v3 不可比。作判别位:消费方对缺位/旧报告不错配比对。
-      schemaVersion: 3,
+      // 受管记录 contentHash 同空间(evidence 全绑)。4 延续 v3 的哈/绑定义,并作为当前 canonical
+      // 顶层判别字段纪元,方便外部消费方按版本识别 JSON 形状。2 是过渡纪元(本地 dir-skill 树哈、
+      // git dir-skill 仅 SKILL.md 字节、不绑);git dir-skill 的 v2 与 v3+ 不可比。
+      schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),

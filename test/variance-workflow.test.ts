@@ -5,7 +5,7 @@ import type { Report, VariantSummary } from '../src/types/index.js';
 
 function makeReport(id: string, variantScores: Record<string, number>): Report {
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id,
     meta: {
       variants: Object.keys(variantScores),

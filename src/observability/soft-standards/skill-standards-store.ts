@@ -7,9 +7,12 @@ import type {
   ResolvedSkillStandard,
   ResolvedSkillStandardKind,
   ResolvedSkillStandards,
+  SkillDerivedStandard,
   SkillDerivedStandardStatus,
   SkillDerivedStandards,
 } from './types.js';
+
+export const SKILL_DERIVED_STANDARDS_SCHEMA_VERSION = 2;
 
 export function skillDerivedStandardsDir(observationsDir: string): string {
   return join(observationsDir, 'skill-derived');
@@ -26,8 +29,8 @@ export function loadSkillDerivedStandards(observationsDir: string): Record<strin
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
-      const parsed = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillDerivedStandards;
-      if (isSkillDerivedStandards(parsed)) out[parsed.skillName] = parsed;
+      const parsed = normalizeSkillDerivedStandards(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+      if (parsed) out[parsed.skillName] = parsed;
     } catch {
       // Ignore broken cache files; the extraction command can refresh them.
     }
@@ -63,11 +66,13 @@ export function updateSkillDerivedStandardStatus(
 
 export function resolveSkillStandards(skillName: string, options: ResolveSkillStandardsOptions): ResolvedSkillStandards {
   const skillChain = options.skillChain ?? buildObservationSkillChain(skillName, options.cwd ?? process.cwd());
-  const derived = options.derivedStandards
-    ? isSkillDerivedStandards(options.derivedStandards)
-      ? options.derivedStandards
-      : options.derivedStandards[skillName]
-    : loadSkillDerivedStandards(options.observationsDir)[skillName];
+  const directDerived = normalizeSkillDerivedStandards(options.derivedStandards);
+  const mappedDerived = options.derivedStandards && !isSkillDerivedStandards(options.derivedStandards)
+    ? normalizeSkillDerivedStandards(options.derivedStandards[skillName])
+    : undefined;
+  const derived = directDerived
+    ?? mappedDerived
+    ?? loadSkillDerivedStandards(options.observationsDir)[skillName];
   const active: ResolvedSkillStandard[] = [];
   const candidates: ResolvedSkillStandard[] = [];
   const hasFrontmatterHardRules = skillChain.healthCheck.hardRules.declared && skillChain.healthCheck.hardRules.rules.length > 0;
@@ -126,8 +131,7 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
 export function loadExisting(path: string): SkillDerivedStandards | undefined {
   if (!existsSync(path)) return undefined;
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as SkillDerivedStandards;
-    return isSkillDerivedStandards(parsed) ? parsed : undefined;
+    return normalizeSkillDerivedStandards(JSON.parse(readFileSync(path, 'utf-8')));
   } catch {
     return undefined;
   }
@@ -144,12 +148,66 @@ export function markStale(record: SkillDerivedStandards, generatedAt: string): S
 }
 
 export function isSkillDerivedStandards(value: unknown): value is SkillDerivedStandards {
-  if (!value || typeof value !== 'object') return false;
-  const item = value as Partial<SkillDerivedStandards>;
-  return item.reportKind === 'observe-skill-derived-standards'
-    && item.schemaVersion === 1
-    && typeof item.skillName === 'string'
-    && Array.isArray(item.standards);
+  return normalizeSkillDerivedStandards(value) !== undefined;
+}
+
+function normalizeSkillDerivedStandards(value: unknown): SkillDerivedStandards | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  const kind = item.kind === 'observe-skill-derived-standards' ? item.kind : null;
+  if (!kind) return undefined;
+  if (item.schemaVersion !== SKILL_DERIVED_STANDARDS_SCHEMA_VERSION) return undefined;
+  if (typeof item.skillName !== 'string' || typeof item.generatedAt !== 'string' || typeof item.model !== 'string' || typeof item.executor !== 'string') {
+    return undefined;
+  }
+  if (typeof item.promptId !== 'string' || typeof item.promptVersion !== 'string' || !Array.isArray(item.standards)) return undefined;
+  const standards = item.standards
+    .map(normalizeSkillDerivedStandard)
+    .filter((record): record is SkillDerivedStandard => record !== null);
+  return {
+    kind: 'observe-skill-derived-standards',
+    schemaVersion: SKILL_DERIVED_STANDARDS_SCHEMA_VERSION,
+    skillName: item.skillName,
+    ...(typeof item.sourceSkillPath === 'string' ? { sourceSkillPath: item.sourceSkillPath } : {}),
+    ...(typeof item.sourceHash === 'string' ? { sourceHash: item.sourceHash } : {}),
+    generatedAt: item.generatedAt,
+    model: item.model,
+    executor: item.executor,
+    promptId: item.promptId as SkillDerivedStandards['promptId'],
+    promptVersion: item.promptVersion as SkillDerivedStandards['promptVersion'],
+    ...(typeof item.promptHash === 'string' ? { promptHash: item.promptHash } : {}),
+    ...(typeof item.runtimeEvidenceHash === 'string' ? { runtimeEvidenceHash: item.runtimeEvidenceHash } : {}),
+    ...(item.enhancedReview && typeof item.enhancedReview === 'object' ? { enhancedReview: item.enhancedReview as SkillDerivedStandards['enhancedReview'] } : {}),
+    standards,
+  };
+}
+
+function normalizeSkillDerivedStandard(value: unknown): SkillDerivedStandard | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const standardKind = item.standardKind === 'hard_rule_candidate' || item.standardKind === 'workflow_candidate'
+    ? item.standardKind
+    : item.kind === 'hard_rule_candidate' || item.kind === 'workflow_candidate'
+      ? item.kind
+      : null;
+  if (!standardKind) return null;
+  if (typeof item.id !== 'string' || typeof item.title !== 'string' || typeof item.body !== 'string') return null;
+  if (item.status !== 'pending_review' && item.status !== 'author_confirmed' && item.status !== 'rejected' && item.status !== 'stale') {
+    return null;
+  }
+  if (item.source !== 'llm_soft_standard') return null;
+  if (item.confidence !== 'low' && item.confidence !== 'medium' && item.confidence !== 'high') return null;
+  if (!Array.isArray(item.evidence) || item.evidence.some((entry) => typeof entry !== 'string')) return null;
+  return {
+    id: item.id,
+    standardKind,
+    status: item.status,
+    title: item.title,
+    body: item.body,
+    source: item.source,
+    confidence: item.confidence,
+    evidence: item.evidence,
+  };
 }
 
 function candidateRank(status?: SkillDerivedStandardStatus): number {

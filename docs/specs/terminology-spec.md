@@ -312,18 +312,20 @@ Rules:
 
 ### 4. Reserve bare `kind` for `ArtifactKind`
 
-In omk's product vocabulary, bare `kind` is reserved for `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: the `--kind` flag on `omk install` means artifact kind (aligned with `Artifact.kind`), not install target, report type, or observe event type.
+In omk's product vocabulary, bare `kind` defaults to `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: the `--kind` flag on `omk install` means artifact kind (aligned with `Artifact.kind`), not install target, report type, or observe event type.
 
-For other discriminants, use a qualified name when the field is new or safe to rename. Existing persisted `kind` fields stay as-is unless a dedicated migration changes them:
+For other discriminants, use a qualified name when the field is new or safe to rename. Existing published `kind` fields that are already persisted or externally consumed stay as-is unless a dedicated migration changes them:
 
-- `report.kind` → `reportKind` / `documentKind`
+- `report.kind` stays the canonical public report-schema field
+- `doctor.kind` stays the canonical doctor-report field
+- `observe-*.kind` stays the canonical observe-report field
 - `event.kind` → `eventKind`
 - `executorRuntime.kind` → `runtimeKind`
 - `standard.kind` → `standardKind`
 
 Two caveats:
 
-- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.)
+- **The persisted report / observe / doctor / diagnosis top-level discriminant is `kind`, cut over from its earlier qualified field name in a deliberate BREAKING-SCHEMA change.** The cutover is hard — no dual-read, no migration shim: files written by older versions (an old qualified top-level discriminant, no `kind`) are simply not read and are skipped. This is serialization back-compat, not statistical comparability — the field name changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat further changes there with the usual schema care.)
 - Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
 
 ## 6. Term mapping

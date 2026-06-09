@@ -22,7 +22,10 @@ import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import { ccTracesToResultEntries, type CcSession, type SkillSegment } from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
-import { buildObservationExperienceReport } from './experience.js';
+import {
+  buildObservationExperienceReport,
+  normalizeObservationExperienceReport,
+} from './experience.js';
 
 export type {
   BuildObservationInboxReportOptions,
@@ -42,6 +45,7 @@ export type {
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
+const OBSERVATION_INBOX_SCHEMA_VERSION = 2;
 
 function hashString(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
@@ -443,8 +447,8 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
   const items = finishInboxAggregation(aggregationState);
   const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
   const report: ObservationInboxReport = {
-    reportKind: 'observe-inbox',
-    schemaVersion: 1,
+    kind: 'observe-inbox',
+    schemaVersion: OBSERVATION_INBOX_SCHEMA_VERSION,
     meta: {
       tracePath,
       generatedAt,
@@ -561,7 +565,8 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
     .filter((file) => file.endsWith('-observe-inbox.json'))
     .map((file) => {
       try {
-        const report = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as ObservationInboxReport;
+        const report = normalizeObservationInboxReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+        if (!report) return null;
         report.items = report.items.map((item) => {
           const sourceKind = (item as { sourceKind?: string }).sourceKind;
           return {
@@ -584,7 +589,27 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
         return null;
       }
     })
-    .filter((r): r is ObservationInboxReport => r?.reportKind === 'observe-inbox');
+    .filter((r): r is ObservationInboxReport => r?.kind === 'observe-inbox');
+}
+
+function normalizeObservationInboxReport(value: unknown): ObservationInboxReport | null {
+  if (!value || typeof value !== 'object') return null;
+  const report = value as Record<string, unknown>;
+  const kind = report.kind === 'observe-inbox' ? report.kind : null;
+  if (!kind) return null;
+  if (report.schemaVersion !== OBSERVATION_INBOX_SCHEMA_VERSION) return null;
+  if (!report.meta || typeof report.meta !== 'object' || !Array.isArray(report.items)) return null;
+  const experience = report.experience === undefined
+    ? undefined
+    : normalizeObservationExperienceReport(report.experience) ?? undefined;
+  return {
+    kind: 'observe-inbox',
+    schemaVersion: OBSERVATION_INBOX_SCHEMA_VERSION,
+    meta: report.meta as ObservationInboxReport['meta'],
+    items: report.items as ObservationInboxReport['items'],
+    ...(experience ? { experience } : {}),
+    ...(report.diagnostics !== undefined ? { diagnostics: report.diagnostics as ObservationInboxReport['diagnostics'] } : {}),
+  };
 }
 
 export function loadLatestObservationInboxReport(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxReport | null {

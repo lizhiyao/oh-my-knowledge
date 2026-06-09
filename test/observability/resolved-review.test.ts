@@ -5,8 +5,8 @@ import type { ObservationReviewState } from '../../src/observability/review-stat
 import type { ExperienceSessionStoryAnswer } from '../../src/observability/experience.js';
 
 const emptyReviewState: ObservationReviewState = {
-  reportKind: 'observe-review-state',
-  schemaVersion: 1,
+  kind: 'observe-review-state',
+  schemaVersion: 2,
   updatedAt: '2026-05-18T00:00:00.000Z',
   entries: {},
 };

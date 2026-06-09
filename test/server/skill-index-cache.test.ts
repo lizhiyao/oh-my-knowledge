@@ -72,7 +72,7 @@ import type { EvaluationReport } from '../../src/types/index.js';
 
 function mkReport(id: string, ts: string, variant: string): EvaluationReport {
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id,
     meta: {
       variants: ['baseline', variant],

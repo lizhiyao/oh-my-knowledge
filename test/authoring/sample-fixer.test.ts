@@ -5,7 +5,7 @@ import type { EvaluationReport } from '../../src/types/report.js';
 
 function reportWithFailedAssertion(): EvaluationReport {
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id: 'r1',
     meta: {
       variants: ['skill'],

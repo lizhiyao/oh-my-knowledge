@@ -12,6 +12,7 @@ import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback 
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from '../../lib/shared.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
+import { EVALUATION_REPORT_SCHEMA_VERSION } from '../../../eval-core/evaluation-reporting.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -105,16 +106,16 @@ function batchItemFallbackReport(
   item: BatchEvaluationReport['items'][number],
 ): EvaluationReport {
   return {
-    reportKind: 'evaluation',
+    kind: 'evaluation',
     id: item.reportId,
     meta: {
       ...batch.meta,
       variants: ['baseline', item.name],
       sampleCount: item.sampleCount,
       totalCostUSD: item.totalCostUSD,
-      // item.artifactHash 来自子报告(走 aggregateReport 的整树哈),故 fallback 与之一致标 schemaVersion 3,
-      // 避免「树哈 artifactHashes + 错位 schemaVersion」的错配。
-      schemaVersion: 3,
+      // item.artifactHash 来自子报告(走 aggregateReport 的整树哈),故 fallback 与之一致标当前 eval
+      // report schemaVersion,避免「树哈 artifactHashes + 错位 schemaVersion」的错配。
+      schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
       artifactHashes: item.artifactHash ? { [item.name]: item.artifactHash } : {},
     },
     summary: item.summary,
@@ -133,7 +134,7 @@ async function loadBatchChildReports(
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
     const loaded = await store.get(item.reportId);
-    if (loaded?.reportKind === 'evaluation') {
+    if (loaded?.kind === 'evaluation') {
       reports.push(loaded);
     } else {
       process.stderr.write(tCli('cli.run.batch_child_report_missing', lang, { id: item.reportId }));
@@ -192,7 +193,7 @@ async function announceSavedReport({
   lang: CliLang;
 }): Promise<void> {
   const tally = computeRunTally(report);
-  process.stderr.write(tCli(report.reportKind === 'batch-evaluation' ? 'cli.run.batch_complete' : 'cli.run.eval_complete', lang));
+  process.stderr.write(tCli(report.kind === 'batch-evaluation' ? 'cli.run.batch_complete' : 'cli.run.eval_complete', lang));
   process.stderr.write(tCli('cli.run.tally', lang, tally));
   process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
