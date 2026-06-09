@@ -314,7 +314,7 @@ describe('CLI', () => {
 
   it('Claude Code SKILL manifest uses current product commands', async () => {
     const body = await readFile(join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md'), 'utf8');
-    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|list|observe|sample|studio> [options]"'));
+    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|sample|studio> [options]"'));
     assert.ok(body.includes('omk eval --batch'));
     assert.ok(body.includes('omk sample --batch'));
     assert.ok(body.includes('omk evolve'));

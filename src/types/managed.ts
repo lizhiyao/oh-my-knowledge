@@ -54,12 +54,20 @@ export interface ManagedEvidenceRef {
 
 export type ManagedDecisionKind = 'promote' | 'reject' | 'rollback';
 
-/** 一次人工管理决定。install 时为空,promote/reject/rollback 追加。 */
+/** 一次人工管理决定。install 时为空,promote/reject/rollback 追加(append-only 事件流)。 */
 export interface ManagedDecision {
   decisionKind: ManagedDecisionKind;
   actor: string;
   decidedAt: string;
   reason?: string;
+  /** 被该决定接受 / 回滚到的内容 hash —— 锚定「决定的是哪份内容」。promote 取决定时的 record.contentHash;
+   *  读时只把与当前 contentHash 匹配的 promote 决定算作「当前版本已 promoted」(旧内容的决定不冒充当前)。 */
+  contentHash?: string;
+  /** 该决定锚定的证据 report(promote 取 latestCurrentEvidence 那条的 reportId)——可回溯「凭什么 ship」。 */
+  reportId?: string;
+  /** 越门记录:门禁本应拦下(verdict 不在接受集 / 不可比 / 已 drift),经 --force 显式越过时,记下被越过的
+   *  verdict 供审计(spec §7「Overrides must be explicit and recorded」)。无此字段 = 正常通过门禁。 */
+  override?: { verdict: string };
 }
 
 export interface ManagedArtifactSource {
@@ -97,8 +105,9 @@ export interface ManagedArtifactRecord {
   decisions: ManagedDecision[];
 }
 
-/** 读时推导的生命周期标签——不持久(见文件头说明)。 */
-export type ManagedLifecycleLabel = 'discovered' | 'installed' | 'measurable' | 'stale';
+/** 读时推导的生命周期标签——不持久(见文件头说明)。`promoted` 由当前内容(contentHash 匹配)有一条
+ *  promote 决定推出:它是 measurable 之上的「已人工接受当前版本」,故优先级高于 measurable。 */
+export type ManagedLifecycleLabel = 'discovered' | 'installed' | 'measurable' | 'stale' | 'promoted';
 
 export interface DerivedManagedState {
   label: ManagedLifecycleLabel;

@@ -43,7 +43,9 @@ export interface ManagedListRow {
   distributionCount: number;
 }
 
-function latestCurrentEvidence(record: ManagedArtifactRecord) {
+/** 当前有效证据(contentHash == record.contentHash)里 recordedAt 最新那条;无则 undefined。
+ *  list(展示最新 verdict)与 promote(门禁取证)共用同一口径——旧内容的证据不冒充当前。 */
+export function latestCurrentEvidence(record: ManagedArtifactRecord) {
   const current = record.evidence.filter((e) => e.contentHash === record.contentHash);
   if (current.length === 0) return undefined;
   // 取 recordedAt 最新的一条。omk 自写恒 UTC `Z`、字典序即时间序;但记录可手改 / 随仓库分发,异偏移

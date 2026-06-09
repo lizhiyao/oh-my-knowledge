@@ -15,9 +15,10 @@ import {
   loadAllManagedRecords,
   mergeManagedRecord,
   upsertManagedRecord,
+  appendManagedDecision,
   deriveManagedState,
 } from '../../src/managed/store.js';
-import type { ManagedArtifactRecord } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedDecision } from '../../src/types/index.js';
 
 function makeRecord(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
@@ -235,5 +236,80 @@ describe('managed store', () => {
     const prev = makeRecord({ distribution: [{ label: 'C', path: '/p/x', contentHash: 'a', copiedAt: 't' }] });
     const next = makeRecord({ distribution: [{ label: 'C', path: '/p/x/', contentHash: 'b', copiedAt: 't2' }] });
     assert.equal(mergeManagedRecord(prev, next).distribution.length, 1, '/p/x 与 /p/x/ 视为同一目标');
+  });
+
+  // --- promote 决定 ---
+  const promoteDecision = (over: Partial<ManagedDecision> = {}): ManagedDecision => ({
+    decisionKind: 'promote', actor: 'tester', decidedAt: '2026-06-08T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa', reportId: 'r1', ...over,
+  });
+
+  it('appendManagedDecision:append-only 追加,记录不存在返 null', () => {
+    const store = managedDir(dir);
+    assert.equal(appendManagedDecision(store, 'nope', promoteDecision()), null, '未纳管 → null');
+    const written = upsertManagedRecord(store, makeRecord());
+    const merged = appendManagedDecision(store, written.id, promoteDecision());
+    assert.equal(merged?.decisions.length, 1);
+    assert.equal(merged?.decisions[0].decisionKind, 'promote');
+    assert.deepEqual(loadManagedRecord(store, written.id)?.decisions[0].reportId, 'r1', '落盘可读回');
+  });
+
+  it('appendManagedDecision:当前内容已 promote 同 kind → 幂等不重复追加', () => {
+    const store = managedDir(dir);
+    const written = upsertManagedRecord(store, makeRecord());
+    appendManagedDecision(store, written.id, promoteDecision());
+    const again = appendManagedDecision(store, written.id, promoteDecision({ decidedAt: '2026-06-09T00:00:00.000Z' }));
+    assert.equal(again?.decisions.length, 1, '同 contentHash 的 promote 不堆第二条');
+  });
+
+  it('appendManagedDecision:换内容(contentHash 变)后再 promote 追加新决定(版本史)', () => {
+    const store = managedDir(dir);
+    const written = upsertManagedRecord(store, makeRecord());
+    appendManagedDecision(store, written.id, promoteDecision({ contentHash: 'aaaaaaaaaaaa' }));
+    const second = appendManagedDecision(store, written.id, promoteDecision({ contentHash: 'bbbbbbbbbbbb' }));
+    assert.equal(second?.decisions.length, 2, '不同内容各记一条');
+  });
+
+  it('upsert(install 重装)保留已有 decisions,不被 next 的空 decisions 覆盖', () => {
+    const store = managedDir(dir);
+    const written = upsertManagedRecord(store, makeRecord());
+    appendManagedDecision(store, written.id, promoteDecision());
+    const reinstalled = upsertManagedRecord(store, makeRecord({ contentHash: 'aaaaaaaaaaaa' }));
+    assert.equal(reinstalled.decisions.length, 1, 'install 不抹掉 promote 历史');
+  });
+
+  it('deriveManagedState:当前内容有 promote 决定 → promoted(高于 measurable)', () => {
+    const record = makeRecord({
+      contentHash: 'aaaaaaaaaaaa',
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS' }],
+      decisions: [promoteDecision({ contentHash: 'aaaaaaaaaaaa' })],
+    });
+    assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa' }).label, 'promoted');
+  });
+
+  it('deriveManagedState:drift 优先于 promoted;旧内容的 promote 决定不冒充当前', () => {
+    // 当前内容 cccc,但 promote 决定锚的是旧内容 aaaa。
+    const record = makeRecord({
+      contentHash: 'cccccccccccc',
+      decisions: [promoteDecision({ contentHash: 'aaaaaaaaaaaa' })],
+    });
+    // 源也漂了(当前盘是 dddd)→ stale 优先。
+    assert.equal(deriveManagedState({ record, currentContentHash: 'dddddddddddd' }).label, 'stale');
+    // 源不漂(盘上就是 cccc),但 promote 决定是旧内容的 → 不算 promoted,落回 installed。
+    assert.equal(deriveManagedState({ record, currentContentHash: 'cccccccccccc' }).label, 'installed');
+  });
+
+  it('validator:promote 决定的 contentHash/reportId/override 脏值被判脏丢弃', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    // override 非 {verdict:string} → 脏。
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [{ decisionKind: 'promote', actor: 'x', decidedAt: 't', override: { verdict: 123 } }] }));
+    assert.equal(loadManagedRecord(store, id), null, 'override.verdict 非 string 应判脏');
+    // contentHash 非 string → 脏。
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [{ decisionKind: 'promote', actor: 'x', decidedAt: 't', contentHash: 42 }] }));
+    assert.equal(loadManagedRecord(store, id), null, 'decision.contentHash 非 string 应判脏');
+    // 合法 promote 决定 → 读回。
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [promoteDecision()] }));
+    assert.equal(loadManagedRecord(store, id)?.decisions[0].decisionKind, 'promote', '合法决定应读回');
   });
 });

@@ -8,6 +8,7 @@ import type {
   DerivedManagedState,
   ManagedArtifactRecord,
   ManagedArtifactSource,
+  ManagedDecision,
   ManagedDistributionTarget,
   ManagedEvidenceRef,
 } from '../types/index.js';
@@ -101,8 +102,21 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     }
     return true;
   });
-  const okDec = r.decisions.every((d) => d && typeof d === 'object'
-    && isStringField((d as { decisionKind?: unknown }).decisionKind));
+  const okDec = r.decisions.every((d) => {
+    if (!d || typeof d !== 'object') return false;
+    const dec = d as unknown as Record<string, unknown>;
+    if (!isStringField(dec.decisionKind)) return false;
+    // promote/reject/rollback 的证据指针(promote 写)同样收窄:任意类型脏值不得穿过 validator 进
+    // deriveManagedState / promote 消费方。actor / decidedAt / reason 是 install 后才追加的可选展示字段,
+    // 旧记录(install 时 decisions 恒空)无,按 optional 读。
+    if (!isOptionalString(dec.actor) || !isOptionalString(dec.decidedAt) || !isOptionalString(dec.reason)) return false;
+    if (!isOptionalString(dec.contentHash) || !isOptionalString(dec.reportId)) return false;
+    if (dec.override !== undefined) {
+      const o = dec.override as Record<string, unknown>;
+      if (!o || typeof o !== 'object' || !isStringField(o.verdict)) return false;
+    }
+    return true;
+  });
   return okDist && okEv && okDec;
 }
 
@@ -231,6 +245,37 @@ export function appendManagedEvidence(
 }
 
 /**
+ * 追加一条人工管理决定(append-only,promote/reject/rollback 走此路)。与 evidence 同样**不能走 upsert**
+ * (`mergeManagedRecord` 刻意保留旧 decisions、丢弃 next.decisions),必须独立 load→push→原子重写。
+ *
+ * 幂等:**当前内容**(decision.contentHash === record.contentHash)已有同 decisionKind 的决定 → 不重复追加、
+ * 原样返回(由 CLI 提示「已 promoted」)。这让重复 `omk promote <name>` 不堆冗余事件,但换了内容(contentHash
+ * 变)后再 promote 仍会追加新决定——正是要的版本史。记录不存在(未 install)返回 null,与 evidence 同口径
+ * (管理是 install 显式 opt-in,promote 绝不为未纳管 skill 凭空建记录)。
+ */
+export function appendManagedDecision(
+  dir: string,
+  recordId: string,
+  decision: ManagedDecision,
+): ManagedArtifactRecord | null {
+  const prev = loadManagedRecord(dir, recordId);
+  if (!prev) return null;
+  const dup = decision.contentHash !== undefined
+    && prev.decisions.some((d) => d.decisionKind === decision.decisionKind && d.contentHash === decision.contentHash);
+  const merged: ManagedArtifactRecord = dup
+    ? prev
+    : { ...prev, decisions: [...prev.decisions, decision] };
+  if (!dup) {
+    mkdirSync(dir, { recursive: true });
+    const path = recordPath(dir, recordId);
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    writeFileSync(tmp, JSON.stringify(merged, null, 2));
+    renameSync(tmp, path);
+  }
+  return merged;
+}
+
+/**
  * 统一的记录构造点——所有消费方(CLI / 未来 server / SDK)经此组装,保证 schema 一致。
  * 只接收事实(身份、源、hash、分发落点);evidence/decisions 恒为空(eval/promote 的地盘)。
  */
@@ -269,9 +314,10 @@ export function recordManagedArtifact(
 /**
  * 读时推导生命周期标签。
  *   - 源缺失或 hash 漂(当前内容 ≠ 记录 contentHash)→ stale;
+ *   - 否则当前内容已有 promote 决定 → promoted;
  *   - 否则有**当前**证据 / samples → measurable;
  *   - 否则 installed。
- * 「当前证据」= contentHash 与记录当前 contentHash 匹配的 evidence —— 旧内容的 evidence 不算数,
+ * 「当前证据 / 当前决定」= contentHash 与记录当前 contentHash 匹配的 evidence / decision —— 旧内容的不算数,
  * 这正是 #203「证据必须跟 artifact 一起走」的读时保证。`'discovered'` 留给无分发的记录,此函数不产生。
  */
 export function deriveManagedState(input: DeriveManagedStateInput): DerivedManagedState {
@@ -279,6 +325,10 @@ export function deriveManagedState(input: DeriveManagedStateInput): DerivedManag
   const hasEvidence = record.evidence.some((e) => e.contentHash === record.contentHash);
   const drifted = currentContentHash === undefined || currentContentHash !== record.contentHash;
   if (drifted) return { label: 'stale', drifted: true, hasEvidence };
+  // 当前内容(contentHash 匹配)有一条 promote 决定 → 已人工接受当前版本,排在 measurable 之上。换了内容
+  // (contentHash 变)后旧的 promote 决定不冒充当前,落回 measurable/installed,直到对新内容重新 promote。
+  const promoted = record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
+  if (promoted) return { label: 'promoted', drifted: false, hasEvidence };
   if (hasEvidence || hasSamplesOrDoctorPass) return { label: 'measurable', drifted: false, hasEvidence };
   return { label: 'installed', drifted: false, hasEvidence };
 }
