@@ -2,6 +2,9 @@ import { defineConfig } from 'vitepress';
 
 const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 
+// 落地页样式(landing.css)由 theme/Landing.vue 直接 import,经 Vite 的 CSS 管线在首次绘制前
+// 进入 <head>(dev / 生产一致、无 FOUC)。规则均以 .omk-landing 限定,不污染文档页。
+
 // 站点壳。内容源直接用既有 docs/（en 在根、zh 在 /zh/，正好对齐 VitePress i18n
 // 约定）。第一刀只加首页 + 导航 / 侧栏 / 本地搜索，不重写任何文档正文。
 export default defineConfig({
@@ -71,6 +74,10 @@ export default defineConfig({
             ],
           },
         ],
+        footer: {
+          message: 'Learn more · <a href="/quickstart-skill-eval">Quickstart</a> · <a href="/reference/cli">CLI reference</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
+          copyright: 'MIT Licensed · © oh-my-knowledge',
+        },
       },
     },
 
@@ -132,6 +139,10 @@ export default defineConfig({
         outline: { label: '本页目录' },
         lastUpdatedText: '最后更新',
         returnToTopLabel: '回到顶部',
+        footer: {
+          message: '了解更多 · <a href="/zh/quickstart-skill-eval">快速上手</a> · <a href="/zh/reference/cli">CLI 参考</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
+          copyright: 'MIT Licensed · © oh-my-knowledge',
+        },
       },
     },
   },

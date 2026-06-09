@@ -1,0 +1,291 @@
+
+
+<!-- ===================== HERO ===================== -->
+<header class="hero">
+  <div class="hero-logo-wrap" aria-hidden="true">
+    <span class="hero-blob b1"></span>
+    <span class="hero-blob b2"></span>
+    <span class="hero-blob b3"></span>
+    <img class="hero-logo" src="/logo-hero.svg" alt="" />
+  </div>
+  <div class="wrap">
+    <span class="tag"><span class="dot"></span> LLM 知识输入全周期 · <code>skill · prompt · RAG · agent</code></span>
+
+    <h1>让每一次改动<br/>都有<span class="em">统计学证据</span></h1>
+
+    <p class="sub">管理、评测、改进、观测你的 skill、prompt、RAG 与 agent 上下文 —— <b>同一套统计严谨性贯穿全程</b>。Bootstrap 置信区间、长度去偏默认开启，不是 advanced flag，是你无法忽略的安全网。</p>
+
+    <div class="cta">
+      <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge', this)">复制 ⧉</span></span>
+      <a class="lnk" href="/zh/quickstart-skill-eval">快速开始 <span class="ar">→</span></a>
+    </div>
+
+    <div class="trust">
+      <span><b>npm</b> 周下载 <span id="npmDl">···</span></span><span class="sep"></span>
+      <span><a href="https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml" target="_blank" rel="noopener"><b>CI</b> passing</a></span><span class="sep"></span>
+      <span><b>MIT</b></span><span class="sep"></span>
+      <span>Node ≥ 22</span><span class="sep"></span>
+      <span>相同模型 · 相同用例 · 只改知识载体</span>
+    </div>
+
+    <!-- interactive stage -->
+    <div class="stage">
+      <div class="stage-head">
+        <span class="dots"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
+        <span class="title">omk — <b id="stTitle">eval</b> · 知识载体评测生命周期</span>
+        <span class="live">live</span>
+      </div>
+
+      <!-- lifecycle switch -->
+      <div class="rail-wrap">
+        <div class="rail" role="tablist">
+          <span class="thumb" id="thumb"><span class="thumb-g"></span></span>
+          <span class="rail-arrow a1" aria-hidden="true">›</span>
+          <span class="rail-arrow a2" aria-hidden="true">›</span>
+          <button class="seg" role="tab" aria-selected="false" data-k="doctor" data-i="0">
+            <span class="ph">上线前</span><span class="nm"><span class="ic">🩺</span>doctor</span>
+          </button>
+          <button class="seg" role="tab" aria-selected="true" data-k="eval" data-i="1">
+            <span class="ph">发布时</span><span class="nm"><span class="ic">📊</span>eval</span>
+          </button>
+          <button class="seg" role="tab" aria-selected="false" data-k="observe" data-i="2">
+            <span class="ph">上线后</span><span class="nm"><span class="ic">🔭</span>observe</span>
+          </button>
+        </div>
+        <p class="rail-cap" id="railCap"></p>
+      </div>
+
+      <div class="panels">
+        <!-- ===== EVAL panel ===== -->
+        <div class="panel on" data-p="eval">
+          <div class="panel-q"><span class="badge">eval</span> 控制变量 A/B：相同模型、相同用例，只改知识载体 —— 综合得分提升的 95% 置信区间</div>
+          <div class="panel-body">
+          <svg viewBox="0 0 680 200" width="100%" style="max-width:660px;display:block;margin:2px auto 0" role="img" aria-label="综合得分提升的置信区间森林图">
+            <!-- grid + ticks -->
+            <g class="svg-muted" font-family="JetBrains Mono" font-size="11">
+              <line class="svg-axis" x1="154" y1="34" x2="154" y2="150" stroke-width="1.5"/>
+              <text x="150" y="170">0%</text>
+              <line class="svg-grid" x1="303" y1="34" x2="303" y2="150"/>
+              <text x="296" y="170">+10%</text>
+              <line class="svg-grid" x1="451" y1="34" x2="451" y2="150"/>
+              <text x="444" y="170">+20%</text>
+              <line class="svg-grid" x1="600" y1="34" x2="600" y2="150"/>
+              <text x="593" y="170">+30%</text>
+            </g>
+            <!-- significance threshold note -->
+            <text class="svg-red" x="158" y="48" font-family="Inter" font-size="11" font-weight="600">不显著阈值（CI 跨 0）</text>
+            <!-- CI bar -->
+            <g>
+              <line class="svg-teal-s" x1="320" y1="96" x2="532" y2="96" stroke-width="3" stroke-linecap="round"/>
+              <line class="svg-teal-s" x1="320" y1="84" x2="320" y2="108" stroke-width="3" stroke-linecap="round"/>
+              <line class="svg-teal-s" x1="532" y1="84" x2="532" y2="108" stroke-width="3" stroke-linecap="round"/>
+              <circle class="svg-teal svg-halo" cx="426" cy="96" r="9" stroke-width="2.5"/>
+              <text class="svg-ink" x="426" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="600">+18.3%</text>
+              <text class="svg-teal" x="320" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="11">+11.2</text>
+              <text class="svg-teal" x="532" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="11">+25.4</text>
+            </g>
+          </svg>
+          <div class="verdict">
+            <span class="check">✓</span>
+            <span class="vt">v2 明显优于 v1，可以发布</span>
+            <span class="vm"><span>CI[+11.2, +25.4]</span><span>α = 0.81</span><span>已去长度偏倚</span></span>
+          </div>
+          </div>
+        </div>
+
+        <!-- ===== DOCTOR panel ===== -->
+        <div class="panel" data-p="doctor">
+          <div class="panel-q"><span class="badge">doctor</span> 上线前体检：7 个内置维度独立打分（静态规则 + LLM 审计，可离线）</div>
+          <div class="panel-body">
+          <div class="dbars">
+            <div class="dbar"><span class="nm">触发与边界</span><span class="track"><span class="fill fill-ok" style="width:94%"></span></span><span class="lv lv-ok">健康</span></div>
+            <div class="dbar"><span class="nm">文档清晰</span><span class="track"><span class="fill fill-ok" style="width:90%"></span></span><span class="lv lv-ok">健康</span></div>
+            <div class="dbar"><span class="nm">指令精确性</span><span class="track"><span class="fill fill-sub" style="width:62%"></span></span><span class="lv lv-sub">亚健康</span></div>
+            <div class="dbar"><span class="nm">依赖检查</span><span class="track"><span class="fill fill-ok" style="width:88%"></span></span><span class="lv lv-ok">健康</span></div>
+            <div class="dbar"><span class="nm">工具规范</span><span class="track"><span class="fill fill-ok" style="width:85%"></span></span><span class="lv lv-ok">健康</span></div>
+            <div class="dbar"><span class="nm">安全与合规</span><span class="track"><span class="fill fill-sub" style="width:58%"></span></span><span class="lv lv-sub">亚健康</span></div>
+            <div class="dbar"><span class="nm">示例完备</span><span class="track"><span class="fill fill-ok" style="width:91%"></span></span><span class="lv lv-ok">健康</span></div>
+          </div>
+          <span class="summary-pill">🩺 健康度 良好 · <span class="n">5 健康 / 2 亚健康</span> · 体检建议 3 条</span>
+          </div>
+        </div>
+
+        <!-- ===== OBSERVE panel ===== -->
+        <div class="panel" data-p="observe">
+          <div class="panel-q"><span class="badge">observe</span> 线上观测：解析 Claude Code session，量化失败率、成本与知识缺口</div>
+          <div class="panel-body">
+          <div class="ometrics">
+            <div class="ocard"><div class="ok">会话失败率</div><div class="ov">4.2%</div><div class="od up">▼ 较上周 −1.6pt</div></div>
+            <div class="ocard"><div class="ok">P50 耗时</div><div class="ov">18.4s</div><div class="od up">▼ −2.1s</div></div>
+            <div class="ocard"><div class="ok">平均成本 / 会话</div><div class="ov">$0.012</div><div class="od down">▲ +$0.003</div></div>
+          </div>
+          <div class="gap">
+            <span class="gi">⚠</span>
+            <span class="gx"><b>知识缺口信号：</b>「环境探测前置缺失」在 12 个会话中重复出现 —— 严重度加权排第一</span>
+            <span class="gn">×12</span>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== CAPABILITIES ===================== -->
+<section class="band" id="caps">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">三类评测能力</span>
+      <h2>一条流水线，覆盖 skill 的一生</h2>
+      <p class="lead">doctor、eval、observe 不是三个工具，是同一套测量学贯穿 skill 生命周期的三个时点 —— 各自回答一个不同的问题。</p>
+    </div>
+    <div class="cap-grid">
+      <div class="cap d">
+        <div class="ic">🩺</div>
+        <h3>doctor <span class="when">上线前</span></h3>
+        <p>这个 skill 本身写得健康吗？7 个内置维度独立打分，静态规则零成本，LLM 审计可深度，支持接口驱动的自定义维度。</p>
+        <code class="cmd2">$ omk doctor my-skill --dimensions audit.yaml</code>
+        <ul><li>触发边界 / 文档 / 指令 / 依赖 / 工具 / 安全 / 示例</li><li>--static-only 离线无 LLM 调用</li><li>endpoint 自定义维度：调接口做深度审查</li></ul>
+      </div>
+      <div class="cap e">
+        <div class="ic">📊</div>
+        <h3>eval <span class="when">发布时</span></h3>
+        <p>v2 真的比 v1 好吗？控制变量 A/B —— 相同模型、相同用例，只改知识载体。六维独立评分，一行 verdict 给 ship 建议。</p>
+        <code class="cmd2">$ omk eval --control v1 --treatment v2</code>
+        <ul><li>Bootstrap CI / 长度去偏 / 饱和曲线默认开</li><li>Krippendorff α：给 gold 集自动算评委↔人工一致</li><li>盲测 A/B · 多评委 ensemble · 多轮方差</li></ul>
+      </div>
+      <div class="cap o">
+        <div class="ic">🔭</div>
+        <h3>observe <span class="when">上线后</span></h3>
+        <p>线上跑得怎么样？解析真实 session JSONL，测每个 skill 的失败率、耗时、token 成本，识别严重度加权的知识缺口信号。</p>
+        <code class="cmd2">$ omk observe ~/.claude/sessions</code>
+        <ul><li>会话失败率 / 耗时 / 成本逐 skill 拆解</li><li>知识缺口识别：量化风险敞口</li><li>为 sample / evolve 迭代提供线上信号</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MOAT ===================== -->
+<section class="band alt" id="moat">
+  <div class="wrap">
+    <div class="sec-head" style="text-align:center">
+      <span class="eyebrow">护城河 · 测量可信度</span>
+      <h2 style="max-width:780px;margin:12px auto 0">严谨是<span style="color:var(--blue)">底座</span>，不是附加项</h2>
+      <p class="lead" style="margin:16px auto 0">决定一个对比可信与否的，是这五处常被忽略的失真。omk 将每一道防线内建于底层，无需你逐个开启。</p>
+    </div>
+    <div class="moat-list">
+      <div class="mrow2">
+        <span class="no">01</span>
+        <div class="fail"><div class="t">点估计把抽样波动误读为真实增益</div></div>
+        <div class="fix2"><div class="name">Bootstrap 置信区间 <span class="badge2">内建</span></div><div class="d">输出区间而非单点，显著性可直接判定。</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">02</span>
+        <div class="fail"><div class="t">复合均分掩盖单一维度的回退</div></div>
+        <div class="fix2"><div class="name">三层独立评分 · 全过门槛 <span class="badge2">内建</span></div><div class="d">事实 / 行为 / 评委任一不达标，即不予通过。</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">03</span>
+        <div class="fail"><div class="t">对照组读到被测载体本身</div><div class="s">construct validity 失守</div></div>
+        <div class="fix2"><div class="name">strict-baseline 隔离 <span class="badge2">内建</span></div><div class="d">封闭技能自发现、Skill 工具、cwd 旁路三条通道。</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">04</span>
+        <div class="fail"><div class="t">评委对长答案存在系统性偏好</div></div>
+        <div class="fix2"><div class="name">长度去偏评委 <span class="badge2">内建</span></div><div class="d">评分剔除长度协变量，篇幅不再换分。</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">05</span>
+        <div class="fail"><div class="t">评委评分自身的信度无从度量</div></div>
+        <div class="fix2"><div class="name">Krippendorff α <span class="badge2">配 gold 即开</span></div><div class="d">以人工标注为锚，量化评委↔人工一致性。</div></div>
+      </div>
+    </div>
+    <p class="moat-foot">同类工具普遍只覆盖其中一两项。<b>omk 的取舍：把可信度做进底层，而非留作选项。</b></p>
+  </div>
+</section>
+
+<!-- ===================== COMPARISON ===================== -->
+<section class="band" id="cmp">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">选型对比</span>
+      <h2>同一套标准下的横向对比</h2>
+      <p class="lead">维度取自通用 LLMOps 评测选型轴（指标库 / judge / CI / 可观测 / 协作）＋ 测量学的效度与信度 —— 不是为 omk 量身定的规则。omk 在好几条轴上并不占优，如实标出。</p>
+    </div>
+    <div class="cmp-wrap">
+    <table class="cmp">
+      <thead><tr><th>能力维度</th><th class="omk-col">omk</th><th>promptfoo</th><th>DeepEval</th><th>LangSmith</th></tr></thead>
+      <tbody>
+        <tr class="cat"><td colspan="5">测量可信度 · 测量学效度 / 信度</td></tr>
+        <tr><td>统计显著性（置信区间 / 检验）</td><td class="omk-col y">✓ <small>Bootstrap</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+        <tr><td>评委 ↔ 人工 信度（一致性度量）</td><td class="omk-col y">✓ <small>Krippendorff α</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+        <tr><td>评估偏差控制（长度去偏）</td><td class="omk-col y">✓ <small>默认</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+
+        <tr class="cat"><td colspan="5">评估能力</td></tr>
+        <tr><td>断言 / 指标库广度</td><td class="omk-col y">✓ <small>30+</small></td><td class="y">✓</td><td class="y">✓</td><td class="p">◑</td></tr>
+        <tr><td>RAG 专项 metric</td><td class="omk-col p">◑ <small>3 项</small></td><td class="p">◑</td><td class="y">✓ <small>丰富</small></td><td class="p">◑</td></tr>
+        <tr><td>LLM-as-judge</td><td class="y omk-col">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+
+        <tr class="cat"><td colspan="5">工程 & 协作</td></tr>
+        <tr><td>CI/CD 集成（退出码路由）</td><td class="omk-col y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="p">◑</td></tr>
+        <tr><td>上手速度 / 配置简洁</td><td class="omk-col p">◑</td><td class="y">✓ <small>极快</small></td><td class="p">◑</td><td class="p">◑</td></tr>
+        <tr><td>实验追踪 / Tracing</td><td class="omk-col n">—</td><td class="n">—</td><td class="p">◑</td><td class="y">✓ <small>强项</small></td></tr>
+        <tr><td>托管 SaaS 看板 / 团队协作</td><td class="omk-col n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+
+        <tr class="cat"><td colspan="5">生态 & 集成</td></tr>
+        <tr><td>社区规模（GitHub stars, 2026-04）</td><td class="omk-col p">新生</td><td class="y">9k+</td><td class="y">12k+</td><td class="p">商业</td></tr>
+        <tr><td>原生 Claude Code skill</td><td class="omk-col y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="cmp-legend"><span><b class="y" style="color:var(--teal)">✓</b> 原生支持</span><span><b class="p" style="color:var(--amber)">◑</b> 部分 / 需配置</span><span><b style="color:#CBD5E1">—</b> 不支持</span></div>
+    <p class="cmp-foot">完整对比（8 工具 × 30+ 维，含 RAGAS / OpenAI Evals / lm-eval-harness / inspect-ai）见 <a href="/zh/reference/comparison" style="color:var(--blue);font-weight:600">对比文档</a>，数据截至 2026-04，<b>发现过时请提 PR 修正</b>。结论：没有银弹 —— omk 的取舍是「把统计可信度做到默认」，要 SaaS 看板选 LangSmith、要学术基准选 lm-eval-harness。</p>
+  </div>
+</section>
+
+<!-- ===================== AGENT ===================== -->
+<section class="band alt" id="agent">
+  <div class="wrap">
+    <div class="agent">
+      <div class="term">
+        <div class="bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></div>
+        <div class="body">
+          <div><span class="cm">$ omk install omk-agent-skill</span> <span class="gr"># 一次性安装</span></div>
+          <div class="gr">  ✓ 已写入本机检测到的 Claude Code / Codex</div>
+          <div style="margin-top:10px"><span class="cm">/omk eval</span> <span class="gr"># 评测当前项目的 artifact</span></div>
+          <div><span class="cm">/omk evolve</span> <span class="gr"># 一键:体检→生成用例→自迭代</span></div>
+          <div><span class="cm">/omk sample</span> <span class="gr"># 生成或补齐评测用例</span></div>
+          <div style="margin-top:10px" class="gr">&gt; <span class="wh">帮我比较 v1 和 v2 的差异</span></div>
+          <div class="gr">  ↳ 推断意图 → omk eval --control v1 --treatment v2 …</div>
+        </div>
+      </div>
+      <div class="copy">
+        <span class="eyebrow">Agent 集成</span>
+        <h3>在你的 Coding Agent 里直接用</h3>
+        <p>一行 <code style="font-family:var(--mono);background:var(--blue-l);color:var(--blue-d);padding:2px 6px;border-radius:5px">omk install omk-agent-skill</code> 把官方 Agent Skill 装进本机已检测到的 Claude Code / Codex（<code style="font-family:var(--mono)">--to all</code> 装到全部）。之后 Claude Code 里 <code style="font-family:var(--mono);background:var(--blue-l);color:var(--blue-d);padding:2px 6px;border-radius:5px">/omk</code> 开箱即用，Codex 等直接跑 <code style="font-family:var(--mono)">omk</code> CLI。</p>
+        <div class="nl">
+          <p class="nl-tip">不用记命令 —— 用大白话说目标，agent 会从上下文定位 skill、选对命令。</p>
+          <div class="bubble-row">
+            <span class="who">你</span>
+            <div class="bubble">把这个 skill 改得更稳，再和上一版比一比</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FINAL CTA ===================== -->
+<section class="band" id="start">
+  <div class="wrap">
+    <p class="punch">下一次发布前，<span class="em">先让数据说话</span>。</p>
+    <div class="final">
+      <span class="eyebrow">5 分钟跑通第一个评测</span>
+      <h2>从一个裸数字，到一个经得起追问的结论</h2>
+      <p class="lead" style="margin:14px auto 0">不用改任何文件 —— <code style="font-family:var(--mono)">omk init</code> 脚手架两版 skill 和三条用例，<code style="font-family:var(--mono)">omk eval</code> 5 分钟内出 HTML 报告 + 一行 verdict。</p>
+      <span class="cmd"><span><span class="pfx">$</span> omk init demo &amp;&amp; cd demo &amp;&amp; omk eval</span><span class="copy" onclick="omkCopy('omk init demo && cd demo && omk eval', this)">复制 ⧉</span></span>
+    </div>
+  </div>
+</section>
+
+

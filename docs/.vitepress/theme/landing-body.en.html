@@ -1,0 +1,291 @@
+
+
+<!-- ===================== HERO ===================== -->
+<header class="hero">
+  <div class="hero-logo-wrap" aria-hidden="true">
+    <span class="hero-blob b1"></span>
+    <span class="hero-blob b2"></span>
+    <span class="hero-blob b3"></span>
+    <img class="hero-logo" src="/logo-hero.svg" alt="" />
+  </div>
+  <div class="wrap">
+    <span class="tag"><span class="dot"></span> Full lifecycle for LLM knowledge inputs · <code>skill · prompt · RAG · agent</code></span>
+
+    <h1>Make every change<br/>backed by <span class="em">statistical evidence</span></h1>
+
+    <p class="sub">Manage, evaluate, improve, and observe your skills, prompts, RAG, and agent context —— <b>one rigorous statistical foundation across the whole journey</b>. Bootstrap confidence intervals and length-debiasing are on by default — not an advanced flag, but a safety net you can't ignore.</p>
+
+    <div class="cta">
+      <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge', this)">Copy ⧉</span></span>
+      <a class="lnk" href="/quickstart-skill-eval">Get started <span class="ar">→</span></a>
+    </div>
+
+    <div class="trust">
+      <span><b>npm</b> weekly <span id="npmDl">···</span></span><span class="sep"></span>
+      <span><a href="https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml" target="_blank" rel="noopener"><b>CI</b> passing</a></span><span class="sep"></span>
+      <span><b>MIT</b></span><span class="sep"></span>
+      <span>Node ≥ 22</span><span class="sep"></span>
+      <span>Same model · same cases · only the knowledge changes</span>
+    </div>
+
+    <!-- interactive stage -->
+    <div class="stage">
+      <div class="stage-head">
+        <span class="dots"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
+        <span class="title">omk — <b id="stTitle">eval</b> · knowledge-carrier evaluation lifecycle</span>
+        <span class="live">live</span>
+      </div>
+
+      <!-- lifecycle switch -->
+      <div class="rail-wrap">
+        <div class="rail" role="tablist">
+          <span class="thumb" id="thumb"><span class="thumb-g"></span></span>
+          <span class="rail-arrow a1" aria-hidden="true">›</span>
+          <span class="rail-arrow a2" aria-hidden="true">›</span>
+          <button class="seg" role="tab" aria-selected="false" data-k="doctor" data-i="0">
+            <span class="ph">pre-ship</span><span class="nm"><span class="ic">🩺</span>doctor</span>
+          </button>
+          <button class="seg" role="tab" aria-selected="true" data-k="eval" data-i="1">
+            <span class="ph">on release</span><span class="nm"><span class="ic">📊</span>eval</span>
+          </button>
+          <button class="seg" role="tab" aria-selected="false" data-k="observe" data-i="2">
+            <span class="ph">in prod</span><span class="nm"><span class="ic">🔭</span>observe</span>
+          </button>
+        </div>
+        <p class="rail-cap" id="railCap"></p>
+      </div>
+
+      <div class="panels">
+        <!-- ===== EVAL panel ===== -->
+        <div class="panel on" data-p="eval">
+          <div class="panel-q"><span class="badge">eval</span> Controlled A/B: same model, same cases, only the knowledge changes — 95% CI on the composite-score lift</div>
+          <div class="panel-body">
+          <svg viewBox="0 0 680 200" width="100%" style="max-width:660px;display:block;margin:2px auto 0" role="img" aria-label="Confidence-interval forest plot of composite-score lift">
+            <!-- grid + ticks -->
+            <g class="svg-muted" font-family="JetBrains Mono" font-size="11">
+              <line class="svg-axis" x1="154" y1="34" x2="154" y2="150" stroke-width="1.5"/>
+              <text x="150" y="170">0%</text>
+              <line class="svg-grid" x1="303" y1="34" x2="303" y2="150"/>
+              <text x="296" y="170">+10%</text>
+              <line class="svg-grid" x1="451" y1="34" x2="451" y2="150"/>
+              <text x="444" y="170">+20%</text>
+              <line class="svg-grid" x1="600" y1="34" x2="600" y2="150"/>
+              <text x="593" y="170">+30%</text>
+            </g>
+            <!-- significance threshold note -->
+            <text class="svg-red" x="158" y="48" font-family="Inter" font-size="11" font-weight="600">Not significant (CI crosses 0)</text>
+            <!-- CI bar -->
+            <g>
+              <line class="svg-teal-s" x1="320" y1="96" x2="532" y2="96" stroke-width="3" stroke-linecap="round"/>
+              <line class="svg-teal-s" x1="320" y1="84" x2="320" y2="108" stroke-width="3" stroke-linecap="round"/>
+              <line class="svg-teal-s" x1="532" y1="84" x2="532" y2="108" stroke-width="3" stroke-linecap="round"/>
+              <circle class="svg-teal svg-halo" cx="426" cy="96" r="9" stroke-width="2.5"/>
+              <text class="svg-ink" x="426" y="78" text-anchor="middle" font-family="JetBrains Mono" font-size="14" font-weight="600">+18.3%</text>
+              <text class="svg-teal" x="320" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="11">+11.2</text>
+              <text class="svg-teal" x="532" y="128" text-anchor="middle" font-family="JetBrains Mono" font-size="11">+25.4</text>
+            </g>
+          </svg>
+          <div class="verdict">
+            <span class="check">✓</span>
+            <span class="vt">v2 clearly beats v1 — ship it</span>
+            <span class="vm"><span>CI[+11.2, +25.4]</span><span>α = 0.81</span><span>length-debiased</span></span>
+          </div>
+          </div>
+        </div>
+
+        <!-- ===== DOCTOR panel ===== -->
+        <div class="panel" data-p="doctor">
+          <div class="panel-q"><span class="badge">doctor</span> Pre-ship checkup: 7 built-in dimensions scored independently (static rules + LLM audit, offline-capable)</div>
+          <div class="panel-body">
+          <div class="dbars">
+            <div class="dbar"><span class="nm">Triggers</span><span class="track"><span class="fill fill-ok" style="width:94%"></span></span><span class="lv lv-ok">Good</span></div>
+            <div class="dbar"><span class="nm">Clarity</span><span class="track"><span class="fill fill-ok" style="width:90%"></span></span><span class="lv lv-ok">Good</span></div>
+            <div class="dbar"><span class="nm">Precision</span><span class="track"><span class="fill fill-sub" style="width:62%"></span></span><span class="lv lv-sub">Fair</span></div>
+            <div class="dbar"><span class="nm">Deps</span><span class="track"><span class="fill fill-ok" style="width:88%"></span></span><span class="lv lv-ok">Good</span></div>
+            <div class="dbar"><span class="nm">Tools</span><span class="track"><span class="fill fill-ok" style="width:85%"></span></span><span class="lv lv-ok">Good</span></div>
+            <div class="dbar"><span class="nm">Safety</span><span class="track"><span class="fill fill-sub" style="width:58%"></span></span><span class="lv lv-sub">Fair</span></div>
+            <div class="dbar"><span class="nm">Examples</span><span class="track"><span class="fill fill-ok" style="width:91%"></span></span><span class="lv lv-ok">Good</span></div>
+          </div>
+          <span class="summary-pill">🩺 Health: Good · <span class="n">5 healthy / 2 at risk</span> · 3 suggestions</span>
+          </div>
+        </div>
+
+        <!-- ===== OBSERVE panel ===== -->
+        <div class="panel" data-p="observe">
+          <div class="panel-q"><span class="badge">observe</span> In-prod observation: parse Claude Code sessions to quantify failure rate, cost, and knowledge gaps</div>
+          <div class="panel-body">
+          <div class="ometrics">
+            <div class="ocard"><div class="ok">Failure rate</div><div class="ov">4.2%</div><div class="od up">▼ −1.6pt vs last week</div></div>
+            <div class="ocard"><div class="ok">P50 latency</div><div class="ov">18.4s</div><div class="od up">▼ −2.1s</div></div>
+            <div class="ocard"><div class="ok">Cost / session</div><div class="ov">$0.012</div><div class="od down">▲ +$0.003</div></div>
+          </div>
+          <div class="gap">
+            <span class="gi">⚠</span>
+            <span class="gx"><b>Knowledge-gap signal:</b> "missing environment probe upfront" recurs across 12 sessions — ranked #1 by severity weight</span>
+            <span class="gn">×12</span>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== CAPABILITIES ===================== -->
+<section class="band" id="caps">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Three evaluation capabilities</span>
+      <h2>One pipeline across a skill's whole life</h2>
+      <p class="lead">doctor, eval, and observe aren't three tools — they're one measurement discipline at three points in a skill's lifecycle, each answering a different question.</p>
+    </div>
+    <div class="cap-grid">
+      <div class="cap d">
+        <div class="ic">🩺</div>
+        <h3>doctor <span class="when">pre-ship</span></h3>
+        <p>Is the skill itself written healthily? 7 built-in dimensions scored independently — static rules at zero cost, LLM audit for depth, plus endpoint-driven custom dimensions.</p>
+        <code class="cmd2">$ omk doctor my-skill --dimensions audit.yaml</code>
+        <ul><li>Triggers / docs / instructions / deps / tools / safety / examples</li><li>--static-only: offline, no LLM calls</li><li>Custom endpoint dimensions: call an API for deep review</li></ul>
+      </div>
+      <div class="cap e">
+        <div class="ic">📊</div>
+        <h3>eval <span class="when">on release</span></h3>
+        <p>Is v2 really better than v1? A controlled A/B — same model, same cases, only the knowledge changes. Six dimensions scored independently, one-line verdict with a ship recommendation.</p>
+        <code class="cmd2">$ omk eval --control v1 --treatment v2</code>
+        <ul><li>Bootstrap CI / length-debias / saturation curves on by default</li><li>Krippendorff α: judge↔human agreement on a gold set</li><li>Blind A/B · judge ensemble · multi-run variance</li></ul>
+      </div>
+      <div class="cap o">
+        <div class="ic">🔭</div>
+        <h3>observe <span class="when">in prod</span></h3>
+        <p>How is it doing in production? Parse real session JSONL to measure each skill's failure rate, latency, and token cost, and surface severity-weighted knowledge-gap signals.</p>
+        <code class="cmd2">$ omk observe ~/.claude/sessions</code>
+        <ul><li>Failure rate / latency / cost broken down per skill</li><li>Knowledge-gap detection: quantify risk exposure</li><li>Feeds production signal into sample / evolve iteration</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MOAT ===================== -->
+<section class="band alt" id="moat">
+  <div class="wrap">
+    <div class="sec-head" style="text-align:center">
+      <span class="eyebrow">Moat · measurement credibility</span>
+      <h2 style="max-width:780px;margin:12px auto 0">Rigor is the <span style="color:var(--blue)">foundation</span>, not an add-on</h2>
+      <p class="lead" style="margin:16px auto 0">Five often-overlooked distortions decide whether a comparison is trustworthy. omk builds every defense into the foundation, so you don't have to enable them one by one.</p>
+    </div>
+    <div class="moat-list">
+      <div class="mrow2">
+        <span class="no">01</span>
+        <div class="fail"><div class="t">A point estimate mistakes sampling noise for a real gain</div></div>
+        <div class="fix2"><div class="name">Bootstrap confidence intervals <span class="badge2">built-in</span></div><div class="d">Reports an interval, not a point — significance is read off directly.</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">02</span>
+        <div class="fail"><div class="t">A composite average hides a regression in a single dimension</div></div>
+        <div class="fix2"><div class="name">Three-layer independent scoring · pass-all gate <span class="badge2">built-in</span></div><div class="d">Fail any of fact / behavior / judge and it doesn't pass.</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">03</span>
+        <div class="fail"><div class="t">The control group reads the very carrier under test</div><div class="s">construct validity breaks down</div></div>
+        <div class="fix2"><div class="name">strict-baseline isolation <span class="badge2">built-in</span></div><div class="d">Closes three leaks: skill self-discovery, the Skill tool, and the cwd bypass.</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">04</span>
+        <div class="fail"><div class="t">Judges systematically prefer longer answers</div></div>
+        <div class="fix2"><div class="name">Length-debiased judging <span class="badge2">built-in</span></div><div class="d">Scoring removes the length covariate — verbosity no longer buys points.</div></div>
+      </div>
+      <div class="mrow2">
+        <span class="no">05</span>
+        <div class="fail"><div class="t">The reliability of the judge's own scoring is unmeasurable</div></div>
+        <div class="fix2"><div class="name">Krippendorff α <span class="badge2">on with a gold set</span></div><div class="d">Anchored on human labels, it quantifies judge↔human agreement.</div></div>
+      </div>
+    </div>
+    <p class="moat-foot">Peer tools typically cover only one or two of these. <b>omk's choice: build credibility into the foundation rather than leave it optional.</b></p>
+  </div>
+</section>
+
+<!-- ===================== COMPARISON ===================== -->
+<section class="band" id="cmp">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Tool comparison</span>
+      <h2>A side-by-side under one set of criteria</h2>
+      <p class="lead">Criteria come from common LLMOps selection axes (metric library / judge / CI / observability / collaboration) plus measurement validity & reliability — not rules tailored to omk. On several axes omk doesn't win, and we mark that honestly.</p>
+    </div>
+    <div class="cmp-wrap">
+    <table class="cmp">
+      <thead><tr><th>Capability</th><th class="omk-col">omk</th><th>promptfoo</th><th>DeepEval</th><th>LangSmith</th></tr></thead>
+      <tbody>
+        <tr class="cat"><td colspan="5">Measurement credibility · validity / reliability</td></tr>
+        <tr><td>Statistical significance (CI / tests)</td><td class="omk-col y">✓ <small>Bootstrap</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+        <tr><td>Judge ↔ human reliability (agreement)</td><td class="omk-col y">✓ <small>Krippendorff α</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+        <tr><td>Evaluation bias control (length-debias)</td><td class="omk-col y">✓ <small>default</small></td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+
+        <tr class="cat"><td colspan="5">Evaluation capability</td></tr>
+        <tr><td>Assertion / metric library breadth</td><td class="omk-col y">✓ <small>30+</small></td><td class="y">✓</td><td class="y">✓</td><td class="p">◑</td></tr>
+        <tr><td>RAG-specific metrics</td><td class="omk-col p">◑ <small>3</small></td><td class="p">◑</td><td class="y">✓ <small>rich</small></td><td class="p">◑</td></tr>
+        <tr><td>LLM-as-judge</td><td class="y omk-col">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+
+        <tr class="cat"><td colspan="5">Engineering & collaboration</td></tr>
+        <tr><td>CI/CD integration (exit-code routing)</td><td class="omk-col y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="p">◑</td></tr>
+        <tr><td>Onboarding speed / config simplicity</td><td class="omk-col p">◑</td><td class="y">✓ <small>very fast</small></td><td class="p">◑</td><td class="p">◑</td></tr>
+        <tr><td>Experiment tracking / tracing</td><td class="omk-col n">—</td><td class="n">—</td><td class="p">◑</td><td class="y">✓ <small>strong</small></td></tr>
+        <tr><td>Hosted SaaS dashboard / team collab</td><td class="omk-col n">—</td><td class="n">—</td><td class="y">✓</td><td class="y">✓</td></tr>
+
+        <tr class="cat"><td colspan="5">Ecosystem & integration</td></tr>
+        <tr><td>Community size (GitHub stars, 2026-04)</td><td class="omk-col p">nascent</td><td class="y">9k+</td><td class="y">12k+</td><td class="p">commercial</td></tr>
+        <tr><td>Native Claude Code skill</td><td class="omk-col y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="cmp-legend"><span><b class="y" style="color:var(--teal)">✓</b> Native</span><span><b class="p" style="color:var(--amber)">◑</b> Partial / needs config</span><span><b style="color:var(--n-dash)">—</b> Not supported</span></div>
+    <p class="cmp-foot">Full comparison (8 tools × 30+ dimensions, incl. RAGAS / OpenAI Evals / lm-eval-harness / inspect-ai) is in the <a href="/reference/comparison" style="color:var(--blue);font-weight:600">comparison doc</a>, current as of 2026-04 — <b>spot something stale? send a PR</b>. Takeaway: no silver bullet — omk's tradeoff is "statistical credibility by default"; want a SaaS dashboard, pick LangSmith; want academic benchmarks, pick lm-eval-harness.</p>
+  </div>
+</section>
+
+<!-- ===================== AGENT ===================== -->
+<section class="band alt" id="agent">
+  <div class="wrap">
+    <div class="agent">
+      <div class="term">
+        <div class="bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></div>
+        <div class="body">
+          <div><span class="cm">$ omk install omk-agent-skill</span> <span class="gr"># one-time install</span></div>
+          <div class="gr">  ✓ Wrote to detected Claude Code / Codex</div>
+          <div style="margin-top:10px"><span class="cm">/omk eval</span> <span class="gr"># evaluate this project's artifact</span></div>
+          <div><span class="cm">/omk evolve</span> <span class="gr"># one shot: checkup → samples → self-iterate</span></div>
+          <div><span class="cm">/omk sample</span> <span class="gr"># generate or top up eval cases</span></div>
+          <div style="margin-top:10px" class="gr">&gt; <span class="wh">Compare v1 and v2 for me</span></div>
+          <div class="gr">  ↳ infer intent → omk eval --control v1 --treatment v2 …</div>
+        </div>
+      </div>
+      <div class="copy">
+        <span class="eyebrow">Agent integration</span>
+        <h3>Use it right inside your coding agent</h3>
+        <p>One line — <code style="font-family:var(--mono);background:var(--blue-l);color:var(--blue-d);padding:2px 6px;border-radius:5px">omk install omk-agent-skill</code> — installs the official Agent Skill into the Claude Code / Codex it detects locally (<code style="font-family:var(--mono)">--to all</code> writes to all). After that, <code style="font-family:var(--mono);background:var(--blue-l);color:var(--blue-d);padding:2px 6px;border-radius:5px">/omk</code> works out of the box in Claude Code; in Codex and others, just run the <code style="font-family:var(--mono)">omk</code> CLI.</p>
+        <div class="nl">
+          <p class="nl-tip">No commands to memorize — state your goal in plain words, and the agent locates the skill from context and picks the right command.</p>
+          <div class="bubble-row">
+            <span class="who">You</span>
+            <div class="bubble">Make this skill more robust, then compare it against the last version</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FINAL CTA ===================== -->
+<section class="band" id="start">
+  <div class="wrap">
+    <p class="punch">Before your next release, <span class="em">let the data speak first</span>.</p>
+    <div class="final">
+      <span class="eyebrow">Run your first eval in 5 minutes</span>
+      <h2>From a bare number to a conclusion that holds up</h2>
+      <p class="lead" style="margin:14px auto 0">No files to touch —— <code style="font-family:var(--mono)">omk init</code> scaffolds two skill versions and three cases, and <code style="font-family:var(--mono)">omk eval</code> produces an HTML report plus a one-line verdict in under 5 minutes.</p>
+      <span class="cmd"><span><span class="pfx">$</span> omk init demo &amp;&amp; cd demo &amp;&amp; omk eval</span><span class="copy" onclick="omkCopy('omk init demo && cd demo && omk eval', this)">Copy ⧉</span></span>
+    </div>
+  </div>
+</section>
+
+
