@@ -42,17 +42,13 @@ export function createFileStore(dir: string): ReportStore {
   function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
     if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
-    const rest = { ...record };
-    delete rest.reportKind;
     const kind = record.kind === 'evaluation' || record.kind === 'batch-evaluation'
       ? record.kind
-      : record.reportKind === 'evaluation' || record.reportKind === 'batch-evaluation'
-        ? record.reportKind
-        : undefined;
+      : undefined;
     if (kind === 'evaluation') {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
       return {
-        ...rest,
+        ...record,
         kind,
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
@@ -60,7 +56,7 @@ export function createFileStore(dir: string): ReportStore {
     if (kind === 'batch-evaluation') {
       if (!record.meta || !Array.isArray(record.items)) return null;
       return {
-        ...rest,
+        ...record,
         kind,
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;
@@ -75,7 +71,7 @@ export function createFileStore(dir: string): ReportStore {
       && Array.isArray(record.results)
     ) {
       return {
-        ...rest,
+        ...record,
         kind: 'evaluation',
         id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
       } as unknown as ReportDocument;

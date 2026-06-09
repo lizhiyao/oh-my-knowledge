@@ -96,7 +96,7 @@ describe('createFileStore legacy report loading', () => {
     }
   });
 
-  it('兼容带 reportKind 的历史普通报告', async () => {
+  it('不再兼容仅带 reportKind 的历史普通报告', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-reportKind-report-'));
     try {
       const legacy = makeReport('legacy-reportKind-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
@@ -106,13 +106,8 @@ describe('createFileStore legacy report loading', () => {
       writeFileSync(join(dir, 'legacy-reportKind-run.json'), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
-      const report = await store.get('legacy-reportKind-run');
-      assert.equal(report?.kind, 'evaluation');
-      assert.equal('reportKind' in (report ?? {}), false);
-      assert.equal(report?.id, 'legacy-reportKind-run');
-      const list = await store.list();
-      assert.equal(list.length, 1);
-      assert.equal(list[0].kind, 'evaluation');
+      assert.equal(await store.get('legacy-reportKind-run'), null);
+      assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -132,7 +127,7 @@ describe('createFileStore legacy report loading', () => {
     }
   });
 
-  it('兼容带 reportKind 的历史批量报告', async () => {
+  it('不再兼容仅带 reportKind 的历史批量报告', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-reportKind-batch-report-'));
     try {
       const legacyBatch = {
@@ -158,9 +153,8 @@ describe('createFileStore legacy report loading', () => {
       writeFileSync(join(dir, 'legacy-reportKind-batch.json'), JSON.stringify(legacyBatch, null, 2));
 
       const store = createFileStore(dir);
-      const report = await store.get('legacy-reportKind-batch');
-      assert.equal(report?.kind, 'batch-evaluation');
-      assert.equal('reportKind' in (report ?? {}), false);
+      assert.equal(await store.get('legacy-reportKind-batch'), null);
+      assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
