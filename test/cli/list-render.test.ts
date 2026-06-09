@@ -62,6 +62,18 @@ describe('renderTable 状态符不变量', () => {
     assert.ok(line.includes('stale ?'));
     assert.ok(!line.includes('⚠️'));
   });
+
+  it('reachable + promoted → `promoted ✓`(已人工接受)', () => {
+    const line = dataLine(row({ state: 'promoted', reachable: true, currentEvidenceCount: 1, totalEvidenceCount: 1 }));
+    assert.ok(line.includes('promoted ✓'), `promoted 行应显示 ✓:${line}`);
+    assert.ok(!line.includes('⚠️'), 'promoted 不是告警态');
+  });
+
+  it('不可达 + promoted → `promoted ?`(drift 未核,不冒充已接受确认)', () => {
+    const line = dataLine(row({ state: 'promoted', reachable: false }));
+    assert.ok(line.includes('promoted ?'));
+    assert.ok(!line.includes('✓'), '未核时不打 ✓');
+  });
 });
 
 describe('renderTable name 截断', () => {

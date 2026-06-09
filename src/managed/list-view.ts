@@ -43,7 +43,9 @@ export interface ManagedListRow {
   distributionCount: number;
 }
 
-function latestCurrentEvidence(record: ManagedArtifactRecord) {
+/** 当前有效证据(contentHash == record.contentHash)里 recordedAt 最新那条;无则 undefined。
+ *  list(展示最新 verdict)与 promote(门禁取证)共用同一口径——旧内容的证据不冒充当前。 */
+export function latestCurrentEvidence(record: ManagedArtifactRecord) {
   const current = record.evidence.filter((e) => e.contentHash === record.contentHash);
   if (current.length === 0) return undefined;
   // 取 recordedAt 最新的一条。omk 自写恒 UTC `Z`、字典序即时间序;但记录可手改 / 随仓库分发,异偏移
@@ -67,8 +69,11 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     state = d.label;
     drifted = d.drifted;
   } else {
-    // 不可达:不据此判 stale —— 只按证据给 installed/measurable,drift 标未核。
-    state = currentEvidenceCount > 0 ? 'measurable' : 'installed';
+    // 不可达:不据此判 stale。promote 决定是**内容锚定**的(只看 record.decisions + record.contentHash,
+    // 不依赖源能否被 probe),故当前内容有 promote 决定时仍保留 promoted —— 它比 evidence 更不该因源不可达
+    // 丢失(deriveManagedState 的 promoted 分支同理)。否则按证据给 measurable/installed,drift 标未核。
+    const promoted = record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
+    state = promoted ? 'promoted' : currentEvidenceCount > 0 ? 'measurable' : 'installed';
     drifted = false;
   }
   const latest = latestCurrentEvidence(record);

@@ -4,7 +4,7 @@ description: |
   oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
 user-invocable: true
-argument-hint: "<doctor|eval|evolve|init|install|list|observe|sample|studio> [options]"
+argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|sample|studio> [options]"
 ---
 
 # OMK — 知识载体评测

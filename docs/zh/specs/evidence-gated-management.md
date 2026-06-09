@@ -1,6 +1,6 @@
 # 证据门控的知识输入管理
 
-> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期 —— 已落地（#211/#212/#224）；其余（`promote` / `rollback`）仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
+> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）—— 已落地（#211/#212/#224 + promote MVP）；`rollback` 与 `promote` 对 evolve 候选 canonical 写回源文件仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
 
 ## 1. 产品判断
 
@@ -142,16 +142,20 @@ omk install ./prompts/rewrite.md --kind prompt
 
 ### `promote`
 
-`promote` 把候选版本转成当前受管版本。它是唯一对 source-of-record artifact 文件执行 canonical 写入的命令。
+`promote` 把受管 skill 的当前版本按证据门禁「接受」为当前受管版本,并往记录里追加一条带证据指针的人工决定。对 source-of-record artifact 文件的 canonical 写入由它独占。
 
-默认门禁：
+MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本就在源处,promote 不重写源文件,实质是带证据的**接受决定** + 生命周期跃迁到 `promoted`（由 `deriveManagedState` 在当前内容带 `promote` 决定时读时推导）。候选还不在源处时的 canonical 写回（evolve 流）随 §8 Phase 2 的 evolve 迁移推迟——在 evolve 停止把胜者自动写回源之前,promote 在那条流里没有东西可写。
 
-- 存在可比报告。
-- verdict 为 `PROGRESS`，或满足配置允许的结果。
-- 置信区间 / underpowered 状态可见。
-- 用例设计 warning 被展示。
+默认门禁（对最新一条**当前**证据判定,即 `contentHash` 与记录匹配）：
 
-可以允许 override，但必须显式记录成人类决策。
+- 源未漂移 / 可达（否则盘上内容不是被测内容）。
+- 存在当前证据（无证据即拦,`--force` 也无从锚定）。
+- 可比性：证据的 `judgePromptHash`（若有）仍属当前评委模板（评委提示词变了 ⇒ 旧 verdict 不可比 ⇒ 拦）;缺指纹只 warn 不拦;`cliVersion` 仅展示、不硬卡（否则每次发版即全失效）。
+- verdict 默认仅 `PROGRESS`;`CAUTIOUS` 需显式 `--accept-cautious`;其余一律拦。
+
+§5 的四项 mandatory,MVP 门禁在 promote 时核三项（report id 经「存在当前证据」、verdict、可比性 marker）;**样本集覆盖**由 `eval`（§9、#221）denormalize 进证据 bundle、在此被信任——门禁不重算也不重核。（§5 的「mandatory」说的是 `eval` 必须写进 bundle 的内容,不是 promote 时另起一道核查。）
+
+`--force` 只可越过可越门的非「无证据」类拦截（源不可达 / 不可比 / verdict），在决定里记 `override.verdict`（外加 `override.overriddenBlocks` 标明被越过了哪几条判据）与必填的人工 `--reason`（不变量：override 必须显式且留痕）。若源可达但内容 hash 已不同，则不可越门：decision 仍会指向旧的 `record.contentHash`，用户必须重新跑 `omk eval` / 重新 install。对已 promote 的当前版本重跑 promote 是幂等无操作。
 
 ### `rollback`
 
@@ -183,10 +187,9 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ### Phase 2：转正记录与 canonical writer 迁移
 
-- 增加候选 / 转正记录。
-- evolve 今天会在跑完后把胜出候选自动写回源 artifact 文件，于是 `promote` 没有东西可守。决策 (B)：让 `promote` 独占对源 artifact 的 canonical 写入；把 `evolve` 改成只把候选写到自己的工作目录快照里、不再改动源文件。这是对 evolve 当前默认行为的变更，必须排在 `promote` 能 gate 任何东西之前落地，并随 changelog / deprecation note 一起发布。
+- **已落地（promote MVP）**：install / 人工编辑流的带证据**接受决定**——`omk promote <name>` 要求可比、当前、过门禁的证据（默认 `PROGRESS`）并追加一条 `promote` 决定;`deriveManagedState` 推出 `promoted` 生命周期标签。`ManagedDecision` 增了 additive 的证据指针字段（`contentHash` / `reportId` / `override`），仍 `schemaVersion 2`。
+- **待办（evolve canonical-writer 迁移）**：evolve 今天会在跑完后把胜出候选自动写回源 artifact 文件，于是 `promote` 在 **evolve 流**里没有东西可守。决策 (B)：让 `promote` 独占对源 artifact 的 canonical 写入；把 `evolve` 改成只把候选写到自己的工作目录快照里、不再改动源文件。这是对 evolve 当前默认行为的变更，必须排在 `promote` 能把 evolve 候选写回源之前落地，并随 changelog / deprecation note 一起发布。
 - 让 `evolve` 产出的候选可由 `promote` 带证据写回。
-- 默认要求可比 eval 证据才能转正。
 
 ### Phase 3：回滚与 observe 反馈
 
@@ -198,10 +201,10 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 - **已定**：管理记录用 per-record 文件 `.omk/managed/<id>.json`（原子 tmp+rename，镜像 report-store），不用单一聚合文件。
 - **已定（#214，已完成）**：artifact 内容指纹已统一、证据可绑定，口径锚在「executor 实际测到的输入」。每个目录-skill——本地**与** git——在测量前都物化成内容寻址隔离副本（`materializeIsolatedCopy`），executor 的 `cwd` 锚到副本，`references/` 资产成为真实运行时输入。`eval` 记的是与 `install` 同一套整树 `hashArtifactSource`（报告 `schemaVersion >= 3`），故所有目录-skill 的 `evidence.contentHash === record.contentHash` 落在同一空间（executor cache key 带同一指纹，改资产即令 cache 失效）。file-skill（本地或 git）哈单个 `.md` 字节，同样可绑定。隔离副本也意味着被测 agent 跑在副本上、不碰用户真实 skill 目录。`schemaVersion 2` 是过渡纪元（本地目录-skill 树哈、git 目录-skill 仅 `SKILL.md` 字节、不绑）；git 目录-skill 的 v2 哈与 v3 不可比。`schemaVersion < 2` 的旧报告携带旧「SKILL.md 正文」文本哈，被漂移 / lineage 消费方视为不可比（请重跑 `eval`）。
-- **已定（#221，已完成）**：`eval` 已能写入证据。跑完后，对每个能匹配到被测变体的**已纳管**记录，追加一条 `ManagedEvidenceRef`（`src/managed/evidence.ts`），经 `deriveManagedState` 把 skill 从 `installed` 推到 `measurable`。三条已定取舍：(a)**触发**——eval 完成自动写，但只写已存在的记录（`install` 是 opt-in，从未安装的 skill 不会被凭空建记录），`--no-evidence` 可关；(b)**多对一**——append-only + 按 `(reportId, contentHash)` 去重、保留全部历史，当前有效性仍由读时 contentHash 匹配裁定（旧内容证据留存供回滚，却不让新内容显得已测）；(c)**跨源身份**——install 与 eval 对同一 skill 命名不一致（记录名是短名 `review`，而报告 variant 键可能是整串表达式 `git:HEAD:skills/review`、eval.yaml 别名 `candidate`、blind 标签 `A`），故用三级消歧匹配：显式同名 variant → 结构化源匹配（`variantConfigs[].locator/ref` 对齐 `record.source`）→ 纯 contentHash 回退**仅在该哈于受管记录中唯一时**才用。唯一性闸门挡住「只测了一条、却把同内容的另一条也写进证据并推成 measurable」的越权。`applyBlindMode` 盲化 `variants` 但不动 `artifactHashes` / `variantConfigs`，故三级在 blind 下照常工作。bundle 把 §5 mandatory 四项（report id、样本集覆盖、verdict、可比性 marker）denormalize 进记录，使其自解释、可 grep、不必回读 report。不改 Report schema、不动任何可比性不变量；受管记录保持 `schemaVersion 2`（additive optional 证据字段）。后续工作：`promote` 据 bundle 门控。
+- **已定（#221，已完成）**：`eval` 已能写入证据。跑完后，对每个能匹配到被测变体的**已纳管**记录，追加一条 `ManagedEvidenceRef`（`src/managed/evidence.ts`），经 `deriveManagedState` 把 skill 从 `installed` 推到 `measurable`。三条已定取舍：(a)**触发**——eval 完成自动写，但只写已存在的记录（`install` 是 opt-in，从未安装的 skill 不会被凭空建记录），`--no-evidence` 可关；(b)**多对一**——append-only + 按 `(reportId, contentHash)` 去重、保留全部历史，当前有效性仍由读时 contentHash 匹配裁定（旧内容证据留存供回滚，却不让新内容显得已测）；(c)**跨源身份**——install 与 eval 对同一 skill 命名不一致（记录名是短名 `review`，而报告 variant 键可能是整串表达式 `git:HEAD:skills/review`、eval.yaml 别名 `candidate`、blind 标签 `A`），故用三级消歧匹配：显式同名 variant → 结构化源匹配（`variantConfigs[].locator/ref` 对齐 `record.source`）→ 纯 contentHash 回退**仅在该哈于受管记录中唯一时**才用。唯一性闸门挡住「只测了一条、却把同内容的另一条也写进证据并推成 measurable」的越权。`applyBlindMode` 盲化 `variants` 但不动 `artifactHashes` / `variantConfigs`，故三级在 blind 下照常工作。bundle 把 §5 mandatory 四项（report id、样本集覆盖、verdict、可比性 marker）denormalize 进记录，使其自解释、可 grep、不必回读 report。不改 Report schema、不动任何可比性不变量；受管记录保持 `schemaVersion 2`（additive optional 证据字段）。`promote`（MVP）现已据这些 bundle 门控——见 §7。
 - git ref 与 omk 证据记录如何协作（漂移检查时,分支 ref 重物化 vs 固定 SHA）？
 - `evolve` 的工作目录快照该用什么布局？对当前依赖「evolve 把胜出版本写回源文件」的用户，deprecation 路径是什么？（决策 B 的迁移机制）
-- 默认允许哪些 verdict 转正：只允许 `PROGRESS`，还是允许带 caveat 的 `CAUTIOUS`？
+- **已决（promote MVP）**：默认可接受 verdict 只 `PROGRESS`（omk default-strict——影响「值得 ship」判定的默认必须严格）;`CAUTIOUS` 需显式 `--accept-cautious`;其余需 `--force`（记为 override）。
 - 当只有 sample、runtime context 或 artifact 内容变化时，证据过期策略分别是什么？
 - 人类 override 应该允许在 CLI、Studio，还是两者都允许？
 - `omk init` 何时演进为 `omk eval init`，兼容 alias 策略怎么定？

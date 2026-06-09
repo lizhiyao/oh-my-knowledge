@@ -12,6 +12,7 @@ export type ListMessageKey =
   | 'cli.list.col_source'
   | 'cli.list.drift_note'
   | 'cli.list.unreachable_note'
+  | 'cli.list.promoted_note'
   | 'cli.list.legend';
 
 export const listDict: Record<ListMessageKey, CliMessage> = {
@@ -40,6 +41,10 @@ export const listDict: Record<ListMessageKey, CliMessage> = {
   'cli.list.unreachable_note': {
     zh: '? = 源此处不可达 / 拒读，drift 未核（非 stale）；本地 git 源请在原仓库根目录跑 omk list。\n',
     en: '? = source unreachable / refused here, drift unchecked (not stale); for a local git source run omk list from the original repo root.\n',
+  },
+  'cli.list.promoted_note': {
+    zh: '✓ = 当前版本已按证据人工接受为 promoted（omk promote）。\n',
+    en: '✓ = current version accepted as promoted on evidence (omk promote).\n',
   },
   'cli.list.legend': {
     zh: '证据列 = 当前有效 / 全部（历史含旧内容证据，供回滚）。\n',
