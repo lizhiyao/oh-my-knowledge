@@ -56,23 +56,32 @@ export function initLanding(lang) {
   });
   select('eval');
 
-  // gentle auto-rotate until first interaction
-  let auto=true, i=1;
-  const t=setInterval(()=>{ if(!auto)return clearInterval(t); i=(i+1)%3; select(order[i]); },3200);
-  document.querySelector('.stage').addEventListener('mouseenter',()=>auto=false,{once:true});
+  // gentle auto-rotate until first interaction;尊重 prefers-reduced-motion(不自动轮播)
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let auto=true, i=1, t=null;
+  if(!reduceMotion){
+    t=setInterval(()=>{ if(!auto){clearInterval(t);t=null;return;} i=(i+1)%3; select(order[i]); },3200);
+    const stage=document.querySelector('.stage');
+    if(stage) stage.addEventListener('mouseenter',()=>auto=false,{once:true});
+  }
 
-  // 能力卡片滚动入场(逐张错峰)
+  // 能力卡片滚动入场(逐张错峰);reduce-motion 时直接全部就位
   const grid = document.querySelector('.cap-grid');
+  let io=null;
   if(grid){
-    const io = new IntersectionObserver((entries)=>{
-      entries.forEach(e=>{
-        if(e.isIntersecting){
-          e.target.querySelectorAll('.cap').forEach((c,idx)=>setTimeout(()=>c.classList.add('in'), idx*110));
-          io.unobserve(e.target);
-        }
-      });
-    }, {threshold:.2});
-    io.observe(grid);
+    if(reduceMotion){
+      grid.querySelectorAll('.cap').forEach(c=>c.classList.add('in'));
+    } else {
+      io = new IntersectionObserver((entries)=>{
+        entries.forEach(e=>{
+          if(e.isIntersecting){
+            e.target.querySelectorAll('.cap').forEach((c,idx)=>setTimeout(()=>c.classList.add('in'), idx*110));
+            io.unobserve(e.target);
+          }
+        });
+      }, {threshold:.2});
+      io.observe(grid);
+    }
   }
 
   // 信任条:实时填 npm 周下载量(npm 官方 API,支持 CORS、无需 key);失败回退占位。
@@ -91,4 +100,7 @@ export function initLanding(lang) {
       })
       .catch(function(){ el.textContent = '↑'; });
   })();
+
+  // 卸载 / locale 切换时由 Landing.vue 调用,清理定时器与 observer,防泄漏。
+  return function dispose(){ if(t){ clearInterval(t); t=null; } if(io){ io.disconnect(); io=null; } };
 }

@@ -1,8 +1,9 @@
 <script setup>
 // omk 落地页 —— 与 omk-landing/index.html 视觉一致,中 / 英双语随站点 locale 切换。
-// CSS 由 config.ts 的 transformHead 在该页 <head> 注入(SSR 即到位、页面级隔离);
-// 这里只负责原样渲染对应语言的 HTML(v-html,inline onclick 在浏览器照常执行) + onMounted 跑交互 JS。
-import { onMounted } from 'vue'
+// CSS 由下方 `import './landing.css'`(经 Vite,主题入口同步 import、首绘前注入 <head>,
+// 规则全部 .omk-landing 限定)负责;这里只负责原样渲染对应语言的 HTML(v-html,inline onclick
+// 照常执行) + onMounted 跑交互 JS,onUnmounted 清理定时器/observer 防泄漏。
+import { onMounted, onUnmounted } from 'vue'
 import { useData } from 'vitepress'
 import zhHtml from './landing-body.html?raw'
 import enHtml from './landing-body.en.html?raw'
@@ -16,9 +17,9 @@ import './landing.css'
 const isZh = useData().lang.value.startsWith('zh')
 const landingHtml = isZh ? zhHtml : enHtml
 
-onMounted(() => {
-  initLanding(isZh ? 'zh' : 'en')
-})
+let dispose = null
+onMounted(() => { dispose = initLanding(isZh ? 'zh' : 'en') })
+onUnmounted(() => { if (dispose) { dispose(); dispose = null } })
 </script>
 
 <template>

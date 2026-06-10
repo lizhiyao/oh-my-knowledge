@@ -1,4 +1,6 @@
-  :root{
+  /* 自定义属性挂 .omk-landing(继承覆盖整棵子树,暗色块 .dark .omk-landing 同模式),
+     不进全局 :root,避免 --blue/--ink 这类通用名泄漏到文档页。 */
+  .omk-landing{
     --blue:#2563EB; --blue-d:#1D4ED8; --blue-l:#EFF4FF;
     --teal:#0F766E; --teal-l:#ECFDF5; --teal-mid:#14B8A6;
     --ink:#0F172A; --body:#475569; --muted:#94A3B8;
@@ -44,7 +46,8 @@
     --shadow-lg:0 1px 3px rgba(0,0,0,.5),0 24px 48px -20px rgba(0,0,0,.7);
   }
   .omk-landing, .omk-landing *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
+  /* 平滑锚点滚动只在落地页挂载时生效(:has),不改变文档页的锚点/搜索定位行为。 */
+  html:has(.omk-landing){scroll-behavior:smooth}
   /* VitePress 专属修正(独立页不需要):
      - isolation:把 hero 负层(大 logo / 渐变)关进落地页自己的层叠上下文,不被祖先不透明背景盖住;
      - padding-top:VitePress 导航是 fixed 浮顶,落地页需自行下移一个导航高度,恢复头部间距。 */
