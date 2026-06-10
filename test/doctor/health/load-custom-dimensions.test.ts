@@ -9,7 +9,8 @@ import {
   __resetHealthDimensionsForTest,
 } from '../../../src/doctor/health/dimension-registry.js';
 import { getRegisteredRules, __resetCustomRulesForTest } from '../../../src/doctor/rules.js';
-import type { DoctorContext } from '../../../src/types/doctor.js';
+import { isComposerRule } from '../../../src/types/doctor.js';
+import type { DoctorContext, DoctorRule } from '../../../src/types/doctor.js';
 import type { Artifact } from '../../../src/types/eval.js';
 
 let dir: string;
@@ -17,6 +18,13 @@ const writeYaml = (body: string): string => {
   const p = join(dir, 'dims.yaml');
   writeFileSync(p, body, 'utf-8');
   return p;
+};
+
+// endpoint 维度注册为普通 DoctorRule(带 check);按 id 取出并收窄掉 ComposerRule。
+const registeredDoctorRule = (id: string): DoctorRule => {
+  const r = getRegisteredRules().find((x) => x.id === id);
+  assert.ok(r && !isComposerRule(r), `rule ${id} not found or is a composer`);
+  return r;
 };
 
 describe('load-custom-dimensions', () => {
@@ -110,11 +118,11 @@ dimensions:
       artifact, executorName: 'claude', model: 'sonnet', cwd: '/tmp', lang: 'zh', timeoutMs: 3000,
     };
     // 未放行:私网地址在请求组装前被拒,message 提示 allowPrivateHost。
-    const refused = await getRegisteredRules().find((r) => r.id === 'private-default')!.check(ctx);
+    const refused = await registeredDoctorRule('private-default').check(ctx);
     assert.equal(refused.status, 'fail');
     assert.match(refused.message, /allowPrivateHost/);
     // 已放行:不再因 SSRF 被拒(端口 1 无服务,落到网络层失败,但不是私网拒绝文案)。
-    const allowed = await getRegisteredRules().find((r) => r.id === 'private-allowed')!.check(ctx);
+    const allowed = await registeredDoctorRule('private-allowed').check(ctx);
     assert.equal(allowed.status, 'fail');
     assert.doesNotMatch(allowed.message, /allowPrivateHost/);
   });

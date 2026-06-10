@@ -150,29 +150,58 @@ function isValidStatus(s: unknown): s is EndpointResponse['status'] {
   return s === 'pass' || s === 'warn' || s === 'fail';
 }
 
+/** ::ffff:a.b.c.d / 规范化后的 ::ffff:hhhh:hhhh 还原成点分 IPv4;无法解析返回 null。
+ *  WHATWG URL 会把 ::ffff:127.0.0.1 规范成 hex 形态 ::ffff:7f00:1。 */
+function mappedToIPv4(suffix: string): string | null {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(suffix)) return suffix;
+  const hx = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(suffix);
+  if (!hx) return null;
+  const hi = parseInt(hx[1], 16);
+  const lo = parseInt(hx[2], 16);
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+}
+
 /** 私网/本机 hostname 判定(SSRF 防护用)。只做字面 hostname 检查的
  *  defense-in-depth:不做 DNS 解析,公网域名解析到内网(DNS rebinding)不在
- *  防护范围。WHATWG URL 会把 0x7f.0.0.1 之类写法规整成点分十进制,所以 IPv4
- *  直接按规范化后的 hostname 判断即可。 */
+ *  防护范围。WHATWG URL 会把 0x7f.0.0.1 / 0 之类写法规整成点分十进制,所以
+ *  IPv4 直接按规范化后的 hostname 判断即可。 */
 function isPrivateHostname(hostname: string): boolean {
-  // IPv6 字面量去括号([::1] → ::1);IPv4-mapped IPv6(::ffff:127.0.0.1)归并到 IPv4 判断。
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/^::ffff:(?=\d)/, '');
+  // 转小写、去 IPv6 字面量方括号([::1] → ::1)、去 FQDN 尾点(localhost. / foo.local.)。
+  let h = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (h === 'localhost' || h.endsWith('.local')) return true;
-  if (h === '::1') return true;
+
+  if (h.includes(':')) {
+    // IPv6 字面量。
+    if (h === '::1' || h === '::') return true;       // loopback / unspecified
+    if (/^f[cd]/.test(h)) return true;                // fc00::/7 ULA
+    if (/^fe[89ab]/.test(h)) return true;             // fe80::/10 link-local
+    // IPv4-mapped(::ffff:…)归并到点分 IPv4 再判;无法解析的保守拒绝。
+    const mapped = /^::ffff:(.+)$/.exec(h);
+    if (!mapped) return false;
+    const dotted = mappedToIPv4(mapped[1]);
+    if (dotted == null) return true;
+    h = dotted;
+  }
+
   const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h);
   if (!m) return false;
   const a = Number(m[1]);
   const b = Number(m[2]);
-  if (a === 127) return true;                       // 127.0.0.0/8 loopback
-  if (a === 10) return true;                        // 10.0.0.0/8
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-  if (a === 192 && b === 168) return true;          // 192.168.0.0/16
-  if (a === 169 && b === 254) return true;          // 169.254.0.0/16(含云 metadata 169.254.169.254)
+  if (a === 0) return true;                          // 0.0.0.0/8(含 0.0.0.0、http://0/)
+  if (a === 127) return true;                        // 127.0.0.0/8 loopback
+  if (a === 10) return true;                         // 10.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12
+  if (a === 192 && b === 168) return true;           // 192.168.0.0/16
+  if (a === 169 && b === 254) return true;           // 169.254.0.0/16(含云 metadata 169.254.169.254)
   return false;
 }
 
 /** outcome 自由文本/JSON 字段的统一上限(字符),与协议违规路径的 received 截断对齐。 */
 const MAX_OUTCOME_CHARS = 2000;
+
+/** 响应体声明长度(Content-Length)上限(字节):超过即拒读,避免超大 body 撑爆内存。
+ *  注意只挡声明了 Content-Length 的情况;分块且不声明长度的响应仍只受 timeoutMs 墙钟约束。 */
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
 function clampText(s: string): string {
   return s.length > MAX_OUTCOME_CHARS ? `${s.slice(0, MAX_OUTCOME_CHARS)}…[truncated]` : s;
@@ -286,6 +315,10 @@ export function makeEndpointRule(
             headers: { 'Content-Type': 'application/json', ...spec.headers },
             body: JSON.stringify(body),
             signal: controller.signal,
+            // redirect:'manual' —— 不跟随重定向。否则一个可信公网 endpoint 返回
+            // 302 Location: http://169.254.169.254/… 即可让 fetch 透明跳到私网,
+            // 绕过上面的 host 校验(请求前只校验一次原始 URL)。3xx 一律拒绝。
+            redirect: 'manual',
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -294,6 +327,34 @@ export function makeEndpointRule(
             message: failMsg(ctx, spec, `请求失败：${msg}`, `request failed: ${msg}`),
             hint: hintNet(ctx, spec.endpoint),
             detail: { endpoint: spec.endpoint, error: msg },
+          };
+        }
+
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers?.get?.('location') ?? null;
+          return {
+            status: 'fail',
+            message: failMsg(
+              ctx, spec,
+              `endpoint 返回重定向（HTTP ${res.status}），默认拒绝以防 SSRF（重定向目标可能指向私网）`,
+              `endpoint returned a redirect (HTTP ${res.status}); refused by default to prevent SSRF (the redirect target may point to a private host)`,
+            ),
+            hint: hintNet(ctx, spec.endpoint),
+            detail: { endpoint: spec.endpoint, httpStatus: res.status, location },
+          };
+        }
+
+        const declaredLen = Number(res.headers?.get?.('content-length') ?? '');
+        if (Number.isFinite(declaredLen) && declaredLen > MAX_RESPONSE_BYTES) {
+          return {
+            status: 'fail',
+            message: failMsg(
+              ctx, spec,
+              `响应体过大（Content-Length ${declaredLen} 字节，上限 ${MAX_RESPONSE_BYTES}）`,
+              `response body too large (Content-Length ${declaredLen} bytes, limit ${MAX_RESPONSE_BYTES})`,
+            ),
+            hint: hintProto(ctx),
+            detail: { endpoint: spec.endpoint, contentLength: declaredLen },
           };
         }
 

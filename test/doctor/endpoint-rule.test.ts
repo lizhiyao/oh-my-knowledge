@@ -35,13 +35,17 @@ interface RequestBody {
 
 /** 造一个最小 fetch stub:断言请求、返回指定响应。 */
 function stubFetch(
-  handler: (url: string, init: RequestInit) => { ok?: boolean; status?: number; json: () => unknown } | Promise<never>,
+  handler: (url: string, init: RequestInit) => {
+    ok?: boolean; status?: number; headers?: Record<string, string>; json: () => unknown;
+  } | Promise<never>,
 ): typeof fetch {
   return (async (url: string, init: RequestInit) => {
     const r = await handler(url, init);
+    const headers = r.headers ?? {};
     return {
       ok: r.ok ?? true,
       status: r.status ?? 200,
+      headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
       json: async () => r.json(),
     } as Response;
   }) as unknown as typeof fetch;
@@ -211,6 +215,16 @@ describe('endpoint-rule URL / SSRF 校验', () => {
     'http://172.31.255.255/audit',
     'http://192.168.1.1/audit',
     'http://foo.local/audit',
+    // 字面绕过形态(WHATWG 规范化后):
+    'http://0/audit',                          // → 0.0.0.0
+    'http://0.0.0.0/audit',                    // 0.0.0.0/8
+    'http://localhost./audit',                 // FQDN 尾点
+    'http://foo.local./audit',                 // FQDN 尾点 + .local
+    'http://[::ffff:127.0.0.1]/audit',         // IPv4-mapped(规范成 ::ffff:7f00:1)
+    'http://[::ffff:169.254.169.254]/audit',   // IPv4-mapped metadata
+    'http://[::]/audit',                       // IPv6 unspecified
+    'http://[fc00::1]/audit',                  // ULA fc00::/7
+    'http://[fe80::1]/audit',                  // link-local fe80::/10
   ];
 
   for (const endpoint of privateEndpoints) {
@@ -248,6 +262,38 @@ describe('endpoint-rule URL / SSRF 校验', () => {
     const out = await rule.check(ctx());
     assert.equal(out.status, 'pass');
     assert.equal(called(), true);
+  });
+
+  it('refuses 3xx redirect (公网 302 → 私网 不被跟随)', async () => {
+    let sawRedirectOpt = false;
+    const fetchFn = stubFetch((_url, init) => {
+      // 校验 check() 关掉了自动跟随重定向。
+      sawRedirectOpt = init.redirect === 'manual';
+      return { ok: false, status: 302, headers: { location: 'http://169.254.169.254/' }, json: () => ({}) };
+    });
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'https://trusted.example.com/audit' },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'fail');
+    assert.match(out.message, /重定向|redirect|SSRF/);
+    assert.equal(sawRedirectOpt, true);
+    assert.equal((out.detail as { location?: string }).location, 'http://169.254.169.254/');
+  });
+
+  it('refuses oversized response by Content-Length', async () => {
+    const fetchFn = stubFetch(() => ({
+      headers: { 'content-length': String(8 * 1024 * 1024) },
+      json: () => ({ status: 'pass', message: 'ok' }),
+    }));
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'https://x/audit' },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'fail');
+    assert.match(out.message, /过大|too large/);
   });
 });
 
