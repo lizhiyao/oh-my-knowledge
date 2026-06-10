@@ -30,8 +30,8 @@ function resolveActor(flagActor: string | undefined): string {
 
 export default class Rollback extends BaseCommand {
   static description = bilingual({
-    zh: '回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定，状态回到 measurable。',
-    en: 'Roll back a managed skill\'s current promoted acceptance: revoke the latest promote by appending a rollback decision; state returns to measurable.',
+    zh: '回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定（源未漂移则状态回到 measurable，源已漂移则仍 stale）。',
+    en: 'Roll back a managed skill\'s current promoted acceptance: revoke the latest promote by appending a rollback decision (state returns to measurable if the source is unchanged, or stays stale if it has drifted).',
   });
 
   static examples = [

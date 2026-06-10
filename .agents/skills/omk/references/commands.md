@@ -526,7 +526,7 @@ omk promote review --force --reason "已人工复核"
 
 ## omk rollback
 
-回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定，状态回到 measurable。
+回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定（源未漂移则状态回到 measurable，源已漂移则仍 stale）。
 
 **用法:**
 

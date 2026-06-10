@@ -195,7 +195,7 @@ Done in #208 / PR #207:
 
 ### Phase 3: rollback and observation feedback
 
-- **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable`. `ManagedDecisionKind` already carried `rollback`; no schema change.
+- **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable` (or `stale` if the source has since drifted — rollback doesn't probe the source). `ManagedDecisionKind` already carried `rollback`; no schema change.
 - **Remaining:** restoring an evidence-backed *historical* version's content to the source (a true file restore), which depends on the Phase 2 canonical-writer migration giving rollback a prior snapshot to restore.
 - Let `observe` mark evidence stale and propose sample additions.
 - Show decision history in Studio.

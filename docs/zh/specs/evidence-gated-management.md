@@ -195,7 +195,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ### Phase 3：回滚与 observe 反馈
 
-- **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
+- **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`（源已漂移则 `stale` —— rollback 不探源）。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
 - **仍待做：** 把有证据的*历史*版本内容恢复写回源文件（真正的文件恢复），依赖 Phase 2 的 canonical 写回迁移先给 rollback 提供可恢复的更早快照。
 - 让 `observe` 标记证据过期并建议新增用例。
 - 在 Studio 展示决策历史。
