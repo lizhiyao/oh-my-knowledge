@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
 import type { Lang, Report } from '../src/types/index.js';
 
-// Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM:SS 形式的本地时间戳替换成 [TIMESTAMP],
-// 防止 fmtLocalTime 基于本地时区产出的字符串在不同机器/CI 上抖动。
+// Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM(:SS) 形式的本地时间戳替换成 [TIMESTAMP],
+// 防止本地时区产出的字符串在不同机器/CI 上抖动。秒可选 —— hero 区时间戳是分钟粒度
+// (HH:MM 无秒),也要一并归一化,否则非 UTC contributor 本地 yarn test 会红。
 function normalizeForSnapshot(html: string): string {
   return html
-    .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '[TIMESTAMP]')
+    .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/g, '[TIMESTAMP]')
     .replace(/[ \t]+$/gm, '');
 }
 

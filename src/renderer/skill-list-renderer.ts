@@ -96,10 +96,10 @@ function renderPanel(a: Agg, lang: Lang): string {
   <div class="ep-modal">
     <div class="ep-modal-head"><strong>${zh ? '综合健康计算说明' : 'Health Score'}</strong><button onclick="document.getElementById('ep-help-modal').style.display='none'">✕</button></div>
     <div class="ep-modal-body">
-      <p><b>${zh ? '综合健康' : 'Overall Health'}</b> = ${zh ? '各 skill 综合分的算术平均' : 'Arithmetic mean of per-skill composites'}。</p>
-      <p>${zh ? '单 skill 综合分 = (健康体检 + 用例评测) / 2，任一维度 < 40 时该 skill 封顶 59 分（避免跛脚 skill 拉高整体）。' : 'Per-skill = (doctor + eval) / 2, capped at 59 if any dim < 40.'}</p>
-      <p>${zh ? '下方三维度数字按业务量加权聚合：体检按规则数、评测按用例数、观察按工具调用量。' : 'Dimensions are weighted by volume: rules, samples, invocations.'}</p>
-      <p>${zh ? '≥70 通过 / 50-69 待改进 / <50 不合格。' : '≥70 pass / 50-69 fair / <50 fail.'}</p>
+      <p><b>${zh ? '综合健康' : 'Overall Health'}</b> = ${zh ? '已评分 skill 综合分的算术平均（未跑任何可信维度的 skill 不计入）' : 'Arithmetic mean of scored skills’ composites (skills with no trusted dimension are excluded)'}。</p>
+      <p>${zh ? '单 skill 综合分 = 已运行维度各自归一到 0-100 后取算术平均：健康体检 =（通过 + 0.5×警告）/ 规则数；用例评测 = 综合分 / 5；生产观察 = 覆盖率 × 色带系数（黄 0.85 / 红 0.6），样本量不足时不计入。' : 'Per-skill composite = arithmetic mean of the dimensions that ran, each normalized to 0-100: doctor = (pass + 0.5×warn) / rules; eval = composite / 5; observe = coverage × band factor (yellow 0.85 / red 0.6), skipped when underpowered.'}</p>
+      <p>${zh ? '下方三格分别为：体检按规则数合并的通过率、评测为各 skill 综合分的平均、观察为有线上数据的 skill 数。' : 'The three cells below: doctor pools rule counts, eval averages per-skill composites, observe counts skills with traces.'}</p>
+      <p>${zh ? '分数配色：≥85 绿 / 60-84 琥珀 / <60 红。' : 'Score colors: ≥85 green / 60-84 amber / <60 red.'}</p>
     </div>
   </div>
 </div>`;
@@ -144,7 +144,9 @@ function renderRow(entry: SkillIndexEntry, insights: Insight[], langQ: string, l
     : `<span class="t-dash">—</span>`;
 
   // 整行点击直接进 skill 详情页(去掉中间弹框,更流畅)。
-  return `<tr class="t-row" data-color="${h.color}" data-name="${e(entry.skillName.toLowerCase())}" onclick="location.href='${href}'" style="cursor:pointer">
+  // 跳转地址走 data-href + 底部脚本的事件委托,不内联 onclick:skill 名含引号时
+  // encodeURIComponent 不会编码单引号,裸拼进 onclick 字符串会变成 JS 注入面。
+  return `<tr class="t-row" data-color="${h.color}" data-name="${e(entry.skillName.toLowerCase())}" data-href="${e(href)}" style="cursor:pointer">
     <td class="t-skill"><span class="t-name">${e(entry.skillName)}</span></td>
     <td class="t-score">${hasScore ? `<div class="t-eval"><div class="t-eval-num" style="color:${clr}"><strong>${h.score}</strong></div><div class="t-eval-bars">${mkBar(dP, zh ? '体检' : 'Doctor')}${mkBar(eP, zh ? '评测' : 'Eval')}${mkBar(oP, zh ? '观察' : 'Observe')}</div></div>` : `<span class="t-na">${zh ? '未评测' : 'N/A'}</span>`}</td>
     <td>${doctorStatus}</td>
@@ -368,6 +370,7 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
     }
     window.__pg=function(d){pg+=d;page()};
     bs.forEach(function(b){b.addEventListener('click',function(){bs.forEach(function(x){x.classList.remove('t-seg-btn--on')});b.classList.add('t-seg-btn--on');filt()})});
+    document.addEventListener('click',function(ev){var el=ev.target instanceof Element?ev.target:null;if(!el||el.closest('a,button'))return;var r=el.closest('.t-row[data-href]');if(r)location.href=r.getAttribute('data-href')});
     if(s)s.addEventListener('input',filt);page()
   }()</script>`, lang);
 }

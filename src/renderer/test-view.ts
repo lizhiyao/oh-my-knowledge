@@ -19,6 +19,7 @@ import type { Assertion, Mock } from '../types/eval.js';
 import type { ToolCallInfo, TurnInfo } from '../types/executor.js';
 import type { AssertionDetail } from '../types/judge.js';
 import { e, t } from './layout.js';
+import { icon } from './icons.js';
 
 // ──────────────────────────────────────────────────────────────────
 // Assertion → Turn 绑定:扫执行轨迹找断言匹配的 turn 编号
@@ -619,7 +620,7 @@ function renderCompositeBadge(variant: VariantResult): string {
   return `<span class="tv-composite tv-composite--${scoreBand(score)}">${score.toFixed(2)}<span class="tv-composite-unit">/5</span></span>`;
 }
 
-/** 一个分数 chip:`📋 事实 4.0`。primary(综合分)加粗。 */
+/** 一个分数 chip:`[icon] 事实 4.0`。primary(综合分)加粗。 */
 function scoreChip(label: string, score: number, primary = false): string {
   return `<span class="tv-score-item${primary ? ' tv-score-item--primary' : ''}">${label} <b class="tv-score-v tv-score-v--${scoreBand(score)}">${score.toFixed(2)}</b></span>`;
 }
@@ -630,9 +631,11 @@ function renderScoreStrip(variant: VariantResult, lang: Lang): string {
   const composite = variant.compositeScore ?? variant.llmScore;
   if (typeof composite === 'number') items.push(scoreChip(lang === 'zh' ? '综合' : 'Composite', composite, true));
   const ls = variant.layeredScores;
-  if (ls?.factScore != null) items.push(scoreChip(`📋 ${lang === 'zh' ? '事实' : 'Fact'}`, ls.factScore));
-  if (ls?.behaviorScore != null) items.push(scoreChip(`🛠️ ${lang === 'zh' ? '行为' : 'Behavior'}`, ls.behaviorScore));
-  if (ls?.judgeScore != null) items.push(scoreChip(`💬 ${lang === 'zh' ? '评委' : 'Judge'}`, ls.judgeScore));
+  // 三层图标沿用六维共享映射(fact/behavior/judge);chip 是 baseline 对齐的 inline-flex,svg 单独居中。
+  const chipIcon = (name: string): string => icon(name, { size: 13, style: 'align-self:center' });
+  if (ls?.factScore != null) items.push(scoreChip(`${chipIcon('fact')} ${lang === 'zh' ? '事实' : 'Fact'}`, ls.factScore));
+  if (ls?.behaviorScore != null) items.push(scoreChip(`${chipIcon('behavior')} ${lang === 'zh' ? '行为' : 'Behavior'}`, ls.behaviorScore));
+  if (ls?.judgeScore != null) items.push(scoreChip(`${chipIcon('judge')} ${lang === 'zh' ? '评委' : 'Judge'}`, ls.judgeScore));
   if (variant.assertions && variant.assertions.total > 0) {
     const a = variant.assertions;
     const allPass = a.passed === a.total;
@@ -689,7 +692,7 @@ function renderJudgeBlock(variant: VariantResult, lang: Lang): string {
     : '';
 
   return `<div class="tv-judge">
-    <div class="tv-judge-h">${lang === 'zh' ? '💬 评委评价' : '💬 Judge'}${stabTag}</div>
+    <div class="tv-judge-h">${icon('judge', { size: 14 })}${lang === 'zh' ? '评委评价' : 'Judge'}${stabTag}</div>
     ${reasonHtml}
     ${renderEnsembleBlock(variant.llmEnsemble, variant.llmAgreement, lang)}
   </div>`;

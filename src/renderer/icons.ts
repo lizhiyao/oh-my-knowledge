@@ -13,6 +13,7 @@ const PATHS: Record<string, string> = {
   home: '<path d="M3 10l9-7 9 7v9a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/>',
   chip: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/>',
   'chevron-right': '<path d="M9 6l6 6-6 6"/>',
   'chevron-left': '<path d="M15 18l-6-6 6-6"/>',

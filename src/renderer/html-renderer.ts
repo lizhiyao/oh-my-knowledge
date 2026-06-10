@@ -532,7 +532,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   const conclusionPanel = `<section class="ev-conclusion">${verdictPill}${cards}</section>`;
 
   const samplesSubtitle = lang === 'zh'
-    ? '每条用例既是评分卡也是功能测试:综合分 + 三层分布、断言、诊断与执行轨迹合一'
+    ? '每条用例既是评分卡也是功能测试：综合分 + 三层分布、断言、诊断与执行轨迹合一'
     : 'Each sample is both a score card and a functional test: composite + layered scores, assertions, diagnostics, and trace combined';
 
   const body = `

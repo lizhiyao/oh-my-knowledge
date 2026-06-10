@@ -399,7 +399,7 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
   const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
-  return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
+  return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
 /* 跨文档 view transition：同源 MPA 导航(如维度 chip 跳转)淡入淡出,消除白屏闪烁(Chromium)。 */

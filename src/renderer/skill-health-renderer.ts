@@ -16,6 +16,7 @@ import type { SkillHealth, SkillHealthReport } from '../observability/skill-heal
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types/index.js';
 import { COLORS, e, t } from './layout.js';
+import { icon } from './icons.js';
 import { reportShell } from './report-shell.js';
 
 
@@ -263,8 +264,8 @@ export function renderSkillHealthReport(report: SkillHealthReport, lang: Lang = 
     kindTitle: zh ? '生产观察报告' : 'Observe Report',
     skillName: zh ? 'Skill 健康度日报' : 'Skill Health Daily',
     metaItems: [
-      `⏱ ${fmtTimeRange(meta.timeRange.from, meta.timeRange.to)}`,
-      `📅 ${new Date(meta.generatedAt).toISOString().slice(0, 16).replace('T', ' ')}`,
+      `${icon('clock', { size: 13 })} ${fmtTimeRange(meta.timeRange.from, meta.timeRange.to)}`,
+      `${icon('calendar', { size: 13 })} ${new Date(meta.generatedAt).toISOString().slice(0, 16).replace('T', ' ')}`,
     ],
     score,
     scoreLabel,
