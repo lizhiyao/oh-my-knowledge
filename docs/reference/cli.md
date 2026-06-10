@@ -124,20 +124,25 @@ Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimen
 dimensions:
   # LLM dimension
   - id: tone-check
-    displayName: 语气检查
+    displayName: Tone check
     severity: warn
-    promptSection: 检查 skill 文案是否礼貌、无歧义。
+    promptSection: Check that the skill copy is polite and unambiguous.
   # endpoint dimension
   - id: deep-security-audit
-    displayName: 深度安全审查
+    displayName: Deep security audit
     severity: fatal
     endpoint: https://my-service.com/audit   # POST here
     headers: { Authorization: "Bearer xxx" }  # optional auth headers
     params: { env: production }               # optional, passed through verbatim
     includeFiles: true                        # optional (default true): bundle references/scripts
+    maxFileBytes: 204800                      # optional: per-file byte cap (default 200KB; larger files truncated)
+    maxTotalBytes: 2097152                    # optional: total files byte cap (default 2MB; collection stops beyond)
+    allowPrivateHost: false                   # optional: allow private/loopback endpoint (default false — refused to prevent SSRF)
 ```
 
-Request body (doctor → endpoint): `{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` — `files` is a relative-path → content map of the skill's sub-files (text only; large files truncated, total payload capped at 2MB). Response (endpoint → doctor): `{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`. Any network error / non-2xx / protocol violation maps to a `fail` so problems surface instead of silently passing.
+Request body (doctor → endpoint): `{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` — `files` is a relative-path → content map of the skill's sub-files (text only; each file is truncated at `maxFileBytes`, default 200KB, and the whole `files` payload is capped at `maxTotalBytes`, default 2MB — both overridable per dimension). Response (endpoint → doctor): `{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`. Any network error / non-2xx / protocol violation maps to a `fail` so problems surface instead of silently passing. Response fields are size-bounded before landing in the report (long `message` / `hint` truncated; oversized `detail` replaced with `{ truncated: true, preview }`).
+
+Endpoint URL validation: only `http` / `https` schemes are accepted, and endpoints pointing at private/loopback hosts — localhost, `*.local`, `::1`, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 (including cloud metadata `169.254.169.254`) — are refused by default: doctor sends the full skill snapshot to the endpoint and echoes its response into the report, which would otherwise make it an SSRF vector. Set `allowPrivateHost: true` on a dimension to opt in for a trusted internal service. This is a literal hostname check (defense-in-depth) — no DNS resolution is performed, so a public domain resolving to a private IP (DNS rebinding) is out of scope.
 
 Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate`.
 

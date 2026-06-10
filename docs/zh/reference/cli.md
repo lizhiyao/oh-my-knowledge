@@ -118,6 +118,32 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 
 LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
 
+通过 `--dimensions <yaml>` 自定义维度：每条维度二选一 —— **LLM 维度**（`promptSection`，并入健康度 LLM 调用）或**接口维度**（`endpoint`，doctor 把 skill 快照 POST 给你的服务并把响应映射成判定）。同一条维度两者互斥。接口维度属于「在线」检查（默认运行，`--static-only` 下跳过），可以做 prompt 表达不了的深度检查 —— 例如调用外部安全审查服务。
+
+```yaml
+dimensions:
+  # LLM 维度
+  - id: tone-check
+    displayName: 语气检查
+    severity: warn
+    promptSection: 检查 skill 文案是否礼貌、无歧义。
+  # 接口维度
+  - id: deep-security-audit
+    displayName: 深度安全审查
+    severity: fatal
+    endpoint: https://my-service.com/audit   # POST 到这里
+    headers: { Authorization: "Bearer xxx" }  # 可选：鉴权请求头
+    params: { env: production }               # 可选：原样透传给接口
+    includeFiles: true                        # 可选（默认 true）：打包 references/scripts 子文件
+    maxFileBytes: 204800                      # 可选：单文件字节上限（默认 200KB，超出截断）
+    maxTotalBytes: 2097152                    # 可选：files 总字节上限（默认 2MB，超出停止收集）
+    allowPrivateHost: false                   # 可选：放行私网/本机 endpoint（默认 false，拒绝以防 SSRF）
+```
+
+请求体（doctor → endpoint）：`{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` —— `files` 是 skill 子文件的相对路径 → 内容映射（只收文本；单文件超 `maxFileBytes`（默认 200KB）截断，整个 `files` 块受 `maxTotalBytes`（默认 2MB）封顶，两者均可按维度覆写）。响应（endpoint → doctor）：`{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`。任何网络错误 / 非 2xx / 协议违规都映射为 `fail`，让问题浮出来而不是静默放行。响应字段落盘前同样限长（超长 `message` / `hint` 截断；超大 `detail` 替换为 `{ truncated: true, preview }`）。
+
+endpoint 地址校验：只接受 `http` / `https` 协议；指向私网/本机的地址 —— localhost、`*.local`、`::1`、127.0.0.0/8、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、169.254.0.0/16（含云 metadata `169.254.169.254`）—— 默认拒绝：doctor 会把 skill 完整快照发给 endpoint 并把响应回填进报告，不设防就会成为 SSRF 跳板。确认内网服务可信后，在该维度配置 `allowPrivateHost: true` 放行。此校验只看字面 hostname（defense-in-depth），不做 DNS 解析；公网域名解析到内网（DNS rebinding）不在防护范围。
+
 离线静态模式（`--static-only`）：CI 节点没装 claude / codex、本地断网调试等场景下跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用、零成本。结果同样进 `DoctorReport`，可与 `--json` / `--gate` 组合。
 
 `omk eval` 内部继续跑静态 readability / metadata / dependency / samples 契约 gate 保护评测质量，这条路径与用户入口的 `omk doctor` 角色分离，互不干扰。
