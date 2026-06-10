@@ -999,26 +999,10 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      // /skills/<name> 详情页(hub)已下线 — 首页点行直接进 eval/doctor 报告,跨维度靠报告页 chip 条 +
-      // 「全部历史」弹框,不再有中间汇总页。老书签 302 跳到该 skill 最新 eval(无则最新 doctor);
-      // 用 302 不用 301 —— target 随时间变(最新报告会变),不能被浏览器永久缓存。
-      const skillDetailMatch = path.match(/^\/skills\/(.+)$/);
-      if (skillDetailMatch) {
-        const skillName = decodeURIComponent(skillDetailMatch[1]);
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
-        const entry = idx.entries.find((e) => e.skillName === skillName);
-        const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-        const amp = lang === DEFAULT_LANG ? '' : `&lang=${lang}`;
-        const target = entry?.eval
-          ? `/reports/${encodeURIComponent(entry.eval.reportId)}${langQ}`
-          : entry?.doctor
-            ? `/doctors/${encodeURIComponent(entry.doctor.reportId)}?skill=${encodeURIComponent(skillName)}${amp}`
-            : `/${langQ}`;
-        res.writeHead(302, { Location: target });
-        res.end();
-        return;
-      }
+      // 注:/skills/<name> 详情页(hub)已下线 — 首页点行直接进 eval/doctor 报告,跨维度靠
+      // 报告页 chip 条 +「全部历史」弹框,不再有中间汇总页。该路由不做兼容重定向:Studio
+      // 是本地临时服务器、端口每次启动都变,跨会话书签 localhost:<port> 本就失效,且 PR 内
+      // 已无任何链接指向它。未匹配的 /skills/<name> 直接落到下方通用 404。
 
       const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
       if (skillDiagnosticsApiMatch) {

@@ -485,10 +485,9 @@ describe('report-server', () => {
     assert.ok(en.body.includes('doctor report not found'));
   });
 
-  it('GET /skills/:name 返回 302 并跳到该 skill 最新 eval 报告', async () => {
+  it('GET /skills/:name 已下线(hub 不再存在,不做兼容重定向)→ 404', async () => {
     const res = await fetch(`${baseUrl}/skills/v1`);
-    assert.equal(res.status, 302);
-    assert.equal(res.headers.location, '/reports/test-run-001');
+    assert.equal(res.status, 404);
   });
 
   it('GET unknown path returns 404', async () => {
