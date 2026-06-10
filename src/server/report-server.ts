@@ -107,17 +107,22 @@ function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
   }
 }
 
-/** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。 */
-function loadDoctorReport(dir: string, id: string): DoctorReport | null {
+/** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。
+ *  批量 doctor 会按 skill 拆成多份共享同一 id 的 per-skill 文件，传 skillName 时
+ *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
+function loadDoctorReport(dir: string, id: string, skillName?: string): DoctorReport | null {
   if (!existsSync(dir)) return null;
+  let fallback: DoctorReport | null = null;
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
       const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      if (data?.kind === 'doctor' && data.id === id) return data;
+      if (data?.kind !== 'doctor' || data.id !== id) continue;
+      if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
+      fallback ??= data;
     } catch { /* skip */ }
   }
-  return null;
+  return fallback;
 }
 
 interface SkillTrendPoint {
@@ -766,10 +771,10 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       if (doctorDetailMatch) {
         const id = decodeURIComponent(doctorDetailMatch[1]);
         const skillName = parsed.searchParams.get('skill') ?? '';
-        const report = loadDoctorReport(doctorsDir, id);
+        const report = loadDoctorReport(doctorsDir, id, skillName || undefined);
         if (!report) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end('doctor report not found');
+          res.end(lang === 'en' ? 'doctor report not found' : '体检报告不存在');
           return;
         }
         let ctx: SkillReportContext | undefined;
