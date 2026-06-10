@@ -24,7 +24,7 @@
  *   { "status": "pass" | "warn" | "fail", "message": "...", "hint"?: "...", "detail"?: {...} }
  */
 
-import { existsSync, readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, lstatSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   DoctorRule,
@@ -50,6 +50,12 @@ export interface EndpointDimensionSpec {
   maxFileBytes?: number;
   /** 整个 files 块的总上限(字节),超过停止收集。默认 2MB。 */
   maxTotalBytes?: number;
+  /** 是否放行私网/本机 endpoint。默认 false:hostname 为 localhost、*.local、::1、
+   *  127.0.0.0/8、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、169.254.0.0/16
+   *  (含云 metadata 169.254.169.254)时直接 fail。动机:check() 会把 skill 完整
+   *  快照 POST 给 endpoint 并把响应回填进报告,等于一个 SSRF response oracle,
+   *  默认不能指向内网/本机。确属可信内网检查服务时显式置 true 放行。 */
+  allowPrivateHost?: boolean;
 }
 
 /** endpoint 必须返回的判定结构。 */
@@ -107,15 +113,32 @@ function collectFiles(
       } else if (st.isFile()) {
         if (SKIP_EXTENSIONS.has(extOf(entry))) continue;
         let buf: Buffer;
-        try { buf = readFileSync(full); } catch { continue; }
+        if (st.size > maxFileBytes) {
+          // 大文件守卫:不整文件读入(超大文件会撑内存,超 Buffer 上限的 throw
+          // 还会被 catch 静默跳过),只读前 maxFileBytes + 1 字节,NUL 嗅探与
+          // 截断都在这个前缀上做。
+          let fd: number;
+          try { fd = openSync(full, 'r'); } catch { continue; }
+          try {
+            const head = Buffer.allocUnsafe(maxFileBytes + 1);
+            const n = readSync(fd, head, 0, head.length, 0);
+            buf = head.subarray(0, n);
+          } catch { continue; } finally { closeSync(fd); }
+        } else {
+          try { buf = readFileSync(full); } catch { continue; }
+        }
         // 内容嗅探:含 NUL 字节 → 二进制,跳过(扩展名漏网的 binary 兜底)。
         if (buf.includes(0)) continue;
-        // 按字节截断(中文等多字节内容也不会冲穿上限);超限只收 maxFileBytes 字节,
-        // toString 丢弃尾部可能被切断的半个 UTF-8 字符。
-        const over = buf.length > maxFileBytes;
-        const slice = over ? buf.subarray(0, maxFileBytes) : buf;
-        files[relPath] = slice.toString('utf-8') + (over ? '\n…[truncated]' : '');
-        total += slice.length;
+        // 按字节截断(中文等多字节内容也不会冲穿上限);单文件受 maxFileBytes 与
+        // 剩余总预算双重收口,超限只收前缀,toString 会把尾部可能被切断的半个
+        // UTF-8 字符替换成 U+FFFD。total 按实际写入的字节数累计(含截断标记与
+        // U+FFFD 展开),所以 maxTotalBytes 至多被末文件冲破十几个字节(常数级)。
+        const cap = Math.min(maxFileBytes, maxTotalBytes - total);
+        const over = buf.length > cap;
+        const slice = over ? buf.subarray(0, cap) : buf;
+        const text = slice.toString('utf-8') + (over ? '\n…[truncated]' : '');
+        files[relPath] = text;
+        total += Buffer.byteLength(text, 'utf-8');
       }
     }
   };
@@ -125,6 +148,42 @@ function collectFiles(
 
 function isValidStatus(s: unknown): s is EndpointResponse['status'] {
   return s === 'pass' || s === 'warn' || s === 'fail';
+}
+
+/** 私网/本机 hostname 判定(SSRF 防护用)。只做字面 hostname 检查的
+ *  defense-in-depth:不做 DNS 解析,公网域名解析到内网(DNS rebinding)不在
+ *  防护范围。WHATWG URL 会把 0x7f.0.0.1 之类写法规整成点分十进制,所以 IPv4
+ *  直接按规范化后的 hostname 判断即可。 */
+function isPrivateHostname(hostname: string): boolean {
+  // IPv6 字面量去括号([::1] → ::1);IPv4-mapped IPv6(::ffff:127.0.0.1)归并到 IPv4 判断。
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/^::ffff:(?=\d)/, '');
+  if (h === 'localhost' || h.endsWith('.local')) return true;
+  if (h === '::1') return true;
+  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 127) return true;                       // 127.0.0.0/8 loopback
+  if (a === 10) return true;                        // 10.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true;          // 192.168.0.0/16
+  if (a === 169 && b === 254) return true;          // 169.254.0.0/16(含云 metadata 169.254.169.254)
+  return false;
+}
+
+/** outcome 自由文本/JSON 字段的统一上限(字符),与协议违规路径的 received 截断对齐。 */
+const MAX_OUTCOME_CHARS = 2000;
+
+function clampText(s: string): string {
+  return s.length > MAX_OUTCOME_CHARS ? `${s.slice(0, MAX_OUTCOME_CHARS)}…[truncated]` : s;
+}
+
+/** detail 先序列化判长:超限替换成 { truncated: true, preview } 结构,
+ *  保证仍是合法 JSON 值且不会无界塞进 report。 */
+function clampDetail(detail: Record<string, unknown>): Record<string, unknown> {
+  const json = JSON.stringify(detail) ?? '';
+  if (json.length <= MAX_OUTCOME_CHARS) return detail;
+  return { truncated: true, preview: json.slice(0, MAX_OUTCOME_CHARS) };
 }
 
 /** 可注入的 fetch(测试用),默认走全局 fetch。 */
@@ -149,6 +208,48 @@ export function makeEndpointRule(
     // 网络检查,与 health composer 同档:默认跑,--static-only 跳过。
     external: true,
     async check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome> {
+      // SSRF 防护(defense-in-depth):endpoint 会收到 skill 完整快照,且响应
+      // 原样回填进报告(response oracle),所以组装请求前先校验 scheme 与 host,
+      // 私网/本机地址默认拒绝(云 metadata 169.254.169.254、内网主机等)。
+      // 只做字面校验、不做 DNS 解析:公网域名解析到内网(DNS rebinding)不在
+      // 防护范围。
+      let endpointUrl: URL;
+      try {
+        endpointUrl = new URL(spec.endpoint);
+      } catch {
+        return {
+          status: 'fail',
+          message: failMsg(
+            ctx, spec,
+            `endpoint 不是合法 URL：${spec.endpoint}`,
+            `endpoint is not a valid URL: ${spec.endpoint}`,
+          ),
+          detail: { endpoint: spec.endpoint },
+        };
+      }
+      if (endpointUrl.protocol !== 'http:' && endpointUrl.protocol !== 'https:') {
+        return {
+          status: 'fail',
+          message: failMsg(
+            ctx, spec,
+            `endpoint 协议必须是 http/https，实际是 ${endpointUrl.protocol}`,
+            `endpoint protocol must be http/https, got ${endpointUrl.protocol}`,
+          ),
+          detail: { endpoint: spec.endpoint, protocol: endpointUrl.protocol },
+        };
+      }
+      if (!spec.allowPrivateHost && isPrivateHostname(endpointUrl.hostname)) {
+        return {
+          status: 'fail',
+          message: failMsg(
+            ctx, spec,
+            `endpoint 指向私网/本机地址（${endpointUrl.hostname}），默认拒绝以防 SSRF（skill 快照会被外发、响应会回填进报告）；确认该内网服务可信后，可在维度配置加 allowPrivateHost: true 放行`,
+            `endpoint points to a private/loopback host (${endpointUrl.hostname}); refused by default to prevent SSRF (the skill snapshot is sent out and the response is echoed into the report). Set allowPrivateHost: true in the dimension config if this internal service is trusted`,
+          ),
+          detail: { endpoint: spec.endpoint, hostname: endpointUrl.hostname },
+        };
+      }
+
       const artifact = ctx.artifact;
       const content = artifact.content ?? '';
       const skillName = artifact.name.replace(/\.md$/, '').split('/').pop() ?? artifact.name;
@@ -176,46 +277,50 @@ export function makeEndpointRule(
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
-      let res: Response;
-      try {
-        res = await fetchFn(spec.endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...spec.headers },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          status: 'fail',
-          message: failMsg(ctx, spec, `请求失败: ${msg}`, `request failed: ${msg}`),
-          hint: hintNet(ctx, spec.endpoint),
-          detail: { endpoint: spec.endpoint, error: msg },
-        };
-      } finally {
-        clearTimeout(timer);
-      }
-
-      if (!res.ok) {
-        return {
-          status: 'fail',
-          message: failMsg(ctx, spec, `接口返回 HTTP ${res.status}`, `endpoint returned HTTP ${res.status}`),
-          hint: hintNet(ctx, spec.endpoint),
-          detail: { endpoint: spec.endpoint, httpStatus: res.status },
-        };
-      }
-
       let parsed: unknown;
       try {
-        parsed = await res.json();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          status: 'fail',
-          message: failMsg(ctx, spec, `响应不是合法 JSON: ${msg}`, `response is not valid JSON: ${msg}`),
-          hint: hintProto(ctx),
-          detail: { endpoint: spec.endpoint, error: msg },
-        };
+        let res: Response;
+        try {
+          res = await fetchFn(spec.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...spec.headers },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return {
+            status: 'fail',
+            message: failMsg(ctx, spec, `请求失败：${msg}`, `request failed: ${msg}`),
+            hint: hintNet(ctx, spec.endpoint),
+            detail: { endpoint: spec.endpoint, error: msg },
+          };
+        }
+
+        if (!res.ok) {
+          return {
+            status: 'fail',
+            message: failMsg(ctx, spec, `接口返回 HTTP ${res.status}`, `endpoint returned HTTP ${res.status}`),
+            hint: hintNet(ctx, spec.endpoint),
+            detail: { endpoint: spec.endpoint, httpStatus: res.status },
+          };
+        }
+
+        try {
+          parsed = await res.json();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return {
+            status: 'fail',
+            message: failMsg(ctx, spec, `响应不是合法 JSON：${msg}`, `response is not valid JSON: ${msg}`),
+            hint: hintProto(ctx),
+            detail: { endpoint: spec.endpoint, error: msg },
+          };
+        }
+      } finally {
+        // timer 覆盖 fetch + body 读取(res.json()):两者都完成或任一出错后才清,
+        // 防止慢速/滴流响应体绕过 ctx.timeoutMs 无限挂起。
+        clearTimeout(timer);
       }
 
       const resp = parsed as Partial<EndpointResponse>;
@@ -229,15 +334,17 @@ export function makeEndpointRule(
           ),
           hint: hintProto(ctx),
           // received 截断:接口可能返回超大 body,避免无界塞进 report JSON。
-          detail: { endpoint: spec.endpoint, received: JSON.stringify(parsed).slice(0, 2000) },
+          detail: { endpoint: spec.endpoint, received: JSON.stringify(parsed).slice(0, MAX_OUTCOME_CHARS) },
         };
       }
 
+      // 合法响应同样截断:message / hint / detail 都来自外部接口,不加界会被
+      // 无界写入 outcome 落盘(与上面 received 的处理风格对齐)。
       return {
         status: resp.status,
-        message: `${spec.displayName}: ${resp.message}`,
-        hint: resp.hint,
-        detail: resp.detail ?? { endpoint: spec.endpoint },
+        message: `${spec.displayName}: ${clampText(resp.message)}`,
+        hint: typeof resp.hint === 'string' ? clampText(resp.hint) : resp.hint,
+        detail: resp.detail == null ? { endpoint: spec.endpoint } : clampDetail(resp.detail),
       };
     },
   };

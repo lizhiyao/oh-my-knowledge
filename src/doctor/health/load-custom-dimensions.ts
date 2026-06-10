@@ -20,12 +20,27 @@ interface RawDimension {
   includeFiles?: boolean;
   /** 接口维度:附加请求头(eg. 鉴权 token)。 */
   headers?: Record<string, string>;
+  /** 接口维度:单文件内容上限(字节),超过截断。默认 200KB。 */
+  maxFileBytes?: number;
+  /** 接口维度:整个 files 块的总上限(字节),超过停止收集。默认 2MB。 */
+  maxTotalBytes?: number;
+  /** 接口维度:是否放行私网/本机 endpoint。默认 false:localhost / *.local / ::1 /
+   *  127.0.0.0/8 / 10.0.0.0/8 / 172.16.0.0/12 / 192.168.0.0/16 / 169.254.0.0/16
+   *  (含云 metadata)一律 fail,防 SSRF。确属可信内网服务时显式置 true。 */
+  allowPrivateHost?: boolean;
 }
 
 const VALID_SEVERITIES = new Set(['fatal', 'warn', 'info']);
 
-function resolveSeverity(raw?: string): DoctorSeverity {
-  return VALID_SEVERITIES.has(raw ?? '') ? (raw as DoctorSeverity) : 'warn';
+/** 缺省 → warn;非法值直接 throw(与 id 缺失同等对待),避免用户写了
+ *  `severity: critical` 想要 fatal 却被静默降成 warn、endpoint fail 不再 gate。 */
+function resolveSeverity(dimId: string, raw?: string): DoctorSeverity {
+  if (raw == null) return 'warn'; // 缺省/空值 → 默认 warn
+
+  if (!VALID_SEVERITIES.has(raw)) {
+    throw new Error(`自定义维度 ${dimId} 的 severity 非法：${raw}（合法值：fatal / warn / info）`);
+  }
+  return raw as DoctorSeverity;
 }
 
 /**
@@ -50,7 +65,7 @@ export function loadAndRegisterCustomDimensions(filePath: string): number {
     if (dim.endpoint && dim.promptSection) {
       throw new Error(`自定义维度 ${dim.id} 不能同时配置 endpoint 与 promptSection（二选一）`);
     }
-    const severity = resolveSeverity(dim.severity);
+    const severity = resolveSeverity(dim.id, dim.severity);
 
     if (dim.endpoint) {
       registerRule(makeEndpointRule({
@@ -61,6 +76,9 @@ export function loadAndRegisterCustomDimensions(filePath: string): number {
         params: dim.params,
         includeFiles: dim.includeFiles,
         headers: dim.headers,
+        maxFileBytes: dim.maxFileBytes,
+        maxTotalBytes: dim.maxTotalBytes,
+        allowPrivateHost: dim.allowPrivateHost,
       }));
       count++;
       continue;

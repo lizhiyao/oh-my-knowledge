@@ -128,6 +128,127 @@ describe('endpoint-rule', () => {
     const rule = makeEndpointRule({ id: 'sec', displayName: '审查', severity: 'warn', endpoint: 'https://x' });
     assert.equal(rule.external, true);
   });
+
+  it('truncates oversized message/hint and replaces oversized detail in valid responses', async () => {
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'warn', endpoint: 'https://x/audit' },
+      stubFetch(() => ({
+        json: () => ({
+          status: 'warn',
+          message: 'm'.repeat(5000),
+          hint: 'h'.repeat(5000),
+          detail: { blob: 'd'.repeat(5000) },
+        }),
+      })),
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'warn');
+    // message = displayName 前缀 + 2000 字符 + 截断标记,远小于 5000。
+    assert.ok(out.message.length < 2100);
+    assert.ok(out.message.endsWith('…[truncated]'));
+    assert.ok(out.hint!.length <= 2000 + '…[truncated]'.length);
+    assert.ok(out.hint!.endsWith('…[truncated]'));
+    // detail 超限 → 替换成 { truncated, preview } 结构,仍是合法 JSON 值。
+    assert.equal(out.detail!.truncated, true);
+    assert.equal(typeof out.detail!.preview, 'string');
+    assert.equal((out.detail!.preview as string).length, 2000);
+  });
+
+  it('keeps short message/hint/detail untouched', async () => {
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'warn', endpoint: 'https://x/audit' },
+      stubFetch(() => ({ json: () => ({ status: 'pass', message: 'ok', hint: 'fine', detail: { n: 1 } }) })),
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.message, '审查: ok');
+    assert.equal(out.hint, 'fine');
+    assert.deepEqual(out.detail, { n: 1 });
+  });
+});
+
+describe('endpoint-rule URL / SSRF 校验', () => {
+  /** fetch stub:记录是否被调用,默认返回 pass。 */
+  function trackingFetch(): { fetchFn: typeof fetch; called: () => boolean } {
+    let called = false;
+    const fetchFn = stubFetch(() => {
+      called = true;
+      return { json: () => ({ status: 'pass', message: 'ok' }) };
+    });
+    return { fetchFn, called: () => called };
+  }
+
+  it('fails on unparsable endpoint URL without sending a request', async () => {
+    const { fetchFn, called } = trackingFetch();
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'not a url' },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'fail');
+    assert.match(out.message, /不是合法 URL/);
+    assert.equal(called(), false);
+  });
+
+  it('fails on non-http(s) scheme without sending a request', async () => {
+    const { fetchFn, called } = trackingFetch();
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'file:///etc/passwd' },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'fail');
+    assert.match(out.message, /http\/https/);
+    assert.equal(called(), false);
+  });
+
+  const privateEndpoints = [
+    'http://169.254.169.254/latest/meta-data', // 云 metadata
+    'http://127.0.0.1:8080/audit',
+    'http://localhost:3000/audit',
+    'http://[::1]:3000/audit',
+    'http://10.1.2.3/audit',
+    'http://172.16.0.1/audit',
+    'http://172.31.255.255/audit',
+    'http://192.168.1.1/audit',
+    'http://foo.local/audit',
+  ];
+
+  for (const endpoint of privateEndpoints) {
+    it(`refuses private/loopback endpoint by default: ${endpoint}`, async () => {
+      const { fetchFn, called } = trackingFetch();
+      const rule = makeEndpointRule(
+        { id: 'sec', displayName: '审查', severity: 'fatal', endpoint },
+        fetchFn,
+      );
+      const out = await rule.check(ctx());
+      assert.equal(out.status, 'fail');
+      assert.match(out.message, /私网|SSRF/);
+      assert.match(out.message, /allowPrivateHost/); // 提示放行开关
+      assert.equal(called(), false);                 // 拒绝发生在请求组装前
+    });
+  }
+
+  it('allows private endpoint when allowPrivateHost=true', async () => {
+    const { fetchFn, called } = trackingFetch();
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'http://127.0.0.1:8080/audit', allowPrivateHost: true },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'pass');
+    assert.equal(called(), true);
+  });
+
+  it('allows public hosts (172.32.x is outside 172.16.0.0/12)', async () => {
+    const { fetchFn, called } = trackingFetch();
+    const rule = makeEndpointRule(
+      { id: 'sec', displayName: '审查', severity: 'fatal', endpoint: 'http://172.32.0.1/audit' },
+      fetchFn,
+    );
+    const out = await rule.check(ctx());
+    assert.equal(out.status, 'pass');
+    assert.equal(called(), true);
+  });
 });
 
 describe('endpoint-rule collectFiles', () => {
@@ -170,5 +291,19 @@ describe('endpoint-rule collectFiles', () => {
     // 按字节封顶:容 1 个替换字符(末尾半个 UTF-8 字符 decode 成 U+FFFD,3 字节)的余量。
     // 旧的「按字符 slice」会得到 10 个「中」= 30 字节,远超此界 → 能抓住回退。
     assert.ok(Buffer.byteLength(head, 'utf-8') <= 13);
+  });
+
+  it('大文件只读前缀:截断结果 = 前 maxFileBytes 字节 + 标记(不整文件读入)', async () => {
+    // 16 字节 ASCII,maxFileBytes=10 → st.size > maxFileBytes 走 openSync/readSync 前缀路径。
+    writeFileSync(join(dir, 'long.txt'), 'abcdefghijklmnop');
+    const files = await collect(10);
+    assert.equal(files['long.txt'], 'abcdefghij\n…[truncated]');
+  });
+
+  it('大文件前缀含 NUL → 按二进制跳过(嗅探在前缀上做)', async () => {
+    const buf = Buffer.from('ab\0defghijklmnop'); // NUL 在前 10 字节内,总长超 maxFileBytes=10
+    writeFileSync(join(dir, 'bin-head.dat'), buf);
+    const files = await collect(10);
+    assert.equal(files['bin-head.dat'], undefined);
   });
 });

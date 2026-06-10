@@ -9,6 +9,8 @@ import {
   __resetHealthDimensionsForTest,
 } from '../../../src/doctor/health/dimension-registry.js';
 import { getRegisteredRules, __resetCustomRulesForTest } from '../../../src/doctor/rules.js';
+import type { DoctorContext } from '../../../src/types/doctor.js';
+import type { Artifact } from '../../../src/types/eval.js';
 
 let dir: string;
 const writeYaml = (body: string): string => {
@@ -69,5 +71,51 @@ dimensions:
   - id: bare
     displayName: 空
 `)), /endpoint 或 promptSection/);
+  });
+
+  it('throws on invalid severity instead of silently downgrading to warn', () => {
+    assert.throws(() => loadAndRegisterCustomDimensions(writeYaml(`
+dimensions:
+  - id: sec
+    displayName: 审查
+    severity: critical
+    endpoint: https://example.com/audit
+`)), /severity 非法.*fatal \/ warn \/ info/);
+  });
+
+  it('omitted severity still defaults to warn', () => {
+    loadAndRegisterCustomDimensions(writeYaml(`
+dimensions:
+  - id: no-sev
+    displayName: 缺省档位
+    endpoint: https://example.com/audit
+`));
+    const rule = getRegisteredRules().find((r) => r.id === 'no-sev');
+    assert.equal(rule?.severity, 'warn');
+  });
+
+  it('passes allowPrivateHost through to the endpoint rule', async () => {
+    loadAndRegisterCustomDimensions(writeYaml(`
+dimensions:
+  - id: private-default
+    displayName: 默认拒绝
+    endpoint: http://127.0.0.1:1/audit
+  - id: private-allowed
+    displayName: 显式放行
+    endpoint: http://127.0.0.1:1/audit
+    allowPrivateHost: true
+`));
+    const artifact: Artifact = { name: 's', kind: 'skill', source: 'file-path', content: 'c' };
+    const ctx: DoctorContext = {
+      artifact, executorName: 'claude', model: 'sonnet', cwd: '/tmp', lang: 'zh', timeoutMs: 3000,
+    };
+    // 未放行:私网地址在请求组装前被拒,message 提示 allowPrivateHost。
+    const refused = await getRegisteredRules().find((r) => r.id === 'private-default')!.check(ctx);
+    assert.equal(refused.status, 'fail');
+    assert.match(refused.message, /allowPrivateHost/);
+    // 已放行:不再因 SSRF 被拒(端口 1 无服务,落到网络层失败,但不是私网拒绝文案)。
+    const allowed = await getRegisteredRules().find((r) => r.id === 'private-allowed')!.check(ctx);
+    assert.equal(allowed.status, 'fail');
+    assert.doesNotMatch(allowed.message, /allowPrivateHost/);
   });
 });
