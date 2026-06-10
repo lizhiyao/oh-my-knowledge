@@ -230,11 +230,17 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   const totals = { pass: 0, warn: 0, fail: 0 };
   const ruleStats = { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 };
 
+  const total = artifacts.length;
+  let index = 0;
   for (const artifact of artifacts) {
+    index += 1;
+    const skillName = basename(artifact.name).replace(/\.md$/, '');
+    opts.onProgress?.({ phase: 'skill_start', index, total, skillName });
+    const startedAt = Date.now();
     const results = await runRulesOnArtifact(artifact, effectiveRules, ctxBase);
     const status = classifySkillStatus(results);
     skillReports.push({
-      skillName: basename(artifact.name).replace(/\.md$/, ''),
+      skillName,
       skillPath: inferSkillPath(artifact, opts.cwd),
       results,
       status,
@@ -244,6 +250,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
       ruleStats[r.status] += 1;
       ruleStats.total += 1;
     }
+    opts.onProgress?.({ phase: 'skill_done', index, total, skillName, status, durationMs: Date.now() - startedAt });
   }
 
   // Single-enum verdict for CI / agent code. fatal-fail dominates;

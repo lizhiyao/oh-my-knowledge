@@ -20,7 +20,9 @@ export type CommonMessageKey =
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
   | 'cli.doctor.no_skill_found'
-  | 'cli.doctor.samples_detected';
+  | 'cli.doctor.samples_detected'
+  | 'cli.doctor.progress_skill_start'
+  | 'cli.doctor.progress_skill_done';
 
 export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.common.unknown_domain': {
@@ -102,5 +104,13 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.doctor.samples_detected': {
     zh: '✓ 使用评测用例文件：{path}',
     en: '✓ Using eval samples file: {path}',
+  },
+  'cli.doctor.progress_skill_start': {
+    zh: '{prefix}{skill} ⏳ 体检中...\n',
+    en: '{prefix}{skill} ⏳ checking...\n',
+  },
+  'cli.doctor.progress_skill_done': {
+    zh: '{prefix}{skill} {result}（{ms}ms）\n',
+    en: '{prefix}{skill} {result} ({ms}ms)\n',
   },
 };

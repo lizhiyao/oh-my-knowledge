@@ -7,6 +7,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
+import { makeDoctorProgress } from '../lib/progress.js';
 import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
@@ -226,6 +227,10 @@ export default class Doctor extends BaseCommand {
         ? getRegisteredRules().filter((r) => !isOnline(r))
         : getRegisteredRules().filter(isOnline);
 
+      // 批量体检进度(per-skill,写 stderr)。--gate 是静默模式,不报进度;
+      // --json 进度走 stderr 不污染 stdout 的 JSON。
+      const onProgress = flags.gate ? undefined : makeDoctorProgress(lang);
+
       let report;
       try {
         report = await runDoctor({
@@ -239,6 +244,7 @@ export default class Doctor extends BaseCommand {
           rules: rulesOverride,
           samples,
           requires,
+          onProgress,
         });
       } catch (err) {
         if (err instanceof CliExit) throw err;
