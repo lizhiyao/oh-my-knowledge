@@ -9,7 +9,7 @@
  * (contentHash == record.contentHash)里 recordedAt 最新那条 —— 旧内容的证据不冒充当前。
  */
 import type { ArtifactKind, ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
-import { deriveManagedState } from './store.js';
+import { deriveManagedState, isCurrentlyPromoted } from './store.js';
 
 /** 当前源探测结果(三态)。`reachable:false` = 不可达 / 解析失败 / 拒读,**不等于**已 drift。 */
 export interface SourceProbe {
@@ -70,10 +70,9 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     drifted = d.drifted;
   } else {
     // 不可达:不据此判 stale。promote 决定是**内容锚定**的(只看 record.decisions + record.contentHash,
-    // 不依赖源能否被 probe),故当前内容有 promote 决定时仍保留 promoted —— 它比 evidence 更不该因源不可达
+    // 不依赖源能否被 probe),故当前内容仍处于 promoted 态时保留 promoted —— 它比 evidence 更不该因源不可达
     // 丢失(deriveManagedState 的 promoted 分支同理)。否则按证据给 measurable/installed,drift 标未核。
-    const promoted = record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
-    state = promoted ? 'promoted' : currentEvidenceCount > 0 ? 'measurable' : 'installed';
+    state = isCurrentlyPromoted(record) ? 'promoted' : currentEvidenceCount > 0 ? 'measurable' : 'installed';
     drifted = false;
   }
   const latest = latestCurrentEvidence(record);

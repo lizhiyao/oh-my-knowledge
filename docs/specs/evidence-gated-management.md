@@ -1,6 +1,6 @@
 # Evidence-gated knowledge input management
 
-> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), and `omk promote` (evidence-gated acceptance, MVP) have shipped (#211/#212/#224 + promote MVP); `rollback` and `promote`'s evolve-candidate canonical-write to source remain design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
+> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), `omk promote` (evidence-gated acceptance, MVP), and `omk rollback` (revoking that acceptance, MVP) have shipped (#211/#212/#224 + promote/rollback MVP); `promote`'s evolve-candidate canonical-write to source and rollback-to-a-historical-version's content remain design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
 
 ## 1. Product thesis
 
@@ -159,7 +159,9 @@ Of §5's four mandatory items, the MVP gate checks three at promote time (report
 
 ### `rollback`
 
-`rollback` restores a previous promoted version and points to its evidence bundle. It should not be a blind file restore.
+`rollback` is the inverse of `promote`: it revokes the current version's promoted acceptance. Decisions are an append-only event stream, so rollback appends a `rollback` decision (actor, timestamp, optional reason) rather than deleting the promote; the `promoted` lifecycle label is then derived from the **latest** promote/rollback decision for the current content (`isCurrentlyPromoted`), so the state returns to `measurable`. It is content-anchored and ungated — de-escalation is always safe — operating purely on the promote/rollback history for `record.contentHash` without probing the source.
+
+What ships in the MVP (`omk rollback <name>`): revoking the acceptance of the **current** content. Rolling back a not-promoted version exits non-zero (nothing to revoke); an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). Restoring an *older promoted version's content* to the source (a true file restore, pointing back to that version's evidence bundle) is deferred with the §8 Phase 2 evolve canonical-write migration — until `promote` owns canonical writes to the source, there is no prior snapshot for rollback to restore. It must never be a blind file restore.
 
 ### `observe`
 
@@ -193,7 +195,8 @@ Done in #208 / PR #207:
 
 ### Phase 3: rollback and observation feedback
 
-- Add rollback to evidence-backed historical versions.
+- **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable`. `ManagedDecisionKind` already carried `rollback`; no schema change.
+- **Remaining:** restoring an evidence-backed *historical* version's content to the source (a true file restore), which depends on the Phase 2 canonical-writer migration giving rollback a prior snapshot to restore.
 - Let `observe` mark evidence stale and propose sample additions.
 - Show decision history in Studio.
 

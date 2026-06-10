@@ -1,6 +1,6 @@
 # 证据门控的知识输入管理
 
-> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）—— 已落地（#211/#212/#224 + promote MVP）；`rollback` 与 `promote` 对 evolve 候选 canonical 写回源文件仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
+> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）、`omk rollback`（撤销该接受，MVP）—— 已落地（#211/#212/#224 + promote/rollback MVP）；`promote` 对 evolve 候选 canonical 写回源文件、以及 rollback 恢复历史版本内容仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
 
 ## 1. 产品判断
 
@@ -159,7 +159,9 @@ MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本�
 
 ### `rollback`
 
-`rollback` 恢复到历史转正版本，并指向它的证据包。它不应该是盲目的文件恢复。
+`rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），状态回到 `measurable`。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史，不探源。
+
+MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复、指向那一版的证据包），随 §8 Phase 2 的 evolve canonical 写回迁移一起推迟 —— 在 `promote` 接管对源文件的 canonical 写之前，rollback 没有更早的快照可恢复。它绝不应该是盲目的文件恢复。
 
 ### `observe`
 
@@ -193,7 +195,8 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ### Phase 3：回滚与 observe 反馈
 
-- 增加回滚到有证据历史版本。
+- **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
+- **仍待做：** 把有证据的*历史*版本内容恢复写回源文件（真正的文件恢复），依赖 Phase 2 的 canonical 写回迁移先给 rollback 提供可恢复的更早快照。
 - 让 `observe` 标记证据过期并建议新增用例。
 - 在 Studio 展示决策历史。
 

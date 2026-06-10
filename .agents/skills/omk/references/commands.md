@@ -524,6 +524,43 @@ omk promote review --accept-cautious
 omk promote review --force --reason "已人工复核"
 ```
 
+## omk rollback
+
+回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定，状态回到 measurable。
+
+**用法:**
+
+```bash
+omk rollback <name> [flags]
+```
+
+**参数:**
+
+- `name`(必填):受管 skill 名（omk list 里的 NAME）
+
+**Flags:**
+
+- `--actor` `option`:决定的 actor（默认取 git config user.name）
+- `--global` `boolean`:操作全局受管目录而非项目 .omk/managed
+- `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
+- `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--reason` `option`:回退的理由（写入决定）
+
+**示例:**
+
+> 回退一个已 promoted 的 skill
+
+```bash
+omk rollback review
+```
+
+> 回退并记录理由
+
+```bash
+omk rollback review --reason "线上发现回归"
+```
+
 ## omk sample
 
 为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。
