@@ -80,14 +80,14 @@ export default class Promote extends BaseCommand {
       const name = args.name;
       const kind = flags.kind as ArtifactKind;
       if (!SUPPORTED_KINDS.includes(kind)) {
-        process.stderr.write(tCli('cli.promote.kind_unsupported', lang, { kind }) + '\n');
+        process.stderr.write(tCli('cli.promote.kind_unsupported', lang, { kind: sanitizeCell(String(kind)) }) + '\n');
         throw new CliExit(1);
       }
 
       const dir = flags.global ? globalManagedDir() : resolveManagedDir(managedDir());
       const record = loadManagedRecord(dir, managedRecordId(kind, name));
       if (!record) {
-        process.stderr.write(tCli('cli.promote.not_managed', lang, { name, kind }) + '\n');
+        process.stderr.write(tCli('cli.promote.not_managed', lang, { name: sanitizeCell(name), kind }) + '\n');
         throw new CliExit(1);
       }
 
@@ -101,7 +101,7 @@ export default class Promote extends BaseCommand {
         && record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
       if (alreadyPromoted) {
         if (flags.json) this.log(JSON.stringify({ schemaVersion: 1, alreadyPromoted: { name, contentHash: record.contentHash } }, null, 2));
-        else process.stderr.write(tCli('cli.promote.already_promoted', lang, { name }) + '\n');
+        else process.stderr.write(tCli('cli.promote.already_promoted', lang, { name: sanitizeCell(name) }) + '\n');
         return;
       }
 
@@ -148,7 +148,7 @@ export default class Promote extends BaseCommand {
       this.log(JSON.stringify({ schemaVersion: 1, blocked: { name, reasons: gate.blocked.map((b) => ({ blockKind: b.blockKind, ...(b.detail ? { detail: b.detail } : {}) })) } }, null, 2));
       return;
     }
-    process.stderr.write(tCli('cli.promote.blocked_header', lang, { name }) + '\n');
+    process.stderr.write(tCli('cli.promote.blocked_header', lang, { name: sanitizeCell(name) }) + '\n');
     // detail 里的 verdict / judgePromptHash 来自不可信受管 JSON,文本路径先洗(与 list 同口径,防 ANSI/OSC 注入)。
     for (const b of gate.blocked) process.stderr.write(tCli(BLOCK_KEY[b.blockKind], lang, safeDetail(b.detail)) + '\n');
     if (gate.warnings.length > 0) process.stderr.write(tCli('cli.promote.incomparable_unverified', lang) + '\n');
@@ -168,7 +168,8 @@ export default class Promote extends BaseCommand {
     // hash / verdict / reportId 来自不可信受管 JSON,文本路径先洗(--json 路径上面已 return、保留原值)。
     const short = sanitizeCell(hash.slice(0, 12));
     const safeVerdict = sanitizeCell(verdict ?? 'UNKNOWN');
-    if (overridden) this.log(tCli('cli.promote.forced_override', lang, { name, hash: short, verdict: safeVerdict }));
-    else this.log(tCli('cli.promote.promoted', lang, { name, hash: short, verdict: safeVerdict, reportId: sanitizeCell(reportId ?? '—') }));
+    const safeName = sanitizeCell(name);
+    if (overridden) this.log(tCli('cli.promote.forced_override', lang, { name: safeName, hash: short, verdict: safeVerdict }));
+    else this.log(tCli('cli.promote.promoted', lang, { name: safeName, hash: short, verdict: safeVerdict, reportId: sanitizeCell(reportId ?? '—') }));
   }
 }

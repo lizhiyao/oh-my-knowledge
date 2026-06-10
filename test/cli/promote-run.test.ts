@@ -192,6 +192,22 @@ describe('omk promote 端到端', () => {
     assert.ok(r.stderr.includes('No managed record'), r.stderr);
   });
 
+  it('--kind 非 skill → 退 1 kind_unsupported,点名收到的 kind', async () => {
+    const r = await run(['promote', 'review', '--kind', 'prompt']);
+    assert.equal(r.code, 1);
+    assert.ok(r.stderr.includes('only kind=skill'), `kind_unsupported 拦截:${r.stderr}`);
+    assert.ok(r.stderr.includes('prompt'), '点名收到的 kind');
+  });
+
+  it('CLI-arg name 含 ANSI/控制符 → 文本输出洗成 U+FFFD,不喷转义', async () => {
+    // name 是用户 CLI 入参,not_managed 回显路径必须洗白,防 ANSI/OSC 终端注入。
+    const r = await run(['promote', 'gh\x1b]0;PWNED\x07\x1b[2Jost']);
+    assert.equal(r.code, 1);
+    assert.ok(!r.stderr.includes('\x1b'), 'ESC 不得原样喷到终端');
+    assert.ok(!r.stderr.includes('\x07'), 'BEL 不得原样喷出');
+    assert.ok(r.stderr.includes('�'), '控制符应映射为 U+FFFD');
+  });
+
   it('--json:成功出版本化信封', async () => {
     writeRecord({ verdict: 'PROGRESS' });
     const r = await run(['promote', 'review', '--json']);
