@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sampleSourceExists } from '../../src/cli/commands/evolve.js';
+import { sampleSourceExists, resolveSampleOutFile } from '../../src/cli/commands/evolve.js';
 
 // sampleSourceExists 是 evolve 自动生成的「损坏文件不覆盖」守卫核心:
 // 区分「用例源已存在(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。
@@ -55,5 +55,39 @@ describe('sampleSourceExists', () => {
     assert.equal(sampleSourceExists(sub), false);
     writeFileSync(join(sub, 'cases.json'), '[]');
     assert.equal(sampleSourceExists(sub), true);
+  });
+});
+
+// resolveSampleOutFile 决定自动生成的落盘目标。与 sampleSourceExists 同用 statSync 判型,
+// 不被「带点目录名」误当文件 —— 否则 writeFileSync 撞 EISDIR。
+describe('resolveSampleOutFile', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-outfile-')); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('不存在 + 有扩展名 → 原路径(当文件写)', () => {
+    const f = join(dir, 'eval-samples.json');
+    assert.equal(resolveSampleOutFile(f), f);
+  });
+
+  it('不存在 + 无扩展名 → 目录内 samples.json(当目录)', () => {
+    const p = join(dir, 'omk-out');
+    assert.equal(resolveSampleOutFile(p), join(p, 'samples.json'));
+  });
+
+  it('已存在的文件 → 原路径(覆盖)', () => {
+    const f = join(dir, 'eval-samples.json');
+    writeFileSync(f, '[]');
+    assert.equal(resolveSampleOutFile(f), f);
+  });
+
+  it('已存在的普通目录 → 目录内 samples.json', () => {
+    assert.equal(resolveSampleOutFile(dir), join(dir, 'samples.json'));
+  });
+
+  it('已存在的带点目录名(samples.v2/)→ 目录内 samples.json,不被当文件(防 EISDIR)', () => {
+    const sub = join(dir, 'samples.v2');
+    mkdirSync(sub);
+    assert.equal(resolveSampleOutFile(sub), join(sub, 'samples.json'));
   });
 });

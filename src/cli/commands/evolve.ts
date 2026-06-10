@@ -80,6 +80,18 @@ export function sampleSourceExists(p: string): boolean {
   } catch { return false; }
 }
 
+/** 自动生成时的落盘目标:已存在的目录(含带点目录名,如 samples.v2/)→ 写进目录内的
+ *  samples.json;已存在的文件 → 覆盖该文件;不存在 → 按扩展名(有扩展名当文件,无扩展名
+ *  当目录,落 samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
+ *  误当成文件(否则 writeFileSync 撞 EISDIR)。 */
+export function resolveSampleOutFile(samplesAbs: string): string {
+  try {
+    return statSync(samplesAbs).isDirectory() ? join(samplesAbs, 'samples.json') : samplesAbs;
+  } catch {
+    return extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'samples.json');
+  }
+}
+
 // runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
 // in-process import 验证业务,Command.run() body 直接调它。
 export async function runEvolve(
@@ -132,10 +144,12 @@ export async function runEvolve(
     hasSamples = loadSamples(samplesAbs).samples.length > 0;
   } catch (err) { loadErr = err as Error; }
 
+  const sourceExists = sampleSourceExists(samplesAbs);
+
   // 用例源已存在却解析失败(JSON/YAML 语法错、duplicate id 等)= 损坏文件,
   // 绝不用 LLM 生成内容覆盖它 —— 报错退出,让用户先修。只有真的没有用例源(文件
   // 不存在 / 目录无候选用例文件)才进入自动生成。
-  if (loadErr && sampleSourceExists(samplesAbs)) {
+  if (loadErr && sourceExists) {
     console.error(lang === 'zh'
       ? `评测用例文件解析失败，evolve 不会覆盖它，请先修复：${samplesAbs}\n  原因：${loadErr.message}`
       : `Failed to parse the samples source; evolve will not overwrite it. Fix it first: ${samplesAbs}\n  reason: ${loadErr.message}`);
@@ -146,12 +160,18 @@ export async function runEvolve(
     try {
       const { generateSamples } = await import('../../authoring/generator.js');
       const skillContent = readFileSync(resolve(skillPath), 'utf-8');
-      // samplesAbs 可能是 .omk/ 目录(无后缀 fallback) → 落到目录内的 samples.json;
-      // 否则按给定文件路径写。loadSamples 目录模式会自动发现生成的文件。
-      const outFile = extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'samples.json');
+      // outFile:已存在目录写进内部 samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
+      // 判型,不被带点目录名(samples.v2/)骗。loadSamples 目录模式会自动发现生成的文件。
+      const outFile = resolveSampleOutFile(samplesAbs);
+      // sourceExists 为真 = 用例源存在但解析出 0 条(合法空 [])→ 明示"重新生成覆盖空文件",
+      // 不静默盖用户文件;为假 = 真没有用例源 → "未发现，生成"。
       process.stderr.write(lang === 'zh'
-        ? `未发现评测用例，正在自动生成到 ${outFile} …\n`
-        : `No samples found; auto-generating to ${outFile} …\n`);
+        ? (sourceExists
+            ? `评测用例为空，正在重新生成并覆盖 ${outFile} …\n`
+            : `未发现评测用例，正在自动生成到 ${outFile} …\n`)
+        : (sourceExists
+            ? `Samples are empty; regenerating (overwriting) ${outFile} …\n`
+            : `No samples found; auto-generating to ${outFile} …\n`));
       const { samples, costUSD } = await generateSamples({
         skillContent,
         model: flags.model,
