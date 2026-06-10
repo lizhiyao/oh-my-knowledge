@@ -62,7 +62,7 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] 
 @view-transition{navigation:auto}
 /* 滚动条始终预留 gutter:短页无滚动条、长页有,切换时内容宽度会跳;stable 让宽度恒定。 */
 html{scrollbar-gutter:stable}
-/* 参照 aima-knowledge SkillHealth 配色（2026-06）。
+/* 参照内部 SkillHealth dashboard 配色（2026-06）。
    设计原则：冷白底 + indigo 强调色 + 精确匹配参考系统色板。 */
 :root{
   --bg-base:rgb(246,248,251);    /* 页面底 */
@@ -1208,7 +1208,7 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] 
 @view-transition{navigation:auto}
 /* 滚动条始终预留 gutter:短页无滚动条、长页有,切换时内容宽度会跳;stable 让宽度恒定。 */
 html{scrollbar-gutter:stable}
-/* 参照 aima-knowledge SkillHealth 配色（2026-06）。
+/* 参照内部 SkillHealth dashboard 配色（2026-06）。
    设计原则：冷白底 + indigo 强调色 + 精确匹配参考系统色板。 */
 :root{
   --bg-base:rgb(246,248,251);    /* 页面底 */
@@ -2354,7 +2354,7 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList en 1`] = 
 @view-transition{navigation:auto}
 /* 滚动条始终预留 gutter:短页无滚动条、长页有,切换时内容宽度会跳;stable 让宽度恒定。 */
 html{scrollbar-gutter:stable}
-/* 参照 aima-knowledge SkillHealth 配色（2026-06）。
+/* 参照内部 SkillHealth dashboard 配色（2026-06）。
    设计原则：冷白底 + indigo 强调色 + 精确匹配参考系统色板。 */
 :root{
   --bg-base:rgb(246,248,251);    /* 页面底 */
@@ -2951,7 +2951,7 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList zh 1`] = 
 @view-transition{navigation:auto}
 /* 滚动条始终预留 gutter:短页无滚动条、长页有,切换时内容宽度会跳;stable 让宽度恒定。 */
 html{scrollbar-gutter:stable}
-/* 参照 aima-knowledge SkillHealth 配色（2026-06）。
+/* 参照内部 SkillHealth dashboard 配色（2026-06）。
    设计原则：冷白底 + indigo 强调色 + 精确匹配参考系统色板。 */
 :root{
   --bg-base:rgb(246,248,251);    /* 页面底 */

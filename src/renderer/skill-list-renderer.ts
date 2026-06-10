@@ -1,5 +1,5 @@
 /**
- * Skill 列表页 — 仪表盘布局，精确参照 aima-knowledge SkillHealth。
+ * Skill 列表页 — 仪表盘布局，精确参照内部 SkillHealth dashboard。
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';

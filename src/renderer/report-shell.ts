@@ -1,7 +1,7 @@
 /**
  * 报告详情页统一外壳（doctor / eval / observe 共用）。
  *
- * 设计原则（与首页 / skill 弹框 aima 风格统一）：
+ * 设计原则（与首页 / skill 弹框风格统一）：
  *   - 纯白卡片 + 冷灰边框 #e4e8f1 + 柔和阴影
  *   - 综合分用 score ring，色阶 100 绿 / ≥60 橙 / <60 红
  *   - 维度色：doctor 蓝 #2563eb / eval 紫 #7c3aed / observe 绿 #059669
