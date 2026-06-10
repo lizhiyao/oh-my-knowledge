@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -81,7 +81,62 @@ omk list --json          # 机器可读输出，含完整可比性 marker
 
 <!-- omk:cli:list:flags:end -->
 
-列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 输出版本化信封 `{ schemaVersion, rows }`（有当前有效证据的行携带可比性 marker —— `cliVersion`，可选 `judgePromptHash` / `debiasMode`），让脚本能检测形态变更。参见[证据门控管理](../specs/evidence-gated-management.md)。
+列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`promoted`（当前内容有人工接受决定）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 输出版本化信封 `{ schemaVersion, rows }`（有当前有效证据的行携带可比性 marker —— `cliVersion`，可选 `judgePromptHash` / `debiasMode`），让脚本能检测形态变更。参见[证据门控管理](../specs/evidence-gated-management.md)。
+
+## `omk promote`
+
+```bash
+omk promote review                      # 证据过门禁则把当前版本接受为 promoted
+omk promote review --accept-cautious    # 也接受 CAUTIOUS verdict
+omk promote review --force --reason "已人工复核"   # 越门，记为人工决定
+```
+
+<!-- omk:cli:promote:flags:start -->
+
+**Flags:**
+
+```text
+  --accept-cautious  把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
+  --actor <value>    决定的 actor（默认取 git config user.name）
+  --force            越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
+  --global           操作全局受管目录而非项目 .omk/managed
+  --json             输出 JSON（版本化信封）供脚本消费
+  --kind <value>     artifact 类型（当前仅 skill）
+  --lang <value>     输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --reason <value>   promote / 越门的理由（写入决定）
+```
+
+完整描述见 `omk promote --help`。
+
+<!-- omk:cli:promote:flags:end -->
+
+把受管 skill 的当前版本按证据门禁接受为 `promoted`，并往记录里追加一条带证据指针的人工决定。门禁对最新一条**当前**证据判定（`contentHash` 与记录匹配）：源不能漂移/不可达、必须有当前证据（无证据即拦，`--force` 也无从锚定）、证据的 `judgePromptHash`（若有）须仍属当前评委模板、verdict 须为 `PROGRESS`（或加 `--accept-cautious` 接受 `CAUTIOUS`）。`--force` 必须配合非空 `--reason`，只可越过源不可达、不同比或 verdict 类拦截；不能越过缺当前证据，也不能越过源可达但内容 hash 已变的场景，因为 decision 仍会指向旧的受管基线。对已 promote 的当前版本重跑是幂等无操作。promote 是 `omk list` 的写侧对应。参见[证据门控管理](../specs/evidence-gated-management.md)。
+
+## `omk rollback`
+
+```bash
+omk rollback review                          # 撤销当前版本的 promoted 接受
+omk rollback review --reason "线上发现回归"   # 回退并记录理由
+```
+
+<!-- omk:cli:rollback:flags:start -->
+
+**Flags:**
+
+```text
+  --actor <value>   决定的 actor（默认取 git config user.name）
+  --global          操作全局受管目录而非项目 .omk/managed
+  --json            输出 JSON（版本化信封）供脚本消费
+  --kind <value>    artifact 类型（当前仅 skill）
+  --lang <value>    输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --reason <value>  回退的理由（写入决定）
+```
+
+完整描述见 `omk rollback --help`。
+
+<!-- omk:cli:rollback:flags:end -->
+
+回退受管 skill 当前版本的 `promoted` 接受，是 `omk promote` 的反操作。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定；生命周期再按当前内容**最近一条** promote/rollback 决定推导，源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。rollback 是内容锚定的：只看 `record.contentHash` 上的 promote/rollback 历史，不设门禁（降级永远安全）。回退一个未 promoted 的版本以非零码退出（无可回退）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 

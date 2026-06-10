@@ -350,7 +350,7 @@ omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/re
 
 ## omk list
 
-列出受管 skill 及其证据状态：生命周期（installed / measurable / stale）、最新 verdict、证据数、源。
+列出受管 skill 及其证据状态：生命周期（installed / measurable / promoted / stale）、最新 verdict、证据数、源。
 
 **用法:**
 
@@ -478,6 +478,88 @@ omk observe show <inboxId> [flags]
 
 - `--input-dir` `option`:inbox 数据目录
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+
+## omk promote
+
+把受管 skill 的当前版本按证据门禁「接受」为 promoted：默认仅放行 verdict=PROGRESS,在记录里追加一条带证据指针的人工决定。
+
+**用法:**
+
+```bash
+omk promote <name> [flags]
+```
+
+**参数:**
+
+- `name`(必填):受管 skill 名（omk list 里的 NAME）
+
+**Flags:**
+
+- `--accept-cautious` `boolean`:把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
+- `--actor` `option`:决定的 actor（默认取 git config user.name）
+- `--force` `boolean`:越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
+- `--global` `boolean`:操作全局受管目录而非项目 .omk/managed
+- `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
+- `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--reason` `option`:promote / 越门的理由（写入决定）
+
+**示例:**
+
+> promote 一个证据达标的 skill
+
+```bash
+omk promote review
+```
+
+> 接受 CAUTIOUS 结果（显式放宽门禁）
+
+```bash
+omk promote review --accept-cautious
+```
+
+> 越门 promote 并记录理由（人工 override）
+
+```bash
+omk promote review --force --reason "已人工复核"
+```
+
+## omk rollback
+
+回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定（源未漂移则状态回到 measurable，源已漂移则仍 stale）。
+
+**用法:**
+
+```bash
+omk rollback <name> [flags]
+```
+
+**参数:**
+
+- `name`(必填):受管 skill 名（omk list 里的 NAME）
+
+**Flags:**
+
+- `--actor` `option`:决定的 actor（默认取 git config user.name）
+- `--global` `boolean`:操作全局受管目录而非项目 .omk/managed
+- `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
+- `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--reason` `option`:回退的理由（写入决定）
+
+**示例:**
+
+> 回退一个已 promoted 的 skill
+
+```bash
+omk rollback review
+```
+
+> 回退并记录理由
+
+```bash
+omk rollback review --reason "线上发现回归"
+```
 
 ## omk sample
 

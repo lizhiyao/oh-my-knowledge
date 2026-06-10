@@ -1,6 +1,6 @@
 # Evidence-gated knowledge input management
 
-> **Status**: design note for #203. The management entry point — `omk install` registering managed records — and `omk list` (evidence status / lifecycle) have shipped (#211/#212/#224); the rest (`promote` / `rollback`) remains design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
+> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), `omk promote` (evidence-gated acceptance, MVP), and `omk rollback` (revoking that acceptance, MVP) have shipped (#211/#212/#224 + promote/rollback MVP); `promote`'s evolve-candidate canonical-write to source and rollback-to-a-historical-version's content remain design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
 
 ## 1. Product thesis
 
@@ -43,7 +43,7 @@ In short: omk does not manage knowledge inputs because it is a better file copie
 Every management decision must preserve omk's measurement posture:
 
 - A promotion decision must point to comparable reports or explicitly mark why comparability is limited.
-- A rollback decision must point to a historical version and the evidence that justified it.
+- A rollback decision must be explicit and recorded; the MVP revokes the current version's acceptance, and restoring a *historical* version's content (future work) must point to that version and the evidence that justified it.
 - A production observation must name its attribution confidence and cannot silently overwrite eval evidence.
 - A stale or incomparable evidence bundle must be visible to the user, not hidden behind a green status.
 
@@ -84,11 +84,11 @@ Useful states for a managed artifact:
 | `installed` | omk knows where the artifact lives, but it has no valid eval evidence | `doctor` / `sample` → `measurable` |
 | `measurable` | doctor and samples are sufficient to run controlled eval | `eval → measurable`; `evolve → candidate` |
 | `candidate` | a proposed version exists (an `evolve` snapshot or a human edit), not yet written to the source of record | `eval → candidate`; `promote → promoted` (or reject, source untouched) |
-| `promoted` | current accepted version, written to the source by `promote`, with attached evidence | `observe → promoted` / `stale`; `rollback → rolled-back`; `evolve → candidate` |
+| `promoted` | current accepted version, written to the source by `promote`, with attached evidence | `observe → promoted` / `stale`; `rollback → measurable` (or `stale` if drifted); `evolve → candidate` |
 | `stale` | evidence no longer matches artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
-| `rolled-back` | a historical promoted version restored by `rollback` with evidence | `observe`; `evolve → candidate` |
+| `rolled-back` | (future) a historical promoted version's content restored by `rollback` with evidence — not yet a `ManagedLifecycleLabel` | `observe`; `evolve → candidate` |
 
-These states are product concepts, not necessarily a new persistent enum on day one. `reject` is the negative outcome of a `promote` decision (recorded in the evidence bundle, source untouched), not a separate command.
+These states are product concepts, not necessarily a new persistent enum on day one. The MVP `rollback` revokes the current version's acceptance and returns the skill to `measurable` (or `stale` if the source has drifted); `rolled-back` remains a future product concept and is not yet a `ManagedLifecycleLabel`. `reject` is the negative outcome of a `promote` decision (recorded in the evidence bundle, source untouched), not a separate command.
 
 ## 7. Command surface
 
@@ -142,20 +142,26 @@ Rules:
 
 ### `promote`
 
-`promote` turns a candidate into the accepted managed version. It is the only command that performs the canonical write to the source-of-record artifact file.
+`promote` accepts a managed skill's current version as the blessed one, gated on its evidence, and appends a human decision (with an evidence pointer) to the record. It is the command that owns the canonical write to the source-of-record artifact file.
 
-Default gate:
+What ships in the MVP (`omk promote <name>`): the install / human-edit loop, where the measured content already lives at the source. promote does not rewrite the file there; its substance is the gated **acceptance decision** + the lifecycle transition to `promoted` (read-time derived by `deriveManagedState` when the current content carries a `promote` decision). The canonical write-from-a-not-yet-at-source-candidate (the evolve flow) is deferred with the §8 Phase 2 evolve migration — until evolve stops auto-writing the winner to the source, there is nothing for promote to write there.
 
-- comparable report exists
-- verdict is `PROGRESS` or a configured acceptable result
-- confidence interval / underpowered state is visible
-- sample-design warnings are surfaced
+Default gate (resolved against the latest **current** evidence — `contentHash` matching the record):
 
-Overrides may exist, but must be explicit and recorded as human decisions.
+- the source is not drifted / unreachable (else the on-disk content is not what was measured)
+- current evidence exists (no evidence ⇒ blocked, and `--force` cannot conjure an anchor)
+- comparability: the evidence's `judgePromptHash`, if present, is still a current judge-prompt template (a changed judge prompt ⇒ the old verdict is incomparable ⇒ blocked); a missing fingerprint warns but does not block; `cliVersion` is shown, not hard-gated (else every release would invalidate all evidence)
+- verdict is `PROGRESS` by default; `CAUTIOUS` only with explicit `--accept-cautious`; everything else is blocked
+
+Of §5's four mandatory items, the MVP gate checks three at promote time (report id via "current evidence exists", verdict, and the comparability marker); **sample-set coverage** is denormalized into the evidence bundle by `eval` (§9, #221) and trusted here — the gate does not re-derive or re-check it. (§5's "mandatory" framing is about what `eval` must write into the bundle, not a separate promote-time re-check.)
+
+`--force` overrides only forceable non-evidence blocks (source unreachable / incomparable / verdict), recorded on the decision as `override.verdict` (plus `override.overriddenBlocks` naming which checks were waved through) with the human's required `--reason` (spec invariant: overrides must be explicit and recorded). A reachable source whose content hash differs from the managed baseline is not forceable: the decision would still point at the old `record.contentHash`, so users must re-run `omk eval` / reinstall instead. Re-running promote on an already-promoted current version is an idempotent no-op.
 
 ### `rollback`
 
-`rollback` restores a previous promoted version and points to its evidence bundle. It should not be a blind file restore.
+`rollback` is the inverse of `promote`: it revokes the current version's promoted acceptance. Decisions are an append-only event stream, so rollback appends a `rollback` decision (actor, timestamp, optional reason) rather than deleting the promote; the `promoted` lifecycle label is then derived from the **latest** promote/rollback decision for the current content (`isCurrentlyPromoted`), so the label derives back to `measurable` — or stays `stale` if the source has since drifted, because rollback does not probe the source. It is content-anchored and ungated — de-escalation is always safe — operating purely on the promote/rollback history for `record.contentHash`.
+
+What ships in the MVP (`omk rollback <name>`): revoking the acceptance of the **current** content. Rolling back a not-promoted version exits non-zero (nothing to revoke); an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). Restoring an *older promoted version's content* to the source (a true file restore, pointing back to that version's evidence bundle) is deferred with the §8 Phase 2 evolve canonical-write migration — until `promote` owns canonical writes to the source, there is no prior snapshot for rollback to restore. It must never be a blind file restore.
 
 ### `observe`
 
@@ -183,14 +189,14 @@ Done in #208 / PR #207:
 
 ### Phase 2: promotion records and the canonical-writer migration
 
-- Add candidate/promoted records.
-- Today `evolve` auto-writes the winning candidate back to the source artifact file at the end of a run, so nothing is left for `promote` to gate. Decision (B): make `promote` the sole owner of the canonical write to the source artifact; change `evolve` to write candidates only as snapshots under its working directory and stop mutating the source. This is a behavior change to a current `evolve` default and must land before `promote` can gate anything; ship it with a changelog / deprecation note.
+- **Shipped (promote MVP):** the gated **acceptance decision** for the install / human-edit loop — `omk promote <name>` requires comparable, current, gate-passing evidence (default `PROGRESS`) and appends a `promote` decision; `deriveManagedState` derives the `promoted` lifecycle label. `ManagedDecision` gained additive evidence-pointer fields (`contentHash` / `reportId` / `override`), still `schemaVersion 2`.
+- **Remaining (evolve canonical-writer migration):** today `evolve` auto-writes the winning candidate back to the source artifact file at the end of a run, so nothing is left for `promote` to gate **in the evolve flow**. Decision (B): make `promote` the sole owner of the canonical write to the source artifact; change `evolve` to write candidates only as snapshots under its working directory and stop mutating the source. This is a behavior change to a current `evolve` default and must land before `promote` can write an evolve candidate to the source; ship it with a changelog / deprecation note.
 - Let `evolve` produce candidates that `promote` can write with evidence.
-- Require comparable eval evidence for default promotion.
 
 ### Phase 3: rollback and observation feedback
 
-- Add rollback to evidence-backed historical versions.
+- **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable` (or `stale` if the source has since drifted — rollback doesn't probe the source). `ManagedDecisionKind` already carried `rollback`; no schema change.
+- **Remaining:** restoring an evidence-backed *historical* version's content to the source (a true file restore), which depends on the Phase 2 canonical-writer migration giving rollback a prior snapshot to restore.
 - Let `observe` mark evidence stale and propose sample additions.
 - Show decision history in Studio.
 
@@ -198,10 +204,10 @@ Done in #208 / PR #207:
 
 - **Decided:** management records live in per-record files `.omk/managed/<id>.json` (atomic tmp+rename, mirroring report-store), not a single aggregate file.
 - **Decided (#214, completed):** the artifact content hash is unified so evidence can bind, keyed on *what the executor actually measures*. Every directory-skill — local **and** git — is materialized before measurement into an isolated content-addressed copy (`materializeIsolatedCopy`), and the executor's `cwd` is anchored to that copy so `references/` assets are real runtime input. `eval` records the same whole-tree `hashArtifactSource` as `install` (report `schemaVersion >= 3`), so `evidence.contentHash === record.contentHash` lives in one space for all directory-skills (the executor cache key carries the same hash, so an asset edit busts the cache). File-skills (local or git) hash the single `.md` bytes and also bind. The isolated copy also means the agent runs against a copy, not the user's real skill directory. `schemaVersion 2` was a transitional era where local directory-skills were tree-hashed but git directory-skills hashed `SKILL.md` bytes only (did not bind); git-directory-skill hashes from v2 are incomparable to v3. Reports with `schemaVersion < 2` carry the legacy SKILL.md-text hash and are treated as incomparable by drift / lineage consumers (re-run `eval`).
-- **Decided (#221, completed):** `eval` now writes the evidence. On completion it appends one `ManagedEvidenceRef` to every **already-managed** record it can match to a tested variant (`src/managed/evidence.ts`), moving the skill from `installed` to `measurable` via `deriveManagedState`. Three settled trade-offs: (a) **trigger** — auto on eval completion, but only to records that already exist (`install` is the opt-in; a never-installed skill is never conjured into a record), with `--no-evidence` to disable; (b) **many-to-one** — append-only with `(reportId, contentHash)` dedup, all history retained, current validity still decided read-time by the contentHash match (so old-content evidence survives for rollback without making the new content look measured); (c) **cross-source identity** — install and eval name the same skill differently (record name is the short skill name `review`; the report variant key may be a full expression `git:HEAD:skills/review`, an eval.yaml alias `candidate`, or a blind label `A`), so matching is a three-tier disambiguation: explicit same-name variant, then structural source match (`variantConfigs[].locator/ref` against `record.source`), then a pure-contentHash fallback **only when that hash is unique among managed records** — the uniqueness gate stops a report that tested one skill from writing evidence into a different record that merely happens to share identical current content. `applyBlindMode` blinds `variants` but not `artifactHashes`/`variantConfigs`, so all three tiers work under blind mode. The bundle denormalizes §5's mandatory four (report id, sample-set coverage, verdict, comparability marker) into the record so it stays self-contained and grep-able without re-reading the report. This does not change Report schema or any comparability invariant; the management record stays `schemaVersion 2` (additive optional evidence fields). Remaining future work: `promote` gating on these bundles.
+- **Decided (#221, completed):** `eval` now writes the evidence. On completion it appends one `ManagedEvidenceRef` to every **already-managed** record it can match to a tested variant (`src/managed/evidence.ts`), moving the skill from `installed` to `measurable` via `deriveManagedState`. Three settled trade-offs: (a) **trigger** — auto on eval completion, but only to records that already exist (`install` is the opt-in; a never-installed skill is never conjured into a record), with `--no-evidence` to disable; (b) **many-to-one** — append-only with `(reportId, contentHash)` dedup, all history retained, current validity still decided read-time by the contentHash match (so old-content evidence survives for rollback without making the new content look measured); (c) **cross-source identity** — install and eval name the same skill differently (record name is the short skill name `review`; the report variant key may be a full expression `git:HEAD:skills/review`, an eval.yaml alias `candidate`, or a blind label `A`), so matching is a three-tier disambiguation: explicit same-name variant, then structural source match (`variantConfigs[].locator/ref` against `record.source`), then a pure-contentHash fallback **only when that hash is unique among managed records** — the uniqueness gate stops a report that tested one skill from writing evidence into a different record that merely happens to share identical current content. `applyBlindMode` blinds `variants` but not `artifactHashes`/`variantConfigs`, so all three tiers work under blind mode. The bundle denormalizes §5's mandatory four (report id, sample-set coverage, verdict, comparability marker) into the record so it stays self-contained and grep-able without re-reading the report. This does not change Report schema or any comparability invariant; the management record stays `schemaVersion 2` (additive optional evidence fields). `promote` (MVP) now gates on these bundles — see §7.
 - How should git refs and omk evidence records interact (re-materialize a moving branch vs a pinned SHA on drift checks)?
 - What snapshot layout should `evolve` write under its working directory, and what is the deprecation path for users who currently rely on `evolve` writing the winner back to the source file (decision B migration mechanics)?
-- Which verdicts are acceptable for promotion by default: only `PROGRESS`, or `CAUTIOUS` with explicit caveats?
+- **Decided (promote MVP):** default acceptable verdict is `PROGRESS` only (omk's default-strict posture — defaults that affect a "deserves to ship" judgment must be strict); `CAUTIOUS` passes only with explicit `--accept-cautious`; everything else needs `--force` (recorded as an override).
 - What is the stale-evidence policy when only samples change, only runtime context changes, or only artifact content changes?
 - Should human override be allowed in CLI, Studio, or both?
 - When should `omk init` become `omk eval init`, and what compatibility alias policy is acceptable?

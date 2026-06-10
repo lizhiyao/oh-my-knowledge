@@ -8,6 +8,7 @@ import type {
   DerivedManagedState,
   ManagedArtifactRecord,
   ManagedArtifactSource,
+  ManagedDecision,
   ManagedDistributionTarget,
   ManagedEvidenceRef,
 } from '../types/index.js';
@@ -101,8 +102,23 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     }
     return true;
   });
-  const okDec = r.decisions.every((d) => d && typeof d === 'object'
-    && isStringField((d as { decisionKind?: unknown }).decisionKind));
+  const okDec = r.decisions.every((d) => {
+    if (!d || typeof d !== 'object') return false;
+    const dec = d as unknown as Record<string, unknown>;
+    if (!isStringField(dec.decisionKind)) return false;
+    // promote/reject/rollback 的证据指针(promote 写)同样收窄:任意类型脏值不得穿过 validator 进
+    // deriveManagedState / promote 消费方。actor / decidedAt / reason 是 install 后才追加的可选展示字段,
+    // 旧记录(install 时 decisions 恒空)无,按 optional 读。
+    if (!isOptionalString(dec.actor) || !isOptionalString(dec.decidedAt) || !isOptionalString(dec.reason)) return false;
+    if (!isOptionalString(dec.contentHash) || !isOptionalString(dec.reportId)) return false;
+    if (dec.override !== undefined) {
+      const o = dec.override as Record<string, unknown>;
+      if (!o || typeof o !== 'object' || !isStringField(o.verdict)) return false;
+      if (o.overriddenBlocks !== undefined
+        && !(Array.isArray(o.overriddenBlocks) && o.overriddenBlocks.every((b) => typeof b === 'string'))) return false;
+    }
+    return true;
+  });
   return okDist && okEv && okDec;
 }
 
@@ -231,6 +247,67 @@ export function appendManagedEvidence(
 }
 
 /**
+ * 当前内容(contentHash === record.contentHash)是否处于 promoted 态。决定是 append-only 事件流,
+ * promote 与 rollback 互为反操作,故不能看「是否存在过 promote」,而要看**当前内容最近一条** promote/rollback
+ * 决定是不是 promote —— rollback 之后再 promote 仍能恢复 promoted,反之亦然。换了内容(contentHash 变)后
+ * 旧内容的决定一概不算数。
+ *
+ * 「最近」按 decidedAt 真实时刻取,与 `latestCurrentEvidence` 同口径:omk 自写恒 UTC `Z`、字典序即时间序;
+ * 但记录可手改 / 随仓库分发,异偏移 ISO 串字典序会乱 → 两端可解析才用解析时刻,否则退字典序;并列取后出现的
+ * (数组追加序 = 事件序)。
+ */
+export function isCurrentlyPromoted(record: ManagedArtifactRecord): boolean {
+  const ms = (s: string): number | null => { const n = Date.parse(s); return Number.isNaN(n) ? null : n; };
+  let latest: ManagedDecision | undefined;
+  for (const d of record.decisions) {
+    if (d.contentHash !== record.contentHash) continue;
+    if (d.decisionKind !== 'promote' && d.decisionKind !== 'rollback') continue;
+    if (latest === undefined) { latest = d; continue; }
+    const tcur = ms(d.decidedAt); const tlat = ms(latest.decidedAt);
+    const newer = tcur !== null && tlat !== null ? tcur >= tlat : d.decidedAt >= latest.decidedAt;
+    if (newer) latest = d;
+  }
+  return latest?.decisionKind === 'promote';
+}
+
+/**
+ * 追加一条人工管理决定(append-only,promote/reject/rollback 走此路)。与 evidence 同样**不能走 upsert**
+ * (`mergeManagedRecord` 刻意保留旧 decisions、丢弃 next.decisions),必须独立 load→push→原子重写。
+ *
+ * 幂等:对**当前内容**的 promote/rollback,看是否会改变当前 promoted 态——已 promoted 再 promote、未 promoted
+ * 再 rollback 都不追加、原样返回(由 CLI 提示「已 promoted」/「未 promoted」)。这让重复 `omk promote` /
+ * `omk rollback` 不堆冗余事件,但 promote↔rollback 的真实切换、以及换了内容(contentHash 变)后的新决定仍会
+ * 追加——正是要的版本史。其它 decisionKind(如 reject)仍按「同 kind + 同 contentHash 即 dedup」。记录不存在
+ * (未 install)返回 null,与 evidence 同口径(管理是 install 显式 opt-in,绝不为未纳管 skill 凭空建记录)。
+ */
+export function appendManagedDecision(
+  dir: string,
+  recordId: string,
+  decision: ManagedDecision,
+): ManagedArtifactRecord | null {
+  const prev = loadManagedRecord(dir, recordId);
+  if (!prev) return null;
+  const isPromotion = decision.decisionKind === 'promote' || decision.decisionKind === 'rollback';
+  const onCurrent = decision.contentHash !== undefined && decision.contentHash === prev.contentHash;
+  const dup = isPromotion && onCurrent
+    // promote/rollback 当前内容:不改变 promoted 态 → no-op(promote 当已 promoted、rollback 当未 promoted)。
+    ? (decision.decisionKind === 'promote') === isCurrentlyPromoted(prev)
+    : decision.contentHash !== undefined
+      && prev.decisions.some((d) => d.decisionKind === decision.decisionKind && d.contentHash === decision.contentHash);
+  const merged: ManagedArtifactRecord = dup
+    ? prev
+    : { ...prev, decisions: [...prev.decisions, decision] };
+  if (!dup) {
+    mkdirSync(dir, { recursive: true });
+    const path = recordPath(dir, recordId);
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    writeFileSync(tmp, JSON.stringify(merged, null, 2));
+    renameSync(tmp, path);
+  }
+  return merged;
+}
+
+/**
  * 统一的记录构造点——所有消费方(CLI / 未来 server / SDK)经此组装,保证 schema 一致。
  * 只接收事实(身份、源、hash、分发落点);evidence/decisions 恒为空(eval/promote 的地盘)。
  */
@@ -269,9 +346,10 @@ export function recordManagedArtifact(
 /**
  * 读时推导生命周期标签。
  *   - 源缺失或 hash 漂(当前内容 ≠ 记录 contentHash)→ stale;
+ *   - 否则当前内容已有 promote 决定 → promoted;
  *   - 否则有**当前**证据 / samples → measurable;
  *   - 否则 installed。
- * 「当前证据」= contentHash 与记录当前 contentHash 匹配的 evidence —— 旧内容的 evidence 不算数,
+ * 「当前证据 / 当前决定」= contentHash 与记录当前 contentHash 匹配的 evidence / decision —— 旧内容的不算数,
  * 这正是 #203「证据必须跟 artifact 一起走」的读时保证。`'discovered'` 留给无分发的记录,此函数不产生。
  */
 export function deriveManagedState(input: DeriveManagedStateInput): DerivedManagedState {
@@ -279,6 +357,9 @@ export function deriveManagedState(input: DeriveManagedStateInput): DerivedManag
   const hasEvidence = record.evidence.some((e) => e.contentHash === record.contentHash);
   const drifted = currentContentHash === undefined || currentContentHash !== record.contentHash;
   if (drifted) return { label: 'stale', drifted: true, hasEvidence };
+  // 当前内容(contentHash 匹配)最近一条 promote/rollback 决定是 promote → 已人工接受当前版本,排在 measurable
+  // 之上。rollback 之后落回 measurable/installed;换了内容(contentHash 变)后旧决定不冒充当前。
+  if (isCurrentlyPromoted(record)) return { label: 'promoted', drifted: false, hasEvidence };
   if (hasEvidence || hasSamplesOrDoctorPass) return { label: 'measurable', drifted: false, hasEvidence };
   return { label: 'installed', drifted: false, hasEvidence };
 }
