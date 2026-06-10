@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -111,6 +111,32 @@ For full descriptions: `omk promote --help`.
 <!-- omk:cli:promote:flags:end -->
 
 Accepts a managed skill's current version as `promoted`, gated on its evidence, and appends a human decision (with an evidence pointer) to the record. The gate resolves against the latest **current** evidence (`contentHash` matching the record): the source must not be drifted/unreachable, current evidence must exist (no evidence ⇒ blocked, and `--force` cannot conjure one), the evidence's `judgePromptHash` (if present) must still be a current judge-prompt template, and the verdict must be `PROGRESS` (or `CAUTIOUS` with `--accept-cautious`). `--force` must be paired with a non-empty `--reason` and can only override source-unreachable / incomparable / verdict blocks; it still refuses missing current evidence or a reachable source whose content hash changed, because the decision would keep pointing at the old managed baseline. Re-promoting an already-promoted current version is an idempotent no-op. promote is the write-side counterpart to `omk list`. See [evidence-gated management](../specs/evidence-gated-management.md).
+
+## `omk rollback`
+
+```bash
+omk rollback review                          # revoke the current version's promoted acceptance
+omk rollback review --reason "regression found in prod"   # roll back and record a reason
+```
+
+<!-- omk:cli:rollback:flags:start -->
+
+**Flags:**
+
+```text
+  --actor <value>   decision actor (defaults to git config user.name)
+  --global          operate on the global managed dir instead of project .omk/managed
+  --json            output JSON (versioned envelope) for scripts
+  --kind <value>    artifact kind (only skill today)
+  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --reason <value>  reason for the rollback (stored on the decision)
+```
+
+For full descriptions: `omk rollback --help`.
+
+<!-- omk:cli:rollback:flags:end -->
+
+Rolls back a managed skill's current `promoted` acceptance — the inverse of `omk promote`. Because decisions are an append-only event stream, rollback appends a `rollback` decision rather than deleting the promote; the lifecycle is then derived from the **latest** promote/rollback decision for the current content, so the state derives back to `measurable` — or stays `stale` if the source has since drifted off the baseline, since rollback does not probe the source. rollback is content-anchored and needs no gate (de-escalation is always safe): it operates purely on the record's promote/rollback history for `record.contentHash`. Rolling back a version that isn't promoted exits non-zero (nothing to roll back); rolling back an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). See [evidence-gated management](../specs/evidence-gated-management.md).
 
 ## `omk doctor`
 

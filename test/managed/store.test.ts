@@ -17,6 +17,7 @@ import {
   upsertManagedRecord,
   appendManagedDecision,
   deriveManagedState,
+  isCurrentlyPromoted,
 } from '../../src/managed/store.js';
 import type { ManagedArtifactRecord, ManagedDecision } from '../../src/types/index.js';
 
@@ -296,6 +297,58 @@ describe('managed store', () => {
     assert.equal(deriveManagedState({ record, currentContentHash: 'dddddddddddd' }).label, 'stale');
     // 源不漂(盘上就是 cccc),但 promote 决定是旧内容的 → 不算 promoted,落回 installed。
     assert.equal(deriveManagedState({ record, currentContentHash: 'cccccccccccc' }).label, 'installed');
+  });
+
+  // --- rollback 决定(promote 的反操作,决定流 latest-wins)---
+  const rollbackDecision = (over: Partial<ManagedDecision> = {}): ManagedDecision => ({
+    decisionKind: 'rollback', actor: 'tester', decidedAt: '2026-06-09T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa', ...over,
+  });
+
+  it('isCurrentlyPromoted:promote→rollback→撤销;rollback→promote→恢复(取当前内容最近一条)', () => {
+    const base = makeRecord({ contentHash: 'aaaaaaaaaaaa' });
+    assert.equal(isCurrentlyPromoted(base), false, '无决定 → 未 promoted');
+    const promoted = makeRecord({ contentHash: 'aaaaaaaaaaaa', decisions: [promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' })] });
+    assert.equal(isCurrentlyPromoted(promoted), true);
+    const rolledBack = makeRecord({ contentHash: 'aaaaaaaaaaaa', decisions: [promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }), rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' })] });
+    assert.equal(isCurrentlyPromoted(rolledBack), false, 'rollback 后 → 撤销');
+    const rePromoted = makeRecord({ contentHash: 'aaaaaaaaaaaa', decisions: [promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }), rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' }), promoteDecision({ decidedAt: '2026-06-10T00:00:00.000Z' })] });
+    assert.equal(isCurrentlyPromoted(rePromoted), true, '再 promote → 恢复');
+  });
+
+  it('isCurrentlyPromoted:只看当前内容,旧内容的 rollback 不影响新内容', () => {
+    const record = makeRecord({ contentHash: 'bbbbbbbbbbbb', decisions: [promoteDecision({ contentHash: 'aaaaaaaaaaaa' }), rollbackDecision({ contentHash: 'aaaaaaaaaaaa' })] });
+    assert.equal(isCurrentlyPromoted(record), false, '当前内容 bbbb 无任何决定 → 未 promoted');
+  });
+
+  it('deriveManagedState:当前内容最近一条是 rollback → 落回 measurable(不是 promoted)', () => {
+    const record = makeRecord({
+      contentHash: 'aaaaaaaaaaaa',
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS' }],
+      decisions: [promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }), rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' })],
+    });
+    assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa' }).label, 'measurable', 'rollback 后有当前证据 → measurable');
+  });
+
+  it('appendManagedDecision:promote→rollback→promote 各自改变态 → 三条都落盘(非去重)', () => {
+    const store = managedDir(dir);
+    const written = upsertManagedRecord(store, makeRecord({ contentHash: 'aaaaaaaaaaaa' }));
+    appendManagedDecision(store, written.id, promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }));
+    appendManagedDecision(store, written.id, rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' }));
+    const third = appendManagedDecision(store, written.id, promoteDecision({ decidedAt: '2026-06-10T00:00:00.000Z' }));
+    assert.equal(third?.decisions.length, 3, 'promote/rollback 真实切换都记，版本史完整');
+    assert.equal(isCurrentlyPromoted(third!), true, '末态 promoted');
+  });
+
+  it('appendManagedDecision:已 promoted 再 promote、已撤销再 rollback 都幂等不堆', () => {
+    const store = managedDir(dir);
+    const written = upsertManagedRecord(store, makeRecord({ contentHash: 'aaaaaaaaaaaa' }));
+    appendManagedDecision(store, written.id, promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }));
+    const dupPromote = appendManagedDecision(store, written.id, promoteDecision({ decidedAt: '2026-06-08T12:00:00.000Z' }));
+    assert.equal(dupPromote?.decisions.length, 1, '已 promoted 再 promote 不堆');
+    appendManagedDecision(store, written.id, rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' }));
+    const dupRollback = appendManagedDecision(store, written.id, rollbackDecision({ decidedAt: '2026-06-09T12:00:00.000Z' }));
+    assert.equal(dupRollback?.decisions.length, 2, '已撤销再 rollback 不堆');
+    assert.equal(isCurrentlyPromoted(dupRollback!), false);
   });
 
   it('validator:promote 决定的 contentHash/reportId/override 脏值被判脏丢弃', () => {

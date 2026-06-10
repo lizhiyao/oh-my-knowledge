@@ -11,6 +11,7 @@ import {
   appendManagedDecision,
   evaluatePromoteGate,
   globalManagedDir,
+  isCurrentlyPromoted,
   loadManagedRecord,
   managedDir,
   managedRecordId,
@@ -97,8 +98,7 @@ export default class Promote extends BaseCommand {
 
       // 幂等：当前内容已 promote 过 → 无操作成功退出，不堆冗余事件。与 list 的不可达分支同口径：
       // 源不可达不代表内容已变；只有源可达且 hash 已变时，才不把旧 promote 当作当前 no-op。
-      const alreadyPromoted = !sourceHashMismatch
-        && record.decisions.some((d) => d.decisionKind === 'promote' && d.contentHash === record.contentHash);
+      const alreadyPromoted = !sourceHashMismatch && isCurrentlyPromoted(record);
       if (alreadyPromoted) {
         if (flags.json) this.log(JSON.stringify({ schemaVersion: 1, alreadyPromoted: { name, contentHash: record.contentHash } }, null, 2));
         else process.stderr.write(tCli('cli.promote.already_promoted', lang, { name: sanitizeCell(name) }) + '\n');

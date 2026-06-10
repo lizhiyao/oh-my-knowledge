@@ -94,6 +94,19 @@ describe('buildManagedListRow', () => {
     assert.equal(row.state, 'stale');
   });
 
+  const rollbackDecision = { decisionKind: 'rollback' as const, actor: 't', decidedAt: '2026-06-10T00:00:00.000Z', contentHash: 'hashAAA' };
+
+  it('promote 后 rollback(更晚)→ 落回 measurable,不再 promoted', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision, rollbackDecision] }), reach('hashAAA'));
+    assert.equal(row.state, 'measurable');
+  });
+
+  it('不可达 + 当前内容最近一条是 rollback → measurable(内容锚定,不因不可达保留 promoted)', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision, rollbackDecision] }), unreach);
+    assert.equal(row.state, 'measurable');
+    assert.equal(row.reachable, false);
+  });
+
   it('多条当前证据 → 取 recordedAt 最新那条的 verdict', () => {
     const row = buildManagedListRow(rec({
       evidence: [

@@ -1,6 +1,6 @@
 # Evidence-gated knowledge input management
 
-> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), and `omk promote` (evidence-gated acceptance, MVP) have shipped (#211/#212/#224 + promote MVP); `rollback` and `promote`'s evolve-candidate canonical-write to source remain design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
+> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), `omk promote` (evidence-gated acceptance, MVP), and `omk rollback` (revoking that acceptance, MVP) have shipped (#211/#212/#224 + promote/rollback MVP); `promote`'s evolve-candidate canonical-write to source and rollback-to-a-historical-version's content remain design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
 
 ## 1. Product thesis
 
@@ -43,7 +43,7 @@ In short: omk does not manage knowledge inputs because it is a better file copie
 Every management decision must preserve omk's measurement posture:
 
 - A promotion decision must point to comparable reports or explicitly mark why comparability is limited.
-- A rollback decision must point to a historical version and the evidence that justified it.
+- A rollback decision must be explicit and recorded; the MVP revokes the current version's acceptance, and restoring a *historical* version's content (future work) must point to that version and the evidence that justified it.
 - A production observation must name its attribution confidence and cannot silently overwrite eval evidence.
 - A stale or incomparable evidence bundle must be visible to the user, not hidden behind a green status.
 
@@ -84,11 +84,11 @@ Useful states for a managed artifact:
 | `installed` | omk knows where the artifact lives, but it has no valid eval evidence | `doctor` / `sample` → `measurable` |
 | `measurable` | doctor and samples are sufficient to run controlled eval | `eval → measurable`; `evolve → candidate` |
 | `candidate` | a proposed version exists (an `evolve` snapshot or a human edit), not yet written to the source of record | `eval → candidate`; `promote → promoted` (or reject, source untouched) |
-| `promoted` | current accepted version, written to the source by `promote`, with attached evidence | `observe → promoted` / `stale`; `rollback → rolled-back`; `evolve → candidate` |
+| `promoted` | current accepted version, written to the source by `promote`, with attached evidence | `observe → promoted` / `stale`; `rollback → measurable` (or `stale` if drifted); `evolve → candidate` |
 | `stale` | evidence no longer matches artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
-| `rolled-back` | a historical promoted version restored by `rollback` with evidence | `observe`; `evolve → candidate` |
+| `rolled-back` | (future) a historical promoted version's content restored by `rollback` with evidence — not yet a `ManagedLifecycleLabel` | `observe`; `evolve → candidate` |
 
-These states are product concepts, not necessarily a new persistent enum on day one. `reject` is the negative outcome of a `promote` decision (recorded in the evidence bundle, source untouched), not a separate command.
+These states are product concepts, not necessarily a new persistent enum on day one. The MVP `rollback` revokes the current version's acceptance and returns the skill to `measurable` (or `stale` if the source has drifted); `rolled-back` remains a future product concept and is not yet a `ManagedLifecycleLabel`. `reject` is the negative outcome of a `promote` decision (recorded in the evidence bundle, source untouched), not a separate command.
 
 ## 7. Command surface
 
@@ -159,7 +159,9 @@ Of §5's four mandatory items, the MVP gate checks three at promote time (report
 
 ### `rollback`
 
-`rollback` restores a previous promoted version and points to its evidence bundle. It should not be a blind file restore.
+`rollback` is the inverse of `promote`: it revokes the current version's promoted acceptance. Decisions are an append-only event stream, so rollback appends a `rollback` decision (actor, timestamp, optional reason) rather than deleting the promote; the `promoted` lifecycle label is then derived from the **latest** promote/rollback decision for the current content (`isCurrentlyPromoted`), so the label derives back to `measurable` — or stays `stale` if the source has since drifted, because rollback does not probe the source. It is content-anchored and ungated — de-escalation is always safe — operating purely on the promote/rollback history for `record.contentHash`.
+
+What ships in the MVP (`omk rollback <name>`): revoking the acceptance of the **current** content. Rolling back a not-promoted version exits non-zero (nothing to revoke); an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). Restoring an *older promoted version's content* to the source (a true file restore, pointing back to that version's evidence bundle) is deferred with the §8 Phase 2 evolve canonical-write migration — until `promote` owns canonical writes to the source, there is no prior snapshot for rollback to restore. It must never be a blind file restore.
 
 ### `observe`
 
@@ -193,7 +195,8 @@ Done in #208 / PR #207:
 
 ### Phase 3: rollback and observation feedback
 
-- Add rollback to evidence-backed historical versions.
+- **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable` (or `stale` if the source has since drifted — rollback doesn't probe the source). `ManagedDecisionKind` already carried `rollback`; no schema change.
+- **Remaining:** restoring an evidence-backed *historical* version's content to the source (a true file restore), which depends on the Phase 2 canonical-writer migration giving rollback a prior snapshot to restore.
 - Let `observe` mark evidence stale and propose sample additions.
 - Show decision history in Studio.
 

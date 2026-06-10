@@ -59,6 +59,7 @@ import { initDict, type InitMessageKey } from './i18n-dict/init.js';
 import { installDict, type InstallMessageKey } from './i18n-dict/install.js';
 import { listDict, type ListMessageKey } from './i18n-dict/list.js';
 import { promoteDict, type PromoteMessageKey } from './i18n-dict/promote.js';
+import { rollbackDict, type RollbackMessageKey } from './i18n-dict/rollback.js';
 import { runDict, type RunMessageKey } from './i18n-dict/run.js';
 import type { CliMessage } from './i18n-dict/types.js';
 
@@ -73,6 +74,7 @@ export type CliMessageKey =
   | InstallMessageKey
   | ListMessageKey
   | PromoteMessageKey
+  | RollbackMessageKey
   | RunMessageKey;
 
 export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
@@ -84,5 +86,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   ...installDict,
   ...listDict,
   ...promoteDict,
+  ...rollbackDict,
   ...runDict,
 };
