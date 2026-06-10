@@ -125,7 +125,11 @@ export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: st
   ];
   if (model) args.push('--model', model);
   if (cwd) args.push('-C', cwd);
-  args.push(prompt);
+  // `--` end-of-options 分隔符:prompt 必须放在 `--` 之后。system prompt 被 prepend 时,
+  // skill 内容常以 YAML frontmatter `---` 开头,codex(clap)会把以 `-`/`--` 开头的位置参数
+  // 当未知 flag → exit 2(unexpected argument),72ms 秒退、不跑 agent。`--` 之后一律当
+  // positional,不再按 flag 解析(codex 自身的报错 tip 即建议此法)。bug:整个 skill eval 全失败。
+  args.push('--', prompt);
   return args;
 }
 

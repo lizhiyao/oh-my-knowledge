@@ -15,23 +15,10 @@
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types/index.js';
-import { COLORS, e, layout, t } from './layout.js';
+import { COLORS, e, t } from './layout.js';
+import { icon } from './icons.js';
+import { reportShell } from './report-shell.js';
 
-const HEALTH_BAND_COLOR: Record<'green' | 'yellow' | 'red', string> = {
-  green: 'var(--green)',
-  yellow: 'var(--yellow)',
-  red: 'var(--red)',
-};
-
-const HEALTH_BAND_LABEL: Record<'green' | 'yellow' | 'red', { zh: string; en: string }> = {
-  green: { zh: '健康', en: 'Healthy' },
-  yellow: { zh: '待观察', en: 'Watch' },
-  red: { zh: '需关注', en: 'Attention needed' },
-};
-
-function fmtPct(rate: number, digits = 0): string {
-  return `${(rate * 100).toFixed(digits)}%`;
-}
 
 function fmtTimeRange(from: string, to: string): string {
   if (!from || !to) return '—';
@@ -41,68 +28,28 @@ function fmtTimeRange(from: string, to: string): string {
 }
 
 /**
- * 顶部摘要 + 水印 (spec §六 强制要求)。
+ * 数据来源水印 (spec §六 强制要求) + 低 N 可信度提醒。
  */
-function renderHeader(report: SkillHealthReport, lang: Lang): string {
+function renderWatermark(report: SkillHealthReport, lang: Lang): string {
   const { meta, overall } = report;
-  // Statistical-confidence guard: below the segment threshold a hard health band
-  // overstates certainty (1 segment + 1 failure judged the same as 50). When the
-  // overall confidence is not high, mute the colour and append an N caveat.
-  // Legacy reports (pre-confidence) fall back to deriving from segmentCount, so old
-  // JSON never renders `undefined confidence`.
   const confidence = overall.confidence ?? confidenceOf(meta.segmentCount);
-  const lowConfidence = confidence !== 'high';
-  const bandColor = confidence === 'underpowered'
-    ? 'var(--text-faint)'
-    : HEALTH_BAND_COLOR[overall.healthBand];
-  // underpowered 时色带已静音为灰,标签也不报硬结论(需关注 / 健康),改为「样本不足」,跟灰底 + caveat 一致。
-  const bandLabel = confidence === 'underpowered'
-    ? (lang === 'zh' ? '样本不足' : 'Insufficient N')
-    : HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
-  const confCaveat = lowConfidence
-    ? `<div class="card-sub" style="color:var(--text-faint)">${lang === 'zh'
+  const confCaveat = confidence !== 'high'
+    ? `<div style="color:var(--text-faint);margin-top:6px">${lang === 'zh'
       ? `⚠ 样本量 ${meta.segmentCount} 段，可信度${confidence === 'underpowered' ? '不足' : '偏低'}，色带仅供参考`
       : `⚠ N=${meta.segmentCount} segments — ${confidence} confidence; band is indicative`}</div>`
     : '';
   const tracePath = e(meta.tracePath);
   const kbPath = meta.kbPath ? e(meta.kbPath) : '—';
-  const timeRange = fmtTimeRange(meta.timeRange.from, meta.timeRange.to);
   const warning = lang === 'zh'
-    ? '本报告仅反映指定时间窗内观察到的 skill 使用情况,不代表 skill 的绝对质量,也不能替代 offline eval 的对照验证。'
+    ? '本报告仅反映指定时间窗内观察到的 skill 使用情况，不代表 skill 的绝对质量，也不能替代 offline eval 的对照验证。'
     : 'Report reflects only observed skill usage in the given window. Does not imply absolute skill quality, does not replace offline eval.';
 
-  return `
-  <h1>${lang === 'zh' ? 'Skill 健康度日报' : 'Skill Health Daily'}</h1>
-  <p class="subtitle">${lang === 'zh' ? 'omk · 生产观察' : 'omk · Production Observability'}</p>
-
-  <div class="cards" style="margin-bottom:20px">
-    <div class="card" style="flex:0 0 auto;min-width:160px;border-left:4px solid ${bandColor}">
-      <div class="card-label">${lang === 'zh' ? '整体健康度' : 'Overall health'}</div>
-      <div class="card-value" style="color:${bandColor}">${bandLabel}</div>
-      <div class="card-sub">${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${fmtPct(overall.weightedGapRate, 1)} · ${lang === 'zh' ? '原始盲区' : 'raw gap'} ${fmtPct(overall.gapRate, 1)}</div>
-      ${confCaveat}
-    </div>
-    <div class="card">
-      <div class="card-label">${lang === 'zh' ? '会话 / 段 / 工具调用' : 'Sessions / Segments / Tool calls'}</div>
-      <div class="card-value" style="font-size:18px">${meta.sessionCount} / ${meta.segmentCount} / ${meta.toolCallCount}</div>
-      <div class="card-sub">${lang === 'zh' ? '工具失败率' : 'tool fail rate'} ${fmtPct(meta.toolFailureRate, 1)} · ${meta.messageCount.toLocaleString()} ${lang === 'zh' ? '条消息' : 'messages'}</div>
-    </div>
-    <div class="card">
-      <div class="card-label">${lang === 'zh' ? '时间窗' : 'Time window'}</div>
-      <div class="card-value" style="font-size:18px">${timeRange}</div>
-      <div class="card-sub">${lang === 'zh' ? '生成于' : 'generated'} ${new Date(meta.generatedAt).toISOString().split('T')[0]}</div>
-    </div>
-  </div>
-
-  <div style="padding:10px 14px;background:var(--info-bg);border-left:3px solid var(--accent);border-radius:var(--radius);margin-bottom:20px;font-size:12px;line-height:1.6">
-    <div style="color:var(--text-secondary);margin-bottom:4px"><strong>${lang === 'zh' ? '水印' : 'Watermark'}</strong> (spec §六)</div>
-    <div style="color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px">
-      trace: ${tracePath}<br>
-      kb: ${kbPath}
-    </div>
+  return `<div class="rs-panel" style="background:var(--info-bg);font-size:12px;line-height:1.6">
+    <div style="color:var(--text-secondary);margin-bottom:4px;font-weight:600">${lang === 'zh' ? '数据来源' : 'Source'}</div>
+    <div style="color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px">trace: ${tracePath}<br>kb: ${kbPath}</div>
     <div style="color:var(--text-muted);margin-top:6px;font-style:italic">${warning}</div>
-  </div>
-  `.trim();
+    ${confCaveat}
+  </div>`;
 }
 
 /**
@@ -278,22 +225,52 @@ function renderDeadKbSection(report: SkillHealthReport, lang: Lang): string {
  * 主入口: 生成完整 HTML。
  */
 export function renderSkillHealthReport(report: SkillHealthReport, lang: Lang = 'zh'): string {
-  const title = lang === 'zh' ? 'Skill 健康度日报' : 'Skill Health Daily';
-  // 按 segmentCount 降序排(使用量大的 skill 在前)
+  const zh = lang === 'zh';
+  const { meta, overall } = report;
+  const confidence = overall.confidence ?? confidenceOf(meta.segmentCount);
+  // 整体健康分 = (1 - 加权盲区) × 100；underpowered 时不给硬分。
+  const score = confidence === 'underpowered' ? null : Math.round((1 - overall.weightedGapRate) * 100);
+  const scoreLabel = score == null
+    ? (zh ? '样本不足' : 'Low N')
+    : overall.healthBand === 'green' ? (zh ? '健康' : 'Healthy')
+      : overall.healthBand === 'yellow' ? (zh ? '待观察' : 'Watch')
+        : (zh ? '需关注' : 'Attention');
+
   const skillsSorted = Object.values(report.bySkill).sort((a, b) => b.segmentCount - a.segmentCount);
   const cards = skillsSorted
     .map((skill, i) => renderSkillCard(skill, COLORS[i % COLORS.length], lang))
     .join('\n');
 
+  const statsBar = `<div class="rs-stats">
+    <div class="rs-stat rs-stat--total"><span class="rs-stat-num">${meta.sessionCount}</span><span class="rs-stat-label">${zh ? '会话' : 'Sessions'}</span></div>
+    <div class="rs-stat rs-stat--total"><span class="rs-stat-num">${meta.segmentCount}</span><span class="rs-stat-label">${zh ? '段' : 'Segments'}</span></div>
+    <div class="rs-stat rs-stat--total"><span class="rs-stat-num">${meta.toolCallCount}</span><span class="rs-stat-label">${zh ? '工具调用' : 'Tool calls'}</span></div>
+    <div class="rs-stat ${overall.weightedGapRate >= 0.3 ? 'rs-stat--fail' : overall.weightedGapRate >= 0.1 ? 'rs-stat--warn' : 'rs-stat--pass'}"><span class="rs-stat-num">${Math.round(overall.weightedGapRate * 100)}%</span><span class="rs-stat-label">${zh ? '加权盲区' : 'Weighted gap'}</span></div>
+  </div>`;
+
   const body = [
-    renderHeader(report, lang),
-    `<section style="margin-top:28px">
-      <h2>${lang === 'zh' ? '各 skill 健康度' : 'Per-skill health'}</h2>
-      <p class="ki-desc">${lang === 'zh' ? '按使用量降序。每个 skill 的 coverage 和 gap 独立统计。' : 'Sorted by usage. Coverage and gap are independently computed per skill.'}</p>
-      ${cards}
-    </section>`,
+    statsBar,
+    renderWatermark(report, lang),
+    `<div class="rs-panel">
+      <div class="rs-panel-title">${zh ? '各 skill 健康度' : 'Per-skill health'} <small>${zh ? '按使用量降序' : 'sorted by usage'}</small></div>
+      ${cards || `<div class="rs-empty">${zh ? '本期无 skill 数据' : 'No skill data'}</div>`}
+    </div>`,
     renderDeadKbSection(report, lang),
   ].filter(Boolean).join('\n');
 
-  return layout(title, body, lang);
+  return reportShell({
+    dim: 'observe',
+    icon: '👁',
+    kindTitle: zh ? '生产观察报告' : 'Observe Report',
+    skillName: zh ? 'Skill 健康度日报' : 'Skill Health Daily',
+    metaItems: [
+      `${icon('clock', { size: 13 })} ${fmtTimeRange(meta.timeRange.from, meta.timeRange.to)}`,
+      `${icon('calendar', { size: 13 })} ${new Date(meta.generatedAt).toISOString().slice(0, 16).replace('T', ' ')}`,
+    ],
+    score,
+    scoreLabel,
+    backHref: `/${lang === 'zh' ? '' : '?lang=en'}`,
+    backLabel: zh ? '返回工作台' : 'Back to dashboard',
+    body,
+  }, lang);
 }

@@ -7,7 +7,8 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
-import type { Sample } from '../../types/index.js';
+import { makeDoctorProgress } from '../lib/progress.js';
+import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
@@ -142,8 +143,8 @@ export default class Doctor extends BaseCommand {
     }),
     dimensions: Flags.string({
       description: bilingual({
-        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。',
-        en: 'Custom dimensions config file (YAML), appended after builtin 7 dimensions.',
+        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。',
+        en: 'Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.',
       }),
     }),
     'static-only': Flags.boolean({
@@ -218,9 +219,17 @@ export default class Doctor extends BaseCommand {
       const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
       const { isComposerRule } = await import('../../types/doctor.js');
+      // 在线检查(LLM health composer + endpoint 自定义维度)默认跑;--static-only
+      // 离线模式只跑纯静态的内置 rule(无网络 / LLM)。endpoint rule 标了 external=true。
+      const isOnline = (r: DoctorRuleLike): boolean =>
+        isComposerRule(r) || (r as DoctorRule).external === true;
       const rulesOverride = staticOnly
-        ? getRegisteredRules().filter((r) => !isComposerRule(r))
-        : getRegisteredRules().filter(isComposerRule);
+        ? getRegisteredRules().filter((r) => !isOnline(r))
+        : getRegisteredRules().filter(isOnline);
+
+      // 批量体检进度(per-skill,写 stderr)。--gate 是静默模式,不报进度;
+      // --json 进度走 stderr 不污染 stdout 的 JSON。
+      const onProgress = flags.gate ? undefined : makeDoctorProgress(lang);
 
       let report;
       try {
@@ -235,6 +244,7 @@ export default class Doctor extends BaseCommand {
           rules: rulesOverride,
           samples,
           requires,
+          onProgress,
         });
       } catch (err) {
         if (err instanceof CliExit) throw err;
@@ -292,9 +302,15 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
   mkdirSync(dir, { recursive: true });
   const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {
+    const counts: Record<string, number> = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+    for (const r of skill.results) {
+      const s = r.status;
+      if (s in counts) counts[s]++;
+    }
     const perSkill = {
       ...report,
       skills: [skill],
+      ruleStats: { ...counts, total: skill.results.length },
       totals: {
         pass: skill.status === 'pass' ? 1 : 0,
         warn: skill.status === 'warn' ? 1 : 0,

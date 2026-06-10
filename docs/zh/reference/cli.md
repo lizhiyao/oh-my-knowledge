@@ -153,7 +153,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
-  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。
+  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
   --effort <value>      LLM 推理 effort：low / medium / high / xhigh / max。
   --executor <value>    执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --fix                 交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
@@ -172,6 +172,32 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 <!-- omk:cli:doctor:flags:end -->
 
 LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
+
+通过 `--dimensions <yaml>` 自定义维度：每条维度二选一 —— **LLM 维度**（`promptSection`，并入健康度 LLM 调用）或**接口维度**（`endpoint`，doctor 把 skill 快照 POST 给你的服务并把响应映射成判定）。同一条维度两者互斥。接口维度属于「在线」检查（默认运行，`--static-only` 下跳过），可以做 prompt 表达不了的深度检查 —— 例如调用外部安全审查服务。
+
+```yaml
+dimensions:
+  # LLM 维度
+  - id: tone-check
+    displayName: 语气检查
+    severity: warn
+    promptSection: 检查 skill 文案是否礼貌、无歧义。
+  # 接口维度
+  - id: deep-security-audit
+    displayName: 深度安全审查
+    severity: fatal
+    endpoint: https://my-service.com/audit   # POST 到这里
+    headers: { Authorization: "Bearer xxx" }  # 可选：鉴权请求头
+    params: { env: production }               # 可选：原样透传给接口
+    includeFiles: true                        # 可选（默认 true）：打包 references/scripts 子文件
+    maxFileBytes: 204800                      # 可选：单文件字节上限（默认 200KB，超出截断）
+    maxTotalBytes: 2097152                    # 可选：files 总字节上限（默认 2MB，超出停止收集）
+    allowPrivateHost: false                   # 可选：放行私网/本机 endpoint（默认 false，拒绝以防 SSRF）
+```
+
+请求体（doctor → endpoint）：`{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` —— `files` 是 skill 子文件的相对路径 → 内容映射（只收文本；单文件超 `maxFileBytes`（默认 200KB）截断，整个 `files` 块受 `maxTotalBytes`（默认 2MB）封顶，两者均可按维度覆写）。响应（endpoint → doctor）：`{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`。任何网络错误 / 非 2xx / 协议违规都映射为 `fail`，让问题浮出来而不是静默放行。响应字段落盘前同样限长（超长 `message` / `hint` 截断；超大 `detail` 替换为 `{ truncated: true, preview }`）。
+
+endpoint 地址校验：只接受 `http` / `https` 协议；指向私网/本机的地址 —— localhost、`*.local`、`::1`、127.0.0.0/8、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、169.254.0.0/16（含云 metadata `169.254.169.254`）—— 默认拒绝：doctor 会把 skill 完整快照发给 endpoint 并把响应回填进报告，不设防就会成为 SSRF 跳板。确认内网服务可信后，在该维度配置 `allowPrivateHost: true` 放行。此校验只看字面 hostname（defense-in-depth），不做 DNS 解析；公网域名解析到内网（DNS rebinding）不在防护范围。
 
 离线静态模式（`--static-only`）：CI 节点没装 claude / codex、本地断网调试等场景下跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用、零成本。结果同样进 `DoctorReport`，可与 `--json` / `--gate` 组合。
 
@@ -337,7 +363,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>                 被评测的 LLM，默认 sonnet
+  --model <value>                 被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。
   --no-diagnostic                 关 LLM diagnostic 调用
   --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
   --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
@@ -361,6 +387,8 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 
 让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 用例 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
 
+`omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
+
 ## `omk sample`
 
 ```bash
@@ -375,6 +403,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 ```text
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
+  --executor <value>          执行器名，默认 claude（同 omk eval / doctor / evolve）。指定 codex 等其它执行器时，记得连带传一个该执行器能识别的 --model。
   --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。

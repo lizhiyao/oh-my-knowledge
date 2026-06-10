@@ -1,5 +1,5 @@
-import { resolve, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, join, dirname, extname } from 'node:path';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -66,6 +66,32 @@ interface EvolveResult {
   reportId?: string;
 }
 
+/** 路径处是否已存在「用例源」:按 statSync 判型 —— 文件(含无扩展名)直接算存在;
+ *  目录看是否含候选用例文件(排除 report/health/_ 前缀,对齐 sample.ts 的发现约定)。
+ *  用于区分「损坏文件(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。
+ *  不能用 extname 猜文件/目录:无扩展名的损坏样本文件会绕过守卫被覆盖,
+ *  带点的目录名(如 samples.v2/)会被误当文件。 */
+export function sampleSourceExists(p: string): boolean {
+  let st;
+  try { st = statSync(p); } catch { return false; }
+  if (!st.isDirectory()) return true;
+  try {
+    return readdirSync(p).some((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
+  } catch { return false; }
+}
+
+/** 自动生成时的落盘目标:已存在的目录(含带点目录名,如 samples.v2/)→ 写进目录内的
+ *  samples.json;已存在的文件 → 覆盖该文件;不存在 → 按扩展名(有扩展名当文件,无扩展名
+ *  当目录,落 samples.json)。与 sampleSourceExists 同用 statSync 判型,不被带点目录名
+ *  误当成文件(否则 writeFileSync 撞 EISDIR)。 */
+export function resolveSampleOutFile(samplesAbs: string): string {
+  try {
+    return statSync(samplesAbs).isDirectory() ? join(samplesAbs, 'samples.json') : samplesAbs;
+  } catch {
+    return extname(samplesAbs) ? samplesAbs : join(samplesAbs, 'samples.json');
+  }
+}
+
 // runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
 // in-process import 验证业务,Command.run() body 直接调它。
 export async function runEvolve(
@@ -100,14 +126,79 @@ export async function runEvolve(
     samplesFile = resolvedInput.samplesPath;
   }
 
-  const { evolveSkill } = await import('../../authoring/evolver.js');
+  // 参数校验必须早于任何昂贵副作用(自动生成用例 / LLM 调用)。
   const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config.js');
-
   const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
     throw new CliExit(2);
   }
+
+  // 无用例时自动生成 —— 让 omk evolve 成为「检测(doctor) → 生成用例 → 自迭代」一键命令。
+  // 已有用例(且非空)则原样使用;生成失败按普通错误退出。
+  const samplesAbs = resolve(samplesFile);
+  let hasSamples = false;
+  let loadErr: Error | null = null;
+  try {
+    const { loadSamples } = await import('../../inputs/load-samples.js');
+    hasSamples = loadSamples(samplesAbs).samples.length > 0;
+  } catch (err) { loadErr = err as Error; }
+
+  const sourceExists = sampleSourceExists(samplesAbs);
+
+  // 用例源已存在却解析失败(JSON/YAML 语法错、duplicate id 等)= 损坏文件,
+  // 绝不用 LLM 生成内容覆盖它 —— 报错退出,让用户先修。只有真的没有用例源(文件
+  // 不存在 / 目录无候选用例文件)才进入自动生成。
+  if (loadErr && sourceExists) {
+    console.error(lang === 'zh'
+      ? `评测用例文件解析失败，evolve 不会覆盖它，请先修复：${samplesAbs}\n  原因：${loadErr.message}`
+      : `Failed to parse the samples source; evolve will not overwrite it. Fix it first: ${samplesAbs}\n  reason: ${loadErr.message}`);
+    throw new CliExit(1);
+  }
+
+  if (!hasSamples) {
+    try {
+      const { generateSamples } = await import('../../authoring/generator.js');
+      const skillContent = readFileSync(resolve(skillPath), 'utf-8');
+      // outFile:已存在目录写进内部 samples.json,已存在文件覆盖,不存在按扩展名 —— statSync
+      // 判型,不被带点目录名(samples.v2/)骗。loadSamples 目录模式会自动发现生成的文件。
+      const outFile = resolveSampleOutFile(samplesAbs);
+      // sourceExists 为真 = 用例源存在但解析出 0 条(合法空 [])→ 明示"重新生成覆盖空文件",
+      // 不静默盖用户文件;为假 = 真没有用例源 → "未发现，生成"。
+      process.stderr.write(lang === 'zh'
+        ? (sourceExists
+            ? `评测用例为空，正在重新生成并覆盖 ${outFile} …\n`
+            : `未发现评测用例，正在自动生成到 ${outFile} …\n`)
+        : (sourceExists
+            ? `Samples are empty; regenerating (overwriting) ${outFile} …\n`
+            : `No samples found; auto-generating to ${outFile} …\n`));
+      const { samples, costUSD } = await generateSamples({
+        skillContent,
+        model: flags.model,
+        executorName: flags.executor,
+      });
+      // 模型可能保守返回 0 条 —— 不写空文件再空跑迭代,直接报错让用户改用
+      // `omk sample --focus` 引导生成或手写用例。
+      if (samples.length === 0) {
+        console.error(lang === 'zh'
+          ? '自动生成返回 0 条用例，已中止。请用 `omk sample <skill> --focus "…"` 引导生成，或手写后重试。'
+          : 'Auto-generation produced 0 samples; aborting. Use `omk sample <skill> --focus "…"` to guide generation, or write samples manually.');
+        throw new CliExit(1);
+      }
+      mkdirSync(dirname(outFile), { recursive: true });
+      writeFileSync(outFile, JSON.stringify(samples, null, 2));
+      const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(lang === 'zh'
+        ? `已生成 ${samples.length} 条用例${cost}，开始自迭代。\n`
+        : `Generated ${samples.length} samples${cost}; starting evolution.\n`);
+    } catch (err: unknown) {
+      if (err instanceof CliExit) throw err;
+      console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
+      throw new CliExit(1);
+    }
+  }
+
+  const { evolveSkill } = await import('../../authoring/evolver.js');
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
@@ -265,8 +356,8 @@ export default class Evolve extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: '被评测的 LLM，默认 sonnet',
-        en: 'Evaluated LLM, default sonnet',
+        zh: '被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。',
+        en: 'Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.',
       }),
       default: 'sonnet',
     }),

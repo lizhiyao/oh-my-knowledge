@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
 import type { Lang, Report } from '../src/types/index.js';
 
-// Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM:SS 形式的本地时间戳替换成 [TIMESTAMP],
-// 防止 fmtLocalTime 基于本地时区产出的字符串在不同机器/CI 上抖动。
+// Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM(:SS) 形式的本地时间戳替换成 [TIMESTAMP],
+// 防止本地时区产出的字符串在不同机器/CI 上抖动。秒可选 —— hero 区时间戳是分钟粒度
+// (HH:MM 无秒),也要一并归一化,否则非 UTC contributor 本地 yarn test 会红。
 function normalizeForSnapshot(html: string): string {
   return html
-    .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '[TIMESTAMP]')
+    .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?/g, '[TIMESTAMP]')
     .replace(/[ \t]+$/gm, '');
 }
 
@@ -145,15 +146,15 @@ describe('renderRunDetail', () => {
     assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.60</);  // v2 judge
   });
 
-  it('stability cell: 单 run (无 variance) 主值标红 "未测量" + 显眼引导', () => {
+  it('stability cell: 单 run (无 variance) 显示"未测量" + 一条脚注引导(不在每行重复红字)', () => {
     const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
     // SAMPLE_REPORT 默认无 variance 字段,这正是单 run 场景
     assert.equal(report.variance, undefined);
     const html = renderRunDetail(report);
-    // 之前显示灰色 "—" 太弱,容易被误读为"无显示=没问题"。改成红色"⚠ 未测量"
-    // + 引导文案,让缺失可见、鼓励用户加 --repeat。
-    assert.match(html, /⚠ 未测量/);
-    assert.match(html, /color:var\(--red\).*单轮评测,加 --repeat ≥ 2 才能测 CV/);
+    // 缺失仍可见(每个 variant 显示"未测量"),但「加 --repeat」引导压成表格下方一条脚注,
+    // 不在每行重复整句红字(那是右侧最大的视觉噪声)。
+    assert.match(html, /未测量/);
+    assert.match(html, /稳定性需.*--repeat ≥ 2.*才能测/);
   });
 
   it('stability cell: 有 variance 数据显示 CV + 白话定性 (稳定/较稳/波动大)', () => {
@@ -331,7 +332,8 @@ describe('renderRunDetail', () => {
 
     assert.ok(html.includes('1 sample × 1 variant'));
     assert.ok(!html.includes('1 samples × 1 variants'));
-    assert.ok(html.includes('Six-Dimension Comparison'));
+    // 单 variant 没有对照,标题用 "Six-Dimension Scores"(多 variant 才是 Comparison)。
+    assert.ok(html.includes('Six-Dimension Scores'));
     assert.ok(html.includes("task execution model's output"));
     assert.ok(!html.includes("the model's output"));
     assert.ok(html.includes('Executor:'));

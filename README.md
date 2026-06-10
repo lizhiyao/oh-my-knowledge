@@ -59,11 +59,13 @@ Codex does not support Claude Code style `/omk ...` slash commands. Ask the agen
 
 ```bash
 omk eval
-omk evolve skills/my-skill.md
+omk evolve skills/my-skill.md   # one-shot: doctor → (auto-generate samples if missing) → self-iterate
 omk sample skills/my-skill.md
 ```
 
 You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
+
+> `omk evolve` is a one-shot loop: it runs the doctor gate first, auto-generates eval samples when the target skill has none, then self-iterates. For a brand-new skill, just run `omk evolve skills/foo.md`.
 
 ## Why this tool
 

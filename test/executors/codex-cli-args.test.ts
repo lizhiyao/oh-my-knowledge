@@ -43,9 +43,23 @@ describe('buildCodexArgs flag schema', () => {
     assert.equal(buildCodexArgs({ model: 'm', cwd: undefined, prompt: 'hi' }).includes('-C'), false);
   });
 
-  it('puts prompt as last positional arg', () => {
+  it('puts prompt as last positional arg, preceded by -- end-of-options', () => {
     const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: '/tmp', prompt: 'the-prompt' });
     assert.equal(args[args.length - 1], 'the-prompt');
+    assert.equal(args[args.length - 2], '--');
+  });
+
+  // bug:system prompt(skill 内容)被 prepend 后,prompt 常以 YAML frontmatter `---` 开头。
+  // 不加 `--` 终止符时,codex(clap)把它当未知 flag → exit 2(unexpected argument)、整个
+  // skill eval 全失败。锁住:任何以 `-`/`---` 开头的 prompt 前都必须有 `--`,且 `--` 之后
+  // 只有 prompt 这一个 positional(否则 frontmatter 会污染 flag 解析)。
+  it('guards dash-leading prompt with -- so frontmatter is not parsed as a flag', () => {
+    const prompt = '---\nname: skill\n---\n\n正文';
+    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt });
+    const dashIdx = args.indexOf('--');
+    assert.notEqual(dashIdx, -1, 'missing -- end-of-options separator');
+    // `--` 之后必须恰好只有 prompt 一个 token
+    assert.deepEqual(args.slice(dashIdx + 1), [prompt]);
   });
 });
 

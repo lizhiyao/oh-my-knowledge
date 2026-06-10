@@ -5,15 +5,18 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderReportDocumentDetail, renderTrendsPage, renderRunList } from '../renderer/html-renderer.js';
 import { renderSkillList } from '../renderer/skill-list-renderer.js';
-import { renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
+import { renderDoctorDetail } from '../renderer/doctor-detail-renderer.js';
+import type { SkillReportContext } from '../renderer/report-shell.js';
+import { assessHealth } from '../renderer/skill-detail-renderer.js';
+import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
-import type { JobStore, ReportStore } from '../types/index.js';
+import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
 import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
@@ -102,6 +105,24 @@ function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
   } catch {
     return null;
   }
+}
+
+/** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。
+ *  批量 doctor 会按 skill 拆成多份共享同一 id 的 per-skill 文件，传 skillName 时
+ *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
+function loadDoctorReport(dir: string, id: string, skillName?: string): DoctorReport | null {
+  if (!existsSync(dir)) return null;
+  let fallback: DoctorReport | null = null;
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
+      if (data?.kind !== 'doctor' || data.id !== id) continue;
+      if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
+      fallback ??= data;
+    } catch { /* skip */ }
+  }
+  return fallback;
 }
 
 interface SkillTrendPoint {
@@ -271,6 +292,89 @@ function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<unk
     });
     req.on('error', reject);
   });
+}
+
+function fmtHistDate(ts: string | undefined, lang: Lang): string {
+  if (!ts) return '-';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch { return ts; }
+}
+
+// 报告详情页顶部「skill 上下文」:doctor/eval/observe 维度切换器 + 「全部历史」弹框(该 skill 历次 run)。
+// observe 详情是 fleet 级日报,无 per-skill 页,observe chip 只当状态点不可点。
+function buildSkillContext(entry: SkillIndexEntry, currentDim: 'doctor' | 'eval', currentReportId: string, insights: Insight[], lang: Lang): SkillReportContext {
+  const zh = lang === 'zh';
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
+  const amp = lang === DEFAULT_LANG ? '' : `&lang=${lang}`;
+  type Band = 'green' | 'yellow' | 'red' | 'gray';
+  // 综合健康分(= 跨维度聚合,与首页列表同一口径)— 报告页只显单维度分数,这里把「总分」也带上。
+  const health = assessHealth(entry, insights, lang);
+
+  const d = entry.doctor;
+  const dTotal = d ? d.passCount + d.warnCount + d.failCount : 0;
+  const dScore = d && dTotal > 0 ? Math.round(((d.passCount + d.warnCount * 0.5) / dTotal) * 100) : null;
+  const dBand: Band = d ? (d.failCount > 0 ? 'red' : d.warnCount > 0 ? 'yellow' : 'green') : 'gray';
+
+  const ev = entry.eval;
+  const evScore = ev && ev.compositeScore != null ? Math.round((ev.compositeScore / 5) * 100) : null;
+  const evBand: Band = ev && ev.compositeScore != null
+    ? (ev.compositeScore >= 4 ? 'green' : ev.compositeScore >= 3 ? 'yellow' : 'red') : 'gray';
+
+  const ob = entry.observe;
+  const obScore = ob ? Math.round((1 - ob.gapRate) * 100) : null;
+  const obBand: Band = ob ? ob.healthBand : 'gray';
+
+  // 历史:eval + doctor 历次 run,各自新→旧。点行跳到那次报告。
+  // evalHistory 是「每轮一条」,但一份 evolve 报告(多轮)是同一个 reportId —— 按 reportId 去重,
+  // 一份报告只算一条(取末轮 treatment 分数,与报告头部一致),否则同一报告的多轮会都标「当前」。
+  const evalRoundCount = new Map<string, number>();
+  const evalByReport = new Map<string, typeof entry.evalHistory[number]>();
+  for (const h of entry.evalHistory) {
+    evalRoundCount.set(h.reportId, (evalRoundCount.get(h.reportId) ?? 0) + 1);
+    evalByReport.set(h.reportId, h); // 末轮(最高 round)胜出 —— history 已按 timestamp#round 升序
+  }
+  const evalHist = [...evalByReport.values()].reverse().map((h) => {
+    const rounds = evalRoundCount.get(h.reportId) ?? 1;
+    return {
+      dim: 'eval' as const,
+      dateText: fmtHistDate(h.timestamp, lang),
+      scoreText: h.compositeScore != null ? `${h.compositeScore.toFixed(2)} / 5` : '—',
+      band: (h.compositeScore == null ? 'gray' : h.compositeScore >= 4 ? 'green' : h.compositeScore >= 3 ? 'yellow' : 'red') as Band,
+      metaText: `${h.passCount}/${h.totalSamples} ${zh ? '通过' : 'pass'}${h.failCount > 0 ? ` · ${h.failCount} ${zh ? '失败' : 'fail'}` : ''}${rounds > 1 ? ` · ${rounds} ${zh ? '轮' : 'rounds'}` : ''}`,
+      href: `/reports/${encodeURIComponent(h.reportId)}${langQ}`,
+      current: h.reportId === currentReportId,
+    };
+  });
+  const doctorHist = [...entry.doctorHistory].reverse().map((h) => {
+    const tot = h.passCount + h.warnCount + h.failCount;
+    return {
+      dim: 'doctor' as const,
+      dateText: fmtHistDate(h.timestamp, lang),
+      scoreText: tot > 0 ? `${Math.round(((h.passCount + h.warnCount * 0.5) / tot) * 100)}` : '—',
+      band: (h.failCount > 0 ? 'red' : h.warnCount > 0 ? 'yellow' : 'green') as Band,
+      metaText: `${h.passCount}✓ ${h.warnCount}⚠ ${h.failCount}✗`,
+      href: `/doctors/${encodeURIComponent(h.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`,
+      current: h.reportId === currentReportId,
+    };
+  });
+
+  return {
+    skillName: entry.skillName,
+    overall: { score: health.score, band: health.color },
+    // 当前维度 chip 不显分数(hero ring 已显示「本报告」分数,避免与「最新」分数冲突);非当前维度显「最新」分数 + 链接。
+    chips: [
+      { dim: 'doctor', label: zh ? '体检' : 'Doctor', score: currentDim === 'doctor' ? null : dScore, band: dBand,
+        href: currentDim === 'doctor' || !d ? null : `/doctors/${encodeURIComponent(d.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`,
+        active: currentDim === 'doctor' },
+      { dim: 'eval', label: zh ? '评测' : 'Eval', score: currentDim === 'eval' ? null : evScore, band: evBand,
+        href: currentDim === 'eval' || !ev ? null : `/reports/${encodeURIComponent(ev.reportId)}${langQ}`,
+        active: currentDim === 'eval' },
+      { dim: 'observe', label: zh ? '观察' : 'Observe', score: obScore, band: obBand, href: null, active: false },
+    ],
+    history: [...evalHist, ...doctorHist],
+  };
 }
 
 function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): string {
@@ -663,6 +767,29 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
+      const doctorDetailMatch = path.match(/^\/doctors\/(.+)$/);
+      if (doctorDetailMatch) {
+        const id = decodeURIComponent(doctorDetailMatch[1]);
+        const skillName = parsed.searchParams.get('skill') ?? '';
+        const report = loadDoctorReport(doctorsDir, id, skillName || undefined);
+        if (!report) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'doctor report not found' : '体检报告不存在');
+          return;
+        }
+        let ctx: SkillReportContext | undefined;
+        if (skillName) {
+          const runs = await reportStore.list();
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+          const entry = idx.entries.find((en) => en.skillName === skillName);
+          if (entry) ctx = buildSkillContext(entry, 'doctor', id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
+        res.end(renderDoctorDetail(report, skillName, langQ, lang, ctx));
+        return;
+      }
+
       const analysisDetailMatch = path.match(/^\/analyses\/(.+)$/);
       if (analysisDetailMatch) {
         const id = decodeURIComponent(analysisDetailMatch[1]);
@@ -822,9 +949,18 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
 
       const reportPageMatch = path.match(/^\/reports\/(.+)$/);
       if (reportPageMatch) {
-        const report = await queryRun(reportStore, decodeURIComponent(reportPageMatch[1]));
+        const reportId = decodeURIComponent(reportPageMatch[1]);
+        const report = await queryRun(reportStore, reportId);
+        let ctx: SkillReportContext | undefined;
+        if (report && report.kind === 'evaluation') {
+          const runs = await reportStore.list();
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+          // 按 evalHistory 匹配(非仅最新),历史 eval 报告也能定位到所属 skill。
+          const entry = idx.entries.find((en) => en.evalHistory.some((h) => h.reportId === reportId));
+          if (entry) ctx = buildSkillContext(entry, 'eval', reportId, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
+        }
         res.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderReportDocumentDetail(report, lang));
+        res.end(renderReportDocumentDetail(report, lang, ctx));
         return;
       }
 
@@ -863,30 +999,10 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      // /skills/<name> 详情页 — 4 张卡片(doctor / eval-评分 / eval-功能 / observe)
-      // + 跨报告 cross-link + 行动建议。
-      const skillDetailMatch = path.match(/^\/skills\/(.+)$/);
-      if (skillDetailMatch) {
-        const skillName = decodeURIComponent(skillDetailMatch[1]);
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
-        const entry = idx.entries.find((e) => e.skillName === skillName);
-        if (!entry) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(`Skill not found: ${skillName}`);
-          return;
-        }
-        // 加载完整 eval 报告(为详情页提供 layered scores / coverage / per-sample diagnostic)
-        let evalReport = null;
-        if (entry.eval) {
-          const r = await reportStore.get(entry.eval.reportId);
-          if (r && r.kind === 'evaluation') evalReport = r;
-        }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        const insights = idx.insightsBySkill.get(skillName) ?? [];
-        res.end(renderSkillDetail(entry, evalReport, lang, insights));
-        return;
-      }
+      // 注:/skills/<name> 详情页(hub)已下线 — 首页点行直接进 eval/doctor 报告,跨维度靠
+      // 报告页 chip 条 +「全部历史」弹框,不再有中间汇总页。该路由不做兼容重定向:Studio
+      // 是本地临时服务器、端口每次启动都变,跨会话书签 localhost:<port> 本就失效,且 PR 内
+      // 已无任何链接指向它。未匹配的 /skills/<name> 直接落到下方通用 404。
 
       const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
       if (skillDiagnosticsApiMatch) {

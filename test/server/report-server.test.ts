@@ -390,8 +390,10 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
-    // 跳转走 /skills/<name>,不再直接暴露 reportId。
-    assert.ok(res.body.includes('/skills/v1') || res.body.includes('/skills/v2'));
+    // 点行直接进该 skill 的报告(eval 优先,否则 doctor),不再走中间 hub(/skills 已下线)。
+    // 行跳转走 data-href + 事件委托(非内联 onclick,见 skill-list-renderer)。
+    assert.ok(res.body.includes('data-href="/reports/') || res.body.includes('data-href="/doctors/'));
+    assert.ok(!res.body.includes('data-href="/skills/'));
   });
 
   it('GET /reports/:id returns HTML detail page', async () => {
@@ -405,8 +407,8 @@ describe('report-server', () => {
     const list = await fetch(`${baseUrl}/?lang=en`);
     assert.equal(list.status, 200);
     assert.ok(list.body.includes('data-lang="en"'));
-    // skill 列表卡片链接到 /skills/<name> 并保留 ?lang=en
-    assert.ok(list.body.includes('/skills/v2?lang=en') || list.body.includes('/skills/v1?lang=en'));
+    // 列表行链接到报告(reports/doctors)并保留 ?lang=en
+    assert.ok(/data-href="\/(reports|doctors)\/[^"]*lang=en/.test(list.body));
 
     const detail = await fetch(`${baseUrl}/reports/test-run-001?lang=en`);
     assert.equal(detail.status, 200);
@@ -430,6 +432,61 @@ describe('report-server', () => {
 
   it('DELETE /api/reports/:id returns 404 for missing run', async () => {
     const res = await fetch(`${baseUrl}/api/reports/nonexistent`, { method: 'DELETE' });
+    assert.equal(res.status, 404);
+  });
+
+  it('GET /doctors/:id?skill= 批量 doctor 同 id 多文件时按 skill 选中对应 per-skill 文件', async () => {
+    // persistDoctorReport 把批量 doctor 按 skill 拆成多份文件,每份 spread 同一个 report.id;
+    // 修复前 loadDoctorReport 只按 id 命中 readdir 顺序的第一份,?skill= 第二个 skill 时
+    // 可能渲染第一个 skill 的体检结果。
+    const batchId = 'doctor-batch-20260610';
+    const mkPerSkill = (skillName: string, ruleId: string) => ({
+      kind: 'doctor',
+      schemaVersion: '3.0.0',
+      id: batchId,
+      timestamp: '2026-06-10T10:00:00.000Z',
+      cliVersion: '0.0.0-test',
+      cwd: '/repo',
+      executorName: 'claude',
+      model: 'sonnet',
+      skills: [{
+        skillName,
+        skillPath: `/repo/skills/${skillName}`,
+        status: 'warn',
+        results: [{ ruleId, severity: 'warn', labelKey: 'doctor.rule.test', status: 'warn', message: `${skillName} 警告`, durationMs: 1 }],
+      }],
+      ruleStats: { pass: 0, warn: 1, fail: 0, skipped: 0, total: 1 },
+      totals: { pass: 0, warn: 1, fail: 0 },
+      outcome: 'warnings_only',
+    });
+    writeFileSync(join(DOCTORS_DIR, `batch-skill-one-${batchId}.json`), JSON.stringify(mkPerSkill('batch-skill-one', 'rule-only-in-one'), null, 2));
+    writeFileSync(join(DOCTORS_DIR, `batch-skill-two-${batchId}.json`), JSON.stringify(mkPerSkill('batch-skill-two', 'rule-only-in-two'), null, 2));
+    try {
+      const res = await fetch(`${baseUrl}/doctors/${batchId}?skill=batch-skill-two`);
+      assert.equal(res.status, 200);
+      assert.ok(res.headers['content-type']!.includes('text/html'));
+      assert.ok(res.body.includes('batch-skill-two'), '应渲染 ?skill= 指定 skill 的体检结果');
+      assert.ok(res.body.includes('rule-only-in-two'), '应包含第二个 skill 独有的规则');
+      assert.ok(!res.body.includes('rule-only-in-one'), '不应渲染另一个 per-skill 文件独有的规则');
+      assert.ok(!res.body.includes('batch-skill-one'), '不应回退展示第一个 skill');
+    } finally {
+      rmSync(join(DOCTORS_DIR, `batch-skill-one-${batchId}.json`), { force: true });
+      rmSync(join(DOCTORS_DIR, `batch-skill-two-${batchId}.json`), { force: true });
+    }
+  });
+
+  it('GET /doctors/:id 不存在时返回 404 + 中文文案(?lang=en 走英文)', async () => {
+    const res = await fetch(`${baseUrl}/doctors/no-such-doctor-id`);
+    assert.equal(res.status, 404);
+    assert.ok(res.body.includes('体检报告不存在'));
+
+    const en = await fetch(`${baseUrl}/doctors/no-such-doctor-id?lang=en`);
+    assert.equal(en.status, 404);
+    assert.ok(en.body.includes('doctor report not found'));
+  });
+
+  it('GET /skills/:name 已下线(hub 不再存在,不做兼容重定向)→ 404', async () => {
+    const res = await fetch(`${baseUrl}/skills/v1`);
     assert.equal(res.status, 404);
   });
 

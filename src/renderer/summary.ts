@@ -1,4 +1,5 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
+import { icon as svgIcon } from './icons.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { computeVerdict, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
@@ -390,206 +391,276 @@ export function renderSaturationCurve(saturation: SaturationData | undefined, va
     ${noteHtml}`;
 }
 
+const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
+
+// 雷达图一个 variant 的入口数据。g[key] = 该维归一化到 0-1 的「越外越好」值,null = 未测量/无对照(画空心点)。
+// 图例不在雷达里画(与右侧数值表并排,表格行的颜色点 + 综合分即图例),所以只需 name/color/g。
+interface RadarEntry {
+  name: string;
+  color: string;
+  g: Record<string, number | null>;
+}
+
+/**
+ * 六维雷达图(SVG)。把六维归一化到 0-1「越外越好」画多边形,直观看一个 variant
+ * 的强弱形状 / 多 variant 的形状差异。精确数值由下方数值表兜底(omk 受众要精确数字)。
+ *
+ * 归一化口径:事实/行为/评委 = 分÷5(绝对);成本/效率按绝对软参考($1/用例、120s/次
+ * 记为 0,越省越外);稳定性 = 1 − CV/0.3。null(未测量/单组无对照)画空心点、中性半径。
+ */
+/** 六维 i18n key → SVG 图标名(替代内嵌 emoji)。 */
+const DIM_ICON: Record<string, string> = {
+  dimFact: 'fact', dimBehavior: 'behavior', dimJudge: 'judge',
+  dimCost: 'cost', dimEfficiency: 'efficiency', dimStability: 'stability', dimQuality: 'quality',
+};
+/** 取维度标签并去掉历史内嵌 emoji 前缀(i18n 串形如「📋 事实」,图标改由 SVG 渲染)。 */
+function dimText(key: string, lang: Lang): string {
+  return t(key, lang).replace(/^\S+\s+/, '');
+}
+
+// 雷达图例点击切换:全局只挂一次 document 委托,toggle 对应 .rad-series 的显隐。
+const RADAR_TOGGLE_SCRIPT = `<script>
+if(!window.__radarToggle){window.__radarToggle=1;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.rad-leg');if(!b)return;var w=b.closest('.sm-radar');if(!w)return;var g=w.querySelector('.rad-series[data-idx="'+b.getAttribute('data-idx')+'"]');var off=b.classList.toggle('off');b.setAttribute('aria-pressed',String(!off));if(g)g.style.display=off?'none':'';});}
+</script>`;
+
+function renderRadarChart(entries: RadarEntry[], dims: Array<{ key: string; label: string }>, lang: Lang): string {
+  const W = 300, H = 250, cx = 150, cy = 118, R = 82;
+  const n = dims.length;
+  const ang = (i: number): number => (-90 + (360 / n) * i) * Math.PI / 180;
+  const pt = (g: number, i: number): [number, number] => [cx + R * g * Math.cos(ang(i)), cy + R * g * Math.sin(ang(i))];
+  const fmtPt = (g: number, i: number): string => pt(g, i).map((x) => x.toFixed(1)).join(',');
+
+  const rings = [0.25, 0.5, 0.75, 1].map((lv) =>
+    `<polygon points="${dims.map((_, i) => fmtPt(lv, i)).join(' ')}" class="rad-grid"/>`).join('');
+  const spokes = dims.map((_, i) => { const [x, y] = pt(1, i); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rad-spoke"/>`; }).join('');
+  const labels = dims.map((d, i) => {
+    const [x, y] = pt(1.22, i);
+    const anchor = x < cx - 4 ? 'end' : x > cx + 4 ? 'start' : 'middle';
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="rad-label">${e(d.label)}</text>`;
+  }).join('');
+  const polys = entries.map((en, idx) => {
+    const ptsStr = dims.map((d, i) => fmtPt(en.g[d.key] == null ? 0.5 : Math.max(0.04, en.g[d.key]!), i)).join(' ');
+    const dots = dims.map((d, i) => {
+      const g = en.g[d.key];
+      const [x, y] = pt(g == null ? 0.5 : Math.max(0.04, g), i);
+      const na = g == null;
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="rad-dot${na ? ' rad-dot--na' : ''}"${na ? '' : ` style="fill:${en.color}"`}><title>${e(en.name)} · ${e(d.label)}${na ? (lang === 'zh' ? ' 未测量/无对照' : ' n/a') : ''}</title></circle>`;
+    }).join('');
+    return `<g class="rad-series" data-idx="${idx}"><polygon points="${ptsStr}" class="rad-area" style="fill:${en.color};stroke:${en.color}"/>${dots}</g>`;
+  }).join('');
+  const svg = `<svg viewBox="0 0 ${W} ${H}" class="rad-svg" role="img" aria-label="${lang === 'zh' ? '六维雷达图' : 'Six-dimension radar'}">${rings}${spokes}${polys}${labels}</svg>`;
+  // 多 variant 时给一排可点击图例,点击切换该 variant 多边形显隐(单独看 / 对比子集)。
+  const legend = entries.length > 1
+    ? `<div class="rad-legend">${entries.map((en, idx) => `<button type="button" class="rad-leg" data-idx="${idx}" aria-pressed="true" style="--c:${en.color}"><span class="rad-leg-dot"></span>${e(en.name)}</button>`).join('')}${RADAR_TOGGLE_SCRIPT}</div>`
+    : '';
+  return `<div class="sm-radar">${svg}${legend}</div>`;
+}
+
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
-  // 六维对比表格:事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性。
-  // 前三列(事实/行为/LLM 评价)是 task 级原始指标的 variant 聚合;成本/效率同。
-  // 稳定性是 variant 级散度度量(需 --repeat ≥ 2)。
-  //
-  // composite 合成分 (= (fact + behavior + judge) / 3) 从 v0.16 起不再在此表主视觉呈现,
-  // 仅保留在 report JSON 数据层 + Variance & Significance 表顶层 flat 字段(legacy)。
-  // 综合分放在第一列, 紧贴 实验分组. 它是 fact/behavior/judge 三层的等权均值,
-  // 在 omk 内部承担「跨 run 排序 / bootstrap CI / verdict 比较信号」三个角色 ——
-  // 这里展示 + 表头 ? button 弹 modal 公开计算方式 + 局限, 让用户知情消费。
-  // 其余六列保持 layer-first (fact / behavior / judge / cost / efficiency / stability)。
+  // 六维:事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性。雷达图看形状,数值表给精确值。
+  // 综合分 (= (fact + behavior + judge) / 3) 并入数值表首列(大字号 + delta),不再单独一行一卡。
+  const isMulti = variants.length > 1;
+  const baselineComposite = summary[variants[0]]?.avgCompositeScore;
+  const scoringModalId = 'guide-scoring';
   const headerCols = [
-    { key: 'dimFact', label: t('dimFact', lang) },
-    { key: 'dimBehavior', label: t('dimBehavior', lang) },
-    { key: 'dimJudge', label: t('dimJudge', lang) },
-    { key: 'dimCost', label: t('dimCost', lang) },
-    { key: 'dimEfficiency', label: t('dimEfficiency', lang) },
-    { key: 'dimStability', label: t('dimStability', lang) },
+    { key: 'dimFact', label: dimText('dimFact', lang) },
+    { key: 'dimBehavior', label: dimText('dimBehavior', lang) },
+    { key: 'dimJudge', label: dimText('dimJudge', lang) },
+    { key: 'dimCost', label: dimText('dimCost', lang) },
+    { key: 'dimEfficiency', label: dimText('dimEfficiency', lang) },
+    { key: 'dimStability', label: dimText('dimStability', lang) },
   ];
 
-  const scoringModalId = 'guide-scoring';
-  // v0.30 — 拆 hero(每变体综合分一行)+ heatmap 表(去 composite,加色块)。
-  // composite 从表里挪出来当 hero,大字号 + delta 跟 baseline 对比;
-  // 维度细节继续用表,但每格按 score 浅色填充,便于扫读弱维度。
-  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
+  const compositeHint = `<button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button>`;
+  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th><th>${lang === 'zh' ? '综合' : 'Composite'} ${compositeHint}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${svgIcon(DIM_ICON[c.key], { size: 13, cls: 'sm-th-ico' })}${c.label}</th>`).join('')}</tr>`;
 
-  // 渲染单层分数 cell(事实/行为/LLM 评价通用)— 加 heatmap 浅色背景
-  function renderLayerCell(varianceMean: number | undefined, summaryValue: number | undefined, detailHtml = ''): string {
+  // 一维的展示数据:可渲染成表格 cell(多 variant 对比)或指标行(单 variant)。
+  interface DimDisplay { label: string; value: string; valueColor: string; primary: boolean; bg: string; detailLines: string[]; title?: string; icon?: string }
+  // 质量层(事实/行为/评委)cell — 1-5 分。只给数值上色(绿/黄/红),不再填单元格底色(底色块突兀;
+  // 维度强弱形状已由左侧雷达图传达,表格只需精确数值)。
+  const layerDim = (label: string, varianceMean: number | undefined, summaryValue: number | undefined, detailLines: string[] = [], iconName?: string): DimDisplay => {
     const v = varianceMean ?? summaryValue;
-    const hasValue = typeof v === 'number' && v > 0;
-    const heatClass = hasValue
-      ? (v >= 4 ? 'sm-heat-pass' : v >= 3 ? 'sm-heat-warn' : 'sm-heat-fail')
-      : '';
-    const color = hasValue
-      ? (v >= 4 ? 'var(--green)' : v >= 3 ? 'var(--yellow)' : 'var(--red)')
-      : 'var(--text-muted)';
-    const display = hasValue ? v.toFixed(2) : '—';
-    return `<td class="summary-cell ${heatClass}"><div class="summary-value summary-value-primary" style="color:${color}">${display}</div>${detailHtml}</td>`;
+    const has = typeof v === 'number' && v > 0;
+    return {
+      label,
+      value: has ? v.toFixed(2) : '—',
+      valueColor: has ? (v >= 4 ? 'var(--green)' : v >= 3 ? 'var(--yellow)' : 'var(--red)') : 'var(--text-muted)',
+      bg: '',
+      primary: true,
+      detailLines,
+      icon: iconName,
+    };
+  };
+  // 注意:detailLines 是「已转义/可信 HTML」契约 —— 既有纯文本(数字 metric)也有原始
+  // HTML(如 stabDetails 的 <span>),dimCell/dimMetric 都不再转义。caller push 的内容
+  // 里凡含 user 字符串(skill 名 / 用例文本)必须先过 e()。当前全是数字,安全。
+  const dimCell = (d: DimDisplay): string => {
+    const cls = d.primary ? 'summary-value summary-value-primary' : 'summary-value';
+    const detail = d.detailLines.map((l) => `<div class="summary-detail">${l}</div>`).join('');
+    return `<td class="summary-cell"${d.bg ? ` style="background:${d.bg}"` : ''}${d.title ? ` title="${e(d.title)}"` : ''}><div class="${cls}" style="color:${d.valueColor}">${d.value}</div>${detail}</td>`;
+  };
+  const dimMetric = (d: DimDisplay): string => {
+    const detail = d.detailLines.length > 0 ? `<span class="sm-metric-detail">${d.detailLines.join(' · ')}</span>` : '';
+    const ico = d.icon ? svgIcon(d.icon, { size: 14, cls: 'sm-mico' }) : '';
+    return `<div class="sm-metric"${d.title ? ` title="${e(d.title)}"` : ''}><span class="sm-metric-label">${ico}${d.label}</span><span class="sm-metric-val" style="color:${d.valueColor}">${d.value}</span>${detail}</div>`;
+  };
+
+  // 综合分 cell(表格首列,大字号 + delta vs baseline)。
+  function renderCompositeCell(composite: number | undefined, i: number): string {
+    const has = typeof composite === 'number' && composite > 0;
+    const color = has ? (composite >= 4 ? 'var(--green)' : composite >= 3 ? 'var(--yellow)' : 'var(--red)') : 'var(--text-muted)';
+    let delta = '';
+    if (isMulti && i > 0 && has && typeof baselineComposite === 'number' && baselineComposite > 0) {
+      const d = composite - baselineComposite;
+      if (Math.abs(d) >= 0.01) {
+        delta = `<div class="sm-delta" style="color:${d > 0 ? 'var(--green)' : 'var(--red)'}">${d > 0 ? '+' : ''}${d.toFixed(2)} ${d > 0 ? '↑' : '↓'}</div>`;
+      }
+    }
+    return `<td class="summary-cell sm-composite-cell"><div class="summary-value summary-value-primary" style="color:${color}">${has ? composite.toFixed(2) : '—'}</div>${delta}</td>`;
   }
 
-  const rows = variants.map((v, i) => {
+  interface VariantDisplay { name: string; color: string; composite: number | undefined; dims: DimDisplay[]; g: Record<string, number | null> }
+  const avgLabel = lang === 'zh' ? '次' : 'req';
+  const costUnreportedTooltip = lang === 'zh'
+    ? 'executor 不报 USD 成本(如 codex CLI),无法估算'
+    : 'executor does not report USD cost (e.g. codex CLI); not measurable';
+
+  let anyStabUnmeasured = false;
+  const perVariant: VariantDisplay[] = variants.map((v, i) => {
     const s = summary[v] || {} as VariantSummary;
     const vd = variance?.perVariant[v];
     const color = COLORS[i % COLORS.length];
 
-    // 事实层 cell(含事实验证率 detail,如果有)
+    const factVal = vd?.byLayer?.fact?.mean ?? s.avgFactScore;
+    const behaviorVal = vd?.byLayer?.behavior?.mean ?? s.avgBehaviorScore;
+    const judgeVal = vd?.byLayer?.judge?.mean ?? s.avgJudgeScore;
+
     const factDetailParts: string[] = [];
-    if (s.avgFactVerifiedRate != null) {
-      const pct = Math.round(s.avgFactVerifiedRate * 100);
-      factDetailParts.push(`${lang === 'zh' ? '验证率' : 'Verified'} ${pct}%`);
-    }
-    const factDetail = factDetailParts.length > 0 ? `<div class="summary-detail">${factDetailParts.join(' · ')}</div>` : '';
-    const factCell = renderLayerCell(vd?.byLayer?.fact?.mean, s.avgFactScore, factDetail);
+    if (s.avgFactVerifiedRate != null) factDetailParts.push(`${lang === 'zh' ? '验证率' : 'Verified'} ${Math.round(s.avgFactVerifiedRate * 100)}%`);
 
-    // 行为层 cell(暂无 detail,后续可按工具调用成功率之类扩展)
-    const behaviorCell = renderLayerCell(vd?.byLayer?.behavior?.mean, s.avgBehaviorScore);
-
-    // LLM 评价层 cell
-    const judgeCell = renderLayerCell(vd?.byLayer?.judge?.mean, s.avgJudgeScore);
-
-    // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
-    // execCostReported === false 时(如 codex executor)显示「—」并 tooltip 解释,
-    // 跟"真的花了 $0(全 cached / 短 prompt)"区分开。
+    // Cost — 只算 execution cost(judge cost 是工具开销,不算 skill 成本)。
     const execCost = s.totalExecCostUSD || 0;
     const costReported = s.execCostReported !== false;
     const hasCost = execCost > 0 || (s.avgTotalTokens || 0) > 0;
-    const costUnreportedTooltip = lang === 'zh'
-      ? 'executor 不报 USD 成本(如 codex CLI),无法估算'
-      : 'executor does not report USD cost (e.g. codex CLI); not measurable';
-    const costCell = hasCost
-      ? (costReported
-        ? `<td class="summary-cell"><div class="summary-value">${fmtCost(execCost)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`
-        : `<td class="summary-cell" title="${e(costUnreportedTooltip)}"><div class="summary-value" style="color:var(--text-muted)">${fmtCost(0, false)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`)
-      : `<td class="summary-cell"><span style="color:var(--text-muted)">N/A</span></td>`;
+    const costPerSample = (s.totalSamples || 0) > 0 ? execCost / s.totalSamples : execCost;
+    const tokenDetail = `${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}`;
+    const costDim: DimDisplay = hasCost
+      ? { label: dimText('dimCost', lang), value: costReported ? fmtCost(execCost) : fmtCost(0, false), valueColor: costReported ? 'var(--text-primary)' : 'var(--text-muted)', primary: false, bg: '', detailLines: [tokenDetail], title: costReported ? undefined : costUnreportedTooltip, icon: 'cost' }
+      : { label: dimText('dimCost', lang), value: 'N/A', valueColor: 'var(--text-muted)', primary: false, bg: '', detailLines: [], icon: 'cost' };
 
-    // Efficiency
-    const effDetails: string[] = [];
+    // Efficiency — 主值是每次耗时;轮次/工具压成一条紧凑副行(去掉「总计」那条,留白更清爽)。
+    const effParts: string[] = [];
     const displayTurns = s.avgFullNumTurns ?? s.avgNumTurns;
-    if ((displayTurns || 0) > 0) effDetails.push(`${displayTurns} ${t('turnsPerReq', lang)}`);
+    if ((displayTurns || 0) > 0) effParts.push(`${displayTurns} ${t('turnsPerReq', lang)}`);
     if (s.avgToolCalls != null && s.avgToolCalls > 0) {
-      const srPct = s.toolSuccessRate != null ? ` (${(s.toolSuccessRate * 100).toFixed(0)}% OK)` : '';
-      effDetails.push(`${s.avgToolCalls} tools/req${srPct}`);
+      const srPct = s.toolSuccessRate != null ? ` ${(s.toolSuccessRate * 100).toFixed(0)}%` : '';
+      effParts.push(`${s.avgToolCalls} ${lang === 'zh' ? '工具' : 'tools'}${srPct}`);
     }
-    const totalDurationMs = (s.avgDurationMs || 0) * (s.successCount || 0);
-    if (totalDurationMs > 0) effDetails.push(`${lang === 'zh' ? '总计' : 'total'} ${fmtDuration(totalDurationMs)}`);
-    const effDetail = effDetails.length > 0 ? `<div class="summary-detail">${effDetails.join(' · ')}</div>` : '';
-    const avgLabel = lang === 'zh' ? '次' : 'req';
-    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
+    const durSec = (s.avgDurationMs || 0) / 1000;
+    // 副行拆成多条堆叠(表格窄列里逐条独占一行,避免「轮/工具」挤在一行从中间难看换行);
+    // solo 的 dimMetric 仍用 ' · ' 合并成一行(够宽)。
+    const effDim: DimDisplay = { label: dimText('dimEfficiency', lang), value: `${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span>`, valueColor: 'var(--text-primary)', primary: false, bg: '', detailLines: effParts, icon: 'efficiency' };
 
-    // Stability — 多次运行分数一致性（test-retest reliability），统计学定义的稳定性。
-    // 主视觉:白话定性词 + ±σ 直观量级,让读者一眼判断。
-    // 副区:CV (变异系数 = σ / mean) 分两行展示 + 95% CI(置信区间)。
-    // 无 --repeat(variance 缺失) 时主值显示 "—" + 明示需多跑,不虚报 100%——
-    // 符合 omk 叙事底线"诚实交代测不到什么"。
-    //
-    // 跨用例 min~max range 不是稳定性(反映用例难度差异,非 variant 波动),已从此列移除。
-    // 成功率 ≠ 稳定性(执行完成率,不是分数一致性),降级到 < 100% 时的副区 alert。
+    // Stability — 多次运行分数一致性(test-retest reliability)。无 --repeat 时显「未测量」不虚报。
     const total = s.totalSamples || 0;
-    const successCount = s.successCount || 0;
     const errorCount = s.errorCount || 0;
-    const successRate = total > 0 ? Number((successCount / total * 100).toFixed(1)) : 0;
-
+    const successRate = total > 0 ? Number((s.successCount || 0) / total * 100) : 0;
+    const cv = (vd && typeof vd.stddev === 'number' && typeof vd.mean === 'number' && vd.mean >= 0.5)
+      ? Math.abs(vd.stddev / vd.mean) : null;
     const stabDetails: string[] = [];
     let stabValue: string;
     let stabColor: string;
-
-    // CV = σ / mean,当 mean 过小(接近 0)时 CV 发散,数值无参考价值——1-5 分数量纲下
-     // mean < 0.5 已属全灭场景,直接降级显示"—"。负 mean(理论上不会出现)也走降级。
-    if (vd && typeof vd.stddev === 'number' && typeof vd.mean === 'number' && vd.mean >= 0.5) {
-      const cv = Math.abs(vd.stddev / vd.mean);
+    if (cv != null) {
       const cvPct = cv * 100;
-      const sigma = vd.stddev;
-      // 主值用白话定性 + ±σ 直观量级,让非统计背景读者一眼判断。
-      // CV 和 CI 下沉到副区,给懂的人细看。阈值面向 1-5 分数量纲的经验值。
       let label: string;
-      if (cvPct < 5) {
-        label = lang === 'zh' ? '稳定' : 'Stable';
-        stabColor = 'var(--green)';
-      } else if (cvPct < 15) {
-        label = lang === 'zh' ? '较稳' : 'Moderate';
-        stabColor = 'var(--yellow)';
-      } else {
-        label = lang === 'zh' ? '波动大' : 'Variable';
-        stabColor = 'var(--red)';
-      }
-      stabValue = `${label} · ±${fmtNum(sigma, 2)}`;
-      const ciLo = fmtNum(vd.lower, 2);
-      const ciHi = fmtNum(vd.upper, 2);
-      stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${ciLo}, ${ciHi}]`);
+      if (cvPct < 5) { label = lang === 'zh' ? '稳定' : 'Stable'; stabColor = 'var(--green)'; }
+      else if (cvPct < 15) { label = lang === 'zh' ? '较稳' : 'Moderate'; stabColor = 'var(--yellow)'; }
+      else { label = lang === 'zh' ? '波动大' : 'Variable'; stabColor = 'var(--red)'; }
+      stabValue = `${label} · ±${fmtNum(vd!.stddev, 2)}`;
+      stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${fmtNum(vd!.lower, 2)}, ${fmtNum(vd!.upper, 2)}]`);
     } else {
-      // No cross-run data → make the gap loud, not silent. 之前用灰色 "—" 让单轮
-      // 报告读者误以为"无显示 = 没问题",实际是 omk 测不到这个维度。改红 +
-      // "未测量" 字样让缺失可见 — 鼓励用户加 --repeat ≥ 2 而不是默默 ship。
-      stabValue = lang === 'zh' ? '⚠ 未测量' : '⚠ Not measured';
-      stabColor = 'var(--red)';
-      stabDetails.push(
-        `<span style="color:var(--red)">${
-          lang === 'zh' ? '单轮评测,加 --repeat ≥ 2 才能测 CV' : 'single-run; needs --repeat ≥ 2 to measure CV'
-        }</span>`,
-      );
+      // 未测量:仅一个安静的词,不在每行重复整句红色告警(那是右侧最大的视觉噪声)。
+      // 「需 --repeat ≥ 2」的提示压成表格下方一条脚注,只出现一次。
+      anyStabUnmeasured = true;
+      stabValue = lang === 'zh' ? '未测量' : 'n/a';
+      stabColor = 'var(--text-muted)';
     }
-
-    // Execution-completion alerts:success rate < 100% 时降级到此处,避免和"稳定性"语义混淆。
     if (errorCount > 0) {
-      stabDetails.unshift(`<span style="color:var(--red)">${successRate}% ${lang === 'zh' ? '完成率' : 'completed'} · ${errorCount} ${t('errors', lang)}</span>`);
+      stabDetails.unshift(`<span style="color:var(--red)">${successRate.toFixed(1)}% ${lang === 'zh' ? '完成率' : 'completed'} · ${errorCount} ${t('errors', lang)}</span>`);
     }
+    const stabDim: DimDisplay = { label: dimText('dimStability', lang), value: stabValue, valueColor: stabColor, primary: false, bg: '', detailLines: stabDetails, icon: 'stability' };
 
-    // 正常情况副区只一行:`CV X.X% · 95% CI [...]`。
-    // 有 alert(成功率 < 100%) 时把 alert 放第一行、CV+CI 放第二行,让异常信息第一眼看到。
-    const stabDetail = stabDetails.length > 0
-      ? stabDetails.map((d) => `<div class="summary-detail">${d}</div>`).join('')
-      : '';
+    const dims: DimDisplay[] = [
+      layerDim(dimText('dimFact', lang), vd?.byLayer?.fact?.mean, s.avgFactScore, factDetailParts, 'fact'),
+      layerDim(dimText('dimBehavior', lang), vd?.byLayer?.behavior?.mean, s.avgBehaviorScore, [], 'behavior'),
+      layerDim(dimText('dimJudge', lang), vd?.byLayer?.judge?.mean, s.avgJudgeScore, [], 'judge'),
+      costDim,
+      effDim,
+      stabDim,
+    ];
 
-    const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
+    return {
+      name: v,
+      color,
+      composite: s.avgCompositeScore,
+      dims,
+      g: {
+        fact: typeof factVal === 'number' && factVal > 0 ? clamp01(factVal / 5) : null,
+        behavior: typeof behaviorVal === 'number' && behaviorVal > 0 ? clamp01(behaviorVal / 5) : null,
+        judge: typeof judgeVal === 'number' && judgeVal > 0 ? clamp01(judgeVal / 5) : null,
+        // 成本/效率:绝对软参考,越省越外。$1/用例、120s/次 记为 0。
+        cost: hasCost && costReported ? clamp01(1 - costPerSample / 1.0) : null,
+        efficiency: durSec > 0 ? clamp01(1 - durSec / 120) : null,
+        stability: cv != null ? clamp01(1 - cv / 0.30) : null,
+      },
+    };
+  });
 
-    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
-  }).join('');
+  // 表格行(多 variant):行首颜色点对应雷达多边形,行即图例。
+  const rows = perVariant.map((pv, i) =>
+    `<tr><td class="sm-name-cell"><span class="sm-row-dot" style="background:${pv.color}"></span><strong>${e(pv.name)}</strong></td>${renderCompositeCell(pv.composite, i)}${pv.dims.map(dimCell).join('')}</tr>`).join('');
 
-  // ──────────── Hero 行:每 variant 一行,综合分大字号 + delta vs baseline ────────────
-  // 每变体一行,左 variant 名 + 颜色条;中 大字号 composite;右 delta(vs variants[0])
-  const baselineComposite = summary[variants[0]]?.avgCompositeScore;
-  const heroRows = variants.map((v, i) => {
-    const s = summary[v] || {} as VariantSummary;
-    const composite = s.avgCompositeScore;
-    const compositeHasValue = typeof composite === 'number' && composite > 0;
-    const compositeColor = compositeHasValue
-      ? (composite >= 4 ? 'var(--green)' : composite >= 3 ? 'var(--yellow)' : 'var(--red)')
-      : 'var(--text-muted)';
-    const compositeDisplay = compositeHasValue ? composite.toFixed(2) : '—';
-    const color = COLORS[i % COLORS.length];
-    let deltaHtml = '';
-    if (i > 0 && compositeHasValue && typeof baselineComposite === 'number' && baselineComposite > 0) {
-      const diff = composite! - baselineComposite;
-      if (Math.abs(diff) >= 0.01) {
-        const sign = diff > 0 ? '+' : '';
-        const dColor = diff > 0 ? 'var(--green)' : 'var(--red)';
-        const arrow = diff > 0 ? '↑' : '↓';
-        deltaHtml = `<span class="sm-hero-delta" style="color:${dColor}">${sign}${diff.toFixed(2)} ${arrow}</span>`;
-      }
-    }
-    return `<div class="sm-hero" style="border-left:3px solid ${color}">
-      <div class="sm-hero-name">${e(v)}</div>
-      <div class="sm-hero-score" style="color:${compositeColor}">${compositeDisplay}<span class="sm-hero-unit">/ 5</span></div>
-      ${deltaHtml || '<span class="sm-hero-delta-placeholder"></span>'}
-    </div>`;
-  }).join('');
-  const heroBlock = `<div class="sm-hero-list">
-    <div class="sm-hero-h">
-      ${lang === 'zh' ? '综合分' : 'Composite'}
-      <button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button>
-    </div>
-    ${heroRows}
-  </div>`;
+  const stabFootnote = anyStabUnmeasured
+    ? `<p class="sm-foot">${svgIcon('stability', { size: 13, cls: 'sm-foot-ico' })}${lang === 'zh' ? '稳定性需 <code>--repeat ≥ 2</code> 才能测（本次为单轮评测）' : 'Stability needs <code>--repeat ≥ 2</code> (single-run here)'}</p>`
+    : '';
+
+  // 指标行列表(单 variant):综合分 + 六维竖排,免去单行表格的空旷/表头冗余。
+  const compositeMetric = (() => {
+    const c = perVariant[0]?.composite;
+    const has = typeof c === 'number' && c > 0;
+    const color = has ? (c >= 4 ? 'var(--green)' : c >= 3 ? 'var(--yellow)' : 'var(--red)') : 'var(--text-muted)';
+    return `<div class="sm-metric sm-metric--composite"><span class="sm-metric-label">${lang === 'zh' ? '综合' : 'Composite'} ${compositeHint}</span><span class="sm-metric-val" style="color:${color}">${has ? c.toFixed(2) : '—'}<small class="sm-metric-unit"> / 5</small></span></div>`;
+  })();
+  // 六维分两列(列优先填充:左列 = 质量三层 事实/行为/评委,右列 = 资源三项 成本/效率/稳定),
+  // 综合分整行领头。单 variant 时撑满横向空间,不再细长一条。
+  const metricList = `<div class="sm-metrics">${compositeMetric}<div class="sm-metric-grid">${(perVariant[0]?.dims ?? []).map(dimMetric).join('')}</div></div>`;
+
+  const radarDims = [
+    { key: 'fact', label: lang === 'zh' ? '事实' : 'Fact' },
+    { key: 'behavior', label: lang === 'zh' ? '行为' : 'Behavior' },
+    { key: 'judge', label: lang === 'zh' ? '评委' : 'Judge' },
+    { key: 'cost', label: lang === 'zh' ? '成本' : 'Cost' },
+    { key: 'efficiency', label: lang === 'zh' ? '效率' : 'Eff' },
+    { key: 'stability', label: lang === 'zh' ? '稳定' : 'Stab' },
+  ];
+  const radar = renderRadarChart(perVariant.map((pv) => ({ name: pv.name, color: pv.color, g: pv.g })), radarDims, lang);
 
   const guideModalId = 'guide-six-dims';
-  const guideTitle = lang === 'zh' ? '如何阅读六维对比？' : 'How to read this six-dimension comparison?';
+  // 单 variant 没有对照,标题用「六维评分」;多 variant 才是「六维对比」。
+  const sectionTitle = lang === 'zh' ? (isMulti ? '六维对比' : '六维评分') : (isMulti ? 'Six-Dimension Comparison' : 'Six-Dimension Scores');
+  const guideTitle = lang === 'zh' ? `如何阅读${sectionTitle}？` : `How to read these six dimensions?`;
   const guideIntro = lang === 'zh'
-    ? '每行是一个实验分组（Variant），六列分别衡量不同维度：'
-    : 'Each row is an experiment variant. Six columns measure independent dimensions:';
-  const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
+    ? '雷达图把六维归一化（越外越好）看强弱形状，下方表格给精确数值。各维含义：'
+    : 'The radar normalizes the six dimensions (outer = better) to show shape; the table below gives exact values. The dimensions:';
+  const radarNote = lang === 'zh'
+    ? '雷达归一化口径：事实/行为/评委 = 分÷5；成本、效率按绝对参考折算（约 $1/用例、120s/次 记为最低，越省越靠外）；稳定性 = 1 − CV/0.3。空心点 = 未测量或单组无对照。精确数值一律以下方表格为准。'
+    : 'Radar normalization: Fact/Behavior/Judge = score÷5; Cost/Efficiency use absolute references (~$1/sample, 120s/req map to 0 — cheaper/faster reaches outward); Stability = 1 − CV/0.3. Hollow dots = not measured or single-variant (no comparison). The table below is the source of truth for exact values.';
+  // 六维说明弹框的行首图标:把历史 emoji 映射到统一 SVG 图标(未命中则保留原 emoji 兜底)。
+  const EMOJI_ICON: Record<string, string> = { '📋': 'fact', '🛠️': 'behavior', '💬': 'judge', '💰': 'cost', '⚡': 'efficiency', '🛡️': 'stability' };
+  const icon = (emoji: string): string => {
+    const name = EMOJI_ICON[emoji];
+    return name ? svgIcon(name, { size: 14, style: 'color:var(--text-secondary);vertical-align:-2px;margin-right:4px' }) : `<span aria-hidden="true">${emoji}</span>`;
+  };
   // 维度分隔加粗(border-top 2px),让六维的视觉边界更明显。sub 缩进从 28 收到 22。
   const dim = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"';
   const dimDesc = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-secondary)"';
@@ -624,7 +695,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const scoringModalHtml = renderScoringModal(scoringModalId, lang);
 
   return `
-    <h2 style="display:flex;align-items:center;gap:4px">${lang === 'zh' ? '六维对比' : 'Six-Dimension Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
+    <h2 style="display:flex;align-items:center;gap:4px">${sectionTitle} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
     <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)closeModal('${guideModalId}')">
       <div class="modal-content">
         <div class="modal-header">
@@ -633,30 +704,76 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
         </div>
         <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">${e(guideIntro)}</p>
         <table class="modal-table"><tbody>${guideRows}</tbody></table>
+        <p style="font-size:12px;color:var(--text-muted);margin:14px 0 0;line-height:1.6;border-top:1px solid var(--border);padding-top:12px">${e(radarNote)}</p>
       </div>
     </div>
     ${scoringModalHtml}
-    ${heroBlock}
-    <div class="table-wrap">
-    <table class="summary-table">
-      <thead>${thead}</thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="sm-vis${isMulti ? '' : ' sm-vis--solo'}">
+      ${radar}
+      ${isMulti
+        ? `<div class="table-wrap"><table class="summary-table"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
+        : metricList}
     </div>
+    ${stabFootnote}
     <style>
-    /* 六维对比 — Hero 区(每 variant 综合分 + delta) */
-    .sm-hero-list { display:flex;flex-direction:column;gap:8px;margin:14px 0 18px }
-    .sm-hero-h { font-size:13px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.02em }
-    .sm-hero { display:flex;align-items:baseline;gap:16px;padding:14px 18px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm) }
-    .sm-hero-name { flex:1;font-size:14.5px;font-weight:500;color:var(--text-primary) }
-    .sm-hero-score { font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
-    .sm-hero-unit { font-size:13px;color:var(--text-muted);margin-left:4px;font-weight:400 }
-    .sm-hero-delta { font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:60px;text-align:right }
-    .sm-hero-delta-placeholder { display:inline-block;min-width:60px }
-    /* 六维 heatmap — 每格按分数浅色填充,便于远看识别弱维度 */
-    .sm-heat-pass { background:linear-gradient(0deg,var(--green-bg),var(--green-bg)) }
-    .sm-heat-warn { background:linear-gradient(0deg,var(--yellow-bg),var(--yellow-bg)) }
-    .sm-heat-fail { background:linear-gradient(0deg,var(--red-bg),var(--red-bg)) }
+    /* 对比表减负:行距更松、副行更淡更小、名字列左对齐去掉左色条(行首色点已是图例) */
+    .summary-table td { padding:13px 14px }
+    .summary-table .sm-name-cell { text-align:left;white-space:nowrap;font-size:14px;max-width:200px;overflow:hidden;text-overflow:ellipsis }
+    .summary-table .summary-detail { font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.4;white-space:nowrap }
+    .summary-table .summary-detail + .summary-detail { margin-top:2px }
+    .summary-table .summary-value { font-weight:600 }
+    .sm-foot { font-size:11.5px;color:var(--text-muted);margin:10px 2px 0;line-height:1.5 }
+    .sm-foot code { font-size:11px }
+    /* 六维区 — 雷达图 + 数值并排一行(宽屏);窄屏自动换行堆叠。单 variant 用指标列表,多 variant 用对比表。 */
+    .sm-vis { display:flex;gap:28px;align-items:center;margin:16px 0 18px }
+    .sm-vis .sm-radar { flex:0 0 auto;margin:0;padding:0 }
+    .sm-vis .table-wrap { flex:1 1 auto;min-width:0;margin:0 }
+    .sm-vis .sm-metrics { flex:0 1 560px;min-width:0 }
+    /* 单 variant:雷达放大些(只有一个多边形,大点更好看)+ 居中,避免右侧大片留白。 */
+    .sm-vis--solo { justify-content:center;gap:44px }
+    .sm-vis--solo .rad-svg { width:360px;height:300px }
+    .sm-vis--solo .sm-metrics { flex:0 1 680px }
+    @media (max-width:1080px) { .sm-vis { flex-direction:column;align-items:stretch } .sm-vis .sm-metrics { flex:1 1 auto } .sm-vis--solo { justify-content:flex-start } .sm-vis--solo .rad-svg { width:300px;height:250px } }
+    /* 指标列表(单 variant)— 综合分整行领头 + 六维分两列(左质量三层 / 右资源三项) */
+    .sm-metrics { display:flex;flex-direction:column }
+    .sm-metric { display:flex;align-items:baseline;gap:12px;padding:9px 4px }
+    .sm-metric--composite { padding:4px 4px 12px;margin-bottom:6px;border-bottom:2px solid var(--border) }
+    .sm-metric-label { display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-width:92px;color:var(--text-secondary);font-size:13.5px }
+    .sm-mico { color:var(--text-muted);flex-shrink:0 }
+    .sm-th-ico { color:var(--text-muted);vertical-align:-2px;margin-right:5px }
+    .sm-foot-ico { color:var(--text-muted);vertical-align:-2px;margin-right:5px }
+    .sm-metric--composite .sm-metric-label { color:var(--text-primary);font-weight:600;font-size:14px }
+    .sm-metric-val { flex:0 0 auto;min-width:60px;font-weight:700;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;font-size:15px }
+    .sm-metric--composite .sm-metric-val { font-size:30px;line-height:1 }
+    .sm-metric-unit { font-size:13px;color:var(--text-muted);font-weight:400 }
+    .sm-metric-detail { flex:1 1 auto;min-width:0;color:var(--text-muted);font-size:12px;line-height:1.5 }
+    /* 六维两列网格:列优先填充(左列前 3 = 质量,右列后 3 = 资源),列间一条竖分隔 */
+    .sm-metric-grid { display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);grid-auto-flow:column }
+    .sm-metric-grid .sm-metric { border-bottom:1px solid var(--border) }
+    .sm-metric-grid .sm-metric:nth-child(3), .sm-metric-grid .sm-metric:nth-child(6) { border-bottom:none }
+    .sm-metric-grid .sm-metric:nth-child(n+4) { padding-left:24px;border-left:1px solid var(--border) }
+    @media (max-width:600px) { .sm-metric-grid { grid-template-columns:1fr;grid-auto-flow:row } .sm-metric-grid .sm-metric:nth-child(n+4) { padding-left:4px;border-left:none } .sm-metric-grid .sm-metric:nth-child(3) { border-bottom:1px solid var(--border) } .sm-metric-grid .sm-metric:last-child { border-bottom:none } }
+    /* 六维雷达图 — 归一化「越外越好」多边形 */
+    .sm-radar { padding:4px }
+    .rad-svg { width:300px;height:250px;overflow:visible }
+    .rad-grid { fill:none;stroke:var(--border);stroke-width:1 }
+    .rad-spoke { stroke:var(--border);stroke-width:1 }
+    .rad-label { font-size:11px;fill:var(--text-secondary);font-weight:500 }
+    .rad-area { fill-opacity:0.13;stroke-width:2;stroke-linejoin:round }
+    .rad-dot { stroke:#fff;stroke-width:1 }
+    .rad-dot--na { fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5 }
+    .rad-series { transition:opacity .12s }
+    .rad-legend { display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;margin-top:10px }
+    .rad-leg { display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);background:none;border:1px solid var(--border);border-radius:999px;padding:3px 11px;cursor:pointer;transition:.15s }
+    .rad-leg-dot { width:9px;height:9px;border-radius:50%;background:var(--c);flex:none }
+    .rad-leg:hover { border-color:var(--c);color:var(--text-primary) }
+    .rad-leg.off { opacity:.45;text-decoration:line-through }
+    .rad-leg.off .rad-leg-dot { background:var(--text-faint) }
+    /* 数值表 — 综合分首列大字号;行首颜色点对应雷达多边形;hover 不盖热力底色 */
+    .sm-row-dot { display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle }
+    .sm-composite-cell .summary-value-primary { font-size:1.35rem }
+    .sm-delta { font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px }
+    .summary-table tr:hover td { background:transparent }
     </style>`;
 }
 

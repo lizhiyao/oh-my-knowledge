@@ -169,6 +169,7 @@ export interface SampleFlags {
   batch: boolean;
   count?: string;
   model: string;
+  executor?: string;
   'skill-dir': string;
   focus?: string;
   'no-mock': boolean;

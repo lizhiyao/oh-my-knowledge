@@ -1,360 +1,376 @@
 /**
- * Skill 列表页 — 卡片式,关键信号(健康等级 / 参考分 / 待优化数 / 趋势)显性化。
- *
- *   ┌─ skill-name ─────────────────────────────────  ⚠ N 待优化 · ↗ 趋势 ─┐
- *   │ ┌─────┐  健康摘要一句话                                              │
- *   │ │ 🟡  │  🩺 7/8 通过 · 🧪 5 用例 80% 4.2/5 · 👁 30 段 95% 稳定         │
- *   │ │ 良好 │                                                              │
- *   │ │ 85  │                                                              │
- *   │ └─────┘                                                              │
- *   └────────────────────────────────────────────────────────────────────┘
+ * Skill 列表页 — 仪表盘布局，精确参照内部 SkillHealth dashboard。
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
+import { icon } from './icons.js';
 import type { Lang, SkillIndex, SkillIndexEntry, Insight } from '../types/index.js';
 
-function relTime(ts: string | null | undefined, lang: Lang): string {
-  if (!ts) return lang === 'zh' ? '未跑' : 'never';
-  try {
-    const past = new Date(ts).getTime();
-    const diff = Math.max(0, Date.now() - past);
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return lang === 'zh' ? `${mins} 分钟前` : `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return lang === 'zh' ? `${hours} 小时前` : `${hours}h ago`;
-    return lang === 'zh' ? `${Math.floor(hours / 24)} 天前` : `${Math.floor(hours / 24)}d ago`;
-  } catch { return ''; }
+// ── icons (Lucide SVG inline) ── 维度/状态图标统一走共享 icons.ts;此处仅保留弹框用的 help 图标。
+const IC = {
+  helpCircle: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+
+function fmtDate(ts: string | null | undefined): string {
+  if (!ts) return '';
+  try { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; } catch { return ''; }
+}
+function fmtShort(ts: string | null | undefined): string {
+  if (!ts) return '-';
+  try { const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; } catch { return '-'; }
+}
+// 综合健康配色:≥85 绿 / ≥60 琥珀 / 其余红。与 report-shell.healthColor 同口径,
+// 保证同一个分数在首页列表与报告页 Hero 颜色一致(90 两处都是绿,不再首页橙、详情红)。
+function scoreColor(s: number): string { return s >= 85 ? '#1f9d63' : s >= 60 ? '#d97706' : '#dc2626'; }
+
+interface Agg { totalSkills: number; dP: number; dW: number; dF: number; eP: number; eF: number; eSamples: number; eAvg: number | null; eAssertP: number; eAssertT: number; withObs: number; lastTs: string | null; gc: Record<string, number>; greenCt: number; composite: number | null; dHist: number[]; eHist: number[]; oHist: number[] }
+
+function aggregate(entries: SkillIndexEntry[], iMap: Map<string, Insight[]>, lang: Lang): Agg {
+  let dP = 0, dW = 0, dF = 0, eP = 0, eF = 0, eSamples = 0, eSum = 0, eCt = 0, withObs = 0, hSum = 0, hCt = 0;
+  let eAssertP = 0, eAssertT = 0;
+  const gc: Record<string, number> = { excellent: 0, good: 0, fair: 0, unhealthy: 0, unscored: 0 };
+  const dH: number[] = [], eH: number[] = [], oH: number[] = [];
+  for (const ent of entries) {
+    const h = assessHealth(ent, iMap.get(ent.skillName) ?? [], lang);
+    gc[h.grade]++;
+    if (h.score != null) { hSum += h.score; hCt++; }
+    if (ent.doctor) { dP += ent.doctor.passCount; dW += ent.doctor.warnCount; dF += ent.doctor.failCount; }
+    if (ent.eval) { eP += ent.eval.passCount; eF += ent.eval.failCount; eSamples += ent.eval.totalSamples; if (ent.eval.compositeScore != null) { eSum += ent.eval.compositeScore; eCt++; } eAssertP += ent.eval.passCount; eAssertT += ent.eval.passCount + ent.eval.failCount; }
+    if (ent.observe) withObs++;
+    for (const x of ent.doctorHistory) { const t = x.passCount + x.warnCount + x.failCount; if (t > 0) dH.push(Math.round((x.passCount / t) * 100)); }
+    for (const x of ent.evalHistory) { if (x.compositeScore != null) eH.push(Math.round((x.compositeScore / 5) * 100)); }
+    for (const x of ent.observeHistory) oH.push(Math.round((1 - x.gapRate) * 100));
+  }
+  return { totalSkills: entries.length, dP, dW, dF, eP, eF, eSamples, eAvg: eCt > 0 ? eSum / eCt : null, eAssertP, eAssertT, withObs, lastTs: entries.flatMap((x) => [x.doctor?.timestamp, x.eval?.timestamp, x.observe?.generatedAt]).filter((x): x is string => Boolean(x)).sort().pop() ?? null, gc, greenCt: gc.good + gc.excellent, composite: hCt > 0 ? Math.round(hSum / hCt) : null, dHist: dH, eHist: eH, oHist: oH };
 }
 
-interface CardSummary {
-  warnCount: number;
-  highWarn: number;
-  trendDir: 'up' | 'down' | 'flat' | 'none';
-  trendDelta: string;
+function ring(score: number | null, size: number, sw: number): string {
+  const r = (size - sw) / 2, c = 2 * Math.PI * r, off = c * (1 - (score ?? 0) / 100), clr = score != null ? scoreColor(score) : '#9ca3af', cx = size / 2;
+  return `<div style="position:relative;width:${size}px;height:${size}px"><svg width="${size}" height="${size}"><circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="#edf0f7" stroke-width="${sw}"/>${score != null ? `<circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${clr}" stroke-width="${sw}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cx})" style="transition:stroke-dashoffset .6s"/>` : ''}</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:${Math.round(size * 0.36)}px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:${clr}">${score ?? '—'}</span></div></div>`;
 }
 
-function summarizeCard(entry: SkillIndexEntry, insights: Insight[]): CardSummary {
-  // 待优化数 = detectInsights 数(跟详情页用同一份输入,避免列表/详情口径不一致)。
-  const warnCount = insights.length;
-  const highWarn = insights.filter((i) => i.severity === 'high').length;
+function renderPanel(a: Agg, lang: Lang): string {
+  const zh = lang === 'zh';
+  const dTotal = a.dP + a.dW + a.dF;
+  const dScore = dTotal > 0 ? Math.round(((a.dP + a.dW * 0.5) / dTotal) * 100) : null;
 
-  // 趋势:用 eval 综合分历史第一份 vs 最后一份比较;无 history 用 doctor pass-rate fallback。
-  let trendDir: CardSummary['trendDir'] = 'none';
-  let trendDelta = '';
-  if (entry.evalHistory.length >= 2) {
-    const first = entry.evalHistory[0].compositeScore;
-    const last = entry.evalHistory[entry.evalHistory.length - 1].compositeScore;
-    if (first != null && last != null) {
-      const d = last - first;
-      trendDir = d > 0.1 ? 'up' : d < -0.1 ? 'down' : 'flat';
-      trendDelta = (d > 0 ? '+' : '') + d.toFixed(2);
-    }
-  } else if (entry.doctorHistory.length >= 2) {
-    const totalOf = (h: typeof entry.doctorHistory[0]): number => h.passCount + h.warnCount + h.failCount;
-    const passPctOf = (h: typeof entry.doctorHistory[0]): number => totalOf(h) > 0 ? (h.passCount / totalOf(h)) * 100 : 0;
-    const first = passPctOf(entry.doctorHistory[0]);
-    const last = passPctOf(entry.doctorHistory[entry.doctorHistory.length - 1]);
-    const d = last - first;
-    trendDir = d > 5 ? 'up' : d < -5 ? 'down' : 'flat';
-    trendDelta = (d > 0 ? '+' : '') + d.toFixed(0) + '%';
-  }
-  return { warnCount, highWarn, trendDir, trendDelta };
+  // 页头(品牌已在常驻顶栏,这里不再重复 brand badge)。
+  const phead = `<div class="phead">
+    <h1>${zh ? 'Skill 健康评测工作台' : 'Skill Health Dashboard'}</h1>
+    <span class="phead-sub">${a.totalSkills} ${zh ? '个 skill' : 'skills'}</span>
+    <span class="phead-when">${icon('clock', { size: 13 })} ${zh ? '更新于' : 'updated'} ${fmtDate(a.lastTs)}</span>
+  </div>`;
+
+  // 综合健康(细线总览首格):ring + 标签 + 说明入口。
+  const ovMain = `<div class="ov-cell ov-main">
+    ${ring(a.composite, 60, 6)}
+    <div class="ov-main-lbl"><b>${zh ? '综合健康' : 'Overall health'}<span class="ov-help" onclick="document.getElementById('ep-help-modal').style.display='flex'">${IC.helpCircle}</span></b><span>${zh ? '加权 体检 / 评测 / 观察' : 'Weighted doctor / eval / observe'}</span></div>
+  </div>`;
+
+  const doctorCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('doctor', { size: 15, cls: 'ov-ico' })}<span>${zh ? '健康体检' : 'Doctor'}</span></div>
+    ${dScore != null
+      ? `<div class="ov-big" style="color:${scoreColor(dScore)}">${dScore}<small> / 100</small></div>
+         <div class="ov-meta"><span class="c-pass">${zh ? '通过' : 'Pass'} <i>${a.dP}</i></span><span class="c-warn">${zh ? '警告' : 'Warn'} <i>${a.dW}</i></span><span class="c-fail">${zh ? '失败' : 'Fail'} <i>${a.dF}</i></span></div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '未运行' : 'Not run'}</div>`}
+  </div>`;
+
+  const evalCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('eval', { size: 15, cls: 'ov-ico' })}<span>${zh ? '用例评测' : 'Eval'}</span></div>
+    ${a.eAvg != null
+      ? `<div class="ov-big" style="color:${scoreColor(Math.round((a.eAvg / 5) * 100))}">${a.eAvg.toFixed(1)}<small> / 5</small></div>
+         <div class="ov-meta"><span>${zh ? '断言' : 'Assert'} <i>${a.eAssertP}/${a.eAssertT}</i></span><span>${zh ? '用例' : 'Samples'} <i>${a.eSamples}</i></span></div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '未运行' : 'Not run'}</div>`}
+  </div>`;
+
+  const obsCell = `<div class="ov-cell">
+    <div class="ov-top">${icon('observe', { size: 15, cls: 'ov-ico' })}<span>${zh ? '生产观察' : 'Observe'}</span></div>
+    ${a.withObs > 0
+      ? `<div class="ov-big">${a.withObs}<small> skill</small></div><div class="ov-meta ov-meta--muted">${zh ? '个 skill 有线上数据' : 'with traces'}</div>`
+      : `<div class="ov-big ov-empty-v">${zh ? '暂无数据' : 'No data'}</div><div class="ov-meta ov-meta--muted">${zh ? '接入线上调用后自动采集' : 'Auto-collected once invoked'}</div>`}
+  </div>`;
+
+  return `${phead}<div class="ov">${ovMain}${doctorCell}${evalCell}${obsCell}</div>
+
+<div id="ep-help-modal" class="ep-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
+  <div class="ep-modal">
+    <div class="ep-modal-head"><strong>${zh ? '综合健康计算说明' : 'Health Score'}</strong><button onclick="document.getElementById('ep-help-modal').style.display='none'">✕</button></div>
+    <div class="ep-modal-body">
+      <p><b>${zh ? '综合健康' : 'Overall Health'}</b> = ${zh ? '已评分 skill 综合分的算术平均（未跑任何可信维度的 skill 不计入）' : 'Arithmetic mean of scored skills’ composites (skills with no trusted dimension are excluded)'}。</p>
+      <p>${zh ? '单 skill 综合分 = 已运行维度各自归一到 0-100 后取算术平均：健康体检 =（通过 + 0.5×警告）/ 规则数；用例评测 = 综合分 / 5；生产观察 = 覆盖率 × 色带系数（黄 0.85 / 红 0.6），样本量不足时不计入。' : 'Per-skill composite = arithmetic mean of the dimensions that ran, each normalized to 0-100: doctor = (pass + 0.5×warn) / rules; eval = composite / 5; observe = coverage × band factor (yellow 0.85 / red 0.6), skipped when underpowered.'}</p>
+      <p>${zh ? '下方三格分别为：体检按规则数合并的通过率、评测为各 skill 综合分的平均、观察为有线上数据的 skill 数。' : 'The three cells below: doctor pools rule counts, eval averages per-skill composites, observe counts skills with traces.'}</p>
+      <p>${zh ? '分数配色：≥85 绿 / 60-84 琥珀 / <60 红。' : 'Score colors: ≥85 green / 60-84 amber / <60 red.'}</p>
+    </div>
+  </div>
+</div>`;
 }
 
-function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
-  const parts: string[] = [];
-  if (entry.doctor) {
-    if (entry.doctor.failCount > 0) parts.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
-    else if (entry.doctor.warnCount > 0) parts.push(lang === 'zh' ? `doctor ${entry.doctor.warnCount} 项告警` : `doctor ${entry.doctor.warnCount} warn`);
-    else parts.push(lang === 'zh' ? 'doctor 全通过' : 'doctor all pass');
-  }
-  if (entry.eval) {
-    const t = entry.eval.passCount + entry.eval.failCount;
-    if (t > 0) {
-      const pct = Math.round((entry.eval.passCount / t) * 100);
-      parts.push(lang === 'zh' ? `eval 通过率 ${pct}%` : `eval ${pct}% pass`);
-    }
-  }
-  if (entry.observe) {
-    if (entry.observe.confidence === 'underpowered') {
-      // Too few segments to claim stable/flaky/unstable — surface as indicative only.
-      parts.push(lang === 'zh' ? 'observe 样本不足（仅供参考）' : 'observe low N (indicative)');
-    } else {
-      const labels: Record<string, string> = lang === 'zh'
-        ? { green: '稳定', yellow: '波动', red: '不稳' }
-        : { green: 'stable', yellow: 'flaky', red: 'unstable' };
-      parts.push(`observe ${labels[entry.observe.healthBand]}`);
-    }
-  }
-  if (parts.length === 0) {
-    // Diagnosis-only skill(例如只跑了 observe ingest 拿到 skill_md_not_found):没有三大
-    // snapshot 但有待优化项。显示「检出 N 个待优化」比「尚未运行任何检查」准确,
-    // 否则会跟 warn badge 的「N 待优化」对不上、用户看到矛盾态。
-    if (insights.length > 0) {
-      return lang === 'zh' ? `检出 ${insights.length} 个待优化项` : `${insights.length} insight(s) detected`;
-    }
-    return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
-  }
-  return parts.join(lang === 'zh' ? '，' : ', ');
-}
+// renderSkillModal 已移除:首页点行直接进 skill 详情页(doctor/eval/observe 已在该页合一),弹框预览冗余。
 
-function renderMetrics(entry: SkillIndexEntry, lang: Lang): string {
-  const items: string[] = [];
-  if (entry.doctor) {
-    const total = entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount;
-    items.push(`<span class="sl-metric">🩺 ${entry.doctor.passCount}/${total} ${lang === 'zh' ? '通过' : 'pass'}</span>`);
-  }
-  if (entry.eval) {
-    const total = entry.eval.passCount + entry.eval.failCount;
-    const pct = total > 0 ? Math.round((entry.eval.passCount / total) * 100) : 0;
-    const score = entry.eval.compositeScore != null ? entry.eval.compositeScore.toFixed(2) : '—';
-    items.push(`<span class="sl-metric">🧪 ${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${pct}% · ${score}/5</span>`);
-  }
-  if (entry.observe) {
-    if (entry.observe.confidence === 'underpowered') {
-      // 段数过少,不报「X% 稳定」硬指标 —— 只标段数 + 仅供参考,跟摘要口径一致,避免同一张卡自相矛盾。
-      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段 · 样本不足' : 'segs · low N'}</span>`);
-    } else {
-      const stab = ((1 - entry.observe.gapRate) * 100).toFixed(0);
-      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${stab}% ${lang === 'zh' ? '稳定' : 'stable'}</span>`);
-    }
-  }
-  return items.join('');
-}
-
-function renderTrendBadge(t: CardSummary, lang: Lang): string {
-  if (t.trendDir === 'none') return '';
-  const arrow = t.trendDir === 'up' ? '↗' : t.trendDir === 'down' ? '↘' : '→';
-  const cls = t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat';
-  const label = lang === 'zh'
-    ? (t.trendDir === 'up' ? '上升' : t.trendDir === 'down' ? '下降' : '持平')
-    : (t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat');
-  return `<span class="sl-trend sl-trend--${cls}" title="${lang === 'zh' ? '基于历史评测综合分变化' : 'Based on historical eval composite delta'}">${arrow} ${label}${t.trendDelta ? ` (${e(t.trendDelta)})` : ''}</span>`;
-}
-
-function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, lang: Lang): string {
+function renderRow(entry: SkillIndexEntry, insights: Insight[], langQ: string, lang: Lang): string {
   const h = assessHealth(entry, insights, lang);
-  const summary = summarizeCard(entry, insights);
-  const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt]
-    .filter((s): s is string => Boolean(s)).sort().pop();
-  const detailHref = `/skills/${encodeURIComponent(entry.skillName)}${langQ}`;
+  // 点行直接进该 skill 最新 eval 报告(无 eval 则最新 doctor);跨维度/历史在报告页内切换。
+  const amp = lang === DEFAULT_LANG ? '' : `&lang=${lang}`;
+  const href = entry.eval
+    ? `/reports/${encodeURIComponent(entry.eval.reportId)}${langQ}`
+    : entry.doctor
+      ? `/doctors/${encodeURIComponent(entry.doctor.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`
+      : `/runs${langQ}`;
+  const dT = entry.doctor ? entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount : 0;
+  const dP = dT > 0 ? Math.round(((entry.doctor!.passCount + entry.doctor!.warnCount * 0.5) / dT) * 100) : null;
+  const eP = entry.eval?.compositeScore != null ? Math.round((entry.eval.compositeScore / 5) * 100) : null;
+  const oP = entry.observe ? Math.round((1 - entry.observe.gapRate) * 100) : null;
+  const mkBar = (p: number | null, t: string) => { const c = p != null ? scoreColor(p) : '#edf0f7'; return `<div class="t-bar" title="${e(t)} ${p ?? '—'}"><div class="t-bar-f" style="width:${p ?? 0}%;background:${c}"></div></div>`; };
+  const hasScore = h.score != null;
+  const clr = hasScore ? scoreColor(h.score!) : '#9ca3af';
+  const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt].filter((s): s is string => Boolean(s)).sort().pop() ?? null;
+  const reportCount = entry.doctorHistory.length + entry.evalHistory.length + entry.observeHistory.length;
 
-  const warnBadge = summary.warnCount > 0
-    ? `<span class="sl-warn-badge sl-warn-badge--${summary.highWarn > 0 ? 'high' : 'med'}">${summary.highWarn > 0 ? '🔴' : '⚠'} ${summary.warnCount} ${lang === 'zh' ? '待优化' : 'todo'}</span>`
-    : `<span class="sl-warn-badge sl-warn-badge--ok">✓ ${lang === 'zh' ? '无待优化' : 'no todo'}</span>`;
+  const zh = lang === 'zh';
+  let doctorStatus: string;
+  if (!entry.doctor) {
+    doctorStatus = `<span class="t-dash">—</span>`;
+  } else if (entry.doctor.failCount === 0 && entry.doctor.warnCount === 0) {
+    doctorStatus = `<span class="t-chk t-chk--ok">✓ ${zh ? '全通过' : 'All pass'}</span>`;
+  } else {
+    const parts: string[] = [`<span class="t-c-pass">${entry.doctor.passCount} ${zh ? '过' : 'P'}</span>`];
+    if (entry.doctor.warnCount > 0) parts.push(`<span class="t-c-warn">${entry.doctor.warnCount} ${zh ? '警' : 'W'}</span>`);
+    if (entry.doctor.failCount > 0) parts.push(`<span class="t-c-fail">${entry.doctor.failCount} ${zh ? '败' : 'F'}</span>`);
+    doctorStatus = `<span class="t-chk">${parts.join('')}</span>`;
+  }
+  const evalTotal = entry.eval ? entry.eval.passCount + entry.eval.failCount : 0;
+  const evalStatus = entry.eval
+    ? `<span class="t-eval-meta"><b>${entry.eval.compositeScore != null ? entry.eval.compositeScore.toFixed(1) : '-'}</b><span class="t-eval-unit">/5</span> <span class="t-eval-sep">·</span> ${evalTotal > 0 ? `${entry.eval.passCount}/${evalTotal}` : '-'} <span class="t-eval-dim">${entry.eval.totalSamples}${zh ? '例' : ''}</span></span>`
+    : `<span class="t-dash">—</span>`;
 
-  return `<a class="sl-card sl-card--${h.color}" data-color="${h.color}" href="${e(detailHref)}">
-    <div class="sl-card-h">
-      <span class="sl-card-emoji">${h.emoji}</span>
-      <span class="sl-card-name">${e(entry.skillName)}</span>
-      <span class="sl-card-time">${relTime(lastTs, lang)}</span>
-    </div>
-    <div class="sl-card-grade">
-      <span class="sl-card-label">${e(h.label)}</span>
-      ${h.score != null
-        ? `<span class="sl-card-score">${h.score}<span class="sl-card-score-unit">/100</span></span>`
-        : `<span class="sl-card-score sl-card-score--empty">—</span>`}
-      ${warnBadge}
-      ${renderTrendBadge(summary, lang)}
-    </div>
-    <div class="sl-card-summary">${renderHealthSummary(entry, insights, lang)}</div>
-    <div class="sl-card-metrics">${renderMetrics(entry, lang)}</div>
-  </a>`;
+  // 整行点击直接进 skill 详情页(去掉中间弹框,更流畅)。
+  // 跳转地址走 data-href + 底部脚本的事件委托,不内联 onclick:skill 名含引号时
+  // encodeURIComponent 不会编码单引号,裸拼进 onclick 字符串会变成 JS 注入面。
+  return `<tr class="t-row" data-color="${h.color}" data-name="${e(entry.skillName.toLowerCase())}" data-href="${e(href)}" style="cursor:pointer">
+    <td class="t-skill"><span class="t-name">${e(entry.skillName)}</span></td>
+    <td class="t-score">${hasScore ? `<div class="t-eval"><div class="t-eval-num" style="color:${clr}"><strong>${h.score}</strong></div><div class="t-eval-bars">${mkBar(dP, zh ? '体检' : 'Doctor')}${mkBar(eP, zh ? '评测' : 'Eval')}${mkBar(oP, zh ? '观察' : 'Observe')}</div></div>` : `<span class="t-na">${zh ? '未评测' : 'N/A'}</span>`}</td>
+    <td>${doctorStatus}</td>
+    <td>${evalStatus}</td>
+    <td class="t-reports">${reportCount || '-'}</td>
+    <td class="t-time">${fmtShort(lastTs)}</td>
+    <td class="t-act"><a href="${e(href)}" class="t-link">${zh ? '查看详情' : 'Details'} →</a></td>
+  </tr>`;
 }
 
-function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insightsByEntry: Map<string, Insight[]>, lang: Lang): string {
-  const s = idx.summary;
-  if (s.totalSkills === 0) return '';
+const CSS = `
+/* ═══ 总览(细线 4 格,低饱和) ═══ */
+.phead{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+.phead h1{font-size:20px;font-weight:700;margin:0;color:var(--text-primary);letter-spacing:-.01em}
+.phead-sub{color:var(--text-muted);font-size:13px}
+.phead-when{margin-left:auto;color:var(--text-muted);font-size:12.5px;display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.phead-when svg{color:var(--text-faint)}
+.ov{display:grid;grid-template-columns:220px 1fr 1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:22px;box-shadow:0 8px 24px rgba(31,41,55,4%)}
+.ov-cell{background:#fff;padding:18px 20px}
+.ov-main{display:flex;align-items:center;gap:16px}
+.ov-main-lbl b{display:flex;align-items:center;gap:5px;font-size:13.5px;color:var(--text-primary);font-weight:600;margin-bottom:3px}
+.ov-main-lbl span{font-size:12px;color:var(--text-secondary)}
+.ov-help{display:inline-flex;color:var(--text-faint);cursor:pointer}
+.ov-help:hover{color:var(--accent)}
+.ov-top{display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:12.5px;font-weight:500;margin-bottom:12px}
+.ov-ico{color:var(--text-muted)}
+.ov-big{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.ov-big small{font-size:13px;color:var(--text-muted);font-weight:500}
+.ov-empty-v{font-size:14px;color:var(--text-muted);font-weight:500}
+.ov-meta{margin-top:10px;display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-secondary)}
+.ov-meta i{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+.ov-meta--muted{color:var(--text-muted)}
+.c-pass{color:#1f9d63!important}.c-warn{color:#d97706!important}.c-fail{color:#dc2626!important}.c-na{color:#9ca3af!important}
+@media(max-width:860px){.ov{grid-template-columns:1fr 1fr}.ov-main{grid-column:1 / -1}}
+@media(max-width:560px){.ov{grid-template-columns:1fr}.ov-main{grid-column:auto}}
 
-  // grade 重新统计(用 assessHealth 而不是 entry.band,跟卡片显示一致)
-  const gradeCounts = { excellent: 0, good: 0, fair: 0, unhealthy: 0, unscored: 0 };
-  for (const ent of allEntries) {
-    const ins = insightsByEntry.get(ent.skillName) ?? [];
-    const h = assessHealth(ent, ins, lang);
-    gradeCounts[h.grade]++;
-  }
-  const totalSamples = allEntries.reduce((sum, ent) => sum + (ent.eval?.totalSamples ?? 0), 0);
-  const totalWarn = allEntries.reduce((sum, ent) => sum + (insightsByEntry.get(ent.skillName)?.length ?? 0), 0);
-  const totalHighWarn = allEntries.reduce((sum, ent) => sum + (insightsByEntry.get(ent.skillName)?.filter((i) => i.severity === 'high').length ?? 0), 0);
-  const lastTs = allEntries.flatMap((ent) => [ent.doctor?.timestamp, ent.eval?.timestamp, ent.observe?.generatedAt])
-    .filter((x): x is string => Boolean(x)).sort().pop();
+/* ═══ Help Modal ═══ */
+.ep-modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.45);align-items:center;justify-content:center}
+.ep-modal{background:#fff;border-radius:12px;max-width:520px;width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+.ep-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.ep-modal-head strong{font-size:16px;color:#182033}
+.ep-modal-head button{background:none;border:none;font-size:18px;color:#637083;cursor:pointer;padding:4px 8px;border-radius:4px}
+.ep-modal-head button:hover{background:#f8f9fd}
+.ep-modal-body{color:#637083;font-size:13px;line-height:1.7}
+.ep-modal-body p{margin:0 0 8px}
+.ep-modal-body b{color:#182033}
 
-  const overview = lang === 'zh'
-    ? `${s.totalSkills} skill · ${lang === 'zh' ? '共' : 'across'} ${totalSamples} ${lang === 'zh' ? '用例' : 'samples'}${lastTs ? ` · ${lang === 'zh' ? '最近' : 'last'} ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} ${lang === 'zh' ? '待优化' : 'todo'}${totalHighWarn > 0 ? `(${totalHighWarn} ${lang === 'zh' ? '高优' : 'high'})` : ''}` : ''}`
-    : `${s.totalSkills} skills · ${totalSamples} samples${lastTs ? ` · last ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} todo${totalHighWarn > 0 ? ` (${totalHighWarn} high)` : ''}` : ''}`;
+/* ═══ Table Panel ═══ */
+.t-panel{padding:12px 14px;background:#fff;border:1px solid #e4e8f1;border-radius:8px;box-shadow:0 8px 24px rgba(31,41,55,4%)}
+.t-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.t-head-l{display:inline-flex;align-items:center;gap:8px}
+.t-head h2{margin:0;color:#182033;font-size:16px;font-weight:700;line-height:1.4}
+.t-head-ct{font-size:12px;font-weight:500;color:#637083}
+.t-filters{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px}
+.t-search{width:220px;padding:5px 10px 5px 30px;border:1px solid #e4e8f1;border-radius:6px;font-size:13px;color:#182033;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.3-4.3'/%3E%3C/svg%3E") 8px center no-repeat;outline:none;font-family:inherit}
+.t-search:focus{border-color:#4f46e5;box-shadow:0 0 0 2px rgba(79,70,229,10%)}
+.t-seg{display:inline-flex;padding:2px;background:#f0f1f3;border-radius:6px;gap:0}
+.t-seg-btn{padding:4px 12px;font-size:12px;font-weight:400;border:none;cursor:pointer;background:transparent;color:#637083;transition:all .2s;outline:none;font-family:inherit;border-radius:4px}
+.t-seg-btn:hover{color:#182033}
+.t-seg-btn--on{background:#fff;color:#182033;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 
-  const greenCount = gradeCounts.good + gradeCounts.excellent;
-  const healthyCount = greenCount + gradeCounts.fair;
-  const healthRate = s.totalSkills > 0 ? Math.round((healthyCount / s.totalSkills) * 100) : 0;
-  const healthRateText = lang === 'zh'
-    ? `健康率 ${healthyCount}/${s.totalSkills} (${healthRate}%)`
-    : `Health ${healthyCount}/${s.totalSkills} (${healthRate}%)`;
+/* ═══ Table ═══ */
+.t-tbl{width:100%;border-collapse:collapse}
+.t-tbl th{text-align:left;padding:10px 16px;font-size:11px;font-weight:600;color:#9ca3af;background:transparent;border-bottom:1px solid #e4e8f1;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase}
+.t-tbl td{text-align:left;padding:18px 16px;border-bottom:1px solid #f1f3f7;vertical-align:middle}
+.t-tbl tr:last-child td{border-bottom:none}
+.t-tbl tbody tr{transition:background .12s}
+.t-tbl tbody tr:hover td{background:#fafbff}
+.t-skill{min-width:0}
+.t-name{color:#182033;text-decoration:none;font-size:14px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-name:hover{color:#4f46e5}
+.t-score{}
+.t-eval{display:flex;align-items:center;gap:10px}
+.t-eval-num{flex-shrink:0;width:30px;text-align:right}
+.t-eval-num strong{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.t-eval-bars{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.t-bar{height:3px;background:#eef1f6;border-radius:2px;overflow:hidden;cursor:pointer}
+.t-bar-f{height:100%;border-radius:2px}
+.t-na{display:inline-block;padding:2px 10px;font-size:12px;color:#9ca3af;background:#f6f8fb;border-radius:10px}
+.t-chk{display:inline-flex;gap:8px;font-size:12px;font-variant-numeric:tabular-nums}
+.t-chk--ok{color:#9ca3af;font-weight:500}
+.t-c-pass{color:#1f9d63;font-weight:600}
+.t-c-warn{color:#d97706;font-weight:600}
+.t-c-fail{color:#dc2626;font-weight:600}
+.t-dash{color:#cbd2dd}
+.t-eval-meta{font-size:12.5px;color:#637083;font-variant-numeric:tabular-nums}
+.t-eval-meta b{font-size:13px;font-weight:700;color:#182033}
+.t-eval-unit{color:#9ca3af}
+.t-eval-sep{color:#cbd2dd;margin:0 2px}
+.t-eval-dim{color:#9ca3af}
+.t-reports{font-size:13px;color:#637083;font-variant-numeric:tabular-nums}
+.t-time{font-size:12px;color:#9ca3af;font-variant-numeric:tabular-nums;white-space:nowrap}
+.t-act{}
+.t-link{font-size:12px;color:#4f46e5;text-decoration:none;font-weight:500;transition:color .15s;opacity:0}
+.t-tbl tbody tr:hover .t-link{opacity:1}
+.t-link:hover{text-decoration:underline}
+.t-row--hidden{display:none!important}
+.t-filt-out{display:none!important}
 
-  const gradeRow = `
-    <button class="sl-filter-pill sl-filter-pill--all sl-filter-pill--active" data-filter="all">${lang === 'zh' ? '全部' : 'All'} ${s.totalSkills}</button>
-    <button class="sl-filter-pill sl-filter-pill--red" data-filter="red">🔴 ${gradeCounts.unhealthy}</button>
-    <button class="sl-filter-pill sl-filter-pill--yellow" data-filter="yellow">🟡 ${gradeCounts.fair}</button>
-    <button class="sl-filter-pill sl-filter-pill--green" data-filter="green">🟢 ${greenCount}</button>
-    <button class="sl-filter-pill sl-filter-pill--gray" data-filter="gray">⚪ ${gradeCounts.unscored}</button>
-    <span class="sl-health-rate">${healthRateText}</span>
-  `;
-  return `<div class="sl-summary-card">
-    <div class="sl-summary-line">${overview}</div>
-    <div class="sl-summary-pills">${gradeRow}</div>
-  </div>`;
-}
+/* ═══ Pager ═══ */
+.t-pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:12px 14px 4px;font-size:12px;color:#637083}
+.t-pg-btn{padding:4px 10px;border:1px solid #e4e8f1;border-radius:4px;background:#fff;color:#637083;cursor:pointer;font-size:12px;font-family:inherit;outline:none}
+.t-pg-btn:hover{border-color:#4f46e5;color:#4f46e5}
+.t-pg-btn:disabled{opacity:.4;cursor:default;border-color:#e4e8f1;color:#9ca3af}
+.t-pg-info{font-variant-numeric:tabular-nums}
 
-function renderNextSteps(idx: SkillIndex, allEntries: SkillIndexEntry[], insightsByEntry: Map<string, Insight[]>, lang: Lang): string {
-  const items: string[] = [];
-  const unhealthy = allEntries.filter((ent) => assessHealth(ent, insightsByEntry.get(ent.skillName) ?? [], lang).grade === 'unhealthy').length;
-  if (unhealthy > 0) {
-    items.push(lang === 'zh'
-      ? `🔴 ${unhealthy} 个 skill 不健康 — 点开"不健康"卡片看待优化项,优先 high`
-      : `🔴 ${unhealthy} skill(s) unhealthy — open the cards to see issues (high first)`);
-  }
-  const noObserve = idx.summary.totalSkills - idx.summary.withObserve;
-  if (noObserve > 0 && idx.summary.totalSkills >= 3) {
-    items.push(lang === 'zh'
-      ? `👀 ${noObserve} 个 skill 没跑过 observe — 跑 omk observe 接生产数据`
-      : `👀 ${noObserve} skills missing observe — run omk observe`);
-  }
-  if (idx.summary.gray > 0) {
-    items.push(lang === 'zh'
-      ? `⚪ ${idx.summary.gray} 个 skill 完全没报告 — 先跑 omk doctor / omk eval`
-      : `⚪ ${idx.summary.gray} skills with no reports — run omk doctor / omk eval first`);
-  }
-  if (items.length === 0) return '';
-  return `<div class="sl-next-steps">
-    <div class="sl-next-steps-title">${lang === 'zh' ? '下一步建议' : 'Next steps'}</div>
-    <ul>${items.map((x) => `<li>${e(x)}</li>`).join('')}</ul>
-  </div>`;
-}
+/* ═══ Legacy ═══ */
 
-const SKILL_LIST_CSS = `
-/* 顶部汇总卡 */
-.sl-summary-card { background:var(--bg-surface);border-radius:8px;padding:14px 18px;box-shadow:var(--shadow-sm);margin:8px 0 18px;display:flex;flex-direction:column;gap:10px }
-.sl-summary-line { font-size:13.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;line-height:1.55 }
-.sl-summary-pills { display:flex;gap:8px;flex-wrap:wrap;align-items:center }
-.sl-filter-pill { display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600;border:1.5px solid transparent;cursor:pointer;transition:all .15s;background:var(--bg-soft);color:var(--text-secondary) }
-.sl-filter-pill:hover { opacity:.85 }
-.sl-filter-pill--active { border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) }
-.sl-filter-pill--red { background:rgba(156,74,63,.10);color:#9c4a3f }
-.sl-filter-pill--yellow { background:rgba(176,128,48,.10);color:#b08030 }
-.sl-filter-pill--green { background:rgba(94,130,82,.10);color:#5e8252 }
-.sl-filter-pill--gray { background:var(--bg-soft);color:var(--text-muted) }
-.sl-filter-pill--all { background:var(--bg-soft);color:var(--text-primary) }
-.sl-health-rate { font-size:13px;font-weight:600;color:var(--text-secondary);margin-left:8px;padding:4px 10px;background:var(--bg-soft);border-radius:6px }
-.sl-card--hidden { display:none !important }
-
-/* 卡片列表 — 网格布局 */
-.sl-cards { display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px }
-
-.sl-card { display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:var(--bg-surface);border-radius:10px;box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text-primary);transition:transform .12s,box-shadow .12s,border-color .12s;border-left:4px solid var(--border) }
-.sl-card:hover { transform:translateY(-1px);box-shadow:var(--shadow-md);text-decoration:none }
-.sl-card:focus-visible { outline:2px solid var(--accent);outline-offset:2px }
-.sl-card--green  { border-left-color:#5e8252 }
-.sl-card--yellow { border-left-color:#b08030 }
-.sl-card--red    { border-left-color:#9c4a3f }
-.sl-card--gray   { border-left-color:var(--border) }
-
-/* 顶:健康等级色卡 */
-.sl-card-grade { display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:var(--bg-soft) }
-.sl-card--green  .sl-card-grade { background:rgba(94,130,82,.08) }
-.sl-card--yellow .sl-card-grade { background:rgba(176,128,48,.08) }
-.sl-card--red    .sl-card-grade { background:rgba(156,74,63,.08) }
-.sl-card-emoji { font-size:18px;line-height:1 }
-.sl-card-label { font-size:12px;font-weight:600;color:var(--text-primary);letter-spacing:0.02em;margin-top:2px }
-.sl-card-score { font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;margin-top:2px;display:flex;align-items:baseline;gap:1px }
-.sl-card--green  .sl-card-score { color:#5e8252 }
-.sl-card--yellow .sl-card-score { color:#b08030 }
-.sl-card--red    .sl-card-score { color:#9c4a3f }
-.sl-card--gray   .sl-card-score { color:var(--text-muted) }
-.sl-card-score-unit { font-size:10px;color:var(--text-muted);font-weight:500 }
-.sl-card-score--empty { font-size:16px;color:var(--text-muted);font-weight:500 }
-
-/* 标题行 */
-.sl-card-h { display:flex;align-items:center;gap:8px }
-.sl-card-emoji { font-size:20px;line-height:1;flex-shrink:0 }
-.sl-card-name { font-size:15px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 }
-.sl-card-time { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0 }
-.sl-card-summary { font-size:13px;color:var(--text-secondary);line-height:1.5 }
-.sl-card-metrics { display:flex;gap:8px;flex-wrap:wrap }
-.sl-metric { font-size:11.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;background:var(--bg-soft);padding:3px 9px;border-radius:5px;line-height:1.5 }
-.sl-warn-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:11px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.4 }
-.sl-warn-badge--high { background:rgba(156,74,63,.14);color:#9c4a3f }
-.sl-warn-badge--med  { background:rgba(176,128,48,.14);color:#b08030 }
-.sl-warn-badge--ok   { background:rgba(94,130,82,.14);color:#5e8252 }
-.sl-trend { font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;padding:1px 7px;border-radius:8px;letter-spacing:0.01em }
-.sl-trend--up   { background:rgba(94,130,82,.14);color:#5e8252 }
-.sl-trend--down { background:rgba(156,74,63,.14);color:#9c4a3f }
-.sl-trend--flat { background:var(--bg-soft);color:var(--text-muted) }
-.sl-card-arrow { color:var(--text-muted);font-size:18px;font-weight:300;line-height:1;margin-top:2px }
-
-/* Next steps */
-.sl-next-steps { margin-top:24px;padding:14px 18px;background:var(--bg-soft);border-radius:6px }
-.sl-next-steps-title { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;letter-spacing:0.02em }
-.sl-next-steps ul { margin:0;padding-left:18px;color:var(--text-secondary);font-size:13.5px;line-height:1.8 }
-.sl-empty-state { text-align:center;padding:60px 20px;color:var(--text-muted) }
-.sl-empty-state code { background:var(--bg-soft);padding:2px 6px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;font-size:13px }
-.sl-legacy-hint { margin-top:24px;text-align:center;font-size:11.5px;color:var(--text-muted) }
-.sl-legacy-hint a { color:var(--accent) }
-
-/* 响应式 */
-@media(max-width:640px){
-  .sl-cards { grid-template-columns:1fr }
-  .sl-card-name { font-size:14px }
-  .sl-metric { font-size:11px;padding:2px 7px }
-}
+/* ═══ Skill Detail Modal ═══ */
+.sd-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.45);align-items:center;justify-content:center}
+.sd-modal{background:#fff;border-radius:12px;width:90%;max-width:760px;max-height:85vh;overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.18);display:flex;flex-direction:column}
+.sd-close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:18px;color:#637083;cursor:pointer;padding:4px 8px;border-radius:4px;z-index:1}
+.sd-close:hover{background:#f8f9fd;color:#182033}
+.sd-body{padding:24px 24px 22px;overflow-y:auto}
+.sd-header{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #e4e8f1}
+.sd-header h2{margin:0;font-size:18px;font-weight:700;color:#182033;letter-spacing:-.2px}
+.sd-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;color:#637083;font-size:12px}
+.sd-meta span{display:inline-flex;align-items:center;gap:4px}
+.sd-overall{display:flex;align-items:center;justify-content:center;gap:24px;padding:20px 24px;margin-bottom:16px;background:linear-gradient(135deg,#f8faff 0%,#f4f0ff 100%);border:1px solid #e4e8f1;border-radius:12px}
+.sd-overall-meta{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.sd-overall-label{color:#637083;font-size:12px;font-weight:500}
+.sd-overall-grade{display:inline-flex;align-items:baseline;gap:8px;font-size:28px;font-weight:800;line-height:1}
+.sd-overall-grade small{font-size:12px;font-weight:600;color:#637083}
+.sd-overall-hint{color:#637083;font-size:11px}
+.sd-dim{position:relative;padding:14px 16px;margin-bottom:12px;background:#fff;border:1px solid #e4e8f1;border-radius:10px}
+.sd-dim:last-of-type{margin-bottom:0}
+.dim-doctor{background:rgba(37,99,235,6%);border-color:rgba(37,99,235,18%)}
+.dim-eval{background:rgba(124,58,237,6%);border-color:rgba(124,58,237,18%)}
+.dim-observe{background:rgba(5,150,105,6%);border-color:rgba(5,150,105,18%)}
+.sd-dim-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.sd-dim-title{display:flex;align-items:center;gap:8px;color:#182033;font-size:14px;font-weight:700}
+.sd-dim-title svg{flex-shrink:0;box-sizing:content-box;width:16px;height:16px;padding:6px;border-radius:8px}
+.dim-doctor .sd-dim-title svg{color:#2563eb;background:rgba(37,99,235,12%)}
+.dim-eval .sd-dim-title svg{color:#7c3aed;background:rgba(124,58,237,12%)}
+.dim-observe .sd-dim-title svg{color:#059669;background:rgba(5,150,105,12%)}
+.sd-dim-title span{font-size:14px;font-weight:700;color:#182033}
+.sd-dim-title small{font-size:12px;font-weight:500;color:#637083;margin-left:4px}
+.sd-dim-score{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.sd-dim-score small{font-size:12px;font-weight:500;color:#637083}
+.sd-dim-na{font-size:12px;color:#637083}
+.sd-dim-bar{height:6px;background:rgba(255,255,255,70%);border-radius:4px;overflow:hidden;margin-bottom:12px}
+.sd-dim-bar-fill{height:100%;border-radius:4px;transition:width .4s}
+.sd-dim-empty{padding:12px 14px;color:#637083;font-size:12px;line-height:1.5;background:rgba(100,116,139,6%);border-radius:6px}
+.m-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.m-grid:has(> :nth-child(3):last-child){grid-template-columns:repeat(3,1fr)}
+.m-cell{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid rgba(0,0,0,4%);border-radius:8px}
+.m-cell-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:7px;flex-shrink:0}
+.m-cell-meta{display:flex;flex-direction:column;gap:1px;min-width:0}
+.m-cell-meta span{font-size:11px;color:#637083;font-weight:500;line-height:1.2}
+.m-cell-meta b{font-size:16px;font-weight:800;color:#182033;font-variant-numeric:tabular-nums;line-height:1.1}
+.m-cell-meta b small{font-size:11px;font-weight:600;color:#637083;margin-left:1px}
+.m-pass .m-cell-icon{background:rgba(31,157,99,14%);color:#1f9d63}
+.m-warn .m-cell-icon{background:rgba(217,119,6,16%);color:#d97706}
+.m-fail .m-cell-icon{background:rgba(220,38,38,14%);color:#dc2626}
+.m-total .m-cell-icon{background:rgba(37,99,235,14%);color:#2563eb}
+.m-eval .m-cell-icon{background:rgba(124,58,237,14%);color:#7c3aed}
+.m-avg .m-cell-icon{background:rgba(99,102,241,14%);color:#6366f1}
+.sd-history{margin-top:10px;padding-top:8px;border-top:1px solid #e4e8f1}
+.sd-history-title{font-size:11px;font-weight:600;color:#637083;margin-bottom:6px}
+.sd-history-item{display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:4px;font-size:12px;background:rgba(79,70,229,4%);font-weight:500;color:#182033}
+.sd-history-date{min-width:100px;color:#637083}
+.sd-history-score{font-weight:700;font-variant-numeric:tabular-nums;min-width:30px}
+.sd-history-link{margin-left:auto;color:#4f46e5;font-weight:500;text-decoration:none;white-space:nowrap}
+.sd-history-link:hover{text-decoration:underline}
+.sd-guide{display:flex;align-items:center;gap:6px;margin-top:16px;padding:8px 12px;background:rgba(79,70,229,5%);border:1px solid rgba(79,70,229,12%);border-radius:6px;font-size:12px;color:#637083}
+.sd-guide a{color:#4f46e5;font-weight:600;text-decoration:none}
+.sd-guide a:hover{text-decoration:underline}
 `;
 
-export function renderSkillList(
-  idx: SkillIndex,
-  lang: Lang = DEFAULT_LANG,
-): string {
+export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  // insightsBySkill 在 buildSkillIndex 里跟 SkillIndex 一起算好(共享缓存)。
-  // list renderer 直接消费,不再每请求 N×detectInsights 重算。
-  const insightsByEntry = idx.insightsBySkill;
-  const body = idx.entries.length === 0
-    ? `<div class="sl-empty-state">
-        <p>${lang === 'zh' ? '暂无 skill 报告。先跑一次评测:' : 'No skill reports yet. Run an evaluation first:'}</p>
-        <p><code>omk eval --treatment my-skill</code></p>
-      </div>`
-    : `<div class="sl-cards">${idx.entries.map((ent) => renderCard(ent, insightsByEntry.get(ent.skillName) ?? [], langQ, lang)).join('')}</div>`;
+  const iMap = idx.insightsBySkill;
+  const a = aggregate(idx.entries, iMap, lang);
+  const zh = lang === 'zh';
 
-  const title = lang === 'zh' ? 'OMK Studio 工作台' : 'OMK Studio';
-  const subtitle = lang === 'zh'
-    ? '一站式查看每个 skill 的健康状况、待优化项和历史趋势'
-    : 'One-stop view of every skill — health, issues, and historical trends';
+  if (idx.entries.length === 0) {
+    return layout('OMK Studio', `<main><div class="t-panel"><div style="display:flex;align-items:center;gap:16px;padding:24px 20px"><div style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;color:#637083;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:8px">${icon('eval', { size: 24 })}</div><div><strong style="color:#182033;font-size:14px">${zh ? '暂无 skill 报告' : 'No skill reports'}</strong><br><span style="color:#637083;font-size:12px">${zh ? '先跑一次评测：' : 'Run:'} <code style="padding:1px 6px;background:rgba(79,70,229,10%);color:#4f46e5;font-size:12px;border-radius:4px">omk eval --treatment my-skill</code></span></div></div></div></main><style>${CSS}</style>`, lang);
+  }
 
-  return layout(title, `
-    <main>
-    <h1>${title}</h1>
-    <p class="subtitle">${subtitle}</p>
-    ${renderSummaryBar(idx, idx.entries, insightsByEntry, lang)}
-    ${body}
-    ${renderNextSteps(idx, idx.entries, insightsByEntry, lang)}
-    <div class="sl-legacy-hint">
-      ${lang === 'zh' ? '找老的 run 列表?' : 'Looking for the old run list?'} <a href="/runs${langQ}">/runs</a>
+  const rows = idx.entries.map((ent) => renderRow(ent, iMap.get(ent.skillName) ?? [], langQ, lang)).join('');
+
+  return layout(zh ? 'OMK 评测' : 'OMK Eval', `<main>
+    ${renderPanel(a, lang)}
+    <div class="t-panel">
+      <div class="t-head">
+        <div class="t-head-l"><h2>${zh ? '明细' : 'Details'}</h2><span class="t-head-ct">${a.totalSkills} skill</span></div>
+        <div class="t-filters">
+          <input type="text" class="t-search" id="t-search" placeholder="${zh ? '搜索 skill 名称...' : 'Search...'}" />
+          <div class="t-seg">
+            <button class="t-seg-btn t-seg-btn--on" data-filter="all">${zh ? '全部' : 'All'}</button>
+            <button class="t-seg-btn" data-filter="red">${zh ? '异常' : 'Bad'}</button>
+            <button class="t-seg-btn" data-filter="yellow">${zh ? '待改进' : 'Fair'}</button>
+            <button class="t-seg-btn" data-filter="green">${zh ? '正常' : 'OK'}</button>
+            <button class="t-seg-btn" data-filter="gray">${zh ? '未评估' : 'N/A'}</button>
+          </div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+      <table class="t-tbl">
+        <colgroup><col style="width:200px"><col style="width:180px"><col style="width:90px"><col style="width:130px"><col style="width:50px"><col style="width:100px"><col style="width:80px"></colgroup>
+        <thead><tr><th>Skill</th><th>${zh ? '综合分' : 'Score'}</th><th>Doctor</th><th>Eval</th><th>${zh ? '报告数' : 'Runs'}</th><th>${zh ? '更新时间' : 'Updated'}</th><th>${zh ? '操作' : ''}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+      <div class="t-pager" id="t-pager"></div>
     </div>
-    </main>
-    <style>${SKILL_LIST_CSS}</style>
-    <script>
-    (function(){
-      var pills = document.querySelectorAll('.sl-filter-pill');
-      pills.forEach(function(pill){
-        pill.addEventListener('click', function(){
-          pills.forEach(function(p){ p.classList.remove('sl-filter-pill--active'); });
-          pill.classList.add('sl-filter-pill--active');
-          var filter = pill.getAttribute('data-filter');
-          var cards = document.querySelectorAll('.sl-card');
-          cards.forEach(function(card){
-            if (filter === 'all') { card.classList.remove('sl-card--hidden'); }
-            else { card.classList.toggle('sl-card--hidden', card.getAttribute('data-color') !== filter); }
-          });
-        });
-      });
-    })();
-    </script>
-  `, lang);
+  </main><style>${CSS}</style>
+  <script>!function(){
+    var PS=10,pg=1,bs=document.querySelectorAll('.t-seg-btn'),s=document.getElementById('t-search'),pgr=document.getElementById('t-pager');
+    function vis(){return Array.from(document.querySelectorAll('.t-row')).filter(function(r){return !r.classList.contains('t-filt-out')})}
+    function filt(){
+      var a=document.querySelector('.t-seg-btn--on'),fl=a?a.getAttribute('data-filter'):'all',q=(s?s.value:'').toLowerCase();
+      document.querySelectorAll('.t-row').forEach(function(r){r.classList.toggle('t-filt-out',!(( fl==='all'||r.getAttribute('data-color')===fl)&&(!q||(r.getAttribute('data-name')||'').indexOf(q)!==-1)))});
+      pg=1;page()
+    }
+    function page(){
+      var rs=vis(),t=rs.length,pp=Math.max(1,Math.ceil(t/PS));if(pg>pp)pg=pp;
+      var st=(pg-1)*PS,en=st+PS;
+      rs.forEach(function(r,i){r.classList.toggle('t-row--hidden',i<st||i>=en)});
+      if(pgr)pgr.innerHTML=t<=PS?'':\`<span class="t-pg-info">\${st+1}-\${Math.min(en,t)} / \${t}</span><button class="t-pg-btn" onclick="window.__pg(-1)" \${pg<=1?'disabled':''}>‹ ${zh ? '上一页' : 'Prev'}</button><button class="t-pg-btn" onclick="window.__pg(1)" \${pg>=pp?'disabled':''}>${zh ? '下一页' : 'Next'} ›</button>\`
+    }
+    window.__pg=function(d){pg+=d;page()};
+    bs.forEach(function(b){b.addEventListener('click',function(){bs.forEach(function(x){x.classList.remove('t-seg-btn--on')});b.classList.add('t-seg-btn--on');filt()})});
+    document.addEventListener('click',function(ev){var el=ev.target instanceof Element?ev.target:null;if(!el||el.closest('a,button'))return;var r=el.closest('.t-row[data-href]');if(r)location.href=r.getAttribute('data-href')});
+    if(s)s.addEventListener('input',filt);page()
+  }()</script>`, lang);
 }

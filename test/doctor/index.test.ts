@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
 import { registerRule, __resetCustomRulesForTest } from '../../src/doctor/rules.js';
 import type { Artifact } from '../../src/types/index.js';
-import type { ComposerRule, DoctorRule } from '../../src/types/doctor.js';
+import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/types/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE_SKILLS_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
@@ -171,6 +171,62 @@ describe('runDoctor', () => {
       assert.equal(skill.status, 'pass');
       assert.equal(skill.results.length, 1);
       assert.equal(skill.results[0].ruleId, 'test_pass');
+    }
+  });
+
+  it('emits per-skill onProgress (skill_start + skill_done) for batch', async () => {
+    const events: DoctorProgressInfo[] = [];
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+      onProgress: (info) => events.push(info),
+    });
+    const n = report.skills.length;
+    assert.ok(n >= 2);
+    // 每个 skill 一对 start/done,且 start 紧跟 done。
+    assert.equal(events.length, n * 2);
+    assert.equal(events[0].phase, 'skill_start');
+    assert.equal(events[1].phase, 'skill_done');
+    assert.equal(events[0].skillName, events[1].skillName);
+    const starts = events.filter((e) => e.phase === 'skill_start');
+    const dones = events.filter((e) => e.phase === 'skill_done');
+    assert.equal(starts.length, n);
+    assert.equal(dones.length, n);
+    // index 1..n 递增,total 恒为 n。
+    starts.forEach((e, i) => {
+      assert.equal(e.index, i + 1);
+      assert.equal(e.total, n);
+    });
+    // skill_done 带 status + durationMs,且 skillName 能在报告里找到。
+    for (const d of dones) {
+      assert.equal(d.status, 'pass');
+      assert.equal(typeof d.durationMs, 'number');
+      assert.ok(report.skills.some((s) => s.skillName === d.skillName));
+    }
+  });
+
+  it('does not emit onProgress for empty target (no skills)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-doctor-empty-'));
+    try {
+      const events: DoctorProgressInfo[] = [];
+      await runDoctor({
+        target: dir,
+        cwd: dir,
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        rules: [passingRule],
+        onProgress: (info) => events.push(info),
+      });
+      assert.equal(events.length, 0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

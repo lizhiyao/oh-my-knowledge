@@ -98,6 +98,10 @@ export interface DoctorRule {
   severity: DoctorSeverity;
   /** i18n key,terminal 渲染时用作 rule 标题。 */
   labelKey: string;
+  /** true = 需要外部 I/O(网络 / LLM)的"在线"检查,跟 skill_health composer 同档:
+   *  默认 `omk doctor` 会跑,`--static-only` 离线模式跳过。endpoint 自定义维度置 true。
+   *  缺省(undefined/false)= 纯静态低成本检查(内置 4 条),静态模式才跑。 */
+  external?: boolean;
   check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome>;
 }
 
@@ -132,6 +136,23 @@ export interface DoctorReport {
   ruleStats: { pass: number; warn: number; fail: number; skipped: number; total: number };
 }
 
+/** 批量体检的 per-skill 进度事件。runDoctor 在遍历 artifacts 时,每个 skill
+ *  开始(skill_start)和结束(skill_done)各发一次,对齐 eval 的 per-sample 进度。 */
+export interface DoctorProgressInfo {
+  phase: 'skill_start' | 'skill_done';
+  /** 第几个 skill(1-based)。 */
+  index: number;
+  /** skill 总数。 */
+  total: number;
+  skillName: string;
+  /** 仅 skill_done:该 skill 的最终状态。 */
+  status?: DoctorSkillStatus;
+  /** 仅 skill_done:该 skill 全部 rule 的执行耗时(ms)。 */
+  durationMs?: number;
+}
+
+export type DoctorProgressCallback = (info: DoctorProgressInfo) => void;
+
 export interface DoctorRunOptions {
   /** 单 skill 文件 / 目录 / null(=cwd 当前目录批量)。当 artifacts 显式提供时, target 被忽略。 */
   target?: string | null;
@@ -159,4 +180,7 @@ export interface DoctorRunOptions {
    *  programmatic API 默认 false。 */
   runHealthCheck?: boolean;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 批量体检进度回调(per-skill)。CLI 非 gate 模式注入、写 stderr;eval 内嵌
+   *  调用不传(eval 有自己的进度体系,不应冒出 doctor 进度)。 */
+  onProgress?: DoctorProgressCallback;
 }

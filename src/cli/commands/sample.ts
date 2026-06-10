@@ -269,7 +269,7 @@ async function runSampleFix(
   process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
 
   const { createExecutor } = await import('../../executors/index.js');
-  const exec = createExecutor('claude');
+  const exec = createExecutor(flags.executor ?? 'claude');
   const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
     const result = await exec({
       model: opts.model,
@@ -354,7 +354,7 @@ async function runSampleFromTraces(
     : `🔭 Found ${items.length} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
-    const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model: flags.model });
+    const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model: flags.model, executorName: flags.executor });
     const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     if (samples.length === 0) {
       // The model conservatively skipped every signal (noise / unreproducible). That's a
@@ -444,7 +444,7 @@ async function runSample(
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'] });
+          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
         mkdirSync(dirname(samplesPath), { recursive: true });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -506,7 +506,7 @@ async function runSample(
     }
     try {
       const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'] });
+        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
       mkdirSync(dirname(outputPath), { recursive: true });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -591,6 +591,12 @@ export default class Sample extends BaseCommand {
         en: 'Generation LLM model name, default sonnet.',
       }),
       default: 'sonnet',
+    }),
+    executor: Flags.string({
+      description: bilingual({
+        zh: '执行器名，默认 claude（同 omk eval / doctor / evolve）。指定 codex 等其它执行器时，记得连带传一个该执行器能识别的 --model。',
+        en: 'Executor name, default claude (same as omk eval / doctor / evolve). When using another executor like codex, also pass a --model it recognizes.',
+      }),
     }),
     'skill-dir': Flags.string({
       description: bilingual({

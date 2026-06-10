@@ -153,7 +153,7 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
-  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7 dimensions.
+  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.
   --effort <value>      LLM reasoning effort: low / medium / high / xhigh / max.
   --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
   --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
@@ -172,6 +172,32 @@ For full descriptions: `omk doctor --help`.
 <!-- omk:cli:doctor:flags:end -->
 
 LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
+
+Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimension** (`promptSection` — folded into the health LLM call) or an **endpoint dimension** (`endpoint` — doctor POSTs the skill snapshot to your service and maps the response). The two are mutually exclusive per dimension. Endpoint dimensions are "online" checks (run by default, skipped under `--static-only`), letting you do deep checks that prompts can't express — e.g. calling an external security-audit service.
+
+```yaml
+dimensions:
+  # LLM dimension
+  - id: tone-check
+    displayName: Tone check
+    severity: warn
+    promptSection: Check that the skill copy is polite and unambiguous.
+  # endpoint dimension
+  - id: deep-security-audit
+    displayName: Deep security audit
+    severity: fatal
+    endpoint: https://my-service.com/audit   # POST here
+    headers: { Authorization: "Bearer xxx" }  # optional auth headers
+    params: { env: production }               # optional, passed through verbatim
+    includeFiles: true                        # optional (default true): bundle references/scripts
+    maxFileBytes: 204800                      # optional: per-file byte cap (default 200KB; larger files truncated)
+    maxTotalBytes: 2097152                    # optional: total files byte cap (default 2MB; collection stops beyond)
+    allowPrivateHost: false                   # optional: allow private/loopback endpoint (default false — refused to prevent SSRF)
+```
+
+Request body (doctor → endpoint): `{ dimensionId, params, skill: { name, content, skillRoot, ref, files } }` — `files` is a relative-path → content map of the skill's sub-files (text only; each file is truncated at `maxFileBytes`, default 200KB, and the whole `files` payload is capped at `maxTotalBytes`, default 2MB — both overridable per dimension). Response (endpoint → doctor): `{ status: "pass"|"warn"|"fail", message: string, hint?: string, detail?: object }`. Any network error / non-2xx / protocol violation maps to a `fail` so problems surface instead of silently passing. Response fields are size-bounded before landing in the report (long `message` / `hint` truncated; oversized `detail` replaced with `{ truncated: true, preview }`).
+
+Endpoint URL validation: only `http` / `https` schemes are accepted, and endpoints pointing at private/loopback hosts — localhost, `*.local`, `::1`, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 (including cloud metadata `169.254.169.254`) — are refused by default: doctor sends the full skill snapshot to the endpoint and echoes its response into the report, which would otherwise make it an SSRF vector. Set `allowPrivateHost: true` on a dimension to opt in for a trusted internal service. This is a literal hostname check (defense-in-depth) — no DNS resolution is performed, so a public domain resolving to a private IP (DNS rebinding) is out of scope.
 
 Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate`.
 
@@ -337,7 +363,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --improve-model <value>         LLM that rewrites the skill, default sonnet
   --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>                 Evaluated LLM, default sonnet
+  --model <value>                 Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.
   --no-diagnostic                 Disable diagnostic LLM call
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
@@ -361,6 +387,8 @@ For full descriptions: `omk evolve --help`.
 
 Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
 
+`omk evolve` is a one-shot loop: it runs the doctor gate before each round by default (`--skip-doctor` to bypass), and **if the target skill has no eval samples yet, it auto-generates a batch first** (equivalent to running `omk sample`) before evolving. So for a brand-new skill, `omk evolve skills/foo.md` alone walks the full "doctor → generate samples → self-iterate" path. Existing samples are used as-is, never regenerated.
+
 ## `omk sample`
 
 ```bash
@@ -375,6 +403,7 @@ omk sample --batch                  # generate for skills missing eval-samples
 ```text
   --batch                     Batch mode: scan --skill-dir, generate samples for any skill missing them.
   --count <value>             Number of samples to generate. Defaults to LLM auto-selection by skill type.
+  --executor <value>          Executor name, default claude (same as omk eval / doctor / evolve). When using another executor like codex, also pass a --model it recognizes.
   --fix                       Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
   --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
