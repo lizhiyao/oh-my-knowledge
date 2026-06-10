@@ -1,5 +1,5 @@
 import { resolve, join, dirname, extname } from 'node:path';
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -66,12 +66,15 @@ interface EvolveResult {
   reportId?: string;
 }
 
-/** 路径处是否已存在「用例源」:文件直接看存在;目录看是否含候选用例文件
- *  (排除 report/health/_ 前缀,对齐 sample.ts 的发现约定)。用于区分
- *  「损坏文件(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。 */
-function sampleSourceExists(p: string): boolean {
-  if (!existsSync(p)) return false;
-  if (extname(p)) return true;
+/** 路径处是否已存在「用例源」:按 statSync 判型 —— 文件(含无扩展名)直接算存在;
+ *  目录看是否含候选用例文件(排除 report/health/_ 前缀,对齐 sample.ts 的发现约定)。
+ *  用于区分「损坏文件(存在但解析失败 → 报错不覆盖)」与「确实没有用例(可生成)」。
+ *  不能用 extname 猜文件/目录:无扩展名的损坏样本文件会绕过守卫被覆盖,
+ *  带点的目录名(如 samples.v2/)会被误当文件。 */
+export function sampleSourceExists(p: string): boolean {
+  let st;
+  try { st = statSync(p); } catch { return false; }
+  if (!st.isDirectory()) return true;
   try {
     return readdirSync(p).some((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
   } catch { return false; }
