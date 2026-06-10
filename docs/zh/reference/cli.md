@@ -136,7 +136,7 @@ omk rollback review --reason "线上发现回归"   # 回退并记录理由
 
 <!-- omk:cli:rollback:flags:end -->
 
-回退受管 skill 当前版本的 `promoted` 接受，是 `omk promote` 的反操作。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定；生命周期再按当前内容**最近一条** promote/rollback 决定推导，状态回到 `measurable`。rollback 是内容锚定的：只看 `record.contentHash` 上的 promote/rollback 历史，不探源、也不设门禁（降级永远安全）。回退一个未 promoted 的版本以非零码退出（无可回退）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。参见[证据门控管理](../specs/evidence-gated-management.md)。
+回退受管 skill 当前版本的 `promoted` 接受，是 `omk promote` 的反操作。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定；生命周期再按当前内容**最近一条** promote/rollback 决定推导，源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。rollback 是内容锚定的：只看 `record.contentHash` 上的 promote/rollback 历史，不设门禁（降级永远安全）。回退一个未 promoted 的版本以非零码退出（无可回退）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 

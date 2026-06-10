@@ -122,6 +122,21 @@ describe('omk rollback 端到端', () => {
     assert.equal(readDecisions().length, 3, 'promote→rollback→promote 三条都在');
   });
 
+  it('已 promoted 后源漂移 → rollback 仍成功(撤销旧 baseline 接受),但 list 仍 stale(rollback 不探源)', async () => {
+    writeRecord();
+    await run(['promote', 'review']);
+    // promote 后编辑源 → 源 hash 漂移,list 现为 stale。
+    writeFileSync(srcPath, '# review skill\n\ndo the OTHER thing now.\n');
+    assert.equal(await stateOf(), 'stale', '改源后应为 stale');
+    const r = await run(['rollback', 'review']);
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.includes('Rolled back review'), '撤销旧 baseline 接受仍成功');
+    const decs = readDecisions();
+    assert.equal(decs.length, 2, 'promote + rollback');
+    assert.equal(decs[1].decisionKind, 'rollback');
+    assert.equal(await stateOf(), 'stale', 'rollback 不探源、不消解 drift → list 仍 stale,不是 measurable');
+  });
+
   it('--json:成功出 rolledBack 信封', async () => {
     writeRecord();
     await run(['promote', 'review']);

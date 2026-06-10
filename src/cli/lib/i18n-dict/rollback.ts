@@ -21,8 +21,8 @@ export const rollbackDict: Record<RollbackMessageKey, CliMessage> = {
     en: '{name} current content is not promoted; nothing to roll back (omk list shows the lifecycle state).',
   },
   'cli.rollback.rolled_back': {
-    zh: '已回退 {name}：撤销当前内容 {hash} 的 promoted 接受，状态回到 measurable。回退已记为人工决定。',
-    en: 'Rolled back {name}: revoked the promoted acceptance of current content {hash}; state returns to measurable. The rollback is recorded as a human decision.',
+    zh: '已回退 {name}：撤销当前内容 {hash} 的 promoted 接受（已记为人工决定）。源仍匹配受管基线则 omk list 回到 measurable，源已漂移则仍为 stale。',
+    en: 'Rolled back {name}: revoked the promoted acceptance of current content {hash} (recorded as a human decision). omk list shows measurable if the source still matches the managed baseline, or stale if it has drifted.',
   },
   'cli.rollback.already_rolled_back': {
     zh: '{name} 的当前内容本就未 promoted，无需回退（幂等，未改动记录）。',

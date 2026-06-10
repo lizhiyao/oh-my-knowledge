@@ -43,7 +43,7 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 每个管理决策都必须保护 omk 的测量姿态：
 
 - 转正决策必须指向可比报告，或明确标注可比性限制。
-- 回滚决策必须指向历史版本，以及当时支撑它的证据。
+- 回滚决策必须显式且留痕；MVP 只撤销当前版本的接受，恢复*历史*版本内容（future work）须指向那一版及当时支撑它的证据。
 - 线上观测必须展示归因可信度，不能静默覆盖 eval 证据。
 - 证据过期或不可比时必须对用户可见，不能藏在绿色状态后面。
 
@@ -84,11 +84,11 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 | `installed` | omk 知道 artifact 在哪里，但没有有效 eval 证据 | `doctor` / `sample` → `measurable` |
 | `measurable` | doctor 和 samples 足以支持受控 eval | `eval → measurable`；`evolve → candidate` |
 | `candidate` | 存在一个候选版本（`evolve` 快照或人工编辑），尚未写入 source of record | `eval → candidate`；`promote → promoted`（或拒绝，不动源文件） |
-| `promoted` | 当前被接受版本，由 `promote` 写回源文件，附带证据 | `observe → promoted` / `stale`；`rollback → rolled-back`；`evolve → candidate` |
+| `promoted` | 当前被接受版本，由 `promote` 写回源文件，附带证据 | `observe → promoted` / `stale`；`rollback → measurable`（源已漂移则 `stale`）；`evolve → candidate` |
 | `stale` | 证据不再匹配 artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
-| `rolled-back` | 由 `rollback` 恢复的、有证据的历史转正版本 | `observe`；`evolve → candidate` |
+| `rolled-back` | （future）由 `rollback` 恢复的、有证据的历史转正版本内容 —— 当前还不是 `ManagedLifecycleLabel` | `observe`；`evolve → candidate` |
 
-这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。`reject` 是 `promote` 决策的否定结果（记进证据包，不动源文件），不是单独的命令。
+这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。MVP 的 `rollback` 撤销当前版本的接受、让 skill 回到 `measurable`（源已漂移则 `stale`）；`rolled-back` 仍是 future 产品概念，当前还不是 `ManagedLifecycleLabel`。`reject` 是 `promote` 决策的否定结果（记进证据包，不动源文件），不是单独的命令。
 
 ## 7. 命令面
 
@@ -159,7 +159,7 @@ MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本�
 
 ### `rollback`
 
-`rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），状态回到 `measurable`。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史，不探源。
+`rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史。
 
 MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复、指向那一版的证据包），随 §8 Phase 2 的 evolve canonical 写回迁移一起推迟 —— 在 `promote` 接管对源文件的 canonical 写之前，rollback 没有更早的快照可恢复。它绝不应该是盲目的文件恢复。
 
