@@ -73,12 +73,15 @@ function winnerVerdict(report: EvaluationReport, winnerVariant: string): string 
 }
 
 /**
- * 受管目录里按源路径定位被 evolve 的那条记录。**形态感知**:按 evolve 目标自身的形态选唯一比较目标
- * （目录-skill 比 skillDir、文件-skill 比 skillPath），并要求记录形态一致。
+ * 受管目录里按源路径定位被 evolve 的那条记录。**形态感知**,且对目录-skill 的两种 install 落盘形态都认:
+ *   - 目录-skill(`isDirectorySkill=true`):install 既可能落「目录形态」(`source.isDirectorySkill=true`、
+ *     locator=skill 根目录 = skillDir),也可能因用户 `install <dir>/SKILL.md` 落「文件形态」
+ *     (`isDirectorySkill=false`、locator=该 SKILL.md = skillPath)。两者都对应同一个 skill,故都匹配。
+ *   - 扁平文件-skill(`isDirectorySkill=false`):只认「文件形态 + locator=该 .md 本身(skillPath)」。
  *
- * 不能用「skillPath ∪ skillDir」并集:对同目录下的散文件 skill 跑 evolve 时,skillDir = 父目录,会误命中
- * 一条 locator 恰为该父目录的「目录-skill」记录,把证据 / re-baseline 写到根本没被 evolve 的记录上（还会用
- * 文件哈 re-baseline 一条整树哈记录,把它永久标 stale）。
+ * 绝不拿父目录 skillDir 去撞目录-skill 记录:对散文件 skill(`skills/foo.md`)跑 evolve 时,skillDir = `skills/`,
+ * 若并集匹配会误命中一条 locator 恰为 `skills/` 的目录-skill 记录,把证据 / re-baseline 写到根本没被 evolve 的
+ * 记录上。这里每条匹配目标(skillDir / skillPath)都唯一指向被 evolve 的 skill 自身,无此越权。
  */
 function findRecordBySource(
   records: ManagedArtifactRecord[],
@@ -86,10 +89,17 @@ function findRecordBySource(
   skillDir: string,
   isDirectorySkill: boolean,
 ): ManagedArtifactRecord | undefined {
-  const target = resolve(isDirectorySkill ? skillDir : skillPath);
-  return records.find((r) => r.source.sourceKind === 'file'
-    && r.source.isDirectorySkill === isDirectorySkill
-    && resolve(r.source.locator) === target);
+  const fileTarget = resolve(skillPath);
+  const dirTarget = resolve(skillDir);
+  return records.find((r) => {
+    if (r.source.sourceKind !== 'file') return false;
+    const loc = resolve(r.source.locator);
+    if (isDirectorySkill) {
+      return (r.source.isDirectorySkill && loc === dirTarget) // 目录形态记录:locator = skill 根目录
+        || (!r.source.isDirectorySkill && loc === fileTarget); // 文件形态记录(install <dir>/SKILL.md):locator = 该 SKILL.md
+    }
+    return !r.source.isDirectorySkill && loc === fileTarget; // 扁平文件-skill:只认该 .md 本身,绝不撞父目录
+  });
 }
 
 async function loadEvolveReport(id: string): Promise<EvaluationReport | null> {

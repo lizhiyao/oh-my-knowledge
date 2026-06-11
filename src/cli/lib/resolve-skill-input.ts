@@ -1,4 +1,4 @@
-import { resolve, join, dirname } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { tCli, type CliLang } from './i18n.js';
 
@@ -6,6 +6,12 @@ export interface ResolvedSkillInput {
   skillPath: string;
   skillDir: string;
   samplesPath: string;
+  /**
+   * 目标是否为目录-skill。**只看解析后形态、不看入参写法**：传目录 `skills/foo` 或传内部
+   * `skills/foo/SKILL.md` 都判 true(两者 skillPath 都落到 `.../SKILL.md`),扁平 `bar.md` 判 false。
+   * 受管联动按此对齐 install 落的记录形态(`source.isDirectorySkill`),避免「传 SKILL.md 文件路径就匹配不到目录记录」。
+   */
+  isDirectorySkill: boolean;
 }
 
 // 统一 skill 入参解析:既接受 SKILL.md 文件(老式 + flat skill),也接受 directory-skill
@@ -45,5 +51,8 @@ export function resolveSkillInput(input: string, lang: CliLang): ResolvedSkillIn
   // fallback 到 .omk/ 目录：上游会报 "no sample files found in directory" 引导用户创建
   const samplesPath = candidates.find(existsSync) ?? omkDir;
 
-  return { skillPath, skillDir, samplesPath };
+  // 形态以解析后的 skillPath 命名为准:目录-skill 的 skillPath 总是 `.../SKILL.md`。
+  const isDirectorySkill = basename(skillPath) === 'SKILL.md';
+
+  return { skillPath, skillDir, samplesPath, isDirectorySkill };
 }

@@ -171,6 +171,39 @@ describe('recordEvolveOutcome', () => {
     assert.equal(loadRec().contentHash, oldHash, '不应被 re-baseline 成文件哈');
   });
 
+  it('目录-skill 以 .../SKILL.md 形态传入 → 命中目录形态记录并 re-baseline(P1 正向回归)', async () => {
+    // 帮助文档鼓励 `omk evolve skills/foo/SKILL.md`,evolve 按解析后形态判 isDirectorySkill=true。
+    // install 落的目录记录是 isDirectorySkill=true + locator=skill 根目录。这条必须命中,否则最常见的目录
+    // skill 用法下漂移永不消、evolve 证据永不沉淀(回归之前 skillIsDir 错按「入参是不是目录」判 false 的 bug)。
+    const skillRoot = join(proj, 'mydir');
+    mkdirSync(skillRoot, { recursive: true });
+    const skillMd = join(skillRoot, 'SKILL.md');
+    writeFileSync(skillMd, '# dir skill\n\nthe EVOLVED, better tree.\n'); // 模拟 evolve 已写回 SKILL.md
+    const dirNewHash = hashArtifactSource(skillRoot, true); // 整树哈,与 probeSourceState 同口径
+    const dirRecId = managedRecordId('skill', 'mydir');
+    const rec: ManagedArtifactRecord = {
+      recordKind: 'managed-artifact', schemaVersion: 2, id: dirRecId, name: 'mydir', kind: 'skill',
+      source: { sourceKind: 'file', locator: skillRoot, isDirectorySkill: true }, // 目录形态:locator=根目录
+      contentHash: `old-${dirNewHash}`, installedAt: '2026-06-06T00:00:00.000Z', // 基线故意漂移
+      distribution: [], evidence: [], decisions: [],
+    };
+    writeFileSync(join(dir, `${dirRecId}.json`), JSON.stringify(rec));
+
+    const out = await recordEvolveOutcome({
+      reportId: 'evolve-review-abc123', bestRound: 1,
+      skillPath: skillMd, skillDir: skillRoot, isDirectorySkill: true, dir, // 传 SKILL.md 文件路径,但形态是目录
+      loadReport: async () => fixtureReport('old-tree', dirNewHash),
+    });
+    assert.ok(out, '目录 skill 传 SKILL.md 应命中目录形态记录');
+    assert.equal(out!.contentHash, dirNewHash, '锚定整树哈 re-baseline');
+
+    const saved: ManagedArtifactRecord = JSON.parse(readFileSync(join(dir, `${dirRecId}.json`), 'utf-8'));
+    assert.equal(saved.contentHash, dirNewHash, '记录 re-baseline 到整树新哈(不再 stale)');
+    assert.equal(saved.evidence.length, 1, '追加一条证据');
+    assert.equal(saved.evidence[0].contentHash, dirNewHash, '证据锚定整树当前内容');
+    assert.equal(deriveManagedState({ record: saved, currentContentHash: dirNewHash }).label, 'measurable');
+  });
+
   it('无改进(bestRound=0) → no-op', async () => {
     writeRecord();
     const out = await recordEvolveOutcome({

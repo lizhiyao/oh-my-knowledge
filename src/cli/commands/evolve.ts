@@ -132,9 +132,9 @@ export async function runEvolve(
     throw new CliExit(1);
   }
   const skillPath = resolvedInput.skillPath;
-  // evolve 目标自身的形态(目录-skill / 文件-skill),供受管联动按形态精确匹配记录。resolveSkillInput 已
-  // 校验过入参存在,故此处 statSync 不会抛。
-  const skillIsDir = statSync(resolve(skillPathArg)).isDirectory();
+  // evolve 目标的形态(目录-skill / 文件-skill),供受管联动按形态精确匹配记录。**取解析后形态**而非「入参是不是
+  // 目录」:帮助文档鼓励传 `skills/foo/SKILL.md`,若按入参判会得 false、匹配不到 install 落的目录记录(漂移永不消)。
+  const skillIsDir = resolvedInput.isDirectorySkill;
 
   let samplesFile: string = flags.samples;
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
