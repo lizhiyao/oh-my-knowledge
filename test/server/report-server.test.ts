@@ -275,7 +275,7 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'] as string, /text\/html/);
     assert.ok(res.body.includes('review'), 'should show skill name');
-    assert.ok(res.body.includes('/managed/review'), 'should link to detail page');
+    assert.ok(res.body.includes('/managed/skill-review-smoke'), 'should link to detail page by stable id');
     assert.ok(res.body.includes('verdict-PROGRESS'), 'current verdict badge');
     assert.ok(res.body.includes('promoted'), 'lifecycle state from promote decision');
   });
@@ -292,8 +292,8 @@ describe('report-server', () => {
     assert.equal(row.latestVerdict, 'PROGRESS');
   });
 
-  it('GET /managed/<name> renders the decision timeline', async () => {
-    const res = await fetch(`${baseUrl}/managed/review`);
+  it('GET /managed/<id> renders the decision timeline', async () => {
+    const res = await fetch(`${baseUrl}/managed/skill-review-smoke`);
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'] as string, /text\/html/);
     assert.ok(res.body.includes('mh-timeline'), 'timeline present');
@@ -315,6 +315,37 @@ describe('report-server', () => {
   it('GET /managed/<malformed %> → 404, not 500', async () => {
     const res = await fetch(`${baseUrl}/managed/%E0%A4%A`);
     assert.equal(res.status, 404, 'bad percent-encoding decodes to no match, not a crash');
+  });
+
+  it('EN 页内跳转透传 lang=en —— 列表行 / 返回 / 报告链接都带 lang(P2)', async () => {
+    const list = await fetch(`${baseUrl}/managed?lang=en`);
+    assert.ok(list.body.includes('/managed/skill-review-smoke?lang=en'), 'list row link carries lang');
+    const detail = await fetch(`${baseUrl}/managed/skill-review-smoke?lang=en`);
+    assert.ok(detail.body.includes('/managed?lang=en'), 'back-to-list link carries lang');
+    assert.ok(detail.body.includes('/reports/test-run-001?lang=en'), 'evidence report link carries lang');
+  });
+
+  it('同名跨 kind —— skill/review 与 prompt/review 各有独立 id,都可达(P1)', async () => {
+    const dir = join(tmpdir(), `omk-test-managed-xkind-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    const mk = (kind: string, id: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id, name: 'review', kind,
+      source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: kind === 'skill' },
+      contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
+    });
+    writeFileSync(join(dir, 'a.json'), JSON.stringify(mk('skill', 'id-skill-review')));
+    writeFileSync(join(dir, 'b.json'), JSON.stringify(mk('prompt', 'id-prompt-review')));
+    const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: dir });
+    const u = await s.start();
+    try {
+      assert.equal((await fetch(`${u}/managed/id-skill-review`)).status, 200, 'skill/review reachable');
+      assert.equal((await fetch(`${u}/managed/id-prompt-review`)).status, 200, 'prompt/review reachable');
+      const listBody = (await fetch(`${u}/managed`)).body;
+      assert.ok(listBody.includes('/managed/id-skill-review') && listBody.includes('/managed/id-prompt-review'), 'both rows link to distinct ids');
+    } finally {
+      await s.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('GET /health returns ok', async () => {

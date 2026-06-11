@@ -2,7 +2,7 @@
 
 exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
 "<main class="mh-main">
-    <nav class="mh-back"><a href="/managed">← Managed</a></nav>
+    <nav class="mh-back"><a href="/managed?lang=en">← Managed</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">Managed history</div>
       <h1 class="mh-name">review</h1>
@@ -20,21 +20,21 @@ exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Promote</span></div>
-      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/reports/evolve-review-002">report →</a><span class="mh-reason">「已人工复核」</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a><span class="mh-reason">「已人工复核」</span></div>
     </div>
   </li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>PROGRESS</span></span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-002">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a></div>
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
     <div class="mh-body">
       <div class="mh-head"><span class="mh-type">Eval</span> <span class="verdict-NOISE"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>NOISE</span></span></div>
-      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-001">report →</a></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-001?lang=en">report →</a></div>
     </div>
   </li><li class="mh-event mh-event--install">
     <span class="mh-time">[TIMESTAMP]</span>
@@ -115,7 +115,7 @@ exports[`managed-history-renderer snapshots > renderManagedList en 1`] = `
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>state</span><span>name</span><span>kind</span>
     <span>verdict</span><span>evidence</span><span>source</span>
-  </div><a class="mh-row" href="/managed/review">
+  </div><a class="mh-row" href="/managed/skill-review-fixture?lang=en">
     <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>
@@ -136,7 +136,7 @@ exports[`managed-history-renderer snapshots > renderManagedList zh 1`] = `
     <div class="mh-table"><div class="mh-row mh-row--head">
     <span>状态</span><span>名称</span><span>类型</span>
     <span>verdict</span><span>证据</span><span>源</span>
-  </div><a class="mh-row" href="/managed/review">
+  </div><a class="mh-row" href="/managed/skill-review-fixture">
     <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>

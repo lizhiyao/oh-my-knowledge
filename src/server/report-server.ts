@@ -684,10 +684,11 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
 
       const managedDetailMatch = path.match(/^\/managed\/(.+)$/);
       if (managedDetailMatch) {
-        let name: string;
-        try { name = decodeURIComponent(managedDetailMatch[1]); } catch { name = ''; }
-        // 只在已加载、已校验的记录里按 name 精确查 —— 不拼文件路径、无路径穿越、跨 kind 命中。
-        const record = name ? loadAllManagedRecords(managedRoot).find((r) => r.name === name) : undefined;
+        let id: string;
+        try { id = decodeURIComponent(managedDetailMatch[1]); } catch { id = ''; }
+        // 按稳定 id(= hash(kind, name)) 精确查 —— 同名不同 kind(skill/review vs prompt/review)各有独立 id,
+        // 不会串到同一页;且只在已加载、已校验的记录里查,不拼文件路径、无路径穿越。
+        const record = id ? loadAllManagedRecords(managedRoot).find((r) => r.id === id) : undefined;
         if (!record) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');

@@ -24,6 +24,8 @@ const isVerdictLevel = (v: string): v is VerdictLevel => Object.prototype.hasOwn
 
 const shortHash = (h: string): string => h.slice(0, 12);
 const L = (lang: Lang) => (zh: string, en: string): string => (lang === 'zh' ? zh : en);
+/** 页内跳转统一带上 lang，否则点一下就掉回默认中文。zh 是默认 → 空串(不脏 URL)。 */
+const langQuery = (lang: Lang): string => (lang === 'en' ? '?lang=en' : '');
 
 /** ISO 时刻解析（两端可解析按真实时刻、否则退字典序），与 latestCurrentEvidence 同口径。 */
 function cmpDesc(a: string, b: string): number {
@@ -78,7 +80,7 @@ function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
 
 function reportLink(reportId: string | undefined, lang: Lang): string {
   if (!reportId) return '';
-  return `<a class="mh-link" href="/reports/${encodeURIComponent(reportId)}">${L(lang)('查看报告', 'report')} →</a>`;
+  return `<a class="mh-link" href="/reports/${encodeURIComponent(reportId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
 }
 
 function eventRow(ev: TimelineEvent, lang: Lang): string {
@@ -144,7 +146,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang):
   ].map((m) => `<span>${e(m)}</span>`).join('');
 
   const body = `<main class="mh-main">
-    <nav class="mh-back"><a href="/managed">← ${t('受管列表', 'Managed')}</a></nav>
+    <nav class="mh-back"><a href="/managed${langQuery(lang)}">← ${t('受管列表', 'Managed')}</a></nav>
     <header class="mh-hero">
       <div class="mh-kind">${t('受管决策史', 'Managed history')}</div>
       <h1 class="mh-name">${e(record.name)}</h1>
@@ -165,7 +167,7 @@ function listRow(row: ManagedListRow, lang: Lang): string {
   const t = L(lang);
   const mark = !row.reachable ? ' <span class="mh-mark mh-mark--q" title="' + t('源未核', 'unverified') + '">?</span>'
     : row.state === 'stale' ? ' <span class="mh-mark mh-mark--warn">⚠️</span>' : '';
-  return `<a class="mh-row" href="/managed/${encodeURIComponent(row.name)}">
+  return `<a class="mh-row" href="/managed/${encodeURIComponent(row.id)}${langQuery(lang)}">
     <span class="mh-row-state"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(row.state)}${mark}</span>
     <span class="mh-row-name">${e(row.name)}</span>
     <span class="mh-row-kind">${e(row.kind)}</span>
