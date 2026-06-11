@@ -196,38 +196,6 @@ omk eval gold validate <dir> [flags]
 
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 
-## omk eval init
-
-初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。
-
-**用法:**
-
-```bash
-omk eval init [targetDir] [flags]
-```
-
-**参数:**
-
-- `targetDir`(可选):初始化目标目录，默认当前目录（.）
-
-**Flags:**
-
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-
-**示例:**
-
-> 在当前目录初始化
-
-```bash
-omk eval init
-```
-
-> 在指定目录初始化
-
-```bash
-omk eval init my-project
-```
-
 ## omk evolve
 
 自动迭代改进 skill:多轮 eval + skill 重写，直到达到 --target 或耗尽 --rounds。
