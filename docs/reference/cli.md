@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -22,7 +22,7 @@ For full descriptions: `omk init --help`.
 
 <!-- omk:cli:init:flags:end -->
 
-Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
+Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The two starter skill variants + three sample cases are just the default A/B template.
 
 ## `omk install`
 

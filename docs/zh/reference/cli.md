@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -22,7 +22,7 @@ omk init [目录]
 
 <!-- omk:cli:init:flags:end -->
 
-生成一个评测项目脚手架，包含两版 starter skill 和 `eval-samples.json`。
+在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。现有两版 skill + 三条用例只是默认的 A/B 起步模板。
 
 ## `omk install`
 

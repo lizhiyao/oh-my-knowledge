@@ -87,22 +87,22 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 
 export default class Init extends BaseCommand {
   static description = bilingual({
-    zh: '初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。',
-    en: 'Scaffold an omk project (skills/ + eval-samples.json templates).',
+    zh: '初始化一个 omk 项目：在目标目录铺好待测知识载体（skills/）与评测用例（eval-samples.json），供 omk eval / doctor / evolve / observe / list 操作。默认是两版 code-review skill 的 A/B 起步模板。',
+    en: 'Initialize an omk project: scaffold knowledge artifacts (skills/) and eval samples (eval-samples.json) in the target dir for omk eval / doctor / evolve / observe / list to work on. Ships a two-variant code-review A/B starter template by default.',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '在当前目录初始化',
-        en: 'Init in current directory',
+        zh: '在当前目录初始化一个 omk 项目',
+        en: 'Initialize an omk project in the current directory',
       }),
       command: '<%= config.bin %> init',
     },
     {
       description: bilingual({
-        zh: '在指定目录初始化',
-        en: 'Init in specified directory',
+        zh: '在指定目录初始化一个 omk 项目',
+        en: 'Initialize an omk project in a specified directory',
       }),
       command: '<%= config.bin %> init my-project',
     },
