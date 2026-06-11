@@ -1,6 +1,6 @@
 # 证据门控的知识输入管理
 
-> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）、`omk rollback`（撤销该接受，MVP）—— 已落地（#211/#212/#224 + promote/rollback MVP）；`promote` 对 evolve 候选 canonical 写回源文件、以及 rollback 恢复历史版本内容仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
+> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）、`omk rollback`（撤销该接受，MVP），以及 `omk evolve` 的受管证据联动（evolve 跑在受管 skill 上会 re-baseline 并记证据 → `measurable`，默认仍写回 source；`--snapshot-only` 退出）—— 已落地（#211/#212/#224 + promote/rollback/evolve MVP）。曾计划的「promote 独占源文件 canonical 写回」迁移（旧决策 B）已**否决** —— 见 §7 `evolve` 与 §8。把历史转正版本内容恢复写回源（真正的文件恢复）仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
 
 ## 1. 产品判断
 
@@ -54,8 +54,8 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 - **知识输入**：用户可见的总称，指 LLM 接收到的 prompt、skill、RAG / corpus 输入、agent context 或 workflow 指令。
 - **Artifact**：omk eval 模型里真正被测量的对象。见 [术语规范](./terminology-spec.md)。
 - **Artifact kind**：具体的 `Artifact.kind` 值，例如 `skill`、`prompt`、`agent`、`workflow`。产品语义里的 `kind` 应保留给这个含义。
-- **候选版本**：由 `evolve`（只写到 evolve 自己的工作目录快照里）或人工编辑提出的 artifact 版本，尚未写入 source of record。
-- **转正版本**：由 `promote` 写回 source-of-record artifact 文件、并被接受为当前版本的版本，附带证据。
+- **候选版本**：尚未落到 source of record 的 artifact 版本 —— `evolve --snapshot-only` 写在 evolve 工作目录里的快照，或人工正在编辑的改动。（默认 `evolve` 会把胜者*写回*源，所以默认 evolve 产出不是候选，而是一个被测过的当前版本。）
+- **转正版本**：由人通过 `promote` 接受的当前 source-of-record 版本，附带证据。内容由产出它的一方写入（`evolve`、人工编辑或 `install`）；`promote` 记录接受，不写文件。
 - **证据包**：解释一次管理决策所需的最小证据集合。
 
 ## 5. 证据包
@@ -82,11 +82,11 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 |---|---|---|
 | `discovered` | omk 找到候选 artifact，但还没有管理记录（install 之前跑的 `doctor` 只是 advisory，不建记录） | `install → installed` |
 | `installed` | omk 知道 artifact 在哪里，但没有有效 eval 证据 | `doctor` / `sample` → `measurable` |
-| `measurable` | doctor 和 samples 足以支持受控 eval | `eval → measurable`；`evolve → candidate` |
-| `candidate` | 存在一个候选版本（`evolve` 快照或人工编辑），尚未写入 source of record | `eval → candidate`；`promote → promoted`（或拒绝，不动源文件） |
-| `promoted` | 当前被接受版本，由 `promote` 写回源文件，附带证据 | `observe → promoted` / `stale`；`rollback → measurable`（源已漂移则 `stale`）；`evolve → candidate` |
+| `measurable` | doctor 和 samples 足以支持受控 eval | `eval → measurable`；`evolve → measurable`（受管：写回源 + 记证据 + re-baseline）；`evolve --snapshot-only → candidate` |
+| `candidate` | 一个尚未落到 source of record 的版本（`evolve --snapshot-only` 快照或人工编辑） | `eval → candidate`；`promote → promoted`（或拒绝，不动源文件） |
+| `promoted` | 当前被接受版本（内容由 evolve / 人工编辑 / install 写入），经 `promote` 接受，附带证据 | `observe → promoted` / `stale`；`rollback → measurable`（源已漂移则 `stale`）；`evolve → measurable`（re-baseline 到新版本） |
 | `stale` | 证据不再匹配 artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
-| `rolled-back` | （future）由 `rollback` 恢复的、有证据的历史转正版本内容 —— 当前还不是 `ManagedLifecycleLabel` | `observe`；`evolve → candidate` |
+| `rolled-back` | （future）由 `rollback` 恢复的、有证据的历史转正版本内容 —— 当前还不是 `ManagedLifecycleLabel` | `observe` |
 
 这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。MVP 的 `rollback` 撤销当前版本的接受、让 skill 回到 `measurable`（源已漂移则 `stale`）；`rolled-back` 仍是 future 产品概念，当前还不是 `ManagedLifecycleLabel`。`reject` 是 `promote` 决策的否定结果（记进证据包，不动源文件），不是单独的命令。
 
@@ -138,13 +138,15 @@ omk install ./prompts/rewrite.md --kind prompt
 
 ### `evolve`
 
-`evolve` 产出候选版本。它只把候选写到自己的工作目录快照里（例如 `evolve/`），不写 source-of-record artifact 文件。对源 artifact 的 canonical 写入由 `promote` 独占。这是对 `evolve` 当前行为的变更——现在 evolve 会在跑完后把胜出候选自动写回源文件，迁移见 §8 Phase 2。
+`evolve` 跑显著性门控的迭代改进，默认把胜出版本写回 source-of-record 文件（一键化行为）。每轮候选也作为快照留在工作目录（`evolve/<skillName>.r{N}.md`）。当被 evolve 的 skill 是**受管**的，evolve 随后把这次胜出记入管理层：把记录的 `contentHash` re-baseline 到新内容 + 追加一条 `ManagedEvidenceRef`（verdict 按胜出版本 vs `round-0` 基线、用与 `omk eval` 同口径的方式算出 —— 同 bootstrap α / 重采样数），生命周期推到 `measurable`。它**不**写 `promote` 决定 —— 升 `promoted` 仍由人跑 `omk promote`（evolve 的统计接受门不是生产接受决定）。`--snapshot-only` 完全退出写回：候选留在 `evolve/` 供人工查看应用，受管记录不动。
+
+这取代了曾计划的「evolve 只写快照、`promote` 独占 canonical 写回」迁移（旧决策 B，§8），该迁移已**否决**：evolve 自身已用 bootstrap 显著性门把关，再让胜者走一遍 `promote` 门是冗余的，会破坏一键化流程，还会逼用户先 `install` 才能让 evolve 更新源。
 
 ### `promote`
 
-`promote` 把受管 skill 的当前版本按证据门禁「接受」为当前受管版本,并往记录里追加一条带证据指针的人工决定。对 source-of-record artifact 文件的 canonical 写入由它独占。
+`promote` 把受管 skill 的当前版本按证据门禁「接受」为当前受管版本,并往记录里追加一条带证据指针的人工决定。它是**人工接受关卡**，不是源文件的独占写入者 —— `evolve` 和人工编辑也会写源。promote 的实质是带门禁的*决定* + 生命周期跃迁到 `promoted`，从不自己重写文件。
 
-MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本就在源处,promote 不重写源文件,实质是带证据的**接受决定** + 生命周期跃迁到 `promoted`（由 `deriveManagedState` 在当前内容带 `promote` 决定时读时推导）。候选还不在源处时的 canonical 写回（evolve 流）随 §8 Phase 2 的 evolve 迁移推迟——在 evolve 停止把胜者自动写回源之前,promote 在那条流里没有东西可写。
+`omk promote <name>` 对 install / 人工编辑 / **evolve** 三条流一视同仁 —— 到你 promote 时被测内容本就已在源处（evolve 会写回；见 §7 `evolve`）。promote 不重写文件，实质是带证据的**接受决定** + 生命周期跃迁到 `promoted`（由 `deriveManagedState` 在当前内容带 `promote` 决定时读时推导）。evolve 跑在受管 skill 上之后，skill 已是 `measurable`、证据当前，所以 `omk promote` 直接接受即可（无漂移）—— 这就是 evolve→promote 路径，人保留最终接受权。
 
 默认门禁（对最新一条**当前**证据判定,即 `contentHash` 与记录匹配）：
 
@@ -161,7 +163,7 @@ MVP（`omk promote <name>`）覆盖 install / 人工编辑流：被测内容本�
 
 `rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史。
 
-MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复、指向那一版的证据包），随 §8 Phase 2 的 evolve canonical 写回迁移一起推迟 —— 在 `promote` 接管对源文件的 canonical 写之前，rollback 没有更早的快照可恢复。它绝不应该是盲目的文件恢复。
+MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复、指向那一版的证据包）仍待做，需要一个带版本的快照 / lineage 存储作为恢复来源；它绝不应该是盲目的文件恢复。
 
 ### `observe`
 
@@ -187,16 +189,16 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - 增加只读 `list` 语义，或做一个 inventory 原型：展示已发现 / 已管理 / 证据状态，但不改 artifact。
 - 定义第一版证据包存储形态。
 
-### Phase 2：转正记录与 canonical writer 迁移
+### Phase 2：转正记录与 evolve↔管理层联动
 
 - **已落地（promote MVP）**：install / 人工编辑流的带证据**接受决定**——`omk promote <name>` 要求可比、当前、过门禁的证据（默认 `PROGRESS`）并追加一条 `promote` 决定;`deriveManagedState` 推出 `promoted` 生命周期标签。`ManagedDecision` 增了 additive 的证据指针字段（`contentHash` / `reportId` / `override`），仍 `schemaVersion 2`。
-- **待办（evolve canonical-writer 迁移）**：evolve 今天会在跑完后把胜出候选自动写回源 artifact 文件，于是 `promote` 在 **evolve 流**里没有东西可守。决策 (B)：让 `promote` 独占对源 artifact 的 canonical 写入；把 `evolve` 改成只把候选写到自己的工作目录快照里、不再改动源文件。这是对 evolve 当前默认行为的变更，必须排在 `promote` 能把 evolve 候选写回源之前落地，并随 changelog / deprecation note 一起发布。
-- 让 `evolve` 产出的候选可由 `promote` 带证据写回。
+- **已落地（evolve 受管证据联动）**：`omk evolve` 跑在**受管** skill 上时把胜出记入管理层 —— 把记录 `contentHash` re-baseline 到新源内容 + 追加一条带「胜出 vs `round-0`」verdict 的 `ManagedEvidenceRef`（生命周期 → `measurable`）。evolve 默认仍把胜者写回 source（保一键化）；`--snapshot-only` 退出（候选留在 `evolve/`、记录不动）。它只记证据 —— **不**写 `promote` 决定 —— 人保留接受权。Additive `schemaVersion 2`；复用 `appendManagedEvidence` + 新增 `rebaselineManagedContentHash`。
+- **已否决（旧决策 B：canonical-writer 迁移）**：让 `promote` 成为源的*唯一*写入者、剥掉 `evolve` 的写源。evolve 自身已有 bootstrap 显著性门，再来一道 `promote` 门是冗余的；还会破坏一键化、逼用户先 `install` 才能让 evolve 更新 skill。管理盲区（evolve 改源对管理层不可见）靠*记录*证据补上，而非*改道*写入。
 
 ### Phase 3：回滚与 observe 反馈
 
 - **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`（源已漂移则 `stale` —— rollback 不探源）。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
-- **仍待做：** 把有证据的*历史*版本内容恢复写回源文件（真正的文件恢复），依赖 Phase 2 的 canonical 写回迁移先给 rollback 提供可恢复的更早快照。
+- **仍待做：** 把有证据的*历史*版本内容恢复写回源文件（真正的文件恢复）—— 仍是 future。需要一个带版本的内容 / lineage 存储作为恢复来源（evolve 的 `evolve/` 快照或证据历史），且绝不应是盲目文件恢复。不再绑定那条已否决的 canonical-writer 迁移。
 - 让 `observe` 标记证据过期并建议新增用例。
 - 在 Studio 展示决策历史。
 
@@ -206,7 +208,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - **已定（#214，已完成）**：artifact 内容指纹已统一、证据可绑定，口径锚在「executor 实际测到的输入」。每个目录-skill——本地**与** git——在测量前都物化成内容寻址隔离副本（`materializeIsolatedCopy`），executor 的 `cwd` 锚到副本，`references/` 资产成为真实运行时输入。`eval` 记的是与 `install` 同一套整树 `hashArtifactSource`（报告 `schemaVersion >= 3`），故所有目录-skill 的 `evidence.contentHash === record.contentHash` 落在同一空间（executor cache key 带同一指纹，改资产即令 cache 失效）。file-skill（本地或 git）哈单个 `.md` 字节，同样可绑定。隔离副本也意味着被测 agent 跑在副本上、不碰用户真实 skill 目录。`schemaVersion 2` 是过渡纪元（本地目录-skill 树哈、git 目录-skill 仅 `SKILL.md` 字节、不绑）；git 目录-skill 的 v2 哈与 v3 不可比。`schemaVersion < 2` 的旧报告携带旧「SKILL.md 正文」文本哈，被漂移 / lineage 消费方视为不可比（请重跑 `eval`）。
 - **已定（#221，已完成）**：`eval` 已能写入证据。跑完后，对每个能匹配到被测变体的**已纳管**记录，追加一条 `ManagedEvidenceRef`（`src/managed/evidence.ts`），经 `deriveManagedState` 把 skill 从 `installed` 推到 `measurable`。三条已定取舍：(a)**触发**——eval 完成自动写，但只写已存在的记录（`install` 是 opt-in，从未安装的 skill 不会被凭空建记录），`--no-evidence` 可关；(b)**多对一**——append-only + 按 `(reportId, contentHash)` 去重、保留全部历史，当前有效性仍由读时 contentHash 匹配裁定（旧内容证据留存供回滚，却不让新内容显得已测）；(c)**跨源身份**——install 与 eval 对同一 skill 命名不一致（记录名是短名 `review`，而报告 variant 键可能是整串表达式 `git:HEAD:skills/review`、eval.yaml 别名 `candidate`、blind 标签 `A`），故用三级消歧匹配：显式同名 variant → 结构化源匹配（`variantConfigs[].locator/ref` 对齐 `record.source`）→ 纯 contentHash 回退**仅在该哈于受管记录中唯一时**才用。唯一性闸门挡住「只测了一条、却把同内容的另一条也写进证据并推成 measurable」的越权。`applyBlindMode` 盲化 `variants` 但不动 `artifactHashes` / `variantConfigs`，故三级在 blind 下照常工作。bundle 把 §5 mandatory 四项（report id、样本集覆盖、verdict、可比性 marker）denormalize 进记录，使其自解释、可 grep、不必回读 report。不改 Report schema、不动任何可比性不变量；受管记录保持 `schemaVersion 2`（additive optional 证据字段）。`promote`（MVP）现已据这些 bundle 门控——见 §7。
 - git ref 与 omk 证据记录如何协作（漂移检查时,分支 ref 重物化 vs 固定 SHA）？
-- `evolve` 的工作目录快照该用什么布局？对当前依赖「evolve 把胜出版本写回源文件」的用户，deprecation 路径是什么？（决策 B 的迁移机制）
+- **已决：** `evolve` 默认仍把胜者写回源（无需 deprecation）；`--snapshot-only` 是只产候选时的退出开关（快照留在 `evolve/`）。受管 skill 上 evolve 记证据 + re-baseline 记录（→ `measurable`），而不是把写入改道经 `promote` —— 旧决策 B（promote 独占 canonical 写）已否决；见 §7 `evolve` 与 §8。
 - **已决（promote MVP）**：默认可接受 verdict 只 `PROGRESS`（omk default-strict——影响「值得 ship」判定的默认必须严格）;`CAUTIOUS` 需显式 `--accept-cautious`;其余需 `--force`（记为 override）。
 - 当只有 sample、runtime context 或 artifact 内容变化时，证据过期策略分别是什么？
 - 人类 override 应该允许在 CLI、Studio，还是两者都允许？

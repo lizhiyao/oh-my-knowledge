@@ -234,6 +234,7 @@ omk evolve <skillPath> [flags]
 - `--significance-alpha` `option` (默认 `0.05`):显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
 - `--skip-connectivity` `boolean`:跳过 LLM 连通性预检
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
+- `--snapshot-only` `boolean`:只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。
 - `--stop-on-assertions-pass` `boolean`:普通用例断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
 - `--test-ratio` `option` (默认 `0`):锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分

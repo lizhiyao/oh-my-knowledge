@@ -157,6 +157,7 @@ export interface EvolveFlags {
   'edit-budget': string;
   'no-edit-budget': boolean;
   'no-reject-memory': boolean;
+  'snapshot-only': boolean;
 }
 
 // ── sample ────────────────────────────────────────────────────────────────────

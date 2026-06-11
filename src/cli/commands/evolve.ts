@@ -8,7 +8,19 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { makeOnProgress } from '../lib/progress.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
+import type { EvolveOutcomeInput, EvolveOutcomeResult } from '../lib/record-evolve-outcome.js';
 import type { ProgressCallback } from '../../types/index.js';
+
+/** 受管联动旁路:evolve 写回 source 后记证据 + re-baseline。任何异常都不该让 evolve 失败,
+ *  故 try/catch 吞掉、返回 null(同 eval 的 recordEvidenceSafely 口径)。 */
+async function recordEvolveOutcomeSafely(input: EvolveOutcomeInput): Promise<EvolveOutcomeResult | null> {
+  try {
+    const { recordEvolveOutcome } = await import('../lib/record-evolve-outcome.js');
+    return await recordEvolveOutcome(input);
+  } catch {
+    return null;
+  }
+}
 
 interface RoundProgressInfo {
   round: number;
@@ -120,6 +132,9 @@ export async function runEvolve(
     throw new CliExit(1);
   }
   const skillPath = resolvedInput.skillPath;
+  // evolve 目标自身的形态(目录-skill / 文件-skill),供受管联动按形态精确匹配记录。resolveSkillInput 已
+  // 校验过入参存在,故此处 statSync 不会抛。
+  const skillIsDir = statSync(resolve(skillPathArg)).isDirectory();
 
   let samplesFile: string = flags.samples;
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
@@ -230,6 +245,8 @@ export async function runEvolve(
       testRatio: Number(flags['test-ratio']),
       editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
       rejectMemory: !flags['no-reject-memory'],
+      // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
+      writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, significant }: RoundProgressInfo): void {
@@ -290,6 +307,28 @@ export async function runEvolve(
     }));
     if (result.reportId) {
       process.stderr.write(tCli('cli.evolve.report_link', lang, { id: result.reportId }));
+    }
+
+    if (flags['snapshot-only']) {
+      // 不写回 source —— 候选留在 evolve/ 供人工挑选;受管记录不动。
+      process.stderr.write(tCli('cli.evolve.snapshot_only_hint', lang, {
+        dir: join(resolve(skillPath, '..'), 'evolve'),
+      }));
+    } else {
+      // 受管 skill:把胜出版本记成带 verdict 的证据 + re-baseline → omk list 显 measurable。
+      // 升 promoted 仍由人 omk promote 决定(统计门 ≠ 人的接受)。未纳管 / 无改进 → 静默 no-op。
+      const recorded = await recordEvolveOutcomeSafely({
+        reportId: result.reportId,
+        bestRound: result.bestRound,
+        skillPath: resolvedInput.skillPath,
+        skillDir: resolvedInput.skillDir,
+        isDirectorySkill: skillIsDir,
+      });
+      if (recorded) {
+        process.stderr.write(tCli('cli.evolve.evidence_recorded_managed', lang, {
+          name: recorded.name, verdict: recorded.verdict,
+        }));
+      }
     }
 
     console.log(JSON.stringify(result, null, 2));
@@ -443,6 +482,13 @@ export default class Evolve extends BaseCommand {
       description: bilingual({
         zh: '复用可比的最新 eval 报告作为 round-0',
         en: 'Reuse the latest comparable eval report as round-0',
+      }),
+      default: false,
+    }),
+    'snapshot-only': Flags.boolean({
+      description: bilingual({
+        zh: '只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。',
+        en: 'Produce candidates only, do not write back to source: the winner stays in evolve/<skillName>.r{N}.md for you to pick and then omk promote. By default a managed skill is written back and evidence is recorded (measurable).',
       }),
       default: false,
     }),
