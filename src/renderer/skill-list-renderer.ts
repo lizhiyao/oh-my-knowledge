@@ -59,6 +59,7 @@ function renderPanel(a: Agg, lang: Lang): string {
     <h1>${zh ? 'Skill 健康评测工作台' : 'Skill Health Dashboard'}</h1>
     <span class="phead-sub">${a.totalSkills} ${zh ? '个 skill' : 'skills'}</span>
     <span class="phead-when">${icon('clock', { size: 13 })} ${zh ? '更新于' : 'updated'} ${fmtDate(a.lastTs)}</span>
+    <a href="/managed" style="margin-left:auto;font-size:13px;color:var(--accent);text-decoration:none;white-space:nowrap">${zh ? '受管决策史' : 'Managed history'} →</a>
   </div>`;
 
   // 综合健康(细线总览首格):ring + 标签 + 说明入口。

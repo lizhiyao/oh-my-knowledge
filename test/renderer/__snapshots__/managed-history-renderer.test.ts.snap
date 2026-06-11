@@ -1,0 +1,148 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`managed-history-renderer snapshots > renderManagedHistory en 1`] = `
+"<main class="mh-main">
+    <nav class="mh-back"><a href="/managed">← Managed</a></nav>
+    <header class="mh-hero">
+      <div class="mh-kind">Managed history</div>
+      <h1 class="mh-name">review</h1>
+      <div class="mh-meta"><span>skill</span><span>git</span><span>hashV2conten</span><span>since [TIMESTAMP]</span></div>
+    </header>
+    <ol class="mh-timeline"><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">current</span></li><li class="mh-event mh-event--rollback">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--rollback"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Rollback</span> <span class="mh-override">override：drifted</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">by bob</span></div>
+    </div>
+  </li><li class="mh-event mh-event--promote">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Promote</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">by alice</span><a class="mh-link" href="/reports/evolve-review-002">report →</a><span class="mh-reason">「已人工复核」</span></div>
+    </div>
+  </li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Eval</span> <span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>PROGRESS</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-002">report →</a></div>
+    </div>
+  </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Eval</span> <span class="verdict-NOISE"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>NOISE</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-001">report →</a></div>
+    </div>
+  </li><li class="mh-event mh-event--install">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--install"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Installed</span></div>
+
+    </div>
+  </li></ol>
+  </main>"
+`;
+
+exports[`managed-history-renderer snapshots > renderManagedHistory zh 1`] = `
+"<main class="mh-main">
+    <nav class="mh-back"><a href="/managed">← 受管列表</a></nav>
+    <header class="mh-hero">
+      <div class="mh-kind">受管决策史</div>
+      <h1 class="mh-name">review</h1>
+      <div class="mh-meta"><span>skill</span><span>git</span><span>hashV2conten</span><span>纳管于 [TIMESTAMP]</span></div>
+    </header>
+    <ol class="mh-timeline"><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">当前</span></li><li class="mh-event mh-event--rollback">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--rollback"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">回滚</span> <span class="mh-override">越门 override：drifted</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">决定人 bob</span></div>
+    </div>
+  </li><li class="mh-event mh-event--promote">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">采用</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">决定人 alice</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a><span class="mh-reason">「已人工复核」</span></div>
+    </div>
+  </li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">评测</span> <span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>明显进步</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a></div>
+    </div>
+  </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">评测</span> <span class="verdict-NOISE"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>基本持平</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><span class="mh-detail-item">omk 0.37.0</span><a class="mh-link" href="/reports/evolve-review-001">查看报告 →</a></div>
+    </div>
+  </li><li class="mh-event mh-event--install">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--install"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">安装纳管</span></div>
+
+    </div>
+  </li></ol>
+  </main>"
+`;
+
+exports[`managed-history-renderer snapshots > renderManagedList empty zh 1`] = `
+"<main class="mh-main">
+    <header class="mh-hero">
+      <div class="mh-kind">受管 skill</div>
+      <h1 class="mh-name">决策史</h1>
+      <div class="mh-meta"><span>每个 skill 的 install → 评测 → 采用 / 回滚 全过程</span></div>
+    </header>
+    <div class="mh-table"><div class="mh-empty">暂无受管 skill，运行 <code>omk install &lt;skill&gt;</code> 开始纳管。</div></div>
+  </main>"
+`;
+
+exports[`managed-history-renderer snapshots > renderManagedList en 1`] = `
+"<main class="mh-main">
+    <header class="mh-hero">
+      <div class="mh-kind">Managed skills</div>
+      <h1 class="mh-name">Decision history</h1>
+      <div class="mh-meta"><span>install → eval → promote / rollback per skill</span></div>
+    </header>
+    <div class="mh-table"><div class="mh-row mh-row--head">
+    <span>state</span><span>name</span><span>kind</span>
+    <span>verdict</span><span>evidence</span><span>source</span>
+  </div><a class="mh-row" href="/managed/review">
+    <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
+    <span class="mh-row-name">review</span>
+    <span class="mh-row-kind">skill</span>
+    <span class="mh-row-verdict"><span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>PROGRESS</span></span></span>
+    <span class="mh-row-ev">1/2</span>
+    <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
+  </a></div>
+  </main>"
+`;
+
+exports[`managed-history-renderer snapshots > renderManagedList zh 1`] = `
+"<main class="mh-main">
+    <header class="mh-hero">
+      <div class="mh-kind">受管 skill</div>
+      <h1 class="mh-name">决策史</h1>
+      <div class="mh-meta"><span>每个 skill 的 install → 评测 → 采用 / 回滚 全过程</span></div>
+    </header>
+    <div class="mh-table"><div class="mh-row mh-row--head">
+    <span>状态</span><span>名称</span><span>类型</span>
+    <span>verdict</span><span>证据</span><span>源</span>
+  </div><a class="mh-row" href="/managed/review">
+    <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
+    <span class="mh-row-name">review</span>
+    <span class="mh-row-kind">skill</span>
+    <span class="mh-row-verdict"><span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>明显进步</span></span></span>
+    <span class="mh-row-ev">1/2</span>
+    <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
+  </a></div>
+  </main>"
+`;

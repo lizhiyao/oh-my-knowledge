@@ -5,6 +5,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
+import { resolveManagedDir, managedDir } from '../../managed/index.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 
@@ -81,6 +82,7 @@ export async function runStudio(
     reportsDir: resolve(reportsDir),
     ...(flags['analyses-dir'] ? { analysesDir: resolve(flags['analyses-dir']) } : {}),
     ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
+    managedDir: resolveManagedDir(managedDir()),
   });
 
   const url = await server.start();

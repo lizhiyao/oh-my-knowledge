@@ -12,6 +12,8 @@ import { assessHealth } from '../renderer/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
+import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
+import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
@@ -41,6 +43,8 @@ interface ReportServerOptions {
   doctorsDir?: string;
   observationsDir?: string;
   jobsDir?: string;
+  /** 受管目录(.omk/managed 或全局)。只读消费,供 /managed 决策史页。默认 project→global 权威目录。 */
+  managedDir?: string;
   store?: ReportStore;
   jobStore?: JobStore;
 }
@@ -601,13 +605,15 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, doctorsDir = DEFAULT_DOCTORS_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, doctorsDir = DEFAULT_DOCTORS_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
   // Use provided store or default to file store
   const reportStore: ReportStore = store || createFileStore(reportsDir);
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
+  // 受管目录在创建时解析(cwd 此刻正确),不在模块加载期 —— 避免按错误 cwd 定位 .omk/managed。
+  const managedRoot: string = managedDir ?? resolveManagedDir(projectManagedDir());
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -660,6 +666,35 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       if (path === '/analyses') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderAnalysisList(listAnalyses(analysesDir), lang));
+        return;
+      }
+
+      // 受管 skill 决策史（#203 管理支柱可视化出口）。只读受管记录,口径同 omk list。
+      if (path === '/api/managed') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ schemaVersion: 1, rows: listManagedRows(managedRoot) }));
+        return;
+      }
+
+      if (path === '/managed') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderManagedList(listManagedRows(managedRoot), lang));
+        return;
+      }
+
+      const managedDetailMatch = path.match(/^\/managed\/(.+)$/);
+      if (managedDetailMatch) {
+        let name: string;
+        try { name = decodeURIComponent(managedDetailMatch[1]); } catch { name = ''; }
+        // 只在已加载、已校验的记录里按 name 精确查 —— 不拼文件路径、无路径穿越、跨 kind 命中。
+        const record = name ? loadAllManagedRecords(managedRoot).find((r) => r.name === name) : undefined;
+        if (!record) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderManagedHistory(record, lang));
         return;
       }
 

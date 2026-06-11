@@ -2,21 +2,15 @@ import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { probeSourceState } from '../lib/source-probe.js';
 import { sanitizeCell } from '../lib/cell-format.js';
 import {
-  buildManagedListRows,
   globalManagedDir,
-  loadAllManagedRecords,
+  listManagedRows,
   managedDir,
   resolveManagedDir,
   type ManagedListRow,
 } from '../../managed/index.js';
 import type { CliLang } from '../lib/i18n.js';
-
-// 源探测(含 DoS / 软硬链 / 投毒守卫)已抽到 ../lib/source-probe.js,promote 复用同一套守卫与 drift 判定。
-// 此处 re-export 保持既有 import 入口不破(test/cli/list-probe.test.ts 仍从本文件取 probeSourceState)。
-export { probeSourceState };
 
 /** CJK 全角字符按 2 列计宽,使含中文表头的列也能对齐。 */
 export function dispWidth(s: string): number {
@@ -97,8 +91,7 @@ export default class List extends BaseCommand {
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const dir = flags.global ? globalManagedDir() : resolveManagedDir(managedDir());
-      const records = loadAllManagedRecords(dir);
-      const rows = buildManagedListRows(records, probeSourceState);
+      const rows = listManagedRows(dir);
 
       if (flags.json) {
         // 版本化信封 —— 与 eval / doctor / diagnosis 等机读出口一致(都带 schemaVersion),让未来字段增删 /
