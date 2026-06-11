@@ -15,8 +15,12 @@ import type { ManagedArtifactRecord } from '../types/index.js';
 import type { ManagedListRow } from '../managed/index.js';
 import type { VerdictLevel } from '../eval-core/verdict.js';
 
-const VERDICT_LEVELS: readonly string[] = ['PROGRESS', 'CAUTIOUS', 'REGRESS', 'NOISE', 'UNDERPOWERED', 'SOLO'];
-const isVerdictLevel = (v: string): v is VerdictLevel => VERDICT_LEVELS.includes(v);
+// Record<VerdictLevel, true> 让 TS 编译期强制列全所有 level —— eval-core 新增 level 时这里报错、逼同步,
+// 避免新 verdict 被静默当未知字符串降级渲染（无运行时 level 清单可 import,故用穷举 Record 做编译期闸门）。
+const VERDICT_LEVELS: Record<VerdictLevel, true> = {
+  PROGRESS: true, CAUTIOUS: true, REGRESS: true, NOISE: true, UNDERPOWERED: true, SOLO: true,
+};
+const isVerdictLevel = (v: string): v is VerdictLevel => Object.prototype.hasOwnProperty.call(VERDICT_LEVELS, v);
 
 const shortHash = (h: string): string => h.slice(0, 12);
 const L = (lang: Lang) => (zh: string, en: string): string => (lang === 'zh' ? zh : en);
