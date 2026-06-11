@@ -10,8 +10,8 @@ export type InitMessageKey =
 
 export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.scaffolded': {
-    zh: '已初始化测评项目: {dir}',
-    en: 'Eval project scaffolded at: {dir}',
+    zh: '已初始化 omk 项目: {dir}',
+    en: 'omk project initialized at: {dir}',
   },
   'cli.init.next_steps_title': {
     zh: '下一步:',

@@ -256,7 +256,7 @@ omk evolve skills/my-skill/SKILL.md --target 4.5 --model opus --improve-model op
 
 ## omk init
 
-初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。
+初始化一个 omk 项目：在目标目录铺好待测知识载体（skills/）与评测用例（eval-samples.json），供 omk eval / doctor / evolve / observe / list 操作。默认是两版 code-review skill 的 A/B 起步模板。
 
 **用法:**
 
@@ -274,13 +274,13 @@ omk init [targetDir] [flags]
 
 **示例:**
 
-> 在当前目录初始化
+> 在当前目录初始化一个 omk 项目
 
 ```bash
 omk init
 ```
 
-> 在指定目录初始化
+> 在指定目录初始化一个 omk 项目
 
 ```bash
 omk init my-project

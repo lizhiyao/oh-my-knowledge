@@ -324,11 +324,11 @@ describe('CLI', () => {
     assert.ok(!body.includes('--each'));
   });
 
-  it('init scaffolds eval project from top-level command', async () => {
+  it('init initializes an omk project from top-level command', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-init-'));
     try {
       const { stdout } = await execFileAsync('node', [CLI, 'init', dir]);
-      assert.ok(stdout.includes('已初始化测评项目'));
+      assert.ok(stdout.includes('已初始化 omk 项目'));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
