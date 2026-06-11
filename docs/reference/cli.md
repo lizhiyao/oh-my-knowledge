@@ -375,6 +375,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --significance-alpha <value>    Significance level for the accept gate diff CI (default 0.05 = 95% CI)
   --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
+  --snapshot-only                 Produce candidates only, do not write back to source: the winner stays in evolve/<skillName>.r{N}.md for you to pick and then omk promote. By default a managed skill is written back and evidence is recorded (measurable).
   --stop-on-assertions-pass       Stop early when normal samples pass assertions
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
   --test-ratio <value>            Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score
@@ -388,6 +389,8 @@ For full descriptions: `omk evolve --help`.
 Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
 
 `omk evolve` is a one-shot loop: it runs the doctor gate before each round by default (`--skip-doctor` to bypass), and **if the target skill has no eval samples yet, it auto-generates a batch first** (equivalent to running `omk sample`) before evolving. So for a brand-new skill, `omk evolve skills/foo.md` alone walks the full "doctor → generate samples → self-iterate" path. Existing samples are used as-is, never regenerated.
+
+On a **managed** skill (registered via `omk install`), a successful evolve also feeds the management layer: it records the winner as evidence and re-baselines the record to the new content, so `omk list` shows the skill `measurable` instead of `stale`. Advancing it to `promoted` stays a separate human `omk promote` call (evolve's statistical accept-gate is not a production-acceptance decision). `--snapshot-only` skips the source write entirely — the winner stays under `evolve/` for you to inspect and apply, and the managed record is left untouched.
 
 ## `omk sample`
 

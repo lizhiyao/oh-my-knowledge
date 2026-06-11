@@ -247,6 +247,32 @@ export function appendManagedEvidence(
 }
 
 /**
+ * 把受管记录的 drift 基线(contentHash)重锚到新源内容哈,保留 evidence / decisions / source /
+ * distribution 全不动。用于 `omk evolve` 把胜出版本写回 source 后,让记录跟上实际内容——否则记录的
+ * contentHash 仍指旧基线,list 会把被 evolve 改过的受管 skill 永久显示成 stale。
+ *
+ * 只动 contentHash:旧 hash 锚定的旧 evidence / promote 决定自动变「非当前」(其 contentHash ≠ 新基线)=
+ * 历史,不再冒充当前状态;新内容的证据 / 决定由调用方另行 append。已经是该 hash → no-op 不重写。记录不存在
+ * 返回 null(同 evidence / decision:管理是 install 显式 opt-in)。
+ */
+export function rebaselineManagedContentHash(
+  dir: string,
+  recordId: string,
+  newHash: string,
+): ManagedArtifactRecord | null {
+  const prev = loadManagedRecord(dir, recordId);
+  if (!prev) return null;
+  if (prev.contentHash === newHash) return prev;
+  const merged: ManagedArtifactRecord = { ...prev, contentHash: newHash };
+  mkdirSync(dir, { recursive: true });
+  const path = recordPath(dir, recordId);
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmp, JSON.stringify(merged, null, 2));
+  renameSync(tmp, path);
+  return merged;
+}
+
+/**
  * 当前内容(contentHash === record.contentHash)是否处于 promoted 态。决定是 append-only 事件流,
  * promote 与 rollback 互为反操作,故不能看「是否存在过 promote」,而要看**当前内容最近一条** promote/rollback
  * 决定是不是 promote —— rollback 之后再 promote 仍能恢复 promoted,反之亦然。换了内容(contentHash 变)后

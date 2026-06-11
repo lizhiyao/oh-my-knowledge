@@ -665,6 +665,9 @@ interface EvolveOptions {
   /** Feed rejected candidate edits back into the next round's improvement prompt
    *  ("these were tried and did not help — don't repeat them"). Default true. */
   rejectMemory?: boolean;
+  /** 是否把胜出版本写回原 source 文件。默认 true（保「一键化」：evolve 跑完源即更新）。
+   *  `--snapshot-only` 置 false → 不写 source，候选仍落在 `evolve/<skillName>.r{N}.md` 供人工挑选 / promote。 */
+  writeBackToSource?: boolean;
   onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
@@ -834,6 +837,7 @@ export async function evolveSkill({
   testRatio = 0,
   editBudget = 0.2,
   rejectMemory = true,
+  writeBackToSource = true,
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
@@ -987,7 +991,7 @@ export async function evolveSkill({
 
   if (stopOnAssertionsPass && allNonTripwireAssertionsPass(baselineReport, baselineVariantKey)) {
     stopReason = 'assertions-pass';
-    writeFileSync(absSkillPath, currentBest);
+    if (writeBackToSource) writeFileSync(absSkillPath, currentBest);
     const { samples } = loadSamples(absSamplesPath);
     const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD, samples, absSkillPath);
     persistReport(mergedReport, DEFAULT_OUTPUT_DIR);
@@ -1169,8 +1173,9 @@ export async function evolveSkill({
     }
   }
 
-  // Write best version back to original file only if an improvement was accepted
-  if (bestRound > 0) {
+  // Write best version back to original file only if an improvement was accepted.
+  // `--snapshot-only`（writeBackToSource=false）跳过写回:候选仍在 evolve/<skillName>.r{N}.md,源不动。
+  if (bestRound > 0 && writeBackToSource) {
     writeFileSync(absSkillPath, currentBest);
   }
 

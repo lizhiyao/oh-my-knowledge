@@ -36,6 +36,7 @@ describe('CliExit dispatch', () => {
         'edit-budget': '0.2',
         'no-edit-budget': false,
         'no-reject-memory': false,
+        'snapshot-only': false,
       },
       'zh',
     ).then(() => null, (e: unknown) => e);

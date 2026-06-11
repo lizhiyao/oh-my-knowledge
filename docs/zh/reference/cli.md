@@ -375,6 +375,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --significance-alpha <value>    显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
   --skip-connectivity             跳过 LLM 连通性预检
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
+  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。
   --stop-on-assertions-pass       普通用例断言全过时提前停止
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
   --test-ratio <value>            锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
@@ -388,6 +389,8 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 用例 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
 
 `omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
+
+对**受管** skill（经 `omk install` 登记过的）：evolve 成功跑完还会联动管理层 —— 把胜出版本记成证据、并把记录 re-baseline 到新内容，于是 `omk list` 显示为 `measurable` 而非 `stale`。升到 `promoted` 仍是另一步人工 `omk promote`（evolve 的统计接受门不是生产接受决定）。`--snapshot-only` 完全跳过写回 source —— 胜出版本留在 `evolve/` 供你查看应用，受管记录不动。
 
 ## `omk sample`
 

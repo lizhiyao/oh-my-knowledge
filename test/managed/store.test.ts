@@ -16,6 +16,7 @@ import {
   mergeManagedRecord,
   upsertManagedRecord,
   appendManagedDecision,
+  rebaselineManagedContentHash,
   deriveManagedState,
   isCurrentlyPromoted,
 } from '../../src/managed/store.js';
@@ -67,6 +68,34 @@ describe('managed store', () => {
     assert.equal(rec.id, managedRecordId('skill', 'review'));
     assert.deepEqual(rec.evidence, []);
     assert.deepEqual(rec.decisions, []);
+  });
+
+  it('rebaselineManagedContentHash:把基线重锚到新哈,保留 evidence/decisions', () => {
+    const store = managedDir(dir);
+    upsertManagedRecord(store, makeRecord({
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-06T00:00:00.000Z' }],
+      decisions: [{ decisionKind: 'promote', actor: 't', decidedAt: '2026-06-07T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa' }],
+    }));
+    const merged = rebaselineManagedContentHash(store, managedRecordId('skill', 'review'), 'cccccccccccc');
+    assert.equal(merged?.contentHash, 'cccccccccccc', 'contentHash 重锚到新哈');
+    assert.equal(merged?.evidence.length, 1, 'evidence 原样保留(旧哈条目变历史)');
+    assert.equal(merged?.decisions.length, 1, 'decisions 原样保留');
+    // 落盘后重读一致。
+    const reloaded = loadManagedRecord(store, managedRecordId('skill', 'review'));
+    assert.equal(reloaded?.contentHash, 'cccccccccccc');
+    assert.ok(!readdirSync(store).some((f) => f.includes('.tmp.')), '不残留 tmp');
+  });
+
+  it('rebaselineManagedContentHash:已是该哈 → no-op 原样返回', () => {
+    const store = managedDir(dir);
+    upsertManagedRecord(store, makeRecord());
+    const merged = rebaselineManagedContentHash(store, managedRecordId('skill', 'review'), 'aaaaaaaaaaaa');
+    assert.equal(merged?.contentHash, 'aaaaaaaaaaaa');
+  });
+
+  it('rebaselineManagedContentHash:记录不存在 → null', () => {
+    const store = managedDir(dir);
+    assert.equal(rebaselineManagedContentHash(store, 'nope', 'cccccccccccc'), null);
   });
 
   it('upsert 写一个文件,再次 upsert 同 id 不新增文件', () => {

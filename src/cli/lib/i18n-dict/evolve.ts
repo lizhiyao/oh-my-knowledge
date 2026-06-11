@@ -16,7 +16,9 @@ export type EvolveMessageKey =
   | 'cli.evolve.gate_underpowered'
   | 'cli.evolve.generalization'
   | 'cli.evolve.test_disabled'
-  | 'cli.evolve.reject_not_significant';
+  | 'cli.evolve.reject_not_significant'
+  | 'cli.evolve.evidence_recorded_managed'
+  | 'cli.evolve.snapshot_only_hint';
 
 export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.specify_skill_path': {
@@ -58,6 +60,14 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.report_link': {
     zh: '📊 查看报告：omk studio（报告 ID：{id}）\n',
     en: '📊 View report: omk studio (report id: {id})\n',
+  },
+  'cli.evolve.evidence_recorded_managed': {
+    zh: '📌 已记入受管记录：{name}（verdict={verdict}）→ measurable。运行 omk promote {name} 接受为 promoted。\n',
+    en: '📌 Recorded to managed record: {name} (verdict={verdict}) → measurable. Run omk promote {name} to accept as promoted.\n',
+  },
+  'cli.evolve.snapshot_only_hint': {
+    zh: '📎 --snapshot-only：未写回 source，候选留在 {dir}/。挑选后手动应用，再 omk eval / omk promote。\n',
+    en: '📎 --snapshot-only: source not modified; candidates kept in {dir}/. Apply your pick manually, then omk eval / omk promote.\n',
   },
   'cli.evolve.holdout_active': {
     zh: '🔀 holdout 切分：训练 {train} / 验收 {holdout}，accept 看 holdout 分（防 train-on-test）\n',
