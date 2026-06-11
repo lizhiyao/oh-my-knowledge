@@ -126,6 +126,9 @@ export async function recordEvolveOutcome(input: EvolveOutcomeInput): Promise<Ev
   const report = input.loadReport ? await input.loadReport(input.reportId) : await loadEvolveReport(input.reportId);
   if (!report || report.kind !== 'evaluation') return null;
   const winnerVariant = `round-${input.bestRound}`;
+  // 防御:正常 evolve 产物必含基线 round-0 与胜出轮的 summary(同一次 run 产出 bestRound 与合并报告),此守卫只挡
+  // 报告损坏 / 被截断的边角 —— 缺任一则无可信 verdict 可算,直接 no-op,避免 winnerVerdict→computeVerdict 读 undefined。
+  if (!report.summary?.['round-0'] || !report.summary?.[winnerVariant]) return null;
   const ref = buildEvidenceRef(report, winnerVariant, winnerVerdict(report, winnerVariant), new Date().toISOString());
   if (!ref) return null;
   const evidence: ManagedEvidenceRef = { ...ref, contentHash: newHash };

@@ -223,4 +223,27 @@ describe('recordEvolveOutcome', () => {
     assert.equal(out, null);
     assert.equal(loadRec().contentHash, oldHash);
   });
+
+  it('胜出轮缺失于报告(损坏/截断)→ no-op,不抛、不写', async () => {
+    // 报告只含 round-0/round-1,却传 bestRound=2 → winnerVariant=round-2 不在 summary。守卫应 no-op,
+    // 而非让 winnerVerdict→computeVerdict 读 undefined 抛错。正常 evolve 产物不会这样,这是损坏边角防御。
+    writeRecord();
+    const out = await recordEvolveOutcome({
+      reportId: 'evolve-review-abc123', bestRound: 2,
+      skillPath, skillDir: dirname(skillPath), isDirectorySkill: false, dir, loadReport: load(),
+    });
+    assert.equal(out, null, '缺胜出轮 → no-op');
+    assert.equal(loadRec().evidence.length, 0, '不写证据');
+    assert.equal(loadRec().contentHash, oldHash, '不 re-baseline');
+  });
+
+  it('git 源记录 → 不匹配(evolve 只动本地源,git 记录 sourceKind≠file)', async () => {
+    writeRecord({ source: { sourceKind: 'git', locator: 'git:HEAD:skills/review', isDirectorySkill: false } });
+    const out = await recordEvolveOutcome({
+      reportId: 'evolve-review-abc123', bestRound: 1,
+      skillPath, skillDir: dirname(skillPath), isDirectorySkill: false, dir, loadReport: load(),
+    });
+    assert.equal(out, null, 'git 源记录不应被本地 evolve 命中');
+    assert.equal(loadRec().evidence.length, 0, '不写证据');
+  });
 });
