@@ -43,8 +43,10 @@ interface ReportServerOptions {
   doctorsDir?: string;
   observationsDir?: string;
   jobsDir?: string;
-  /** 受管目录(.omk/managed 或全局)。只读消费,供 /managed 决策史页。默认 project→global 权威目录。 */
-  managedDir?: string;
+  /** 受管目录(.omk/managed 或全局),或一个按请求动态解析它的函数。只读消费,供 /managed 决策史页。
+   *  传函数 → 每次请求重解析(长会话里跟 omk list 同口径:项目首次 install 后从 global 实时切回 project);
+   *  传字符串 → 固定到该目录(测试 / 显式覆盖);默认动态解析 project→global 权威目录。 */
+  managedDir?: string | (() => string);
   store?: ReportStore;
   jobStore?: JobStore;
 }
@@ -612,8 +614,18 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
   // Use provided store or default to file store
   const reportStore: ReportStore = store || createFileStore(reportsDir);
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
-  // 受管目录在创建时解析(cwd 此刻正确),不在模块加载期 —— 避免按错误 cwd 定位 .omk/managed。
-  const managedRoot: string = managedDir ?? resolveManagedDir(projectManagedDir());
+  // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
+  // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio
+  // 仍盯着旧 global,页面与 CLI 不一致。cwd 在进程内不变,变的是目录里有没有记录,故每次请求重判。
+  //   - 传函数 → 直接当解析器,每次请求调用(测试可注入受控解析器复现 project↔global 切换);
+  //   - 传字符串 → 固定该目录(显式覆盖 / 测试);
+  //   - 缺省 → 动态解析 project→global 权威目录,与 omk list 同口径。
+  const resolveManagedRoot: () => string =
+    typeof managedDir === 'function'
+      ? managedDir
+      : managedDir !== undefined
+        ? (): string => managedDir
+        : (): string => resolveManagedDir(projectManagedDir());
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -672,13 +684,13 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       // 受管 skill 决策史（#203 管理支柱可视化出口）。只读受管记录,口径同 omk list。
       if (path === '/api/managed') {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ schemaVersion: 1, rows: listManagedRows(managedRoot) }));
+        res.end(JSON.stringify({ schemaVersion: 1, rows: listManagedRows(resolveManagedRoot()) }));
         return;
       }
 
       if (path === '/managed') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderManagedList(listManagedRows(managedRoot), lang));
+        res.end(renderManagedList(listManagedRows(resolveManagedRoot()), lang));
         return;
       }
 
@@ -688,7 +700,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         try { id = decodeURIComponent(managedDetailMatch[1]); } catch { id = ''; }
         // 按稳定 id(= hash(kind, name)) 精确查 —— 同名不同 kind(skill/review vs prompt/review)各有独立 id,
         // 不会串到同一页;且只在已加载、已校验的记录里查,不拼文件路径、无路径穿越。
-        const record = id ? loadAllManagedRecords(managedRoot).find((r) => r.id === id) : undefined;
+        const record = id ? loadAllManagedRecords(resolveManagedRoot()).find((r) => r.id === id) : undefined;
         if (!record) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');

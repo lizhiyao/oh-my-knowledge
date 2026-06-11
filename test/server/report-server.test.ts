@@ -1,6 +1,6 @@
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
@@ -277,7 +277,8 @@ describe('report-server', () => {
     assert.ok(res.body.includes('review'), 'should show skill name');
     assert.ok(res.body.includes('/managed/skill-review-smoke'), 'should link to detail page by stable id');
     assert.ok(res.body.includes('verdict-PROGRESS'), 'current verdict badge');
-    assert.ok(res.body.includes('promoted'), 'lifecycle state from promote decision');
+    assert.ok(res.body.includes('已采用'), 'localized lifecycle label from promote decision (raw token stays in /api/managed)');
+    assert.ok(res.body.includes('mh-legend'), 'state/marker legend present for first-time viewers');
   });
 
   it('GET /api/managed returns versioned envelope', async () => {
@@ -345,6 +346,38 @@ describe('report-server', () => {
     } finally {
       await s.stop();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('受管根目录按请求解析 —— 会话中途项目获首条记录后从 global 切回 project,不冻结于启动(P1)', async () => {
+    // 复现 reviewer 场景的可控版:local 空 → 解析到 global;local 有记录 → 解析到 local(模拟 resolveManagedDir
+    // 的 project→global 回退,但用受控 temp 目录、不碰 homedir,跨机稳定)。注入解析器 = server 持有的是「如何解析」
+    // 策略而非冻结 root —— 若 server 在启动时定死,中途新增的 project 记录就永远看不到。
+    const projDir = join(tmpdir(), `omk-test-managed-proj-${Date.now()}`);
+    const globalDir = join(tmpdir(), `omk-test-managed-glob-${Date.now()}`);
+    mkdirSync(projDir, { recursive: true });
+    mkdirSync(globalDir, { recursive: true });
+    const mk = (id: string, name: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id, name, kind: 'skill',
+      source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: true },
+      contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
+    });
+    writeFileSync(join(globalDir, 'g.json'), JSON.stringify(mk('id-global-skill', 'global-skill')));
+    // local 非空才用 local,否则回退 global —— 即 resolveManagedDir 的口径。
+    const resolver = (): string => (readdirSync(projDir).length > 0 ? projDir : globalDir);
+    const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: resolver });
+    const u = await s.start();
+    try {
+      const before = JSON.parse((await fetch(`${u}/api/managed`)).body);
+      assert.deepEqual(before.rows.map((r: { name: string }) => r.name), ['global-skill'], '启动时 local 空 → 解析到 global');
+      // 会话中途:项目里首次 install,local 目录获得记录。
+      writeFileSync(join(projDir, 'p.json'), JSON.stringify(mk('id-project-skill', 'project-skill')));
+      const after = JSON.parse((await fetch(`${u}/api/managed`)).body);
+      assert.deepEqual(after.rows.map((r: { name: string }) => r.name), ['project-skill'], '中途 local 获记录 → 同一会话实时切回 project');
+    } finally {
+      await s.stop();
+      rmSync(projDir, { recursive: true, force: true });
+      rmSync(globalDir, { recursive: true, force: true });
     }
   });
 

@@ -163,12 +163,26 @@ function stateBand(state: string): string {
   return state === 'promoted' ? 'green' : state === 'stale' ? 'red' : state === 'measurable' ? 'accent' : 'muted';
 }
 
+/** 生命周期状态的面向用户文案 + 一句话释义(挂 title)。原始 token 仍在 /api/managed 的 row.state（机读口径不变）,
+ *  此处只本地化人看的 HTML —— measurable / installed 这类内部枚举对首次接触管理支柱的人并不自解释。 */
+function stateMeta(state: string, lang: Lang): { label: string; tip: string } {
+  const t = L(lang);
+  switch (state) {
+    case 'promoted': return { label: t('已采用', 'Promoted'), tip: t('已按证据人工复核并接受当前内容', 'Manually reviewed and accepted on evidence') };
+    case 'measurable': return { label: t('证据就绪', 'Measurable'), tip: t('当前内容已有有效证据，可进入采用门禁', 'Current content has valid evidence; ready for the promote gate') };
+    case 'stale': return { label: t('已漂移', 'Drifted'), tip: t('源内容已变更、脱离证据，需重跑 omk eval 取证', 'Source changed off its evidence — re-run omk eval') };
+    case 'installed': return { label: t('已纳管', 'Installed'), tip: t('已纳入管理，当前内容尚无有效证据', 'Under management; no valid evidence for current content yet') };
+    default: return { label: state, tip: state };
+  }
+}
+
 function listRow(row: ManagedListRow, lang: Lang): string {
   const t = L(lang);
-  const mark = !row.reachable ? ' <span class="mh-mark mh-mark--q" title="' + t('源未核', 'unverified') + '">?</span>'
-    : row.state === 'stale' ? ' <span class="mh-mark mh-mark--warn">⚠️</span>' : '';
+  const st = stateMeta(row.state, lang);
+  const mark = !row.reachable ? ' <span class="mh-mark mh-mark--q" title="' + e(t('源不可达 / 拒读，漂移未核', 'source unreachable / refused, drift unchecked')) + '">?</span>'
+    : row.state === 'stale' ? ' <span class="mh-mark mh-mark--warn" title="' + e(t('已漂移，需重测', 'drifted, re-measure')) + '">⚠️</span>' : '';
   return `<a class="mh-row" href="/managed/${encodeURIComponent(row.id)}${langQuery(lang)}">
-    <span class="mh-row-state"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(row.state)}${mark}</span>
+    <span class="mh-row-state" title="${e(st.tip)}"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(st.label)}${mark}</span>
     <span class="mh-row-name">${e(row.name)}</span>
     <span class="mh-row-kind">${e(row.kind)}</span>
     <span class="mh-row-verdict">${row.latestVerdict ? verdictBadge(row.latestVerdict, lang) : '—'}</span>
@@ -187,13 +201,24 @@ export function renderManagedList(rows: ManagedListRow[], lang: Lang): string {
     ? `<div class="mh-empty">${t('暂无受管 skill，运行 ', 'No managed skills yet — run ')}<code>omk install &lt;skill&gt;</code>${t(' 开始纳管。', ' to start.')}</div>`
     : head + rows.map((r) => listRow(r, lang)).join('');
 
+  // 页内图例,镜像 omk list 的注脚（状态语义 + ⚠️ / ? 标记 + 证据列含义）—— 首次接触管理支柱的人不必先懂内部枚举。
+  const legend = rows.length === 0 ? '' : `
+    <div class="mh-legend">
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--green"></span>${t('已采用：已按证据人工接受', 'Promoted = accepted on evidence')}</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--accent"></span>${t('证据就绪：当前内容有有效证据、可采用', 'Measurable = current content has evidence, gate-ready')}</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--muted"></span>${t('已纳管：尚无当前证据', 'Installed = no current evidence yet')}</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>${t('已漂移 ⚠️：源变了、需重跑 omk eval', 'Drifted ⚠️ = source changed, re-run omk eval')}</span>
+    <span class="mh-legend-item">${t('? 源未核（不可达 / 拒读，漂移待定）', '? = source unverified (unreachable / refused)')}</span>
+    <span class="mh-legend-item">${t('证据列：当前有效 / 全部历史（旧证据留作回滚）', 'Evidence = current / total (old evidence kept for rollback)')}</span>
+  </div>`;
+
   const body = `<main class="mh-main">
     <header class="mh-hero">
       <div class="mh-kind">${t('受管 skill', 'Managed skills')}</div>
       <h1 class="mh-name">${t('决策史', 'Decision history')}</h1>
       <div class="mh-meta"><span>${t('每个 skill 的 install → 评测 → 采用 / 回滚 全过程', 'install → eval → promote / rollback per skill')}</span></div>
     </header>
-    <div class="mh-table">${list}</div>
+    <div class="mh-table">${list}</div>${legend}
   </main>
   <style>${MANAGED_CSS}</style>`;
 
@@ -251,4 +276,6 @@ const MANAGED_CSS = `
 .mh-mark--q{color:var(--text-muted);font-weight:700}
 .mh-empty{padding:40px 20px;text-align:center;color:var(--text-muted);font-size:13px}
 .mh-empty code{background:var(--bg-soft);padding:1px 6px;border-radius:5px}
+.mh-legend{display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:14px;padding:12px 16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);font-size:12px;color:var(--text-muted)}
+.mh-legend-item{display:inline-flex;align-items:center;gap:6px}
 `;

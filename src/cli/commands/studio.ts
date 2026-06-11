@@ -82,7 +82,9 @@ export async function runStudio(
     reportsDir: resolve(reportsDir),
     ...(flags['analyses-dir'] ? { analysesDir: resolve(flags['analyses-dir']) } : {}),
     ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
-    managedDir: resolveManagedDir(managedDir()),
+    // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
+    // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
+    managedDir: (): string => resolveManagedDir(managedDir()),
   });
 
   const url = await server.start();

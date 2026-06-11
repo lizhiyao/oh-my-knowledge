@@ -116,13 +116,21 @@ exports[`managed-history-renderer snapshots > renderManagedList en 1`] = `
     <span>state</span><span>name</span><span>kind</span>
     <span>verdict</span><span>evidence</span><span>source</span>
   </div><a class="mh-row" href="/managed/skill-review-fixture?lang=en">
-    <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
+    <span class="mh-row-state" title="Current content has valid evidence; ready for the promote gate"><span class="mh-dot mh-dot--accent"></span>Measurable</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>PROGRESS</span></span></span>
     <span class="mh-row-ev">1/2</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
   </a></div>
+    <div class="mh-legend">
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--green"></span>Promoted = accepted on evidence</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--accent"></span>Measurable = current content has evidence, gate-ready</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--muted"></span>Installed = no current evidence yet</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>Drifted ⚠️ = source changed, re-run omk eval</span>
+    <span class="mh-legend-item">? = source unverified (unreachable / refused)</span>
+    <span class="mh-legend-item">Evidence = current / total (old evidence kept for rollback)</span>
+  </div>
   </main>"
 `;
 
@@ -137,12 +145,20 @@ exports[`managed-history-renderer snapshots > renderManagedList zh 1`] = `
     <span>状态</span><span>名称</span><span>类型</span>
     <span>verdict</span><span>证据</span><span>源</span>
   </div><a class="mh-row" href="/managed/skill-review-fixture">
-    <span class="mh-row-state"><span class="mh-dot mh-dot--accent"></span>measurable</span>
+    <span class="mh-row-state" title="当前内容已有有效证据，可进入采用门禁"><span class="mh-dot mh-dot--accent"></span>证据就绪</span>
     <span class="mh-row-name">review</span>
     <span class="mh-row-kind">skill</span>
     <span class="mh-row-verdict"><span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>明显进步</span></span></span>
     <span class="mh-row-ev">1/2</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
   </a></div>
+    <div class="mh-legend">
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--green"></span>已采用：已按证据人工接受</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--accent"></span>证据就绪：当前内容有有效证据、可采用</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--muted"></span>已纳管：尚无当前证据</span>
+    <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>已漂移 ⚠️：源变了、需重跑 omk eval</span>
+    <span class="mh-legend-item">? 源未核（不可达 / 拒读，漂移待定）</span>
+    <span class="mh-legend-item">证据列：当前有效 / 全部历史（旧证据留作回滚）</span>
+  </div>
   </main>"
 `;
