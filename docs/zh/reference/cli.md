@@ -24,6 +24,8 @@ omk init [目录]
 
 生成一个评测项目脚手架，包含两版 starter skill 和 `eval-samples.json`。
 
+收敛后的命名是 `omk eval init`；`omk init` 作为长期别名保留，行为完全一致（只是会多打一行指向新名的提示）。两者皆可。
+
 ## `omk install`
 
 ```bash

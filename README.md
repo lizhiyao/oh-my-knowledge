@@ -19,11 +19,11 @@ A/B test your prompts and skills with statistical rigor — bootstrap CI and len
 
 ```bash
 npm i -g oh-my-knowledge
-omk init demo && cd demo
+omk eval init demo && cd demo
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-That's it — no editing required. `omk init` scaffolds two skill variants and three sample cases; `omk eval` runs the controlled A/B and opens an HTML report with a one-line verdict in about five minutes.
+That's it — no editing required. `omk eval init` (alias: `omk init`) scaffolds two skill variants and three sample cases; `omk eval` runs the controlled A/B and opens an HTML report with a one-line verdict in about five minutes.
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 

@@ -24,6 +24,8 @@ For full descriptions: `omk init --help`.
 
 Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
 
+The converged name is `omk eval init`; `omk init` stays as a long-lived alias and behaves identically (it just prints a one-line hint pointing to the new name). Use either.
+
 ## `omk install`
 
 ```bash

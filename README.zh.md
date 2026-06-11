@@ -19,11 +19,11 @@
 
 ```bash
 npm i -g oh-my-knowledge
-omk init demo && cd demo
+omk eval init demo && cd demo
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-不用改任何文件 —— `omk init` 帮你脚手架两版 skill 和三条评测用例；`omk eval` 跑控制变量 A/B，5 分钟内出 HTML 报告 + 一行 verdict。
+不用改任何文件 —— `omk eval init`（别名：`omk init`）帮你脚手架两版 skill 和三条评测用例；`omk eval` 跑控制变量 A/B，5 分钟内出 HTML 报告 + 一行 verdict。
 
 > 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
 
