@@ -16,6 +16,7 @@ export type CommonMessageKey =
   | 'cli.update.box_upgrade_line'
   | 'cli.update.box_silence_line'
   | 'cli.observe.view_hint'
+  | 'cli.observe.deprecated_alias'
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
@@ -82,8 +83,12 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     en: 'Silence: set {env} to disable',
   },
   'cli.observe.view_hint': {
-    zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成日报。',
-    en: 'Analysis JSON written to output-dir; use omk observe to keep producing health reports.',
+    zh: '分析 JSON 已写入 output-dir；后续可用 omk observe health 持续生成健康报告。',
+    en: 'Analysis JSON written to output-dir; use omk observe health to keep producing health reports.',
+  },
+  'cli.observe.deprecated_alias': {
+    zh: '⚠ omk observe 已弃用，请改用 omk observe health\n',
+    en: '⚠ omk observe is deprecated; use omk observe health instead\n',
   },
   'cli.studio.started': {
     zh: 'studio 已启动：{url}',

@@ -4,15 +4,15 @@
 
 It ships two workflows. For every flag see the [CLI reference](../reference/cli).
 
-## A. Skill-health report (default)
+## A. Skill-health report (`omk observe health`)
 
 Point it at a Claude Code project's trace directory:
 
 ```bash
-omk observe ~/.claude/projects/-Users-you-Documents-my-project
-omk observe ~/.claude/projects/my-project --last 7d
-omk observe ~/.claude/projects/my-project --skills audit,polish
-omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware analysis
+omk observe health ~/.claude/projects/-Users-you-Documents-my-project
+omk observe health ~/.claude/projects/my-project --last 7d
+omk observe health ~/.claude/projects/my-project --skills audit,polish
+omk observe health ~/.claude/projects/my-project --kb /path/to/project   # KB-aware analysis
 ```
 
 You get a per-skill health report: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec) (where the agent wanted something and failed to find it), execution stability, tokens, and latency. The point is to find **real-world gaps your eval samples didn't cover** — those gaps become the next round of eval cases.
@@ -24,7 +24,7 @@ Scope the window with `--last 7d` / `--from … --to …`, and narrow to specifi
 When you want to triage observations one by one (and feed the good ones back as regression cases), use the inbox. The whole pipeline is local-only and LLM-free.
 
 ```bash
-# 1. Parse traces, aggregate + de-noise signals, write to .omk/observations/
+# 1. Parse traces, aggregate + de-noise signals, write to .omk/observe-inbox/
 omk observe ingest ~/.claude/projects/my-project
 
 # 2. Read the inbox (default top 20, sorted by severity / confidence / lastSeen)

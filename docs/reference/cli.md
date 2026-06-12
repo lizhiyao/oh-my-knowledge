@@ -277,16 +277,16 @@ The HTML report has two tabs:
 
 ## `omk observe`
 
-`omk observe` ships two workflows: the default skill-health report, and the new observe inbox for human review.
+`omk observe` ships two workflows: `omk observe health` for skill-health reports, and the observe inbox (`ingest` / `inbox` / `show`) for human review. (Bare `omk observe` is a deprecated alias for `omk observe health`.)
 
-### A. Skill-health report (default)
+### A. Skill-health report (`omk observe health`)
 
 ```bash
-omk observe ~/.claude/projects/-Users-you-Documents-my-project
-omk observe ~/.claude/projects/my-project --last 7d
-omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-omk observe ~/.claude/projects/my-project --skills audit,polish
-omk observe ~/.claude/projects/my-project --kb /path/to/project
+omk observe health ~/.claude/projects/-Users-you-Documents-my-project
+omk observe health ~/.claude/projects/my-project --last 7d
+omk observe health ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe health ~/.claude/projects/my-project --skills audit,polish
+omk observe health ~/.claude/projects/my-project --kb /path/to/project
 ```
 
 <!-- omk:cli:observe:flags:start -->
@@ -298,7 +298,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
   --kb <value>          KB root, enables KB-aware analysis
   --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --last <value>        Time window (7d / 24h / 30m)
-  --output-dir <value>  Analysis output directory
+  --output-dir <value>  Health report output dir, default ~/.oh-my-knowledge/observe-health
   --skills <value>      Filter to specific skills, comma-separated
   --to <value>          End time ISO
 ```
@@ -314,7 +314,7 @@ Turns real Claude Code session traces into skill-health reports: knowledge usage
 Parses, aggregates, and de-noises real session traces into a per-observation list a human can review. The whole pipeline is local-only and LLM-free.
 
 ```bash
-# 1. Parse traces, aggregate signals, write to .omk/observations/
+# 1. Parse traces, aggregate signals, write to .omk/observe-inbox/
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
 
@@ -413,7 +413,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>             Generation LLM model name, default sonnet.
   --no-mock                   Skip mock generation; all tool calls execute for real during eval.
-  --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observations.
+  --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
   --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill-dir <value>         Skill root dir, default skills. Used by batch mode.
   --treatment <value>         Treatment name (fix mode), defaults to skill-path inference.
@@ -432,7 +432,7 @@ omk studio
 omk studio --port 7799
 omk studio --host 0.0.0.0                          # LAN access (default: 127.0.0.1)
 omk studio --reports-dir ~/.oh-my-knowledge/reports
-omk studio --observations-dir .omk/observations    # observe inbox data directory
+omk studio --observations-dir .omk/observe-inbox    # observe inbox data directory
 omk studio --no-open
 ```
 
@@ -441,12 +441,12 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      Analyses dir (optional)
+  --analyses-dir <value>      Observe-health reports dir (optional, default ~/.oh-my-knowledge/observe-health)
   --dev                       Dev mode: child process with hot reload
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser
-  --observations-dir <value>  Observations dir (optional)
+  --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe-inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
   --reports-dir <value>       Reports dir, default ~/.oh-my-knowledge/reports
 ```

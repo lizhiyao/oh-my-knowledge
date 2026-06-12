@@ -277,16 +277,16 @@ HTML 报告有两个 tab：
 
 ## `omk observe`
 
-omk observe 提供两条工作流：默认的 skill 健康度报告，以及 reviewer 闭环用的 observe inbox。
+omk observe 提供两条工作流：`omk observe health` 生成 skill 健康度报告，observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。（裸 `omk observe` 是 `omk observe health` 的弃用别名。）
 
-### A. skill 健康度报告（默认）
+### A. skill 健康度报告（`omk observe health`）
 
 ```bash
-omk observe ~/.claude/projects/-Users-you-Documents-my-project
-omk observe ~/.claude/projects/my-project --last 7d
-omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-omk observe ~/.claude/projects/my-project --skills audit,polish
-omk observe ~/.claude/projects/my-project --kb /path/to/project
+omk observe health ~/.claude/projects/-Users-you-Documents-my-project
+omk observe health ~/.claude/projects/my-project --last 7d
+omk observe health ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe health ~/.claude/projects/my-project --skills audit,polish
+omk observe health ~/.claude/projects/my-project --kb /path/to/project
 ```
 
 <!-- omk:cli:observe:flags:start -->
@@ -298,7 +298,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
   --kb <value>          知识库 root，启用 KB-aware 分析
   --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --last <value>        时间窗(7d / 24h / 30m）
-  --output-dir <value>  分析结果输出目录
+  --output-dir <value>  健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
   --skills <value>      只看指定 skill，逗号分隔
   --to <value>          结束时间 ISO
 ```
@@ -314,7 +314,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 把真实 session trace 解析、聚合、降噪，输出可逐条 review 的 observation 列表。整条链路纯本地、零 LLM。
 
 ```bash
-# 1. 把 trace 解析、聚合、落盘到 .omk/observations/
+# 1. 把 trace 解析、聚合、落盘到 .omk/observe-inbox/
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
 
@@ -413,7 +413,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名，默认 sonnet。
   --no-mock                   不生成 mocks，eval 时所有工具调用真实执行。
-  --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。
+  --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
   --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
   --treatment <value>         指定 treatment 名（fix 模式用），默认推断自 skill 路径。
@@ -432,7 +432,7 @@ omk studio
 omk studio --port 7799
 omk studio --host 0.0.0.0                          # 局域网访问（默认 127.0.0.1）
 omk studio --reports-dir ~/.oh-my-knowledge/reports
-omk studio --observations-dir .omk/observations    # observe inbox 数据目录
+omk studio --observations-dir .omk/observe-inbox    # observe inbox 数据目录
 omk studio --no-open
 ```
 
@@ -441,12 +441,12 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      分析数据目录（可选）
+  --analyses-dir <value>      观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）
   --dev                       dev 模式：子进程启动 + 热更新
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器
-  --observations-dir <value>  观测数据目录（可选）
+  --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe-inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
   --reports-dir <value>       报告目录，默认 ~/.oh-my-knowledge/reports
 ```
