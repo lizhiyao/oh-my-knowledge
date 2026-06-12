@@ -73,6 +73,25 @@ describe('createExecutor', () => {
     assert.ok(result.mockStats);
   });
 
+  it('script executor mock 命中 round-trip:hook 命中后 mockStats.hits 回填', async () => {
+    const mocks: Mock[] = [{ tool: 'Read', match: { file_path_endswith: 'x.txt' }, return: 'mocked' }];
+    const executor = createExecutor('node test/fixtures/script-executor-mock-roundtrip.mjs');
+    const result = await executor({ model: 'test', system: '', prompt: 'hi', mocks });
+    assert.equal(result.ok, true);
+    assert.ok(result.mockStats);
+    // 完整闭环:env 暴露 hook → fixture 喂事件触发命中 → hook 写 hits.json → readStats 回填
+    assert.equal(result.mockStats!.hits, 1);
+    assert.equal(result.mockStats!.misses, 0);
+  });
+
+  it('script executor 把 mocksStrict 透传到物化的 mocks.json', async () => {
+    const mocks: Mock[] = [{ tool: 'Read', match: { file_path_endswith: 'x.txt' }, return: 'mocked' }];
+    const executor = createExecutor('node test/fixtures/script-executor-mock-probe.mjs');
+    const result = await executor({ model: 'test', system: '', prompt: 'hi', mocks, mocksStrict: true });
+    const probe = JSON.parse(result.output as string) as { strict: boolean | null };
+    assert.equal(probe.strict, true);
+  });
+
   it('script executor 错误退出路径也回填 mockStats(对齐 claude-cli)', async () => {
     const mocks: Mock[] = [{ tool: 'Read', match: { file_path_endswith: 'x.txt' }, return: 'mocked' }];
     const executor = createExecutor('node test/fixtures/script-executor-fail.mjs');
