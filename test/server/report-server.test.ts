@@ -422,7 +422,7 @@ describe('report-server', () => {
     assert.equal(data[0].jobId, 'job-test-run-002');
   });
 
-  it('GET /analyses 列表入口:underpowered 报告圆点改灰 + 样本不足,high-N red 仍硬红', async () => {
+  it('GET /observe-health 列表入口:underpowered 报告圆点改灰 + 样本不足,high-N red 仍硬红', async () => {
     // underpowered(segmentCount 2,缺 confidence 走 segmentCount 兜底)+ red 健康带。
     const lowN = {
       meta: { generatedAt: '2026-05-09T01:00:00Z', sessionCount: 1, segmentCount: 2, toolCallCount: 1, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: '2026-05-09T00:00:00Z', to: '2026-05-09T01:00:00Z' } },
@@ -437,7 +437,7 @@ describe('report-server', () => {
     writeFileSync(join(ANALYSES_DIR, 'an-lown.json'), JSON.stringify(lowN));
     writeFileSync(join(ANALYSES_DIR, 'an-highn.json'), JSON.stringify(highN));
     try {
-      const res = await fetch(`${baseUrl}/analyses`);
+      const res = await fetch(`${baseUrl}/observe-health`);
       assert.equal(res.status, 200);
       // 低 N 报告:中性灰圆点 + 「样本不足」,不出现硬红圆点(本列表只有这一种带背景色的圆点)。
       assert.match(res.body, /background:var\(--text-faint\)/);
@@ -450,8 +450,30 @@ describe('report-server', () => {
     }
   });
 
-  it('GET /api/observations/inbox supports severity and limit query params', async () => {
-    const res = await fetch(`${baseUrl}/api/observations/inbox?severity=high&limit=1`);
+  it('旧 observe 路由兜底到 observe-* canonical:页面 302、API 307(querystring 透传)', async () => {
+    // 改名后旧外链 / 书签 / 已打开页面的旧 fetch 不能 404。helper 用 http.request 不跟随重定向,直接验状态码 + Location。
+    // 页面 302(临时);API 307 —— review-state 有 POST/DELETE,302 会被降级成 GET,307 保留 method。
+    const cases: Array<[string, number, string]> = [
+      ['/analyses', 302, '/observe-health'],
+      ['/analyses/some-id?lang=en', 302, '/observe-health/some-id?lang=en'],
+      ['/observations', 302, '/observe-inbox'],
+      ['/observations/inbox?skill=foo', 302, '/observe-inbox?skill=foo'],
+      ['/api/analyses', 307, '/api/observe-health'],
+      ['/api/analyses/some-id', 307, '/api/observe-health/some-id'],
+      ['/api/observations/inbox?severity=high', 307, '/api/observe-inbox?severity=high'],
+      ['/api/observations/show?id=obs-high', 307, '/api/observe-inbox/show?id=obs-high'],
+      ['/api/observations/diagnostics', 307, '/api/observe-inbox/diagnostics'],
+      ['/api/observations/review-state', 307, '/api/observe-inbox/review-state'],
+    ];
+    for (const [from, status, to] of cases) {
+      const res = await fetch(`${baseUrl}${from}`);
+      assert.equal(res.status, status, `${from} should ${status}`);
+      assert.equal(res.headers.location, to, `${from} → ${to}`);
+    }
+  });
+
+  it('GET /api/observe-inbox supports severity and limit query params', async () => {
+    const res = await fetch(`${baseUrl}/api/observe-inbox?severity=high&limit=1`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.length, 1);
@@ -459,8 +481,8 @@ describe('report-server', () => {
     assert.equal(data[0].severity, 'high');
   });
 
-  it('GET /api/observations/diagnostics exposes observe-backed Diagnosis data', async () => {
-    const res = await fetch(`${baseUrl}/api/observations/diagnostics`);
+  it('GET /api/observe-inbox/diagnostics exposes observe-backed Diagnosis data', async () => {
+    const res = await fetch(`${baseUrl}/api/observe-inbox/diagnostics`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.sourceCoverage.observe, true);

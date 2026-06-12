@@ -435,7 +435,7 @@ describe('detectInsights — Diagnosis projection', () => {
   });
 
   it('confirmed lifecycle 不算 active,跟 activeStudioDiagnostics 口径一致', () => {
-    // 抽 shared isActiveDiagnosisLifecycle 之后,Insight 投影和 /api/observations/diagnostics 的
+    // 抽 shared isActiveDiagnosisLifecycle 之后,Insight 投影和 /api/observe-inbox/diagnostics 的
     // active 列表都按同一份 set 过滤(detected / candidate / stale)。confirmed 不算 active,
     // 不会被投影成 Insight,避免「Insight 影响 skill 健康但 diagnostics API 不显示」的口径分叉。
     const confirmedDiag = mkDiagnosis({

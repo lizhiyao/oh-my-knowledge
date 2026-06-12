@@ -1170,7 +1170,7 @@ function renderObserveSection(
     </div>
     <div class="si-sect-body">
       ${body}
-      <a class="si-sect-link" href="/analyses/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '完整观测报告 →' : 'Full observation report →'}</a>
+      <a class="si-sect-link" href="/observe-health/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '完整观测报告 →' : 'Full observation report →'}</a>
     </div>
   </section>`;
 }

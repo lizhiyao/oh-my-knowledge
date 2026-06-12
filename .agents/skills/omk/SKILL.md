@@ -142,7 +142,7 @@ omk studio --host 0.0.0.0                 # 局域网访问（默认 127.0.0.1�
 omk studio --no-open                      # 不自动开浏览器
 ```
 
-Studio 是 skill-centric：列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势；详情页（`/skills/<name>`）左栏列关键问题清单，右栏画健康趋势 + 三档阶段卡（doctor / eval / observe）。访问 `/observations/inbox` 查看 observe inbox 看板。
+Studio 是 skill-centric：列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势；详情页（`/skills/<name>`）左栏列关键问题清单，右栏画健康趋势 + 三档阶段卡（doctor / eval / observe）。访问 `/observe-inbox` 查看 observe inbox 看板。
 
 ## 第五步：解读结果
 

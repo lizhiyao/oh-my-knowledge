@@ -401,9 +401,9 @@ function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): 
   const body = `
     <main style="max-width:1000px;margin:0 auto;padding:24px">
       <nav style="margin-bottom:8px">
-        <a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('backToAnalyses', lang)}</a>
-        <a href="/analyses/${encodeURIComponent(fromId)}${langQ}" data-i18n="diffNavFrom" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('diffNavFrom', lang)}</a>
-        <a href="/analyses/${encodeURIComponent(toId)}${langQ}" data-i18n="diffNavTo" style="color:var(--accent);text-decoration:none">${t('diffNavTo', lang)}</a>
+        <a href="/observe-health${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('backToAnalyses', lang)}</a>
+        <a href="/observe-health/${encodeURIComponent(fromId)}${langQ}" data-i18n="diffNavFrom" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('diffNavFrom', lang)}</a>
+        <a href="/observe-health/${encodeURIComponent(toId)}${langQ}" data-i18n="diffNavTo" style="color:var(--accent);text-decoration:none">${t('diffNavTo', lang)}</a>
       </nav>
       <h1 data-i18n="skillDiffHeading" style="font-size:20px;margin:8px 0">${t('skillDiffHeading', lang)}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
@@ -430,7 +430,7 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
   if (points.length === 0) {
     const emptyBody = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
-      <nav style="margin-bottom:12px"><a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <nav style="margin-bottom:12px"><a href="/observe-health${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
       <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
       <p style="color:var(--text-muted)" data-i18n="noTrendData">${t('noTrendData', lang)}</p>
     </main>`;
@@ -467,7 +467,7 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
     <span style="color:#4ade80">● <span data-i18n="trendLegendCoverage">${t('trendLegendCoverage', lang)}</span></span>
   </div>`;
   const rows = points.map((p) => `<tr>
-    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/analyses/${encodeURIComponent(p.analysisId)}${langQ}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
+    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/observe-health/${encodeURIComponent(p.analysisId)}${langQ}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
     <td style="padding:6px 10px;text-align:right">${p.segmentCount}</td>
     <td style="padding:6px 10px;text-align:right;color:#f87171">${Math.round(p.gapRate * 100)}%</td>
     <td style="padding:6px 10px;text-align:right;color:#fbbf24">${Math.round(p.weightedGapRate * 100)}%</td>
@@ -479,7 +479,7 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
   const subtitle = `${points.length} <span data-i18n="trendNPoints">${t('trendNPoints', lang)}</span> · <span data-i18n="trendEarliest">${t('trendEarliest', lang)}</span> ${points[0].generatedAt.slice(0, 10)} · <span data-i18n="trendLatest">${t('trendLatest', lang)}</span> ${points[points.length - 1].generatedAt.slice(0, 10)}`;
   const body = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
-      <nav style="margin-bottom:8px"><a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <nav style="margin-bottom:8px"><a href="/observe-health${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
       <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">${subtitle}</div>
       ${svg}
@@ -522,7 +522,7 @@ function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="from" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesFromLabel">${t('analysesFromLabel', lang)}</span></label>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="to" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesToLabel">${t('analysesToLabel', lang)}</span></label>
-          <a href="/analyses/${enc}${langQ}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
+          <a href="/observe-health/${enc}${langQ}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
           <span style="color:var(--text-muted);font-size:12px">${it.sessionCount} <span data-i18n="analysesSessions">${t('analysesSessions', lang)}</span> · ${it.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · ${it.skillCount} <span data-i18n="analysesSkills">${t('analysesSkills', lang)}</span>${underpowered ? ` · <span data-i18n="analysesLowN" style="color:var(--text-faint)">${t('analysesLowN', lang)}</span>` : ''}</span>
         </li>`;
       }).join('');
@@ -669,13 +669,36 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/analyses') {
+      // 旧 observe 路由 → observe-* 词根 canonical 的兜底(querystring 透传),防外链 / 书签 / 已打开页面的旧 fetch 失效。
+      // 页面用 302(临时);API 用 307 —— review-state 有 POST/DELETE,302 会被客户端降级成 GET,307 保留 method+body。
+      // 复合名 /analyses-diff、/api/analyses-diff、/skill-trend 维持原名,不在此重定向。
+      const legacyObserveRedirect = ((): { to: string; status: 302 | 307 } | null => {
+        if (path === '/analyses') return { to: '/observe-health', status: 302 };
+        if (path === '/observations' || path === '/observations/inbox') return { to: '/observe-inbox', status: 302 };
+        const detail = path.match(/^\/analyses\/(.+)$/);
+        if (detail) return { to: `/observe-health/${detail[1]}`, status: 302 };
+        if (path === '/api/analyses') return { to: '/api/observe-health', status: 307 };
+        const apiDetail = path.match(/^\/api\/analyses\/(.+)$/);
+        if (apiDetail) return { to: `/api/observe-health/${apiDetail[1]}`, status: 307 };
+        if (path === '/api/observations/inbox') return { to: '/api/observe-inbox', status: 307 };
+        if (path === '/api/observations/show') return { to: '/api/observe-inbox/show', status: 307 };
+        if (path === '/api/observations/diagnostics') return { to: '/api/observe-inbox/diagnostics', status: 307 };
+        if (path === '/api/observations/review-state') return { to: '/api/observe-inbox/review-state', status: 307 };
+        return null;
+      })();
+      if (legacyObserveRedirect) {
+        res.writeHead(legacyObserveRedirect.status, { Location: legacyObserveRedirect.to + parsed.search });
+        res.end();
+        return;
+      }
+
+      if (path === '/api/observe-health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(listAnalyses(analysesDir)));
         return;
       }
 
-      if (path === '/analyses') {
+      if (path === '/observe-health') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderAnalysisList(listAnalyses(analysesDir), lang));
         return;
@@ -711,7 +734,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/observations' || path === '/observations/inbox') {
+      if (path === '/observe-inbox') {
         const skill = parsed.searchParams.get('skill') || undefined;
         const html = renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -719,7 +742,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/inbox') {
+      if (path === '/api/observe-inbox') {
         const severity = parsed.searchParams.get('severity');
         const skill = parsed.searchParams.get('skill');
         const limitRaw = parsed.searchParams.get('limit');
@@ -737,7 +760,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/diagnostics') {
+      if (path === '/api/observe-inbox/diagnostics') {
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -755,7 +778,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/show') {
+      if (path === '/api/observe-inbox/show') {
         const id = parsed.searchParams.get('id') || '';
         const item = id ? findObservationInboxItem(id, observationsDir) : null;
         res.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -763,7 +786,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/review-state') {
+      if (path === '/api/observe-inbox/review-state') {
         if (req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(loadObservationReviewState(observationsDir)));
@@ -838,7 +861,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      const analysisDetailMatch = path.match(/^\/analyses\/(.+)$/);
+      const analysisDetailMatch = path.match(/^\/observe-health\/(.+)$/);
       if (analysisDetailMatch) {
         const id = decodeURIComponent(analysisDetailMatch[1]);
         const report = loadAnalysis(analysesDir, id);
@@ -852,7 +875,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      const analysisApiMatch = path.match(/^\/api\/analyses\/(.+)$/);
+      const analysisApiMatch = path.match(/^\/api\/observe-health\/(.+)$/);
       if (analysisApiMatch) {
         const id = decodeURIComponent(analysisApiMatch[1]);
         const report = loadAnalysis(analysesDir, id);
