@@ -11,7 +11,7 @@
 import { layout, e, fmtLocalTime } from './layout.js';
 import { levelLabel } from './summary.js';
 import type { Lang } from '../types/index.js';
-import type { ManagedArtifactRecord } from '../types/index.js';
+import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
 import type { ManagedListRow } from '../managed/index.js';
 import type { VerdictLevel } from '../eval-core/verdict.js';
 
@@ -164,16 +164,23 @@ function stateBand(state: string): string {
 }
 
 /** 生命周期状态的面向用户文案 + 一句话释义(挂 title)。原始 token 仍在 /api/managed 的 row.state（机读口径不变）,
- *  此处只本地化人看的 HTML —— measurable / installed 这类内部枚举对首次接触管理支柱的人并不自解释。 */
+ *  此处只本地化人看的 HTML —— measurable / installed 这类内部枚举对首次接触管理支柱的人并不自解释。
+ *  用 Record<ManagedLifecycleLabel> 让 TS 编译期强制列全所有状态 —— types/managed 新增 label（如已声明
+ *  却尚未在列表出现的 discovered）时这里报错、逼同步,避免新状态被静默当原始 token 渲染。 */
+const STATE_LABELS: Record<ManagedLifecycleLabel, { zh: [string, string]; en: [string, string] }> = {
+  discovered: { zh: ['已发现', '已发现，尚未纳管取证'], en: ['Discovered', 'Discovered, not yet under management'] },
+  installed: { zh: ['已纳管', '已纳入管理，当前内容尚无有效证据'], en: ['Installed', 'Under management; no valid evidence for current content yet'] },
+  measurable: { zh: ['证据就绪', '当前内容已有有效证据，可进入采用门禁'], en: ['Measurable', 'Current content has valid evidence; ready for the promote gate'] },
+  stale: { zh: ['已漂移', '源内容已变更、脱离证据，需重跑 omk eval 取证'], en: ['Drifted', 'Source changed off its evidence — re-run omk eval'] },
+  promoted: { zh: ['已采用', '已按证据人工复核并接受当前内容'], en: ['Promoted', 'Manually reviewed and accepted on evidence'] },
+};
+
 function stateMeta(state: string, lang: Lang): { label: string; tip: string } {
-  const t = L(lang);
-  switch (state) {
-    case 'promoted': return { label: t('已采用', 'Promoted'), tip: t('已按证据人工复核并接受当前内容', 'Manually reviewed and accepted on evidence') };
-    case 'measurable': return { label: t('证据就绪', 'Measurable'), tip: t('当前内容已有有效证据，可进入采用门禁', 'Current content has valid evidence; ready for the promote gate') };
-    case 'stale': return { label: t('已漂移', 'Drifted'), tip: t('源内容已变更、脱离证据，需重跑 omk eval 取证', 'Source changed off its evidence — re-run omk eval') };
-    case 'installed': return { label: t('已纳管', 'Installed'), tip: t('已纳入管理，当前内容尚无有效证据', 'Under management; no valid evidence for current content yet') };
-    default: return { label: state, tip: state };
-  }
+  // Record 保证联合内全覆盖;?? 兜被污染的非法 token(已被 isManagedArtifactRecord 校验过,理论不达),原样降级不崩。
+  const m = (STATE_LABELS as Record<string, { zh: [string, string]; en: [string, string] }>)[state]
+    ?? { zh: [state, state] as [string, string], en: [state, state] as [string, string] };
+  const [label, tip] = lang === 'zh' ? m.zh : m.en;
+  return { label, tip };
 }
 
 function listRow(row: ManagedListRow, lang: Lang): string {
