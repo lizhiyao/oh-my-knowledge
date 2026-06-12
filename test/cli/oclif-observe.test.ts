@@ -24,22 +24,20 @@ interface ExecError extends Error {
 
 
 describe('oclif observe', () => {
-  it('observe --help (纯 topic，列出 4 个子命令)', async () => {
+  it('observe --help (默认 = health 分析)', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
-    assert.ok(stdout.includes('observe health'), `observe --help should list health subcommand:\n${stdout}`);
-    assert.ok(stdout.includes('observe ingest'), 'should list ingest subcommand');
-    assert.ok(stdout.includes('observe inbox'), 'should list inbox subcommand');
-    assert.ok(stdout.includes('observe show'), 'should list show subcommand');
+    assert.ok(stdout.includes('分析 sessions 目录'), `default observe --help missing zh:\n${stdout}`);
+    assert.ok(stdout.includes('SESSIONSDIR'), 'should list positional');
+    assert.ok(stdout.includes('--kb'), 'should list --kb flag');
   });
 
-  it('observe <sessions> 已直接弃用 → 非零退出（observe 是纯 topic，无默认命令，不再代跑分析）', async () => {
+  it('observe unknown flag → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'observe', 'some-sessions-dir']);
-      assert.fail('expected non-zero exit (observe has no default command)');
+      await execFileAsync('node', [CLI, 'observe', '--bogus']);
+      assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.notEqual(e.code, 0, `expected non-zero exit, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /not found/, `stderr should be oclif command-not-found:\n${e.stderr}`);
+      assert.equal(e.code, 2);
     }
   });
 

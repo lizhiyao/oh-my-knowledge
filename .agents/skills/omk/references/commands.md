@@ -385,14 +385,14 @@ omk list --global
 omk list --json
 ```
 
-## omk observe health
+## omk observe
 
-分析 sessions 目录的 skill 调用健康度，产出观测健康报告。
+分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。
 
 **用法:**
 
 ```bash
-omk observe health [sessionsDir] [flags]
+omk observe [sessionsDir] [flags]
 ```
 
 **参数:**
@@ -414,7 +414,7 @@ omk observe health [sessionsDir] [flags]
 > 分析最近 7 天
 
 ```bash
-omk observe health ~/.claude/sessions --last 7d
+omk observe ~/.claude/sessions --last 7d
 ```
 
 ## omk observe inbox

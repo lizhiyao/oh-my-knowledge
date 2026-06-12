@@ -4,15 +4,15 @@
 
 It ships two workflows. For every flag see the [CLI reference](../reference/cli).
 
-## A. Skill-health report (`omk observe health`)
+## A. Skill-health report (default)
 
 Point it at a Claude Code project's trace directory:
 
 ```bash
-omk observe health ~/.claude/projects/-Users-you-Documents-my-project
-omk observe health ~/.claude/projects/my-project --last 7d
-omk observe health ~/.claude/projects/my-project --skills audit,polish
-omk observe health ~/.claude/projects/my-project --kb /path/to/project   # KB-aware analysis
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware analysis
 ```
 
 You get a per-skill health report: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec) (where the agent wanted something and failed to find it), execution stability, tokens, and latency. The point is to find **real-world gaps your eval samples didn't cover** — those gaps become the next round of eval cases.

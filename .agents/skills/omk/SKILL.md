@@ -4,7 +4,7 @@ description: |
   oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
 user-invocable: true
-argument-hint: "<doctor|eval|evolve|init|install|list|promote|rollback|sample|studio> [options]"
+argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
 ---
 
 # OMK — 知识载体评测
@@ -32,7 +32,7 @@ omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback
 | 生成测试用例 | → `omk sample` |
 | 体检 skill 写法 | → `omk doctor` |
 | 查看 / 浏览报告 | → `omk studio`（启动本地报告浏览器） |
-| 看真实使用 trace | → `omk observe health` |
+| 看真实使用 trace | → `omk observe` |
 | 查看受管 skill 状态 | → `omk list` |
 | 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
 

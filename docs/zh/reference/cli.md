@@ -277,19 +277,35 @@ HTML 报告有两个 tab：
 
 ## `omk observe`
 
-omk observe 提供两条工作流：`omk observe health` 生成 skill 健康度报告，observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。（裸 `omk observe <sessions>` 已弃用、不再直接分析，请用 `omk observe health`。）
+omk observe 提供两条工作流：默认的 skill 健康度报告，以及 observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。
 
-### A. skill 健康度报告（`omk observe health`）
+### A. skill 健康度报告（默认）
 
 ```bash
-omk observe health ~/.claude/projects/-Users-you-Documents-my-project
-omk observe health ~/.claude/projects/my-project --last 7d
-omk observe health ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-omk observe health ~/.claude/projects/my-project --skills audit,polish
-omk observe health ~/.claude/projects/my-project --kb /path/to/project
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-完整 flag 见 `omk observe health --help`。
+<!-- omk:cli:observe:flags:start -->
+
+**Flags:**
+
+```text
+  --from <value>        起始时间 ISO，优先级高于 --last
+  --kb <value>          知识库 root，启用 KB-aware 分析
+  --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --last <value>        时间窗(7d / 24h / 30m）
+  --output-dir <value>  健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
+  --skills <value>      只看指定 skill，逗号分隔
+  --to <value>          结束时间 ISO
+```
+
+完整描述见 `omk observe --help`。
+
+<!-- omk:cli:observe:flags:end -->
 
 把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 

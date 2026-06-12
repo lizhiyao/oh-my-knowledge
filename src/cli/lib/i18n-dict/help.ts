@@ -1,7 +1,7 @@
 import type { CliMessage } from './types.js';
 
 export type HelpMessageKey =
-  | 'cli.help.observe_health'
+  | 'cli.help.observe'
   | 'cli.help.observe_ingest'
   | 'cli.help.observe_inbox'
   | 'cli.help.observe_show'
@@ -10,12 +10,12 @@ export type HelpMessageKey =
   | 'cli.help.studio';
 
 export const helpDict: Record<HelpMessageKey, CliMessage> = {
-  'cli.help.observe_health': {
+  'cli.help.observe': {
     zh: `
-omk observe health——分析真实 session trace，生成 skill 健康度报告
+omk observe——分析真实 session trace，生成 skill 健康度报告
 
 用法：
-  omk observe health <sessions-dir> [options]
+  omk observe <sessions-dir> [options]
 
 选项：
   --kb <path>                         知识库根路径（默认：从 trace cwd 推断）
@@ -28,10 +28,10 @@ omk observe health——分析真实 session trace，生成 skill 健康度报�
 观测收件箱（observe inbox）是另一条线，见 omk observe inbox --help。
 `,
     en: `
-omk observe health — analyze production session traces and produce skill health reports
+omk observe — analyze production session traces and produce skill health reports
 
 Usage:
-  omk observe health <sessions-dir> [options]
+  omk observe <sessions-dir> [options]
 
 Options:
   --kb <path>                         Knowledge base root (default: infer from trace cwd)

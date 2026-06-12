@@ -4,15 +4,15 @@
 
 它有两条工作流。每个 flag 见 [CLI 参考](../reference/cli)。
 
-## A. skill 健康度报告（`omk observe health`）
+## A. skill 健康度报告（默认）
 
 指向一个 Claude Code 项目的 trace 目录：
 
 ```bash
-omk observe health ~/.claude/projects/-Users-you-Documents-my-project
-omk observe health ~/.claude/projects/my-project --last 7d
-omk observe health ~/.claude/projects/my-project --skills audit,polish
-omk observe health ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分析
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分析
 ```
 
 你会拿到逐 skill 的健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)（agent 想要某个东西却没找到）、执行稳定性、token、耗时。重点是找出**你的 eval 用例没覆盖到的真实世界缺口**——这些缺口变成下一轮 eval 用例。

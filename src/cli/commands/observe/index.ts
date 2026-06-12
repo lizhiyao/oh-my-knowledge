@@ -7,13 +7,13 @@ import { tCli } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
 import { DEFAULT_OBSERVE_HEALTH_DIR } from '../../../eval-core/default-dirs.js';
 
-// `omk observe health <sessions-dir>` — 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
-// 由 Studio /observe-health 按需渲染。同级子命令 ingest / inbox / show 走观测收件箱(observe-inbox)那条线。
+// `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
+// 由 Studio /observe-health 按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show。
 
-export default class ObserveHealth extends BaseCommand {
+export default class Observe extends BaseCommand {
   static description = bilingual({
-    zh: '分析 sessions 目录的 skill 调用健康度，产出观测健康报告。',
-    en: 'Analyze skill invocation health from a sessions dir; produce an observe-health report.',
+    zh: '分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。',
+    en: 'Analyze skill invocation health from a sessions dir (default). Subcommands: ingest / inbox / show.',
   });
 
   static examples = [
@@ -22,7 +22,7 @@ export default class ObserveHealth extends BaseCommand {
         zh: '分析最近 7 天',
         en: 'Analyze last 7 days',
       }),
-      command: '<%= config.bin %> observe health ~/.claude/sessions --last 7d',
+      command: '<%= config.bin %> observe ~/.claude/sessions --last 7d',
     },
   ];
 
@@ -65,12 +65,12 @@ export default class ObserveHealth extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ObserveHealth);
+    const { args, flags } = await this.parse(Observe);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const dir = args.sessionsDir;
       if (!dir) {
-        console.error(tCli('cli.help.observe_health', lang).trim());
+        console.error(tCli('cli.help.observe', lang).trim());
         throw new CliExit(1);
       }
       const tracePath = resolve(dir);

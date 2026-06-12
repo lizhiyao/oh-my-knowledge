@@ -277,19 +277,35 @@ The HTML report has two tabs:
 
 ## `omk observe`
 
-`omk observe` ships two workflows: `omk observe health` for skill-health reports, and the observe inbox (`ingest` / `inbox` / `show`) for human review. (Bare `omk observe <sessions>` is deprecated and no longer runs analysis — use `omk observe health`.)
+`omk observe` ships two workflows: the default skill-health report, and the observe inbox (`ingest` / `inbox` / `show`) for human review.
 
-### A. Skill-health report (`omk observe health`)
+### A. Skill-health report (default)
 
 ```bash
-omk observe health ~/.claude/projects/-Users-you-Documents-my-project
-omk observe health ~/.claude/projects/my-project --last 7d
-omk observe health ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-omk observe health ~/.claude/projects/my-project --skills audit,polish
-omk observe health ~/.claude/projects/my-project --kb /path/to/project
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-For full flags: `omk observe health --help`.
+<!-- omk:cli:observe:flags:start -->
+
+**Flags:**
+
+```text
+  --from <value>        Start time ISO, overrides --last
+  --kb <value>          KB root, enables KB-aware analysis
+  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --last <value>        Time window (7d / 24h / 30m)
+  --output-dir <value>  Health report output dir, default ~/.oh-my-knowledge/observe-health
+  --skills <value>      Filter to specific skills, comma-separated
+  --to <value>          End time ISO
+```
+
+For full descriptions: `omk observe --help`.
+
+<!-- omk:cli:observe:flags:end -->
 
 Turns real Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
