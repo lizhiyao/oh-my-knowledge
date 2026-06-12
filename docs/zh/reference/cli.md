@@ -457,4 +457,4 @@ omk studio --no-open
 
 启动本地知识工作台浏览报告。verdict、用例回退、跨用例 diff、饱和曲线、单用例 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
 
-Studio 是 skill-centric 信息架构 — 列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势，详情页（`/skills/<name>`）左栏列关键问题清单（skill 优化 / 用例优化 / 工具反馈三档），右栏画 chart.js 健康趋势 + 三个紧凑阶段卡（doctor / eval / observe），细节走 modal。旧的 run 列表挪到 `/runs`。访问 `/observations/inbox` 查看 observe inbox 看板：按 skill 资产视图（rollup）+ reviewer 待办建议 + 当前可观测漏斗 + 单 observation 详情面板（含事件三元组）。
+Studio 是 skill-centric 信息架构 — 列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势，详情页（`/skills/<name>`）左栏列关键问题清单（skill 优化 / 用例优化 / 工具反馈三档），右栏画 chart.js 健康趋势 + 三个紧凑阶段卡（doctor / eval / observe），细节走 modal。旧的 run 列表挪到 `/runs`。访问 `/observe-inbox` 查看 observe inbox 看板：按 skill 资产视图（rollup）+ reviewer 待办建议 + 当前可观测漏斗 + 单 observation 详情面板（含事件三元组）。
