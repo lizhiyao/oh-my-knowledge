@@ -1,7 +1,6 @@
 import type { CliMessage } from './types.js';
 
 export type HelpMessageKey =
-  | 'cli.help.observe'
   | 'cli.help.observe_health'
   | 'cli.help.observe_ingest'
   | 'cli.help.observe_inbox'
@@ -11,64 +10,6 @@ export type HelpMessageKey =
   | 'cli.help.studio';
 
 export const helpDict: Record<HelpMessageKey, CliMessage> = {
-  'cli.help.observe': {
-    zh: `
-omk observe——观测命令族（裸 omk observe 已弃用，健康分析请用 omk observe health）
-
-用法：
-  omk observe health <sessions-dir> [options]
-  omk observe ingest <sessions-dir> [options]
-  omk observe inbox [options]
-  omk observe show <inbox_id> [options]
-
-选项：
-  --kb <path>                         知识库根路径（默认：从 trace cwd 推断）
-  --last <duration>                   时间窗口，例如 7d / 24h / 30m
-  --from <iso>                        窗口起点，优先级高于 --last
-  --to <iso>                          窗口终点，优先级高于 --last
-  --skills <n1,n2,...>                只分析指定 skill
-  --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/observe-health）
-
-Inbox:
-  ingest --output-dir <path>           写入 observe inbox 数据（默认：.omk/observe-inbox；读取时兜底到 ~/.oh-my-knowledge/observe-inbox）
-  inbox --input-dir <path>             读取 observe inbox 数据
-  inbox --limit <n>                    展示 top N（默认：20）
-  inbox --skill <name>                 只看指定 skill
-  inbox --explore <n>                  从最近 50 条 medium/low 问题里抽样查看长尾
-  inbox --include-noise                --explore 时显式包含 noise 桶
-  inbox --by-skill                     按 skill 输出资产看板
-  inbox --json                         输出 JSON
-  show <inbox_id> --input-dir <path>    查看单条 observation 的前后上下文
-`,
-    en: `
-omk observe — observe command family (bare omk observe is deprecated; use omk observe health for analysis)
-
-Usage:
-  omk observe health <sessions-dir> [options]
-  omk observe ingest <sessions-dir> [options]
-  omk observe inbox [options]
-  omk observe show <inbox_id> [options]
-
-Options:
-  --kb <path>                         Knowledge base root (default: infer from trace cwd)
-  --last <duration>                   Time window, e.g. 7d / 24h / 30m
-  --from <iso>                        Window start, overrides --last
-  --to <iso>                          Window end, overrides --last
-  --skills <n1,n2,...>                Only analyze selected skills
-  --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/observe-health)
-
-Inbox:
-  ingest --output-dir <path>           Write observe inbox data (default: .omk/observe-inbox; read fallback: ~/.oh-my-knowledge/observe-inbox)
-  inbox --input-dir <path>             Read observe inbox data
-  inbox --limit <n>                    Show top N (default: 20)
-  inbox --skill <name>                 Only show one skill
-  inbox --explore <n>                  Sample long-tail issues from the latest 50 medium/low items
-  inbox --include-noise                Explicitly include the noise bucket with --explore
-  inbox --by-skill                     Print the skill-level asset board
-  inbox --json                         Print JSON
-  show <inbox_id> --input-dir <path>    Show context around one observation
-`,
-  },
   'cli.help.observe_health': {
     zh: `
 omk observe health——分析真实 session trace，生成 skill 健康度报告

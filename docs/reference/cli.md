@@ -289,23 +289,7 @@ omk observe health ~/.claude/projects/my-project --skills audit,polish
 omk observe health ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-<!-- omk:cli:observe:flags:start -->
-
-**Flags:**
-
-```text
-  --from <value>        Start time ISO, overrides --last
-  --kb <value>          KB root, enables KB-aware analysis
-  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --last <value>        Time window (7d / 24h / 30m)
-  --output-dir <value>  Health report output dir, default ~/.oh-my-knowledge/observe-health
-  --skills <value>      Filter to specific skills, comma-separated
-  --to <value>          End time ISO
-```
-
-For full descriptions: `omk observe --help`.
-
-<!-- omk:cli:observe:flags:end -->
+For full flags: `omk observe health --help`.
 
 Turns real Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 

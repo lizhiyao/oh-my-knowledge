@@ -87,7 +87,12 @@ function walkMarkdown(dir: string, out: string[]): void {
 describe('markdown `omk <cmd>` 引用 grep gate', () => {
   it('全仓 user-facing markdown 里的 `omk <cmd>` 第一 token 必须是真实 oclif top-level 命令', async () => {
     const config = await Config.load({ root: PROJECT_ROOT });
-    const truth = new Set(getTopLevelIds(config));
+    // 顶层命令 + 顶层 topic 名（observe 现在是纯 topic：omk observe health 等子命令合法，
+    // 第一 token observe 必须被认作有效）。
+    const truth = new Set([
+      ...getTopLevelIds(config),
+      ...config.topics.map((t) => t.name).filter((n) => !n.includes(':')),
+    ]);
 
     const files = collectMarkdownFiles();
     const violations: Violation[] = [];

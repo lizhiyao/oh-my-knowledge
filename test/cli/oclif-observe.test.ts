@@ -24,21 +24,22 @@ interface ExecError extends Error {
 
 
 describe('oclif observe', () => {
-  it('observe --help (观测命令族入口，标注裸命令已弃用)', async () => {
+  it('observe --help (纯 topic，列出 4 个子命令)', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
-    assert.ok(stdout.includes('观测命令族') || stdout.includes('omk observe health'), `observe --help missing family / deprecation hint:\n${stdout}`);
-    assert.ok(stdout.includes('SESSIONSDIR'), 'should list positional');
-    assert.ok(stdout.includes('--kb'), 'should list --kb flag');
+    assert.ok(stdout.includes('observe health'), `observe --help should list health subcommand:\n${stdout}`);
+    assert.ok(stdout.includes('observe ingest'), 'should list ingest subcommand');
+    assert.ok(stdout.includes('observe inbox'), 'should list inbox subcommand');
+    assert.ok(stdout.includes('observe show'), 'should list show subcommand');
   });
 
-  it('observe <sessions> 直接弃用 → exit 1 + 引导 omk observe health', async () => {
+  it('observe <sessions> 已直接弃用 → 非零退出（observe 是纯 topic，无默认命令，不再代跑分析）', async () => {
     try {
       await execFileAsync('node', [CLI, 'observe', 'some-sessions-dir']);
-      assert.fail('expected non-zero exit');
+      assert.fail('expected non-zero exit (observe has no default command)');
     } catch (err) {
       const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /omk observe health/, `stderr should point to omk observe health:\n${e.stderr}`);
+      assert.notEqual(e.code, 0, `expected non-zero exit, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /not found/, `stderr should be oclif command-not-found:\n${e.stderr}`);
     }
   });
 
@@ -78,16 +79,6 @@ describe('oclif observe', () => {
     } catch (err) {
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-    }
-  });
-
-  it('observe unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'observe', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
     }
   });
 

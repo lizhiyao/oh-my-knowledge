@@ -174,10 +174,10 @@ describe('CLI', () => {
     assert.ok(!gold.stdout.includes('omk eval --control'));
   });
 
-  it('observe --help shows session observation usage', async () => {
+  it('observe --help lists subcommands (observe 是纯 topic)', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
-    assert.ok(stdout.includes('omk observe'));
-    assert.ok(stdout.includes('--last'));
+    assert.ok(stdout.includes('observe health'), `topic help should list health subcommand:\n${stdout}`);
+    assert.ok(stdout.includes('observe inbox'), 'topic help should list inbox subcommand');
   });
 
   it('evolve --help shows skill auto-iteration usage', async () => {
@@ -314,7 +314,7 @@ describe('CLI', () => {
 
   it('Claude Code SKILL manifest uses current product commands', async () => {
     const body = await readFile(join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md'), 'utf8');
-    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"'));
+    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|list|promote|rollback|sample|studio> [options]"'));
     assert.ok(body.includes('omk eval --batch'));
     assert.ok(body.includes('omk sample --batch'));
     assert.ok(body.includes('omk evolve'));

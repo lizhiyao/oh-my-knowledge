@@ -289,23 +289,7 @@ omk observe health ~/.claude/projects/my-project --skills audit,polish
 omk observe health ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-<!-- omk:cli:observe:flags:start -->
-
-**Flags:**
-
-```text
-  --from <value>        起始时间 ISO，优先级高于 --last
-  --kb <value>          知识库 root，启用 KB-aware 分析
-  --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --last <value>        时间窗(7d / 24h / 30m）
-  --output-dir <value>  健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
-  --skills <value>      只看指定 skill，逗号分隔
-  --to <value>          结束时间 ISO
-```
-
-完整描述见 `omk observe --help`。
-
-<!-- omk:cli:observe:flags:end -->
+完整 flag 见 `omk observe health --help`。
 
 把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 

@@ -385,38 +385,6 @@ omk list --global
 omk list --json
 ```
 
-## omk observe
-
-观测命令族入口。健康分析请用 omk observe health（裸 omk observe <sessions> 已弃用）。子命令:ingest / inbox / show。
-
-**用法:**
-
-```bash
-omk observe [sessionsDir] [flags]
-```
-
-**参数:**
-
-- `sessionsDir`(可选):sessions 目录路径（已弃用，请改用 omk observe health <sessions>）
-
-**Flags:**
-
-- `--from` `option`:起始时间 ISO，优先级高于 --last
-- `--kb` `option`:知识库 root，启用 KB-aware 分析
-- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--last` `option`:时间窗(7d / 24h / 30m）
-- `--output-dir` `option`:健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
-- `--skills` `option`:只看指定 skill，逗号分隔
-- `--to` `option`:结束时间 ISO
-
-**示例:**
-
-> 健康分析（替代已弃用的裸 omk observe）
-
-```bash
-omk observe health ~/.claude/sessions --last 7d
-```
-
 ## omk observe health
 
 分析 sessions 目录的 skill 调用健康度，产出观测健康报告。

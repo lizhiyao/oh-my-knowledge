@@ -95,9 +95,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk observe --bogus-flag exits 2 (sanity: helper covers observe handler)', async () => {
+  it('omk observe health --bogus-flag exits 2 (sanity: helper covers observe health handler)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'observe', '/tmp/some-path', '--bogus-flag']),
+      () => execFileAsync('node', [CLI, 'observe', 'health', '/tmp/some-path', '--bogus-flag']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
