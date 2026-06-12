@@ -8,7 +8,7 @@ import { parseLastWindow } from '../../lib/shared.js';
 import { DEFAULT_OBSERVE_HEALTH_DIR } from '../../../eval-core/default-dirs.js';
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
-// 由 Studio /observe-health 按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show。
+// 由 Studio 健康报告页按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show。
 
 export default class Observe extends BaseCommand {
   static description = bilingual({
@@ -103,7 +103,7 @@ export default class Observe extends BaseCommand {
         skills,
       });
 
-      // JSON 是主产物；HTML 由 report server 的 /observe-health/:id 按需渲染。
+      // JSON 是主产物；HTML 由 report server 的健康报告详情页按需渲染。
       const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVE_HEALTH_DIR);
       mkdirSync(outDir, { recursive: true });
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

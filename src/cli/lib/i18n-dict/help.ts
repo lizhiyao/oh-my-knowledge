@@ -231,7 +231,7 @@ omk studio——打开本地知识工作台
   --port <n>                          本地服务端口（默认：7799）
   --host <host>                       监听地址（默认：127.0.0.1；局域网访问可用 0.0.0.0）
   --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --analyses-dir <path>               观测分析目录
+  --analyses-dir <path>               观测健康报告目录（默认：~/.oh-my-knowledge/observe-health）
   --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
   --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
@@ -252,7 +252,7 @@ Options:
   --port <n>                          Local server port (default: 7799)
   --host <host>                       Listen address (default: 127.0.0.1; use 0.0.0.0 for LAN access)
   --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --analyses-dir <path>               Observation analyses directory
+  --analyses-dir <path>               Observe-health reports dir (default: ~/.oh-my-knowledge/observe-health)
   --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)
   --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
