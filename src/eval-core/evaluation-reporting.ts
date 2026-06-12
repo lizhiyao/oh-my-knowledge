@@ -1,9 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
@@ -42,7 +42,8 @@ function findPackageJson(startDir: string): string {
 
 const PKG: { version: string } = JSON.parse(readFileSync(findPackageJson(__dirname), 'utf-8')) as { version: string };
 
-export const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
+// 写报告的默认目录 = reports 单一来源(default-dirs)。保留 DEFAULT_OUTPUT_DIR 名给既有 16 处 import,值统一,杜绝写/读两端漂移。
+export const DEFAULT_OUTPUT_DIR: string = DEFAULT_REPORTS_DIR;
 export const EVALUATION_REPORT_SCHEMA_VERSION = 4;
 
 export function hashString(str: string): string {

@@ -14,6 +14,7 @@ import { renderObservationInboxPage } from '../renderer/observation-inbox-render
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
+import { DEFAULT_REPORTS_DIR } from '../eval-core/default-dirs.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
@@ -29,7 +30,7 @@ import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
-const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
+// reports 默认目录的单一来源在 eval-core/default-dirs(cli 写 / server 读须一致);analyses/doctors 仅此处一用,保留本地定义。
 const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
 const DEFAULT_DOCTORS_DIR = join(homedir(), '.oh-my-knowledge', 'doctors');
 
