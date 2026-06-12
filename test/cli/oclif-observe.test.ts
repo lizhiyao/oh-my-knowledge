@@ -31,6 +31,16 @@ describe('oclif observe', () => {
     assert.ok(stdout.includes('--kb'), 'should list --kb flag');
   });
 
+  it('observe unknown flag → exit 2', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'observe', '--bogus']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2);
+    }
+  });
+
   it('observe ingest --help', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', 'ingest', '--help']);
     assert.ok(stdout.includes('ingest 成 observation inbox'), `ingest --help missing zh:\n${stdout}`);
@@ -67,16 +77,6 @@ describe('oclif observe', () => {
     } catch (err) {
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-    }
-  });
-
-  it('observe unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'observe', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
     }
   });
 

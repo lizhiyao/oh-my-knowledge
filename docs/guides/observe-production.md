@@ -24,7 +24,7 @@ Scope the window with `--last 7d` / `--from … --to …`, and narrow to specifi
 When you want to triage observations one by one (and feed the good ones back as regression cases), use the inbox. The whole pipeline is local-only and LLM-free.
 
 ```bash
-# 1. Parse traces, aggregate + de-noise signals, write to .omk/observations/
+# 1. Parse traces, aggregate + de-noise signals, write to .omk/observe-inbox/
 omk observe ingest ~/.claude/projects/my-project
 
 # 2. Read the inbox (default top 20, sorted by severity / confidence / lastSeen)
