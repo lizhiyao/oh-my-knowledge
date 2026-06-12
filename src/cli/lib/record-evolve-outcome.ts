@@ -10,8 +10,8 @@ import {
   appendManagedEvidence,
   rebaselineManagedContentHash,
   buildEvidenceRef,
+  probeSourceState,
 } from '../../managed/index.js';
-import { probeSourceState } from './source-probe.js';
 import type { EvaluationReport, ManagedArtifactRecord, ManagedEvidenceRef } from '../../types/index.js';
 
 export interface EvolveOutcomeInput {

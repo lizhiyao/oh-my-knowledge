@@ -1,6 +1,6 @@
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
@@ -13,6 +13,28 @@ const OBSERVATIONS_DIR = join(tmpdir(), `omk-test-observations-${Date.now()}`);
 // 导致 fixture skill 意外携带 observe / doctor snapshot(本地 / CI 漂移)。
 const ANALYSES_DIR = join(tmpdir(), `omk-test-analyses-${Date.now()}`);
 const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
+const MANAGED_DIR = join(tmpdir(), `omk-test-managed-${Date.now()}`);
+
+// 受管记录 fixture:git+url 源 → probeSourceState 直接 reachable + record.contentHash,零文件 IO、跨机稳定。
+// install + 两版本证据(NOISE→PROGRESS) + promote(当前内容)→ 行状态应为 promoted。
+const MANAGED_RECORD = {
+  recordKind: 'managed-artifact',
+  schemaVersion: 2,
+  id: 'skill-review-smoke',
+  name: 'review',
+  kind: 'skill',
+  source: { sourceKind: 'git', locator: 'git+https://example.com/r@abc123:review', url: 'https://example.com/r', ref: 'abc123', isDirectorySkill: true },
+  contentHash: 'hashV2smoke',
+  installedAt: '2026-03-01T00:00:00.000Z',
+  distribution: [],
+  evidence: [
+    { reportId: 'r1', contentHash: 'hashV1smoke', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'NOISE', sampleCoverage: { count: 6, hash: 'sh1' }, comparability: { cliVersion: '0.37.0' } },
+    { reportId: 'test-run-001', contentHash: 'hashV2smoke', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, comparability: { cliVersion: '0.37.0' } },
+  ],
+  decisions: [
+    { decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: 'hashV2smoke', reportId: 'test-run-001' },
+  ],
+};
 
 const SAMPLE_REPORT = {
   kind: 'evaluation',
@@ -141,6 +163,8 @@ describe('report-server', () => {
     mkdirSync(OBSERVATIONS_DIR, { recursive: true });
     mkdirSync(ANALYSES_DIR, { recursive: true });
     mkdirSync(DOCTORS_DIR, { recursive: true });
+    mkdirSync(MANAGED_DIR, { recursive: true });
+    writeFileSync(join(MANAGED_DIR, 'skill-review-smoke.json'), JSON.stringify(MANAGED_RECORD, null, 2));
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
@@ -232,7 +256,7 @@ describe('report-server', () => {
         },
       },
     }, null, 2));
-    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR });
+    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: MANAGED_DIR });
     baseUrl = await server.start();
   });
 
@@ -243,6 +267,118 @@ describe('report-server', () => {
     rmSync(OBSERVATIONS_DIR, { recursive: true, force: true });
     rmSync(ANALYSES_DIR, { recursive: true, force: true });
     rmSync(DOCTORS_DIR, { recursive: true, force: true });
+    rmSync(MANAGED_DIR, { recursive: true, force: true });
+  });
+
+  it('GET /managed lists managed skills with link + verdict', async () => {
+    const res = await fetch(`${baseUrl}/managed`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'] as string, /text\/html/);
+    assert.ok(res.body.includes('review'), 'should show skill name');
+    assert.ok(res.body.includes('/managed/skill-review-smoke'), 'should link to detail page by stable id');
+    assert.ok(res.body.includes('verdict-PROGRESS'), 'current verdict badge');
+    assert.ok(res.body.includes('已采用'), 'localized lifecycle label from promote decision (raw token stays in /api/managed)');
+    assert.ok(res.body.includes('mh-legend'), 'state/marker legend present for first-time viewers');
+  });
+
+  it('GET /api/managed returns versioned envelope', async () => {
+    const res = await fetch(`${baseUrl}/api/managed`);
+    assert.equal(res.status, 200);
+    const json = JSON.parse(res.body);
+    assert.equal(json.schemaVersion, 1);
+    assert.ok(Array.isArray(json.rows));
+    const row = json.rows.find((r: { name: string }) => r.name === 'review');
+    assert.ok(row, 'review row present');
+    assert.equal(row.state, 'promoted');
+    assert.equal(row.latestVerdict, 'PROGRESS');
+  });
+
+  it('GET /managed/<id> renders the decision timeline', async () => {
+    const res = await fetch(`${baseUrl}/managed/skill-review-smoke`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'] as string, /text\/html/);
+    assert.ok(res.body.includes('mh-timeline'), 'timeline present');
+    assert.ok(res.body.includes('安装纳管'), 'install event');
+    assert.ok(res.body.includes('verdict-PROGRESS') && res.body.includes('verdict-NOISE'), 'both version verdicts');
+    assert.ok(res.body.includes('alice'), 'promote actor');
+    assert.ok(res.body.includes('/reports/test-run-001'), 'links to evidence report');
+  });
+
+  it('GET /managed/<missing> → 404 (zh default, en via ?lang=en)', async () => {
+    const zh = await fetch(`${baseUrl}/managed/nope`);
+    assert.equal(zh.status, 404);
+    assert.ok(zh.body.includes('受管记录不存在'));
+    const en = await fetch(`${baseUrl}/managed/nope?lang=en`);
+    assert.equal(en.status, 404);
+    assert.ok(en.body.includes('managed record not found'));
+  });
+
+  it('GET /managed/<malformed %> → 404, not 500', async () => {
+    const res = await fetch(`${baseUrl}/managed/%E0%A4%A`);
+    assert.equal(res.status, 404, 'bad percent-encoding decodes to no match, not a crash');
+  });
+
+  it('EN 页内跳转透传 lang=en —— 列表行 / 返回 / 报告链接都带 lang(P2)', async () => {
+    const list = await fetch(`${baseUrl}/managed?lang=en`);
+    assert.ok(list.body.includes('/managed/skill-review-smoke?lang=en'), 'list row link carries lang');
+    const detail = await fetch(`${baseUrl}/managed/skill-review-smoke?lang=en`);
+    assert.ok(detail.body.includes('/managed?lang=en'), 'back-to-list link carries lang');
+    assert.ok(detail.body.includes('/reports/test-run-001?lang=en'), 'evidence report link carries lang');
+  });
+
+  it('同名跨 kind —— skill/review 与 prompt/review 各有独立 id,都可达(P1)', async () => {
+    const dir = join(tmpdir(), `omk-test-managed-xkind-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    const mk = (kind: string, id: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id, name: 'review', kind,
+      source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: kind === 'skill' },
+      contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
+    });
+    writeFileSync(join(dir, 'a.json'), JSON.stringify(mk('skill', 'id-skill-review')));
+    writeFileSync(join(dir, 'b.json'), JSON.stringify(mk('prompt', 'id-prompt-review')));
+    const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: dir });
+    const u = await s.start();
+    try {
+      assert.equal((await fetch(`${u}/managed/id-skill-review`)).status, 200, 'skill/review reachable');
+      assert.equal((await fetch(`${u}/managed/id-prompt-review`)).status, 200, 'prompt/review reachable');
+      const listBody = (await fetch(`${u}/managed`)).body;
+      assert.ok(listBody.includes('/managed/id-skill-review') && listBody.includes('/managed/id-prompt-review'), 'both rows link to distinct ids');
+    } finally {
+      await s.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('受管根目录按请求解析 —— 会话中途项目获首条记录后从 global 切回 project,不冻结于启动(P1)', async () => {
+    // 复现 reviewer 场景的可控版:local 空 → 解析到 global;local 有记录 → 解析到 local(模拟 resolveManagedDir
+    // 的 project→global 回退,但用受控 temp 目录、不碰 homedir,跨机稳定)。注入解析器 = server 持有的是「如何解析」
+    // 策略而非冻结 root —— 若 server 在启动时定死,中途新增的 project 记录就永远看不到。
+    const projDir = join(tmpdir(), `omk-test-managed-proj-${Date.now()}`);
+    const globalDir = join(tmpdir(), `omk-test-managed-glob-${Date.now()}`);
+    mkdirSync(projDir, { recursive: true });
+    mkdirSync(globalDir, { recursive: true });
+    const mk = (id: string, name: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id, name, kind: 'skill',
+      source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: true },
+      contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
+    });
+    writeFileSync(join(globalDir, 'g.json'), JSON.stringify(mk('id-global-skill', 'global-skill')));
+    // local 非空才用 local,否则回退 global —— 即 resolveManagedDir 的口径。
+    const resolver = (): string => (readdirSync(projDir).length > 0 ? projDir : globalDir);
+    const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: resolver });
+    const u = await s.start();
+    try {
+      const before = JSON.parse((await fetch(`${u}/api/managed`)).body);
+      assert.deepEqual(before.rows.map((r: { name: string }) => r.name), ['global-skill'], '启动时 local 空 → 解析到 global');
+      // 会话中途:项目里首次 install,local 目录获得记录。
+      writeFileSync(join(projDir, 'p.json'), JSON.stringify(mk('id-project-skill', 'project-skill')));
+      const after = JSON.parse((await fetch(`${u}/api/managed`)).body);
+      assert.deepEqual(after.rows.map((r: { name: string }) => r.name), ['project-skill'], '中途 local 获记录 → 同一会话实时切回 project');
+    } finally {
+      await s.stop();
+      rmSync(projDir, { recursive: true, force: true });
+      rmSync(globalDir, { recursive: true, force: true });
+    }
   });
 
   it('GET /health returns ok', async () => {

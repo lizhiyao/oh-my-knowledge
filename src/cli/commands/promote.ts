@@ -4,7 +4,6 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { CliExit } from '../lib/cli-exit.js';
-import { probeSourceState } from '../lib/source-probe.js';
 import { sanitizeCell } from '../lib/cell-format.js';
 import { getJudgePromptHash } from '../../grading/judge.js';
 import {
@@ -13,6 +12,7 @@ import {
   globalManagedDir,
   isCurrentlyPromoted,
   loadManagedRecord,
+  probeSourceState,
   managedDir,
   managedRecordId,
   resolveManagedDir,
