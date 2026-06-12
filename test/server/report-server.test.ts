@@ -450,25 +450,30 @@ describe('report-server', () => {
     }
   });
 
-  it('旧 observe 路由 302 兜底到 observe-* canonical(querystring 透传)', async () => {
-    // 改名后旧外链 / 书签不能 404。helper 用 http.request 不跟随重定向,直接验状态码 + Location。
-    const cases: Array<[string, string]> = [
-      ['/analyses', '/observe-health'],
-      ['/api/analyses', '/api/observe-health'],
-      ['/analyses/some-id?lang=en', '/observe-health/some-id?lang=en'],
-      ['/api/analyses/some-id', '/api/observe-health/some-id'],
-      ['/observations', '/observe-inbox'],
-      ['/observations/inbox?skill=foo', '/observe-inbox?skill=foo'],
+  it('旧 observe 路由兜底到 observe-* canonical:页面 302、API 307(querystring 透传)', async () => {
+    // 改名后旧外链 / 书签 / 已打开页面的旧 fetch 不能 404。helper 用 http.request 不跟随重定向,直接验状态码 + Location。
+    // 页面 302(临时);API 307 —— review-state 有 POST/DELETE,302 会被降级成 GET,307 保留 method。
+    const cases: Array<[string, number, string]> = [
+      ['/analyses', 302, '/observe-health'],
+      ['/analyses/some-id?lang=en', 302, '/observe-health/some-id?lang=en'],
+      ['/observations', 302, '/observe-inbox'],
+      ['/observations/inbox?skill=foo', 302, '/observe-inbox?skill=foo'],
+      ['/api/analyses', 307, '/api/observe-health'],
+      ['/api/analyses/some-id', 307, '/api/observe-health/some-id'],
+      ['/api/observations/inbox?severity=high', 307, '/api/observe-inbox?severity=high'],
+      ['/api/observations/show?id=obs-high', 307, '/api/observe-inbox/show?id=obs-high'],
+      ['/api/observations/diagnostics', 307, '/api/observe-inbox/diagnostics'],
+      ['/api/observations/review-state', 307, '/api/observe-inbox/review-state'],
     ];
-    for (const [from, to] of cases) {
+    for (const [from, status, to] of cases) {
       const res = await fetch(`${baseUrl}${from}`);
-      assert.equal(res.status, 302, `${from} should 302`);
+      assert.equal(res.status, status, `${from} should ${status}`);
       assert.equal(res.headers.location, to, `${from} → ${to}`);
     }
   });
 
-  it('GET /api/observations/inbox supports severity and limit query params', async () => {
-    const res = await fetch(`${baseUrl}/api/observations/inbox?severity=high&limit=1`);
+  it('GET /api/observe-inbox supports severity and limit query params', async () => {
+    const res = await fetch(`${baseUrl}/api/observe-inbox?severity=high&limit=1`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.length, 1);
@@ -476,8 +481,8 @@ describe('report-server', () => {
     assert.equal(data[0].severity, 'high');
   });
 
-  it('GET /api/observations/diagnostics exposes observe-backed Diagnosis data', async () => {
-    const res = await fetch(`${baseUrl}/api/observations/diagnostics`);
+  it('GET /api/observe-inbox/diagnostics exposes observe-backed Diagnosis data', async () => {
+    const res = await fetch(`${baseUrl}/api/observe-inbox/diagnostics`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.sourceCoverage.observe, true);

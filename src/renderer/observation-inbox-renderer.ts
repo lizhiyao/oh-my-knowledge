@@ -5693,7 +5693,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           try {
             var payload = { targetType: 'experience_session', targetId: sessionId, verdict: verdict };
             if (note) payload.reason = note;
-            var resp = await fetch('/api/observations/review-state', {
+            var resp = await fetch('/api/observe-inbox/review-state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -6110,7 +6110,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           target.textContent = 'Loading...';
           if (btn) btn.textContent = 'Hide trace';
           try {
-            var res = await fetch('/api/observations/show?id=' + encodeURIComponent(id));
+            var res = await fetch('/api/observe-inbox/show?id=' + encodeURIComponent(id));
             var data = await res.json();
             target.textContent = data.text || data.error || '';
           } catch (err) {
@@ -6132,8 +6132,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var shouldDelete = current === verdict;
           try {
             var res = shouldDelete
-              ? await fetch('/api/observations/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
-              : await fetch('/api/observations/review-state', {
+              ? await fetch('/api/observe-inbox/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observe-inbox/review-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ targetType: targetType, targetId: targetId, verdict: verdict })
@@ -6197,8 +6197,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var shouldDelete = current === verdict && !reason;
           try {
             var res = shouldDelete
-              ? await fetch('/api/observations/review-state?targetType=reviewer_judgment&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
-              : await fetch('/api/observations/review-state', {
+              ? await fetch('/api/observe-inbox/review-state?targetType=reviewer_judgment&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observe-inbox/review-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -6287,7 +6287,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         async function setSoftStandardStatus(skillName, standardId, status, btn) {
           if (btn) btn.disabled = true;
           try {
-            var res = await fetch('/api/observations/review-state', {
+            var res = await fetch('/api/observe-inbox/review-state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -6342,8 +6342,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           if (btn) btn.disabled = true;
           try {
             var res = value === ''
-              ? await fetch('/api/observations/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
-              : await fetch('/api/observations/review-state', {
+              ? await fetch('/api/observe-inbox/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observe-inbox/review-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -6511,9 +6511,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           try {
             var res;
             if (!action) {
-              res = await fetch('/api/observations/review-state?targetType=goal_slice_correction&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' });
+              res = await fetch('/api/observe-inbox/review-state?targetType=goal_slice_correction&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' });
             } else {
-              res = await fetch('/api/observations/review-state', {
+              res = await fetch('/api/observe-inbox/review-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -6647,8 +6647,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var source = {};
           try { source = JSON.parse(btn.getAttribute('data-manual-mark-source') || '{}'); } catch { source = {}; }
           var res = next === ''
-            ? await fetch('/api/observations/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(metric.targetId), { method: 'DELETE' })
-            : await fetch('/api/observations/review-state', {
+            ? await fetch('/api/observe-inbox/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(metric.targetId), { method: 'DELETE' })
+            : await fetch('/api/observe-inbox/review-state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -6778,8 +6778,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         async function submitEvidenceMetricAnnotation(targetId, metricKey, btn, next, reason) {
           var res = next === ''
-            ? await fetch('/api/observations/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
-            : await fetch('/api/observations/review-state', {
+            ? await fetch('/api/observe-inbox/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+            : await fetch('/api/observe-inbox/review-state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

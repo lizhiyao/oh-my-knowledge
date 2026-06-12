@@ -669,20 +669,25 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      // 旧 observe 路由 → observe-* 词根 canonical 路由的 302 兜底(querystring 透传),防外链 / 书签失效。
-      // 内部契约 /api/observations/* 与复合名 /skill-trend、/analyses-diff 保留不改,不在此重定向。
-      const legacyObserveRedirect = ((): string | null => {
-        if (path === '/analyses') return '/observe-health';
-        if (path === '/api/analyses') return '/api/observe-health';
-        if (path === '/observations' || path === '/observations/inbox') return '/observe-inbox';
+      // 旧 observe 路由 → observe-* 词根 canonical 的兜底(querystring 透传),防外链 / 书签 / 已打开页面的旧 fetch 失效。
+      // 页面用 302(临时);API 用 307 —— review-state 有 POST/DELETE,302 会被客户端降级成 GET,307 保留 method+body。
+      // 复合名 /analyses-diff、/api/analyses-diff、/skill-trend 维持原名,不在此重定向。
+      const legacyObserveRedirect = ((): { to: string; status: 302 | 307 } | null => {
+        if (path === '/analyses') return { to: '/observe-health', status: 302 };
+        if (path === '/observations' || path === '/observations/inbox') return { to: '/observe-inbox', status: 302 };
         const detail = path.match(/^\/analyses\/(.+)$/);
-        if (detail) return `/observe-health/${detail[1]}`;
+        if (detail) return { to: `/observe-health/${detail[1]}`, status: 302 };
+        if (path === '/api/analyses') return { to: '/api/observe-health', status: 307 };
         const apiDetail = path.match(/^\/api\/analyses\/(.+)$/);
-        if (apiDetail) return `/api/observe-health/${apiDetail[1]}`;
+        if (apiDetail) return { to: `/api/observe-health/${apiDetail[1]}`, status: 307 };
+        if (path === '/api/observations/inbox') return { to: '/api/observe-inbox', status: 307 };
+        if (path === '/api/observations/show') return { to: '/api/observe-inbox/show', status: 307 };
+        if (path === '/api/observations/diagnostics') return { to: '/api/observe-inbox/diagnostics', status: 307 };
+        if (path === '/api/observations/review-state') return { to: '/api/observe-inbox/review-state', status: 307 };
         return null;
       })();
       if (legacyObserveRedirect) {
-        res.writeHead(302, { Location: legacyObserveRedirect + parsed.search });
+        res.writeHead(legacyObserveRedirect.status, { Location: legacyObserveRedirect.to + parsed.search });
         res.end();
         return;
       }
@@ -737,7 +742,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/inbox') {
+      if (path === '/api/observe-inbox') {
         const severity = parsed.searchParams.get('severity');
         const skill = parsed.searchParams.get('skill');
         const limitRaw = parsed.searchParams.get('limit');
@@ -755,7 +760,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/diagnostics') {
+      if (path === '/api/observe-inbox/diagnostics') {
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -773,7 +778,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/show') {
+      if (path === '/api/observe-inbox/show') {
         const id = parsed.searchParams.get('id') || '';
         const item = id ? findObservationInboxItem(id, observationsDir) : null;
         res.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -781,7 +786,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      if (path === '/api/observations/review-state') {
+      if (path === '/api/observe-inbox/review-state') {
         if (req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(loadObservationReviewState(observationsDir)));
