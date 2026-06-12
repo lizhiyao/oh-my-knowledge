@@ -387,7 +387,7 @@ omk list --json
 
 ## omk observe
 
-（已弃用，改用 omk observe health）分析 sessions 目录的 skill 调用健康度。子命令:ingest / inbox / show。
+观测命令族入口。健康分析请用 omk observe health（裸 omk observe <sessions> 已弃用）。子命令:ingest / inbox / show。
 
 **用法:**
 
@@ -397,7 +397,7 @@ omk observe [sessionsDir] [flags]
 
 **参数:**
 
-- `sessionsDir`(可选):sessions 目录路径（如 ~/.claude/sessions）
+- `sessionsDir`(可选):sessions 目录路径（已弃用，请改用 omk observe health <sessions>）
 
 **Flags:**
 
@@ -411,7 +411,7 @@ omk observe [sessionsDir] [flags]
 
 **示例:**
 
-> 已弃用，等价于 omk observe health
+> 健康分析（替代已弃用的裸 omk observe）
 
 ```bash
 omk observe health ~/.claude/sessions --last 7d

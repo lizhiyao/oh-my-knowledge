@@ -87,8 +87,8 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     en: 'Analysis JSON written to output-dir; use omk observe health to keep producing health reports.',
   },
   'cli.observe.deprecated_alias': {
-    zh: '⚠ omk observe 已弃用，请改用 omk observe health\n',
-    en: '⚠ omk observe is deprecated; use omk observe health instead\n',
+    zh: '❌ omk observe <sessions> 已弃用，请改用 omk observe health <sessions>',
+    en: '❌ omk observe <sessions> is deprecated; run omk observe health <sessions> instead',
   },
   'cli.studio.started': {
     zh: 'studio 已启动：{url}',

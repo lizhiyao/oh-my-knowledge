@@ -277,7 +277,7 @@ HTML 报告有两个 tab：
 
 ## `omk observe`
 
-omk observe 提供两条工作流：`omk observe health` 生成 skill 健康度报告，observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。（裸 `omk observe` 是 `omk observe health` 的弃用别名。）
+omk observe 提供两条工作流：`omk observe health` 生成 skill 健康度报告，observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。（裸 `omk observe <sessions>` 已弃用、不再直接分析，请用 `omk observe health`。）
 
 ### A. skill 健康度报告（`omk observe health`）
 

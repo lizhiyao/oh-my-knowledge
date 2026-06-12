@@ -277,7 +277,7 @@ The HTML report has two tabs:
 
 ## `omk observe`
 
-`omk observe` ships two workflows: `omk observe health` for skill-health reports, and the observe inbox (`ingest` / `inbox` / `show`) for human review. (Bare `omk observe` is a deprecated alias for `omk observe health`.)
+`omk observe` ships two workflows: `omk observe health` for skill-health reports, and the observe inbox (`ingest` / `inbox` / `show`) for human review. (Bare `omk observe <sessions>` is deprecated and no longer runs analysis — use `omk observe health`.)
 
 ### A. Skill-health report (`omk observe health`)
 

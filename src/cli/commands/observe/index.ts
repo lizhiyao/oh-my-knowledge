@@ -1,26 +1,24 @@
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
+import { CliExit } from '../../lib/cli-exit.js';
 import { tCli } from '../../lib/i18n.js';
 
-// 裸 `omk observe <sessions-dir>` 已弃用别名 —— 转发到 `omk observe health`，并打一行 stderr 弃用提示。
-// 保留 args/flags 仅供 `omk observe --help` 渲染(描述里标弃用)；run() 不自己解析，直接透传原始 argv，
-// 让 observe:health 按它自己的口径解析。子命令 ingest / inbox / show 不受影响。
+// 裸 `omk observe <sessions-dir>` 已弃用 —— 不再直接做健康分析,给了 sessions 参数即报错引导到 `omk observe health`。
+// 保留 args/flags 仅为让旧式调用(如 `omk observe <dir> --last 7d`)能优雅解析到引导信息,而非抛未知 flag。
+// 子命令 ingest / inbox / show 不受影响,经各自命令文件路由。
 
 export default class Observe extends BaseCommand {
   static description = bilingual({
-    zh: '（已弃用，改用 omk observe health）分析 sessions 目录的 skill 调用健康度。子命令:ingest / inbox / show。',
-    en: '(Deprecated, use omk observe health) Analyze skill invocation health from sessions dir. Subcommands: ingest / inbox / show.',
+    zh: '观测命令族入口。健康分析请用 omk observe health（裸 omk observe <sessions> 已弃用）。子命令:ingest / inbox / show。',
+    en: 'Observe command family. Use omk observe health for analysis (bare omk observe <sessions> is deprecated). Subcommands: ingest / inbox / show.',
   });
-
-  // strict=false:别名只透传，不对 health 的 flags 做二次校验，避免未知 flag 在此层报错。
-  static strict = false;
 
   static examples = [
     {
       description: bilingual({
-        zh: '已弃用，等价于 omk observe health',
-        en: 'Deprecated, equivalent to omk observe health',
+        zh: '健康分析（替代已弃用的裸 omk observe）',
+        en: 'Health analysis (replaces the deprecated bare omk observe)',
       }),
       command: '<%= config.bin %> observe health ~/.claude/sessions --last 7d',
     },
@@ -29,8 +27,8 @@ export default class Observe extends BaseCommand {
   static args = {
     sessionsDir: Args.string({
       description: bilingual({
-        zh: 'sessions 目录路径（如 ~/.claude/sessions）',
-        en: 'Sessions dir path (e.g. ~/.claude/sessions)',
+        zh: 'sessions 目录路径（已弃用，请改用 omk observe health <sessions>）',
+        en: 'Sessions dir path (deprecated, use omk observe health <sessions>)',
       }),
       required: false,
     }),
@@ -65,9 +63,17 @@ export default class Observe extends BaseCommand {
   };
 
   async run(): Promise<void> {
+    const { args } = await this.parse(Observe);
     const lang = this.lang;
-    process.stderr.write(tCli('cli.observe.deprecated_alias', lang));
-    // 透传原始 argv（含 flags），交给 observe:health 解析执行。
-    await this.config.runCommand('observe:health', this.argv);
+    await this.runWithCliExit(async () => {
+      if (args.sessionsDir) {
+        // 裸 omk observe <sessions> 已弃用,不再直接分析 —— 明确报错引导到 omk observe health。
+        console.error(tCli('cli.observe.deprecated_alias', lang).trim());
+        throw new CliExit(1);
+      }
+      // 无 sessions 参数:展示观测命令族 help（列出 health / ingest / inbox / show）。
+      console.error(tCli('cli.help.observe', lang).trim());
+      throw new CliExit(1);
+    });
   }
 }
