@@ -422,7 +422,7 @@ describe('report-server', () => {
     assert.equal(data[0].jobId, 'job-test-run-002');
   });
 
-  it('GET /analyses 列表入口:underpowered 报告圆点改灰 + 样本不足,high-N red 仍硬红', async () => {
+  it('GET /observe-health 列表入口:underpowered 报告圆点改灰 + 样本不足,high-N red 仍硬红', async () => {
     // underpowered(segmentCount 2,缺 confidence 走 segmentCount 兜底)+ red 健康带。
     const lowN = {
       meta: { generatedAt: '2026-05-09T01:00:00Z', sessionCount: 1, segmentCount: 2, toolCallCount: 1, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: '2026-05-09T00:00:00Z', to: '2026-05-09T01:00:00Z' } },
@@ -437,7 +437,7 @@ describe('report-server', () => {
     writeFileSync(join(ANALYSES_DIR, 'an-lown.json'), JSON.stringify(lowN));
     writeFileSync(join(ANALYSES_DIR, 'an-highn.json'), JSON.stringify(highN));
     try {
-      const res = await fetch(`${baseUrl}/analyses`);
+      const res = await fetch(`${baseUrl}/observe-health`);
       assert.equal(res.status, 200);
       // 低 N 报告:中性灰圆点 + 「样本不足」,不出现硬红圆点(本列表只有这一种带背景色的圆点)。
       assert.match(res.body, /background:var\(--text-faint\)/);
@@ -447,6 +447,23 @@ describe('report-server', () => {
     } finally {
       rmSync(join(ANALYSES_DIR, 'an-lown.json'), { force: true });
       rmSync(join(ANALYSES_DIR, 'an-highn.json'), { force: true });
+    }
+  });
+
+  it('旧 observe 路由 302 兜底到 observe-* canonical(querystring 透传)', async () => {
+    // 改名后旧外链 / 书签不能 404。helper 用 http.request 不跟随重定向,直接验状态码 + Location。
+    const cases: Array<[string, string]> = [
+      ['/analyses', '/observe-health'],
+      ['/api/analyses', '/api/observe-health'],
+      ['/analyses/some-id?lang=en', '/observe-health/some-id?lang=en'],
+      ['/api/analyses/some-id', '/api/observe-health/some-id'],
+      ['/observations', '/observe-inbox'],
+      ['/observations/inbox?skill=foo', '/observe-inbox?skill=foo'],
+    ];
+    for (const [from, to] of cases) {
+      const res = await fetch(`${baseUrl}${from}`);
+      assert.equal(res.status, 302, `${from} should 302`);
+      assert.equal(res.headers.location, to, `${from} → ${to}`);
     }
   });
 

@@ -5149,13 +5149,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </section>`;
 	  return layout(pageTitle, `
 	    <main class="observe-report-root">
-	      <nav style="margin-bottom:12px"><a href="/analyses" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
+	      <nav style="margin-bottom:12px"><a href="/observe-health" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
 	      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0">
 	        <div>
-	          <h1 style="font-size:22px;margin:0">${activeSkill ? `线上观测报告 · ${e(activeSkill)}` : '线上观测报告'}</h1>
+	          <h1 style="font-size:22px;margin:0">${activeSkill ? `观测收件箱 · ${e(activeSkill)}` : '观测收件箱'}</h1>
 	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前只展示能力 ${e(activeSkill)} 的复盘记录。</div>` : ''}
 	        </div>
-	        ${activeSkill ? `<a href="/observations/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
+	        ${activeSkill ? `<a href="/observe-inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
 	      </div>
       <style>${OBSERVATION_INBOX_STYLES}</style>
       <div id="signal-global-tooltip" role="tooltip"></div>
@@ -5191,7 +5191,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <section style="margin-top:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);overflow:hidden">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:13px 14px;border-bottom:1px solid var(--border)">
           <div>
-            <h2 style="font-size:15px;margin:0;color:var(--text-primary)">Skill 健康度看板</h2>
+            <h2 style="font-size:15px;margin:0;color:var(--text-primary)">Skill 观测看板</h2>
             <div style="color:var(--text-muted);font-size:12px;margin-top:3px">一行一个 skill。子项指标同时汇总 trace 工具调用和 过程发现 信号：工具调用看运行行为，过程发现 看发现的问题类型。</div>
           </div>
           <div style="color:var(--text-muted);font-size:12px;white-space:nowrap">${skillRollups.length} trace skills</div>

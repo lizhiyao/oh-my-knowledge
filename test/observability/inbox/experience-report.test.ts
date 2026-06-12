@@ -212,7 +212,7 @@ describe('observe inbox - experience report', () => {
         entries: {},
       }),
     });
-    assert.match(rendered, /线上观测报告/);
+    assert.match(rendered, /观测收件箱/);
     assert.match(rendered, /class="inbox-shell"/);
     assert.match(rendered, /data-inbox-card="/);
     assert.match(rendered, /data-inbox-detail="/);

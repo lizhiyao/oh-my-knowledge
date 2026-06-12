@@ -2748,7 +2748,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <h1>Evaluation Reports</h1>
     <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs</p>
 
-    <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses?lang=en">📊 <span data-i18n="skillHealthTitle">Skill Health Reports</span> →</a></div>
+    <div style="margin:12px 0"><a class="page-secondary-link" href="/observe-health?lang=en">📊 <span data-i18n="skillHealthTitle">Skill Health Reports</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="Filter by name, variant..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
@@ -3345,7 +3345,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <h1>评测报告</h1>
     <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测</p>
 
-    <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses">📊 <span data-i18n="skillHealthTitle">Skill 健康度日报</span> →</a></div>
+    <div style="margin:12px 0"><a class="page-secondary-link" href="/observe-health">📊 <span data-i18n="skillHealthTitle">Skill 健康度日报</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="搜索报告名称、变体..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
