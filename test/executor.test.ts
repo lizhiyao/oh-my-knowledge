@@ -73,6 +73,15 @@ describe('createExecutor', () => {
     assert.ok(result.mockStats);
   });
 
+  it('script executor 错误退出路径也回填 mockStats(对齐 claude-cli)', async () => {
+    const mocks: Mock[] = [{ tool: 'Read', match: { file_path_endswith: 'x.txt' }, return: 'mocked' }];
+    const executor = createExecutor('node test/fixtures/script-executor-fail.mjs');
+    const result = await executor({ model: 'test', system: '', prompt: 'hi', mocks });
+    assert.equal(result.ok, false);
+    // 出错样本同样带 mockStats(此 fixture 没真调工具,hits=0 但字段在),与 claude-cli 口径一致
+    assert.ok(result.mockStats);
+  });
+
   it('script executor 无 mocks 时不暴露 mock env(向后兼容)', async () => {
     const executor = createExecutor('node test/fixtures/script-executor-mock-probe.mjs');
     const result = await executor({ model: 'test', system: '', prompt: 'hi' });

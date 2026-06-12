@@ -56,6 +56,14 @@ export function createScriptExecutor(command: string): ExecutorFn {
       env.OMK_MOCK_SETTINGS_FILE = mockHandle.settingsFile;
       if (mockHandle.mcpConfigFile) env.OMK_MOCK_MCP_CONFIG_FILE = mockHandle.mcpConfigFile;
     }
+    // 与 claude-cli / claude-sdk 对齐:每条返回路径(成功/解析失败/超时/中断/错误)都回填
+    // mockStats,出错样本也能看到 mock 命中统计。readStats 内部已对缺文件/坏 JSON 兜底,
+    // 这里再包一层 try/catch 防御(不让取统计反而把成功结果带崩)。必须在 finally cleanup
+    // 删临时目录之前读 —— return 表达式先求值,再走 finally,顺序正确。
+    const captureMockStats = (): ExecResult['mockStats'] | undefined => {
+      if (!mockHandle) return undefined;
+      try { return mockHandle.readStats(); } catch { return undefined; }
+    };
 
     const { child, done } = spawnWithSigintPropagation(cmd, args, {
       env,
@@ -68,8 +76,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
     try {
       const r = await done;
       const durationMs = Date.now() - start;
-      // readStats 必须在 finally cleanup 之前读(此处 return 表达式先求值,再走 finally)。
-      const ms = mockHandle ? mockHandle.readStats() : undefined;
+      const ms = captureMockStats();
       try {
         const data = JSON.parse(r.stdout);
         return {
@@ -90,9 +97,10 @@ export function createScriptExecutor(command: string): ExecutorFn {
       }
     } catch (err: unknown) {
       const durationMs = Date.now() - start;
+      const ms = captureMockStats();
       const details = err as SpawnHelperError;
-      if (details.killedByTimeout) return timeoutExecResult(timeoutMs, durationMs);
-      if (details.killedBySignal) return interruptedExecResult(durationMs);
+      if (details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), ...(ms && { mockStats: ms }) };
+      if (details.killedBySignal) return { ...interruptedExecResult(durationMs), ...(ms && { mockStats: ms }) };
       const stderr = (details.stderr || '').trim();
       return {
         ok: false,
@@ -100,6 +108,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
         durationMs, durationApiMs: 0,
         inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+        ...(ms && { mockStats: ms }),
       };
     } finally {
       mockHandle?.cleanup();
