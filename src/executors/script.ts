@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
+import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
 import {
   DEFAULT_TIMEOUT_MS,
   interruptedExecResult,
@@ -29,7 +30,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
     .map((a) => a.replace(/^["']|["']$/g, ''))
     .map((a) => resolveExecutorPath(a, baseCwd));
 
-  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills }: ExecutorInput): Promise<ExecResult> {
+  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
       scriptIsolationWarned = true;
       process.stderr.write(
@@ -40,8 +41,24 @@ export function createScriptExecutor(command: string): ExecutorFn {
     const input = JSON.stringify({ model, system: system || '', prompt });
     const start = Date.now();
 
+    // mock 注入:复用 claude-cli 的物化逻辑(临时目录 + on-disk hook + mocks.json),把
+    // settings / mcp-config / mocks 文件路径通过 env 暴露给脚本。脚本若包的是 Claude Code
+    // 兼容 CLI,自行把 OMK_MOCK_SETTINGS_FILE 透传成 `--settings`(或把其中的 hook 打包成
+    // `--plugin-dir` 插件)即可复用 omk 的 PreToolUse mock hook;不支持的脚本忽略这些 env
+    // 即可(向后兼容)。env 是局部对象、不改 process.env,并发多 eval 各 spawn 独立快照、
+    // 互不串台;临时目录由 mkdtemp 唯一命名,finally 里 cleanup 删除。
+    const mockHandle = mocks && mocks.length > 0
+      ? materializeForCliConfigDir(mocks, mocksBaseDir, !!mocksStrict)
+      : null;
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (mockHandle) {
+      Object.assign(env, mockHandle.env);                       // OMK_MOCKS_FILE
+      env.OMK_MOCK_SETTINGS_FILE = mockHandle.settingsFile;
+      if (mockHandle.mcpConfigFile) env.OMK_MOCK_MCP_CONFIG_FILE = mockHandle.mcpConfigFile;
+    }
+
     const { child, done } = spawnWithSigintPropagation(cmd, args, {
-      env: { ...process.env },
+      env,
       timeoutMs,
       ...(cwd && { cwd }),
     });
@@ -51,6 +68,8 @@ export function createScriptExecutor(command: string): ExecutorFn {
     try {
       const r = await done;
       const durationMs = Date.now() - start;
+      // readStats 必须在 finally cleanup 之前读(此处 return 表达式先求值,再走 finally)。
+      const ms = mockHandle ? mockHandle.readStats() : undefined;
       try {
         const data = JSON.parse(r.stdout);
         return {
@@ -59,12 +78,14 @@ export function createScriptExecutor(command: string): ExecutorFn {
           inputTokens: data.inputTokens || 0, outputTokens: data.outputTokens || 0,
           cacheReadTokens: data.cacheReadTokens || 0, cacheCreationTokens: data.cacheCreationTokens || 0,
           costUSD: data.costUSD || 0, stopReason: data.stopReason || 'end', numTurns: data.numTurns || 1,
+          ...(ms && { mockStats: ms }),
         };
       } catch {
         return {
           ok: true, output: r.stdout.trim(), durationMs, durationApiMs: 0,
           inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
           costUSD: 0, stopReason: 'end', numTurns: 1,
+          ...(ms && { mockStats: ms }),
         };
       }
     } catch (err: unknown) {
@@ -80,6 +101,8 @@ export function createScriptExecutor(command: string): ExecutorFn {
         inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
       };
+    } finally {
+      mockHandle?.cleanup();
     }
   };
 }

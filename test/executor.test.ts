@@ -1,9 +1,11 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecutor } from '../src/executors/index.js';
+import type { Mock } from '../src/types/eval.js';
 
 describe('createExecutor', () => {
   it('returns a function for claude', () => {
@@ -51,5 +53,33 @@ describe('createExecutor', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+
+  it('script executor 物化 mocks 并通过 env 暴露临时 settings,跑完清理', async () => {
+    const mocks: Mock[] = [{ tool: 'Read', match: { file_path_endswith: 'x.txt' }, return: 'mocked' }];
+    const executor = createExecutor('node test/fixtures/script-executor-mock-probe.mjs');
+    const result = await executor({ model: 'test', system: '', prompt: 'hi', mocks });
+    assert.equal(result.ok, true);
+    const probe = JSON.parse(result.output as string) as {
+      hasSettingsEnv: boolean; hasMocksFile: boolean; settingsPath: string; settingsExists: boolean;
+    };
+    // env 暴露 + 临时 settings 在执行期间存在
+    assert.equal(probe.hasSettingsEnv, true);
+    assert.equal(probe.hasMocksFile, true);
+    assert.equal(probe.settingsExists, true);
+    // 跑完即清理:临时目录已删
+    assert.equal(existsSync(probe.settingsPath), false);
+    // mock 物化时 ExecResult.mockStats 应被回填(此 fixture 不真调工具,hits=0 但字段在)
+    assert.ok(result.mockStats);
+  });
+
+  it('script executor 无 mocks 时不暴露 mock env(向后兼容)', async () => {
+    const executor = createExecutor('node test/fixtures/script-executor-mock-probe.mjs');
+    const result = await executor({ model: 'test', system: '', prompt: 'hi' });
+    assert.equal(result.ok, true);
+    const probe = JSON.parse(result.output as string) as { hasSettingsEnv: boolean; hasMocksFile: boolean };
+    assert.equal(probe.hasSettingsEnv, false);
+    assert.equal(probe.hasMocksFile, false);
+    assert.equal(result.mockStats, undefined);
   });
 });
