@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { OMK_HOME } from '../eval-core/default-dirs.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,
@@ -46,7 +46,7 @@ export type {
 // 但落盘目录已统一到 observe-inbox 词根(命令 omk observe inbox / 文件 *-observe-inbox.json / kind observe-inbox)。
 // 项目级 .omk/observe-inbox 优先、全局兜底 —— 这套 project/global 归属是既有正常行为,本次只改名不改归属。
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observe-inbox');
-export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observe-inbox');
+export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(OMK_HOME, 'observe-inbox');
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
 const OBSERVATION_INBOX_SCHEMA_VERSION = 2;
 

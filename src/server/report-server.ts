@@ -2,7 +2,6 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { renderReportDocumentDetail, renderTrendsPage, renderRunList } from '../renderer/html-renderer.js';
 import { renderSkillList } from '../renderer/skill-list-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
@@ -14,10 +13,10 @@ import { renderObservationInboxPage } from '../renderer/observation-inbox-render
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
-import { DEFAULT_REPORTS_DIR, DEFAULT_OBSERVE_HEALTH_DIR } from '../eval-core/default-dirs.js';
+import { DEFAULT_REPORTS_DIR, DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
-import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
+import { createFileJobStore } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
 import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
@@ -30,8 +29,6 @@ import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
-// reports / observe-health 默认目录的单一来源在 eval-core/default-dirs(cli 写 / server 读须一致);doctors 仅此处一用,保留本地定义。
-const DEFAULT_DOCTORS_DIR = join(homedir(), '.oh-my-knowledge', 'doctors');
 
 interface ReportServerOptions {
   port?: number;

@@ -9,7 +9,8 @@ import {
 } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
-import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
+import { createFileJobStore } from '../server/job-store.js';
+import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import type {
   BatchEvaluationReport,
   BatchEvaluationItem,
