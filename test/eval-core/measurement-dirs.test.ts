@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   projectObserveHealthDir, globalObserveHealthDir, resolveObserveHealthDir,
   projectDoctorsDir, globalDoctorsDir, resolveDoctorsDir,
+  projectReportsDir, globalReportsDir,
 } from '../../src/eval-core/measurement-dirs.js';
 
 function mkTmp(tag: string): string {
@@ -18,8 +19,16 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
   it('project/global getter 路径', () => {
     assert.equal(projectObserveHealthDir('/x'), join('/x', '.omk', 'observe-health'));
     assert.equal(projectDoctorsDir('/x'), join('/x', '.omk', 'doctors'));
+    assert.equal(projectReportsDir('/x'), join('/x', '.omk', 'reports'));
     assert.ok(globalObserveHealthDir().endsWith(join('.oh-my-knowledge', 'observe-health')));
     assert.ok(globalDoctorsDir().endsWith(join('.oh-my-knowledge', 'doctors')));
+    assert.ok(globalReportsDir().endsWith(join('.oh-my-knowledge', 'reports')));
+  });
+
+  it('reports 不给 resolveReportsDir(记录优先在 overlay store 层做,见 report-store)', () => {
+    // 故意只暴露 project/global getter:单目录二选一会让目标 id 在另一目录时 get 落空,
+    // reports 的项目→全局兜底必须在 store 层(createOverlayReportStore),不在 dir 解析层。
+    assert.equal(projectReportsDir(), join(process.cwd(), '.omk', 'reports'));
   });
 
   it('observe-health:项目有报告→项目;项目空+全局有→全局;都空→项目', () => {

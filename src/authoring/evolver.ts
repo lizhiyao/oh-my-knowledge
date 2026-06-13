@@ -3,7 +3,8 @@ import { resolve, join, dirname, basename } from 'node:path';
 import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId, hashString } from '../eval-core/evaluation-reporting.js';
-import { createFileStore } from '../server/report-store.js';
+import { createOverlayReportStore } from '../server/report-store.js';
+import { projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
@@ -117,7 +118,9 @@ async function findReusableBaselineReport(opts: {
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   noDiagnostic?: boolean;
 }): Promise<Report | null> {
-  const store = createFileStore(DEFAULT_OUTPUT_DIR);
+  // baseline 复用读 overlay(项目 .omk/reports ∪ 全局):eval 写默认翻项目后,复用既能命中 eval 新写的项目
+  // baseline,又继续覆盖全局(含 evolve 自身写到全局的合并报告),复用命中率与报告数字不降。
+  const store = createOverlayReportStore(projectReportsDir(), globalReportsDir());
   const { samples } = loadSamples(opts.samplesPath);
   const artifactHash = opts.artifactHash;
   const reports = await store.findByArtifactHash(artifactHash);

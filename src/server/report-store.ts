@@ -189,6 +189,63 @@ export function createFileStore(dir: string): ReportStore {
   return { list, get, save, update, remove, exists, findByVariant, findByArtifactHash };
 }
 
+/**
+ * 项目盖全局的 overlay 报告存储。reports 默认落项目 `.omk/reports`(绑用例集,construct validity),
+ * 全局 `~/.oh-my-knowledge/reports` 作存量兜底。两类语义刻意不同:
+ *   - 浏览(list / findByVariant):记录优先 —— 项目有报告只看项目(studio 不混进跨项目全局堆),
+ *     项目空才回退全局(空项目不白屏)。同 resolveManagedDir / phase-1 口径。
+ *   - 寻址(get / exists / findByArtifactHash):项目→全局兜底 —— 拿具体 id / 内容哈找文件时两处都查,
+ *     resume / gold-compare / baseline 复用不因「写默认翻项目」而落空;复用查找继续覆盖全局,报告数字零变化。
+ * 写(save / update / remove):落项目(写默认目标);update / remove 找不到再落/试全局(改删 studio 当前所见那份)。
+ * 两个底层 createFileStore 各自带 list 指纹缓存,overlay 一次构建即可、无需每请求重建(cwd 进程内不变,
+ * 内容变化由 createFileStore 的 mtime 指纹自动失效)。
+ */
+export function createOverlayReportStore(projectDir: string, globalDir: string): ReportStore {
+  const project = createFileStore(projectDir);
+  const global = createFileStore(globalDir);
+
+  async function projectHasReports(): Promise<boolean> {
+    return (await project.list()).length > 0;
+  }
+
+  async function list(): Promise<ReportDocument[]> {
+    return (await projectHasReports()) ? project.list() : global.list();
+  }
+
+  async function get(id: string): Promise<ReportDocument | null> {
+    return (await project.get(id)) ?? global.get(id);
+  }
+
+  async function exists(id: string): Promise<boolean> {
+    return (await project.exists(id)) || global.exists(id);
+  }
+
+  async function save(id: string, report: ReportDocument): Promise<void> {
+    return project.save(id, report);
+  }
+
+  async function update(id: string, mutator: (report: ReportDocument) => void): Promise<ReportDocument | null> {
+    return (await project.exists(id)) ? project.update(id, mutator) : global.update(id, mutator);
+  }
+
+  async function remove(id: string): Promise<boolean> {
+    return (await project.remove(id)) || global.remove(id);
+  }
+
+  async function findByVariant(variantName: string): Promise<EvaluationReport[]> {
+    return (await projectHasReports()) ? project.findByVariant(variantName) : global.findByVariant(variantName);
+  }
+
+  async function findByArtifactHash(hash: string): Promise<EvaluationReport[]> {
+    // 跨两处合并(项目优先 dedup):baseline 复用继续覆盖全局,保证复用命中率与报告数字不变。
+    const [p, g] = await Promise.all([project.findByArtifactHash(hash), global.findByArtifactHash(hash)]);
+    const seen = new Set(p.map((r) => r.id));
+    return [...p, ...g.filter((r) => !seen.has(r.id))];
+  }
+
+  return { list, get, save, update, remove, exists, findByVariant, findByArtifactHash };
+}
+
 export interface JobQuery {
   status?: string;
   reportId?: string;

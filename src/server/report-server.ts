@@ -13,12 +13,12 @@ import { renderObservationInboxPage } from '../renderer/observation-inbox-render
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
-import { DEFAULT_REPORTS_DIR, DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
-import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../eval-core/measurement-dirs.js';
+import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
+import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
-import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
+import { createFileStore, createOverlayReportStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
 import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
@@ -609,12 +609,18 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
-  // Use provided store or default to file store
-  const reportStore: ReportStore = store || createFileStore(reportsDir);
+  // reports store:显式注入 store > 显式 reportsDir(eval serve 的本次 outputDir / 测试 / 覆盖,固定单目录)
+  // > 缺省 overlay(项目 .omk/reports 盖全局,studio 默认看当前项目、存量全局兜底)。overlay 在 store 层做
+  // 记录优先 + 按 id 兜底,故无需像 analyses/doctors 那样每请求重解析(底层 createFileStore 的 mtime 指纹
+  // 自动反映内容变化),一次构建即可。
+  const reportStore: ReportStore = store
+    ?? (reportsDir !== undefined
+      ? createFileStore(reportsDir)
+      : createOverlayReportStore(projectReportsDir(), globalReportsDir()));
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
   // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
   // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio
@@ -1133,10 +1139,9 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
 
   async function start(): Promise<string> {
     if (server) return serverUrl!;
-    if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
-    // analysesDir 现在是 per-request resolver(项目优先→全局兜底),不在启动时 mkdir ——
-    // studio 是只读消费,readers 都 existsSync 守卫、writer(omk observe)自建目录,
-    // 启动时往随机 cwd 建空 .omk/observe-health 反而是噪声。
+    // reports / analyses / doctors 都不在启动时 mkdir —— studio 只读消费,readers 都 existsSync 守卫、
+    // writer(omk eval / observe / doctor)各自建目录;reports 默认走 overlay(项目盖全局),启动时往随机
+    // cwd 建空 .omk/reports 既无意义又是噪声。observationsDir / jobsDir 仍预建(既有行为)。
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 

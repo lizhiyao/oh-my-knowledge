@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
-import { createFileStore } from '../../server/report-store.js';
-import { DEFAULT_OUTPUT_DIR } from '../../eval-core/evaluation-reporting.js';
+import { createOverlayReportStore } from '../../server/report-store.js';
+import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { computeVerdict } from '../../eval-core/verdict.js';
 import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../../eval-core/bootstrap.js';
 import {
@@ -25,7 +25,7 @@ export interface EvolveOutcomeInput {
   skillDir: string;
   /** evolve 目标本身的形态（目录-skill / 文件-skill），由原始入参 statSync 判定。用于按形态精确匹配受管记录。 */
   isDirectorySkill: boolean;
-  /** 报告加载器覆盖（测试用）；默认从 DEFAULT_OUTPUT_DIR 的文件存储按 id 读。 */
+  /** 报告加载器覆盖（测试用）；默认走 overlay 报告存储（项目 .omk/reports → 全局兜底）按 id 读。 */
   loadReport?: (id: string) => Promise<EvaluationReport | null>;
   /** 受管目录覆盖（测试用）。 */
   dir?: string;
@@ -103,7 +103,8 @@ function findRecordBySource(
 }
 
 async function loadEvolveReport(id: string): Promise<EvaluationReport | null> {
-  const doc = await createFileStore(DEFAULT_OUTPUT_DIR).get(id);
+  // overlay get：项目 .omk/reports → 全局兜底，evolve 写到全局的合并报告仍命中，eval 新写项目的也能取到。
+  const doc = await createOverlayReportStore(projectReportsDir(), globalReportsDir()).get(id);
   return doc && doc.kind === 'evaluation' ? (doc as EvaluationReport) : null;
 }
 

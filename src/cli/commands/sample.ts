@@ -7,7 +7,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
+import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import { hashSample } from '../../eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../inputs/content-hash.js';
@@ -185,10 +185,9 @@ async function runSampleFix(
   lang: CliLang,
 ): Promise<void> {
   const { fixSamples } = await import('../../authoring/sample-fixer.js');
-  const { createFileStore } = await import('../../server/report-store.js');
+  const { createFileStore, createOverlayReportStore } = await import('../../server/report-store.js');
 
   const model = flags.model;
-  const reportsDir = resolve(flags['reports-dir'] ?? DEFAULT_REPORTS_DIR);
 
   const skillPath = args.skillPath;
   if (!skillPath) {
@@ -218,11 +217,18 @@ async function runSampleFix(
   const treatmentName = flags.treatment ?? defaultTreatmentName;
 
   process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
-  const store = createFileStore(reportsDir);
+  // 显式 --reports-dir 固定该目录;默认 overlay(项目 .omk/reports 盖全局),findByVariant 记录优先看项目、
+  // 空则全局兜底,不因 eval 写默认翻项目而查不到报告。
+  const store = flags['reports-dir']
+    ? createFileStore(resolve(flags['reports-dir']))
+    : createOverlayReportStore(projectReportsDir(), globalReportsDir());
   const reports = await store.findByVariant(treatmentName);
 
   if (reports.length === 0) {
-    console.error(lang === 'zh' ? `未找到 ${treatmentName} 的评测报告（报告目录: ${reportsDir}）` : `No eval report found for ${treatmentName} in ${reportsDir}`);
+    const where = flags['reports-dir']
+      ? resolve(flags['reports-dir'])
+      : (lang === 'zh' ? '项目 .omk/reports 或全局 ~/.oh-my-knowledge/reports' : 'project .omk/reports or global ~/.oh-my-knowledge/reports');
+    console.error(lang === 'zh' ? `未找到 ${treatmentName} 的评测报告（报告目录: ${where}）` : `No eval report found for ${treatmentName} in ${where}`);
     throw new CliExit(1);
   }
 

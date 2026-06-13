@@ -235,6 +235,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --dry-run                       只 plan 不实跑
   --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
   --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
+  --global                        报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
   --gold-dir <value>              gold dataset 目录
   --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
   --judge-repeat <value>          每个 dim 评 N 次
@@ -250,7 +251,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server
   --no-strict-baseline            关闭 baseline 隔离
-  --output-dir <value>            报告输出目录
+  --output-dir <value>            报告输出目录（默认项目级 .omk/reports）
   --repeat <value>                每个 sample 重复跑 N 次
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
   --resume <value>                从某次失败 run 续跑
@@ -446,13 +447,13 @@ omk studio --no-open
   --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
   --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-  --global                    只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
+  --global                    只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe-inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
-  --reports-dir <value>       报告目录，默认 ~/.oh-my-knowledge/reports
+  --reports-dir <value>       报告目录（可选，默认项目级 .omk/reports 盖全局兜底）
 ```
 
 完整描述见 `omk studio --help`。
