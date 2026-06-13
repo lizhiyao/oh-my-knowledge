@@ -5,11 +5,11 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 
 // 预置 .omk/.gitignore:测量 bulk(项目本地、可重生)默认不入库;managed/ 治理档案 + 配置不在此列,默认 track。
-const INIT_OMK_GITIGNORE = `# omk 测量 bulk(项目本地、可重生)——不入库
-observe-health/
-doctors/
-observe-inbox/
-reports/
+const INIT_OMK_GITIGNORE = `# omk 测量 bulk(项目本地、可重生)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
+/observe-health/
+/doctors/
+/observe-inbox/
+/reports/
 `;
 
 const INIT_SAMPLES = `[
