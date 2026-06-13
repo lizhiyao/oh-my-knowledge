@@ -158,10 +158,11 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
   --executor <value>    执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --fix                 交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
   --gate                静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
+  --global              写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
   --json                JSON 输出到 stdout，适合 CI / 外部脚本消费。
   --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>       LLM model 名，默认 sonnet。
-  --output-dir <value>  报告输出目录，默认 ~/.oh-my-knowledge/doctors。
+  --output-dir <value>  报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
   --samples <value>     用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
   --static-only         离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
   --timeout <value>     单次 LLM 会话超时秒数，默认 600(10 分钟）。
@@ -295,10 +296,11 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 ```text
   --from <value>        起始时间 ISO，优先级高于 --last
+  --global              写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health
   --kb <value>          知识库 root，启用 KB-aware 分析
   --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --last <value>        时间窗(7d / 24h / 30m）
-  --output-dir <value>  健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
+  --output-dir <value>  健康报告输出目录，默认项目级 .omk/observe-health（--global 写全局）
   --skills <value>      只看指定 skill，逗号分隔
   --to <value>          结束时间 ISO
 ```
@@ -441,8 +443,10 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）
+  --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
+  --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
+  --global                    只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器

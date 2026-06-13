@@ -13,7 +13,8 @@ import { renderObservationInboxPage } from '../renderer/observation-inbox-render
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
-import { DEFAULT_REPORTS_DIR, DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
+import { DEFAULT_REPORTS_DIR, DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
+import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../eval-core/measurement-dirs.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
@@ -36,8 +37,12 @@ interface ReportServerOptions {
    *  暴露到容器外 / 局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */
   host?: string;
   reportsDir?: string;
-  analysesDir?: string;
-  doctorsDir?: string;
+  /** observe-health 报告目录(项目 .omk/observe-health 或全局),或一个按请求动态解析它的函数。
+   *  传函数 → 每次请求重解析(长会话里项目首次 omk observe 后从 global 实时切回 project);
+   *  传字符串 → 固定到该目录(测试 / 显式覆盖);默认动态解析 project→global 权威目录。 */
+  analysesDir?: string | (() => string);
+  /** 体检报告目录(项目 .omk/doctors 或全局),或一个按请求动态解析它的函数。三模式同 analysesDir。 */
+  doctorsDir?: string | (() => string);
   observationsDir?: string;
   jobsDir?: string;
   /** 受管目录(.omk/managed 或全局),或一个按请求动态解析它的函数。只读消费,供 /managed 决策史页。
@@ -604,7 +609,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_OBSERVE_HEALTH_DIR, doctorsDir = DEFAULT_DOCTORS_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -624,12 +629,34 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         ? (): string => managedDir
         : (): string => resolveManagedDir(projectManagedDir());
 
+  // observe-health 目录同 managed 按**请求**解析(项目 .omk/observe-health 优先、空则全局兜底) ——
+  // 长会话里项目首次 omk observe 后,studio 下次请求即从 global 切回 project,不在启动时冻结。
+  // 三模式同 managedDir:函数透传 / 字符串固定 / 缺省动态解析。
+  const resolveAnalysesDir: () => string =
+    typeof analysesDir === 'function'
+      ? analysesDir
+      : analysesDir !== undefined
+        ? (): string => analysesDir
+        : (): string => resolveObserveHealthDir(projectObserveHealthDir());
+
+  // doctors 目录同 analyses 按请求解析(项目优先→全局兜底),三模式同 managedDir / analysesDir。
+  const resolveDoctorsRoot: () => string =
+    typeof doctorsDir === 'function'
+      ? doctorsDir
+      : doctorsDir !== undefined
+        ? (): string => doctorsDir
+        : (): string => resolveDoctorsDir(projectDoctorsDir());
+
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const parsed = new URL(req.url || '/', 'http://127.0.0.1');
       const path = parsed.pathname;
       const langParam = parsed.searchParams.get('lang');
       const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
+
+      // observe-health / doctors 目录每请求解析一次(项目优先→全局兜底),下面各 handler 用这两个 local 字符串。
+      const analysesDir = resolveAnalysesDir();
+      const doctorsDir = resolveDoctorsRoot();
 
       if (path === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1107,7 +1134,9 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
   async function start(): Promise<string> {
     if (server) return serverUrl!;
     if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
-    if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
+    // analysesDir 现在是 per-request resolver(项目优先→全局兜底),不在启动时 mkdir ——
+    // studio 是只读消费,readers 都 existsSync 守卫、writer(omk observe)自建目录,
+    // 启动时往随机 cwd 建空 .omk/observe-health 反而是噪声。
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 

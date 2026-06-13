@@ -6,6 +6,10 @@ import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import { resolveManagedDir, managedDir } from '../../managed/index.js';
+import {
+  resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
+  resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
+} from '../../eval-core/measurement-dirs.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 
@@ -58,8 +62,14 @@ export async function runStudio(
     if (flags['analyses-dir']) {
       childArgs.push('--analyses-dir', flags['analyses-dir']);
     }
+    if (flags['doctors-dir']) {
+      childArgs.push('--doctors-dir', flags['doctors-dir']);
+    }
     if (flags['observations-dir']) {
       childArgs.push('--observations-dir', flags['observations-dir']);
+    }
+    if (flags.global) {
+      childArgs.push('--global');
     }
     if (flags['no-open']) {
       childArgs.push('--no-open');
@@ -80,7 +90,14 @@ export async function runStudio(
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
     reportsDir: resolve(reportsDir),
-    ...(flags['analyses-dir'] ? { analysesDir: resolve(flags['analyses-dir']) } : {}),
+    // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
+    // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
+    analysesDir: flags['analyses-dir']
+      ? resolve(flags['analyses-dir'])
+      : (flags.global ? globalObserveHealthDir : (): string => resolveObserveHealthDir(projectObserveHealthDir())),
+    doctorsDir: flags['doctors-dir']
+      ? resolve(flags['doctors-dir'])
+      : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
     ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
@@ -139,14 +156,26 @@ export default class Studio extends BaseCommand {
     }),
     'analyses-dir': Flags.string({
       description: bilingual({
-        zh: '观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）',
-        en: 'Observe-health reports dir (optional, default ~/.oh-my-knowledge/observe-health)',
+        zh: '观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）',
+        en: 'Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)',
+      }),
+    }),
+    'doctors-dir': Flags.string({
+      description: bilingual({
+        zh: '体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）',
+        en: 'Doctor reports dir (optional, default project .omk/doctors, falls back to global)',
       }),
     }),
     'observations-dir': Flags.string({
       description: bilingual({
         zh: '观测收件箱数据目录（可选，默认 .omk/observe-inbox）',
         en: 'Observe-inbox data dir (optional, default .omk/observe-inbox)',
+      }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响',
+        en: 'View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox',
       }),
     }),
     'no-open': Flags.boolean({

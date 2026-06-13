@@ -4,6 +4,14 @@ import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 
+// 预置 .omk/.gitignore:测量 bulk(项目本地、可重生)默认不入库;managed/ 治理档案 + 配置不在此列,默认 track。
+const INIT_OMK_GITIGNORE = `# omk 测量 bulk(项目本地、可重生)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
+/observe-health/
+/doctors/
+/observe-inbox/
+/reports/
+`;
+
 const INIT_SAMPLES = `[
   {
     "sample_id": "s001",
@@ -148,6 +156,9 @@ export default class Init extends BaseCommand {
       writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
       writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
       writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
+      // 像 dvc init 那样预置忽略规则,开发者不会误把测量 bulk 提交进库。
+      mkdirSync(join(targetDir, '.omk'), { recursive: true });
+      writeFileSync(join(targetDir, '.omk', '.gitignore'), INIT_OMK_GITIGNORE);
 
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log('');

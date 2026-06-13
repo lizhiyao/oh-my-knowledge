@@ -23,7 +23,8 @@ omk observe——分析真实 session trace，生成 skill 健康度报告
   --from <iso>                        窗口起点，优先级高于 --last
   --to <iso>                          窗口终点，优先级高于 --last
   --skills <n1,n2,...>                只分析指定 skill
-  --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/observe-health）
+  --output-dir <path>                 输出目录（默认：项目级 .omk/observe-health）
+  --global                            写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/
 
 观测收件箱（observe inbox）是另一条线，见 omk observe inbox --help。
 `,
@@ -39,7 +40,8 @@ Options:
   --from <iso>                        Window start, overrides --last
   --to <iso>                          Window end, overrides --last
   --skills <n1,n2,...>                Only analyze selected skills
-  --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/observe-health)
+  --output-dir <path>                 Output directory (default: project-level .omk/observe-health)
+  --global                            Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/
 
 The observe inbox is a separate line; see omk observe inbox --help.
 `,
@@ -231,8 +233,10 @@ omk studio——打开本地知识工作台
   --port <n>                          本地服务端口（默认：7799）
   --host <host>                       监听地址（默认：127.0.0.1；局域网访问可用 0.0.0.0）
   --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --analyses-dir <path>               观测健康报告目录（默认：~/.oh-my-knowledge/observe-health）
+  --analyses-dir <path>               观测健康报告目录（默认：项目级 .omk/observe-health，空则全局兜底）
+  --doctors-dir <path>                体检报告目录（默认：项目级 .omk/doctors，空则全局兜底）
   --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
+  --global                            只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
   --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
@@ -252,8 +256,10 @@ Options:
   --port <n>                          Local server port (default: 7799)
   --host <host>                       Listen address (default: 127.0.0.1; use 0.0.0.0 for LAN access)
   --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --analyses-dir <path>               Observe-health reports dir (default: ~/.oh-my-knowledge/observe-health)
+  --analyses-dir <path>               Observe-health reports dir (default: project .omk/observe-health, falls back to global)
+  --doctors-dir <path>                Doctor reports dir (default: project .omk/doctors, falls back to global)
   --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)
+  --global                            View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
   --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 

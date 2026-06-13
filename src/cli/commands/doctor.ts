@@ -8,6 +8,7 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
+import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
@@ -137,8 +138,14 @@ export default class Doctor extends BaseCommand {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '报告输出目录，默认 ~/.oh-my-knowledge/doctors。',
-        en: 'Report output dir, default ~/.oh-my-knowledge/doctors.',
+        zh: '报告输出目录，默认项目级 .omk/doctors（--global 写全局）。',
+        en: 'Report output dir, default project-level .omk/doctors (--global for global).',
+      }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors',
+        en: 'Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors',
       }),
     }),
     dimensions: Flags.string({
@@ -275,7 +282,9 @@ export default class Doctor extends BaseCommand {
         renderDoctorReportText(report, lang);
       }
 
-      persistDoctorReport(report, flags['output-dir'] ? resolve(flags['output-dir']) : undefined);
+      persistDoctorReport(report, flags['output-dir']
+        ? resolve(flags['output-dir'])
+        : (flags.global ? globalDoctorsDir() : projectDoctorsDir()));
 
       if (flags.fix) {
         const existing = report;

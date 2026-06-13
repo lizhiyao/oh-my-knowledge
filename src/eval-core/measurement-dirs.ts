@@ -1,0 +1,73 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR } from './default-dirs.js';
+
+/**
+ * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
+ * (src/managed/store.ts)。测量产物绑用例集上下文(construct validity,不可全局化),
+ * 默认落项目 `.omk/`,全局作显式 opt-in。
+ *
+ * 「记录优先」—— 目录里有匹配 `.json` 才算数(不是「目录存在」),与 managed 同口径,
+ * 避免空项目目录遮蔽全局数据。项目目录按**调用时** `cwd()` 求值(函数,不是 import 时
+ * 冻结的常量),studio 长会话 per-request 解析才正确。
+ */
+
+/** dir 里是否有至少一个满足 match 的文件(短路,不读文件内容)。 */
+function hasMatchingFile(dir: string, match: (name: string) => boolean): boolean {
+  if (!existsSync(dir)) return false;
+  try {
+    return readdirSync(dir).some(match);
+  } catch {
+    return false;
+  }
+}
+
+// —— observe-health(skill 健康度报告)——
+// 文件名 `{timestamp}-observe-health.json`,匹配后缀避免别的 .json 误翻转 resolver。
+
+/** 项目级 observe-health 目录(相对调用时 cwd)。 */
+export function projectObserveHealthDir(cwd: string = process.cwd()): string {
+  return join(cwd, '.omk', 'observe-health');
+}
+
+/** 全局 observe-health 目录。 */
+export function globalObserveHealthDir(): string {
+  return DEFAULT_OBSERVE_HEALTH_DIR;
+}
+
+/** 权威 observe-health 目录:项目有报告取项目,否则全局有取全局,都空回项目(同 resolveManagedDir)。
+ *  `global` 可注入(默认真实全局目录),仅供测试用受控 temp 目录复现 project↔global 兜底。 */
+export function resolveObserveHealthDir(
+  dir: string = projectObserveHealthDir(),
+  global: string = globalObserveHealthDir(),
+): string {
+  const has = (d: string): boolean => hasMatchingFile(d, (f) => f.endsWith('-observe-health.json'));
+  if (has(dir)) return dir;
+  if (dir !== global && has(global)) return global;
+  return dir;
+}
+
+// —— doctors(体检报告)——
+// 文件名 `{skill}-{id}.json`,谓词用「存在任意 .json」即可(真解析在下游 scanDoctorReports)。
+
+/** 项目级 doctors 目录(相对调用时 cwd)。 */
+export function projectDoctorsDir(cwd: string = process.cwd()): string {
+  return join(cwd, '.omk', 'doctors');
+}
+
+/** 全局 doctors 目录。 */
+export function globalDoctorsDir(): string {
+  return DEFAULT_DOCTORS_DIR;
+}
+
+/** 权威 doctors 目录:项目有报告取项目,否则全局有取全局,都空回项目(同 resolveManagedDir)。
+ *  `global` 可注入(默认真实全局目录),仅供测试用受控 temp 目录复现 project↔global 兜底。 */
+export function resolveDoctorsDir(
+  dir: string = projectDoctorsDir(),
+  global: string = globalDoctorsDir(),
+): string {
+  const has = (d: string): boolean => hasMatchingFile(d, (f) => f.endsWith('.json'));
+  if (has(dir)) return dir;
+  if (dir !== global && has(global)) return global;
+  return dir;
+}
