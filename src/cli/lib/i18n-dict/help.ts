@@ -236,7 +236,7 @@ omk studio——打开本地知识工作台
   --analyses-dir <path>               观测健康报告目录（默认：项目级 .omk/observe-health，空则全局兜底）
   --doctors-dir <path>                体检报告目录（默认：项目级 .omk/doctors，空则全局兜底）
   --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
-  --global                            只看全局目录（~/.oh-my-knowledge/*）而非项目优先
+  --global                            只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
   --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
@@ -259,7 +259,7 @@ Options:
   --analyses-dir <path>               Observe-health reports dir (default: project .omk/observe-health, falls back to global)
   --doctors-dir <path>                Doctor reports dir (default: project .omk/doctors, falls back to global)
   --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)
-  --global                            View global dirs (~/.oh-my-knowledge/*) instead of project-first
+  --global                            View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
   --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 

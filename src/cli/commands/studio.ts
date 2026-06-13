@@ -174,8 +174,8 @@ export default class Studio extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局目录（~/.oh-my-knowledge/*）而非项目优先',
-        en: 'View global dirs (~/.oh-my-knowledge/*) instead of project-first',
+        zh: '只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响',
+        en: 'View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox',
       }),
     }),
     'no-open': Flags.boolean({

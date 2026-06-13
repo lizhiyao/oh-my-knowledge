@@ -446,7 +446,7 @@ omk studio --no-open
   --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
   --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-  --global                    只看全局目录（~/.oh-my-knowledge/*）而非项目优先
+  --global                    只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器
