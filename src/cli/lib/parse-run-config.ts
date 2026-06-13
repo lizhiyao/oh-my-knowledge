@@ -19,7 +19,6 @@
  */
 
 import { resolve } from 'node:path';
-import { DEFAULT_REPORTS_DIR } from '../../eval-core/default-dirs.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { DEFAULT_MODEL } from '../../executors/shared.js';
@@ -101,9 +100,6 @@ export interface ParseRunConfigResult {
    *  (e.g. repeat / judgeRepeat / bootstrap — handled in `commands/eval-runner.ts` for input validation). */
   evalConfig: EvalConfig | null;
 }
-
-// 单一来源在 eval-core/default-dirs；此处 re-export 保持既有 import 入口不破(studio / sample / eval gold compare 仍从本文件取)。
-export { DEFAULT_REPORTS_DIR };
 
 /**
  * 接 typed flags(来自 oclif Command.parse() 输出)。oclif strict 模式已经在

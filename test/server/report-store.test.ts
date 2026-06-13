@@ -110,6 +110,22 @@ describe('createOverlayReportStore 项目盖全局', () => {
     }
   });
 
+  it('update:项目找不到改全局那份(与 remove 兜底对称)', async () => {
+    const proj = mkTmp('up-p');
+    const glob = mkTmp('up-g');
+    try {
+      writeReport(glob, { id: 'rg', variant: 'vg', hash: 'hashG', timestamp: '2026-01-01T00:00:00Z' });
+      const store = createOverlayReportStore(proj, glob);
+      const updated = await store.update('rg', (doc) => { (doc.meta as { note?: string }).note = 'touched'; });
+      assert.equal(updated?.id, 'rg', '项目无 → update 改全局那份');
+      assert.equal(((await store.get('rg'))?.meta as { note?: string } | undefined)?.note, 'touched', '改动落盘');
+      assert.equal(await store.update('missing', () => undefined), null, '两处都无 → null');
+    } finally {
+      rmSync(proj, { recursive: true, force: true });
+      rmSync(glob, { recursive: true, force: true });
+    }
+  });
+
   it('remove:项目找不到再试全局', async () => {
     const proj = mkTmp('rm-p');
     const glob = mkTmp('rm-g');

@@ -288,8 +288,11 @@ export async function runEvaluation({
   // --resume: load existing report results to skip completed tasks
   let existingResults: Record<string, Record<string, import('../types/index.js').VariantResult>> | undefined;
   if (resume) {
-    const { createFileStore } = await import('../server/report-store.js');
-    const store = createFileStore(resolve(outputDir || DEFAULT_OUTPUT_DIR));
+    // 读侧走 overlay(本次 outputDir 优先 → 全局兜底):写默认翻项目后,--resume 一个存量 / 全局报告(升级前
+    // 全部落全局)仍能 get 命中,不致整轮重跑。写仍是另起新报告到 outputDir,与读位置解耦,无 read/write 分叉。
+    const { createOverlayReportStore } = await import('../server/report-store.js');
+    const { globalReportsDir } = await import('../eval-core/measurement-dirs.js');
+    const store = createOverlayReportStore(resolve(outputDir || DEFAULT_OUTPUT_DIR), globalReportsDir());
     const existing = await store.get(resume);
     if (existing?.kind === 'evaluation') {
       existingResults = {};
