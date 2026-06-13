@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync, readdirSync, statSync, utimesSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { homedir } from 'node:os';
 import { hashArtifactSource, distributableCopyFilter } from './content-hash.js';
+import { DEFAULT_TREES_DIR } from '../eval-core/default-dirs.js';
 
 /**
  * 内容寻址隔离副本 —— eval 把任意源(本地目录-skill / 本地单文件-skill / 本地 git ref / 远端 git)
@@ -17,10 +17,10 @@ export interface IsolatedCopy {
   isDirectorySkill: boolean;
 }
 
-/** 隔离副本根目录(与 managed / isolated-cwd / reports 同 home-dir 模式)。
+/** 隔离副本根目录 —— 可重生 scratch,收在 state/ 子树下(见 default-dirs)。
  *  `OMK_TREES_DIR` 可重定位(测试隔离 / 用户迁移)。 */
 export function treesDir(): string {
-  return process.env.OMK_TREES_DIR || join(homedir(), '.oh-my-knowledge', 'trees');
+  return process.env.OMK_TREES_DIR || DEFAULT_TREES_DIR;
 }
 
 /** 内容寻址副本默认上限(distinct 内容版本数);超出按 LRU(mtime)淘汰。

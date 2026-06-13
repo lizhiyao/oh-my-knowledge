@@ -405,7 +405,7 @@ omk observe [sessionsDir] [flags]
 - `--kb` `option`:知识库 root，启用 KB-aware 分析
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--last` `option`:时间窗(7d / 24h / 30m）
-- `--output-dir` `option`:分析结果输出目录
+- `--output-dir` `option`:健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
 - `--skills` `option`:只看指定 skill，逗号分隔
 - `--to` `option`:结束时间 ISO
 
@@ -433,7 +433,7 @@ omk observe inbox [flags]
 - `--executor` `option`:LLM 增强复盘使用的执行器
 - `--explore` `option`:抽样 N 条 medium/low 长尾（replaces limit）
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
-- `--input-dir` `option`:inbox 数据目录，默认 .omk/observations（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observations。
+- `--input-dir` `option`:inbox 数据目录，默认 .omk/observe-inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe-inbox。
 - `--json` `boolean`:JSON 格式输出
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--limit` `option`:限制条数，默认 20
@@ -459,7 +459,7 @@ omk observe ingest <traceDir> [flags]
 **Flags:**
 
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--output-dir` `option`:输出目录，默认 .omk/observations（项目级，相对于 cwd）。
+- `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd）。
 
 ## omk observe show
 
@@ -587,7 +587,7 @@ omk sample [skillPath] [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `sonnet`):生成 LLM model 名，默认 sonnet。
 - `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
-- `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。
+- `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
 - `--treatment` `option`:指定 treatment 名（fix 模式用），默认推断自 skill 路径。
@@ -630,12 +630,12 @@ omk studio [flags]
 
 **Flags:**
 
-- `--analyses-dir` `option`:分析数据目录（可选）
+- `--analyses-dir` `option`:观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--no-open` `boolean`:不自动打开浏览器
-- `--observations-dir` `option`:观测数据目录（可选）
+- `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe-inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配
 - `--reports-dir` `option`:报告目录，默认 ~/.oh-my-knowledge/reports
 

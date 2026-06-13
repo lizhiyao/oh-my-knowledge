@@ -61,6 +61,9 @@ export interface SkillHealth {
 }
 
 export interface SkillHealthReport {
+  /** 顶层判别字段,与 observe-inbox / observe-experience 同属 observe-* 报告族。
+   *  可选:历史文件无此字段,reader 靠 meta+overall 识别,不强制(additive,非 BREAKING-SCHEMA)。 */
+  kind?: 'observe-health';
   meta: {
     tracePath: string;
     kbPath: string | null;
@@ -250,6 +253,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
     : { from: '', to: '' };
 
   return {
+    kind: 'observe-health',
     meta: {
       tracePath,
       kbPath: kbRoot,
@@ -336,6 +340,7 @@ function buildReport(
     : { from: '', to: '' };
 
   return {
+    kind: 'observe-health',
     meta: {
       tracePath,
       kbPath: kbRoot,

@@ -1,4 +1,3 @@
-import { homedir } from 'node:os';
 import { existsSync, statSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
@@ -8,6 +7,7 @@ import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
+import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
@@ -298,7 +298,7 @@ export default class Doctor extends BaseCommand {
 const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 
 function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport, outputDir?: string): void {
-  const dir = outputDir ?? join(homedir(), '.oh-my-knowledge', 'doctors');
+  const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
   mkdirSync(dir, { recursive: true });
   const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {

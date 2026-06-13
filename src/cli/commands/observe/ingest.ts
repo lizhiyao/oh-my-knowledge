@@ -24,8 +24,8 @@ export default class ObserveIngest extends BaseCommand {
     lang: LANG_FLAG,
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '输出目录，默认 .omk/observations（项目级，相对于 cwd）。',
-        en: 'Output dir, default .omk/observations (project-local, relative to cwd).',
+        zh: '输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd）。',
+        en: 'Output dir, default .omk/observe-inbox (project-local, relative to cwd).',
       }),
     }),
   };

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, normalize } from 'node:path';
 import { hashString } from '../eval-core/evaluation-reporting.js';
+import { OMK_HOME } from '../eval-core/default-dirs.js';
 import type {
   ArtifactKind,
   DeriveManagedStateInput,
@@ -29,7 +29,7 @@ export function managedDir(cwd: string = process.cwd()): string {
 }
 
 export function globalManagedDir(): string {
-  return join(homedir(), '.oh-my-knowledge', 'managed');
+  return join(OMK_HOME, 'managed');
 }
 
 export function recordPath(dir: string, id: string): string {

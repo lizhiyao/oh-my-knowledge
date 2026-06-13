@@ -5,9 +5,9 @@ import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
+import { DEFAULT_CACHE_DIR } from './default-dirs.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
-import { resolve, join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { resolve, dirname } from 'node:path';
 import type {
   ExecResult,
   ExecutorFn,
@@ -133,7 +133,7 @@ export async function executeTasks({
     }
   }
 
-  const cacheDir = join(homedir(), '.oh-my-knowledge', 'cache');
+  const cacheDir = DEFAULT_CACHE_DIR;
   const cache: ExecutorCache | null = noCache ? null : createCache(cacheDir);
 
   async function executeTask(task: Task): Promise<void> {

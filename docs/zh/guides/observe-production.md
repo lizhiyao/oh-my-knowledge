@@ -24,7 +24,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分
 当你想逐条 triage observation（把好的回流成回归用例），用 inbox。整条链路纯本地、零 LLM。
 
 ```bash
-# 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observations/
+# 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe-inbox/
 omk observe ingest ~/.claude/projects/my-project
 
 # 2. 看 inbox（默认 top 20，按 severity / confidence / lastSeen 排序）

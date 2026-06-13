@@ -22,10 +22,8 @@ import {
   markJobRunning,
   failEvaluationRun,
 } from '../../eval-core/evaluation-job.js';
-import {
-  createFileJobStore,
-  DEFAULT_JOBS_DIR,
-} from '../../server/job-store.js';
+import { createFileJobStore } from '../../server/job-store.js';
+import { DEFAULT_JOBS_DIR } from '../../eval-core/default-dirs.js';
 import type {
   Artifact,
   EvaluationJob,

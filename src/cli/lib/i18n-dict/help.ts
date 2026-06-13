@@ -12,13 +12,10 @@ export type HelpMessageKey =
 export const helpDict: Record<HelpMessageKey, CliMessage> = {
   'cli.help.observe': {
     zh: `
-omk observe——分析真实 session trace，生成 skill 健康度日报
+omk observe——分析真实 session trace，生成 skill 健康度报告
 
 用法：
   omk observe <sessions-dir> [options]
-  omk observe ingest <sessions-dir> [options]
-  omk observe inbox [options]
-  omk observe show <inbox_id> [options]
 
 选项：
   --kb <path>                         知识库根路径（默认：从 trace cwd 推断）
@@ -26,27 +23,15 @@ omk observe——分析真实 session trace，生成 skill 健康度日报
   --from <iso>                        窗口起点，优先级高于 --last
   --to <iso>                          窗口终点，优先级高于 --last
   --skills <n1,n2,...>                只分析指定 skill
-  --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/analyses）
+  --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/observe-health）
 
-Inbox:
-  ingest --output-dir <path>           写入 observe inbox 数据（默认：.omk/observations；读取时兜底到 ~/.oh-my-knowledge/observations）
-  inbox --input-dir <path>             读取 observe inbox 数据
-  inbox --limit <n>                    展示 top N（默认：20）
-  inbox --skill <name>                 只看指定 skill
-  inbox --explore <n>                  从最近 50 条 medium/low 问题里抽样查看长尾
-  inbox --include-noise                --explore 时显式包含 noise 桶
-  inbox --by-skill                     按 skill 输出资产看板
-  inbox --json                         输出 JSON
-  show <inbox_id> --input-dir <path>    查看单条 observation 的前后上下文
+观测收件箱（observe inbox）是另一条线，见 omk observe inbox --help。
 `,
     en: `
 omk observe — analyze production session traces and produce skill health reports
 
 Usage:
   omk observe <sessions-dir> [options]
-  omk observe ingest <sessions-dir> [options]
-  omk observe inbox [options]
-  omk observe show <inbox_id> [options]
 
 Options:
   --kb <path>                         Knowledge base root (default: infer from trace cwd)
@@ -54,18 +39,9 @@ Options:
   --from <iso>                        Window start, overrides --last
   --to <iso>                          Window end, overrides --last
   --skills <n1,n2,...>                Only analyze selected skills
-  --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/analyses)
+  --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/observe-health)
 
-Inbox:
-  ingest --output-dir <path>           Write observe inbox data (default: .omk/observations; read fallback: ~/.oh-my-knowledge/observations)
-  inbox --input-dir <path>             Read observe inbox data
-  inbox --limit <n>                    Show top N (default: 20)
-  inbox --skill <name>                 Only show one skill
-  inbox --explore <n>                  Sample long-tail issues from the latest 50 medium/low items
-  inbox --include-noise                Explicitly include the noise bucket with --explore
-  inbox --by-skill                     Print the skill-level asset board
-  inbox --json                         Print JSON
-  show <inbox_id> --input-dir <path>    Show context around one observation
+The observe inbox is a separate line; see omk observe inbox --help.
 `,
   },
   'cli.help.observe_ingest': {
@@ -76,7 +52,7 @@ omk observe ingest — 读取真实 session trace，写入 observe inbox 数据
   omk observe ingest <sessions-dir-or-file> [options]
 
 选项：
-  --output-dir <path>                输出目录（默认：.omk/observations；读取时兜底到 ~/.oh-my-knowledge/observations）
+  --output-dir <path>                输出目录（默认：.omk/observe-inbox；读取时兜底到 ~/.oh-my-knowledge/observe-inbox）
 
 支持：
   Claude Code JSONL
@@ -89,7 +65,7 @@ Usage:
   omk observe ingest <sessions-dir-or-file> [options]
 
 Options:
-  --output-dir <path>                Output directory (default: .omk/observations; read fallback: ~/.oh-my-knowledge/observations)
+  --output-dir <path>                Output directory (default: .omk/observe-inbox; read fallback: ~/.oh-my-knowledge/observe-inbox)
 
 Supported:
   Claude Code JSONL
@@ -104,7 +80,7 @@ omk observe inbox — 查看已写入的 observe inbox 问题列表
   omk observe inbox [options]
 
 选项：
-  --input-dir <path>                 读取目录（默认：.omk/observations；兜底到 ~/.oh-my-knowledge/observations）
+  --input-dir <path>                 读取目录（默认：.omk/observe-inbox；兜底到 ~/.oh-my-knowledge/observe-inbox）
   --limit <n>                        展示 top N（默认：20）
   --skill <name>                     只看指定 skill
   --explore <n>                      从最近 50 条 medium/low 问题里抽样查看长尾
@@ -123,7 +99,7 @@ Usage:
   omk observe inbox [options]
 
 Options:
-  --input-dir <path>                 Input directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
+  --input-dir <path>                 Input directory (default: .omk/observe-inbox; fallback: ~/.oh-my-knowledge/observe-inbox)
   --limit <n>                        Show top N (default: 20)
   --skill <name>                     Only show one skill
   --explore <n>                      Sample long-tail issues from the latest 50 medium/low items
@@ -144,7 +120,7 @@ omk observe show — 查看单条 observation 的原始上下文
   omk observe show <inbox_id> [options]
 
 选项：
-  --input-dir <path>                 读取目录（默认：.omk/observations；兜底到 ~/.oh-my-knowledge/observations）
+  --input-dir <path>                 读取目录（默认：.omk/observe-inbox；兜底到 ~/.oh-my-knowledge/observe-inbox）
 `,
     en: `
 omk observe show — inspect the raw context around one observation
@@ -153,7 +129,7 @@ Usage:
   omk observe show <inbox_id> [options]
 
 Options:
-  --input-dir <path>                 Input directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
+  --input-dir <path>                 Input directory (default: .omk/observe-inbox; fallback: ~/.oh-my-knowledge/observe-inbox)
 `,
   },
   'cli.help.evolve': {
@@ -255,15 +231,15 @@ omk studio——打开本地知识工作台
   --port <n>                          本地服务端口（默认：7799）
   --host <host>                       监听地址（默认：127.0.0.1；局域网访问可用 0.0.0.0）
   --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --analyses-dir <path>               观测分析目录
-  --observations-dir <path>           observe inbox 数据目录（默认：.omk/observations）
+  --analyses-dir <path>               观测健康报告目录（默认：~/.oh-my-knowledge/observe-health）
+  --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
   --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
 示例：
   omk studio
   omk studio --port 7798
-  omk studio --host 0.0.0.0 --observations-dir .omk/observations
+  omk studio --host 0.0.0.0 --observations-dir .omk/observe-inbox
   omk studio --no-open
 `,
     en: `
@@ -276,15 +252,15 @@ Options:
   --port <n>                          Local server port (default: 7799)
   --host <host>                       Listen address (default: 127.0.0.1; use 0.0.0.0 for LAN access)
   --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --analyses-dir <path>               Observation analyses directory
-  --observations-dir <path>           Observe inbox data directory (default: .omk/observations)
+  --analyses-dir <path>               Observe-health reports dir (default: ~/.oh-my-knowledge/observe-health)
+  --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)
   --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 
 Examples:
   omk studio
   omk studio --port 7798
-  omk studio --host 0.0.0.0 --observations-dir .omk/observations
+  omk studio --host 0.0.0.0 --observations-dir .omk/observe-inbox
   omk studio --no-open
 `,
   },

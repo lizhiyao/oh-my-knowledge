@@ -465,7 +465,7 @@ export interface ResolveArtifactsOptions {
    *  显式 per-variant 隔离声明走 spec.allowedSkills(prepareEvaluationRun 按 spec 身份绑定),
    *  不经此处——resolveArtifacts 只认 strictBaseline 默认,隔离绑定收成单一来源。 */
   strictBaseline?: boolean;
-  /** Default true. dir-skill 是否落地隔离副本(写 `~/.oh-my-knowledge/trees` 并设 execRoot)。
+  /** Default true. dir-skill 是否落地隔离副本(写 `~/.oh-my-knowledge/state/trees` 并设 execRoot)。
    *  只有 eval(执行隔离)需要;doctor / loadSkills 等纯读路径传 false,只算指纹与正文、不写副本。 */
   materialize?: boolean;
 }
@@ -568,7 +568,7 @@ export type VariantInput =
  * 本地源 localDir 是真源目录;git 源 localDir 是 materializeGitSkillTree 物化出的临时目录。
  * execRoot(副本)供 executor cwd / skillDir 锚定;skillRoot(真源)由各分支自行保留。
  * 只有 eval 路径需要副本(执行隔离);doctor / loadSkills 只需指纹与正文,materialize=false 不落副本、
- * 不写 `~/.oh-my-knowledge/trees`(避免纯读路径的副作用 I/O 与 trees 污染)。
+ * 不写 `~/.oh-my-knowledge/state/trees`(避免纯读路径的副作用 I/O 与 trees 污染)。
  */
 function isolateDirSkill(localDir: string, name: string, materialize: boolean): { execRoot?: string; contentHash: string; content: string } {
   const content = readFileSync(join(localDir, 'SKILL.md'), 'utf-8').trim();

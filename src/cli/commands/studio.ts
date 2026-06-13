@@ -139,14 +139,14 @@ export default class Studio extends BaseCommand {
     }),
     'analyses-dir': Flags.string({
       description: bilingual({
-        zh: '分析数据目录（可选）',
-        en: 'Analyses dir (optional)',
+        zh: '观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）',
+        en: 'Observe-health reports dir (optional, default ~/.oh-my-knowledge/observe-health)',
       }),
     }),
     'observations-dir': Flags.string({
       description: bilingual({
-        zh: '观测数据目录（可选）',
-        en: 'Observations dir (optional)',
+        zh: '观测收件箱数据目录（可选，默认 .omk/observe-inbox）',
+        en: 'Observe-inbox data dir (optional, default .omk/observe-inbox)',
       }),
     }),
     'no-open': Flags.boolean({

@@ -29,7 +29,7 @@ That's it — no editing required. `omk init` scaffolds two skill variants and t
 
 Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
 
-Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
+Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
 ## Use inside AI Coding Agents
 

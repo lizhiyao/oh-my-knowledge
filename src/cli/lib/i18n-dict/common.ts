@@ -82,7 +82,7 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     en: 'Silence: set {env} to disable',
   },
   'cli.observe.view_hint': {
-    zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成日报。',
+    zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成健康报告。',
     en: 'Analysis JSON written to output-dir; use omk observe to keep producing health reports.',
   },
   'cli.studio.started': {

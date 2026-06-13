@@ -325,8 +325,8 @@ async function runSampleFromTraces(
   const obsDir = resolve(flags['observations-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
   if (!existsSync(obsDir)) {
     console.error(lang === 'zh'
-      ? `observations 目录不存在: ${obsDir}（先运行 omk observe 生成 inbox）`
-      : `Observations dir not found: ${obsDir} (run omk observe first)`);
+      ? `observe-inbox 目录不存在: ${obsDir}（先运行 omk observe ingest 生成）`
+      : `Observe-inbox dir not found: ${obsDir} (run omk observe ingest first)`);
     throw new CliExit(1);
   }
 
@@ -646,8 +646,8 @@ export default class Sample extends BaseCommand {
     }),
     'observations-dir': Flags.string({
       description: bilingual({
-        zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。',
-        en: 'Observe inbox dir (from-traces mode), default project .omk/observations.',
+        zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。',
+        en: 'Observe inbox dir (from-traces mode), default project .omk/observe-inbox.',
       }),
     }),
   };

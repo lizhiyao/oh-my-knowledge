@@ -155,7 +155,7 @@ function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
 
 export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  const skillHealthLink = `<a class="page-secondary-link" href="/analyses${langQ}">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
+  const skillHealthLink = `<a class="page-secondary-link" href="/observe-health${langQ}">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
     return layout(t('title', lang), `
       <main>
