@@ -22,7 +22,7 @@ import {
 //
 //   undefined         → 不传 -C(原行为,看 cwd 里有什么 codex 自己决定)
 //   []                → 必须提供 cwd 非空(否则 throw),caller 应传一个
-//                       isolated 空目录(如 ~/.oh-my-knowledge/isolated-cwd/)
+//                       isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)
 //   [...] (length>0)  → throw,codex CLI 没有 partial 白名单 flag
 export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null | undefined, executorName = 'codex-cli'): void {
   if (allowedSkills === undefined) return;
@@ -39,7 +39,7 @@ export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string
       `${executorName} executor allowedSkills=[] 需要提供 cwd 非空(channel 3 cwd 隔离)。\n`
       + '  codex 没有 SDK skill 自动发现 / subagent Skill 工具这两条 channel,\n'
       + '  cwd 文件系统隔离是它唯一能堵 AGENTS.md / .agents/skills/ 自动加载的途径。\n'
-      + '  caller 应传一个 isolated 空目录(如 ~/.oh-my-knowledge/isolated-cwd/)。',
+      + '  caller 应传一个 isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)。',
     );
   }
 }
