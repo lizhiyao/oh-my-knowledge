@@ -20,7 +20,7 @@ The lower layer is what authors ask daily; the upper layer is what adopters / pl
 
 **Primary: authors / maintainers of knowledge inputs.** Iterating on a prompt / skill / RAG / agent, needing to answer "is my change a real improvement, and is it shippable?" omk's doctor → eval → observe loop is built for them: change a version, measure, read the verdict, change again.
 
-**Second pillar: adopters / platform-governance teams.** Deciding "should our team use this third-party skill, and which knowledge inputs should we approve and keep?" They don't trust the author's bundled benchmark — they run it against *their own* sample set, and record "what we adopted, on what evidence" as a traceable decision log (see [evidence-gated management](../specs/evidence-gated-management)). This isn't an add-on — the governance gate cites the very reports (reportId) the author loop produces; it's the same evidence at team scale.
+**Second pillar: adopters / platform-governance teams.** Deciding "should our team use this third-party skill, and which knowledge inputs should we approve and keep?" They don't trust the author's bundled benchmark — they run it against *their own* sample set, and record "what we adopted, on what evidence" as a traceable decision log (see [evidence-gated management](../specs/evidence-gated-management)). This isn't an add-on — the governance gate cites the same kind of eval report (reportId) the author loop produces, only run on the adopter's own cases; it's the same measurement ruler extended to team scale.
 
 **Explicitly NOT for: passive end-users.** Someone who installs a skill from a public source to *use* it won't evaluate it — no sample set, no measurement intent; evaluation is pure overhead for them. omk bends none of its design around that persona. The people who run evals and generate reports are always the two above (the author in their skill / benchmark repo, the adopter in their use-case repo). This settles one thing directly: eval artifacts default to the evaluator's project workspace, not anyone's install directory.
 
@@ -34,7 +34,7 @@ omk's three stages reach different audiences:
 
 ## Boundaries: what omk doesn't do
 
-- **It doesn't judge whether the knowledge content is "correct."** omk doesn't review prose, grade writing quality, or rule on whether a domain fact is right; it measures whether there's a measurable, comparable difference on the cases you gave it.
+- **It doesn't independently adjudicate truth.** omk provides no independent source of truth and won't rule on whether a piece of knowledge is right on its own; it measures results against the cases, assertions, and gold *you* provide — factual correctness is testable, but you set the standard.
 - **It doesn't serve passive users.** See above.
 - **It doesn't mix the model into the variables.** Hold the model fixed, vary only the knowledge — that's how you attribute the difference to the knowledge itself. It's the precondition for "comparable," not a limitation.
 
