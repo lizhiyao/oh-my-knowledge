@@ -87,7 +87,7 @@ describe('resolveExecutionStrategy', () => {
     t.artifact.allowedSkills = [];
     t.cwd = null;
     const plan = resolveExecutionStrategy(t, 'sonnet');
-    assert.ok(plan.input.cwd?.includes('.oh-my-knowledge/isolated-cwd'),
+    assert.ok(plan.input.cwd?.includes('.oh-my-knowledge/state/isolated-cwd'),
       `cwd should be isolated, got: ${plan.input.cwd}`);
   });
 

@@ -384,12 +384,12 @@ baseline-kind 默认 `[]`(strict),其他 kind 默认 `undefined`(SDK 全发现)�
 |---|---|---|
 | Main session skills | ✅ | `options.skills = []` |
 | SDK 内置 task subagent 调 Skill 工具 | ✅(allowedSkills=[] 时) | `options.disallowedTools = ['Skill']` |
-| **cwd 文件系统(baseline 走 cwd → skills/ symlink → SKILL.md)** | ✅(strict + 用户没显式 cwd 时) | baseline cwd 切到 `~/.oh-my-knowledge/isolated-cwd/` 空目录 |
+| **cwd 文件系统(baseline 走 cwd → skills/ symlink → SKILL.md)** | ✅(strict + 用户没显式 cwd 时) | baseline cwd 切到 `~/.oh-my-knowledge/state/isolated-cwd/` 空目录 |
 | MCP servers | ✅(已默认堵) | SDK `settingSources` 默认 `[]`,omk 不传 `mcpServers` |
 | `AgentDefinition.skills` 白名单精确控制 | ❌(known hole, v1 不做) | follow-up:omk 加 `agents` option |
 | script executor | ❌ | stderr warn,用户自定义不参与 isolation |
 
-**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
+**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/state/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
 
 注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径，需要再加层 sandbox 保护(out-of-scope)。
 

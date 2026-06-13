@@ -1,6 +1,6 @@
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
 import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from '../types/index.js';
 
 /**
@@ -13,7 +13,7 @@ import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Ta
  * Stable path (not per-task tmpdir) so cache keys remain consistent.
  */
 function getIsolatedCwd(): string {
-  const dir = join(homedir(), '.oh-my-knowledge', 'isolated-cwd');
+  const dir = DEFAULT_ISOLATED_CWD_DIR;
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }

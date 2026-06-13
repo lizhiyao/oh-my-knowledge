@@ -384,12 +384,12 @@ baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (ful
 |---|---|---|
 | Main session skills | ✅ | `options.skills = []` |
 | SDK built-in task subagent calling the Skill tool | ✅ (when allowedSkills=[]) | `options.disallowedTools = ['Skill']` |
-| **cwd file system (baseline → cwd → skills/ symlink → SKILL.md)** | ✅ (strict + user gave no explicit cwd) | baseline cwd switched to the empty dir `~/.oh-my-knowledge/isolated-cwd/` |
+| **cwd file system (baseline → cwd → skills/ symlink → SKILL.md)** | ✅ (strict + user gave no explicit cwd) | baseline cwd switched to the empty dir `~/.oh-my-knowledge/state/isolated-cwd/` |
 | MCP servers | ✅ (blocked by default) | SDK `settingSources` defaults to `[]`, omk passes no `mcpServers` |
 | `AgentDefinition.skills` whitelist fine-grained control | ❌ (known hole, not in v1) | follow-up: omk adds an `agents` option |
 | script executor | ❌ | stderr warn; user-custom, doesn't participate in isolation |
 
-**Why the cwd channel is listed separately**: after blocking only the two SDK channels (`skills:[]` + `disallowedTools:['Skill']`), the baseline's `Skill` tool calls do drop to 0, but the baseline can still use plain `Glob` / `Read` to follow the `skills/<name>/` symlink under cwd and read `SKILL.md`, completely bypassing the SDK isolation. Root cause: omk defaults to `baseline.cwd === null` → the SDK falls back to `process.cwd()` = the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment. The fix is to switch the baseline's default cwd to `~/.oh-my-knowledge/isolated-cwd/` (an empty dir). **When the user explicitly sets a cwd for the baseline, this is left untouched** (explicit cwd = the user is responsible for keeping that dir clean).
+**Why the cwd channel is listed separately**: after blocking only the two SDK channels (`skills:[]` + `disallowedTools:['Skill']`), the baseline's `Skill` tool calls do drop to 0, but the baseline can still use plain `Glob` / `Read` to follow the `skills/<name>/` symlink under cwd and read `SKILL.md`, completely bypassing the SDK isolation. Root cause: omk defaults to `baseline.cwd === null` → the SDK falls back to `process.cwd()` = the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment. The fix is to switch the baseline's default cwd to `~/.oh-my-knowledge/state/isolated-cwd/` (an empty dir). **When the user explicitly sets a cwd for the baseline, this is left untouched** (explicit cwd = the user is responsible for keeping that dir clean).
 
 Note: isolated-cwd is not a sandbox — the baseline can still Read any absolute path. But the model won't proactively guess the user's private paths (no system-prompt hint). If the evaluation scenario prompts the baseline to read an absolute path, an additional sandbox layer is needed (out of scope).
 

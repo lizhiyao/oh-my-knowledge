@@ -2,15 +2,27 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 /**
- * reports 默认根目录的**单一来源**:cli 侧 eval-runner 写、server 侧 report store 读,二者必须一致 ——
- * 否则 cli 把报告写到一处、studio 从另一处读,页面就空。放在中立的 eval-core 层,让 cli/ 与 server/
- * 两个交付层都能合法 import 同一个常量,而不必让 server 反向 import cli(那是 #242 刚清掉的分层倒挂)。
+ * omk 所有默认产物的用户级根目录 —— 全部 `~/.oh-my-knowledge/*` 默认目录的单一基准,
+ * 各目录都从这里派生,不在散落各处重复拼 `join(homedir(), '.oh-my-knowledge', ...)`。
  */
-export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
+export const OMK_HOME: string = join(homedir(), '.oh-my-knowledge');
 
 /**
- * observe-health（skill 健康度报告）默认根目录的**单一来源**:cli 侧 `omk observe <sessions>`(默认命令)写、
- * server 侧 Studio 读,二者必须一致。与 reports 同理放在中立的 eval-core 层,让 cli/ 与 server/
- * 都能 import,而不必让 server 反向 import cli。
+ * 耐久测量数据(要留、被 reportId 等引用,绝不自动删)的默认根目录。这几个是 cli 写、server(Studio)读
+ * 的同一处,必须一致 —— 否则 cli 把产物写到一处、studio 从另一处读,页面就空。放在中立的 eval-core 层,
+ * 让 cli/ 与 server/ 两个交付层都能合法 import 同一个常量,而不必让 server 反向 import cli
+ * (那是 #242 清掉的分层倒挂)。
  */
-export const DEFAULT_OBSERVE_HEALTH_DIR: string = join(homedir(), '.oh-my-knowledge', 'observe-health');
+export const DEFAULT_REPORTS_DIR: string = join(OMK_HOME, 'reports');
+export const DEFAULT_OBSERVE_HEALTH_DIR: string = join(OMK_HOME, 'observe-health');
+export const DEFAULT_DOCTORS_DIR: string = join(OMK_HOME, 'doctors');
+
+/**
+ * 可重生的执行 scratch(删了能重建)统一收在 `state/` 子树下,跟上面的耐久数据物理分开 ——
+ * 想清磁盘时「这一坨能整删」一眼可见。各 scratch 目录都派生自这个 state 根,避免散落硬编码。
+ */
+export const DEFAULT_STATE_DIR: string = join(OMK_HOME, 'state');
+export const DEFAULT_CACHE_DIR: string = join(DEFAULT_STATE_DIR, 'cache');
+export const DEFAULT_ISOLATED_CWD_DIR: string = join(DEFAULT_STATE_DIR, 'isolated-cwd');
+export const DEFAULT_TREES_DIR: string = join(DEFAULT_STATE_DIR, 'trees');
+export const DEFAULT_JOBS_DIR: string = join(DEFAULT_STATE_DIR, 'jobs');
