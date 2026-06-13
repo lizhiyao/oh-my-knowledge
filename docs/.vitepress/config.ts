@@ -58,6 +58,7 @@ export default defineConfig({
           {
             text: 'Understand how it works',
             items: [
+              { text: 'Who omk is for', link: '/explanation/who-omk-is-for' },
               { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
@@ -119,6 +120,7 @@ export default defineConfig({
           {
             text: '我想懂工作原理',
             items: [
+              { text: '为谁、解决什么', link: '/zh/explanation/who-omk-is-for' },
               { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },
               { text: '统计严谨性', link: '/zh/explanation/statistical-rigor' },

@@ -29,7 +29,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户）。
 
-深入：[CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [artifact 布局](docs/zh/reference/artifact-layout.md)
+深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [artifact 布局](docs/zh/reference/artifact-layout.md)
 
 ## 在 AI Coding Agent 中使用
 
