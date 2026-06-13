@@ -5,7 +5,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -53,6 +53,14 @@ describe('oclif init', () => {
       assert.ok(stdout.includes('已初始化 omk 项目'), `stdout missing scaffolded msg:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
       assert.ok(existsSync(join(target, 'eval-samples.json')), 'eval-samples.json not created');
+      // 预置 .omk/.gitignore:测量 bulk 不入库,managed/ 不被忽略(默认 track)。
+      const gitignorePath = join(target, '.omk', '.gitignore');
+      assert.ok(existsSync(gitignorePath), '.omk/.gitignore not created');
+      const gi = readFileSync(gitignorePath, 'utf8');
+      for (const d of ['observe-health/', 'doctors/', 'observe-inbox/', 'reports/']) {
+        assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
+      }
+      assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

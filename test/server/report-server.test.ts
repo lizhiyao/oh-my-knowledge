@@ -381,6 +381,35 @@ describe('report-server', () => {
     }
   });
 
+  it('analyses 目录按请求解析 —— 项目获报告后同会话切回 project,不冻结(P1)', async () => {
+    // 同 managed:注入受控 resolver(项目空→global),验 server 持有「如何解析」而非启动时冻结 root。
+    // doctorsDir 也传函数,顺带验三模式接受函数不报错。
+    const projA = join(tmpdir(), `omk-test-an-proj-${Date.now()}`);
+    const globA = join(tmpdir(), `omk-test-an-glob-${Date.now()}`);
+    mkdirSync(projA, { recursive: true });
+    mkdirSync(globA, { recursive: true });
+    const healthReport = (gen: string): string => JSON.stringify({
+      meta: { generatedAt: gen, sessionCount: 1, segmentCount: 40, toolCallCount: 1, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: gen, to: gen } },
+      overall: { gapRate: 0.1, weightedGapRate: 0.1, healthBand: 'green', confidence: 'high' },
+      bySkill: {},
+    });
+    writeFileSync(join(globA, 'global-h-observe-health.json'), healthReport('2026-01-01T00:00:00Z'));
+    const analysesResolver = (): string => (readdirSync(projA).length > 0 ? projA : globA);
+    const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: analysesResolver, doctorsDir: (): string => DOCTORS_DIR, managedDir: MANAGED_DIR });
+    const u = await s.start();
+    try {
+      const before = JSON.parse((await fetch(`${u}/api/observe-health`)).body) as Array<{ id: string }>;
+      assert.deepEqual(before.map((x) => x.id), ['global-h-observe-health'], '启动时项目空 → 解析到 global');
+      writeFileSync(join(projA, 'proj-h-observe-health.json'), healthReport('2026-02-02T00:00:00Z'));
+      const after = JSON.parse((await fetch(`${u}/api/observe-health`)).body) as Array<{ id: string }>;
+      assert.deepEqual(after.map((x) => x.id), ['proj-h-observe-health'], '中途项目获报告 → 同会话实时切回 project');
+    } finally {
+      await s.stop();
+      rmSync(projA, { recursive: true, force: true });
+      rmSync(globA, { recursive: true, force: true });
+    }
+  });
+
   it('GET /health returns ok', async () => {
     const res = await fetch(`${baseUrl}/health`);
     assert.equal(res.status, 200);

@@ -5,7 +5,7 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
-import { DEFAULT_OBSERVE_HEALTH_DIR } from '../../../eval-core/default-dirs.js';
+import { projectObserveHealthDir, globalObserveHealthDir } from '../../../eval-core/measurement-dirs.js';
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
 // 由 Studio 健康报告页按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show。
@@ -58,8 +58,14 @@ export default class Observe extends BaseCommand {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health',
-        en: 'Health report output dir, default ~/.oh-my-knowledge/observe-health',
+        zh: '健康报告输出目录，默认项目级 .omk/observe-health（--global 写全局）',
+        en: 'Health report output dir, default project-level .omk/observe-health (--global for global)',
+      }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health',
+        en: 'Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health',
       }),
     }),
   };
@@ -104,7 +110,9 @@ export default class Observe extends BaseCommand {
       });
 
       // JSON 是主产物；HTML 由 report server 的健康报告详情页按需渲染。
-      const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVE_HEALTH_DIR);
+      const outDir = flags['output-dir']
+        ? resolve(flags['output-dir'])
+        : (flags.global ? globalObserveHealthDir() : projectObserveHealthDir());
       mkdirSync(outDir, { recursive: true });
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const jsonPath = join(outDir, `${timestamp}-observe-health.json`);

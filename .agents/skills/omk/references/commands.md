@@ -25,10 +25,11 @@ omk doctor [target] [flags]
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
 - `--fix` `boolean`:交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
 - `--gate` `boolean`:静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
+- `--global` `boolean`:写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
 - `--json` `boolean`:JSON 输出到 stdout，适合 CI / 外部脚本消费。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
-- `--output-dir` `option`:报告输出目录，默认 ~/.oh-my-knowledge/doctors。
+- `--output-dir` `option`:报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
 - `--samples` `option`:用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
 - `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
 - `--timeout` `option`:单次 LLM 会话超时秒数，默认 600(10 分钟）。
@@ -402,10 +403,11 @@ omk observe [sessionsDir] [flags]
 **Flags:**
 
 - `--from` `option`:起始时间 ISO，优先级高于 --last
+- `--global` `boolean`:写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health
 - `--kb` `option`:知识库 root，启用 KB-aware 分析
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--last` `option`:时间窗(7d / 24h / 30m）
-- `--output-dir` `option`:健康报告输出目录，默认 ~/.oh-my-knowledge/observe-health
+- `--output-dir` `option`:健康报告输出目录，默认项目级 .omk/observe-health（--global 写全局）
 - `--skills` `option`:只看指定 skill，逗号分隔
 - `--to` `option`:结束时间 ISO
 
@@ -630,8 +632,10 @@ omk studio [flags]
 
 **Flags:**
 
-- `--analyses-dir` `option`:观测健康报告目录（可选，默认 ~/.oh-my-knowledge/observe-health）
+- `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
+- `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
+- `--global` `boolean`:只看全局目录（~/.oh-my-knowledge/*）而非项目优先
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--no-open` `boolean`:不自动打开浏览器

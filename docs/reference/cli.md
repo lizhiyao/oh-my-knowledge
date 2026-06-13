@@ -158,10 +158,11 @@ omk doctor --static-only                # offline mode: static checks only, no L
   --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
   --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
   --gate                Silent mode: only emit stderr summary on fail. Exit code carries the signal.
+  --global              Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors
   --json                JSON output to stdout, for CI / external script consumption.
   --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>       LLM model name, default sonnet.
-  --output-dir <value>  Report output dir, default ~/.oh-my-knowledge/doctors.
+  --output-dir <value>  Report output dir, default project-level .omk/doctors (--global for global).
   --samples <value>     Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
   --static-only         Offline static mode: only 4 static rules, no LLM call.
   --timeout <value>     Single-session LLM timeout sec, default 600 (10 min).
@@ -295,10 +296,11 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 ```text
   --from <value>        Start time ISO, overrides --last
+  --global              Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health
   --kb <value>          KB root, enables KB-aware analysis
   --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --last <value>        Time window (7d / 24h / 30m)
-  --output-dir <value>  Health report output dir, default ~/.oh-my-knowledge/observe-health
+  --output-dir <value>  Health report output dir, default project-level .omk/observe-health (--global for global)
   --skills <value>      Filter to specific skills, comma-separated
   --to <value>          End time ISO
 ```
@@ -441,8 +443,10 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      Observe-health reports dir (optional, default ~/.oh-my-knowledge/observe-health)
+  --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)
   --dev                       Dev mode: child process with hot reload
+  --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctors, falls back to global)
+  --global                    View global dirs (~/.oh-my-knowledge/*) instead of project-first
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser

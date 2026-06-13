@@ -271,7 +271,9 @@ export interface StudioFlags {
   host?: string;
   'reports-dir'?: string;
   'analyses-dir'?: string;
+  'doctors-dir'?: string;
   'observations-dir'?: string;
+  global?: boolean;
   'no-open': boolean;
   dev: boolean;
 }
