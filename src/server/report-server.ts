@@ -15,7 +15,7 @@ import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedD
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
-import { listObserveCards, listDoctorCards } from '../eval-core/artifact-index.js';
+import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../eval-core/artifact-index.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
@@ -115,7 +115,7 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
   // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeCards=false,只看该目录(逃生舱语义)。
   if (includeCards) {
     const seen = new Set(items.map((i) => i.id));
-    for (const card of listObserveCards()) {
+    for (const card of listLiveObserveCards()) {
       if (seen.has(card.id)) continue;
       items.push({
         id: card.id, generatedAt: card.meta.generatedAt, sessionCount: card.meta.sessionCount,

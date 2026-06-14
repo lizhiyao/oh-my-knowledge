@@ -27,7 +27,8 @@ describe('卡片合并 include 开关(server 级)', () => {
     [emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj] =
       ['rp', 'an', 'dr', 'ob', 'jb', 'mg', 'pj'].map((t) => mkdtempSync(join(tmpdir(), `omk-cg-${t}-`)));
     dirs.push(idxRoot, emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj);
-    // 别项目卡片各一张(live 目录扫不到,只能靠卡片发现)。
+    // 别项目卡片各一张(live 目录扫不到,只能靠卡片发现);真身写出来,免得被悬空过滤掉。
+    writeFileSync(join(proj, 'cg.json'), '{}');
     indexDoctorWrite({ id: 'cg-doctor-1-aa', path: join(proj, 'cg.json'), skillName: 'cg-skill', reportId: 'doctor-cg-1-aa',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     const obsReport = { kind: 'observe-health',

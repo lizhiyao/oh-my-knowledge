@@ -34,6 +34,9 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
   });
 
   it('别项目 doctor 卡片 + observe 卡片 → buildSkillIndex 看到对应 skill', () => {
+    // 卡片真身(悬空过滤要求 card.path 存在;buildSkillIndex 合并只读卡片本身,真身内容随意)。
+    writeFileSync(join(proj, 'foo-doctor-20260614-1-aa11.json'), '{}');
+    writeFileSync(join(proj, 'o-observe-health.json'), '{}');
     indexDoctorWrite({
       id: 'foo-doctor-20260614-1-aa11', path: join(proj, 'foo-doctor-20260614-1-aa11.json'), skillName: 'foo',
       reportId: 'doctor-20260614-1-aa11', timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 2, warnCount: 0, failCount: 0,
@@ -52,6 +55,18 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(foo.doctor?.reportId, 'doctor-20260614-1-aa11');
     const bar = idx.entries.find((e) => e.skillName === 'bar')!;
     assert.equal(bar.observe?.analysisId, 'o-observe-health');
+  });
+
+  it('悬空卡片(真身被带外删)不进 buildSkillIndex:include=true 也不展示', () => {
+    // 卡片在、真身不在(项目被移走/手动 rm)→ 机器级合并不应展示。
+    indexDoctorWrite({ id: 'gone-doctor-1-zz', path: join(proj, 'gone.json'), skillName: 'gone-skill', reportId: 'doctor-1-zz',
+      timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
+    indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
+      overall: { healthBand: 'green', confidence: 'high' },
+      bySkill: { 'gone-obs': { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
+    }, join(proj, 'gone-observe-health.json'), proj, 'gone-observe-health'); // 真身均不写
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
+    assert.deepEqual(idx.entries.map((e) => e.skillName), [], '悬空卡片(真身不在)不进 skill 索引');
   });
 
   it('固定目录模式(include 默认 false):索引里有别项目卡片但 buildSkillIndex 不合并 → skill 索引为空', () => {

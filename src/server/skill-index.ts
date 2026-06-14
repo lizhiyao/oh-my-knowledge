@@ -34,7 +34,7 @@ import type {
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
-import { artifactIndexDir, listDoctorCards, cardToDoctorSnapshot, listObserveCards } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
@@ -391,7 +391,7 @@ export function buildSkillIndex(
   // 别项目的 observe 卡片(当前 analysesDir live 扫不到的项目)→ per-skill snapshot,dedup by analysisId(live 盖卡片)。
   // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeObserveCards=false,只看该目录(逃生舱语义)。
   if (includeObserveCards) {
-    for (const card of listObserveCards()) {
+    for (const card of listLiveObserveCards()) {
       for (const [skill, h] of Object.entries(card.bySkill)) {
         const list = (observeBy[skill] ??= []);
         if (list.some((s) => s.analysisId === card.id)) continue;
@@ -410,7 +410,7 @@ export function buildSkillIndex(
   // 别项目的 doctor 卡片 → per-skill snapshot,dedup by reportId(live 盖卡片);prune 删正文时已连带删卡片,故无「复活」。
   // 仅机器级模式合并;固定 --doctors-dir / --global 时 includeDoctorCards=false,只看该目录(逃生舱语义)。
   if (includeDoctorCards) {
-    for (const card of listDoctorCards()) {
+    for (const card of listLiveDoctorCards()) {
       const { skillName, snap } = cardToDoctorSnapshot(card);
       const list = (doctorBy[skillName] ??= []);
       if (!list.some((s) => s.reportId === snap.reportId)) list.push(snap);

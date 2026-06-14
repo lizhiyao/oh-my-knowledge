@@ -92,6 +92,16 @@ function removeArtifactCard(domain: ArtifactDomain, id: string): boolean {
   }
 }
 
+/**
+ * 过滤悬空卡片:真身文件(`card.path`)已不在(项目被整目录删 / 移走等带外途径)→ 卡片视为「指向不存在的产物」。
+ * 机器级 list / merge 展示路径用 listLive*Cards,不展示这类卡片(把卡片当活指针,而非持久记录)。
+ * 注:by-id 的 get / loadXReport 兜底仍走 raw list*Cards —— 直链书签按 card.path 读到则给真身、读不到各自降级,
+ * 是 best-effort,不在这层过滤。doctor 历史 prune 已连带删卡片,故悬空主要发生在「带外删整个项目目录」。
+ */
+function liveCards<T extends { path: string }>(cards: T[]): T[] {
+  return cards.filter((c) => existsSync(c.path));
+}
+
 // ── report 域 ───────────────────────────────────────────────────────────────
 
 /** 报告投影成卡片(剥掉 results 重体)。 */
@@ -125,6 +135,11 @@ export function listReportCards(): ReportIndexCard[] {
     const kindOk = card?.kind === 'evaluation' || card?.kind === 'batch-evaluation';
     return !!card && card.domain === 'report' && kindOk && typeof card.id === 'string' && typeof card.path === 'string' && !!card.meta;
   });
+}
+
+/** report 卡片(过滤悬空真身):供 studio 机器级 list / findBy 展示。 */
+export function listLiveReportCards(): ReportIndexCard[] {
+  return liveCards(listReportCards());
 }
 
 /** 卡片 → ReportDocument(results:[]):供 studio list / buildSkillIndex / trend 消费(它们不读 results)。 */
@@ -174,6 +189,11 @@ export function listDoctorCards(): DoctorIndexCard[] {
       && isDoctorStatus(card.status)
       && isFiniteNumber(card.passCount) && isFiniteNumber(card.warnCount) && isFiniteNumber(card.failCount);
   });
+}
+
+/** doctor 卡片(过滤悬空真身):供 buildSkillIndex 机器级合并。 */
+export function listLiveDoctorCards(): DoctorIndexCard[] {
+  return liveCards(listDoctorCards());
 }
 
 /** doctor 卡片 → (skillName, SkillDoctorSnapshot)。results:[](逐规则详情需回源项目看)。 */
@@ -257,6 +277,11 @@ export function listObserveCards(): ObserveIndexCard[] {
     }
     return true;
   });
+}
+
+/** observe 卡片(过滤悬空真身):供 listAnalyses / buildSkillIndex 机器级合并。 */
+export function listLiveObserveCards(): ObserveIndexCard[] {
+  return liveCards(listObserveCards());
 }
 
 /** 删 observe 域某 id 的卡片。 */
