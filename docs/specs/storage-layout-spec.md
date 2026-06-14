@@ -35,17 +35,15 @@ The four in the first row are placed the same way (project-local default + globa
 
 ```
 ~/.oh-my-knowledge/             # machine-global dir (honors OMK_HOME, relocatable as a whole)
-  reports/ observe-health/ doctors/   # written here only when you run omk ... --global
+  reports/ observe-health/ doctors/ observe-inbox/   # written here only when you run omk ... --global
   managed/                      # governance archive for globally-installed skills
-  observe-inbox/                # global inbox (--global write / read)
   update-check.json
   state/                        # scratch · wipe anytime
     cache/  isolated-cwd/  trees/  jobs/
     artifact-index/<domain>/<id>.json   # index cards for the cross-project overview (section 6)
 
 <project>/.omk/                 # project-local · keep · tied to this project's sample set
-  reports/  observe-health/  doctors/   # measurement output — gitignored by default
-  observe-inbox/                # inbox — gitignored by default
+  reports/  observe-health/  doctors/  observe-inbox/   # measurement output & inbox — gitignored by default
   managed/                      # governance archive for project-vendored skills — committable (decision history)
   eval-samples.yaml / eval.yaml # measurement definition — committed
 ```
