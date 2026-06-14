@@ -234,6 +234,7 @@ export interface ObserveIngestArgs {
 export interface ObserveIngestFlags {
   lang: Lang;
   'output-dir'?: string;
+  global: boolean;
 }
 
 // observe inbox(无 positional)
@@ -241,6 +242,7 @@ export type ObserveInboxArgs = Record<string, never>;
 export interface ObserveInboxFlags {
   lang: Lang;
   'input-dir'?: string;
+  global: boolean;
   skill?: string;
   limit?: string;
   explore?: string;
@@ -260,6 +262,7 @@ export interface ObserveShowArgs {
 export interface ObserveShowFlags {
   lang: Lang;
   'input-dir'?: string;
+  global: boolean;
 }
 
 // ── studio ────────────────────────────────────────────────────────────────────

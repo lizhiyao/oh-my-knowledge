@@ -24,9 +24,16 @@ export default class ObserveIngest extends BaseCommand {
     lang: LANG_FLAG,
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd）。',
-        en: 'Output dir, default .omk/observe-inbox (project-local, relative to cwd).',
+        zh: '输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd；--global 写全局）。',
+        en: 'Output dir, default .omk/observe-inbox (project-local, relative to cwd; --global writes global).',
       }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。',
+        en: 'Write to global ~/.oh-my-knowledge/observe-inbox instead of project .omk/observe-inbox.',
+      }),
+      default: false,
     }),
   };
 
@@ -58,8 +65,10 @@ export default class ObserveIngest extends BaseCommand {
           : 'Error: --output-dir must not be an empty string.');
         throw new CliExit(2);
       }
-      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
-      const outDir = resolve(outDirRaw ?? DEFAULT_OBSERVATIONS_DIR);
+      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_PROJECT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
+      // 显式 --output-dir 最高;否则 --global 写全局、默认写项目(读侧 loadObservationInboxReports 会从项目兜底到全局)。
+      const defaultDir = flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_PROJECT_OBSERVATIONS_DIR;
+      const outDir = resolve(outDirRaw ?? defaultDir);
       const { loadObservationReviewState } = await import('../../../observability/review-state.js');
       const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
