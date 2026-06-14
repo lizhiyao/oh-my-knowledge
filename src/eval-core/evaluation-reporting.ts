@@ -390,17 +390,24 @@ export function persistReport(report: PersistableReport, outputDir: string | nul
   return filePath;
 }
 
-export function generateRunId(variants: string[]): string {
+/**
+ * run id 的时间戳后缀 `YYYYMMDD-HHmmss-rand4`。
+ * 含秒 + 4 位随机:id 是 run 标签(非测量数),但被 studio 机器级 dedup 与 managed 证据 (reportId,
+ * contentHash) 去重当唯一键用。分钟级会让跨项目 / 同分钟重跑撞同 id → 索引静默顶掉一份、managed 错并一条。
+ * 秒+随机根治撞名,保证每次 run 全局唯一。供 generateRunId 与 evolve 合并 id 共用,避免靠 split 反解格式。
+ */
+export function runIdSuffix(): string {
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, '0');
   const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  // 含秒 + 4 位随机后缀:id 是 run 标签(非测量数),但被 studio 机器级 dedup 与 managed 证据 (reportId,
-  // contentHash) 去重当唯一键用。分钟级会让跨项目 / 同分钟重跑撞同 id → 索引静默顶掉一份、managed 错并一条。
-  // 秒+随机根治撞名,保证每次 run 全局唯一。
   const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   const rand = Math.random().toString(36).slice(2, 6);
+  return `${date}-${time}-${rand}`;
+}
+
+export function generateRunId(variants: string[]): string {
   const variantPart = variants
     .map((variant) => variant.replaceAll(/[\\/:]/g, '-').replaceAll(/[^a-zA-Z0-9._@-]/g, '_'))
     .join('-vs-');
-  return `${variantPart}-${date}-${time}-${rand}`;
+  return `${variantPart}-${runIdSuffix()}`;
 }

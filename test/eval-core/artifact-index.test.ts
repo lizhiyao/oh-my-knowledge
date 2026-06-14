@@ -4,11 +4,11 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  indexReportWrite, listReportCards, cardToReportDocument, removeReportCard, shouldIndexReport,
+  indexReportWrite, listReportCards, cardToReportDocument, removeReportCard, shouldIndexReport, artifactIndexDir,
 } from '../../src/eval-core/artifact-index.js';
 import { globalReportsDir } from '../../src/eval-core/measurement-dirs.js';
 
@@ -77,5 +77,16 @@ describe('artifact-index 写侧(report 域)', () => {
   it('非完整报告(无 canonical kind)防御式跳过,不落卡片', () => {
     indexReportWrite({ id: 'bare' }, join(projDir, 'bare.json'), projDir);
     assert.equal(listReportCards().length, 0);
+  });
+
+  it('坏 kind 卡片(拼错 / doctor)读侧跳过,不污染机器级 list', () => {
+    indexReportWrite(makeEvalReport('good') as never, join(projDir, 'good.json'), projDir);
+    // 直接写一张 kind 不在白名单的卡片(绕过写侧 guard,模拟脏文件 / 别域误落本目录)
+    const dir = artifactIndexDir('report');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'bad.json'), JSON.stringify({
+      domain: 'report', id: 'bad', path: join(projDir, 'bad.json'), kind: 'doctor', meta: { timestamp: '2026-06-14T00:00:00Z' },
+    }));
+    assert.deepEqual(listReportCards().map((c) => c.id), ['good'], '只收白名单 kind,坏卡片跳过');
   });
 });

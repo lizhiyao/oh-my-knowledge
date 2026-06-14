@@ -78,7 +78,10 @@ export function listReportCards(): ReportIndexCard[] {
     if (!f.endsWith('.json') || f.includes('.json.tmp.')) continue;
     try {
       const c = JSON.parse(readFileSync(join(dir, f), 'utf-8')) as ReportIndexCard;
-      if (c && c.domain === 'report' && typeof c.id === 'string' && typeof c.path === 'string' && c.meta) cards.push(c);
+      // kind 白名单:cardToReportDocument 对任何非 evaluation 一律按 batch 投影,坏 kind(拼错 / 'doctor')
+      // 会污染机器级 list 成空 batch 报告。索引是可重生 scratch,读侧从严跳过坏卡片。
+      const kindOk = c?.kind === 'evaluation' || c?.kind === 'batch-evaluation';
+      if (c && c.domain === 'report' && kindOk && typeof c.id === 'string' && typeof c.path === 'string' && c.meta) cards.push(c);
     } catch { /* skip corrupt card */ }
   }
   return cards;
