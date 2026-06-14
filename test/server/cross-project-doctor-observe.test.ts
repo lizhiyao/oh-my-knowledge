@@ -61,7 +61,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       kind: 'doctor', schemaVersion: '3.0.0', id: 'rd', timestamp: '2026-06-14T00:00:00Z', cliVersion: 't', cwd: '/x',
       executorName: 'claude', model: 'm', outcome: 'passed',
       skills: [{ skillName: 'd', skillPath: '/x/d', status: 'pass',
-        results: [{ ruleId: 'r1', severity: 'error', labelKey: 'k', status: 'pass', message: 'ok', durationMs: 1 }] }],
+        results: [{ ruleId: 'r1', severity: 'warn', labelKey: 'k', status: 'pass', message: 'ok', durationMs: 1 }] }],
       totals: { pass: 1, warn: 0, fail: 0 }, ruleStats: { pass: 1, warn: 0, fail: 0, skipped: 0, total: 1 },
     };
     writeFileSync(join(emptyDoctors, `${dStem}.json`), JSON.stringify(liveDoctor));
@@ -75,8 +75,8 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5, toolCallCount: 3,
         toolFailureRate: 0, timeRange: { from: 'a', to: 'b' }, generatedAt: '2026-06-14T00:00:00Z' },
       bySkill: { o: { skillName: 'o', segmentCount: 10, toolCallCount: 3, toolFailureCount: 0, toolFailureRate: 0,
-        stability: 1, confidence: 'high', gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
-      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'high' },
+        stability: 1, confidence: 'high' as const, gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green' as const, confidence: 'high' as const },
     };
     writeFileSync(join(emptyAnalyses, `${oid}.json`), JSON.stringify(liveObs));
     indexObserveWrite(liveObs, join(emptyAnalyses, `${oid}.json`), emptyAnalyses, oid);
