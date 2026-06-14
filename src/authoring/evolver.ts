@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
 import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId, hashString } from '../eval-core/evaluation-reporting.js';
+import { persistReport, DEFAULT_OUTPUT_DIR, runIdSuffix, hashString } from '../eval-core/evaluation-reporting.js';
 import { createOverlayReportStore } from '../server/report-store.js';
 import { projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
@@ -784,7 +784,7 @@ export function mergeEvolveReports(
     if (originalKey) artifactHashes[variantLabels[i]] = hashes[originalKey];
   }
 
-  const runId = `evolve-${skillName}-${generateRunId([skillName]).split('-').slice(-2).join('-')}`;
+  const runId = `evolve-${skillName}-${runIdSuffix()}`;
 
   const report: Report = {
     kind: 'evaluation',

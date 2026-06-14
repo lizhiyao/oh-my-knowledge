@@ -464,7 +464,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <div class="rs-hero-left">
       <div class="rs-hero-kind"><span class="rs-hero-icon" style="color:#7c3aed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 11l2 2 4-4"/></svg></span> Eval Report</div>
       <h1 class="rs-hero-name">v2</h1>
-      <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> [TIMESTAMP]</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-1000</span></div>
+      <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> [TIMESTAMP]</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-100000-abcd</span></div>
     </div>
     <div class="rs-hero-score">
       <div class="rs-hero-num" style="color:#1f9d63">4.80</div>
@@ -1610,7 +1610,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <div class="rs-hero-left">
       <div class="rs-hero-kind"><span class="rs-hero-icon" style="color:#7c3aed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 11l2 2 4-4"/></svg></span> 用例评测报告</div>
       <h1 class="rs-hero-name">v2</h1>
-      <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> [TIMESTAMP]</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-1000</span></div>
+      <div class="rs-hero-meta"><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> [TIMESTAMP]</span><span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></svg> sonnet</span><span>test-run-20260325-100000-abcd</span></div>
     </div>
     <div class="rs-hero-score">
       <div class="rs-hero-num" style="color:#1f9d63">4.80</div>
@@ -2771,17 +2771,17 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/scoring.md" target="_blank" rel="noopener">docs/specs/scoring.md</a></p>
     </div>
   </div>
-    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000?lang=en">
+    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-100000-abcd?lang=en">
       <div class="run-card-h">
         <span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span>
-        <span class="run-card-id">test-run-20260325-1000</span>
+        <span class="run-card-id">test-run-20260325-100000-abcd</span>
         <span class="run-card-date">03/25 10:00</span>
       </div>
       <div class="run-card-meta">sonnet · 2 samples · v1 · v2</div>
       <div class="run-card-scores"><div class="rc-score-row"><span class="rc-score-label" title="v1">v1</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:80%"></div></div><span class="rc-score-num rc-score-num--pass">4.00</span></div><div class="rc-score-row"><span class="rc-score-label" title="v2">v2</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:96%"></div></div><span class="rc-score-num rc-score-num--pass">4.80</span></div></div>
       <div class="run-card-foot">
         <span class="run-card-stat">10.0s</span>
-        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-1000',this)" data-i18n="deleteBtnText" aria-label="Delete">×</button>
+        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-100000-abcd',this)" data-i18n="deleteBtnText" aria-label="Delete">×</button>
       </div>
     </a></div>
     <style>
@@ -3368,17 +3368,17 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a></p>
     </div>
   </div>
-    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000">
+    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-100000-abcd">
       <div class="run-card-h">
         <span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span>
-        <span class="run-card-id">test-run-20260325-1000</span>
+        <span class="run-card-id">test-run-20260325-100000-abcd</span>
         <span class="run-card-date">03/25 10:00</span>
       </div>
       <div class="run-card-meta">sonnet · 2 用例 · v1 · v2</div>
       <div class="run-card-scores"><div class="rc-score-row"><span class="rc-score-label" title="v1">v1</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:80%"></div></div><span class="rc-score-num rc-score-num--pass">4.00</span></div><div class="rc-score-row"><span class="rc-score-label" title="v2">v2</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:96%"></div></div><span class="rc-score-num rc-score-num--pass">4.80</span></div></div>
       <div class="run-card-foot">
         <span class="run-card-stat">10.0s</span>
-        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-1000',this)" data-i18n="deleteBtnText" aria-label="删除">×</button>
+        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-100000-abcd',this)" data-i18n="deleteBtnText" aria-label="删除">×</button>
       </div>
     </a></div>
     <style>

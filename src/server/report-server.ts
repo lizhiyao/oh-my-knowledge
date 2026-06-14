@@ -18,7 +18,8 @@ import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, pr
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
-import { createFileStore, createOverlayReportStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
+import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
+import { createIndexedReportStore } from './indexed-report-store.js';
 import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
 import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
@@ -614,13 +615,12 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
   let serverUrl: string | null = null;
 
   // reports store:显式注入 store > 显式 reportsDir(eval serve 的本次 outputDir / 测试 / 覆盖,固定单目录)
-  // > 缺省 overlay(项目 .omk/reports 盖全局,studio 默认看当前项目、存量全局兜底)。overlay 在 store 层做
-  // 记录优先 + 按 id 兜底,故无需像 analyses/doctors 那样每请求重解析(底层 createFileStore 的 mtime 指纹
-  // 自动反映内容变化),一次构建即可。
+  // > 缺省 indexed(机器级总览:当前项目 + 全局 live ∪ 别项目的索引卡片,按 id dedup)。indexed 在 store 层做
+  // merge,底层 createFileStore 的 mtime 指纹自动反映内容变化,一次构建即可。
   const reportStore: ReportStore = store
     ?? (reportsDir !== undefined
       ? createFileStore(reportsDir)
-      : createOverlayReportStore(projectReportsDir(), globalReportsDir()));
+      : createIndexedReportStore({ projectDir: projectReportsDir(), globalDir: globalReportsDir() }));
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
   // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
   // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio

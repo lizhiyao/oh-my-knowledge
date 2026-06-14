@@ -232,11 +232,11 @@ omk studio——打开本地知识工作台
 选项：
   --port <n>                          本地服务端口（默认：7799）
   --host <host>                       监听地址（默认：127.0.0.1；局域网访问可用 0.0.0.0）
-  --reports-dir <path>                报告目录（默认：项目级 .omk/reports 盖全局兜底）
+  --reports-dir <path>                只看指定报告目录（默认机器级聚合：当前项目 + 全局 + 别项目索引）
   --analyses-dir <path>               观测健康报告目录（默认：项目级 .omk/observe-health，空则全局兜底）
   --doctors-dir <path>                体检报告目录（默认：项目级 .omk/doctors，空则全局兜底）
   --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
-  --global                            只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
+  --global                            只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed / observe-inbox 不受影响
   --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
@@ -255,11 +255,11 @@ Usage:
 Options:
   --port <n>                          Local server port (default: 7799)
   --host <host>                       Listen address (default: 127.0.0.1; use 0.0.0.0 for LAN access)
-  --reports-dir <path>                Reports directory (default: project .omk/reports overlaid on global)
+  --reports-dir <path>                View only this reports dir (default aggregates machine-wide: current project + global + other projects via index)
   --analyses-dir <path>               Observe-health reports dir (default: project .omk/observe-health, falls back to global)
   --doctors-dir <path>                Doctor reports dir (default: project .omk/doctors, falls back to global)
   --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)
-  --global                            View global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
+  --global                            View only global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed / observe-inbox
   --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 

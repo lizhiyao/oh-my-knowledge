@@ -17,8 +17,14 @@ export default defineConfig({
     // loadSamples] ⚠ lenient mode" stderr lines that appear during test runs
     // are diagnostic noise — they confirm which fixtures contain legacy-style
     // text-class assertions and are not failures.
-    // 把隔离副本根重定向到临时目录:测试解析 dir-skill 时(materialize 默认 true)不写用户真实
-    // ~/.oh-my-knowledge/trees。需要断言「无 .tmp- 残留」等全局扫描的用例再各自 per-test 覆盖。
-    env: { OMK_LENIENT_ASSERTIONS: '1', OMK_TREES_DIR: join(tmpdir(), 'omk-test-trees') },
+    // OMK_HOME 一处重定向,把整棵默认产物树(reports / doctors / observe-health / state 下的
+    // cache / trees / jobs / artifact-index)全部移到临时目录,从根上隔离 —— 任何从深层调用点写全局默认
+    // 目录的写路径(如 persistReport 间接写产物索引卡片、materialize 写隔离副本)都自动落 temp,不再需要
+    // 每个子目录单独补 env 兜底,也消除「新写路径忘了补兜底就静默污染真实 ~/.oh-my-knowledge」的隐患。
+    // 需要更细粒度的用例仍可 per-test 覆盖 OMK_TREES_DIR / OMK_ARTIFACT_INDEX_DIR 等子目录变量。
+    env: {
+      OMK_LENIENT_ASSERTIONS: '1',
+      OMK_HOME: join(tmpdir(), 'omk-test-home'),
+    },
   },
 });

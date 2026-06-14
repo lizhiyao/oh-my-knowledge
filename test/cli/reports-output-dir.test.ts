@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { parseRunConfig } from '../../src/cli/lib/parse-run-config.js';
 import { globalReportsDir, projectReportsDir } from '../../src/eval-core/measurement-dirs.js';
+import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
 
 const BASE_FLAGS = {
   'skill-dir': 'examples/code-review/skills',
@@ -28,7 +29,8 @@ describe('eval 报告写入默认目录', () => {
   it('--global → 全局 reports', () => {
     const { config } = parseRunConfig({ ...BASE_FLAGS, global: true });
     assert.equal(config.outputDir, globalReportsDir());
-    assert.ok(config.outputDir.endsWith(join('.oh-my-knowledge', 'reports')));
+    // 全局目录从 OMK_HOME 派生(可被 env 整体重定向),不硬编码 .oh-my-knowledge。
+    assert.equal(config.outputDir, join(OMK_HOME, 'reports'));
   });
 
   it('--output-dir 最高优先(压过默认与 --global)', () => {

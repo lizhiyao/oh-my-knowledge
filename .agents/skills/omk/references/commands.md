@@ -636,13 +636,13 @@ omk studio [flags]
 - `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-- `--global` `boolean`:只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
+- `--global` `boolean`:只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed / observe-inbox 不受影响
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe-inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配
-- `--reports-dir` `option`:报告目录（可选，默认项目级 .omk/reports 盖全局兜底）
+- `--reports-dir` `option`:只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）
 
 **示例:**
 

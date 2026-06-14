@@ -6,7 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { BatchEvaluationReport, EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
+import type { EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportIndexCard, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
 // Uses a queue to avoid the race window between checking and acquiring the lock.
@@ -284,13 +284,9 @@ export async function queryJob(jobStore: JobStore, id: string): Promise<Evaluati
   return jobStore.get(id);
 }
 
-export interface RunListItem {
-  id: string;
-  kind: ReportDocument['kind'];
-  meta: ReportDocument['meta'];
-  summary?: EvaluationReport['summary'];
-  items?: BatchEvaluationReport['items'];
-}
+// 与 ReportIndexCard(types/report.ts)同形,去掉 domain 判别与 path 寻址字段:索引卡片即「带寻址信息的
+// RunListItem」,两边共用一处形状定义,避免字段漂移。
+export type RunListItem = Omit<ReportIndexCard, 'domain' | 'path'>;
 
 export interface TrendPoint {
   reportId: string;
