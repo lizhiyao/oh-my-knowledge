@@ -89,24 +89,27 @@ function loadChartJsBundle(): string | null {
 }
 
 function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
-  if (!existsSync(dir)) return [];
   const items: AnalysisListItem[] = [];
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.json')) continue;
-    try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillHealthReport;
-      if (!data.meta || !data.overall) continue;
-      items.push({
-        id: file.replace(/\.json$/, ''),
-        generatedAt: data.meta.generatedAt,
-        sessionCount: data.meta.sessionCount,
-        segmentCount: data.meta.segmentCount,
-        skillCount: Object.keys(data.bySkill || {}).length,
-        healthBand: data.overall.healthBand,
-        // 旧 JSON 缺 confidence 时按 segmentCount 兜底,跟 Studio / CLI 口径一致。
-        confidence: data.overall.confidence ?? confidenceOf(data.meta.segmentCount),
-      });
-    } catch { /* skip corrupt */ }
+  // live 扫描 dir 存在才做;dir 不存在(默认机器级模式下当前项目还没 .omk/observe-health、全局也空)时 live 为空,
+  // 但**不能早退** —— 后面仍要按 includeCards 合并别项目卡片,否则 observe 列表会与合卡片的 /api/skills 口径分裂。
+  if (existsSync(dir)) {
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillHealthReport;
+        if (!data.meta || !data.overall) continue;
+        items.push({
+          id: file.replace(/\.json$/, ''),
+          generatedAt: data.meta.generatedAt,
+          sessionCount: data.meta.sessionCount,
+          segmentCount: data.meta.segmentCount,
+          skillCount: Object.keys(data.bySkill || {}).length,
+          healthBand: data.overall.healthBand,
+          // 旧 JSON 缺 confidence 时按 segmentCount 兜底,跟 Studio / CLI 口径一致。
+          confidence: data.overall.confidence ?? confidenceOf(data.meta.segmentCount),
+        });
+      } catch { /* skip corrupt */ }
+    }
   }
   // 别项目的 observe 卡片(当前 dir live 扫不到的项目)→ list item,dedup by id(live 盖卡片)。
   // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeCards=false,只看该目录(逃生舱语义)。

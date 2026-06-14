@@ -249,9 +249,11 @@ export function listObserveCards(): ObserveIndexCard[] {
     if (!meta || !isFiniteNumber(meta.sessionCount) || !isFiniteNumber(meta.segmentCount) || typeof meta.generatedAt !== 'string') return false;
     if (!overall || !isHealthBand(overall.healthBand) || !isConfidence(overall.confidence)) return false;
     if (!bySkill || typeof bySkill !== 'object') return false;
-    // 每个 skill 的标量也校验:坏 toolFailureRate / segmentCount 会让 bandFromObserveHealth / 趋势出 NaN。
+    // 每个 skill 的标量也校验:坏 toolFailureRate / segmentCount / gap.weightedGapRate 会让 bandFromObserveHealth /
+    // 趋势 / 健康快照出 NaN(buildSkillIndex 直接取 h.gap?.weightedGapRate ?? 0 进 gapRate、参与阈值判断)。
     for (const h of Object.values(bySkill)) {
       if (!h || !isFiniteNumber(h.toolFailureRate) || !isFiniteNumber(h.segmentCount) || !isConfidence(h.confidence)) return false;
+      if (h.gap !== undefined && h.gap.weightedGapRate !== undefined && !isFiniteNumber(h.gap.weightedGapRate)) return false;
     }
     return true;
   });

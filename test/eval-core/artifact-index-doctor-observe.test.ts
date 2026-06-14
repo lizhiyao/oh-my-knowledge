@@ -151,7 +151,11 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     writeFileSync(join(dir, 'b2.json'), JSON.stringify({ domain: 'observe-health', id: 'b2', path: '/x',
       meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
       bySkill: { s: { toolFailureRate: 'nope', segmentCount: 1 } } }));
+    // 坏 gap.weightedGapRate(非数 → 会流进 gapRate / 阈值判定)
+    writeFileSync(join(dir, 'b3.json'), JSON.stringify({ domain: 'observe-health', id: 'b3', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, segmentCount: 1, gap: { weightedGapRate: 'nan' } } } }));
     indexObserveWrite(observeReport(), join(projDir, 'ok-observe-health.json'), projDir, 'ok-observe-health');
-    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok-observe-health'], '只收 healthBand 合法 + 标量为有限数的卡片');
+    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok-observe-health'], '只收 healthBand 合法 + 全标量(含 gap.weightedGapRate)为有限数的卡片');
   });
 });
