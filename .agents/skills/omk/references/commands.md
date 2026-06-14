@@ -435,6 +435,7 @@ omk observe inbox [flags]
 - `--by-skill` `boolean`:按 skill 聚合输出
 - `--executor` `option`:LLM 增强复盘使用的执行器
 - `--explore` `option`:抽样 N 条 medium/low 长尾（replaces limit）
+- `--global` `boolean`:直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 .omk/observe-inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe-inbox。
 - `--json` `boolean`:JSON 格式输出
@@ -461,8 +462,9 @@ omk observe ingest <traceDir> [flags]
 
 **Flags:**
 
+- `--global` `boolean`:写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd）。
+- `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd；--global 写全局）。
 
 ## omk observe show
 

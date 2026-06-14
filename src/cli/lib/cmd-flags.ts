@@ -241,6 +241,7 @@ export type ObserveInboxArgs = Record<string, never>;
 export interface ObserveInboxFlags {
   lang: Lang;
   'input-dir'?: string;
+  global: boolean;
   skill?: string;
   limit?: string;
   explore?: string;
