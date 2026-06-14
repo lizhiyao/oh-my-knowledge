@@ -10,8 +10,8 @@
  * 可比性红线在比较层(verdict / findByVariant 锁同口径)而非视图层,故跨项目 merge 列表合法。
  * by-id 复用 / resume / gold-compare 仍走 overlay(当前项目→全局),不走本 store —— 索引只供 studio 浏览。
  */
-import { existsSync, statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, statSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createFileStore } from './report-store.js';
 import { artifactIndexDir, listReportCards, cardToReportDocument, removeReportCard } from '../eval-core/artifact-index.js';
 import type { ReportDocument, ReportStore, EvaluationReport } from '../types/index.js';
@@ -31,16 +31,26 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
   const project = createFileStore(projectDir);
   const global = createFileStore(globalDir);
 
-  // 卡片扫描的轻量指纹缓存:索引目录 mtime + 条目数变化即失效(卡片 tmp+rename 写入会动目录 mtime)。
+  // 卡片扫描的指纹缓存:目录 mtime + 每张卡片(名:mtime:size)三元组 —— 与 createFileStore 同口径(report-store.ts:79)。
+  // 仅用目录 mtime 不够:同毫秒内改卡片内容 / mtime 精度问题会漏失效、发陈旧;三元组到单文件粒度,内容一变即失效。
   // live 两源各自带 report-store 的指纹缓存,这里只缓存卡片层。
   let cachedFp = '';
   let cachedCards: ReportDocument[] | null = null;
-  function cardDocs(): ReportDocument[] {
+  function cardFingerprint(): string {
     const dir = artifactIndexDir('report');
-    let fp = 'none';
     try {
-      if (existsSync(dir)) fp = `${statSync(dir).mtimeMs}`;
-    } catch { /* fall through */ }
+      if (!existsSync(dir)) return 'none';
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json') && !f.includes('.json.tmp.')).sort();
+      const parts = files.map((f) => {
+        try { const s = statSync(join(dir, f)); return `${f}:${s.mtimeMs}:${s.size}`; } catch { return `${f}:?`; }
+      });
+      return `${statSync(dir).mtimeMs}|${parts.join(',')}`;
+    } catch {
+      return 'none';
+    }
+  }
+  function cardDocs(): ReportDocument[] {
+    const fp = cardFingerprint();
     if (fp === cachedFp && cachedCards) return cachedCards;
     const docs = listReportCards().map(cardToReportDocument);
     cachedFp = fp;
@@ -87,7 +97,9 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
 
   async function remove(id: string): Promise<boolean> {
     const liveRemoved = (await project.remove(id)) || (await global.remove(id));
-    // 真身可能在别项目删不到,但删卡片即让它从机器级 list 消失(达成「从总览移除」意图)。
+    // 真身在别项目删不到,但删卡片即让它从机器级 list 消失。返回契约刻意是「是否从本机器级视图移除成功」
+    // (= 删了真身或删了卡片),而非「删了正文真身」—— studio DELETE 的语义是「从我的总览拿掉这条」,
+    // 别项目正文留在它自己项目里不受影响。
     const cardRemoved = removeReportCard(id);
     return liveRemoved || cardRemoved;
   }

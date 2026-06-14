@@ -99,6 +99,15 @@ describe('createIndexedReportStore 机器级总览', () => {
     assert.equal((await store.findByArtifactHash('ho')).length, 1);
   });
 
+  it('卡片缓存按 per-file 指纹失效:构造 store 后再写/删卡片,list 立即反映', async () => {
+    const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
+    assert.deepEqual((await store.list()).map((r) => r.id), [], '初始空');
+    writeCard('ro', join(other, 'ro.json'), evalDoc('ro')); // 构造后新增卡片
+    assert.deepEqual((await store.list()).map((r) => r.id), ['ro'], '新卡片立即可见(指纹失效)');
+    await store.remove('ro'); // 删卡片
+    assert.deepEqual((await store.list()).map((r) => r.id), [], '删后立即消失');
+  });
+
   it('remove:删 live 真身 + 删卡片;别项目删不到真身但删卡片仍报成功、从 list 消失', async () => {
     writeReportFile(proj, evalDoc('rp'));
     writeCard('ro', join(other, 'ro.json'), evalDoc('ro'));
