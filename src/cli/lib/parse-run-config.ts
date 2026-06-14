@@ -19,7 +19,7 @@
  */
 
 import { resolve } from 'node:path';
-import { DEFAULT_REPORTS_DIR } from '../../eval-core/default-dirs.js';
+import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { DEFAULT_MODEL } from '../../executors/shared.js';
 import type {
@@ -101,9 +101,6 @@ export interface ParseRunConfigResult {
   evalConfig: EvalConfig | null;
 }
 
-// 单一来源在 eval-core/default-dirs；此处 re-export 保持既有 import 入口不破(studio / sample / eval gold compare 仍从本文件取)。
-export { DEFAULT_REPORTS_DIR };
-
 /**
  * 接 typed flags(来自 oclif Command.parse() 输出)。oclif strict 模式已经在
  * 上游对未知 flag 拦截 exit 2,这里不再 parseArgs。eval-runner 等业务 caller
@@ -157,7 +154,12 @@ export function parseRunConfig(
   const judgeModels: JudgeConfig[] = parsedJudges
     ?? evalConfig?.judgeModels
     ?? [{ executor: executorName, model: 'haiku' }];
-  const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
+  // 报告默认落项目 `.omk/reports`(绑用例集,construct validity);--global 写全局;--output-dir 最高优先。
+  // 同 observe / doctor 写入侧口径。读取侧(studio / resume / gold-compare / 复用)走 overlay 项目→全局兜底。
+  const outputDir = resolve(
+    (values['output-dir'] as string | undefined)
+    ?? (values.global ? globalReportsDir() : projectReportsDir()),
+  );
   const concurrencyRaw =
     (values.concurrency as string | undefined) !== undefined
       ? Number(values.concurrency)

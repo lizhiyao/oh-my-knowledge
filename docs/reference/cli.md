@@ -235,6 +235,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
   --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
+  --global                        Write report to global ~/.oh-my-knowledge/reports instead of project .omk/
   --gold-dir <value>              Gold dataset dir
   --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
   --judge-repeat <value>          Judge each dim N times
@@ -250,7 +251,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server
   --no-strict-baseline            Disable baseline isolation
-  --output-dir <value>            Report output dir
+  --output-dir <value>            Report output dir (default project .omk/reports)
   --repeat <value>                Repeat each sample N times
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
   --resume <value>                Resume a previous failed run
@@ -446,13 +447,13 @@ omk studio --no-open
   --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctors, falls back to global)
-  --global                    View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
+  --global                    View global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe-inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
-  --reports-dir <value>       Reports dir, default ~/.oh-my-knowledge/reports
+  --reports-dir <value>       Reports dir (optional, default project .omk/reports overlaid on global)
 ```
 
 For full descriptions: `omk studio --help`.

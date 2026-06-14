@@ -129,8 +129,11 @@ async function loadBatchChildReports(
   reportsDir: string,
   lang: CliLang,
 ): Promise<EvaluationReport[]> {
-  const { createFileStore } = await import('../../../server/report-store.js');
-  const store = createFileStore(reportsDir);
+  // 读侧走 overlay(本次 reportsDir 优先 → 全局兜底):写默认翻项目后,batch.json 引用的存量 / 全局子报告
+  // 仍能 get 命中,不致降级到 batchItemFallbackReport(来自 batch metadata 的过时数据)。
+  const { createOverlayReportStore } = await import('../../../server/report-store.js');
+  const { globalReportsDir } = await import('../../../eval-core/measurement-dirs.js');
+  const store = createOverlayReportStore(reportsDir, globalReportsDir());
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
     const loaded = await store.get(item.reportId);
@@ -199,6 +202,8 @@ async function announceSavedReport({
 
   if (!values['no-serve'] && process.stdout.isTTY) {
     const { createReportServer } = await import('../../../server/report-server.js');
+    // eval 结束的即时 serve 刻意钉本次 outputDir(--global 时即全局),不走 overlay:它的语义是「看我刚跑的这份」,
+    // 单目录保证刚写的报告(含 --global 写到全局的)一定可见;浏览全机器历史是 omk studio 的事(默认 overlay 项目优先)。
     const server: ReportServer = createReportServer({ reportsDir });
     const serverUrl: string = await server.start();
     const reportUrl: string = `${serverUrl}/reports/${report.id}`;
@@ -449,7 +454,13 @@ export default class Eval extends BaseCommand {
       }),
     }),
     'output-dir': Flags.string({
-      description: bilingual({ zh: '报告输出目录', en: 'Report output dir' }),
+      description: bilingual({ zh: '报告输出目录（默认项目级 .omk/reports）', en: 'Report output dir (default project .omk/reports)' }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/',
+        en: 'Write report to global ~/.oh-my-knowledge/reports instead of project .omk/',
+      }),
     }),
     // ── 评测 toggle ──
     'no-judge': Flags.boolean({

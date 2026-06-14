@@ -4,11 +4,11 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import { resolveManagedDir, managedDir } from '../../managed/index.js';
 import {
   resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
+  globalReportsDir,
 } from '../../eval-core/measurement-dirs.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
@@ -41,7 +41,13 @@ export async function runStudio(
   flags: StudioFlags,
   lang: CliLang,
 ): Promise<void> {
-  const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
+  // reports 读取目录:显式 --reports-dir 固定该目录;--global 钉全局;默认走 overlay(项目盖全局,
+  // 由 server 在 store 层做记录优先 + 按 id 兜底)。默认 = undefined,交给 createReportServer 建 overlay。
+  const reportsDirOpt = flags['reports-dir']
+    ? resolve(flags['reports-dir'])
+    : flags.global
+      ? globalReportsDir()
+      : undefined;
 
   if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
@@ -57,8 +63,10 @@ export async function runStudio(
       'studio',
       '--port', flags.port,
       ...(flags.host ? ['--host', flags.host] : []),
-      '--reports-dir', reportsDir,
     ];
+    if (flags['reports-dir']) {
+      childArgs.push('--reports-dir', flags['reports-dir']);
+    }
     if (flags['analyses-dir']) {
       childArgs.push('--analyses-dir', flags['analyses-dir']);
     }
@@ -89,7 +97,8 @@ export async function runStudio(
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
-    reportsDir: resolve(reportsDir),
+    // reportsDir 缺省 undefined → server 建 overlay(项目盖全局);显式 --reports-dir / --global 固定单目录。
+    ...(reportsDirOpt !== undefined ? { reportsDir: reportsDirOpt } : {}),
     // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
     // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
     analysesDir: flags['analyses-dir']
@@ -150,8 +159,8 @@ export default class Studio extends BaseCommand {
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录，默认 ~/.oh-my-knowledge/reports',
-        en: 'Reports dir, default ~/.oh-my-knowledge/reports',
+        zh: '报告目录（可选，默认项目级 .omk/reports 盖全局兜底）',
+        en: 'Reports dir (optional, default project .omk/reports overlaid on global)',
       }),
     }),
     'analyses-dir': Flags.string({
@@ -174,8 +183,8 @@ export default class Studio extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响',
-        en: 'View global observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox',
+        zh: '只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响',
+        en: 'View global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox',
       }),
     }),
     'no-open': Flags.boolean({

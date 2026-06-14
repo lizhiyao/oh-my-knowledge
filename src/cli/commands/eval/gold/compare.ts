@@ -4,7 +4,7 @@ import { BaseCommand } from '../../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
-import { DEFAULT_REPORTS_DIR } from '../../../lib/parse-run-config.js';
+import { projectReportsDir, globalReportsDir } from '../../../../eval-core/measurement-dirs.js';
 import { requireEvaluationReport } from '../../../lib/shared.js';
 import type { ReportStore } from '../../../../types/index.js';
 
@@ -67,7 +67,7 @@ export default class EvalGoldCompare extends BaseCommand {
       }
       const { loadGoldDataset } = await import('../../../../grading/gold-dataset.js');
       const { compareGoldToReport, formatGoldCompare } = await import('../../../../grading/gold-cli.js');
-      const { createFileStore } = await import('../../../../server/report-store.js');
+      const { createFileStore, createOverlayReportStore } = await import('../../../../server/report-store.js');
 
       const { dataset, issues } = loadGoldDataset(goldDir);
       if (!dataset) {
@@ -77,8 +77,11 @@ export default class EvalGoldCompare extends BaseCommand {
       }
       for (const i of issues) console.error(`warn: ${i.message}`);
 
-      const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
-      const store: ReportStore = createFileStore(resolve(reportsDir));
+      // 显式 --reports-dir 固定该目录;默认 overlay(项目 .omk/reports 盖全局),get(reportId) 项目→全局兜底,
+      // 不因 eval 写默认翻项目而对比落空。
+      const store: ReportStore = flags['reports-dir']
+        ? createFileStore(resolve(flags['reports-dir']))
+        : createOverlayReportStore(projectReportsDir(), globalReportsDir());
       const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
       const samples = Math.max(100, Number(flags['bootstrap-samples'] ?? 1000) || 1000);
       const seedVal = flags.seed != null ? Number(flags.seed) : undefined;

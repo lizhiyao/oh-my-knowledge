@@ -91,6 +91,36 @@ describe('studio --dev child spawn argv', () => {
     expect(rest).toEqual(['--port', '8080', '--reports-dir', 'tmp-reports', '--no-open']);
   });
 
+  it('默认(无 --reports-dir)→ 子进程 argv 不带 --reports-dir(交给 server 建 overlay)', async () => {
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    await runStudio({}, {
+      lang: 'zh',
+      port: '7799',
+      'no-open': true,
+      dev: true,
+    }, 'zh');
+
+    expect(spawnCalls).toHaveLength(1);
+    const [, , , , ...rest] = spawnCalls[0].args;
+    expect(rest).toEqual(['--port', '7799', '--no-open']);
+    expect(rest).not.toContain('--reports-dir');
+  });
+
+  it('--global → 子进程 argv 透传 --global(reports / observe-health / doctors 钉全局)', async () => {
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    await runStudio({}, {
+      lang: 'zh',
+      port: '7799',
+      'no-open': true,
+      dev: true,
+      global: true,
+    }, 'zh');
+
+    expect(spawnCalls).toHaveLength(1);
+    const [, , , , ...rest] = spawnCalls[0].args;
+    expect(rest).toEqual(['--port', '7799', '--global', '--no-open']);
+  });
+
   it('treats BROWSER=none as no browser open', async () => {
     const { runStudio } = await import('../../src/cli/commands/studio.js');
     setStdoutIsTTY(true);

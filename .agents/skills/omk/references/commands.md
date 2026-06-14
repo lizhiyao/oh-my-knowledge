@@ -80,6 +80,7 @@ omk eval [flags]
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
 - `--executor` `option`:执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
+- `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
 - `--gold-dir` `option`:gold dataset 目录
 - `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
 - `--judge-repeat` `option`:每个 dim 评 N 次
@@ -95,7 +96,7 @@ omk eval [flags]
 - `--no-judge` `boolean`:跳过 LLM judge
 - `--no-serve` `boolean`:不启 report server
 - `--no-strict-baseline` `boolean`:关闭 baseline 隔离
-- `--output-dir` `option`:报告输出目录
+- `--output-dir` `option`:报告输出目录（默认项目级 .omk/reports）
 - `--repeat` `option`:每个 sample 重复跑 N 次
 - `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:从某次失败 run 续跑
@@ -635,13 +636,13 @@ omk studio [flags]
 - `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-- `--global` `boolean`:只看全局 observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
+- `--global` `boolean`:只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe-inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配
-- `--reports-dir` `option`:报告目录，默认 ~/.oh-my-knowledge/reports
+- `--reports-dir` `option`:报告目录（可选，默认项目级 .omk/reports 盖全局兜底）
 
 **示例:**
 
