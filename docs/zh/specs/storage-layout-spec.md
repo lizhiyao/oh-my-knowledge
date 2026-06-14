@@ -35,17 +35,15 @@
 
 ```
 ~/.oh-my-knowledge/             # 电脑全局目录（认 OMK_HOME，可整体搬走）
-  reports/ observe-health/ doctors/   # 只有 omk ... --global 主动跑时才写这里
+  reports/ observe-health/ doctors/ observe-inbox/   # 只有 omk ... --global 主动跑时才写这里
   managed/                      # 全局装的 skill 的治理档案
-  observe-inbox/                # 全局收件箱（--global 写 / 读）
   update-check.json
   state/                        # 草稿区 · 随时可整删
     cache/  isolated-cwd/  trees/  jobs/
     artifact-index/<domain>/<id>.json   # 跨项目总览用的索引卡片（见第六节）
 
 <项目>/.omk/                    # 项目本地 · 要留 · 绑这个项目的用例集
-  reports/  observe-health/  doctors/   # 测量产物 —— 默认 gitignore，不进库
-  observe-inbox/                # 收件箱 —— 默认 gitignore，不进库
+  reports/  observe-health/  doctors/  observe-inbox/   # 测量产物与收件箱 —— 默认 gitignore，不进库
   managed/                      # 项目自带 skill 的治理档案 —— 可以提交（决策史）
   eval-samples.yaml / eval.yaml # 测量定义 —— 提交
 ```
