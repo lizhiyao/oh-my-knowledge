@@ -57,7 +57,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(bar.observe?.analysisId, 'o-observe-health');
   });
 
-  it('悬空卡片(真身被带外删)不进 buildSkillIndex:include=true 也不展示', () => {
+  it('悬空卡片(真身从未存在)不进 buildSkillIndex:include=true 也不展示', () => {
     // 卡片在、真身不在(项目被移走/手动 rm)→ 机器级合并不应展示。
     indexDoctorWrite({ id: 'gone-doctor-1-zz', path: join(proj, 'gone.json'), skillName: 'gone-skill', reportId: 'doctor-1-zz',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
@@ -67,6 +67,24 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     }, join(proj, 'gone-observe-health.json'), proj, 'gone-observe-health'); // 真身均不写
     const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
     assert.deepEqual(idx.entries.map((e) => e.skillName), [], '悬空卡片(真身不在)不进 skill 索引');
+  });
+
+  it('悬空检测穿透 buildSkillIndex 缓存:先 build 可见、仅删真身(卡片目录不变、不 reset 缓存)→ 再 build 应消失', () => {
+    writeFileSync(join(proj, 'fd.json'), '{}');
+    writeFileSync(join(proj, 'fo-observe-health.json'), '{}');
+    indexDoctorWrite({ id: 'fd', path: join(proj, 'fd.json'), skillName: 'cf', reportId: 'doctor-cf-1',
+      timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
+    indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
+      overall: { healthBand: 'green', confidence: 'high' },
+      bySkill: { co: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
+    }, join(proj, 'fo-observe-health.json'), proj, 'fo-observe-health');
+    const opts = { includeObserveCards: true, includeDoctorCards: true };
+    let idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, opts);
+    assert.deepEqual(idx.entries.map((e) => e.skillName).sort(), ['cf', 'co'], 'build1 可见(进模块缓存)');
+    rmSync(join(proj, 'fd.json'), { force: true }); // 仅删真身,不动卡片目录、不 _resetSkillIndexCache
+    rmSync(join(proj, 'fo-observe-health.json'), { force: true });
+    idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, opts);
+    assert.deepEqual(idx.entries.map((e) => e.skillName), [], '真身没了 → 真身 sentinel 进 fingerprint、缓存失效,悬空不展示');
   });
 
   it('固定目录模式(include 默认 false):索引里有别项目卡片但 buildSkillIndex 不合并 → skill 索引为空', () => {

@@ -9,7 +9,7 @@
  * 三域共用 `artifactIndexDir(domain)` + tmp-rename 原子写 + 指纹缓存读 的同一套机制,各域只差「投影成卡片」
  * 与「卡片还原成 snapshot」两段域特定逻辑。
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DEFAULT_ARTIFACT_INDEX_DIR } from './default-dirs.js';
 import { globalReportsDir, globalDoctorsDir, globalObserveHealthDir } from './measurement-dirs.js';
@@ -100,6 +100,30 @@ function removeArtifactCard(domain: ArtifactDomain, id: string): boolean {
  */
 function liveCards<T extends { path: string }>(cards: T[]): T[] {
   return cards.filter((c) => existsSync(c.path));
+}
+
+/**
+ * 某域所有卡片「真身(card.path)」的存在性 + mtime/size 指纹。
+ * 消费方(indexed-report-store / buildSkillIndex)的缓存指纹必须纳入它:卡片 JSON 本身没变、只靠卡片目录
+ * mtime 的指纹检测不到「真身被带外删」,长会话会继续命中旧缓存展示悬空卡片。真身删/改 → 此 sentinel 变 →
+ * 缓存失效 → live 过滤生效。读卡片只为拿 path,字段宽松。
+ */
+export function cardTargetSentinel(domain: ArtifactDomain): string {
+  const dir = artifactIndexDir(domain);
+  if (!existsSync(dir)) return '';
+  let files: string[];
+  try { files = readdirSync(dir); } catch { return ''; }
+  const parts: string[] = [];
+  for (const f of files) {
+    if (!f.endsWith('.json') || f.includes('.json.tmp.')) continue;
+    try {
+      const c = JSON.parse(readFileSync(join(dir, f), 'utf-8')) as { path?: unknown };
+      if (typeof c.path !== 'string') continue;
+      try { const s = statSync(c.path); parts.push(`${f}=${s.mtimeMs}:${s.size}`); }
+      catch { parts.push(`${f}=gone`); }
+    } catch { /* skip corrupt */ }
+  }
+  return parts.sort().join(',');
 }
 
 // ── report 域 ───────────────────────────────────────────────────────────────

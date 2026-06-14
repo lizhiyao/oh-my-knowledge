@@ -112,16 +112,14 @@ describe('createIndexedReportStore 机器级总览', () => {
     assert.deepEqual((await store.list()).map((r) => r.id), [], '删后立即消失');
   });
 
-  it('list 不展示悬空卡片:真身被带外删除后,机器级 list 不再出现该条', async () => {
+  it('list 不展示悬空卡片(穿透缓存):首次可见进缓存后,仅删真身(卡片 JSON / 目录不变)→ 再 list 应消失', async () => {
     const ro = evalDoc('ro', 'vo', 'ho');
     writeReportFile(other, ro);
     writeCard('ro', join(other, 'ro.json'), ro);
     const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
-    assert.deepEqual((await store.list()).map((r) => r.id), ['ro'], '真身在 → 卡片可见');
-    rmSync(join(other, 'ro.json'), { force: true }); // 带外删真身(项目被移走/手动 rm)
-    writeCard('keep', join(other, 'keep.json'), evalDoc('keep')); // 触发卡片目录指纹变化使缓存失效
-    writeReportFile(other, evalDoc('keep'));
-    assert.deepEqual((await store.list()).map((r) => r.id).sort(), ['keep'], '悬空 ro 不展示,只剩仍有真身的 keep');
+    assert.deepEqual((await store.list()).map((r) => r.id), ['ro'], '真身在 → 卡片可见(进 cardDocs 缓存)');
+    rmSync(join(other, 'ro.json'), { force: true }); // 仅删真身,不动卡片 JSON / 卡片目录(不靠卡片目录指纹变化)
+    assert.deepEqual((await store.list()).map((r) => r.id), [], '真身没了 → 真身 sentinel 使缓存失效,悬空卡片不再展示');
   });
 
   it('remove:删 live 真身 + 删卡片;别项目删不到真身但删卡片仍报成功、从 list 消失', async () => {

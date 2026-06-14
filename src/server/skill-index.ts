@@ -34,7 +34,7 @@ import type {
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
-import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
@@ -142,8 +142,9 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   // 别项目的 doctor / observe 卡片也进 fingerprint:否则别项目新跑一份后,本项目 studio 因缓存命中看不到更新。
   // 仅在对应域开启卡片合并(机器级模式)时才纳入 —— 固定目录 / --global 模式不合卡片,卡片变化不应触发重算;
   // 且 include 标志本身进 fingerprint,避免同目录在 include on/off 两种模式间命中错误缓存。
-  const doctorCardsFp = includeDoctorCards ? safeDirJsonContentFingerprint(artifactIndexDir('doctor')) : '';
-  const observeCardsFp = includeObserveCards ? safeDirJsonContentFingerprint(artifactIndexDir('observe-health')) : '';
+  // 卡片目录指纹 + 真身存在性 sentinel 都纳入:后者使「卡片真身被带外删」也能让缓存失效(否则悬空卡片继续展示)。
+  const doctorCardsFp = includeDoctorCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('doctor'))}|t:${cardTargetSentinel('doctor')}` : '';
+  const observeCardsFp = includeObserveCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('observe-health'))}|t:${cardTargetSentinel('observe-health')}` : '';
   return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}|dc:${doctorCardsFp}|oc:${observeCardsFp}|inc:${includeObserveCards ? 'o' : ''}${includeDoctorCards ? 'd' : ''}`;
 }
 
