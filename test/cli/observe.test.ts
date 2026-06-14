@@ -52,6 +52,7 @@ describe('observe CLI', () => {
         {
           lang: 'zh',
           'input-dir': dir,
+          global: false,
           skill: 'audit',
           'include-noise': false,
           'by-skill': true,

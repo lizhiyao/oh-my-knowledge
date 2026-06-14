@@ -30,8 +30,11 @@ export async function runObserveInbox(
   flags: ObserveInboxFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
-  const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
+  // 显式 --input-dir 最高;否则 --global 直读全局、默认读项目(空则 loadObservationInboxReports 兜底全局)。
+  const dir = flags['input-dir']
+    ? resolve(flags['input-dir'])
+    : (flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_OBSERVATIONS_DIR);
   if (flags['llm-enhanced-review']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
     const { extractSkillSoftStandards, DEFAULT_LLM_ENHANCED_REVIEW_MODEL } = await import('../../../observability/soft-standards/index.js');
@@ -206,6 +209,13 @@ export default class ObserveInbox extends BaseCommand {
         zh: 'inbox 数据目录，默认 .omk/observe-inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe-inbox。',
         en: 'Inbox data dir, default .omk/observe-inbox (project-local); falls back to ~/.oh-my-knowledge/observe-inbox when missing.',
       }),
+    }),
+    global: Flags.boolean({
+      description: bilingual({
+        zh: '直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。',
+        en: 'Read directly from global ~/.oh-my-knowledge/observe-inbox (skip project-local and fallback).',
+      }),
+      default: false,
     }),
     skill: Flags.string({
       description: bilingual({ zh: '只看指定 skill', en: 'Filter to specific skill' }),

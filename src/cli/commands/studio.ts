@@ -10,6 +10,7 @@ import {
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   globalReportsDir,
 } from '../../eval-core/measurement-dirs.js';
+import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 
@@ -112,7 +113,13 @@ export async function runStudio(
     // 只看固定目录(与 reports 的 --reports-dir 关闭 indexed store 对称)。observe / doctor 各自独立判定。
     includeObserveCards: !flags.global && !flags['analyses-dir'],
     includeDoctorCards: !flags.global && !flags['doctors-dir'],
-    ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
+    // observe-inbox 缺省按请求项目优先→全局兜底(report-server 默认即此);显式 --observations-dir 固定该目录;
+    // --global 钉全局(与 observe-health / doctors 的 --global 一致)。
+    ...(flags['observations-dir']
+      ? { observationsDir: resolve(flags['observations-dir']) }
+      : flags.global
+        ? { observationsDir: DEFAULT_GLOBAL_OBSERVATIONS_DIR }
+        : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
     managedDir: (): string => resolveManagedDir(managedDir()),
@@ -188,8 +195,8 @@ export default class Studio extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed / observe-inbox 不受影响',
-        en: 'View only global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed / observe-inbox',
+        zh: '只看全局 reports / observe-health / doctors / observe-inbox 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed 不受影响',
+        en: 'View only global reports / observe-health / doctors / observe-inbox dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed',
       }),
     }),
     'no-open': Flags.boolean({

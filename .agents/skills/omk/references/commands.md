@@ -435,6 +435,7 @@ omk observe inbox [flags]
 - `--by-skill` `boolean`:按 skill 聚合输出
 - `--executor` `option`:LLM 增强复盘使用的执行器
 - `--explore` `option`:抽样 N 条 medium/low 长尾（replaces limit）
+- `--global` `boolean`:直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 .omk/observe-inbox（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observe-inbox。
 - `--json` `boolean`:JSON 格式输出
@@ -461,8 +462,9 @@ omk observe ingest <traceDir> [flags]
 
 **Flags:**
 
+- `--global` `boolean`:写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd）。
+- `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd；--global 写全局）。
 
 ## omk observe show
 
@@ -480,6 +482,7 @@ omk observe show <inboxId> [flags]
 
 **Flags:**
 
+- `--global` `boolean`:直接读取全局 ~/.oh-my-knowledge/observe-inbox（跳过项目级与兜底）。
 - `--input-dir` `option`:inbox 数据目录
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 
@@ -636,7 +639,7 @@ omk studio [flags]
 - `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe-health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctors，空则全局兜底）
-- `--global` `boolean`:只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed / observe-inbox 不受影响
+- `--global` `boolean`:只看全局 reports / observe-health / doctors / observe-inbox 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed 不受影响
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--no-open` `boolean`:不自动打开浏览器
