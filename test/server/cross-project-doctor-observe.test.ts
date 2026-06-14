@@ -54,6 +54,41 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(bar.observe?.analysisId, 'o-observe-health');
   });
 
+  it('同项目 live 正文 + 同 id 卡片 → dedup,live 盖卡片(不双计;机器级总览的 no-double-count 核心不变量)', () => {
+    // doctor:live 正文(results 非空)写进 doctorsDir + 同 stem 卡片(本项目 persist 时既写正文又写卡片的稳态)。
+    const dStem = 'd-rd';
+    const liveDoctor: DoctorReport = {
+      kind: 'doctor', schemaVersion: '3.0.0', id: 'rd', timestamp: '2026-06-14T00:00:00Z', cliVersion: 't', cwd: '/x',
+      executorName: 'claude', model: 'm', outcome: 'passed',
+      skills: [{ skillName: 'd', skillPath: '/x/d', status: 'pass',
+        results: [{ ruleId: 'r1', severity: 'error', labelKey: 'k', status: 'pass', message: 'ok', durationMs: 1 }] }],
+      totals: { pass: 1, warn: 0, fail: 0 }, ruleStats: { pass: 1, warn: 0, fail: 0, skipped: 0, total: 1 },
+    };
+    writeFileSync(join(emptyDoctors, `${dStem}.json`), JSON.stringify(liveDoctor));
+    indexDoctorWrite({ id: dStem, path: join(emptyDoctors, `${dStem}.json`), skillName: 'd', reportId: 'rd',
+      timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, emptyDoctors);
+
+    // observe:live 正文(bySkill.o 带 signals)写进 analysesDir + 同 id 卡片。
+    const oid = 'oid-observe-health';
+    const liveObs = {
+      kind: 'observe-health',
+      meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5, toolCallCount: 3,
+        toolFailureRate: 0, timeRange: { from: 'a', to: 'b' }, generatedAt: '2026-06-14T00:00:00Z' },
+      bySkill: { o: { skillName: 'o', segmentCount: 10, toolCallCount: 3, toolFailureCount: 0, toolFailureRate: 0,
+        stability: 1, confidence: 'high', gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'high' },
+    };
+    writeFileSync(join(emptyAnalyses, `${oid}.json`), JSON.stringify(liveObs));
+    indexObserveWrite(liveObs, join(emptyAnalyses, `${oid}.json`), emptyAnalyses, oid);
+
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs);
+    const d = idx.entries.find((e) => e.skillName === 'd')!;
+    assert.equal(d.doctorHistory.length, 1, 'doctor 同 reportId 的 live+卡片 dedup 为 1 条,不双计');
+    assert.ok((d.doctor?.results.length ?? 0) > 0, 'live 盖卡片:取含 results 的 live 那份,非卡片空壳');
+    const o = idx.entries.find((e) => e.skillName === 'o')!;
+    assert.equal(o.observeHistory.length, 1, 'observe 同 analysisId 的 live+卡片 dedup 为 1 条,不双计');
+  });
+
   it('doctor prune 删正文连带删卡片 → 被 prune 的报告不经卡片复活', () => {
     function singleSkillReport(id: string, ts: string): DoctorReport {
       return {
