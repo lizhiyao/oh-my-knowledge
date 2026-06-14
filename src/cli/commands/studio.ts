@@ -41,8 +41,8 @@ export async function runStudio(
   flags: StudioFlags,
   lang: CliLang,
 ): Promise<void> {
-  // reports 读取目录:显式 --reports-dir 固定该目录;--global 钉全局;默认走 overlay(项目盖全局,
-  // 由 server 在 store 层做记录优先 + 按 id 兜底)。默认 = undefined,交给 createReportServer 建 overlay。
+  // reports 读取目录:显式 --reports-dir 固定该目录;--global 钉全局;默认 = undefined,交给
+  // createReportServer 建 indexed(机器级聚合:当前项目 + 全局 live ∪ 别项目索引卡片)。
   const reportsDirOpt = flags['reports-dir']
     ? resolve(flags['reports-dir'])
     : flags.global

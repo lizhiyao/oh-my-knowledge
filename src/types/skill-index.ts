@@ -29,6 +29,9 @@ export interface SkillEvalSnapshot {
   failCount: number;
   tripwireCount: number;
   totalSamples: number;
+  /** 该快照来自别项目的「索引卡片」(results 被剥掉,逐样本断言分布不可得),passCount/failCount 留 0
+   *  仅占位、不代表真实通过率。渲染端据此用占位替代 0% pass / 全通过 / 0-of-N 等会误读的派生量。 */
+  resultsStripped?: boolean;
 }
 
 export interface SkillObserveSnapshot {

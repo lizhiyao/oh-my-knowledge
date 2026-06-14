@@ -911,9 +911,11 @@ function renderEvalHistory(history: SkillEvalSnapshot[], langQ: string, lang: La
   const rows = [...history].reverse().map((h) => {
     const date = h.timestamp ? new Date(h.timestamp).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
     const score = h.compositeScore != null ? h.compositeScore.toFixed(2) : '-';
-    const status = h.failCount === 0 ? '✅' : `❌ ${h.failCount} fail`;
+    // 卡片来源无逐样本通过数:状态 / 通过列都给「—」,不显误导的 ✅ 与 0/N。
+    const status = h.resultsStripped ? '—' : h.failCount === 0 ? '✅' : `❌ ${h.failCount} fail`;
+    const passCell = h.resultsStripped ? '—' : `${h.passCount}/${h.totalSamples}`;
     const link = `<a href="/reports/${e(h.reportId)}${langQ}">${e(h.reportId)}</a>`;
-    return `<tr><td>${date}</td><td>${score}</td><td>${h.passCount}/${h.totalSamples}</td><td>${status}</td><td>${link}</td></tr>`;
+    return `<tr><td>${date}</td><td>${score}</td><td>${passCell}</td><td>${status}</td><td>${link}</td></tr>`;
   }).join('\n');
   return `<details class="si-sect-fold">
     <summary>${lang === 'zh' ? `▸ 历史评测记录 (${history.length} 次)` : `▸ Eval history (${history.length} runs)`}</summary>
@@ -1003,7 +1005,11 @@ function renderEvalSection(
 
   const total = snap.passCount + snap.failCount;
   const pct = total > 0 ? Math.round((snap.passCount / total) * 100) : 0;
-  const sectBand = snap.failCount === 0 ? 'green' : snap.passCount === 0 ? 'red' : 'yellow';
+  // 别项目索引卡片(resultsStripped)pass/fail 被剥成 0:不能让 failCount===0 误判绿带「全通过」。
+  // 卡片可信信号只有 compositeScore,据它定带(>=4 绿 / >=3 黄 / 否则红,与 renderScoreBar 阈值一致);无分时中性灰。
+  const sectBand = snap.resultsStripped
+    ? (snap.compositeScore == null ? 'gray' : snap.compositeScore >= 4 ? 'green' : snap.compositeScore >= 3 ? 'yellow' : 'red')
+    : snap.failCount === 0 ? 'green' : snap.passCount === 0 ? 'red' : 'yellow';
 
   const failedBlock = failedSamples.length > 0
     ? failedSamples.map((s) => {
@@ -1072,9 +1078,12 @@ function renderEvalSection(
       </details>`
     : '';
 
-  const failedHeading = failedSamples.length > 0
-    ? `<div class="si-sect-line">${lang === 'zh' ? `${failedSamples.length} 条用例失败:` : `${failedSamples.length} samples failed:`}</div>`
-    : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '所有用例通过' : 'all samples pass'}</div>`;
+  const failedHeading = snap.resultsStripped
+    // 卡片来源无逐样本数据:既不能显「失败」也不能显「全通过」,给出「明细在源项目」占位。
+    ? `<div class="si-sect-line">${lang === 'zh' ? '逐样本明细需在源项目查看' : 'per-sample details available in source project'}</div>`
+    : failedSamples.length > 0
+      ? `<div class="si-sect-line">${lang === 'zh' ? `${failedSamples.length} 条用例失败:` : `${failedSamples.length} samples failed:`}</div>`
+      : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '所有用例通过' : 'all samples pass'}</div>`;
 
   // 综合得分 + 六维雷达
   const variantSummary = evalReport?.summary?.[snap.variantName];
@@ -1107,7 +1116,7 @@ function renderEvalSection(
   return `<section id="section-eval" class="si-sect si-sect--${sectBand}">
     <div class="si-sect-h">
       <span class="si-sect-title">🧪 ${lang === 'zh' ? '评测结果 (eval)' : 'Test score (eval)'}</span>
-      <span class="si-sect-meta">${snap.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${pct}% ${lang === 'zh' ? '通过' : 'pass'}${snap.compositeScore != null ? ` · ${snap.compositeScore.toFixed(2)}/5` : ''} · ${relTime(snap.timestamp, lang)}</span>
+      <span class="si-sect-meta">${snap.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${snap.resultsStripped ? (lang === 'zh' ? '明细在源项目' : 'details in source project') : `${pct}% ${lang === 'zh' ? '通过' : 'pass'}`}${snap.compositeScore != null ? ` · ${snap.compositeScore.toFixed(2)}/5` : ''} · ${relTime(snap.timestamp, lang)}</span>
     </div>
     <div class="si-sect-body">
       ${scoreSummary}

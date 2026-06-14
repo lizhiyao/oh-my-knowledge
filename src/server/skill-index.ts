@@ -214,6 +214,8 @@ function buildEvalSnapshot(report: EvaluationReport, variant: string): SkillEval
     // 用 summary 的真实样本数,避免显「0 样本」。卡片的可信信号是 compositeScore + verdict(均来自 summary/meta)。
     // 不把 summary.successCount(执行成功)当 pass(断言通过)回填 —— 两者语义不同,会让列表误读。
     totalSamples: report.results.length === 0 ? (summary.totalSamples ?? 0) : pass + fail + tripwire,
+    // 标记卡片来源:渲染端据此不把 pass/fail=0 当真实通过率(否则 failCount===0 会误判绿带「全通过」+「0% pass」同屏自相矛盾)。
+    ...(report.results.length === 0 ? { resultsStripped: true } : {}),
   };
 }
 

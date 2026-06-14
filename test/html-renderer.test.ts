@@ -14,10 +14,10 @@ function normalizeForSnapshot(html: string): string {
 
 const SAMPLE_REPORT: Report = {
   kind: 'evaluation',
-  // 让 id 匹配 renderRunList 里的 YYYYMMDD-HHmm regex (html-renderer.ts:62),
-  // 这样列表页 row 的时间从 id 直接提取 (deterministic), 不走 toLocaleString
-  // — 后者本地时区敏感, 会让 snapshot 在 CI UTC 和本地 CST 之间不一致.
-  id: 'test-run-20260325-1000',
+  // 用生产 id 格式 YYYYMMDD-HHmmss-rand4(含秒+随机),让列表页 row 时间走 formatDateFromId
+  // 的 id 直接提取路径 (deterministic, 不走时区敏感的 toLocaleString — 后者会让 snapshot 在 CI UTC
+  // 和本地 CST 之间不一致)。秒段在展示时被丢弃,派生出的 MM/DD HH:MM 与旧格式一致,快照稳定。
+  id: 'test-run-20260325-100000-abcd',
   meta: {
     variants: ['v1', 'v2'],
     model: 'sonnet',
