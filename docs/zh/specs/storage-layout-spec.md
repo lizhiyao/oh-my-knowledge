@@ -29,7 +29,7 @@
 
 一句话：要留 + 绑项目 → 放本地；删了能重建 → 扔进可整删的 `state/` 子树（哪都能用的留全局）。**最容易犯的错，就是把「要留 + 绑项目」的测量结论，当成「哪都能用」的缓存来放——global-default 正是这个错。**
 
-第一行四者放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore），只差在**写的时候怎么进全局**：`reports` / `observe-health` / `doctors` 有个 `--global` 开关能主动写全局（拿标准用例集跑分用，见第四节）；`observe-inbox` 没这开关，全局只作读兜底（生产 trace 就地收，没有「全局收件箱」一说）；`managed` 不靠开关，按被治理 skill 装在哪自动走。
+第一行四者放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore），写全局都走 `--global` 开关：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
 
 ## 三、最终长这样
 
@@ -37,7 +37,7 @@
 ~/.oh-my-knowledge/             # 电脑全局目录（认 OMK_HOME，可整体搬走）
   reports/ observe-health/ doctors/   # 只有 omk ... --global 主动跑时才写这里
   managed/                      # 全局装的 skill 的治理档案
-  observe-inbox/                # 全局收件箱（只作读兜底）
+  observe-inbox/                # 全局收件箱（--global 写 / 读）
   update-check.json
   state/                        # 草稿区 · 随时可整删
     cache/  isolated-cwd/  trees/  jobs/
@@ -97,6 +97,7 @@
 - **写卡片是尽力而为**：永远不报错、不挡着正文落盘（正文才是真身，卡片丢了重跑就有）——所以卡片收在「删了能重建」的 `state/` 里。
 - **卡片当活指针**：正文被删了的「悬空卡片」，列表/合并时直接过滤掉（卡片缓存连正文的存在性一起算指纹，长时间开着 studio 也不会显示已删的）；studio 里删一条会连卡片一起删，别的项目的正文不受影响。
 - **逃生舱不掺卡片**：`--global` 和显式指定的 `--reports-dir` / `--doctors-dir` / `--analyses-dir` 只看你点名的那一个目录，不并卡片，干净。
+- **`observe-inbox` 故意不进索引**：`domain` 只有 `report` / `doctor` / `observe-health` 三类、没有 `observe-inbox`。发现索引服务的是「可比的复盘产物」（你会跨项目浏览、对照的结论）；收件箱是当前项目的 triage 工作台，在 A 项目的 studio 里翻 B 项目的待办队列价值低又容易误操作。所以汇总（observe-health）进索引、原始待办（observe-inbox）不进，是有意的边界——它照样支持 `--global` 写 / 读，只是不做机器级跨项目聚合。
 
 另外 `id` 统一加了随机后缀防撞名（两个项目同一秒出产物，撞了 id 会被去重误并、悄悄丢数据）：report 用「秒 + 随机」、doctor 用「秒 + 计数 + 随机」、observe-health 文件名带随机段。`id` 只是个标签、不是算出来的分数，这个改动**不影响跨版本可比性**。
 

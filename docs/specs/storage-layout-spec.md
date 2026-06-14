@@ -29,7 +29,7 @@ By this, omk's artifacts each take their place:
 
 In one line: keep + tied to a project → local; rebuildable → toss into the wipeable `state/` subtree (anything shareable stays global). **The easiest mistake is to treat a "keep + tied to a project" measurement conclusion as an "anyone can share" cache — which is exactly what a global-default does.**
 
-The four in the first row are placed the same way (project-local default + global fallback on read + gitignored); they differ only in **how a write reaches global**: `reports` / `observe-health` / `doctors` have a `--global` switch to deliberately write global (for scoring against a standard sample set, see section 4); `observe-inbox` has no such switch — global is a read fallback only (production traces are collected in place; there's no "global inbox"); `managed` uses no switch, routing by where the governed skill is installed.
+The four in the first row are placed the same way (project-local default + global fallback on read + gitignored), and a write reaches global through the `--global` switch in every case: `reports` / `observe-health` / `doctors` write global when scoring against a standard sample set (see section 4), and `observe-inbox` supports it too (`omk observe ingest --global` to write, `omk observe inbox --global` to read), completing the observation loop for a global skill. `managed` is the exception — no switch, routing by where the governed skill is installed.
 
 ## 3. What it ends up looking like
 
@@ -37,7 +37,7 @@ The four in the first row are placed the same way (project-local default + globa
 ~/.oh-my-knowledge/             # machine-global dir (honors OMK_HOME, relocatable as a whole)
   reports/ observe-health/ doctors/   # written here only when you run omk ... --global
   managed/                      # governance archive for globally-installed skills
-  observe-inbox/                # global inbox (read fallback only)
+  observe-inbox/                # global inbox (--global write / read)
   update-check.json
   state/                        # scratch · wipe anytime
     cache/  isolated-cwd/  trees/  jobs/
@@ -97,6 +97,7 @@ A few points:
 - **Writing a card is best-effort**: it never errors and never blocks the body landing on disk (the body is the real thing; lose a card and a re-run regenerates it) — which is why cards live in the rebuildable `state/`.
 - **Cards are live pointers**: a "dangling card" whose body was deleted is filtered out of lists/merges (the card cache folds in the body's existence as part of its fingerprint, so a long-open studio won't show deleted ones); deleting one in studio deletes the card too, and another project's body is untouched.
 - **Escape hatches don't mix in cards**: `--global` and an explicit `--reports-dir` / `--doctors-dir` / `--analyses-dir` look only at the one directory you named, no cards merged — clean.
+- **`observe-inbox` is deliberately not indexed**: the `domain`s are only `report` / `doctor` / `observe-health`, not `observe-inbox`. The discovery index serves *comparable review artifacts* (conclusions you'd browse and compare across projects); the inbox is the current project's triage workbench, and browsing project B's to-do queue inside project A's studio is low-value and easy to act on by mistake. So the summary (observe-health) is indexed while the raw queue (observe-inbox) is not — an intentional boundary; it still supports `--global` write / read, it just isn't aggregated machine-wide.
 
 Separately, `id`s get a uniform random suffix to prevent name collisions (two projects producing artifacts in the same second could collide, and dedup would wrongly merge them and silently lose data): report uses "second + random", doctor uses "second + counter + random", observe-health filenames carry a random segment. An `id` is just a label, not a computed score, so this change **does not affect cross-version comparability**.
 
