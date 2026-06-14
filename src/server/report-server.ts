@@ -53,6 +53,12 @@ interface ReportServerOptions {
   managedDir?: string | (() => string);
   store?: ReportStore;
   jobStore?: JobStore;
+  /** 是否把别项目的 observe-health 索引卡片合进列表 / 详情 / skill 首页(机器级总览)。
+   *  默认 false(固定目录 / 测试 hermetic);studio 仅在「无 --analyses-dir 且无 --global」的默认机器级模式传 true。 */
+  includeObserveCards?: boolean;
+  /** 是否把别项目的 doctor 索引卡片合进 skill 首页 / 详情兜底(机器级总览)。
+   *  默认 false;studio 仅在「无 --doctors-dir 且无 --global」的默认机器级模式传 true。 */
+  includeDoctorCards?: boolean;
 }
 
 interface AnalysisListItem {
@@ -82,7 +88,7 @@ function loadChartJsBundle(): string | null {
   return cachedChartJsBytes;
 }
 
-function listAnalyses(dir: string): AnalysisListItem[] {
+function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
   if (!existsSync(dir)) return [];
   const items: AnalysisListItem[] = [];
   for (const file of readdirSync(dir)) {
@@ -103,26 +109,31 @@ function listAnalyses(dir: string): AnalysisListItem[] {
     } catch { /* skip corrupt */ }
   }
   // 别项目的 observe 卡片(当前 dir live 扫不到的项目)→ list item,dedup by id(live 盖卡片)。
-  const seen = new Set(items.map((i) => i.id));
-  for (const card of listObserveCards()) {
-    if (seen.has(card.id)) continue;
-    items.push({
-      id: card.id, generatedAt: card.meta.generatedAt, sessionCount: card.meta.sessionCount,
-      segmentCount: card.meta.segmentCount, skillCount: Object.keys(card.bySkill).length,
-      healthBand: card.overall.healthBand, confidence: card.overall.confidence ?? confidenceOf(card.meta.segmentCount),
-    });
+  // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeCards=false,只看该目录(逃生舱语义)。
+  if (includeCards) {
+    const seen = new Set(items.map((i) => i.id));
+    for (const card of listObserveCards()) {
+      if (seen.has(card.id)) continue;
+      items.push({
+        id: card.id, generatedAt: card.meta.generatedAt, sessionCount: card.meta.sessionCount,
+        segmentCount: card.meta.segmentCount, skillCount: Object.keys(card.bySkill).length,
+        healthBand: card.overall.healthBand, confidence: card.overall.confidence ?? confidenceOf(card.meta.segmentCount),
+      });
+    }
   }
   // 最新在前
   items.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
   return items;
 }
 
-function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
+function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealthReport | null {
   const path = join(dir, `${id}.json`);
   if (existsSync(path)) {
     try { return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport; } catch { /* fall through to card */ }
   }
   // 别项目:按 observe 卡片 path 读真身(含 signals 等完整详情)。悬空(项目被移走)→ null,详情页 404。
+  // 仅机器级模式兜底;固定目录 / --global 不回源别项目卡片(逃生舱语义)。
+  if (!includeCards) return null;
   const card = listObserveCards().find((c) => c.id === id);
   if (card && existsSync(card.path)) {
     try { return JSON.parse(readFileSync(card.path, 'utf-8')) as SkillHealthReport; } catch { /* corrupt 真身 */ }
@@ -133,7 +144,7 @@ function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
 /** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。
  *  批量 doctor 会按 skill 拆成多份共享同一 id 的 per-skill 文件，传 skillName 时
  *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
-function loadDoctorReport(dir: string, id: string, skillName?: string): DoctorReport | null {
+function loadDoctorReport(dir: string, id: string, skillName?: string, includeCards = false): DoctorReport | null {
   let fallback: DoctorReport | null = null;
   if (existsSync(dir)) {
     for (const file of readdirSync(dir)) {
@@ -147,6 +158,8 @@ function loadDoctorReport(dir: string, id: string, skillName?: string): DoctorRe
     }
   }
   if (fallback) return fallback;
+  // 仅机器级模式兜底;固定 --doctors-dir / --global 不回源别项目卡片(逃生舱语义)。
+  if (!includeCards) return null;
   // 别项目:按 doctor 卡片(reportId 匹配 + 可选 skillName)的 path 读真身。detail 路由传的 id 是 reportId(非卡片 stem)。
   for (const card of listDoctorCards()) {
     if (card.reportId !== id) continue;
@@ -189,11 +202,11 @@ interface SkillTrendResult {
 /**
  * 扫 analyses/ 所有 JSON,按 skillName 过滤,按时间排序成 trend points。
  */
-function querySkillTrend(dir: string, skillName: string): SkillTrendResult {
-  const items = listAnalyses(dir);
+function querySkillTrend(dir: string, skillName: string, includeCards = false): SkillTrendResult {
+  const items = listAnalyses(dir, includeCards);
   const points: SkillTrendPoint[] = [];
   for (const it of items) {
-    const report = loadAnalysis(dir, it.id);
+    const report = loadAnalysis(dir, it.id, includeCards);
     if (!report) continue;
     const h = report.bySkill[skillName];
     if (!h) continue;
@@ -251,9 +264,9 @@ interface SkillDiffResult {
  * 比较两份 skill health report. `from` 通常是较早的,`to` 是较晚的;
  * 对于每个 skill, 显示前后值和 delta. 缺失一侧时 presence 标记。
  */
-function querySkillDiff(dir: string, fromId: string, toId: string): SkillDiffResult | null {
-  const from = loadAnalysis(dir, fromId);
-  const to = loadAnalysis(dir, toId);
+function querySkillDiff(dir: string, fromId: string, toId: string, includeCards = false): SkillDiffResult | null {
+  const from = loadAnalysis(dir, fromId, includeCards);
+  const to = loadAnalysis(dir, toId, includeCards);
   if (!from || !to) return null;
   const allSkills = new Set<string>([...Object.keys(from.bySkill), ...Object.keys(to.bySkill)]);
   const rows: SkillDiffRow[] = [];
@@ -639,7 +652,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -753,13 +766,13 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       if (path === '/api/observe-health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(listAnalyses(analysesDir)));
+        res.end(JSON.stringify(listAnalyses(analysesDir, includeObserveCards)));
         return;
       }
 
       if (path === '/observe-health') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderAnalysisList(listAnalyses(analysesDir), lang));
+        res.end(renderAnalysisList(listAnalyses(analysesDir, includeObserveCards), lang));
         return;
       }
 
@@ -821,7 +834,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       if (path === '/api/observe-inbox/diagnostics') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           sourceCoverage: idx.diagnosisSummary.sourceCoverage,
@@ -901,7 +914,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       if (doctorDetailMatch) {
         const id = decodeURIComponent(doctorDetailMatch[1]);
         const skillName = parsed.searchParams.get('skill') ?? '';
-        const report = loadDoctorReport(doctorsDir, id, skillName || undefined);
+        const report = loadDoctorReport(doctorsDir, id, skillName || undefined, includeDoctorCards);
         if (!report) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end(lang === 'en' ? 'doctor report not found' : '体检报告不存在');
@@ -910,7 +923,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         let ctx: SkillReportContext | undefined;
         if (skillName) {
           const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
           const entry = idx.entries.find((en) => en.skillName === skillName);
           if (entry) ctx = buildSkillContext(entry, 'doctor', id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
         }
@@ -923,7 +936,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       const analysisDetailMatch = path.match(/^\/observe-health\/(.+)$/);
       if (analysisDetailMatch) {
         const id = decodeURIComponent(analysisDetailMatch[1]);
-        const report = loadAnalysis(analysesDir, id);
+        const report = loadAnalysis(analysesDir, id, includeObserveCards);
         if (!report) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('analysis not found');
@@ -937,7 +950,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       const analysisApiMatch = path.match(/^\/api\/observe-health\/(.+)$/);
       if (analysisApiMatch) {
         const id = decodeURIComponent(analysisApiMatch[1]);
-        const report = loadAnalysis(analysesDir, id);
+        const report = loadAnalysis(analysesDir, id, includeObserveCards);
         if (!report) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'analysis not found' }));
@@ -952,7 +965,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       if (skillTrendApiMatch) {
         const skillName = decodeURIComponent(skillTrendApiMatch[1]);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(querySkillTrend(analysesDir, skillName)));
+        res.end(JSON.stringify(querySkillTrend(analysesDir, skillName, includeObserveCards)));
         return;
       }
 
@@ -960,7 +973,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       if (skillTrendPageMatch) {
         const skillName = decodeURIComponent(skillTrendPageMatch[1]);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillTrendPage(querySkillTrend(analysesDir, skillName), lang));
+        res.end(renderSkillTrendPage(querySkillTrend(analysesDir, skillName, includeObserveCards), lang));
         return;
       }
 
@@ -972,7 +985,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end('missing from/to query params');
           return;
         }
-        const diff = querySkillDiff(analysesDir, fromId, toId);
+        const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
         if (!diff) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('analysis not found');
@@ -991,7 +1004,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end(JSON.stringify({ error: 'missing from/to query params' }));
           return;
         }
-        const diff = querySkillDiff(analysesDir, fromId, toId);
+        const diff = querySkillDiff(analysesDir, fromId, toId, includeObserveCards);
         if (!diff) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'analysis not found' }));
@@ -1084,7 +1097,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         let ctx: SkillReportContext | undefined;
         if (report && report.kind === 'evaluation') {
           const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
           // 按 evalHistory 匹配(非仅最新),历史 eval 报告也能定位到所属 skill。
           const entry = idx.entries.find((en) => en.evalHistory.some((h) => h.reportId === reportId));
           if (entry) ctx = buildSkillContext(entry, 'eval', reportId, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
@@ -1107,7 +1120,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       // list renderer 直接消费,不再每请求 N×detectInsights 重算。
       if (path === '/') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
         return;
@@ -1115,7 +1128,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       if (path === '/api/skills') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({
@@ -1138,7 +1151,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       if (skillDiagnosticsApiMatch) {
         const skillName = decodeURIComponent(skillDiagnosticsApiMatch[1]);
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
         const diagnostics = idx.diagnosticsBySkill.get(skillName);
         if (!diagnostics) {
           res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });

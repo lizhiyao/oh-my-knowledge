@@ -46,6 +46,13 @@ function safeFileName(id: string): string {
   return id.replaceAll(/[/\\:*?"<>|]/g, '_');
 }
 
+// 卡片读侧小 guard:索引是可重生 scratch,坏卡片(脏文件 / 别域误落 / 字段缺失)读侧从严跳过,
+// 不让 undefined / 非法枚举 / NaN 当可信输入污染 studio。
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isDoctorStatus = (v: unknown): v is DoctorSkillStatus => v === 'pass' || v === 'warn' || v === 'fail';
+const isHealthBand = (v: unknown): v is 'green' | 'yellow' | 'red' => v === 'green' || v === 'yellow' || v === 'red';
+const isConfidence = (v: unknown): boolean => v === undefined || v === 'high' || v === 'low' || v === 'underpowered';
+
 /** 原子写一张卡片(tmp+rename,防半截 JSON 被 reader 读到)。 */
 function writeCard(domain: ArtifactDomain, id: string, card: object): void {
   const indexDir = artifactIndexDir(domain);
@@ -163,7 +170,9 @@ export function listDoctorCards(): DoctorIndexCard[] {
   return readArtifactCards('doctor', (c): c is DoctorIndexCard => {
     const card = c as Partial<DoctorIndexCard>;
     return !!card && card.domain === 'doctor' && typeof card.id === 'string' && typeof card.path === 'string'
-      && typeof card.skillName === 'string' && typeof card.reportId === 'string' && typeof card.timestamp === 'string';
+      && typeof card.skillName === 'string' && typeof card.reportId === 'string' && typeof card.timestamp === 'string'
+      && isDoctorStatus(card.status)
+      && isFiniteNumber(card.passCount) && isFiniteNumber(card.warnCount) && isFiniteNumber(card.failCount);
   });
 }
 
@@ -235,8 +244,16 @@ export function indexObserveWrite(report: ObserveSource, sourcePath: string, out
 export function listObserveCards(): ObserveIndexCard[] {
   return readArtifactCards('observe-health', (c): c is ObserveIndexCard => {
     const card = c as Partial<ObserveIndexCard>;
-    return !!card && card.domain === 'observe-health' && typeof card.id === 'string' && typeof card.path === 'string'
-      && !!card.meta && !!card.overall && !!card.bySkill;
+    if (!card || card.domain !== 'observe-health' || typeof card.id !== 'string' || typeof card.path !== 'string') return false;
+    const meta = card.meta; const overall = card.overall; const bySkill = card.bySkill;
+    if (!meta || !isFiniteNumber(meta.sessionCount) || !isFiniteNumber(meta.segmentCount) || typeof meta.generatedAt !== 'string') return false;
+    if (!overall || !isHealthBand(overall.healthBand) || !isConfidence(overall.confidence)) return false;
+    if (!bySkill || typeof bySkill !== 'object') return false;
+    // 每个 skill 的标量也校验:坏 toolFailureRate / segmentCount 会让 bandFromObserveHealth / 趋势出 NaN。
+    for (const h of Object.values(bySkill)) {
+      if (!h || !isFiniteNumber(h.toolFailureRate) || !isFiniteNumber(h.segmentCount) || !isConfidence(h.confidence)) return false;
+    }
+    return true;
   });
 }
 

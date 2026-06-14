@@ -44,7 +44,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       bySkill: { bar: { toolFailureRate: 0.0, segmentCount: 30, confidence: 'high', gap: { weightedGapRate: 0.1 } } },
     }, join(proj, 'o-observe-health.json'), proj, 'o-observe-health');
 
-    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs);
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
     const names = idx.entries.map((e) => e.skillName).sort();
     assert.ok(names.includes('foo'), 'doctor 卡片的 skill 进索引');
     assert.ok(names.includes('bar'), 'observe 卡片的 skill 进索引');
@@ -52,6 +52,19 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(foo.doctor?.reportId, 'doctor-20260614-1-aa11');
     const bar = idx.entries.find((e) => e.skillName === 'bar')!;
     assert.equal(bar.observe?.analysisId, 'o-observe-health');
+  });
+
+  it('固定目录模式(include 默认 false):索引里有别项目卡片但 buildSkillIndex 不合并 → skill 索引为空', () => {
+    // 模拟 --analyses-dir/--doctors-dir/--global 逃生舱:有卡片(别项目),但 live 目录空且不开 include。
+    indexDoctorWrite({ id: 'x-doctor-1-aa', path: join(proj, 'x.json'), skillName: 'x', reportId: 'doctor-1-aa',
+      timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
+    indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
+      overall: { healthBand: 'green', confidence: 'high' },
+      bySkill: { y: { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
+    }, join(proj, 'y-observe-health.json'), proj, 'y-observe-health');
+    // 不传 include 标志(默认 false)→ 固定目录语义,卡片一律不合并。
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs);
+    assert.deepEqual(idx.entries.map((e) => e.skillName), [], '固定目录模式下别项目卡片不进 skill 索引');
   });
 
   it('同项目 live 正文 + 同 id 卡片 → dedup,live 盖卡片(不双计;机器级总览的 no-double-count 核心不变量)', () => {
@@ -81,7 +94,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     writeFileSync(join(emptyAnalyses, `${oid}.json`), JSON.stringify(liveObs));
     indexObserveWrite(liveObs, join(emptyAnalyses, `${oid}.json`), emptyAnalyses, oid);
 
-    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs);
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
     const d = idx.entries.find((e) => e.skillName === 'd')!;
     assert.equal(d.doctorHistory.length, 1, 'doctor 同 reportId 的 live+卡片 dedup 为 1 条,不双计');
     assert.ok((d.doctor?.results.length ?? 0) > 0, 'live 盖卡片:取含 results 的 live 那份,非卡片空壳');
@@ -109,7 +122,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     pruneDoctorHistory(emptyDoctors, 'p', 1); // 只留最新 1 份 → 删 p-r1 正文 + 卡片
 
     assert.deepEqual(listDoctorCards().map((c) => c.id), ['p-r2'], '老卡片随正文一起删');
-    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs);
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, { includeObserveCards: true, includeDoctorCards: true });
     const p = idx.entries.find((e) => e.skillName === 'p')!;
     assert.equal(p.doctorHistory.length, 1, '历史只剩 1 份,被 prune 的没经卡片复活');
     assert.equal(p.doctor?.reportId, 'r2');

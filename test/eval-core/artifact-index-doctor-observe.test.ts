@@ -74,6 +74,19 @@ describe('artifact-index 写侧(doctor 域)', () => {
     indexDoctorWrite(doctorCard('sk-good'), projDir);
     assert.deepEqual(listDoctorCards().map((c) => c.id), ['sk-good']);
   });
+
+  it('坏 status / 缺计数字段的卡片读侧从严跳过(不让 undefined/NaN 当可信输入)', () => {
+    const dir = artifactIndexDir('doctor');
+    mkdirSync(dir, { recursive: true });
+    // 坏 status
+    writeFileSync(join(dir, 'b1.json'), JSON.stringify({ domain: 'doctor', id: 'b1', path: '/x', skillName: 's',
+      reportId: 'r', timestamp: 't', status: 'bogus', passCount: 0, warnCount: 0, failCount: 0 }));
+    // 缺计数字段
+    writeFileSync(join(dir, 'b2.json'), JSON.stringify({ domain: 'doctor', id: 'b2', path: '/x', skillName: 's',
+      reportId: 'r', timestamp: 't', status: 'pass' }));
+    indexDoctorWrite(doctorCard('sk-ok'), projDir);
+    assert.deepEqual(listDoctorCards().map((c) => c.id), ['sk-ok'], '只收字段齐全且枚举合法的卡片');
+  });
 });
 
 describe('artifact-index 写侧(observe-health 域)', () => {
@@ -126,5 +139,19 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     assert.equal(removeObserveCard('x-observe-health'), true);
     assert.equal(listObserveCards().length, 0);
     assert.equal(removeObserveCard('x-observe-health'), false);
+  });
+
+  it('坏 healthBand / 非数标量的卡片读侧从严跳过', () => {
+    const dir = artifactIndexDir('observe-health');
+    mkdirSync(dir, { recursive: true });
+    // 坏 overall.healthBand
+    writeFileSync(join(dir, 'b1.json'), JSON.stringify({ domain: 'observe-health', id: 'b1', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'purple' }, bySkill: {} }));
+    // 坏 per-skill 标量(toolFailureRate 非数)
+    writeFileSync(join(dir, 'b2.json'), JSON.stringify({ domain: 'observe-health', id: 'b2', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 'nope', segmentCount: 1 } } }));
+    indexObserveWrite(observeReport(), join(projDir, 'ok-observe-health.json'), projDir, 'ok-observe-health');
+    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok-observe-health'], '只收 healthBand 合法 + 标量为有限数的卡片');
   });
 });
