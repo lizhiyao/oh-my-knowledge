@@ -34,6 +34,7 @@ import type {
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
+import { artifactIndexDir, listDoctorCards, cardToDoctorSnapshot, listObserveCards } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
@@ -138,7 +139,10 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
   const observationsFp = safeDirJsonContentFingerprint(observationsDir);
-  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}`;
+  // 别项目的 doctor / observe 卡片也进 fingerprint:否则别项目新跑一份后,本项目 studio 因缓存命中看不到更新。
+  const doctorCardsFp = safeDirJsonContentFingerprint(artifactIndexDir('doctor'));
+  const observeCardsFp = safeDirJsonContentFingerprint(artifactIndexDir('observe-health'));
+  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}|dc:${doctorCardsFp}|oc:${observeCardsFp}`;
 }
 
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
@@ -372,10 +376,29 @@ export function buildSkillIndex(
       } catch { /* skip corrupt */ }
     }
   }
+  // 别项目的 observe 卡片(当前 analysesDir live 扫不到的项目)→ per-skill snapshot,dedup by analysisId(live 盖卡片)。
+  for (const card of listObserveCards()) {
+    for (const [skill, h] of Object.entries(card.bySkill)) {
+      const list = (observeBy[skill] ??= []);
+      if (list.some((s) => s.analysisId === card.id)) continue;
+      list.push({
+        analysisId: card.id, generatedAt: card.meta.generatedAt,
+        healthBand: bandFromObserveHealth(h), failureRate: h.toolFailureRate, segmentCount: h.segmentCount,
+        gapRate: h.gap?.weightedGapRate ?? 0, confidence: h.confidence ?? confidenceOf(h.segmentCount),
+      });
+    }
+  }
   for (const list of Object.values(observeBy)) list.sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
 
   // ── doctor 聚合(历史 list)──────────────────────────────
   const doctorBy = scanDoctorReports(doctorsDir);
+  // 别项目的 doctor 卡片 → per-skill snapshot,dedup by reportId(live 盖卡片);prune 删正文时已连带删卡片,故无「复活」。
+  for (const card of listDoctorCards()) {
+    const { skillName, snap } = cardToDoctorSnapshot(card);
+    const list = (doctorBy[skillName] ??= []);
+    if (!list.some((s) => s.reportId === snap.reportId)) list.push(snap);
+  }
+  for (const list of Object.values(doctorBy)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const diagnosisBundle = mergeDiagnosisBundles(
     loadLatestObservationInboxReports(observationsDir).flatMap((report) => report.diagnostics ? [report.diagnostics] : []),
     new Date().toISOString(),

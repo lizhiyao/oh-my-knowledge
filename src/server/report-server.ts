@@ -15,6 +15,7 @@ import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedD
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
+import { listObserveCards, listDoctorCards } from '../eval-core/artifact-index.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
@@ -101,6 +102,16 @@ function listAnalyses(dir: string): AnalysisListItem[] {
       });
     } catch { /* skip corrupt */ }
   }
+  // 别项目的 observe 卡片(当前 dir live 扫不到的项目)→ list item,dedup by id(live 盖卡片)。
+  const seen = new Set(items.map((i) => i.id));
+  for (const card of listObserveCards()) {
+    if (seen.has(card.id)) continue;
+    items.push({
+      id: card.id, generatedAt: card.meta.generatedAt, sessionCount: card.meta.sessionCount,
+      segmentCount: card.meta.segmentCount, skillCount: Object.keys(card.bySkill).length,
+      healthBand: card.overall.healthBand, confidence: card.overall.confidence ?? confidenceOf(card.meta.segmentCount),
+    });
+  }
   // 最新在前
   items.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
   return items;
@@ -108,28 +119,46 @@ function listAnalyses(dir: string): AnalysisListItem[] {
 
 function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
   const path = join(dir, `${id}.json`);
-  if (!existsSync(path)) return null;
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport;
-  } catch {
-    return null;
+  if (existsSync(path)) {
+    try { return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport; } catch { /* fall through to card */ }
   }
+  // 别项目:按 observe 卡片 path 读真身(含 signals 等完整详情)。悬空(项目被移走)→ null,详情页 404。
+  const card = listObserveCards().find((c) => c.id === id);
+  if (card && existsSync(card.path)) {
+    try { return JSON.parse(readFileSync(card.path, 'utf-8')) as SkillHealthReport; } catch { /* corrupt 真身 */ }
+  }
+  return null;
 }
 
 /** 扫 doctorsDir 找 id 匹配的 doctor 报告（文件名不一定等于 report id）。
  *  批量 doctor 会按 skill 拆成多份共享同一 id 的 per-skill 文件，传 skillName 时
  *  优先返回含该 skill 的那份；都不含时回退首个 id 命中（单 skill / 无参行为不变）。 */
 function loadDoctorReport(dir: string, id: string, skillName?: string): DoctorReport | null {
-  if (!existsSync(dir)) return null;
   let fallback: DoctorReport | null = null;
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.json')) continue;
+  if (existsSync(dir)) {
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
+        if (data?.kind !== 'doctor' || data.id !== id) continue;
+        if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
+        fallback ??= data;
+      } catch { /* skip */ }
+    }
+  }
+  if (fallback) return fallback;
+  // 别项目:按 doctor 卡片(reportId 匹配 + 可选 skillName)的 path 读真身。detail 路由传的 id 是 reportId(非卡片 stem)。
+  for (const card of listDoctorCards()) {
+    if (card.reportId !== id) continue;
+    if (skillName && card.skillName !== skillName) continue;
+    if (!existsSync(card.path)) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      if (data?.kind !== 'doctor' || data.id !== id) continue;
-      if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
-      fallback ??= data;
-    } catch { /* skip */ }
+      const data = JSON.parse(readFileSync(card.path, 'utf-8')) as DoctorReport;
+      if (data?.kind === 'doctor' && data.id === id) {
+        if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
+        fallback ??= data;
+      }
+    } catch { /* corrupt 真身 */ }
   }
   return fallback;
 }

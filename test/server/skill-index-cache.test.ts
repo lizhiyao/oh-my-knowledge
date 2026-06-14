@@ -149,14 +149,23 @@ describe('buildSkillIndex 模块级缓存', () => {
   let analysesDir: string;
   let doctorsDir: string;
 
+  let origIndexEnv: string | undefined;
+
   beforeEach(() => {
     _resetSkillIndexCache();
     analysesDir = mkdtempSync(join(tmpdir(), 'omk-analyses-'));
     doctorsDir = mkdtempSync(join(tmpdir(), 'omk-doctors-'));
-    cleanupDirs.push(analysesDir, doctorsDir);
+    // buildSkillIndex 现在会合并机器级 doctor/observe 卡片(listDoctorCards/listObserveCards);把卡片索引
+    // 指到本测独占的空临时目录,隔离别的测试(persistDoctor/Observe)写进套件级索引的卡片,保证 entries 计数纯净。
+    origIndexEnv = process.env.OMK_ARTIFACT_INDEX_DIR;
+    const idxDir = mkdtempSync(join(tmpdir(), 'omk-skidx-cards-'));
+    process.env.OMK_ARTIFACT_INDEX_DIR = idxDir;
+    cleanupDirs.push(analysesDir, doctorsDir, idxDir);
   });
 
   afterEach(() => {
+    if (origIndexEnv === undefined) delete process.env.OMK_ARTIFACT_INDEX_DIR;
+    else process.env.OMK_ARTIFACT_INDEX_DIR = origIndexEnv;
     for (const d of cleanupDirs.splice(0)) {
       try { rmSync(d, { recursive: true, force: true }); } catch { /* noop */ }
     }
