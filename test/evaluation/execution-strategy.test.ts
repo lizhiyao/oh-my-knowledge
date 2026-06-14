@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildVariantConfig, resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
+import { DEFAULT_ISOLATED_CWD_DIR } from '../../src/eval-core/default-dirs.js';
 import type { Artifact, Task } from '../../src/types/index.js';
 
 function mockTask(kind: string, content: string | null = 'skill content'): Task {
@@ -87,8 +88,9 @@ describe('resolveExecutionStrategy', () => {
     t.artifact.allowedSkills = [];
     t.cwd = null;
     const plan = resolveExecutionStrategy(t, 'sonnet');
-    assert.ok(plan.input.cwd?.includes('.oh-my-knowledge/state/isolated-cwd'),
-      `cwd should be isolated, got: ${plan.input.cwd}`);
+    // isolated cwd 落在 state/isolated-cwd 下(从 OMK_HOME 派生,可被 env 整体重定向,不硬编码真实 home)。
+    assert.ok(plan.input.cwd?.startsWith(DEFAULT_ISOLATED_CWD_DIR),
+      `cwd should be isolated under ${DEFAULT_ISOLATED_CWD_DIR}, got: ${plan.input.cwd}`);
   });
 
   it('strict baseline 但用户显式给 cwd → 不动用户 cwd(用户自己负责)', () => {

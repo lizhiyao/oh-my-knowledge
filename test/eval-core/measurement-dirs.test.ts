@@ -8,6 +8,7 @@ import {
   projectDoctorsDir, globalDoctorsDir, resolveDoctorsDir,
   projectReportsDir, globalReportsDir,
 } from '../../src/eval-core/measurement-dirs.js';
+import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-mdir-${tag}-${Date.now()}-${Math.round(performance.now())}`);
@@ -20,9 +21,10 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
     assert.equal(projectObserveHealthDir('/x'), join('/x', '.omk', 'observe-health'));
     assert.equal(projectDoctorsDir('/x'), join('/x', '.omk', 'doctors'));
     assert.equal(projectReportsDir('/x'), join('/x', '.omk', 'reports'));
-    assert.ok(globalObserveHealthDir().endsWith(join('.oh-my-knowledge', 'observe-health')));
-    assert.ok(globalDoctorsDir().endsWith(join('.oh-my-knowledge', 'doctors')));
-    assert.ok(globalReportsDir().endsWith(join('.oh-my-knowledge', 'reports')));
+    // 全局目录从 OMK_HOME 派生(OMK_HOME 可被 env 整体重定向,故不硬编码 .oh-my-knowledge)。
+    assert.equal(globalObserveHealthDir(), join(OMK_HOME, 'observe-health'));
+    assert.equal(globalDoctorsDir(), join(OMK_HOME, 'doctors'));
+    assert.equal(globalReportsDir(), join(OMK_HOME, 'reports'));
   });
 
   it('reports 不给 resolveReportsDir(记录优先在 overlay store 层做,见 report-store)', () => {
