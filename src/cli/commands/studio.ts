@@ -97,7 +97,8 @@ export async function runStudio(
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
-    // reportsDir 缺省 undefined → server 建 overlay(项目盖全局);显式 --reports-dir / --global 固定单目录。
+    // reportsDir 缺省 undefined → server 建 indexed(机器级:当前项目 + 全局 + 别项目索引卡片);
+    // 显式 --reports-dir / --global 固定单目录(逃生舱,不走聚合)。
     ...(reportsDirOpt !== undefined ? { reportsDir: reportsDirOpt } : {}),
     // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
     // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
@@ -159,8 +160,8 @@ export default class Studio extends BaseCommand {
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录（可选，默认项目级 .omk/reports 盖全局兜底）',
-        en: 'Reports dir (optional, default project .omk/reports overlaid on global)',
+        zh: '只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）',
+        en: 'View only this reports dir (optional; default aggregates machine-wide: current project + global + other projects via index)',
       }),
     }),
     'analyses-dir': Flags.string({
@@ -183,8 +184,8 @@ export default class Studio extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非项目优先；managed / observe-inbox 不受影响',
-        en: 'View global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox',
+        zh: '只看全局 reports / observe-health / doctors 目录（~/.oh-my-knowledge/*），而非机器级聚合 / 项目优先；managed / observe-inbox 不受影响',
+        en: 'View only global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed / observe-inbox',
       }),
     }),
     'no-open': Flags.boolean({

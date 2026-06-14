@@ -406,6 +406,22 @@ export interface BatchEvaluationReport {
 
 export type ReportDocument = EvaluationReport | BatchEvaluationReport;
 
+/**
+ * 产物发现索引卡片(report 域)。报告正文(含 results 逐样本重体)永远单份留项目本地;全局
+ * `state/artifact-index/report/` 下存这张轻卡片(meta + summary,无 results),`path` 指向真身绝对路径。
+ * `omk studio` 读「卡片(覆盖别项目)∪ live-scan(当前项目+全局)」聚合成机器级总览,详情按 `path` 读真身。
+ * 字段与 server 的 `RunListItem` 同形(后者复用本类型投影),多 `domain` 判别 + `path` 寻址。
+ */
+export interface ReportIndexCard {
+  domain: 'report';
+  id: string;
+  path: string;
+  kind: ReportDocument['kind'];
+  meta: ReportDocument['meta'];
+  summary?: EvaluationReport['summary'];
+  items?: BatchEvaluationReport['items'];
+}
+
 /** 报告级 analysis insight(report-diagnostics 产出,跟 SkillIndex 的 audience-aware
  *  `Insight` 不同 — 这条只有 type / severity / details 三字段,挂在 AnalysisResult.insights 下,
  *  用于 evaluation 报告的「分析」面板,跟 Studio skill 健康洞察是两套语义)。 */

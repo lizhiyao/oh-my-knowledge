@@ -447,13 +447,13 @@ omk studio --no-open
   --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe-health, falls back to global)
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctors, falls back to global)
-  --global                    View global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of project-first; does not affect managed / observe-inbox
+  --global                    View only global reports / observe-health / doctors dirs (~/.oh-my-knowledge/*) instead of machine-wide / project-first; does not affect managed / observe-inbox
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe-inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
-  --reports-dir <value>       Reports dir (optional, default project .omk/reports overlaid on global)
+  --reports-dir <value>       View only this reports dir (optional; default aggregates machine-wide: current project + global + other projects via index)
 ```
 
 For full descriptions: `omk studio --help`.

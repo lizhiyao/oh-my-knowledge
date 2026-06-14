@@ -292,8 +292,15 @@ describe('GOLDEN report variant keys', () => {
   });
 
   it('generateRunId encodes variant names in order, sanitized', () => {
-    assert.match(generateRunId(['baseline', 'greeter']), /^baseline-vs-greeter-\d{8}-\d{4}$/);
-    assert.match(generateRunId(['v1/greeter', 'v2/greeter']), /^v1-greeter-vs-v2-greeter-\d{8}-\d{4}$/);
-    assert.match(generateRunId(['git:HEAD:greeter']), /^git-HEAD-greeter-\d{8}-\d{4}$/);
+    // 格式:<variants>-<YYYYMMDD>-<HHmmss>-<rand4>。秒 + 4 位随机后缀保证跨项目 / 同分钟重跑全局唯一。
+    assert.match(generateRunId(['baseline', 'greeter']), /^baseline-vs-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
+    assert.match(generateRunId(['v1/greeter', 'v2/greeter']), /^v1-greeter-vs-v2-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
+    assert.match(generateRunId(['git:HEAD:greeter']), /^git-HEAD-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
+  });
+
+  it('generateRunId 同时刻两次产出不同 id(撞名根治)', () => {
+    const a = generateRunId(['baseline', 'greeter']);
+    const b = generateRunId(['baseline', 'greeter']);
+    assert.notEqual(a, b, '随机后缀应让同一时刻两次 run 的 id 不同');
   });
 });

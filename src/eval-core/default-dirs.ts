@@ -26,3 +26,10 @@ export const DEFAULT_CACHE_DIR: string = join(DEFAULT_STATE_DIR, 'cache');
 export const DEFAULT_ISOLATED_CWD_DIR: string = join(DEFAULT_STATE_DIR, 'isolated-cwd');
 export const DEFAULT_TREES_DIR: string = join(DEFAULT_STATE_DIR, 'trees');
 export const DEFAULT_JOBS_DIR: string = join(DEFAULT_STATE_DIR, 'jobs');
+
+/**
+ * 产物发现索引根:每类测量产物(report / doctor / observe-health)项目本地落盘后,在全局这里留一张
+ * 轻量目录卡片(指向项目里的真身),让 `omk studio` 跨项目聚合成「机器级总览」。索引是可重生的 scratch
+ * (丢了重跑即重建,且当前项目+全局靠 live-scan 永远覆盖),故收在 state/ 子树。
+ */
+export const DEFAULT_ARTIFACT_INDEX_DIR: string = join(DEFAULT_STATE_DIR, 'artifact-index');

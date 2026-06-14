@@ -37,7 +37,9 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
   "src/types/report.ts::EvaluationReport::'evaluation'",
   "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
-  "src/server/report-store.ts::RunListItem::ReportDocument['kind']",
+  // ReportIndexCard 是产物发现索引卡片,kind 镜像 ReportDocument['kind'](evaluation/batch-evaluation)同
+  // 持久化 report 顶层 kind;RunListItem 现复用其投影(Omit),kind 声明点从 RunListItem 移到此处。
+  "src/types/report.ts::ReportIndexCard::ReportDocument['kind']",
   "src/types/doctor.ts::DoctorReport::'doctor'",
   "src/types/observability.ts::ObservationReviewState::'observe-review-state'",
   "src/types/observability.ts::ObservationInboxReport::'observe-inbox'",

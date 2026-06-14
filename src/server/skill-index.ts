@@ -181,6 +181,13 @@ function buildEvalSnapshot(report: EvaluationReport, variant: string): SkillEval
     else if (isTripwire) tripwire += 1;
     else fail += 1;
   }
+  // 别项目的报告以「索引卡片」形态进 studio(results 被剥掉只留 summary,见 indexed-report-store)。
+  // 此时上面逐样本累加全 0 → 列表会显「0/0 样本」。从 summary 的执行计数回填,使跨项目卡片也有真实样本数。
+  if (report.results.length === 0 && (summary.successCount || summary.errorCount || summary.totalSamples)) {
+    pass = summary.successCount ?? 0;
+    fail = summary.errorCount ?? 0;
+    tripwire = 0;
+  }
 
   // verdict 是运行期计算的,不进 report,这里现算。
   // multi-treatment 报告:computeVerdict 顶层 level 是 worst-of perPair,headline 也是

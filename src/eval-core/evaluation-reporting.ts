@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_REPORTS_DIR } from './default-dirs.js';
+import { indexReportWrite } from './artifact-index.js';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
@@ -383,6 +384,9 @@ export function persistReport(report: PersistableReport, outputDir: string | nul
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const filePath = join(outputDir, `${report.id}.json`);
   writeFileSync(filePath, JSON.stringify(report, null, 2));
+  // 产物发现索引:报告落项目本地后,best-effort 追加全局轻卡片,让 omk studio 跨项目聚合成机器级总览。
+  // 永不抛、永不阻断报告落盘(正文是 source of truth)。
+  indexReportWrite(report, filePath, outputDir);
   return filePath;
 }
 
@@ -390,9 +394,13 @@ export function generateRunId(variants: string[]): string {
   const d = new Date();
   const pad = (n: number): string => String(n).padStart(2, '0');
   const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}${pad(d.getMinutes())}`;
+  // 含秒 + 4 位随机后缀:id 是 run 标签(非测量数),但被 studio 机器级 dedup 与 managed 证据 (reportId,
+  // contentHash) 去重当唯一键用。分钟级会让跨项目 / 同分钟重跑撞同 id → 索引静默顶掉一份、managed 错并一条。
+  // 秒+随机根治撞名,保证每次 run 全局唯一。
+  const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const rand = Math.random().toString(36).slice(2, 6);
   const variantPart = variants
     .map((variant) => variant.replaceAll(/[\\/:]/g, '-').replaceAll(/[^a-zA-Z0-9._@-]/g, '_'))
     .join('-vs-');
-  return `${variantPart}-${date}-${time}`;
+  return `${variantPart}-${date}-${time}-${rand}`;
 }
