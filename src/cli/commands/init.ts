@@ -4,12 +4,14 @@ import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 
-// 预置 .omk/.gitignore:测量 bulk(项目本地、可重生)默认不入库;managed/ 治理档案 + 配置不在此列,默认 track。
-const INIT_OMK_GITIGNORE = `# omk 测量 bulk(项目本地、可重生)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
+// 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
+// managed/ 治理档案 + 配置不在此列,默认 track。
+const INIT_OMK_GITIGNORE = `# omk 测量 bulk + doctor --fix 备份(项目本地)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
 /observe-health/
 /doctors/
 /observe-inbox/
 /reports/
+/backups/
 `;
 
 const INIT_SAMPLES = `[

@@ -44,6 +44,7 @@ The four in the first row are placed the same way (project-local default + globa
 
 <project>/.omk/                 # project-local · keep · tied to this project's sample set
   reports/  observe-health/  doctors/  observe-inbox/   # measurement output & inbox — gitignored by default
+  backups/                      # pre-fix skill originals saved by doctor --fix (for undo) — gitignored by default
   managed/                      # governance archive for project-vendored skills — committable (decision history)
   eval-samples.yaml / eval.yaml # measurement definition — committed
 ```
@@ -105,7 +106,7 @@ Split by "can it rebuild itself if deleted":
 
 - **Already auto-cleaning (scratch)**: `doctor` keeps the latest 50 per skill; `cache` caps at 2000; `trees` / `isolated-cwd` cap at 200 (with a lock protecting the in-use process). All three are env-tunable.
 - **Deliberately not cleaned (data)**: `reports` / `observe-health` / `observe-inbox` are never background-deleted. Two reasons: (1) `reports` is referenced by `id` from governance archives and task records, so auto-deleting breaks links; (2) a report's entire value is "compare history against the new version", so auto-deleting quietly destroys the basis for comparison. They're just a few JSON files anyway.
-- **No cap yet**: `jobs` (studio async task records) are a few KB each and carry an `id` pointing at a report, landing in the "don't randomly delete anything that references a report" rule — so they're not auto-cleaned either. Add a lenient cap if they ever bloat.
+- **No cap yet**: `jobs` (studio async task records) are a few KB each and carry an `id` pointing at a report, landing in the "don't randomly delete anything that references a report" rule — so they're not auto-cleaned either. `backups` (pre-fix skill originals saved on every `doctor --fix`) is likewise uncapped — it's the undo safety net, so deleting it early loses the ability to roll back; not auto-cleaned, add a lenient cap if it ever bloats.
 
 ## 8. This isn't made up — the industry does it this way
 

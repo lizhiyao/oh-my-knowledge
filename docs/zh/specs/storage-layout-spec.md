@@ -44,6 +44,7 @@
 
 <项目>/.omk/                    # 项目本地 · 要留 · 绑这个项目的用例集
   reports/  observe-health/  doctors/  observe-inbox/   # 测量产物与收件箱 —— 默认 gitignore，不进库
+  backups/                      # doctor --fix 改 skill 前存的原件（撤销用）—— 默认 gitignore，不进库
   managed/                      # 项目自带 skill 的治理档案 —— 可以提交（决策史）
   eval-samples.yaml / eval.yaml # 测量定义 —— 提交
 ```
@@ -105,7 +106,7 @@
 
 - **已经在自动清的（草稿）**：`doctor` 每个 skill 留最近 50 份；`cache` 最多 2000 条；`trees` / `isolated-cwd` 最多 200 条（带正在用的进程锁保护）。三个都能用环境变量调。
 - **故意不清的（数据）**：`reports` / `observe-health` / `observe-inbox` 永不后台删。两个理由：(1) `reports` 被治理档案和任务记录按 `id` 引着，自动删会断链；(2) 报告的全部价值就是「拿历史比新版」，自动删等于偷偷毁掉比较的底子。也就几个 json，不占地方。
-- **暂时没上限的**：`jobs`（studio 异步任务记录）每个几 KB、还记着指向报告的 `id`，落在「引用了报告的别乱删」这条里，一并不自动清。真撑爆那天再加个宽松上限。
+- **暂时没上限的**：`jobs`（studio 异步任务记录）每个几 KB、还记着指向报告的 `id`，落在「引用了报告的别乱删」这条里，一并不自动清。`backups`（doctor --fix 每次改 skill 前存的原件）也一样无上限——它是撤销用的安全网，删早了就没法回退，所以不自动清，真撑爆再加宽松上限。
 
 ## 八、这套不是拍脑袋，业界都这么干
 

@@ -57,7 +57,7 @@ describe('oclif init', () => {
       const gitignorePath = join(target, '.omk', '.gitignore');
       assert.ok(existsSync(gitignorePath), '.omk/.gitignore not created');
       const gi = readFileSync(gitignorePath, 'utf8');
-      for (const d of ['observe-health/', 'doctors/', 'observe-inbox/', 'reports/']) {
+      for (const d of ['observe-health/', 'doctors/', 'observe-inbox/', 'reports/', 'backups/']) {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
       assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
