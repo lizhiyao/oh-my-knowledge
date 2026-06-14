@@ -13,7 +13,7 @@
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createFileStore } from './report-store.js';
-import { artifactIndexDir, listReportCards, cardToReportDocument, removeReportCard } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listReportCards, listLiveReportCards, cardToReportDocument, removeReportCard, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import type { ReportDocument, ReportStore, EvaluationReport } from '../types/index.js';
 
 function isEvaluation(r: ReportDocument): r is EvaluationReport {
@@ -44,7 +44,8 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
       const parts = files.map((f) => {
         try { const s = statSync(join(dir, f)); return `${f}:${s.mtimeMs}:${s.size}`; } catch { return `${f}:?`; }
       });
-      return `${statSync(dir).mtimeMs}|${parts.join(',')}`;
+      // 真身存在性也进指纹:否则真身被带外删、卡片 JSON 没变,缓存命中会继续展示已悬空卡片。
+      return `${statSync(dir).mtimeMs}|${parts.join(',')}|t:${cardTargetSentinel('report')}`;
     } catch {
       return 'none';
     }
@@ -52,7 +53,9 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
   function cardDocs(): ReportDocument[] {
     const fp = cardFingerprint();
     if (fp === cachedFp && cachedCards) return cachedCards;
-    const docs = listReportCards().map(cardToReportDocument);
+    // 机器级 list 展示用 live 卡片:真身被带外删/移走的悬空卡片不进列表(把卡片当活指针)。
+    // get() 仍走 raw listReportCards 做 by-id best-effort(直链命中真身则给真身、悬空降级壳)。
+    const docs = listLiveReportCards().map(cardToReportDocument);
     cachedFp = fp;
     cachedCards = docs;
     return docs;

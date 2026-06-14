@@ -8,6 +8,7 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
+import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
@@ -328,7 +329,14 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
       outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
-    writeFileSync(join(dir, `${safeName}-${safeId}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    const cardId = `${safeName}-${safeId}`;
+    const filePath = join(dir, `${cardId}.json`);
+    writeFileSync(filePath, JSON.stringify(perSkill, null, 2), 'utf8');
+    // 产物发现索引:per-skill 报告落项目本地后,best-effort 追加全局轻卡片,让 studio 跨项目聚合。
+    indexDoctorWrite({
+      id: cardId, path: filePath, skillName: skill.skillName, reportId: report.id, timestamp: report.timestamp,
+      status: skill.status, passCount: counts.pass, warnCount: counts.warn, failCount: counts.fail,
+    }, dir);
     pruneDoctorHistory(dir, skill.skillName, DOCTOR_HISTORY_MAX_PER_SKILL);
   }
 }
@@ -352,5 +360,8 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
   candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   for (const { file } of candidates.slice(maxKeep)) {
     try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
+    // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
+    // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。
+    removeDoctorCard(file.replace(/\.json$/, ''));
   }
 }

@@ -34,6 +34,7 @@ import type {
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
+import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
@@ -128,7 +129,7 @@ function safeDirJsonContentFingerprint(dir: string): string {
   return `${dir}|${dirMtimeMs}|${fileParts.join(',')}`;
 }
 
-function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string, observationsDir: string): string {
+function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string, observationsDir: string, includeObserveCards: boolean, includeDoctorCards: boolean): string {
   // `d:` 跟 `o:` 前缀("d for doctors / o for observability analyses")沿用 pre-fix
   // 字面格式,避免外部 logging / debug 时 grep fingerprint 字符串的格式漂移。
   // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
@@ -138,7 +139,13 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
   const observationsFp = safeDirJsonContentFingerprint(observationsDir);
-  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}`;
+  // 别项目的 doctor / observe 卡片也进 fingerprint:否则别项目新跑一份后,本项目 studio 因缓存命中看不到更新。
+  // 仅在对应域开启卡片合并(机器级模式)时才纳入 —— 固定目录 / --global 模式不合卡片,卡片变化不应触发重算;
+  // 且 include 标志本身进 fingerprint,避免同目录在 include on/off 两种模式间命中错误缓存。
+  // 卡片目录指纹 + 真身存在性 sentinel 都纳入:后者使「卡片真身被带外删」也能让缓存失效(否则悬空卡片继续展示)。
+  const doctorCardsFp = includeDoctorCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('doctor'))}|t:${cardTargetSentinel('doctor')}` : '';
+  const observeCardsFp = includeObserveCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('observe-health'))}|t:${cardTargetSentinel('observe-health')}` : '';
+  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}|dc:${doctorCardsFp}|oc:${observeCardsFp}|inc:${includeObserveCards ? 'o' : ''}${includeDoctorCards ? 'd' : ''}`;
 }
 
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
@@ -318,14 +325,24 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
  *
  * 同 skill 多份报告时取 timestamp 最新的一份。
  */
+export interface BuildSkillIndexOptions {
+  /** 合并别项目 observe 卡片(机器级模式)。固定 --analyses-dir / --global 时为 false,只看该目录。 */
+  includeObserveCards?: boolean;
+  /** 合并别项目 doctor 卡片(机器级模式)。固定 --doctors-dir / --global 时为 false,只看该目录。 */
+  includeDoctorCards?: boolean;
+}
+
 export function buildSkillIndex(
   reports: ReportDocument[],
   analysesDir: string,
   doctorsDir: string,
   observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
+  opts: BuildSkillIndexOptions = {},
 ): SkillIndex {
-  // 命中缓存就直接返回(fingerprint 覆盖 reports + 两个 dir 的变化信号)
-  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir, observationsDir);
+  const includeObserveCards = opts.includeObserveCards ?? false;
+  const includeDoctorCards = opts.includeDoctorCards ?? false;
+  // 命中缓存就直接返回(fingerprint 覆盖 reports + 两个 dir + 卡片 include 模式的变化信号)
+  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards);
   if (_indexCache && _indexCache.fingerprint === fp) {
     return _indexCache.result;
   }
@@ -372,10 +389,35 @@ export function buildSkillIndex(
       } catch { /* skip corrupt */ }
     }
   }
+  // 别项目的 observe 卡片(当前 analysesDir live 扫不到的项目)→ per-skill snapshot,dedup by analysisId(live 盖卡片)。
+  // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeObserveCards=false,只看该目录(逃生舱语义)。
+  if (includeObserveCards) {
+    for (const card of listLiveObserveCards()) {
+      for (const [skill, h] of Object.entries(card.bySkill)) {
+        const list = (observeBy[skill] ??= []);
+        if (list.some((s) => s.analysisId === card.id)) continue;
+        list.push({
+          analysisId: card.id, generatedAt: card.meta.generatedAt,
+          healthBand: bandFromObserveHealth(h), failureRate: h.toolFailureRate, segmentCount: h.segmentCount,
+          gapRate: h.gap?.weightedGapRate ?? 0, confidence: h.confidence ?? confidenceOf(h.segmentCount),
+        });
+      }
+    }
+  }
   for (const list of Object.values(observeBy)) list.sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
 
   // ── doctor 聚合(历史 list)──────────────────────────────
   const doctorBy = scanDoctorReports(doctorsDir);
+  // 别项目的 doctor 卡片 → per-skill snapshot,dedup by reportId(live 盖卡片);prune 删正文时已连带删卡片,故无「复活」。
+  // 仅机器级模式合并;固定 --doctors-dir / --global 时 includeDoctorCards=false,只看该目录(逃生舱语义)。
+  if (includeDoctorCards) {
+    for (const card of listLiveDoctorCards()) {
+      const { skillName, snap } = cardToDoctorSnapshot(card);
+      const list = (doctorBy[skillName] ??= []);
+      if (!list.some((s) => s.reportId === snap.reportId)) list.push(snap);
+    }
+  }
+  for (const list of Object.values(doctorBy)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const diagnosisBundle = mergeDiagnosisBundles(
     loadLatestObservationInboxReports(observationsDir).flatMap((report) => report.diagnostics ? [report.diagnostics] : []),
     new Date().toISOString(),

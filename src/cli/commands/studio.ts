@@ -108,6 +108,10 @@ export async function runStudio(
     doctorsDir: flags['doctors-dir']
       ? resolve(flags['doctors-dir'])
       : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
+    // 只有默认机器级模式才合别项目的索引卡片;--global / 显式 --analyses-dir / --doctors-dir 是逃生舱,
+    // 只看固定目录(与 reports 的 --reports-dir 关闭 indexed store 对称)。observe / doctor 各自独立判定。
+    includeObserveCards: !flags.global && !flags['analyses-dir'],
+    includeDoctorCards: !flags.global && !flags['doctors-dir'],
     ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
     // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
     // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。

@@ -59,6 +59,7 @@ describe('createIndexedReportStore 机器级总览', () => {
     writeReportFile(proj, evalDoc('rp', 'vp', 'hp', '2026-03-01T00:00:00Z'));
     writeReportFile(glob, evalDoc('rg', 'vg', 'hg', '2026-02-01T00:00:00Z'));
     const otherDoc = evalDoc('ro', 'vo', 'ho', '2026-01-01T00:00:00Z');
+    writeReportFile(other, otherDoc); // 别项目真身(卡片 path 指向它;悬空过滤要求真身在)
     writeCard('ro', join(other, 'ro.json'), otherDoc); // 别项目:仅卡片(本 store 不 live 扫 other)
     const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
     assert.deepEqual((await store.list()).map((r) => r.id), ['rp', 'rg', 'ro']);
@@ -93,7 +94,9 @@ describe('createIndexedReportStore 机器级总览', () => {
   });
 
   it('findByVariant / findByArtifactHash 跨项目(含别项目卡片)', async () => {
-    writeCard('ro', join(other, 'ro.json'), evalDoc('ro', 'vo', 'ho'));
+    const ro = evalDoc('ro', 'vo', 'ho');
+    writeReportFile(other, ro);
+    writeCard('ro', join(other, 'ro.json'), ro);
     const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
     assert.equal((await store.findByVariant('vo')).length, 1);
     assert.equal((await store.findByArtifactHash('ho')).length, 1);
@@ -102,10 +105,21 @@ describe('createIndexedReportStore 机器级总览', () => {
   it('卡片缓存按 per-file 指纹失效:构造 store 后再写/删卡片,list 立即反映', async () => {
     const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
     assert.deepEqual((await store.list()).map((r) => r.id), [], '初始空');
+    writeReportFile(other, evalDoc('ro')); // 真身
     writeCard('ro', join(other, 'ro.json'), evalDoc('ro')); // 构造后新增卡片
     assert.deepEqual((await store.list()).map((r) => r.id), ['ro'], '新卡片立即可见(指纹失效)');
     await store.remove('ro'); // 删卡片
     assert.deepEqual((await store.list()).map((r) => r.id), [], '删后立即消失');
+  });
+
+  it('list 不展示悬空卡片(穿透缓存):首次可见进缓存后,仅删真身(卡片 JSON / 目录不变)→ 再 list 应消失', async () => {
+    const ro = evalDoc('ro', 'vo', 'ho');
+    writeReportFile(other, ro);
+    writeCard('ro', join(other, 'ro.json'), ro);
+    const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
+    assert.deepEqual((await store.list()).map((r) => r.id), ['ro'], '真身在 → 卡片可见(进 cardDocs 缓存)');
+    rmSync(join(other, 'ro.json'), { force: true }); // 仅删真身,不动卡片 JSON / 卡片目录(不靠卡片目录指纹变化)
+    assert.deepEqual((await store.list()).map((r) => r.id), [], '真身没了 → 真身 sentinel 使缓存失效,悬空卡片不再展示');
   });
 
   it('remove:删 live 真身 + 删卡片;别项目删不到真身但删卡片仍报成功、从 list 消失', async () => {
