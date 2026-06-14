@@ -96,12 +96,15 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
   }
 
   async function remove(id: string): Promise<boolean> {
-    const liveRemoved = (await project.remove(id)) || (await global.remove(id));
+    // 三处各自删、不能短路:同一 id 可能在项目与全局都有副本(旧数据迁移期最常见),
+    // 用 `||` 会在删掉项目那份后短路、漏删全局那份,下次 list 全局同 id 又浮出来(DELETE 返 200 但 id 复活)。
+    const projectRemoved = await project.remove(id);
+    const globalRemoved = await global.remove(id);
+    const cardRemoved = removeReportCard(id);
     // 真身在别项目删不到,但删卡片即让它从机器级 list 消失。返回契约刻意是「是否从本机器级视图移除成功」
     // (= 删了真身或删了卡片),而非「删了正文真身」—— studio DELETE 的语义是「从我的总览拿掉这条」,
     // 别项目正文留在它自己项目里不受影响。
-    const cardRemoved = removeReportCard(id);
-    return liveRemoved || cardRemoved;
+    return projectRemoved || globalRemoved || cardRemoved;
   }
 
   async function findByVariant(variantName: string): Promise<EvaluationReport[]> {

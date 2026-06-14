@@ -116,4 +116,14 @@ describe('createIndexedReportStore 机器级总览', () => {
     assert.equal(await store.remove('ro'), true, '别项目删卡片即成功');
     assert.deepEqual((await store.list()).map((r) => r.id), []);
   });
+
+  it('remove:同一 id 在项目与全局都有副本(迁移期) → 两份都删、不短路,删后 list/get 都不再命中', async () => {
+    writeReportFile(proj, evalDoc('dup'));
+    writeReportFile(glob, evalDoc('dup'));
+    const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
+    assert.equal((await store.list()).filter((r) => r.id === 'dup').length, 1, 'dedup 后只一条');
+    assert.equal(await store.remove('dup'), true);
+    assert.equal(await store.get('dup'), null, 'remove 后 get 不再命中(全局副本未被 || 短路漏删)');
+    assert.deepEqual((await store.list()).map((r) => r.id), [], 'list 不再浮出全局同 id');
+  });
 });
