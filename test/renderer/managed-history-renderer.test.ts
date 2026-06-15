@@ -88,6 +88,13 @@ const GIT_RESTORE_RECORD: ManagedArtifactRecord = {
   decisions: [],
 };
 
+// 仓内路径含空格 + shell 元字符 → 测 `git checkout` 提示对路径做 POSIX 单引号 quoting(防复制粘贴被改写命令语义)。
+const GIT_RESTORE_NASTY_PATH: ManagedArtifactRecord = {
+  ...GIT_RESTORE_RECORD,
+  id: 'skill-restore-nasty',
+  source: { sourceKind: 'git', locator: 'git:HEAD:skills/a b; echo pwned', ref: 'HEAD', isDirectorySkill: true },
+};
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -124,5 +131,8 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory 带 git 还原提示 en', () => {
     expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_RECORD, 'en' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedHistory git 还原路径含空格 / 元字符 → shell quoting zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_NASTY_PATH, 'zh' as Lang))).toMatchSnapshot();
   });
 });

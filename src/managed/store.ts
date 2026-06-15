@@ -54,6 +54,12 @@ function isOptionalString(v: unknown): boolean {
   return v === undefined || typeof v === 'string';
 }
 
+/** 可选 git SHA 字段守卫(evidence.gitCommit):缺省,或形如 7–64 位 hex 的 commit。脏记录里写成对象 /
+ *  非 SHA 串会让 Studio 渲染 `ev.gitCommit.slice()` 抛 TypeError(整页打不开),故落盘前按 SHA 形态收窄。 */
+function isOptionalSha(v: unknown): boolean {
+  return v === undefined || (typeof v === 'string' && /^[0-9a-f]{7,64}$/i.test(v));
+}
+
 // 受管记录可安装的 kind(managed 记录绝不是 baseline)。
 const MANAGED_KINDS = new Set(['skill', 'prompt', 'agent', 'workflow']);
 
@@ -100,6 +106,8 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
       if (c.debiasMode !== undefined
         && !(Array.isArray(c.debiasMode) && c.debiasMode.every((m) => m === 'length' || m === 'position'))) return false;
     }
+    // gitCommit 是 Studio 渲染 `git checkout` 指针时解引用的字段,脏值收窄到 SHA 形态(见 isOptionalSha)。
+    if (!isOptionalSha(ev.gitCommit)) return false;
     return true;
   });
   const okDec = r.decisions.every((d) => {

@@ -205,8 +205,15 @@ describe('managed store', () => {
     write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: ['length', 'evil'] } }] });
     assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 含非法枚举值判脏');
 
-    // 合法记录仍放行(含完整 evidence bundle + 合法 comparability marker,确认没把合法值误伤)。
-    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] } }] });
+    // gitCommit 是 Studio 渲染 `git checkout` 时解引用的字段(.slice),脏值收窄到 SHA 形态防整页崩。
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', gitCommit: { nested: true } }] });
+    assert.equal(loadManagedRecord(store, id), null, 'evidence.gitCommit 非 string 判脏(防 Studio .slice 崩页)');
+
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', gitCommit: 'nothex-zzz' }] });
+    assert.equal(loadManagedRecord(store, id), null, 'evidence.gitCommit 非 SHA 形态(含非 hex)判脏');
+
+    // 合法记录仍放行(含完整 evidence bundle + 合法 comparability marker + 合法 gitCommit,确认没把合法值误伤)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] }, gitCommit: 'abc1234567890def' }] });
     assert.ok(loadManagedRecord(store, id), '合法记录正常加载');
   });
 

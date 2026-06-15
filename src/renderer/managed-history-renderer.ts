@@ -93,6 +93,12 @@ function gitRestorePath(source: ManagedArtifactRecord['source']): string | undef
   return m ? m[1] : undefined;
 }
 
+/** POSIX 单引号包裹,内部 `'` 按 `'\''` 标准转义。还原提示是给用户复制粘贴的 shell 命令,git 路径可含
+ *  空格 / 分号 / 反引号 / `$()` 等元字符 —— e()(HTML escaping)挡不住 shell,不 quote 会被改写命令语义。 */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   const t = L(lang);
   const typeLabel: Record<TimelineEvent['type'], string> = {
@@ -118,8 +124,9 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   if (ev.reportId) detail.push(reportLink(ev.reportId, lang));
   if (ev.reason) detail.push(`<span class="mh-reason">「${e(ev.reason)}」</span>`);
   // #234/#236 还原指针:这一版有 git 坐标 → 给现成的 `git checkout` 把源带回该版(字节级还原交给 git)。
+  // 显 full SHA(精确坐标、无歧义);路径 shell-quote 防注入(见 shellQuote)。
   if (ev.gitCommit) {
-    const cmd = `git checkout ${ev.gitCommit.slice(0, 10)}${restorePath ? ` -- ${restorePath}` : ''}`;
+    const cmd = `git checkout ${ev.gitCommit}${restorePath ? ` -- ${shellQuote(restorePath)}` : ''}`;
     detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
   }
 
