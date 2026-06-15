@@ -85,10 +85,35 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 | `measurable` | doctor 和 samples 足以支持受控 eval | `eval → measurable`；`evolve → measurable`（受管：写回源 + 记证据 + re-baseline）；`evolve --snapshot-only → candidate` |
 | `candidate` | 一个尚未落到 source of record 的版本（`evolve --snapshot-only` 快照或人工编辑） | `eval → candidate`；`promote → promoted`（或拒绝，不动源文件） |
 | `promoted` | 当前被接受版本（内容由 evolve / 人工编辑 / install 写入），经 `promote` 接受，附带证据 | `observe → promoted` / `stale`；`rollback → measurable`（源已漂移则 `stale`）；`evolve → measurable`（re-baseline 到新版本） |
-| `stale` | 证据不再匹配 artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
+| `stale` | artifact**内容**不再匹配被测内容——身份漂移（源不可达或内容 hash 变了）；runtime / 样本集的偏移是单独的读时 currency marker，不是这个标签（§6.1） | `doctor` / `sample` / 重 `eval` → `measurable` |
 | `rolled-back` | （future）由 `rollback` 恢复的、有证据的历史转正版本内容 —— 当前还不是 `ManagedLifecycleLabel` | `observe` |
 
 这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。MVP 的 `rollback` 撤销当前版本的接受、让 skill 回到 `measurable`（源已漂移则 `stale`）；`rolled-back` 仍是 future 产品概念，当前还不是 `ManagedLifecycleLabel`。`reject` 是 `promote` 决策的否定结果（记进证据包，不动源文件），不是单独的命令。
+
+### 6.1 证据时效：三条漂移轴
+
+一条记录的证据证明的是*某一个 artifact 版本、在某一个样本集上、用某一套测量仪测出来的结果*。所以「过期」不是一种情况，而是三条相互独立的轴，各自对**当前**上下文判定、各自有不同后果。只有第一条是身份变化；后两条是读时 marker，不是新的生命周期标签——生命周期 enum 仍是五值，不动 Report / record schema（§6）。
+
+| 轴 | 漂移判据 | 生命周期影响 | promote 门禁后果 |
+|---|---|---|---|
+| **内容**（artifact 身份） | `currentContentHash !== record.contentHash`，或源不可达 | → `stale` | **硬拦、不可越** —— 盘上字节不是被测内容；重跑 `eval` / 重 install。 |
+| **样本**（覆盖） | `currentSampleSetHash !== evidence.sampleCoverage.hash`，**仅当**当前样本集可解析时才判（上下文里有 `eval.yaml` / 样本集） | 无 —— 读时 `sampleDrift` marker | **Warn、可带 `--reason` 越门** —— artifact 没变，是用例集动了；人来认这个覆盖缺口，或重跑 `eval` 刷新。 |
+| **运行时**（测量仪） | 评委身份：`evidence.comparability.judgePromptHash` 已不属当前评委；版本：`cliVersion` / `debiasMode` 不同 | 无 —— 读时 `comparabilityDrift` marker | 评委身份变 → **硬拦（`incomparable`）、可越**；`cliVersion` / `debiasMode` → **只展示、永不门控**（否则每次发版即令全部证据失效）。 |
+
+为什么不对称：内容变了意味着 omk 测的是*另一个 artifact* —— 致命、不可越。样本集或测量仪变了意味着 omk 诚实地测了*这个* artifact，只是衡量它的尺子后来动了 —— verdict 仍是一次真实测量，所以门禁把这个偏移暴露出来、让人带留痕的理由认下缺口，而不是假装证据作废。这既守住 §3（漂移必须可见），又不把「测错了对象」（致命）和「尺子动了」（提醒）混为一谈。
+
+读时 currency 与 `deriveManagedState` 一起算出，从不持久化：
+
+```ts
+interface EvidenceCurrency {        // 全部读时派生 —— 不动 schema
+  contentDrift: boolean;            // 身份轴 → `stale` 标签
+  sampleDrift: boolean | 'unknown'; // 'unknown' = 当前上下文里没有样本集
+  judgeDrift: boolean | 'unknown';  // 'unknown' = 证据没带 judgePromptHash
+  versionDrift: boolean;            // cliVersion / debiasMode 偏移 —— 仅展示
+}
+```
+
+`unknown` 既不是隐式放行*也不是*隐式拦截：它表示这条轴在当前上下文无从判定（没有可解析的样本集，或证据早于 judge-hash 记录），并照此暴露 —— 与现有「缺 `judgePromptHash` 只 warn 不拦」一致。内容轴今天已上线（`deriveManagedState`）；把 `sampleDrift` 接进 promote 门禁、`list`、Studio 是后续实现项 —— 策略在此已定。
 
 ## 7. 命令面
 
@@ -155,7 +180,7 @@ omk install ./prompts/rewrite.md --kind prompt
 - 可比性：证据的 `judgePromptHash`（若有）仍属当前评委模板（评委提示词变了 ⇒ 旧 verdict 不可比 ⇒ 拦）;缺指纹只 warn 不拦;`cliVersion` 仅展示、不硬卡（否则每次发版即全失效）。
 - verdict 默认仅 `PROGRESS`;`CAUTIOUS` 需显式 `--accept-cautious`;其余一律拦。
 
-§5 的四项 mandatory,MVP 门禁在 promote 时核三项（report id 经「存在当前证据」、verdict、可比性 marker）;**样本集覆盖**由 `eval`（§9、#221）denormalize 进证据 bundle、在此被信任——门禁不重算也不重核。（§5 的「mandatory」说的是 `eval` 必须写进 bundle 的内容,不是 promote 时另起一道核查。）
+§5 的四项 mandatory,MVP 门禁在 promote 时核三项（report id 经「存在当前证据」、verdict、可比性 marker）;**样本集覆盖**由 `eval`（§9、#221）denormalize 进证据 bundle、在此被信任——门禁不重算也不重核。（§5 的「mandatory」说的是 `eval` 必须写进 bundle 的内容,不是 promote 时另起一道核查。）一条已定但未接线的补充（§6.1）：当当前样本集可解析、其 hash 与 bundle 的 `sampleCoverage.hash` 不一致时，门禁会 *warn*（可带 `--reason` 越门），而非再加一道硬拦；MVP 暂未计算这条。
 
 `--force` 只可越过可越门的非「无证据」类拦截（源不可达 / 不可比 / verdict），在决定里记 `override.verdict`（外加 `override.overriddenBlocks` 标明被越过了哪几条判据）与必填的人工 `--reason`（不变量：override 必须显式且留痕）。若源可达但内容 hash 已不同，则不可越门：decision 仍会指向旧的 `record.contentHash`，用户必须重新跑 `omk eval` / 重新 install。对已 promote 的当前版本重跑 promote 是幂等无操作。
 
@@ -207,10 +232,10 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - **已定**：管理记录用 per-record 文件 `.omk/managed/<id>.json`（原子 tmp+rename，镜像 report-store），不用单一聚合文件。
 - **已定（#214，已完成）**：artifact 内容指纹已统一、证据可绑定，口径锚在「executor 实际测到的输入」。每个目录-skill——本地**与** git——在测量前都物化成内容寻址隔离副本（`materializeIsolatedCopy`），executor 的 `cwd` 锚到副本，`references/` 资产成为真实运行时输入。`eval` 记的是与 `install` 同一套整树 `hashArtifactSource`（报告 `schemaVersion >= 3`），故所有目录-skill 的 `evidence.contentHash === record.contentHash` 落在同一空间（executor cache key 带同一指纹，改资产即令 cache 失效）。file-skill（本地或 git）哈单个 `.md` 字节，同样可绑定。隔离副本也意味着被测 agent 跑在副本上、不碰用户真实 skill 目录。`schemaVersion 2` 是过渡纪元（本地目录-skill 树哈、git 目录-skill 仅 `SKILL.md` 字节、不绑）；git 目录-skill 的 v2 哈与 v3 不可比。`schemaVersion < 2` 的旧报告携带旧「SKILL.md 正文」文本哈，被漂移 / lineage 消费方视为不可比（请重跑 `eval`）。
 - **已定（#221，已完成）**：`eval` 已能写入证据。跑完后，对每个能匹配到被测变体的**已纳管**记录，追加一条 `ManagedEvidenceRef`（`src/managed/evidence.ts`），经 `deriveManagedState` 把 skill 从 `installed` 推到 `measurable`。三条已定取舍：(a)**触发**——eval 完成自动写，但只写已存在的记录（`install` 是 opt-in，从未安装的 skill 不会被凭空建记录），`--no-evidence` 可关；(b)**多对一**——append-only + 按 `(reportId, contentHash)` 去重、保留全部历史，当前有效性仍由读时 contentHash 匹配裁定（旧内容证据留存供回滚，却不让新内容显得已测）；(c)**跨源身份**——install 与 eval 对同一 skill 命名不一致（记录名是短名 `review`，而报告 variant 键可能是整串表达式 `git:HEAD:skills/review`、eval.yaml 别名 `candidate`、blind 标签 `A`），故用三级消歧匹配：显式同名 variant → 结构化源匹配（`variantConfigs[].locator/ref` 对齐 `record.source`）→ 纯 contentHash 回退**仅在该哈于受管记录中唯一时**才用。唯一性闸门挡住「只测了一条、却把同内容的另一条也写进证据并推成 measurable」的越权。`applyBlindMode` 盲化 `variants` 但不动 `artifactHashes` / `variantConfigs`，故三级在 blind 下照常工作。bundle 把 §5 mandatory 四项（report id、样本集覆盖、verdict、可比性 marker）denormalize 进记录，使其自解释、可 grep、不必回读 report。不改 Report schema、不动任何可比性不变量；受管记录保持 `schemaVersion 2`（additive optional 证据字段）。`promote`（MVP）现已据这些 bundle 门控——见 §7。
-- git ref 与 omk 证据记录如何协作（漂移检查时,分支 ref 重物化 vs 固定 SHA）？
+- **已定（#237）**：漂移是对源的**当前解析**做内容寻址判定，而你安装的 ref 本身就是「快照 vs 活指针」的选择。不可变 ref（commit SHA）天然恒定 —— 漂移检查永不重取它。**本地** moving ref（`git:main:…` / `HEAD` / tag）是*活指针*：每次漂移检查重新物化该 ref、重哈 skill 树，故记录恰在 skill 内容随该 ref 移动时变 content-`stale` —— 绝不冻结到安装时 SHA，因为在已移动的分支上挂绿色状态会藏住漂移（§3）。**远端** install 钉死到安装时解析出的 SHA（记 SHA、不记分支）：这是有意的可复现 + 离线取舍 —— 分发出去的版本应是一个冻结、可重取的快照，且漂移检查不应依赖网络可达。所以本地 / 远端的区分是**有意的、按 persona 划分**（本地=在工作分支上迭代；远端=分发已验版本），不是疏忽；要让远端钉死的记录前进就 reinstall（重新 pin + re-baseline）。见 §6.1 内容轴。
 - **已决：** `evolve` 默认仍把胜者写回源（无需 deprecation）；`--snapshot-only` 是只产候选时的退出开关（快照留在 `evolve/`）。受管 skill 上 evolve 记证据 + re-baseline 记录（→ `measurable`），而不是把写入改道经 `promote` —— 旧决策 B（promote 独占 canonical 写）已否决；见 §7 `evolve` 与 §8。
 - **已决（promote MVP）**：默认可接受 verdict 只 `PROGRESS`（omk default-strict——影响「值得 ship」判定的默认必须严格）;`CAUTIOUS` 需显式 `--accept-cautious`;其余需 `--force`（记为 override）。
-- 当只有 sample、runtime context 或 artifact 内容变化时，证据过期策略分别是什么？
+- **已定（#237）**：过期按轴分别判、各自对当前上下文判定 —— 完整模型见 §6.1。**内容**漂移（artifact 身份）是唯一会把生命周期翻成 `stale` 并硬拦 promote（不可越）的轴。**样本集**漂移（artifact 没变；当前用例集与证据 `sampleCoverage.hash` 不一致，仅当当前样本集可解析时才判）是读时 `sampleDrift` marker，**warn 且可带 `--reason` 越门**，不改生命周期。**运行时**漂移分两支：评委身份变了（`judgePromptHash` 已不属当前）走现有 `incomparable` 硬拦（可越），而 `cliVersion` / `debiasMode` 偏移只展示、永不门控。不新增持久生命周期 enum、不动 Report / record schema —— marker 都是读时派生。把 `sampleDrift` 接进 promote 门禁与 `list` / Studio 是后续实现项（也是 §7 `observe`→stale 反馈的前置依赖）；策略在此已定。
 - 人类 override 应该允许在 CLI、Studio，还是两者都允许？
 - `omk init` 何时演进为 `omk eval init`，兼容 alias 策略怎么定？
 
