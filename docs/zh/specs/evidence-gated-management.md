@@ -1,6 +1,6 @@
 # 证据门控的知识输入管理
 
-> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）、`omk rollback`（撤销该接受，MVP），以及 `omk evolve` 的受管证据联动（evolve 跑在受管 skill 上会 re-baseline 并记证据 → `measurable`，默认仍写回 source；`--snapshot-only` 退出）—— 已落地（#211/#212/#224 + promote/rollback/evolve MVP）。曾计划的「promote 独占源文件 canonical 写回」迁移（旧决策 B）已**否决** —— 见 §7 `evolve` 与 §8。把历史版本内容恢复写回源（真正的文件恢复）**交给 git**——超出 omk 范围；omk 的本分是证据 + 决策轨迹；计划新增的（#236 后续）是每版的 git 坐标指针 + 还原提示，不是版本仓库（见 §7 `rollback` / §8）。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
+> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录、`omk list` 展示证据状态与生命周期、`omk promote`（证据门禁的接受决定，MVP）、`omk rollback`（撤销该接受，MVP），以及 `omk evolve` 的受管证据联动（evolve 跑在受管 skill 上会 re-baseline 并记证据 → `measurable`，默认仍写回 source；`--snapshot-only` 退出）—— 已落地（#211/#212/#224 + promote/rollback/evolve MVP）。曾计划的「promote 独占源文件 canonical 写回」迁移（旧决策 B）已**否决** —— 见 §7 `evolve` 与 §8。把历史版本内容恢复写回源（真正的文件恢复）**交给 git**——超出 omk 范围；omk 的本分是证据 + 决策轨迹；omk 另外记录（#236）每版的 git 坐标指针 + `git checkout` 还原提示，不是版本仓库（见 §7 `rollback` / §8）。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
 
 ## 1. 产品判断
 
@@ -43,7 +43,7 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 每个管理决策都必须保护 omk 的测量姿态：
 
 - 转正决策必须指向可比报告，或明确标注可比性限制。
-- 回滚决策必须显式且留痕；MVP 只撤销当前版本的接受。恢复*历史*版本内容交给 git——omk 负责指出该回到哪个有证据背书的版本——计划中的每版 git 坐标（#236）让这步变成精确的 `git checkout` 提示——字节层面的还原由 git 做。
+- 回滚决策必须显式且留痕；MVP 只撤销当前版本的接受。恢复*历史*版本内容交给 git——omk 负责指出该回到哪个有证据背书的版本——每版的 git 坐标（#236）让这步变成精确的 `git checkout` 提示——字节层面的还原由 git 做。
 - 线上观测必须展示归因可信度，不能静默覆盖 eval 证据。
 - 证据过期或不可比时必须对用户可见，不能藏在绿色状态后面。
 
@@ -187,7 +187,7 @@ omk install ./prompts/rewrite.md --kind prompt
 
 `rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史。
 
-MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复）**超出范围——交给 git**。omk 不存版本字节、不自建版本仓库（那就成了 §1 明确不做的「更会拷文件」），也不替用户对工作树执行还原（冒犯，且是 git 的本分）。omk 该加的是本分内的一点（#236 后续，尚未实现——目前 `ManagedEvidenceRef` / `ManagedDecision` 只有 `contentHash` / `reportId`，远端源的 pinned SHA 也是记录级、非每版）：在证据旁额外记一个每版的 git 坐标（SHA）当指针，让 `list` / Studio 能展示带证据的版本历史，并对 git 来源给出现成的 `git checkout` 把你带回选定的版本。非 git、就地编辑的源没有坐标可还原——诚实的答案是用 git 把 skill 管起来，omk 不重造它。
+MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复）**超出范围——交给 git**。omk 不存版本字节、不自建版本仓库（那就成了 §1 明确不做的「更会拷文件」），也不替用户对工作树执行还原（冒犯，且是 git 的本分）。omk 在此加的是本分内的一点（#236）：在证据上额外记一个每版的 git 坐标（SHA）当指针，让 `list` / Studio 能展示带证据的版本历史，并对 git 来源给出现成的 `git checkout` 把你带回选定的版本。坐标只在它真能锚住被测字节时才记——**本地 git 源、且工作树干净**那一版；远端源的还原是重装它记录级的 pinned SHA（不是 cwd `git checkout`），dirty 工作树则没有任何 commit 能复现被测内容（故刚 `evolve`、未提交的产物不记坐标）。非 git、就地编辑的源没有坐标可还原——诚实的答案是用 git 把 skill 管起来，omk 不重造它。
 
 ### `observe`
 
@@ -222,7 +222,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 ### Phase 3：回滚与 observe 反馈
 
 - **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`（源已漂移则 `stale` —— rollback 不探源）。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
-- **超出范围（交给 git）：** 把*历史*版本内容恢复写回源文件（真正的文件恢复）。自建版本内容仓库会让 omk 变成 §1 明确不做的「更会拷文件」——git 本就提供持久、内容寻址的版本管理。omk 本分内的贡献（#236 后续，尚未实现）是：额外记一个每版的 git 坐标（SHA）当指针，并把带证据的版本历史 + 对 git 来源的 `git checkout` 提示展示出来（并入 Studio 决策史，§7 `studio`）。非 git 来源就直说文件版本管理是 git 的活。已发的决策级 rollback（撤销接受）仍是 omk 自己该握住的部分。
+- **超出范围（交给 git）：** 把*历史*版本内容恢复写回源文件（真正的文件恢复）。自建版本内容仓库会让 omk 变成 §1 明确不做的「更会拷文件」——git 本就提供持久、内容寻址的版本管理。omk 本分内的贡献（#236）：额外记一个每版的 git 坐标（SHA）当指针，并把带证据的版本历史 + 对本地 git 来源的 `git checkout` 提示展示出来（并入 Studio 决策史，§7 `studio`）。非 git 来源就直说文件版本管理是 git 的活。已发的决策级 rollback（撤销接受）仍是 omk 自己该握住的部分。
 - 让 `observe` 标记证据过期并建议新增用例。
 - 在 Studio 展示决策历史。
 

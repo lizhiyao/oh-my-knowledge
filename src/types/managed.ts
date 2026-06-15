@@ -50,6 +50,11 @@ export interface ManagedEvidenceRef {
     judgePromptHash?: string;
     debiasMode?: Array<'length' | 'position'>;
   };
+  /** §7 #234/#236:这次测量时所在的 git commit(full SHA),作每版的「还原坐标」指针 —— list / Studio
+   *  据此给出 `git checkout <sha> -- <path>` 把源带回这一版(字节级还原由 git 做,omk 不存版本字节)。
+   *  仅本地 git 源 + 干净工作树才记(远端源还原是重装 source.ref;file 源无坐标;dirty 时测的字节未提交、
+   *  无确切 checkout 目标)。缺失 = 无 git 坐标可还原,诚实留空,不臆造。 */
+  gitCommit?: string;
 }
 
 export type ManagedDecisionKind = 'promote' | 'reject' | 'rollback';

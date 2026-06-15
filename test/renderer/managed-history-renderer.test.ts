@@ -70,6 +70,24 @@ const CURVE: VersionScorePoint[] = [
 // 全可比(无空心点 / 虚线)→ 测 note 的「else」分支文案,与上面含不可比点的分支区分开。
 const CURVE_ALL_COMPARABLE: VersionScorePoint[] = CURVE.map((p) => ({ ...p, comparable: true }));
 
+// 本地 git 源 + 证据带 gitCommit → 测 eval 行渲染 `git checkout <sha> -- <仓内路径>` 还原提示(#234/#236)。
+// 源是 git:HEAD:skills/review(无 url = 本地 git),locator 里 spec=skills/review 进 `-- <path>`。
+const GIT_RESTORE_RECORD: ManagedArtifactRecord = {
+  recordKind: 'managed-artifact',
+  schemaVersion: 2,
+  id: 'skill-restore-fixture',
+  name: 'review',
+  kind: 'skill',
+  source: { sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true },
+  contentHash: 'hashV2contenthashlong',
+  installedAt: '2026-03-01T00:00:00.000Z',
+  distribution: [],
+  evidence: [
+    { reportId: 'evolve-review-002', contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, comparability: { cliVersion: '0.39.0' }, gitCommit: 'abc1234567890deffeed' },
+  ],
+  decisions: [],
+};
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -100,5 +118,11 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory 曲线全可比(note else 分支)zh', () => {
     expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE_ALL_COMPARABLE))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 带 git 还原提示 zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_RECORD, 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 带 git 还原提示 en', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_RECORD, 'en' as Lang))).toMatchSnapshot();
   });
 });

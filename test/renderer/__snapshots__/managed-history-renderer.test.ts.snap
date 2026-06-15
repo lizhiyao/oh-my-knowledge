@@ -124,6 +124,60 @@ exports[`managed-history-renderer snapshots > renderManagedHistory zh 1`] = `
   </main>"
 `;
 
+exports[`managed-history-renderer snapshots > renderManagedHistory 带 git 还原提示 en 1`] = `
+"<main class="mh-main">
+    <nav class="mh-back"><a href="/managed?lang=en">← Managed</a></nav>
+    <header class="mh-hero">
+      <div class="mh-kind">Managed history</div>
+      <h1 class="mh-name">review</h1>
+      <div class="mh-meta"><span>skill</span><span>git</span><span>hashV2conten</span><span>since [TIMESTAMP]</span></div>
+    </header>
+
+    <ol class="mh-timeline"><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">current</span></li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Eval</span> <span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>PROGRESS</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 samples</span><span class="mh-detail-item">omk 0.39.0</span><a class="mh-link" href="/reports/evolve-review-002?lang=en">report →</a><span class="mh-detail-item mh-restore">restore <code>git checkout abc1234567 -- skills/review</code></span></div>
+    </div>
+  </li><li class="mh-event mh-event--install">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--install"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Installed</span></div>
+
+    </div>
+  </li></ol>
+  </main>"
+`;
+
+exports[`managed-history-renderer snapshots > renderManagedHistory 带 git 还原提示 zh 1`] = `
+"<main class="mh-main">
+    <nav class="mh-back"><a href="/managed">← 受管列表</a></nav>
+    <header class="mh-hero">
+      <div class="mh-kind">受管决策史</div>
+      <h1 class="mh-name">review</h1>
+      <div class="mh-meta"><span>skill</span><span>git</span><span>hashV2conten</span><span>纳管于 [TIMESTAMP]</span></div>
+    </header>
+
+    <ol class="mh-timeline"><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">当前</span></li><li class="mh-event mh-event--eval">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--eval"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">评测</span> <span class="verdict-PROGRESS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>明显进步</span></span></div>
+      <div class="mh-detail"><span class="mh-detail-item">6 用例</span><span class="mh-detail-item">omk 0.39.0</span><a class="mh-link" href="/reports/evolve-review-002">查看报告 →</a><span class="mh-detail-item mh-restore">还原 <code>git checkout abc1234567 -- skills/review</code></span></div>
+    </div>
+  </li><li class="mh-event mh-event--install">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--install"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">安装纳管</span></div>
+
+    </div>
+  </li></ol>
+  </main>"
+`;
+
 exports[`managed-history-renderer snapshots > renderManagedHistory 带版本回归曲线 en 1`] = `
 "<main class="mh-main">
     <nav class="mh-back"><a href="/managed?lang=en">← Managed</a></nav>

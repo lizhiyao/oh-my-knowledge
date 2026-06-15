@@ -32,6 +32,7 @@ function makeReport(over: {
   cliVersion?: string;
   judgePromptHash?: string;
   debiasMode?: Array<'length' | 'position'>;
+  gitInfo?: { commit: string; commitShort: string; branch: string; dirty: boolean } | null;
 } = {}): EvaluationReport {
   return {
     kind: 'evaluation',
@@ -43,11 +44,17 @@ function makeReport(over: {
       sampleHashes: over.sampleHashes ?? { s1: 'h1', s2: 'h2' },
       ...(over.judgePromptHash ? { judgePromptHash: over.judgePromptHash } : {}),
       ...(over.debiasMode ? { debiasMode: over.debiasMode } : {}),
+      ...(over.gitInfo !== undefined ? { gitInfo: over.gitInfo } : {}),
     },
     summary: {},
     results: [],
   } as unknown as EvaluationReport;
 }
+
+const CLEAN_GIT = { commit: 'abc1234567890def', commitShort: 'abc1234', branch: 'main', dirty: false };
+const LOCAL_GIT_SOURCE = { sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true } as const;
+const REMOTE_GIT_SOURCE = { sourceKind: 'git', locator: 'git+https://x/r@abc:review', url: 'https://x/r', ref: 'abc', isDirectorySkill: true } as const;
+const FILE_SOURCE = { sourceKind: 'file', locator: '/abs/skills/review.md', isDirectorySkill: false } as const;
 
 describe('managed evidence — buildEvidenceRef', () => {
   it('装齐 §5 mandatory 四项(reportId / contentHash / verdict / sampleCoverage / comparability)', () => {
@@ -74,6 +81,33 @@ describe('managed evidence — buildEvidenceRef', () => {
     const a = buildEvidenceRef(makeReport({ sampleHashes: { s1: 'h1', s2: 'h2' } }), 'review', 'PROGRESS', 'now');
     const b = buildEvidenceRef(makeReport({ sampleHashes: { s2: 'h2', s1: 'h1' } }), 'review', 'PROGRESS', 'now');
     assert.equal(a!.sampleCoverage!.hash, b!.sampleCoverage!.hash);
+  });
+});
+
+describe('managed evidence — gitCommit 还原坐标(#234/#236)', () => {
+  it('本地 git 源 + 干净工作树 → 记 full SHA 当还原指针', () => {
+    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
+    assert.equal(ref!.gitCommit, 'abc1234567890def');
+  });
+
+  it('远端 git 源 → 不记(还原是重装 pinned source.ref,非 cwd checkout)', () => {
+    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', REMOTE_GIT_SOURCE);
+    assert.equal(ref!.gitCommit, undefined);
+  });
+
+  it('file 源 → 不记(无 git 坐标可还原)', () => {
+    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', FILE_SOURCE);
+    assert.equal(ref!.gitCommit, undefined);
+  });
+
+  it('工作树 dirty → 不记(被测字节含未提交改动,无确切 checkout 目标;evolve 写回未提交即属此类)', () => {
+    const ref = buildEvidenceRef(makeReport({ gitInfo: { ...CLEAN_GIT, dirty: true } }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
+    assert.equal(ref!.gitCommit, undefined);
+  });
+
+  it('报告无 gitInfo / 未传 source → 不记(旧报告 / 直接测 report 的调用照旧)', () => {
+    assert.equal(buildEvidenceRef(makeReport({ gitInfo: null }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE)!.gitCommit, undefined);
+    assert.equal(buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
   });
 });
 
