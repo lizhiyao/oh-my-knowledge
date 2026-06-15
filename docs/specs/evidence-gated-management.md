@@ -1,6 +1,6 @@
 # Evidence-gated knowledge input management
 
-> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), `omk promote` (evidence-gated acceptance, MVP), `omk rollback` (revoking that acceptance, MVP), and `omk evolve`'s managed-evidence integration (evolve on a managed skill re-baselines + records evidence → `measurable`, still writing source by default; `--snapshot-only` opts out) have shipped (#211/#212/#224 + promote/rollback/evolve MVP). The once-planned "promote as the sole canonical writer to source" migration (former Decision B) is **rejected** — see §7 `evolve` and §8. Restoring a historical promoted version's content (a true file restore) remains design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
+> **Status**: design note for #203. The management entry point — `omk install` registering managed records — `omk list` (evidence status / lifecycle), `omk promote` (evidence-gated acceptance, MVP), `omk rollback` (revoking that acceptance, MVP), and `omk evolve`'s managed-evidence integration (evolve on a managed skill re-baselines + records evidence → `measurable`, still writing source by default; `--snapshot-only` opts out) have shipped (#211/#212/#224 + promote/rollback/evolve MVP). The once-planned "promote as the sole canonical writer to source" migration (former Decision B) is **rejected** — see §7 `evolve` and §8. Restoring a historical version's content (a true file restore) is **delegated to git** — out of scope for omk, which records the evidence plus a per-version git coordinate and surfaces the restore hint rather than building a version store (see §7 `rollback` / §8). This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
 
 ## 1. Product thesis
 
@@ -43,7 +43,7 @@ In short: omk does not manage knowledge inputs because it is a better file copie
 Every management decision must preserve omk's measurement posture:
 
 - A promotion decision must point to comparable reports or explicitly mark why comparability is limited.
-- A rollback decision must be explicit and recorded; the MVP revokes the current version's acceptance, and restoring a *historical* version's content (future work) must point to that version and the evidence that justified it.
+- A rollback decision must be explicit and recorded; the MVP revokes the current version's acceptance. Restoring a *historical* version's content is delegated to git — omk names the evidence-backed version (and its git coordinate) to return to; git does the byte-level restore.
 - A production observation must name its attribution confidence and cannot silently overwrite eval evidence.
 - A stale or incomparable evidence bundle must be visible to the user, not hidden behind a green status.
 
@@ -189,7 +189,7 @@ Of §5's four mandatory items, the MVP gate checks three at promote time (report
 
 `rollback` is the inverse of `promote`: it revokes the current version's promoted acceptance. Decisions are an append-only event stream, so rollback appends a `rollback` decision (actor, timestamp, optional reason) rather than deleting the promote; the `promoted` lifecycle label is then derived from the **latest** promote/rollback decision for the current content (`isCurrentlyPromoted`), so the label derives back to `measurable` — or stays `stale` if the source has since drifted, because rollback does not probe the source. It is content-anchored and ungated — de-escalation is always safe — operating purely on the promote/rollback history for `record.contentHash`.
 
-What ships in the MVP (`omk rollback <name>`): revoking the acceptance of the **current** content. Rolling back a not-promoted version exits non-zero (nothing to revoke); an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). Restoring an *older promoted version's content* to the source (a true file restore, pointing back to that version's evidence bundle) remains future and needs a versioned snapshot/lineage store to restore from; it must never be a blind file restore.
+What ships in the MVP (`omk rollback <name>`): revoking the acceptance of the **current** content. Rolling back a not-promoted version exits non-zero (nothing to revoke); an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). Restoring an *older promoted version's content* to the source (a true file restore) is **out of scope — delegated to git**. omk does not store version bytes or run a version store (that would be the "better file copier" §1 disclaims), and it does not execute the restore against the user's working tree (intrusive, and git's lane). What omk adds is in-identity: it records a per-version git coordinate (SHA) as a pointer alongside the evidence, so `list` / Studio can show the evidence-backed version history and, for a git source, the exact `git checkout` to return to a chosen version. A non-git, in-place-edited source has no coordinate to restore from — the honest answer is to version-control the skill with git; omk will not reinvent that.
 
 ### `observe`
 
@@ -224,7 +224,7 @@ Done in #208 / PR #207:
 ### Phase 3: rollback and observation feedback
 
 - **Shipped (rollback MVP):** `omk rollback <name>` revokes the current version's promoted acceptance by appending a `rollback` decision; `isCurrentlyPromoted` (latest promote/rollback wins) derives the state back to `measurable` (or `stale` if the source has since drifted — rollback doesn't probe the source). `ManagedDecisionKind` already carried `rollback`; no schema change.
-- **Remaining:** restoring an evidence-backed *historical* version's content to the source (a true file restore) — still future. It needs a versioned content/lineage store to restore from (evolve's `evolve/` snapshots or the evidence history) and must never be a blind file restore. No longer tied to the rejected canonical-writer migration.
+- **Out of scope (delegated to git):** restoring a *historical* version's content to the source (a true file restore). Building a versioned content store would make omk the "better file copier" §1 explicitly disclaims — git already does durable, content-addressed version management. omk's in-identity contribution is to record a per-version git coordinate (SHA) as an additive pointer and surface the evidence-backed version history with a `git checkout` hint for git sources (folds into Studio decision-history, §7 `studio`). For non-git sources omk states plainly that file versioning is git's job. The shipped decision-level rollback (revoke acceptance) remains the piece omk owns.
 - Let `observe` mark evidence stale and propose sample additions.
 - Show decision history in Studio.
 
