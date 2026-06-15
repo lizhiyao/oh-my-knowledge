@@ -73,6 +73,24 @@ export function gitShowBytes(ref: string, filePath: string, cwd: string = proces
   }
 }
 
+/**
+ * 把一个 ref(branch / tag / HEAD / 缩写或完整 SHA)解析到它指向的 commit SHA(#234/#236 还原坐标)。
+ * `^{commit}` 会把 annotated tag 也 peel 到 commit;`--verify --quiet` 解析不出时静默非零退出 → 落 null。
+ * 不存在 / 出错 → null(best-effort,绝不抛、不阻断 eval)。`<ref>` 物化内容时用的就是它,故这是被测字节的定点
+ * (与工作树是否 dirty 无关 —— 内容从 object DB 按 ref 取)。dash-ref(前缀 `-`)直接挡,不得被当 git 选项
+ * (rev-parse 的 rev 不能放 `--` 之后,故显式前置守卫,与 gitShowBytes 的 `--` 同口径 fail-closed)。
+ */
+export function gitResolveCommit(ref: string, cwd: string = process.cwd()): string | null {
+  if (!ref || ref.startsWith('-')) return null;
+  try {
+    const out = execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+      { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface GitTreeEntry {
   /** git 文件模式:100644/100755=普通文件,120000=软链,160000=submodule。 */
   mode: string;
@@ -698,6 +716,9 @@ export function resolveArtifacts(
       if (!resolved) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
+      // #234/#236:把 variant 的 ref 解析到实际 commit 当还原坐标。是 ref(可能 branch/tag/HEAD)而非进程
+      // cwd 的 HEAD —— 内容从 object DB 按这个 ref 物化,坐标必须对齐它(否则在别的分支跑会记错版本)。
+      const resolvedCommit = gitResolveCommit(ref, gitCtx.repoRoot) ?? undefined;
       if (resolved.isDir) {
         // git 目录-skill 忠实执行:物化整树到临时目录 → 落地内容寻址隔离副本 → executor cwd 锚副本,
         // agent 读得到 references/ 资产、资产成为真实运行时输入。整树指纹与 install 受管记录的
@@ -717,6 +738,7 @@ export function resolveArtifacts(
           contentHash: isolated.contentHash,
           locator: name,
           ref,
+          ...(resolvedCommit ? { resolvedCommit } : {}),
           cwd: variantCwd,
           ...(isolated.execRoot ? { execRoot: isolated.execRoot } : {}),
         });
@@ -737,6 +759,7 @@ export function resolveArtifacts(
         contentHash: hashBytes(skillMdBytes),
         locator: name,
         ref,
+        ...(resolvedCommit ? { resolvedCommit } : {}),
         cwd: variantCwd,
       });
       continue;

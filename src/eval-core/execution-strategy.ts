@@ -77,6 +77,7 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
     cwd: artifact.cwd || null,
     locator: artifact.locator,
     ref: artifact.ref,
+    ...(artifact.resolvedCommit ? { resolvedCommit: artifact.resolvedCommit } : {}),
     // propagate skill-isolation declaration so report.meta.skillIsolation
     // 能在 evaluation-reporting 阶段从 variantConfigs 提取 (avoid re-resolving artifacts).
     ...(artifact.allowedSkills !== undefined && { allowedSkills: artifact.allowedSkills }),

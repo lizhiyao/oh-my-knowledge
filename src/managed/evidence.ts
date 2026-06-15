@@ -43,38 +43,32 @@ function sampleCoverage(report: EvaluationReport): { count: number; hash: string
 }
 
 /**
- * 该版的 git 还原坐标(#234/#236):report 记录的 eval 时 cwd git commit,仅在能精确指向被测字节时才返回。
- * 闸门(任一不满足 → undefined,诚实留空不臆造):
- *   - 本地 git 源(sourceKind='git' 且无 url):远端源的还原是重装 pinned SHA(source.ref,记录级),不是 cwd
- *     `git checkout`;file 源无 git 坐标。
- *   - 干净工作树(!gitInfo.dirty):dirty 时被测字节含未提交改动,任何 commit 都还原不出这一版 → 无诚实 checkout 目标
- *     (evolve 刚写回源、未提交即属此类,正好不记一个假坐标)。
+ * 该版的 git 还原坐标(#234/#236):被测 variant 物化时 `<ref>` 解析出的实际 commit(resolveArtifacts 在
+ * 物化本地 git variant 时算好,经 `variantConfigs[].resolvedCommit` 透传)。**不是**进程 cwd 的 HEAD ——
+ * variant 内容从 object DB 按它自己的 ref 取,在别的分支 / 用显式旧 SHA 跑时 cwd HEAD 会是错版本。
+ * 远端 / file variant 无 resolvedCommit → 不记(诚实留空)。读到的值再过一道 SHA 形态守卫,脏报告不污染证据。
  */
-function gitRestoreCommit(report: EvaluationReport, source?: ManagedArtifactSource): string | undefined {
-  if (!source || source.sourceKind !== 'git' || source.url) return undefined;
-  const git = report.meta?.gitInfo;
-  if (!git || git.dirty) return undefined;
-  // 写时即按 SHA 形态校验(与读取 validator 同一判定),不写一个重载时会被自己判脏 / 剥掉的非规整值。
-  return isShaLike(git.commit) ? git.commit : undefined;
+function variantResolvedCommit(report: EvaluationReport, variant: string): string | undefined {
+  const cfg = report.meta?.variantConfigs?.find((c) => c.variant === variant);
+  return isShaLike(cfg?.resolvedCommit) ? cfg!.resolvedCommit : undefined;
 }
 
 /**
  * 为某个变体组装一条 evidence ref;变体无真实内容(baseline / no-skill / 缺 hash)→ null。
- * `verdict` 由调用方传入(CLI 已 computeVerdict,避免在此重算)。`source` 给出该证据所属受管记录的源,
- * 用于派生每版 git 还原坐标(见 gitRestoreCommit);省略则不记坐标(直接测 report 的旧调用照旧)。
+ * `verdict` 由调用方传入(CLI 已 computeVerdict,避免在此重算)。git 还原坐标从该 variant 的
+ * `resolvedCommit` 取(见 variantResolvedCommit),无则不记。
  */
 export function buildEvidenceRef(
   report: EvaluationReport,
   variant: string,
   verdict: string,
   recordedAt: string,
-  source?: ManagedArtifactSource,
 ): ManagedEvidenceRef | null {
   const contentHash = report.meta?.artifactHashes?.[variant];
   if (!contentHash || contentHash === NO_SKILL) return null;
   const meta = report.meta;
   const cov = sampleCoverage(report);
-  const gitCommit = gitRestoreCommit(report, source);
+  const gitCommit = variantResolvedCommit(report, variant);
   return {
     reportId: report.id,
     contentHash,
@@ -167,7 +161,7 @@ export function recordEvalEvidence(
   for (const rec of records) {
     const variantKey = matchVariantKey(report, rec, hashIsUnique);
     if (!variantKey) continue;
-    const ref = buildEvidenceRef(report, variantKey, verdict, recordedAt, rec.source);
+    const ref = buildEvidenceRef(report, variantKey, verdict, recordedAt);
     if (!ref) continue;
     const merged = appendManagedEvidence(dir, rec.id, ref);
     if (!merged) continue;

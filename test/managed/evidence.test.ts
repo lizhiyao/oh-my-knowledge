@@ -32,7 +32,7 @@ function makeReport(over: {
   cliVersion?: string;
   judgePromptHash?: string;
   debiasMode?: Array<'length' | 'position'>;
-  gitInfo?: { commit: string; commitShort: string; branch: string; dirty: boolean } | null;
+  variantConfigs?: Array<{ variant: string; resolvedCommit?: string }>;
 } = {}): EvaluationReport {
   return {
     kind: 'evaluation',
@@ -44,17 +44,12 @@ function makeReport(over: {
       sampleHashes: over.sampleHashes ?? { s1: 'h1', s2: 'h2' },
       ...(over.judgePromptHash ? { judgePromptHash: over.judgePromptHash } : {}),
       ...(over.debiasMode ? { debiasMode: over.debiasMode } : {}),
-      ...(over.gitInfo !== undefined ? { gitInfo: over.gitInfo } : {}),
+      ...(over.variantConfigs ? { variantConfigs: over.variantConfigs } : {}),
     },
     summary: {},
     results: [],
   } as unknown as EvaluationReport;
 }
-
-const CLEAN_GIT = { commit: 'abc1234567890def', commitShort: 'abc1234', branch: 'main', dirty: false };
-const LOCAL_GIT_SOURCE = { sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true } as const;
-const REMOTE_GIT_SOURCE = { sourceKind: 'git', locator: 'git+https://x/r@abc:review', url: 'https://x/r', ref: 'abc', isDirectorySkill: true } as const;
-const FILE_SOURCE = { sourceKind: 'file', locator: '/abs/skills/review.md', isDirectorySkill: false } as const;
 
 describe('managed evidence — buildEvidenceRef', () => {
   it('装齐 §5 mandatory 四项(reportId / contentHash / verdict / sampleCoverage / comparability)', () => {
@@ -85,34 +80,25 @@ describe('managed evidence — buildEvidenceRef', () => {
 });
 
 describe('managed evidence — gitCommit 还原坐标(#234/#236)', () => {
-  it('本地 git 源 + 干净工作树 → 记 full SHA 当还原指针', () => {
-    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
-    assert.equal(ref!.gitCommit, 'abc1234567890def');
+  const RESOLVED = 'abc1234567890deffeed1234567890abcdef1234';
+
+  it('被测 variant 的 resolvedCommit → 记成 gitCommit 还原坐标(取该 variant 的,不是 cwd HEAD)', () => {
+    // 关键场景:review variant 解析到 RESOLVED;另有别的 variant 解析到别的 commit,确认按 variant key 取对那条。
+    const report = makeReport({ variantConfigs: [
+      { variant: 'review', resolvedCommit: RESOLVED },
+      { variant: 'other', resolvedCommit: 'ffffffffffffffffffffffffffffffffffffffff' },
+    ] });
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, RESOLVED);
   });
 
-  it('远端 git 源 → 不记(还原是重装 pinned source.ref,非 cwd checkout)', () => {
-    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', REMOTE_GIT_SOURCE);
-    assert.equal(ref!.gitCommit, undefined);
+  it('variant 无 resolvedCommit(远端 / file / 旧报告)→ 不记(诚实留空)', () => {
+    assert.equal(buildEvidenceRef(makeReport({ variantConfigs: [{ variant: 'review' }] }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
+    assert.equal(buildEvidenceRef(makeReport(), 'review', 'PROGRESS', 'now')!.gitCommit, undefined, '无 variantConfigs → 不记');
   });
 
-  it('file 源 → 不记(无 git 坐标可还原)', () => {
-    const ref = buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now', FILE_SOURCE);
-    assert.equal(ref!.gitCommit, undefined);
-  });
-
-  it('工作树 dirty → 不记(被测字节含未提交改动,无确切 checkout 目标;evolve 写回未提交即属此类)', () => {
-    const ref = buildEvidenceRef(makeReport({ gitInfo: { ...CLEAN_GIT, dirty: true } }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
-    assert.equal(ref!.gitCommit, undefined);
-  });
-
-  it('报告无 gitInfo / 未传 source → 不记(旧报告 / 直接测 report 的调用照旧)', () => {
-    assert.equal(buildEvidenceRef(makeReport({ gitInfo: null }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE)!.gitCommit, undefined);
-    assert.equal(buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
-  });
-
-  it('commit 非 SHA 形态 → 不记(写时即校验,不写一个重载会被自己剥掉的非规整值)', () => {
-    const ref = buildEvidenceRef(makeReport({ gitInfo: { ...CLEAN_GIT, commit: 'not-a-sha' } }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
-    assert.equal(ref!.gitCommit, undefined);
+  it('resolvedCommit 非 SHA 形态 → 不记(读时再过一道 isShaLike,脏报告不污染证据)', () => {
+    const report = makeReport({ variantConfigs: [{ variant: 'review', resolvedCommit: 'not-a-sha' }] });
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
   });
 });
 
