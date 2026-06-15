@@ -45,9 +45,15 @@ function stringifySampleDocument(filePath: string, document: unknown): string {
 
 /** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
  *  自动加 `-2`/`-3` 后缀去重。模型每次从 s001 重编号,撞 id 不代表内容重复,所以是改名保留
- *  而非丢弃(不做内容级去重)。 */
-export function mergeAppendSamples(existing: SampleType[], fresh: SampleType[]): SampleType[] {
+ *  而非丢弃(不做内容级去重)。`reserved` 为额外要避开的 id 集(目录模式跨同目录其它 sample
+ *  文件去重用,见 collectDirSampleIds)。 */
+export function mergeAppendSamples(
+  existing: SampleType[],
+  fresh: SampleType[],
+  reserved?: ReadonlySet<string>,
+): SampleType[] {
   const used = new Set(existing.map((s) => s.sample_id));
+  if (reserved) for (const id of reserved) used.add(id);
   const merged: SampleType[] = [...existing];
   for (const sample of fresh) {
     let id = sample.sample_id;
@@ -60,6 +66,39 @@ export function mergeAppendSamples(existing: SampleType[], fresh: SampleType[]):
     merged.push(id === sample.sample_id ? sample : { ...sample, sample_id: id });
   }
   return merged;
+}
+
+/** 目录模式 append:收集目录内所有 sample 文件的 sample_id,跨文件去重用 —— eval 走目录模式
+ *  会把目录下所有文件合并加载,跨文件撞 id 直接报错(load-samples 的 duplicate sample_id)。
+ *  best-effort:解析失败的文件跳过。 */
+function collectDirSampleIds(dir: string): Set<string> {
+  const ids = new Set<string>();
+  let files: string[];
+  try { files = readdirSync(dir); } catch { return ids; }
+  for (const f of files) {
+    if (!/\.(json|ya?ml)$/i.test(f) || /^(report|health|_)/i.test(f)) continue;
+    const full = join(dir, f);
+    try {
+      for (const s of getSamplesArray(parseSampleDocument(full), full)) {
+        if (typeof s.sample_id === 'string') ids.add(s.sample_id);
+      }
+    } catch { /* skip unparseable / 非 sample 文件 */ }
+  }
+  return ids;
+}
+
+/** 把新用例追加进已有 sample 文件:读 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与
+ *  `{samples:[...]}` wrapper 写回。返回合并后总条数。 */
+export function appendSamplesToFile(
+  existingFile: string,
+  fresh: SampleType[],
+  reserved?: ReadonlySet<string>,
+): number {
+  const doc = parseSampleDocument(existingFile);
+  const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), fresh, reserved);
+  const nextDoc = Array.isArray(doc) ? merged : { ...(doc as Record<string, unknown>), samples: merged };
+  writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
+  return merged.length;
 }
 
 function formatIdList(ids: string[]): string {
@@ -536,12 +575,12 @@ async function runSample(
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       if (existingFile && flags.append) {
         // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。
-        const doc = parseSampleDocument(existingFile);
-        const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), samples as SampleType[]);
-        const nextDoc = Array.isArray(doc) ? merged : { ...(doc as Record<string, unknown>), samples: merged };
-        writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
+        // 目录模式额外跨同目录其它 sample 文件去重,避免 eval 合并加载时撞 id 报错;
+        // 显式单文件路径无同目录合并语义,不需要。
+        const reserved = extname(resolved.samplesPath) ? undefined : collectDirSampleIds(dirname(existingFile));
+        const total = appendSamplesToFile(existingFile, samples as SampleType[], reserved);
         process.stderr.write(tCli('cli.gen.append_done', lang, {
-          added: samples.length, total: merged.length, path: existingFile, cost,
+          added: samples.length, total, path: existingFile, cost,
         }));
       } else {
         mkdirSync(dirname(outputPath), { recursive: true });
