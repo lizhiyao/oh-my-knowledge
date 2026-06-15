@@ -158,6 +158,7 @@ exports[`managed-history-renderer snapshots > renderManagedList en 1`] = `
     <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>Drifted ⚠️ = source changed, re-run omk eval</span>
     <span class="mh-legend-item">? = source unverified (unreachable / refused)</span>
     <span class="mh-legend-item">Evidence = current / total (old evidence kept for rollback)</span>
+    <span class="mh-legend-item"><span class="mh-override">override</span> = current version force-promoted via --force (actor recorded by CLI)</span>
   </div>
   </main>"
 `;
@@ -187,6 +188,7 @@ exports[`managed-history-renderer snapshots > renderManagedList zh 1`] = `
     <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>已漂移 ⚠️：源变了、需重跑 omk eval</span>
     <span class="mh-legend-item">? 源未核（不可达 / 拒读，漂移待定）</span>
     <span class="mh-legend-item">证据列：当前有效 / 全部历史（旧证据留作回滚）</span>
+    <span class="mh-legend-item"><span class="mh-override">越门</span> 当前采用是 --force 越门来的（决定人由命令行记录）</span>
   </div>
   </main>"
 `;
@@ -236,6 +238,13 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
+  </a><a class="mh-row" href="/managed/i-over?lang=en">
+    <span class="mh-row-state" title="Manually reviewed and accepted on evidence"><span class="mh-dot mh-dot--green"></span>Promoted</span>
+    <span class="mh-row-name">override-skill</span>
+    <span class="mh-row-kind">skill</span>
+    <span class="mh-row-verdict"><span class="verdict-CAUTIOUS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>CAUTIOUS</span></span> <span class="mh-override" title="force-promoted, waved: incomparable / verdict_blocked">override</span></span>
+    <span class="mh-row-ev">1/1</span>
+    <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
   </a></div>
     <div class="mh-legend">
     <span class="mh-legend-item"><span class="mh-dot mh-dot--green"></span>Promoted = accepted on evidence</span>
@@ -244,6 +253,7 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>Drifted ⚠️ = source changed, re-run omk eval</span>
     <span class="mh-legend-item">? = source unverified (unreachable / refused)</span>
     <span class="mh-legend-item">Evidence = current / total (old evidence kept for rollback)</span>
+    <span class="mh-legend-item"><span class="mh-override">override</span> = current version force-promoted via --force (actor recorded by CLI)</span>
   </div>
   </main>"
 `;
@@ -293,6 +303,13 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <span class="mh-row-verdict">—</span>
     <span class="mh-row-ev">1/1</span>
     <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
+  </a><a class="mh-row" href="/managed/i-over">
+    <span class="mh-row-state" title="已按证据人工复核并接受当前内容"><span class="mh-dot mh-dot--green"></span>已采用</span>
+    <span class="mh-row-name">override-skill</span>
+    <span class="mh-row-kind">skill</span>
+    <span class="mh-row-verdict"><span class="verdict-CAUTIOUS"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>略微进步</span></span> <span class="mh-override" title="越门采用，绕过：incomparable / verdict_blocked">越门</span></span>
+    <span class="mh-row-ev">1/1</span>
+    <span class="mh-row-src" title="https://example.com/r">https://example.com/r</span>
   </a></div>
     <div class="mh-legend">
     <span class="mh-legend-item"><span class="mh-dot mh-dot--green"></span>已采用：已按证据人工接受</span>
@@ -301,6 +318,7 @@ exports[`managed-history-renderer snapshots > renderManagedList 各状态 + 标�
     <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>已漂移 ⚠️：源变了、需重跑 omk eval</span>
     <span class="mh-legend-item">? 源未核（不可达 / 拒读，漂移待定）</span>
     <span class="mh-legend-item">证据列：当前有效 / 全部历史（旧证据留作回滚）</span>
+    <span class="mh-legend-item"><span class="mh-override">越门</span> 当前采用是 --force 越门来的（决定人由命令行记录）</span>
   </div>
   </main>"
 `;

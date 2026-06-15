@@ -57,6 +57,7 @@ const STATE_ROWS: ManagedListRow[] = [
   mkRow({ id: 'i-inst', name: 'installed-skill', state: 'installed', currentEvidenceCount: 0, totalEvidenceCount: 0 }),
   mkRow({ id: 'i-stale', name: 'stale-skill', state: 'stale', drifted: true }),
   mkRow({ id: 'i-unre', name: 'unreachable-skill', state: 'measurable', reachable: false }),
+  mkRow({ id: 'i-over', name: 'override-skill', state: 'promoted', latestVerdict: 'CAUTIOUS', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable', 'verdict_blocked'] } }),
 ];
 
 describe('managed-history-renderer snapshots', () => {

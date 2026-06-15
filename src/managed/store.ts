@@ -283,6 +283,13 @@ export function rebaselineManagedContentHash(
  * (数组追加序 = 事件序)。
  */
 export function isCurrentlyPromoted(record: ManagedArtifactRecord): boolean {
+  return latestPromoteRollbackForCurrent(record)?.decisionKind === 'promote';
+}
+
+/** 当前内容(contentHash === record.contentHash)最近一条 promote/rollback 决定;无则 undefined。latest-wins
+ *  口径见上(decidedAt 真实时刻、不可解析退字典序、并列取后出现的)。isCurrentlyPromoted 与
+ *  currentPromoteOverride 共用,避免两处各写一遍 latest-wins 走样。 */
+function latestPromoteRollbackForCurrent(record: ManagedArtifactRecord): ManagedDecision | undefined {
   const ms = (s: string): number | null => { const n = Date.parse(s); return Number.isNaN(n) ? null : n; };
   let latest: ManagedDecision | undefined;
   for (const d of record.decisions) {
@@ -293,7 +300,18 @@ export function isCurrentlyPromoted(record: ManagedArtifactRecord): boolean {
     const newer = tcur !== null && tlat !== null ? tcur >= tlat : d.decidedAt >= latest.decidedAt;
     if (newer) latest = d;
   }
-  return latest?.decisionKind === 'promote';
+  return latest;
+}
+
+/**
+ * 当前 promoted 版本是否经 override(--force)采用 —— 返回该 override(verdict + 被绕过的门),否则 undefined。
+ * 仅当前内容最近一条决定是 promote 且带 override 才有值;rollback 之后(已撤销接受)返回 undefined。供 list /
+ * Studio **读时审计**:从总览一眼看出哪些当前采用是越门来的。override 的**写**仍只在 CLI(`promote --force`),
+ * Studio 不执行——见 evidence-gated-management.md §9(#238)。
+ */
+export function currentPromoteOverride(record: ManagedArtifactRecord): ManagedDecision['override'] {
+  const d = latestPromoteRollbackForCurrent(record);
+  return d?.decisionKind === 'promote' ? d.override : undefined;
 }
 
 /**

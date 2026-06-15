@@ -107,6 +107,26 @@ describe('buildManagedListRow', () => {
     assert.equal(row.reachable, false);
   });
 
+  const promoteOverrideDecision = { decisionKind: 'promote' as const, actor: 't', decidedAt: '2026-06-11T00:00:00.000Z', contentHash: 'hashAAA', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable'] } };
+
+  it('promote 经 override → row.override 带被绕过的门(只读审计标)', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteOverrideDecision] }), reach('hashAAA'));
+    assert.equal(row.state, 'promoted');
+    assert.deepEqual(row.override, { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable'] });
+  });
+
+  it('普通 promote(非 override)→ row.override undefined', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteDecision] }), reach('hashAAA'));
+    assert.equal(row.override, undefined);
+  });
+
+  it('override promote 后又 rollback(更晚)→ row.override undefined(采用已撤销)', () => {
+    const lateRollback = { decisionKind: 'rollback' as const, actor: 't', decidedAt: '2026-06-12T00:00:00.000Z', contentHash: 'hashAAA' };
+    const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteOverrideDecision, lateRollback] }), reach('hashAAA'));
+    assert.equal(row.state, 'measurable');
+    assert.equal(row.override, undefined);
+  });
+
   it('多条当前证据 → 取 recordedAt 最新那条的 verdict', () => {
     const row = buildManagedListRow(rec({
       evidence: [

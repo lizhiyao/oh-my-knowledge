@@ -183,6 +183,16 @@ function stateMeta(state: string, lang: Lang): { label: string; tip: string } {
   return { label, tip };
 }
 
+/** 列表只读审计标:当前采用版本是越门(`--force`)来的就标出来,tooltip 列被绕过的门。复用详情时间线的
+ *  `.mh-override` 样式。override 的写仍只在 CLI —— Studio 只读(spec §9 / #238)。 */
+function overrideBadge(row: ManagedListRow, lang: Lang): string {
+  if (!row.override) return '';
+  const t = L(lang);
+  const blocks = row.override.overriddenBlocks?.length ? row.override.overriddenBlocks.join(' / ') : '';
+  const tip = blocks ? t(`越门采用，绕过：${blocks}`, `force-promoted, waved: ${blocks}`) : t('越门采用', 'force-promoted');
+  return ` <span class="mh-override" title="${e(tip)}">${t('越门', 'override')}</span>`;
+}
+
 function listRow(row: ManagedListRow, lang: Lang): string {
   const t = L(lang);
   const st = stateMeta(row.state, lang);
@@ -192,7 +202,7 @@ function listRow(row: ManagedListRow, lang: Lang): string {
     <span class="mh-row-state" title="${e(st.tip)}"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(st.label)}${mark}</span>
     <span class="mh-row-name">${e(row.name)}</span>
     <span class="mh-row-kind">${e(row.kind)}</span>
-    <span class="mh-row-verdict">${row.latestVerdict ? verdictBadge(row.latestVerdict, lang) : '—'}</span>
+    <span class="mh-row-verdict">${row.latestVerdict ? verdictBadge(row.latestVerdict, lang) : '—'}${overrideBadge(row, lang)}</span>
     <span class="mh-row-ev">${row.currentEvidenceCount}/${row.totalEvidenceCount}</span>
     <span class="mh-row-src" title="${e(row.sourceLabel)}">${e(row.sourceLabel)}</span>
   </a>`;
@@ -217,6 +227,7 @@ export function renderManagedList(rows: ManagedListRow[], lang: Lang): string {
     <span class="mh-legend-item"><span class="mh-dot mh-dot--red"></span>${t('已漂移 ⚠️：源变了、需重跑 omk eval', 'Drifted ⚠️ = source changed, re-run omk eval')}</span>
     <span class="mh-legend-item">${t('? 源未核（不可达 / 拒读，漂移待定）', '? = source unverified (unreachable / refused)')}</span>
     <span class="mh-legend-item">${t('证据列：当前有效 / 全部历史（旧证据留作回滚）', 'Evidence = current / total (old evidence kept for rollback)')}</span>
+    <span class="mh-legend-item"><span class="mh-override">${t('越门', 'override')}</span>${t(' 当前采用是 --force 越门来的（决定人由命令行记录）', ' = current version force-promoted via --force (actor recorded by CLI)')}</span>
   </div>`;
 
   const body = `<main class="mh-main">
