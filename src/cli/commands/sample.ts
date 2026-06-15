@@ -8,7 +8,7 @@ import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
-import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import { loadSamples, parseYaml, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import { hashSample } from '../../eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../inputs/content-hash.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
@@ -41,6 +41,74 @@ function getSamplesArray(document: unknown, filePath: string): SampleType[] {
 function stringifySampleDocument(filePath: string, document: unknown): string {
   if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
   return JSON.stringify(document, null, 2);
+}
+
+/** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
+ *  自动加 `-2`/`-3` 后缀去重。模型每次从 s001 重编号,撞 id 不代表内容重复,所以是改名保留
+ *  而非丢弃(不做内容级去重)。`reserved` 为额外要避开的 id 集(目录模式跨同目录其它 sample
+ *  文件去重用,见 collectDirSampleIds)。 */
+export function mergeAppendSamples(
+  existing: SampleType[],
+  fresh: SampleType[],
+  reserved?: ReadonlySet<string>,
+): SampleType[] {
+  const used = new Set(existing.map((s) => s.sample_id));
+  if (reserved) for (const id of reserved) used.add(id);
+  const merged: SampleType[] = [...existing];
+  for (const sample of fresh) {
+    let id = sample.sample_id;
+    if (used.has(id)) {
+      let n = 2;
+      while (used.has(`${id}-${n}`)) n += 1;
+      id = `${id}-${n}`;
+    }
+    used.add(id);
+    merged.push(id === sample.sample_id ? sample : { ...sample, sample_id: id });
+  }
+  return merged;
+}
+
+/** 目录模式 append:收集目录内所有 sample 文件的 sample_id,跨文件去重用 —— eval 走目录模式
+ *  会把目录下所有文件合并加载,跨文件撞 id 直接报错(load-samples 的 duplicate sample_id)。
+ *  复用 listSampleFilesInDir 的排序/过滤口径;best-effort:解析失败的文件跳过。 */
+function collectDirSampleIds(dir: string): Set<string> {
+  const ids = new Set<string>();
+  let files: string[];
+  try { files = listSampleFilesInDir(dir); } catch { return ids; }
+  for (const f of files) {
+    const full = join(dir, f);
+    try {
+      for (const s of getSamplesArray(parseSampleDocument(full), full)) {
+        if (typeof s.sample_id === 'string') ids.add(s.sample_id);
+      }
+    } catch { /* skip unparseable / 非 sample 文件 */ }
+  }
+  return ids;
+}
+
+/** 目录模式 append 选写回目标:复用 listSampleFilesInDir 的排序/过滤(与 eval 目录合并同口径),
+ *  优先 canonical `samples.json`,否则排序后第一个 —— 确定性、不依赖文件系统枚举顺序,
+ *  用户可预测改哪个文件。无候选返回 null。 */
+export function pickAppendTargetFile(dir: string): string | null {
+  let files: string[];
+  try { files = listSampleFilesInDir(dir); } catch { return null; }
+  if (files.length === 0) return null;
+  const chosen = files.includes('samples.json') ? 'samples.json' : files[0];
+  return join(dir, chosen);
+}
+
+/** 把新用例追加进已有 sample 文件:读 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与
+ *  `{samples:[...]}` wrapper 写回。返回合并后总条数。 */
+export function appendSamplesToFile(
+  existingFile: string,
+  fresh: SampleType[],
+  reserved?: ReadonlySet<string>,
+): number {
+  const doc = parseSampleDocument(existingFile);
+  const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), fresh, reserved);
+  const nextDoc = Array.isArray(doc) ? merged : { ...(doc as Record<string, unknown>), samples: merged };
+  writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
+  return merged.length;
 }
 
 function formatIdList(ids: string[]): string {
@@ -387,6 +455,12 @@ async function runSample(
   flags: SampleFlags,
   lang: CliLang,
 ): Promise<void> {
+  // --append 目前只在单 skill 生成路径实现;batch / from-traces / fix 不处理它,
+  // 静默忽略会误导(用户以为在追加,实际没有)。提前互斥校验,明确报错。
+  if (flags.append && (flags.batch || flags['from-traces'] || flags.fix)) {
+    console.error(tCli('cli.gen.append_single_only', lang));
+    throw new CliExit(2);
+  }
   if (flags['from-traces']) {
     await runSampleFromTraces(flags, lang);
     return;
@@ -487,22 +561,22 @@ async function runSample(
     const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
     let outputPath: string;
+    let existingFile: string | null = null;
     if (!extname(resolved.samplesPath)) {
       const dir = resolved.samplesPath;
       if (existsSync(dir) && statSync(dir).isDirectory()) {
-        const existing = readdirSync(dir).find((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
-        if (existing) {
-          console.error(tCli('cli.gen.samples_already_exists', lang));
-          throw new CliExit(1);
-        }
+        existingFile = pickAppendTargetFile(dir);
       }
-      outputPath = join(dir, 'samples.json');
+      outputPath = existingFile ?? join(dir, 'samples.json');
     } else {
       outputPath = resolved.samplesPath;
-      if (existsSync(outputPath)) {
-        console.error(tCli('cli.gen.samples_already_exists', lang));
-        throw new CliExit(1);
-      }
+      if (existsSync(outputPath)) existingFile = outputPath;
+    }
+
+    // 已有用例文件:默认报错保护;--append 时追加(下面合并),不报错。
+    if (existingFile && !flags.append) {
+      console.error(tCli('cli.gen.samples_already_exists', lang));
+      throw new CliExit(1);
     }
 
     if (count !== undefined) {
@@ -513,12 +587,23 @@ async function runSample(
     try {
       const { samples, costUSD }: GenerateSamplesResult =
         await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
-      mkdirSync(dirname(outputPath), { recursive: true });
-      writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-      process.stderr.write(tCli('cli.gen.single_done', lang, {
-        n: samples.length, path: outputPath, cost,
-      }));
+      if (existingFile && flags.append) {
+        // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。
+        // 目录模式额外跨同目录其它 sample 文件去重,避免 eval 合并加载时撞 id 报错;
+        // 显式单文件路径无同目录合并语义,不需要。
+        const reserved = extname(resolved.samplesPath) ? undefined : collectDirSampleIds(dirname(existingFile));
+        const total = appendSamplesToFile(existingFile, samples as SampleType[], reserved);
+        process.stderr.write(tCli('cli.gen.append_done', lang, {
+          added: samples.length, total, path: existingFile, cost,
+        }));
+      } else {
+        mkdirSync(dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, JSON.stringify(samples, null, 2));
+        process.stderr.write(tCli('cli.gen.single_done', lang, {
+          n: samples.length, path: outputPath, cost,
+        }));
+      }
       console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
@@ -616,6 +701,13 @@ export default class Sample extends BaseCommand {
         zh: '生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。',
         en: 'Generation focus (NL hint). Steers LLM toward certain sample types.',
       }),
+    }),
+    append: Flags.boolean({
+      description: bilingual({
+        zh: '在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。',
+        en: 'Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces / --fix. Without it, an existing file errors out. Often paired with --focus.',
+      }),
+      default: false,
     }),
     'no-mock': Flags.boolean({
       description: bilingual({
