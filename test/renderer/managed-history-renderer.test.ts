@@ -67,6 +67,9 @@ const CURVE: VersionScorePoint[] = [
   { contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', composite: 4.0, ciLow: 3.7, ciHigh: 4.3, verdict: 'PROGRESS', comparable: true },
 ];
 
+// 全可比(无空心点 / 虚线)→ 测 note 的「else」分支文案,与上面含不可比点的分支区分开。
+const CURVE_ALL_COMPARABLE: VersionScorePoint[] = CURVE.map((p) => ({ ...p, comparable: true }));
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -94,5 +97,8 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory 带版本回归曲线 en', () => {
     expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'en' as Lang, CURVE))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 曲线全可比(note else 分支)zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE_ALL_COMPARABLE))).toMatchSnapshot();
   });
 });
