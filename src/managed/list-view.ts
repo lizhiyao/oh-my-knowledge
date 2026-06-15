@@ -9,7 +9,7 @@
  * (contentHash == record.contentHash)里 recordedAt 最新那条 —— 旧内容的证据不冒充当前。
  */
 import type { ArtifactKind, ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
-import { deriveManagedState, isCurrentlyPromoted } from './store.js';
+import { deriveManagedState, isCurrentlyPromoted, currentPromoteOverride } from './store.js';
 
 /** 当前源探测结果(三态)。`reachable:false` = 不可达 / 解析失败 / 拒读,**不等于**已 drift。 */
 export interface SourceProbe {
@@ -35,6 +35,9 @@ export interface ManagedListRow {
   latestVerdict?: string;
   /** 该证据的可比性 marker —— 跨报告比 verdict 前需一致。 */
   comparability?: { cliVersion: string; judgePromptHash?: string; debiasMode?: Array<'length' | 'position'> };
+  /** 当前 promoted 版本是否经 `--force` override 采用(只读审计标);非越门 / 已 rollback / 未采用 → undefined。
+   *  override 的写仍只在 CLI(`promote --force`),Studio 只读展示 —— 见 spec §9(#238)。 */
+  override?: { verdict: string; overriddenBlocks?: string[] };
   /** 最新当前证据的记录时间。 */
   recordedAt?: string;
   /** 当前有效证据数 / 全部证据数(含旧内容的历史证据)。 */
@@ -76,6 +79,7 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     drifted = false;
   }
   const latest = latestCurrentEvidence(record);
+  const override = currentPromoteOverride(record);
   return {
     id: record.id,
     name: record.name,
@@ -88,6 +92,7 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     ...(latest?.verdict ? { latestVerdict: latest.verdict } : {}),
     ...(latest?.comparability ? { comparability: latest.comparability } : {}),
     ...(latest?.recordedAt ? { recordedAt: latest.recordedAt } : {}),
+    ...(override ? { override } : {}),
     currentEvidenceCount,
     totalEvidenceCount: record.evidence.length,
     distributionCount: record.distribution.length,

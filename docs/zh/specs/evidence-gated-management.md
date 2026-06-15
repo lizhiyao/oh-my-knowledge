@@ -235,7 +235,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - **已决：** `evolve` 默认仍把胜者写回源（无需 deprecation）；`--snapshot-only` 是只产候选时的退出开关（快照留在 `evolve/`）。受管 skill 上 evolve 记证据 + re-baseline 记录（→ `measurable`），而不是把写入改道经 `promote` —— 旧决策 B（promote 独占 canonical 写）已否决；见 §7 `evolve` 与 §8。
 - **已决（promote MVP）**：默认可接受 verdict 只 `PROGRESS`（omk default-strict——影响「值得 ship」判定的默认必须严格）;`CAUTIOUS` 需显式 `--accept-cautious`;其余需 `--force`（记为 override）。
 - **已定（#237）**：过期按轴分别判、各自对当前上下文判定 —— 完整模型见 §6.1。**内容**漂移（**可达**的源、hash 不同——artifact 身份）是唯一会把生命周期翻成 `stale` 并硬拦 promote（不可越）的轴；源**不可达**是另一回事——现有的「未核」态，保留按证据推出的标签、仍可 `--force --reason` 放行，绝不静默 `stale`。**样本集**漂移（artifact 没变；当前用例集与证据 `sampleCoverage.hash` 不一致，仅当当前样本集可解析时才判）暴露读时 `sampleDrift` marker，且是**可越的 promote 硬拦**（`--force --reason`、记 override），不改生命周期。**运行时**漂移分两支：评委身份变了（`judgePromptHash` 已不属当前）走现有 `incomparable` 硬拦（可越），而 `cliVersion` / `debiasMode` 偏移只展示、永不门控。不新增持久生命周期 enum、不动 Report / record schema —— marker 都是读时派生。把 `sampleDrift` 接进 promote 门禁与 `list` / Studio 是后续实现项（也反哺 §7 `observe` 的「线上缺口→补用例」那条路径）；策略在此已定。
-- 人类 override 应该允许在 CLI、Studio，还是两者都允许？
+- **已定（#238）**：人工 override **仅限 CLI**——`promote --force --reason`，决定的 `actor` 由 `--actor` / git / env 记录，被绕过的门可审计。Studio 保持**只读**：把 override 摆出来供审计（`/managed/<id>` 决策时间线渲染被绕过的门，`/managed` 列表对「当前版本是越门采用的」打标），但自己绝不执行 override。override 绕过测量门禁、必须可归属到人；本地 Studio 网页没有账号体系、omk 也不引入，记不下可信 actor——把写留在 CLI 同时保住审计链与 Studio 的只读姿态。
 - `omk init` 何时演进为 `omk eval init`，兼容 alias 策略怎么定？
 
 ## 10. 当前决策
