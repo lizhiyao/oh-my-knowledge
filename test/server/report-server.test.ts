@@ -64,6 +64,29 @@ const SAMPLE_REPORT = {
   ],
 };
 
+// 版本回归曲线集成 fixture:独立 record + 两版报告(都带 artifactHashes + composite/CI)→ GET /managed/<id>
+// 应真的读报告、算点、画出 SVG 曲线。与 SAMPLE_REPORT / MANAGED_RECORD 解耦,不扰动它们的既有断言。
+function curveReport(id: string, contentHash: string, composite: number, ci: [number, number]) {
+  return {
+    kind: 'evaluation', id,
+    meta: { variants: ['cand'], model: 'sonnet', judgeModel: 'haiku', executor: 'claude', sampleCount: 6, taskCount: 6, totalCostUSD: 0.01, timestamp: '2026-03-25T10:00:00.000Z', artifactHashes: { cand: contentHash } },
+    summary: { cand: { totalSamples: 6, successCount: 6, errorCount: 0, avgCompositeScore: composite, bootstrapCI: { low: ci[0], high: ci[1], estimate: composite, samples: 1000 } } },
+    results: [],
+  };
+}
+
+// 两版同口径(同评委 JH / 同样本集 cs)→ 都可比;当前 = hashCurveV1。2 个可画点 → 曲线渲染。
+const CURVE_RECORD = {
+  recordKind: 'managed-artifact', schemaVersion: 2, id: 'skill-curve-smoke', name: 'curvy', kind: 'skill',
+  source: { sourceKind: 'git', locator: 'git+https://example.com/c@abc:curvy', url: 'https://example.com/c', ref: 'abc', isDirectorySkill: true },
+  contentHash: 'hashCurveV1', installedAt: '2026-03-01T00:00:00.000Z', distribution: [],
+  evidence: [
+    { reportId: 'curve-r0', contentHash: 'hashCurveV0', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'CAUTIOUS', sampleCoverage: { count: 6, hash: 'cs' }, comparability: { cliVersion: '0.39.0', judgePromptHash: 'JH' } },
+    { reportId: 'curve-r1', contentHash: 'hashCurveV1', recordedAt: '2026-03-04T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'cs' }, comparability: { cliVersion: '0.39.0', judgePromptHash: 'JH' } },
+  ],
+  decisions: [],
+};
+
 const SAMPLE_JOB = {
   jobId: 'job-test-run-001',
   status: 'succeeded',
@@ -302,6 +325,32 @@ describe('report-server', () => {
     assert.ok(res.body.includes('verdict-PROGRESS') && res.body.includes('verdict-NOISE'), 'both version verdicts');
     assert.ok(res.body.includes('alice'), 'promote actor');
     assert.ok(res.body.includes('/reports/test-run-001'), 'links to evidence report');
+  });
+
+  it('GET /managed/<id> 渲染版本回归曲线（路由读报告 → buildVersionScores → SVG）', async () => {
+    // 独立 server + dirs:曲线报告不进共享 TEST_DIR,免得撑破 /api/reports 等按报告集合的断言。
+    const cReports = join(tmpdir(), `omk-curve-reports-${Date.now()}`);
+    const cManaged = join(tmpdir(), `omk-curve-managed-${Date.now()}`);
+    mkdirSync(cReports, { recursive: true });
+    mkdirSync(cManaged, { recursive: true });
+    writeFileSync(join(cManaged, 'skill-curve-smoke.json'), JSON.stringify(CURVE_RECORD, null, 2));
+    writeFileSync(join(cReports, 'curve-r0.json'), JSON.stringify(curveReport('curve-r0', 'hashCurveV0', 3.0, [2.7, 3.3]), null, 2));
+    writeFileSync(join(cReports, 'curve-r1.json'), JSON.stringify(curveReport('curve-r1', 'hashCurveV1', 4.2, [3.9, 4.5]), null, 2));
+    const cServer = createReportServer({ port: 0, reportsDir: cReports, managedDir: cManaged });
+    const cUrl = await cServer.start();
+    try {
+      const res = await fetch(`${cUrl}/managed/skill-curve-smoke`);
+      assert.equal(res.status, 200);
+      // 曲线出现 ⇒ 路由确实按 evidence.reportId 读到两版报告、取了 composite/CI 交给渲染器(端到端接线)。
+      assert.ok(res.body.includes('mh-curve'), '曲线 section 渲染');
+      assert.ok(res.body.includes('版本回归曲线'), '曲线标题');
+      assert.ok(res.body.includes('<svg'), 'SVG 画出');
+      assert.ok(res.body.includes('mh-timeline'), '时间线仍在');
+    } finally {
+      await cServer.stop();
+      rmSync(cReports, { recursive: true, force: true });
+      rmSync(cManaged, { recursive: true, force: true });
+    }
   });
 
   it('GET /managed/<missing> → 404 (zh default, en via ?lang=en)', async () => {

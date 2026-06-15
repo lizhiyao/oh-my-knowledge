@@ -11,7 +11,7 @@ import { assessHealth } from '../renderer/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
-import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
+import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows, buildVersionScores, type ReportScoreView } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
@@ -804,8 +804,16 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');
           return;
         }
+        // 版本回归曲线要每版的 composite/CI —— 按 evidence.reportId 把报告读出来(去重),读不到的点
+        // buildVersionScores 自会跳过。曲线数据在路由侧算好,renderManagedHistory 保持纯函数、可 snapshot。
+        const reportsById = new Map<string, ReportScoreView | null>();
+        for (const ev of record.evidence) {
+          // 按「打分视角」结构化看报告:受管证据指向的是单次 eval 报告(带 artifactHashes / summary);
+          // 万一是 batch 报告,meta 无 artifactHashes → buildVersionScores 自会跳过,不会误画。
+          if (!reportsById.has(ev.reportId)) reportsById.set(ev.reportId, (await reportStore.get(ev.reportId)) as ReportScoreView | null);
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderManagedHistory(record, lang));
+        res.end(renderManagedHistory(record, lang, buildVersionScores(record, reportsById)));
         return;
       }
 
