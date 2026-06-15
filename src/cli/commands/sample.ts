@@ -43,6 +43,25 @@ function stringifySampleDocument(filePath: string, document: unknown): string {
   return JSON.stringify(document, null, 2);
 }
 
+/** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
+ *  自动加 `-2`/`-3` 后缀去重。模型每次从 s001 重编号,撞 id 不代表内容重复,所以是改名保留
+ *  而非丢弃(不做内容级去重)。 */
+export function mergeAppendSamples(existing: SampleType[], fresh: SampleType[]): SampleType[] {
+  const used = new Set(existing.map((s) => s.sample_id));
+  const merged: SampleType[] = [...existing];
+  for (const sample of fresh) {
+    let id = sample.sample_id;
+    if (used.has(id)) {
+      let n = 2;
+      while (used.has(`${id}-${n}`)) n += 1;
+      id = `${id}-${n}`;
+    }
+    used.add(id);
+    merged.push(id === sample.sample_id ? sample : { ...sample, sample_id: id });
+  }
+  return merged;
+}
+
 function formatIdList(ids: string[]): string {
   const shown = ids.slice(0, 5);
   const suffix = ids.length > shown.length ? ` +${ids.length - shown.length}` : '';
@@ -487,22 +506,23 @@ async function runSample(
     const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
     let outputPath: string;
+    let existingFile: string | null = null;
     if (!extname(resolved.samplesPath)) {
       const dir = resolved.samplesPath;
       if (existsSync(dir) && statSync(dir).isDirectory()) {
         const existing = readdirSync(dir).find((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
-        if (existing) {
-          console.error(tCli('cli.gen.samples_already_exists', lang));
-          throw new CliExit(1);
-        }
+        if (existing) existingFile = join(dir, existing);
       }
-      outputPath = join(dir, 'samples.json');
+      outputPath = existingFile ?? join(dir, 'samples.json');
     } else {
       outputPath = resolved.samplesPath;
-      if (existsSync(outputPath)) {
-        console.error(tCli('cli.gen.samples_already_exists', lang));
-        throw new CliExit(1);
-      }
+      if (existsSync(outputPath)) existingFile = outputPath;
+    }
+
+    // 已有用例文件:默认报错保护;--append 时追加(下面合并),不报错。
+    if (existingFile && !flags.append) {
+      console.error(tCli('cli.gen.samples_already_exists', lang));
+      throw new CliExit(1);
     }
 
     if (count !== undefined) {
@@ -513,12 +533,23 @@ async function runSample(
     try {
       const { samples, costUSD }: GenerateSamplesResult =
         await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
-      mkdirSync(dirname(outputPath), { recursive: true });
-      writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-      process.stderr.write(tCli('cli.gen.single_done', lang, {
-        n: samples.length, path: outputPath, cost,
-      }));
+      if (existingFile && flags.append) {
+        // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。
+        const doc = parseSampleDocument(existingFile);
+        const merged = mergeAppendSamples(getSamplesArray(doc, existingFile), samples as SampleType[]);
+        const nextDoc = Array.isArray(doc) ? merged : { ...(doc as Record<string, unknown>), samples: merged };
+        writeFileSync(existingFile, stringifySampleDocument(existingFile, nextDoc));
+        process.stderr.write(tCli('cli.gen.append_done', lang, {
+          added: samples.length, total: merged.length, path: existingFile, cost,
+        }));
+      } else {
+        mkdirSync(dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, JSON.stringify(samples, null, 2));
+        process.stderr.write(tCli('cli.gen.single_done', lang, {
+          n: samples.length, path: outputPath, cost,
+        }));
+      }
       console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
@@ -616,6 +647,13 @@ export default class Sample extends BaseCommand {
         zh: '生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。',
         en: 'Generation focus (NL hint). Steers LLM toward certain sample types.',
       }),
+    }),
+    append: Flags.boolean({
+      description: bilingual({
+        zh: '在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。不传则已有文件时报错保护。常配 --focus 补特定场景。',
+        en: 'Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Without it, an existing file errors out. Often paired with --focus.',
+      }),
+      default: false,
     }),
     'no-mock': Flags.boolean({
       description: bilingual({

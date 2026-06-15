@@ -13,6 +13,7 @@ export type GenMessageKey =
   | 'cli.gen.single_generating'
   | 'cli.gen.single_generating_auto'
   | 'cli.gen.single_done'
+  | 'cli.gen.append_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
   | 'cli.gen.focus_applied';
@@ -65,6 +66,10 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
   'cli.gen.single_done': {
     zh: '✅ 已生成 {n} 条用例 → {path}{cost}\n',
     en: '✅ Generated {n} samples → {path}{cost}\n',
+  },
+  'cli.gen.append_done': {
+    zh: '✅ 新增 {added} 条用例（撞 id 已自动改名），合并后共 {total} 条 → {path}{cost}\n',
+    en: '✅ Appended {added} samples (colliding ids auto-renamed), {total} total → {path}{cost}\n',
   },
   'cli.gen.review_hint': {
     zh: '\n请审查生成的评测用例后运行: omk eval',

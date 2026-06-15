@@ -175,6 +175,7 @@ export interface SampleFlags {
   executor?: string;
   'skill-dir': string;
   focus?: string;
+  append: boolean;
   'no-mock': boolean;
   fix: boolean;
   'reports-dir'?: string;
