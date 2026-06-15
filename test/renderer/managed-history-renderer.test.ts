@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { renderManagedList, renderManagedHistory } from '../../src/renderer/managed-history-renderer.js';
-import { buildManagedListRows, type ManagedListRow } from '../../src/managed/index.js';
+import { buildManagedListRows, type ManagedListRow, type VersionScorePoint } from '../../src/managed/index.js';
 import type { Lang, ManagedArtifactRecord } from '../../src/types/index.js';
 
 // 只快照 <main> 结构块:剥掉 layout 全局壳与 CSS（在别处测）—— 快照聚焦受管渲染的结构/文案,
@@ -60,6 +60,13 @@ const STATE_ROWS: ManagedListRow[] = [
   mkRow({ id: 'i-over', name: 'override-skill', state: 'promoted', latestVerdict: 'CAUTIOUS', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable', 'verdict_blocked'] } }),
 ];
 
+// 版本回归曲线 fixture:三版从旧到新,首版不可比(换过评委 / 改过样本集)→ 测空心点 + 虚线段 + 不可比提示文案。
+const CURVE: VersionScorePoint[] = [
+  { contentHash: 'hashV0contenthashlong', recordedAt: '2026-03-01T12:00:00.000Z', composite: 3.1, ciLow: 2.8, ciHigh: 3.4, verdict: 'NOISE', comparable: false },
+  { contentHash: 'hashV1contenthashlong', recordedAt: '2026-03-02T00:00:00.000Z', composite: 3.6, ciLow: 3.3, ciHigh: 3.9, verdict: 'CAUTIOUS', comparable: true },
+  { contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', composite: 4.0, ciLow: 3.7, ciHigh: 4.3, verdict: 'PROGRESS', comparable: true },
+];
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -81,5 +88,11 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory en', () => {
     expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'en' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 带版本回归曲线 zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 带版本回归曲线 en', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'en' as Lang, CURVE))).toMatchSnapshot();
   });
 });

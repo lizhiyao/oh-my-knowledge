@@ -12,7 +12,7 @@ import { layout, e, fmtLocalTime } from './layout.js';
 import { levelLabel } from './summary.js';
 import type { Lang } from '../types/index.js';
 import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
-import type { ManagedListRow } from '../managed/index.js';
+import type { ManagedListRow, VersionScorePoint } from '../managed/index.js';
 import type { VerdictLevel } from '../eval-core/verdict.js';
 
 // Record<VerdictLevel, true> 让 TS 编译期强制列全所有 level —— eval-core 新增 level 时这里报错、逼同步,
@@ -123,7 +123,61 @@ function versionHeader(hash: string, isCurrent: boolean, lang: Lang): string {
   return `<li class="mh-vhead"><span class="mh-vhead-label">${L(lang)('版本', 'version')}</span><code class="mh-hash">${e(shortHash(hash))}</code>${cur}</li>`;
 }
 
-export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang): string {
+/** 版本回归曲线(纯 SVG,确定性、可 snapshot):每版 composite 均值 + 95%CI 竖须,按时间从旧到新。
+ *  不可比的版本(换过评委 / 改过样本集)点画空心、连线画虚 —— 不糊一条误导的「在变好」线(spec §3)。
+ *  数据由 buildVersionScores 算好;少于 2 个点不画(单点无趋势可言)。composite 量纲不定,y 轴按数据自适应。 */
+function renderVersionCurve(points: VersionScorePoint[], lang: Lang): string {
+  if (points.length < 2) return '';
+  const t = L(lang);
+  const width = 620, height = 250, padL = 46, padR = 16, padT = 16, padB = 46;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const n = points.length;
+  let yLo = Math.min(...points.map((p) => p.ciLow));
+  let yHi = Math.max(...points.map((p) => p.ciHigh));
+  if (yHi - yLo < 1e-9) { yLo -= 0.5; yHi += 0.5; } // 全相等退化:给个最小跨度,免除零。
+  const pad = (yHi - yLo) * 0.08;
+  yLo -= pad; yHi += pad;
+  const xAt = (i: number): number => padL + (plotW * i) / (n - 1);
+  const yAt = (v: number): number => padT + plotH - (plotH * (v - yLo)) / (yHi - yLo);
+
+  const parts: string[] = [];
+  // 连线逐段;任一端不可比 → 虚线,提示别把跨不可比的差值读作进步 / 回退。
+  for (let i = 1; i < n; i++) {
+    const a = points[i - 1], b = points[i];
+    const dash = (!a.comparable || !b.comparable) ? ' stroke-dasharray="4 3"' : '';
+    parts.push(`<line x1="${xAt(i - 1).toFixed(1)}" y1="${yAt(a.composite).toFixed(1)}" x2="${xAt(i).toFixed(1)}" y2="${yAt(b.composite).toFixed(1)}" stroke="var(--accent)" stroke-width="2"${dash} />`);
+  }
+  // 每点:CI 竖须 + 上下端帽 + 点(可比实心 / 不可比空心)+ 短 hash 轴标。
+  points.forEach((p, i) => {
+    const x = xAt(i), yL = yAt(p.ciLow), yH = yAt(p.ciHigh), yM = yAt(p.composite);
+    parts.push(`<line x1="${x.toFixed(1)}" y1="${yH.toFixed(1)}" x2="${x.toFixed(1)}" y2="${yL.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
+    parts.push(`<line x1="${(x - 3).toFixed(1)}" y1="${yH.toFixed(1)}" x2="${(x + 3).toFixed(1)}" y2="${yH.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
+    parts.push(`<line x1="${(x - 3).toFixed(1)}" y1="${yL.toFixed(1)}" x2="${(x + 3).toFixed(1)}" y2="${yL.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
+    parts.push(p.comparable
+      ? `<circle cx="${x.toFixed(1)}" cy="${yM.toFixed(1)}" r="4" fill="var(--accent)" />`
+      : `<circle cx="${x.toFixed(1)}" cy="${yM.toFixed(1)}" r="4" fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="1.5" />`);
+    parts.push(`<text x="${x.toFixed(1)}" y="${height - padB + 14}" font-size="9" text-anchor="middle" fill="var(--text-muted)">${e(p.contentHash.slice(0, 7))}</text>`);
+  });
+  const yTicks = [0, 0.5, 1].map((f) => {
+    const v = yLo + (yHi - yLo) * f;
+    const y = yAt(v);
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${width - padR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" /><text x="${padL - 6}" y="${(y + 3).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--text-muted)">${v.toFixed(2)}</text>`;
+  }).join('');
+
+  const anyIncomparable = points.some((p) => !p.comparable);
+  const note = anyIncomparable
+    ? t('空心点 = 测量条件变了（换过评委 / 改过样本集），与当前版不可比；虚线段别直接读作进步或回退。', 'Hollow dots = measured under a different instrument (judge / sample set) than the current version, not comparable; do not read dashed segments as progress or regression.')
+    : t('每个版本的 composite 均值与 95% 置信区间，按时间从旧到新。', 'Composite mean and 95% CI per version, oldest to newest.');
+
+  return `<section class="mh-curve">
+    <h2 class="mh-curve-title">${t('版本回归曲线', 'Version regression')}</h2>
+    <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="mh-curve-svg">${yTicks}${parts.join('')}</svg>
+    <p class="mh-curve-note">${note}</p>
+  </section>`;
+}
+
+export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, versionScores: VersionScorePoint[] = []): string {
   const t = L(lang);
   const events = buildTimeline(record);
 
@@ -152,6 +206,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang):
       <h1 class="mh-name">${e(record.name)}</h1>
       <div class="mh-meta">${meta}</div>
     </header>
+    ${renderVersionCurve(versionScores, lang)}
     <ol class="mh-timeline">${rows.join('')}</ol>
   </main>
   <style>${MANAGED_CSS}</style>`;
@@ -253,6 +308,12 @@ const MANAGED_CSS = `
 .mh-name{margin:4px 0 0;font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-.2px}
 .mh-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;color:var(--text-muted);font-size:12px}
 .mh-meta span{display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
+
+/* ── 版本回归曲线 ── */
+.mh-curve{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);padding:16px 20px;margin-bottom:18px}
+.mh-curve-title{margin:0 0 4px;font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:-.2px}
+.mh-curve-svg{width:100%;max-width:620px;height:auto;display:block;margin:6px 0}
+.mh-curve-note{font-size:12px;color:var(--text-muted);margin:6px 0 0}
 
 /* ── 时间线 ── */
 .mh-timeline{list-style:none;padding:0;margin:0;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden}
