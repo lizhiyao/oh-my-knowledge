@@ -92,6 +92,36 @@ describe('buildVersionScores', () => {
     assert.equal(byHash['hV2'], true, '当前版 = 基线 → 可比');
   });
 
+  it('基线 / 历史证据都缺评委或样本指纹 → unknown 不隐式判为可比(全不可比)', () => {
+    // 早于 evidence bundle 完整落盘的旧记录:既无 judgePromptHash 也无 sampleCoverage → 无从核对同口径。
+    // spec §6.1 unknown 既不放行也不拦截 → 曲线必须标 comparable=false(空心点 / 虚线),不糊成可直接读的趋势。
+    const r = rec([
+      ev({ reportId: 'r0', contentHash: 'hV0', recordedAt: '2026-06-02T00:00:00.000Z', comparability: { cliVersion: '0.30.0' }, sampleCoverage: undefined }),
+      ev({ reportId: 'r1', contentHash: 'hV1', recordedAt: '2026-06-03T00:00:00.000Z', comparability: { cliVersion: '0.30.0' }, sampleCoverage: undefined }),
+    ], 'hV1');
+    const reports = new Map<string, ReportScoreView | null>([
+      ['r0', report('hV0', 3.1, [2.8, 3.4])],
+      ['r1', report('hV1', 3.6, [3.3, 3.9])],
+    ]);
+    const pts = buildVersionScores(r, reports);
+    assert.equal(pts.length, 2, '点照常画出,只是不可比');
+    assert.ok(pts.every((p) => !p.comparable), '缺指纹 → 全不可比,不能因签名同为空串而判全可比');
+  });
+
+  it('只缺样本指纹(评委仍在) → 仍 unknown 不可比', () => {
+    const r = rec([
+      ev({ reportId: 'r0', contentHash: 'hV0', recordedAt: '2026-06-02T00:00:00.000Z', sampleCoverage: undefined }),
+      ev({ reportId: 'r1', contentHash: 'hV1', recordedAt: '2026-06-03T00:00:00.000Z' }),
+    ], 'hV1');
+    const reports = new Map<string, ReportScoreView | null>([
+      ['r0', report('hV0', 3.1, [2.8, 3.4])],
+      ['r1', report('hV1', 3.6, [3.3, 3.9])],
+    ]);
+    const byHash = Object.fromEntries(buildVersionScores(r, reports).map((p) => [p.contentHash, p.comparable]));
+    assert.equal(byHash['hV0'], false, '缺样本指纹 → 无从核对 → 不可比');
+    assert.equal(byHash['hV1'], true, '基线两指纹齐全 → 与自身可比');
+  });
+
   it('无可画点 → 空数组', () => {
     assert.deepEqual(buildVersionScores(rec([]), new Map()), []);
   });

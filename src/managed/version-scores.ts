@@ -33,11 +33,17 @@ function olderFirst(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** 一条证据的可比性签名:评委模板 + debias + 样本集。三者全一致才认为两次测量同口径、可直接比分。 */
-function comparabilitySig(ev: ManagedEvidenceRef): string {
-  const judge = ev.comparability?.judgePromptHash ?? '';
+/**
+ * 一条证据的可比性签名:评委模板 + debias + 样本集,三者全一致才认为两次测量同口径、可直接比分。
+ * 缺评委指纹或样本集指纹 → 无从核对是否同口径,返回 null(= unknown);spec §6.1 明确 unknown 既不隐式
+ * 放行也不隐式拦截,故调用处把 null 一律按不可比渲染(空心点 + 虚线),不把「不知道能不能比」糊成实线趋势。
+ * debias 缺失退空串参与字符串比对(空 debias 是合法状态,非 unknown),只跟同样缺的版本算一致。
+ */
+function comparabilitySig(ev: ManagedEvidenceRef): string | null {
+  const judge = ev.comparability?.judgePromptHash;
+  const samples = ev.sampleCoverage?.hash;
+  if (!judge || !samples) return null;
   const debias = (ev.comparability?.debiasMode ?? []).slice().sort().join(',');
-  const samples = ev.sampleCoverage?.hash ?? '';
   return `${judge}|${debias}|${samples}`;
 }
 
@@ -70,13 +76,19 @@ export function buildVersionScores(
   // 基线 = 当前内容那版(没有就用最新一条),其余版本与之比对可比性。
   const baselineEntry = byHash.get(record.contentHash) ?? entries[entries.length - 1];
   const baselineSig = comparabilitySig(baselineEntry.ev);
-  return entries.map((en) => ({
-    contentHash: en.ev.contentHash,
-    recordedAt: en.ev.recordedAt,
-    composite: en.composite,
-    ciLow: en.ciLow,
-    ciHigh: en.ciHigh,
-    ...(en.ev.verdict ? { verdict: en.ev.verdict } : {}),
-    comparable: comparabilitySig(en.ev) === baselineSig,
-  }));
+  return entries.map((en) => {
+    const sig = comparabilitySig(en.ev);
+    // 自身与基线都能核对(签名非 null)且签名一致才算可比;任一缺评委 / 样本指纹(null = unknown)→ 不可比。
+    // 基线本身 unknown → baselineSig 为 null → 全版本(含基线自身)不可比,宁可全空心也不把 unknown 糊成可比。
+    const comparable = sig !== null && baselineSig !== null && sig === baselineSig;
+    return {
+      contentHash: en.ev.contentHash,
+      recordedAt: en.ev.recordedAt,
+      composite: en.composite,
+      ciLow: en.ciLow,
+      ciHigh: en.ciHigh,
+      ...(en.ev.verdict ? { verdict: en.ev.verdict } : {}),
+      comparable,
+    };
+  });
 }
