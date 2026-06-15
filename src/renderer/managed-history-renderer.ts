@@ -124,7 +124,7 @@ function versionHeader(hash: string, isCurrent: boolean, lang: Lang): string {
 }
 
 /** 版本回归曲线(纯 SVG,确定性、可 snapshot):每版 composite 均值 + 95%CI 竖须,按时间从旧到新。
- *  不可比的版本(换过评委 / 改过样本集)点画空心、连线画虚 —— 不糊一条误导的「在变好」线(spec §3)。
+ *  不可比的版本(换过评委 / 改过样本集,或缺指纹无法核对)点画空心、连线画虚 —— 不糊一条误导的「在变好」线(spec §3)。
  *  数据由 buildVersionScores 算好;少于 2 个点不画(单点无趋势可言)。composite 量纲不定,y 轴按数据自适应。 */
 function renderVersionCurve(points: VersionScorePoint[], lang: Lang): string {
   if (points.length < 2) return '';
@@ -167,7 +167,7 @@ function renderVersionCurve(points: VersionScorePoint[], lang: Lang): string {
 
   const anyIncomparable = points.some((p) => !p.comparable);
   const note = anyIncomparable
-    ? t('空心点 = 测量条件变了（换过评委 / 改过样本集），与当前版不可比；虚线段别直接读作进步或回退。', 'Hollow dots = measured under a different instrument (judge / sample set) than the current version, not comparable; do not read dashed segments as progress or regression.')
+    ? t('空心点 = 测量条件不同或无法核对（换过评委 / 改过样本集 / 缺指纹），与当前版不可比；虚线段别直接读作进步或回退。', 'Hollow dots = measured under a different or unverifiable instrument (judge / sample set changed, or fingerprint missing) than the current version, not comparable; do not read dashed segments as progress or regression.')
     : t('每个版本的 composite 均值与 95% 置信区间，按时间从旧到新。', 'Composite mean and 95% CI per version, oldest to newest.');
 
   return `<section class="mh-curve">
