@@ -51,6 +51,20 @@ describe('oclif sample', () => {
     }
   });
 
+  it('--append 与 --batch 互斥 → exit 2 + 中文提示', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'sample', '--batch', '--append']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.ok(
+        e.stderr.includes('--append') && e.stderr.includes('单 skill'),
+        `stderr missing append-single-only hint:\n${e.stderr}`,
+      );
+    }
+  });
+
   it('unknown flag → exit 2', async () => {
     try {
       await execFileAsync('node', [CLI, 'sample', '--bogus']);

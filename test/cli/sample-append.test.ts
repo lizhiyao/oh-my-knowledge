@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { mergeAppendSamples, appendSamplesToFile } from '../../src/cli/commands/sample.js';
+import { mergeAppendSamples, appendSamplesToFile, pickAppendTargetFile } from '../../src/cli/commands/sample.js';
 import type { Sample } from '../../src/types/eval.js';
 
 const s = (id: string, prompt = 'p'): Sample => ({ sample_id: id, prompt }) as Sample;
@@ -82,5 +82,39 @@ describe('appendSamplesToFile (读+合并+格式保留写回)', () => {
     const parsed = yaml.load(readFileSync(f, 'utf-8')) as Sample[];
     assert.ok(Array.isArray(parsed));
     assert.deepEqual(parsed.map((x) => x.sample_id), ['s001', 's002']);
+  });
+});
+
+describe('pickAppendTargetFile (目录模式选写回目标,确定性)', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-pick-')); });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('空目录 → null', () => {
+    assert.equal(pickAppendTargetFile(dir), null);
+  });
+
+  it('单文件 → 该文件', () => {
+    writeFileSync(join(dir, 'cases.json'), '[]');
+    assert.equal(pickAppendTargetFile(dir), join(dir, 'cases.json'));
+  });
+
+  it('有 samples.json → 优先 canonical samples.json', () => {
+    writeFileSync(join(dir, 'aaa.json'), '[]');
+    writeFileSync(join(dir, 'samples.json'), '[]');
+    assert.equal(pickAppendTargetFile(dir), join(dir, 'samples.json'));
+  });
+
+  it('无 samples.json → 排序后第一个(不依赖枚举顺序)', () => {
+    writeFileSync(join(dir, 'b.json'), '[]');
+    writeFileSync(join(dir, 'a.json'), '[]');
+    assert.equal(pickAppendTargetFile(dir), join(dir, 'a.json'));
+  });
+
+  it('忽略 report/health/_ 前缀文件', () => {
+    writeFileSync(join(dir, 'report-x.json'), '{}');
+    writeFileSync(join(dir, '_meta.json'), '{}');
+    writeFileSync(join(dir, 'cases.json'), '[]');
+    assert.equal(pickAppendTargetFile(dir), join(dir, 'cases.json'));
   });
 });

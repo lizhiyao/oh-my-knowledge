@@ -66,8 +66,10 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
 }
 
 /** Pull `.json/.yaml/.yml` siblings out of a directory, skipping omk's own report/health
- *  artifacts and any underscore-prefixed file (the convention for "not a sample"). */
-function listSampleFilesInDir(dir: string): string[] {
+ *  artifacts and any underscore-prefixed file (the convention for "not a sample").
+ *  Exported so `omk sample --append` picks its target with the same sorted/filtered order
+ *  that directory-mode loading merges by (deterministic, predictable). */
+export function listSampleFilesInDir(dir: string): string[] {
   const RESERVED = /^(report|health|_)/i;
   return readdirSync(dir)
     .filter((f) => /\.(json|ya?ml)$/i.test(f))
