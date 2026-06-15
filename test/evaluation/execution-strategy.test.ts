@@ -164,3 +164,20 @@ describe('buildVariantConfig skill isolation', () => {
     assert.equal(cfg.allowedSkills, undefined);
   });
 });
+
+describe('buildVariantConfig 还原坐标透传(#234/#236)', () => {
+  // 这段是 resolveArtifacts(写 artifact.resolvedCommit)→ evidence(读 variantConfig.resolvedCommit)之间的胶水。
+  // resolvedCommit 是可选字段,漏拷会让 typecheck 与两端单测都照样绿、整条还原坐标链却断 —— 必须显式锁住。
+  const gitArtifact = (over: Partial<Artifact>): Artifact => ({
+    name: 'review', kind: 'skill', source: 'git', content: 'sys', experimentRole: 'treatment', ...over,
+  });
+
+  it('artifact.resolvedCommit 透传到 VariantConfig(evidence 据此记每版还原坐标)', () => {
+    const cfg = buildVariantConfig(gitArtifact({ resolvedCommit: 'abc1234567890deffeed' }));
+    assert.equal(cfg.resolvedCommit, 'abc1234567890deffeed');
+  });
+
+  it('artifact 无 resolvedCommit(远端 / file / baseline)→ VariantConfig 不带该字段', () => {
+    assert.equal(buildVariantConfig(gitArtifact({})).resolvedCommit, undefined);
+  });
+});

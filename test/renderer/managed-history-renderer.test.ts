@@ -96,6 +96,13 @@ const GIT_RESTORE_NASTY_PATH: ManagedArtifactRecord = {
   source: { sourceKind: 'git', locator: "git:HEAD:skills/a b; it's $(echo pwned)", ref: 'HEAD', isDirectorySkill: true },
 };
 
+// 裸名 file-skill(isDirectorySkill=false,locator spec 不带 .md)→ 还原路径须补 `.md`(实际文件是 review.md)。
+const GIT_RESTORE_FILE_SKILL: ManagedArtifactRecord = {
+  ...GIT_RESTORE_RECORD,
+  id: 'skill-restore-file',
+  source: { sourceKind: 'git', locator: 'git:HEAD:review', ref: 'HEAD', isDirectorySkill: false },
+};
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -135,5 +142,8 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory git 还原路径含空格 / 元字符 → shell quoting zh', () => {
     expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_NASTY_PATH, 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 裸名 file-skill 还原路径补 .md zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_FILE_SKILL, 'zh' as Lang))).toMatchSnapshot();
   });
 });

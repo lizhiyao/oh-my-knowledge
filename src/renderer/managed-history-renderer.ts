@@ -85,12 +85,18 @@ function reportLink(reportId: string | undefined, lang: Lang): string {
   return `<a class="mh-link" href="/reports/${encodeURIComponent(reportId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
 }
 
-/** 本地 git 源的仓内路径(`git:<ref>:<spec>` → spec),给 `git checkout <sha> -- <spec>` 提示带上 `-- <path>`。
- *  远端 / file 源 → undefined(gitCommit 闸门已只对本地 git 写,故此处通常有值,无值时退化为不带路径的 checkout)。 */
+/** 本地 git 源的仓内路径(`git:<ref>:<spec>` → spec),给 `git checkout <sha> -- <path>` 提示带上 `-- <path>`。
+ *  远端 / file 源 → undefined(本地 git 才有 cwd checkout 语义)。
+ *  file-skill 的实际仓内文件是 `<spec>.md`(install 裸名 spec 经 classifyGitSkillRef 解到 `<spec>.md`),
+ *  故 file-skill 且 spec 未带 `.md` 时补上 —— 否则 `git checkout … -- review` 匹配不到 `review.md`。
+ *  已知局限:locator 的 spec 是**安装时 cwd 相对**的(不含 gitRelDir 前缀),在仓库子目录里 install 的 skill,
+ *  还原路径会缺该子目录前缀。彻底修需在记录上另存仓库根相对路径(与 drift 重解析的 cwd 相对语义解耦),留 follow-up。 */
 function gitRestorePath(source: ManagedArtifactRecord['source']): string | undefined {
   if (source.sourceKind !== 'git' || source.url) return undefined;
   const m = /^git:[^:]*:(.+)$/.exec(source.locator);
-  return m ? m[1] : undefined;
+  if (!m) return undefined;
+  const spec = m[1];
+  return (!source.isDirectorySkill && !/\.md$/i.test(spec)) ? `${spec}.md` : spec;
 }
 
 /** POSIX 单引号包裹,内部 `'` 按 `'\''` 标准转义。还原提示是给用户复制粘贴的 shell 命令,git 路径可含
