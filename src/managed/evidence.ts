@@ -28,7 +28,7 @@
 import { basename, dirname } from 'node:path';
 import type { EvaluationReport, ManagedArtifactSource, ManagedEvidenceRef, VariantConfig } from '../types/index.js';
 import { hashString } from '../eval-core/evaluation-reporting.js';
-import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir } from './store.js';
+import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir, isShaLike } from './store.js';
 
 /** baseline / 无 skill 变体的 artifactHash 哨兵(见 report.ts artifactHashes 注释)——不产证据。 */
 const NO_SKILL = 'no-skill';
@@ -53,8 +53,9 @@ function sampleCoverage(report: EvaluationReport): { count: number; hash: string
 function gitRestoreCommit(report: EvaluationReport, source?: ManagedArtifactSource): string | undefined {
   if (!source || source.sourceKind !== 'git' || source.url) return undefined;
   const git = report.meta?.gitInfo;
-  if (!git || git.dirty || !git.commit) return undefined;
-  return git.commit;
+  if (!git || git.dirty) return undefined;
+  // 写时即按 SHA 形态校验(与读取 validator 同一判定),不写一个重载时会被自己判脏 / 剥掉的非规整值。
+  return isShaLike(git.commit) ? git.commit : undefined;
 }
 
 /**

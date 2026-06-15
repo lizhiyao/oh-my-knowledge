@@ -54,10 +54,16 @@ function isOptionalString(v: unknown): boolean {
   return v === undefined || typeof v === 'string';
 }
 
-/** 可选 git SHA 字段守卫(evidence.gitCommit):缺省,或形如 7–64 位 hex 的 commit。脏记录里写成对象 /
- *  非 SHA 串会让 Studio 渲染 `ev.gitCommit.slice()` 抛 TypeError(整页打不开),故落盘前按 SHA 形态收窄。 */
+/** git commit SHA 形态:7–64 位 hex。写入(evidence.ts)与读取校验共用同一判定,避免写读不对称
+ *  (写时不校验、读时却要求 SHA → 自己写进去的值重载时被自己判脏)。 */
+export function isShaLike(v: unknown): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{7,64}$/i.test(v);
+}
+
+/** 可选 git SHA 字段守卫(evidence.gitCommit):缺省或合法 SHA 形态。脏值会让 Studio 渲染
+ *  `ev.gitCommit.slice()` 抛 TypeError(整页打不开),故读时按 SHA 形态收窄(脏值只剥字段,见下)。 */
 function isOptionalSha(v: unknown): boolean {
-  return v === undefined || (typeof v === 'string' && /^[0-9a-f]{7,64}$/i.test(v));
+  return v === undefined || isShaLike(v);
 }
 
 // 受管记录可安装的 kind(managed 记录绝不是 baseline)。
@@ -106,8 +112,10 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
       if (c.debiasMode !== undefined
         && !(Array.isArray(c.debiasMode) && c.debiasMode.every((m) => m === 'length' || m === 'position'))) return false;
     }
-    // gitCommit 是 Studio 渲染 `git checkout` 指针时解引用的字段,脏值收窄到 SHA 形态(见 isOptionalSha)。
-    if (!isOptionalSha(ev.gitCommit)) return false;
+    // gitCommit 是纯展示的还原指针:脏值(非 SHA 形态)只剥掉该字段,不像测量关键字段那样判脏丢整条记录
+    // —— 一处装饰字段的 typo 不该让整条记录连同 evidence / decision 历史从 list / Studio 消失。剥后剩余
+    // 字段仍是合法 evidence,Studio 渲染 `ev.gitCommit.slice()` 也不再触雷(字段已不存在)。
+    if (!isOptionalSha(ev.gitCommit)) delete ev.gitCommit;
     return true;
   });
   const okDec = r.decisions.every((d) => {

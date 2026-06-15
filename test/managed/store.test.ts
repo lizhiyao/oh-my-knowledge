@@ -205,16 +205,24 @@ describe('managed store', () => {
     write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', comparability: { cliVersion: '0.35.0', debiasMode: ['length', 'evil'] } }] });
     assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 含非法枚举值判脏');
 
-    // gitCommit 是 Studio 渲染 `git checkout` 时解引用的字段(.slice),脏值收窄到 SHA 形态防整页崩。
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', gitCommit: { nested: true } }] });
-    assert.equal(loadManagedRecord(store, id), null, 'evidence.gitCommit 非 string 判脏(防 Studio .slice 崩页)');
+    // gitCommit 是纯展示的还原指针:脏值(非 SHA 形态)只剥该字段、保留整条记录(不像测量关键字段判脏丢弃),
+    // 否则一处装饰字段 typo 会让整条记录连同 evidence / decision 历史从 list / Studio 消失;剥后 Studio 渲染
+    // `ev.gitCommit.slice()` 也不再触雷(字段已不存在)。
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', gitCommit: { nested: true } }] });
+    let loaded = loadManagedRecord(store, id);
+    assert.ok(loaded, 'gitCommit 非 string 不丢记录');
+    assert.equal(loaded!.evidence[0].gitCommit, undefined, 'gitCommit 非 string → 剥掉该字段');
 
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: 't', gitCommit: 'nothex-zzz' }] });
-    assert.equal(loadManagedRecord(store, id), null, 'evidence.gitCommit 非 SHA 形态(含非 hex)判脏');
+    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', gitCommit: 'nothex-zzz' }] });
+    loaded = loadManagedRecord(store, id);
+    assert.ok(loaded, 'gitCommit 非 SHA 形态不丢记录');
+    assert.equal(loaded!.evidence[0].gitCommit, undefined, 'gitCommit 非 SHA 形态(含非 hex)→ 剥掉该字段');
 
-    // 合法记录仍放行(含完整 evidence bundle + 合法 comparability marker + 合法 gitCommit,确认没把合法值误伤)。
+    // 合法记录仍放行,且合法 gitCommit 保留(确认没把合法值误剥)。
     write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: 't', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] }, gitCommit: 'abc1234567890def' }] });
-    assert.ok(loadManagedRecord(store, id), '合法记录正常加载');
+    loaded = loadManagedRecord(store, id);
+    assert.ok(loaded, '合法记录正常加载');
+    assert.equal(loaded!.evidence[0].gitCommit, 'abc1234567890def', '合法 gitCommit 保留');
   });
 
   it('loadAllManagedRecords:跳过损坏文件,只收合法记录', () => {

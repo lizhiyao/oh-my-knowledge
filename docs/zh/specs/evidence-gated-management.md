@@ -43,7 +43,7 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 每个管理决策都必须保护 omk 的测量姿态：
 
 - 转正决策必须指向可比报告，或明确标注可比性限制。
-- 回滚决策必须显式且留痕；MVP 只撤销当前版本的接受。恢复*历史*版本内容交给 git——omk 负责指出该回到哪个有证据背书的版本——每版的 git 坐标（#236）让这步变成精确的 `git checkout` 提示——字节层面的还原由 git 做。
+- 回滚决策必须显式且留痕；MVP 只撤销当前版本的接受。恢复*历史*版本内容交给 git——omk 负责指出该回到哪个有证据背书的版本——每版的 git 坐标（#236）让这步变成现成的 `git checkout` 提示——字节层面的还原由 git 做。
 - 线上观测必须展示归因可信度，不能静默覆盖 eval 证据。
 - 证据过期或不可比时必须对用户可见，不能藏在绿色状态后面。
 
@@ -187,7 +187,7 @@ omk install ./prompts/rewrite.md --kind prompt
 
 `rollback` 是 `promote` 的反操作：撤销当前版本的 promoted 接受。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定（actor、时间戳、可选理由）；`promoted` 生命周期标签再按当前内容**最近一条** promote/rollback 决定推导（`isCurrentlyPromoted`），源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。它是内容锚定、无门禁的（降级永远安全）：只看 `record.contentHash` 上的 promote/rollback 历史。
 
-MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复）**超出范围——交给 git**。omk 不存版本字节、不自建版本仓库（那就成了 §1 明确不做的「更会拷文件」），也不替用户对工作树执行还原（冒犯，且是 git 的本分）。omk 在此加的是本分内的一点（#236）：在证据上额外记一个每版的 git 坐标（SHA）当指针，让 `list` / Studio 能展示带证据的版本历史，并对 git 来源给出现成的 `git checkout` 把你带回选定的版本。坐标只在它真能锚住被测字节时才记——**本地 git 源、且工作树干净**那一版；远端源的还原是重装它记录级的 pinned SHA（不是 cwd `git checkout`），dirty 工作树则没有任何 commit 能复现被测内容（故刚 `evolve`、未提交的产物不记坐标）。非 git、就地编辑的源没有坐标可还原——诚实的答案是用 git 把 skill 管起来，omk 不重造它。
+MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回退一个未 promoted 的版本以非零码退出（无可撤销）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。把*更早的转正版本内容*恢复写回源文件（真正的文件恢复）**超出范围——交给 git**。omk 不存版本字节、不自建版本仓库（那就成了 §1 明确不做的「更会拷文件」），也不替用户对工作树执行还原（冒犯，且是 git 的本分）。omk 在此加的是本分内的一点（#236）：在证据上额外记一个每版的 git 坐标（SHA）当指针，让 `list` / Studio 能展示带证据的版本历史，并对 git 来源给出现成的 `git checkout` 把选定版本的跟踪文件还原进工作树（git 的 pathspec 还原——对目录-skill 不会删除那一版之后新增的文件）。坐标只在它真能锚住被测字节时才记——**本地 git 源、且工作树干净**那一版；远端源的还原是重装它记录级的 pinned SHA（不是 cwd `git checkout`），dirty 工作树则没有任何 commit 能复现被测内容（故刚 `evolve`、未提交的产物不记坐标）。非 git、就地编辑的源没有坐标可还原——诚实的答案是用 git 把 skill 管起来，omk 不重造它。
 
 ### `observe`
 

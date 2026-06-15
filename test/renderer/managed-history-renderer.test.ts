@@ -88,11 +88,12 @@ const GIT_RESTORE_RECORD: ManagedArtifactRecord = {
   decisions: [],
 };
 
-// 仓内路径含空格 + shell 元字符 → 测 `git checkout` 提示对路径做 POSIX 单引号 quoting(防复制粘贴被改写命令语义)。
+// 仓内路径含空格 + 分号 + 单引号 + $() → 测 `git checkout` 提示对路径做 POSIX 单引号 quoting(含内部 ' 的
+// `'\''` 转义),防复制粘贴被改写命令语义。
 const GIT_RESTORE_NASTY_PATH: ManagedArtifactRecord = {
   ...GIT_RESTORE_RECORD,
   id: 'skill-restore-nasty',
-  source: { sourceKind: 'git', locator: 'git:HEAD:skills/a b; echo pwned', ref: 'HEAD', isDirectorySkill: true },
+  source: { sourceKind: 'git', locator: "git:HEAD:skills/a b; it's $(echo pwned)", ref: 'HEAD', isDirectorySkill: true },
 };
 
 describe('managed-history-renderer snapshots', () => {

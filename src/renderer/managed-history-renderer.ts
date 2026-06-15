@@ -123,10 +123,13 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   if (ev.cliVersion) detail.push(`<span class="mh-detail-item">omk ${e(ev.cliVersion)}</span>`);
   if (ev.reportId) detail.push(reportLink(ev.reportId, lang));
   if (ev.reason) detail.push(`<span class="mh-reason">「${e(ev.reason)}」</span>`);
-  // #234/#236 还原指针:这一版有 git 坐标 → 给现成的 `git checkout` 把源带回该版(字节级还原交给 git)。
-  // 显 full SHA(精确坐标、无歧义);路径 shell-quote 防注入(见 shellQuote)。
-  if (ev.gitCommit) {
-    const cmd = `git checkout ${ev.gitCommit}${restorePath ? ` -- ${shellQuote(restorePath)}` : ''}`;
+  // #234/#236 还原指针:这一版有 git 坐标 + 能解析出仓内路径 → 给现成的 `git checkout <sha> -- <path>` 把
+  // 该路径还原进工作树(字节级还原交给 git)。必须带 `-- <path>`:不带 pathspec 的 `git checkout <sha>` 是切
+  // detached HEAD、整棵工作树被换,语义完全不同且危险 —— 故解析不出路径时干脆不显,不退化成那条命令。显
+  // full SHA(精确坐标、无歧义);路径 shell-quote 防注入(见 shellQuote)。
+  // 注:对目录-skill,checkout 还原该版的跟踪文件,但不会删除其后新增的文件 —— git pathspec 的固有语义。
+  if (ev.gitCommit && restorePath) {
+    const cmd = `git checkout ${ev.gitCommit} -- ${shellQuote(restorePath)}`;
     detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
   }
 

@@ -109,6 +109,11 @@ describe('managed evidence — gitCommit 还原坐标(#234/#236)', () => {
     assert.equal(buildEvidenceRef(makeReport({ gitInfo: null }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE)!.gitCommit, undefined);
     assert.equal(buildEvidenceRef(makeReport({ gitInfo: CLEAN_GIT }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
   });
+
+  it('commit 非 SHA 形态 → 不记(写时即校验,不写一个重载会被自己剥掉的非规整值)', () => {
+    const ref = buildEvidenceRef(makeReport({ gitInfo: { ...CLEAN_GIT, commit: 'not-a-sha' } }), 'review', 'PROGRESS', 'now', LOCAL_GIT_SOURCE);
+    assert.equal(ref!.gitCommit, undefined);
+  });
 });
 
 describe('managed evidence — appendManagedEvidence', () => {
