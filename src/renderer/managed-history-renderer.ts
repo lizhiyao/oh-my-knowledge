@@ -151,7 +151,7 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   // 其余(green/yellow 够力)→ 中性带标。与 deriveProductionGap 的 marker 分类同口径(store.ts)。
   if (ev.type === 'observe') {
     if (ev.healthBand === 'red' && ev.confidence !== 'underpowered') {
-      head.push(`<span class="mh-gap">${t('生产盲区', 'production gap')}</span>`);
+      head.push(`<span class="mh-gap">🔬 ${t('生产盲区', 'production gap')}</span>`);
     } else if (ev.confidence === 'underpowered') {
       head.push(`<span class="mh-badge-raw">${t('数据不足', 'underpowered')}</span>`);
     } else {
@@ -189,9 +189,15 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
     detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
   }
 
+  // 圆点配色:多数事件按 type 取色;observe 事件按**健康 band** 取色(盲区红 / 数据不足灰 / 健康绿)——
+  // observe 是 type 内有强弱的事件,健康观测画红点会撒谎,故复用 state-band 配色按实际健康度上色。
+  const dotClass = ev.type === 'observe'
+    ? (ev.healthBand === 'red' && ev.confidence !== 'underpowered' ? 'mh-dot--red'
+      : ev.confidence === 'underpowered' ? 'mh-dot--muted' : 'mh-dot--green')
+    : `mh-dot--${ev.type}`;
   return `<li class="mh-event mh-event--${ev.type}">
     <span class="mh-time">${e(fmtLocalTime(ev.at))}</span>
-    <span class="mh-marker"><span class="mh-dot mh-dot--${ev.type}"></span></span>
+    <span class="mh-marker"><span class="mh-dot ${dotClass}"></span></span>
     <div class="mh-body">
       <div class="mh-head">${head.join(' ')}</div>
       ${detail.length ? `<div class="mh-detail">${detail.join('')}</div>` : ''}
@@ -337,7 +343,8 @@ function productionGapBadge(row: ManagedListRow, lang: Lang): string {
   const t = L(lang);
   const areas = topGapAreas(row.productionGap.gapByType, lang);
   const tip = areas ? t(`线上生产盲区，集中在：${areas}`, `production gap in real traffic, in: ${areas}`) : t('线上检测到生产盲区', 'production gap detected in real traffic');
-  return ` <span class="mh-gap" title="${e(tip)}">🔬 ${t('生产盲区', 'prod gap')}</span>`;
+  // 只放图标(state 列窄、固定 130px,带文字徽标会溢出压到 name 列);全称走 tooltip + legend + 时间线。
+  return ` <span class="mh-gap" title="${e(tip)}">🔬</span>`;
 }
 
 function listRow(row: ManagedListRow, lang: Lang): string {
@@ -375,7 +382,7 @@ export function renderManagedList(rows: ManagedListRow[], lang: Lang): string {
     <span class="mh-legend-item">${t('? 源未核（不可达 / 拒读，漂移待定）', '? = source unverified (unreachable / refused)')}</span>
     <span class="mh-legend-item">${t('证据列：当前有效 / 全部历史（旧证据留作回滚）', 'Evidence = current / total (old evidence kept for rollback)')}</span>
     <span class="mh-legend-item"><span class="mh-override">${t('越门', 'override')}</span>${t(' 当前采用是 --force 越门来的（决定人由命令行记录）', ' = current version force-promoted via --force (actor recorded by CLI)')}</span>
-    <span class="mh-legend-item"><span class="mh-gap">🔬 ${t('生产盲区', 'prod gap')}</span>${t(' observe 在线上检测到的盲区（版本无关信号、与生命周期正交，不翻 stale）', ' = production gap from observe (version-agnostic, orthogonal to lifecycle, never flips stale)')}</span>
+    <span class="mh-legend-item"><span class="mh-gap">🔬</span>${t(' 生产盲区：observe 在线上检测到的盲区（版本无关信号、与生命周期正交，不翻 stale）', ' = production gap from observe (version-agnostic, orthogonal to lifecycle, never flips stale)')}</span>
   </div>`;
 
   const body = `<main class="mh-main">
@@ -423,7 +430,6 @@ const MANAGED_CSS = `
 .mh-dot--promote{background:var(--green)}
 .mh-dot--rollback{background:var(--yellow)}
 .mh-dot--reject{background:var(--red)}
-.mh-dot--observe{background:var(--red);box-shadow:0 0 0 2px var(--red-bg)}
 .mh-dot--green{background:var(--green)}.mh-dot--accent{background:var(--accent)}.mh-dot--muted{background:var(--text-muted)}.mh-dot--red{background:var(--red)}
 .mh-body{flex:1;min-width:0}
 .mh-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}

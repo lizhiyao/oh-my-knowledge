@@ -76,6 +76,33 @@ describe('renderTable 状态符不变量', () => {
   });
 });
 
+describe('renderTable 生产盲区 🔬 标(#235,与 state 正交)', () => {
+  const gap = { healthBand: 'red' as const, confidence: 'high' as const, gapByType: { failed_search: 2, explicit_marker: 0, hedging: 0, repeated_failure: 0 } };
+
+  it('measurable + productionGap → state 列叠加 🔬,不替换 state', () => {
+    const line = dataLine(row({ state: 'measurable', reachable: true, currentEvidenceCount: 1, totalEvidenceCount: 1, productionGap: gap }));
+    assert.ok(line.includes('measurable'), 'state token 仍在');
+    assert.ok(line.includes('🔬'), '叠加生产盲区标');
+  });
+
+  it('无 productionGap → 无 🔬', () => {
+    const line = dataLine(row({ state: 'measurable', reachable: true, currentEvidenceCount: 1, totalEvidenceCount: 1 }));
+    assert.ok(!line.includes('🔬'), '无观测盲区不出 🔬');
+  });
+
+  it('正交性:stale ⚠️ 与生产盲区 🔬 可共存(两轴独立)', () => {
+    const line = dataLine(row({ state: 'stale', drifted: true, reachable: true, productionGap: gap }));
+    assert.ok(line.includes('stale ⚠️'), '漂移轴仍标 ⚠️');
+    assert.ok(line.includes('🔬'), '生产盲区轴独立标 🔬');
+  });
+
+  it('正交性:不可达 `?` 与生产盲区 🔬 可共存(observe 量线上部署版,与源可达无关)', () => {
+    const line = dataLine(row({ state: 'installed', reachable: false, productionGap: gap }));
+    assert.ok(line.includes('installed ?'), '不可达轴仍标 ?');
+    assert.ok(line.includes('🔬'), '生产盲区轴独立标 🔬');
+  });
+});
+
 describe('renderTable name 截断', () => {
   it('超长 name 被按显示宽度截断,不撑爆表宽', () => {
     const out = renderTable([row({ name: 'x'.repeat(120) })], 'en');
