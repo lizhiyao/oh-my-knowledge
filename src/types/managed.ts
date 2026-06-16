@@ -88,10 +88,9 @@ export interface ManagedObservation {
   observationKind: 'production-health';
   /** observe-health 报告 id —— append 去重主键(observe 无 contentHash,故不用 (reportId, contentHash))。 */
   reportId: string;
-  /** 被观测**流量窗口的结束时刻**(report.meta.timeRange.to)——不是报告生成的「此刻」。版本闸门据此判
-   *  「观测晚于当前内容诞生」:用生成时刻(恒约等于 now)会让闸门几乎永不过滤、把旧版盲区算到新版头上。
-   *  latest-wins 也用它(最近窗口胜)。注:窗口若**跨越** re-baseline(起点早于、终点晚于)仍会亮——版本盲
-   *  的生产数据无法精确切分,属已知局限(见 spec §7)。 */
+  /** 被观测**流量窗口的结束时刻**(report.meta.timeRange.to)——不是报告生成的「此刻」(generatedAt 恒约等于
+   *  now,拿它做 latest-wins 会让所有观测看起来一样新)。deriveProductionGap 据此取最新一条观测。注:观测是
+   *  **版本无关的生产信号**(量的是线上部署版),不按源码版归因,见 deriveProductionGap。 */
   observedAt: string;
   /** 该 skill 在窗口内的盲区率与严重度加权盲区率(直接取 observe 已算好的 per-skill 值,不重算)。 */
   gapRate: number;

@@ -497,16 +497,15 @@ describe('managed store — observations(#235)', () => {
     assert.equal(m.latest!.reportId, 'new');
   });
 
-  it('deriveProductionGap 版本闸门:观测早于当前内容首次出现 → 不算到当前版头上', () => {
-    // 当前内容 B 的首条证据在 2026-06-10;之前(2026-06-05)的观测是关于旧版的,滤掉。
+  it('无版本闸门:观测早于当前内容证据也照常 surface(版本无关信号,不按源码版归因)', () => {
+    // 当前内容 B 的证据在 2026-06-20,而观测窗口结束在 2026-06-05(早于)。observe 量的是线上部署版,
+    // 记录无可靠「源码版↔部署版」时间锚,故不做版本闸门 —— 按 latest-wins 照常 surface(防回归:有人若
+    // 重新加闸门,这条会红)。源码 bump 后旧观测仍有效(旧副本还部署着),闸门会错误压掉它。
     const rec = makeRecord({
       contentHash: 'bbbbbbbbbbbb',
-      evidence: [{ reportId: 'evB', contentHash: 'bbbbbbbbbbbb', recordedAt: '2026-06-10T00:00:00.000Z' }],
+      evidence: [{ reportId: 'evB', contentHash: 'bbbbbbbbbbbb', recordedAt: '2026-06-20T00:00:00.000Z' }],
       observations: [makeObs({ observedAt: '2026-06-05T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })],
     });
-    assert.equal(deriveProductionGap(rec).marker, 'none', '旧版观测被版本闸门滤掉');
-    // 晚于当前内容出现的红观测 → 正常 gap。
-    rec.observations = [makeObs({ observedAt: '2026-06-15T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })];
     assert.equal(deriveProductionGap(rec).marker, 'gap');
   });
 

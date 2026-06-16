@@ -474,42 +474,34 @@ export function isProductionGapObservation(obs: ManagedObservation): boolean {
 }
 
 const obsMs = (s: string): number | null => { const n = Date.parse(s); return Number.isNaN(n) ? null : n; };
-function obsOlderFirstNewerWins(cur: string, latest: string): boolean {
+/** 谁更新(按 observedAt = 流量窗口结束时刻):真实时刻可解析则比时刻,否则退字典序;并列取后出现的。 */
+function obsNewerWins(cur: string, latest: string): boolean {
   const tc = obsMs(cur); const tl = obsMs(latest);
   return tc !== null && tl !== null ? tc >= tl : cur >= latest;
 }
 
-/** 当前内容版本「出现」时刻的近似:当前 contentHash 证据里最早的 recordedAt,无当前证据则退 installedAt。
- *  evolve re-baseline 后新内容首条证据的 recordedAt 即新版诞生时刻 → 早于它的观测(关于旧版)被滤掉。 */
-function currentContentSince(record: ManagedArtifactRecord): string {
-  let since: string | undefined;
-  for (const e of record.evidence) {
-    if (e.contentHash !== record.contentHash) continue;
-    if (since === undefined || e.recordedAt < since) since = e.recordedAt;
-  }
-  return since ?? record.installedAt;
-}
-
 export interface ProductionGapState {
-  /** `gap` = 确诊生产盲区(red+够力);`underpowered` = 线上数据不足、不可知;`none` = 无信号 / 旧版观测被滤。 */
+  /** `gap` = 确诊生产盲区(red + 够力);`underpowered` = 线上数据不足、不可知;`none` = 无观测 / 最新观测非红。 */
   marker: 'none' | 'gap' | 'underpowered';
   latest?: ManagedObservation;
 }
 
 /**
- * observe 生产健康观测的**读时 marker**(#235)。观测是**版本无关的生产信号**(看的是线上正在跑那一版,
- * 无 skill contentHash),故:取最新一条观测,**仅当它晚于当前内容版本诞生时刻**才 surface —— 否则是旧版的
- * 盲区,不算到当前版头上(evolve re-baseline 后尤其要紧)。red+够力 → `gap`;underpowered → `underpowered`
- * (数据不足);其余 → `none`。**绝不翻 stale / 不动生命周期枚举**(§6.1:只有内容漂移翻 stale,observe 是信号
- * 源不是受控 eval)。
+ * observe 生产健康观测的**读时 marker**(#235)。取**最新一条**观测(latest-wins,按 observedAt = 被观测
+ * 流量窗口结束时刻)分类:red + 够力 → `gap`;underpowered → `underpowered`(数据不足);其余 → `none`。
+ *
+ * **版本无关的生产信号**:observe 量的是线上**部署版**的行为,而记录里没有可靠的「源码版 ↔ 部署版」时间锚
+ * (`evolve` 改写源、`rebaselineManagedContentHash` 只换 `contentHash`,不碰 distribution/installedAt;部署副本
+ * 仍是旧的)——所以这里**不按源码版归因、也不臆造版本闸门**(那只会给假精度、还会在源码 bump 后压掉仍然有效的
+ * 真盲区)。marker 反映的是部署版的近况,可能滞后于当前源码版,UI / spec 据此老实标注。
+ *
+ * **绝不翻 stale / 不动生命周期枚举**(§6.1:只有内容漂移翻 stale,observe 是信号源不是受控 eval)。
  */
 export function deriveProductionGap(record: ManagedArtifactRecord): ProductionGapState {
   const obs = record.observations ?? [];
   if (obs.length === 0) return { marker: 'none' };
   let latest = obs[0];
-  for (const o of obs) if (obsOlderFirstNewerWins(o.observedAt, latest.observedAt)) latest = o;
-  // 版本闸门:最新观测早于当前内容诞生 → 关于旧版,不 surface。
-  if (!obsOlderFirstNewerWins(latest.observedAt, currentContentSince(record))) return { marker: 'none', latest };
+  for (const o of obs) if (obsNewerWins(o.observedAt, latest.observedAt)) latest = o;
   if (isProductionGapObservation(latest)) return { marker: 'gap', latest };
   if (latest.confidence === 'underpowered') return { marker: 'underpowered', latest };
   return { marker: 'none', latest };
