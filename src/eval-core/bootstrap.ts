@@ -195,6 +195,60 @@ export function bootstrapDiffCI(
 }
 
 /**
+ * Bootstrap CI for the *difference* of two means on **paired** observations — when A and B
+ * are two measurements of the **same unit** (e.g. control vs treatment on the same sample,
+ * or original vs alternate judge prompt on the same response). Resamples the **pair indices
+ * jointly** and averages each pair's `b - a`, so the within-pair correlation is preserved.
+ *
+ * Why paired (vs `bootstrapDiffCI`'s independent resampling): when A and B move together
+ * across units (the usual case — the same sample scored by two variants is positively
+ * correlated), much of each group's variance is shared and cancels in the per-pair diff.
+ * The independent (unpaired) bootstrap ignores that, over-states the diff's variance, and
+ * widens the CI — *conservative*, costing real power. Use paired whenever the design is
+ * paired; use `bootstrapDiffCI` only for genuinely independent groups (or where a deliberate
+ * conservative bias is wanted). The point estimate is identical (mean of per-pair diffs =
+ * difference of paired means); only the CI tightens.
+ *
+ * `significant` is computed on the **unrounded** bounds (then the bounds are rounded for
+ * display) so a 4-decimal round never flips the call at the 0 boundary.
+ *
+ * @param pairs    Aligned observations; `a` = control/baseline, `b` = treatment. diff = b - a.
+ * @param alpha    Significance level. Default 0.05.
+ * @param samples  Bootstrap resamples. Default 1000.
+ * @param seed     Optional seed (deterministic by default — see module header).
+ */
+export function bootstrapPairedDiffCI(
+  pairs: Array<{ a: number; b: number }>,
+  alpha = DEFAULT_BOOTSTRAP_ALPHA,
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): BootstrapDiffCI {
+  if (pairs.length === 0) {
+    return { low: 0, high: 0, estimate: 0, samples: 0, significant: false };
+  }
+  const n = pairs.length;
+  const diffs = pairs.map((p) => p.b - p.a);
+  const rng = makeRng(seed);
+  const resampleDiffMeans: number[] = new Array(samples);
+  for (let s = 0; s < samples; s++) {
+    const idx = resampleIndices(n, n, rng);
+    let sum = 0;
+    for (const i of idx) sum += diffs[i];
+    resampleDiffMeans[s] = sum / n;
+  }
+  resampleDiffMeans.sort((a, b) => a - b);
+  const lowRaw = sortedQuantile(resampleDiffMeans, alpha / 2);
+  const highRaw = sortedQuantile(resampleDiffMeans, 1 - alpha / 2);
+  return {
+    low: round4(lowRaw),
+    high: round4(highRaw),
+    estimate: round4(mean(diffs)),
+    samples,
+    significant: !(lowRaw <= 0 && 0 <= highRaw),
+  };
+}
+
+/**
  * Generic bootstrap CI for an arbitrary sample-level metric. Used by
  * saturation analysis to get CI on metrics like stddev or
  * agreement, not just mean.

@@ -26,7 +26,7 @@
 
 import type { ExecutorFn, Report, Sample } from '../types/index.js';
 import { llmJudge } from './judge.js';
-import { bootstrapDiffCI, type BootstrapDiffCI } from '../eval-core/bootstrap.js';
+import { bootstrapPairedDiffCI, type BootstrapDiffCI } from '../eval-core/bootstrap.js';
 
 export interface DebiasValidateInput {
   report: Report;
@@ -157,9 +157,12 @@ export async function validateLengthDebias(input: DebiasValidateInput): Promise<
 
   const meanOriginal = avg(pairs.map((p) => p.originalScore));
   const meanAlternate = avg(pairs.map((p) => p.alternateScore));
-  const diffCI = bootstrapDiffCI(
-    pairs.map((p) => p.originalScore),
-    pairs.map((p) => p.alternateScore),
+  // **配对** diff CI:每个 sample 同时有 original 与 alternate prompt 两个分数(同一回答、两个 judge prompt
+  // = 配对设计)。原先拆成两数组喂独立重采样,丢弃了配对、高估方差、CI 偏宽 —— 对一个**检测**长度偏置敏感性
+  // 的工具,保守方向恰好是错的(更难检出真实偏置)。改配对:重采样 sample 下标、按 (alternate − original) 算,
+  // 保留 within-sample 相关、收紧 CI,提升对偏置的检出力。diff = b − a = alternate − original(同原约定)。
+  const diffCI = bootstrapPairedDiffCI(
+    pairs.map((p) => ({ a: p.originalScore, b: p.alternateScore })),
     0.05,
     bootstrapSamples,
     seed,

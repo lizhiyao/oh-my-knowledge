@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {
@@ -113,6 +113,39 @@ describe('bootstrapDiffCI', () => {
     const a = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
     const b = bootstrapDiffCI([3, 4, 5], [4, 5, 6], 0.05, 500, 555);
     assert.deepEqual(a, b);
+  });
+});
+
+describe('bootstrapPairedDiffCI', () => {
+  const width = (ci: { low: number; high: number }): number => ci.high - ci.low;
+
+  it('正相关配对数据:配对 CI 明显窄于独立重采样(收回被独立法浪费的功效)', () => {
+    // b = a + 0.5,每对差恒为 0.5(完全正相关)。配对:重采样后均值恒 0.5 → CI 退化到点 [0.5,0.5];
+    // 独立:分别重采样 a / b,mean(b)-mean(a) 有抽样波动 → CI 有宽度。这是配对收紧功效的极限演示。
+    const a = [1, 2, 3, 4, 5, 2, 4, 3];
+    const b = a.map((x) => x + 0.5);
+    const pairs = a.map((x, i) => ({ a: x, b: b[i] }));
+    const paired = bootstrapPairedDiffCI(pairs, 0.05, 1000, 42);
+    const unpaired = bootstrapDiffCI(a, b, 0.05, 1000, 42);
+    assert.ok(width(paired) < width(unpaired), `配对 CI 宽 ${width(paired)} 应 < 独立 ${width(unpaired)}`);
+    assert.equal(paired.estimate, 0.5, '点估计 = 平均每对差');
+    assert.equal(paired.low, 0.5);
+    assert.equal(paired.high, 0.5);
+    assert.ok(paired.significant, '恒正差 → 0 在 CI 外 → 显著');
+  });
+
+  it('点估计 = 配对均值差 = 差的均值,与独立法一致(只 CI 收紧,不动点估计)', () => {
+    const pairs = [{ a: 3, b: 4 }, { a: 4, b: 4 }, { a: 5, b: 7 }, { a: 2, b: 3 }];
+    const paired = bootstrapPairedDiffCI(pairs, 0.05, 500, 7);
+    // mean(b)-mean(a) = (4+4+7+3)/4 - (3+4+5+2)/4 = 4.5 - 3.5 = 1.0
+    assert.equal(paired.estimate, 1);
+  });
+
+  it('默认确定性 + 空输入安全', () => {
+    const pairs = [{ a: 3, b: 4 }, { a: 4, b: 4 }, { a: 5, b: 7 }];
+    assert.deepEqual(bootstrapPairedDiffCI(pairs, 0.05, 500), bootstrapPairedDiffCI(pairs, 0.05, 500));
+    assert.deepEqual(bootstrapPairedDiffCI(pairs, 0.05, 500), bootstrapPairedDiffCI(pairs, 0.05, 500, DEFAULT_BOOTSTRAP_SEED));
+    assert.deepEqual(bootstrapPairedDiffCI([], 0.05, 500), { low: 0, high: 0, estimate: 0, samples: 0, significant: false });
   });
 });
 

@@ -1132,11 +1132,15 @@ export async function evolveSkill({
     // Significance accept gate: accept only when the candidate is *significantly*
     // above the current best on the decision (val) set, not merely numerically higher
     // — rejecting gains indistinguishable from judge noise. `lastReport` is the current
-    // best's fresh eval and `candidateReport` the candidate's, over the same samples;
-    // bootstrapDiffCI resamples the two arrays independently (conservative — not a paired
-    // bootstrap). Under-powered decision sets degrade to the legacy point-estimate accept
-    // (note: that path compares the prior-round best scalar, not this fresh re-eval) and
-    // flag `gate.underpowered`.
+    // best's fresh eval and `candidateReport` the candidate's, over the same samples.
+    // **Deliberately UNPAIRED here** (independent resampling, `decideAccept` → `bootstrapDiffCI`),
+    // unlike the report verdict / debias which switched to `bootstrapPairedDiffCI`: this is an
+    // *optimization accept-gate*, and the unpaired bootstrap's wider, conservative CI is the
+    // wanted bias — it raises the bar to accept, so evolve does not chase paired-tightened,
+    // marginally-significant gains that risk overfitting the decision set. Power is not the goal
+    // for de-/escalation gates; not accepting noise is. Under-powered decision sets degrade to the
+    // legacy point-estimate accept (note: that path compares the prior-round best scalar, not this
+    // fresh re-eval) and flag `gate.underpowered`.
     const valIds = split ? split.valIds : new Set(allSampleIds);
     const bestScores = perSampleComposite(lastReport, lastVariantKey, valIds);
     const candScores = perSampleComposite(candidateReport, candidateVariantKey, valIds);
