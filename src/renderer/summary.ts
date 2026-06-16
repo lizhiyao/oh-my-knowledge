@@ -2,7 +2,8 @@ import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { icon as svgIcon } from './icons.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import { computeVerdict, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
+import { ciLevelLabel } from '../eval-core/bootstrap.js';
+import { computeVerdict, medianStabilityCV, STABILITY_UNSTABLE_CV, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
 import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
@@ -101,17 +102,10 @@ const SHIP_LABEL: Record<VerdictLevel, { zh: string; en: string }> = {
 };
 
 function computeMedianCVPercent(report: Report): number | null {
-  const variance = report.variance;
-  if (!variance || (variance.runs ?? 0) < 2) return null;
-  const cvs: number[] = [];
-  for (const v of Object.values(variance.perVariant ?? {})) {
-    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
-      cvs.push((v.stddev / v.mean) * 100);
-    }
-  }
-  if (cvs.length === 0) return null;
-  cvs.sort((a, b) => a - b);
-  return cvs[Math.floor(cvs.length / 2)];
+  // 单一来源:与 verdict 稳定性门控读同一个真·中位 CV(偶数 variant 取中间两项平均,非上中位),
+  // 杜绝 hero CV chip 与 verdict 在偶数 variant 上对不齐。返回百分号刻度。
+  const stab = medianStabilityCV(report);
+  return stab ? stab.cv * 100 : null;
 }
 
 export function renderVerdictPill(report: Report, lang: Lang): string {
@@ -140,11 +134,12 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   if (ci) {
     const sign = ci.estimate >= 0 ? '+' : '';
     const cvSuffix = cvPct != null
-      ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct < 15 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct < 15 ? 'moderate' : 'unstable'})`)
+      ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? 'moderate' : 'unstable'})`)
       : '';
+    const pctLabel = ciLevelLabel(report.meta?.pairComparisons?.[0]?.alpha);
     const ciTipBase = lang === 'zh'
-      ? `实验组与对照组综合分均值差(Δ)。bootstrap 95% 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
-      : `Treatment minus control mean composite score (Δ). Bootstrap 95% CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
+      ? `实验组与对照组综合分均值差(Δ)。bootstrap ${pctLabel} 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
+      : `Treatment minus control mean composite score (Δ). Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
     metrics.push({
       label: lang === 'zh' ? '分差' : 'Δ',
       value: `${sign}${ci.estimate}`,
@@ -177,6 +172,12 @@ export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, l
   if (!pairs || pairs.length === 0) return '';
   const validPairs = pairs.filter((p) => p.diffBootstrapCI);
   if (validPairs.length === 0) return '';
+  // 同一报告内所有比较共享 family α(α/K),取首对的 alpha 作 family 级标签;K=1 无 alpha → 名义 95%、不加注解
+  // (与历史渲染逐字节一致,保护既有快照)。仅 K≥2(alpha 存在)才追加 Bonferroni 说明 + 非 95% 的 CI 标签。
+  const pctLabel = ciLevelLabel(validPairs[0].alpha);
+  const corrected = validPairs[0].alpha != null;
+  const bonferroniNoteZh = corrected ? `多比较已按 Bonferroni 收 α(故 CI 宽于 95%)。` : '';
+  const bonferroniNoteEn = corrected ? ` Bonferroni-corrected α across multiple comparisons (CI wider than 95%).` : '';
 
   const rows = validPairs.map((p) => {
     const ci = p.diffBootstrapCI!;
@@ -194,13 +195,13 @@ export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, l
 
   return `
     <h2 style="margin-top:24px">${lang === 'zh' ? '配对对比 (Bootstrap CI)' : 'Pairwise comparison (bootstrap CI)'}</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? 'control vs treatment 的均值差 95% CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。' : '95% CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.'}</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? `control vs treatment 的均值差 ${pctLabel} CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。${bonferroniNoteZh}` : `${pctLabel} CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.${bonferroniNoteEn}`}</p>
     <div class="table-wrap">
     <table class="summary-table">
       <thead><tr>
         <th>${lang === 'zh' ? '对照' : 'Pair'}</th>
         <th title="${t('bootstrapDiffLabel', lang)}">${t('bootstrapDiffLabel', lang)}</th>
-        <th>95% CI</th>
+        <th>${pctLabel} CI</th>
         <th>${lang === 'zh' ? '显著性' : 'Significance'}</th>
         <th>${lang === 'zh' ? '重采样数' : 'samples'}</th>
       </tr></thead>
@@ -574,7 +575,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       const cvPct = cv * 100;
       let label: string;
       if (cvPct < 5) { label = lang === 'zh' ? '稳定' : 'Stable'; stabColor = 'var(--green)'; }
-      else if (cvPct < 15) { label = lang === 'zh' ? '较稳' : 'Moderate'; stabColor = 'var(--yellow)'; }
+      else if (cvPct <= STABILITY_UNSTABLE_CV * 100) { label = lang === 'zh' ? '较稳' : 'Moderate'; stabColor = 'var(--yellow)'; }
       else { label = lang === 'zh' ? '波动大' : 'Variable'; stabColor = 'var(--red)'; }
       stabValue = `${label} · ±${fmtNum(vd!.stddev, 2)}`;
       stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${fmtNum(vd!.lower, 2)}, ${fmtNum(vd!.upper, 2)}]`);
@@ -951,8 +952,10 @@ function computeJudgeAgreementBadge(variants: string[], summary: Record<string, 
 }
 
 function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null {
-  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const pair0 = report.meta?.pairComparisons?.[0];
+  const ci = pair0?.diffBootstrapCI;
   if (!ci) return null;
+  const pctLabel = ciLevelLabel(pair0?.alpha);
   const status: AuditBadgeStatus = ci.significant ? 'pass' : 'warn';
   const label = ci.significant
     ? (lang === 'zh' ? '差异显著' : 'significant')
@@ -961,7 +964,7 @@ function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null
     key: 'sig',
     label,
     status,
-    detail: lang === 'zh' ? `bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
+    detail: lang === 'zh' ? `bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
   };
 }
 

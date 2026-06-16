@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, ciLevelLabel, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {
@@ -168,6 +168,26 @@ describe('bootstrapPairedDiffCI', () => {
     assert.deepEqual(bootstrapPairedDiffCI(pairs, 0.05, 500), bootstrapPairedDiffCI(pairs, 0.05, 500));
     assert.deepEqual(bootstrapPairedDiffCI(pairs, 0.05, 500), bootstrapPairedDiffCI(pairs, 0.05, 500, DEFAULT_BOOTSTRAP_SEED));
     assert.deepEqual(bootstrapPairedDiffCI([], 0.05, 500), { low: 0, high: 0, estimate: 0, samples: 0, significant: false });
+  });
+
+  it('更小的 α → 更宽的 CI(Bonferroni 校正的算术地基:α/K < α 必然撑宽区间,点估计不动)', () => {
+    // 多重比较把每对的 α 从 0.05 收到 α/K。同一份数据、同一(默认)种子下,重采样分布逐字节相同,只是取的
+    // 分位更极端(α/2=0.025 取 1.25/98.75% vs 0.05 取 2.5/97.5%)→ CI 必然不窄于 α=0.05,通常更宽。
+    const pairs = Array.from({ length: 8 }, (_, i) => ({ a: 0, b: [1, 2, 0, 3, 1, 2, 0, 3][i] }));
+    const wide = bootstrapPairedDiffCI(pairs, 0.025, 1000); // 模拟 K=2 的 α/K
+    const narrow = bootstrapPairedDiffCI(pairs, 0.05, 1000); // 名义 α
+    const width = (ci: { low: number; high: number }): number => ci.high - ci.low;
+    assert.ok(width(wide) > width(narrow), `α/K(0.025)的 CI 宽 ${width(wide)} 应 > 名义 α(0.05)的 ${width(narrow)}`);
+    assert.equal(wide.estimate, narrow.estimate, '点估计与 α 无关,不应变');
+  });
+});
+
+describe('ciLevelLabel', () => {
+  it('α → (1−α)·100% 标签:默认 95%,Bonferroni 的 α/2 / α/3 跟着变高', () => {
+    assert.equal(ciLevelLabel(), '95%', '无 α → 名义 95%');
+    assert.equal(ciLevelLabel(0.05), '95%');
+    assert.equal(ciLevelLabel(0.05 / 2), '97.5%', 'K=2 → α/2 → 97.5%');
+    assert.equal(ciLevelLabel(0.05 / 3), '98.3%', 'K=3 → α/3 → 98.333…→98.3%');
   });
 });
 

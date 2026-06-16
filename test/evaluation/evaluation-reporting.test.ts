@@ -372,3 +372,47 @@ describe('aggregateReport — 配对 pairwise diff CI(#235 审计 PR3)', () => {
     assert.ok(report.meta.pairComparisons?.[0]?.diffBootstrapCI, 's2 缺测但 s1/s3 仍成对 → 仍出配对 diff CI');
   });
 });
+
+describe('aggregateReport — 多重比较 Bonferroni 校正(#235 审计 PR4)', () => {
+  const withComposite = (composite: number): VariantResult => ({ ...makeVariantResult(), compositeScore: composite });
+  const reqBootstrap = { bootstrap: true } as unknown as EvaluationRequest;
+  const ids = ['s1', 's2', 's3', 's4', 's5', 's6'];
+  // 各 variant 在每个 sample 上的 composite;a = control。
+  const scores: Record<string, number[]> = {
+    a: [3.0, 3.5, 4.0, 2.5, 3.8, 3.2],
+    b: [4.0, 3.6, 4.8, 2.6, 4.6, 3.3],
+    c: [3.1, 3.4, 3.9, 2.6, 3.7, 3.3],
+    d: [3.5, 4.0, 4.4, 3.0, 4.2, 3.6],
+  };
+  const build = (variants: string[]) => aggregateReport({
+    runId: 'r', variants, model: 'm', judgeModel: 'haiku', noJudge: true, executorName: 'codex',
+    samples: ids.map((id) => makeSample(id, 'task')), tasks: [],
+    results: Object.fromEntries(ids.map((id, i) => [id, Object.fromEntries(variants.map((v) => [v, withComposite(scores[v][i])]))])),
+    totalCostUSD: 0, artifacts: variants.map((v) => makeArtifact(v, v)),
+    request: reqBootstrap,
+  });
+
+  it('K=1(经典 A-B):不写 alpha 字段,CI 口径与历史一致(名义 α=0.05)', () => {
+    const pairs = build(['a', 'b']).meta.pairComparisons!;
+    assert.equal(pairs.length, 1);
+    assert.equal(pairs[0].alpha, undefined, 'K=1 不写 alpha,渲染按名义 95%,既有快照不动');
+  });
+
+  it('K=2:每对 CI 用 α/K=0.025,记录有效 alpha,且较 K=1 同对(α=0.05)更宽(点估计不变)', () => {
+    const k1 = build(['a', 'b']).meta.pairComparisons!;
+    const k2 = build(['a', 'b', 'c']).meta.pairComparisons!;
+    assert.equal(k2.length, 2, 'control 外两 treatment → 两个比较');
+    for (const p of k2) assert.equal(p.alpha, 0.05 / 2, '每对有效 α = α/K = 0.025');
+    const ab1 = k1.find((p) => p.treatment === 'b')!.diffBootstrapCI!;
+    const ab2 = k2.find((p) => p.treatment === 'b')!.diffBootstrapCI!;
+    const width = (ci: { low: number; high: number }): number => ci.high - ci.low;
+    assert.ok(width(ab2) > width(ab1), `K=2 的 (a,b) CI 宽 ${width(ab2)} 应 > K=1 的 ${width(ab1)}`);
+    assert.equal(ab2.estimate, ab1.estimate, '同一份 (a,b) 数据点估计与 K 无关');
+  });
+
+  it('K=3:有效 α = α/3,三个比较都带同一 alpha', () => {
+    const k3 = build(['a', 'b', 'c', 'd']).meta.pairComparisons!;
+    assert.equal(k3.length, 3);
+    for (const p of k3) assert.ok(Math.abs(p.alpha! - 0.05 / 3) < 1e-12, `每对 α 应 ≈ α/3,实得 ${p.alpha}`);
+  });
+});

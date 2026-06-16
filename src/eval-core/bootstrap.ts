@@ -62,6 +62,17 @@ export const DEFAULT_BOOTSTRAP_ALPHA = 0.05;
  */
 export const DEFAULT_BOOTSTRAP_SEED = 20260616;
 
+/**
+ * Confidence-level label for display: `(1 − α)·100%`. Multiple-comparison (Bonferroni) correction
+ * shrinks a pairwise α to α/K and widens the CI accordingly — the label must track α so a corrected
+ * (wider) interval is never mislabeled "95%". No alpha (single comparison / classic A-B) ⇒ nominal 95%.
+ * Shared single source for the HTML renderer and the `omk eval` CLI verdict so both read one scale.
+ */
+export function ciLevelLabel(alpha?: number): string {
+  const pct = (1 - (alpha ?? DEFAULT_BOOTSTRAP_ALPHA)) * 100;
+  return `${Number.isInteger(pct) ? pct : Number(pct.toFixed(1))}%`;
+}
+
 /** Mulberry32 PRNG — seedable, deterministic for tests. */
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;

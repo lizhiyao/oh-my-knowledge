@@ -72,6 +72,15 @@ Each piece guards a different failure mode:
 
 Skip any one and you have a hole. Bootstrap CI, length-debias and saturation are on by default — you can opt out of length-debias for research replication, but those are otherwise unconditional; Krippendorff α turns on automatically once you supply a gold set (`--gold-dir`).
 
+## Verdict robustness — multiple comparisons + stability gate
+
+The 6-tier verdict aggregates the pieces above into one ship/no-ship call. Two corrections keep that call honest when the design stresses it:
+
+- **Multiple-comparison correction (Bonferroni).** With K treatments compared against one control, testing each pairwise diff at α independently inflates the family-wise false-positive rate — the worst-case roll-up takes the loudest pair, so any single spurious "significant" pulls the headline. omk tests each comparison at **α / K** instead, holding the family-wise error at the nominal α. K = 1 (classic A/B) is unchanged. Each corrected `VariantPairComparison` records its effective `alpha`, and the report relabels the CI accordingly — a Bonferroni-widened interval is never shown as "95%".
+- **Stability gate.** A statistically significant gain that does not reproduce across runs is not shippable. When stability is actually measured (`--repeat ≥ 2`) and run-to-run variation is high (median CV > 15%), a PROGRESS verdict is downgraded to CAUTIOUS, with the instability surfaced in the headline. Single-run reports are **not** gated — stability is simply unmeasured there (the rationale says so), and auto-downgrading every single-run eval would be over-aggressive.
+
+Implementation: `src/eval-core/verdict.ts` and `src/eval-core/evaluation-reporting.ts`. The CV threshold is kept in sync with the code by `test/scripts/doc-constants-drift.test.ts`.
+
 ## Construct-validity isolation(`--strict-baseline`, default ON)
 
 A fifth invariant, separate from the four above but also default-on:

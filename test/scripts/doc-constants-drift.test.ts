@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BOOTSTRAP_SAMPLES, DEFAULT_BOOTSTRAP_ALPHA } from '../../src/eval-core/bootstrap.js';
 import { DEFAULT_SATURATION_WINDOW_SIZE, DEFAULT_CI_WIDTH_SHRINK_THRESHOLD } from '../../src/analysis/saturation.js';
-import { UNDERPOWERED_MIN_SAMPLES } from '../../src/eval-core/verdict.js';
+import { UNDERPOWERED_MIN_SAMPLES, STABILITY_UNSTABLE_CV } from '../../src/eval-core/verdict.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -105,6 +105,21 @@ const CHECKS: Check[] = [
     file: 'docs/zh/specs/sample-design-spec.md',
     pattern: /`N < (\d+)`（只大效应可测）/,
     expected: UNDERPOWERED_MIN_SAMPLES,
+  },
+  // 稳定性门控的不稳阈值:文档以百分号陈述,代码是小数(en + zh)
+  {
+    label: 'stability unstable CV (statistical-rigor en)',
+    file: 'docs/explanation/statistical-rigor.md',
+    pattern: /median CV > (\d+)%/,
+    expected: STABILITY_UNSTABLE_CV,
+    toNumber: (s) => Number(s) / 100,
+  },
+  {
+    label: 'stability unstable CV (statistical-rigor zh)',
+    file: 'docs/zh/explanation/statistical-rigor.md',
+    pattern: /中位 CV > (\d+)%/,
+    expected: STABILITY_UNSTABLE_CV,
+    toNumber: (s) => Number(s) / 100,
   },
 ];
 
