@@ -40,7 +40,9 @@ export interface ObservedSkillHealthView {
 export interface ObserveReportView {
   /** observe-health 报告 id —— 观测去重主键。 */
   reportId: string;
-  /** 报告生成时刻(report.meta.generatedAt)—— 观测 latest-wins 与版本闸门用。 */
+  /** 被观测**流量窗口的结束时刻**(report.meta.timeRange.to,CLI 侧 buildObserveReportView 取,空则退
+   *  generatedAt)——供 deriveProductionGap 的 latest-wins,不是报告生成的「此刻」(generatedAt 恒约等于
+   *  now,拿它比会让所有观测一样新)。无版本闸门:观测是版本无关的生产信号(见 ManagedObservation.observedAt)。 */
   observedAt: string;
   skills: ObservedSkillHealthView[];
 }
