@@ -34,14 +34,16 @@ const GAP_AREA_LABELS: Record<string, { zh: string; en: string }> = {
   repeated_failure: { zh: '反复失败', en: 'repeated failure' },
 };
 
-/** 取盲区计数最高的前几类,组成「建议补哪类用例」的人话区域串(只展示信号所在,不生成具体用例)。 */
+/** 取盲区计数最高的前几类,组成「建议补哪类用例」的人话区域串(只展示信号所在,不生成具体用例)。
+ *  只迭代**四个已知盲区类型**(GAP_AREA_LABELS 的键),记录 / 报告里若混入额外键一律忽略,不进展示。 */
 function topGapAreas(gapByType: Record<string, number>, lang: CliLang): string {
   const sep = lang === 'zh' ? '、' : ', ';
-  const areas = Object.entries(gapByType)
+  const areas = Object.keys(GAP_AREA_LABELS)
+    .map((k) => [k, gapByType[k] ?? 0] as const)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([k]) => GAP_AREA_LABELS[k]?.[lang] ?? k)
+    .map(([k]) => GAP_AREA_LABELS[k][lang])
     .join(sep);
   return areas || (lang === 'zh' ? '未归类盲区' : 'uncategorized gaps');
 }

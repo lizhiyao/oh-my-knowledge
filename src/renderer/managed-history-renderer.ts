@@ -33,13 +33,16 @@ const GAP_AREA_LABELS: Record<string, { zh: string; en: string }> = {
   hedging: { zh: '含糊回避', en: 'hedging' },
   repeated_failure: { zh: '反复失败', en: 'repeated failure' },
 };
-/** 盲区计数最高的前几类组成人话区域串(只展示信号所在,不生成用例)。全 0 → 空串(调用方据此略过)。 */
+/** 盲区计数最高的前几类组成人话区域串(只展示信号所在,不生成用例)。全 0 → 空串(调用方据此略过)。
+ *  只迭代**四个已知盲区类型**(GAP_AREA_LABELS 的键),记录里若被手改塞进额外键则一律忽略 —— 消费侧收口,
+ *  比让 validator 因一个额外键丢整条记录更稳;额外键即便混入也进不了展示(再叠 e() 转义,无注入面)。 */
 function topGapAreas(gapByType: Record<string, number>, lang: Lang): string {
-  return Object.entries(gapByType)
+  return Object.keys(GAP_AREA_LABELS)
+    .map((k) => [k, gapByType[k] ?? 0] as const)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([k]) => GAP_AREA_LABELS[k]?.[lang] ?? k)
+    .map(([k]) => GAP_AREA_LABELS[k][lang])
     .join(lang === 'zh' ? '、' : ', ');
 }
 /** 页内跳转统一带上 lang，否则点一下就掉回默认中文。zh 是默认 → 空串(不脏 URL)。 */

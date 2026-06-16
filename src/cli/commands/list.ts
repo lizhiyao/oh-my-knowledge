@@ -12,10 +12,13 @@ import {
 } from '../../managed/index.js';
 import type { CliLang } from '../lib/i18n.js';
 
-/** CJK 全角字符按 2 列计宽,使含中文表头的列也能对齐。 */
+/** CJK 全角字符 + 星平面 emoji 按 2 列计宽,使含中文表头 / emoji 标记(如 🔬)的列也能对齐。
+ *  逐**码点**迭代(for...of),星平面 emoji 是单码点,加 `\u{1F300}-\u{1FAFF}`(含 🔬 U+1F52C)判 2 列。
+ *  注:`⚠️` 是「U+26A0 + U+FE0F」两码点、各 1 列合计 2,本就与 2 列渲染对齐,不另判(避免重复计数);
+ *  `✓`(U+2713)终端按 1 列渲染、保持 1。 */
 export function dispWidth(s: string): number {
   let w = 0;
-  for (const ch of s) w += /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1;
+  for (const ch of s) w += /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1F300}-\u{1FAFF}]/u.test(ch) ? 2 : 1;
   return w;
 }
 

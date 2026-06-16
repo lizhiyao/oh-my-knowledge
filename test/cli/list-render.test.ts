@@ -24,6 +24,13 @@ describe('dispWidth', () => {
     assert.equal(dispWidth('NAME'), 4);
     assert.equal(dispWidth('a中b'), 4);
   });
+
+  it('星平面 emoji(🔬)按 2 列、✓ 保持 1 列、⚠️ 为 2 列', () => {
+    assert.equal(dispWidth('🔬'), 2, '🔬 终端按 2 列渲染,列宽须计 2(防 STATE 列少补 1)');
+    assert.equal(dispWidth('a🔬b'), 4, '混排逐码点累加');
+    assert.equal(dispWidth('✓'), 1, '✓ 终端 1 列、保持 1');
+    assert.equal(dispWidth('⚠️'), 2, '⚠️ 是两码点各 1、合计 2,本就对齐');
+  });
 });
 
 describe('truncate（按显示宽度）', () => {
