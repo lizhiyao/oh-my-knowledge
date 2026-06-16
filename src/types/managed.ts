@@ -50,6 +50,13 @@ export interface ManagedEvidenceRef {
     judgePromptHash?: string;
     debiasMode?: Array<'length' | 'position'>;
   };
+  /** §7 #234/#236:这一版被测内容所在的 git commit(full SHA)= 评测时该 variant 的 git ref 解析出的 commit
+   *  (resolveArtifacts 物化时 `git rev-parse <ref>^{commit}`),作每版「还原坐标」指针 —— list / Studio 据此给
+   *  `git checkout <sha> -- <path>` 把源带回这一版(字节级还原由 git 做,omk 不存版本字节)。是 variant 自己的
+   *  ref(可能 branch/tag/HEAD/旧 SHA)而非进程 cwd 的 HEAD —— 内容从 object DB 按 ref 取,故与工作树 dirty
+   *  与否无关。只对本地 git variant 记(远端源还原是重装 fetch-pin SHA;file 源无 git 坐标)。缺失 = 无坐标可
+   *  还原,诚实留空,不臆造。 */
+  gitCommit?: string;
 }
 
 export type ManagedDecisionKind = 'promote' | 'reject' | 'rollback';

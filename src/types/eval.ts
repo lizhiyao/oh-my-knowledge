@@ -150,6 +150,10 @@ export interface Artifact {
   contentHash?: string;
   locator?: string;
   ref?: string;
+  // 本地 git variant 物化时 `git rev-parse <ref>^{commit}` 出的实际 commit SHA(#234/#236 还原坐标)。
+  // 内容是从 object DB 按 ref 物化的(非工作树),故这才是被测字节的精确坐标 —— 不是进程 cwd 的 HEAD。
+  // 只对本地 git skill 填(远端源走 fetch-pin SHA、不经此;file 源无 git 坐标)。
+  resolvedCommit?: string;
   cwd?: string;
   // SKILL.md 约定的 directory-skill **真源**根目录(doctor 校验、dependency-checker 解析、
   // 同名 variant 消歧都以此为准)。只对 directory-skill 填,file-skill 留空。
@@ -194,6 +198,9 @@ export interface VariantConfig {
   cwd: string | null;
   locator?: string;
   ref?: string;
+  // 本地 git variant 解析出的实际 commit SHA(还原坐标,#234/#236):从 Artifact.resolvedCommit 透传,
+  // evidence.ts 按 variant 匹配后写入证据。raw `ref`(可能是 branch/tag/HEAD)会漂,这个是物化当刻的定点。
+  resolvedCommit?: string;
   // 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离,[...] = 白名单。
   // 来源:Artifact.allowedSkills(由 strict-baseline 默认 + eval.yaml 显式合并而成)。
   allowedSkills?: string[];

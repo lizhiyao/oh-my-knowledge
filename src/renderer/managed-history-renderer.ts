@@ -56,6 +56,7 @@ interface TimelineEvent {
   override?: { verdict: string; overriddenBlocks?: string[] };
   sampleCount?: number;
   cliVersion?: string;
+  gitCommit?: string;
 }
 
 function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
@@ -67,6 +68,7 @@ function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
     events.push({
       at: ev.recordedAt, type: 'eval', contentHash: ev.contentHash, verdict: ev.verdict,
       reportId: ev.reportId, sampleCount: ev.sampleCoverage?.count, cliVersion: ev.comparability?.cliVersion,
+      ...(ev.gitCommit ? { gitCommit: ev.gitCommit } : {}),
     });
   }
   for (const d of record.decisions) {
@@ -83,7 +85,27 @@ function reportLink(reportId: string | undefined, lang: Lang): string {
   return `<a class="mh-link" href="/reports/${encodeURIComponent(reportId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
 }
 
-function eventRow(ev: TimelineEvent, lang: Lang): string {
+/** 本地 git 源的仓内路径(`git:<ref>:<spec>` → spec),给 `git checkout <sha> -- <path>` 提示带上 `-- <path>`。
+ *  远端 / file 源 → undefined(本地 git 才有 cwd checkout 语义)。
+ *  file-skill 的实际仓内文件是 `<spec>.md`(install 裸名 spec 经 classifyGitSkillRef 解到 `<spec>.md`),
+ *  故 file-skill 且 spec 未带 `.md` 时补上 —— 否则 `git checkout … -- review` 匹配不到 `review.md`。
+ *  已知局限:locator 的 spec 是**安装时 cwd 相对**的(不含 gitRelDir 前缀),在仓库子目录里 install 的 skill,
+ *  还原路径会缺该子目录前缀。彻底修需在记录上另存仓库根相对路径(与 drift 重解析的 cwd 相对语义解耦),留 follow-up。 */
+function gitRestorePath(source: ManagedArtifactRecord['source']): string | undefined {
+  if (source.sourceKind !== 'git' || source.url) return undefined;
+  const m = /^git:[^:]*:(.+)$/.exec(source.locator);
+  if (!m) return undefined;
+  const spec = m[1];
+  return (!source.isDirectorySkill && !/\.md$/i.test(spec)) ? `${spec}.md` : spec;
+}
+
+/** POSIX 单引号包裹,内部 `'` 按 `'\''` 标准转义。还原提示是给用户复制粘贴的 shell 命令,git 路径可含
+ *  空格 / 分号 / 反引号 / `$()` 等元字符 —— e()(HTML escaping)挡不住 shell,不 quote 会被改写命令语义。 */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   const t = L(lang);
   const typeLabel: Record<TimelineEvent['type'], string> = {
     install: t('安装纳管', 'Installed'),
@@ -107,6 +129,15 @@ function eventRow(ev: TimelineEvent, lang: Lang): string {
   if (ev.cliVersion) detail.push(`<span class="mh-detail-item">omk ${e(ev.cliVersion)}</span>`);
   if (ev.reportId) detail.push(reportLink(ev.reportId, lang));
   if (ev.reason) detail.push(`<span class="mh-reason">「${e(ev.reason)}」</span>`);
+  // #234/#236 还原指针:这一版有 git 坐标 + 能解析出仓内路径 → 给现成的 `git checkout <sha> -- <path>` 把
+  // 该路径还原进工作树(字节级还原交给 git)。必须带 `-- <path>`:不带 pathspec 的 `git checkout <sha>` 是切
+  // detached HEAD、整棵工作树被换,语义完全不同且危险 —— 故解析不出路径时干脆不显,不退化成那条命令。显
+  // full SHA(精确坐标、无歧义);路径 shell-quote 防注入(见 shellQuote)。
+  // 注:对目录-skill,checkout 还原该版的跟踪文件,但不会删除其后新增的文件 —— git pathspec 的固有语义。
+  if (ev.gitCommit && restorePath) {
+    const cmd = `git checkout ${ev.gitCommit} -- ${shellQuote(restorePath)}`;
+    detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
+  }
 
   return `<li class="mh-event mh-event--${ev.type}">
     <span class="mh-time">${e(fmtLocalTime(ev.at))}</span>
@@ -182,6 +213,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, 
   const events = buildTimeline(record);
 
   // 倒序遍历：内容版本（contentHash）变化处插版本段头；install 等无 hash 事件不重置分段。
+  const restorePath = gitRestorePath(record.source);
   const rows: string[] = [];
   let prevHash: string | undefined;
   for (const ev of events) {
@@ -189,7 +221,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, 
       rows.push(versionHeader(ev.contentHash, ev.contentHash === record.contentHash, lang));
       prevHash = ev.contentHash;
     }
-    rows.push(eventRow(ev, lang));
+    rows.push(eventRow(ev, lang, restorePath));
   }
 
   const meta = [
@@ -337,6 +369,7 @@ const MANAGED_CSS = `
 .mh-override{font-size:11px;font-weight:600;color:var(--yellow);background:var(--yellow-bg);padding:1px 8px;border-radius:9px}
 .mh-badge-raw{font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 8px;border-radius:9px}
 .mh-detail{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;color:var(--text-muted)}
+.mh-restore code{font-family:"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 6px;border-radius:5px;user-select:all}
 .mh-reason{color:var(--text-secondary);font-style:italic}
 .mh-link{color:var(--accent);text-decoration:none}
 .mh-link:hover{text-decoration:underline}

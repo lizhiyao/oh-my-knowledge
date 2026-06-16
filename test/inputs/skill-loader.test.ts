@@ -215,6 +215,28 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     assert.notEqual(h3, h2, '改 SKILL.md 也改变整树指纹');
   });
 
+  it('resolvedCommit = variant ref 解析出的 commit,而非 cwd HEAD(显式旧 SHA 钉旧版,#234/#236)', () => {
+    mkRepo();
+    const sh = (args: string[]): void => { execFileSync('git', args, { cwd: repo, stdio: 'ignore' }); };
+    const head = (): string => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8' }).trim();
+    writeFileSync(join(repo, 'review.md'), '# review v1\n');
+    sh(['add', '-A']); sh(['commit', '-q', '-m', 'v1']);
+    const c1 = head();
+    process.chdir(repo);
+    assert.equal(resolveArtifacts(repo, ['git:HEAD:review'])[0].resolvedCommit, c1, 'HEAD ref → 当前 commit');
+
+    // HEAD 前进到 c2;cwd 现在停在 c2。
+    writeFileSync(join(repo, 'review.md'), '# review v2\n');
+    sh(['add', '-A']); sh(['commit', '-q', '-m', 'v2']);
+    const c2 = head();
+    assert.notEqual(c1, c2);
+
+    // 关键回归(reviewer P1):显式旧 SHA variant 物化的是旧版字节,resolvedCommit 必须钉 c1,绝不是 cwd HEAD(c2)。
+    const old = resolveArtifacts(repo, [`git:${c1}:review`])[0];
+    assert.ok(old.content?.includes('review v1'), '物化的是旧版内容');
+    assert.equal(old.resolvedCommit, c1, '显式旧 SHA → 钉 c1,不是 cwd HEAD(c2)');
+  });
+
   it('从仓库外调用:git 上下文锚定 skillDir 所属 repo,而非进程 cwd', () => {
     // 进程 cwd 停在 omk 仓库(测试运行目录),skillDir 指向另一个临时 repo,且**不 chdir 进去**。
     // 修复前 rev-parse 在进程 cwd 跑 → 拿 omk repo 的 root/HEAD → not_found 或评测错 repo 的同名内容。

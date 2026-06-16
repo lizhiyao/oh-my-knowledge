@@ -28,7 +28,7 @@
 import { basename, dirname } from 'node:path';
 import type { EvaluationReport, ManagedArtifactSource, ManagedEvidenceRef, VariantConfig } from '../types/index.js';
 import { hashString } from '../eval-core/evaluation-reporting.js';
-import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir } from './store.js';
+import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir, isShaLike } from './store.js';
 
 /** baseline / 无 skill 变体的 artifactHash 哨兵(见 report.ts artifactHashes 注释)——不产证据。 */
 const NO_SKILL = 'no-skill';
@@ -43,8 +43,20 @@ function sampleCoverage(report: EvaluationReport): { count: number; hash: string
 }
 
 /**
+ * 该版的 git 还原坐标(#234/#236):被测 variant 物化时 `<ref>` 解析出的实际 commit(resolveArtifacts 在
+ * 物化本地 git variant 时算好,经 `variantConfigs[].resolvedCommit` 透传)。**不是**进程 cwd 的 HEAD ——
+ * variant 内容从 object DB 按它自己的 ref 取,在别的分支 / 用显式旧 SHA 跑时 cwd HEAD 会是错版本。
+ * 远端 / file variant 无 resolvedCommit → 不记(诚实留空)。读到的值再过一道 SHA 形态守卫,脏报告不污染证据。
+ */
+function variantResolvedCommit(report: EvaluationReport, variant: string): string | undefined {
+  const cfg = report.meta?.variantConfigs?.find((c) => c.variant === variant);
+  return isShaLike(cfg?.resolvedCommit) ? cfg!.resolvedCommit : undefined;
+}
+
+/**
  * 为某个变体组装一条 evidence ref;变体无真实内容(baseline / no-skill / 缺 hash)→ null。
- * `verdict` 由调用方传入(CLI 已 computeVerdict,避免在此重算)。
+ * `verdict` 由调用方传入(CLI 已 computeVerdict,避免在此重算)。git 还原坐标从该 variant 的
+ * `resolvedCommit` 取(见 variantResolvedCommit),无则不记。
  */
 export function buildEvidenceRef(
   report: EvaluationReport,
@@ -56,6 +68,7 @@ export function buildEvidenceRef(
   if (!contentHash || contentHash === NO_SKILL) return null;
   const meta = report.meta;
   const cov = sampleCoverage(report);
+  const gitCommit = variantResolvedCommit(report, variant);
   return {
     reportId: report.id,
     contentHash,
@@ -67,6 +80,7 @@ export function buildEvidenceRef(
       ...(meta.judgePromptHash ? { judgePromptHash: meta.judgePromptHash } : {}),
       ...(meta.debiasMode ? { debiasMode: meta.debiasMode } : {}),
     },
+    ...(gitCommit ? { gitCommit } : {}),
   };
 }
 

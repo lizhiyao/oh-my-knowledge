@@ -32,6 +32,7 @@ function makeReport(over: {
   cliVersion?: string;
   judgePromptHash?: string;
   debiasMode?: Array<'length' | 'position'>;
+  variantConfigs?: Array<{ variant: string; resolvedCommit?: string }>;
 } = {}): EvaluationReport {
   return {
     kind: 'evaluation',
@@ -43,6 +44,7 @@ function makeReport(over: {
       sampleHashes: over.sampleHashes ?? { s1: 'h1', s2: 'h2' },
       ...(over.judgePromptHash ? { judgePromptHash: over.judgePromptHash } : {}),
       ...(over.debiasMode ? { debiasMode: over.debiasMode } : {}),
+      ...(over.variantConfigs ? { variantConfigs: over.variantConfigs } : {}),
     },
     summary: {},
     results: [],
@@ -74,6 +76,29 @@ describe('managed evidence — buildEvidenceRef', () => {
     const a = buildEvidenceRef(makeReport({ sampleHashes: { s1: 'h1', s2: 'h2' } }), 'review', 'PROGRESS', 'now');
     const b = buildEvidenceRef(makeReport({ sampleHashes: { s2: 'h2', s1: 'h1' } }), 'review', 'PROGRESS', 'now');
     assert.equal(a!.sampleCoverage!.hash, b!.sampleCoverage!.hash);
+  });
+});
+
+describe('managed evidence — gitCommit 还原坐标(#234/#236)', () => {
+  const RESOLVED = 'abc1234567890deffeed1234567890abcdef1234';
+
+  it('被测 variant 的 resolvedCommit → 记成 gitCommit 还原坐标(取该 variant 的,不是 cwd HEAD)', () => {
+    // 关键场景:review variant 解析到 RESOLVED;另有别的 variant 解析到别的 commit,确认按 variant key 取对那条。
+    const report = makeReport({ variantConfigs: [
+      { variant: 'review', resolvedCommit: RESOLVED },
+      { variant: 'other', resolvedCommit: 'ffffffffffffffffffffffffffffffffffffffff' },
+    ] });
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, RESOLVED);
+  });
+
+  it('variant 无 resolvedCommit(远端 / file / 旧报告)→ 不记(诚实留空)', () => {
+    assert.equal(buildEvidenceRef(makeReport({ variantConfigs: [{ variant: 'review' }] }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
+    assert.equal(buildEvidenceRef(makeReport(), 'review', 'PROGRESS', 'now')!.gitCommit, undefined, '无 variantConfigs → 不记');
+  });
+
+  it('resolvedCommit 非 SHA 形态 → 不记(读时再过一道 isShaLike,脏报告不污染证据)', () => {
+    const report = makeReport({ variantConfigs: [{ variant: 'review', resolvedCommit: 'not-a-sha' }] });
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
   });
 });
 
