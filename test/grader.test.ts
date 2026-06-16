@@ -445,6 +445,45 @@ describe('grade', () => {
     assert.equal(result.compositeScore, 4.5);
   });
 
+  it('judge 失败(非 JSON)+ 通过断言:composite 排除失败评委,不被 0 污染(score=0 语义修复)', async () => {
+    // 评委返回不可解析内容 → judge.score=0(失败哨兵,非「0 分内容」)。修复前 llmScore=0 会把
+    // composite 从 5 拖到 mean(5,0)=2.5;修复后评委当缺测、composite 仍取 fact 单层=5。
+    const failingJudge = async (): Promise<ExecResult> => ({
+      ok: true, output: 'sorry, I cannot grade this', costUSD: 0.001, durationMs: 0, durationApiMs: 0,
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1,
+    });
+    const result = await grade({
+      output: 'SQL injection found, use parameterized queries',
+      sample: {
+        sample_id: 'test', prompt: 'Review code', rubric: 'Should find SQL injection',
+        assertions: [
+          { type: 'contains', value: 'SQL', weight: 1 },
+          { type: 'contains', value: 'parameterized', weight: 1 },
+        ],
+      },
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: failingJudge },
+    });
+    assert.equal(result.assertions!.passed, 2);
+    assert.equal(result.llmScore, undefined, '评委失败 → llmScore 缺测,不是 0');
+    assert.equal(result.compositeScore, 5, 'composite 排除失败评委,不被基础设施失败污染');
+  });
+
+  it('纯评委样本 + 评委失败:composite=0(真·缺测,下游 >0 过滤当非测量)', async () => {
+    const failingJudge = async (): Promise<ExecResult> => ({
+      ok: true, output: 'no parseable score', costUSD: 0.001, durationMs: 0, durationApiMs: 0,
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1,
+    });
+    const result = await grade({
+      output: 'whatever',
+      sample: { sample_id: 'test', prompt: 'Review code', rubric: 'Should find SQL injection' },
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: failingJudge },
+    });
+    assert.equal(result.llmScore, undefined, '评委失败 → 无 llmScore');
+    assert.equal(result.compositeScore, 0, '无可测层 → composite 0(非测量,非 0 分内容)');
+  });
+
   it('dimensions: multi-dimensional scoring', async () => {
     let callCount = 0;
     const mockExecutor = async (): Promise<ExecResult> => {

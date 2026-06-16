@@ -61,10 +61,11 @@ export function computeLayeredScores(results: CompositeInput): { compositeScore:
     layered.behaviorScore = scoreFromDetails(behaviorDetails) ?? undefined;
   }
 
-  // 评委打 0 分是"完全不合格"的合法低分,不是缺失——保留进 composite 计算,不做 > 0 gate。
-  // 只排除 undefined(真正缺数据:没配 judge 或打分失败)。fact/behavior 通过 ratioToScore
-  // 产出的分数理论上 ≥ 1,null 判断即可。
-  if (typeof results.llmScore === 'number') {
+  // 评委分量表是 1-5(见 judge.ts prompt),`score <= 0` 是失败哨兵(非 JSON / parse / executor 错),
+  // 是**缺测**不是「0 分内容」—— 当缺层排除,绝不让基础设施失败当内容分污染 composite。上游(grading/index.ts
+  // 单评委路径 + 多维度 filter(s>0) + 多轮 validSamples)已保证失败不进 llmScore;这里再 `> 0` 防御一层,
+  // 与全管线"0=失败=排除"口径一致(fact/behavior 经 ratioToScore 恒 ≥ 1,有效评委分亦 ≥ 1)。
+  if (typeof results.llmScore === 'number' && results.llmScore > 0) {
     layered.judgeScore = results.llmScore;
   }
 
