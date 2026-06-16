@@ -235,6 +235,39 @@ describe('computeVerdict', () => {
     assert.match(v.headline, /no CI/);
   });
 
+  it('K≥2 的 per-pair headline 带真实置信水平(alpha 派生),omk eval CLI 不再裸标区间', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.5, composite: 4.4 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill', alpha: 0.05 / 2, // Bonferroni K=2
+        diffBootstrapCI: { low: 0.2, high: 0.6, estimate: 0.4, samples: 1000, significant: true },
+      }],
+    });
+    const v = computeVerdict(r);
+    assert.match(v.headline, /97\.5% CI=\[/, 'headline 应带 α/2 派生的 97.5% 标签');
+  });
+
+  it('K=1(无 alpha)headline 不加置信水平标签,与历史口径逐字节一致', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.5, composite: 4.33 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
+      }],
+    });
+    const v = computeVerdict(r);
+    assert.match(v.headline, /Δ=\+0\.33 CI=\[/, 'CI 紧跟 Δ,中间无百分号');
+    assert.doesNotMatch(v.headline, /% CI=/, 'K=1 不插入置信水平标签');
+  });
+
   it('roll-up returns the worst per-pair verdict', () => {
     const r = buildReport({
       variants: ['baseline', 'skillA', 'skillB'],
@@ -349,6 +382,18 @@ describe('computeVerdict', () => {
     assert.equal(v.level, 'CAUTIOUS', 'run-to-run 不稳的显著进展应被降级');
     assert.match(v.headline, /run-to-run 不稳/);
     assert.match(v.rationale.stability ?? '', /不稳/);
+  });
+
+  it('稳定性门控:A/B(偶数 variant)用真·中位,一高一低不按较大的那个门控', () => {
+    // baseline CV=8%、skill CV=18%。真·中位 =(8+18)/2=13% < 15% → 不门控,保持 PROGRESS。
+    // 若错用上中位(取较大 18%)会误降为 CAUTIOUS —— 这正是复审 P2 要挡的回归(mean=5.0 让 CV 干净)。
+    const r = cleanProgressWithVariance({
+      baseline: { scores: [4.6, 5.0, 5.4], mean: 5.0, lower: 4.6, upper: 5.4, stddev: 0.4 },  // CV=0.08
+      skill:    { scores: [4.1, 5.0, 5.9], mean: 5.0, lower: 4.1, upper: 5.9, stddev: 0.9 },  // CV=0.18
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'PROGRESS', '真·中位 13% < 15% → 不门控;取较大 18% 才会误降级');
+    assert.doesNotMatch(v.headline, /run-to-run 不稳/);
   });
 
   it('稳定性门控:median CV 在阈值内(≤15%)不降级,PROGRESS 保持', () => {

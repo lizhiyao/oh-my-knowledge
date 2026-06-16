@@ -73,7 +73,7 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
 **Verdict** (cross-version conclusion): `PROGRESS` (better) / `NOISE` (diff inside the confidence band, undecidable) / `REGRESS` (worse) / `CAUTIOUS` (trends look good but confidence is thin) — plus two edge cases, `UNDERPOWERED` (too few samples to conclude) and `SOLO` (single variant, nothing to compare against). This is the one-line answer to bring to a review meeting.
 
-**Composite score**: each variant's average on a 0–5 scale, with a `+Δ` against the control. The 95% confidence interval next to Δ is what decides where the verdict lands.
+**Composite score**: each variant's average on a 0–5 scale, with a `+Δ` against the control. The confidence interval next to Δ — 95% by default, raised to a higher level (Bonferroni) when several treatments share one control — is what decides where the verdict lands.
 
 **Low-scoring samples**: drill into the ones where the LLM tripped. Compare "rubric expectation" against "actual LLM output" — usually the gap points right back at a specific paragraph in the skill that wasn't clear enough.
 

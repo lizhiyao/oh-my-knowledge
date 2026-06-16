@@ -30,6 +30,7 @@
 
 import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateLayerGates } from './layer-gates.js';
+import { ciLevelLabel } from './bootstrap.js';
 
 /**
  * Below this sample count a non-significant diff is read as UNDERPOWERED
@@ -231,7 +232,10 @@ function verdictForPair(
     };
   }
 
-  const headlineCore = `Δ=${diff.estimate >= 0 ? '+' : ''}${diff.estimate} CI=[${diff.low}, ${diff.high}]`;
+  // 多重比较把本对的 α 收到 α/K → CI 变宽,标签随 α 走(与 HTML pairwise 表同口径);K=1(无 alpha)不加标签,
+  // headline 与历史逐字节一致。让 omk eval CLI 也诚实显示真实置信水平,而非裸区间。
+  const ciLabel = pair.alpha != null ? `${ciLevelLabel(pair.alpha)} ` : '';
+  const headlineCore = `Δ=${diff.estimate >= 0 ? '+' : ''}${diff.estimate} ${ciLabel}CI=[${diff.low}, ${diff.high}]`;
 
   if (!diff.significant) {
     // Diff CI contains 0. Distinguish "underpowered (saturation says: more samples needed)"
@@ -386,9 +390,11 @@ function formatSampleSize(report: Report): string {
 /**
  * 跨轮稳定性的中位 CV(variation coefficient = stddev/mean)。仅在**已测**(runs≥2)且 variance 数据齐时
  * 返回 { runs, cv },否则 null(单轮未测 / variance 缺失 / CV 全算不出 → 不参与门控)。formatStability 的
- * 文字与 computeVerdict 的稳定性门控共用这一处计算,口径一致、绝不漂移。取中位(单 variant 易有 NaN/0,聚合更稳)。
+ * 文字、computeVerdict 的稳定性门控、renderer 的 hero CV chip 共用这一处计算,口径一致、绝不漂移。
+ * **真·中位**:偶数个 variant 取中间两项的平均(不是上中位)—— 最常见的 A/B 报告恰好是两个 variant,取上中位
+ * 会退化成"较大的那个 CV",把门控口径从「中位」悄悄变成「max」、直接改变 ship/no-ship(复审 P2)。
  */
-function medianStabilityCV(report: Report): { runs: number; cv: number } | null {
+export function medianStabilityCV(report: Report): { runs: number; cv: number } | null {
   const runs = report.variance?.runs ?? report.meta?.request?.repeat ?? 1;
   if (runs < 2) return null;
   const variance = report.variance?.perVariant;
@@ -401,7 +407,9 @@ function medianStabilityCV(report: Report): { runs: number; cv: number } | null 
   }
   if (cvs.length === 0) return null;
   cvs.sort((a, b) => a - b);
-  return { runs, cv: cvs[Math.floor(cvs.length / 2)] };
+  const mid = Math.floor(cvs.length / 2);
+  const median = cvs.length % 2 === 0 ? (cvs[mid - 1] + cvs[mid]) / 2 : cvs[mid];
+  return { runs, cv: median };
 }
 
 function formatStability(report: Report): string {

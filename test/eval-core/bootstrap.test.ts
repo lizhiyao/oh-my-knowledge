@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, ciLevelLabel, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {
@@ -179,6 +179,15 @@ describe('bootstrapPairedDiffCI', () => {
     const width = (ci: { low: number; high: number }): number => ci.high - ci.low;
     assert.ok(width(wide) > width(narrow), `α/K(0.025)的 CI 宽 ${width(wide)} 应 > 名义 α(0.05)的 ${width(narrow)}`);
     assert.equal(wide.estimate, narrow.estimate, '点估计与 α 无关,不应变');
+  });
+});
+
+describe('ciLevelLabel', () => {
+  it('α → (1−α)·100% 标签:默认 95%,Bonferroni 的 α/2 / α/3 跟着变高', () => {
+    assert.equal(ciLevelLabel(), '95%', '无 α → 名义 95%');
+    assert.equal(ciLevelLabel(0.05), '95%');
+    assert.equal(ciLevelLabel(0.05 / 2), '97.5%', 'K=2 → α/2 → 97.5%');
+    assert.equal(ciLevelLabel(0.05 / 3), '98.3%', 'K=3 → α/3 → 98.333…→98.3%');
   });
 });
 
