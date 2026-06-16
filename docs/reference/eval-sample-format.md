@@ -193,6 +193,8 @@ Any assertion takes `not: true` to invert (replaces paired `not_contains` / `not
 
 Children can independently use `not: true`; nested `assert-set`s can express any boolean shape.
 
+> **Layered scoring note.** An `assert-set` is attributed to the fact/behavior layered score only when its leaf children are *homogeneous* — all fact-type or all behavior-type. A **mixed-layer** `assert-set` (e.g. one `contains` + one `max_length`) has no single honest layer, so it is left out of the layered composite (it still counts toward the flat assertion pass/fail). If you want a sample's signal to land in the layered composite, prefer leaf assertions, or keep each `assert-set` within one layer.
+
 ## Custom assertion
 
 ```js

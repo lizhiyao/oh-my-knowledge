@@ -193,6 +193,8 @@
 
 子断言可独立带 `not: true`；嵌套 assert-set 可表达任意布尔逻辑。
 
+> **分层评分提示。** `assert-set` 只在叶子子断言**同层**（全是事实层 / 全是行为层）时才计入 fact / behavior 分层 composite。**混层** `assert-set`（如一条 `contains` + 一条 `max_length`）没有单一可诚实归属的层，故不计入分层 composite（仍计入扁平的断言通过 / 失败）。若想让某条用例的信号落进分层 composite，优先用叶子断言，或让每个 `assert-set` 保持在同一层内。
+
 ## 自定义断言
 
 ```js
