@@ -147,15 +147,18 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   };
   const head: string[] = [`<span class="mh-type">${e(typeLabel[ev.type])}</span>`];
   if (ev.type === 'eval') head.push(verdictBadge(ev.verdict, lang));
-  // observe 观测徽标:红 + 够力 → 「生产盲区」(确诊);underpowered → 「数据不足」(unknown,不当盲区);
-  // 其余(green/yellow 够力)→ 中性带标。与 deriveProductionGap 的 marker 分类同口径(store.ts)。
+  // observe 观测徽标,四分支(green / yellow 必须分开 —— yellow 不是健康):红 + 够力 → 「生产盲区」(确诊);
+  // underpowered → 「数据不足」(unknown,任意 band 都先归此,与 deriveProductionGap 同口径);yellow + 够力 →
+  // 「需关注」(盲区已进注意区间、未达 red 告警,不能说成健康);green + 够力 → 「健康」。
   if (ev.type === 'observe') {
     if (ev.healthBand === 'red' && ev.confidence !== 'underpowered') {
       head.push(`<span class="mh-gap">🔬 ${t('生产盲区', 'production gap')}</span>`);
     } else if (ev.confidence === 'underpowered') {
       head.push(`<span class="mh-badge-raw">${t('数据不足', 'underpowered')}</span>`);
+    } else if (ev.healthBand === 'yellow') {
+      head.push(`<span class="mh-watch">${t('需关注', 'elevated')}</span>`);
     } else {
-      head.push(`<span class="mh-badge-raw">${e(t('健康', 'healthy'))} · ${e(ev.healthBand ?? '')}</span>`);
+      head.push(`<span class="mh-badge-raw">${t('健康', 'healthy')}</span>`);
     }
   }
   if (ev.override) {
@@ -189,11 +192,12 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
     detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
   }
 
-  // 圆点配色:多数事件按 type 取色;observe 事件按**健康 band** 取色(盲区红 / 数据不足灰 / 健康绿)——
-  // observe 是 type 内有强弱的事件,健康观测画红点会撒谎,故复用 state-band 配色按实际健康度上色。
+  // 圆点配色:多数事件按 type 取色;observe 事件按**健康 band** 取色(盲区红 / 数据不足灰 / 注意黄 / 健康绿)
+  // —— observe 是 type 内有强弱的事件,健康或注意观测画错色会撒谎,故按实际健康度上色,与上面徽标四分支同口径。
   const dotClass = ev.type === 'observe'
     ? (ev.healthBand === 'red' && ev.confidence !== 'underpowered' ? 'mh-dot--red'
-      : ev.confidence === 'underpowered' ? 'mh-dot--muted' : 'mh-dot--green')
+      : ev.confidence === 'underpowered' ? 'mh-dot--muted'
+      : ev.healthBand === 'yellow' ? 'mh-dot--yellow' : 'mh-dot--green')
     : `mh-dot--${ev.type}`;
   return `<li class="mh-event mh-event--${ev.type}">
     <span class="mh-time">${e(fmtLocalTime(ev.at))}</span>
@@ -430,12 +434,13 @@ const MANAGED_CSS = `
 .mh-dot--promote{background:var(--green)}
 .mh-dot--rollback{background:var(--yellow)}
 .mh-dot--reject{background:var(--red)}
-.mh-dot--green{background:var(--green)}.mh-dot--accent{background:var(--accent)}.mh-dot--muted{background:var(--text-muted)}.mh-dot--red{background:var(--red)}
+.mh-dot--green{background:var(--green)}.mh-dot--accent{background:var(--accent)}.mh-dot--muted{background:var(--text-muted)}.mh-dot--red{background:var(--red)}.mh-dot--yellow{background:var(--yellow)}
 .mh-body{flex:1;min-width:0}
 .mh-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}
 .mh-type{font-weight:600;color:var(--text-primary)}
 .mh-override{font-size:11px;font-weight:600;color:var(--yellow);background:var(--yellow-bg);padding:1px 8px;border-radius:9px}
 .mh-gap{font-size:11px;font-weight:600;color:var(--red);background:var(--red-bg);padding:1px 8px;border-radius:9px;white-space:nowrap}
+.mh-watch{font-size:11px;font-weight:600;color:var(--yellow);background:var(--yellow-bg);padding:1px 8px;border-radius:9px;white-space:nowrap}
 .mh-gap-hint{color:var(--red)}
 .mh-badge-raw{font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 8px;border-radius:9px}
 .mh-detail{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;color:var(--text-muted)}

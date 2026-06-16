@@ -235,6 +235,13 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
       <div class="mh-head"><span class="mh-type">Reject</span></div>
       <div class="mh-detail"><span class="mh-detail-item">by carol</span></div>
     </div>
+  </li><li class="mh-event mh-event--observe">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--yellow"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">Observe</span> <span class="mh-watch">elevated</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">gaps in: failed search, hedging</span></div>
+    </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">current</span></li><li class="mh-event mh-event--promote">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
@@ -260,7 +267,7 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--green"></span></span>
     <div class="mh-body">
-      <div class="mh-head"><span class="mh-type">Observe</span> <span class="mh-badge-raw">healthy · green</span></div>
+      <div class="mh-head"><span class="mh-type">Observe</span> <span class="mh-badge-raw">healthy</span></div>
 
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">version</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">
@@ -318,6 +325,13 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
       <div class="mh-head"><span class="mh-type">否决</span></div>
       <div class="mh-detail"><span class="mh-detail-item">决定人 carol</span></div>
     </div>
+  </li><li class="mh-event mh-event--observe">
+    <span class="mh-time">[TIMESTAMP]</span>
+    <span class="mh-marker"><span class="mh-dot mh-dot--yellow"></span></span>
+    <div class="mh-body">
+      <div class="mh-head"><span class="mh-type">观测</span> <span class="mh-watch">需关注</span></div>
+      <div class="mh-detail"><span class="mh-detail-item">盲区集中在：检索失败、含糊回避</span></div>
+    </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV2conten</code><span class="mh-vcur">当前</span></li><li class="mh-event mh-event--promote">
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--promote"></span></span>
@@ -343,7 +357,7 @@ exports[`managed-history-renderer snapshots > renderManagedHistory 带 observe �
     <span class="mh-time">[TIMESTAMP]</span>
     <span class="mh-marker"><span class="mh-dot mh-dot--green"></span></span>
     <div class="mh-body">
-      <div class="mh-head"><span class="mh-type">观测</span> <span class="mh-badge-raw">健康 · green</span></div>
+      <div class="mh-head"><span class="mh-type">观测</span> <span class="mh-badge-raw">健康</span></div>
 
     </div>
   </li><li class="mh-vhead"><span class="mh-vhead-label">版本</span><code class="mh-hash">hashV1conten</code></li><li class="mh-event mh-event--eval">

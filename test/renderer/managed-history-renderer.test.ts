@@ -110,6 +110,7 @@ const OBSERVE_RECORD: ManagedArtifactRecord = {
   id: 'skill-observe-fixture',
   observations: [
     { observationKind: 'production-health', reportId: 'obs-red', observedAt: '2026-03-09T00:00:00.000Z', gapRate: 0.42, weightedGapRate: 0.42, confidence: 'high', healthBand: 'red', segmentCount: 80, gapByType: { failed_search: 5, explicit_marker: 2, hedging: 1, repeated_failure: 0 } },
+    { observationKind: 'production-health', reportId: 'obs-yellow', observedAt: '2026-03-06T12:00:00.000Z', gapRate: 0.18, weightedGapRate: 0.18, confidence: 'high', healthBand: 'yellow', segmentCount: 70, gapByType: { failed_search: 2, explicit_marker: 0, hedging: 1, repeated_failure: 0 } },
     { observationKind: 'production-health', reportId: 'obs-weak', observedAt: '2026-03-04T00:00:00.000Z', gapRate: 0.5, weightedGapRate: 0.5, confidence: 'underpowered', healthBand: 'red', segmentCount: 2, gapByType: { failed_search: 1, explicit_marker: 0, hedging: 0, repeated_failure: 0 } },
     { observationKind: 'production-health', reportId: 'obs-green', observedAt: '2026-03-03T00:00:00.000Z', gapRate: 0.02, weightedGapRate: 0.02, confidence: 'high', healthBand: 'green', segmentCount: 90, gapByType: { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 } },
   ],
@@ -179,7 +180,18 @@ describe('managed-history-renderer snapshots', () => {
     expect(normalizeForSnapshot(renderManagedList(GAP_ROWS, 'en' as Lang))).toMatchSnapshot();
   });
 
-  // 承重不变量:observe 事件无 contentHash → 绝不新增版本段头。加了 3 条观测后 `mh-vhead` 数量应与无观测时相同。
+  // 回归:yellow 观测绝不渲染成「健康」/ 绿点(yellow 是注意区间、非健康)。red 仍是盲区红点。
+  it('yellow 观测渲染为「需关注」+ 黄点,不冒充健康/绿点', () => {
+    const zh = renderManagedHistory(OBSERVE_RECORD, 'zh' as Lang);
+    expect(zh).toContain('<span class="mh-watch">需关注</span>');
+    expect(zh).toContain('mh-dot--yellow');
+    // green 观测才是「健康」+ 绿点;yellow 不该混进去。
+    expect(zh).toContain('<span class="mh-badge-raw">健康</span>');
+    const en = renderManagedHistory(OBSERVE_RECORD, 'en' as Lang);
+    expect(en).toContain('<span class="mh-watch">elevated</span>');
+  });
+
+  // 承重不变量:observe 事件无 contentHash → 绝不新增版本段头。加了观测后 `mh-vhead` 数量应与无观测时相同。
   it('observe 观测不重置版本分段(版本段头数量不变)', () => {
     const headers = (html: string): number => (html.match(/mh-vhead/g) ?? []).length;
     const withObs = renderManagedHistory(OBSERVE_RECORD, 'zh' as Lang);
