@@ -16,11 +16,22 @@ import {
   mergeManagedRecord,
   upsertManagedRecord,
   appendManagedDecision,
+  appendManagedObservation,
   rebaselineManagedContentHash,
   deriveManagedState,
+  deriveProductionGap,
+  isProductionGapObservation,
   isCurrentlyPromoted,
 } from '../../src/managed/store.js';
-import type { ManagedArtifactRecord, ManagedDecision } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedDecision, ManagedObservation } from '../../src/types/index.js';
+
+const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };
+function makeObs(over: Partial<ManagedObservation> = {}): ManagedObservation {
+  return {
+    observationKind: 'production-health', reportId: 'obs-1', observedAt: '2026-06-10T00:00:00.000Z',
+    gapRate: 0, weightedGapRate: 0, confidence: 'high', healthBand: 'green', segmentCount: 20, gapByType: GAP0, ...over,
+  };
+}
 
 function makeRecord(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
@@ -411,5 +422,103 @@ describe('managed store', () => {
     // 合法 promote 决定 → 读回。
     writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), decisions: [promoteDecision()] }));
     assert.equal(loadManagedRecord(store, id)?.decisions[0].decisionKind, 'promote', '合法决定应读回');
+  });
+});
+
+describe('managed store — observations(#235)', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omk-obs-store-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('appendManagedObservation:追加/初始化/按 reportId 去重/缺记录→null', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    assert.equal(appendManagedObservation(store, id, makeObs()), null, '记录不存在 → null(管理是 install opt-in)');
+    upsertManagedRecord(store, makeRecord({ id }));
+    const r1 = appendManagedObservation(store, id, makeObs({ reportId: 'a' }));
+    assert.equal(r1!.observations?.length, 1, '首条初始化 observations');
+    const r2 = appendManagedObservation(store, id, makeObs({ reportId: 'a' }));
+    assert.equal(r2!.observations?.length, 1, '同 reportId 去重 no-op');
+    const r3 = appendManagedObservation(store, id, makeObs({ reportId: 'b' }));
+    assert.equal(r3!.observations?.length, 2, '异 reportId 追加');
+  });
+
+  it('validator:畸形观测判脏丢整条;合法 / 缺省放行(back-compat)', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    const write = (obs: unknown) => writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), observations: obs }));
+
+    write([{ ...makeObs(), observationKind: 'bogus' }]);
+    assert.equal(loadManagedRecord(store, id), null, 'observationKind 非 production-health 判脏');
+    write([{ ...makeObs(), healthBand: 'purple' }]);
+    assert.equal(loadManagedRecord(store, id), null, 'healthBand 非法枚举判脏');
+    write([{ ...makeObs(), confidence: 42 }]);
+    assert.equal(loadManagedRecord(store, id), null, 'confidence 非法判脏');
+    write([{ ...makeObs(), gapByType: { failed_search: 'x', explicit_marker: 0, hedging: 0, repeated_failure: 0 } }]);
+    assert.equal(loadManagedRecord(store, id), null, 'gapByType 含非 number 判脏');
+    write('not-an-array');
+    assert.equal(loadManagedRecord(store, id), null, 'observations 非数组判脏');
+
+    write([makeObs({ healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })]);
+    assert.ok(loadManagedRecord(store, id), '合法观测读回');
+    // 缺省(旧记录无 observations)仍合法。
+    writeFileSync(recordPath(store, id), JSON.stringify(makeRecord({ id })));
+    assert.ok(loadManagedRecord(store, id), 'observations 缺省 back-compat');
+  });
+
+  it('mergeManagedRecord / 重装 upsert 保留 prev.observations', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    upsertManagedRecord(store, makeRecord({ id }));
+    appendManagedObservation(store, id, makeObs({ reportId: 'a' }));
+    // 重装(install 只写事实、next 无 observations)不应丢历史观测。
+    upsertManagedRecord(store, makeRecord({ id, contentHash: 'bbbbbbbbbbbb' }));
+    assert.equal(loadManagedRecord(store, id)!.observations?.length, 1, '重装保留 observations');
+  });
+
+  it('isProductionGapObservation:red 且够力才确诊;underpowered / yellow / green 不算', () => {
+    assert.equal(isProductionGapObservation(makeObs({ healthBand: 'red', confidence: 'high' })), true);
+    assert.equal(isProductionGapObservation(makeObs({ healthBand: 'red', confidence: 'underpowered' })), false);
+    assert.equal(isProductionGapObservation(makeObs({ healthBand: 'yellow', confidence: 'high' })), false);
+    assert.equal(isProductionGapObservation(makeObs({ healthBand: 'green', confidence: 'high' })), false);
+  });
+
+  it('deriveProductionGap:无观测→none;red+够力→gap;underpowered→underpowered;latest-wins', () => {
+    assert.equal(deriveProductionGap(makeRecord()).marker, 'none', '无观测');
+    assert.equal(deriveProductionGap(makeRecord({ observations: [makeObs({ healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })] })).marker, 'gap');
+    assert.equal(deriveProductionGap(makeRecord({ observations: [makeObs({ healthBand: 'red', confidence: 'underpowered' })] })).marker, 'underpowered');
+    // 两条:最新一条 green → none(就算更早那条是 red)。
+    const m = deriveProductionGap(makeRecord({ observations: [
+      makeObs({ reportId: 'old', observedAt: '2026-06-08T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 }),
+      makeObs({ reportId: 'new', observedAt: '2026-06-12T00:00:00.000Z', healthBand: 'green' }),
+    ] }));
+    assert.equal(m.marker, 'none', 'latest-wins:最新 green');
+    assert.equal(m.latest!.reportId, 'new');
+  });
+
+  it('无版本闸门:观测早于当前内容证据也照常 surface(版本无关信号,不按源码版归因)', () => {
+    // 当前内容 B 的证据在 2026-06-20,而观测窗口结束在 2026-06-05(早于)。observe 量的是线上部署版,
+    // 记录无可靠「源码版↔部署版」时间锚,故不做版本闸门 —— 按 latest-wins 照常 surface(防回归:有人若
+    // 重新加闸门,这条会红)。源码 bump 后旧观测仍有效(旧副本还部署着),闸门会错误压掉它。
+    const rec = makeRecord({
+      contentHash: 'bbbbbbbbbbbb',
+      evidence: [{ reportId: 'evB', contentHash: 'bbbbbbbbbbbb', recordedAt: '2026-06-20T00:00:00.000Z' }],
+      observations: [makeObs({ observedAt: '2026-06-05T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })],
+    });
+    assert.equal(deriveProductionGap(rec).marker, 'gap');
+  });
+
+  it('承重不变量:有 red 观测但 contentHash 匹配 → 仍 measurable,绝不 stale', () => {
+    const rec = makeRecord({
+      evidence: [{ reportId: 'e', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-07T00:00:00.000Z' }],
+      observations: [makeObs({ observedAt: '2026-06-12T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })],
+    });
+    // 生产盲区是 marker,不进生命周期:当前 hash 匹配 → measurable(观测不翻 stale)。
+    const d = deriveManagedState({ record: rec, currentContentHash: 'aaaaaaaaaaaa' });
+    assert.equal(d.label, 'measurable');
+    assert.equal(d.drifted, false);
+    // 同一记录的生产盲区 marker 独立亮起。
+    assert.equal(deriveProductionGap(rec).marker, 'gap');
   });
 });

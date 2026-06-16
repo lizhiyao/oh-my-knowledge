@@ -79,6 +79,32 @@ export interface ManagedDecision {
   override?: { verdict: string; overriddenBlocks?: string[] };
 }
 
+/** observe → 管理支柱的生产健康观测(#235)。append-only,与 evidence / decisions 同为事实事件流。
+ *  observe 报告只带 skill **名**(无 contentHash)→ 按 name + kind 绑记录,不锚 contentHash;且观测的是线上
+ *  **正在跑的那一版**(可能已非记录当前版),故是**版本无关的生产信号**,产出读时 marker(production gap),
+ *  绝不翻 stale 生命周期(§6.1 只有内容漂移翻 stale)。样本建议只提示,不改样本集。 */
+export interface ManagedObservation {
+  /** 限定判别字(裸 kind 留给 ArtifactKind)。 */
+  observationKind: 'production-health';
+  /** observe-health 报告 id —— append 去重主键(observe 无 contentHash,故不用 (reportId, contentHash))。 */
+  reportId: string;
+  /** 被观测**流量窗口的结束时刻**(report.meta.timeRange.to)——不是报告生成的「此刻」(generatedAt 恒约等于
+   *  now,拿它做 latest-wins 会让所有观测看起来一样新)。deriveProductionGap 据此取最新一条观测。注:观测是
+   *  **版本无关的生产信号**(量的是线上部署版),不按源码版归因,见 deriveProductionGap。 */
+  observedAt: string;
+  /** 该 skill 在窗口内的盲区率与严重度加权盲区率(直接取 observe 已算好的 per-skill 值,不重算)。 */
+  gapRate: number;
+  weightedGapRate: number;
+  /** 统计功效:underpowered = 段数太少不可知(§6.1 unknown,既不放行也不拦截,不当确诊盲区)。 */
+  confidence: 'high' | 'low' | 'underpowered';
+  /** per-skill 色带,由 observe CLI 侧用 observability 的 healthBandOf 算好传入(阈值单一来源)。 */
+  healthBand: 'green' | 'yellow' | 'red';
+  /** 该 skill 在窗口内的被观测段数(功效上下文)。 */
+  segmentCount: number;
+  /** 盲区按信号类型计数 —— 驱动「建议补哪类用例」提示(只展示,不生成用例)。 */
+  gapByType: { failed_search: number; explicit_marker: number; hedging: number; repeated_failure: number };
+}
+
 export interface ManagedArtifactSource {
   /** 源类型(限定判别字,非裸 kind)。`file`=本地路径;`git`=当前仓库某 ref 或远端(带 url)。 */
   sourceKind: 'file' | 'git';
@@ -112,6 +138,9 @@ export interface ManagedArtifactRecord {
   distribution: ManagedDistributionTarget[];
   evidence: ManagedEvidenceRef[];
   decisions: ManagedDecision[];
+  /** #235 observe 生产健康观测(append-only)。旧记录无 → optional;deriveManagedState 不依赖它,
+   *  production gap 是读时 marker(deriveProductionGap),不翻 stale。 */
+  observations?: ManagedObservation[];
 }
 
 /** 读时推导的生命周期标签——不持久(见文件头说明)。`promoted` 由当前内容(contentHash 匹配)有一条

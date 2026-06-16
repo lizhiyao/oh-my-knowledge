@@ -16,6 +16,8 @@ export type CommonMessageKey =
   | 'cli.update.box_upgrade_line'
   | 'cli.update.box_silence_line'
   | 'cli.observe.view_hint'
+  | 'cli.observe.observation_recorded'
+  | 'cli.observe.production_gap'
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
@@ -84,6 +86,14 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.observe.view_hint': {
     zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成健康报告。',
     en: 'Analysis JSON written to output-dir; use omk observe to keep producing health reports.',
+  },
+  'cli.observe.observation_recorded': {
+    zh: '🔭 已为受管 skill「{name}」记录生产健康观测。\n',
+    en: '🔭 Recorded a production-health observation for managed skill "{name}".\n',
+  },
+  'cli.observe.production_gap': {
+    zh: '⚠️ 受管 skill「{name}」线上检测到生产盲区（{areas}）。建议补充对应用例后重跑 omk eval —— observe 只提示，不改样本集。\n',
+    en: '⚠️ Managed skill "{name}" shows production gaps in real traffic ({areas}). Consider adding matching samples and re-running omk eval — observe only suggests, it does not edit the sample set.\n',
   },
   'cli.studio.started': {
     zh: 'studio 已启动：{url}',

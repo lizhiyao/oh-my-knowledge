@@ -114,6 +114,8 @@ interface EvidenceCurrency {         // 全部读时派生 —— 不动 schema
 
 `unknown` 既不是隐式放行*也不是*隐式拦截：它表示这条轴在当前上下文无从判定（源不可达、没有可解析的样本集，或证据早于 judge-hash 记录），并照此暴露 —— 与现有「缺 `judgePromptHash` 只 warn 不拦」一致。内容轴及其 `'unknown'`/未核处理今天已上线（`deriveManagedState` + `list` / `promote`：源不可达时保留原标签、仍可 `--force` 放行）；把 `sampleDrift` 接进 promote 门禁、`list`、Studio 是后续实现项 —— 策略在此已定。
 
+第四个读时 marker，由 `observe` 而非证据时效喂入（#235）：**生产盲区** marker。前三轴问的是*证据*还当不当前；这一个问的是*线上流量*里 skill 有没有在失败（知识盲区、含糊回避、反复失败）。它**版本无关**：`observe` 量的是线上**部署版**的行为，而记录里没有可靠的「源码版 ↔ 部署版」时间锚（`evolve` 只把 `contentHash` 重锚、不重新分发，线上跑的还是旧副本）——所以这个 marker **不按源码版归因、也没有版本闸门**。加闸门只会给假精度，还会在源码 bump 后错误压掉仍然有效的真盲区。取**最新一条**观测（按被观测窗口结束时刻）：**绝不翻 `stale` 生命周期**（只有内容漂移会），也**绝不门控 `promote`** —— `observe` 是信号源、不是受控 eval（§2）。红且统计够力的观测读作盲区；`underpowered` 的是 `unknown`（线上段数太少不可判 —— 暴露但不当盲区）。marker 反映的是部署副本、可能滞后于当前源码版。见 §7 `observe`。
+
 ## 7. 命令面
 
 长期命令闭环保持：
@@ -191,7 +193,7 @@ MVP 落地的是 `omk rollback <name>`：撤销**当前**内容的接受。回�
 
 ### `observe`
 
-`observe` 通过标记证据过期、发现线上缺口或建议新增用例来反哺管理决策。它不能静默转正或降级 artifact。
+`observe` 反哺管理支柱，但绝不静默转正或降级 artifact（它是信号源、不是受控 eval —— §2）。跑完后，对每个**已纳管**、名字匹配上某个被观测 skill 的 `skill` 记录，追加一条 denormalized `ManagedObservation`（生产盲区率、严重度加权率、统计功效、盲区类型计数）。匹配按 **name + kind** —— `observe` 的 trace 不带 `contentHash`，只有调用名，约定上等于 install 名；skill 的 frontmatter `name:` 与 install 目录名不一致时则什么都不记（fail-safe）。记录据此得到一个读时**生产盲区** marker（§6.1），CLI 打印该补哪些盲区区域的用例。它**不**改样本集（只建议）、不翻 `stale` 生命周期（盲区是 marker、不是内容漂移）、不升降级。`--no-feedback` 关闭写入；未纳管的 skill 绝不被凭空建记录（与 `eval` 写证据的 opt-in 一致）。
 
 ### `studio`
 
@@ -223,7 +225,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 - **已落地（rollback MVP）：** `omk rollback <name>` 通过追加一条 `rollback` 决定撤销当前版本的 promoted 接受；`isCurrentlyPromoted`（当前内容最近一条 promote/rollback 决定胜出）把状态推回 `measurable`（源已漂移则 `stale` —— rollback 不探源）。`ManagedDecisionKind` 本就含 `rollback`，无 schema 变更。
 - **超出范围（交给 git）：** 把*历史*版本内容恢复写回源文件（真正的文件恢复）。自建版本内容仓库会让 omk 变成 §1 明确不做的「更会拷文件」——git 本就提供持久、内容寻址的版本管理。omk 本分内的贡献（#236）：额外记一个每版的 git 坐标（SHA）当指针，并把带证据的版本历史 + 对本地 git 来源的 `git checkout` 提示展示出来（并入 Studio 决策史，§7 `studio`）。非 git 来源就直说文件版本管理是 git 的活。已发的决策级 rollback（撤销接受）仍是 omk 自己该握住的部分。
-- 让 `observe` 标记证据过期并建议新增用例。
+- **已落地（#235）：** `observe` 在匹配到的受管 skill 上记一条生产健康观测（`ManagedObservation`，append-only）、surface 读时生产盲区 marker、打印补样本建议。不翻生命周期（盲区是 marker、不是 `stale` —— §6.1），不改样本集。
 - 在 Studio 展示决策历史。
 
 ## 9. 开放问题
@@ -235,6 +237,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - **已决：** `evolve` 默认仍把胜者写回源（无需 deprecation）；`--snapshot-only` 是只产候选时的退出开关（快照留在 `evolve/`）。受管 skill 上 evolve 记证据 + re-baseline 记录（→ `measurable`），而不是把写入改道经 `promote` —— 旧决策 B（promote 独占 canonical 写）已否决；见 §7 `evolve` 与 §8。
 - **已决（promote MVP）**：默认可接受 verdict 只 `PROGRESS`（omk default-strict——影响「值得 ship」判定的默认必须严格）;`CAUTIOUS` 需显式 `--accept-cautious`;其余需 `--force`（记为 override）。
 - **已定（#237）**：过期按轴分别判、各自对当前上下文判定 —— 完整模型见 §6.1。**内容**漂移（**可达**的源、hash 不同——artifact 身份）是唯一会把生命周期翻成 `stale` 并硬拦 promote（不可越）的轴；源**不可达**是另一回事——现有的「未核」态，保留按证据推出的标签、仍可 `--force --reason` 放行，绝不静默 `stale`。**样本集**漂移（artifact 没变；当前用例集与证据 `sampleCoverage.hash` 不一致，仅当当前样本集可解析时才判）暴露读时 `sampleDrift` marker，且是**可越的 promote 硬拦**（`--force --reason`、记 override），不改生命周期。**运行时**漂移分两支：评委身份变了（`judgePromptHash` 已不属当前）走现有 `incomparable` 硬拦（可越），而 `cliVersion` / `debiasMode` 偏移只展示、永不门控。不新增持久生命周期 enum、不动 Report / record schema —— marker 都是读时派生。把 `sampleDrift` 接进 promote 门禁与 `list` / Studio 是后续实现项（也反哺 §7 `observe` 的「线上缺口→补用例」那条路径）；策略在此已定。
+- **已定（#235）**：`observe` 反哺管理支柱。跑完后对每个**按名字**匹配上的已纳管 `skill` 记录追加一条 denormalized `ManagedObservation`（observe 无 contentHash）；记录据此得到读时**生产盲区** marker（红 + 统计够力），CLI 打印该补哪些盲区区域。取舍对齐 #221 写证据：触发是 observe 完成自动写、但只写已存在的记录（`--no-feedback` 退出、绝不凭空建记录）；append-only 按 `reportId` 去重；记录仍 `schemaVersion 2`（additive 可选 `observations`）。对 issue「标 stale」字面做了两处有意收窄：(a) 信号**版本无关** —— `observe` 量的是线上**部署版**行为，记录无可靠「源码版 ↔ 部署版」时间锚（`evolve` 重锚 `contentHash` 不重新分发），故 marker **按 latest-wins、不归因到源码版、无版本闸门**（加闸门只是假精度，还会在源码 bump 后压掉仍然有效的真盲区），框成生产信号；(b) 它是**读时 marker、绝非 `stale` 生命周期** —— 只有内容漂移翻 `stale`（§6.1），observe 不得静默降级（§2）。只建议：绝不改样本集。已知局限：按名字匹配会漏掉调用名与 install 名不一致的 skill；且 marker 反映的是**部署副本**的行为、可能滞后于当前源码版（如 `evolve` 改写源后、重新分发前）。观测时间戳取被观测窗口结束时刻（`meta.timeRange.to`）做 latest-wins，不是报告生成的「此刻」（恒约等于 now）。
 - **已定（#238）**：人工 override **仅限 CLI**——`promote --force --reason`，决定的 `actor` 由 `--actor` / git / env 记录，被绕过的门可审计。Studio 保持**只读**：把 override 摆出来供审计（`/managed/<id>` 决策时间线渲染被绕过的门，`/managed` 列表对「当前版本是越门采用的」打标），但自己绝不执行 override。override 绕过测量门禁、必须可归属到人；本地 Studio 网页没有账号体系、omk 也不引入，记不下可信 actor——把写留在 CLI 同时保住审计链与 Studio 的只读姿态。
 - `omk init` 何时演进为 `omk eval init`，兼容 alias 策略怎么定？
 

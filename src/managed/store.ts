@@ -11,6 +11,7 @@ import type {
   ManagedDecision,
   ManagedDistributionTarget,
   ManagedEvidenceRef,
+  ManagedObservation,
 } from '../types/index.js';
 
 /**
@@ -135,7 +136,21 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
     }
     return true;
   });
-  return okDist && okEv && okDec;
+  // observations(#235)缺省合法(旧记录无);present 必须是数组,每条窄到声明类型 —— healthBand / confidence
+  // 驱动读时 marker(deriveProductionGap),畸形脏值会让 list / Studio 误判,故判脏丢整条记录(同 okEv / okDec)。
+  const okObs = r.observations === undefined || (Array.isArray(r.observations) && r.observations.every((o) => {
+    if (!o || typeof o !== 'object') return false;
+    const obs = o as unknown as Record<string, unknown>;
+    if (obs.observationKind !== 'production-health') return false;
+    if (!isStringField(obs.reportId) || !isStringField(obs.observedAt)) return false;
+    if (typeof obs.gapRate !== 'number' || typeof obs.weightedGapRate !== 'number' || typeof obs.segmentCount !== 'number') return false;
+    if (obs.confidence !== 'high' && obs.confidence !== 'low' && obs.confidence !== 'underpowered') return false;
+    if (obs.healthBand !== 'green' && obs.healthBand !== 'yellow' && obs.healthBand !== 'red') return false;
+    const g = obs.gapByType as Record<string, unknown> | null;
+    if (!g || typeof g !== 'object') return false;
+    return ['failed_search', 'explicit_marker', 'hedging', 'repeated_failure'].every((k) => typeof g[k] === 'number');
+  }));
+  return okDist && okEv && okDec && okObs;
 }
 
 export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecord | null {
@@ -207,7 +222,7 @@ export function mergeManagedRecord(
   const byPath = new Map<string, ManagedDistributionTarget>();
   for (const t of prev.distribution) byPath.set(normKey(t.path), t);
   for (const t of next.distribution) byPath.set(normKey(t.path), t);
-  // 维护点:`...next` 取本次安装的事实,下面四个字段从 prev 保留(历史 / 首次时间)。
+  // 维护点:`...next` 取本次安装的事实,下面这些字段从 prev 保留(历史 / 首次时间)。
   // 将来若新增任何"必须从安装基线保留"的字段,务必加进这份覆盖清单,否则会被 next 静默覆盖成 undefined。
   // 注意语义边界:distribution 是**多源容忍**的(按归一化 path 累积去重),而 source / contentHash 是
   // **末次写入(单源)**。同一 (kind,name) 先 file 后 git 重装会得到一条 source=git 的记录,但 distribution
@@ -218,6 +233,7 @@ export function mergeManagedRecord(
     distribution: [...byPath.values()],
     evidence: prev.evidence,
     decisions: prev.decisions,
+    ...(prev.observations ? { observations: prev.observations } : {}),
   };
 }
 
@@ -252,6 +268,33 @@ export function appendManagedEvidence(
   const merged: ManagedArtifactRecord = dup
     ? prev
     : { ...prev, evidence: [...prev.evidence, evidence] };
+  if (!dup) {
+    mkdirSync(dir, { recursive: true });
+    const path = recordPath(dir, recordId);
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    writeFileSync(tmp, JSON.stringify(merged, null, 2));
+    renameSync(tmp, path);
+  }
+  return merged;
+}
+
+/**
+ * 追加一条 observe 生产健康观测(append-only,#235)。同 evidence 不走 upsert:`mergeManagedRecord` 保留旧
+ * observations、丢弃 next 的(install 只写事实)。按 `reportId` 去重——observe 无 contentHash,一份 observe 报告
+ * 对一条观测;同报告重跑不堆重复,不同报告(新窗口)是新 reportId → 新条目。记录不存在(未 install / 名字不
+ * 匹配)返回 null —— 与 evidence 同口径:observe 绝不为未纳管 skill 凭空建记录(管理是 install 显式 opt-in)。
+ */
+export function appendManagedObservation(
+  dir: string,
+  recordId: string,
+  observation: ManagedObservation,
+): ManagedArtifactRecord | null {
+  const prev = loadManagedRecord(dir, recordId);
+  if (!prev) return null;
+  const dup = (prev.observations ?? []).some((o) => o.reportId === observation.reportId);
+  const merged: ManagedArtifactRecord = dup
+    ? prev
+    : { ...prev, observations: [...(prev.observations ?? []), observation] };
   if (!dup) {
     mkdirSync(dir, { recursive: true });
     const path = recordPath(dir, recordId);
@@ -422,4 +465,44 @@ export function deriveManagedState(input: DeriveManagedStateInput): DerivedManag
   if (isCurrentlyPromoted(record)) return { label: 'promoted', drifted: false, hasEvidence };
   if (hasEvidence || hasSamplesOrDoctorPass) return { label: 'measurable', drifted: false, hasEvidence };
   return { label: 'installed', drifted: false, hasEvidence };
+}
+
+/** 一条观测是否构成「确诊生产盲区」:healthBand 红 **且** 统计够力。underpowered(数据不足)是 §6.1 的
+ *  unknown —— 既不放行也不拦截,不当确诊盲区;yellow / green 也不算(留信息展示,避免低样本噪声里过度报警)。 */
+export function isProductionGapObservation(obs: ManagedObservation): boolean {
+  return obs.healthBand === 'red' && obs.confidence !== 'underpowered';
+}
+
+const obsMs = (s: string): number | null => { const n = Date.parse(s); return Number.isNaN(n) ? null : n; };
+/** 谁更新(按 observedAt = 流量窗口结束时刻):真实时刻可解析则比时刻,否则退字典序;并列取后出现的。 */
+function obsNewerWins(cur: string, latest: string): boolean {
+  const tc = obsMs(cur); const tl = obsMs(latest);
+  return tc !== null && tl !== null ? tc >= tl : cur >= latest;
+}
+
+export interface ProductionGapState {
+  /** `gap` = 确诊生产盲区(red + 够力);`underpowered` = 线上数据不足、不可知;`none` = 无观测 / 最新观测非红。 */
+  marker: 'none' | 'gap' | 'underpowered';
+  latest?: ManagedObservation;
+}
+
+/**
+ * observe 生产健康观测的**读时 marker**(#235)。取**最新一条**观测(latest-wins,按 observedAt = 被观测
+ * 流量窗口结束时刻)分类:red + 够力 → `gap`;underpowered → `underpowered`(数据不足);其余 → `none`。
+ *
+ * **版本无关的生产信号**:observe 量的是线上**部署版**的行为,而记录里没有可靠的「源码版 ↔ 部署版」时间锚
+ * (`evolve` 改写源、`rebaselineManagedContentHash` 只换 `contentHash`,不碰 distribution/installedAt;部署副本
+ * 仍是旧的)——所以这里**不按源码版归因、也不臆造版本闸门**(那只会给假精度、还会在源码 bump 后压掉仍然有效的
+ * 真盲区)。marker 反映的是部署版的近况,可能滞后于当前源码版,UI / spec 据此老实标注。
+ *
+ * **绝不翻 stale / 不动生命周期枚举**(§6.1:只有内容漂移翻 stale,observe 是信号源不是受控 eval)。
+ */
+export function deriveProductionGap(record: ManagedArtifactRecord): ProductionGapState {
+  const obs = record.observations ?? [];
+  if (obs.length === 0) return { marker: 'none' };
+  let latest = obs[0];
+  for (const o of obs) if (obsNewerWins(o.observedAt, latest.observedAt)) latest = o;
+  if (isProductionGapObservation(latest)) return { marker: 'gap', latest };
+  if (latest.confidence === 'underpowered') return { marker: 'underpowered', latest };
+  return { marker: 'none', latest };
 }
