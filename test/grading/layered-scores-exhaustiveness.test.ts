@@ -30,7 +30,12 @@ const ASSERTIONS_SRC = join(__dirname, '..', '..', 'src', 'grading', 'assertions
  */
 const LAYER_COMBINATORS = new Set(['assert-set']);
 
-/** runner 实际支持的全部 assertion 类型:case 字面量 ∪ pre-switch 组合器比较 ∪ 异步类型集(含连字符)。 */
+/**
+ * runner 实际支持的全部 assertion 类型:case 字面量 ∪ pre-switch 组合器比较 ∪ 异步类型集(含连字符)。
+ * 两条 idiom 锚得很死:`case '<type>':` 是 switch 分派,`assertion.type === '<type>'` 按定义就是「这条断言
+ * 是不是 <type>」的类型分派 —— 字面量恒为真实类型,不会误捕(正则限定 `assertion.type` 标识符,不匹配别的
+ * `xxx.type`)。两种 idiom 之外若再冒出第三种分派方式,caseTypes 数量守卫会先炸,逼这里同步。
+ */
 function supportedAssertionTypes(): string[] {
   const src = readFileSync(ASSERTIONS_SRC, 'utf8');
   const caseTypes = [...src.matchAll(/case '([a-z_-]+)':/g)].map((m) => m[1]);
@@ -67,6 +72,16 @@ describe('assertion 类型分层穷尽性', () => {
     assert.equal(mixed.layeredScores.factScore, undefined, '混层 assert-set 不进事实层');
     assert.equal(mixed.layeredScores.behaviorScore, undefined, '混层 assert-set 不进行为层');
     assert.equal(mixed.compositeScore, 0, '混层组合器无单层可归 → 不计入分层(诚实,不塞单层引偏差)');
+  });
+
+  it('detail.layer 契约:仅同层组合器明细带 layer(随报告持久化为归属溯源);叶子 / 混层 / 非组合器一律不带', () => {
+    // layer 是 assert-set 唯一的「层」载体(聚合明细是 grading→持久化的同一对象,叶子 children 不单独成明细),
+    // 故有意落到 detail 上。本用例钉死它「只在同层组合器明细出现」的契约,把它从偶发字段变成受测的对外 schema 面。
+    const layerOfFirst = (a: Assertion): unknown => runAssertions('hello world', [a]).details[0].layer;
+    assert.equal(layerOfFirst({ type: 'assert-set', mode: 'all', children: [{ type: 'contains', value: 'hello' }, { type: 'contains', value: 'world' }] }), 'fact', '同层(fact)组合器 → layer=fact');
+    assert.equal(layerOfFirst({ type: 'assert-set', mode: 'all', children: [{ type: 'min_length', value: 1 }, { type: 'max_length', value: 99 }] }), 'behavior', '同层(behavior)组合器 → layer=behavior');
+    assert.equal(layerOfFirst({ type: 'assert-set', mode: 'all', children: [{ type: 'contains', value: 'hello' }, { type: 'max_length', value: 99 }] }), undefined, '混层组合器 → 不带 layer(交由静态映射,而它无 assert-set 条目 → 不计)');
+    assert.equal(layerOfFirst({ type: 'contains', value: 'hello' }), undefined, '叶子断言绝不带 layer(按静态 ASSERTION_LAYER 归层)');
   });
 
   it('曾被漏掉的七类如今进 composite(回归):文本相似度 + RAG 三件套→fact,mock_hit→behavior', () => {
