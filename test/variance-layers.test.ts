@@ -195,9 +195,9 @@ describe('buildVarianceData — three-layer breakdown (PR-2)', () => {
   });
 
   it('边界: mean = 0 (全 0 分数)不崩,byLayer 输出 stddev=0', () => {
-    // 所有用例 judge=0(评委判全部不合格)。mean=0 是合法数据,不是 NaN。
-    // 这是 "judgeScore > 0 过滤 bias" fix 之后的关键 case:0 分用例应该进聚合,
-    // 最终 byLayer.judge.mean === 0,stddev === 0,不抛异常。
+    // 数值健壮性:byLayer 聚合喂入全相等(此处全 0,如旧数据 / 合成输入)时,mean / stddev 必须算成 0、
+    // 不 NaN、不抛异常。注:经 score=0 修复后,真实 grading 评委失败产出 undefined(非 0)、不会以 0 进层,
+    // 故本例是退化输入的健壮性边界,不代表「评委 0 分是有效内容」。
     const runs: Report[] = [
       makeRun('r1', { v1: { composite: 2.0, fact: 4.0, behavior: 2.0, quality: 0 } }),
       makeRun('r2', { v1: { composite: 2.0, fact: 4.0, behavior: 2.0, quality: 0 } }),
@@ -205,7 +205,7 @@ describe('buildVarianceData — three-layer breakdown (PR-2)', () => {
     const data = buildVarianceData(runs);
     assert.ok(data);
     const judgeStats = data!.perVariant.v1.byLayer?.judge;
-    assert.ok(judgeStats, 'judge layer should be populated (0 is valid score, not missing)');
+    assert.ok(judgeStats, 'byLayer 对退化全相等输入仍输出该层(不丢、不 NaN)');
     assert.equal(judgeStats!.mean, 0);
     assert.equal(judgeStats!.stddev, 0);
     assert.deepEqual(judgeStats!.scores, [0, 0]);

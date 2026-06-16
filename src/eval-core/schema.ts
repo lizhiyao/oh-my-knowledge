@@ -106,7 +106,8 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
         layeredScores.factScore = assertionFact != null
           ? Number(((assertionFact + hardScore) / 2).toFixed(2))
           : hardScore;
-        // Recompute composite from updated layers (保留 0 分,仅过滤真正缺失)
+        // Recompute composite from updated layers. 仅过滤 null/undefined(缺测层);评委失败时 judgeScore
+        // 本就是 undefined(见 grading 的 score=0 修复:评委失败=缺测、不以 0 进层),不存在「0 分」要保留。
         const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.judgeScore].filter((s): s is number => s != null);
         compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : compositeScore;
       }
@@ -222,8 +223,9 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       };
     })(),
     ...(() => {
-      // 保留 0 分用例(评委打"完全不合格"是合法低分,不是缺失)。
-      // 仅 filter null / undefined(真正缺数据,如该 sample 无对应断言或未配 judge)。
+      // 各层分量为 null/undefined = 该层缺测(无对应断言 / 未配 judge / 评委失败)。评委失败已在 grading 层
+      // 当缺测、judgeScore 留 undefined(见 score=0 修复),不存在「0 分内容」要保留;评委有效分恒 1-5。
+      // filter != null 即精确剔除缺测层。
       const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null);
       const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null);
       const judgeScores = ok.map((e) => e.layeredScores?.judgeScore).filter((s): s is number => s != null);
