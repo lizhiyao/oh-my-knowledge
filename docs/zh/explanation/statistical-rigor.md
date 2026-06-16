@@ -72,6 +72,15 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 
 少一件，洞就出来。Bootstrap CI / 长度去偏 / 饱和曲线默认开（长度去偏可为研究复现 opt out，其余无条件）；Krippendorff α 在你提供 gold 集（`--gold-dir`）后自动开启。
 
+## Verdict 稳健性 —— 多重比较 + 稳定性门控
+
+六档 verdict 把上面几件事汇成一个 ship / no-ship 结论。当实验设计给它加压时，两条校正让结论保持诚实：
+
+- **多重比较校正（Bonferroni）。** K 个 treatment 同时跟一个 control 比时，每对 diff 各按 α 独立检验会让 family-wise 假阳性膨胀 —— worst-case roll-up 取最吵的那一对，任一对假「显著」就拉高总结论。omk 改成每对按 **α / K** 检验，把 family-wise error 压回名义 α。K = 1（经典 A/B）不变。每个被校正的 `VariantPairComparison` 记下它的有效 `alpha`，报告据此重标 CI —— 被 Bonferroni 收宽的区间绝不再标「95%」。
+- **稳定性门控。** 跨轮不可复现的「显著」提升不可 ship。当稳定性**已被测量**（`--repeat ≥ 2`）且跨轮波动偏高（中位 CV > 15%）时，PROGRESS 降级为 CAUTIOUS，不稳定性在 headline 里点明。单轮报告**不**门控 —— 那里稳定性根本没测（rationale 已如实说明），把每个单轮 eval 都自动降级会过激。
+
+实现：`src/eval-core/verdict.ts` 与 `src/eval-core/evaluation-reporting.ts`。CV 阈值由 `test/scripts/doc-constants-drift.test.ts` 与代码保持同步。
+
 ## 用例隔离（`--strict-baseline`，默认开）
 
 跟上面四件并列、但也是默认开的第五件：

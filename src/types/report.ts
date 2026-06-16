@@ -158,6 +158,16 @@ export interface VariantPairComparison {
   treatment: string;
   /** Bootstrap CI on (treatment - control) mean diff. `significant` = 0 outside CI. */
   diffBootstrapCI?: { low: number; high: number; estimate: number; samples: number; significant: boolean };
+  /**
+   * Effective per-comparison significance level used for `diffBootstrapCI` after
+   * multiple-comparison (Bonferroni) correction: `DEFAULT_BOOTSTRAP_ALPHA / K`, where K is the
+   * number of treatment-vs-control comparisons in this report. Present **only when K ≥ 2** —
+   * the CI and `significant` then reflect the corrected (wider) interval. Absent ⇒ the nominal
+   * α (single comparison / classic A-B, no correction). Renderers derive the displayed
+   * confidence level ((1 − alpha)·100%) from this so a Bonferroni-widened CI is never mislabeled
+   * "95%".
+   */
+  alpha?: number;
 }
 
 export interface GitInfo {

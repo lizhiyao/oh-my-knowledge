@@ -324,4 +324,83 @@ describe('computeVerdict', () => {
     assert.equal(v.level, 'SOLO');
     assert.match(v.rationale.stability ?? '', /未测量/);
   });
+
+  // --- 稳定性门控(PR4)----------------------------------------------------
+  // 一个干净的显著正向 PROGRESS,只叠加 variance 数据,隔离稳定性门控这一条。
+  const cleanProgressWithVariance = (perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }>, runs = 3): Report => buildReport({
+    variants: ['baseline', 'skill'],
+    perVariantAvg: {
+      baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+      skill:    { fact: 4.3, behavior: 4.3, judge: 4.5, composite: 4.33 },
+    },
+    pairs: [{
+      control: 'baseline', treatment: 'skill',
+      diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
+    }],
+    variance: { runs, perVariant, comparisons: [] },
+  });
+
+  it('稳定性门控:已测(runs≥2)且 median CV > 15% → PROGRESS 降为 CAUTIOUS', () => {
+    const r = cleanProgressWithVariance({
+      baseline: { scores: [3.2, 4.0, 4.8], mean: 4.0, lower: 3.2, upper: 4.8, stddev: 0.8 },  // CV=0.20
+      skill:    { scores: [3.35, 4.3, 5.25], mean: 4.3, lower: 3.35, upper: 5.25, stddev: 0.95 }, // CV≈0.221
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'CAUTIOUS', 'run-to-run 不稳的显著进展应被降级');
+    assert.match(v.headline, /run-to-run 不稳/);
+    assert.match(v.rationale.stability ?? '', /不稳/);
+  });
+
+  it('稳定性门控:median CV 在阈值内(≤15%)不降级,PROGRESS 保持', () => {
+    const r = cleanProgressWithVariance({
+      baseline: { scores: [3.6, 4.0, 4.4], mean: 4.0, lower: 3.6, upper: 4.4, stddev: 0.4 },  // CV=0.10
+      skill:    { scores: [3.87, 4.3, 4.73], mean: 4.3, lower: 3.87, upper: 4.73, stddev: 0.43 }, // CV=0.10
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'PROGRESS', 'CV 在中等带内不门控');
+    assert.doesNotMatch(v.headline, /run-to-run 不稳/);
+  });
+
+  it('稳定性门控:单轮(runs<2)稳定性未测,不降级,PROGRESS 保持(rationale 仍诚实标未测量)', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.5, composite: 4.33 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
+      }],
+      // 无 variance → runs<2 → 稳定性未测
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'PROGRESS');
+    assert.match(v.rationale.stability ?? '', /未测量/);
+  });
+
+  it('稳定性门控只压 PROGRESS:高 CV 的 REGRESS 仍是 REGRESS', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 3.5, behavior: 3.5, judge: 3.5, composite: 3.5 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: -0.7, high: -0.2, estimate: -0.5, samples: 1000, significant: true },
+      }],
+      variance: {
+        runs: 3,
+        perVariant: {
+          baseline: { scores: [3.2, 4.0, 4.8], mean: 4.0, lower: 3.2, upper: 4.8, stddev: 0.8 },
+          skill:    { scores: [2.5, 3.5, 4.5], mean: 3.5, lower: 2.5, upper: 4.5, stddev: 0.9 },
+        },
+        comparisons: [],
+      },
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'REGRESS', '门控只下调 PROGRESS,不触碰 REGRESS');
+    assert.doesNotMatch(v.headline, /run-to-run 不稳/);
+  });
 });

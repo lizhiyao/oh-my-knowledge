@@ -215,12 +215,14 @@ export function aggregateReport({
       pairComparisons = [];
       const controlName = variants[0];
       const sampleRecords = Object.values(results);
+      // **配对** diff CI:A/B 是同一批 sample 分别过 control / treatment(配对设计),按 sample 对齐 ——
+      // 同一 sample 上 control 与 treatment 都可测(composite > 0,见上不变量)才入对。同一 sample 两 variant
+      // 的分数正相关,配对 bootstrap 据此抵消共有方差、收紧 diff CI、更有功效;旧的独立(非配对)重采样高估
+      // 方差、CI 偏宽、保守失功效(见 bootstrapPairedDiffCI)。点估计不变,只收紧 CI。
+      // 先收齐每个 treatment 的配对数据;只有 ≥2 对(否则无 CI 可算)才算一个真正被检验的比较。
+      const eligible: Array<{ treatment: string; pairs: Array<{ a: number; b: number }> }> = [];
       for (let i = 1; i < variants.length; i++) {
         const treatmentName = variants[i];
-        // **配对** diff CI:A/B 是同一批 sample 分别过 control / treatment(配对设计),按 sample 对齐 ——
-        // 同一 sample 上 control 与 treatment 都可测(composite > 0,见上不变量)才入对。同一 sample 两 variant
-        // 的分数正相关,配对 bootstrap 据此抵消共有方差、收紧 diff CI、更有功效;旧的独立(非配对)重采样高估
-        // 方差、CI 偏宽、保守失功效(见 bootstrapPairedDiffCI)。点估计不变,只收紧 CI。
         const pairs: Array<{ a: number; b: number }> = [];
         for (const r of sampleRecords) {
           const c = r[controlName];
@@ -229,13 +231,23 @@ export function aggregateReport({
           const b = t && typeof t.compositeScore === 'number' && t.compositeScore > 0 ? t.compositeScore : undefined;
           if (a !== undefined && b !== undefined) pairs.push({ a, b });
         }
-        if (pairs.length >= 2) {
-          pairComparisons.push({
-            control: controlName,
-            treatment: treatmentName,
-            diffBootstrapCI: bootstrapPairedDiffCI(pairs, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples),
-          });
-        }
+        if (pairs.length >= 2) eligible.push({ treatment: treatmentName, pairs });
+      }
+      // 多重比较(Bonferroni)校正:同时检验 K 个 treatment-vs-control 假设时,family-wise 假阳性随 K 膨胀
+      // (computeVerdict 的 worst-case roll-up 取最差 —— 任一对假阳即拉高总判定)。每对 CI 用 α/K(K = 实际
+      // 产出 CI 的比较数)把 family-wise error 压回名义 α。K=1(单 treatment / 经典 A-B)即 α 不变、与历史单对
+      // 口径逐字节一致,此时不写 alpha 字段(渲染按名义 95% CI,既有报告 / 快照不动)。CI 与 significant 同在 α/K
+      // 下算,二者自洽(绝不出现 CI 含 0 却 significant 的矛盾)。注:K 很大时 α/K 落到极端分位,1000 重采样的
+      // 尾部分位偏粗,大 K 慎读 —— 不在本 PR 提采样数。
+      const familySize = eligible.length;
+      const perComparisonAlpha = familySize >= 1 ? DEFAULT_BOOTSTRAP_ALPHA / familySize : DEFAULT_BOOTSTRAP_ALPHA;
+      for (const { treatment, pairs } of eligible) {
+        pairComparisons.push({
+          control: controlName,
+          treatment,
+          diffBootstrapCI: bootstrapPairedDiffCI(pairs, perComparisonAlpha, bootstrapSamples),
+          ...(familySize >= 2 ? { alpha: perComparisonAlpha } : {}),
+        });
       }
     }
   }

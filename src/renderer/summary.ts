@@ -2,6 +2,7 @@ import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { icon as svgIcon } from './icons.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
+import { DEFAULT_BOOTSTRAP_ALPHA } from '../eval-core/bootstrap.js';
 import { computeVerdict, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
 import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
@@ -18,6 +19,15 @@ import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang,
 // 压成一个完整的中文/英文句子, 用 variant 名直接说"X 比 Y 怎么样, 怎么办".
 // 用户读完一句话就懂结论, 不需要先学 jargon (Δ / CI / NOISE / SHIP).
 // 数字细节让"六维对比"表展示, verdict pill 只给 takeaway.
+/**
+ * 置信水平百分号标签:(1−α)·100%。多重比较(Bonferroni)把 pairwise α 收到 α/K、CI 随之变宽 —— 标签必须
+ * 跟着 α 走,绝不在被校正(变宽)的 CI 上仍写死「95%」。无 alpha(单比较 / 经典 A-B)默认名义 95%。
+ */
+function ciPctLabel(alpha?: number): string {
+  const pct = (1 - (alpha ?? DEFAULT_BOOTSTRAP_ALPHA)) * 100;
+  return `${Number.isInteger(pct) ? pct : Number(pct.toFixed(1))}%`;
+}
+
 function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, control?: string): string {
   const t = treatment ?? (lang === 'zh' ? '实验组' : 'treatment');
   const c = control ?? (lang === 'zh' ? '对照组' : 'control');
@@ -142,9 +152,10 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
     const cvSuffix = cvPct != null
       ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct < 15 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct < 15 ? 'moderate' : 'unstable'})`)
       : '';
+    const pctLabel = ciPctLabel(report.meta?.pairComparisons?.[0]?.alpha);
     const ciTipBase = lang === 'zh'
-      ? `实验组与对照组综合分均值差(Δ)。bootstrap 95% 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
-      : `Treatment minus control mean composite score (Δ). Bootstrap 95% CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
+      ? `实验组与对照组综合分均值差(Δ)。bootstrap ${pctLabel} 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
+      : `Treatment minus control mean composite score (Δ). Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
     metrics.push({
       label: lang === 'zh' ? '分差' : 'Δ',
       value: `${sign}${ci.estimate}`,
@@ -177,6 +188,12 @@ export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, l
   if (!pairs || pairs.length === 0) return '';
   const validPairs = pairs.filter((p) => p.diffBootstrapCI);
   if (validPairs.length === 0) return '';
+  // 同一报告内所有比较共享 family α(α/K),取首对的 alpha 作 family 级标签;K=1 无 alpha → 名义 95%、不加注解
+  // (与历史渲染逐字节一致,保护既有快照)。仅 K≥2(alpha 存在)才追加 Bonferroni 说明 + 非 95% 的 CI 标签。
+  const pctLabel = ciPctLabel(validPairs[0].alpha);
+  const corrected = validPairs[0].alpha != null;
+  const bonferroniNoteZh = corrected ? `多比较已按 Bonferroni 收 α(故 CI 宽于 95%)。` : '';
+  const bonferroniNoteEn = corrected ? ` Bonferroni-corrected α across multiple comparisons (CI wider than 95%).` : '';
 
   const rows = validPairs.map((p) => {
     const ci = p.diffBootstrapCI!;
@@ -194,13 +211,13 @@ export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, l
 
   return `
     <h2 style="margin-top:24px">${lang === 'zh' ? '配对对比 (Bootstrap CI)' : 'Pairwise comparison (bootstrap CI)'}</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? 'control vs treatment 的均值差 95% CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。' : '95% CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.'}</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? `control vs treatment 的均值差 ${pctLabel} CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。${bonferroniNoteZh}` : `${pctLabel} CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.${bonferroniNoteEn}`}</p>
     <div class="table-wrap">
     <table class="summary-table">
       <thead><tr>
         <th>${lang === 'zh' ? '对照' : 'Pair'}</th>
         <th title="${t('bootstrapDiffLabel', lang)}">${t('bootstrapDiffLabel', lang)}</th>
-        <th>95% CI</th>
+        <th>${pctLabel} CI</th>
         <th>${lang === 'zh' ? '显著性' : 'Significance'}</th>
         <th>${lang === 'zh' ? '重采样数' : 'samples'}</th>
       </tr></thead>
@@ -951,8 +968,10 @@ function computeJudgeAgreementBadge(variants: string[], summary: Record<string, 
 }
 
 function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null {
-  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const pair0 = report.meta?.pairComparisons?.[0];
+  const ci = pair0?.diffBootstrapCI;
   if (!ci) return null;
+  const pctLabel = ciPctLabel(pair0?.alpha);
   const status: AuditBadgeStatus = ci.significant ? 'pass' : 'warn';
   const label = ci.significant
     ? (lang === 'zh' ? '差异显著' : 'significant')
@@ -961,7 +980,7 @@ function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null
     key: 'sig',
     label,
     status,
-    detail: lang === 'zh' ? `bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
+    detail: lang === 'zh' ? `bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
   };
 }
 

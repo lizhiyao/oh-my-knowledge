@@ -50,6 +50,17 @@ export const UNDERPOWERED_MIN_SAMPLES = 20;
 export const ENSEMBLE_STRONG_PEARSON = 0.7;
 export const ENSEMBLE_DISSENT_PEARSON = 0.4;
 
+/**
+ * Run-to-run instability threshold on the median coefficient of variation (CV = stddev/mean).
+ * Once stability is **actually measured** (`--repeat ≥ 2`) and the median CV exceeds this line,
+ * a would-be PROGRESS is downgraded to CAUTIOUS — a statistically significant but run-to-run
+ * irreproducible "gain" is not shippable. It is the upper bound of the 5/15% stability bands in
+ * `docs/specs/terminology-spec.md` §5; doc ↔ code parity is guarded by
+ * `test/scripts/doc-constants-drift.test.ts`. Single-run reports (stability not measured) are
+ * never gated by it — see `computeVerdict`.
+ */
+export const STABILITY_UNSTABLE_CV = 0.15;
+
 export type VerdictLevel =
   | 'PROGRESS'
   | 'CAUTIOUS'
@@ -139,6 +150,17 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   // Single representative pair for the top-level rationale (the worst one).
   const representative = perPair.find((p) => p.level === topLevel) ?? perPair[0];
 
+  // 稳定性门控(报告级,非 per-pair):仅当**已测**(runs≥2)且 run-to-run 不稳(median CV > STABILITY_UNSTABLE_CV)
+  // 时,把 PROGRESS 降为 CAUTIOUS —— 显著但跨轮不可复现的"进展"不可 ship。单轮(未测稳定性)不门控:rationale
+  // 已诚实标"未测量",默认单轮全降级会过激(见 sample-design 决策)。只压 PROGRESS:已是 CAUTIOUS/REGRESS 等
+  // 不再加码,顺序与 worst-case roll-up 一致。
+  const stab = medianStabilityCV(report);
+  const stabilityGated = topLevel === 'PROGRESS' && stab !== null && stab.cv > STABILITY_UNSTABLE_CV;
+  const level: VerdictLevel = stabilityGated ? 'CAUTIOUS' : topLevel;
+  const stabilityNote = stabilityGated && stab
+    ? ` · 显著但 run-to-run 不稳(CV=${(stab.cv * 100).toFixed(1)}% > ${(STABILITY_UNSTABLE_CV * 100).toFixed(0)}%)`
+    : '';
+
   const significance = representative
     ? formatSignificance(representative)
     : 'no pairwise comparison available — was --bootstrap used?';
@@ -147,13 +169,13 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   const sampleSize = formatSampleSize(report);
   const stability = formatStability(report);
   const judgeAgreement = formatJudgeAgreement(report);
-  const shipRecommendation = recommendation(topLevel, perPair);
+  const shipRecommendation = recommendation(level, perPair);
 
   return {
-    level: topLevel,
+    level,
     headline: representative
-      ? `${topLevel} · ${representative.treatment} vs ${representative.control}: ${representative.headline}`
-      : `${topLevel} · ${variants.length} variants`,
+      ? `${level} · ${representative.treatment} vs ${representative.control}: ${representative.headline}${stabilityNote}`
+      : `${level} · ${variants.length} variants`,
     perPair,
     rationale: {
       significance,
@@ -361,6 +383,27 @@ function formatSampleSize(report: Report): string {
  * 单轮场景关键:不是"稳定 = 100%"(常见误读),而是"测不到稳定性"。
  * Verdict 必须诚实交代这个盲区,不能让用户以为没说就是 OK。
  */
+/**
+ * 跨轮稳定性的中位 CV(variation coefficient = stddev/mean)。仅在**已测**(runs≥2)且 variance 数据齐时
+ * 返回 { runs, cv },否则 null(单轮未测 / variance 缺失 / CV 全算不出 → 不参与门控)。formatStability 的
+ * 文字与 computeVerdict 的稳定性门控共用这一处计算,口径一致、绝不漂移。取中位(单 variant 易有 NaN/0,聚合更稳)。
+ */
+function medianStabilityCV(report: Report): { runs: number; cv: number } | null {
+  const runs = report.variance?.runs ?? report.meta?.request?.repeat ?? 1;
+  if (runs < 2) return null;
+  const variance = report.variance?.perVariant;
+  if (!variance || Object.keys(variance).length === 0) return null;
+  const cvs: number[] = [];
+  for (const v of Object.values(variance)) {
+    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
+      cvs.push(v.stddev / v.mean);
+    }
+  }
+  if (cvs.length === 0) return null;
+  cvs.sort((a, b) => a - b);
+  return { runs, cv: cvs[Math.floor(cvs.length / 2)] };
+}
+
 function formatStability(report: Report): string {
   const runs = report.variance?.runs ?? report.meta?.request?.repeat ?? 1;
   if (runs < 2) {
@@ -370,19 +413,12 @@ function formatStability(report: Report): string {
   if (!variance || Object.keys(variance).length === 0) {
     return `runs=${runs} 但 variance 数据缺失`;
   }
-  // CV = stddev / mean,取所有 variant 的中位数(单 variant 易有 NaN/0,聚合更稳)
-  const cvs: number[] = [];
-  for (const v of Object.values(variance)) {
-    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
-      cvs.push(v.stddev / v.mean);
-    }
-  }
-  if (cvs.length === 0) return `runs=${runs}, CV 计算失败(stddev/mean 数据缺失)`;
-  cvs.sort((a, b) => a - b);
-  const median = cvs[Math.floor(cvs.length / 2)];
-  const cvPct = (median * 100).toFixed(1);
-  // 阈值参考 terminology-spec §5:<5% 稳 / 5-15% 中 / >15% 不稳
-  const verdict = median < 0.05 ? '稳定' : median < 0.15 ? '中等' : '不稳';
+  const stab = medianStabilityCV(report);
+  if (!stab) return `runs=${runs}, CV 计算失败(stddev/mean 数据缺失)`;
+  const cvPct = (stab.cv * 100).toFixed(1);
+  // 阈值参考 terminology-spec §5:<5% 稳 / 5-15% 中 / >15% 不稳。不稳上界 = STABILITY_UNSTABLE_CV,
+  // 与门控同一根线:label 判"不稳" ⟺ 门控触发(cv > STABILITY_UNSTABLE_CV)。
+  const verdict = stab.cv < 0.05 ? '稳定' : stab.cv <= STABILITY_UNSTABLE_CV ? '中等' : '不稳';
   return `CV=${cvPct}% (${verdict}, runs=${runs}; 阈值 <5%=稳/5-15%=中/>15%=不稳)`;
 }
 
@@ -403,7 +439,7 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
     case 'PROGRESS':
       return 'SHIP — treatment is significantly better and passes all layer gates.';
     case 'CAUTIOUS':
-      return 'INVESTIGATE — the gain is real but at least one warning fired (broken gate, trivially small, or partial recovery). Do not ship blind.';
+      return 'INVESTIGATE — the gain is real but at least one warning fired (broken gate, trivially small, partial recovery, judge dissent, or run-to-run unstable). Do not ship blind.';
     case 'REGRESS':
       return 'DO NOT SHIP — treatment regresses. Check the worst layer and re-run with the fix.';
     case 'NOISE':
