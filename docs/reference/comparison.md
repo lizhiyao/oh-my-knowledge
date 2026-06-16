@@ -63,7 +63,6 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 | Multi-judge ensemble (cross-vendor) | ✓ Pearson + MAD | ✗ | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
 | Judge-repeat for stability | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Judge prompt hash traceability | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Length-bias empirical validation | ✓ `debias-validate` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Auto contamination detection (gold annotator vs judge) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ## Specialized metrics
