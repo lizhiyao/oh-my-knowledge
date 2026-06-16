@@ -196,6 +196,9 @@ export function aggregateReport({
   const bootstrapSamples = request?.bootstrapSamples ?? DEFAULT_BOOTSTRAP_SAMPLES;
   let pairComparisons: VariantPairComparison[] | undefined;
   if (bootstrapEnabled) {
+    // 不变量(见 grading/layered-scores.ts):composite 在至少一层可测时恒 ≥ 1,`compositeScore === 0`
+    // 当且仅当该样本**无任何可测层**(真·缺测,如纯评委样本且评委失败)。故 `> 0` 过滤精确剔除非测量、
+    // 绝不丢"低分内容"(评委失败已在上游当缺测,不会以 0 进 composite)。下同(control / treatment)。
     for (const variant of variants) {
       const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
       const compositeScores = entries

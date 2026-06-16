@@ -153,7 +153,11 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
     const judge = useEnsemble
       ? await llmJudgeEnsemble(rubricOptions, judgeModels, executorByName, judgeRepeat)
       : await llmJudgeRepeat(rubricOptions, judgeRepeat);
-    results.llmScore = judge.score;
+    // judge.score <= 0 表示该样本所有判定尝试都失败(非 JSON / parse / executor 错——见 judge.ts 失败哨兵
+    // 268/275/298,prompt 只发 1-5),是**缺测**而非「0 分内容」。不写 llmScore(留 undefined)→ 让
+    // computeLayeredScores 当缺层排除,而不是把基础设施失败当内容分污染 composite(与多维度路径 filter(s>0)
+    // 及多轮路径 validSamples 已排除失败同口径)。llmReason / scoreSamples 仍记录,供诊断"为何失败"。
+    if (judge.score > 0) results.llmScore = judge.score;
     results.llmReason = judge.reason;
     if (judge.reasoning) results.llmReasoning = judge.reasoning;
     if (judge.scoreSamples && judge.scoreSamples.length > 1) {
