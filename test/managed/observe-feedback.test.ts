@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildManagedArtifactRecord, upsertManagedRecord, loadManagedRecord, managedRecordId } from '../../src/managed/store.js';
 import { recordObserveHealth, type ObservedSkillHealthView } from '../../src/managed/observe-feedback.js';
+import { buildObserveReportView } from '../../src/cli/commands/observe/index.js';
+import { healthBandOf } from '../../src/observability/skill-health-analyzer.js';
+import type { SkillHealthReport } from '../../src/observability/skill-health-analyzer.js';
 import type { ArtifactKind } from '../../src/types/index.js';
 
 const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };
@@ -100,5 +103,49 @@ describe('managed observe-feedback — recordObserveHealth', () => {
   it('无被观测 skill → 空', () => {
     seed('review');
     assert.deepEqual(run([]), []);
+  });
+});
+
+// CLI → managed 的层间胶水(SkillHealthReport → ObserveReportView):映射取错字段 / 取错时刻这类 bug
+// 单测 recordObserveHealth(喂 view)与 healthBandOf 各自都绿、整条却断,故单独锁住这段映射。
+describe('managed observe-feedback — buildObserveReportView 映射', () => {
+  function healthReport(
+    skills: Array<{ skillName: string; weightedGapRate: number; gapRate?: number; confidence?: string; byType?: Record<string, number> }>,
+    timeRange: { from: string; to: string } = { from: '2026-06-01T00:00:00.000Z', to: '2026-06-09T00:00:00.000Z' },
+  ): SkillHealthReport {
+    const bySkill: Record<string, unknown> = {};
+    for (const s of skills) {
+      bySkill[s.skillName] = {
+        skillName: s.skillName, segmentCount: 20, confidence: s.confidence ?? 'high',
+        gap: { gapRate: s.gapRate ?? s.weightedGapRate, weightedGapRate: s.weightedGapRate, byType: s.byType ?? GAP0 },
+      };
+    }
+    return { meta: { timeRange, generatedAt: '2026-06-20T00:00:00.000Z' }, bySkill, overall: {} } as unknown as SkillHealthReport;
+  }
+
+  it('observedAt 取流量窗口结束时刻(timeRange.to),不是 generatedAt(此刻)', () => {
+    const view = buildObserveReportView(healthReport([{ skillName: 'review', weightedGapRate: 0.4 }]), 'r1', healthBandOf);
+    assert.equal(view.observedAt, '2026-06-09T00:00:00.000Z', '取 timeRange.to');
+    assert.notEqual(view.observedAt, '2026-06-20T00:00:00.000Z', '绝不取 generatedAt');
+    assert.equal(view.reportId, 'r1');
+  });
+
+  it('healthBand 逐 skill 由 healthBandOf(weightedGapRate)算', () => {
+    const view = buildObserveReportView(healthReport([
+      { skillName: 'a', weightedGapRate: 0.4 },
+      { skillName: 'b', weightedGapRate: 0.15 },
+      { skillName: 'c', weightedGapRate: 0.01 },
+    ]), 'r1', healthBandOf);
+    const band = Object.fromEntries(view.skills.map((s) => [s.skillName, s.healthBand]));
+    assert.deepEqual(band, { a: 'red', b: 'yellow', c: 'green' });
+  });
+
+  it('gapByType 透传;timeRange.to 空 → 退 generatedAt', () => {
+    const view = buildObserveReportView(
+      healthReport([{ skillName: 'review', weightedGapRate: 0.4, byType: { failed_search: 5, explicit_marker: 0, hedging: 1, repeated_failure: 0 } }], { from: '', to: '' }),
+      'r1', healthBandOf,
+    );
+    assert.deepEqual(view.skills[0].gapByType, { failed_search: 5, explicit_marker: 0, hedging: 1, repeated_failure: 0 });
+    assert.equal(view.observedAt, '2026-06-20T00:00:00.000Z', 'timeRange.to 空时退 generatedAt');
   });
 });

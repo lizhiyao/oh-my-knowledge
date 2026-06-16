@@ -47,6 +47,33 @@ function topGapAreas(gapByType: Record<string, number>, lang: CliLang): string {
 }
 
 /**
+ * SkillHealthReport → managed 反哺的结构化最小入参(#235)。纯映射、可单测 —— 把「observe 报告 →
+ * ObserveReportView」这段层间胶水从 CLI 副作用里拆出来,免得 healthBand 取错字段 / observedAt 取错时刻
+ * 这类映射 bug 无人验。`observedAt` 取**流量窗口结束时刻**(timeRange.to,空则退 generatedAt),不是「此刻」
+ * 的 generatedAt —— 否则版本闸门拿到的恒约等于 now、几乎永不过滤(见 ManagedObservation.observedAt)。
+ * `healthBand` 由 observability 的 `healthBandOf` 逐 skill 算(阈值单一来源,注入以保可测)。
+ */
+export function buildObserveReportView(
+  report: SkillHealthReport,
+  reportId: string,
+  healthBandOf: (weightedGapRate: number) => 'green' | 'yellow' | 'red',
+): import('../../../managed/index.js').ObserveReportView {
+  return {
+    reportId,
+    observedAt: report.meta.timeRange?.to || report.meta.generatedAt,
+    skills: Object.values(report.bySkill).map((s) => ({
+      skillName: s.skillName,
+      segmentCount: s.segmentCount,
+      gapRate: s.gap.gapRate,
+      weightedGapRate: s.gap.weightedGapRate,
+      confidence: s.confidence,
+      healthBand: healthBandOf(s.gap.weightedGapRate),
+      gapByType: s.gap.byType,
+    })),
+  };
+}
+
+/**
  * observe → 管理支柱反哺(#235):把每个 skill 的生产健康落成观测追加进同名受管记录,并打印「已记录 / 生产
  * 盲区警示」。**非致命**:管理是 observe 旁路,任何异常都不该让 observe 失败(try/catch 吞掉)。observability /
  * managed 运行时函数动态 import,与 observe 主体一致、不拖累 CLI 启动。
@@ -55,16 +82,7 @@ async function recordObserveFeedback(report: SkillHealthReport, reportId: string
   try {
     const { healthBandOf } = await import('../../../observability/skill-health-analyzer.js');
     const { recordObserveHealth } = await import('../../../managed/index.js');
-    const skills = Object.values(report.bySkill).map((s) => ({
-      skillName: s.skillName,
-      segmentCount: s.segmentCount,
-      gapRate: s.gap.gapRate,
-      weightedGapRate: s.gap.weightedGapRate,
-      confidence: s.confidence,
-      healthBand: healthBandOf(s.gap.weightedGapRate),
-      gapByType: s.gap.byType,
-    }));
-    const written = recordObserveHealth({ reportId, observedAt: report.meta.generatedAt, skills });
+    const written = recordObserveHealth(buildObserveReportView(report, reportId, healthBandOf));
     for (const w of written) {
       process.stdout.write(w.isProductionGap
         ? tCli('cli.observe.production_gap', lang, { name: w.name, areas: topGapAreas(w.gapByType, lang) })
