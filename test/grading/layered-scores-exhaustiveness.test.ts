@@ -3,7 +3,8 @@
  *
  * `computeLayeredScores` 按 `ASSERTION_LAYER` 把每条 assertion 明细拆进 fact / behavior 两层。runner
  * (`assertions.ts`)支持的某个类型若不在 `ASSERTION_LAYER` 里,它的 pass/fail 会被两层同时漏掉 —— 既不
- * 报错、也不进 composite,静默丢分。曾因此漏掉 mock_hit / rouge_n_min / bleu_min / levenshtein_max 四类。
+ * 报错、也不进 composite,静默丢分。曾因此漏掉七类:mock_hit / rouge_n_min / bleu_min / levenshtein_max +
+ * RAG 三件套 faithfulness / answer_relevancy / context_recall。
  *
  * 机制:扫 runner 真源拿到"实际支持的全部类型" = evalAssertion 的 `case '<type>':` ∪ ASYNC_ASSERTION_TYPES,
  * 断言每一个都在 `ASSERTION_LAYER` 有分类。新增 case 而忘了分类 → 本测试失败,挡在合并前。
@@ -34,9 +35,10 @@ describe('assertion 类型分层穷尽性', () => {
     assert.deepEqual(unclassified, [], `这些 runner 支持的类型未分层,会被 computeLayeredScores 静默丢分:${unclassified.join(', ')}`);
   });
 
-  it('曾被漏掉的四类如今进 composite(回归):文本相似度→fact,mock_hit→behavior', () => {
+  it('曾被漏掉的七类如今进 composite(回归):文本相似度 + RAG 三件套→fact,mock_hit→behavior', () => {
     const detail = (type: string) => ({ type, value: '', weight: 1, passed: true });
-    for (const t of ['rouge_n_min', 'bleu_min', 'levenshtein_max']) {
+    // 文本相似度 + RAG 内容质量都判事实层。
+    for (const t of ['rouge_n_min', 'bleu_min', 'levenshtein_max', 'faithfulness', 'answer_relevancy', 'context_recall']) {
       const { layeredScores, compositeScore } = computeLayeredScores({ assertions: { details: [detail(t)] } });
       assert.equal(layeredScores.factScore, 5, `${t} 应进事实层(全通过 → 5)`);
       assert.equal(layeredScores.behaviorScore, undefined, `${t} 不应进行为层`);

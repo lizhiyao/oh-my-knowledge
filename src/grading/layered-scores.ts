@@ -8,7 +8,8 @@ import type { AssertionDetail, LayeredScores } from '../types/index.js';
  *
  * 不变量:**runner 支持的每个 assertion 类型(`assertions.ts` 的 evalAssertion switch + ASYNC_ASSERTION_TYPES)
  * 都必须在此分类**,否则该类型的 pass/fail 会被 computeLayeredScores 从 fact 与 behavior 同时漏掉 —— 既不报错
- * 也不进 composite,静默丢分(曾漏掉 mock_hit / rouge_n_min / bleu_min / levenshtein_max 四类)。
+ * 也不进 composite,静默丢分(曾漏掉七类:mock_hit / rouge_n_min / bleu_min / levenshtein_max + RAG 三件套
+ * faithfulness / answer_relevancy / context_recall)。
  * `test/grading/layered-scores-exhaustiveness.test.ts` 扫 runner 源 + ASYNC 集守住这条:新增类型未分类即 CI 失败。
  */
 export const ASSERTION_LAYER: Record<string, 'fact' | 'behavior'> = {
