@@ -5,7 +5,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildManagedListRow, buildManagedListRows } from '../../src/managed/list-view.js';
-import type { ManagedArtifactRecord, ManagedEvidenceRef } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedEvidenceRef, ManagedObservation } from '../../src/types/index.js';
 
 function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
@@ -26,6 +26,14 @@ function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
 
 function ev(over: Partial<ManagedEvidenceRef> = {}): ManagedEvidenceRef {
   return { reportId: 'r1', contentHash: 'hashAAA', recordedAt: '2026-06-08T00:00:00.000Z', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' }, ...over };
+}
+
+function obs(over: Partial<ManagedObservation> = {}): ManagedObservation {
+  return {
+    observationKind: 'production-health', reportId: 'o1', observedAt: '2026-06-12T00:00:00.000Z',
+    gapRate: 0.4, weightedGapRate: 0.4, confidence: 'high', healthBand: 'red', segmentCount: 50,
+    gapByType: { failed_search: 3, explicit_marker: 1, hedging: 0, repeated_failure: 0 }, ...over,
+  };
 }
 
 describe('buildManagedListRow', () => {
@@ -182,6 +190,48 @@ describe('buildManagedListRow', () => {
     }), reach('hashAAA'));
     assert.equal(row.latestVerdict, 'NEW', '按解析时刻取最新,不被异偏移字典序骗');
     assert.equal(row.recordedAt, '2026-01-01T01:00:00Z');
+  });
+
+  // ── 生产盲区 marker(#235):与 state / drifted / reachable 正交 ──
+
+  it('承重不变量:red+够力观测 + 当前内容(哈匹配)→ 仍 measurable,绝不 stale,且 productionGap 独立填', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], observations: [obs()] }), reach('hashAAA'));
+    assert.equal(row.state, 'measurable', '生产盲区是 marker、不进生命周期 —— 当前哈匹配仍 measurable');
+    assert.equal(row.drifted, false);
+    assert.deepEqual(row.productionGap, {
+      healthBand: 'red', confidence: 'high',
+      gapByType: { failed_search: 3, explicit_marker: 1, hedging: 0, repeated_failure: 0 },
+    });
+  });
+
+  it('green 观测 → productionGap undefined(只 surface 确诊盲区)', () => {
+    const row = buildManagedListRow(rec({ observations: [obs({ healthBand: 'green', weightedGapRate: 0 })] }), reach('hashAAA'));
+    assert.equal(row.productionGap, undefined);
+  });
+
+  it('underpowered 观测(数据不足)→ productionGap undefined(unknown,不当盲区)', () => {
+    const row = buildManagedListRow(rec({ observations: [obs({ confidence: 'underpowered', segmentCount: 3 })] }), reach('hashAAA'));
+    assert.equal(row.productionGap, undefined);
+  });
+
+  it('latest-wins:旧 red + 新 green → productionGap undefined(线上已恢复)', () => {
+    const row = buildManagedListRow(rec({ observations: [
+      obs({ reportId: 'old', observedAt: '2026-06-08T00:00:00.000Z', healthBand: 'red' }),
+      obs({ reportId: 'new', observedAt: '2026-06-12T00:00:00.000Z', healthBand: 'green', weightedGapRate: 0 }),
+    ] }), reach('hashAAA'));
+    assert.equal(row.productionGap, undefined);
+  });
+
+  it('与 reachability 正交:源不可达也照常 surface 生产盲区(observe 量线上部署版)', () => {
+    const row = buildManagedListRow(rec({ observations: [obs()] }), unreach);
+    assert.equal(row.reachable, false);
+    assert.equal(row.productionGap?.healthBand, 'red', '不可达不影响版本无关的生产信号');
+  });
+
+  it('源漂移(stale)仍可叠加生产盲区:state=stale 且 productionGap 同时存在(两轴正交)', () => {
+    const row = buildManagedListRow(rec({ evidence: [ev()], observations: [obs()] }), reach('hashDRIFTED'));
+    assert.equal(row.state, 'stale');
+    assert.equal(row.productionGap?.healthBand, 'red');
   });
 });
 

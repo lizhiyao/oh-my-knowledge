@@ -103,6 +103,24 @@ const GIT_RESTORE_FILE_SKILL: ManagedArtifactRecord = {
   source: { sourceKind: 'git', locator: 'git:HEAD:review', ref: 'HEAD', isDirectorySkill: false },
 };
 
+// observe 观测(#235)三条覆盖渲染分支:red+高(生产盲区徽标 + 盲区区域 + 补样本提示)、underpowered(数据
+// 不足带标)、green(健康带标)。三条 observedAt 各异且**无 contentHash** —— 用来锁「观测事件不重置版本分段」。
+const OBSERVE_RECORD: ManagedArtifactRecord = {
+  ...RECORD,
+  id: 'skill-observe-fixture',
+  observations: [
+    { observationKind: 'production-health', reportId: 'obs-red', observedAt: '2026-03-09T00:00:00.000Z', gapRate: 0.42, weightedGapRate: 0.42, confidence: 'high', healthBand: 'red', segmentCount: 80, gapByType: { failed_search: 5, explicit_marker: 2, hedging: 1, repeated_failure: 0 } },
+    { observationKind: 'production-health', reportId: 'obs-weak', observedAt: '2026-03-04T00:00:00.000Z', gapRate: 0.5, weightedGapRate: 0.5, confidence: 'underpowered', healthBand: 'red', segmentCount: 2, gapByType: { failed_search: 1, explicit_marker: 0, hedging: 0, repeated_failure: 0 } },
+    { observationKind: 'production-health', reportId: 'obs-green', observedAt: '2026-03-03T00:00:00.000Z', gapRate: 0.02, weightedGapRate: 0.02, confidence: 'high', healthBand: 'green', segmentCount: 90, gapByType: { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 } },
+  ],
+};
+
+// 列表生产盲区徽标 + legend:一行带 productionGap(确诊盲区,latest-wins 由 list-view 派生,这里直接构造)。
+const GAP_ROWS: ManagedListRow[] = [
+  mkRow({ id: 'i-gap', name: 'gap-skill', state: 'measurable', latestVerdict: 'PROGRESS',
+    productionGap: { healthBand: 'red', confidence: 'high', gapByType: { failed_search: 4, explicit_marker: 1, hedging: 0, repeated_failure: 0 } } }),
+];
+
 describe('managed-history-renderer snapshots', () => {
   it('renderManagedList zh', () => {
     expect(normalizeForSnapshot(renderManagedList(ROWS, 'zh' as Lang))).toMatchSnapshot();
@@ -145,5 +163,29 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory 裸名 file-skill 还原路径补 .md zh', () => {
     expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_FILE_SKILL, 'zh' as Lang))).toMatchSnapshot();
+  });
+
+  // ── observe 生产健康观测时间线 + 列表徽标(#235)──
+  it('renderManagedHistory 带 observe 观测(生产盲区 / 数据不足 / 健康)zh', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(OBSERVE_RECORD, 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedHistory 带 observe 观测 en', () => {
+    expect(normalizeForSnapshot(renderManagedHistory(OBSERVE_RECORD, 'en' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedList 生产盲区徽标 + legend zh', () => {
+    expect(normalizeForSnapshot(renderManagedList(GAP_ROWS, 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderManagedList 生产盲区徽标 en', () => {
+    expect(normalizeForSnapshot(renderManagedList(GAP_ROWS, 'en' as Lang))).toMatchSnapshot();
+  });
+
+  // 承重不变量:observe 事件无 contentHash → 绝不新增版本段头。加了 3 条观测后 `mh-vhead` 数量应与无观测时相同。
+  it('observe 观测不重置版本分段(版本段头数量不变)', () => {
+    const headers = (html: string): number => (html.match(/mh-vhead/g) ?? []).length;
+    const withObs = renderManagedHistory(OBSERVE_RECORD, 'zh' as Lang);
+    const withoutObs = renderManagedHistory(RECORD, 'zh' as Lang);
+    expect(headers(withObs)).toBe(headers(withoutObs));
+    // 且观测确实进了时间线(渲染出 observe 事件)。
+    expect(withObs).toContain('mh-event--observe');
   });
 });

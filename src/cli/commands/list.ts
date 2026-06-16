@@ -54,7 +54,9 @@ export function renderTable(rows: ManagedListRow[], lang: CliLang): string {
     truncate(sanitizeCell(r.name), 40), // name 与 source 同为用户可控、可超长 → 同样按显示宽度截断,防撑爆表宽
     r.kind, // ArtifactKind 枚举(validator 已收窄),无需洗
     // 不可达 → 标「?」(drift 未核),绝不冒充 stale;reachable 且漂移才 stale ⚠️;已人工接受标 promoted ✓。
-    !r.reachable ? `${r.state} ?` : r.state === 'stale' ? 'stale ⚠️' : r.state === 'promoted' ? 'promoted ✓' : r.state,
+    // 生产盲区 🔬 与生命周期**正交**(observe 量线上部署版),叠加在 state token 之后,不替换 state。
+    (!r.reachable ? `${r.state} ?` : r.state === 'stale' ? 'stale ⚠️' : r.state === 'promoted' ? 'promoted ✓' : r.state)
+      + (r.productionGap ? ' 🔬' : ''),
     r.latestVerdict ? sanitizeCell(r.latestVerdict) : '—',
     `${r.currentEvidenceCount}/${r.totalEvidenceCount}`,
     truncate(sanitizeCell(r.sourceLabel), 48),
@@ -115,10 +117,12 @@ export default class List extends BaseCommand {
       const hasDrift = rows.some((r) => r.drifted);
       const hasUnreachable = rows.some((r) => !r.reachable);
       const hasPromoted = rows.some((r) => r.state === 'promoted');
-      if (hasDrift || hasUnreachable || hasPromoted) process.stderr.write('\n');
+      const hasProductionGap = rows.some((r) => r.productionGap);
+      if (hasDrift || hasUnreachable || hasPromoted || hasProductionGap) process.stderr.write('\n');
       if (hasPromoted) process.stderr.write(tCli('cli.list.promoted_note', lang));
       if (hasDrift) process.stderr.write(tCli('cli.list.drift_note', lang));
       if (hasUnreachable) process.stderr.write(tCli('cli.list.unreachable_note', lang));
+      if (hasProductionGap) process.stderr.write(tCli('cli.list.production_gap_note', lang));
       process.stderr.write(tCli('cli.list.legend', lang));
     });
   }

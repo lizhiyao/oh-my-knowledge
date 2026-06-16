@@ -24,6 +24,24 @@ const isVerdictLevel = (v: string): v is VerdictLevel => Object.prototype.hasOwn
 
 const shortHash = (h: string): string => h.slice(0, 12);
 const L = (lang: Lang) => (zh: string, en: string): string => (lang === 'zh' ? zh : en);
+
+// 盲区信号类型 → 人话标签。与 CLI observe 的 GAP_AREA_LABELS 同义但本地另存一份 —— renderer 绝不 import
+// cli/commands(支柱分层),且两边走各自的 i18n 机制。键集随 ManagedObservation.gapByType 固定四类同步。
+const GAP_AREA_LABELS: Record<string, { zh: string; en: string }> = {
+  failed_search: { zh: '检索失败', en: 'failed search' },
+  explicit_marker: { zh: '显式缺口', en: 'explicit gap' },
+  hedging: { zh: '含糊回避', en: 'hedging' },
+  repeated_failure: { zh: '反复失败', en: 'repeated failure' },
+};
+/** 盲区计数最高的前几类组成人话区域串(只展示信号所在,不生成用例)。全 0 → 空串(调用方据此略过)。 */
+function topGapAreas(gapByType: Record<string, number>, lang: Lang): string {
+  return Object.entries(gapByType)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k]) => GAP_AREA_LABELS[k]?.[lang] ?? k)
+    .join(lang === 'zh' ? '、' : ', ');
+}
 /** 页内跳转统一带上 lang，否则点一下就掉回默认中文。zh 是默认 → 空串(不脏 URL)。 */
 const langQuery = (lang: Lang): string => (lang === 'en' ? '?lang=en' : '');
 
@@ -47,7 +65,7 @@ function verdictBadge(verdict: string | undefined, lang: Lang): string {
 
 interface TimelineEvent {
   at: string;
-  type: 'install' | 'eval' | 'promote' | 'reject' | 'rollback';
+  type: 'install' | 'eval' | 'promote' | 'reject' | 'rollback' | 'observe';
   contentHash?: string;
   verdict?: string;
   reportId?: string;
@@ -57,6 +75,10 @@ interface TimelineEvent {
   sampleCount?: number;
   cliVersion?: string;
   gitCommit?: string;
+  // observe 观测(#235):版本无关的生产信号,无 contentHash → 不参与版本分段。
+  healthBand?: 'green' | 'yellow' | 'red';
+  confidence?: 'high' | 'low' | 'underpowered';
+  gapByType?: { failed_search: number; explicit_marker: number; hedging: number; repeated_failure: number };
 }
 
 function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
@@ -75,6 +97,14 @@ function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
     events.push({
       at: d.decidedAt, type: d.decisionKind, contentHash: d.contentHash,
       reportId: d.reportId, actor: d.actor, reason: d.reason, override: d.override,
+    });
+  }
+  // observe 生产健康观测(#235):每条一个事件。**不带 contentHash** —— observe 是版本无关的生产信号
+  // (量线上部署版),像 install 事件那样只作时间点,绝不重置版本分段(见 renderManagedHistory 分段循环)。
+  for (const obs of record.observations ?? []) {
+    events.push({
+      at: obs.observedAt, type: 'observe',
+      healthBand: obs.healthBand, confidence: obs.confidence, gapByType: obs.gapByType,
     });
   }
   return events.sort((a, b) => cmpDesc(a.at, b.at));
@@ -113,9 +143,21 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
     promote: t('采用', 'Promote'),
     reject: t('否决', 'Reject'),
     rollback: t('回滚', 'Rollback'),
+    observe: t('观测', 'Observe'),
   };
   const head: string[] = [`<span class="mh-type">${e(typeLabel[ev.type])}</span>`];
   if (ev.type === 'eval') head.push(verdictBadge(ev.verdict, lang));
+  // observe 观测徽标:红 + 够力 → 「生产盲区」(确诊);underpowered → 「数据不足」(unknown,不当盲区);
+  // 其余(green/yellow 够力)→ 中性带标。与 deriveProductionGap 的 marker 分类同口径(store.ts)。
+  if (ev.type === 'observe') {
+    if (ev.healthBand === 'red' && ev.confidence !== 'underpowered') {
+      head.push(`<span class="mh-gap">${t('生产盲区', 'production gap')}</span>`);
+    } else if (ev.confidence === 'underpowered') {
+      head.push(`<span class="mh-badge-raw">${t('数据不足', 'underpowered')}</span>`);
+    } else {
+      head.push(`<span class="mh-badge-raw">${e(t('健康', 'healthy'))} · ${e(ev.healthBand ?? '')}</span>`);
+    }
+  }
   if (ev.override) {
     const blocks = ev.override.overriddenBlocks?.length ? `：${e(ev.override.overriddenBlocks.join(' / '))}` : '';
     head.push(`<span class="mh-override">${t('越门 override', 'override')}${blocks}</span>`);
@@ -125,6 +167,14 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
   if (ev.actor) detail.push(`<span class="mh-detail-item">${t('决定人', 'by')} ${e(ev.actor)}</span>`);
   if (ev.type === 'eval' && typeof ev.sampleCount === 'number') {
     detail.push(`<span class="mh-detail-item">${ev.sampleCount} ${t('用例', 'samples')}</span>`);
+  }
+  // observe 事件:列盲区集中的信号区域 + 建议补样本(只提示、不生成用例,不改样本集)。全 0 不显区域行。
+  if (ev.type === 'observe' && ev.gapByType) {
+    const areas = topGapAreas(ev.gapByType, lang);
+    if (areas) detail.push(`<span class="mh-detail-item">${t('盲区集中在：', 'gaps in: ')}${e(areas)}</span>`);
+    if (ev.healthBand === 'red' && ev.confidence !== 'underpowered') {
+      detail.push(`<span class="mh-detail-item mh-gap-hint">${t('建议补对应用例后重跑 omk eval', 'add matching samples, then re-run omk eval')}</span>`);
+    }
   }
   if (ev.cliVersion) detail.push(`<span class="mh-detail-item">omk ${e(ev.cliVersion)}</span>`);
   if (ev.reportId) detail.push(reportLink(ev.reportId, lang));
@@ -280,13 +330,23 @@ function overrideBadge(row: ManagedListRow, lang: Lang): string {
   return ` <span class="mh-override" title="${e(tip)}">${t('越门', 'override')}</span>`;
 }
 
+/** 生产盲区只读标(#235):该 skill 最新观测是确诊生产盲区(红 + 够力)就标出来,tooltip 列盲区区域。
+ *  与 state 正交(observe 量线上部署版、版本无关),只 surface、不参与生命周期 —— 见 deriveProductionGap。 */
+function productionGapBadge(row: ManagedListRow, lang: Lang): string {
+  if (!row.productionGap) return '';
+  const t = L(lang);
+  const areas = topGapAreas(row.productionGap.gapByType, lang);
+  const tip = areas ? t(`线上生产盲区，集中在：${areas}`, `production gap in real traffic, in: ${areas}`) : t('线上检测到生产盲区', 'production gap detected in real traffic');
+  return ` <span class="mh-gap" title="${e(tip)}">🔬 ${t('生产盲区', 'prod gap')}</span>`;
+}
+
 function listRow(row: ManagedListRow, lang: Lang): string {
   const t = L(lang);
   const st = stateMeta(row.state, lang);
   const mark = !row.reachable ? ' <span class="mh-mark mh-mark--q" title="' + e(t('源不可达 / 拒读，漂移未核', 'source unreachable / refused, drift unchecked')) + '">?</span>'
     : row.state === 'stale' ? ' <span class="mh-mark mh-mark--warn" title="' + e(t('已漂移，需重测', 'drifted, re-measure')) + '">⚠️</span>' : '';
   return `<a class="mh-row" href="/managed/${encodeURIComponent(row.id)}${langQuery(lang)}">
-    <span class="mh-row-state" title="${e(st.tip)}"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(st.label)}${mark}</span>
+    <span class="mh-row-state" title="${e(st.tip)}"><span class="mh-dot mh-dot--${stateBand(row.state)}"></span>${e(st.label)}${mark}${productionGapBadge(row, lang)}</span>
     <span class="mh-row-name">${e(row.name)}</span>
     <span class="mh-row-kind">${e(row.kind)}</span>
     <span class="mh-row-verdict">${row.latestVerdict ? verdictBadge(row.latestVerdict, lang) : '—'}${overrideBadge(row, lang)}</span>
@@ -315,6 +375,7 @@ export function renderManagedList(rows: ManagedListRow[], lang: Lang): string {
     <span class="mh-legend-item">${t('? 源未核（不可达 / 拒读，漂移待定）', '? = source unverified (unreachable / refused)')}</span>
     <span class="mh-legend-item">${t('证据列：当前有效 / 全部历史（旧证据留作回滚）', 'Evidence = current / total (old evidence kept for rollback)')}</span>
     <span class="mh-legend-item"><span class="mh-override">${t('越门', 'override')}</span>${t(' 当前采用是 --force 越门来的（决定人由命令行记录）', ' = current version force-promoted via --force (actor recorded by CLI)')}</span>
+    <span class="mh-legend-item"><span class="mh-gap">🔬 ${t('生产盲区', 'prod gap')}</span>${t(' observe 在线上检测到的盲区（版本无关信号、与生命周期正交，不翻 stale）', ' = production gap from observe (version-agnostic, orthogonal to lifecycle, never flips stale)')}</span>
   </div>`;
 
   const body = `<main class="mh-main">
@@ -362,11 +423,14 @@ const MANAGED_CSS = `
 .mh-dot--promote{background:var(--green)}
 .mh-dot--rollback{background:var(--yellow)}
 .mh-dot--reject{background:var(--red)}
+.mh-dot--observe{background:var(--red);box-shadow:0 0 0 2px var(--red-bg)}
 .mh-dot--green{background:var(--green)}.mh-dot--accent{background:var(--accent)}.mh-dot--muted{background:var(--text-muted)}.mh-dot--red{background:var(--red)}
 .mh-body{flex:1;min-width:0}
 .mh-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}
 .mh-type{font-weight:600;color:var(--text-primary)}
 .mh-override{font-size:11px;font-weight:600;color:var(--yellow);background:var(--yellow-bg);padding:1px 8px;border-radius:9px}
+.mh-gap{font-size:11px;font-weight:600;color:var(--red);background:var(--red-bg);padding:1px 8px;border-radius:9px;white-space:nowrap}
+.mh-gap-hint{color:var(--red)}
 .mh-badge-raw{font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 8px;border-radius:9px}
 .mh-detail{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;color:var(--text-muted)}
 .mh-restore code{font-family:"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 6px;border-radius:5px;user-select:all}
