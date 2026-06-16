@@ -1,38 +1,59 @@
 import type { AssertionDetail, LayeredScores } from '../types/index.js';
 
-const FACTUAL_ASSERTION_TYPES = new Set([
-  'contains',
-  'not_contains',
-  'regex',
-  'json_valid',
-  'json_schema',
-  'equals',
-  'not_equals',
-  'contains_all',
-  'contains_any',
-  'semantic_similarity',
-  'tool_output_contains',
-  'tool_input_contains',
-  'tool_input_not_contains',
-]);
-
-const BEHAVIORAL_ASSERTION_TYPES = new Set([
-  'starts_with',
-  'ends_with',
-  'min_length',
-  'max_length',
-  'word_count_min',
-  'word_count_max',
-  'cost_max',
-  'latency_max',
-  'turns_min',
-  'turns_max',
-  'tools_called',
-  'tools_not_called',
-  'tools_count_min',
-  'tools_count_max',
-  'custom',
-]);
+/**
+ * 每个 assertion 类型归到事实层 / 行为层。**单一来源**:`computeLayeredScores` 据此把 assertion 明细拆进
+ * fact / behavior 两层算分。
+ *   - **事实层(fact)**:测输出内容对不对 —— 命中 / 匹配 / 结构合法 / 与参考的文本相似度。
+ *   - **行为层(behavior)**:测做事的方式 —— 长度 / 成本 / 轮次 / 工具调用 / 必经里程碑,不看内容本身。
+ *
+ * 不变量:**runner 支持的每个 assertion 类型都必须能被归层**,否则该类型的 pass/fail 会被 computeLayeredScores
+ * 从 fact 与 behavior 同时漏掉 —— 既不报错也不进 composite,静默丢分(曾漏掉七类:mock_hit / rouge_n_min /
+ * bleu_min / levenshtein_max + RAG 三件套 faithfulness / answer_relevancy / context_recall)。叶子断言在此静态
+ * 分类;组合器 `assert-set` 没有静态层,由 `assertions.ts` 的 resolveAssertSetLayer 在 grading 期按其叶子 children
+ * 解析(同层→归层、混层→不计),结果落 detail.layer。`test/grading/layered-scores-exhaustiveness.test.ts` 扫
+ * runner 源(evalAssertion 的 case ∪ `assertion.type ===` 组合器 ∪ ASYNC_ASSERTION_TYPES)守住:新增类型既不在本
+ * 映射、又不是已知组合器,即 CI 失败。
+ */
+export const ASSERTION_LAYER: Record<string, 'fact' | 'behavior'> = {
+  contains: 'fact',
+  not_contains: 'fact',
+  regex: 'fact',
+  json_valid: 'fact',
+  json_schema: 'fact',
+  equals: 'fact',
+  not_equals: 'fact',
+  contains_all: 'fact',
+  contains_any: 'fact',
+  semantic_similarity: 'fact',
+  tool_output_contains: 'fact',
+  tool_input_contains: 'fact',
+  tool_input_not_contains: 'fact',
+  // 文本相似度指标:衡量输出与参考答案的内容贴合度 = 内容保真 → 事实层。
+  rouge_n_min: 'fact',
+  bleu_min: 'fact',
+  levenshtein_max: 'fact',
+  // RAG 评委指标:都评输出内容质量(忠实度 / 答非所问 / 关键事实召回),= 内容正确性 → 事实层。
+  faithfulness: 'fact',
+  answer_relevancy: 'fact',
+  context_recall: 'fact',
+  starts_with: 'behavior',
+  ends_with: 'behavior',
+  min_length: 'behavior',
+  max_length: 'behavior',
+  word_count_min: 'behavior',
+  word_count_max: 'behavior',
+  cost_max: 'behavior',
+  latency_max: 'behavior',
+  turns_min: 'behavior',
+  turns_max: 'behavior',
+  tools_called: 'behavior',
+  tools_not_called: 'behavior',
+  tools_count_min: 'behavior',
+  tools_count_max: 'behavior',
+  custom: 'behavior',
+  // 必经工具 / 步骤里程碑(value 形如 "Tool:N"):测"有没有走到那一步" = 做事方式 → 行为层(类同 tools_called)。
+  mock_hit: 'behavior',
+};
 
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
@@ -55,8 +76,11 @@ export function computeLayeredScores(results: CompositeInput): { compositeScore:
   const layered: LayeredScores = {};
 
   if (results.assertions?.details) {
-    const factDetails = results.assertions.details.filter((d) => FACTUAL_ASSERTION_TYPES.has(d.type));
-    const behaviorDetails = results.assertions.details.filter((d) => BEHAVIORAL_ASSERTION_TYPES.has(d.type));
+    // 优先用 detail.layer(组合器如 assert-set 在 grading 期按 children 解析出的层;混层组合器无 layer → 两层都不计,
+    // 见 assertions.ts resolveAssertSetLayer);叶子断言无 layer,退回静态 ASSERTION_LAYER[type]。
+    const layerOf = (d: AssertionDetail): 'fact' | 'behavior' | undefined => d.layer ?? ASSERTION_LAYER[d.type];
+    const factDetails = results.assertions.details.filter((d) => layerOf(d) === 'fact');
+    const behaviorDetails = results.assertions.details.filter((d) => layerOf(d) === 'behavior');
     layered.factScore = scoreFromDetails(factDetails) ?? undefined;
     layered.behaviorScore = scoreFromDetails(behaviorDetails) ?? undefined;
   }

@@ -415,4 +415,28 @@ describe('aggregateReport — 多重比较 Bonferroni 校正(#235 审计 PR4)', 
     assert.equal(k3.length, 3);
     for (const p of k3) assert.ok(Math.abs(p.alpha! - 0.05 / 3) < 1e-12, `每对 α 应 ≈ α/3,实得 ${p.alpha}`);
   });
+
+  it('实锤:边界对在 K=1 显著,纳入 K=2(α/2)后翻为不显著 —— family-wise 假阳被压下', () => {
+    // 这组配对差在默认种子下,α=0.05 的 CI 下界 +0.025(显著)、α/2=0.025 的下界 −0.017(含 0,不显著)——
+    // 正是多重比较该挡的边界假阳性。a 取常量 3.0、b = 3.0 + diff(全 > 0 成对);第三个 treatment c 只为把 K 撑到 2。
+    const diffs = [0.35, 0.25, 0.45, -0.45, 0.35, 0.55, -0.35, 0.35, 0.65, -0.15, 0.45, 0.35];
+    const fids = diffs.map((_, i) => `f${i + 1}`);
+    const mk = (variants: string[]) => aggregateReport({
+      runId: 'r', variants, model: 'm', judgeModel: 'haiku', noJudge: true, executorName: 'codex',
+      samples: fids.map((id) => makeSample(id, 'task')), tasks: [],
+      results: Object.fromEntries(fids.map((id, i) => {
+        const row: Record<string, VariantResult> = { a: withComposite(3.0), b: withComposite(3.0 + diffs[i]) };
+        if (variants.includes('c')) row.c = withComposite(3.1);
+        return [id, row];
+      })),
+      totalCostUSD: 0, artifacts: variants.map((v) => makeArtifact(v, v)), request: reqBootstrap,
+    });
+    const ab1 = mk(['a', 'b']).meta.pairComparisons!.find((p) => p.treatment === 'b')!;
+    const ab2 = mk(['a', 'b', 'c']).meta.pairComparisons!.find((p) => p.treatment === 'b')!;
+    assert.equal(ab1.alpha, undefined, 'K=1 名义 α');
+    assert.equal(ab1.diffBootstrapCI!.significant, true, 'K=1(α=0.05)边界对显著');
+    assert.equal(ab2.alpha, 0.05 / 2, 'K=2 → α/2');
+    assert.equal(ab2.diffBootstrapCI!.significant, false, 'K=2(α/2=0.025)同一份 (a,b) 翻为不显著 → 假阳被压下');
+    assert.equal(ab1.diffBootstrapCI!.estimate, ab2.diffBootstrapCI!.estimate, '点估计与 K 无关,不变');
+  });
 });

@@ -148,6 +148,14 @@ export interface AssertionDetail {
   weight: number;
   passed: boolean;
   message?: string;
+  /**
+   * Layer override for `computeLayeredScores`. Only set for combinator types whose layer is not a
+   * static property of `type` — currently `assert-set`, whose layer is resolved at grading time from
+   * its leaf children: homogeneous (all fact / all behavior) → that layer; mixed (or empty) → field
+   * left unset so the combinator is excluded from layered attribution (no single layer is honest).
+   * Leaf assertions never set this; they classify by `ASSERTION_LAYER[type]`.
+   */
+  layer?: 'fact' | 'behavior';
 }
 
 export interface AssertionResults {
