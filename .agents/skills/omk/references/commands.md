@@ -403,6 +403,7 @@ omk observe [sessionsDir] [flags]
 
 **Flags:**
 
+- `--feedback` `boolean`:把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）
 - `--from` `option`:起始时间 ISO，优先级高于 --last
 - `--global` `boolean`:写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health
 - `--kb` `option`:知识库 root，启用 KB-aware 分析

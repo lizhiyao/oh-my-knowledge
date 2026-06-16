@@ -296,6 +296,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 **Flags:**
 
 ```text
+  --feedback            Feed production-health observations back to managed skills of the same name (--no-feedback to disable)
   --from <value>        Start time ISO, overrides --last
   --global              Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health
   --kb <value>          KB root, enables KB-aware analysis

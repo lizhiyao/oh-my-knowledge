@@ -4,6 +4,7 @@
  */
 export * from './store.js';
 export * from './evidence.js';
+export * from './observe-feedback.js';
 export * from './list-view.js';
 export * from './version-scores.js';
 export * from './list-query.js';

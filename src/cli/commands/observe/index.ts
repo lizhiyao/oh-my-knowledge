@@ -4,7 +4,7 @@ import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
-import { tCli } from '../../lib/i18n.js';
+import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../eval-core/measurement-dirs.js';
 import { indexObserveWrite } from '../../../eval-core/artifact-index.js';
@@ -24,6 +24,55 @@ export function persistObserveHealthReport(report: SkillHealthReport, outDir: st
   writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   indexObserveWrite(report, jsonPath, outDir, id);
   return { id, jsonPath };
+}
+
+// 盲区信号类型 → 人话标签(建议补样本提示用)。技术枚举键的展示名,zh/en 分列。
+const GAP_AREA_LABELS: Record<string, { zh: string; en: string }> = {
+  failed_search: { zh: '检索失败', en: 'failed search' },
+  explicit_marker: { zh: '显式缺口', en: 'explicit gap' },
+  hedging: { zh: '含糊回避', en: 'hedging' },
+  repeated_failure: { zh: '反复失败', en: 'repeated failure' },
+};
+
+/** 取盲区计数最高的前几类,组成「建议补哪类用例」的人话区域串(只展示信号所在,不生成具体用例)。 */
+function topGapAreas(gapByType: Record<string, number>, lang: CliLang): string {
+  const sep = lang === 'zh' ? '、' : ', ';
+  const areas = Object.entries(gapByType)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k]) => GAP_AREA_LABELS[k]?.[lang] ?? k)
+    .join(sep);
+  return areas || (lang === 'zh' ? '未归类盲区' : 'uncategorized gaps');
+}
+
+/**
+ * observe → 管理支柱反哺(#235):把每个 skill 的生产健康落成观测追加进同名受管记录,并打印「已记录 / 生产
+ * 盲区警示」。**非致命**:管理是 observe 旁路,任何异常都不该让 observe 失败(try/catch 吞掉)。observability /
+ * managed 运行时函数动态 import,与 observe 主体一致、不拖累 CLI 启动。
+ */
+async function recordObserveFeedback(report: SkillHealthReport, reportId: string, lang: CliLang): Promise<void> {
+  try {
+    const { healthBandOf } = await import('../../../observability/skill-health-analyzer.js');
+    const { recordObserveHealth } = await import('../../../managed/index.js');
+    const skills = Object.values(report.bySkill).map((s) => ({
+      skillName: s.skillName,
+      segmentCount: s.segmentCount,
+      gapRate: s.gap.gapRate,
+      weightedGapRate: s.gap.weightedGapRate,
+      confidence: s.confidence,
+      healthBand: healthBandOf(s.gap.weightedGapRate),
+      gapByType: s.gap.byType,
+    }));
+    const written = recordObserveHealth({ reportId, observedAt: report.meta.generatedAt, skills });
+    for (const w of written) {
+      process.stdout.write(w.isProductionGap
+        ? tCli('cli.observe.production_gap', lang, { name: w.name, areas: topGapAreas(w.gapByType, lang) })
+        : tCli('cli.observe.observation_recorded', lang, { name: w.name }));
+    }
+  } catch {
+    // 反哺是 observe 旁路,任何异常都不该让 observe 失败。
+  }
 }
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
@@ -87,6 +136,14 @@ export default class Observe extends BaseCommand {
         en: 'Write to global ~/.oh-my-knowledge/observe-health instead of project .omk/observe-health',
       }),
     }),
+    feedback: Flags.boolean({
+      default: true,
+      allowNo: true,
+      description: bilingual({
+        zh: '把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）',
+        en: 'Feed production-health observations back to managed skills of the same name (--no-feedback to disable)',
+      }),
+    }),
   };
 
   async run(): Promise<void> {
@@ -132,7 +189,7 @@ export default class Observe extends BaseCommand {
       const outDir = flags['output-dir']
         ? resolve(flags['output-dir'])
         : (flags.global ? globalObserveHealthDir() : projectObserveHealthDir());
-      const { jsonPath } = persistObserveHealthReport(report, outDir);
+      const { id, jsonPath } = persistObserveHealthReport(report, outDir);
 
       const { sessionCount, segmentCount, toolCallCount, toolFailureRate } = report.meta;
       console.log('');
@@ -152,6 +209,9 @@ export default class Observe extends BaseCommand {
       console.log('');
       console.log(`report written to: ${jsonPath}`);
       console.log(tCli('cli.observe.view_hint', lang));
+
+      // #235 受管反哺:把生产健康观测落进同名受管 skill(--no-feedback 关)。非致命旁路。
+      if (flags.feedback) await recordObserveFeedback(report, id, lang);
     });
   }
 }

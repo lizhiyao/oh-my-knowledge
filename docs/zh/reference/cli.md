@@ -296,6 +296,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 **Flags:**
 
 ```text
+  --feedback            把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）
   --from <value>        起始时间 ISO，优先级高于 --last
   --global              写全局 ~/.oh-my-knowledge/observe-health，而非项目 .omk/observe-health
   --kb <value>          知识库 root，启用 KB-aware 分析
