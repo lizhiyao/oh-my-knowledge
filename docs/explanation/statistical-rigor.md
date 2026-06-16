@@ -18,6 +18,7 @@ The t-test breaks on ordinal LLM scores (Likert-like buckets, not normal-distrib
 - **Mean CI** per variant — resampled with replacement N times (default 1000)
 - **Pairwise diff CI** between two variants — diff of resampled means; if the CI does not cross 0, the difference is significant at the chosen α (default 0.05 → 95% CI)
 - **Output**: each `VariantResult.bootstrapCI` carries `[lo, hi]` for mean and pairwise; HTML report draws CI bands; CLI `omk eval` consumes them in the 6-tier verdict logic
+- **Reproducible by default**: CIs use a fixed internal seed, so the same eval run twice yields byte-identical CIs and a stable verdict — no run-to-run coin-flip on `significant` near the boundary (a non-deterministic CI would silently flip the ship/no-ship call)
 
 **Reference**: Efron & Tibshirani (1993), "An Introduction to the Bootstrap". omk implementation: `src/eval-core/bootstrap.ts` — the formula is covered by `test/eval-core/bootstrap.test.ts`, and the documented defaults (resample count, α) are kept in sync with the code constants by `test/scripts/doc-constants-drift.test.ts`.
 
