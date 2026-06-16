@@ -141,6 +141,28 @@ describe('bootstrapPairedDiffCI', () => {
     assert.equal(paired.estimate, 1);
   });
 
+  it('near-zero:CI 舍入后含 0 → significant=false,绝不出现「low:0 但 significant:true」自相矛盾', () => {
+    // 恒定的极小正差 0.00003 → raw CI [0.00003, 0.00003] → 舍入到 [0, 0](含 0)。significant 须按持久
+    // (舍入)边界判 = false;若按 raw 判会得 true,落成自相矛盾的 {low:0, significant:true}(复审 P2)。
+    const pairs = Array.from({ length: 6 }, () => ({ a: 1, b: 1.00003 }));
+    const ci = bootstrapPairedDiffCI(pairs, 0.05, 500);
+    assert.equal(ci.low, 0);
+    assert.equal(ci.high, 0);
+    assert.equal(ci.significant, false, '持久 CI 含 0 → significant 必须 false(与边界一致)');
+  });
+
+  it('不变量:significant 恒与持久(舍入)边界一致(任意数据都不自相矛盾)', () => {
+    const datasets = [
+      Array.from({ length: 8 }, (_, i) => ({ a: i, b: i + 0.5 })),       // 稳定正差
+      Array.from({ length: 8 }, (_, i) => ({ a: i, b: i + (i % 2 ? 1 : -1) })), // 跨 0
+      Array.from({ length: 6 }, () => ({ a: 2, b: 2 })),                  // 零差
+    ];
+    for (const pairs of datasets) {
+      const ci = bootstrapPairedDiffCI(pairs, 0.05, 500);
+      assert.equal(ci.significant, !(ci.low <= 0 && 0 <= ci.high), `significant 须与返回的 low/high 一致:${JSON.stringify(ci)}`);
+    }
+  });
+
   it('默认确定性 + 空输入安全', () => {
     const pairs = [{ a: 3, b: 4 }, { a: 4, b: 4 }, { a: 5, b: 7 }];
     assert.deepEqual(bootstrapPairedDiffCI(pairs, 0.05, 500), bootstrapPairedDiffCI(pairs, 0.05, 500));

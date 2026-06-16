@@ -209,8 +209,11 @@ export function bootstrapDiffCI(
  * conservative bias is wanted). The point estimate is identical (mean of per-pair diffs =
  * difference of paired means); only the CI tightens.
  *
- * `significant` is computed on the **unrounded** bounds (then the bounds are rounded for
- * display) so a 4-decimal round never flips the call at the 0 boundary.
+ * `significant` is derived from the **rounded** `low`/`high` (the persisted bounds), so the
+ * flag never contradicts what is stored / displayed: a CI that rounds to include 0 reads as
+ * not-significant. (Computing it on the unrounded bounds would let the JSON say `low: 0,
+ * significant: true` — a self-contradictory `CI=[0, …]` that downstream `computeVerdict` and
+ * external consumers cannot reconcile.) Matches `bootstrapDiffCI`.
  *
  * @param pairs    Aligned observations; `a` = control/baseline, `b` = treatment. diff = b - a.
  * @param alpha    Significance level. Default 0.05.
@@ -237,14 +240,15 @@ export function bootstrapPairedDiffCI(
     resampleDiffMeans[s] = sum / n;
   }
   resampleDiffMeans.sort((a, b) => a - b);
-  const lowRaw = sortedQuantile(resampleDiffMeans, alpha / 2);
-  const highRaw = sortedQuantile(resampleDiffMeans, 1 - alpha / 2);
+  const low = round4(sortedQuantile(resampleDiffMeans, alpha / 2));
+  const high = round4(sortedQuantile(resampleDiffMeans, 1 - alpha / 2));
   return {
-    low: round4(lowRaw),
-    high: round4(highRaw),
+    low,
+    high,
     estimate: round4(mean(diffs)),
     samples,
-    significant: !(lowRaw <= 0 && 0 <= highRaw),
+    // significant 与持久化的(舍入)边界一致 —— 见函数头:绝不出现「low:0 但 significant:true」自相矛盾。
+    significant: !(low <= 0 && 0 <= high),
   };
 }
 

@@ -39,7 +39,8 @@ export interface EvolveOutcomeResult {
 
 /**
  * round-bestRound vs round-0 的忠实 verdict：复刻 eval 管线（evaluation-reporting.ts）对两变体抽
- * per-sample composite → bootstrapDiffCI → computeVerdict，与 `omk eval --bootstrap` 同口径、同 α / 重采样数。
+ * per-sample composite → 按 sample 配对 bootstrapPairedDiffCI → computeVerdict，与 `omk eval --bootstrap`
+ * 同口径、同 α / 重采样数。
  * 不自造门限：评委是否显著、是否 PROGRESS 全交给既有 computeVerdict。
  */
 function winnerVerdict(report: EvaluationReport, winnerVariant: string): string {
