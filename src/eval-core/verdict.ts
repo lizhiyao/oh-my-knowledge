@@ -215,7 +215,10 @@ function verdictForPair(
   const cGate = evaluateLayerGates({ [control]: summary[control] }, gateThreshold);
   const tGate = evaluateLayerGates({ [treatment]: summary[treatment] }, gateThreshold);
 
-  // No bootstrap CI available → fall back to point-estimate diff comparison.
+  // No bootstrap CI available → fall back to point-estimate diff comparison. 这是 `--no-bootstrap` 的**降级
+  // 模式**:bootstrap 默认开,正常路径永远有 CI,这里只在用户显式关掉时触达。降级路径刻意不对称——正 Δ 最多给
+  // CAUTIOUS(没 CI 不敢判 PROGRESS),负 Δ 直接 REGRESS(不做显著性检验)。这对"检测变差"是保守安全方向(宁可
+  // 误报回归也别漏掉),代价是把噪声级的负 Δ 也叫 REGRESS;要严谨结论就别关 bootstrap。
   if (!diff) {
     const cMean = avgComposite(summary[control]);
     const tMean = avgComposite(summary[treatment]);
@@ -332,7 +335,10 @@ function ensembleDissent(
 function avgComposite(s: VariantSummary | undefined): number {
   if (!s) return 0;
   if (typeof s.avgCompositeScore === 'number') return s.avgCompositeScore;
-  // Fallback: average of the three layers when composite isn't on the summary.
+  // 兜底:summary 无 avgCompositeScore 时,用三层均值近似。**有偏**:真 composite 是 per-sample
+  // (present-layers 均值)再跨 sample 平均;这里是「跨 sample 的层均值」再跨层平均,各层在不同 sample 上缺失
+  // 不均时两者不等(Jensen / 分母不一致)。仅 no-bootstrap 降级路径 + summary 缺 composite 的老报告才触达
+  // (默认开 bootstrap、新报告必带 avgCompositeScore,故极罕见),不值得回填 per-sample 重算 —— 标注保留近似。
   const layers = [s.avgFactScore, s.avgBehaviorScore, s.avgJudgeScore].filter(
     (x): x is number => typeof x === 'number',
   );
