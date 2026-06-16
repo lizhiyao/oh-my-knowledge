@@ -20,16 +20,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 
-interface Rec { name: string; locator: string; isDirectorySkill: boolean; contentHash: string; }
+interface Rec { name: string; locator: string; isDirectorySkill: boolean; contentHash: string; observations?: unknown[]; }
 function writeRecord(dir: string, r: Rec): void {
   const rec = {
     recordKind: 'managed-artifact', schemaVersion: 2, id: `skill-${r.name}`, name: r.name, kind: 'skill',
     source: { sourceKind: 'file', locator: r.locator, isDirectorySkill: r.isDirectorySkill },
     contentHash: r.contentHash, installedAt: '2026-06-06T00:00:00.000Z',
     distribution: [], evidence: [], decisions: [],
+    ...(r.observations ? { observations: r.observations } : {}),
   };
   writeFileSync(join(dir, `skill-${r.name}.json`), JSON.stringify(rec));
 }
+
+const redGapObs = {
+  observationKind: 'production-health', reportId: 'obs-1', observedAt: '2026-06-12T00:00:00.000Z',
+  gapRate: 0.4, weightedGapRate: 0.4, confidence: 'high', healthBand: 'red', segmentCount: 50,
+  gapByType: { failed_search: 3, explicit_marker: 1, hedging: 0, repeated_failure: 0 },
+};
 
 describe('omk list 端到端', () => {
   let proj: string;
@@ -77,6 +84,26 @@ describe('omk list 端到端', () => {
     assert.ok(Array.isArray(parsed.rows), 'rows 是数组');
     assert.equal(parsed.rows[0].name, 'gamma');
     assert.equal(parsed.rows[0].sourceLabel, join(proj, 'a.md'), 'file 源 sourceLabel = locator');
+  });
+
+  it('生产盲区:红+够力观测 → stdout 表格出 🔬、stderr 出 production_gap_note、--json 行带 productionGap', async () => {
+    // 源不可达(locator 不存在)→ state=installed ?,但生产盲区与可达性正交,🔬 仍应 surface。
+    writeRecord(managed, { name: 'delta', locator: join(proj, 'gone', 'x.md'), isDirectorySkill: false, contentHash: 'h', observations: [redGapObs] });
+    const { stdout, stderr } = await run([]);
+    assert.ok(stdout.includes('🔬'), '生产盲区标 🔬 在表格(stdout)');
+    assert.ok(stdout.includes('installed ?'), '不可达轴仍标 ?(证明与生产盲区正交)');
+    assert.ok(stderr.includes('production gap'), 'production_gap_note 在 stderr');
+    const { stdout: jsonOut } = await run(['--json']);
+    const parsed = JSON.parse(jsonOut);
+    assert.equal(parsed.rows[0].productionGap.healthBand, 'red', '--json 行带 productionGap');
+  });
+
+  it('green 观测:不出 🔬、不出 production_gap_note(只 surface 确诊盲区)', async () => {
+    const greenObs = { ...redGapObs, reportId: 'obs-g', healthBand: 'green', weightedGapRate: 0.02, gapByType: { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 } };
+    writeRecord(managed, { name: 'epsilon', locator: join(proj, 'gone', 'y.md'), isDirectorySkill: false, contentHash: 'h', observations: [greenObs] });
+    const { stdout, stderr } = await run([]);
+    assert.ok(!stdout.includes('🔬'), 'green 观测不出 🔬');
+    assert.ok(!stderr.includes('production gap'), 'green 不出 production_gap_note');
   });
 
   it('空目录:走 empty 文案、stdout 不出表', async () => {

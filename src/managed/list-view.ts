@@ -8,8 +8,8 @@
  * reachable 时才走 `deriveManagedState`(哈不等 → stale)。verdict / 可比性取**当前有效证据**
  * (contentHash == record.contentHash)里 recordedAt 最新那条 —— 旧内容的证据不冒充当前。
  */
-import type { ArtifactKind, ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
-import { deriveManagedState, isCurrentlyPromoted, currentPromoteOverride } from './store.js';
+import type { ArtifactKind, ManagedArtifactRecord, ManagedLifecycleLabel, ManagedObservation } from '../types/index.js';
+import { deriveManagedState, isCurrentlyPromoted, currentPromoteOverride, deriveProductionGap } from './store.js';
 
 /** 当前源探测结果(三态)。`reachable:false` = 不可达 / 解析失败 / 拒读,**不等于**已 drift。 */
 export interface SourceProbe {
@@ -38,6 +38,14 @@ export interface ManagedListRow {
   /** 当前 promoted 版本是否经 `--force` override 采用(只读审计标);非越门 / 已 rollback / 未采用 → undefined。
    *  override 的写仍只在 CLI(`promote --force`),Studio 只读展示 —— 见 spec §9(#238)。 */
   override?: { verdict: string; overriddenBlocks?: string[] };
+  /** observe 生产盲区 marker(#235):仅当 `deriveProductionGap` 取最新观测为**确诊盲区**(红 + 统计够力)时填。
+   *  与 `state` / `drifted` **正交** —— 它是版本无关的生产信号(observe 量线上部署版),绝不参与生命周期、不翻
+   *  stale(见 store.deriveProductionGap)。underpowered / 非红观测不在此 surface(留 unknown / 信息态,避免噪声)。 */
+  productionGap?: {
+    healthBand: ManagedObservation['healthBand'];
+    confidence: ManagedObservation['confidence'];
+    gapByType: ManagedObservation['gapByType'];
+  };
   /** 最新当前证据的记录时间。 */
   recordedAt?: string;
   /** 当前有效证据数 / 全部证据数(含旧内容的历史证据)。 */
@@ -80,6 +88,9 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
   }
   const latest = latestCurrentEvidence(record);
   const override = currentPromoteOverride(record);
+  // 生产盲区是读时 marker、与生命周期正交:在 reachable / unreachable / 任意 state 下都照常计算并 surface
+  // (observe 量的是线上部署版,与本机能否 probe 源、源是否漂移无关)。只 surface 确诊盲区(marker==='gap')。
+  const gap = deriveProductionGap(record);
   return {
     id: record.id,
     name: record.name,
@@ -93,6 +104,9 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     ...(latest?.comparability ? { comparability: latest.comparability } : {}),
     ...(latest?.recordedAt ? { recordedAt: latest.recordedAt } : {}),
     ...(override ? { override } : {}),
+    ...(gap.marker === 'gap' && gap.latest
+      ? { productionGap: { healthBand: gap.latest.healthBand, confidence: gap.latest.confidence, gapByType: gap.latest.gapByType } }
+      : {}),
     currentEvidenceCount,
     totalEvidenceCount: record.evidence.length,
     distributionCount: record.distribution.length,

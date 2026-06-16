@@ -13,6 +13,7 @@ export type ListMessageKey =
   | 'cli.list.drift_note'
   | 'cli.list.unreachable_note'
   | 'cli.list.promoted_note'
+  | 'cli.list.production_gap_note'
   | 'cli.list.legend';
 
 export const listDict: Record<ListMessageKey, CliMessage> = {
@@ -45,6 +46,10 @@ export const listDict: Record<ListMessageKey, CliMessage> = {
   'cli.list.promoted_note': {
     zh: '✓ = 当前版本已按证据人工接受为 promoted（omk promote）。\n',
     en: '✓ = current version accepted as promoted on evidence (omk promote).\n',
+  },
+  'cli.list.production_gap_note': {
+    zh: '🔬 = observe 在线上检测到生产盲区（与生命周期无关的版本无关信号）；建议补对应用例后重跑 omk eval。\n',
+    en: '🔬 = observe detected a production gap in real traffic (a version-agnostic signal, orthogonal to lifecycle); add matching samples and re-run omk eval.\n',
   },
   'cli.list.legend': {
     zh: '证据列 = 当前有效 / 全部（历史含旧内容证据，供回滚）。\n',

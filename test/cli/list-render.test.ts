@@ -24,6 +24,13 @@ describe('dispWidth', () => {
     assert.equal(dispWidth('NAME'), 4);
     assert.equal(dispWidth('a中b'), 4);
   });
+
+  it('星平面 emoji(🔬)按 2 列、✓ 保持 1 列、⚠️ 为 2 列', () => {
+    assert.equal(dispWidth('🔬'), 2, '🔬 终端按 2 列渲染,列宽须计 2(防 STATE 列少补 1)');
+    assert.equal(dispWidth('a🔬b'), 4, '混排逐码点累加');
+    assert.equal(dispWidth('✓'), 1, '✓ 终端 1 列、保持 1');
+    assert.equal(dispWidth('⚠️'), 2, '⚠️ 是两码点各 1、合计 2,本就对齐');
+  });
 });
 
 describe('truncate（按显示宽度）', () => {
@@ -73,6 +80,33 @@ describe('renderTable 状态符不变量', () => {
     const line = dataLine(row({ state: 'promoted', reachable: false }));
     assert.ok(line.includes('promoted ?'));
     assert.ok(!line.includes('✓'), '未核时不打 ✓');
+  });
+});
+
+describe('renderTable 生产盲区 🔬 标(#235,与 state 正交)', () => {
+  const gap = { healthBand: 'red' as const, confidence: 'high' as const, gapByType: { failed_search: 2, explicit_marker: 0, hedging: 0, repeated_failure: 0 } };
+
+  it('measurable + productionGap → state 列叠加 🔬,不替换 state', () => {
+    const line = dataLine(row({ state: 'measurable', reachable: true, currentEvidenceCount: 1, totalEvidenceCount: 1, productionGap: gap }));
+    assert.ok(line.includes('measurable'), 'state token 仍在');
+    assert.ok(line.includes('🔬'), '叠加生产盲区标');
+  });
+
+  it('无 productionGap → 无 🔬', () => {
+    const line = dataLine(row({ state: 'measurable', reachable: true, currentEvidenceCount: 1, totalEvidenceCount: 1 }));
+    assert.ok(!line.includes('🔬'), '无观测盲区不出 🔬');
+  });
+
+  it('正交性:stale ⚠️ 与生产盲区 🔬 可共存(两轴独立)', () => {
+    const line = dataLine(row({ state: 'stale', drifted: true, reachable: true, productionGap: gap }));
+    assert.ok(line.includes('stale ⚠️'), '漂移轴仍标 ⚠️');
+    assert.ok(line.includes('🔬'), '生产盲区轴独立标 🔬');
+  });
+
+  it('正交性:不可达 `?` 与生产盲区 🔬 可共存(observe 量线上部署版,与源可达无关)', () => {
+    const line = dataLine(row({ state: 'installed', reachable: false, productionGap: gap }));
+    assert.ok(line.includes('installed ?'), '不可达轴仍标 ?');
+    assert.ok(line.includes('🔬'), '生产盲区轴独立标 🔬');
   });
 });
 
