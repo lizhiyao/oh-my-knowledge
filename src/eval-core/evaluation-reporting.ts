@@ -10,7 +10,7 @@ import { buildVariantConfig, resolveExecutionStrategy } from './execution-strate
 import { getJudgePromptHash } from '../grading/judge.js';
 import {
   bootstrapMeanCI,
-  bootstrapDiffCI,
+  bootstrapPairedDiffCI,
   DEFAULT_BOOTSTRAP_ALPHA,
   DEFAULT_BOOTSTRAP_SAMPLES,
 } from './bootstrap.js';
@@ -214,21 +214,26 @@ export function aggregateReport({
     if (variants.length >= 2) {
       pairComparisons = [];
       const controlName = variants[0];
-      const controlEntries = Object.values(results).map((r) => r[controlName]).filter(Boolean);
-      const controlScores = controlEntries
-        .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
-        .map((e) => e.compositeScore!);
+      const sampleRecords = Object.values(results);
       for (let i = 1; i < variants.length; i++) {
         const treatmentName = variants[i];
-        const treatmentEntries = Object.values(results).map((r) => r[treatmentName]).filter(Boolean);
-        const treatmentScores = treatmentEntries
-          .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
-          .map((e) => e.compositeScore!);
-        if (controlScores.length >= 2 && treatmentScores.length >= 2) {
+        // **配对** diff CI:A/B 是同一批 sample 分别过 control / treatment(配对设计),按 sample 对齐 ——
+        // 同一 sample 上 control 与 treatment 都可测(composite > 0,见上不变量)才入对。同一 sample 两 variant
+        // 的分数正相关,配对 bootstrap 据此抵消共有方差、收紧 diff CI、更有功效;旧的独立(非配对)重采样高估
+        // 方差、CI 偏宽、保守失功效(见 bootstrapPairedDiffCI)。点估计不变,只收紧 CI。
+        const pairs: Array<{ a: number; b: number }> = [];
+        for (const r of sampleRecords) {
+          const c = r[controlName];
+          const t = r[treatmentName];
+          const a = c && typeof c.compositeScore === 'number' && c.compositeScore > 0 ? c.compositeScore : undefined;
+          const b = t && typeof t.compositeScore === 'number' && t.compositeScore > 0 ? t.compositeScore : undefined;
+          if (a !== undefined && b !== undefined) pairs.push({ a, b });
+        }
+        if (pairs.length >= 2) {
           pairComparisons.push({
             control: controlName,
             treatment: treatmentName,
-            diffBootstrapCI: bootstrapDiffCI(controlScores, treatmentScores, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples),
+            diffBootstrapCI: bootstrapPairedDiffCI(pairs, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples),
           });
         }
       }

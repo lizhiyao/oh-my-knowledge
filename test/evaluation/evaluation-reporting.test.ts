@@ -333,3 +333,42 @@ describe('aggregateReport — meta.skillIsolation', () => {
     assert.deepEqual(report.meta.skillIsolation!['skill-clean'], ['react-skill']);
   });
 });
+
+describe('aggregateReport — 配对 pairwise diff CI(#235 审计 PR3)', () => {
+  const withComposite = (composite: number): VariantResult => ({ ...makeVariantResult(), compositeScore: composite });
+  const reqBootstrap = { bootstrap: true } as unknown as EvaluationRequest;
+
+  it('开 bootstrap + 2 variant:按 sample 配对算 diff CI(treatment 稳定高于 control → 显著正 Δ)', () => {
+    const ids = ['s1', 's2', 's3', 's4', 's5'];
+    const aScores = [3.0, 3.5, 4.0, 2.5, 3.8];
+    const bScores = [3.8, 4.3, 4.8, 3.3, 4.6]; // 每个 sample 上 b 比 a 高约 0.8 → 配对差稳定为正
+    const results = Object.fromEntries(ids.map((id, i) => [id, { a: withComposite(aScores[i]), b: withComposite(bScores[i]) }]));
+    const report = aggregateReport({
+      runId: 'r', variants: ['a', 'b'], model: 'm', judgeModel: 'haiku', noJudge: true,
+      executorName: 'codex', samples: ids.map((id) => makeSample(id, 'task')), tasks: [],
+      results, totalCostUSD: 0, artifacts: [makeArtifact('a', 'a'), makeArtifact('b', 'b')],
+      request: reqBootstrap,
+    });
+    const pair = report.meta.pairComparisons?.[0];
+    assert.ok(pair?.diffBootstrapCI, '应产出配对 diffBootstrapCI');
+    assert.equal(pair!.control, 'a');
+    assert.equal(pair!.treatment, 'b');
+    assert.ok(pair!.diffBootstrapCI!.estimate > 0, 'treatment 高于 control → 正 Δ');
+    assert.ok(pair!.diffBootstrapCI!.significant, '稳定正向配对差 → 显著');
+  });
+
+  it('某 sample 一侧缺测(composite 0)→ 该 sample 不入配对对,其余仍成对', () => {
+    const results = {
+      s1: { a: withComposite(3.0), b: withComposite(4.0) },
+      s2: { a: withComposite(3.0), b: withComposite(0) }, // b 在 s2 缺测 → s2 被排除
+      s3: { a: withComposite(3.5), b: withComposite(4.2) },
+    };
+    const report = aggregateReport({
+      runId: 'r', variants: ['a', 'b'], model: 'm', judgeModel: 'haiku', noJudge: true,
+      executorName: 'codex', samples: ['s1', 's2', 's3'].map((id) => makeSample(id, 'task')), tasks: [],
+      results, totalCostUSD: 0, artifacts: [makeArtifact('a', 'a'), makeArtifact('b', 'b')],
+      request: reqBootstrap,
+    });
+    assert.ok(report.meta.pairComparisons?.[0]?.diffBootstrapCI, 's2 缺测但 s1/s3 仍成对 → 仍出配对 diff CI');
+  });
+});

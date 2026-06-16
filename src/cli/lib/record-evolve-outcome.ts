@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { createOverlayReportStore } from '../../server/report-store.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { computeVerdict } from '../../eval-core/verdict.js';
-import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../../eval-core/bootstrap.js';
+import { bootstrapPairedDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../../eval-core/bootstrap.js';
 import {
   resolveManagedDir,
   managedDir,
@@ -39,22 +39,30 @@ export interface EvolveOutcomeResult {
 
 /**
  * round-bestRound vs round-0 的忠实 verdict：复刻 eval 管线（evaluation-reporting.ts）对两变体抽
- * per-sample composite → bootstrapDiffCI → computeVerdict，与 `omk eval --bootstrap` 同口径、同 α / 重采样数。
+ * per-sample composite → 按 sample 配对 bootstrapPairedDiffCI → computeVerdict，与 `omk eval --bootstrap`
+ * 同口径、同 α / 重采样数。
  * 不自造门限：评委是否显著、是否 PROGRESS 全交给既有 computeVerdict。
  */
 function winnerVerdict(report: EvaluationReport, winnerVariant: string): string {
   const baseline = 'round-0';
-  const scoresOf = (v: string): number[] => report.results
-    .map((r) => r.variants[v])
-    .filter((e): e is NonNullable<typeof e> => !!e && typeof e.compositeScore === 'number' && e.compositeScore > 0)
-    .map((e) => e.compositeScore as number);
-  const ctrl = scoresOf(baseline);
-  const treat = scoresOf(winnerVariant);
-  const pairComparisons = ctrl.length >= 2 && treat.length >= 2
+  // 按 sample **配对**(与 evaluation-reporting 主 A/B 同口径 —— 本函数职责就是复刻 eval 管线):baseline 与
+  // winner 在同一 sample 上都可测(composite > 0)才入对。同一 sample 两版分数正相关,配对 bootstrap 收紧 diff
+  // CI;独立重采样会高估方差、保守失功效。diff = b − a = winner − baseline。
+  const compositeOf = (v: string, r: typeof report.results[number]): number | undefined => {
+    const e = r.variants[v];
+    return e && typeof e.compositeScore === 'number' && e.compositeScore > 0 ? e.compositeScore : undefined;
+  };
+  const pairs: Array<{ a: number; b: number }> = [];
+  for (const r of report.results) {
+    const a = compositeOf(baseline, r);
+    const b = compositeOf(winnerVariant, r);
+    if (a !== undefined && b !== undefined) pairs.push({ a, b });
+  }
+  const pairComparisons = pairs.length >= 2
     ? [{
       control: baseline,
       treatment: winnerVariant,
-      diffBootstrapCI: bootstrapDiffCI(ctrl, treat, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES),
+      diffBootstrapCI: bootstrapPairedDiffCI(pairs, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES),
     }]
     : undefined;
   const slice: EvaluationReport = {
