@@ -18,6 +18,7 @@ t 检验在 LLM 序数评分（Likert 类离散桶，不是正态分布的连续
 - **每个 variant 的均值 CI** —— 有放回重采样 N 次（默认 1000）
 - **两个 variant 之间的 pairwise diff CI** —— 重采样后的均值差；如果 CI 不跨 0，差异在选定 α（默认 0.05 → 95% CI）显著
 - **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`；HTML 报告画 CI 带状区域；CLI `omk eval` 在六档 verdict 逻辑里消费这些 CI
+- **默认可复现**：CI 用固定内部种子，同一份 eval 跑两次得到逐字节相同的 CI、verdict 稳定 —— 临界点上 `significant` 不会 run-to-run 来回翻（非确定性 CI 会悄悄把 ship/no-ship 结论翻面）
 
 **参考**：Efron & Tibshirani (1993), "An Introduction to the Bootstrap"。omk 实现：`src/eval-core/bootstrap.ts` —— 公式由 `test/eval-core/bootstrap.test.ts` 覆盖，文档里的默认值（重采样次数、α）由 `test/scripts/doc-constants-drift.test.ts` 与代码常量保持同步。
 

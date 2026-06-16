@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapWithMetric } from '../../src/eval-core/bootstrap.js';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapWithMetric, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {
@@ -50,6 +50,15 @@ describe('bootstrapMeanCI', () => {
     assert.deepEqual(a, b, 'same seed should give identical CI');
   });
 
+  it('未传 seed 也确定:默认退 DEFAULT_BOOTSTRAP_SEED(同一 eval 两跑 CI 相同,非 Math.random)', () => {
+    const scores = [3, 4, 5, 4, 3, 2, 5, 4];
+    const a = bootstrapMeanCI(scores, 0.05, 500);
+    const b = bootstrapMeanCI(scores, 0.05, 500);
+    assert.deepEqual(a, b, '无 seed 两跑应逐字节相同(默认确定性)');
+    const explicit = bootstrapMeanCI(scores, 0.05, 500, DEFAULT_BOOTSTRAP_SEED);
+    assert.deepEqual(a, explicit, '默认种子等价于显式传 DEFAULT_BOOTSTRAP_SEED');
+  });
+
   it('N=1000 samples completes well under 1 second', () => {
     const scores = Array.from({ length: 50 }, (_, i) => 3 + (i % 3));
     const start = Date.now();
@@ -92,6 +101,12 @@ describe('bootstrapDiffCI', () => {
     const ci = bootstrapDiffCI(control, treatment, 0.05, 1000, 21);
     // Whether significant or not, the estimate should be ~0.4
     assert.ok(Math.abs(ci.estimate - 0.4) < 0.001, `estimate ${ci.estimate} should be close to 0.4`);
+  });
+
+  it('未传 seed 的 diff CI 也确定(significant 不会 run-to-run 翻,verdict 可复现)', () => {
+    const a = bootstrapDiffCI([3, 4, 5, 4], [4, 5, 6, 5], 0.05, 500);
+    const b = bootstrapDiffCI([3, 4, 5, 4], [4, 5, 6, 5], 0.05, 500);
+    assert.deepEqual(a, b, '无 seed diff CI 两跑相同 → significant 确定 → verdict 不翻');
   });
 
   it('seeded diff CI is deterministic', () => {

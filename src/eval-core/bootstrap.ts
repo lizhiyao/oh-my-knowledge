@@ -17,8 +17,14 @@
  *   - bootstrapDiffCI: CI for the difference (B - A); 0 outside the CI = significant
  *   - bootstrapWithMetric: generic interface so saturation analysis can reuse
  *
- * Reproducibility: pass a fixed `seed` to get deterministic CIs across runs.
- * Without a seed we use Math.random() — fine for production but not for tests.
+ * Reproducibility: CIs are **deterministic by default** — when no `seed` is passed,
+ * a fixed `DEFAULT_BOOTSTRAP_SEED` is used, so the same eval run twice yields
+ * byte-identical CIs (and a stable verdict near the significance boundary). This is
+ * a measurement-validity requirement: an unseeded `Math.random()` would let the
+ * `significant` flag flip between identical runs. Library callers (and specific paths
+ * such as `eval gold compare --seed`) may pass an explicit `seed` to vary the draw; the
+ * main `omk eval` deliberately exposes no seed knob — a fixed default also prevents
+ * seed-shopping for significance.
  */
 
 export interface BootstrapCI {
@@ -47,6 +53,15 @@ export const DEFAULT_BOOTSTRAP_SAMPLES = 1000;
 /** Default significance level; 0.05 → 95% CI. */
 export const DEFAULT_BOOTSTRAP_ALPHA = 0.05;
 
+/**
+ * Fixed default bootstrap seed → CIs are **deterministic by default** (omk default-strict:
+ * reproducibility affects verdict validity, so it is on by default, not opt-in). The specific
+ * value is arbitrary — only that it is **fixed** matters; it is an implementation detail, not a
+ * user-facing constant, so unlike DEFAULT_BOOTSTRAP_SAMPLES / α it is neither cited in docs nor
+ * guarded by `doc-constants-drift.test.ts`. Callers wanting a different draw pass an explicit `seed`.
+ */
+export const DEFAULT_BOOTSTRAP_SEED = 20260616;
+
 /** Mulberry32 PRNG — seedable, deterministic for tests. */
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
@@ -60,8 +75,9 @@ function mulberry32(seed: number): () => number {
 }
 
 function makeRng(seed?: number): () => number {
-  if (seed == null) return Math.random;
-  return mulberry32(seed);
+  // 默认确定性:无显式 seed 时退 DEFAULT_BOOTSTRAP_SEED(而非 Math.random)——否则同一 eval 两跑会得到
+  // 不同 CI,临界点 significant 翻转 → verdict 不可复现。见模块头 Reproducibility。
+  return mulberry32(seed ?? DEFAULT_BOOTSTRAP_SEED);
 }
 
 /** Sample n indices with replacement from [0, length) using the given PRNG. */
