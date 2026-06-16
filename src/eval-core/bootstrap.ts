@@ -21,8 +21,10 @@
  * a fixed `DEFAULT_BOOTSTRAP_SEED` is used, so the same eval run twice yields
  * byte-identical CIs (and a stable verdict near the significance boundary). This is
  * a measurement-validity requirement: an unseeded `Math.random()` would let the
- * `significant` flag flip between identical runs. Pass an explicit `seed` (e.g. via
- * `omk eval --seed`) to vary the resample draw and probe seed sensitivity.
+ * `significant` flag flip between identical runs. Library callers (and specific paths
+ * such as `eval gold compare --seed`) may pass an explicit `seed` to vary the draw; the
+ * main `omk eval` deliberately exposes no seed knob — a fixed default also prevents
+ * seed-shopping for significance.
  */
 
 export interface BootstrapCI {
@@ -54,8 +56,9 @@ export const DEFAULT_BOOTSTRAP_ALPHA = 0.05;
 /**
  * Fixed default bootstrap seed → CIs are **deterministic by default** (omk default-strict:
  * reproducibility affects verdict validity, so it is on by default, not opt-in). The specific
- * value is arbitrary; only that it is fixed matters. `omk eval --seed N` overrides it.
- * Single source of truth: docs cite it and `test/scripts/doc-constants-drift.test.ts` guards parity.
+ * value is arbitrary — only that it is **fixed** matters; it is an implementation detail, not a
+ * user-facing constant, so unlike DEFAULT_BOOTSTRAP_SAMPLES / α it is neither cited in docs nor
+ * guarded by `doc-constants-drift.test.ts`. Callers wanting a different draw pass an explicit `seed`.
  */
 export const DEFAULT_BOOTSTRAP_SEED = 20260616;
 
