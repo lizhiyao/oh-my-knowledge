@@ -153,7 +153,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
 
   // 稳定性门控(报告级,非 per-pair):仅当**已测**(runs≥2)且 run-to-run 不稳(median CV > STABILITY_UNSTABLE_CV)
   // 时,把 PROGRESS 降为 CAUTIOUS —— 显著但跨轮不可复现的"进展"不可 ship。单轮(未测稳定性)不门控:rationale
-  // 已诚实标"未测量",默认单轮全降级会过激(见 sample-design 决策)。只压 PROGRESS:已是 CAUTIOUS/REGRESS 等
+  // 已诚实标"未测量"(terminology-spec §5「诚实交代测不到的东西」),默认单轮全降级会过激。只压 PROGRESS:已是 CAUTIOUS/REGRESS 等
   // 不再加码,顺序与 worst-case roll-up 一致。
   const stab = medianStabilityCV(report);
   const stabilityGated = topLevel === 'PROGRESS' && stab !== null && stab.cv > STABILITY_UNSTABLE_CV;

@@ -3,7 +3,7 @@ import { icon as svgIcon } from './icons.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { ciLevelLabel } from '../eval-core/bootstrap.js';
-import { computeVerdict, medianStabilityCV, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
+import { computeVerdict, medianStabilityCV, STABILITY_UNSTABLE_CV, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
 import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
@@ -134,7 +134,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   if (ci) {
     const sign = ci.estimate >= 0 ? '+' : '';
     const cvSuffix = cvPct != null
-      ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct < 15 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct < 15 ? 'moderate' : 'unstable'})`)
+      ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? 'moderate' : 'unstable'})`)
       : '';
     const pctLabel = ciLevelLabel(report.meta?.pairComparisons?.[0]?.alpha);
     const ciTipBase = lang === 'zh'
@@ -575,7 +575,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       const cvPct = cv * 100;
       let label: string;
       if (cvPct < 5) { label = lang === 'zh' ? '稳定' : 'Stable'; stabColor = 'var(--green)'; }
-      else if (cvPct < 15) { label = lang === 'zh' ? '较稳' : 'Moderate'; stabColor = 'var(--yellow)'; }
+      else if (cvPct <= STABILITY_UNSTABLE_CV * 100) { label = lang === 'zh' ? '较稳' : 'Moderate'; stabColor = 'var(--yellow)'; }
       else { label = lang === 'zh' ? '波动大' : 'Variable'; stabColor = 'var(--red)'; }
       stabValue = `${label} · ±${fmtNum(vd!.stddev, 2)}`;
       stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${fmtNum(vd!.lower, 2)}, ${fmtNum(vd!.upper, 2)}]`);
