@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import _Ajv from 'ajv';
 import type { Assertion, AssertionDetail, AssertionResults, ExecutorFn, Sample, ToolCallInfo } from '../types/index.js';
+import { ASSERTION_LAYER } from './layered-scores.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();
@@ -290,6 +291,29 @@ function evalAssertion(
   }
 }
 
+/**
+ * assert-set 是布尔组合器,不是叶子断言,没有静态的「层」。它在 runAssertions 里只产出一条聚合明细
+ * (`type: 'assert-set'`、aggregate pass/fail),computeLayeredScores 无法据此判 fact / behavior。
+ * 这里在 grading 期(能看到 children 树时)按**叶子子断言**的层解析:递归收集所有叶子(穿透嵌套 assert-set),
+ *   - 同层(全 fact 或全 behavior)→ 返回该层:聚合 pass/fail 归这一层,与 any/all 模式无关(同层信号无歧义)。
+ *   - 混层 / 空 / 含未分类叶子 → 返回 undefined:不归层(混层组合器塞进单层会引入口径偏差,诚实做法是不计入分层)。
+ * 解析结果落到 detail.layer,computeLayeredScores 优先读它。
+ */
+function resolveAssertSetLayer(assertion: Assertion): 'fact' | 'behavior' | undefined {
+  const layers = new Set<'fact' | 'behavior' | 'unknown'>();
+  const collect = (a: Assertion): void => {
+    if (a.type === 'assert-set') {
+      for (const c of a.children ?? []) collect(c);
+      return;
+    }
+    layers.add(ASSERTION_LAYER[a.type] ?? 'unknown');
+  };
+  collect(assertion);
+  if (layers.size !== 1) return undefined; // 0 / 混层 → 不归层
+  const [only] = [...layers];
+  return only === 'unknown' ? undefined : only;
+}
+
 export function runAssertions(
   output: string,
   assertions: Assertion[],
@@ -305,11 +329,14 @@ export function runAssertions(
     const weight = assertion.weight ?? 1;
     const raw = evalAssertion(output, assertion, ctx);
     const passed = assertion.not ? !raw : raw;
+    // assert-set 组合器:在此(能看到 children)解析其层,供 computeLayeredScores 用;叶子断言按静态映射归层、不带 layer。
+    const layer = assertion.type === 'assert-set' ? resolveAssertSetLayer(assertion) : undefined;
     details.push({
       type: assertion.type,
       value: assertion.value ?? assertion.pattern ?? assertion.values?.join(', ') ?? '',
       weight,
       passed,
+      ...(layer ? { layer } : {}),
     });
   }
 
