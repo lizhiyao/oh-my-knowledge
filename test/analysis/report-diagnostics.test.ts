@@ -36,6 +36,24 @@ describe('analyzeResults', () => {
     assert.equal(analysis.suggestions, undefined);
   });
 
+  it('同厂商评委 → judge_self_preference 警告', () => {
+    const report = {
+      meta: { variants: ['v1', 'v2'], judgeModels: [{ executor: 'claude', model: 'haiku' }], executor: 'claude' },
+      results: [{ sample_id: 's1', variants: { v1: {}, v2: {} } }],
+    };
+    const sp = analyzeResults(toReport(report)).insights.find((i) => i.type === 'judge_self_preference');
+    assert.ok(sp, '同厂商评委应出 judge_self_preference');
+    assert.equal(sp!.severity, 'warning');
+  });
+
+  it('跨厂商评委 → 无 judge_self_preference', () => {
+    const report = {
+      meta: { variants: ['v1', 'v2'], judgeModels: [{ executor: 'openai-api', model: 'gpt-4o' }], executor: 'claude' },
+      results: [{ sample_id: 's1', variants: { v1: {}, v2: {} } }],
+    };
+    assert.equal(analyzeResults(toReport(report)).insights.find((i) => i.type === 'judge_self_preference'), undefined);
+  });
+
   it('detects uniform scores', () => {
     const report = {
       meta: { variants: ['v1', 'v2'] },

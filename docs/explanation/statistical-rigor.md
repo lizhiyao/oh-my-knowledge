@@ -35,6 +35,8 @@ CI tells you "is the judge stable across resamples". α tells you "is the judge 
 
 omk auto-detects gold-judge collusion: if the gold annotator is the same model as the judge (e.g., both `claude-3.5-sonnet`), α inflates because both share the same biases. omk warns and reports adjusted α.
 
+The same logic applies on the judge-vs-output axis: if the judge is the same model family as the executor that produced the outputs — the default, where `claude:haiku` judges `claude:sonnet` output — the judge's self-preference inflates scores. omk flags this (`judge_self_preference`, plus `single_vendor_ensemble` when a multi-judge panel is all one vendor) and points to the fix: a cross-vendor judge (`--judge-models openai:gpt-4o`) or gold calibration. Because omk holds the model fixed across baseline and treatment, self-preference largely cancels in the A/B **delta** — it bites absolute scores, version-regression curves, and cross-model comparisons, which is what the warning scopes itself to.
+
 **Formula**: standard Krippendorff α with ordinal distance metric. Implementation: `src/grading/human-gold.ts`. Inputs: `<gold-dir>/<sample_id>.json` files with human scores per dimension.
 
 ## 3. Length-controlled judge prompt(default ON)

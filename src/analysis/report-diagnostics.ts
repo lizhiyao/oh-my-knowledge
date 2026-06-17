@@ -4,6 +4,7 @@
 
 import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
+import { analyzeJudgeIndependence } from '../eval-core/judge-independence.js';
 
 /** opts for `analyzeResults`. Optional because most older callers don't have
  *  samples in scope; new callers (evaluation-pipeline / evolver) pass them in to
@@ -62,10 +63,36 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights);
 
+  // 11. Judge independence — self-preference (judge same vendor as the executor that
+  //     produced the outputs) / single-vendor ensemble (agreement doesn't rebut shared bias).
+  detectJudgeIndependence(report, insights);
+
   return {
     insights,
     ...(sampleQuality && { sampleQuality }),
   };
+}
+
+/**
+ * 评委独立性诊断:同厂商评委(自我偏好敞口)/ 单厂商 ensemble(一致性不反驳共有偏置)。
+ * 判定走单一来源 `analyzeJudgeIndependence`;挂了 gold 校准则软化为 info。
+ */
+function detectJudgeIndependence(report: Report, insights: AnalysisInsight[]): void {
+  const ind = analyzeJudgeIndependence(report);
+  if (ind.sameVendorJudge) {
+    insights.push({
+      type: 'judge_self_preference',
+      severity: ind.goldCalibrated ? 'info' : 'warning',
+      details: { judgeVendors: ind.judgeVendors, outputVendors: ind.outputVendors, goldCalibrated: ind.goldCalibrated },
+    });
+  }
+  if (ind.singleVendorEnsemble) {
+    insights.push({
+      type: 'single_vendor_ensemble',
+      severity: ind.goldCalibrated ? 'info' : 'warning',
+      details: { judgeVendors: ind.judgeVendors, goldCalibrated: ind.goldCalibrated },
+    });
+  }
 }
 
 /**

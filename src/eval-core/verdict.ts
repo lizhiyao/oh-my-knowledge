@@ -31,6 +31,7 @@
 import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
+import { analyzeJudgeIndependence } from './judge-independence.js';
 
 /**
  * Below this sample count a non-significant diff is read as UNDERPOWERED
@@ -161,6 +162,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   const stabilityNote = stabilityGated && stab
     ? ` · 显著但 run-to-run 不稳(CV=${(stab.cv * 100).toFixed(1)}% > ${(STABILITY_UNSTABLE_CV * 100).toFixed(0)}%)`
     : '';
+  const judgeInd = judgeIndependenceCaveat(report);
 
   const significance = representative
     ? formatSignificance(representative)
@@ -169,13 +171,13 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   const layerWinners = formatLayerWinners(summary, variants);
   const sampleSize = formatSampleSize(report);
   const stability = formatStability(report);
-  const judgeAgreement = formatJudgeAgreement(report);
+  const judgeAgreement = [formatJudgeAgreement(report), judgeInd.rationale].filter(Boolean).join(' · ') || undefined;
   const shipRecommendation = recommendation(level, perPair);
 
   return {
     level,
     headline: representative
-      ? `${level} · ${representative.treatment} vs ${representative.control}: ${representative.headline}${stabilityNote}`
+      ? `${level} · ${representative.treatment} vs ${representative.control}: ${representative.headline}${stabilityNote}${judgeInd.note}`
       : `${level} · ${variants.length} variants`,
     perPair,
     rationale: {
@@ -446,6 +448,30 @@ function formatJudgeAgreement(report: Report): string | undefined {
     : a.alpha >= 0.4 ? 'weak'
     : 'poor';
   return `α=${Number.isNaN(a.alpha) ? 'NaN' : a.alpha.toFixed(2)} (${verdict}) vs gold ${a.goldAnnotator}`;
+}
+
+/**
+ * 评委独立性 caveat(自我偏好 J1 / 单厂商 ensemble J2)。返回 { note, rationale }:
+ *   note      —— 追到 headline 的短提示(仅未 gold 校准时出,提醒读者敞口);
+ *   rationale —— 并进 rationale.judgeAgreement 的可执行说明(指向跨厂商评委 / gold)。
+ * **不改 verdict level**:omk 固定模型,自我偏好对 baseline / treatment 两臂同等加成、在 verdict
+ * 在意的 A/B 差值里大幅抵消,不该翻 ship/no-ship;真正受影响的是绝对分 / 版本曲线 / 跨模型比较。
+ */
+function judgeIndependenceCaveat(report: Report): { note: string; rationale?: string } {
+  const ind = analyzeJudgeIndependence(report);
+  const reasons: string[] = [];
+  if (ind.sameVendorJudge) reasons.push(`评委与被测输出同厂商(${ind.outputVendors.join('/')})`);
+  if (ind.singleVendorEnsemble) reasons.push(`${ind.judgeVendors.length} 个评委同厂商,ensemble 一致性不反驳同模型偏置`);
+  if (reasons.length === 0) return { note: '' };
+
+  if (ind.goldCalibrated) {
+    // 有 gold 校准背板 → 不进 headline,只软提示。
+    return { note: '', rationale: `自我偏好敞口(${reasons.join(';')})已有 gold 校准背板` };
+  }
+  return {
+    note: ' · 评委自我偏好敞口未校准',
+    rationale: `${reasons.join(';')} —— 绝对分可能偏高(A/B 差值受影响较小);换跨厂商评委(--judge-models)或挂 gold(omk eval gold compare)校准`,
+  };
 }
 
 function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLevel }>): string {
