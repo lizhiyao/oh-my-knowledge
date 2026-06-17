@@ -31,7 +31,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 劣势:
 
 - 粒度比 RAGAS 粗 — 看不到具体哪条陈述错了
-- judge 自身的 1-5 评分稳定性影响明显 — 建议配合 `--judge-repeat 3` 或 `--judge-models claude:opus,openai:gpt-4o` ensemble 校准
+- judge 自身的 1-5 评分稳定性影响明显 — 建议配合 `--judge-repeat 3` 或 `--judge-models claude:opus,openai-api:gpt-4o` ensemble 校准
 
 需要 RAGAS 级粒度的场景：用 `custom` assertion 自己实现 statement-decomposition,或者跨层 wrapping omk 的 LLM judge 输出。
 

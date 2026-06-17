@@ -1742,12 +1742,12 @@ function localizedSuggestion(insight: AnalysisInsight, lang: Lang): string {
         : 'When rewriting agent assertions, prioritize tool path, key file reads, and turn-limit constraints';
     case 'judge_self_preference':
       return lang === 'zh'
-        ? '换跨厂商评委（如 --judge-models openai:gpt-4o）消除自我偏好，或挂人工金标校准（omk eval gold compare）量化评委是否可信。注：固定模型的 A/B 差值受影响较小，绝对分 / 跨版本曲线受影响更大'
-        : 'Use a cross-vendor judge (e.g. --judge-models openai:gpt-4o) to remove self-preference, or calibrate against human gold (omk eval gold compare). Note: the A/B delta is less affected than absolute scores / cross-version curves';
+        ? '换跨厂商评委（如 --judge-models openai-api:gpt-4o）消除自我偏好，或挂人工金标校准（omk eval gold compare）量化评委是否可信。注：固定模型的 A/B 差值受影响较小，绝对分 / 跨版本曲线受影响更大'
+        : 'Use a cross-vendor judge (e.g. --judge-models openai-api:gpt-4o) to remove self-preference, or calibrate against human gold (omk eval gold compare). Note: the A/B delta is less affected than absolute scores / cross-version curves';
     case 'single_vendor_ensemble':
       return lang === 'zh'
-        ? '把 ensemble 配成跨厂商（如 --judge-models claude:opus,openai:gpt-4o），让 agreement 真能反驳同模型偏置'
-        : 'Make the ensemble cross-vendor (e.g. --judge-models claude:opus,openai:gpt-4o) so agreement actually rebuts same-model bias';
+        ? '把 ensemble 配成跨厂商（如 --judge-models claude:opus,openai-api:gpt-4o），让 agreement 真能反驳同模型偏置'
+        : 'Make the ensemble cross-vendor (e.g. --judge-models claude:opus,openai-api:gpt-4o) so agreement actually rebuts same-model bias';
     default:
       return lang === 'zh'
         ? '查看结构化 details 字段定位原因'

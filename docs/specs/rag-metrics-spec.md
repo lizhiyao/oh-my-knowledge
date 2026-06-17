@@ -31,7 +31,7 @@ omk's tradeoff: **a single 1-5 score judgment**, consistent with omk's other LLM
 Drawbacks:
 
 - Coarser granularity than RAGAS — you can't see which specific statement was wrong.
-- The judge's own 1-5 scoring stability matters a lot — pair it with `--judge-repeat 3` or a `--judge-models claude:opus,openai:gpt-4o` ensemble to calibrate.
+- The judge's own 1-5 scoring stability matters a lot — pair it with `--judge-repeat 3` or a `--judge-models claude:opus,openai-api:gpt-4o` ensemble to calibrate.
 
 For scenarios that need RAGAS-grade granularity: implement statement-decomposition yourself in a `custom` assertion, or wrap omk's LLM judge output across a layer.
 

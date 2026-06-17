@@ -105,7 +105,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
 | **Evidence-gated management** | `omk install` registers a managed record; `omk eval` auto-writes evidence bound by content fingerprint, moving a skill `installed → measurable`; `omk list` surfaces each managed skill's status (installed / measurable / promoted / stale); `omk promote` accepts a version once its evidence passes the gate (default PROGRESS only); `omk rollback` revokes that acceptance, returning the skill to `measurable`. [spec →](docs/specs/evidence-gated-management.md) |
 | **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
-| **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
+| **Multi-judge ensemble** | `--judge-models claude:opus,openai-api:gpt-4o` cross-vendor scoring + agreement metrics |
 | **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
