@@ -59,7 +59,7 @@ export function buildVersionScores(
     const hashes = report.meta?.artifactHashes;
     if (!hashes) continue;
     const variant = Object.keys(hashes).find((v) => hashes[v] === ev.contentHash);
-    if (!variant) continue; // 匹配不到变体(旧 schema 不绑 / blind 未带哈)→ 跳过
+    if (!variant) continue; // 匹配不到变体(旧 schema 不绑)→ 跳过
     const s = report.summary?.[variant];
     const composite = s?.avgCompositeScore;
     if (typeof composite !== 'number' || Number.isNaN(composite)) continue; // 无 composite → 无从画点

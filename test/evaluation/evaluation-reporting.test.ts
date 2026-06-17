@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { aggregateReport, applyBlindMode } from '../../src/eval-core/evaluation-reporting.js';
+import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
 import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types/index.js';
 
 function makeArtifact(name: string, content: string): Artifact {
@@ -141,23 +141,6 @@ describe('aggregateReport — reproducibility metadata', () => {
     }
   });
 
-  it('blind mode remaps per-variant executor runtime keys', () => {
-    const report = aggregateReport({
-      ...baseOpts,
-      variants: ['a', 'b'],
-      artifacts: [makeArtifact('a', 'a skill'), makeArtifact('b', 'b skill')],
-      results: { s1: { a: makeVariantResult(), b: makeVariantResult() } },
-    });
-    report.meta.executorRuntimes = {
-      a: { ...report.meta.executorRuntime!, fingerprint: 'runtimeaaaaaa' },
-      b: { ...report.meta.executorRuntime!, fingerprint: 'runtimebbbbbb' },
-    };
-
-    applyBlindMode(report, ['a', 'b'], 'seed');
-
-    assert.deepEqual(Object.keys(report.meta.executorRuntimes!).sort(), ['A', 'B']);
-  });
-
   it('writes judge runtime fingerprint when judge runs', () => {
     const report = aggregateReport(baseOpts);
     const judge = report.meta.judgeModels[0];
@@ -177,7 +160,6 @@ describe('aggregateReport — reproducibility metadata', () => {
       concurrency: 1,
       noCache: false,
       dryRun: false,
-      blind: false,
       judgeModels: [
         { executor: 'claude', model: 'sonnet' },
         { executor: 'codex', model: 'gpt-5.5' },
@@ -215,7 +197,7 @@ describe('aggregateReport — reproducibility metadata', () => {
     const request: EvaluationRequest = {
       samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku',
       judgeModels: [{ executor: 'claude', model: 'haiku' }],
-      executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false, blind: false,
+      executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false,
       judgeRepeat: 3,
     };
     const report = aggregateReport({ ...baseOpts, request });
@@ -226,7 +208,7 @@ describe('aggregateReport — reproducibility metadata', () => {
     const request1: EvaluationRequest = {
       samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku',
       judgeModels: [{ executor: 'claude', model: 'haiku' }],
-      executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false, blind: false,
+      executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false,
       judgeRepeat: 1,
     };
     const r1 = aggregateReport({ ...baseOpts, request: request1 });

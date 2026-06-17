@@ -460,6 +460,11 @@ judgeModels:
       yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`,
       error: /judgeExecutor.*were removed in v0\.25/,
     },
+    {
+      name: 'removed blind field',
+      yaml: `samples: ./s.json\n${minimalVariants}\nblind: true`,
+      error: /`blind`.*was removed/,
+    },
   ];
 
   it.each(invalidExperimentDesignCases)('rejects invalid v0.2 experiment-design field: $name', ({ yaml, error, name }) => {

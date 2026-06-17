@@ -58,7 +58,6 @@ export interface RunConfig {
   lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
-  blind?: boolean | undefined;
   retry?: number;
   resume?: string;
   layeredStats?: boolean;
@@ -181,7 +180,6 @@ export function parseRunConfig(
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
   const resume = values.resume as string | undefined;
-  const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
   // strict-baseline default true. Reconcile both flag forms with eval.yaml fallback.
@@ -236,7 +234,6 @@ export function parseRunConfig(
       verbose,
       retry,
       resume,
-      blind,
       layeredStats,
       budget: evalConfig?.budget,
       strictBaseline,

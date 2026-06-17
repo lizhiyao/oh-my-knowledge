@@ -38,7 +38,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ Report"]
-        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · top verdict pill · blind reveal<br/>CLI/Node/version fingerprint traceable"]
+        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · top verdict pill<br/>CLI/Node/version fingerprint traceable"]
     end
 
     S --> U

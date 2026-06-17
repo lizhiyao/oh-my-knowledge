@@ -230,9 +230,6 @@ async function runEval(
 
   const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../../eval-workflows/run-evaluation.js');
 
-  if (values.blind !== undefined) {
-    config.blind = values.blind as boolean | undefined;
-  }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   const repeatRaw = values.repeat as string | undefined;
@@ -534,9 +531,6 @@ export default class Eval extends BaseCommand {
       }),
     }),
     // ── eval-runner extra ──
-    blind: Flags.boolean({
-      description: bilingual({ zh: 'judge blind 模式', en: 'Blind judge mode' }),
-    }),
     repeat: Flags.string({
       description: bilingual({ zh: '每个 sample 重复跑 N 次', en: 'Repeat each sample N times' }),
       parse: integerStringParser('--repeat', { min: 1 }),

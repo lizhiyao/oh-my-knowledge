@@ -70,7 +70,6 @@ export interface EvaluationPipelineOptions {
   project?: string;
   owner?: string;
   tags?: string[];
-  blind?: boolean;
   concurrency?: number;
   timeoutMs?: number;
   noCache?: boolean;
@@ -134,7 +133,6 @@ export async function executeEvaluationPipeline({
   project,
   owner,
   tags,
-  blind = false,
   concurrency = 1,
   timeoutMs,
   noCache = false,
@@ -176,7 +174,6 @@ export async function executeEvaluationPipeline({
     concurrency,
     timeoutMs,
     noCache,
-    blind,
     project,
     owner,
     tags,
@@ -285,7 +282,6 @@ export async function executeEvaluationPipeline({
       results,
       artifacts,
       variantNames,
-      blind,
       samplesPath,
       samplesSourceFiles,
       samples,

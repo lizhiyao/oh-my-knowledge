@@ -17,7 +17,6 @@ const mockRequest: EvaluationRequest = {
   concurrency: 1,
   noCache: false,
   dryRun: false,
-  blind: false,
 };
 
 function makeJob(id: string, createdAt: string): EvaluationJob {

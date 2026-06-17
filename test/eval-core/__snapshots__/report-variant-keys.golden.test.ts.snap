@@ -292,11 +292,3 @@ exports[`GOLDEN report variant keys > case 6 — custom names with no collision 
   ],
 }
 `;
-
-exports[`GOLDEN report variant keys > case 7 — blind mode remaps every variant surface to A/B/C and round-trips 1`] = `
-{
-  "A": "baseline",
-  "B": "a",
-  "C": "b",
-}
-`;

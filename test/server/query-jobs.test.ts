@@ -15,7 +15,6 @@ function makeRequest(overrides: Partial<EvaluationRequest> = {}): EvaluationRequ
     concurrency: 1,
     noCache: false,
     dryRun: false,
-    blind: false,
     ...overrides,
   };
 }

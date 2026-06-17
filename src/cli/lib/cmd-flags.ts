@@ -110,7 +110,6 @@ export interface EvalFlags {
   'no-strict-baseline'?: boolean;
   effort?: string;
   'no-diagnostic'?: boolean;
-  blind?: boolean;
   repeat?: string;
   'judge-repeat'?: string;
   bootstrap?: boolean;

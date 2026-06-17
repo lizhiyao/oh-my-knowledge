@@ -353,48 +353,6 @@ export function aggregateReport({
   };
 }
 
-export function applyBlindMode(report: Report, variants: string[], blindSeed: string): void {
-  const labels = variants.map((_, i) => String.fromCharCode(65 + i));
-  let seed = parseInt(hashString(blindSeed).slice(0, 8), 16) | 0;
-  const seededRandom = (): number => {
-    seed |= 0;
-    seed = seed + 0x6D2B79F5 | 0;
-    let value = Math.imul(seed ^ seed >>> 15, 1 | seed);
-    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
-    return ((value ^ value >>> 14) >>> 0) / 4294967296;
-  };
-  const shuffled = [...variants];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(seededRandom() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  const blindMap: Record<string, string> = Object.fromEntries(shuffled.map((variant, i) => [labels[i], variant]));
-  const reverseMap: Record<string, string> = Object.fromEntries(Object.entries(blindMap).map(([label, variant]) => [variant, label]));
-
-  report.meta.blind = true;
-  report.meta.blindMap = blindMap;
-  report.meta.variants = labels;
-  if (report.meta.executorRuntimes) {
-    report.meta.executorRuntimes = Object.fromEntries(
-      Object.entries(report.meta.executorRuntimes).map(([variant, runtime]) => [reverseMap[variant] ?? variant, runtime]),
-    );
-  }
-
-  const newSummary: Record<string, VariantSummary> = {};
-  for (const [variant, stats] of Object.entries(report.summary)) {
-    newSummary[reverseMap[variant]] = stats;
-  }
-  report.summary = newSummary;
-
-  for (const result of report.results) {
-    const newVariants: Record<string, VariantResult> = {};
-    for (const [variant, data] of Object.entries(result.variants)) {
-      newVariants[reverseMap[variant]] = data;
-    }
-    result.variants = newVariants;
-  }
-}
-
 export interface PersistableReport {
   id: string;
 }

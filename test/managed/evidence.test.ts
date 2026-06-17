@@ -234,16 +234,17 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(written[0].bound, true);
   });
 
-  it('blind 模式:variants 被盲化为 A/B 但 artifactHashes 保留真实键,仍按哈绑定', () => {
+  it('variant 标签与 artifactHashes 键脱钩(如 eval.yaml 别名)→ 仍按 contentHash 绑定', () => {
     const realHash = hashArtifactSource(skillDir, true);
     install(realHash);
-    // applyBlindMode 盲化 variants 列表,但不动 artifactHashes 的键面与哈值。
+    // recordEvalEvidence 按 artifactHashes 的键/哈绑定,与 report.meta.variants 的标签无关:
+    // 即便 summary 用的是别名标签,只要 artifactHashes 里有匹配的真实哈,就能绑上。
     const report = makeReport({
-      variants: ['A', 'B'],
+      variants: ['control', 'candidate'],
       artifactHashes: { baseline: 'no-skill', review: realHash },
     });
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
-    assert.equal(written.length, 1, '盲化不影响 contentHash 连接');
+    assert.equal(written.length, 1, '标签脱钩不影响 contentHash 连接');
     assert.equal(written[0].bound, true);
   });
 

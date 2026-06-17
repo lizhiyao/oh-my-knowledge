@@ -169,11 +169,15 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       `${configPath}: \`judgeModel\` and \`judgeExecutor\` were removed in v0.25 — use \`judgeModels: [{executor, model}]\` instead (single judge is the 1-entry case). See README.`,
     );
   }
+  if (obj.blind !== undefined) {
+    throw new Error(
+      `${configPath}: \`blind\` (judge blind mode) was removed — delete it from your eval.yaml; reports are no longer blinded.`,
+    );
+  }
   assertNumberOpt('concurrency');
   assertNumberOpt('timeoutMs');
   assertBoolOpt('noCache');
   assertBoolOpt('noJudge');
-  assertBoolOpt('blind');
   assertStringOpt('mcpConfig');
   assertStringOpt('goldDir');
   assertBoolOpt('bootstrap');
@@ -275,7 +279,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     timeoutMs: obj.timeoutMs as number | undefined,
     noCache: obj.noCache as boolean | undefined,
     noJudge: obj.noJudge as boolean | undefined,
-    blind: obj.blind as boolean | undefined,
     mcpConfig: obj.mcpConfig as string | undefined,
     variants,
     budget,

@@ -38,7 +38,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ 报告"]
-        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 顶部 verdict pill · 盲测揭晓<br/>CLI/Node/版本指纹可追溯"]
+        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 顶部 verdict pill<br/>CLI/Node/版本指纹可追溯"]
     end
 
     S --> U

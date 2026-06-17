@@ -303,15 +303,6 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('dimStabilityDesc'));
   });
 
-  it('renders blind mode correctly', () => {
-    const blindReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
-    blindReport.meta.blind = true;
-    blindReport.meta.blindMap = { A: 'v1', B: 'v2' };
-    const html = renderRunDetail(blindReport);
-    assert.ok(html.includes('blindLabel'));
-    assert.ok(html.includes('blind-reveal'));
-  });
-
   it('supports English language', () => {
     const html = renderRunDetail(SAMPLE_REPORT, 'en' as Lang);
     assert.ok(html.includes('Evaluation Report'));
