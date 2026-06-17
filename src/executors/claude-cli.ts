@@ -14,21 +14,20 @@ import {
 import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
 
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
-// `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。但 CLI 没有 partial whitelist
-// 的 flag,所以 [name1, ...] 必须 throw。
+// `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。非空 skill 白名单不再支持
+// (它无法真正隔离,见 claude-sdk.ts buildSdkIsolationOptions),所以 [name1, ...] 必须 throw。
 //
 //   undefined           → 不传任何 flag(原行为,全发现)
 //   []                  → --disable-slash-commands + --disallowedTools Skill
 //                         (main session skill discovery + subagent Skill 工具调用都堵)
-//   [...] (length > 0)  → throw,提示用 claude-sdk executor 走精准白名单
+//   [...] (length > 0)  → throw,非空白名单已移除
 
 function applySkillIsolationToCliArgs(args: string[], allowedSkills: string[] | undefined): void {
   if (allowedSkills === undefined) return;
   if (allowedSkills.length > 0) {
     throw new Error(
-      `claude-cli executor 不支持 partial skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})。\n`
-      + `  仅支持 [](映射为 --disable-slash-commands + --disallowedTools Skill)或 undefined(默认)。\n`
-      + `  精确白名单请改用 --executor claude-sdk(SDK skills option pass-through)。`,
+      `skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})不再支持:非空白名单无法真正隔离。\n`
+      + `  仅支持 [](映射为 --disable-slash-commands + --disallowedTools Skill,全封死)或 undefined(不隔离)。`,
     );
   }
   // 完全隔离:双堵 main session skill 发现 + subagent Skill 工具

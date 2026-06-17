@@ -12,7 +12,7 @@ import { codexCliExecutor } from '../../src/executors/codex-cli.js';
 // CI 上 codex binary 不存在,但 throw 路径不需要 spawn 子进程,可独立测。
 
 describe('codexCliExecutor skill isolation contract', () => {
-  it('partial whitelist: throws (codex CLI 无 partial 白名单 flag)', async () => {
+  it('非空白名单: throws(skill 白名单已移除)', async () => {
     await assert.rejects(
       () => codexCliExecutor({
         model: 'gpt-5-codex',
@@ -21,11 +21,11 @@ describe('codexCliExecutor skill isolation contract', () => {
         cwd: '/tmp/some-dir',
         allowedSkills: ['foo', 'bar'],
       }),
-      /partial skill 白名单|codex-cli executor/,
+      /skill 白名单.*不再支持|无法真正隔离/,
     );
   });
 
-  it('partial whitelist with single skill: throws', async () => {
+  it('非空白名单(单 skill): throws', async () => {
     await assert.rejects(
       () => codexCliExecutor({
         model: 'gpt-5-codex',
@@ -34,7 +34,7 @@ describe('codexCliExecutor skill isolation contract', () => {
         cwd: '/tmp/some-dir',
         allowedSkills: ['only-this'],
       }),
-      /partial skill 白名单|codex-cli executor/,
+      /skill 白名单.*不再支持|无法真正隔离/,
     );
   });
 

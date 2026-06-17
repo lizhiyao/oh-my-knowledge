@@ -13,16 +13,11 @@ describe('buildSdkIsolationOptions', () => {
     assert.deepEqual(opts.disallowedTools, ['Skill']);
   });
 
-  it('allowedSkills=[react] → { skills:[react] } (白名单,不注入 disallowedTools)', () => {
-    const opts = buildSdkIsolationOptions(['react']);
-    assert.deepEqual(opts.skills, ['react']);
-    assert.equal(opts.disallowedTools, undefined,
-      '白名单模式不堵 Skill 工具,subagent 走独立 channel');
+  it('allowedSkills=[react] → throw(非空白名单不再支持:无法真正隔离)', () => {
+    assert.throws(() => buildSdkIsolationOptions(['react']), /白名单.*不再支持|无法真正隔离/);
   });
 
-  it('allowedSkills=[a, b] → { skills:[a, b] }', () => {
-    const opts = buildSdkIsolationOptions(['a', 'b']);
-    assert.deepEqual(opts.skills, ['a', 'b']);
-    assert.equal(opts.disallowedTools, undefined);
+  it('allowedSkills=[a, b] → throw', () => {
+    assert.throws(() => buildSdkIsolationOptions(['a', 'b']), /白名单.*不再支持|无法真正隔离/);
   });
 });

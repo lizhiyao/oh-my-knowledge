@@ -125,6 +125,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
           throw new Error(`${configPath}: variants[${i}].allowedSkills[${j}] must be a non-empty string`);
         }
       }
+      if ((v.allowedSkills as string[]).length > 0) {
+        throw new Error(
+          `${configPath}: variants[${i}].allowedSkills must be [] (strict isolation: no skills) or omitted (no isolation) — a non-empty skill whitelist is no longer supported because it could not be fully isolated (the subagent Skill tool and cwd filesystem channels leaked). For a multi-skill experiment, control the eval environment instead.`,
+        );
+      }
       allowedSkills = v.allowedSkills as string[];
     }
     if (seen.has(v.name)) {

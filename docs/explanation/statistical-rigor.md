@@ -91,7 +91,7 @@ baseline gets the prompt **without** the skill being tested. omk cuts three cont
 2. subagent Skill tool
 3. cwd file-system access via the `skills/<name>/` symlink
 
-`eval.yaml` `allowedSkills` allows per-variant whitelists for advanced cases. Without isolation, any "v2 is better than baseline" claim is suspect because baseline may have been reading v2's own SKILL.md through one of the three channels.
+`eval.yaml` `allowedSkills: []` can force strict isolation on any variant. Without isolation, any "v2 is better than baseline" claim is suspect because baseline may have been reading v2's own SKILL.md through one of the three channels.
 
 See: [docs/specs/sample-design-spec.md](../specs/sample-design-spec.md) for related sample-design considerations.
 

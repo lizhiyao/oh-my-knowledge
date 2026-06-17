@@ -91,7 +91,7 @@ baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染�
 2. subagent Skill 工具
 3. cwd 文件系统（顺 `skills/<name>/` symlink 直接 Read 到 SKILL.md）
 
-`eval.yaml` 的 `allowedSkills` 支持 per-variant 白名单给高级场景。没有隔离时，任何"v2 比 baseline 好"的结论都可疑 —— baseline 可能通过这三条路径之一已经看到 v2 的 SKILL.md。
+`eval.yaml` 的 `allowedSkills: []` 可对任意变体强制严格隔离。没有隔离时，任何"v2 比 baseline 好"的结论都可疑 —— baseline 可能通过这三条路径之一已经看到 v2 的 SKILL.md。
 
 详见：[docs/zh/specs/sample-design-spec.md](../specs/sample-design-spec.md) 的相关用例设计。
 

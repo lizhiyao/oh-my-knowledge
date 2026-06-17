@@ -517,7 +517,7 @@ variants:
     }
   });
 
-  it('解析 allowedSkills 白名单', () => {
+  it('拒绝非空 allowedSkills 白名单(已移除,只允许 [] 或省略)', () => {
     const dir = makeTmpDir();
     try {
       const path = writeYaml(dir, 'eval.yaml', `
@@ -530,8 +530,25 @@ variants:
       - react-skill
       - typescript-skill
 `.trim());
+      assert.throws(() => loadEvalConfig(path), /non-empty skill whitelist is no longer supported/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('接受 allowedSkills: [](严格隔离)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: skill-clean
+    role: control
+    artifact: baseline
+    allowedSkills: []
+`.trim());
       const cfg = loadEvalConfig(path);
-      assert.deepEqual(cfg.variants[0].allowedSkills, ['react-skill', 'typescript-skill']);
+      assert.deepEqual(cfg.variants[0].allowedSkills, []);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

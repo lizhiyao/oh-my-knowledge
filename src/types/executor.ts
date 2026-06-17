@@ -60,10 +60,10 @@ export interface ExecutorInput {
   skillDir?: string | null;
   timeoutMs?: number;
   verbose?: boolean;
-  // Skill 隔离白名单(per-task)。来源:Artifact.allowedSkills。
+  // Skill 隔离声明(per-task)。来源:Artifact.allowedSkills。
   //   undefined → executor 不传 SDK skills option(默认全发现)
   //   []        → SDK skills:[] + disallowedTools:['Skill'](main session + subagent 双堵)
-  //   [...]     → SDK skills:[...](白名单)
+  //   [...]     → reject(非空白名单不再支持:无法真正隔离,executor throw)
   allowedSkills?: string[];
   /** 评测时拦截的工具调用 + mock 返回值。来源:Sample.mocks。
    *  - claude-sdk:转 in-process HookCallback 装到 SDK options.hooks.PreToolUse

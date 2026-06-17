@@ -77,7 +77,7 @@ interface CompletedBatchSkillRun {
  *  导致 #183 角色误绑各存一份)。
  *  两个 variant 的 allowedSkills 都从 eval.yaml variants[].allowedSkills 取:treatment 按 skill
  *  名 entry.name 查、baseline 按保留名 `baseline` 查,挂到对应 spec 上由 prepareEvaluationRun
- *  统一绑定。baseline 的显式声明(白名单或 `[]`)必须保留——eval.yaml variant.allowedSkills
+ *  统一绑定。baseline 的显式声明(`[]`)必须保留——eval.yaml variant.allowedSkills
  *  优先于 strictBaseline 默认,漏挂会让 `--batch --config` 的 baseline 隔离配置静默失效。 */
 export function buildBatchVariantSpecs(
   entry: { name: string; skillPath: string },

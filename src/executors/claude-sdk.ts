@@ -13,8 +13,11 @@ let sdkQuery: ClaudeSdkModule['query'] | null = null;
  * Map ExecutorInput.allowedSkills to SDK query options for skill isolation.
  *   undefined → {} (SDK default: full ~/.claude/skills/ discovery)
  *   []        → { skills: [], disallowedTools: ['Skill'] } (main session + subagent 双堵)
- *   [...]     → { skills: [...] } (main session whitelist; subagent 走独立 channel,
- *               白名单场景 v1 不强制 subagent 跟随)
+ *   [...]     → throw(非空 skill 白名单不再支持:它从不能真隔离 —— 主会话 skill 发现虽被
+ *               `skills:[...]` 收窄,但子代理 Skill 工具与 cwd 文件系统两条 channel 封不住,
+ *               会产出看着干净、实则被白名单外 skill 污染的报告。隔离只留两档:undefined
+ *               (不隔离)与 [](全封死),与 claude-cli / codex-cli 一致;多 skill 组合实验
+ *               请控制评测环境而非靠白名单。)
  *
  * Exported for unit tests to lock the option-shape contract.
  */
@@ -24,7 +27,10 @@ export function buildSdkIsolationOptions(allowedSkills: string[] | undefined): {
 } {
   if (allowedSkills === undefined) return {};
   if (allowedSkills.length === 0) return { skills: allowedSkills, disallowedTools: ['Skill'] };
-  return { skills: allowedSkills };
+  throw new Error(
+    `skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})不再支持:非空白名单无法真正隔离`
+    + `(子代理 Skill 工具 + cwd 文件系统两条 channel 封不住)。仅支持 [](全封死)或 undefined(不隔离)。`,
+  );
 }
 
 async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {

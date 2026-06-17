@@ -364,7 +364,7 @@ omk 跑 baseline-vs-skill 评测时,baseline variant 默认通过**三条 channe
 - **`allowedSkills`**(per-variant 字段，新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
   - `undefined` → SDK 默认行为(全发现 `~/.claude/skills/`)
   - `[]` → **完全隔离**:`options.skills = []` + `options.disallowedTools = ['Skill']`,main session 不发现任何 skill,subagent 也无法调 Skill 工具
-  - `[name1, name2]` → **白名单**:`options.skills = [name1, name2]`,只载入指定 skill。subagent 走独立 channel,白名单场景 v1 不强制 subagent 跟随(follow-up)
+  - `[name1, ...]`(非空)→ **拒绝**:skill 白名单无法真正隔离(子代理 Skill 工具与 cwd 文件系统两条 channel 会漏),非空 `allowedSkills` 不再支持 —— 用 `[]` 完全隔离或省略(不隔离)。三个执行器一致 throw
 - **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
 - **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照，跨报告对比 verdict / Δ 时校验
 
@@ -401,11 +401,11 @@ cache key 当前为 `v4:` prefix,含 allowedSkills、executor 名和 executor ru
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
-| `claude-sdk` | 默认全发现 | skills:[] + disallowedTools:[Skill] | skills:[name] |
-| `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw**(用户改 sdk) |
+| `claude-sdk` | 默认全发现 | skills:[] + disallowedTools:[Skill] | **throw** |
+| `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw** |
 | `script` | 默认 | stderr warn,不阻塞(无效) | stderr warn,不阻塞(无效) |
 
-claude-cli executor 用 `--disable-slash-commands`(文档:"Disable all skills")+ `--disallowedTools Skill` 双堵，跟 SDK 等价,**只缺 partial whitelist 能力**——白名单 `[name]` 需求必须走 claude-sdk(SDK `skills` option 直接支持白名单语义)。`script` executor 用户自定义，无法保证遵循 isolation,只 warn。
+非空 skill 白名单 `[name]` **所有 executor 都不再支持**:它从不能真正隔离(子代理 Skill 工具与 cwd 文件系统两条 channel 会漏),故非空 `allowedSkills` 一律 throw。用 `[]` 完全隔离、省略则不隔离。`script` executor 用户自定义，无法保证遵循 isolation,只 warn。
 
 ## 八、落地判断标准
 

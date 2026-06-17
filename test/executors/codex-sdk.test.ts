@@ -33,7 +33,7 @@ describe('codex-sdk executor parity contract', () => {
     assert.deepEqual(opts.env, { PATH: '/bin' });
   });
 
-  it('partial allowedSkills still throws because codex has no skill whitelist flag', async () => {
+  it('non-empty allowedSkills still throws (skill whitelist removed)', async () => {
     await assert.rejects(
       () => codexSdkExecutor({
         model: 'gpt-5-codex',
@@ -41,7 +41,7 @@ describe('codex-sdk executor parity contract', () => {
         cwd: '/tmp/iso',
         allowedSkills: ['one'],
       }),
-      /partial skill 白名单|codex-sdk executor/,
+      /skill 白名单.*不再支持|无法真正隔离/,
     );
   });
 

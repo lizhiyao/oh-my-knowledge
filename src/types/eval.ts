@@ -170,7 +170,7 @@ export interface Artifact {
   // Skill auto-discovery 隔离声明(per-variant)。
   //   undefined → 默认 SDK 行为(全发现 ~/.claude/skills/)
   //   []        → 完全禁用 skill 发现 + Skill 工具 disable(main session + subagent 同堵)
-  //   [...]     → 白名单(只载入指定 skill,subagent 仍可调 Skill 工具)
+  //   [...]     → 拒绝(非空白名单不再支持:子代理 Skill 工具 + cwd 文件系统通道封不住)
   // baseline-kind 默认 [],由 --strict-baseline (default true) 注入;显式 eval.yaml 优先。
   allowedSkills?: string[];
   metadata?: Record<string, unknown>;
@@ -201,7 +201,7 @@ export interface VariantConfig {
   // 本地 git variant 解析出的实际 commit SHA(还原坐标,#234/#236):从 Artifact.resolvedCommit 透传,
   // evidence.ts 按 variant 匹配后写入证据。raw `ref`(可能是 branch/tag/HEAD)会漂,这个是物化当刻的定点。
   resolvedCommit?: string;
-  // 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离,[...] = 白名单。
+  // 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离;非空白名单已移除(无法真正隔离)。
   // 来源:Artifact.allowedSkills(由 strict-baseline 默认 + eval.yaml 显式合并而成)。
   allowedSkills?: string[];
 }
@@ -235,7 +235,7 @@ export interface EvalConfigVariant {
   git?: RemoteGitRef;
   cwd?: string;
   // 显式 skill 隔离声明。优先级高于 --strict-baseline default。
-  //   写 [] 完全禁用 skill 发现;写 [name1, name2] 白名单;不写 = 默认行为。
+  //   写 [] 完全禁用 skill 发现;非空白名单已移除(validateEvalConfig reject);不写 = 默认行为。
   // 注:YAML `allowedSkills:` 不写值会被 parse 成 null,validateEvalConfig 会显式 reject;
   //     要写就显式写 `[]`。
   allowedSkills?: string[];
