@@ -116,15 +116,18 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
     // Single-variant — no comparison possible. Just report whether the variant
     // passes its own three-layer gate.
     const gate = evaluateLayerGates(summary, gateThreshold);
+    // SOLO 只有绝对分、无 A/B 差值可抵消自我偏好,故同厂商评委的 caveat 更该出。
+    const judgeInd = judgeIndependenceCaveat(report);
     return {
       level: 'SOLO',
-      headline: gate.allPass
+      headline: (gate.allPass
         ? `SOLO · single variant, three-layer gate PASS @ threshold ${gateThreshold}`
-        : `SOLO · single variant, three-layer gate FAIL — see ci output`,
+        : `SOLO · single variant, three-layer gate FAIL — see ci output`) + judgeInd.note,
       rationale: {
         layerWinners: gate.lines.join('; '),
         sampleSize: `N=${sampleCount}`,
         stability: formatStability(report),
+        ...(judgeInd.rationale ? { judgeAgreement: judgeInd.rationale } : {}),
       },
       variants,
     };
@@ -470,7 +473,7 @@ function judgeIndependenceCaveat(report: Report): { note: string; rationale?: st
   }
   return {
     note: ' · 评委自我偏好敞口未校准',
-    rationale: `${reasons.join(';')} —— 绝对分可能偏高(A/B 差值受影响较小);换跨厂商评委(--judge-models)或挂 gold(omk eval gold compare)校准`,
+    rationale: `${reasons.join(';')} —— 绝对分可能偏高;换跨厂商评委(--judge-models)或挂 gold(omk eval gold compare)校准`,
   };
 }
 

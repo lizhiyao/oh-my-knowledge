@@ -480,4 +480,14 @@ describe('judge independence caveat（J1/J2，挂 caveat 不改 verdict level）
     const v = computeVerdict(progress({ humanAgreement: { alpha: 0.7 } as never }));
     assert.doesNotMatch(v.headline, /自我偏好/);
   });
+
+  it('SOLO 单变体 + 同厂商评委 → headline 带 caveat(无 A/B 差值抵消,更该报)', () => {
+    const r = buildReport({
+      variants: ['only'],
+      perVariantAvg: { only: { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'SOLO');
+    assert.match(v.headline, /自我偏好/);
+  });
 });

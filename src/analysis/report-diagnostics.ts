@@ -29,6 +29,10 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
     ? buildSampleQualityAggregate(opts.samples)
     : undefined;
 
+  // 评委独立性对**单变体**报告同样适用(SOLO 只有绝对分、没有 A/B 差值去抵消自我偏好,
+  // 反而更该报),故放在 variants<2 早退之前;仅 results 为空(dry-run)时不评估。
+  if (results.length > 0) detectJudgeIndependence(report, insights);
+
   if (results.length === 0 || variants.length < 2) {
     return { insights, ...(sampleQuality && { sampleQuality }) };
   }
@@ -62,10 +66,7 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
 
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights);
-
-  // 11. Judge independence — self-preference (judge same vendor as the executor that
-  //     produced the outputs) / single-vendor ensemble (agreement doesn't rebut shared bias).
-  detectJudgeIndependence(report, insights);
+  // 11. Judge independence — 已在 variants<2 早退前调过(单变体也适用),此处不重复。
 
   return {
     insights,

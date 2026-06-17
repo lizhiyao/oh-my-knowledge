@@ -23,7 +23,7 @@ describe('executorVendor', () => {
 const mkReport = (
   judges: JudgeConfig[],
   outputExecutor: string,
-  opts: { gold?: boolean; runtimes?: Record<string, string> } = {},
+  opts: { gold?: boolean; runtimes?: Record<string, string>; noJudge?: boolean } = {},
 ): Report => ({
   kind: 'evaluation',
   id: 'r',
@@ -36,6 +36,7 @@ const mkReport = (
     executor: outputExecutor,
     sampleCount: 1, taskCount: 1, totalCostUSD: 0,
     timestamp: 't', cliVersion: 't', nodeVersion: 't', artifactHashes: {},
+    ...(opts.noJudge ? { noJudge: true } : {}),
     ...(opts.runtimes
       ? { executorRuntimes: Object.fromEntries(Object.entries(opts.runtimes).map(([v, e]) => [v, { executor: e }])) as never }
       : {}),
@@ -87,6 +88,12 @@ describe('analyzeJudgeIndependence', () => {
 
   it('noJudge(judgeModels 空)→ 全 false', () => {
     const r = analyzeJudgeIndependence(mkReport([], 'claude'));
+    assert.equal(r.sameVendorJudge, false);
+    assert.equal(r.singleVendorEnsemble, false);
+  });
+
+  it('noJudge=true(judgeModels 为审计保留但没跑评委)→ 不报,自我偏好 moot', () => {
+    const r = analyzeJudgeIndependence(mkReport([{ executor: 'claude', model: 'haiku' }], 'claude', { noJudge: true }));
     assert.equal(r.sameVendorJudge, false);
     assert.equal(r.singleVendorEnsemble, false);
   });

@@ -41,9 +41,12 @@ export function analyzeJudgeIndependence(report: Report): JudgeIndependence {
 
   const base = { judgeVendors, outputVendors, goldCalibrated };
 
-  // noJudge(无评委)、或任一厂商无法归类(自定义 script)、或拿不到被测厂商 → 不评估,不误报。
+  // 不评估(不误报)的情形:
+  //   - noJudge:judgeModels 为审计保留(非空),但评委根本没跑、composite 无评委层 → 自我偏好 moot;
+  //   - 无评委 / 任一厂商无法归类(自定义 script)/ 拿不到被测厂商。
+  const noJudge = report.meta?.noJudge === true;
   const anyUnknown = judgeVendors.includes('unknown') || outputVendors.includes('unknown');
-  if (judges.length === 0 || anyUnknown || outputVendors.length === 0) {
+  if (judges.length === 0 || noJudge || anyUnknown || outputVendors.length === 0) {
     return { ...base, crossVendorJudgePresent: false, sameVendorJudge: false, singleVendorEnsemble: false };
   }
 
