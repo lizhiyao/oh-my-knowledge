@@ -23,14 +23,13 @@ import {
 //   undefined         → 不传 -C(原行为,看 cwd 里有什么 codex 自己决定)
 //   []                → 必须提供 cwd 非空(否则 throw),caller 应传一个
 //                       isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)
-//   [...] (length>0)  → throw,codex CLI 没有 partial 白名单 flag
+//   [...] (length>0)  → throw,非空白名单已移除(无法真正隔离)
 export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null | undefined, executorName = 'codex-cli'): void {
   if (allowedSkills === undefined) return;
   if (allowedSkills.length > 0) {
     throw new Error(
-      `${executorName} executor 不支持 partial skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})。\n`
-      + `  仅支持 [](强制 cwd 隔离,需提供 cwd 非空)或 undefined(默认)。\n`
-      + `  codex CLI 无 partial 白名单 flag,请改用其他 executor 或显式 cwd 隔离。`,
+      `skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})不再支持:非空白名单无法真正隔离。\n`
+      + `  仅支持 [](强制 cwd 隔离,需提供 cwd 非空,全封死)或 undefined(不隔离)。`,
     );
   }
   // allowedSkills === [] 时必须有 cwd(channel 3 cwd 隔离是 codex 唯一 channel)

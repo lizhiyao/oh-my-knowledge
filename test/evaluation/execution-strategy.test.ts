@@ -68,11 +68,11 @@ describe('resolveExecutionStrategy', () => {
     assert.deepEqual(plan.input.allowedSkills, []);
   });
 
-  it('allowedSkills 白名单透传', () => {
+  it('allowedSkills=[](严格隔离声明)透传', () => {
     const t = mockTask('skill', 'sys');
-    t.artifact.allowedSkills = ['react', 'typescript'];
+    t.artifact.allowedSkills = [];
     const plan = resolveExecutionStrategy(t, 'sonnet');
-    assert.deepEqual(plan.input.allowedSkills, ['react', 'typescript']);
+    assert.deepEqual(plan.input.allowedSkills, []);
   });
 
   it('allowedSkills undefined 时不注入 ExecutorInput.allowedSkills', () => {
@@ -154,9 +154,9 @@ describe('buildVariantConfig skill isolation', () => {
     assert.deepEqual(cfg.allowedSkills, []);
   });
 
-  it('artifact.allowedSkills 白名单透传到 VariantConfig', () => {
-    const cfg = buildVariantConfig(mkArtifact('skill-clean', 'baseline', ['react']));
-    assert.deepEqual(cfg.allowedSkills, ['react']);
+  it('artifact.allowedSkills=[] 透传到 VariantConfig', () => {
+    const cfg = buildVariantConfig(mkArtifact('skill-clean', 'baseline', []));
+    assert.deepEqual(cfg.allowedSkills, []);
   });
 
   it('artifact.allowedSkills 未声明时 VariantConfig.allowedSkills 缺失(undefined)', () => {

@@ -5,10 +5,11 @@ import { claudeCliExecutor } from '../../src/executors/claude-cli.js';
 // claude CLI executor isolation 行为契约。
 //
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
-// `--disallowedTools Skill` 双堵,跟 SDK 等价,只缺 partial whitelist。
+// `--disallowedTools Skill` 双堵,跟 SDK 等价。非空白名单已移除(无法真正隔离,三个
+// 执行器一致 throw)。
 //   undefined → 不传任何 isolation flag(原行为,全发现)
 //   []        → --disable-slash-commands + --disallowedTools Skill(完全隔离)
-//   [...]     → throw,提示用户改 --executor claude-sdk(精确白名单)
+//   [...]     → throw,非空白名单不再支持
 
 describe('claude-cli executor — skill isolation degraded mode', () => {
   it('allowedSkills=[\'foo\', \'bar\'] (白名单)→ throw,不静默降级', async () => {
@@ -19,7 +20,7 @@ describe('claude-cli executor — skill isolation degraded mode', () => {
         allowedSkills: ['foo', 'bar'],
         timeoutMs: 1000,
       }),
-      /partial skill 白名单|claude-cli executor/,
+      /skill 白名单.*不再支持|无法真正隔离/,
     );
   });
 
@@ -31,7 +32,7 @@ describe('claude-cli executor — skill isolation degraded mode', () => {
         allowedSkills: ['single-skill'],
         timeoutMs: 1000,
       }),
-      /partial skill 白名单|claude-cli executor/,
+      /skill 白名单.*不再支持|无法真正隔离/,
     );
   });
 

@@ -364,7 +364,7 @@ Only once all three channels are blocked is the baseline truly "bare". If any on
 - **`allowedSkills`** (per-variant field, added to `Artifact` / `VariantConfig` / `EvalConfigVariant`):
   - `undefined` → default SDK behavior (full discovery of `~/.claude/skills/`)
   - `[]` → **full isolation**: `options.skills = []` + `options.disallowedTools = ['Skill']`; the main session discovers no skills, and the subagent can't call the Skill tool either
-  - `[name1, name2]` → **whitelist**: `options.skills = [name1, name2]`, loading only the named skills. The subagent goes through a separate channel; in the whitelist case v1 does not force the subagent to follow.
+  - `[name1, ...]` (non-empty) → **rejected**: a skill whitelist can't be fully isolated (the subagent Skill tool and cwd filesystem channels leak), so a non-empty `allowedSkills` is no longer supported — use `[]` for full isolation or omit for no isolation. All three executors throw.
 - **`--strict-baseline` flag** (default true): automatically sets `allowedSkills = []` for every `kind === 'baseline'` artifact; `--no-strict-baseline` turns it off (explicit opt-out).
 - **`meta.skillIsolation`** (new report-meta field): a variantName → allowedSkills snapshot, used to validate comparability when comparing verdict / Δ across reports.
 
@@ -401,11 +401,11 @@ The cache key currently carries a `v4:` prefix, with allowedSkills, the executor
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
-| `claude-sdk` | full discovery (default) | skills:[] + disallowedTools:[Skill] | skills:[name] |
-| `claude-cli` | default | `--disable-slash-commands --disallowedTools Skill` | **throw** (user switches to sdk) |
+| `claude-sdk` | full discovery (default) | skills:[] + disallowedTools:[Skill] | **throw** |
+| `claude-cli` | default | `--disable-slash-commands --disallowedTools Skill` | **throw** |
 | `script` | default | stderr warn, non-blocking (no effect) | stderr warn, non-blocking (no effect) |
 
-The claude-cli executor uses a double block, `--disable-slash-commands` (docs: "Disable all skills") + `--disallowedTools Skill`, equivalent to the SDK — it just **lacks partial-whitelist capability**, so a whitelist `[name]` requirement must go through claude-sdk (the SDK's `skills` option directly supports whitelist semantics). The `script` executor is user-custom and can't be guaranteed to honor isolation, so it only warns.
+A non-empty skill whitelist `[name]` is **no longer supported by any executor**: it could never be fully isolated (the subagent Skill tool and cwd filesystem channels leak), so all executors throw on a non-empty `allowedSkills`. Use `[]` for full isolation or omit for none. The `script` executor is user-custom and can't be guaranteed to honor isolation, so it only warns.
 
 ## 8. Decision criteria
 

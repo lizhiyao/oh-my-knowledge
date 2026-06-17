@@ -113,8 +113,9 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     verbose,
     ...(effort && { effort }),
     // pass skill-isolation declaration to executors. undefined keeps
-    // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']);
-    // [...] = whitelist (skills:[...] only).
+    // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']).
+    // non-empty allowedSkills is rejected upstream (validateEvalConfig) and by every
+    // executor — a skill whitelist could not be fully isolated, so it was removed.
     ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
     // Sample.mocks 透传到 executor。executor(claude-sdk / claude-cli)
     // 自决定怎么落地(in-process hook vs 临时 CLAUDE_CONFIG_DIR + on-disk hook)。
