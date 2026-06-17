@@ -39,10 +39,10 @@ interface GradeOptions {
    */
   judgeRepeat?: number;
   /**
-   * v0.21 length-debias toggle. Defaults to true — judge prompt includes the
-   * "length is not a quality signal" instruction, prompt template version is
-   * v3-cot-length. Set false (via `--no-debias-length`) to revert to the
-   * legacy v2-cot prompt for reproducing historical reports.
+   * length-debias toggle. Defaults to true — judge prompt includes the
+   * "length is not a quality signal" instruction. Set false (via `--no-debias-length`)
+   * to drop it (the debias-off prompt variant) for reproducing older no-length-debias
+   * reports. The presentation/tone neutrality instruction is always on regardless.
    */
   lengthDebias?: boolean;
 }

@@ -3,16 +3,20 @@ import assert from 'node:assert/strict';
 import { buildJudgePrompt, getJudgePromptHash } from '../../src/grading/judge.js';
 
 describe('judge prompt versioning', () => {
-  it('default builds the v4-cot-len-args prompt', () => {
+  it('default builds the v5-cot-toolargs-fmt-len prompt', () => {
     const text = buildJudgePrompt('p', 'r', 'o', null);
-    assert.match(text, /v4-cot-len-args/);
+    assert.match(text, /v5-cot-toolargs-fmt-len/);
     assert.match(text, /长度不是质量信号/);
+    assert.match(text, /排版与语气不是质量信号/);
   });
 
-  it('lengthDebias=false builds the v3-cot-toolargs prompt without the debias section', () => {
+  it('lengthDebias=false builds the v5-cot-toolargs-fmt prompt without the length-debias section', () => {
     const text = buildJudgePrompt('p', 'r', 'o', null, false);
-    assert.match(text, /v3-cot-toolargs/);
+    // 全角 `）` 紧跟 fmt,确保是 off 版本而非 -len 变体(后者是 fmt 的超串)。
+    assert.match(text, /template v5-cot-toolargs-fmt）/);
     assert.doesNotMatch(text, /长度不是质量信号/);
+    // 排版 / 语气中性化始终开启,即使 length-debias 关掉也在。
+    assert.match(text, /排版与语气不是质量信号/);
   });
 
   it('hashes differ between debias on / off', () => {

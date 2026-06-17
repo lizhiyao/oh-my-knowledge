@@ -39,13 +39,13 @@ The same logic applies on the judge-vs-output axis: if the judge is the same mod
 
 **Formula**: standard Krippendorff α with ordinal distance metric. Implementation: `src/grading/human-gold.ts`. Inputs: `<gold-dir>/<sample_id>.json` files with human scores per dimension.
 
-## 3. Length-controlled judge prompt(default ON)
+## 3. Debiased judge prompt: length / presentation / tone (default ON)
 
-**Research shows LLM judges over-weight verbosity.** Longer responses get higher scores, independent of quality. omk's judge prompt explicitly states "length is not a quality signal" + uses chain-of-thought + length normalization heuristics.
+**Research shows LLM judges over-weight verbosity, polished formatting, and confident tone** — longer, prettier, more assertive answers score higher independent of quality (format / markdown bias; sycophancy / authority bias). omk's judge prompt explicitly states both "length is not a quality signal" and "presentation and tone are not quality signals" + uses chain-of-thought against the rubric. The wording is deliberately symmetric — it neither rewards polish/confidence nor penalizes plainness/hedging — so the debias instruction does not over-correct into a reverse bias.
 
-- Template hash `v3-cot-length` — older reports use `v2-cot` (pre-debias), reports are visibly different by hash
-- Report metadata records the judge prompt hash and length-debias setting; compare reports with and without `--no-debias-length` when you need a dedicated length-bias audit
-- `--no-debias-length` opt-out for research / replication scenarios
+- Report metadata records the judge prompt hash (template version); changing any debias instruction changes the hash, and reports with different hashes are never compared blind
+- Presentation/tone neutrality is always on with no toggle; length-debias can be opted out via `--no-debias-length` for research / replication — for a dedicated length-bias audit, compare reports with and without that flag
+- These are "research says judges generally have this bias" prompt instructions; omk does not run a before/after bias measurement on its own judge. The real channel to validate that debiasing works is gold calibration (Krippendorff α vs human)
 - Reference: Saito et al. (2023), "Verbosity Bias in Preference Labeling by Large Language Models"
 
 **Frozen by**: `test/grading/judge-hash-frozen.test.ts` — byte-level hash freeze prevents silent prompt drift across versions.
@@ -69,7 +69,7 @@ Each piece guards a different failure mode:
 |---|---|
 | "v2 looks better but it's within margin of error" | Bootstrap CI(pairwise diff CI not crossing 0) |
 | "Judge says v2 is better but I don't trust the judge" | Krippendorff α (judge ↔ human) |
-| "Judge is biased toward verbose answers" | Length-controlled judge prompt |
+| "Judge favors verbose / polished / confident answers" | Length / presentation / tone debiased judge prompt |
 | "I ran 10 samples and stopped — was that enough?" | Saturation curve |
 
 Skip any one and you have a hole. Bootstrap CI, length-debias and saturation are on by default — you can opt out of length-debias for research replication, but those are otherwise unconditional; Krippendorff α turns on automatically once you supply a gold set (`--gold-dir`).

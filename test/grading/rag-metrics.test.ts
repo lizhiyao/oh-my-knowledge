@@ -55,7 +55,7 @@ describe('faithfulness', () => {
     assert.match(noCtx.details[0].message ?? '', /缺少 sample.context/);
   });
 
-  it('prompt includes the length-debias paragraph', async () => {
+  it('prompt includes both the length-debias and presentation/tone neutrality paragraphs', async () => {
     let captured = '';
     const judge: ExecutorFn = async ({ prompt }) => {
       captured = prompt;
@@ -65,6 +65,7 @@ describe('faithfulness', () => {
       executor: judge, judgeModel: 'm', sample, samplesDir: '.',
     });
     assert.match(captured, /长度不是质量信号/);
+    assert.match(captured, /排版与语气不是质量信号/);
   });
 });
 
@@ -146,6 +147,20 @@ describe('context_recall', () => {
     assert.match(captured, /Key fact A/);
   });
 
+});
+
+describe('all three RAG judges carry both debias paragraphs', () => {
+  const sample: Sample = { sample_id: 's', prompt: 'Q?', context: 'ctx' };
+  it.each(['faithfulness', 'answer_relevancy', 'context_recall'] as const)('%s', async (type) => {
+    let captured = '';
+    const judge: ExecutorFn = async ({ prompt }) => {
+      captured = prompt;
+      return ok(JSON.stringify({ score: 5, reason: 'm' }));
+    };
+    await runAsyncAssertions('o', [{ type }], { executor: judge, judgeModel: 'm', sample, samplesDir: '.' });
+    assert.match(captured, /长度不是质量信号/, `${type} 应含长度去偏段`);
+    assert.match(captured, /排版与语气不是质量信号/, `${type} 应含排版 / 语气中性化段`);
+  });
 });
 
 describe('judge cost is accumulated', () => {

@@ -277,8 +277,8 @@ export function aggregateReport({
     ...(noJudge ? {} : { runtime: getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions) }),
   }));
   // length-debias is on by default; the request only sets it
-  // false when the user passed --no-debias-length. The hash differs between
-  // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
+  // false when the user passed --no-debias-length. The judgePromptHash differs between
+  // the length-debias-on and -off prompt variants so readers can detect the divergence.
   const lengthDebiasOn = request?.lengthDebias !== false;
   const debiasModeList: Array<'length' | 'position'> = [];
   if (lengthDebiasOn) debiasModeList.push('length');
