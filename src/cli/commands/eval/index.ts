@@ -12,6 +12,7 @@ import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback 
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from '../../lib/shared.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
+import { DEFAULT_GATE_THRESHOLD } from '../../../eval-core/verdict.js';
 import { EVALUATION_REPORT_SCHEMA_VERSION } from '../../../eval-core/evaluation-reporting.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
@@ -567,7 +568,10 @@ export default class Eval extends BaseCommand {
       parse: numberStringParser('--budget-per-sample-ms', { minExclusive: 0 }),
     }),
     threshold: Flags.string({
-      description: bilingual({ zh: 'verdict 阈值，默认 3.5', en: 'Verdict threshold, default 3.5' }),
+      description: bilingual({
+        zh: `verdict 阈值，默认 ${DEFAULT_GATE_THRESHOLD}`,
+        en: `Verdict threshold, default ${DEFAULT_GATE_THRESHOLD}`,
+      }),
       parse: numberStringParser('--threshold'),
     }),
     'trivial-diff': Flags.string({
