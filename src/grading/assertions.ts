@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import _Ajv from 'ajv';
 import type { Assertion, AssertionDetail, AssertionResults, ExecutorFn, Sample, ToolCallInfo } from '../types/index.js';
 import { ASSERTION_LAYER } from './layered-scores.js';
+import { buildSemanticSimilarityPrompt, SEMANTIC_SIMILARITY_SYSTEM, buildRagJudgePrompt } from '../shared/llm-prompts/judge-prompts.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();
@@ -365,25 +366,10 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 
     if (assertion.type === 'semantic_similarity') {
       const reference = assertion.reference || '';
-      const judgePrompt = [
-        '请判断以下两段文本的语义相似度。',
-        '',
-        '## 参考文本',
-        reference,
-        '',
-        '## 待评估文本',
-        output,
-        '',
-        '请返回 JSON（不要包含 markdown 代码块标记）：',
-        '{"score": <1-5的整数>, "reason": "<简短理由>"}',
-        '',
-        '评分：1=完全无关, 2=略有关联, 3=部分相似, 4=大致相同, 5=高度一致',
-      ].join('\n');
-
       const result = await executor({
         model: judgeModel,
-        system: '你是语义相似度评审员。只返回 JSON，不要其他内容。',
-        prompt: judgePrompt,
+        system: SEMANTIC_SIMILARITY_SYSTEM,
+        prompt: buildSemanticSimilarityPrompt(reference, output),
       });
 
       asyncCostUSD += result.costUSD || 0;
@@ -486,23 +472,6 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 //       answer_relevancy: sample.prompt — no reference needed
 //  4. Threshold defaults to 3 (same as semantic_similarity). User can override.
 
-// RAG 指标(faithfulness / answer_relevancy / context_recall)的去偏**恒开**,
-// 按 default-strict 不提供关闭开关:`--no-debias-length` 只作用于 rubric 评委 prompt 的长度去偏,
-// 不下探到 RAG —— RAG 评的是内容保真 / 切题 / 召回,放任长度 / 排版 / 语气偏置只会污染这些指标,
-// 没有「关掉它」的正当用例。故 runRagJudge 不收 lengthDebias 参数,两段恒注入。
-const RAG_LENGTH_DEBIAS = [
-  '## 重要：长度不是质量信号',
-  '评分时聚焦内容实质，不要因输出更长就给更高分。',
-  '简洁正确的回答与冗长正确的回答应得相同分数。',
-].join('\n');
-
-// 排版 / 语气中性化(format / sycophancy bias),与 RAG_LENGTH_DEBIAS 同 footprint 恒开。
-const RAG_PRESENTATION_NEUTRALITY = [
-  '## 重要：排版与语气不是质量信号',
-  '评分只看内容是否符合上述标准。排版是否精致、语气是否自信、有无自我表扬都不是质量信号 ——',
-  '不要被笃定的口吻带跑：自信但错误的回答不应高于含糊但正确的回答。',
-].join('\n');
-
 interface RagJudgeOutcome {
   passed: boolean;
   message: string;
@@ -528,88 +497,16 @@ async function runRagJudge(
     if (!context) {
       return { passed: false, message: 'faithfulness: 缺少 sample.context 或 assertion.reference', costUSD: 0 };
     }
-    system = '你是 RAG 评审员,专注判断输出是否被参考 context 支持。只返回 JSON。';
-    prompt = [
-      '请判断"待评估输出"中的事实性陈述是否被"参考 context"支持。',
-      '',
-      '## 参考 context',
-      context,
-      '',
-      '## 待评估输出',
-      output,
-      '',
-      RAG_LENGTH_DEBIAS,
-      RAG_PRESENTATION_NEUTRALITY,
-      '',
-      '## 评分流程',
-      '1. 列出待评估输出中所有事实性陈述',
-      '2. 逐条判断是否能在 context 中找到支持',
-      '3. 给出 1-5 分:',
-      '   5 = 全部陈述都有 context 支持,无编造',
-      '   4 = 多数有支持,有 1-2 处不重要的编造',
-      '   3 = 一半有支持',
-      '   2 = 多数无支持',
-      '   1 = 完全编造或与 context 矛盾',
-      '',
-      '请返回 JSON(不要 markdown 代码块):',
-      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
-    ].join('\n');
+    ({ system, prompt } = buildRagJudgePrompt('faithfulness', { output, context }));
   } else if (assertion.type === 'answer_relevancy') {
-    system = '你是答题切题度评审员。只返回 JSON。';
-    prompt = [
-      '请判断"AI 输出"是否直接、切题地回答了"用户问题"。',
-      '',
-      '## 用户问题',
-      sample.prompt,
-      '',
-      '## AI 输出',
-      output,
-      '',
-      RAG_LENGTH_DEBIAS,
-      RAG_PRESENTATION_NEUTRALITY,
-      '',
-      '## 评分',
-      '5 = 完整切题回答,无冗余无遗漏',
-      '4 = 切题但有少量冗余或小遗漏',
-      '3 = 部分切题,部分跑题或避而不答',
-      '2 = 大部分跑题',
-      '1 = 完全跑题或拒答',
-      '',
-      '请返回 JSON(不要 markdown 代码块):',
-      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
-    ].join('\n');
+    ({ system, prompt } = buildRagJudgePrompt('answer_relevancy', { output, question: sample.prompt }));
   } else {
     // context_recall
     const reference = assertion.reference || sample.context || '';
     if (!reference) {
       return { passed: false, message: 'context_recall: 缺少 assertion.reference 或 sample.context', costUSD: 0 };
     }
-    system = '你是 context 覆盖率评审员。只返回 JSON。';
-    prompt = [
-      '请判断"参考 gold"中的关键事实在"AI 输出"中被覆盖的程度。',
-      '',
-      '## 参考 gold',
-      reference,
-      '',
-      '## AI 输出',
-      output,
-      '',
-      RAG_LENGTH_DEBIAS,
-      RAG_PRESENTATION_NEUTRALITY,
-      '',
-      '## 评分流程',
-      '1. 列出参考中的关键事实(忽略修饰性内容)',
-      '2. 检查每条是否在输出中被提及/使用',
-      '3. 给出 1-5 分:',
-      '   5 = 全部关键事实被覆盖',
-      '   4 = 大部分覆盖,缺 1-2 条次要事实',
-      '   3 = 一半覆盖',
-      '   2 = 仅覆盖少量',
-      '   1 = 完全未覆盖',
-      '',
-      '请返回 JSON(不要 markdown 代码块):',
-      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
-    ].join('\n');
+    ({ system, prompt } = buildRagJudgePrompt('context_recall', { output, reference }));
   }
 
   const result = await executor({ model: judgeModel, system, prompt });

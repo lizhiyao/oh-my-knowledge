@@ -1,5 +1,8 @@
-import { createHash } from 'node:crypto';
 import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types/index.js';
+import { buildJudgePrompt, JUDGE_SYSTEM_PROMPT } from '../shared/llm-prompts/judge-prompts.js';
+// 评分类 prompt 已收口到 shared/llm-prompts/judge-prompts.ts(单一来源 + prompt-registry 冻结)。
+// 这里 re-export 保对外 API 不破:既有消费方仍从 grading/judge.js import 这两个符号。
+export { buildJudgePrompt, getJudgePromptHash } from '../shared/llm-prompts/judge-prompts.js';
 
 interface JudgeResponse {
   score?: number | string;
@@ -51,114 +54,6 @@ function salvageJudgeResponse(text: string): JudgeResponse | null {
     reason: 'judge returned malformed JSON; score salvaged',
     reasoning: text.trim().slice(0, 2000),
   };
-}
-
-/**
- * Judge prompt template version.
- *
- * The version string encodes WHICH debias / context features the judge sees, so reports
- * tagged with the same hash are score-comparable; a mismatched hash means "we changed how
- * we ask the judge to think" and the reports should not be compared blind. Bump it (and the
- * frozen hashes in `test/grading/judge-hash-frozen.test.ts`) whenever the template's bytes
- * change — that change is BREAKING-COMPARABILITY.
- *
- * Naming: a single main version (`v5`) + a `-feature` suffix per debias/context capability.
- * The only asymmetry between the two strings is the `-len` suffix, gated by the
- * `--no-debias-length` toggle; every other feature is always-on and appears in both.
- */
-// 版本演进(内嵌"评委看到什么 / 被要求忽略什么"的语义):
-//   v2-cot               : 仅看 output + rubric + 工具名分布(早期 buildTraceSummary)
-//   v3-cot-length        : 加 length-debias 指令
-//   v3-cot-toolargs(off) / v4-cot-len-args(on)
-//                        : 加 tool input 预览(让评委识别 wrapper-style skill 在 Bash 命令里的
-//                          真实语义调用,如 `Bash: mcporter --tool X`,否则误判"只调了 Bash")
-//   v5-cot-toolargs-fmt(off) / v5-cot-toolargs-fmt-len(on)
-//                        : 加排版 / 语气中性化指令(始终开启,不给开关)。研究表明 LLM 评委除了
-//                          偏向更长的回答,还隐性偏向排版精致(标题 / 列表 / 加粗)与语气自信 / 自我
-//                          表扬(谄媚 / 权威偏置)的回答;显式指令要求评委只对照评分标准核内容。
-//                          同时借此把命名统一成单一主序号(v5)+ feature 后缀,`-len` 仍是开关那条。
-const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-toolargs-fmt';
-const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v5-cot-toolargs-fmt-len';
-
-const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
-
-const LENGTH_DEBIAS_INSTRUCTION = [
-  '## 重要：长度不是质量信号',
-  '评分时聚焦内容实质与正确性。回答的篇幅、行文丰富度、结构复杂度本身不是质量指标 ——',
-  '简洁正确的回答不应因短而扣分；冗长但偏题或重复的回答不应因长而加分。',
-  '研究显示 LLM 评委容易隐性偏向更长的回答，请在打分前先警觉这一点。',
-].join('\n');
-
-// 始终开启(不给开关):排版与语气都不是质量信号。措辞严格对称 —— 既不奖励精致 / 自信,也不
-// 因朴素 / 含糊而扣分,避免"抗偏置"本身过度矫正成反向偏置。研究表明 LLM 评委除长度外,还隐性
-// 偏向排版精致(format / markdown bias)与语气自信、自我表扬的回答(谄媚 / 权威偏置)。
-const PRESENTATION_NEUTRALITY_INSTRUCTION = [
-  '## 重要：排版与语气不是质量信号',
-  '评分只看内容是否对照评分标准、是否正确。Markdown 排版、标题、列表、加粗、表格等呈现形式',
-  '本身不是质量指标 —— 朴素但正确的回答不应因没有排版而扣分；排版精致但偏题或错误的回答不应',
-  '因好看而加分。',
-  '同样，回答的语气、自信程度、是否自我表扬（如「这是最优方案」）也不是质量信号 —— 不要被笃定',
-  '的口吻或自我评价带跑：自信但错误的回答不应高于含糊但正确的回答，一切结论都要回到评分标准',
-  '逐条核实。',
-  '研究显示 LLM 评委容易隐性偏向排版精致、语气自信的回答，请在打分前先警觉这两点。',
-].join('\n');
-
-export function buildJudgePrompt(
-  prompt: string,
-  rubric: string,
-  output: string,
-  traceSummary: string | null,
-  lengthDebias = true,
-): string {
-  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
-  const traceSection = traceSummary
-    ? ['', '## Agent 执行过程', traceSummary, '', '请同时考虑执行过程的合理性（工具选择、步骤效率、错误恢复）。']
-    : [];
-  // 排版 / 语气中性化始终开启(不受 --no-debias-length 影响);length-debias 仍受开关控。
-  const neutralitySection = ['', PRESENTATION_NEUTRALITY_INSTRUCTION];
-  const debiasSection = lengthDebias ? ['', LENGTH_DEBIAS_INSTRUCTION] : [];
-
-  return [
-    `请对以下 AI 输出进行质量评分（template ${version}）。`,
-    '',
-    '## 原始任务',
-    prompt,
-    '',
-    '## 评分标准',
-    rubric,
-    '',
-    '## AI 输出',
-    output,
-    ...traceSection,
-    ...neutralitySection,
-    ...debiasSection,
-    '',
-    '## 评分流程',
-    '1. 逐条对照评分标准，先做推理（reasoning）：列出 AI 输出哪些点对应哪条标准，哪些缺失，哪些有歧义。',
-    '2. 基于推理给出最终分数（1-5 的整数）和简短理由。',
-    '',
-    '请返回 JSON（不要包含 markdown 代码块标记）：',
-    '{"reasoning": "<对照标准的逐条推理>", "score": <1-5的整数>, "reason": "<最终结论的简短理由>"}',
-    '',
-    '评分标准：1=完全不达标, 2=部分涉及, 3=基本达标, 4=较好, 5=优秀',
-  ].join('\n');
-}
-
-/**
- * Stable hash of the judge prompt template. Saved into ReportMeta.judgePromptHash so
- * downstream readers can detect "the judge prompt changed between these two reports".
- *
- * `lengthDebias` defaults to true. Pass false (via `--no-debias-length`) to drop the
- * length-debias instruction; that produces the debias-off prompt variant, whose hash
- * differs from the default so the two are never compared blind.
- */
-export function getJudgePromptHash(lengthDebias = true): string {
-  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
-  // Hash the template-shaping function source + the version tag together. We hash a
-  // deterministic stringified form of the template (with placeholder inputs) so any
-  // structural edit shows up.
-  const sample = buildJudgePrompt('<P>', '<R>', '<O>', '<T>', lengthDebias);
-  return createHash('sha256').update(version + '\n' + sample).digest('hex').slice(0, 12);
 }
 
 interface LlmJudgeOptions {
