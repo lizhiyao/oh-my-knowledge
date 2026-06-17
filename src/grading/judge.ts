@@ -56,37 +56,29 @@ function salvageJudgeResponse(text: string): JudgeResponse | null {
 /**
  * Judge prompt template version.
  *
- *  - 'v2-cot'         — legacy; CoT scoring without explicit length-debias instruction.
- *                       Kept for `--no-debias-length` so users can reproduce historical
- *                       reports byte-for-byte.
- *  - 'v3-cot-length'  — adds a paragraph telling the judge that length is not a quality
- *                       signal. Default on (research consistently shows
- *                       LLM judges over-weight verbosity; explicit instruction mitigates).
+ * The version string encodes WHICH debias / context features the judge sees, so reports
+ * tagged with the same hash are score-comparable; a mismatched hash means "we changed how
+ * we ask the judge to think" and the reports should not be compared blind. Bump it (and the
+ * frozen hashes in `test/grading/judge-hash-frozen.test.ts`) whenever the template's bytes
+ * change — that change is BREAKING-COMPARABILITY.
  *
- * Bump when the prompt's intent or structure changes meaningfully — reports tagged
- * with the same hash are score-comparable; mismatched hashes mean "we changed how we
- * ask the judge to think" and should not be compared blind.
+ * Naming: a single main version (`v5`) + a `-feature` suffix per debias/context capability.
+ * The only asymmetry between the two strings is the `-len` suffix, gated by the
+ * `--no-debias-length` toggle; every other feature is always-on and appears in both.
  */
-// 版本字符串内嵌"判官能看到什么"的语义。bump 时机:
-//   v2-cot           : 仅看 output + rubric + 工具名分布(早期 buildTraceSummary)
-//   v3-cot-length    : 加了 length-debias 指令(v0.21)
-//   v3-cot-toolargs  : 加了 tool input 预览(本次,BREAKING-COMPARABILITY)
-//   v4-cot-len-args  : v3-cot-length 的同步升级(BREAKING-COMPARABILITY)
-//   bump 原因:之前 trace 只给 tool 名 + 分布,wrapper-style skill(mcporter / code-host CLI 等)
-//   被判官当成"只调了 Bash,没用 skill 指定的 MCP 工具"——结论事实错误。
-//   tool input 预览让判官能识别 `Bash: mcporter --tool skylark_xxx` 内的真实语义调用。
-//
-// ⚠️ 命名约定(下次 bump 时执行):
-//   当前 debias OFF: v3-* / debias ON: v4-* 编号不对称(历史上 debias OFF 跑 v2→v3,
-//   debias ON 跑 v3→v4)。这次再 bump 会让两条线持续偏移 v4/v5、v5/v6、…
-//
-//   下次 bump 时统一为单一主序号 + features 后缀,如:
-//     JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-<features>'
-//     JUDGE_PROMPT_VERSION_DEBIAS_ON  = 'v5-cot-<features>-len'
-//   这样 hash 测试自然分两条,主序号清晰对齐,features 字段独立描述差异。
-//   本 PR 不在意命名,只是把约定写下来,避免下次又跟着错误偏移走。
-const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v3-cot-toolargs';
-const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v4-cot-len-args';
+// 版本演进(内嵌"评委看到什么 / 被要求忽略什么"的语义):
+//   v2-cot               : 仅看 output + rubric + 工具名分布(早期 buildTraceSummary)
+//   v3-cot-length        : 加 length-debias 指令
+//   v3-cot-toolargs(off) / v4-cot-len-args(on)
+//                        : 加 tool input 预览(让评委识别 wrapper-style skill 在 Bash 命令里的
+//                          真实语义调用,如 `Bash: mcporter --tool X`,否则误判"只调了 Bash")
+//   v5-cot-toolargs-fmt(off) / v5-cot-toolargs-fmt-len(on)
+//                        : 加排版 / 语气中性化指令(始终开启,不给开关)。研究表明 LLM 评委除了
+//                          偏向更长的回答,还隐性偏向排版精致(标题 / 列表 / 加粗)与语气自信 / 自我
+//                          表扬(谄媚 / 权威偏置)的回答;显式指令要求评委只对照评分标准核内容。
+//                          同时借此把命名统一成单一主序号(v5)+ feature 后缀,`-len` 仍是开关那条。
+const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-toolargs-fmt';
+const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v5-cot-toolargs-fmt-len';
 
 const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
 
@@ -95,6 +87,20 @@ const LENGTH_DEBIAS_INSTRUCTION = [
   '评分时聚焦内容实质与正确性。回答的篇幅、行文丰富度、结构复杂度本身不是质量指标 ——',
   '简洁正确的回答不应因短而扣分；冗长但偏题或重复的回答不应因长而加分。',
   '研究显示 LLM 评委容易隐性偏向更长的回答，请在打分前先警觉这一点。',
+].join('\n');
+
+// 始终开启(不给开关):排版与语气都不是质量信号。措辞严格对称 —— 既不奖励精致 / 自信,也不
+// 因朴素 / 含糊而扣分,避免"抗偏置"本身过度矫正成反向偏置。研究表明 LLM 评委除长度外,还隐性
+// 偏向排版精致(format / markdown bias)与语气自信、自我表扬的回答(谄媚 / 权威偏置)。
+const PRESENTATION_NEUTRALITY_INSTRUCTION = [
+  '## 重要：排版与语气不是质量信号',
+  '评分只看内容是否对照评分标准、是否正确。Markdown 排版、标题、列表、加粗、表格等呈现形式',
+  '本身不是质量指标 —— 朴素但正确的回答不应因没有排版而扣分；排版精致但偏题或错误的回答不应',
+  '因好看而加分。',
+  '同样，回答的语气、自信程度、是否自我表扬（如「这是最优方案」）也不是质量信号 —— 不要被笃定',
+  '的口吻或自我评价带跑：自信但错误的回答不应高于含糊但正确的回答，一切结论都要回到评分标准',
+  '逐条核实。',
+  '研究显示 LLM 评委容易隐性偏向排版精致、语气自信的回答，请在打分前先警觉这两点。',
 ].join('\n');
 
 export function buildJudgePrompt(
@@ -108,6 +114,8 @@ export function buildJudgePrompt(
   const traceSection = traceSummary
     ? ['', '## Agent 执行过程', traceSummary, '', '请同时考虑执行过程的合理性（工具选择、步骤效率、错误恢复）。']
     : [];
+  // 排版 / 语气中性化始终开启(不受 --no-debias-length 影响);length-debias 仍受开关控。
+  const neutralitySection = ['', PRESENTATION_NEUTRALITY_INSTRUCTION];
   const debiasSection = lengthDebias ? ['', LENGTH_DEBIAS_INSTRUCTION] : [];
 
   return [
@@ -122,6 +130,7 @@ export function buildJudgePrompt(
     '## AI 输出',
     output,
     ...traceSection,
+    ...neutralitySection,
     ...debiasSection,
     '',
     '## 评分流程',
@@ -139,8 +148,9 @@ export function buildJudgePrompt(
  * Stable hash of the judge prompt template. Saved into ReportMeta.judgePromptHash so
  * downstream readers can detect "the judge prompt changed between these two reports".
  *
- * `lengthDebias` defaults to true (v0.21+ default). Pass false when running under
- * `--no-debias-length` so the hash matches historical v2-cot reports.
+ * `lengthDebias` defaults to true. Pass false (via `--no-debias-length`) to drop the
+ * length-debias instruction; that produces the debias-off prompt variant, whose hash
+ * differs from the default so the two are never compared blind.
  */
 export function getJudgePromptHash(lengthDebias = true): string {
   const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
@@ -160,9 +170,10 @@ interface LlmJudgeOptions {
   traceSummary?: string | null;
   /**
    * When true (default), the judge prompt includes an explicit
-   * "length is not a quality signal" instruction. Pass false to fall back to
-   * the legacy v2-cot prompt — only useful for reproducing pre-v0.21 reports
-   * or running A/B comparisons with alternate length-debias settings.
+   * "length is not a quality signal" instruction. Pass false to drop it (the
+   * debias-off prompt variant) — only useful for reproducing older no-length-debias
+   * reports or running A/B comparisons with alternate length-debias settings.
+   * (The presentation/tone neutrality instruction is always on, independent of this.)
    */
   lengthDebias?: boolean;
 }

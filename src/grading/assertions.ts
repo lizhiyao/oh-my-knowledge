@@ -477,23 +477,30 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 //     faster, less rigorous than RAGAS but consistent with omk's other LLM-judge
 //     assertions. Users who need RAGAS-grade decomposition can drop down to a
 //     custom assertion.
-//  2. The prompt includes the SAME length-debias paragraph as the main judge
-//     prompt (v3-cot-length) — output verbosity is not a quality signal here
-//     either. This is the "auto-inherit length-debias" claim from the  plan.
+//  2. The prompt carries the same debias instructions as the rubric judge
+//     (length + presentation/tone) — verbosity, formatting, and confident tone
+//     are not quality signals here either.
 //  3. Reference resolution:
 //       faithfulness:    sample.context  (or assertion.reference override)
 //       context_recall:  assertion.reference (or sample.context fallback)
 //       answer_relevancy: sample.prompt — no reference needed
 //  4. Threshold defaults to 3 (same as semantic_similarity). User can override.
 
-// RAG 指标(faithfulness / answer_relevancy / context_recall)的长度去偏**恒开**,
-// 按 default-strict 不提供关闭开关:`--no-debias-length` 只作用于 rubric 评委 prompt
-// (v3/v4 切换),不下探到 RAG —— RAG 评的是内容保真/切题/召回,放任长度偏置只会污染这些
-// 指标,没有「关掉它」的正当用例。故 runRagJudge 不收 lengthDebias 参数,这段恒注入。
+// RAG 指标(faithfulness / answer_relevancy / context_recall)的去偏**恒开**,
+// 按 default-strict 不提供关闭开关:`--no-debias-length` 只作用于 rubric 评委 prompt 的长度去偏,
+// 不下探到 RAG —— RAG 评的是内容保真 / 切题 / 召回,放任长度 / 排版 / 语气偏置只会污染这些指标,
+// 没有「关掉它」的正当用例。故 runRagJudge 不收 lengthDebias 参数,两段恒注入。
 const RAG_LENGTH_DEBIAS = [
-  '## 重要:长度不是质量信号',
-  '评分时聚焦内容实质,不要因输出更长就给更高分。',
+  '## 重要：长度不是质量信号',
+  '评分时聚焦内容实质，不要因输出更长就给更高分。',
   '简洁正确的回答与冗长正确的回答应得相同分数。',
+].join('\n');
+
+// 排版 / 语气中性化(format / sycophancy bias),与 RAG_LENGTH_DEBIAS 同 footprint 恒开。
+const RAG_PRESENTATION_NEUTRALITY = [
+  '## 重要：排版与语气不是质量信号',
+  '评分只看内容是否符合上述标准。排版是否精致、语气是否自信、有无自我表扬都不是质量信号 ——',
+  '不要被笃定的口吻带跑：自信但错误的回答不应高于含糊但正确的回答。',
 ].join('\n');
 
 interface RagJudgeOutcome {
@@ -532,6 +539,7 @@ async function runRagJudge(
       output,
       '',
       RAG_LENGTH_DEBIAS,
+      RAG_PRESENTATION_NEUTRALITY,
       '',
       '## 评分流程',
       '1. 列出待评估输出中所有事实性陈述',
@@ -558,6 +566,7 @@ async function runRagJudge(
       output,
       '',
       RAG_LENGTH_DEBIAS,
+      RAG_PRESENTATION_NEUTRALITY,
       '',
       '## 评分',
       '5 = 完整切题回答,无冗余无遗漏',
@@ -586,6 +595,7 @@ async function runRagJudge(
       output,
       '',
       RAG_LENGTH_DEBIAS,
+      RAG_PRESENTATION_NEUTRALITY,
       '',
       '## 评分流程',
       '1. 列出参考中的关键事实(忽略修饰性内容)',

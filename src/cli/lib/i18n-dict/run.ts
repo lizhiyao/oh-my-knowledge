@@ -93,8 +93,8 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
   },
   'cli.run.no_debias_length_active': {
-    zh: 'ℹ --no-debias-length 已生效: judge prompt 退回 v2-cot, 与 < v0.21 报告 hash 一致。\n',
-    en: 'ℹ --no-debias-length is active: judge prompt reverts to v2-cot, matching < v0.21 report hashes.\n',
+    zh: 'ℹ --no-debias-length 已生效：judge prompt 去掉长度去偏指令（debias-off 变体），hash 与默认开启时不同。\n',
+    en: 'ℹ --no-debias-length is active: the judge prompt drops the length-debias instruction (debias-off variant); its hash differs from the default.\n',
   },
   'cli.run.invalid_bootstrap_samples': {
     zh: '⚠ --bootstrap-samples "{value}" 无效 (期望 ≥ 100 的整数), 已按 1000 执行\n',

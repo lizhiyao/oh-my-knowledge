@@ -283,7 +283,7 @@ export interface EvalConfig {
   bootstrapSamples?: number;
   /** --gold-dir. After-run automatic comparison against a human-anchor dataset. */
   goldDir?: string;
-  /** --no-debias-length flips this to false. Default true (judge prompt v3-cot-length). */
+  /** --no-debias-length flips this to false. Default true (length-debias instruction on). */
   lengthDebias?: boolean;
   /** --no-strict-baseline flips this to false. Default true (baseline-kind allowedSkills=[]). */
   strictBaseline?: boolean;
@@ -331,9 +331,10 @@ export interface EvaluationRequest {
   bootstrap?: boolean;
   /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
   bootstrapSamples?: number;
-  /** length-debias toggle. Default true (judge prompt v3-cot-length).
-   *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
-   *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
+  /** length-debias toggle. Default true — judge prompt carries the length-debias
+   *  instruction. CLI flag --no-debias-length flips to false (drops that instruction,
+   *  the debias-off prompt variant). The active value is reflected in
+   *  ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
   lengthDebias?: boolean;
   /** hard budget caps. See EvalBudget. */
   budget?: EvalBudget;

@@ -82,7 +82,7 @@ interface CommonEvaluationOptions {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
   bootstrapSamples?: number;
-  /** length-debias toggle. Default true (judge prompt v3-cot-length).
+  /** length-debias toggle. Default true (length-debias instruction on).
    *  CLI passes false when --no-debias-length is set. */
   lengthDebias?: boolean;
   /** hard budget caps. */

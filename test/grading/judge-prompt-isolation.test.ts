@@ -53,7 +53,7 @@ describe('buildJudgePrompt — sample metadata isolation', () => {
     assertNoForbiddenTokens(p);
   });
 
-  it('lengthDebias=false (legacy v2-cot path) also clean', () => {
+  it('lengthDebias=false (debias-off prompt variant) also clean', () => {
     const p = buildJudgePrompt('用户问题', '评分标准', 'AI 回答', null, false);
     assertNoForbiddenTokens(p);
   });

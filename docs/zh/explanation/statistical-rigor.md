@@ -39,13 +39,13 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 
 **公式**：标准 Krippendorff α + 序数距离度量。实现：`src/grading/human-gold.ts`。输入：`<gold-dir>/<sample_id>.json` per-用例每维度的人工评分。
 
-## 3. 长度去偏的评委 prompt（默认开启）
+## 3. 评委 prompt 去偏：长度 / 排版 / 语气（默认开启）
 
-**研究证实 LLM 评委隐性偏向更长的回答。** 越长分越高，跟质量无关。omk 的评委 prompt 显式声明"长度不是质量信号"+ chain-of-thought + 长度归一化启发式。
+**研究证实 LLM 评委隐性偏向更长、排版更精致、语气更自信的回答**，跟内容质量无关（format / markdown bias；sycophancy / authority bias）。omk 的评委 prompt 显式声明「长度不是质量信号」和「排版与语气不是质量信号」+ chain-of-thought 逐条对照评分标准。措辞严格对称——既不奖励精致 / 自信，也不因朴素 / 含糊而扣分——避免去偏指令本身过度矫正成反向偏置。
 
-- Template hash `v3-cot-length` —— 旧报告用 `v2-cot`（去偏前），报告 hash 肉眼可辨
-- 报告元数据记录评委 prompt hash 和长度去偏设置；需要专门审计长度偏差时，用带 / 不带 `--no-debias-length` 的两份报告做对照
-- `--no-debias-length` 给研究 / 复现场景留 opt-out 口子
+- 报告元数据记录评委 prompt hash（template 版本）；改动任一去偏指令都会让 hash 变，不同 hash 的报告不做盲比
+- 排版 / 语气中性化始终开启、无开关；长度去偏可用 `--no-debias-length` 为研究 / 复现 opt out，需要专门审计长度偏差时用带 / 不带该 flag 的两份报告做对照
+- 这些是「研究表明评委普遍有此偏置」驱动的 prompt 指令，omk 未对自己的评委做前后对照实测；真正验证去偏是否有效的通道是 gold 校准（Krippendorff α vs 人工）
 - 参考：Saito et al. (2023), "Verbosity Bias in Preference Labeling by Large Language Models"
 
 **冻结**：`test/grading/judge-hash-frozen.test.ts` 字节级 hash 冻结，防版本间 prompt 悄悄漂移。
@@ -69,7 +69,7 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 |---|---|
 | "v2 看着更好但其实在误差范围内" | Bootstrap CI（pairwise diff CI 不跨 0） |
 | "评委说 v2 更好但我不信评委" | Krippendorff α（评委 ↔ 人工） |
-| "评委偏向冗长的回答" | 长度去偏的评委 prompt |
+| 「评委偏向冗长 / 精致排版 / 自信语气的回答」 | 长度 / 排版 / 语气去偏的评委 prompt |
 | "我跑了 10 个用例就停了 —— 够吗？" | 饱和曲线 |
 
 少一件，洞就出来。Bootstrap CI / 长度去偏 / 饱和曲线默认开（长度去偏可为研究复现 opt out，其余无条件）；Krippendorff α 在你提供 gold 集（`--gold-dir`）后自动开启。
