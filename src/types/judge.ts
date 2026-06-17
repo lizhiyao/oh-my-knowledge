@@ -21,7 +21,7 @@ export interface JudgeRuntimeEntry {
 
 /** Per-judge ensemble entry: which judge gave what score (mean over judge-repeat if N>1). */
 export interface EnsembleJudgeResult {
-  /** "executor:model" identifier — e.g. "claude:opus" or "openai:gpt-4o". */
+  /** "executor:model" identifier — e.g. "claude:opus" or "openai-api:gpt-4o". */
   judge: string;
   /** Mean score from this judge over judge-repeat calls (or single score if repeat=1). */
   score: number;

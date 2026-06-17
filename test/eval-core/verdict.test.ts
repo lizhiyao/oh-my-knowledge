@@ -449,3 +449,45 @@ describe('computeVerdict', () => {
     assert.doesNotMatch(v.headline, /run-to-run 不稳/);
   });
 });
+
+describe('judge independence caveat（J1/J2，挂 caveat 不改 verdict level）', () => {
+  const progress = (metaOverride: Partial<Report['meta']> = {}): Report => buildReport({
+    variants: ['baseline', 'skill'],
+    perVariantAvg: {
+      baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+      skill: { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+    },
+    pairs: [{
+      control: 'baseline', treatment: 'skill',
+      diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
+    }],
+    meta: metaOverride as Report['meta'],
+  });
+
+  it('同厂商评委(默认 claude/claude)+ 无 gold → headline 带自我偏好 caveat,level 不降', () => {
+    const v = computeVerdict(progress());
+    assert.equal(v.level, 'PROGRESS', 'caveat 不降级');
+    assert.match(v.headline, /自我偏好/);
+  });
+
+  it('跨厂商评委(openai 评 claude 输出)→ 无 caveat', () => {
+    const v = computeVerdict(progress({ judgeModels: [{ executor: 'openai-api', model: 'gpt-4o' }] }));
+    assert.equal(v.level, 'PROGRESS');
+    assert.doesNotMatch(v.headline, /自我偏好/);
+  });
+
+  it('同厂商 + 已 gold 校准 → headline 不带 caveat(软化进 rationale)', () => {
+    const v = computeVerdict(progress({ humanAgreement: { alpha: 0.7 } as never }));
+    assert.doesNotMatch(v.headline, /自我偏好/);
+  });
+
+  it('SOLO 单变体 + 同厂商评委 → headline 带 caveat(无 A/B 差值抵消,更该报)', () => {
+    const r = buildReport({
+      variants: ['only'],
+      perVariantAvg: { only: { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'SOLO');
+    assert.match(v.headline, /自我偏好/);
+  });
+});

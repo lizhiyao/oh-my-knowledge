@@ -321,8 +321,9 @@ export interface EvaluationRequest {
   /** Unified judge config — always non-empty.
    *  - length === 1: single judge (degenerate ensemble of size 1).
    *  - length >= 2: multi-judge ensemble. Each (sample × dimension) is scored by every judge,
-   *    inter-judge agreement (Pearson + mean absolute difference) reported as the hard
-   *    rebuttal to "judge same-model bias".
+   *    inter-judge agreement (Pearson + mean absolute difference) reported as a rebuttal to
+   *    "judge same-model bias" — but only when judges span vendors; a single-vendor ensemble's
+   *    high agreement reflects shared bias, not independence (flagged by `single_vendor_ensemble`).
    *  When `noJudge: true` the entry is preserved for audit but no judge call actually runs. */
   judgeModels: JudgeConfig[];
   /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.

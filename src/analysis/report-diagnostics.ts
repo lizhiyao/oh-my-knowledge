@@ -4,6 +4,7 @@
 
 import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
+import { analyzeJudgeIndependence } from '../eval-core/judge-independence.js';
 
 /** opts for `analyzeResults`. Optional because most older callers don't have
  *  samples in scope; new callers (evaluation-pipeline / evolver) pass them in to
@@ -27,6 +28,10 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
   const sampleQuality: SampleQualityAggregate | undefined = opts.samples
     ? buildSampleQualityAggregate(opts.samples)
     : undefined;
+
+  // 评委独立性对**单变体**报告同样适用(SOLO 只有绝对分、没有 A/B 差值去抵消自我偏好,
+  // 反而更该报),故放在 variants<2 早退之前;仅 results 为空(dry-run)时不评估。
+  if (results.length > 0) detectJudgeIndependence(report, insights);
 
   if (results.length === 0 || variants.length < 2) {
     return { insights, ...(sampleQuality && { sampleQuality }) };
@@ -61,11 +66,34 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
 
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights);
+  // 11. Judge independence — 已在 variants<2 早退前调过(单变体也适用),此处不重复。
 
   return {
     insights,
     ...(sampleQuality && { sampleQuality }),
   };
+}
+
+/**
+ * 评委独立性诊断:同厂商评委(自我偏好敞口)/ 单厂商 ensemble(一致性不反驳共有偏置)。
+ * 判定走单一来源 `analyzeJudgeIndependence`;挂了 gold 校准则软化为 info。
+ */
+function detectJudgeIndependence(report: Report, insights: AnalysisInsight[]): void {
+  const ind = analyzeJudgeIndependence(report);
+  if (ind.sameVendorJudge) {
+    insights.push({
+      type: 'judge_self_preference',
+      severity: ind.goldCalibrated ? 'info' : 'warning',
+      details: { judgeVendors: ind.judgeVendors, outputVendors: ind.outputVendors, goldCalibrated: ind.goldCalibrated },
+    });
+  }
+  if (ind.singleVendorEnsemble) {
+    insights.push({
+      type: 'single_vendor_ensemble',
+      severity: ind.goldCalibrated ? 'info' : 'warning',
+      details: { judgeVendors: ind.judgeVendors, goldCalibrated: ind.goldCalibrated },
+    });
+  }
 }
 
 /**

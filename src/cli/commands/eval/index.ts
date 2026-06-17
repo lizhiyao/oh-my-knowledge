@@ -446,8 +446,8 @@ export default class Eval extends BaseCommand {
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。',
-        en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai-api:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。',
+        en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai-api:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
       }),
     }),
     'output-dir': Flags.string({

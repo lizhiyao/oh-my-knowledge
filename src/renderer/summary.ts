@@ -1677,6 +1677,20 @@ function localizedInsightMessage(insight: AnalysisInsight, report: Report | unde
         ? `${count} 个评测用例成本显著高于平均值`
         : `${count} samples cost materially more than average`;
     }
+    case 'judge_self_preference': {
+      const outv = asArray(details.outputVendors).map(String).join('/') || '同厂商';
+      const calibrated = details.goldCalibrated === true;
+      return lang === 'zh'
+        ? `评委与被测输出同厂商（${outv}）${calibrated ? '（已 gold 校准）' : ''}，存在自我偏好敞口：评委可能给同家族输出打高分`
+        : `Judge is the same vendor as the executor that produced the outputs (${outv})${calibrated ? ' (gold-calibrated)' : ''}; self-preference exposure — the judge may over-score same-family output`;
+    }
+    case 'single_vendor_ensemble': {
+      const n = asArray(details.judgeVendors).length;
+      const calibrated = details.goldCalibrated === true;
+      return lang === 'zh'
+        ? `${n} 个评委同属一个厂商${calibrated ? '（已 gold 校准）' : ''}，ensemble 一致性高只反映共有偏置，不构成对同模型偏置的反驳`
+        : `All ${n} judges are from one vendor${calibrated ? ' (gold-calibrated)' : ''}; high ensemble agreement reflects shared bias, not a rebuttal to same-model bias`;
+    }
     default:
       return lang === 'zh'
         ? `结构化诊断：${type}`
@@ -1726,6 +1740,14 @@ function localizedSuggestion(insight: AnalysisInsight, lang: Lang): string {
       return lang === 'zh'
         ? '重写 agent 断言时优先约束工具路径、关键文件读取和 turns 上限'
         : 'When rewriting agent assertions, prioritize tool path, key file reads, and turn-limit constraints';
+    case 'judge_self_preference':
+      return lang === 'zh'
+        ? '换跨厂商评委（如 --judge-models openai-api:gpt-4o）消除自我偏好，或挂人工金标校准（omk eval gold compare）量化评委是否可信。注：固定模型的 A/B 差值受影响较小，绝对分 / 跨版本曲线受影响更大'
+        : 'Use a cross-vendor judge (e.g. --judge-models openai-api:gpt-4o) to remove self-preference, or calibrate against human gold (omk eval gold compare). Note: the A/B delta is less affected than absolute scores / cross-version curves';
+    case 'single_vendor_ensemble':
+      return lang === 'zh'
+        ? '把 ensemble 配成跨厂商（如 --judge-models claude:opus,openai-api:gpt-4o），让 agreement 真能反驳同模型偏置'
+        : 'Make the ensemble cross-vendor (e.g. --judge-models claude:opus,openai-api:gpt-4o) so agreement actually rebuts same-model bias';
     default:
       return lang === 'zh'
         ? '查看结构化 details 字段定位原因'

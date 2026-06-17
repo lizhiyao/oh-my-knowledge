@@ -81,7 +81,7 @@ omk eval [flags]
 - `--executor` `option`:执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
 - `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
 - `--gold-dir` `option`:gold dataset 目录
-- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
+- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai-api:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
 - `--judge-repeat` `option`:每个 dim 评 N 次
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--layered-stats` `boolean`:输出分层统计

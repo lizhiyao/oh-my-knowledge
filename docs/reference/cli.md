@@ -236,7 +236,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
   --global                        Write report to global ~/.oh-my-knowledge/reports instead of project .omk/
   --gold-dir <value>              Gold dataset dir
-  --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
+  --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai-api:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
   --judge-repeat <value>          Judge each dim N times
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --layered-stats                 Emit layered stats
