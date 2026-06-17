@@ -63,6 +63,15 @@ export const ENSEMBLE_DISSENT_PEARSON = 0.4;
  */
 export const STABILITY_UNSTABLE_CV = 0.15;
 
+/**
+ * Per-layer pass/fail line for the three-layer gate, on the 1-5 scale.
+ * **Pragmatic default, not derived from an external standard**: 3.5 is a clear margin
+ * above the 3.0 scale midpoint ("basically acceptable"), so a layer must land
+ * comfortably in the upper half to pass. Overridable via `omk eval --threshold`.
+ * doc ↔ code parity guarded by `test/scripts/doc-constants-drift.test.ts`.
+ */
+export const DEFAULT_GATE_THRESHOLD = 3.5;
+
 export type VerdictLevel =
   | 'PROGRESS'
   | 'CAUTIOUS'
@@ -93,7 +102,7 @@ export interface VerdictResult {
 }
 
 export interface VerdictOptions {
-  /** Three-layer ci-gate threshold; defaults to 3.5 (matches `omk eval`). */
+  /** Three-layer ci-gate threshold; defaults to DEFAULT_GATE_THRESHOLD (matches `omk eval`). */
   gateThreshold?: number;
   /**
    * Magnitude (in raw score points) below which a "significant" diff is treated
@@ -107,7 +116,7 @@ export interface VerdictOptions {
  * Compute a verdict for a finished report. Pure function — no I/O.
  */
 export function computeVerdict(report: Report, options: VerdictOptions = {}): VerdictResult {
-  const { gateThreshold = 3.5, triviallySmallDiff = 0.1 } = options;
+  const { gateThreshold = DEFAULT_GATE_THRESHOLD, triviallySmallDiff = 0.1 } = options;
   const variants = report.meta?.variants ?? [];
   const summary = report.summary ?? {};
   const sampleCount = report.meta?.sampleCount ?? 0;

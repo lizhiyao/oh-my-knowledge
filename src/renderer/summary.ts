@@ -268,7 +268,7 @@ export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined
           <td><strong>Krippendorff α</strong></td>
           <td style="text-align:center;color:${alphaColor}"><strong>${fmt(a.alpha)}</strong></td>
           <td style="text-align:center;font-size:11px">[${fmt(a.alphaCI.low)}, ${fmt(a.alphaCI.high)}]</td>
-          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '主指标，序数加权' : 'primary, ordinal-weighted'}</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '主指标，区间加权' : 'primary, interval-weighted'}</td>
         </tr>
         <tr>
           <td>${lang === 'zh' ? '加权 κ' : 'weighted κ'}</td>

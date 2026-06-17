@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BOOTSTRAP_SAMPLES, DEFAULT_BOOTSTRAP_ALPHA } from '../../src/eval-core/bootstrap.js';
 import { DEFAULT_SATURATION_WINDOW_SIZE, DEFAULT_CI_WIDTH_SHRINK_THRESHOLD } from '../../src/analysis/saturation.js';
-import { UNDERPOWERED_MIN_SAMPLES, STABILITY_UNSTABLE_CV } from '../../src/eval-core/verdict.js';
+import { UNDERPOWERED_MIN_SAMPLES, STABILITY_UNSTABLE_CV, DEFAULT_GATE_THRESHOLD, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON } from '../../src/eval-core/verdict.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -120,6 +120,43 @@ const CHECKS: Check[] = [
     pattern: /中位 CV > (\d+)%/,
     expected: STABILITY_UNSTABLE_CV,
     toNumber: (s) => Number(s) / 100,
+  },
+  // 门控魔数:layer-gate 阈值 + 评委一致性 Pearson 强/弱带(en + zh)
+  {
+    label: 'gate threshold (scoring en)',
+    file: 'docs/specs/scoring.md',
+    pattern: /layer-gate threshold defaults to (\d+\.\d+)/,
+    expected: DEFAULT_GATE_THRESHOLD,
+  },
+  {
+    label: 'gate threshold (scoring zh)',
+    file: 'docs/zh/specs/scoring.md',
+    pattern: /layer-gate threshold 默认 (\d+\.\d+)/,
+    expected: DEFAULT_GATE_THRESHOLD,
+  },
+  {
+    label: 'ensemble strong Pearson (scoring en)',
+    file: 'docs/specs/scoring.md',
+    pattern: /strong agreement at Pearson ≥ (\d+\.\d+)/,
+    expected: ENSEMBLE_STRONG_PEARSON,
+  },
+  {
+    label: 'ensemble strong Pearson (scoring zh)',
+    file: 'docs/zh/specs/scoring.md',
+    pattern: /强一致 Pearson ≥ (\d+\.\d+)/,
+    expected: ENSEMBLE_STRONG_PEARSON,
+  },
+  {
+    label: 'ensemble dissent Pearson (scoring en)',
+    file: 'docs/specs/scoring.md',
+    pattern: /strong disagreement at Pearson < (\d+\.\d+)/,
+    expected: ENSEMBLE_DISSENT_PEARSON,
+  },
+  {
+    label: 'ensemble dissent Pearson (scoring zh)',
+    file: 'docs/zh/specs/scoring.md',
+    pattern: /强分歧 Pearson < (\d+\.\d+)/,
+    expected: ENSEMBLE_DISSENT_PEARSON,
   },
 ];
 

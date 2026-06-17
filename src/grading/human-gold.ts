@@ -15,9 +15,11 @@
  *
  * Three metrics are exported:
  *
- *  - **Krippendorff's α (interval)** — primary. Distribution-free, supports
- *    ordinal/interval scales naturally, doesn't assume coders are exchangeable
- *    (good fit when one "coder" is a model and the other a human annotator).
+ *  - **Krippendorff's α (interval weights)** — primary. Distribution-free,
+ *    doesn't assume coders are exchangeable (good fit when one "coder" is a model
+ *    and the other a human annotator). Uses interval distance δ²=(c−k)² — a
+ *    defensible choice for 1-5 Likert; an ordinal-distance variant would change α
+ *    (BREAKING-COMPARABILITY) and is not implemented here.
  *  - **Quadratic-weighted Cohen's κ** — secondary. Familiar to many readers,
  *    useful as a sanity check. Reports lower than α when marginals diverge.
  *  - **Pearson r** — tertiary. Captures rank-order agreement only; doesn't

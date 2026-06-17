@@ -42,11 +42,13 @@ function isDryRunBatchReport(report: unknown): report is DryRunBatchReport {
   return isDryRunReport(report) && (report as { batch?: unknown }).batch === true;
 }
 
-function verdictOptions(values: ParsedValues): { gateThreshold: number; triviallySmallDiff: number | undefined } {
+function verdictOptions(values: ParsedValues): { gateThreshold: number | undefined; triviallySmallDiff: number | undefined } {
   const rawThreshold = values.threshold as string | undefined;
+  // 不传 --threshold 时返回 undefined,由 computeVerdict 应用 DEFAULT_GATE_THRESHOLD ——
+  // 避免在此再硬编码一份 3.5(单一来源在 verdict.ts)。
   const gateThreshold = rawThreshold !== undefined && Number.isFinite(Number(rawThreshold))
     ? Number(rawThreshold)
-    : 3.5;
+    : undefined;
   const rawTrivial = values['trivial-diff'] as string | undefined;
   const triviallySmallDiff = rawTrivial !== undefined && Number.isFinite(Number(rawTrivial))
     ? Number(rawTrivial)
