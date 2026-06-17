@@ -132,7 +132,7 @@ export function formatGoldCompare(result: GoldCompareResult, gold: GoldDataset):
     if (result.missing.length) lines.push(`  报告缺失:         ${result.missing.join(', ')}`);
     return lines.join('\n');
   }
-  lines.push(`  Krippendorff α:   ${fmt(a.alpha)}   (主指标，序数加权)`);
+  lines.push(`  Krippendorff α:   ${fmt(a.alpha)}   (主指标，区间加权)`);
   lines.push(`  α 95% CI:         [${fmt(a.alphaCI.low)}, ${fmt(a.alphaCI.high)}]`);
   lines.push(`  加权 κ:           ${fmt(a.weightedKappa)}   (副指标)`);
   lines.push(`  Pearson r:        ${fmt(a.pearson)}   (仅查 rank order)`);

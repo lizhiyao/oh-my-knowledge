@@ -37,7 +37,7 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 
 同一逻辑也适用于评委-vs-输出这条轴：如果评委与产出被测输出的执行器同模型家族——默认就是，`claude:haiku` 评 `claude:sonnet` 的输出——评委的自我偏好会抬高分数。omk 会标记（`judge_self_preference`；多评委且全同一厂商时再标 `single_vendor_ensemble`）并指出修法：换跨厂商评委（`--judge-models openai-api:gpt-4o`）或挂 gold 校准。因为 omk 固定模型、baseline 与 treatment 同源，自我偏好在 A/B **差值**里大幅抵消——真正受影响的是绝对分、版本回归曲线、跨模型比较，警告也只把自己限定在这些范围。
 
-**公式**：标准 Krippendorff α + 序数距离度量。实现：`src/grading/human-gold.ts`。输入：`<gold-dir>/<sample_id>.json` per-用例每维度的人工评分。
+**公式**：标准 Krippendorff α + 区间距离度量（δ²=(c−k)²,1-5 Likert 的 defensible 选择）。实现：`src/grading/human-gold.ts`。输入：`<gold-dir>/<sample_id>.json` per-用例每维度的人工评分。
 
 ## 3. 评委 prompt 去偏：长度 / 排版 / 语气（默认开启）
 

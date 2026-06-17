@@ -1,4 +1,5 @@
 import { createExecutor } from '../executors/index.js';
+import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
 import type { Sample, SampleProvenance, ExecutorFn } from '../types/index.js';
 import type { ObservationInboxItem } from '../types/observability.js';
 
@@ -80,7 +81,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   来涨数量)。omk 的评分体系是 layered scoring: **fact 层**(deterministic 字面/工具断言)
   + **behavior 层**(代价指标如 turn 数 / 工具失败率) + **judge 层**(主观语义评分,从
   sample.rubric 派生维度,judge LLM 看 trace 评 1-5)三层独立计分,verdict 是三层
-  独立过 threshold(默认 3.5)。**fact 层的本职是测 deterministic 端点,不是测轨迹**。
+  独立过 threshold(默认 ${DEFAULT_GATE_THRESHOLD})。**fact 层的本职是测 deterministic 端点,不是测轨迹**。
 
   **断言哲学(关键):fact 测结果+里程碑,过程质量交 judge**
   ─────────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     - tools_not_called 反模式断言 0-1 条(禁止接触某禁忌工具,如 tripwire sample)
     - rubric 3-5 个判分维度(细致写明 judge 该看什么),由 sample.rubric 字段承载
 
-  *测量学背景:* 当前 omk verdict 三层独立 threshold(默认 3.5),fact 条目少之后单条
+  *测量学背景:* 当前 omk verdict 三层独立 threshold(默认 ${DEFAULT_GATE_THRESHOLD}),fact 条目少之后单条
   权重大、单次评测方差大,**强烈建议** 评测时带 \`--repeat 2\` 或更大测稳定性(coefficient
   of variation),并参考 bootstrap CI 而非点估计。这是 fact 层稀疏化的代价,换来的是
   fact 信号干净(不被 trajectory 字面噪音污染)。

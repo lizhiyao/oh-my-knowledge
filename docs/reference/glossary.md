@@ -23,7 +23,7 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | significant | CI excludes 0 (the gap is not by chance) | reliability check ✓ significant-difference badge |
 | Pearson r | Pearson correlation coefficient. 1 = perfectly aligned / 0 = unrelated / -1 = perfectly opposed | "cross-sample judge agreement" table for the multi-judge ensemble |
 | MAD | Mean absolute deviation. Average distance among judges scoring the same sample. On a 1-5 scale, < 0.5 is tight agreement, > 1.5 is large disagreement | multi-judge agreement table |
-| Krippendorff α | Ordinal-weighted multi-judge agreement. α ≥ 0.8 high agreement / 0.667-0.8 acceptable / < 0.4 low | Human gold section |
+| Krippendorff α | Interval-weighted multi-judge agreement. α ≥ 0.8 high agreement / 0.667-0.8 acceptable / < 0.4 low | Human gold section |
 | p-value | Probability that a gap this large appears by chance; smaller is more significant (0.05 is the usual threshold) | t-test section (not omk's primary path; bootstrap takes priority) |
 | effect size | The gap relative to the noise (Cohen's d / Hedges' g), putting a scale on "how big the difference is" | Cohen's d column in the variance / significance table |
 | CV | Coefficient of variation, stddev / mean, a stability metric. On a 1-5 scale, < 5% stable / 5-15% medium / > 15% unstable | stability column + hero tooltip |

@@ -23,7 +23,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | significant | 显著差异 / 显著 | CI 不含 0（差距不是偶然） | 测评可信度 ✓ 差异显著 badge |
 | Pearson r | 皮尔逊（相关）系数 | 1=完全同向 / 0=无关 / -1=完全反向 | 多评委 ensemble 的「跨用例评委一致性」表 |
 | MAD | 平均绝对差 | 多个评委对同一用例打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
-| Krippendorff α | Krippendorff α / 一致性系数 | 序数加权多评委一致性，α ≥ 0.8 高度一致 / 0.667-0.8 可接受 / < 0.4 低 | 人工锚点 (Human gold) section |
+| Krippendorff α | Krippendorff α / 一致性系数 | 区间加权多评委一致性，α ≥ 0.8 高度一致 / 0.667-0.8 可接受 / < 0.4 低 | 人工锚点 (Human gold) section |
 | p-value | p 值 | 「这种差距碰巧出现」的概率，越小越显著（一般 0.05 阈值） | t-test 部分（omk 不主推，bootstrap 优先） |
 | effect size | 效应量 | 差距相对于波动的比例（Cohen's d / Hedges' g），刻度化「差距有多大」 | 波动 / 显著性表的 Cohen's d 列 |
 | CV | 变异系数 | stddev / mean，稳定性指标。1-5 制下 < 5% 稳 / 5-15% 中 / > 15% 不稳 | 稳定性列 + hero tooltip |
