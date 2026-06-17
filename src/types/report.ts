@@ -299,8 +299,6 @@ export interface ReportMeta {
   run?: EvaluationRun;
   job?: EvaluationJob;
   gitInfo?: GitInfo | null;
-  blind?: boolean;
-  blindMap?: Record<string, string>;
   // When true, HTML report expands the three-layer independent significance breakdown
   // by default (CLI `--layered-stats`). When false / absent, the breakdown is collapsed
   // and readers click the <details> summary to expand.

@@ -101,7 +101,6 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   skillDir: string;
   variantSpecs?: VariantSpec[];
   dryRun?: boolean;
-  blind?: boolean;
   retry?: number;
   resume?: string;
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
@@ -169,7 +168,6 @@ export async function runEvaluation({
   tags,
   noJudge = false,
   dryRun = false,
-  blind = false,
   concurrency = 1,
   timeoutMs,
   noCache = false,
@@ -348,7 +346,6 @@ export async function runEvaluation({
     project,
     owner,
     tags,
-    blind,
     concurrency,
     timeoutMs,
     noCache,

@@ -486,6 +486,10 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 //       answer_relevancy: sample.prompt — no reference needed
 //  4. Threshold defaults to 3 (same as semantic_similarity). User can override.
 
+// RAG 指标(faithfulness / answer_relevancy / context_recall)的长度去偏**恒开**,
+// 按 default-strict 不提供关闭开关:`--no-debias-length` 只作用于 rubric 评委 prompt
+// (v3/v4 切换),不下探到 RAG —— RAG 评的是内容保真/切题/召回,放任长度偏置只会污染这些
+// 指标,没有「关掉它」的正当用例。故 runRagJudge 不收 lengthDebias 参数,这段恒注入。
 const RAG_LENGTH_DEBIAS = [
   '## 重要:长度不是质量信号',
   '评分时聚焦内容实质,不要因输出更长就给更高分。',

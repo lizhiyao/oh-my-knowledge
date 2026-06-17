@@ -25,7 +25,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareEvaluationRun } from '../../src/eval-workflows/evaluation-preparation.js';
-import { aggregateReport, applyBlindMode, generateRunId } from '../../src/eval-core/evaluation-reporting.js';
+import { aggregateReport, generateRunId } from '../../src/eval-core/evaluation-reporting.js';
 import type { Report, VariantResult, VariantSpec, EvaluationRequest } from '../../src/types/index.js';
 
 function makeVariantResult(compositeScore?: number): VariantResult {
@@ -252,43 +252,6 @@ describe('GOLDEN report variant keys', () => {
     assert.deepEqual(variantNames, ['greeter', 'helper']);
     assertAllVariantSurfacesEqual(report, variantNames);
     expect(projectVariantSurfaces(report)).toMatchSnapshot();
-  });
-
-  it('case 7 — blind mode remaps every variant surface to A/B/C and round-trips', async () => {
-    const prepared = await prepareEvaluationRun({
-      samplesPath, skillDir: root, dryRun: true,
-      variantSpecs: [ctrl('baseline', 'baseline'), treat(join(root, 'a.md'), 'a'), treat(join(root, 'b.md'), 'b')],
-    });
-    const sampleIds = prepared.samples.map((s) => s.sample_id);
-    const results = buildResults(sampleIds, prepared.variantNames, false);
-    const report = aggregateReport({
-      runId: 'golden-run', variants: prepared.variantNames, model: 'mock-model', judgeModel: 'mock-judge',
-      noJudge: true, executorName: 'mock-exec', samples: prepared.samples, tasks: prepared.tasks,
-      results, totalCostUSD: 0, artifacts: prepared.artifacts,
-    });
-    applyBlindMode(report, prepared.variantNames, 'fixed-seed');
-    // 当前行为(被钉住):blind 只 remap variants / summary / results / executorRuntimes 到 A/B/C,
-    // 不动 artifactHashes / skillIsolation(仍是原始名)。这层不对称是既有事实,重构不能悄悄改;
-    // 若日后要让 blind 也覆盖这两个键面(防泄露),属于行为变更,得显式改这条断言。
-    assert.deepEqual(report.meta.variants, ['A', 'B', 'C']);
-    assert.deepEqual(Object.keys(report.summary).sort(), ['A', 'B', 'C']);
-    assert.deepEqual(Object.keys(report.meta.executorRuntimes ?? {}).sort(), ['A', 'B', 'C']);
-    for (const r of report.results) {
-      assert.deepEqual(Object.keys(r.variants).sort(), ['A', 'B', 'C'], `results[${r.sample_id}]`);
-    }
-    assert.deepEqual(Object.keys(report.meta.artifactHashes ?? {}).sort(), ['a', 'b', 'baseline'], 'artifactHashes NOT remapped');
-    assert.deepEqual(Object.keys(report.meta.skillIsolation ?? {}).sort(), ['a', 'b', 'baseline'], 'skillIsolation NOT remapped');
-    // blindMap 是 bijection(标签集 ↔ 原始 variant 集,无丢无重)
-    const blindMap = report.meta.blindMap ?? {};
-    assert.deepEqual(Object.keys(blindMap).sort(), ['A', 'B', 'C'], 'blindMap labels');
-    assert.deepEqual(Object.values(blindMap).slice().sort(), ['a', 'b', 'baseline'], 'blindMap originals');
-    // 固定 seed → 映射确定,快照钉住具体的 label→原名(升级「往返不丢」为「映射正确」:
-    // 哪怕集合不变、A/B/C 各映到错的 variant,本快照也会抓到)。
-    expect(blindMap).toMatchSnapshot();
-    // 反向映射:summary 在 blind 后的某个 label,其对应原名确实来自 blindMap(往返自洽)
-    for (const label of Object.keys(report.summary)) {
-      assert.ok(label in blindMap, `summary label ${label} has a blindMap entry`);
-    }
   });
 
   it('generateRunId encodes variant names in order, sanitized', () => {

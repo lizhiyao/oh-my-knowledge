@@ -13,8 +13,7 @@
  *     `deriveManagedState` 按 contentHash 匹配裁定(重装新内容后旧证据留存供回滚,却不让新内容显得已测)。
  *   - **跨源**:用三级身份消歧把被测 variant 对到受管记录(install 与 eval 命名不一致:记录名是
  *     skill 短名 `review`,而 eval 报告 variant key 可能是整串表达式 `git:HEAD:skills/review`、
- *     eval.yaml 别名 `candidate`、blind 模式的 `A`/`B`)。`applyBlindMode` 盲化 `variants` 但**不**动
- *     `artifactHashes` / `variantConfigs` 的键面,故三级都按真实键工作:
+ *     eval.yaml 别名 `candidate`)。三级都按 `artifactHashes` / `variantConfigs` 的真实键工作:
  *       (a) 显式**同名** variant —— 最强身份(本地 `--treatment <name>` 与 drift);
  *       (b) **结构化源匹配** —— `variantConfigs[].locator(+ref)` 与 `record.source` 对齐(git / 远端 /
  *           别名),即便内容撞哈也能精确消歧;

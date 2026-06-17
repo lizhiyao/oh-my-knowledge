@@ -55,7 +55,6 @@ export async function initializeEvaluationRunState({
   concurrency,
   timeoutMs,
   noCache,
-  blind,
   project,
   owner,
   tags,
@@ -83,7 +82,6 @@ export async function initializeEvaluationRunState({
   concurrency: number;
   timeoutMs?: number;
   noCache: boolean;
-  blind: boolean;
   project?: string;
   owner?: string;
   tags?: string[];
@@ -114,7 +112,6 @@ export async function initializeEvaluationRunState({
     timeoutMs,
     noCache,
     dryRun: false,
-    blind,
     project,
     owner,
     tags,

@@ -173,7 +173,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   assertNumberOpt('timeoutMs');
   assertBoolOpt('noCache');
   assertBoolOpt('noJudge');
-  assertBoolOpt('blind');
   assertStringOpt('mcpConfig');
   assertStringOpt('goldDir');
   assertBoolOpt('bootstrap');
@@ -275,7 +274,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     timeoutMs: obj.timeoutMs as number | undefined,
     noCache: obj.noCache as boolean | undefined,
     noJudge: obj.noJudge as boolean | undefined,
-    blind: obj.blind as boolean | undefined,
     mcpConfig: obj.mcpConfig as string | undefined,
     variants,
     budget,

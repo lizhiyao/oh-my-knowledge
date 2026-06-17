@@ -9,9 +9,6 @@
  *   - 可选 gapReports: 文本信号(markers / hedging)始终适用,与 tool trace 无关;
  *     带上 testSetHash 水印(spec §7.1 强制要求)
  *
- * 最后一步 `applyBlindMode` 是 blind 模式下的字段脱敏,放在所有 analysis 之后,
- * 避免脱敏后字段被分析逻辑读取。
- *
  * 仅被 orchestrator 调用;独立拆出主要为让 orchestrator 的 try-finally 主干
  * 看起来纯粹是「执行→收尾」时序。
  */
@@ -19,7 +16,6 @@
 import { analyzeResults } from '../../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../../analysis/gap-analyzer.js';
-import { applyBlindMode } from '../../eval-core/evaluation-reporting.js';
 import type { Artifact, Report, Sample, VariantResult } from '../../types/index.js';
 import { computeTestSetHash } from './test-set-hash.js';
 
@@ -30,7 +26,6 @@ export function finalizeEvaluationReport({
   results,
   artifacts,
   variantNames,
-  blind,
   samplesPath,
   samplesSourceFiles,
   samples,
@@ -39,7 +34,6 @@ export function finalizeEvaluationReport({
   results: EvaluationResults;
   artifacts: Artifact[];
   variantNames: string[];
-  blind: boolean;
   samplesPath: string;
   /** 目录模式下,bundle 内所有源文件;单文件模式下 [samplesPath]。computeTestSetHash 用。 */
   samplesSourceFiles?: string[];
@@ -75,10 +69,6 @@ export function finalizeEvaluationReport({
       gr.testSetHash = testSetHash;
     }
     report.analysis!.gapReports = gapReports;
-  }
-
-  if (blind) {
-    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
   }
 
   return report;

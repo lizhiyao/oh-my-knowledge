@@ -302,7 +302,6 @@ describe('CLI', () => {
       '--control', 'v1',
       '--treatment', 'v2',
       '--repeat', '2',
-      '--blind',
       '--no-debias-length',
       '--threshold', '3.2',
       '--trivial-diff', '0.2',

@@ -222,7 +222,6 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
 
 ```text
   --batch                         Batch mode: baseline vs each skill
-  --blind                         Blind judge mode
   --bootstrap                     Add bootstrap CI
   --bootstrap-samples <value>     Bootstrap resamples, default 1000
   --budget-per-sample-ms <value>  Per-sample time cap ms (must be > 0; omit for no cap)

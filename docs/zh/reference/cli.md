@@ -222,7 +222,6 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 
 ```text
   --batch                         batch 模式:baseline vs 每个 skill
-  --blind                         judge blind 模式
   --bootstrap                     加 bootstrap CI
   --bootstrap-samples <value>     bootstrap 重采样次数，默认 1000
   --budget-per-sample-ms <value>  单 sample 时长上限 ms（必须 > 0，不传则无上限）

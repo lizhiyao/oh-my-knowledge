@@ -69,7 +69,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| RAG: faithfulness / answer_relevancy / context_recall | ✓ 自动继承 length-debias | 部分 | ✓ | ✓（多步分解） | ✗ | 部分 | ✗ | ✗ |
+| RAG: faithfulness / answer_relevancy / context_recall | ✓ length-debias 恒开 | 部分 | ✓ | ✓（多步分解） | ✗ | 部分 | ✗ | ✗ |
 | ROUGE-N / Levenshtein / BLEU | ✓ 自实现零依赖 | ✓ | 部分 | ✗ | ✓ | ✗ | ✓ | ✗ |
 | 语义相似度（LLM 评分） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | 工具调用 / agent 断言 | ✓ 9 种 | ✗ | 部分 | ✗ | ✗ | 部分 | ✗ | ✓ 强 |
@@ -86,7 +86,6 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 | CI/CD `omk eval` 退出码路由 | ✓ 三层 | ✓ 基础 | ✓ | ✗ | ✗ | 部分 | ✗ | ✓ |
 | 预算硬阈值（工作流级中止） | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 中断恢复 | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 盲测 A/B + 揭晓 | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ pairwise | ✗ | ✗ |
 | 多轮方差 + t 检验 | ✓ + bootstrap | ✗ | ✗ | ✗ | ✗ | 部分 | ✗ | ✗ |
 
 ## 文档与社区

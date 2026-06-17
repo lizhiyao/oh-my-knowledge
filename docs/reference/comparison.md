@@ -69,7 +69,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| RAG: faithfulness / answer_relevancy / context_recall | ✓ (length-debias inherited) | partial | ✓ | ✓ (multi-step) | ✗ | partial | ✗ | ✗ |
+| RAG: faithfulness / answer_relevancy / context_recall | ✓ (length-debias always on) | partial | ✓ | ✓ (multi-step) | ✗ | partial | ✗ | ✗ |
 | ROUGE-N / Levenshtein / BLEU | ✓ self-impl, zero dep | ✓ | partial | ✗ | ✓ | ✗ | ✓ | ✗ |
 | Semantic similarity (LLM-graded) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | Tool-call / agent assertions | ✓ 9 types | ✗ | partial | ✗ | ✗ | partial | ✗ | ✓ strong |
@@ -86,7 +86,6 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 | CI/CD `omk eval` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
 | Hard budget caps (workflow abort) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Resume from interruption | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Blind A/B reveal | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ pairwise | ✗ | ✗ |
 | Multi-run variance + t-test | ✓ + bootstrap | ✗ | ✗ | ✗ | ✗ | partial | ✗ | ✗ |
 
 ## Documentation & community

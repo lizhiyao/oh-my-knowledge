@@ -265,7 +265,6 @@ export interface EvalConfig {
   timeoutMs?: number;
   noCache?: boolean;
   noJudge?: boolean;
-  blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
   /** hard budget caps. When any limit is hit during a run, remaining
@@ -313,7 +312,6 @@ export interface EvaluationRequest {
   timeoutMs?: number;
   noCache: boolean;
   dryRun: boolean;
-  blind: boolean;
   /** --repeat N; 1 表示单次跑,> 1 走 runMultiple 做 variance 分析 */
   repeat?: number;
   /** --batch; default absent/false. True means skill-batch mode. */

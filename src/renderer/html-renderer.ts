@@ -488,7 +488,6 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     ${m.sampleHashes ? `<span class="meta-tag" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
     ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
     ${renderDebiasModeTag(m.debiasMode, lang)}
-    ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
   </div>`;
 
   const auditFingerprints = (() => {
@@ -499,14 +498,6 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     if (!auditTags) return '';
     return `<details class="audit-fingerprints"><summary>${lang === 'zh' ? '审计指纹（用于复现校验）' : 'Audit fingerprints (for reproducibility)'}</summary><div class="meta-tags">${auditTags}</div></details>`;
   })();
-
-  const blindReveal = m.blind ? `
-    <div style="margin:12px 0">
-      <button onclick="document.getElementById('blind-reveal').style.display=document.getElementById('blind-reveal').style.display==='none'?'block':'none'" data-i18n="revealBlind">${t('revealBlind', lang)}</button>
-      <div id="blind-reveal" style="display:none;margin-top:8px;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)" role="region" aria-label="Blind variant mapping">
-        ${Object.entries(m.blindMap || {}).map(([label, real]) => `<div style="font-size:13px;color:var(--text-secondary)"><strong>Variant ${e(label)}</strong> → ${e(real)}</div>`).join('')}
-      </div>
-    </div>` : '';
 
   // ──────────── 融合单页:Hero → 结论(verdict+六维) → 折叠次要区 → 统一逐用例 ────────────
   const agentOverview = renderAgentOverview(variants, summary, lang);
@@ -539,7 +530,6 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
 
   const body = `
     ${conclusionPanel}
-    ${blindReveal}
     ${setupFold}
     ${analysisFold}
     <section class="ev-samples">

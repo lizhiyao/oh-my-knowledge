@@ -15,7 +15,6 @@ export function buildEvaluationRequest({
   timeoutMs,
   noCache,
   dryRun,
-  blind,
   project,
   owner,
   tags,
@@ -39,7 +38,6 @@ export function buildEvaluationRequest({
   timeoutMs?: number;
   noCache: boolean;
   dryRun: boolean;
-  blind: boolean;
   project?: string;
   owner?: string;
   tags?: string[];
@@ -64,7 +62,6 @@ export function buildEvaluationRequest({
     timeoutMs,
     noCache,
     dryRun,
-    blind,
     project,
     owner,
     tags,

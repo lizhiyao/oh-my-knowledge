@@ -663,7 +663,6 @@ describe('runBatchEvaluation', () => {
                 timeoutMs: options.timeoutMs,
                 noCache: options.noCache,
                 dryRun: false,
-                blind: false,
                 batch: true,
               },
             },
@@ -843,7 +842,7 @@ describe('runEvaluation credibility', () => {
     try { (await import('node:fs')).unlinkSync(MOCK_SAMPLES_PATH); } catch { /* ignore */ }
   }
 
-  it('blind mode: same input produces same mapping', async () => {
+  it('buildTasks: 每样本每变体确定性建任务（顺序稳定）', async () => {
     await writeMockSamples();
     try {
       const { loadSamples } = await import('../src/inputs/load-samples.js');
@@ -852,7 +851,7 @@ describe('runEvaluation credibility', () => {
       const skills: Record<string, string | null> = { v1: 'skill content v1', v2: 'skill content v2' };
       const tasks = buildTasks(samples, ['v1', 'v2'], skills);
 
-      // Verify tasks are correctly built (prerequisite for blind to work)
+      // tasks 按 variant 顺序稳定建出（2 样本 × 2 变体）
       assert.equal(tasks.length, 4); // 2 samples × 2 variants
       assert.equal(tasks[0].variant, 'v1');
       assert.equal(tasks[1].variant, 'v2');

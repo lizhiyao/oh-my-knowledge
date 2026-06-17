@@ -67,7 +67,6 @@ omk eval [flags]
 **Flags:**
 
 - `--batch` `boolean`:batch 模式:baseline vs 每个 skill
-- `--blind` `boolean`:judge blind 模式
 - `--bootstrap` `boolean`:加 bootstrap CI
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
 - `--budget-per-sample-ms` `option`:单 sample 时长上限 ms（必须 > 0，不传则无上限）

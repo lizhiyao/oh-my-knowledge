@@ -24,7 +24,6 @@ const mockRequest: EvaluationRequest = {
   concurrency: 1,
   noCache: false,
   dryRun: false,
-  blind: false,
 };
 
 describe('buildEvaluationRequest', () => {
@@ -40,12 +39,10 @@ describe('buildEvaluationRequest', () => {
       concurrency: 2,
       noCache: true,
       dryRun: false,
-      blind: true,
     });
     assert.equal(req.samplesPath, '/a.json');
     assert.equal(req.concurrency, 2);
     assert.equal(req.noCache, true);
-    assert.equal(req.blind, true);
   });
 
   it('--batch --repeat N 时 repeat / batch 字段透传到 request (防回归)', () => {
@@ -60,7 +57,6 @@ describe('buildEvaluationRequest', () => {
       concurrency: 3,
       noCache: false,
       dryRun: false,
-      blind: false,
       repeat: 2,
       batch: true,
     });
@@ -80,7 +76,6 @@ describe('buildEvaluationRequest', () => {
       concurrency: 1,
       noCache: false,
       dryRun: false,
-      blind: false,
     });
     assert.equal(req.repeat, undefined);
     assert.equal(req.batch, undefined);
@@ -98,7 +93,6 @@ describe('buildEvaluationRequest', () => {
       concurrency: 1,
       noCache: false,
       dryRun: false,
-      blind: false,
       judgeRepeat: 3,
     });
     assert.equal(req.judgeRepeat, 3);
@@ -116,7 +110,6 @@ describe('buildEvaluationRequest', () => {
       concurrency: 1,
       noCache: false,
       dryRun: false,
-      blind: false,
     });
     assert.equal(req.judgeRepeat, undefined);
   });

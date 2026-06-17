@@ -229,7 +229,6 @@ export function buildBatchEvaluationReport({
     timeoutMs,
     noCache,
     dryRun: false,
-    blind: false,
     project,
     owner,
     tags,
