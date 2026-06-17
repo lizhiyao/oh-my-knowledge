@@ -169,6 +169,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       `${configPath}: \`judgeModel\` and \`judgeExecutor\` were removed in v0.25 — use \`judgeModels: [{executor, model}]\` instead (single judge is the 1-entry case). See README.`,
     );
   }
+  if (obj.blind !== undefined) {
+    throw new Error(
+      `${configPath}: \`blind\` (judge blind mode) was removed — delete it from your eval.yaml; reports are no longer blinded.`,
+    );
+  }
   assertNumberOpt('concurrency');
   assertNumberOpt('timeoutMs');
   assertBoolOpt('noCache');
