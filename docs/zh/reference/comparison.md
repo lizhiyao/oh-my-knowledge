@@ -63,7 +63,6 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 | 多评委 ensemble（跨厂商） | ✓ Pearson + MAD | ✗ | ✗ | ✗ | ✗ | 部分 | ✗ | ✗ |
 | Judge-repeat 自一致性 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 评委 prompt hash 追溯 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Length-bias 实测验证 | ✓ `debias-validate` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 自动污染检测(gold annotator vs judge) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ## 专项 metric
