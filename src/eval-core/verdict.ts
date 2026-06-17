@@ -464,16 +464,16 @@ function judgeIndependenceCaveat(report: Report): { note: string; rationale?: st
   const ind = analyzeJudgeIndependence(report);
   const reasons: string[] = [];
   if (ind.sameVendorJudge) reasons.push(`评委与被测输出同厂商(${ind.outputVendors.join('/')})`);
-  if (ind.singleVendorEnsemble) reasons.push(`${ind.judgeVendors.length} 个评委同厂商,ensemble 一致性不反驳同模型偏置`);
+  if (ind.singleVendorEnsemble) reasons.push(`${ind.judgeVendors.length} 个评委同厂商，ensemble 一致性不反驳同模型偏置`);
   if (reasons.length === 0) return { note: '' };
 
   if (ind.goldCalibrated) {
     // 有 gold 校准背板 → 不进 headline,只软提示。
-    return { note: '', rationale: `自我偏好敞口(${reasons.join(';')})已有 gold 校准背板` };
+    return { note: '', rationale: `自我偏好敞口（${reasons.join('；')}）已有 gold 校准背板` };
   }
   return {
     note: ' · 评委自我偏好敞口未校准',
-    rationale: `${reasons.join(';')} —— 绝对分可能偏高;换跨厂商评委(--judge-models)或挂 gold(omk eval gold compare)校准`,
+    rationale: `${reasons.join('；')} —— 绝对分可能偏高；换跨厂商评委(--judge-models)或挂 gold(omk eval gold compare)校准`,
   };
 }
 
