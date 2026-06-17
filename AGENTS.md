@@ -22,11 +22,10 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 这些是跨版本报告可比性的锚点，不要静默修改：
 
 - `src/types/report.ts` 里的 Report JSON schema 字段语义。
-- `test/grading/judge-hash-frozen.test.ts` 冻结的 judge prompt hash。
-- `test/observability/llm-enhanced-review-prompt.test.ts` 冻结的 observe LLM 增强复盘 prompt hash。
+- `test/shared/prompt-registry-freeze.test.ts` 冻结的全部评分类 prompt hash（rubric 评委 / RAG / semantic / observe LLM 增强复盘），由 `src/shared/llm-prompts/registry.ts` 的 `PROMPT_REGISTRY` 驱动；评分类 prompt 文本统一在 `src/shared/llm-prompts/`。
 - 五层评分管道语义：assertion / llm / judge / dimension / composite。
 - Bootstrap CI 和 Krippendorff alpha 公式。
-- Length-debias toggle 语义：`--no-debias-length` 与 prompt v2/v3 的对应关系。
+- Length-debias toggle 语义：`--no-debias-length` 关掉 rubric 评委的长度去偏（debias-off prompt 变体）；排版 / 语气中性化不受其影响、恒开。
 
 确实需要改不变量时，必须在 PR 标题 / description 明确标 `BREAKING-COMPARABILITY`（GitHub Release notes 会从 PR title 自动汇总），并按 `CONTRIBUTING.md` 的版本规则处理。
 
@@ -40,8 +39,8 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 
 ## UI / Judge 改动
 
-- 改 judge prompt 文本前，先确认 `test/grading/judge-hash-frozen.test.ts` 的影响，不要随手更新 hash。
-- 改 observe LLM 增强复盘 prompt 文本前，先确认 `test/observability/llm-enhanced-review-prompt.test.ts` 的影响；如果 runtimeAssessment 可比性会变化，PR 标题 / description 必须标 `BREAKING-COMPARABILITY`。
+- 改任何评分类 prompt 文本前（rubric 评委 / RAG / semantic，均在 `src/shared/llm-prompts/`），先确认 `test/shared/prompt-registry-freeze.test.ts` 的影响，不要随手更新冻结 hash。
+- 改 observe LLM 增强复盘 prompt 文本前，先确认同一冻结测试里 `observe-llm-enhanced-review` 条目的影响；如果 runtimeAssessment 可比性会变化，PR 标题 / description 必须标 `BREAKING-COMPARABILITY`。
 - 改报告 UI 后，先 review `test/__snapshots__/html-renderer.test.ts.snap` diff，再决定是否更新 snapshot。
 
 ## omk 自带 skill 安装（跨 agent）
