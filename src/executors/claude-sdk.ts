@@ -42,6 +42,12 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
 }
 
 export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
+  // 隔离选项在 timer / try 之前解析:非空 allowedSkills(不再支持的 skill 白名单)必须在这里
+  // fail-fast 抛错,而不是被下面的 catch 吞成 ok:false 的 ExecResult(那会把配置错误伪装成
+  // 每个 sample 执行失败、产出全失败报告,与 claude-cli / codex 的硬抛口径不一致)。lean 仍
+  // 覆盖为硬堵,但 buildSdkIsolationOptions 先跑一遍,故 lean 也无法绕过非空校验。
+  const baseIsolationOpts = buildSdkIsolationOptions(allowedSkills);
+  const isolationOpts = lean ? { skills: [] as string[], disallowedTools: ['*'] } : baseIsolationOpts;
   const start = Date.now();
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
@@ -62,11 +68,6 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
 
   try {
     const query = await getSdkQuery();
-    // lean 模式:纯文本生成路径,不需要工具循环 / skill 发现,
-    // 用 disallowedTools:['*'] + skills:[] 直接堵住,优先级高于 isolationOpts。
-    const isolationOpts = lean
-      ? { skills: [] as string[], disallowedTools: ['*'] }
-      : buildSdkIsolationOptions(allowedSkills);
     // effort:lean 强制 'low'(生成路径不需要思考),否则透传调用方传入。
     // SDK 暴露 EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max',直接对应。
     const effectiveEffort = lean ? 'low' : effort;
