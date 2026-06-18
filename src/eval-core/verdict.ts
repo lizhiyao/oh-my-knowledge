@@ -32,6 +32,7 @@ import type { GapReport, Report, VariantPairComparison, VariantSummary } from '.
 import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
 import { analyzeJudgeIndependence } from './judge-independence.js';
+import { MIN_HOLDOUT_SUBSET } from './holdout.js';
 
 /**
  * Below this sample count a non-significant diff is read as UNDERPOWERED
@@ -115,6 +116,18 @@ export interface VerdictResult {
     gapSignal?: string;
     shipRecommendation?: string;
   };
+  /** The pair the top-level verdict is about — the worst pair from the roll-up, NOT
+   *  variants[1]. Surfaces let the HTML pill name the right treatment in a
+   *  control-vs-many report instead of re-deriving from the first pair. Undefined for
+   *  SOLO / pairless reports. */
+  representative?: { control: string; treatment: string };
+  /** Structured caveats (language-neutral) so HTML / other surfaces can i18n them
+   *  instead of re-parsing the zh `rationale` strings. Present only when the caveat
+   *  fires; mirrors `rationale.overfitting` / `rationale.gapSignal`. */
+  caveats?: {
+    overfitting?: { variant: string; trainScore: number; holdoutScore: number; gap: number };
+    gapSignal?: { variant: string; gapRatePct: number; testSetPath?: string | null; testSetHash?: string | null };
+  };
   /** Variants present in the report (best-vs-control framing). */
   variants: string[];
 }
@@ -161,6 +174,12 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
         ...(overfit.rationale ? { overfitting: overfit.rationale } : {}),
         ...(gap.rationale ? { gapSignal: gap.rationale } : {}),
       },
+      ...((overfit.data || gap.data) ? {
+        caveats: {
+          ...(overfit.data ? { overfitting: overfit.data } : {}),
+          ...(gap.data ? { gapSignal: gap.data } : {}),
+        },
+      } : {}),
       variants,
     };
   }
@@ -231,6 +250,13 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
       ...(gap.rationale ? { gapSignal: gap.rationale } : {}),
       shipRecommendation,
     },
+    ...(representative ? { representative: { control: representative.control, treatment: representative.treatment } } : {}),
+    ...((overfit.data || gap.data) ? {
+      caveats: {
+        ...(overfit.data ? { overfitting: overfit.data } : {}),
+        ...(gap.data ? { gapSignal: gap.data } : {}),
+      },
+    } : {}),
     variants,
   };
 }
@@ -537,7 +563,12 @@ function treatmentVariants(report: Report): string[] {
   return variants.length >= 2 ? variants.slice(1) : variants.slice(0, 1);
 }
 
-function overfittingCaveat(report: Report): { note: string; rationale?: string; gated: boolean } {
+function overfittingCaveat(report: Report): {
+  note: string;
+  rationale?: string;
+  gated: boolean;
+  data?: { variant: string; trainScore: number; holdoutScore: number; gap: number };
+} {
   const holdout = report.analysis?.holdout;
   if (!holdout || holdout.disabled) return { note: '', gated: false };
   // Worst-case over all treatments — matches the verdict roll-up. A PROGRESS top-level
@@ -546,9 +577,10 @@ function overfittingCaveat(report: Report): { note: string; rationale?: string; 
   for (const t of treatmentVariants(report)) {
     const pv = holdout.perVariant[t];
     if (!pv) continue;
-    // 综合分在 1-5 制,合法分 ≥ 1;某子集出 0 = 该子集无可评分条目(全 error / 缺 composite),
-    // 不是真低分。此时 train − holdout 的"分差"是测量假象,不能据此判过拟合 —— 跳过。
-    if (pv.trainScore <= 0 || pv.holdoutScore <= 0) continue;
+    // 门控绑「实际可评分条目数」,不是 authored 切分数:某侧 3 条里只有 1 条真出分(其余
+    // error / budget-abort)时,分差只有 1 个样本支撑,把它包装成「3 条结论」会误判过拟合。
+    // 两侧 scorable 都 ≥ MIN_HOLDOUT_SUBSET 才信。这也顺带挡掉 score=0(scorable=0)的测量假象。
+    if (pv.trainScorable < MIN_HOLDOUT_SUBSET || pv.holdoutScorable < MIN_HOLDOUT_SUBSET) continue;
     const gap = pv.trainScore - pv.holdoutScore;
     if (gap <= OVERFITTING_GAP_THRESHOLD) continue;
     if (!worst || gap > worst.gap) worst = { variant: t, train: pv.trainScore, holdout: pv.holdoutScore, gap };
@@ -558,6 +590,7 @@ function overfittingCaveat(report: Report): { note: string; rationale?: string; 
     note: ` · 过拟合敞口(${worst.variant}: train ${worst.train.toFixed(2)} − holdout ${worst.holdout.toFixed(2)} = ${worst.gap.toFixed(2)} > ${OVERFITTING_GAP_THRESHOLD})`,
     rationale: `${worst.variant} train/holdout 综合分差 ${worst.gap.toFixed(2)} 超阈值 ${OVERFITTING_GAP_THRESHOLD}(holdout ratio ${holdout.ratio}）—— 提升可能是对用例集过拟合、对 holdout 不泛化；扩充用例集或换独立外验集复核`,
     gated: true,
+    data: { variant: worst.variant, trainScore: worst.train, holdoutScore: worst.holdout, gap: worst.gap },
   };
 }
 
@@ -577,7 +610,11 @@ const GAP_CAVEAT_BAND = 0.2;
  * Empty note below the band, so the common low-gap case keeps verdict headlines
  * byte-identical.
  */
-function gapSignalCaveat(report: Report): { note: string; rationale?: string } {
+function gapSignalCaveat(report: Report): {
+  note: string;
+  rationale?: string;
+  data?: { variant: string; gapRatePct: number; testSetPath?: string | null; testSetHash?: string | null };
+} {
   const gapReports = report.analysis?.gapReports;
   if (!gapReports) return { note: '' };
   // Worst-case (highest gap rate) over all treatments — a control-vs-many report must
@@ -601,6 +638,7 @@ function gapSignalCaveat(report: Report): { note: string; rationale?: string } {
   return {
     note: ` · 知识缺口率 ${pct}% @ ${tag}`,
     rationale: `知识缺口率 ${pct}%(test set: ${watermark}，N=${gr.sampleCount}）—— informational，反映当前用例集与知识库的交互、非完备性度量；高缺口提示扩充知识库或复核未覆盖文件`,
+    data: { variant: gr.variant, gapRatePct: Number(pct), testSetPath: gr.testSetPath, testSetHash: gr.testSetHash },
   };
 }
 

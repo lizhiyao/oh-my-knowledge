@@ -486,8 +486,17 @@ export interface HoldoutBreakdown {
   /** true when either side fell below the minimum subset size → scored full-set,
    *  no usable split. `perVariant` is empty and the verdict gate stays inert. */
   disabled?: boolean;
-  /** Per-variant train vs holdout composite (1-5 scale) + subset sizes. */
-  perVariant: Record<string, { trainScore: number; holdoutScore: number; trainCount: number; holdoutCount: number }>;
+  /** Per-variant train vs holdout composite (1-5 scale). `*Count` is the authored
+   *  split size; `*Scorable` is how many of those actually produced a composite (> 0)
+   *  — they diverge under partial errors, and the overfitting gate trusts `*Scorable`. */
+  perVariant: Record<string, {
+    trainScore: number;
+    holdoutScore: number;
+    trainCount: number;
+    holdoutCount: number;
+    trainScorable: number;
+    holdoutScorable: number;
+  }>;
   testSetPath?: string | null;
   testSetHash?: string | null;
 }

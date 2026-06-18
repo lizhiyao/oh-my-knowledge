@@ -72,7 +72,19 @@ describe('computeHoldoutBreakdown', () => {
       holdoutScore: 2,
       trainCount: 7,
       holdoutCount: 3,
+      trainScorable: 7,
+      holdoutScorable: 3,
     });
+  });
+
+  it('counts scorable entries separately from the authored split size', () => {
+    // s0/s3/s6 = holdout; give s0 a 0 composite (errored) → holdoutCount 3 but scorable 2.
+    const holdoutIds = new Set(['s0', 's3', 's6']);
+    const report = mockReport(10, (id) => (id === 's0' ? 0 : holdoutIds.has(id) ? 2 : 4));
+    const breakdown = computeHoldoutBreakdown(report, ['skill'], 0.3, ids(10));
+    assert.equal(breakdown.perVariant.skill.holdoutCount, 3);
+    assert.equal(breakdown.perVariant.skill.holdoutScorable, 2);
+    assert.equal(breakdown.perVariant.skill.trainScorable, 7);
   });
 
   it('binds the split to the authored order, not report.results insertion order', () => {
@@ -87,7 +99,7 @@ describe('computeHoldoutBreakdown', () => {
     const a = computeHoldoutBreakdown(ordered, ['skill'], 0.3, order);
     const b = computeHoldoutBreakdown(shuffled, ['skill'], 0.3, order);
     assert.deepEqual(a.perVariant, b.perVariant);
-    assert.deepEqual(a.perVariant.skill, { trainScore: 4, holdoutScore: 2, trainCount: 7, holdoutCount: 3 });
+    assert.deepEqual(a.perVariant.skill, { trainScore: 4, holdoutScore: 2, trainCount: 7, holdoutCount: 3, trainScorable: 7, holdoutScorable: 3 });
   });
 
   it('marks disabled with an empty breakdown when the split is too small', () => {

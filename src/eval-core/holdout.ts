@@ -70,6 +70,24 @@ export function subsetCompositeScore(report: Report, variantKey: string, ids: Se
 }
 
 /**
+ * How many subset results actually produced a usable composite (> 0) for a variant.
+ * `buildVariantSummary` averages only `compositeScore > 0` entries (schema.ts), so
+ * the mean can rest on far fewer samples than the authored split size when runs
+ * flake / partial-error / budget-abort. The overfitting gate must trust THIS count,
+ * not the authored `trainCount` / `holdoutCount`, or a 1-of-3 holdout gets dressed
+ * up as a 3-sample-backed conclusion.
+ */
+export function subsetScorableCount(report: Report, variantKey: string, ids: Set<string>): number {
+  let n = 0;
+  for (const r of report.results) {
+    if (!ids.has(r.sample_id)) continue;
+    const v = r.variants[variantKey];
+    if (v && typeof v.compositeScore === 'number' && v.compositeScore > 0) n++;
+  }
+  return n;
+}
+
+/**
  * Train vs holdout composite breakdown per variant for `omk eval --holdout-ratio`.
  * Post-hoc — never perturbs the headline aggregation or bootstrap CI.
  *
@@ -102,6 +120,8 @@ export function computeHoldoutBreakdown(
       holdoutScore: Number(subsetCompositeScore(report, v, split.holdoutIds).toFixed(4)),
       trainCount: split.trainIds.size,
       holdoutCount: split.holdoutIds.size,
+      trainScorable: subsetScorableCount(report, v, split.trainIds),
+      holdoutScorable: subsetScorableCount(report, v, split.holdoutIds),
     };
   }
   return { ratio, perVariant };

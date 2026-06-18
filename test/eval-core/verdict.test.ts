@@ -504,14 +504,20 @@ describe('过拟合门控（B，opt-in holdout 的 train/holdout 分差）', () 
       diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
     }],
   });
-  type HoldoutPV = Record<string, { trainScore: number; holdoutScore: number; trainCount: number; holdoutCount: number }>;
+  type HoldoutPV = Record<string, { trainScore: number; holdoutScore: number; trainCount: number; holdoutCount: number; trainScorable?: number; holdoutScorable?: number }>;
   const withHoldout = (r: Report, perVariant: HoldoutPV, opts: { ratio?: number; disabled?: boolean } = {}): Report => {
+    // scorable 缺省 = 切分数(测试默认全可评分);需要测「稀信号」时显式给低 scorable。
+    const filled = Object.fromEntries(Object.entries(perVariant).map(([k, v]) => [k, {
+      ...v,
+      trainScorable: v.trainScorable ?? v.trainCount,
+      holdoutScorable: v.holdoutScorable ?? v.holdoutCount,
+    }]));
     r.analysis = {
       insights: [],
       holdout: {
         ratio: opts.ratio ?? 0.3,
         ...(opts.disabled ? { disabled: true } : {}),
-        perVariant,
+        perVariant: filled,
         testSetPath: 'eval-samples.json',
         testSetHash: 'abcd1234ef',
       },
@@ -548,9 +554,12 @@ describe('过拟合门控（B，opt-in holdout 的 train/holdout 分差）', () 
     assert.doesNotMatch(v.headline, /过拟合/);
   });
 
-  it('holdout 子集无可评分条目（score=0）→ 不门控（测量假象，非过拟合）', () => {
-    // 全 holdout 样本 error / 缺 composite → subsetCompositeScore 返回 0,分差虚高,不能据此判过拟合。
-    const r = withHoldout(base(), { skill: { trainScore: 4.5, holdoutScore: 0, trainCount: 7, holdoutCount: 3 } });
+  it('holdout 一侧可评分条目 < 最小阈值（稀信号）→ 不门控', () => {
+    // holdoutCount=3 但只有 1 条真出分(其余 error / budget-abort）→ 分差只有 1 个样本支撑,
+    // 不能包装成「3 条结论」。即使分差很大也跳过。
+    const r = withHoldout(base(), {
+      skill: { trainScore: 4.6, holdoutScore: 3.4, trainCount: 7, holdoutCount: 3, trainScorable: 7, holdoutScorable: 1 },
+    });
     const v = computeVerdict(r);
     assert.equal(v.level, 'PROGRESS');
     assert.doesNotMatch(v.headline, /过拟合/);
@@ -574,8 +583,8 @@ describe('过拟合门控（B，opt-in holdout 的 train/holdout 分差）', () 
       holdout: {
         ratio: 0.3,
         perVariant: {
-          t1: { trainScore: 4.4, holdoutScore: 4.2, trainCount: 7, holdoutCount: 3 }, // gap 0.2，不触发
-          t2: { trainScore: 4.6, holdoutScore: 3.5, trainCount: 7, holdoutCount: 3 }, // gap 1.1，过拟合
+          t1: { trainScore: 4.4, holdoutScore: 4.2, trainCount: 7, holdoutCount: 3, trainScorable: 7, holdoutScorable: 3 }, // gap 0.2，不触发
+          t2: { trainScore: 4.6, holdoutScore: 3.5, trainCount: 7, holdoutCount: 3, trainScorable: 7, holdoutScorable: 3 }, // gap 1.1，过拟合
         },
         testSetPath: 'eval-samples.json', testSetHash: 'abcd1234ef',
       },
@@ -583,6 +592,8 @@ describe('过拟合门控（B，opt-in holdout 的 train/holdout 分差）', () 
     const v = computeVerdict(r);
     assert.equal(v.level, 'CAUTIOUS');
     assert.match(v.headline, /过拟合敞口\(t2/);
+    assert.equal(v.caveats?.overfitting?.variant, 't2');
+    assert.ok(v.caveats?.overfitting && v.caveats.overfitting.gap > 0.5);
   });
 });
 
@@ -668,5 +679,7 @@ describe('gap 软提示（C，informational、不改 level、带水印）', () =
     const v = computeVerdict(r);
     assert.match(v.headline, /知识缺口率 40%/);
     assert.doesNotMatch(v.headline, /25%/);
+    assert.equal(v.caveats?.gapSignal?.variant, 't2');
+    assert.equal(v.caveats?.gapSignal?.gapRatePct, 40);
   });
 });
