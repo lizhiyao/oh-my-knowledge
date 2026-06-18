@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { computeVerdict, formatVerdictText } from '../../src/eval-core/verdict.js';
-import type { Report, VariantSummary } from '../../src/types/index.js';
+import type { GapReport, Report, VariantSummary } from '../../src/types/index.js';
 
 const summary = (avg: { fact?: number; behavior?: number; judge?: number; composite?: number }): VariantSummary => ({
   totalSamples: 30, successCount: 30, errorCount: 0, errorRate: 0,
@@ -555,6 +555,35 @@ describe('过拟合门控（B，opt-in holdout 的 train/holdout 分差）', () 
     assert.equal(v.level, 'PROGRESS');
     assert.doesNotMatch(v.headline, /过拟合/);
   });
+
+  it('多 treatment：只有第 2 个 treatment 过拟合 → 仍门控并点名它（不漏 variants[1] 之外）', () => {
+    const r = buildReport({
+      variants: ['baseline', 't1', 't2'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        t1: { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+        t2: { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+      },
+      pairs: [
+        { control: 'baseline', treatment: 't1', diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true } },
+        { control: 'baseline', treatment: 't2', diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true } },
+      ],
+    });
+    r.analysis = {
+      insights: [],
+      holdout: {
+        ratio: 0.3,
+        perVariant: {
+          t1: { trainScore: 4.4, holdoutScore: 4.2, trainCount: 7, holdoutCount: 3 }, // gap 0.2，不触发
+          t2: { trainScore: 4.6, holdoutScore: 3.5, trainCount: 7, holdoutCount: 3 }, // gap 1.1，过拟合
+        },
+        testSetPath: 'eval-samples.json', testSetHash: 'abcd1234ef',
+      },
+    };
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'CAUTIOUS');
+    assert.match(v.headline, /过拟合敞口\(t2/);
+  });
 });
 
 describe('gap 软提示（C，informational、不改 level、带水印）', () => {
@@ -614,5 +643,30 @@ describe('gap 软提示（C，informational、不改 level、带水印）', () =
     const v = computeVerdict(r);
     assert.doesNotMatch(v.headline, /知识缺口率/);
     assert.equal(v.rationale.gapSignal, undefined);
+  });
+
+  it('多 treatment：取缺口率最高的那个 treatment 提示（不漏 variants[1] 之外）', () => {
+    const r = buildReport({
+      variants: ['baseline', 't1', 't2'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        t1: { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+        t2: { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+      },
+      pairs: [
+        { control: 'baseline', treatment: 't1', diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true } },
+        { control: 'baseline', treatment: 't2', diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true } },
+      ],
+    });
+    const mkGap = (variant: string, gapRate: number): GapReport => ({
+      variant, sampleCount: 30, samplesWithGap: Math.round(30 * gapRate),
+      gapRate, weightedGapRate: gapRate,
+      testSetPath: 'eval-samples.json', testSetHash: 'abcd1234ef',
+      signals: [], byType: { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 },
+    });
+    r.analysis = { insights: [], gapReports: { t1: mkGap('t1', 0.25), t2: mkGap('t2', 0.4) } };
+    const v = computeVerdict(r);
+    assert.match(v.headline, /知识缺口率 40%/);
+    assert.doesNotMatch(v.headline, /25%/);
   });
 });

@@ -81,7 +81,10 @@ export function finalizeEvaluationReport({
   // bootstrap CI. A large train − holdout gap is the overfitting signal the verdict
   // overfitting gate reads (src/eval-core/verdict.ts); absent on default runs.
   if (holdoutRatio > 0) {
-    const holdout = computeHoldoutBreakdown(report, variantNames, holdoutRatio);
+    // 切分按 samples 的稳定原始顺序(文件顺序),不依赖 report.results 的并发完成落盘顺序,
+    // 否则同批样本在不同并发/时序下 holdout 子集会漂、verdict 过拟合门控跟着漂。
+    const sampleIdOrder = samples.map((s) => s.sample_id);
+    const holdout = computeHoldoutBreakdown(report, variantNames, holdoutRatio, sampleIdOrder);
     holdout.testSetPath = samplesPath;
     holdout.testSetHash = testSetHash;
     report.analysis!.holdout = holdout;

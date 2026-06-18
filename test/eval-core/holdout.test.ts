@@ -64,7 +64,7 @@ describe('computeHoldoutBreakdown', () => {
     // N=10, ratio 0.3 → holdout = s0,s3,s6 (score 2), train = the rest (score 4).
     const holdoutIds = new Set(['s0', 's3', 's6']);
     const report = mockReport(10, (id) => (holdoutIds.has(id) ? 2 : 4));
-    const breakdown = computeHoldoutBreakdown(report, ['skill'], 0.3);
+    const breakdown = computeHoldoutBreakdown(report, ['skill'], 0.3, ids(10));
     assert.equal(breakdown.disabled, undefined);
     assert.equal(breakdown.ratio, 0.3);
     assert.deepEqual(breakdown.perVariant.skill, {
@@ -75,9 +75,24 @@ describe('computeHoldoutBreakdown', () => {
     });
   });
 
+  it('binds the split to the authored order, not report.results insertion order', () => {
+    // Same samples + scores, but report.results in a different (concurrent-completion)
+    // insertion order must yield the SAME holdout breakdown — the split follows the
+    // stable authored sampleIdOrder, not the results array order.
+    const holdoutIds = new Set(['s0', 's3', 's6']);
+    const scoreOf = (id: string): number => (holdoutIds.has(id) ? 2 : 4);
+    const ordered = mockReport(10, scoreOf);
+    const shuffled = { results: [...ordered.results].reverse() } as unknown as Report;
+    const order = ids(10);
+    const a = computeHoldoutBreakdown(ordered, ['skill'], 0.3, order);
+    const b = computeHoldoutBreakdown(shuffled, ['skill'], 0.3, order);
+    assert.deepEqual(a.perVariant, b.perVariant);
+    assert.deepEqual(a.perVariant.skill, { trainScore: 4, holdoutScore: 2, trainCount: 7, holdoutCount: 3 });
+  });
+
   it('marks disabled with an empty breakdown when the split is too small', () => {
     const report = mockReport(4, () => 4);
-    const breakdown = computeHoldoutBreakdown(report, ['skill'], 0.5);
+    const breakdown = computeHoldoutBreakdown(report, ['skill'], 0.5, ids(4));
     assert.equal(breakdown.disabled, true);
     assert.deepEqual(breakdown.perVariant, {});
   });

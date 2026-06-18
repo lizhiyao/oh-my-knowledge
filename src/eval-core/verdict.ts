@@ -28,7 +28,7 @@
  * empirical) is documented inline so users can audit and override.
  */
 
-import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
+import type { GapReport, Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
 import { analyzeJudgeIndependence } from './judge-independence.js';
@@ -525,21 +525,38 @@ function judgeIndependenceCaveat(report: Report): { note: string; rationale?: st
  * `analysis.holdout`) are byte-identical — the gate only ever fires when the user
  * opted into a holdout, which is brand-new behaviour with no historical reports.
  */
+/**
+ * The treatment variants a report-level caveat should scan. control = variants[0];
+ * treatments = the rest. For a single-variant (SOLO) report there is no control,
+ * so the lone variant is itself the subject. Scanning **all** treatments (not just
+ * variants[1]) keeps the caveats aligned with the verdict's worst-case roll-up over
+ * `perPair` — a control-vs-many report must not miss the 2nd/3rd treatment.
+ */
+function treatmentVariants(report: Report): string[] {
+  const variants = report.meta?.variants ?? [];
+  return variants.length >= 2 ? variants.slice(1) : variants.slice(0, 1);
+}
+
 function overfittingCaveat(report: Report): { note: string; rationale?: string; gated: boolean } {
   const holdout = report.analysis?.holdout;
   if (!holdout || holdout.disabled) return { note: '', gated: false };
-  const variants = report.meta?.variants ?? [];
-  const treatment = variants[1] ?? variants[0];
-  const pv = treatment ? holdout.perVariant[treatment] : undefined;
-  if (!pv) return { note: '', gated: false };
-  // 综合分在 1-5 制,合法分 ≥ 1;某子集出 0 = 该子集无可评分条目(全 error / 缺 composite),
-  // 不是真低分。此时 train − holdout 的"分差"是测量假象,不能据此判过拟合 —— 跳过。
-  if (pv.trainScore <= 0 || pv.holdoutScore <= 0) return { note: '', gated: false };
-  const gap = pv.trainScore - pv.holdoutScore;
-  if (gap <= OVERFITTING_GAP_THRESHOLD) return { note: '', gated: false };
+  // Worst-case over all treatments — matches the verdict roll-up. A PROGRESS top-level
+  // means every pair passed, so a single overfitting treatment must still downgrade it.
+  let worst: { variant: string; train: number; holdout: number; gap: number } | null = null;
+  for (const t of treatmentVariants(report)) {
+    const pv = holdout.perVariant[t];
+    if (!pv) continue;
+    // 综合分在 1-5 制,合法分 ≥ 1;某子集出 0 = 该子集无可评分条目(全 error / 缺 composite),
+    // 不是真低分。此时 train − holdout 的"分差"是测量假象,不能据此判过拟合 —— 跳过。
+    if (pv.trainScore <= 0 || pv.holdoutScore <= 0) continue;
+    const gap = pv.trainScore - pv.holdoutScore;
+    if (gap <= OVERFITTING_GAP_THRESHOLD) continue;
+    if (!worst || gap > worst.gap) worst = { variant: t, train: pv.trainScore, holdout: pv.holdoutScore, gap };
+  }
+  if (!worst) return { note: '', gated: false };
   return {
-    note: ` · 过拟合敞口(train ${pv.trainScore.toFixed(2)} − holdout ${pv.holdoutScore.toFixed(2)} = ${gap.toFixed(2)} > ${OVERFITTING_GAP_THRESHOLD}）`,
-    rationale: `train/holdout 综合分差 ${gap.toFixed(2)} 超阈值 ${OVERFITTING_GAP_THRESHOLD}(holdout ratio ${holdout.ratio}）—— 提升可能是对用例集过拟合、对 holdout 不泛化；扩充用例集或换独立外验集复核`,
+    note: ` · 过拟合敞口(${worst.variant}: train ${worst.train.toFixed(2)} − holdout ${worst.holdout.toFixed(2)} = ${worst.gap.toFixed(2)} > ${OVERFITTING_GAP_THRESHOLD})`,
+    rationale: `${worst.variant} train/holdout 综合分差 ${worst.gap.toFixed(2)} 超阈值 ${OVERFITTING_GAP_THRESHOLD}(holdout ratio ${holdout.ratio}）—— 提升可能是对用例集过拟合、对 holdout 不泛化；扩充用例集或换独立外验集复核`,
     gated: true,
   };
 }
@@ -563,13 +580,18 @@ const GAP_CAVEAT_BAND = 0.2;
 function gapSignalCaveat(report: Report): { note: string; rationale?: string } {
   const gapReports = report.analysis?.gapReports;
   if (!gapReports) return { note: '' };
-  const variants = report.meta?.variants ?? [];
-  const treatment = variants[1] ?? variants[0];
-  const gr = treatment ? gapReports[treatment] : undefined;
-  if (!gr || gr.gapRate < GAP_CAVEAT_BAND) return { note: '' };
-  // spec §7.1:gap 数必须带 test-set 水印,否则视为无效输出 —— 无水印时干脆不出提示,
-  // 而非吐一个裸缺口率。生产报告恒带水印(report-finalize 强制),此处只防手搓 / 退化报告。
-  if (!gr.testSetPath && !gr.testSetHash) return { note: '' };
+  // Worst-case (highest gap rate) over all treatments — a control-vs-many report must
+  // surface the noisiest treatment, not just variants[1]. spec §7.1: gap 数必须带
+  // test-set 水印,否则视为无效输出 —— 无水印的条目不参与(而非吐裸缺口率)。生产报告
+  // 恒带水印(report-finalize 强制),此处只防手搓 / 退化报告。
+  let gr: GapReport | null = null;
+  for (const t of treatmentVariants(report)) {
+    const cand = gapReports[t];
+    if (!cand || cand.gapRate < GAP_CAVEAT_BAND) continue;
+    if (!cand.testSetPath && !cand.testSetHash) continue;
+    if (!gr || cand.gapRate > gr.gapRate) gr = cand;
+  }
+  if (!gr) return { note: '' };
   const pct = (gr.gapRate * 100).toFixed(0);
   const shortHash = gr.testSetHash ? gr.testSetHash.slice(0, 8) : '';
   const tag = shortHash || gr.testSetPath;

@@ -71,19 +71,27 @@ export function subsetCompositeScore(report: Report, variantKey: string, ids: Se
 
 /**
  * Train vs holdout composite breakdown per variant for `omk eval --holdout-ratio`.
- * Post-hoc — reads only `report.results` (in result order), never perturbs the
- * headline aggregation or bootstrap CI. When the split is too small on either side
- * (< MIN_HOLDOUT_SUBSET) it returns `{ disabled: true }` with an empty `perVariant`,
- * so the verdict overfitting gate stays inert (no usable holdout signal). The
- * testSetHash watermark (gap-spec §7.1) is attached by the caller, shared with gapReports.
+ * Post-hoc — never perturbs the headline aggregation or bootstrap CI.
+ *
+ * The split is taken over `sampleIdOrder` — the **stable authored sample order**
+ * (the loaded `samples` file order), NOT `report.results`, whose insertion order
+ * is the concurrent-completion order and drifts run-to-run. Binding the stride pick
+ * to the authored order is what makes the holdout (and the verdict overfitting gate
+ * it feeds) deterministic and reproducible. Subset scores are then read from
+ * `report.results` by id-set membership, which is order-independent.
+ *
+ * When the split is too small on either side (< MIN_HOLDOUT_SUBSET) it returns
+ * `{ disabled: true }` with an empty `perVariant`, so the verdict overfitting gate
+ * stays inert. The testSetHash watermark (gap-spec §7.1) is attached by the caller,
+ * shared with gapReports.
  */
 export function computeHoldoutBreakdown(
   report: Report,
   variantNames: string[],
   ratio: number,
+  sampleIdOrder: string[],
 ): HoldoutBreakdown {
-  const sampleIds = report.results.map((r) => r.sample_id);
-  const split = splitHoldout(sampleIds, ratio);
+  const split = splitHoldout(sampleIdOrder, ratio);
   if (!split) {
     return { ratio, disabled: true, perVariant: {} };
   }
