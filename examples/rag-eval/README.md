@@ -12,13 +12,18 @@ omk 的三个 RAG 专用 metric 演示:`faithfulness` / `answer_relevancy` / `co
 
 ## 跑示例
 
+本目录自带一个最简 RAG 答题 skill `skills/rag-v1/`（严格基于 context 作答），可直接跑：
+
 ```bash
-omk eval --samples examples/rag-eval/eval-samples.yaml \
-  --control baseline --treatment your-rag-skill \
-  --bootstrap
+cd examples/rag-eval
+omk eval --control baseline --treatment rag-v1 --bootstrap
 ```
 
+`baseline` 是无 skill 的裸模型对照，`rag-v1` 是「只用 context、没有就明说」的处理组。换成你自己的 RAG skill 即可评测你的系统。
+
 可叠加 `--gold-dir` 引入人工锚点对评分做外部验证，或叠加 `--repeat 5` 看饱和曲线。
+
+> 注：三个 RAG 指标都是 LLM 评委型（没有确定性断言），所以这个示例需要一个真实评委模型才能出分，没有 `--no-judge` 离线模式。
 
 ## 实现注脚
 
