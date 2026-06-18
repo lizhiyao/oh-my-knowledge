@@ -68,6 +68,9 @@ interface CommonEvaluationOptions {
   /** --repeat N. 1 表示单次(默认); > 1 时在 runMultiple 层聚合 variance。
    *  记入 report.meta.request.repeat 让 meta 如实反映用户输入。 */
   repeat?: number;
+  /** --holdout-ratio R. 0 / 缺省 = 不切分(默认)。> 0 时 report-finalize 算 train/holdout
+   *  子集综合分(report.analysis.holdout),供 verdict 过拟合门控读取。 */
+  holdoutRatio?: number;
   /** --batch 模式标记, true 表示当前评测是 skill batch 流程。
    *  记入 report.meta.request.batch。 */
   batch?: boolean;
@@ -185,6 +188,7 @@ export async function runEvaluation({
   runId,
   layeredStats = false,
   repeat,
+  holdoutRatio,
   batch,
   judgeRepeat,
   judgeModels,
@@ -359,6 +363,7 @@ export async function runEvaluation({
     requires,
     layeredStats,
     repeat,
+    holdoutRatio,
     batch,
     judgeRepeat,
     judgeModels,
@@ -615,6 +620,7 @@ export async function runBatchEvaluation({
   mcpConfig,
   verbose = false,
   repeat,
+  holdoutRatio,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -744,12 +750,14 @@ export async function runBatchEvaluation({
     strictBaseline,
     variantAllowedSkills,
     runSingleEvaluation: async (options) => {
-      // repeat > 1 时走 runMultiple 做 variance; batch=true 标记让 meta.request 如实反映
+      // repeat > 1 时走 runMultiple 做 variance; batch=true 标记让 meta.request 如实反映。
+      // holdoutRatio 显式转发(executeBatchEvaluationRuns 不一定把它塞进 options),否则
+      // batch 子报告 meta.request.holdoutRatio 丢失、过拟合门控对 batch 静默失效。
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, batch: true, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
+        const multi = await runMultiple({ ...options, repeat, holdoutRatio, batch: true, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
         return { report: multi.report as EvaluationReport, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, batch: true, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
+      const result = await runEvaluation({ ...options, batch: true, holdoutRatio, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
       return { report: result.report as EvaluationReport, filePath: result.filePath };
     },
   });

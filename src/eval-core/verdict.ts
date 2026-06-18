@@ -72,6 +72,20 @@ export const STABILITY_UNSTABLE_CV = 0.15;
  */
 export const DEFAULT_GATE_THRESHOLD = 3.5;
 
+/**
+ * Train − holdout composite gap (1-5 scale) above which `omk eval --holdout-ratio`
+ * is read as **sample-set overfitting**: the gain lives on the samples the skill
+ * was shaped around and does not carry to the held-out slice. Like the stability
+ * gate, a would-be PROGRESS is then downgraded to CAUTIOUS — a win that does not
+ * generalize is not shippable.
+ * **Pragmatic default, not from an external standard**: 0.5 is 10% of the 1-5 scale
+ * — small enough to catch a real generalization drop, wide enough to ignore the
+ * sampling noise of a small holdout slice. Only fires when a holdout split is
+ * present (opt-in), so it never moves a default report's verdict.
+ * doc ↔ code parity guarded by `test/scripts/doc-constants-drift.test.ts`.
+ */
+export const OVERFITTING_GAP_THRESHOLD = 0.5;
+
 export type VerdictLevel =
   | 'PROGRESS'
   | 'CAUTIOUS'
@@ -95,6 +109,10 @@ export interface VerdictResult {
      *  让用户感受到 single-run 的盲区,而不是默默不提。 */
     stability?: string;
     judgeAgreement?: string;
+    /** Overfitting (train vs holdout) caveat — only present under `--holdout-ratio`. */
+    overfitting?: string;
+    /** Knowledge-gap caveat — informational, watermarked, never gates (gap-spec §8). */
+    gapSignal?: string;
     shipRecommendation?: string;
   };
   /** Variants present in the report (best-vs-control framing). */
@@ -127,16 +145,21 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
     const gate = evaluateLayerGates(summary, gateThreshold);
     // SOLO 只有绝对分、无 A/B 差值可抵消自我偏好,故同厂商评委的 caveat 更该出。
     const judgeInd = judgeIndependenceCaveat(report);
+    // 过拟合 / gap 在 SOLO 也有意义(单变体是否泛化 / 缺口多大),但 SOLO 无 PROGRESS 可降,只附提示不门控。
+    const overfit = overfittingCaveat(report);
+    const gap = gapSignalCaveat(report);
     return {
       level: 'SOLO',
       headline: (gate.allPass
         ? `SOLO · single variant, three-layer gate PASS @ threshold ${gateThreshold}`
-        : `SOLO · single variant, three-layer gate FAIL — see ci output`) + judgeInd.note,
+        : `SOLO · single variant, three-layer gate FAIL — see ci output`) + judgeInd.note + overfit.note + gap.note,
       rationale: {
         layerWinners: gate.lines.join('; '),
         sampleSize: `N=${sampleCount}`,
         stability: formatStability(report),
         ...(judgeInd.rationale ? { judgeAgreement: judgeInd.rationale } : {}),
+        ...(overfit.rationale ? { overfitting: overfit.rationale } : {}),
+        ...(gap.rationale ? { gapSignal: gap.rationale } : {}),
       },
       variants,
     };
@@ -170,11 +193,17 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   // 不再加码,顺序与 worst-case roll-up 一致。
   const stab = medianStabilityCV(report);
   const stabilityGated = topLevel === 'PROGRESS' && stab !== null && stab.cv > STABILITY_UNSTABLE_CV;
-  const level: VerdictLevel = stabilityGated ? 'CAUTIOUS' : topLevel;
+  // 过拟合门控:与稳定性门控同形——opt-in holdout 下 train/holdout 分差过大 → PROGRESS 降 CAUTIOUS。
+  // overfittingCaveat 首行短路无 holdout 的报告,故默认报告 level 与 headline 逐字节不变。
+  const overfit = overfittingCaveat(report);
+  const overfitGated = topLevel === 'PROGRESS' && overfit.gated;
+  const level: VerdictLevel = (stabilityGated || overfitGated) ? 'CAUTIOUS' : topLevel;
   const stabilityNote = stabilityGated && stab
     ? ` · 显著但 run-to-run 不稳(CV=${(stab.cv * 100).toFixed(1)}% > ${(STABILITY_UNSTABLE_CV * 100).toFixed(0)}%)`
     : '';
   const judgeInd = judgeIndependenceCaveat(report);
+  // gap 软提示:不改 level(spec §8),低缺口 / 无 gapReports 时空串,headline 逐字节不变。
+  const gap = gapSignalCaveat(report);
 
   const significance = representative
     ? formatSignificance(representative)
@@ -189,7 +218,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   return {
     level,
     headline: representative
-      ? `${level} · ${representative.treatment} vs ${representative.control}: ${representative.headline}${stabilityNote}${judgeInd.note}`
+      ? `${level} · ${representative.treatment} vs ${representative.control}: ${representative.headline}${stabilityNote}${judgeInd.note}${overfit.note}${gap.note}`
       : `${level} · ${variants.length} variants`,
     perPair,
     rationale: {
@@ -198,6 +227,8 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
       sampleSize,
       stability,
       judgeAgreement,
+      ...(overfit.rationale ? { overfitting: overfit.rationale } : {}),
+      ...(gap.rationale ? { gapSignal: gap.rationale } : {}),
       shipRecommendation,
     },
     variants,
@@ -486,12 +517,77 @@ function judgeIndependenceCaveat(report: Report): { note: string; rationale?: st
   };
 }
 
+/**
+ * Overfitting caveat from the opt-in train/holdout breakdown (`--holdout-ratio`).
+ * `gated` drives a PROGRESS → CAUTIOUS downgrade (a win that does not carry to the
+ * held-out slice is not shippable), mirroring the stability gate. **First line
+ * short-circuits when there is no holdout split**, so default reports (no
+ * `analysis.holdout`) are byte-identical — the gate only ever fires when the user
+ * opted into a holdout, which is brand-new behaviour with no historical reports.
+ */
+function overfittingCaveat(report: Report): { note: string; rationale?: string; gated: boolean } {
+  const holdout = report.analysis?.holdout;
+  if (!holdout || holdout.disabled) return { note: '', gated: false };
+  const variants = report.meta?.variants ?? [];
+  const treatment = variants[1] ?? variants[0];
+  const pv = treatment ? holdout.perVariant[treatment] : undefined;
+  if (!pv) return { note: '', gated: false };
+  // 综合分在 1-5 制,合法分 ≥ 1;某子集出 0 = 该子集无可评分条目(全 error / 缺 composite),
+  // 不是真低分。此时 train − holdout 的"分差"是测量假象,不能据此判过拟合 —— 跳过。
+  if (pv.trainScore <= 0 || pv.holdoutScore <= 0) return { note: '', gated: false };
+  const gap = pv.trainScore - pv.holdoutScore;
+  if (gap <= OVERFITTING_GAP_THRESHOLD) return { note: '', gated: false };
+  return {
+    note: ` · 过拟合敞口(train ${pv.trainScore.toFixed(2)} − holdout ${pv.holdoutScore.toFixed(2)} = ${gap.toFixed(2)} > ${OVERFITTING_GAP_THRESHOLD}）`,
+    rationale: `train/holdout 综合分差 ${gap.toFixed(2)} 超阈值 ${OVERFITTING_GAP_THRESHOLD}(holdout ratio ${holdout.ratio}）—— 提升可能是对用例集过拟合、对 holdout 不泛化；扩充用例集或换独立外验集复核`,
+    gated: true,
+  };
+}
+
+/**
+ * Knowledge-gap rate above which the verdict appends an **informational** caveat.
+ * Internal-only, deliberately NOT exported: gap rate is informational, never a
+ * gate (knowledge-gap-signal-spec.md §8), so exposing this as a tunable constant
+ * would invite reading it as a pass/fail line.
+ */
+const GAP_CAVEAT_BAND = 0.2;
+
+/**
+ * Knowledge-gap caveat (`report.analysis.gapReports`). **Soft only — never changes
+ * the verdict level** (spec §8: a nudge, not a fail). Surfaces the treatment's gap
+ * rate with its mandatory test-set watermark (spec §7.1: a gap number without a
+ * watermark is invalid output) plus the "informational, not completeness" framing.
+ * Empty note below the band, so the common low-gap case keeps verdict headlines
+ * byte-identical.
+ */
+function gapSignalCaveat(report: Report): { note: string; rationale?: string } {
+  const gapReports = report.analysis?.gapReports;
+  if (!gapReports) return { note: '' };
+  const variants = report.meta?.variants ?? [];
+  const treatment = variants[1] ?? variants[0];
+  const gr = treatment ? gapReports[treatment] : undefined;
+  if (!gr || gr.gapRate < GAP_CAVEAT_BAND) return { note: '' };
+  // spec §7.1:gap 数必须带 test-set 水印,否则视为无效输出 —— 无水印时干脆不出提示,
+  // 而非吐一个裸缺口率。生产报告恒带水印(report-finalize 强制),此处只防手搓 / 退化报告。
+  if (!gr.testSetPath && !gr.testSetHash) return { note: '' };
+  const pct = (gr.gapRate * 100).toFixed(0);
+  const shortHash = gr.testSetHash ? gr.testSetHash.slice(0, 8) : '';
+  const tag = shortHash || gr.testSetPath;
+  const watermark = gr.testSetPath
+    ? `${gr.testSetPath}${shortHash ? ` @ ${shortHash}` : ''}`
+    : shortHash;
+  return {
+    note: ` · 知识缺口率 ${pct}% @ ${tag}`,
+    rationale: `知识缺口率 ${pct}%(test set: ${watermark}，N=${gr.sampleCount}）—— informational，反映当前用例集与知识库的交互、非完备性度量；高缺口提示扩充知识库或复核未覆盖文件`,
+  };
+}
+
 function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLevel }>): string {
   switch (level) {
     case 'PROGRESS':
       return 'SHIP — treatment is significantly better and passes all layer gates.';
     case 'CAUTIOUS':
-      return 'INVESTIGATE — the gain is real but at least one warning fired (broken gate, trivially small, partial recovery, judge dissent, or run-to-run unstable). Do not ship blind.';
+      return 'INVESTIGATE — the gain is real but at least one warning fired (broken gate, trivially small, partial recovery, judge dissent, run-to-run unstable, or train/holdout overfitting). Do not ship blind.';
     case 'REGRESS':
       return 'DO NOT SHIP — treatment regresses. Check the worst layer and re-run with the fix.';
     case 'NOISE':
@@ -515,6 +611,8 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   if (result.rationale.sampleSize) lines.push(`  Sample size:   ${result.rationale.sampleSize}`);
   if (result.rationale.stability) lines.push(`  Stability:     ${result.rationale.stability}`);
   if (result.rationale.judgeAgreement) lines.push(`  Judge α:       ${result.rationale.judgeAgreement}`);
+  if (result.rationale.overfitting) lines.push(`  Overfitting:   ${result.rationale.overfitting}`);
+  if (result.rationale.gapSignal) lines.push(`  Gap signal:    ${result.rationale.gapSignal}`);
   if (result.rationale.shipRecommendation) lines.push(`  ${result.rationale.shipRecommendation}`);
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');

@@ -13,6 +13,7 @@ export type RunMessageKey =
   | 'cli.progress.sample_done'
   | 'cli.progress.sample_failed_done'
   | 'cli.run.invalid_repeat'
+  | 'cli.run.invalid_holdout_ratio'
   | 'cli.run.invalid_judge_repeat'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
@@ -91,6 +92,10 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.invalid_judge_repeat': {
     zh: '⚠ --judge-repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次 judge 执行\n',
     en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
+  },
+  'cli.run.invalid_holdout_ratio': {
+    zh: '⚠ --holdout-ratio "{value}" 无效 (期望 0 到 1 之间的小数), 已忽略、不做 holdout 切分\n',
+    en: '⚠ --holdout-ratio "{value}" is invalid (expected a fraction in (0, 1)), ignored — no holdout split\n',
   },
   'cli.run.no_debias_length_active': {
     zh: 'ℹ --no-debias-length 已生效：judge prompt 去掉长度去偏指令（debias-off 变体），hash 与默认开启时不同。\n',

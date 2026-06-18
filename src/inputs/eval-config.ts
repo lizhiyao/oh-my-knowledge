@@ -198,6 +198,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   };
   assertPositiveIntOpt('repeat');
   assertPositiveIntOpt('judgeRepeat');
+  if (obj.holdoutRatio !== undefined) {
+    if (typeof obj.holdoutRatio !== 'number' || !Number.isFinite(obj.holdoutRatio) || obj.holdoutRatio <= 0 || obj.holdoutRatio >= 1) {
+      throw new Error(`${configPath}: holdoutRatio must be a number in (0, 1)`);
+    }
+  }
   if (obj.bootstrapSamples !== undefined) {
     if (typeof obj.bootstrapSamples !== 'number' || !Number.isFinite(obj.bootstrapSamples) || obj.bootstrapSamples < 100) {
       throw new Error(`${configPath}: bootstrapSamples must be a number ≥ 100`);
@@ -288,6 +293,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     variants,
     budget,
     repeat: obj.repeat as number | undefined,
+    holdoutRatio: obj.holdoutRatio as number | undefined,
     judgeRepeat: obj.judgeRepeat as number | undefined,
     bootstrap: obj.bootstrap as boolean | undefined,
     bootstrapSamples: obj.bootstrapSamples as number | undefined,

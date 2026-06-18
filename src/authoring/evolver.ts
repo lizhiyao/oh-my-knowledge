@@ -8,7 +8,7 @@ import { projectReportsDir, globalReportsDir } from '../eval-core/measurement-di
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
-import { buildVariantSummary } from '../eval-core/schema.js';
+import { MIN_HOLDOUT_SUBSET, pickByStride, splitHoldout, subsetCompositeScore } from '../eval-core/holdout.js';
 import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 import { fixSamples } from './sample-fixer.js';
 import type { JudgeConfig, ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
@@ -192,57 +192,22 @@ export function extractWeakSamples(
     .slice(0, count);
 }
 
-/** A train / holdout partition of a sample set. */
-interface HoldoutSplit {
-  trainIds: Set<string>;
-  holdoutIds: Set<string>;
-}
-
 /** A train / val / test partition. `val` drives the accept decision; `test` is
  *  locked — never seen during the loop, read once at the end for an unbiased
- *  generalization score. */
+ *  generalization score. Two-way holdout (`splitHoldout`), the stride picker
+ *  (`pickByStride`), `MIN_HOLDOUT_SUBSET`, and `subsetCompositeScore` live in
+ *  `src/eval-core/holdout.ts` so `omk eval --holdout-ratio` reuses them. */
 interface TrainValTestSplit {
   trainIds: Set<string>;
   valIds: Set<string>;
   testIds: Set<string>;
 }
 
-/** Below this many samples on any side, a split is too small to be meaningful —
- *  evolve falls back to full-set scoring and warns. */
-const MIN_HOLDOUT_SUBSET = 3;
-
 /** Below this many decision (val) samples the bootstrap diff CI almost never
  *  excludes 0 for realistic effect sizes, so the significance gate would reject
  *  every candidate. Under that floor evolve degrades to the point-estimate accept
  *  and flags `gate.underpowered`. */
 export const MIN_GATE_SAMPLES = 8;
-
-/** Pick `count` ids at an even stride across `ids` (deterministic, no RNG) so the
- *  picked subset is representative of the ordering and stable across rounds/runs. */
-function pickByStride(ids: string[], count: number): Set<string> {
-  const picked = new Set<string>();
-  if (count <= 0) return picked;
-  const stride = ids.length / count;
-  for (let k = 0; k < count; k++) picked.add(ids[Math.floor(k * stride)]);
-  return picked;
-}
-
-/**
- * Deterministically split sample ids into train / holdout by `ratio` (fraction
- * held out). Holdout members are picked at an even stride so the partition is
- * representative of the ordering, and the split is stable across rounds and runs
- * (no RNG). Returns null when ratio ≤ 0 or either side would drop below
- * MIN_HOLDOUT_SUBSET — the caller then scores on the full set.
- */
-export function splitHoldout(sampleIds: string[], ratio: number): HoldoutSplit | null {
-  if (!(ratio > 0) || sampleIds.length === 0) return null;
-  const holdoutCount = Math.round(sampleIds.length * ratio);
-  const trainCount = sampleIds.length - holdoutCount;
-  if (holdoutCount < MIN_HOLDOUT_SUBSET || trainCount < MIN_HOLDOUT_SUBSET) return null;
-  const holdoutIds = pickByStride(sampleIds, holdoutCount);
-  const trainIds = new Set(sampleIds.filter((id) => !holdoutIds.has(id)));
-  return { trainIds, holdoutIds };
-}
 
 /**
  * Deterministically split sample ids into train / val / test. `val` is carved
@@ -262,23 +227,6 @@ export function splitTrainValTest(sampleIds: string[], valRatio: number, testRat
   const testIds = pickByStride(remaining, testCount);
   const trainIds = new Set(sampleIds.filter((id) => !valIds.has(id) && !testIds.has(id)));
   return { trainIds, valIds, testIds };
-}
-
-/**
- * Mean composite over the subset of a report's results whose sample_id is in
- * `ids`, using the same aggregation as the full-run summary
- * (`buildVariantSummary`) so train / holdout scores stay comparable to the
- * headline composite. Returns 0 when the subset has no scorable entries.
- */
-function subsetCompositeScore(report: Report, variantKey: string, ids: Set<string>): number {
-  const entries: VariantResult[] = [];
-  for (const r of report.results) {
-    if (!ids.has(r.sample_id)) continue;
-    const v = r.variants[variantKey];
-    if (v) entries.push(v);
-  }
-  if (entries.length === 0) return 0;
-  return buildVariantSummary(entries).avgCompositeScore ?? 0;
 }
 
 /**

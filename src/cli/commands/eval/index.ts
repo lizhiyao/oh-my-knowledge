@@ -242,6 +242,13 @@ async function runEval(
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
+  const holdoutRatioRaw = values['holdout-ratio'] as string | undefined;
+  const parsedHoldoutRatio = holdoutRatioRaw !== undefined ? Number(holdoutRatioRaw) : (evalConfig?.holdoutRatio ?? 0);
+  if (holdoutRatioRaw !== undefined && (!Number.isFinite(parsedHoldoutRatio) || parsedHoldoutRatio <= 0 || parsedHoldoutRatio >= 1)) {
+    process.stderr.write(tCli('cli.run.invalid_holdout_ratio', lang, { value: holdoutRatioRaw }));
+  }
+  if (parsedHoldoutRatio > 0 && parsedHoldoutRatio < 1) config.holdoutRatio = parsedHoldoutRatio;
+
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
   const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : (evalConfig?.judgeRepeat ?? 1);
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
@@ -537,6 +544,13 @@ export default class Eval extends BaseCommand {
     repeat: Flags.string({
       description: bilingual({ zh: '每个 sample 重复跑 N 次', en: 'Repeat each sample N times' }),
       parse: integerStringParser('--repeat', { min: 1 }),
+    }),
+    'holdout-ratio': Flags.string({
+      description: bilingual({
+        zh: '留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合',
+        en: 'Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting',
+      }),
+      parse: numberStringParser('--holdout-ratio', { min: 0, max: 1 }),
     }),
     'judge-repeat': Flags.string({
       description: bilingual({ zh: '每个 dim 评 N 次', en: 'Judge each dim N times' }),

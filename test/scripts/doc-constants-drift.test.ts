@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BOOTSTRAP_SAMPLES, DEFAULT_BOOTSTRAP_ALPHA } from '../../src/eval-core/bootstrap.js';
 import { DEFAULT_SATURATION_WINDOW_SIZE, DEFAULT_CI_WIDTH_SHRINK_THRESHOLD } from '../../src/analysis/saturation.js';
-import { UNDERPOWERED_MIN_SAMPLES, STABILITY_UNSTABLE_CV, DEFAULT_GATE_THRESHOLD, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON } from '../../src/eval-core/verdict.js';
+import { UNDERPOWERED_MIN_SAMPLES, STABILITY_UNSTABLE_CV, DEFAULT_GATE_THRESHOLD, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, OVERFITTING_GAP_THRESHOLD } from '../../src/eval-core/verdict.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -157,6 +157,19 @@ const CHECKS: Check[] = [
     file: 'docs/zh/specs/scoring.md',
     pattern: /强分歧 Pearson < (\d+\.\d+)/,
     expected: ENSEMBLE_DISSENT_PEARSON,
+  },
+  // 过拟合门控阈值:train/holdout 综合分差(en + zh)
+  {
+    label: 'overfitting gap threshold (scoring en)',
+    file: 'docs/specs/scoring.md',
+    pattern: /train\/holdout composite gap above (\d+\.\d+)/,
+    expected: OVERFITTING_GAP_THRESHOLD,
+  },
+  {
+    label: 'overfitting gap threshold (scoring zh)',
+    file: 'docs/zh/specs/scoring.md',
+    pattern: /train\/holdout 综合分差超过 (\d+\.\d+)/,
+    expected: OVERFITTING_GAP_THRESHOLD,
   },
 ];
 

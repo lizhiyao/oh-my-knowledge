@@ -84,6 +84,8 @@ export interface EvaluationPipelineOptions {
   layeredStats?: boolean;
   /** 透传到 meta.request.repeat */
   repeat?: number;
+  /** 透传到 meta.request.holdoutRatio；> 0 时 report-finalize 算 train/holdout 子集综合分。 */
+  holdoutRatio?: number;
   /** 透传到 meta.request.batch */
   batch?: boolean;
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
@@ -148,6 +150,7 @@ export async function executeEvaluationPipeline({
   requires: _requires,
   layeredStats = false,
   repeat,
+  holdoutRatio,
   batch,
   judgeRepeat,
   judgeModels,
@@ -181,6 +184,7 @@ export async function executeEvaluationPipeline({
     jobStore,
     persistJob,
     repeat,
+    holdoutRatio,
     batch,
     judgeRepeat,
     judgeModels,

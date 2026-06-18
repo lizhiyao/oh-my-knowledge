@@ -275,6 +275,9 @@ export interface EvalConfig {
   // ----- v0.2: experiment-design fields (CLI flag → eval.yaml parity) -----
   /** --repeat N. Multi-run variance analysis. */
   repeat?: number;
+  /** --holdout-ratio R (0 < R < 1). Hold out a deterministic sample slice and
+   *  report train vs holdout composite as a generalization / overfitting signal. */
+  holdoutRatio?: number;
   /** --judge-repeat N. Each (sample × dimension) judged N times for self-consistency stddev. */
   judgeRepeat?: number;
   /** --bootstrap. Distribution-free CI per variant + pairwise diff. */
@@ -314,6 +317,10 @@ export interface EvaluationRequest {
   dryRun: boolean;
   /** --repeat N; 1 表示单次跑,> 1 走 runMultiple 做 variance 分析 */
   repeat?: number;
+  /** --holdout-ratio R; 0 / 缺省表示不切分(默认)。> 0 时 report-finalize 在结果上
+   *  post-hoc 切出 train / holdout 子集算综合分(`report.analysis.holdout`),供 verdict
+   *  的过拟合门控读取。see src/eval-core/holdout.ts */
+  holdoutRatio?: number;
   /** --batch; default absent/false. True means skill-batch mode. */
   batch?: boolean;
   /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */

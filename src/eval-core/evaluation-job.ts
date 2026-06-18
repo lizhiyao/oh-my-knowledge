@@ -19,6 +19,7 @@ export function buildEvaluationRequest({
   owner,
   tags,
   repeat,
+  holdoutRatio,
   batch,
   judgeRepeat,
   judgeModels,
@@ -42,6 +43,7 @@ export function buildEvaluationRequest({
   owner?: string;
   tags?: string[];
   repeat?: number;
+  holdoutRatio?: number;
   batch?: boolean;
   judgeRepeat?: number;
   judgeModels: JudgeConfig[];
@@ -66,6 +68,7 @@ export function buildEvaluationRequest({
     owner,
     tags,
     repeat,
+    holdoutRatio,
     batch,
     judgeRepeat,
     judgeModels,

@@ -16,6 +16,7 @@
 import { analyzeResults } from '../../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../../analysis/gap-analyzer.js';
+import { computeHoldoutBreakdown } from '../../eval-core/holdout.js';
 import type { Artifact, Report, Sample, VariantResult } from '../../types/index.js';
 import { computeTestSetHash } from './test-set-hash.js';
 
@@ -59,9 +60,13 @@ export function finalizeEvaluationReport({
   // Gap rate computation runs on every successful report regardless of whether
   // tool trace data is present — text-based signals (markers, hedging) still
   // apply. The samples-file SHA is the mandatory watermark required by spec §7.1.
+  // The same hash watermarks the opt-in holdout breakdown below, so it is computed
+  // once and shared (both coverage-class numbers must carry the same test-set id).
+  const holdoutRatio = report.meta?.request?.holdoutRatio ?? 0;
   const gapReports = computeReportGapRates(report.results, variantNames);
+  const needsWatermark = Object.keys(gapReports).length > 0 || holdoutRatio > 0;
+  const testSetHash = needsWatermark ? computeTestSetHash(samplesPath, samplesSourceFiles) : null;
   if (Object.keys(gapReports).length > 0) {
-    const testSetHash = computeTestSetHash(samplesPath, samplesSourceFiles);
     for (const variant of variantNames) {
       const gr = gapReports[variant];
       if (!gr) continue;
@@ -69,6 +74,17 @@ export function finalizeEvaluationReport({
       gr.testSetHash = testSetHash;
     }
     report.analysis!.gapReports = gapReports;
+  }
+
+  // Opt-in train/holdout generalization breakdown (`omk eval --holdout-ratio`).
+  // Post-hoc over report.results — never perturbs the headline composite or the
+  // bootstrap CI. A large train − holdout gap is the overfitting signal the verdict
+  // overfitting gate reads (src/eval-core/verdict.ts); absent on default runs.
+  if (holdoutRatio > 0) {
+    const holdout = computeHoldoutBreakdown(report, variantNames, holdoutRatio);
+    holdout.testSetPath = samplesPath;
+    holdout.testSetHash = testSetHash;
+    report.analysis!.holdout = holdout;
   }
 
   return report;
