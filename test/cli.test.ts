@@ -433,8 +433,10 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          // verdict 文案随 lang 本地化(判定：/ Verdict:),这里只验「打印了 verdict 行」,与语言无关。
-          assert.ok(/判定：|Verdict:/.test(e.stdout), e.stdout);
+          // 非 TTY:verdict 文案走 stderr,stdout 留作纯 report JSON。verdict 随 lang 本地化(判定：/ Verdict:)。
+          assert.ok(/判定：|Verdict:/.test(e.stderr), e.stderr);
+          const parsed = JSON.parse(e.stdout) as { kind?: unknown };
+          assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${e.stdout.slice(0, 200)}`);
           assert.ok(e.stderr.includes('omk studio'), e.stderr);
           assert.ok(e.stderr.includes(`--reports-dir ${join(dir, 'reports')}`), e.stderr);
           return true;
@@ -464,8 +466,11 @@ describe('CLI', () => {
         env: { ...process.env, HOME: dir },
         maxBuffer: 2 * 1024 * 1024,
       });
-      // verdict 文案随 lang 本地化(判定：/ Verdict:),这里只验「打印了 verdict 行」,与语言无关。
-      assert.ok(/判定：|Verdict:/.test(stdout), stdout);
+      // 回归(reviewer #290):非 TTY 下 stdout 必须是纯 report JSON,`omk eval | jq` 能直接消费;
+      // verdict 文案走 stderr,不再拼到 stdout 末尾把 JSON.parse 噎死。
+      const parsed = JSON.parse(stdout) as { kind?: unknown };
+      assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${stdout.slice(0, 200)}`);
+      assert.ok(/判定：|Verdict:/.test(stderr), stderr);
       assert.ok(stderr.includes('report-only'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -492,9 +497,12 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          assert.ok(e.stdout.includes('批量评测结论：未通过'), e.stdout);
-          assert.ok(!e.stdout.includes('Batch verdict:'), e.stdout);
-          assert.ok(e.stdout.includes('UNDERPOWERED:'), e.stdout);
+          // 非 TTY:批量结论文案走 stderr,stdout 留作纯 batch report JSON(machine 消费)。
+          const parsed = JSON.parse(e.stdout) as { kind?: unknown };
+          assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 batch report JSON:\n${e.stdout.slice(0, 200)}`);
+          assert.ok(e.stderr.includes('批量评测结论：未通过'), e.stderr);
+          assert.ok(!e.stderr.includes('Batch verdict:'), e.stderr);
+          assert.ok(e.stderr.includes('UNDERPOWERED:'), e.stderr);
           assert.ok(e.stderr.includes('omk studio'), e.stderr);
           return true;
         },

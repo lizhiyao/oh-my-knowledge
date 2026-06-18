@@ -82,10 +82,21 @@ function emitReportJson(report: unknown): void {
   }
 }
 
+/**
+ * 给人读的 verdict 文案:stdout 是 TTY 时进 stdout(交互终端没有 JSON,verdict 就是答案),
+ * 否则进 stderr —— 与 emitReportJson 配对,保证非 TTY 的 stdout 是**纯 report JSON**,
+ * `omk eval | jq` / `> report.json` 不会被末尾拼上的人类文案噎住(否则 JSON.parse 直接失败)。
+ */
+function emitVerdictText(text: string): void {
+  // 与 console.log 等价(对单个字符串 = write(text + '\n')),只切换目标流,逐字节保留既有文案。
+  const stream = process.stdout.isTTY ? process.stdout : process.stderr;
+  stream.write(text + '\n');
+}
+
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues, lang: CliLang): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
-  console.log(formatVerdictText(result, { verbose: true, lang }));
+  emitVerdictText(formatVerdictText(result, { verbose: true, lang }));
   await recordEvidenceSafely(report, result.level, values, lang);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
 }
@@ -185,13 +196,13 @@ async function emitBatchVerdict(
   const status = lang === 'zh'
     ? (failed === 0 ? '通过' : '未通过')
     : (failed === 0 ? 'PASS' : 'FAIL');
-  console.log(tCli('cli.run.batch_verdict_header', lang, {
+  emitVerdictText(tCli('cli.run.batch_verdict_header', lang, {
     status,
     passed,
     total: results.length,
   }));
   for (const result of results) {
-    console.log(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
+    emitVerdictText(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
   }
   return failed === 0 ? 0 : 1;
 }
