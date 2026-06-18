@@ -61,6 +61,9 @@ export interface RunConfig {
   retry?: number;
   resume?: string;
   layeredStats?: boolean;
+  /** --holdout-ratio R (0 < R < 1). Hold out a deterministic sample slice; report-finalize
+   *  computes train vs holdout composite (report.analysis.holdout) for the overfitting gate. */
+  holdoutRatio?: number;
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
   /** Unified judge config. Always non-empty; 1 entry = single judge, ≥ 2 = ensemble.

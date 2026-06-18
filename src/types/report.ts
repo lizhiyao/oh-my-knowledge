@@ -470,6 +470,35 @@ export interface AnalysisResult {
    *  (capability / difficulty / construct / provenance); persisted on report
    *  for studio to surface coverage gaps. See docs/specs/sample-design-spec.md. */
   sampleQuality?: SampleQualityAggregate;
+  /** Opt-in train/holdout generalization breakdown (`omk eval --holdout-ratio`).
+   *  Absent on default runs; present only when a holdout ratio was requested. */
+  holdout?: HoldoutBreakdown;
+}
+
+/** Train vs holdout composite breakdown for `omk eval --holdout-ratio`.
+ *  Computed post-hoc from `report.results` by `computeHoldoutBreakdown`
+ *  (`src/eval-core/holdout.ts`), sharing the same testSetHash watermark as
+ *  gapReports (gap-spec §7.1). A large train − holdout composite gap is the
+ *  sample-set-overfitting signal the verdict's overfitting gate reads. */
+export interface HoldoutBreakdown {
+  /** Held-out fraction requested via --holdout-ratio. */
+  ratio: number;
+  /** true when either side fell below the minimum subset size → scored full-set,
+   *  no usable split. `perVariant` is empty and the verdict gate stays inert. */
+  disabled?: boolean;
+  /** Per-variant train vs holdout composite (1-5 scale). `*Count` is the authored
+   *  split size; `*Scorable` is how many of those actually produced a composite (> 0)
+   *  — they diverge under partial errors, and the overfitting gate trusts `*Scorable`. */
+  perVariant: Record<string, {
+    trainScore: number;
+    holdoutScore: number;
+    trainCount: number;
+    holdoutCount: number;
+    trainScorable: number;
+    holdoutScorable: number;
+  }>;
+  testSetPath?: string | null;
+  testSetHash?: string | null;
 }
 
 /** Aggregated sample design coverage stats. Built by

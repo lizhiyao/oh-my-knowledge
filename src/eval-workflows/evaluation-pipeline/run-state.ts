@@ -62,6 +62,7 @@ export async function initializeEvaluationRunState({
   jobStore,
   persistJob,
   repeat,
+  holdoutRatio,
   batch,
   judgeRepeat,
   judgeModels,
@@ -89,6 +90,7 @@ export async function initializeEvaluationRunState({
   jobStore?: JobStore | null;
   persistJob?: boolean;
   repeat?: number;
+  holdoutRatio?: number;
   batch?: boolean;
   judgeRepeat?: number;
   judgeModels?: import('../../types/index.js').JudgeConfig[];
@@ -116,6 +118,7 @@ export async function initializeEvaluationRunState({
     owner,
     tags,
     repeat,
+    holdoutRatio,
     batch,
     judgeRepeat,
     judgeModels: effectiveJudges,

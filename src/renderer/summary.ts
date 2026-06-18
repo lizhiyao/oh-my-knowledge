@@ -108,6 +108,29 @@ function computeMedianCVPercent(report: Report): number | null {
   return stab ? stab.cv * 100 : null;
 }
 
+// Verdict caveats（过拟合 / 知识缺口）渲染进 pill —— 让 HTML 报告和 CLI 说同一件事:
+// CLI 在 verbose rationale 里给这两条,HTML 之前只剩一个泛化后的 level、看不到触发原因。
+// 用 result.caveats 的结构化数据 i18n,而不是重解析 zh rationale 串。
+function renderVerdictCaveats(caveats: VerdictResult['caveats'], lang: Lang): string {
+  if (!caveats) return '';
+  const lines: string[] = [];
+  if (caveats.overfitting) {
+    const c = caveats.overfitting;
+    lines.push(lang === 'zh'
+      ? `⚠ 过拟合敞口:${c.variant} 训练 ${c.trainScore.toFixed(2)} / 留出 ${c.holdoutScore.toFixed(2)}(差 ${c.gap.toFixed(2)}),提升可能不泛化`
+      : `⚠ Overfitting: ${c.variant} train ${c.trainScore.toFixed(2)} / holdout ${c.holdoutScore.toFixed(2)} (gap ${c.gap.toFixed(2)}) — gain may not generalize`);
+  }
+  if (caveats.gapSignal) {
+    const g = caveats.gapSignal;
+    const wm = g.testSetHash ? g.testSetHash.slice(0, 8) : (g.testSetPath ?? '');
+    lines.push(lang === 'zh'
+      ? `知识缺口率 ${g.gapRatePct}%(test set ${wm},informational)`
+      : `Knowledge gap ${g.gapRatePct}% (test set ${wm}, informational)`);
+  }
+  if (lines.length === 0) return '';
+  return `<div class="page-verdict-caveats">${lines.map((l) => `<span class="page-verdict-caveat">${e(l)}</span>`).join('')}</div>`;
+}
+
 export function renderVerdictPill(report: Report, lang: Lang): string {
   let result: VerdictResult;
   try {
@@ -116,8 +139,16 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
     return '';
   }
   const level = result.level;
-  const pair = result.perPair?.[0];
+  // representative = top-level worst pair（与 CLI 同口径）,不是第一对。多 treatment 报告里
+  // worst pair 不一定是 perPair[0],用它才不会把错的 treatment 名写进结论。fallback 兼容旧路径。
+  const pair = result.representative ?? result.perPair?.[0];
   const oneLine = verdictOneLine(level, lang, pair?.treatment, pair?.control);
+  // Δ/CI 证据必须跟文案指同一对:按 representative 匹配对应的 pairComparison(alpha 也走这对),
+  // 否则多 treatment 报告会出现「文案 t2、数字 t1」的混搭。匹配不到 / 无 representative 时 fallback [0]。
+  const pairComparisons = report.meta?.pairComparisons;
+  const activeComparison = (pair
+    ? pairComparisons?.find((p) => p.treatment === pair.treatment && p.control === pair.control)
+    : undefined) ?? pairComparisons?.[0];
   const tooltip = levelTooltip(level, lang);
   const prefix = lang === 'zh' ? '测评结论' : 'Verdict';
   // 机器可读 enum 永远是 level token; 显示给用户的文字按 lang i18n.
@@ -127,7 +158,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   // hero 只放「答案」: 分差是 verdict 的核心证据数字, 单独一枚 chip。
   // 评测规模 (用例数 × 轮次) 走「实验配置」section 的 subtitle 那条 canonical 路径,
   // 不在 hero 里重复; CV / CI 走 chip tooltip + 方法学审计 / 波动表。
-  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const ci = activeComparison?.diffBootstrapCI;
   const cvPct = computeMedianCVPercent(report);
 
   const metrics: Array<{ label: string; value: string; tip?: string }> = [];
@@ -136,7 +167,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
     const cvSuffix = cvPct != null
       ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? 'moderate' : 'unstable'})`)
       : '';
-    const pctLabel = ciLevelLabel(report.meta?.pairComparisons?.[0]?.alpha);
+    const pctLabel = ciLevelLabel(activeComparison?.alpha);
     const ciTipBase = lang === 'zh'
       ? `实验组与对照组综合分均值差(Δ)。bootstrap ${pctLabel} 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
       : `Treatment minus control mean composite score (Δ). Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
@@ -158,6 +189,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
       <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>${e(levelDisplay)}</span>
       <span class="page-verdict-text">${e(oneLine)}</span>
     </div>
+    ${renderVerdictCaveats(result.caveats, lang)}
     ${metricChips ? `<div class="page-verdict-metrics">${metricChips}</div>` : ''}
   </section>`;
 }

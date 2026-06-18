@@ -479,6 +479,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <span class="page-verdict-text">v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold</span>
     </div>
 
+
   </section>
     <h2 style="display:flex;align-items:center;gap:4px">Six-Dimension Comparison <button type="button" class="hint-btn" onclick="openModal('guide-six-dims')" aria-label="How to read these six dimensions?" aria-haspopup="dialog">?</button></h2>
     <div id="guide-six-dims" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-six-dims-title" onclick="if(event.target===this)closeModal('guide-six-dims')">
@@ -1622,6 +1623,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>略微进步</span>
       <span class="page-verdict-text">v2 比 v1 略好——但建议再仔细看，差距很小或某层未达标</span>
     </div>
+
 
   </section>
     <h2 style="display:flex;align-items:center;gap:4px">六维对比 <button type="button" class="hint-btn" onclick="openModal('guide-six-dims')" aria-label="如何阅读六维对比？" aria-haspopup="dialog">?</button></h2>
