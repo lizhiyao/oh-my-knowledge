@@ -522,6 +522,28 @@ export interface SampleQualityAggregate {
   sampleCountWithDifficulty: number;
   sampleCountWithConstruct: number;
   sampleCountWithProvenance: number;
+  /** Relative-balance / skew of the sample set (derived from the distributions
+   *  above). Flags over-representation — "70% of samples are easy" — without an
+   *  external denominator. Diagnostic only; never feeds grading / judge / verdict. */
+  representativeness?: Representativeness;
+}
+
+/** Distribution skew over what the sample set declares. Pure relative balance —
+ *  there is no authored "expected" capability list to measure absolute coverage
+ *  against (capabilities are free-form strings), so this reports concentration
+ *  (dominant bucket share, 0-1) and the dominant label per dimension. */
+export interface Representativeness {
+  /** Distinct capabilities declared across the set. */
+  capabilityCount: number;
+  /** Dominant capability's share of all capability tags (0-1); 0 when none declared. */
+  capabilityConcentration: number;
+  dominantCapability?: string;
+  /** Dominant difficulty bucket's share of samples that declared a difficulty (0-1). */
+  difficultyConcentration: number;
+  dominantDifficulty?: 'easy' | 'medium' | 'hard';
+  /** Dominant construct's share of samples that declared a construct (0-1). */
+  constructConcentration: number;
+  dominantConstruct?: string;
 }
 
 // v0.2 hedging classifier 的二次判定结果。挂在 GapSignalRef.classifierVerdict 上,

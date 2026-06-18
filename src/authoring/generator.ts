@@ -492,7 +492,7 @@ async function finalizeSamples(
 const TRACE_GEN_INSTRUCTIONS = `下面给出的不是 skill，而是从生产会话 trace 中观测到的失败 / 异常信号。请为这些信号生成评测用例（eval samples），使评测能复现并守住这些失败模式——把线上真实发生过的问题沉淀成回归用例。
 
 要求：
-- 每个信号生成 1-2 条聚焦回归用例；信号若是噪声 / 证据不足 / 无法复现，跳过它，不要硬凑。
+- 按各信号标注的「占比」分配用例数：高频信号多生成、低频少生成，让用例集覆盖线上失败的真实频次分布（高占比信号 2-3 条，低占比 1 条即可）；信号若是噪声 / 证据不足 / 无法复现，跳过它，不要硬凑。
 - prompt 要还原触发该信号的场景（自然语言任务），不要直接复述证据文本。
 - 断言优先用 mock_hit / tools_called / tools_not_called / tool_input_contains 精确锚定失败步骤，再用 contains 兜底；按「原子型」配比处理（无需工作流编号步骤），除非证据明显是多步流程。
 - 不要在输出里说明判断过程，直接输出 JSON 数组。`;
@@ -502,6 +502,37 @@ type TraceSignalItem = Pick<
   'skillName' | 'signalType' | 'signalSubtype' | 'severity' | 'evidence' | 'messageWindow' | 'occurrences'
 >;
 
+export interface StratifiedTraceSignal extends TraceSignalItem {
+  /** Share of total occurrences across all signals (0-1) — drives proportional
+   *  sample allocation in the prompt. */
+  weight: number;
+}
+
+/**
+ * Rank trace signals by frequency and annotate each with its share of the total
+ * occurrences. Lets `omk sample --from-traces` allocate samples *proportional to
+ * how often a failure actually happened* instead of a flat "1-2 per signal" — a
+ * failure seen 100× deserves more regression coverage than one seen twice.
+ *
+ * Deliberately does NOT re-merge signals here. The observation inbox is the only
+ * source of these items and already aggregates `occurrences` by the FULL identity
+ * — `skillName + cwd + sourceKind + signalType + signalSubtype + evidence`
+ * (`inbox.ts` `keyFor`). Re-merging on a narrower key (e.g. type+subtype+evidence)
+ * would fold *different skills / cwd* with the same failure shape into one entry,
+ * mis-attributing the summed occurrences to the first skill and skewing the
+ * regenerated distribution. So we trust the upstream dedup and only sort + weight.
+ *
+ * Does NOT fix the underlying selection bias (traces only capture *failures*),
+ * which is why the `omk sample --from-traces` draft warning still stands — this
+ * only makes the within-failure distribution representative of frequency.
+ */
+export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceSignal[] {
+  const total = items.reduce((sum, it) => sum + (it.occurrences ?? 0), 0) || 1;
+  return items
+    .map((it) => ({ ...it, occurrences: it.occurrences ?? 0, weight: (it.occurrences ?? 0) / total }))
+    .sort((a, b) => b.occurrences - a.occurrences);
+}
+
 /**
  * Build the generation prompt for `omk sample --from-traces`. Renders each
  * observation-inbox signal (evidence + message window) into a section and asks
@@ -510,7 +541,9 @@ type TraceSignalItem = Pick<
  * judge prompt — so judge-prompt isolation is unaffected.
  */
 export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: number): string {
-  const sections = items.map((it, i) => {
+  // 先按频次分层（合并重复 + 算占比 + 降序），让模型按「占比」分配配额，而非每信号一刀切。
+  const stratified = stratifyTraceSignals(items);
+  const sections = stratified.map((it, i) => {
     const ev = it.evidence ?? {};
     const evLines = [
       ev.tool && `工具: ${ev.tool}`,
@@ -524,16 +557,17 @@ export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: n
       ? '\n上下文消息:\n' + [...it.messageWindow.before, ...it.messageWindow.event, ...it.messageWindow.after]
         .map((m) => `  [${m.role}] ${m.snippet}`).join('\n')
       : '';
-    return `### 信号 ${i + 1}：${it.signalType} / ${it.signalSubtype}（严重度 ${it.severity}，出现 ${it.occurrences} 次，skill: ${it.skillName}）\n${evLines}${win}`;
+    const pct = (it.weight * 100).toFixed(0);
+    return `### 信号 ${i + 1}：${it.signalType} / ${it.signalSubtype}（严重度 ${it.severity}，出现 ${it.occurrences} 次 · 占比 ${pct}%，skill: ${it.skillName}）\n${evLines}${win}`;
   }).join('\n\n---\n\n');
 
   const countLine = typeof count === 'number'
-    ? `共生成约 ${count} 条评测用例。`
-    : '按上面的「每个信号 1-2 条」生成。';
+    ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
+    : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
 
   return `${TRACE_GEN_INSTRUCTIONS}
 
-## 观测到的失败信号（共 ${items.length} 个）
+## 观测到的失败信号（共 ${stratified.length} 个，已按出现频次降序）
 
 ${sections}
 

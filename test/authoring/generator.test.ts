@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
+import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, stratifyTraceSignals, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
 import type { Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
@@ -52,9 +52,50 @@ describe('buildSamplesFromTracesPrompt', () => {
     assert.match(prompt, /\(无结构化证据\)/);
   });
 
-  it('honors an explicit count, else instructs 1-2 per signal', () => {
+  it('honors an explicit count, else instructs proportional-to-frequency allocation', () => {
     assert.match(buildSamplesFromTracesPrompt(items, 8), /共生成约 8 条/);
-    assert.match(buildSamplesFromTracesPrompt(items), /每个信号 1-2 条/);
+    assert.match(buildSamplesFromTracesPrompt(items), /按各信号「占比」分配/);
+    // 频次占比写进每个信号段(signal 1 出现 3 次 / 共 4 → 75%）。
+    assert.match(buildSamplesFromTracesPrompt(items), /占比 75%/);
+  });
+});
+
+describe('stratifyTraceSignals', () => {
+  it('ranks by occurrences desc and annotates each with its share of the total', () => {
+    const items = [
+      { skillName: 's', signalType: 'hedging', signalSubtype: 'uncertain', severity: 'low', occurrences: 1, evidence: {} },
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 3, evidence: { tool: 'Grep' } },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    const out = stratifyTraceSignals(items);
+    assert.equal(out[0].signalType, 'failed_search'); // 高频在前
+    assert.equal(out[0].occurrences, 3);
+    assert.equal(Number(out[0].weight.toFixed(2)), 0.75);
+    assert.equal(Number(out[1].weight.toFixed(2)), 0.25);
+  });
+
+  it('does NOT re-merge same-shape signals from different skills (inbox already deduped by skill+cwd)', () => {
+    // 同 type/subtype/evidence 但不同 skill —— inbox 已按 skill+cwd 分开聚合,这里不能再揉成一条,
+    // 否则跨 skill 的 occurrences 会被错误归因到第一个 skill 上。
+    const items = [
+      { skillName: 'skill-a', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { tool: 'Grep', query: 'x' } },
+      { skillName: 'skill-b', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 5, evidence: { tool: 'Grep', query: 'x' } },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    const out = stratifyTraceSignals(items);
+    assert.equal(out.length, 2);
+    // 各自保留自己的 skill 与 occurrences,不串台。
+    assert.equal(out[0].skillName, 'skill-b'); // 高频在前
+    assert.equal(out[0].occurrences, 5);
+    assert.equal(out[1].skillName, 'skill-a');
+    assert.equal(out[1].occurrences, 2);
+    assert.equal(Number(out[0].weight.toFixed(3)), 0.714);
+  });
+
+  it('does not mutate the caller input', () => {
+    const items = [
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 3, evidence: {} },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    stratifyTraceSignals(items);
+    assert.equal((items[0] as { weight?: number }).weight, undefined);
   });
 });
 

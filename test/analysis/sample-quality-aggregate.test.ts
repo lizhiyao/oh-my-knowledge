@@ -123,3 +123,53 @@ describe('analyzeResults — sampleQuality wiring', () => {
     assert.equal(result.sampleQuality!.constructDistribution.capability, 1);
   });
 });
+
+describe('buildRepresentativeness', () => {
+  const mk = (sample_id: string, difficulty: Sample['difficulty'], capability: string[], construct?: string): Sample =>
+    ({ sample_id, prompt: 'p', difficulty, capability, ...(construct ? { construct } : {}) });
+
+  it('空 sample → 全 0,无 dominant', () => {
+    const rep = buildSampleQualityAggregate([]).representativeness!;
+    assert.equal(rep.capabilityCount, 0);
+    assert.equal(rep.capabilityConcentration, 0);
+    assert.equal(rep.difficultyConcentration, 0);
+    assert.equal(rep.dominantDifficulty, undefined);
+    assert.equal(rep.dominantCapability, undefined);
+  });
+
+  it('难度集中度 = dominant 已声明桶占比（unspecified 不计入分母）', () => {
+    // 7 easy / 2 medium / 1 hard + 2 未声明 → 已声明 10,dominant easy = 0.7。
+    const samples: Sample[] = [
+      ...Array.from({ length: 7 }, (_, i) => mk(`e${i}`, 'easy', ['a'])),
+      ...Array.from({ length: 2 }, (_, i) => mk(`m${i}`, 'medium', ['a'])),
+      mk('h0', 'hard', ['a']),
+      { sample_id: 'u0', prompt: 'p', capability: ['a'] },
+      { sample_id: 'u1', prompt: 'p', capability: ['a'] },
+    ];
+    const rep = buildSampleQualityAggregate(samples).representativeness!;
+    assert.equal(rep.dominantDifficulty, 'easy');
+    assert.equal(Number(rep.difficultyConcentration.toFixed(2)), 0.7);
+  });
+
+  it('能力集中度 = dominant 标签占全部标签的比例,capabilityCount = 去重后数量', () => {
+    const samples: Sample[] = [
+      ...Array.from({ length: 8 }, (_, i) => mk(`x${i}`, 'easy', ['common'])),
+      ...Array.from({ length: 2 }, (_, i) => mk(`y${i}`, 'easy', ['rare'])),
+    ];
+    const rep = buildSampleQualityAggregate(samples).representativeness!;
+    assert.equal(rep.capabilityCount, 2);
+    assert.equal(rep.dominantCapability, 'common');
+    assert.equal(Number(rep.capabilityConcentration.toFixed(2)), 0.8);
+  });
+
+  it('construct 集中度排除 unspecified', () => {
+    const samples: Sample[] = [
+      mk('a', 'easy', ['c'], 'necessity'),
+      mk('b', 'easy', ['c'], 'necessity'),
+      mk('c', 'easy', ['c']), // 无 construct → unspecified,不进分母
+    ];
+    const rep = buildSampleQualityAggregate(samples).representativeness!;
+    assert.equal(rep.dominantConstruct, 'necessity');
+    assert.equal(rep.constructConcentration, 1); // 2/2 declared
+  });
+});

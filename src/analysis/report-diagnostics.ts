@@ -2,7 +2,7 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
+import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Representativeness, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
 import { analyzeJudgeIndependence } from '../eval-core/judge-independence.js';
 
@@ -172,7 +172,7 @@ export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAgg
     }
   }
 
-  return {
+  const aggregate: SampleQualityAggregate = {
     capabilityCoverage,
     difficultyDistribution,
     constructDistribution,
@@ -182,6 +182,57 @@ export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAgg
     sampleCountWithDifficulty: withDifficulty,
     sampleCountWithConstruct: withConstruct,
     sampleCountWithProvenance: withProvenance,
+  };
+  aggregate.representativeness = buildRepresentativeness(aggregate);
+  return aggregate;
+}
+
+/** Largest entry of a `label → count` map, as `[label, share]` over a given total.
+ *  Returns `[undefined, 0]` when the map is empty or total ≤ 0. */
+function dominantShare(counts: Record<string, number>, total: number): [string | undefined, number] {
+  let label: string | undefined;
+  let max = 0;
+  for (const [k, v] of Object.entries(counts)) {
+    if (v > max) { max = v; label = k; }
+  }
+  return total > 0 ? [label, max / total] : [undefined, 0];
+}
+
+/**
+ * Relative-balance / skew of the sample set. Pure function of the aggregate's
+ * distributions — no external "expected" denominator exists (capabilities are
+ * free-form), so it reports concentration (dominant bucket share) + the dominant
+ * label per dimension, not absolute coverage. Diagnostic only.
+ */
+export function buildRepresentativeness(aggregate: SampleQualityAggregate): Representativeness {
+  const capTotal = Object.values(aggregate.capabilityCoverage).reduce((a, b) => a + b, 0);
+  const [dominantCapability, capabilityConcentration] = dominantShare(aggregate.capabilityCoverage, capTotal);
+
+  // difficulty / construct concentration over *declared* samples only — `unspecified`
+  // is "didn't say", not a bucket the set is skewed toward.
+  const declaredDifficulty: Record<string, number> = {
+    easy: aggregate.difficultyDistribution.easy,
+    medium: aggregate.difficultyDistribution.medium,
+    hard: aggregate.difficultyDistribution.hard,
+  };
+  const diffTotal = declaredDifficulty.easy + declaredDifficulty.medium + declaredDifficulty.hard;
+  const [dominantDifficulty, difficultyConcentration] = dominantShare(declaredDifficulty, diffTotal);
+
+  const declaredConstruct: Record<string, number> = {};
+  for (const [k, v] of Object.entries(aggregate.constructDistribution)) {
+    if (k !== 'unspecified') declaredConstruct[k] = v;
+  }
+  const consTotal = Object.values(declaredConstruct).reduce((a, b) => a + b, 0);
+  const [dominantConstruct, constructConcentration] = dominantShare(declaredConstruct, consTotal);
+
+  return {
+    capabilityCount: Object.keys(aggregate.capabilityCoverage).length,
+    capabilityConcentration,
+    ...(dominantCapability ? { dominantCapability } : {}),
+    difficultyConcentration,
+    ...(dominantDifficulty ? { dominantDifficulty: dominantDifficulty as 'easy' | 'medium' | 'hard' } : {}),
+    constructConcentration,
+    ...(dominantConstruct ? { dominantConstruct } : {}),
   };
 }
 
@@ -419,12 +470,45 @@ export function generateAnalysisSummary(report: Report, lang: Lang = 'zh'): stri
       : `【Synthesis】${synthesis.join('; ')}.`);
   }
 
+  // ── Sample-composition skew ── flags over-representation ("70% are easy") so the
+  // reader knows the set may not be representative of the real task distribution.
+  // Diagnostic only — never gates the verdict. N≥10 guard mirrors capability_thin.
+  const rep = report.analysis?.sampleQuality?.representativeness;
+  const sampleCount = report.meta?.sampleCount ?? 0;
+  if (rep && sampleCount >= 10) {
+    const skews: string[] = [];
+    if (rep.difficultyConcentration > SKEW_CONCENTRATION_BAND && rep.dominantDifficulty) {
+      skews.push(lang === 'zh'
+        ? `难度 ${(rep.difficultyConcentration * 100).toFixed(0)}% 集中在 ${rep.dominantDifficulty}`
+        : `${(rep.difficultyConcentration * 100).toFixed(0)}% of declared difficulty is ${rep.dominantDifficulty}`);
+    }
+    if (rep.capabilityConcentration > SKEW_CONCENTRATION_BAND && rep.dominantCapability) {
+      skews.push(lang === 'zh'
+        ? `能力标签 ${(rep.capabilityConcentration * 100).toFixed(0)}% 集中在 ${rep.dominantCapability}`
+        : `${(rep.capabilityConcentration * 100).toFixed(0)}% of capability tags are ${rep.dominantCapability}`);
+    }
+    if (rep.constructConcentration > SKEW_CONCENTRATION_BAND && rep.dominantConstruct) {
+      skews.push(lang === 'zh'
+        ? `construct ${(rep.constructConcentration * 100).toFixed(0)}% 集中在 ${rep.dominantConstruct}`
+        : `${(rep.constructConcentration * 100).toFixed(0)}% of declared construct is ${rep.dominantConstruct}`);
+    }
+    if (skews.length > 0) {
+      lines.push(lang === 'zh'
+        ? `【用例构成】偏斜：${skews.join('；')}——补充其它维度可提升代表性（构成提示，不影响 verdict）。`
+        : `【Sample composition】Skewed: ${skews.join('; ')} — adding other dimensions improves representativeness (informational; does not affect the verdict).`);
+    }
+  }
+
   // Caveats and recommendations are handled by the issues table below,
   // so the summary focuses only on verdict + differentiators + synthesis.
 
   if (lines.length === 0) return undefined;
   return lines.join('\n');
 }
+
+/** Dominant-bucket share above which the sample set is flagged as skewed. Pragmatic
+ *  default — 60% of declared samples in one bucket is a clear over-representation. */
+const SKEW_CONCENTRATION_BAND = 0.6;
 
 const AGENT_ASSERTION_TYPES = new Set([
   'tools_called',
