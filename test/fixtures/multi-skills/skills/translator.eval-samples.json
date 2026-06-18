@@ -6,7 +6,7 @@
     "rubric": "翻译应准确自然，使用地道英语表达",
     "assertions": [
       { "type": "regex", "pattern": "user experience|UX", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "Chinese text", "weight": 0.5 }
+      { "type": "not_contains", "value": "untranslated", "weight": 0.5 }
     ]
   },
   {

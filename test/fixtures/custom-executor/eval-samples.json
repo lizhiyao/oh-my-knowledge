@@ -1,9 +1,9 @@
 [
   {
     "sample_id": "s001",
-    "prompt": "What is 2 + 2?",
+    "prompt": "What is two plus two?",
     "assertions": [
-      { "type": "contains", "value": "4", "weight": 1 }
+      { "type": "contains", "value": "four", "weight": 1 }
     ]
   },
   {

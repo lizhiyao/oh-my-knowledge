@@ -8,7 +8,7 @@
       { "type": "contains", "value": "SQL", "weight": 1 },
       { "type": "contains", "value": "injection", "weight": 1 },
       { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "looks good", "weight": 1 }
+      { "type": "not_contains", "value": "lgtm", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别核心安全风险",
@@ -26,7 +26,7 @@
     "context": "async function fetchData(url) {\n  const res = await fetch(url);\n  const data = await res.json();\n  return data;\n}",
     "rubric": "优秀答案应指出缺少网络异常处理、HTTP 状态码检查和 JSON 解析失败处理，并给出 try/catch 或错误分支建议。",
     "assertions": [
-      { "type": "contains", "value": "error handling", "weight": 1 },
+      { "type": "contains", "value": "handling", "weight": 1 },
       { "type": "regex", "pattern": "try[\\s\\S]*catch|catch|exception|error", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "status|ok|HTTP", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "JSON|json", "flags": "i", "weight": 0.5 }
@@ -50,7 +50,7 @@
       { "type": "contains", "value": "XSS", "weight": 1 },
       { "type": "contains", "value": "innerHTML", "weight": 0.5 },
       { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "safe as-is", "weight": 0.5 }
+      { "type": "not_contains", "value": "harmless", "weight": 0.5 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别 XSS",
