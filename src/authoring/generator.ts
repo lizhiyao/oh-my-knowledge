@@ -515,7 +515,9 @@ export interface StratifiedTraceSignal extends TraceSignalItem {
  * often a failure actually happened* instead of a flat "1-2 per signal" — a
  * failure seen 100× deserves more regression coverage than one seen twice. The
  * observation inbox already dedups upstream, so the merge here is a defensive
- * no-op in the normal path; it only matters if a caller passes raw items.
+ * no-op in the normal path; it only matters if a caller passes raw items. On a
+ * collision only `occurrences` is summed — the first item's severity / skillName /
+ * messageWindow win (fine for the deduped inbox path, where collisions are exact).
  *
  * Does NOT fix the underlying selection bias (traces only capture *failures*),
  * which is why the `omk sample --from-traces` draft warning still stands — this
@@ -547,7 +549,7 @@ export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceS
  * judge prompt — so judge-prompt isolation is unaffected.
  */
 export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: number): string {
-  // 先按频次分层(合并重复 + 算占比 + 降序),让模型按「占比」分配配额,而非每信号一刀切。
+  // 先按频次分层（合并重复 + 算占比 + 降序），让模型按「占比」分配配额，而非每信号一刀切。
   const stratified = stratifyTraceSignals(items);
   const sections = stratified.map((it, i) => {
     const ev = it.evidence ?? {};
@@ -568,8 +570,8 @@ export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: n
   }).join('\n\n---\n\n');
 
   const countLine = typeof count === 'number'
-    ? `共生成约 ${count} 条评测用例,按各信号的「占比」分配配额(高频多、低频少),覆盖整体失败分布。`
-    : '按各信号「占比」分配:高频信号多生成、低频少生成,覆盖整体失败分布。';
+    ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
+    : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
 
   return `${TRACE_GEN_INSTRUCTIONS}
 
