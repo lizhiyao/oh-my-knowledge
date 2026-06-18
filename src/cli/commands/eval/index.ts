@@ -71,10 +71,21 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
   return 0;
 }
 
+/**
+ * 完整 report JSON 是**机器输出**:重定向 / 管道(`omk eval > r.json`、`| jq`)时吐到 stdout 供下游消费。
+ * 交互式 TTY 下报告已存盘、(默认)还起了 report server,再刷上千行 JSON 只会把 verdict 淹没在屏幕外 ——
+ * 故只在非 TTY(stdout 被重定向 / 管道)时 dump。dry-run 的 JSON 是用户显式索取的产物,不走此门控。
+ */
+function emitReportJson(report: unknown): void {
+  if (!process.stdout.isTTY) {
+    console.log(JSON.stringify(report, null, 2));
+  }
+}
+
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues, lang: CliLang): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
-  console.log(formatVerdictText(result, { verbose: true }));
+  console.log(formatVerdictText(result, { verbose: true, lang }));
   await recordEvidenceSafely(report, result.level, values, lang);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
 }
@@ -309,11 +320,12 @@ async function runEval(
           }
         },
       }) as { report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null };
-      console.log(JSON.stringify(report, null, 2));
       if (isDryRunBatchReport(report)) {
+        console.log(JSON.stringify(report, null, 2));
         console.log(tCli('cli.run.dry_run_no_scores', lang));
         throw new CliExit(0);
       }
+      emitReportJson(report);
       if (filePath) {
         await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
       }
@@ -372,7 +384,7 @@ async function runEval(
       }
     }
 
-    console.log(JSON.stringify(report, null, 2));
+    emitReportJson(report);
     if (filePath) {
       await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
     }

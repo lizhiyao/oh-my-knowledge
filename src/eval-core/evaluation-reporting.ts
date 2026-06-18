@@ -85,10 +85,14 @@ export function getCliVersion(): string {
 }
 
 export function getGitInfo(): GitInfo | null {
+  // stdio 静默 stderr:在非 git 目录(如 omk init 出来的 demo)里 rev-parse 会打印
+  // `fatal: not a git repository` 到终端。catch 已把失败兜成 null(报告省略 git 信息),
+  // 这条 fatal 对用户是纯噪声,吞掉它。与 skill-loader 的 GIT_PROBE_STDIO 同口径。
+  const gitProbeStdio: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore'];
   try {
-    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
-    const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf-8' }).trim().length > 0;
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim();
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim();
+    const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim().length > 0;
     return { commit, commitShort: commit.slice(0, 7), branch, dirty };
   } catch {
     return null;

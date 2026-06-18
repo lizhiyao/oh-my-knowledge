@@ -14,17 +14,21 @@ const INIT_OMK_GITIGNORE = `# omk 测量 bulk + doctor --fix 备份(项目本地
 /backups/
 `;
 
+// 脚手架用例必须过 omk 自身的断言合规校验(load-samples.ts Rule A),否则新用户照
+// 快速开始跑的第一条 omk eval 会直接硬报错。约束:contains / not_contains 的 value
+// 只能是单个 ASCII token(长度 [2,40]、无内部空白、无 CJK);多词 / 中文语义匹配一律
+// 走 rubric 交评委判;regex pattern 不能含 CJK。改这里前先跑 `omk eval --dry-run`
+// (非 lenient 合规 oracle)与 test/cli/init-scaffold-conformance 回归测试。
 const INIT_SAMPLES = `[
   {
     "sample_id": "s001",
     "prompt": "审查以下代码",
     "context": "function authenticate(username, password) {\\n  const query = \`SELECT * FROM users WHERE name='\${username}' AND pass='\${password}'\`;\\n  return db.execute(query);\\n}",
-    "rubric": "应识别 SQL 注入风险，建议使用参数化查询",
+    "rubric": "应识别 SQL 注入风险，建议使用参数化查询；不应把这段代码判为安全无问题。",
     "assertions": [
       { "type": "contains", "value": "SQL", "weight": 1 },
       { "type": "contains", "value": "injection", "weight": 1 },
-      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 0.5 },
-      { "type": "not_contains", "value": "looks good", "weight": 0.5 }
+      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 0.5 }
     ],
     "dimensions": {
       "security": "是否准确识别出 SQL 注入漏洞并说明其危害",
@@ -37,8 +41,7 @@ const INIT_SAMPLES = `[
     "context": "async function fetchData(url) {\\n  const res = await fetch(url);\\n  const data = await res.json();\\n  return data;\\n}",
     "rubric": "应指出缺少错误处理（网络异常、非 JSON 响应、HTTP 错误状态码）",
     "assertions": [
-      { "type": "contains", "value": "error handling", "weight": 1 },
-      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|exception|error", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|catch|exception|error", "flags": "i", "weight": 1 },
       { "type": "contains", "value": "status", "weight": 0.5 }
     ],
     "dimensions": {
@@ -165,9 +168,9 @@ export default class Init extends BaseCommand {
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log('');
       console.log(tCli('cli.init.next_steps_title', lang));
-      console.log(tCli('cli.init.next_step_edit_samples', lang));
-      console.log(tCli('cli.init.next_step_edit_skills', lang));
       console.log(tCli('cli.init.next_step_run', lang));
+      console.log(tCli('cli.init.next_step_executor', lang));
+      console.log(tCli('cli.init.next_step_customize', lang));
       console.log(tCli('cli.init.note_codex_executor', lang));
     });
   }

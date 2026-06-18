@@ -433,7 +433,8 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          assert.ok(e.stdout.includes('Verdict:'), e.stdout);
+          // verdict 文案随 lang 本地化(判定：/ Verdict:),这里只验「打印了 verdict 行」,与语言无关。
+          assert.ok(/判定：|Verdict:/.test(e.stdout), e.stdout);
           assert.ok(e.stderr.includes('omk studio'), e.stderr);
           assert.ok(e.stderr.includes(`--reports-dir ${join(dir, 'reports')}`), e.stderr);
           return true;
@@ -463,7 +464,8 @@ describe('CLI', () => {
         env: { ...process.env, HOME: dir },
         maxBuffer: 2 * 1024 * 1024,
       });
-      assert.ok(stdout.includes('Verdict:'), stdout);
+      // verdict 文案随 lang 本地化(判定：/ Verdict:),这里只验「打印了 verdict 行」,与语言无关。
+      assert.ok(/判定：|Verdict:/.test(stdout), stdout);
       assert.ok(stderr.includes('report-only'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });

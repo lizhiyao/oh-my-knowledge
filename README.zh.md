@@ -23,7 +23,11 @@ omk init demo && cd demo
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-不用改任何文件 —— `omk init` 帮你脚手架两版 skill 和三条评测用例；`omk eval` 跑控制变量 A/B，5 分钟内出 HTML 报告 + 一行 verdict。
+开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件，`omk eval` 跑控制变量 A/B，约 5 分钟出 HTML 报告 + 一行 verdict；跑通后再把 skill 和用例换成你自己的。
+
+前置：默认执行器与评委用 `claude` CLI，需先安装并登录（见[系统要求](#系统要求)）；想用别的模型或离线跑（无需 API key）见[执行器](docs/zh/reference/executors.md)。
+
+> 首跑只有 3 条用例，verdict 多半是「数据不足（UNDERPOWERED）」——这是正常起点而非出错；把用例加到约 20 条以上，再看「可发布」结论。
 
 > 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
 
