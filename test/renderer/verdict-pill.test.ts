@@ -48,6 +48,9 @@ describe('renderVerdictPill', () => {
     assert.match(html, /data-verdict-level="REGRESS"/);
     assert.match(html, /t2 比/);
     assert.doesNotMatch(html, /t1 比/);
+    // Δ/CI 证据必须跟文案指同一对:representative 是 t2(Δ −0.4),不是第一对 t1(Δ +0.33)。
+    assert.match(html, /verdict-metric-value">-0\.4</);
+    assert.doesNotMatch(html, /\+0\.33/);
   });
 
   it('过拟合 + 知识缺口 caveat 渲染进 pill（HTML 与 CLI 说同一件事）', () => {

@@ -143,6 +143,12 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   // worst pair 不一定是 perPair[0],用它才不会把错的 treatment 名写进结论。fallback 兼容旧路径。
   const pair = result.representative ?? result.perPair?.[0];
   const oneLine = verdictOneLine(level, lang, pair?.treatment, pair?.control);
+  // Δ/CI 证据必须跟文案指同一对:按 representative 匹配对应的 pairComparison(alpha 也走这对),
+  // 否则多 treatment 报告会出现「文案 t2、数字 t1」的混搭。匹配不到 / 无 representative 时 fallback [0]。
+  const pairComparisons = report.meta?.pairComparisons;
+  const activeComparison = (pair
+    ? pairComparisons?.find((p) => p.treatment === pair.treatment && p.control === pair.control)
+    : undefined) ?? pairComparisons?.[0];
   const tooltip = levelTooltip(level, lang);
   const prefix = lang === 'zh' ? '测评结论' : 'Verdict';
   // 机器可读 enum 永远是 level token; 显示给用户的文字按 lang i18n.
@@ -152,7 +158,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   // hero 只放「答案」: 分差是 verdict 的核心证据数字, 单独一枚 chip。
   // 评测规模 (用例数 × 轮次) 走「实验配置」section 的 subtitle 那条 canonical 路径,
   // 不在 hero 里重复; CV / CI 走 chip tooltip + 方法学审计 / 波动表。
-  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const ci = activeComparison?.diffBootstrapCI;
   const cvPct = computeMedianCVPercent(report);
 
   const metrics: Array<{ label: string; value: string; tip?: string }> = [];
@@ -161,7 +167,7 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
     const cvSuffix = cvPct != null
       ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct <= STABILITY_UNSTABLE_CV * 100 ? 'moderate' : 'unstable'})`)
       : '';
-    const pctLabel = ciLevelLabel(report.meta?.pairComparisons?.[0]?.alpha);
+    const pctLabel = ciLevelLabel(activeComparison?.alpha);
     const ciTipBase = lang === 'zh'
       ? `实验组与对照组综合分均值差(Δ)。bootstrap ${pctLabel} 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
       : `Treatment minus control mean composite score (Δ). Bootstrap ${pctLabel} CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
