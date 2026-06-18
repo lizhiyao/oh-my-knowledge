@@ -34,9 +34,7 @@ samples:
     prompt: 根据 context 回答"M1 芯片的功耗是多少"。
     context: |
       M1 芯片是 Apple 2020 年发布的 ARM SoC,采用 5nm 工艺。
-    rubric: context 不含功耗信息,应明确告诉用户"context 未提及"而不是编造数字
+    rubric: context 不含功耗信息,应明确告诉用户"context 未提及"而不是编造数字(是否恰当拒答由评委按本 rubric 判定)
     assertions:
       - type: faithfulness
         threshold: 5  # 严格:任何编造都扣分
-      - type: contains_any
-        values: ["not mentioned", "not specified", "not included", "not in context"]

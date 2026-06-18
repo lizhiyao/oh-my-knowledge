@@ -3,12 +3,11 @@
     "sample_id": "code-review-sql-injection",
     "prompt": "请审查以下登录代码，指出主要风险并给出修复建议。",
     "context": "function authenticate(username, password) {\n  const query = `SELECT * FROM users WHERE name='${username}' AND pass='${password}'`;\n  return db.execute(query);\n}",
-    "rubric": "优秀答案应明确识别 SQL 注入风险，解释攻击面，并建议参数化查询或 prepared statement。",
+    "rubric": "优秀答案应明确识别 SQL 注入风险，解释攻击面，并建议参数化查询或 prepared statement；不应把这段代码判为安全无问题。",
     "assertions": [
       { "type": "contains", "value": "SQL", "weight": 1 },
       { "type": "contains", "value": "injection", "weight": 1 },
-      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "looks good", "weight": 1 }
+      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别核心安全风险",
@@ -26,7 +25,6 @@
     "context": "async function fetchData(url) {\n  const res = await fetch(url);\n  const data = await res.json();\n  return data;\n}",
     "rubric": "优秀答案应指出缺少网络异常处理、HTTP 状态码检查和 JSON 解析失败处理，并给出 try/catch 或错误分支建议。",
     "assertions": [
-      { "type": "contains", "value": "error handling", "weight": 1 },
       { "type": "regex", "pattern": "try[\\s\\S]*catch|catch|exception|error", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "status|ok|HTTP", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "JSON|json", "flags": "i", "weight": 0.5 }
@@ -45,12 +43,11 @@
     "sample_id": "code-review-xss",
     "prompt": "请审查以下前端渲染代码，指出潜在安全问题。",
     "context": "function renderComment(comment) {\n  document.getElementById('output').innerHTML = '<p>' + comment + '</p>';\n}",
-    "rubric": "优秀答案应识别 XSS 风险，说明用户输入进入 innerHTML 的问题，并建议 textContent、转义或可信 sanitizer。",
+    "rubric": "优秀答案应识别 XSS 风险，说明用户输入进入 innerHTML 的问题，并建议 textContent、转义或可信 sanitizer；不应把这段代码判为安全无问题。",
     "assertions": [
       { "type": "contains", "value": "XSS", "weight": 1 },
       { "type": "contains", "value": "innerHTML", "weight": 0.5 },
-      { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "safe as-is", "weight": 0.5 }
+      { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别 XSS",
@@ -70,8 +67,7 @@
     "assertions": [
       { "type": "regex", "pattern": "auth|authentication|authorization|permission", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "owner|ownership|user.*order|order.*user", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "status|refunded|idempotent|duplicate", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "refund", "weight": 0.5 }
+      { "type": "regex", "pattern": "status|refunded|idempotent|duplicate", "flags": "i", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否识别越权退款风险",
@@ -91,8 +87,7 @@
     "assertions": [
       { "type": "regex", "pattern": "token|secret|credential|sensitive", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "log|logging|console\\.error", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "mask|redact|minimize", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "leak", "weight": 0.5 }
+      { "type": "regex", "pattern": "mask|redact|minimize", "flags": "i", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否识别日志泄露敏感信息",

@@ -1,3 +1,10 @@
+---
+name: strict-reader
+description: 控制实验 artifact：强制 pwd→Read→wc 的受控工具路径，用于 runtime-context 隔离验证
+---
+
+# Strict reader
+
 你是一个控制实验用的 artifact。严格遵守下面的执行约束：
 
 1. 只允许操作当前工作目录下的 `./skills/runtime-context-check.md`
