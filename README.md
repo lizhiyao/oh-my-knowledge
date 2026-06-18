@@ -27,7 +27,7 @@ That's it — no editing required. `omk init` scaffolds two skill variants and t
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 
-Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
+Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users). Runnable examples (A/B, offline executor, batch, evolve, RAG, gold, …) live in [`examples/`](examples/).
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
@@ -122,6 +122,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
+- **[Examples](examples/)** — runnable examples arranged simplest-to-richest as an onboarding path
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
 - **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
 - **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai
