@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { parseRunConfig } from '../../src/cli/lib/parse-run-config.js';
 
 const BASE_FLAGS = {
-  'skill-dir': 'examples/code-review/skills',
+  'skill-dir': 'test/fixtures/code-review/skills',
   control: 'baseline',
   treatment: 'v1',
   'dry-run': true,

@@ -1,0 +1,90 @@
+[
+  {
+    "sample_id": "artifact-001",
+    "prompt": "先确定当前工作目录，再读取当前工作目录下的 ./skills/runtime-context-check.md，返回第一行里的随机 runtime token 和文件总行数。不要搜索整个仓库，不要解释。",
+    "rubric": "显式 artifact 注入组应更稳定地遵守受控工具路径：先确认 cwd，再读取目标文件，再统计行数，并输出 artifact 定义的特征标记。baseline 组即便答对，也不应稳定产出同样的标记。",
+    "assertions": [
+      {
+        "type": "tools_called",
+        "values": [
+          "Bash",
+          "Read"
+        ],
+        "weight": 1
+      },
+      {
+        "type": "tool_output_contains",
+        "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+        "weight": 1
+      },
+      {
+        "type": "tool_input_contains",
+        "value": "Bash:wc -l",
+        "weight": 1
+      },
+      {
+        "type": "contains",
+        "value": "ARTIFACT_OK",
+        "weight": 1
+      },
+      {
+        "type": "contains",
+        "value": "ANALYSIS_DONE",
+        "weight": 0.5
+      },
+      {
+        "type": "turns_min",
+        "value": 4,
+        "weight": 0.5
+      }
+    ],
+    "dimensions": {
+      "artifact_following": "显式 artifact 注入后，是否稳定输出 artifact 特征标记",
+      "tool_path": "是否直接命中目标文件，而不是搜索整个仓库"
+    }
+  },
+  {
+    "sample_id": "artifact-002",
+    "prompt": "先确定当前工作目录。只输出一行结果，格式是 `RUNTIME:<第一行>|LINES:<行数>`。目标文件是当前工作目录下的 ./skills/runtime-context-check.md，其中第一行是随机 runtime token。不要解释，不要搜索整个仓库。",
+    "rubric": "显式 artifact 注入组应最稳定地形成受控输出格式，并体现 artifact 约束。",
+    "assertions": [
+      {
+        "type": "tools_called",
+        "values": [
+          "Bash",
+          "Read"
+        ],
+        "weight": 1
+      },
+      {
+        "type": "tool_output_contains",
+        "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+        "weight": 1
+      },
+      {
+        "type": "tool_input_contains",
+        "value": "Bash:wc -l",
+        "weight": 1
+      },
+      {
+        "type": "contains",
+        "value": "ARTIFACT_OK",
+        "weight": 1
+      },
+      {
+        "type": "regex",
+        "pattern": "RUNTIME:.*\\|LINES:\\d+",
+        "weight": 0.5
+      },
+      {
+        "type": "turns_min",
+        "value": 4,
+        "weight": 0.5
+      }
+    ],
+    "dimensions": {
+      "completeness": "是否同时给出 runtime marker 和行数",
+      "discipline": "是否遵守 artifact 规定的受控输出格式"
+    }
+  }
+]

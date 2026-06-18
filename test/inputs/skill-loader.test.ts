@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
-const MULTI_SKILL_DIR = join(__dirname, '..', '..', 'examples', 'multi-skills', 'skills');
+const SKILL_DIR = join(__dirname, '..', 'fixtures', 'code-review', 'skills');
+const MULTI_SKILL_DIR = join(__dirname, '..', 'fixtures', 'multi-skills', 'skills');
 
 describe('resolveArtifacts', () => {
   it('baseline 产生 kind 为 baseline 的 artifact', () => {

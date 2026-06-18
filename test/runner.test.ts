@@ -77,13 +77,13 @@ function asBatchDryRunReport(value: unknown): BatchDryRunReport {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SAMPLES_PATH = join(__dirname, '..', 'examples', 'code-review', 'eval-samples.json');
-const SKILL_DIR = join(__dirname, '..', 'examples', 'code-review', 'skills');
-const AGENT_CONTROL_DIR = join(__dirname, '..', 'examples', 'agent-eval', 'control-experiments');
-const AGENT_SKILL_DIR = join(__dirname, '..', 'examples', 'agent-eval', 'skills');
-const CUSTOM_EXECUTOR_SAMPLES = join(__dirname, '..', 'examples', 'custom-executor', 'eval-samples.json');
-const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, '..', 'examples', 'custom-executor', 'skills');
-const CUSTOM_EXECUTOR_PATH = join(__dirname, '..', 'examples', 'custom-executor', 'echo-executor.sh');
+const SAMPLES_PATH = join(__dirname, 'fixtures', 'code-review', 'eval-samples.json');
+const SKILL_DIR = join(__dirname, 'fixtures', 'code-review', 'skills');
+const AGENT_CONTROL_DIR = join(__dirname, 'fixtures', 'agent-eval', 'control-experiments');
+const AGENT_SKILL_DIR = join(__dirname, 'fixtures', 'agent-eval', 'skills');
+const CUSTOM_EXECUTOR_SAMPLES = join(__dirname, 'fixtures', 'custom-executor', 'eval-samples.json');
+const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, 'fixtures', 'custom-executor', 'skills');
+const CUSTOM_EXECUTOR_PATH = join(__dirname, 'fixtures', 'custom-executor', 'echo-executor.sh');
 
 let stderrCapture: CapturedStderr;
 
@@ -267,8 +267,8 @@ describe('runEvaluation', () => {
   });
 
   it('loads SKILL.md from subdirectories', async () => {
-    const classifierSamples = join(__dirname, '..', 'examples', 'multi-skills', 'skills', 'classifier', 'eval-samples.json');
-    const multiSkillsDir = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+    const classifierSamples = join(__dirname, 'fixtures', 'multi-skills', 'skills', 'classifier', 'eval-samples.json');
+    const multiSkillsDir = join(__dirname, 'fixtures', 'multi-skills', 'skills');
     const result = await runEvaluation({
       samplesPath: classifierSamples,
       skillDir: multiSkillsDir,
@@ -366,7 +366,7 @@ describe('discoverVariants', () => {
   });
 
   it('discovers subdirectories with SKILL.md', () => {
-    const multiSkillsDir = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+    const multiSkillsDir = join(__dirname, 'fixtures', 'multi-skills', 'skills');
     const variants = discoverVariants(multiSkillsDir);
     assert.ok(variants.includes('classifier'));
   });
@@ -433,9 +433,9 @@ describe('baseline variant', () => {
 
 describe('generateRunId', () => {
   it('sanitizes file-path variants for filesystem-safe ids', () => {
-    const runId = generateRunId(['baseline', 'examples/agent-eval/skills/v1.md@examples/code-review']);
+    const runId = generateRunId(['baseline', 'fixtures/agent-eval/skills/v1.md@fixtures/code-review']);
     assert.doesNotMatch(runId, /[\\/]/);
-    assert.match(runId, /examples-agent-eval-skills-v1\.md@examples-code-review/);
+    assert.match(runId, /fixtures-agent-eval-skills-v1\.md@fixtures-code-review/);
   });
 });
 
@@ -514,7 +514,7 @@ describe('file path variant', () => {
 });
 
 describe('discoverBatchSkills', () => {
-  const MULTI_SKILLS_DIR = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+  const MULTI_SKILLS_DIR = join(__dirname, 'fixtures', 'multi-skills', 'skills');
 
   it('discovers skills with paired eval-samples', () => {
     const skills = discoverBatchSkills(MULTI_SKILLS_DIR);
@@ -562,7 +562,7 @@ describe('discoverBatchSkills', () => {
 });
 
 describe('runBatchEvaluation', () => {
-  const MULTI_SKILLS_DIR = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+  const MULTI_SKILLS_DIR = join(__dirname, 'fixtures', 'multi-skills', 'skills');
 
   it('dry-run: returns correct structure', async () => {
     const result = await runBatchEvaluation({

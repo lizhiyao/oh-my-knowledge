@@ -28,11 +28,11 @@ interface ExecError extends Error {
 const CASES: Array<{ name: string; argv: string[] }> = [
   {
     name: 'eval',
-    argv: ['eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run'],
+    argv: ['eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run'],
   },
   {
     name: 'evolve',
-    argv: ['evolve', 'examples/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
+    argv: ['evolve', 'test/fixtures/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
   },
 ];
 
@@ -65,7 +65,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
   it('omk evolve 拒绝多评委时,error 用新命令名而非旧 improve skill', async () => {
     await assert.rejects(
       () => execFileAsync('node', [
-        CLI, 'evolve', 'examples/code-review/skills/v1.md',
+        CLI, 'evolve', 'test/fixtures/code-review/skills/v1.md',
         '--rounds', '1', '--skip-connectivity',
         '--judge-models', 'claude:haiku,claude:sonnet',
       ]),
@@ -87,7 +87,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', ':haiku']),
+      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run', '--judge-models', ':haiku']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -100,7 +100,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models "" (empty) exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', '']),
+      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'test/fixtures/code-review/skills', '--dry-run', '--judge-models', '']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);

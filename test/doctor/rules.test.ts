@@ -60,8 +60,8 @@ describe('skillReadableRule', () => {
     assert.ok(r.message.includes('2'));
   });
 
-  it('passes for examples/code-review/skills/v1.md style 28-char skill', async () => {
-    // 实测 examples/code-review/skills/v1.md 是单行 28 字符的 skill,必须 pass
+  it('passes for a single-line 28-char skill', async () => {
+    // 单行 28 字符的最小 skill(典型的最简代码审查 prompt)必须 pass
     const r = await skillReadableRule.check(ctxWith(sampleSkill({
       content: '你是一个代码审查助手。请审查用户提供的代码,指出潜在问题。',
     })));

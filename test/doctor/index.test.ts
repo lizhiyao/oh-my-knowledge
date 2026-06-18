@@ -10,7 +10,7 @@ import type { Artifact } from '../../src/types/index.js';
 import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/types/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXAMPLE_SKILLS_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
+const EXAMPLE_SKILLS_DIR = join(__dirname, '..', 'fixtures', 'code-review', 'skills');
 
 const passingRule: DoctorRule = {
   id: 'test_pass',

@@ -13,7 +13,7 @@ import { globalReportsDir, projectReportsDir } from '../../src/eval-core/measure
 import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
 
 const BASE_FLAGS = {
-  'skill-dir': 'examples/code-review/skills',
+  'skill-dir': 'test/fixtures/code-review/skills',
   control: 'baseline',
   treatment: 'v1',
   'dry-run': true,
