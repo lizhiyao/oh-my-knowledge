@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
+import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, stratifyTraceSignals, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
 import type { Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
@@ -52,9 +52,44 @@ describe('buildSamplesFromTracesPrompt', () => {
     assert.match(prompt, /\(无结构化证据\)/);
   });
 
-  it('honors an explicit count, else instructs 1-2 per signal', () => {
+  it('honors an explicit count, else instructs proportional-to-frequency allocation', () => {
     assert.match(buildSamplesFromTracesPrompt(items, 8), /共生成约 8 条/);
-    assert.match(buildSamplesFromTracesPrompt(items), /每个信号 1-2 条/);
+    assert.match(buildSamplesFromTracesPrompt(items), /按各信号「占比」分配/);
+    // 频次占比写进每个信号段(signal 1 出现 3 次 / 共 4 → 75%）。
+    assert.match(buildSamplesFromTracesPrompt(items), /占比 75%/);
+  });
+});
+
+describe('stratifyTraceSignals', () => {
+  it('ranks by occurrences desc and annotates each with its share of the total', () => {
+    const items = [
+      { skillName: 's', signalType: 'hedging', signalSubtype: 'uncertain', severity: 'low', occurrences: 1, evidence: {} },
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 3, evidence: { tool: 'Grep' } },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    const out = stratifyTraceSignals(items);
+    assert.equal(out[0].signalType, 'failed_search'); // 高频在前
+    assert.equal(out[0].occurrences, 3);
+    assert.equal(Number(out[0].weight.toFixed(2)), 0.75);
+    assert.equal(Number(out[1].weight.toFixed(2)), 0.25);
+  });
+
+  it('merges byte-identical signals (same type/subtype/evidence), summing occurrences', () => {
+    const items = [
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { tool: 'Grep', query: 'x' } },
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 5, evidence: { tool: 'Grep', query: 'x' } },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    const out = stratifyTraceSignals(items);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].occurrences, 7);
+    assert.equal(out[0].weight, 1);
+  });
+
+  it('keeps distinct evidence separate (does not over-cluster by type/subtype alone)', () => {
+    const items = [
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { query: 'a' } },
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { query: 'b' } },
+    ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
+    assert.equal(stratifyTraceSignals(items).length, 2);
   });
 });
 

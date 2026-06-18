@@ -181,4 +181,35 @@ describe('analyzeResults', () => {
     assert.ok(zh?.includes('【结论】'));
     assert.ok(zh?.includes('关键差异'));
   });
+
+  it('surfaces sample-composition skew when N≥10 and a bucket dominates', () => {
+    const base = {
+      meta: {
+        variants: ['v1', 'v2'], sampleCount: 12,
+        variantConfigs: [{ variant: 'v1', experimentRole: 'control' }, { variant: 'v2', experimentRole: 'treatment' }],
+      },
+      summary: {
+        v1: { avgCompositeScore: 4.0, avgFactScore: 4.0, avgCostPerSample: 0.01, avgDurationMs: 1000, avgNumTurns: 1, successCount: 1, totalSamples: 1 },
+        v2: { avgCompositeScore: 4.5, avgFactScore: 4.5, avgCostPerSample: 0.02, avgDurationMs: 1200, avgNumTurns: 1, successCount: 1, totalSamples: 1 },
+      },
+      results: [{ sample_id: 's001', variants: { v1: { compositeScore: 4.0 }, v2: { compositeScore: 4.5 } } }],
+      analysis: {
+        insights: [],
+        sampleQuality: {
+          representativeness: { capabilityCount: 1, capabilityConcentration: 0.5, difficultyConcentration: 0.7, dominantDifficulty: 'easy', constructConcentration: 0 },
+        },
+      },
+    };
+    const zh = generateAnalysisSummary(toReport(base), 'zh');
+    assert.ok(zh?.includes('【用例构成】'));
+    assert.ok(zh?.includes('难度 70% 集中在 easy'));
+    const en = generateAnalysisSummary(toReport(base), 'en');
+    assert.ok(en?.includes('Sample composition'));
+    assert.ok(en?.includes('70% of declared difficulty is easy'));
+    assert.ok(!/[㐀-鿿]/.test(en || ''));
+
+    // N < 10 → 不出构成提示。
+    const small = { ...base, meta: { ...base.meta, sampleCount: 8 } };
+    assert.ok(!generateAnalysisSummary(toReport(small), 'zh')?.includes('【用例构成】'));
+  });
 });
