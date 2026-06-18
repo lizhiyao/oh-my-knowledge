@@ -509,35 +509,27 @@ export interface StratifiedTraceSignal extends TraceSignalItem {
 }
 
 /**
- * Cluster byte-identical signals (same type / subtype / evidence), summing their
- * occurrences, then rank by frequency and annotate each with its share of the
- * total. Lets `omk sample --from-traces` allocate samples *proportional to how
- * often a failure actually happened* instead of a flat "1-2 per signal" — a
- * failure seen 100× deserves more regression coverage than one seen twice. The
- * observation inbox already dedups upstream, so the merge here is a defensive
- * no-op in the normal path; it only matters if a caller passes raw items. On a
- * collision only `occurrences` is summed — the first item's severity / skillName /
- * messageWindow win (fine for the deduped inbox path, where collisions are exact).
+ * Rank trace signals by frequency and annotate each with its share of the total
+ * occurrences. Lets `omk sample --from-traces` allocate samples *proportional to
+ * how often a failure actually happened* instead of a flat "1-2 per signal" — a
+ * failure seen 100× deserves more regression coverage than one seen twice.
+ *
+ * Deliberately does NOT re-merge signals here. The observation inbox is the only
+ * source of these items and already aggregates `occurrences` by the FULL identity
+ * — `skillName + cwd + sourceKind + signalType + signalSubtype + evidence`
+ * (`inbox.ts` `keyFor`). Re-merging on a narrower key (e.g. type+subtype+evidence)
+ * would fold *different skills / cwd* with the same failure shape into one entry,
+ * mis-attributing the summed occurrences to the first skill and skewing the
+ * regenerated distribution. So we trust the upstream dedup and only sort + weight.
  *
  * Does NOT fix the underlying selection bias (traces only capture *failures*),
  * which is why the `omk sample --from-traces` draft warning still stands — this
  * only makes the within-failure distribution representative of frequency.
  */
 export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceSignal[] {
-  const merged = new Map<string, TraceSignalItem>();
-  for (const it of items) {
-    const key = `${it.signalType} ${it.signalSubtype} ${JSON.stringify(it.evidence ?? {})}`;
-    const prev = merged.get(key);
-    if (prev) {
-      prev.occurrences += it.occurrences ?? 0;
-    } else {
-      merged.set(key, { ...it, occurrences: it.occurrences ?? 0 });
-    }
-  }
-  const clustered = [...merged.values()];
-  const total = clustered.reduce((sum, it) => sum + it.occurrences, 0) || 1;
-  return clustered
-    .map((it) => ({ ...it, weight: it.occurrences / total }))
+  const total = items.reduce((sum, it) => sum + (it.occurrences ?? 0), 0) || 1;
+  return items
+    .map((it) => ({ ...it, occurrences: it.occurrences ?? 0, weight: (it.occurrences ?? 0) / total }))
     .sort((a, b) => b.occurrences - a.occurrences);
 }
 

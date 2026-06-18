@@ -73,23 +73,29 @@ describe('stratifyTraceSignals', () => {
     assert.equal(Number(out[1].weight.toFixed(2)), 0.25);
   });
 
-  it('merges byte-identical signals (same type/subtype/evidence), summing occurrences', () => {
+  it('does NOT re-merge same-shape signals from different skills (inbox already deduped by skill+cwd)', () => {
+    // 同 type/subtype/evidence 但不同 skill —— inbox 已按 skill+cwd 分开聚合,这里不能再揉成一条,
+    // 否则跨 skill 的 occurrences 会被错误归因到第一个 skill 上。
     const items = [
-      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { tool: 'Grep', query: 'x' } },
-      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 5, evidence: { tool: 'Grep', query: 'x' } },
+      { skillName: 'skill-a', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { tool: 'Grep', query: 'x' } },
+      { skillName: 'skill-b', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 5, evidence: { tool: 'Grep', query: 'x' } },
     ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
     const out = stratifyTraceSignals(items);
-    assert.equal(out.length, 1);
-    assert.equal(out[0].occurrences, 7);
-    assert.equal(out[0].weight, 1);
+    assert.equal(out.length, 2);
+    // 各自保留自己的 skill 与 occurrences,不串台。
+    assert.equal(out[0].skillName, 'skill-b'); // 高频在前
+    assert.equal(out[0].occurrences, 5);
+    assert.equal(out[1].skillName, 'skill-a');
+    assert.equal(out[1].occurrences, 2);
+    assert.equal(Number(out[0].weight.toFixed(3)), 0.714);
   });
 
-  it('keeps distinct evidence separate (does not over-cluster by type/subtype alone)', () => {
+  it('does not mutate the caller input', () => {
     const items = [
-      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { query: 'a' } },
-      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 2, evidence: { query: 'b' } },
+      { skillName: 's', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 3, evidence: {} },
     ] as unknown as Parameters<typeof stratifyTraceSignals>[0];
-    assert.equal(stratifyTraceSignals(items).length, 2);
+    stratifyTraceSignals(items);
+    assert.equal((items[0] as { weight?: number }).weight, undefined);
   });
 });
 
