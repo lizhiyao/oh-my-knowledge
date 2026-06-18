@@ -28,7 +28,7 @@
  * empirical) is documented inline so users can audit and override.
  */
 
-import type { GapReport, Report, VariantPairComparison, VariantSummary } from '../types/index.js';
+import type { GapReport, Lang, Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
 import { analyzeJudgeIndependence } from './judge-independence.js';
@@ -642,7 +642,23 @@ function gapSignalCaveat(report: Report): {
   };
 }
 
-function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLevel }>): string {
+function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLevel }>, lang: Lang = 'en'): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':
+        return '可发布 —— 实验组显著更优，且通过所有分层门控。';
+      case 'CAUTIOUS':
+        return '需排查 —— 提升是真的，但至少触发了一条告警（门控破损 / 提升微不足道 / 仅部分恢复 / 评委分歧 / 跨轮不稳 / 训练-留出过拟合）。不要盲发。';
+      case 'REGRESS':
+        return '勿发布 —— 实验组退步。检查最差的那一层，修好再重跑。';
+      case 'NOISE':
+        return '不下结论 —— 差异置信区间跨过 0，当前 N 下分辨不出效果。';
+      case 'UNDERPOWERED':
+        return '数据不足 —— 增加用例数（建议 2× 当前）后重跑。';
+      case 'SOLO':
+        return '缺对照 —— 单变体报告。用 --control baseline --treatment <名字> 重跑。';
+    }
+  }
   switch (level) {
     case 'PROGRESS':
       return 'SHIP — treatment is significantly better and passes all layer gates.';
@@ -663,20 +679,26 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
  * Plain-text formatter for the `omk eval` verdict. Stays under 6 lines per the
  *  spec — one verdict + four rationale bullets + one ship recommendation.
  */
-export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean } = {}): string {
+export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean; lang?: Lang } = {}): string {
+  // lang 默认 'en':保留既有英文输出逐字节不变(verdict.test 与历史 CLI 行为)。zh 只本地化
+  //  标签与 ship 建议;headline 是 Δ/CI/N 统计记号 —— 跨语言中性、且会随 report 持久化,
+  //  不翻译(翻它=改可比性锚点)。recommendation 在 format 时按 lang 重新派生,不动 computeVerdict。
+  const zh = options.lang === 'zh';
   const lines: string[] = [];
-  lines.push(`Verdict: ${result.level}`);
+  lines.push(zh ? `判定：${result.level}` : `Verdict: ${result.level}`);
   lines.push(`  ${result.headline}`);
-  if (result.rationale.layerWinners) lines.push(`  Layer winners: ${result.rationale.layerWinners}`);
-  if (result.rationale.sampleSize) lines.push(`  Sample size:   ${result.rationale.sampleSize}`);
-  if (result.rationale.stability) lines.push(`  Stability:     ${result.rationale.stability}`);
-  if (result.rationale.judgeAgreement) lines.push(`  Judge α:       ${result.rationale.judgeAgreement}`);
-  if (result.rationale.overfitting) lines.push(`  Overfitting:   ${result.rationale.overfitting}`);
-  if (result.rationale.gapSignal) lines.push(`  Gap signal:    ${result.rationale.gapSignal}`);
-  if (result.rationale.shipRecommendation) lines.push(`  ${result.rationale.shipRecommendation}`);
+  if (result.rationale.layerWinners) lines.push(zh ? `  分层优胜：${result.rationale.layerWinners}` : `  Layer winners: ${result.rationale.layerWinners}`);
+  if (result.rationale.sampleSize) lines.push(zh ? `  用例规模：${result.rationale.sampleSize}` : `  Sample size:   ${result.rationale.sampleSize}`);
+  if (result.rationale.stability) lines.push(zh ? `  跨轮稳定：${result.rationale.stability}` : `  Stability:     ${result.rationale.stability}`);
+  if (result.rationale.judgeAgreement) lines.push(zh ? `  评委 α：${result.rationale.judgeAgreement}` : `  Judge α:       ${result.rationale.judgeAgreement}`);
+  if (result.rationale.overfitting) lines.push(zh ? `  过拟合：${result.rationale.overfitting}` : `  Overfitting:   ${result.rationale.overfitting}`);
+  if (result.rationale.gapSignal) lines.push(zh ? `  知识缺口：${result.rationale.gapSignal}` : `  Gap signal:    ${result.rationale.gapSignal}`);
+  if (result.rationale.shipRecommendation) {
+    lines.push(`  ${zh ? recommendation(result.level, [], 'zh') : result.rationale.shipRecommendation}`);
+  }
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');
-    lines.push('  Per-pair detail:');
+    lines.push(zh ? '  逐对明细：' : '  Per-pair detail:');
     for (const p of result.perPair) {
       lines.push(`    ${p.level}: ${p.treatment} vs ${p.control} — ${p.headline}`);
     }

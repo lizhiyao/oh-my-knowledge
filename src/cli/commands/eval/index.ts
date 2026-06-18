@@ -71,10 +71,32 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
   return 0;
 }
 
+/**
+ * 完整 report JSON 是**机器输出**:重定向 / 管道(`omk eval > r.json`、`| jq`)时吐到 stdout 供下游消费。
+ * 交互式 TTY 下报告已存盘、(默认)还起了 report server,再刷上千行 JSON 只会把 verdict 淹没在屏幕外 ——
+ * 故只在非 TTY(stdout 被重定向 / 管道)时 dump。dry-run 的 JSON 是用户显式索取的产物,不走此门控。
+ */
+function emitReportJson(report: unknown): void {
+  if (!process.stdout.isTTY) {
+    console.log(JSON.stringify(report, null, 2));
+  }
+}
+
+/**
+ * 给人读的 verdict 文案:stdout 是 TTY 时进 stdout(交互终端没有 JSON,verdict 就是答案),
+ * 否则进 stderr —— 与 emitReportJson 配对,保证非 TTY 的 stdout 是**纯 report JSON**,
+ * `omk eval | jq` / `> report.json` 不会被末尾拼上的人类文案噎住(否则 JSON.parse 直接失败)。
+ */
+function emitVerdictText(text: string): void {
+  // 与 console.log 等价(对单个字符串 = write(text + '\n')),只切换目标流,逐字节保留既有文案。
+  const stream = process.stdout.isTTY ? process.stdout : process.stderr;
+  stream.write(text + '\n');
+}
+
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues, lang: CliLang): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
-  console.log(formatVerdictText(result, { verbose: true }));
+  emitVerdictText(formatVerdictText(result, { verbose: true, lang }));
   await recordEvidenceSafely(report, result.level, values, lang);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
 }
@@ -174,13 +196,13 @@ async function emitBatchVerdict(
   const status = lang === 'zh'
     ? (failed === 0 ? '通过' : '未通过')
     : (failed === 0 ? 'PASS' : 'FAIL');
-  console.log(tCli('cli.run.batch_verdict_header', lang, {
+  emitVerdictText(tCli('cli.run.batch_verdict_header', lang, {
     status,
     passed,
     total: results.length,
   }));
   for (const result of results) {
-    console.log(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
+    emitVerdictText(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
   }
   return failed === 0 ? 0 : 1;
 }
@@ -309,11 +331,12 @@ async function runEval(
           }
         },
       }) as { report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null };
-      console.log(JSON.stringify(report, null, 2));
       if (isDryRunBatchReport(report)) {
+        console.log(JSON.stringify(report, null, 2));
         console.log(tCli('cli.run.dry_run_no_scores', lang));
         throw new CliExit(0);
       }
+      emitReportJson(report);
       if (filePath) {
         await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
       }
@@ -372,7 +395,7 @@ async function runEval(
       }
     }
 
-    console.log(JSON.stringify(report, null, 2));
+    emitReportJson(report);
     if (filePath) {
       await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
     }
