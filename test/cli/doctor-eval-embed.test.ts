@@ -11,8 +11,8 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
+const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
 
 interface ExecError extends Error {
   code: number;

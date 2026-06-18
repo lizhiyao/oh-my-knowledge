@@ -11,8 +11,9 @@ import type { Report, VariantResult, VariantSummary } from '../src/types/index.j
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
+const FIXTURES_ROOT = join(__dirname, 'fixtures');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-const CUSTOM_EXECUTOR = join(PROJECT_ROOT, 'examples', 'custom-executor', 'echo-executor.sh');
+const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'echo-executor.sh');
 const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 
 interface ExecError extends Error {
@@ -275,8 +276,8 @@ describe('CLI', () => {
   });
 
   it('eval --dry-run exits 0 through eval workflow', async () => {
-    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
+    const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
     const { stdout, stderr } = await execFileAsync('node', [
       CLI, 'eval',
       '--dry-run',
@@ -292,8 +293,8 @@ describe('CLI', () => {
   });
 
   it('eval dry-run accepts product workflow options on the unified runner', async () => {
-    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
+    const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
     const { stdout } = await execFileAsync('node', [
       CLI, 'eval',
       '--dry-run',
@@ -401,7 +402,7 @@ describe('CLI', () => {
   });
 
   it('eval --batch --dry-run exits 0', async () => {
-    const skillDir = join(PROJECT_ROOT, 'examples', 'multi-skills', 'skills');
+    const skillDir = join(FIXTURES_ROOT, 'multi-skills', 'skills');
     await execFileAsync('node', [
       CLI, 'eval',
       '--batch',
@@ -416,8 +417,8 @@ describe('CLI', () => {
       await assert.rejects(
         () => execFileAsync('node', [
           CLI, 'eval',
-          '--samples', join(PROJECT_ROOT, 'examples', 'custom-executor', 'eval-samples.json'),
-          '--skill-dir', join(PROJECT_ROOT, 'examples', 'custom-executor', 'skills'),
+          '--samples', join(FIXTURES_ROOT, 'custom-executor', 'eval-samples.json'),
+          '--skill-dir', join(FIXTURES_ROOT, 'custom-executor', 'skills'),
           '--control', 'baseline',
           '--treatment', 'v1',
           '--executor', CUSTOM_EXECUTOR,
@@ -448,8 +449,8 @@ describe('CLI', () => {
     try {
       const { stdout, stderr } = await execFileAsync('node', [
         CLI, 'eval',
-        '--samples', join(PROJECT_ROOT, 'examples', 'custom-executor', 'eval-samples.json'),
-        '--skill-dir', join(PROJECT_ROOT, 'examples', 'custom-executor', 'skills'),
+        '--samples', join(FIXTURES_ROOT, 'custom-executor', 'eval-samples.json'),
+        '--skill-dir', join(FIXTURES_ROOT, 'custom-executor', 'skills'),
         '--control', 'baseline',
         '--treatment', 'v1',
         '--executor', CUSTOM_EXECUTOR,
@@ -476,7 +477,7 @@ describe('CLI', () => {
         () => execFileAsync('node', [
           CLI, 'eval',
           '--batch',
-          '--skill-dir', join(PROJECT_ROOT, 'examples', 'multi-skills', 'skills'),
+          '--skill-dir', join(FIXTURES_ROOT, 'multi-skills', 'skills'),
           '--executor', CUSTOM_EXECUTOR,
           '--no-judge',
           '--output-dir', join(dir, 'reports'),
@@ -505,8 +506,8 @@ describe('CLI', () => {
   // 路径都在 try 内 throw CliExit(0),catch 必须 instanceof 守卫透传,
   // 否则 `omk eval && deploy` 在 PASS 时也会挡住部署。
   it('eval --dry-run keeps CliExit(0) passing through catch', async () => {
-    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
+    const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
     // execFile 默认 reject on non-zero exit; resolve = exit 0.
     await execFileAsync('node', [
       CLI, 'eval',

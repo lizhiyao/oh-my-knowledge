@@ -122,8 +122,8 @@ describe('strict unknown option rejection', () => {
 
   it('omk eval with valid flags still works (regression)', async () => {
     // 健康路径不被 strict 误伤: --dry-run / --skip-connectivity 等合法 flag 必须通过。
-    const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-    const SKILLS = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
+    const SKILLS = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
     const { stdout } = await execFileAsync('node', [
       CLI, 'eval',
       '--samples', SAMPLES,
@@ -140,8 +140,8 @@ describe('strict unknown option rejection', () => {
   it('omk eval --skip-doctor parses as valid flag (escape hatch)', async () => {
     // --skip-doctor 是 v0.30 重新引入的 escape hatch (parse-run-config 注册);
     // strict:true 下必须能被识别,不报 Unknown option。
-    const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
-    const SKILLS = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
+    const SKILLS = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
     const { stdout, stderr } = await execFileAsync('node', [
       CLI, 'eval',
       '--samples', SAMPLES,

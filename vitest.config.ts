@@ -7,7 +7,7 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     testTimeout: 30000,
     // Default the test suite to lenient assertion-language enforcement so that
-    // legacy fixture sample files (e.g. examples/code-review/eval-samples.json
+    // legacy fixture sample files (e.g. test/fixtures/code-review/eval-samples.json
     // containing `not_contains "looks good"`) keep loading via stderr-warning
     // path. The generator-boundary hard strip inside sanitizeGeneratedSamples
     // is unaffected by this env — that pipeline still gives the strict
