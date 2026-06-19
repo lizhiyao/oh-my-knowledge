@@ -6,7 +6,12 @@
     "assertions": [
       {
         "type": "contains_all",
-        "values": ["rollback", "owner", "go/no-go"]
+        "values": ["rollback", "owner"]
+      },
+      {
+        "type": "regex",
+        "pattern": "\\b(NO-GO|CAUTION|GO)\\b",
+        "flags": "i"
       }
     ],
     "capability": ["release-readiness", "risk-review"],

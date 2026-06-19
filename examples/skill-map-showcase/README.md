@@ -1,6 +1,6 @@
 # Skill Map showcase
 
-这个示例是为了让用户第一眼就看到：一个目录式 skill 可以被 doctor 解析成可视化图谱的输入。
+这个示例用于展示：一个目录式 skill 可以怎样为后续 Skill Information Graph 提供结构化输入。
 
 skill 目录包含：
 
@@ -19,7 +19,7 @@ omk doctor skills/release-readiness --static-only
 
 - `.omk/doctors/<id>.json`
 
-启用 Skill Information Graph 支持后，同一条命令还会写入：
+当前 main 只会写 doctor 产物；启用 Skill Information Graph 支持后，同一条命令还会写入：
 
 - `.omk/graphs/doctor/<id>.json`
 - `.omk/graphs/doctor/<id>.md`
