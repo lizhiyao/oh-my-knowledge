@@ -20,6 +20,10 @@ function findSamplesInDir(dir: string): string | null {
     const candidate = join(dir, name);
     if (existsSync(candidate)) return candidate;
   }
+  const skillLocalSamplesDir = join(dir, '.omk');
+  if (existsSync(skillLocalSamplesDir) && statSync(skillLocalSamplesDir).isDirectory()) {
+    return skillLocalSamplesDir;
+  }
   return null;
 }
 

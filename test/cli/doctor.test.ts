@@ -153,6 +153,35 @@ describe('omk doctor CLI', () => {
     }
   });
 
+  it('auto-detects skill-local .omk samples for a directory skill target', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-skill-local-samples-'));
+    try {
+      const skillRoot = join(tmp, 'skills', 'release-readiness');
+      mkdirSync(join(skillRoot, '.omk'), { recursive: true });
+      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的发布检查 skill，内容足够长。');
+      writeFileSync(join(skillRoot, '.omk', 'samples.json'), JSON.stringify([
+        { sample_id: 's1', prompt: 'review release readiness' },
+      ]));
+
+      const { stderr } = await execFileAsync('node', [
+        CLI,
+        'doctor',
+        skillRoot,
+        '--static-only',
+        '--lang', 'zh',
+        '--executor', DOCTOR_FIXTURE,
+      ], { cwd: tmp });
+      assert.ok(stderr.includes('使用评测用例文件'), stderr);
+      assert.ok(stderr.includes(join(skillRoot, '.omk')), stderr);
+      assert.ok(stderr.includes('用例 1 条'), stderr);
+      assert.ok(!stderr.includes('未提供 samples'), stderr);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('--samples overrides auto-detected samples', async () => {
     const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');

@@ -43,4 +43,4 @@ load-bearing 值：
 load-bearing 值：
 - `test/runner.test.ts`：`discoverVariants` 断言能发现 `classifier`；batch dry-run 按 `sampleCount × 2` 算 `taskCount`。
 - `test/cli.test.ts` 的 batch 测试：断言「批量评测结论：未通过」+ `UNDERPOWERED:`（依赖每个 skill 的小样本量）。三个 skill 都得在、各自样本量小，别删。
-- `src/doctor/messages.ts` 的 frontmatter 报错文案曾指向 `examples/multi-skills`（指向 examples、非本 fixture）。
+- `src/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。

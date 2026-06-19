@@ -208,8 +208,8 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
     en: 'directory-skill missing SKILL.md entry file',
   },
   'cli.doctor.skill_metadata.hint.frontmatter': {
-    zh: 'front-matter 用 YAML 语法,key: value 或 - item 形式。可参考 examples/multi-skills 下的 skill 写法',
-    en: 'front-matter uses YAML syntax (key: value or - item). See examples/multi-skills for reference',
+    zh: 'front-matter 用 YAML 语法，key: value 或 - item 形式。可参考 examples/skill-map-showcase/skills/release-readiness 的目录式 skill 写法',
+    en: 'front-matter uses YAML syntax (key: value or - item). See examples/skill-map-showcase/skills/release-readiness for a directory-skill reference',
   },
   'cli.doctor.skill_metadata.hint.hardrules': {
     zh: 'hardRules 必须写在 SKILL.md front-matter 中,格式为 hardRules: [{ id, rule, expectedBehavior }]；id 要稳定且唯一,expectedBehavior 写可观察行为。',

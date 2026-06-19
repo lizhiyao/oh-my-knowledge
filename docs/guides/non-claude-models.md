@@ -31,9 +31,13 @@ omk eval --executor openai-api --model moonshot-v1-8k \
 **Ollama local model:**
 
 ```bash
-omk eval --executor "python examples/custom-executor/ollama-executor.py" \
-  --model llama3 --no-judge
+cd examples/custom-executor
+omk eval --control baseline --treatment echo-assistant \
+  --executor "python ollama-executor.py" --model llama3 --no-judge --report-only
 ```
+
+`--report-only` is useful for this tiny demo set: omk still prints the verdict,
+but the teaching sample size does not rewrite the command exit code.
 
 ## About the judge
 

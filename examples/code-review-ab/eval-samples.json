@@ -1,0 +1,32 @@
+[
+  {
+    "sample_id": "sql-injection-review",
+    "prompt": "Review this handler:\n\napp.get('/user', async (req, res) => {\n  const rows = await db.query(`select * from users where id = ${req.query.id}`);\n  res.json(rows[0]);\n});",
+    "rubric": "The review should identify SQL injection and recommend parameterized queries.",
+    "assertions": [
+      { "type": "contains_all", "values": ["SQL", "parameter"] }
+    ],
+    "capability": ["secure-code-review"],
+    "construct": "necessity"
+  },
+  {
+    "sample_id": "missing-error-handling",
+    "prompt": "Review this fetch helper:\n\nexport async function loadUser(id) {\n  const res = await fetch(`/api/users/${id}`);\n  return res.json();\n}",
+    "rubric": "The review should mention non-2xx responses and JSON parsing or network errors.",
+    "assertions": [
+      { "type": "contains_any", "values": ["non-2xx", "status", "network", "try"] }
+    ],
+    "capability": ["robustness"],
+    "construct": "quality"
+  },
+  {
+    "sample_id": "secret-logging",
+    "prompt": "Review this code:\n\nlogger.info('payment token', { token: paymentToken, userId });",
+    "rubric": "The review should flag sensitive token logging and recommend redaction.",
+    "assertions": [
+      { "type": "contains_all", "values": ["token", "redact"] }
+    ],
+    "capability": ["privacy", "secure-code-review"],
+    "construct": "capability"
+  }
+]

@@ -1,0 +1,33 @@
+# Skill Map showcase
+
+这个示例用于展示：一个目录式 skill 可以怎样为后续 Skill Information Graph 提供结构化输入。
+
+skill 目录包含：
+
+- `SKILL.md`：包含 frontmatter、`hardRules` 和 `workflows`
+- `references/`：存放策略和 runbook 材料
+- `scripts/`：存放确定性的 preflight 检查脚本
+- `.omk/samples.json`：随 skill 一起分发的评测用例
+
+先跑静态 doctor：
+
+```bash
+omk doctor skills/release-readiness --static-only
+```
+
+当前 main 上的预期输出：
+
+- `.omk/doctors/<id>.json`
+
+这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/samples.json` 是随 skill 入库的源数据。当前 main 只会写 doctor 产物；启用 Skill Information Graph 支持后，同一条命令还会写入：
+
+- `.omk/graphs/doctor/<id>.json`
+- `.omk/graphs/doctor/<id>.md`
+
+Markdown 文件是可分享的 Evidence Card。它应该展示 references、scripts、workflows、workflow nodes、sample count 和 doctor status。
+
+继续进入评测前，先预览任务计划：
+
+```bash
+omk eval --control baseline --treatment release-readiness --dry-run
+```

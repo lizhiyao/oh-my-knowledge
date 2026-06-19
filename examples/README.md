@@ -1,21 +1,25 @@
 # omk examples
 
-一组可直接跑的示例，按「由简到全」排成一条上手路径。每个目录都有自己的 `README`，写明演示什么、怎么跑、预期看到什么。
+这是一组更少、更聚焦的示例。每个目录都对应一个清晰场景：看 skill 结构、做 A/B、测 RAG、测 agent 运行上下文，或不用 Claude 跑通自定义 executor。
 
-**第一次用？** 从 `code-review` 开始（omk 的核心用法）。**没有 API key / 不想接 Claude？** 先跑 `custom-executor`——用内置的 echo 执行器零成本跑通整条链路。
+| 示例 | 演示能力 | 第一条命令 |
+|---|---|---|
+| [skill-map-showcase](./skill-map-showcase) | 目录式 skill 结构、doctor 体检、Skill Map 图谱输入结构 | `cd examples/skill-map-showcase && omk doctor skills/release-readiness --static-only` |
+| [code-review-ab](./code-review-ab) | 两版 skill 的经典 A/B 对比 | `cd examples/code-review-ab && omk eval --control code-review-v1 --treatment code-review-v2 --dry-run` |
+| [rag-eval](./rag-eval) | RAG 断言：`faithfulness`、`answer_relevancy`、`context_recall` | `cd examples/rag-eval && omk eval --control baseline --treatment rag-answerer --dry-run` |
+| [agent-runtime](./agent-runtime) | 依赖项目目录的 agent 任务评测 | `cd examples/agent-runtime && omk eval --control baseline --treatment repo-navigator --dry-run` |
+| [custom-executor](./custom-executor) | 不依赖 Claude，用自定义 executor 跑通链路 | `cd examples/custom-executor && omk eval --control baseline --treatment echo-assistant --executor ./echo-executor.sh --no-judge --report-only` |
 
-| # | 示例 | 演示的能力 | 一句话跑法 |
-|---|------|-----------|-----------|
-| 1 | [code-review](./code-review) | A/B 对比两版 skill（核心用法） | `cd examples/code-review && omk eval --control code-review-v1 --treatment code-review-v2` |
-| 2 | [custom-executor](./custom-executor) | 不依赖 Claude / 离线跑通（零 API key） | `cd examples/custom-executor && omk eval --control baseline --treatment v1 --executor ./echo-executor.sh --no-judge` |
-| 3 | [multi-skills](./multi-skills) | 一次评测一组 skill（`--batch`） | `cd examples/multi-skills && omk eval --batch --skill-dir skills` |
-| 4 | [customer-service](./customer-service) | 自动迭代 skill（`omk evolve`） | `cd examples/customer-service && omk evolve skills/service-guide --rounds 2` |
-| 5 | [agent-eval](./agent-eval) | 评测 agent / 工具调用 + 控制实验（进阶） | `cd examples/agent-eval && omk eval --control v1 --treatment v2` |
-| 6 | [rag-eval](./rag-eval) | RAG 专用指标（faithfulness 等，进阶） | 见目录内 README |
+## 怎么选
 
-## 约定
+- 想理解「知识图谱」需要哪些输入，从 `skill-map-showcase` 开始。当前 main 会先展示 doctor 体检产物；启用 Skill Information Graph 的构建里，同一条 doctor 命令还会生成图谱 sidecar 和 Markdown Evidence Card。
+- 只想确认本机 CLI、样本加载、executor 协议、报告写入都正常，先跑 `custom-executor`。
+- 要向同事解释 omk 的「固定模型，只改知识载体」对照实验模型，用 `code-review-ab`。
+- 你的 artifact 负责基于检索上下文回答问题，用 `rag-eval`。
+- 你的 prompt 必须读取仓库或项目目录，用 `agent-runtime`。
 
-- skill 一律是 canonical 的目录式：一个 skill 一个目录，内含 `SKILL.md`（带 `name` / `description` frontmatter）——与 `omk init` 脚手架、Claude Skills 标准一致。
-- 样本断言只做 ASCII 确定性检查（`contains` / `regex` 等）；语义判断交给 `rubric` 由评委评分。所以这些示例在默认（严格）模式下都能直接跑通。
-- 大多示例需要一个执行器（默认 Claude）。想完全离线验证「装好没、跑得通」，用 `custom-executor` 的 `echo-executor.sh`。
-- 单个 skill 时（如 `custom-executor`），用 `--control baseline`：`baseline` 是 omk 自动注入的空 skill 对照，代表「不加这个 skill 的裸模型」，无需自己编写。
+生成的报告和图谱 sidecar 会进入 `.omk/`，该目录已被 git 忽略。
+
+例外是示例 skill 自带的 `.omk/samples.json`：它是可入库的评测用例源数据，不是运行生成物。
+
+这些示例样本集刻意保持很小，方便阅读和传播。它们适合上手、协议检查和演示；真正要把 eval verdict 当作发布证据前，请扩展成更大的领域样本集。
