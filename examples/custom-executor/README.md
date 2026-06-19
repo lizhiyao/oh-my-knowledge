@@ -1,21 +1,24 @@
-# custom-executor 示例
+# Custom executor
 
-不依赖 Claude 也能跑 omk —— 把任意「读 JSON、回 JSON」的脚本接成 executor。**这是零 API key 跑通 omk 的最快路径**，适合第一次上手。
+这个示例用于在不依赖 Claude 的情况下跑通 omk 链路。
 
-- `echo-executor.sh`：最简执行器，从 stdin 读 `{prompt}`、输出 `{output}`（纯回显，离线）
-- `ollama-executor.py`：接本地 Ollama 模型
-- `openai-compat-executor.py`：接任意 OpenAI 兼容 API
-- `skills/v1/`：一个最简助手 skill；`eval-samples.json`：2 条用例
+目录包含：
 
-## 跑（离线、无需 API key）
+- `echo-executor.sh`：最小 JSON stdin/stdout executor，用于零成本烟测。
+- `openai-compat-executor.py`：OpenAI 兼容 HTTP executor。
+- `ollama-executor.py`：本地 Ollama executor。
+
+不接 Claude，直接生成本地报告：
 
 ```bash
-cd examples/custom-executor
-omk eval --control baseline --treatment v1 --executor ./echo-executor.sh --no-judge
+omk eval --control baseline --treatment echo-assistant --executor ./echo-executor.sh --no-judge --report-only
 ```
 
-echo 执行器只回显 prompt，所以分数本身没意义——这一步是确认「装好了、能跑通、出得了报告」。跑通后把 `--executor` 换成 `ollama-executor.py` 或 `openai-compat-executor.py` 接真实模型。
+`--no-judge` 会跳过 LLM 评委，只依赖断言评分。`--report-only` 会保留 verdict 输出，但不让这组很小的教学样本改写命令退出码。
 
-## 看点
+尝试本地 Ollama 模型：
 
-`--executor <脚本>` 让 omk 与模型供应商解耦：同一套用例 / 断言 / verdict 规则，可以跑在 Claude、本地模型或任何自建网关上。
+```bash
+omk eval --control baseline --treatment echo-assistant \
+  --executor "python ollama-executor.py" --model llama3 --no-judge --report-only
+```

@@ -1,16 +1,37 @@
 [
   {
-    "sample_id": "s001",
-    "prompt": "What is two plus two? Answer with the English word.",
+    "sample_id": "echo-green",
+    "prompt": "Return exactly this word: GREEN",
     "assertions": [
-      { "type": "contains", "value": "four", "weight": 1 }
+      { "type": "contains", "value": "GREEN" }
     ]
   },
   {
-    "sample_id": "s002",
-    "prompt": "Say hello in English",
+    "sample_id": "echo-ready",
+    "prompt": "Return exactly this phrase: READY FOR EVAL",
     "assertions": [
-      { "type": "contains", "value": "hello", "weight": 1 }
+      { "type": "contains_all", "values": ["READY", "EVAL"] }
+    ]
+  },
+  {
+    "sample_id": "echo-blue",
+    "prompt": "Return exactly this word: BLUE",
+    "assertions": [
+      { "type": "contains", "value": "BLUE" }
+    ]
+  },
+  {
+    "sample_id": "echo-ship",
+    "prompt": "Return exactly this word: SHIP",
+    "assertions": [
+      { "type": "contains", "value": "SHIP" }
+    ]
+  },
+  {
+    "sample_id": "echo-done",
+    "prompt": "Return exactly this phrase: DONE NOW",
+    "assertions": [
+      { "type": "contains_all", "values": ["DONE", "NOW"] }
     ]
   }
 ]

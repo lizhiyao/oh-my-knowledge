@@ -1,40 +1,41 @@
 samples:
-  - sample_id: rag_grounded_answer
-    prompt: 根据下面的 context 回答用户问题。
+  - sample_id: refund-window
+    prompt: "What is the refund window for the Pro plan?"
     context: |
-      自动驾驶并非完全无监督。当前 L2 级别系统仍要求驾驶员保持双手随时接管准备,
-      违反此规定的事故责任并不会因系统启用而转嫁到厂商。L3 级别在特定 ODD 内允许
-      driver 脱手,但事故责任划分仍以是否在 ODD 内为准。L4 级别在该 ODD 内厂商
-      承担主要责任。
-    rubric: 应基于 context 回答 L2/L3/L4 责任划分,不引入 context 之外的内容
+      Pricing policy:
+      - Starter plan refunds are available within 7 days.
+      - Pro plan refunds are available within 14 days.
+      - Enterprise contracts use the signed order form.
     assertions:
       - type: faithfulness
         threshold: 4
       - type: answer_relevancy
         threshold: 4
       - type: context_recall
-        threshold: 3
+        reference: "Pro plan refunds are available within 14 days."
 
-  - sample_id: rag_concise_summary
-    prompt: 一句话概括这段 context 的核心结论。
+  - sample_id: unsupported-sla
+    prompt: "What uptime SLA does the Pro plan include?"
     context: |
-      合并排序通过分治法把数组对半切分,递归排序后再做有序合并。最坏与平均时间
-      复杂度都是 O(n log n),但需要额外 O(n) 空间。在数据量大且需要稳定排序时
-      推荐使用,内存敏感场景应改用堆排或快排。
-    rubric: 输出 ≤ 30 字,保留"O(n log n) + O(n) 空间 + 稳定"三件事
+      Pricing policy:
+      - Starter plan refunds are available within 7 days.
+      - Pro plan refunds are available within 14 days.
+      - Enterprise contracts use the signed order form.
     assertions:
+      - type: contains_any
+        values: ["unspecified", "context", "mention"]
       - type: faithfulness
-      - type: answer_relevancy
-      - type: max_length
-        value: 100  # 30 中文字 ≈ 90 字符
+        threshold: 4
+
+  - sample_id: enterprise-source
+    prompt: "Where should I check Enterprise refund terms?"
+    context: |
+      Pricing policy:
+      - Starter plan refunds are available within 7 days.
+      - Pro plan refunds are available within 14 days.
+      - Enterprise contracts use the signed order form.
+    assertions:
       - type: context_recall
-        reference: "time complexity O(n log n);space complexity O(n);stable sort"
-
-  - sample_id: rag_should_refuse
-    prompt: 根据 context 回答"M1 芯片的功耗是多少"。
-    context: |
-      M1 芯片是 Apple 2020 年发布的 ARM SoC,采用 5nm 工艺。
-    rubric: context 不含功耗信息,应明确告诉用户"context 未提及"而不是编造数字(是否恰当拒答由评委按本 rubric 判定)
-    assertions:
-      - type: faithfulness
-        threshold: 5  # 严格:任何编造都扣分
+        reference: "Enterprise contracts use the signed order form."
+      - type: answer_relevancy
+        threshold: 4

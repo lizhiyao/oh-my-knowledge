@@ -31,9 +31,12 @@ omk eval --executor openai-api --model moonshot-v1-8k \
 **Ollama 本地模型：**
 
 ```bash
-omk eval --executor "python examples/custom-executor/ollama-executor.py" \
-  --model llama3 --no-judge
+cd examples/custom-executor
+omk eval --control baseline --treatment echo-assistant \
+  --executor "python ollama-executor.py" --model llama3 --no-judge --report-only
 ```
+
+`--report-only` 适合这组很小的教学样本：omk 仍会输出 verdict，但不会让教学样本量改写命令退出码。
 
 ## 关于评委
 

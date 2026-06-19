@@ -1,0 +1,41 @@
+[
+  {
+    "sample_id": "release-risk-summary",
+    "prompt": "We are shipping a payment flow change tomorrow. Summarize the release risk and decide whether to proceed.",
+    "rubric": "The answer should mention policy gates, rollback readiness, owner confirmation, and a clear go/no-go decision.",
+    "assertions": [
+      {
+        "type": "contains_all",
+        "values": ["rollback", "owner", "go/no-go"]
+      }
+    ],
+    "capability": ["release-readiness", "risk-review"],
+    "construct": "capability"
+  },
+  {
+    "sample_id": "missing-rollback",
+    "prompt": "The release checklist is green except the rollback owner is not assigned. Draft the release comment.",
+    "rubric": "The answer should block or caution the release until the rollback owner is assigned.",
+    "assertions": [
+      {
+        "type": "contains_any",
+        "values": ["block", "caution", "NO-GO"]
+      }
+    ],
+    "capability": ["release-readiness", "rollback"],
+    "construct": "necessity"
+  },
+  {
+    "sample_id": "post-release-incident",
+    "prompt": "Ten minutes after deployment, checkout errors increased. Produce the first response plan.",
+    "rubric": "The answer should prioritize rollback, evidence collection, user impact, and communication cadence.",
+    "assertions": [
+      {
+        "type": "contains_all",
+        "values": ["rollback", "impact", "communicat"]
+      }
+    ],
+    "capability": ["incident-response", "rollback"],
+    "construct": "quality"
+  }
+]

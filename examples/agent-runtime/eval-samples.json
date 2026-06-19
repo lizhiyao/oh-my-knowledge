@@ -1,0 +1,24 @@
+[
+  {
+    "sample_id": "find-owner",
+    "prompt": "Which team owns the billing webhook, and what file proves it?",
+    "cwd": "./workspace",
+    "rubric": "The answer should inspect the workspace and cite OWNERS.md or services/billing-webhook.md.",
+    "assertions": [
+      { "type": "contains_all", "values": ["Payments", "Platform", "billing-webhook"] }
+    ],
+    "capability": ["repo-navigation"],
+    "construct": "capability"
+  },
+  {
+    "sample_id": "summarize-runbook",
+    "prompt": "Summarize the deploy check for the billing webhook.",
+    "cwd": "./workspace",
+    "rubric": "The answer should mention signature verification and retry queue checks.",
+    "assertions": [
+      { "type": "contains_all", "values": ["signature", "retry"] }
+    ],
+    "capability": ["repo-navigation", "runbook-summary"],
+    "construct": "quality"
+  }
+]

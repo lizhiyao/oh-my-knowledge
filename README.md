@@ -31,7 +31,7 @@ Prerequisite: the default executor and judge use the `claude` CLI — install an
 
 > The CLI notifies you when a newer version is available (at most once per 20h); set `OMK_SKIP_UPDATE_CHECK=1` to silence it permanently.
 
-Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users). More runnable examples (A/B, offline executor, batch, evolve, agent, RAG) live in the repo's [example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples).
+Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users). More runnable examples (Skill Map, A/B, offline executor, agent runtime, RAG) live in the repo's [example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples).
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
