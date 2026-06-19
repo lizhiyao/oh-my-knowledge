@@ -5,7 +5,7 @@ tools:
   - Bash
   - Read
 preflight:
-  - test -d skills/release-readiness/references
+  - test -d references || test -d release-readiness/references || test -d skills/release-readiness/references
 hardRules:
   - id: cite-release-policy
     rule: Use the release policy before giving a go/no-go decision.

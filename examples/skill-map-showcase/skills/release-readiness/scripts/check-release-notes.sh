@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-test -f skills/release-readiness/references/release-policy.md
-test -f skills/release-readiness/references/rollback-runbook.md
+skill_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+test -f "$skill_dir/references/release-policy.md"
+test -f "$skill_dir/references/rollback-runbook.md"
