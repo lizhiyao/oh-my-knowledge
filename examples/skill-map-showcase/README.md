@@ -7,7 +7,7 @@ skill 目录包含：
 - `SKILL.md`：包含 frontmatter、`hardRules` 和 `workflows`
 - `references/`：存放策略和 runbook 材料
 - `scripts/`：存放确定性的 preflight 检查脚本
-- 项目根目录的 `eval-samples.json`
+- `.omk/samples.json`：随 skill 一起分发的评测用例
 
 先跑静态 doctor：
 
@@ -19,7 +19,7 @@ omk doctor skills/release-readiness --static-only
 
 - `.omk/doctors/<id>.json`
 
-当前 main 只会写 doctor 产物；启用 Skill Information Graph 支持后，同一条命令还会写入：
+这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/samples.json` 是随 skill 入库的源数据。当前 main 只会写 doctor 产物；启用 Skill Information Graph 支持后，同一条命令还会写入：
 
 - `.omk/graphs/doctor/<id>.json`
 - `.omk/graphs/doctor/<id>.md`
