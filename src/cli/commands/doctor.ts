@@ -11,7 +11,8 @@ import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import { findDoctorDeprecatedSamplesHint, findDoctorSamplesPath } from '../../inputs/sample-locator.js';
-import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
+import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
+import type { DoctorOutcome, DoctorReport, Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
 export default class Doctor extends BaseCommand {
@@ -252,7 +253,7 @@ export default class Doctor extends BaseCommand {
 
       persistDoctorReport(report, flags['output-dir']
         ? resolve(flags['output-dir'])
-        : (flags.global ? globalDoctorsDir() : projectDoctorsDir()));
+        : (flags.global ? globalDoctorsDir() : projectDoctorsDir()), lang);
 
       if (flags.fix) {
         const existing = report;
@@ -274,26 +275,38 @@ export default class Doctor extends BaseCommand {
 // scanDoctorReports 扫盘成本)。50 = ~每天 1 跑撑 1.5 个月 sparkline,够用。
 const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 
-function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport, outputDir?: string): void {
+function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh' | 'en' = 'zh'): void {
   const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
   mkdirSync(dir, { recursive: true });
   const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {
-    const counts: Record<string, number> = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+    const counts: Pick<DoctorReport['ruleStats'], 'pass' | 'warn' | 'fail' | 'skipped'> = {
+      pass: 0,
+      warn: 0,
+      fail: 0,
+      skipped: 0,
+    };
     for (const r of skill.results) {
       const s = r.status;
       if (s in counts) counts[s]++;
     }
-    const perSkill = {
+    const outcome: DoctorOutcome = skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed';
+    const perSkill: DoctorReport = {
       ...report,
       skills: [skill],
-      ruleStats: { ...counts, total: skill.results.length },
+      ruleStats: {
+        pass: counts.pass,
+        warn: counts.warn,
+        fail: counts.fail,
+        skipped: counts.skipped,
+        total: skill.results.length,
+      },
       totals: {
         pass: skill.status === 'pass' ? 1 : 0,
         warn: skill.status === 'warn' ? 1 : 0,
         fail: skill.status === 'fail' ? 1 : 0,
       },
-      outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
+      outcome,
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
     const cardId = `${safeName}-${safeId}`;
@@ -304,6 +317,22 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
       id: cardId, path: filePath, skillName: skill.skillName, reportId: report.id, timestamp: report.timestamp,
       status: skill.status, passCount: counts.pass, warnCount: counts.warn, failCount: counts.fail,
     }, dir);
+    try {
+      persistDoctorGraphSidecars({
+        report: perSkill,
+        skill,
+        sourcePath: filePath,
+        outputDir: dir,
+        fileStem: cardId,
+        lang,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const warning = lang === 'zh'
+        ? `⚠️  doctor graph sidecar 写入失败：${message}\n`
+        : `⚠️  failed to write doctor graph sidecar: ${message}\n`;
+      process.stderr.write(warning);
+    }
     pruneDoctorHistory(dir, skill.skillName, DOCTOR_HISTORY_MAX_PER_SKILL);
   }
 }
@@ -330,5 +359,6 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
     // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
     // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。
     removeDoctorCard(file.replace(/\.json$/, ''));
+    removeDoctorGraphSidecars(dir, file.replace(/\.json$/, ''));
   }
 }

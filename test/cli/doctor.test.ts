@@ -263,6 +263,55 @@ describe('omk doctor CLI', () => {
       `expected no skill_health composer results in static-only mode, got: ${staticRuleIds.join(',')}`);
   });
 
+  it('persists doctor graph sidecar and Markdown evidence card', async () => {
+    const { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-graph-sidecar-'));
+    try {
+      const skillRoot = join(tmp, 'skills', 'review');
+      mkdirSync(join(skillRoot, 'references'), { recursive: true });
+      writeFileSync(join(skillRoot, 'SKILL.md'), [
+        '---',
+        'workflows:',
+        '  - id: review',
+        '    nodes:',
+        '      - id: inspect',
+        '        action: 检查输入',
+        '---',
+        '# Review Skill',
+        '这个 skill 内容足够长，用于测试 doctor graph sidecar。',
+      ].join('\n'));
+      writeFileSync(join(skillRoot, 'references', 'rules.md'), 'rules');
+
+      const outputDir = join(tmp, '.omk', 'doctors');
+      await execFileAsync('node', [
+        CLI,
+        'doctor',
+        skillRoot,
+        '--static-only',
+        '--output-dir', outputDir,
+      ], { cwd: tmp });
+
+      const graphDir = join(tmp, '.omk', 'graphs', 'doctor');
+      assert.ok(existsSync(graphDir), 'graph sidecar dir should exist');
+      const files = readdirSync(graphDir);
+      const jsonFile = files.find((file) => file.endsWith('.json'));
+      const mdFile = files.find((file) => file.endsWith('.md'));
+      assert.ok(jsonFile, `expected graph json, got: ${files.join(', ')}`);
+      assert.ok(mdFile, `expected evidence card markdown, got: ${files.join(', ')}`);
+      const graph = JSON.parse(readFileSync(join(graphDir, jsonFile), 'utf-8'));
+      assert.equal(graph.documentKind, 'artifact-graph');
+      assert.equal(graph.source.sourceKind, 'doctor');
+      assert.ok(graph.nodes.some((node: { nodeKind: string; label: string }) => node.nodeKind === 'reference' && node.label === 'references/rules.md'));
+      assert.ok(!graph.edges.some((edge: { edgeKind: string }) => edge.edgeKind === 'covers'));
+      const card = readFileSync(join(graphDir, mdFile), 'utf-8');
+      assert.ok(card.includes('Skill Evidence Card'));
+      assert.ok(card.includes('eval 未测量'));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('product dispatch lists doctor as a top-level command', async () => {
     // omk --help 走 oclif 的 COMMANDS 列表,doctor 出现在其中。
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
