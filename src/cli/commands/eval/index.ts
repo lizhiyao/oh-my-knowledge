@@ -14,6 +14,10 @@ import type { EvalResult, ReportServer } from '../../lib/shared.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
 import { DEFAULT_GATE_THRESHOLD } from '../../../eval-core/verdict.js';
 import { EVALUATION_REPORT_SCHEMA_VERSION } from '../../../eval-core/evaluation-reporting.js';
+import {
+  findSingleTreatmentDeprecatedSamplesHint,
+  hasUsableSamplesPath,
+} from '../../../inputs/sample-locator.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -253,6 +257,24 @@ async function runEval(
 ): Promise<void> {
   const { values, config, evalConfig } = parseRunConfig({ ...flags } as Record<string, unknown>);
 
+  if (!values.batch && !hasUsableSamplesPath(config.samplesPath)) {
+    const treatmentRaw = typeof values.treatment === 'string' ? values.treatment : '';
+    const treatments = treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean);
+    const deprecatedSamplesHint = !values.samples && !evalConfig?.samples && treatments.length === 1
+      ? findSingleTreatmentDeprecatedSamplesHint(treatments[0], config.skillDir, process.cwd())
+      : null;
+    if (deprecatedSamplesHint) {
+      process.stderr.write(tCli('cli.common.deprecated_skill_samples_path', lang, {
+        oldPath: deprecatedSamplesHint.oldPath,
+        newPath: deprecatedSamplesHint.newPath,
+      }));
+    }
+    console.error(tCli('cli.common.error_prefix', lang, {
+      message: tCli('cli.common.samples_not_found', lang, { path: config.samplesPath }),
+    }));
+    throw new CliExit(1);
+  }
+
   const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../../eval-workflows/run-evaluation.js');
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
@@ -460,8 +482,8 @@ export default class Eval extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。',
-        en: 'Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.',
+        zh: '用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。',
+        en: 'Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.',
       }),
     }),
     'skill-dir': Flags.string({

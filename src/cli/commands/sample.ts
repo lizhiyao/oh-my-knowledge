@@ -9,6 +9,12 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadSamples, parseYaml, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import {
+  defaultFlatSkillSamplesFile,
+  defaultSkillLocalSamplesFile,
+  findFlatSkillSamplesPath,
+  findSkillSamplesPath,
+} from '../../inputs/sample-locator.js';
 import { hashSample } from '../../eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../inputs/content-hash.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
@@ -262,26 +268,26 @@ async function runSampleFix(
     console.error(lang === 'zh' ? '请指定 skill 路径，如: omk sample skills/my-skill/SKILL.md --fix' : 'Specify skill path: omk sample skills/my-skill/SKILL.md --fix');
     throw new CliExit(1);
   }
-  const resolvedSkillPath = resolve(skillPath);
-  if (!existsSync(resolvedSkillPath)) {
-    console.error(lang === 'zh' ? `skill 文件不存在: ${resolvedSkillPath}` : `Skill file not found: ${resolvedSkillPath}`);
+
+  const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
+  let resolvedInput;
+  try {
+    resolvedInput = resolveSkillInput(skillPath, lang);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     throw new CliExit(1);
   }
 
-  const isDir = basename(resolvedSkillPath) === 'SKILL.md';
-  const skillDir = isDir ? dirname(resolvedSkillPath) : dirname(resolvedSkillPath);
-  const samplesInput = isDir
-    ? join(skillDir, '.omk')
-    : resolve('eval-samples.json');
+  const samplesInput = resolvedInput.samplesPath;
 
   if (!existsSync(samplesInput)) {
     console.error(lang === 'zh' ? `samples 路径不存在: ${samplesInput}，先运行 omk sample 生成` : `Samples path not found: ${samplesInput}, run omk sample first`);
     throw new CliExit(1);
   }
 
-  const defaultTreatmentName = isDir
-    ? basename(skillDir)
-    : basename(resolvedSkillPath, extname(resolvedSkillPath));
+  const defaultTreatmentName = resolvedInput.isDirectorySkill
+    ? basename(resolvedInput.skillDir)
+    : basename(resolvedInput.skillPath, extname(resolvedInput.skillPath));
   const treatmentName = flags.treatment ?? defaultTreatmentName;
 
   process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
@@ -312,7 +318,7 @@ async function runSampleFix(
     throw new CliExit(1);
   }
   const samples = loadedSamples.samples;
-  const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
+  const skillContent = readFileSync(resolvedInput.skillPath, 'utf-8');
 
   const sampleDesignIds = collectSampleDesignFailureIds(report, treatmentName);
   const sampleDesignCount = sampleDesignIds.size;
@@ -324,7 +330,10 @@ async function runSampleFix(
 
   // 当前内容指纹走整树哈,与 eval 报告口径一致:dir-skill(用户传 .../SKILL.md)哈整棵 skill 目录、
   // 单文件 .md 哈单文件字节。
-  const currentContentHash = hashArtifactSource(isDir ? skillDir : resolvedSkillPath, isDir);
+  const currentContentHash = hashArtifactSource(
+    resolvedInput.isDirectorySkill ? resolvedInput.skillDir : resolvedInput.skillPath,
+    resolvedInput.isDirectorySkill,
+  );
 
   try {
     assertFixReportMatchesCurrentInputs({
@@ -495,23 +504,27 @@ async function runSample(
       let name: string;
       let skillPath: string;
       let samplesPath: string;
+      let existingSamplesPath: string | null;
       const fullPath: string = join(skillDir, entry);
 
       if (entry.endsWith('.md') && !entry.endsWith('.eval-samples.json')) {
         name = entry.slice(0, -3);
         skillPath = fullPath;
-        samplesPath = join(skillDir, `${name}.eval-samples.json`);
+        samplesPath = defaultFlatSkillSamplesFile(skillDir, name);
+        existingSamplesPath = findFlatSkillSamplesPath(skillDir, name);
       } else if (statSync(fullPath).isDirectory()) {
         const skillMd: string = join(fullPath, 'SKILL.md');
         if (!existsSync(skillMd)) continue;
+        if (existsSync(join(skillDir, `${entry}.md`))) continue;
         name = entry;
         skillPath = skillMd;
-        samplesPath = join(fullPath, '.omk', 'samples.json');
+        samplesPath = defaultSkillLocalSamplesFile(fullPath);
+        existingSamplesPath = findSkillSamplesPath(fullPath);
       } else {
         continue;
       }
 
-      if (existsSync(samplesPath)) {
+      if (existingSamplesPath) {
         process.stderr.write(tCli('cli.gen.skill_skipped_existing', lang, { name }));
         continue;
       }

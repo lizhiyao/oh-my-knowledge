@@ -101,7 +101,7 @@ omk eval [flags]
 - `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:从某次失败 run 续跑
 - `--retry` `option`:失败 sample 重试次数
-- `--samples` `option`:用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
+- `--samples` `option`:用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。
 - `--skill-dir` `option`:skill 目录，默认 skills
 - `--skip-connectivity` `boolean`:跳 LLM 连通性预检
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。

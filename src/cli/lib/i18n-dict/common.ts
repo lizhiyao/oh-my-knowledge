@@ -10,6 +10,8 @@ export type CommonMessageKey =
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
   | 'cli.common.warn_load_samples_failed'
+  | 'cli.common.deprecated_skill_samples_path'
+  | 'cli.common.samples_not_found'
   | 'cli.update.new_version_available'
   | 'cli.update.box_title'
   | 'cli.update.box_version_line'
@@ -62,6 +64,14 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.common.warn_load_samples_failed': {
     zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
     en: '⚠ Failed to load samples file ({path}): {message}\n',
+  },
+  'cli.common.deprecated_skill_samples_path': {
+    zh: '⚠ 发现旧的目录 skill 用例位置：{oldPath}。目录 skill 的私有用例已改放到 {newPath}，请迁移。\n',
+    en: '⚠ Found deprecated directory skill samples path: {oldPath}. Directory skill samples now live at {newPath}; please migrate.\n',
+  },
+  'cli.common.samples_not_found': {
+    zh: '未找到评测用例：{path}。请通过 --samples 指定文件，或创建项目级 eval-samples.json；单 treatment 目录 skill 请使用 <skill>/.omk/samples.json。',
+    en: 'Eval samples not found: {path}. Pass --samples, create project-level eval-samples.json, or use <skill>/.omk/samples.json for a single-treatment directory skill.',
   },
   'cli.update.new_version_available': {
     zh: '\n💡 新版本可用：{old} → {new}，运行 npm i -g oh-my-knowledge@latest 升级\n\n',

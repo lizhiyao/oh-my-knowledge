@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
 import { hashArtifactSource, hashBytes, isDistributablePath } from './content-hash.js';
 import { materializeIsolatedCopy } from './materialize-copy.js';
+import { findFlatSkillSamplesPath, findSkillSamplesPath } from './sample-locator.js';
 import type { Artifact, RemoteGitRef } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
@@ -430,14 +431,9 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
 
     if (mdMatch) {
       const name = entry.slice(0, -3);
-      const candidates = [
-        join(skillDir, name, '.omk'),
-        join(skillDir, `${name}.eval-samples.json`),
-        join(skillDir, `${name}.eval-samples.yaml`),
-        join(skillDir, `${name}.eval-samples.yml`),
-      ].filter(existsSync);
-      if (candidates.length > 0) {
-        skills.push({ name, skillPath: join(skillDir, entry), samplesPath: candidates[0] });
+      const samplesPath = findFlatSkillSamplesPath(skillDir, name);
+      if (samplesPath) {
+        skills.push({ name, skillPath: join(skillDir, entry), samplesPath });
       } else {
         warned.push(name);
       }
@@ -447,15 +443,8 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
     if (statSync(entryPath).isDirectory()) {
       const skillMd = join(entryPath, 'SKILL.md');
       if (!existsSync(skillMd)) continue;
-      // .omk/ dir (loadSamples handles dir mode) > .omk/samples.json > eval-samples.{json,yaml,yml}
-      const omkDir = join(entryPath, '.omk');
-      const candidates = [
-        ...(existsSync(omkDir) ? [omkDir] : []),
-        join(entryPath, 'eval-samples.json'),
-        join(entryPath, 'eval-samples.yaml'),
-        join(entryPath, 'eval-samples.yml'),
-      ];
-      const samplesPath = candidates.find(existsSync);
+      if (existsSync(join(skillDir, `${entry}.md`))) continue;
+      const samplesPath = findSkillSamplesPath(entryPath);
       if (samplesPath) {
         skills.push({ name: entry, skillPath: skillMd, samplesPath });
       } else {

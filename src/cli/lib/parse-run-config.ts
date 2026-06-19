@@ -125,10 +125,10 @@ export function parseRunConfig(
 
   const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
 
-  // 2) Resolve samples path: CLI > config > <skillDir>/<treatment>/.omk/ discovery > cwd default.
-  // The .omk/ discovery only fires when exactly one --treatment is given, so omk knows
-  // which skill's bundled samples to use. The dir form (loadSamples handles both file + dir)
-  // means a skill can split samples across multiple files (workflow.json / platform.json / ...).
+  // 2) Resolve samples path: CLI > config > single-treatment skill-local discovery > cwd project default.
+  // Skill-local discovery only fires when exactly one --treatment is given, so omk knows
+  // which skill's bundled samples to use. The `<skill>/.omk/` dir form (loadSamples handles
+  // both file + dir) means a skill can split samples across multiple files.
   const cliSamples = values.samples as string | undefined;
   let samplesFile: string;
   if (cliSamples) {

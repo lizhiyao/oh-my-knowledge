@@ -1,5 +1,5 @@
-import { existsSync, statSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -10,55 +10,9 @@ import { makeDoctorProgress } from '../lib/progress.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
+import { findDoctorDeprecatedSamplesHint, findDoctorSamplesPath } from '../../inputs/sample-locator.js';
 import type { Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
-
-const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
-
-function findSamplesInDir(dir: string): string | null {
-  for (const name of DEFAULT_SAMPLE_FILENAMES) {
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  const skillLocalSamplesDir = join(dir, '.omk');
-  if (existsSync(skillLocalSamplesDir) && statSync(skillLocalSamplesDir).isDirectory()) {
-    return skillLocalSamplesDir;
-  }
-  return null;
-}
-
-function sampleSearchDirs(target: string | null, cwd: string): string[] {
-  const dirs: string[] = [];
-  const add = (dir: string): void => {
-    const abs = resolve(dir);
-    if (!dirs.includes(abs)) dirs.push(abs);
-  };
-  if (target) {
-    const absTarget = resolve(target);
-    if (existsSync(absTarget)) {
-      const stat = statSync(absTarget);
-      if (stat.isDirectory()) {
-        add(absTarget);
-        add(dirname(absTarget));
-        add(dirname(dirname(absTarget)));
-      } else {
-        const parent = dirname(absTarget);
-        add(parent);
-        add(dirname(parent));
-      }
-    }
-  }
-  add(cwd);
-  return dirs;
-}
-
-function findDefaultSamplesPath(target: string | null, cwd: string): string | null {
-  for (const dir of sampleSearchDirs(target, cwd)) {
-    const samplesPath = findSamplesInDir(dir);
-    if (samplesPath) return samplesPath;
-  }
-  return null;
-}
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -201,7 +155,16 @@ export default class Doctor extends BaseCommand {
       );
 
       const cwd = process.cwd();
-      const samplesPath = flags.samples ? resolve(flags.samples) : findDefaultSamplesPath(target, cwd);
+      const samplesPath = flags.samples ? resolve(flags.samples) : findDoctorSamplesPath(target, cwd);
+      const deprecatedSamplesHint = !flags.samples && !samplesPath
+        ? findDoctorDeprecatedSamplesHint(target, cwd)
+        : null;
+      if (deprecatedSamplesHint) {
+        process.stderr.write(tCli('cli.common.deprecated_skill_samples_path', lang, {
+          oldPath: deprecatedSamplesHint.oldPath,
+          newPath: deprecatedSamplesHint.newPath,
+        }));
+      }
       let samples: Sample[] | undefined;
       let requires: DependencyRequirements | undefined;
       if (samplesPath) {

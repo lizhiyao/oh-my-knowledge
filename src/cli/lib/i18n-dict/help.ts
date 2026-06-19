@@ -181,20 +181,21 @@ omk sample——生成或补齐 eval-samples 评测用例
   omk sample --batch [--skill-dir <dir>] [options]
 
 输出位置（默认）：
-  <skill>/SKILL.md  → <skill>/.omk/samples.json（omk 标准约定）
-  其他 .md 路径    → 当前目录的 eval-samples.json（兜底）
+  目录 skill（<skill>/SKILL.md） → <skill>/.omk/samples.json（omk 标准约定）
+  扁平 .md（单次）               → 当前目录的 eval-samples.json（项目级兜底）
+  扁平 .md（--batch）            → <skill-dir>/<name>.eval-samples.json（兼容 paired 布局）
 
 选项：
   --count <n>                         强制生成 N 条（不指定时由 LLM 按 skill 类型自动判断：
                                        工作流型 6-8 条 / 原子型 4-6 条 / 混合型 5-7 条）
   --model <name>                      生成模型（默认：opus；lean+effort-low 已自动开,想省钱可改 sonnet/haiku）
   --focus <text>                      自然语言指定希望覆盖的场景（追加到 prompt，优先级高于自由发挥）
-  --batch                             为 skill 目录下缺少 eval-samples 的 skill 批量生成
+  --batch                             为 skill 目录下缺少 samples 的 skill 批量生成
   --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
 
 示例：
-  omk improve samples skills/req-tool.md
-  omk improve samples skills/req-tool.md --count 8 \\
+  omk sample skills/req-tool.md
+  omk sample skills/req-tool.md --count 8 \\
     --focus "重点覆盖 tag 查询走 PROJECT 空 → WORKSPACE 兜底的多步流程，以及 search 失败的错误路径"
 `,
     en: `
@@ -205,20 +206,21 @@ Usage:
   omk sample --batch [--skill-dir <dir>] [options]
 
 Output path (default):
-  <skill>/SKILL.md  → <skill>/.omk/samples.json (omk standard layout)
-  other .md paths   → ./eval-samples.json in current directory (fallback)
+  directory skill (<skill>/SKILL.md) → <skill>/.omk/samples.json (omk standard layout)
+  flat .md (single)                  → ./eval-samples.json in current directory (project fallback)
+  flat .md (--batch)                 → <skill-dir>/<name>.eval-samples.json (compatible paired layout)
 
 Options:
   --count <n>                         Force N samples (omit to let LLM auto-decide by skill type:
                                        workflow 6-8 / atomic 4-6 / mixed 5-7)
   --model <name>                      Generation model (default: opus; lean+effort-low applied; pass --model sonnet/haiku to save cost)
   --focus <text>                      Natural-language scenario hints appended to the prompt (overrides freeform diversity)
-  --batch                             Generate for skills that are missing eval-samples
+  --batch                             Generate for skills that are missing samples
   --skill-dir <path>                  Skill directory for batch mode (default: skills)
 
 Examples:
-  omk improve samples skills/req-tool.md
-  omk improve samples skills/req-tool.md --count 8 \\
+  omk sample skills/req-tool.md
+  omk sample skills/req-tool.md --count 8 \\
     --focus "Cover PROJECT-empty → WORKSPACE-fallback multi-step tag lookup and the search-failure error path"
 `,
   },
