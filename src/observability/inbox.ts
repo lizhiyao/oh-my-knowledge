@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { OMK_HOME } from '../eval-core/default-dirs.js';
+import { isReportFileName, reportFilePath } from '../eval-core/artifact-file-names.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,
@@ -43,7 +44,7 @@ export type {
 };
 
 // observe inbox（观测收件箱）产物根目录。导出名沿用 *_OBSERVATIONS_DIR 以少动 importer,
-// 但落盘目录已统一到 observe-inbox 词根(命令 omk observe inbox / 文件 *-observe-inbox.json / kind observe-inbox)。
+// 但落盘目录已统一到 observe-inbox 词根(命令 omk observe inbox / kind observe-inbox)。
 // 项目级 .omk/observe-inbox 优先、全局兜底 —— 这套 project/global 归属是既有正常行为,本次只改名不改归属。
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observe-inbox');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(OMK_HOME, 'observe-inbox');
@@ -552,7 +553,7 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   // 保留毫秒;同秒不同毫秒生成的两份 report 不应静默互相覆盖。
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
-  const path = join(outDir, `${stamp}-observe-inbox.json`);
+  const path = reportFilePath(outDir, stamp);
   writeFileSync(path, JSON.stringify(report, null, 2));
   return path;
 }
@@ -565,7 +566,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
     return [];
   }
   return readdirSync(dir)
-    .filter((file) => file.endsWith('-observe-inbox.json'))
+    .filter(isReportFileName)
     .map((file) => {
       try {
         const report = normalizeObservationInboxReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));

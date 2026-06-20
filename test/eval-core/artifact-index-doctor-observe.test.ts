@@ -11,6 +11,7 @@ import {
   indexDoctorWrite, listDoctorCards, cardToDoctorSnapshot, removeDoctorCard,
   indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
 } from '../../src/eval-core/artifact-index.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { globalDoctorsDir, globalObserveHealthDir } from '../../src/eval-core/measurement-dirs.js';
 
 describe('artifact-index 写侧(doctor 域)', () => {
@@ -31,8 +32,8 @@ describe('artifact-index 写侧(doctor 域)', () => {
     rmSync(projDir, { recursive: true, force: true });
   });
 
-  function doctorCard(id = 'sk-doctor-20260614-1-ab12', skillName = 'sk') {
-    return { id, path: join(projDir, `${id}.json`), skillName, reportId: 'doctor-20260614-1-ab12',
+  function doctorCard(id = 'sk-20260614-1-ab12', skillName = 'sk') {
+    return { id, path: join(projDir, reportFileName(id)), skillName, reportId: 'doctor-20260614-1-ab12',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass' as const, passCount: 3, warnCount: 0, failCount: 0 };
   }
 
@@ -120,7 +121,7 @@ describe('artifact-index 写侧(observe-health 域)', () => {
   }
 
   it('项目写 → 落卡片(meta+overall+per-skill 标量,剥掉 gap.signals 重体)', () => {
-    indexObserveWrite(observeReport(), join(projDir, 'a-observe-health.json'), projDir, 'a-observe-health');
+    indexObserveWrite(observeReport(), join(projDir, reportFileName('a')), projDir, 'a');
     const cards = listObserveCards();
     assert.equal(cards.length, 1);
     assert.equal(cards[0].overall.healthBand, 'green');
@@ -130,15 +131,15 @@ describe('artifact-index 写侧(observe-health 域)', () => {
   });
 
   it('全局写 → 不落卡片', () => {
-    indexObserveWrite(observeReport(), join(globalObserveHealthDir(), 'g.json'), globalObserveHealthDir(), 'g');
+    indexObserveWrite(observeReport(), join(globalObserveHealthDir(), reportFileName('g')), globalObserveHealthDir(), 'g');
     assert.equal(listObserveCards().length, 0);
   });
 
   it('removeObserveCard 幂等', () => {
-    indexObserveWrite(observeReport(), join(projDir, 'x-observe-health.json'), projDir, 'x-observe-health');
-    assert.equal(removeObserveCard('x-observe-health'), true);
+    indexObserveWrite(observeReport(), join(projDir, reportFileName('x')), projDir, 'x');
+    assert.equal(removeObserveCard('x'), true);
     assert.equal(listObserveCards().length, 0);
-    assert.equal(removeObserveCard('x-observe-health'), false);
+    assert.equal(removeObserveCard('x'), false);
   });
 
   it('坏 healthBand / 非数标量的卡片读侧从严跳过', () => {
@@ -155,7 +156,7 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     writeFileSync(join(dir, 'b3.json'), JSON.stringify({ domain: 'observe-health', id: 'b3', path: '/x',
       meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
       bySkill: { s: { toolFailureRate: 0, segmentCount: 1, gap: { weightedGapRate: 'nan' } } } }));
-    indexObserveWrite(observeReport(), join(projDir, 'ok-observe-health.json'), projDir, 'ok-observe-health');
-    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok-observe-health'], '只收 healthBand 合法 + 全标量(含 gap.weightedGapRate)为有限数的卡片');
+    indexObserveWrite(observeReport(), join(projDir, reportFileName('ok')), projDir, 'ok');
+    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok'], '只收 healthBand 合法 + 全标量(含 gap.weightedGapRate)为有限数的卡片');
   });
 });

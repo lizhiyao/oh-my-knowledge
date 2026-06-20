@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -8,19 +8,18 @@ import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../eval-core/measurement-dirs.js';
 import { indexObserveWrite } from '../../../eval-core/artifact-index.js';
+import { reportFilePath, runFileSuffix } from '../../../eval-core/artifact-file-names.js';
 import type { SkillHealthReport } from '../../../observability/skill-health-analyzer.js';
 
 /**
  * observe-health 报告落盘:id / 文件名加 4 位随机段,根治「同秒两次 omk observe 直接覆盖、数据丢失」的 bug。
- * 保留 `-observe-health.json` 后缀 —— resolveObserveHealthDir 靠它判项目优先、listAnalyses 靠它取 id stem、
- * loadAnalysis 靠 `${id}.json` 读真身。落盘后 best-effort 追加全局轻卡片,让 studio 跨项目聚合。
+ * 文件名统一为 `{run}.report.json`:目录表达 observe-health 域,文件表达这是可读报告。
+ * 落盘后 best-effort 追加全局轻卡片,让 studio 跨项目聚合。
  */
 export function persistObserveHealthReport(report: SkillHealthReport, outDir: string): { id: string; jsonPath: string } {
   mkdirSync(outDir, { recursive: true });
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const rand = Math.random().toString(36).slice(2, 6);
-  const id = `${timestamp}-${rand}-observe-health`;
-  const jsonPath = join(outDir, `${id}.json`);
+  const id = runFileSuffix();
+  const jsonPath = reportFilePath(outDir, id);
   writeFileSync(jsonPath, JSON.stringify(report, null, 2));
   indexObserveWrite(report, jsonPath, outDir, id);
   return { id, jsonPath };

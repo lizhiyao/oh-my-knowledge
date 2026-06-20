@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createFileStore, queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import type { Report, ReportStore, VariantSummary } from '../../src/types/index.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
@@ -81,7 +82,7 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
       const legacy = makeReport('legacy-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
       delete legacy.kind;
       delete legacy.id;
-      writeFileSync(join(dir, 'legacy-run.json'), JSON.stringify(legacy, null, 2));
+      writeFileSync(join(dir, reportFileName('legacy-run')), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
       assert.equal(await store.get('legacy-run'), null);
@@ -98,7 +99,7 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
       legacy.legacyDiscriminant = 'evaluation';
       delete legacy.kind;
       delete legacy.id;
-      writeFileSync(join(dir, 'legacy-extra-discriminant-run.json'), JSON.stringify(legacy, null, 2));
+      writeFileSync(join(dir, reportFileName('legacy-extra-discriminant-run')), JSON.stringify(legacy, null, 2));
 
       const store = createFileStore(dir);
       assert.equal(await store.get('legacy-extra-discriminant-run'), null);
@@ -114,7 +115,7 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
       const store = createFileStore(dir);
       await store.save('new-run', makeReport('new-run', 'v1', '2024-01-01T00:00:00Z', 0.8));
 
-      const raw = JSON.parse(readFileSync(join(dir, 'new-run.json'), 'utf-8')) as Record<string, unknown>;
+      const raw = JSON.parse(readFileSync(join(dir, reportFileName('new-run')), 'utf-8')) as Record<string, unknown>;
       assert.equal(raw.kind, 'evaluation');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -144,7 +145,7 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
         },
         items: [],
       };
-      writeFileSync(join(dir, 'legacy-extra-discriminant-batch.json'), JSON.stringify(legacyBatch, null, 2));
+      writeFileSync(join(dir, reportFileName('legacy-extra-discriminant-batch')), JSON.stringify(legacyBatch, null, 2));
 
       const store = createFileStore(dir);
       assert.equal(await store.get('legacy-extra-discriminant-batch'), null);
@@ -161,7 +162,7 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
       delete legacyBatch.kind;
       legacyBatch.overview = { totalArtifacts: 1, totalSamples: 1, totalCostUSD: 0, artifacts: [] };
       legacyBatch.artifacts = [];
-      writeFileSync(join(dir, 'legacy-batch.json'), JSON.stringify(legacyBatch, null, 2));
+      writeFileSync(join(dir, reportFileName('legacy-batch')), JSON.stringify(legacyBatch, null, 2));
 
       const store = createFileStore(dir);
       assert.equal(await store.get('legacy-batch'), null);

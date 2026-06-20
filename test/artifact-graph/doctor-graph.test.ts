@@ -86,7 +86,7 @@ describe('doctor artifact graph', () => {
       const graph = buildDoctorArtifactGraph({
         report,
         skill: report.skills[0],
-        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-doctor-test.json'),
+        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
         generatedAt: '2026-06-19T00:00:00.000Z',
       });
 
@@ -123,7 +123,7 @@ describe('doctor artifact graph', () => {
       const result = persistDoctorGraphSidecars({
         report,
         skill: report.skills[0],
-        sourcePath: join(outputDir, 'review-skill-doctor-test.json'),
+        sourcePath: join(outputDir, 'review-skill-test.report.json'),
         outputDir,
         fileStem: 'review-skill-doctor-test',
         lang: 'zh',

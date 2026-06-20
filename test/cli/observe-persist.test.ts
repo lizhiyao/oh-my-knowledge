@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { persistObserveHealthReport } from '../../src/cli/commands/observe/index.js';
 import { listObserveCards } from '../../src/eval-core/artifact-index.js';
+import { isReportFileName } from '../../src/eval-core/artifact-file-names.js';
 import type { SkillHealthReport } from '../../src/observability/skill-health-analyzer.js';
 
 function mkReport(): SkillHealthReport {
@@ -41,13 +42,13 @@ describe('persistObserveHealthReport', () => {
     const b = persistObserveHealthReport(mkReport(), outDir);
     assert.notEqual(a.id, b.id, '两次 id 不同(随机段)');
     assert.notEqual(a.jsonPath, b.jsonPath);
-    assert.equal(readdirSync(outDir).filter((f) => f.endsWith('.json')).length, 2, '两份都在,无覆盖');
+    assert.equal(readdirSync(outDir).filter(isReportFileName).length, 2, '两份都在,无覆盖');
   });
 
-  it('文件名保留 -observe-health.json 后缀(resolver / listAnalyses / loadAnalysis 依赖)', () => {
+  it('文件名使用 .report.json 后缀,目录承载 observe-health 域', () => {
     const { id, jsonPath } = persistObserveHealthReport(mkReport(), outDir);
-    assert.ok(id.endsWith('-observe-health'), 'id stem 以 -observe-health 结尾');
-    assert.ok(jsonPath.endsWith('-observe-health.json'));
+    assert.match(id, /^\d{8}T\d{6}-[a-z0-9]{4}$/);
+    assert.ok(jsonPath.endsWith(`${id}.report.json`));
   });
 
   it('落盘后写 observe 索引卡片(非全局目录)', () => {

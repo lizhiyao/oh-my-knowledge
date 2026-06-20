@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
 import { createReportServer } from '../../src/server/report-server.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
@@ -186,10 +187,10 @@ describe('report-server', () => {
     mkdirSync(DOCTORS_DIR, { recursive: true });
     mkdirSync(MANAGED_DIR, { recursive: true });
     writeFileSync(join(MANAGED_DIR, 'skill-review-smoke.json'), JSON.stringify(MANAGED_RECORD, null, 2));
-    writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
+    writeFileSync(join(TEST_DIR, reportFileName('test-run-001')), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
-    writeFileSync(join(OBSERVATIONS_DIR, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
+    writeFileSync(join(OBSERVATIONS_DIR, reportFileName('20260507T000000-a111')), JSON.stringify({
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {
@@ -332,8 +333,8 @@ describe('report-server', () => {
     mkdirSync(cReports, { recursive: true });
     mkdirSync(cManaged, { recursive: true });
     writeFileSync(join(cManaged, 'skill-curve-smoke.json'), JSON.stringify(CURVE_RECORD, null, 2));
-    writeFileSync(join(cReports, 'curve-r0.json'), JSON.stringify(curveReport('curve-r0', 'hashCurveV0', 3.0, [2.7, 3.3]), null, 2));
-    writeFileSync(join(cReports, 'curve-r1.json'), JSON.stringify(curveReport('curve-r1', 'hashCurveV1', 4.2, [3.9, 4.5]), null, 2));
+    writeFileSync(join(cReports, reportFileName('curve-r0')), JSON.stringify(curveReport('curve-r0', 'hashCurveV0', 3.0, [2.7, 3.3]), null, 2));
+    writeFileSync(join(cReports, reportFileName('curve-r1')), JSON.stringify(curveReport('curve-r1', 'hashCurveV1', 4.2, [3.9, 4.5]), null, 2));
     const cServer = createReportServer({ port: 0, reportsDir: cReports, managedDir: cManaged });
     const cUrl = await cServer.start();
     try {
@@ -440,16 +441,16 @@ describe('report-server', () => {
       overall: { gapRate: 0.1, weightedGapRate: 0.1, healthBand: 'green', confidence: 'high' },
       bySkill: {},
     });
-    writeFileSync(join(globA, 'global-h-observe-health.json'), healthReport('2026-01-01T00:00:00Z'));
+    writeFileSync(join(globA, reportFileName('global-h')), healthReport('2026-01-01T00:00:00Z'));
     const analysesResolver = (): string => (readdirSync(projA).length > 0 ? projA : globA);
     const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: analysesResolver, doctorsDir: (): string => DOCTORS_DIR, managedDir: MANAGED_DIR });
     const u = await s.start();
     try {
       const before = JSON.parse((await fetch(`${u}/api/observe-health`)).body) as Array<{ id: string }>;
-      assert.deepEqual(before.map((x) => x.id), ['global-h-observe-health'], '启动时项目空 → 解析到 global');
-      writeFileSync(join(projA, 'proj-h-observe-health.json'), healthReport('2026-02-02T00:00:00Z'));
+      assert.deepEqual(before.map((x) => x.id), ['global-h'], '启动时项目空 → 解析到 global');
+      writeFileSync(join(projA, reportFileName('proj-h')), healthReport('2026-02-02T00:00:00Z'));
       const after = JSON.parse((await fetch(`${u}/api/observe-health`)).body) as Array<{ id: string }>;
-      assert.deepEqual(after.map((x) => x.id), ['proj-h-observe-health'], '中途项目获报告 → 同会话实时切回 project');
+      assert.deepEqual(after.map((x) => x.id), ['proj-h'], '中途项目获报告 → 同会话实时切回 project');
     } finally {
       await s.stop();
       rmSync(projA, { recursive: true, force: true });
@@ -510,8 +511,8 @@ describe('report-server', () => {
       meta: { ...lowN.meta, segmentCount: 40 },
       overall: { ...lowN.overall, confidence: 'high' },
     };
-    writeFileSync(join(ANALYSES_DIR, 'an-lown.json'), JSON.stringify(lowN));
-    writeFileSync(join(ANALYSES_DIR, 'an-highn.json'), JSON.stringify(highN));
+    writeFileSync(join(ANALYSES_DIR, reportFileName('an-lown')), JSON.stringify(lowN));
+    writeFileSync(join(ANALYSES_DIR, reportFileName('an-highn')), JSON.stringify(highN));
     try {
       const res = await fetch(`${baseUrl}/observe-health`);
       assert.equal(res.status, 200);
@@ -521,8 +522,8 @@ describe('report-server', () => {
       // high-N red 报告仍保留硬红圆点。
       assert.match(res.body, /background:var\(--red\)/);
     } finally {
-      rmSync(join(ANALYSES_DIR, 'an-lown.json'), { force: true });
-      rmSync(join(ANALYSES_DIR, 'an-highn.json'), { force: true });
+      rmSync(join(ANALYSES_DIR, reportFileName('an-lown')), { force: true });
+      rmSync(join(ANALYSES_DIR, reportFileName('an-highn')), { force: true });
     }
   });
 
@@ -654,7 +655,7 @@ describe('report-server', () => {
 
   it('DELETE /api/reports/:id removes report', async () => {
     // Create a temp report to delete
-    writeFileSync(join(TEST_DIR, 'to-delete.json'), JSON.stringify({ ...SAMPLE_REPORT, id: 'to-delete' }));
+    writeFileSync(join(TEST_DIR, reportFileName('to-delete')), JSON.stringify({ ...SAMPLE_REPORT, id: 'to-delete' }));
 
     const res = await fetch(`${baseUrl}/api/reports/to-delete`, { method: 'DELETE' });
     assert.equal(res.status, 200);
@@ -693,8 +694,8 @@ describe('report-server', () => {
       totals: { pass: 0, warn: 1, fail: 0 },
       outcome: 'warnings_only',
     });
-    writeFileSync(join(DOCTORS_DIR, `batch-skill-one-${batchId}.json`), JSON.stringify(mkPerSkill('batch-skill-one', 'rule-only-in-one'), null, 2));
-    writeFileSync(join(DOCTORS_DIR, `batch-skill-two-${batchId}.json`), JSON.stringify(mkPerSkill('batch-skill-two', 'rule-only-in-two'), null, 2));
+    writeFileSync(join(DOCTORS_DIR, reportFileName(`batch-skill-one-batch-20260610`)), JSON.stringify(mkPerSkill('batch-skill-one', 'rule-only-in-one'), null, 2));
+    writeFileSync(join(DOCTORS_DIR, reportFileName(`batch-skill-two-batch-20260610`)), JSON.stringify(mkPerSkill('batch-skill-two', 'rule-only-in-two'), null, 2));
     try {
       const res = await fetch(`${baseUrl}/doctors/${batchId}?skill=batch-skill-two`);
       assert.equal(res.status, 200);
@@ -704,8 +705,8 @@ describe('report-server', () => {
       assert.ok(!res.body.includes('rule-only-in-one'), '不应渲染另一个 per-skill 文件独有的规则');
       assert.ok(!res.body.includes('batch-skill-one'), '不应回退展示第一个 skill');
     } finally {
-      rmSync(join(DOCTORS_DIR, `batch-skill-one-${batchId}.json`), { force: true });
-      rmSync(join(DOCTORS_DIR, `batch-skill-two-${batchId}.json`), { force: true });
+      rmSync(join(DOCTORS_DIR, reportFileName(`batch-skill-one-batch-20260610`)), { force: true });
+      rmSync(join(DOCTORS_DIR, reportFileName(`batch-skill-two-batch-20260610`)), { force: true });
     }
   });
 

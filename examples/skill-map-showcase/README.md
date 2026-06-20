@@ -17,7 +17,7 @@ omk doctor skills/release-readiness --static-only
 
 预期输出：
 
-- `.omk/doctors/<id>.json`
+- `.omk/doctors/<skill>-<run>.report.json`
 
 这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/samples.json` 是随 skill 入库的源数据。启用 Skill Information Graph 支持后，同一条命令还会写入：
 

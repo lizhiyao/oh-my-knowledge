@@ -14,6 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync 
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isReportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,7 +48,7 @@ function box(): { home: string; project: string; base: string; env: NodeJS.Proce
 }
 
 function inboxJsons(dir: string): string[] {
-  return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('-observe-inbox.json')) : [];
+  return existsSync(dir) ? readdirSync(dir).filter(isReportFileName) : [];
 }
 
 const globalInbox = (home: string): string => join(home, 'observe-inbox');

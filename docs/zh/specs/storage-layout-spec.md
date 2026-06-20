@@ -56,18 +56,20 @@
 
 目录和文件名各自承载不同含义：
 
-- **目录表达产品域**。例如 `.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar，新文件名不要再重复 `doctor`，除非它是在保留一个已经公开的 id。
-- **主运行产物可以保留公开 id**。现有 `.omk/reports/<reportId>.json`、`.omk/doctors/<skill>-<doctorReportId>.json`、`.omk/observe-health/<observeHealthId>.json` 都是公开查找键；要改名必须带兼容读取和迁移说明。
-- **新的 run-derived sidecar 用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名，`runSuffix` 是让本次运行唯一的时间戳 / 计数 / 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
+- **目录表达产品域**。例如 `.omk/doctors/` 已经说明这是 doctor，`.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar；文件名不再重复这些 domain 词。
+- **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名，`runSuffix` 是让本次运行唯一的时间戳 / 计数 / 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
 - **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
 
 示例：
 
 ```
+.omk/reports/baseline-vs-service-guide-20260620-105109-aqgq.report.json
+.omk/doctors/service-guide-20260620T105109-1-aqgq.report.json
+.omk/observe-health/20260620T105109-aqgq.report.json
+.omk/observe-inbox/20260620T105109-aqgq.report.json
 .omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
 .omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
-.omk/doctors/service-guide-doctor-20260620T051909-1-aqgq.json   # 既有公开 doctor 报告形态
 ```
 
 ## 四、skill、测量、治理是三层，别混成一栏

@@ -10,6 +10,7 @@ import {
   attachGoldAgreementToReport,
   toPersistedAgreement,
 } from '../../src/grading/gold-cli.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { loadGoldDataset } from '../../src/grading/gold-dataset.js';
 import type { Report } from '../../src/types/index.js';
 
@@ -174,7 +175,7 @@ describe('attachGoldAgreementToReport', () => {
     assert.equal(report.meta.humanAgreement?.alpha, 1);
     assert.equal(report.meta.humanAgreement?.goldAnnotator, 'claude-opus-4-7');
     // Report file must exist on disk after re-persist.
-    const filePath = join(outDir, `${report.id}.json`);
+    const filePath = join(outDir, reportFileName(report.id));
     const persisted = JSON.parse(readFileSync(filePath, 'utf-8'));
     assert.equal(persisted.meta.humanAgreement.alpha, 1);
   });

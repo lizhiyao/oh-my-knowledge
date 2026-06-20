@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { cardFileName, graphFileName, safeArtifactFileStem } from '../eval-core/artifact-file-names.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
 import {
   extractMarkdownStepWorkflows,
@@ -55,7 +56,7 @@ function shortHash(input: string): string {
 }
 
 function safeFileName(id: string): string {
-  return id.replaceAll(/[/\\:*?"<>|]/g, '_');
+  return safeArtifactFileStem(id);
 }
 
 export function doctorGraphDirForDoctorOutput(doctorOutputDir: string): string {
@@ -595,8 +596,8 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
   mkdirSync(dir, { recursive: true });
   const graph = buildDoctorArtifactGraph(options);
   const fileStem = safeFileName(options.fileStem);
-  const graphPath = join(dir, `${fileStem}.graph.json`);
-  const evidenceCardPath = join(dir, `${fileStem}.card.md`);
+  const graphPath = join(dir, graphFileName(fileStem));
+  const evidenceCardPath = join(dir, cardFileName(fileStem));
   writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf8');
   writeFileSync(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang), 'utf8');
   return { graphPath, evidenceCardPath };
@@ -605,7 +606,7 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
 export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: string): void {
   const dir = doctorGraphDirForDoctorOutput(doctorOutputDir);
   const safeStem = safeFileName(fileStem);
-  for (const ext of ['graph.json', 'card.md', 'json', 'md']) {
+  for (const ext of ['graph.json', 'card.md']) {
     try {
       unlinkSync(join(dir, `${safeStem}.${ext}`));
     } catch {

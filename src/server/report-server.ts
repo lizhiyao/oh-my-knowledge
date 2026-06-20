@@ -16,6 +16,7 @@ import { renderManagedList, renderManagedHistory } from '../renderer/managed-his
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
 import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../eval-core/artifact-index.js';
+import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore } from './job-store.js';
@@ -94,12 +95,13 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
   // 但**不能早退** —— 后面仍要按 includeCards 合并别项目卡片,否则 observe 列表会与合卡片的 /api/skills 口径分裂。
   if (existsSync(dir)) {
     for (const file of readdirSync(dir)) {
-      if (!file.endsWith('.json')) continue;
+      const id = reportFileStem(file);
+      if (!id) continue;
       try {
         const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillHealthReport;
         if (!data.meta || !data.overall) continue;
         items.push({
-          id: file.replace(/\.json$/, ''),
+          id,
           generatedAt: data.meta.generatedAt,
           sessionCount: data.meta.sessionCount,
           segmentCount: data.meta.segmentCount,
@@ -130,7 +132,7 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
 }
 
 function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealthReport | null {
-  const path = join(dir, `${id}.json`);
+  const path = reportFilePath(dir, id);
   if (existsSync(path)) {
     try { return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport; } catch { /* fall through to card */ }
   }
@@ -151,7 +153,7 @@ function loadDoctorReport(dir: string, id: string, skillName?: string, includeCa
   let fallback: DoctorReport | null = null;
   if (existsSync(dir)) {
     for (const file of readdirSync(dir)) {
-      if (!file.endsWith('.json')) continue;
+      if (!isReportFileName(file)) continue;
       try {
         const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
         if (data?.kind !== 'doctor' || data.id !== id) continue;

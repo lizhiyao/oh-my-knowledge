@@ -6,13 +6,13 @@
  *     的 dir-content fingerprint。命中同 fingerprint 时复用对象引用,变了重 build。
  *
  *   review P2-a (2026-05-11 顶部 issue-comment 第二条 🟡 — fingerprint 漏 same-
- *     name JSON in-place content rewrite 的 invalidate 信号):pre-fix 时
- *     fingerprint 的 dir 段只 hash 目录本身的 mtime 跟 .json 文件数两个量,
+ *     name report in-place content rewrite 的 invalidate 信号):pre-fix 时
+ *     fingerprint 的 dir 段只 hash 目录本身的 mtime 跟 report 文件数两个量,
  *     Unix 目录的 mtime 只随**目录项**(filename 级别的 add / rm / rename)
  *     操作变,**同名 file 内容被外部 process 原地覆写**时目录 mtime 不动文件数
  *     也不动,fingerprint 字符串不变 cache 命中老 SkillIndex,Studio 端拿到
  *     stale 数据。fix 是把 fingerprint 升级为 content-aware 形态——dir 段含
- *     该 dir 下每个 .json 文件的 "filename:mtimeMs:size" 三元组(filename 排
+ *     该 dir 下每个 .report.json 文件的 "filename:mtimeMs:size" 三元组(filename 排
  *     序),仿 src/server/report-store.ts:80-92 的 computeListFingerprint 那一
  *     侧的 pattern,这样"目录内某文件 mtime / size 变" 这种"内容被覆写"信号
  *     也会让 fingerprint 字符串变,cache miss 触发重新 build。
@@ -68,6 +68,7 @@ import { mkdtempSync, rmSync, writeFileSync, utimesSync, unlinkSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSkillIndex, _resetSkillIndexCache } from '../../src/server/skill-index.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import type { EvaluationReport } from '../../src/types/index.js';
 
 function mkReport(id: string, ts: string, variant: string): EvaluationReport {
@@ -197,7 +198,7 @@ describe('buildSkillIndex 模块级缓存', () => {
 
   it('case 4 (P2-a 核心 — analysesDir 里 same-name JSON 内容原地 in-place 覆写之后 fingerprint 必须 invalidate cache):reviewer 5/11 描述的"同份 analysis JSON 把 toolFailureRate 从 0 改成 0.9, server 进程内二次 buildSkillIndex 返回 same object reference 仍是旧值"那条 ship-blocker 锁定', () => {
     const reports = [mkReport('r1', '2026-05-11T00:00:00Z', 'foo')];
-    const analysisJsonPath = join(analysesDir, 'health-2026-05-11.json');
+    const analysisJsonPath = join(analysesDir, reportFileName('health-2026-05-11'));
 
     // 第一次写一份 "healthBand: green, failureRate: 0.0" baseline 然后建第一份
     // SkillIndex。`writeAnalysisJson` 内部用 `utimesSync` 显式设 mtime 到给定
@@ -221,7 +222,7 @@ describe('buildSkillIndex 模块级缓存', () => {
 
   it('case 5 (P2-a 对称 — doctorsDir 一侧的 same-name doctor JSON 原地覆写也必须 invalidate cache,验证新 fingerprint helper 对 doctors 跟 analyses 两个 dir 都生效不是只对一侧打补丁)', () => {
     const reports = [mkReport('r1', '2026-05-11T00:00:00Z', 'foo')];
-    const doctorJsonPath = join(doctorsDir, 'doctor-2026-05-11.json');
+    const doctorJsonPath = join(doctorsDir, reportFileName('doctor-2026-05-11'));
 
     writeDoctorJson(doctorJsonPath, 'run-baseline', 1, '2026-05-11T00:00:01Z');
     _resetSkillIndexCache();
@@ -265,9 +266,9 @@ describe('buildSkillIndex 模块级缓存', () => {
     assert.equal(idx1.entries.length, idx2.entries.length, 'same reports → same skill count in both runs');
   });
 
-  it('case 7 (P2-a 完整性补 — file removal 信号:dir 里既有一份 .json 文件然后 unlink 之后, sorted filename list 少一项 fingerprint 字符串变 cache invalidate。这是 case 2 的文件系统侧 mirror 对应 dir-contents 维度的"删除"信号,case 4/5 已 cover"覆写"信号,合起来形成完整的 fingerprint-invariant matrix 不漏 file-system-level 任何变化类型)', () => {
+  it('case 7 (P2-a 完整性补 — file removal 信号:dir 里既有一份 report 文件然后 unlink 之后, sorted filename list 少一项 fingerprint 字符串变 cache invalidate。这是 case 2 的文件系统侧 mirror 对应 dir-contents 维度的"删除"信号,case 4/5 已 cover"覆写"信号,合起来形成完整的 fingerprint-invariant matrix 不漏 file-system-level 任何变化类型)', () => {
     const reports = [mkReport('r1', '2026-05-11T00:00:00Z', 'foo')];
-    const ephemeral = join(analysesDir, 'ephemeral-analysis.json');
+    const ephemeral = join(analysesDir, reportFileName('ephemeral-analysis'));
     writeAnalysisJson(ephemeral, 0.5, 'yellow', '2026-05-11T00:00:01Z');
 
     _resetSkillIndexCache();

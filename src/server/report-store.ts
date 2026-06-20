@@ -6,6 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
 import type { EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportIndexCard, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
@@ -70,7 +71,7 @@ export function createFileStore(dir: string): ReportStore {
     return report.kind === 'evaluation';
   }
 
-  // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .json 同步 readFile +
+  // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .report.json 同步 readFile +
   // JSON.parse。报告数上来后这是主性能瓶颈。缓存策略:fingerprint = dir mtime + 文件名
   // 排序串 + 每个文件 mtime;任一变化 invalidate。fingerprint 算 cheap(只 stat),命中后
   // 完全跳过 readFile。
@@ -79,7 +80,7 @@ export function createFileStore(dir: string): ReportStore {
   async function computeListFingerprint(): Promise<string | null> {
     try {
       const dirStat = await stat(dir);
-      const files = (await readdir(dir)).filter((f) => f.endsWith('.json')).sort();
+      const files = (await readdir(dir)).filter(isReportFileName).sort();
       const parts = await Promise.all(files.map(async (f) => {
         try {
           const s = await stat(join(dir, f));
@@ -100,14 +101,14 @@ export function createFileStore(dir: string): ReportStore {
     if (fp != null && fp === cachedFingerprint && cachedRuns) return cachedRuns;
 
     const files = (await readdir(dir))
-      .filter((f) => f.endsWith('.json'))
+      .filter(isReportFileName)
       .sort()
       .reverse();
     const runs: ReportDocument[] = [];
     for (const file of files) {
       try {
         const data = JSON.parse(await readFile(join(dir, file), 'utf-8'));
-        const report = normalizeReportDocument(data, file.replace(/\.json$/, ''));
+        const report = normalizeReportDocument(data, reportFileStem(file) ?? file);
         if (report) runs.push(report);
       } catch { /* skip corrupt files */ }
     }
@@ -125,7 +126,7 @@ export function createFileStore(dir: string): ReportStore {
 
   async function get(id: string): Promise<ReportDocument | null> {
     try {
-      const data = JSON.parse(await readFile(join(dir, `${id}.json`), 'utf-8'));
+      const data = JSON.parse(await readFile(reportFilePath(dir, id), 'utf-8'));
       return normalizeReportDocument(data, id);
     } catch {
       return null;
@@ -134,9 +135,10 @@ export function createFileStore(dir: string): ReportStore {
 
   async function save(id: string, report: ReportDocument): Promise<void> {
     await ensureDir();
-    const tmpPath = join(dir, `${id}.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
+    const targetPath = reportFilePath(dir, id);
+    const tmpPath = `${targetPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
     await writeFile(tmpPath, JSON.stringify(report, null, 2));
-    await rename(tmpPath, join(dir, `${id}.json`));
+    await rename(tmpPath, targetPath);
   }
 
   /**
@@ -155,7 +157,7 @@ export function createFileStore(dir: string): ReportStore {
 
   async function remove(id: string): Promise<boolean> {
     try {
-      await unlink(join(dir, `${id}.json`));
+      await unlink(reportFilePath(dir, id));
       return true;
     } catch (err: unknown) {
       const fsError = err as NodeJS.ErrnoException;
@@ -166,7 +168,7 @@ export function createFileStore(dir: string): ReportStore {
 
   async function exists(id: string): Promise<boolean> {
     try {
-      await access(join(dir, `${id}.json`));
+      await access(reportFilePath(dir, id));
       return true;
     } catch {
       return false;

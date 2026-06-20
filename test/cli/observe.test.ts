@@ -4,11 +4,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
-    writeFileSync(join(dir, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
+    writeFileSync(join(dir, reportFileName('20260507T000000-a111')), JSON.stringify({
       kind: 'observe-inbox',
       schemaVersion: 2,
       meta: {

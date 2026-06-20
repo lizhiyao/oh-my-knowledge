@@ -56,18 +56,20 @@ The measurement outputs in the first row are placed the same way (project-local 
 
 Directories and filenames deliberately carry different bits of meaning:
 
-- **The directory carries the product domain.** For example, `.omk/graphs/doctor/` already says "doctor graph sidecar", so new files in that directory should not repeat `doctor` unless the id they preserve already contains it.
-- **Primary run artifacts may keep their public id.** Existing report files such as `.omk/reports/<reportId>.json`, `.omk/doctors/<skill>-<doctorReportId>.json`, and `.omk/observe-health/<observeHealthId>.json` are public lookup keys. Rename them only with a compatibility reader and a migration note.
-- **New run-derived sidecars use `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name, `runSuffix` is the timestamp/counter/random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
+- **The directory carries the product domain.** For example, `.omk/doctors/` already says "doctor", and `.omk/graphs/doctor/` already says "doctor graph sidecar"; filenames do not repeat those domain words.
+- **Every run-derived artifact uses `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name, `runSuffix` is the timestamp/counter/random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
 - **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
 - **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
 
 Examples:
 
 ```
+.omk/reports/baseline-vs-service-guide-20260620-105109-aqgq.report.json
+.omk/doctors/service-guide-20260620T105109-1-aqgq.report.json
+.omk/observe-health/20260620T105109-aqgq.report.json
+.omk/observe-inbox/20260620T105109-aqgq.report.json
 .omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
 .omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
-.omk/doctors/service-guide-doctor-20260620T051909-1-aqgq.json   # existing public doctor report shape
 ```
 
 ## 4. Skill, measurement, governance are three layers — don't mix them into one column

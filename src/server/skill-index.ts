@@ -9,14 +9,13 @@
  *     因为同一份 EvaluationReport 同时驱动两个 view tab。
  *   - observe 报告(analysesDir, SkillHealthReport):data.bySkill[name] 每个键作为
  *     一个 skill 的 observe snapshot,取最新 generatedAt。
- *   - doctor:暂无独立持久化路径(omk doctor --html 写指定路径,默认不存盘),
- *     该字段保留 null,渲染层显示"未独立运行 omk doctor"。后续 commit 加默认
- *     ~/.oh-my-knowledge/doctors/ 持久化路径再回填。
+ *   - doctor:读取 `.omk/doctors/*.report.json`,按 skill 名聚合体检历史。
  *
  * 综合 band:eval / observe 任一红 → 红,任一黄 → 黄,全绿 → 绿,皆未跑 → gray。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, isAbsolute, basename, dirname } from 'node:path';
+import { isReportFileName, reportFileStem } from '../eval-core/artifact-file-names.js';
 import type {
   ReportDocument,
   EvaluationReport,
@@ -53,15 +52,15 @@ export type {
 // 数据量大后列表 / 详情页响应变慢(PR #95 review P2-4 — cache 引入本身那一条)。
 //
 // 缓存策略:对 reports id+timestamp 拼接 + `doctorsDir` 跟 `analysesDir` 各自
-// 下"每个 .json 文件的 name:mtimeMs:size 三元组按 filename 排序拼接"的
+// 下"每个 .report.json 文件的 name:mtimeMs:size 三元组按 filename 排序拼接"的
 // **content-aware** fingerprint key。三类变化都会让 fingerprint 字符串变让
 // cache 失效:
 //
 //   (1) reports 数组改变(新 run id 进列表 / 现有 entry 的 meta.timestamp 变)
-//   (2) doctorsDir / analysesDir 里 .json 文件**增删改名**(dir 本身 mtime
+//   (2) doctorsDir / analysesDir 里 .report.json 文件**增删改名**(dir 本身 mtime
 //       随 dirent 变化变,且排序后的 filename 序列变,fingerprint 字符串里那
 //       两段都变)
-//   (3) doctorsDir / analysesDir 里**同名 .json 文件被原地覆写内容**(Unix
+//   (3) doctorsDir / analysesDir 里**同名 .report.json 文件被原地覆写内容**(Unix
 //       目录 mtime 不变因为 dirent 表项没动,但被覆写的那个 file 自己的
 //       mtimeMs 跟 byte size 都会变 — fingerprint 字符串里那一行
 //       `<filename>:<mtimeMs>:<size>` 的后缀变,整体字符串变,cache miss
@@ -69,7 +68,7 @@ export type {
 //
 // (3) 是 PR #95 reviewer lizhiyao 2026-05-11 顶部 issue-comment 的 🟡 P2 第
 // 一条 ship-blocker(P2-a) — pre-fix 时 fingerprint 只看 dir 本身的 mtime
-// 跟 .json 文件数两个量,前面 (1) (2) 信号能命中,但 (3) 这种"外部 process
+// 跟 .report.json 文件数两个量,前面 (1) (2) 信号能命中,但 (3) 这种"外部 process
 // 把同一个 analysis JSON 从 toolFailureRate=0 覆写成 0.9 这种 in-place 内容
 // 更新"既不动目录 dirent 也不改文件名所以两个量都不变,fingerprint 命中老
 // key,server 进程内 `_indexCache` 复用旧引用,Studio 端拿到的 SkillIndex
@@ -92,13 +91,13 @@ let _indexCache: SkillIndexCache | null = null;
 
 /**
  * Sync 版 dir-content fingerprint helper,仿 `src/server/report-store.ts:80-92`
- * 的 async `computeListFingerprint` — 把目录本身的 mtime 跟目录下每个 `.json`
+ * 的 async `computeListFingerprint` — 把目录本身的 mtime 跟目录下每个 `.report.json`
  * 文件的 "filename:mtimeMs:size" 三元组排序拼接成 stable 字符串作为 dir-level
  * 的 content-aware fingerprint。
  *
- * - 目录下任何 .json 文件**新增 / 删除 / 重命名** → 目录 mtime 跟着变,且
+ * - 目录下任何 .report.json 文件**新增 / 删除 / 重命名** → 目录 mtime 跟着变,且
  *   sorted-filenames 列表变,字符串变 → cache invalidate。
- * - 任何**已有同名 .json 文件被外部进程原地覆写内容** → 该文件自己的 mtimeMs
+ * - 任何**已有同名 .report.json 文件被外部进程原地覆写内容** → 该文件自己的 mtimeMs
  *   跟通常情况下 size 都变(byte 长度跟内容相关),字符串里那一 entry 的后缀
  *   变,整体字符串变 → cache invalidate。这是 pre-fix 的 fingerprint(只看
  *   dir mtime+文件数)漏掉的信号(reviewer 2026-05-11 P2-a)。
@@ -114,7 +113,7 @@ function safeDirJsonContentFingerprint(dir: string): string {
   let jsonFiles: string[];
   try {
     dirMtimeMs = statSync(dir).mtimeMs;
-    jsonFiles = readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+    jsonFiles = readdirSync(dir).filter(isReportFileName).sort();
   } catch {
     return `missing:${dir}`;
   }
@@ -290,13 +289,13 @@ function latestEvalSnapshot(list: SkillEvalSnapshot[]): SkillEvalSnapshot | null
   return list[list.length - 1];
 }
 
-/** 扫 doctorsDir/*.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
+/** 扫 doctorsDir/*.report.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
  *  renderer 用最后一项做"当前",前面项画 sparkline。 */
 function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
   const out: Record<string, SkillDoctorSnapshot[]> = {};
   if (!existsSync(dir)) return out;
   for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.json')) continue;
+    if (!isReportFileName(file)) continue;
     try {
       const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
       const kind = data?.kind === 'doctor' ? data.kind : null;
@@ -367,12 +366,12 @@ export function buildSkillIndex(
   const observeBy: Record<string, SkillObserveSnapshot[]> = {};
   if (existsSync(analysesDir)) {
     for (const file of readdirSync(analysesDir)) {
-      if (!file.endsWith('.json')) continue;
+      const id = reportFileStem(file);
+      if (!id) continue;
       try {
         const data = JSON.parse(readFileSync(join(analysesDir, file), 'utf-8')) as SkillHealthReport;
         if (!data?.bySkill || !data.meta) continue;
         const generatedAt = data.meta.generatedAt;
-        const id = file.replace(/\.json$/, '');
         for (const [skill, h] of Object.entries(data.bySkill)) {
           const snap: SkillObserveSnapshot = {
             analysisId: id, generatedAt,

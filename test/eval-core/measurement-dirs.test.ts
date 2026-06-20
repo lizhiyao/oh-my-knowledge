@@ -9,6 +9,7 @@ import {
   projectReportsDir, globalReportsDir,
 } from '../../src/eval-core/measurement-dirs.js';
 import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-mdir-${tag}-${Date.now()}-${Math.round(performance.now())}`);
@@ -40,10 +41,10 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
       // 都空 → 回项目
       assert.equal(resolveObserveHealthDir(proj, glob), proj, '都空回项目');
       // 仅全局有 → 全局
-      writeFileSync(join(glob, '2026-01-01T00-00-00-observe-health.json'), '{}');
+      writeFileSync(join(glob, reportFileName('20260101T000000-a111')), '{}');
       assert.equal(resolveObserveHealthDir(proj, glob), glob, '项目空+全局有→全局');
       // 项目也有 → 项目优先
-      writeFileSync(join(proj, '2026-02-02T00-00-00-observe-health.json'), '{}');
+      writeFileSync(join(proj, reportFileName('20260202T000000-b222')), '{}');
       assert.equal(resolveObserveHealthDir(proj, glob), proj, '项目有→项目优先');
     } finally {
       rmSync(proj, { recursive: true, force: true });
@@ -55,8 +56,8 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
     const proj = mkTmp('h-suffix');
     const glob = mkTmp('h-suffix-g');
     try {
-      writeFileSync(join(proj, 'random.json'), '{}'); // 非 -observe-health.json
-      writeFileSync(join(glob, '2026-01-01T00-00-00-observe-health.json'), '{}');
+      writeFileSync(join(proj, 'random.json'), '{}'); // 非 .report.json
+      writeFileSync(join(glob, reportFileName('20260101T000000-a111')), '{}');
       // 项目只有无关 .json → 不算有报告 → 回退全局
       assert.equal(resolveObserveHealthDir(proj, glob), glob, '后缀不匹配不算报告');
     } finally {
@@ -65,14 +66,14 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
     }
   });
 
-  it('doctors:项目有任意 .json→项目;项目空+全局有→全局;都空→项目', () => {
+  it('doctors:项目有 report→项目;项目空+全局有→全局;都空→项目', () => {
     const proj = mkTmp('d-proj');
     const glob = mkTmp('d-glob');
     try {
       assert.equal(resolveDoctorsDir(proj, glob), proj, '都空回项目');
-      writeFileSync(join(glob, 'some-skill-id.json'), '{}');
+      writeFileSync(join(glob, reportFileName('some-skill-id')), '{}');
       assert.equal(resolveDoctorsDir(proj, glob), glob, '项目空+全局有→全局');
-      writeFileSync(join(proj, 'another-skill-id.json'), '{}');
+      writeFileSync(join(proj, reportFileName('another-skill-id')), '{}');
       assert.equal(resolveDoctorsDir(proj, glob), proj, '项目有→项目优先');
     } finally {
       rmSync(proj, { recursive: true, force: true });
