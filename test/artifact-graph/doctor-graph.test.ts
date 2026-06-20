@@ -80,6 +80,7 @@ describe('doctor artifact graph', () => {
         '### Step 1: 读取上下文',
       ].join('\n'));
       writeFileSync(join(skillRoot, 'references', 'api.md'), 'reference');
+      writeFileSync(join(skillRoot, 'references', 'api[prod](v1)#x;.md'), 'reference');
       writeFileSync(join(skillRoot, 'scripts', 'check.sh'), 'echo ok');
 
       const report = makeReport(tmp, skillPath);
@@ -110,6 +111,7 @@ describe('doctor artifact graph', () => {
       assert.ok(card.includes('refs --> refs_1'));
       assert.ok(card.includes('scripts --> scripts_1'));
       assert.ok(card.includes('workflows --> workflows_1'));
+      assert.ok(card.includes('api&#91;prod&#93;&#40;v1&#41;&#35;x&#59;.md'));
       assert.ok(card.includes('doctor --> issue'));
       assert.ok(card.includes('doctor -. next .-> eval'));
       assert.ok(!card.includes('### 图中未展开的结构'));
@@ -187,6 +189,9 @@ describe('doctor artifact graph', () => {
       const card = renderDoctorEvidenceCard(graph, report.skills[0], 'zh');
       assert.ok(card.includes('未检测到 eval samples'));
       assert.ok(card.includes('omk sample'));
+      assert.ok(!card.includes('references / 0'));
+      assert.ok(!card.includes('scripts / 0'));
+      assert.ok(!card.includes('workflows / 0'));
       assert.ok(!card.includes('复用当前 0 条用例继续评测'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });

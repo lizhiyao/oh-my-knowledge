@@ -494,7 +494,26 @@ function doctorStatusLabel(skill: DoctorSkillReport, lang: Lang): string {
 }
 
 function mermaidLabel(label: string): string {
-  return label.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', ' ');
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '\\': '&#92;',
+    '"': '&quot;',
+    '[': '&#91;',
+    ']': '&#93;',
+    '(': '&#40;',
+    ')': '&#41;',
+    '{': '&#123;',
+    '}': '&#125;',
+    '|': '&#124;',
+    '#': '&#35;',
+    ';': '&#59;',
+    '<': '&lt;',
+    '>': '&gt;',
+  };
+  return label
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[&\\"[\](){}|#;<>]/g, (ch) => entities[ch] ?? ch);
 }
 
 function compactLabel(label: string, max = 56): string {
@@ -524,6 +543,7 @@ function addExpandedGroup(
   lang: Lang,
   max = 3,
 ): void {
+  if (items.length === 0) return;
   lines.push(`  ${groupNodeId}["${mermaidLabel(groupLabel)}"]`);
   lines.push(`  ${parentNodeId} --> ${groupNodeId}`);
   const visible = items.slice(0, max);
