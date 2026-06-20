@@ -43,9 +43,8 @@ export function randomRunToken(): string {
   return Math.random().toString(36).slice(2, 6);
 }
 
-export function runFileSuffix(counter?: number): string {
-  const middle = counter === undefined ? '' : `-${counter}`;
-  return `${runTimestamp()}${middle}-${randomRunToken()}`;
+export function runFileSuffix(): string {
+  return `${runTimestamp()}-${randomRunToken()}`;
 }
 
 export function stripDomainPrefix(id: string, domain: string): string {

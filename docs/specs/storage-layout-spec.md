@@ -32,10 +32,12 @@ In one line: keep + tied to a project → local; rebuildable → toss into the w
 
 The measurement outputs in the first row are placed the same way (project-local default + global fallback on read + gitignored). Primary writers reach global through the `--global` switch: `reports` / `observe-health` / `doctors` write global when scoring against a standard sample set (see section 4), and `observe-inbox` supports it too (`omk observe ingest --global` to write, `omk observe inbox --global` to read), completing the observation loop for a global skill. Sidecar trees such as `graphs` inherit the output root of the writer that produced them, instead of inventing their own routing. `managed` is the exception — no switch, routing by where the governed skill is installed.
 
-Doctor graph sidecars keep the sibling layout for the standard report directory:
-`.omk/doctors` → `.omk/graphs/doctor`. If a user passes an arbitrary custom
-`--output-dir` that is not named `doctors`, graph sidecars stay inside that
-explicit directory: `<output-dir>/graphs/doctor`.
+Doctor and eval graph sidecars keep the sibling layout for standard report
+directories: `.omk/doctors` → `.omk/graphs/doctor`, and `.omk/reports` →
+`.omk/graphs/eval`. If a user passes an arbitrary custom `--output-dir` that is
+not named after the standard writer directory, graph sidecars stay inside that
+explicit directory, for example `<output-dir>/graphs/doctor` or
+`<output-dir>/graphs/eval`.
 
 ## 3. What it ends up looking like
 
@@ -62,7 +64,7 @@ explicit directory: `<output-dir>/graphs/doctor`.
 Directories and filenames deliberately carry different bits of meaning:
 
 - **The directory carries the product domain.** For example, `.omk/doctors/` already says "doctor", and `.omk/graphs/doctor/` already says "doctor graph sidecar"; filenames do not repeat those domain words.
-- **Every run-derived artifact uses `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name, `runSuffix` is the timestamp/counter/random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
+- **Every run-derived artifact uses `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name (for eval, the primary non-baseline treatment rather than the full control-vs-treatment relationship), `runSuffix` is the timestamp + random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
 - **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
 - **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
 
@@ -75,12 +77,13 @@ directories are skipped.
 Examples:
 
 ```
-.omk/reports/baseline-vs-service-guide-20260620-105109-aqgq.report.json
-.omk/doctors/service-guide-20260620T105109-1-aqgq.report.json
+.omk/reports/service-guide-20260620T105109-aqgq.report.json
+.omk/doctors/service-guide-20260620T105109-aqgq.report.json
 .omk/observe-health/20260620T105109-aqgq.report.json
 .omk/observe-inbox/20260620T105109-aqgq.report.json
-.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
-.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
+.omk/graphs/eval/service-guide-20260620T105109-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-aqgq.card.md
 ```
 
 ## 4. Skill, measurement, governance are three layers — don't mix them into one column
@@ -130,7 +133,7 @@ A few points:
 - **Escape hatches don't mix in cards**: `--global` and an explicit `--reports-dir` / `--doctors-dir` / `--analyses-dir` look only at the one directory you named, no cards merged — clean.
 - **`observe-inbox` is deliberately not indexed**: the `domain`s are only `report` / `doctor` / `observe-health`, not `observe-inbox`. The discovery index serves *comparable review artifacts* (conclusions you'd browse and compare across projects); the inbox is the current project's triage workbench, and browsing project B's to-do queue inside project A's studio is low-value and easy to act on by mistake. So the summary (observe-health) is indexed while the raw queue (observe-inbox) is not — an intentional boundary; it still supports `--global` write / read, it just isn't aggregated machine-wide.
 
-Separately, `id`s get a uniform random suffix to prevent name collisions (two projects producing artifacts in the same second could collide, and dedup would wrongly merge them and silently lose data): report uses "second + random", doctor uses "second + counter + random", observe-health filenames carry a random segment. An `id` is just a label, not a computed score, so this change **does not affect cross-version comparability**.
+Separately, `id`s get a uniform random suffix to prevent name collisions (two projects producing artifacts in the same second could collide, and dedup would wrongly merge them and silently lose data): report, doctor, and observe-health filenames all carry "second + random". An `id` is just a label, not a computed score, so this change **does not affect cross-version comparability**.
 
 ## 7. What gets auto-cleaned vs kept forever
 

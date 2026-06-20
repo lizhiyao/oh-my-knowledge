@@ -171,9 +171,10 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   // 顶部 verdict pill 主导视觉,id+date 是身份,scores 是成绩,底部 meta 是元数据,
   // delete 默认隐藏在 hover 出现避免误点。批量报告共用同一组件,batch pill 替代 verdict。
   const formatDateFromId = (id: string, fallbackTs?: string): string => {
-    // 兼容两代 run id 后缀:旧 `…YYYYMMDD-HHmm`、新 `…YYYYMMDD-HHmmss-rand4`(含秒+随机)。
+    // 兼容三代 run id 后缀:旧 `…YYYYMMDD-HHmm`、过渡期 `…YYYYMMDD-HHmmss-rand4`、
+    // 统一后 `…YYYYMMDDTHHmmss-rand4`(含秒+随机)。
     // 都从 id 直接派生本地展示时间(确定性,不走时区敏感的 toLocaleString);新增的秒段 + 随机后缀可选匹配。
-    const idMatch = id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(?:\d{2}-[a-z0-9]+)?$/);
+    const idMatch = id.match(/(\d{4})(\d{2})(\d{2})(?:T|-)(\d{2})(\d{2})(?:\d{2})?(?:-[a-z0-9]+)?$/);
     if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
     return fallbackTs ? new Date(fallbackTs).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   };

@@ -299,7 +299,8 @@ describe('omk doctor CLI', () => {
       const mdFile = files.find((file) => file.endsWith('.card.md'));
       assert.ok(jsonFile, `expected graph json, got: ${files.join(', ')}`);
       assert.ok(mdFile, `expected evidence card markdown, got: ${files.join(', ')}`);
-      assert.match(jsonFile, /^review-\d{8}T\d{6}-\d+-[a-z0-9]{4}\.graph\.json$/);
+      assert.match(jsonFile, /^review-\d{8}T\d{6}-[a-z0-9]{4}\.graph\.json$/);
+      assert.equal(mdFile, jsonFile.replace(/\.graph\.json$/, '.card.md'));
       const graph = JSON.parse(readFileSync(join(graphDir, jsonFile), 'utf-8'));
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.equal(graph.source.sourceKind, 'doctor');
