@@ -515,28 +515,56 @@ function doctorProblemLabel(result: DoctorRuleResult | undefined, lang: Lang): s
   return zh ? `${prefix}：${result.ruleId}` : `${prefix}: ${result.ruleId}`;
 }
 
+function addExpandedGroup(
+  lines: string[],
+  parentNodeId: string,
+  groupNodeId: string,
+  groupLabel: string,
+  items: string[],
+  lang: Lang,
+  max = 3,
+): void {
+  lines.push(`  ${groupNodeId}["${mermaidLabel(groupLabel)}"]`);
+  lines.push(`  ${parentNodeId} --> ${groupNodeId}`);
+  const visible = items.slice(0, max);
+  visible.forEach((item, index) => {
+    const itemNodeId = `${groupNodeId}_${index + 1}`;
+    lines.push(`  ${itemNodeId}["${mermaidLabel(compactLabel(item, 42))}"]`);
+    lines.push(`  ${groupNodeId} --> ${itemNodeId}`);
+  });
+  const rest = items.length - visible.length;
+  if (rest > 0) {
+    const moreLabel = lang === 'zh' ? `另有 ${rest} 项` : `+${rest} more`;
+    lines.push(`  ${groupNodeId}_more["${mermaidLabel(moreLabel)}"]`);
+    lines.push(`  ${groupNodeId} --> ${groupNodeId}_more`);
+  }
+}
+
 function renderMermaid(graph: ArtifactGraphDocument, skill: DoctorSkillReport, lang: Lang): string {
-  const counts = countDoctorGraphStructure(graph.nodes);
+  const references = graphLabelsByKind(graph, 'reference');
+  const scripts = graphLabelsByKind(graph, 'script');
+  const workflows = graphLabelsByKind(graph, 'workflow');
   const problemLabel = doctorProblemLabel(doctorProblemResults(skill)[0], lang);
   const lines = [
     '```mermaid',
     'flowchart LR',
-    `  skill["skill: ${mermaidLabel(skill.skillName)}"]`,
-    '  file["SKILL.md"]',
-    `  refs["references / ${counts.references}"]`,
-    `  scripts["scripts / ${counts.scripts}"]`,
-    `  workflows["workflows / ${counts.workflows}"]`,
+    `  file["SKILL.md: ${mermaidLabel(skill.skillName)}"]`,
     `  doctor["doctor / ${mermaidLabel(doctorStatusLabel(skill, lang))}"]`,
-    '  skill --> file',
-    '  skill --> refs',
-    '  skill --> scripts',
-    '  file --> workflows',
-    '  skill --> doctor',
   ];
+  addExpandedGroup(lines, 'file', 'refs', `references / ${references.length}`, references, lang);
+  addExpandedGroup(lines, 'file', 'scripts', `scripts / ${scripts.length}`, scripts, lang);
+  addExpandedGroup(lines, 'file', 'workflows', `workflows / ${workflows.length}`, workflows, lang);
+  lines.push('  file --> doctor');
   if (problemLabel) {
     lines.push(`  issue["${mermaidLabel(compactLabel(problemLabel))}"]`);
     lines.push('  doctor --> issue');
   }
+  lines.push(`  eval["${lang === 'zh' ? 'eval 未测量' : 'eval not measured'}"]`);
+  lines.push(`  observe["${lang === 'zh' ? 'observe 未接入' : 'observe not connected'}"]`);
+  lines.push('  doctor -. next .-> eval');
+  lines.push('  eval -. next .-> observe');
+  lines.push('  classDef pending fill:#f3f4f6,stroke:#9ca3af,color:#6b7280');
+  lines.push('  class eval,observe pending');
   lines.push('```');
   return lines.join('\n');
 }
@@ -558,12 +586,16 @@ function formatInlineItems(items: string[], lang: Lang, max = 8): string {
 
 function renderStructureDetails(graph: ArtifactGraphDocument, lang: Lang): string[] {
   const zh = lang === 'zh';
+  const references = graphLabelsByKind(graph, 'reference');
+  const scripts = graphLabelsByKind(graph, 'script');
+  const workflows = graphLabelsByKind(graph, 'workflow');
+  if (references.length <= 3 && scripts.length <= 3 && workflows.length <= 3) return [];
   return [
-    zh ? '### 结构明细' : '### Structure Details',
+    zh ? '### 图中未展开的结构' : '### Hidden Structure',
     '',
-    `- references：${formatInlineItems(graphLabelsByKind(graph, 'reference'), lang)}`,
-    `- scripts：${formatInlineItems(graphLabelsByKind(graph, 'script'), lang)}`,
-    `- workflows：${formatInlineItems(graphLabelsByKind(graph, 'workflow'), lang)}`,
+    ...(references.length > 3 ? [`- references：${formatInlineItems(references.slice(3), lang)}`] : []),
+    ...(scripts.length > 3 ? [`- scripts：${formatInlineItems(scripts.slice(3), lang)}`] : []),
+    ...(workflows.length > 3 ? [`- workflows：${formatInlineItems(workflows.slice(3), lang)}`] : []),
   ];
 }
 
@@ -616,6 +648,7 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
       `- Measure impact: \`omk eval --control baseline --treatment ${sourceCmd}\``,
       '- Add production observation: `omk observe ingest <trace-dir>`',
     ];
+  const hiddenStructure = renderStructureDetails(graph, lang);
 
   return [
     `## ${zh ? 'Skill Evidence Card' : 'Skill Evidence Card'}：${skill.skillName}`,
@@ -624,8 +657,8 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
     '',
     renderMermaid(graph, skill, lang),
     '',
-    ...renderStructureDetails(graph, lang),
-    '',
+    ...hiddenStructure,
+    ...(hiddenStructure.length > 0 ? [''] : []),
     ...renderDoctorFindings(skill, lang),
     '',
     zh ? '### 三阶段状态' : '### Stage Status',
