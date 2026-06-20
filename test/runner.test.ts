@@ -5,6 +5,7 @@ import { executeBatchEvaluationRuns } from '../src/eval-workflows/batch-evaluati
 import { buildTasks } from '../src/eval-core/task-planner.js';
 import { discoverVariants, discoverBatchSkills, loadSkills, variantExprToSkillName } from '../src/inputs/skill-loader.js';
 import { generateRunId, persistReport } from '../src/eval-core/evaluation-reporting.js';
+import { reportFileName } from '../src/eval-core/artifact-file-names.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -721,7 +722,7 @@ describe('runBatchEvaluation', () => {
       assert.ok(result.report.items[0].reportId.startsWith(`${result.report.id}-01-alpha`));
       assert.ok(result.filePath);
       assert.ok(existsSync(result.filePath!));
-      const childPath = join(outputDir, `${result.report.items[0].reportId}.json`);
+      const childPath = join(outputDir, reportFileName(result.report.items[0].reportId));
       assert.ok(existsSync(childPath));
       const childReport = JSON.parse(readFileSync(childPath, 'utf-8')) as Report;
       assert.deepEqual(childReport.meta.variants, ['baseline', 'alpha']);

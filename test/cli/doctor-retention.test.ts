@@ -3,14 +3,15 @@ import { mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
-// 制造 N 份 single-skill doctor JSON 文件,timestamp 严格递增,文件名按时间编号
+// 制造 N 份 single-skill doctor report 文件，timestamp 严格递增，文件名按时间编号，
 // 方便断言保留集合是否最近的 K 份。
 function seedDoctorHistory(dir: string, skillName: string, count: number): string[] {
   const files: string[] = [];
   for (let i = 0; i < count; i++) {
     const timestamp = `2026-05-${String(10 + i).padStart(2, '0')}T00:00:00.000Z`;
-    const file = `${skillName}-r${String(i).padStart(3, '0')}.json`;
+    const file = reportFileName(`${skillName}-r${String(i).padStart(3, '0')}`);
     writeFileSync(join(dir, file), JSON.stringify({
       kind: 'doctor',
       id: `r${i}`,
@@ -41,9 +42,9 @@ describe('pruneDoctorHistory', () => {
     const remaining = readdirSync(dir).sort();
     // r007 / r008 / r009 timestamp 最新,应保留
     expect(remaining).toEqual([
-      'code-review-r007.json',
-      'code-review-r008.json',
-      'code-review-r009.json',
+      reportFileName('code-review-r007'),
+      reportFileName('code-review-r008'),
+      reportFileName('code-review-r009'),
     ]);
   });
 
@@ -63,23 +64,23 @@ describe('pruneDoctorHistory', () => {
     expect(remaining.filter((f) => f.startsWith('code-review-'))).toHaveLength(2);
   });
 
-  it('清理遗留 `{name}.json` 命名:同 skill 旧文件也参与轮换', () => {
-    // 旧 schema:文件名是 {skill}.json,timestamp 是早期
+  it('迁移旧 `{name}.json` doctor 文件后参与轮换', () => {
     writeFileSync(join(dir, 'code-review.json'), JSON.stringify({
       kind: 'doctor',
-      id: 'legacy',
+      id: 'bare-json',
       timestamp: '2025-01-01T00:00:00.000Z',
       skills: [{ skillName: 'code-review', status: 'pass', results: [] }],
       totals: { pass: 1, warn: 0, fail: 0 },
       outcome: 'passed',
     }));
-    // 加 3 份新 schema(timestamp 更新)
     seedDoctorHistory(dir, 'code-review', 3);
     pruneDoctorHistory(dir, 'code-review', 2);
     const remaining = readdirSync(dir).sort();
-    // 总 4 份,留 2 份最新,旧 schema 的 `code-review.json` (2025-01) timestamp 最老应被删
     expect(remaining).not.toContain('code-review.json');
-    expect(remaining).toHaveLength(2);
+    expect(remaining).toEqual([
+      reportFileName('code-review-r001'),
+      reportFileName('code-review-r002'),
+    ]);
   });
 
   it('忽略 non-doctor / 多 skill / 损坏 JSON', () => {

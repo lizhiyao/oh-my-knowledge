@@ -9,6 +9,7 @@ import { tCli } from '../lib/i18n.js';
 const INIT_OMK_GITIGNORE = `# omk 测量 bulk + doctor --fix 备份(项目本地)——不入库;前导 / 锚定 .omk/ 顶层,不误伤嵌套同名目录。
 /observe-health/
 /doctors/
+/graphs/
 /observe-inbox/
 /reports/
 /backups/

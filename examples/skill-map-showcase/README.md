@@ -15,14 +15,14 @@ skill 目录包含：
 omk doctor skills/release-readiness --static-only
 ```
 
-当前 main 上的预期输出：
+预期输出：
 
-- `.omk/doctors/<id>.json`
+- `.omk/doctors/<skill>-<run>.report.json`
 
-这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/samples.json` 是随 skill 入库的源数据。当前 main 只会写 doctor 产物；启用 Skill Information Graph 支持后，同一条命令还会写入：
+这里的 `.omk/doctors` 是项目级运行产物；skill 目录里的 `.omk/samples.json` 是随 skill 入库的源数据。启用 Skill Information Graph 支持后，同一条命令还会写入：
 
-- `.omk/graphs/doctor/<id>.json`
-- `.omk/graphs/doctor/<id>.md`
+- `.omk/graphs/doctor/<skill>-<run>.graph.json`
+- `.omk/graphs/doctor/<skill>-<run>.card.md`
 
 Markdown 文件是可分享的 Evidence Card。它应该展示 references、scripts、workflows、workflow nodes、sample count 和 doctor status。
 

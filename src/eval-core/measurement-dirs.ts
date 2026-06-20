@@ -1,15 +1,17 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
+import { isReportFileName } from './artifact-file-names.js';
+import { migrateLegacyReportFiles } from './report-file-migration.js';
 
 /**
  * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
  * (src/managed/store.ts)。测量产物绑用例集上下文(construct validity,不可全局化),
  * 默认落项目 `.omk/`,全局作显式 opt-in。
  *
- * 「记录优先」—— 目录里有匹配 `.json` 才算数(不是「目录存在」),与 managed 同口径,
- * 避免空项目目录遮蔽全局数据。项目目录按**调用时** `cwd()` 求值(函数,不是 import 时
- * 冻结的常量),studio 长会话 per-request 解析才正确。
+ * 「记录优先」—— 目录里有匹配 report 文件才算数（不是「目录存在」），与 managed 同口径，
+ * 避免空项目目录遮蔽全局数据。项目目录按**调用时** `cwd()` 求值（函数，不是 import 时
+ * 冻结的常量），studio 长会话 per-request 解析才正确。
  */
 
 /** dir 里是否有至少一个满足 match 的文件(短路,不读文件内容)。 */
@@ -23,7 +25,7 @@ function hasMatchingFile(dir: string, match: (name: string) => boolean): boolean
 }
 
 // —— observe-health(skill 健康度报告)——
-// 文件名 `{timestamp}-observe-health.json`,匹配后缀避免别的 .json 误翻转 resolver。
+// 文件名 `{run}.report.json`,目录已表达 observe-health 域。
 
 /** 项目级 observe-health 目录(相对调用时 cwd)。 */
 export function projectObserveHealthDir(cwd: string = process.cwd()): string {
@@ -41,14 +43,16 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  const has = (d: string): boolean => hasMatchingFile(d, (f) => f.endsWith('-observe-health.json'));
+  migrateLegacyReportFiles(dir, 'observe-health');
+  migrateLegacyReportFiles(global, 'observe-health');
+  const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
   if (has(dir)) return dir;
   if (dir !== global && has(global)) return global;
   return dir;
 }
 
 // —— doctors(体检报告)——
-// 文件名 `{skill}-{id}.json`,谓词用「存在任意 .json」即可(真解析在下游 scanDoctorReports)。
+// 文件名 `{skill}-{run}.report.json`,谓词用 report 后缀即可(真解析在下游 scanDoctorReports)。
 
 /** 项目级 doctors 目录(相对调用时 cwd)。 */
 export function projectDoctorsDir(cwd: string = process.cwd()): string {
@@ -66,7 +70,9 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  const has = (d: string): boolean => hasMatchingFile(d, (f) => f.endsWith('.json'));
+  migrateLegacyReportFiles(dir, 'doctor');
+  migrateLegacyReportFiles(global, 'doctor');
+  const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
   if (has(dir)) return dir;
   if (dir !== global && has(global)) return global;
   return dir;

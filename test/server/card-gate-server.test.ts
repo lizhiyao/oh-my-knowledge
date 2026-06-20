@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReportServer } from '../../src/server/report-server.js';
 import { indexDoctorWrite, indexObserveWrite } from '../../src/eval-core/artifact-index.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 interface Srv { stop(): Promise<void> }
 
@@ -28,8 +29,8 @@ describe('卡片合并 include 开关(server 级)', () => {
       ['rp', 'an', 'dr', 'ob', 'jb', 'mg', 'pj'].map((t) => mkdtempSync(join(tmpdir(), `omk-cg-${t}-`)));
     dirs.push(idxRoot, emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj);
     // 别项目卡片各一张(live 目录扫不到,只能靠卡片发现);真身写出来,免得被悬空过滤掉。
-    writeFileSync(join(proj, 'cg.json'), '{}');
-    indexDoctorWrite({ id: 'cg-doctor-1-aa', path: join(proj, 'cg.json'), skillName: 'cg-skill', reportId: 'doctor-cg-1-aa',
+    writeFileSync(join(proj, reportFileName('cg-1-aa')), '{}');
+    indexDoctorWrite({ id: 'cg-1-aa', path: join(proj, reportFileName('cg-1-aa')), skillName: 'cg-skill', reportId: 'doctor-cg-1-aa',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     const obsReport = { kind: 'observe-health',
       meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5, toolCallCount: 3,
@@ -38,8 +39,8 @@ describe('卡片合并 include 开关(server 级)', () => {
         toolFailureRate: 0, stability: 1, confidence: 'high', gap: { gapRate: 0, weightedGapRate: 0, signals: [] } } },
       overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'high' } };
     // 同时写「真身文件」(供 loadAnalysis 按 card.path 回源,如 skill-trend 详情)+ 卡片。
-    writeFileSync(join(proj, 'cg-observe-health.json'), JSON.stringify(obsReport));
-    indexObserveWrite(obsReport as never, join(proj, 'cg-observe-health.json'), proj, 'cg-observe-health');
+    writeFileSync(join(proj, reportFileName('cg-observe')), JSON.stringify(obsReport));
+    indexObserveWrite(obsReport as never, join(proj, reportFileName('cg-observe')), proj, 'cg-observe');
   });
   afterEach(() => {
     if (origEnv === undefined) delete process.env.OMK_ARTIFACT_INDEX_DIR;
@@ -70,7 +71,7 @@ describe('卡片合并 include 开关(server 级)', () => {
     const { url, srv } = await mkServer(true);
     try {
       const oh = await (await fetch(`${url}/api/observe-health`)).json();
-      assert.deepEqual(oh.map((x: { id: string }) => x.id), ['cg-observe-health'], '机器级模式合 observe 卡片');
+      assert.deepEqual(oh.map((x: { id: string }) => x.id), ['cg-observe'], '机器级模式合 observe 卡片');
       const sk = await (await fetch(`${url}/api/skills`)).json();
       assert.ok(sk.entries.some((e: { skillName: string }) => e.skillName === 'cg-skill'), '机器级模式卡片 skill 进索引');
     } finally { await srv.stop(); }
@@ -87,7 +88,7 @@ describe('卡片合并 include 开关(server 级)', () => {
     const url = await srv.start();
     try {
       const oh = await (await fetch(`${url}/api/observe-health`)).json();
-      assert.deepEqual(oh.map((x: { id: string }) => x.id), ['cg-observe-health'], 'live 目录不存在也不早退,仍合 observe 卡片');
+      assert.deepEqual(oh.map((x: { id: string }) => x.id), ['cg-observe'], 'live 目录不存在也不早退,仍合 observe 卡片');
       const trend = await (await fetch(`${url}/api/skill-trend/cg-skill`)).json();
       assert.ok(trend.points.length >= 1, 'skill-trend 也依赖 listAnalyses,同样合并卡片(按 card.path 回源真身)');
     } finally { await srv.stop(); }

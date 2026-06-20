@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { Report, VariantResult, VariantSummary } from '../src/types/index.js';
+import { reportFileName } from '../src/eval-core/artifact-file-names.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -133,7 +134,7 @@ const buildProductTreeReport = (): Report => ({
 async function writeProductTreeReport(reportsDir: string): Promise<string> {
   const report = buildProductTreeReport();
   await mkdir(reportsDir, { recursive: true });
-  await writeFile(join(reportsDir, `${report.id}.json`), JSON.stringify(report, null, 2));
+  await writeFile(join(reportsDir, reportFileName(report.id)), JSON.stringify(report, null, 2));
   return report.id;
 }
 

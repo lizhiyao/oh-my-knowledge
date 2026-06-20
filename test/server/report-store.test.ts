@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createOverlayReportStore } from '../../src/server/report-store.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-overlay-${tag}-${Date.now()}-${Math.round(performance.now())}`);
@@ -34,7 +35,7 @@ function writeReport(dir: string, opts: MiniReportOpts): void {
     summary: { [opts.variant]: {} },
     results: [],
   };
-  writeFileSync(join(dir, `${opts.id}.json`), JSON.stringify(doc));
+  writeFileSync(join(dir, reportFileName(opts.id)), JSON.stringify(doc));
 }
 
 describe('createOverlayReportStore 项目盖全局', () => {

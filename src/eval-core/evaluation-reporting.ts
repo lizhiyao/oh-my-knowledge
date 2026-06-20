@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { indexReportWrite } from './artifact-index.js';
+import { reportFilePath } from './artifact-file-names.js';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
@@ -364,7 +365,7 @@ export interface PersistableReport {
 export function persistReport(report: PersistableReport, outputDir: string | null): string | null {
   if (!outputDir) return null;
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  const filePath = join(outputDir, `${report.id}.json`);
+  const filePath = reportFilePath(outputDir, report.id);
   writeFileSync(filePath, JSON.stringify(report, null, 2));
   // 产物发现索引:报告落项目本地后,best-effort 追加全局轻卡片,让 omk studio 跨项目聚合成机器级总览。
   // 永不抛、永不阻断报告落盘(正文是 source of truth)。
