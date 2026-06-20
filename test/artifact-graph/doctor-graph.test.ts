@@ -105,6 +105,15 @@ describe('doctor artifact graph', () => {
       const card = renderDoctorEvidenceCard(graph, report.skills[0], 'zh');
       assert.ok(card.includes('Skill Evidence Card'));
       assert.ok(card.includes('doctor 有警告'));
+      assert.ok(card.includes('skill: review-skill'));
+      assert.ok(card.includes('file --> workflows'));
+      assert.ok(card.includes('doctor --> issue'));
+      assert.ok(card.includes('### 结构明细'));
+      assert.ok(card.includes('`references/api.md`'));
+      assert.ok(card.includes('`scripts/check.sh`'));
+      assert.ok(card.includes('`review`'));
+      assert.ok(card.includes('### Doctor 发现'));
+      assert.ok(card.includes('警告：samples_contract_aligned'));
       assert.ok(card.includes('omk eval --control baseline --treatment'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
@@ -174,7 +183,6 @@ describe('doctor artifact graph', () => {
       const card = renderDoctorEvidenceCard(graph, report.skills[0], 'zh');
       assert.ok(card.includes('未检测到 eval samples'));
       assert.ok(card.includes('omk sample'));
-      assert.ok(card.includes('samples？'));
       assert.ok(!card.includes('复用当前 0 条用例继续评测'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });

@@ -497,36 +497,96 @@ function mermaidLabel(label: string): string {
   return label.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', ' ');
 }
 
-function renderMermaid(graph: ArtifactGraphDocument, skill: DoctorSkillReport, sampleCount: number | null, lang: Lang): string {
-  const counts = countDoctorGraphStructure(graph.nodes);
+function compactLabel(label: string, max = 56): string {
+  const normalized = label.replace(/\s+/g, ' ').trim();
+  return normalized.length > max ? `${normalized.slice(0, max - 3)}...` : normalized;
+}
+
+function doctorProblemResults(skill: DoctorSkillReport): DoctorRuleResult[] {
+  return skill.results.filter((result) => result.status === 'fail' || result.status === 'warn');
+}
+
+function doctorProblemLabel(result: DoctorRuleResult | undefined, lang: Lang): string | null {
+  if (!result) return null;
   const zh = lang === 'zh';
-  const samplesLabel = sampleCount == null
-    ? (zh ? 'samples？' : 'samples?')
-    : `${zh ? 'samples' : 'samples'} / ${sampleCount}`;
-  const evalLabel = zh ? 'eval？' : 'eval?';
-  const observeLabel = zh ? 'observe？' : 'observe?';
-  return [
+  const prefix = result.status === 'fail'
+    ? (zh ? '失败' : 'fail')
+    : (zh ? '警告' : 'warn');
+  return zh ? `${prefix}：${result.ruleId}` : `${prefix}: ${result.ruleId}`;
+}
+
+function renderMermaid(graph: ArtifactGraphDocument, skill: DoctorSkillReport, lang: Lang): string {
+  const counts = countDoctorGraphStructure(graph.nodes);
+  const problemLabel = doctorProblemLabel(doctorProblemResults(skill)[0], lang);
+  const lines = [
     '```mermaid',
     'flowchart LR',
-    `  skill["${mermaidLabel(skill.skillName)}"]`,
-    `  file["SKILL.md"]`,
+    `  skill["skill: ${mermaidLabel(skill.skillName)}"]`,
+    '  file["SKILL.md"]',
     `  refs["references / ${counts.references}"]`,
     `  scripts["scripts / ${counts.scripts}"]`,
     `  workflows["workflows / ${counts.workflows}"]`,
-    `  samples["${samplesLabel}"]`,
     `  doctor["doctor / ${mermaidLabel(doctorStatusLabel(skill, lang))}"]`,
-    `  eval["${evalLabel}"]`,
-    `  observe["${observeLabel}"]`,
     '  skill --> file',
     '  skill --> refs',
     '  skill --> scripts',
-    '  skill --> workflows',
-    '  skill --> samples',
+    '  file --> workflows',
     '  skill --> doctor',
-    '  samples -. next .-> eval',
-    '  eval -. next .-> observe',
-    '```',
-  ].join('\n');
+  ];
+  if (problemLabel) {
+    lines.push(`  issue["${mermaidLabel(compactLabel(problemLabel))}"]`);
+    lines.push('  doctor --> issue');
+  }
+  lines.push('```');
+  return lines.join('\n');
+}
+
+function graphLabelsByKind(graph: ArtifactGraphDocument, kind: ArtifactGraphNodeKind): string[] {
+  return graph.nodes
+    .filter((node) => node.nodeKind === kind)
+    .map((node) => node.label)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function formatInlineItems(items: string[], lang: Lang, max = 8): string {
+  if (items.length === 0) return lang === 'zh' ? '无' : 'none';
+  const visible = items.slice(0, max).map((item) => `\`${item}\``).join(lang === 'zh' ? '、' : ', ');
+  const rest = items.length - max;
+  if (rest <= 0) return visible;
+  return lang === 'zh' ? `${visible}，另有 ${rest} 项` : `${visible}, plus ${rest} more`;
+}
+
+function renderStructureDetails(graph: ArtifactGraphDocument, lang: Lang): string[] {
+  const zh = lang === 'zh';
+  return [
+    zh ? '### 结构明细' : '### Structure Details',
+    '',
+    `- references：${formatInlineItems(graphLabelsByKind(graph, 'reference'), lang)}`,
+    `- scripts：${formatInlineItems(graphLabelsByKind(graph, 'script'), lang)}`,
+    `- workflows：${formatInlineItems(graphLabelsByKind(graph, 'workflow'), lang)}`,
+  ];
+}
+
+function renderDoctorFindings(skill: DoctorSkillReport, lang: Lang): string[] {
+  const zh = lang === 'zh';
+  const problems = doctorProblemResults(skill).slice(0, 5);
+  if (problems.length === 0) {
+    return [
+      zh ? '### Doctor 发现' : '### Doctor Findings',
+      '',
+      zh ? '- 暂无失败或警告。' : '- No failures or warnings.',
+    ];
+  }
+  return [
+    zh ? '### Doctor 发现' : '### Doctor Findings',
+    '',
+    ...problems.map((result) => {
+      const label = doctorProblemLabel(result, lang) ?? result.ruleId;
+      const message = result.message ? `：${compactLabel(result.message, 160)}` : '';
+      const hint = result.hint ? (zh ? `；建议：${compactLabel(result.hint, 120)}` : `; hint: ${compactLabel(result.hint, 120)}`) : '';
+      return `- ${label}${message}${hint}`;
+    }),
+  ];
 }
 
 function shellQuotePath(path: string): string {
@@ -562,7 +622,11 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
     '',
     statusSentence,
     '',
-    renderMermaid(graph, skill, sampleCount, lang),
+    renderMermaid(graph, skill, lang),
+    '',
+    ...renderStructureDetails(graph, lang),
+    '',
+    ...renderDoctorFindings(skill, lang),
     '',
     zh ? '### 三阶段状态' : '### Stage Status',
     '',
