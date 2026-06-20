@@ -4,6 +4,17 @@
 
 想知道怎么**设计**一套严谨用例（测什么、测几条、元数据字段），见[用例设计](../specs/sample-design-spec)；本页是逐字段的格式参考。
 
+## 存放位置
+
+推荐把项目共享用例和 skill 私有用例分开：
+
+- 项目共享用例：放在项目根目录的 `eval-samples.json`、`eval-samples.yaml` 或 `eval-samples.yml`。适合多个 variant 做 A/B 对比，保证它们跑同一套测试集。
+- skill 私有用例：放在 `<skill>/.omk/samples.json`、`<skill>/.omk/samples.yaml` 或 `<skill>/.omk/samples.yml`。目录模式也支持在同一个 `.omk/` 下拆成多个 sample 文件。
+
+`omk eval` 只会在单 treatment 且能明确定位到某个 skill 时自动发现 skill 私有用例。多版本对比建议使用项目共享用例，或显式传 `--samples`。
+
+兼容说明：omk 仍支持扁平 skill 的 `skills/<name>.eval-samples.json` 这类 sidecar 文件。目录 skill 不再读取 `<skill>/eval-samples.*`；skill 私有用例统一放在 `<skill>/.omk/samples.json`。
+
 ```json
 [
   {

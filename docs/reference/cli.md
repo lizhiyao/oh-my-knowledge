@@ -256,7 +256,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
   --resume <value>                Resume a previous failed run
   --retry <value>                 Per-sample retry count
-  --samples <value>               Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.
+  --samples <value>               Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.
   --skill-dir <value>             Skill dir, default skills
   --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.

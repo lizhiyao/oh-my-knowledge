@@ -36,20 +36,20 @@ omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback
 | 查看受管 skill 状态 | → `omk list` |
 | 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
 
-如果用户意图不明确，先扫描当前项目结构（skills/ 目录和 eval-samples 文件），然后推荐最合适的操作。
+如果用户意图不明确，先扫描当前项目结构（skills/ 目录、项目级 eval-samples 文件、skill 私有 `.omk/samples.*`），然后推荐最合适的操作。
 
 ## 第三步：检测项目结构
 
 使用 Glob 和 Read 工具检查：
 
 1. `skills/` 目录下有哪些 skill 文件（`.md` 或 `*/SKILL.md`）
-2. 是否存在 `eval-samples.json` / `eval-samples.yaml` / `eval-samples.yml` / `<skill>/.omk/samples.json`（推荐的标准位置）
-3. 是否有 `skills/*.eval-samples.json`（每 skill 配对文件 → `--batch` 模式）
+2. 是否存在项目级 `eval-samples.json` / `eval-samples.yaml` / `eval-samples.yml`，或目录 skill 私有的 `<skill>/.omk/samples.json`
+3. 是否有 `skills/*.eval-samples.json`（扁平 skill 的每 skill 配对文件 → `--batch` 模式）
 
 根据检测结果决定：
 
-- 多个 skill + 各自的 eval-samples → 建议 `--batch` 批量模式
-- 多个 skill + 共享 eval-samples → 建议版本对比模式
+- 多个 skill + 各自的 `.omk/samples.*` 或扁平 skill paired eval-samples → 建议 `--batch` 批量模式
+- 多个 skill + 共享项目级 eval-samples → 建议版本对比模式
 - 只有一个 skill → 建议 `baseline` 对照（`omk eval --control baseline --treatment <skill>`）或 `omk evolve` 改进
 - 没有 eval-samples → 先 `omk sample <skill>` 生成
 
@@ -104,19 +104,19 @@ evolve 默认开**显著性接受门**：候选只在相对当前最优**统计�
 
 ```bash
 # 为单个 skill 生成
-omk sample skills/my-skill.md
+omk sample skills/my-skill/SKILL.md
 
 # 显式指定数量（不指定时 LLM 根据 skill 类型自动决定 4-8 条）
-omk sample skills/my-skill.md --count 8
+omk sample skills/my-skill/SKILL.md --count 8
 
 # 自然语言指定重点覆盖场景
-omk sample skills/my-skill.md --focus "重点覆盖搜索失败 / 权限拒绝 / 跨工具 fallback 路径"
+omk sample skills/my-skill/SKILL.md --focus "重点覆盖搜索失败 / 权限拒绝 / 跨工具 fallback 路径"
 
 # 为 skill 目录下所有缺测试集的 skill 批量生成
 omk sample --batch
 ```
 
-输出位置：`<skill>/SKILL.md` 风格 → `<skill>/.omk/samples.json`（标准），其他 `.md` 路径 → 当前目录 `eval-samples.json`（兜底）。
+输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/samples.json`（标准）；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级兜底）；扁平 `.md` 的 `--batch` 兼容生成 `<skill-dir>/<name>.eval-samples.json`。
 
 ### 体检 skill 写法
 

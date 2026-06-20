@@ -4,6 +4,17 @@ An **eval-samples** file is the test set `omk eval` / `omk doctor` run against â
 
 For *designing* a rigorous sample set (what to test, how many, the metadata fields), see [sample design](../specs/sample-design-spec) â€” this page is the field-by-field format reference.
 
+## Storage locations
+
+Recommended layouts:
+
+- Project-shared samples: put `eval-samples.json`, `eval-samples.yaml`, or `eval-samples.yml` at the project root. Use this for A/B comparisons where variants must run on the same test set.
+- Skill-local samples: put `samples.json`, `samples.yaml`, or `samples.yml` under `<skill>/.omk/`. Directory mode also supports multiple sample files in the same `.omk/` folder.
+
+`omk eval` auto-discovers skill-local samples only when exactly one treatment identifies a skill. Multi-variant comparisons should use project-shared samples or an explicit `--samples` path.
+
+Compatibility note: flat-skill sidecars such as `skills/<name>.eval-samples.json` are still supported. Directory skills do not read `<skill>/eval-samples.*`; use `<skill>/.omk/samples.json` for skill-local samples.
+
 ```json
 [
   {

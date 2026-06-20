@@ -38,7 +38,7 @@ load-bearing 值：
 
 ## multi-skills/
 
-批量评测 fixture（`omk eval --batch`）。`skills/` 下：`summarizer.md` + `summarizer.eval-samples.json`、`translator.md` + `translator.eval-samples.json`（扁平 + 旁置样本），以及 `classifier/`（`SKILL.md` + `eval-samples.json`，目录式）——**故意混两种形态**以覆盖 batch 发现的两条路径。
+批量评测 fixture（`omk eval --batch`）。`skills/` 下：`summarizer.md` + `summarizer.eval-samples.json`、`translator.md` + `translator.eval-samples.json`（扁平 + 旁置样本），以及 `classifier/`（`SKILL.md` + `.omk/samples.json`，目录式）——**故意混两种形态**以覆盖 batch 发现的两条路径。
 
 load-bearing 值：
 - `test/runner.test.ts`：`discoverVariants` 断言能发现 `classifier`；batch dry-run 按 `sampleCount × 2` 算 `taskCount`。

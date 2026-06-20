@@ -267,7 +267,7 @@ describe('runEvaluation', () => {
   });
 
   it('loads SKILL.md from subdirectories', async () => {
-    const classifierSamples = join(__dirname, 'fixtures', 'multi-skills', 'skills', 'classifier', 'eval-samples.json');
+    const classifierSamples = join(__dirname, 'fixtures', 'multi-skills', 'skills', 'classifier', '.omk');
     const multiSkillsDir = join(__dirname, 'fixtures', 'multi-skills', 'skills');
     const result = await runEvaluation({
       samplesPath: classifierSamples,
@@ -552,6 +552,42 @@ describe('discoverBatchSkills', () => {
       assert.equal(skills[0].name, 'has-pair');
     } finally {
       rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('discovers directory skill samples from .omk namespace', async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const tmpDir = join(__dirname, 'tmp-batch-skill-local');
+    const skillRoot = join(tmpDir, 'release-readiness');
+    mkdirSync(join(skillRoot, '.omk'), { recursive: true });
+    writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个发布检查 skill，内容足够长。');
+    writeFileSync(join(skillRoot, '.omk', 'samples.json'), JSON.stringify([{ sample_id: 's1', prompt: 'test' }]));
+    try {
+      const skills = discoverBatchSkills(tmpDir);
+      assert.equal(skills.length, 1);
+      assert.equal(skills[0].name, 'release-readiness');
+      assert.equal(skills[0].samplesPath, join(skillRoot, '.omk'));
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('batch discovery skips directory skill when same-name flat skill takes precedence', async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const tmpDir = join(__dirname, 'tmp-batch-dual-shape');
+    mkdirSync(join(tmpDir, 'dual', '.omk'), { recursive: true });
+    writeFileSync(join(tmpDir, 'dual.md'), '你是一个扁平 skill，内容足够长。');
+    writeFileSync(join(tmpDir, 'dual.eval-samples.json'), JSON.stringify([{ sample_id: 'f1', prompt: 'flat' }]));
+    writeFileSync(join(tmpDir, 'dual', 'SKILL.md'), '你是一个目录 skill，内容也足够长。');
+    writeFileSync(join(tmpDir, 'dual', '.omk', 'samples.json'), JSON.stringify([{ sample_id: 'd1', prompt: 'dir' }]));
+    try {
+      const skills = discoverBatchSkills(tmpDir);
+      assert.equal(skills.length, 1);
+      assert.equal(skills[0].name, 'dual');
+      assert.equal(skills[0].skillPath, join(tmpDir, 'dual.md'));
+      assert.equal(skills[0].samplesPath, join(tmpDir, 'dual.eval-samples.json'));
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 

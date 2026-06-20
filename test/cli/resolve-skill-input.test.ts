@@ -27,6 +27,7 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.isDirectorySkill, true);
     assert.equal(r.skillPath, join(skillRoot, 'SKILL.md'));
     assert.equal(r.skillDir, skillRoot);
+    assert.equal(r.samplesPath, join(skillRoot, '.omk'));
   });
 
   it('传内部 SKILL.md 文件路径 → 仍 isDirectorySkill=true(与传目录等价)', () => {
@@ -41,5 +42,13 @@ describe('resolveSkillInput isDirectorySkill', () => {
     assert.equal(r.isDirectorySkill, false);
     assert.equal(r.skillPath, join(proj, 'flat.md'));
     assert.equal(r.skillDir, proj);
+    assert.equal(r.samplesPath, 'eval-samples.json');
+  });
+
+  it('传扁平 .md 且 paired sidecar 存在 → samplesPath 指向 sidecar', () => {
+    writeFileSync(join(proj, 'flat.eval-samples.json'), '[]\n');
+    const r = resolveSkillInput(join(proj, 'flat.md'), 'zh');
+    assert.equal(r.isDirectorySkill, false);
+    assert.equal(r.samplesPath, join(proj, 'flat.eval-samples.json'));
   });
 });

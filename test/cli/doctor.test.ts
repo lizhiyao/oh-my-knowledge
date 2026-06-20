@@ -182,6 +182,34 @@ describe('omk doctor CLI', () => {
     }
   });
 
+  it('warns when directory skill still uses deprecated eval-samples path', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-deprecated-samples-'));
+    try {
+      const skillRoot = join(tmp, 'skills', 'review');
+      mkdirSync(skillRoot, { recursive: true });
+      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+      writeFileSync(join(skillRoot, 'eval-samples.json'), JSON.stringify([
+        { sample_id: 's1', prompt: 'review legacy samples location' },
+      ]));
+
+      const { stderr } = await execFileAsync('node', [
+        CLI,
+        'doctor',
+        skillRoot,
+        '--static-only',
+        '--lang', 'zh',
+        '--executor', DOCTOR_FIXTURE,
+      ], { cwd: tmp });
+      assert.ok(stderr.includes('发现旧的目录 skill 用例位置'), stderr);
+      assert.ok(stderr.includes(join(skillRoot, 'eval-samples.json')), stderr);
+      assert.ok(stderr.includes(join(skillRoot, '.omk', 'samples.json')), stderr);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('--samples overrides auto-detected samples', async () => {
     const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');

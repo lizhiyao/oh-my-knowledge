@@ -5,7 +5,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
@@ -104,6 +104,72 @@ describe('oclif eval', () => {
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
       assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${e.stderr}`);
+    }
+  });
+
+  it('eval 找不到 samples 时输出友好错误而不是裸 ENOENT', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-eval-no-samples-'));
+    try {
+      await mkdir(join(dir, 'skills', 'review'), { recursive: true });
+      await writeFile(join(dir, 'skills', 'review', 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI,
+          'eval',
+          '--control', 'baseline',
+          '--treatment', 'review',
+          '--skill-dir', 'skills',
+          '--skip-doctor',
+          '--no-serve',
+          '--lang', 'zh',
+        ], { cwd: dir }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+          assert.ok(e.stderr.includes('未找到评测用例'), e.stderr);
+          assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('eval 发现目录 skill 旧 eval-samples 路径时提示迁移到 .omk/samples.json', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-eval-deprecated-samples-'));
+    try {
+      const skillRoot = join(dir, 'skills', 'review');
+      await mkdir(skillRoot, { recursive: true });
+      await writeFile(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+      await writeFile(join(skillRoot, 'eval-samples.json'), JSON.stringify([
+        { sample_id: 's1', prompt: 'review legacy samples location' },
+      ]));
+
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI,
+          'eval',
+          '--control', 'baseline',
+          '--treatment', 'review',
+          '--skill-dir', 'skills',
+          '--skip-doctor',
+          '--no-serve',
+          '--lang', 'zh',
+        ], { cwd: dir }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+          assert.ok(e.stderr.includes('发现旧的目录 skill 用例位置'), e.stderr);
+          assert.ok(e.stderr.includes(join(skillRoot, 'eval-samples.json')), e.stderr);
+          assert.ok(e.stderr.includes(join(skillRoot, '.omk', 'samples.json')), e.stderr);
+          assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
