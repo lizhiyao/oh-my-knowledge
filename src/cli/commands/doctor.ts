@@ -10,6 +10,7 @@ import { makeDoctorProgress } from '../lib/progress.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { doctorReportFileStem, isReportFileName, reportFilePath } from '../../eval-core/artifact-file-names.js';
+import { migrateLegacyReportFiles } from '../../eval-core/report-file-migration.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import { findDoctorDeprecatedSamplesHint, findDoctorSamplesPath } from '../../inputs/sample-locator.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
@@ -279,6 +280,7 @@ const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh' | 'en' = 'zh'): void {
   const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
   mkdirSync(dir, { recursive: true });
+  migrateLegacyReportFiles(dir, 'doctor');
   for (const skill of report.skills) {
     const counts: Pick<DoctorReport['ruleStats'], 'pass' | 'warn' | 'fail' | 'skipped'> = {
       pass: 0,
@@ -340,6 +342,7 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
 // 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
 // 看文件名,所以清理逻辑不依赖 readdir 顺序或 stem 推断 skill 名。
 export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
+  migrateLegacyReportFiles(dir, 'doctor');
   const candidates: { file: string; graphStem: string; timestamp: string }[] = [];
   for (const file of readdirSync(dir)) {
     if (!isReportFileName(file)) continue;
@@ -360,6 +363,5 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
     const doctorStem = file.replace(/\.report\.json$/, '');
     removeDoctorCard(doctorStem);
     removeDoctorGraphSidecars(dir, graphStem);
-    removeDoctorGraphSidecars(dir, doctorStem);
   }
 }

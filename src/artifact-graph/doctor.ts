@@ -60,7 +60,9 @@ function safeFileName(id: string): string {
 }
 
 export function doctorGraphDirForDoctorOutput(doctorOutputDir: string): string {
-  return join(dirname(doctorOutputDir), 'graphs', 'doctor');
+  return basename(doctorOutputDir) === 'doctors'
+    ? join(dirname(doctorOutputDir), 'graphs', 'doctor')
+    : join(doctorOutputDir, 'graphs', 'doctor');
 }
 
 function normalizeRelPath(path: string): string {
@@ -74,7 +76,7 @@ function resolveSkillSource(skill: DoctorSkillReport): SkillSourceSnapshot | nul
   const skillFilePath = stat.isDirectory() ? join(source, 'SKILL.md') : source;
   if (!existsSync(skillFilePath)) return null;
   const isDirectorySkill = basename(skillFilePath) === 'SKILL.md';
-  const skillRoot = isDirectorySkill ? dirname(skillFilePath) : dirname(skillFilePath);
+  const skillRoot = dirname(skillFilePath);
   const content = readFileSync(skillFilePath, 'utf-8');
   let artifactHash: string | undefined;
   try {
@@ -160,7 +162,7 @@ function sampleCountFromDoctor(skill: DoctorSkillReport): number | null {
   for (const result of skill.results) {
     if (result.ruleId !== 'samples_contract_aligned') continue;
     const count = result.detail?.count ?? result.detail?.totalCount;
-    return typeof count === 'number' && Number.isFinite(count) ? count : null;
+    return typeof count === 'number' && Number.isFinite(count) && count > 0 ? count : null;
   }
   return null;
 }

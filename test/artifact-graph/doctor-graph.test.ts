@@ -140,4 +140,44 @@ describe('doctor artifact graph', () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it('puts graph sidecars inside non-standard custom output dirs', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-custom-out-'));
+    try {
+      const outputDir = join(tmp, 'custom-output');
+      assert.equal(doctorGraphDirForDoctorOutput(outputDir), join(outputDir, 'graphs', 'doctor'));
+      assert.equal(
+        doctorGraphDirForDoctorOutput(join(tmp, '.omk', 'doctors')),
+        join(tmp, '.omk', 'graphs', 'doctor'),
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('treats zero eval samples as missing in the evidence card', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-zero-samples-'));
+    try {
+      const skillPath = join(tmp, 'SKILL.md');
+      writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试。');
+      const report = makeReport(tmp, skillPath);
+      report.skills[0].results = report.skills[0].results.map((result) => result.ruleId === 'samples_contract_aligned'
+        ? { ...result, detail: { count: 0 } }
+        : result);
+      const graph = buildDoctorArtifactGraph({
+        report,
+        skill: report.skills[0],
+        sourcePath: join(tmp, '.omk', 'doctors', 'review-skill-test.report.json'),
+        generatedAt: '2026-06-19T00:00:00.000Z',
+      });
+
+      const card = renderDoctorEvidenceCard(graph, report.skills[0], 'zh');
+      assert.ok(card.includes('未检测到 eval samples'));
+      assert.ok(card.includes('omk sample'));
+      assert.ok(card.includes('samples？'));
+      assert.ok(!card.includes('复用当前 0 条用例继续评测'));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

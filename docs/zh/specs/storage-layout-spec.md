@@ -32,6 +32,8 @@
 
 第一行测量产物放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore）。主写入命令用 `--global` 写全局：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`graphs` 这类 sidecar 跟随产生它的主产物输出根目录，不另起一套路由。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
 
+doctor graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors` → `.omk/graphs/doctor`。如果用户传入的自定义 `--output-dir` 不是名为 `doctors` 的标准目录，graph sidecar 留在显式目录内部：`<output-dir>/graphs/doctor`。
+
 ## 三、最终长这样
 
 ```
@@ -60,6 +62,8 @@
 - **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名，`runSuffix` 是让本次运行唯一的时间戳 / 计数 / 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
 - **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
+
+旧格式迁移是一次性的、按目录域限定：`reports` / `doctors` / `observe-health` / `observe-inbox` 里的旧运行产物会在目录被访问时改名成 `.report.json` 形态。迁移后裸 `.json` 不是正常读格式；这些目录里的无关 JSON 会被跳过。
 
 示例：
 

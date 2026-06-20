@@ -32,6 +32,9 @@ export type ArtifactGraphLayer = 'definition' | 'measurement' | 'production';
 
 export type ArtifactGraphNodeRole = 'entity' | 'observation' | 'aggregate';
 
+// Schema v1 intentionally reserves eval/observe node and edge kinds. The first
+// doctor producer emits only definition-layer nodes plus doctor_rule_result; eval
+// and observe producers will populate the measurement/production kinds later.
 export type ArtifactGraphNodeKind =
   | 'skill'
   | 'skill_file'

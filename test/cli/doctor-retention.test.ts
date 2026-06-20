@@ -64,7 +64,7 @@ describe('pruneDoctorHistory', () => {
     expect(remaining.filter((f) => f.startsWith('code-review-'))).toHaveLength(2);
   });
 
-  it('裸 `.json` 不是 report 候选文件，不参与轮换', () => {
+  it('迁移旧 `{name}.json` doctor 文件后参与轮换', () => {
     writeFileSync(join(dir, 'code-review.json'), JSON.stringify({
       kind: 'doctor',
       id: 'bare-json',
@@ -76,8 +76,11 @@ describe('pruneDoctorHistory', () => {
     seedDoctorHistory(dir, 'code-review', 3);
     pruneDoctorHistory(dir, 'code-review', 2);
     const remaining = readdirSync(dir).sort();
-    expect(remaining).toContain('code-review.json');
-    expect(remaining.filter((f) => f.endsWith('.report.json'))).toHaveLength(2);
+    expect(remaining).not.toContain('code-review.json');
+    expect(remaining).toEqual([
+      reportFileName('code-review-r001'),
+      reportFileName('code-review-r002'),
+    ]);
   });
 
   it('忽略 non-doctor / 多 skill / 损坏 JSON', () => {

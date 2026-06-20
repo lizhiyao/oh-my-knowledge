@@ -7,6 +7,7 @@
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
+import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import type { EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportIndexCard, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
@@ -97,6 +98,7 @@ export function createFileStore(dir: string): ReportStore {
     } catch {
       return [];
     }
+    migrateLegacyReportFiles(dir, 'report');
     const fp = await computeListFingerprint();
     if (fp != null && fp === cachedFingerprint && cachedRuns) return cachedRuns;
 
@@ -125,6 +127,7 @@ export function createFileStore(dir: string): ReportStore {
   }
 
   async function get(id: string): Promise<ReportDocument | null> {
+    migrateLegacyReportFiles(dir, 'report');
     try {
       const data = JSON.parse(await readFile(reportFilePath(dir, id), 'utf-8'));
       return normalizeReportDocument(data, id);
@@ -135,6 +138,7 @@ export function createFileStore(dir: string): ReportStore {
 
   async function save(id: string, report: ReportDocument): Promise<void> {
     await ensureDir();
+    migrateLegacyReportFiles(dir, 'report');
     const targetPath = reportFilePath(dir, id);
     const tmpPath = `${targetPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
     await writeFile(tmpPath, JSON.stringify(report, null, 2));
@@ -156,6 +160,7 @@ export function createFileStore(dir: string): ReportStore {
   }
 
   async function remove(id: string): Promise<boolean> {
+    migrateLegacyReportFiles(dir, 'report');
     try {
       await unlink(reportFilePath(dir, id));
       return true;
@@ -167,6 +172,7 @@ export function createFileStore(dir: string): ReportStore {
   }
 
   async function exists(id: string): Promise<boolean> {
+    migrateLegacyReportFiles(dir, 'report');
     try {
       await access(reportFilePath(dir, id));
       return true;

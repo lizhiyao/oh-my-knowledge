@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path';
 import { OMK_HOME } from '../eval-core/default-dirs.js';
 import { isReportFileName, reportFilePath } from '../eval-core/artifact-file-names.js';
+import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,
@@ -550,6 +551,7 @@ function compareInboxItems(a: ObservationInboxItem, b: ObservationInboxItem): nu
 
 export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string = DEFAULT_OBSERVATIONS_DIR): string {
   mkdirSync(outDir, { recursive: true });
+  migrateLegacyReportFiles(outDir, 'observe-inbox');
   // 保留毫秒;同秒不同毫秒生成的两份 report 不应静默互相覆盖。
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
@@ -565,6 +567,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
     }
     return [];
   }
+  migrateLegacyReportFiles(dir, 'observe-inbox');
   return readdirSync(dir)
     .filter(isReportFileName)
     .map((file) => {

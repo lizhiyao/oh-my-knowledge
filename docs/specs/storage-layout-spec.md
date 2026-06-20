@@ -32,6 +32,11 @@ In one line: keep + tied to a project → local; rebuildable → toss into the w
 
 The measurement outputs in the first row are placed the same way (project-local default + global fallback on read + gitignored). Primary writers reach global through the `--global` switch: `reports` / `observe-health` / `doctors` write global when scoring against a standard sample set (see section 4), and `observe-inbox` supports it too (`omk observe ingest --global` to write, `omk observe inbox --global` to read), completing the observation loop for a global skill. Sidecar trees such as `graphs` inherit the output root of the writer that produced them, instead of inventing their own routing. `managed` is the exception — no switch, routing by where the governed skill is installed.
 
+Doctor graph sidecars keep the sibling layout for the standard report directory:
+`.omk/doctors` → `.omk/graphs/doctor`. If a user passes an arbitrary custom
+`--output-dir` that is not named `doctors`, graph sidecars stay inside that
+explicit directory: `<output-dir>/graphs/doctor`.
+
 ## 3. What it ends up looking like
 
 ```
@@ -60,6 +65,12 @@ Directories and filenames deliberately carry different bits of meaning:
 - **Every run-derived artifact uses `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name, `runSuffix` is the timestamp/counter/random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
 - **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
 - **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
+
+Legacy migration is one-shot and directory-scoped: old run artifacts in
+`reports` / `doctors` / `observe-health` / `observe-inbox` are renamed into
+`.report.json` form when those directories are touched. Bare `.json` is not a
+normal reader format after migration, and unrelated JSON files in those
+directories are skipped.
 
 Examples:
 

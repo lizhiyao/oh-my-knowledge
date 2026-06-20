@@ -16,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, isAbsolute, basename, dirname } from 'node:path';
 import { isReportFileName, reportFileStem } from '../eval-core/artifact-file-names.js';
+import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import type {
   ReportDocument,
   EvaluationReport,
@@ -135,6 +136,9 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   // safeDirJsonContentFingerprint 返回的 "{dir-mtime}|{file1}:{m}:{s},..."
   // content-aware 字符串。
   const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}:${r.kind === 'evaluation' ? r.meta.evolve?.skillName ?? '' : ''}`).join(',');
+  migrateLegacyReportFiles(doctorsDir, 'doctor');
+  migrateLegacyReportFiles(analysesDir, 'observe-health');
+  migrateLegacyReportFiles(observationsDir, 'observe-inbox');
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
   const observationsFp = safeDirJsonContentFingerprint(observationsDir);
@@ -293,6 +297,7 @@ function latestEvalSnapshot(list: SkillEvalSnapshot[]): SkillEvalSnapshot | null
  *  renderer 用最后一项做"当前",前面项画 sparkline。 */
 function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
   const out: Record<string, SkillDoctorSnapshot[]> = {};
+  migrateLegacyReportFiles(dir, 'doctor');
   if (!existsSync(dir)) return out;
   for (const file of readdirSync(dir)) {
     if (!isReportFileName(file)) continue;
@@ -364,6 +369,7 @@ export function buildSkillIndex(
 
   // ── observe 聚合(历史 list)──────────────────────────────
   const observeBy: Record<string, SkillObserveSnapshot[]> = {};
+  migrateLegacyReportFiles(analysesDir, 'observe-health');
   if (existsSync(analysesDir)) {
     for (const file of readdirSync(analysesDir)) {
       const id = reportFileStem(file);
