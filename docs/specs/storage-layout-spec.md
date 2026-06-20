@@ -23,19 +23,20 @@ By this, omk's artifacts each take their place:
 | Artifact | Rebuildable if deleted? | Tied to a project? | Where |
 |---|---|---|---|
 | `reports` / `observe-health` / `doctors` / `observe-inbox` | No, keep it | tied to the sample set | project-local `.omk/` default, global fallback on read |
+| `graphs` | No, keep it | tied to its source run | sidecar tree next to the writer's `.omk/` root |
 | `managed` | No, keep it | tied to where the governed skill is installed | project-first → global fallback |
 | `cache` / `trees` / `isolated-cwd` | Yes | any project can share | global `state/` subtree |
 | `jobs` / `artifact-index` | Yes | derived from measurements | global `state/` subtree |
 
 In one line: keep + tied to a project → local; rebuildable → toss into the wipeable `state/` subtree (anything shareable stays global). **The easiest mistake is to treat a "keep + tied to a project" measurement conclusion as an "anyone can share" cache — which is exactly what a global-default does.**
 
-The four in the first row are placed the same way (project-local default + global fallback on read + gitignored), and a write reaches global through the `--global` switch in every case: `reports` / `observe-health` / `doctors` write global when scoring against a standard sample set (see section 4), and `observe-inbox` supports it too (`omk observe ingest --global` to write, `omk observe inbox --global` to read), completing the observation loop for a global skill. `managed` is the exception — no switch, routing by where the governed skill is installed.
+The measurement outputs in the first row are placed the same way (project-local default + global fallback on read + gitignored). Primary writers reach global through the `--global` switch: `reports` / `observe-health` / `doctors` write global when scoring against a standard sample set (see section 4), and `observe-inbox` supports it too (`omk observe ingest --global` to write, `omk observe inbox --global` to read), completing the observation loop for a global skill. Sidecar trees such as `graphs` inherit the output root of the writer that produced them, instead of inventing their own routing. `managed` is the exception — no switch, routing by where the governed skill is installed.
 
 ## 3. What it ends up looking like
 
 ```
 ~/.oh-my-knowledge/             # machine-global dir (honors OMK_HOME, relocatable as a whole)
-  reports/ observe-health/ doctors/ observe-inbox/   # written here only when you run omk ... --global
+  reports/ observe-health/ doctors/ observe-inbox/ graphs/   # written here only when you run omk ... --global
   managed/                      # governance archive for globally-installed skills
   update-check.json
   state/                        # scratch · wipe anytime
@@ -43,20 +44,38 @@ The four in the first row are placed the same way (project-local default + globa
     artifact-index/<domain>/<id>.json   # index cards for the cross-project overview (section 6)
 
 <project>/.omk/                 # project-local · keep · tied to this project's sample set
-  reports/  observe-health/  doctors/  observe-inbox/   # measurement output & inbox — gitignored by default
+  reports/  observe-health/  doctors/  observe-inbox/  graphs/   # measurement output, inbox, and sidecars — gitignored by default
   backups/                      # pre-fix skill originals saved by doctor --fix (for undo) — gitignored by default
   managed/                      # governance archive for project-vendored skills — committable (decision history)
   eval-samples.yaml / eval.yaml # measurement definition — committed
 ```
 
-`OMK_HOME` is the master switch for this global tree: change it in one place and `reports` / `doctors` / `observe-health` / `state` (including the `cache` / `trees` / `jobs` / `artifact-index` inside) all move together. Whole-disk migration uses it, and tests use it to point the entire tree at a temp dir in one shot so they never dirty your real home.
+`OMK_HOME` is the master switch for this global tree: change it in one place and `reports` / `doctors` / `observe-health` / `graphs` / `state` (including the `cache` / `trees` / `jobs` / `artifact-index` inside) all move together. Whole-disk migration uses it, and tests use it to point the entire tree at a temp dir in one shot so they never dirty your real home.
+
+### File naming grammar
+
+Directories and filenames deliberately carry different bits of meaning:
+
+- **The directory carries the product domain.** For example, `.omk/graphs/doctor/` already says "doctor graph sidecar", so new files in that directory should not repeat `doctor` unless the id they preserve already contains it.
+- **Primary run artifacts may keep their public id.** Existing report files such as `.omk/reports/<reportId>.json`, `.omk/doctors/<skill>-<doctorReportId>.json`, and `.omk/observe-health/<observeHealthId>.json` are public lookup keys. Rename them only with a compatibility reader and a migration note.
+- **New run-derived sidecars use `<subject>-<runSuffix>.<artifactKind>.<ext>`.** `subject` is usually the skill or artifact name, `runSuffix` is the timestamp/counter/random tail that makes the run unique, `artifactKind` says what the file is, and `ext` says how to parse it.
+- **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
+- **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
+
+Examples:
+
+```
+.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
+.omk/doctors/service-guide-doctor-20260620T051909-1-aqgq.json   # existing public doctor report shape
+```
 
 ## 4. Skill, measurement, governance are three layers — don't mix them into one column
 
 Someone will ask: if a skill is installed globally, can it still be governed? That question exposes one thing — the skill itself, the measurements of it, and the governance of it are three layers, each going its own way:
 
 - **The skill itself = a global asset.** The kind installed under `~/.claude/skills`; the machine knows it globally. This layer doesn't move.
-- **Measurement results (`reports` / `observe-health` / `doctors`) = tied to the sample set.** Same skill, different cases, different score — so reports travel with the project.
+- **Measurement results (`reports` / `observe-health` / `doctors` / `graphs`) = tied to the sample set.** Same skill, different cases, different score — so reports and their sidecars travel with the project.
 - **Governance archive (`managed`, recording "why this skill was cleared to ship") = travels with where the skill is installed**, not with the measurement. Globally-installed skill → governance archive global; project-vendored → project.
 
 **How they connect**: the governance archive doesn't store the report's file path — it copies the fields it needs (the report `id`, content fingerprint, conclusion) straight in (the technical name is denormalize). So even with a project-local report and a global governance archive, the ship gate still works and moving the report doesn't matter. To give a global skill a "global score": pick a standard set of cases representing common usage (a golden set), run `omk eval --global` against it specifically, and write global — far more honest than pouring each project's unrelated cases into one bucket and pretending it's a global score. `--global` is a proper first-class mode here, not cut.
@@ -71,7 +90,7 @@ Worried that `.omk/` inside the repo dirties git? It doesn't. It behaves like `n
 
 Inside `.omk/` there are two kinds:
 
-- The ever-growing `reports` / `observe-health` / `doctors` / `observe-inbox` → gitignored, not committed.
+- The ever-growing `reports` / `observe-health` / `doctors` / `observe-inbox` / `graphs` → gitignored, not committed.
 - The small but important governance decisions `managed` → committable, like a CHANGELOG / ADR, so a teammate who clones sees "why this version was cleared back then".
 - Sample sets / `eval.yaml` → committed.
 
@@ -122,7 +141,7 @@ The one reality friendly to "keep a global default" is that plenty of tools do k
 
 ## 9. A few key decisions
 
-- **Measurement artifacts default to the project** (reports / observe-health / doctors default to `.omk/`, `--global` deliberately writes global). Rationale: consistency with omk's project model (the sample set *is* the context); making "put it in the right place" the default behavior rather than an easily-forgotten convention.
+- **Measurement artifacts default to the project** (reports / observe-health / doctors / graphs default to `.omk/`, `--global` deliberately writes global for the primary writer and sidecars inherit that root). Rationale: consistency with omk's project model (the sample set *is* the context); making "put it in the right place" the default behavior rather than an easily-forgotten convention.
 - **reports reads via an overlay** (check the project first, fall back to global; lists merge both, project first), not "pick one directory". Because reports is fetched by `id` (resume, gold comparison, batch sub-reports all rely on it), and "pick one directory" would fail to fetch when the target `id` is in the other directory, breaking reuse.
 - **studio is the machine-wide overview** (index cards aggregated), not "default to current project only". Because "can't compare" governs comparison, not viewing (section 6).
 - **Project-level keeps a global fallback** (read global when `.omk/x` is absent), not pure project-level. Same as `observe-inbox`; smoother migration.

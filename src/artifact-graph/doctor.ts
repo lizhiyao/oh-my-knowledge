@@ -595,8 +595,8 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
   mkdirSync(dir, { recursive: true });
   const graph = buildDoctorArtifactGraph(options);
   const fileStem = safeFileName(options.fileStem);
-  const graphPath = join(dir, `${fileStem}.json`);
-  const evidenceCardPath = join(dir, `${fileStem}.md`);
+  const graphPath = join(dir, `${fileStem}.graph.json`);
+  const evidenceCardPath = join(dir, `${fileStem}.card.md`);
   writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf8');
   writeFileSync(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang), 'utf8');
   return { graphPath, evidenceCardPath };
@@ -605,7 +605,7 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
 export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: string): void {
   const dir = doctorGraphDirForDoctorOutput(doctorOutputDir);
   const safeStem = safeFileName(fileStem);
-  for (const ext of ['json', 'md']) {
+  for (const ext of ['graph.json', 'card.md', 'json', 'md']) {
     try {
       unlinkSync(join(dir, `${safeStem}.${ext}`));
     } catch {

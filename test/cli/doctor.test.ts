@@ -295,10 +295,11 @@ describe('omk doctor CLI', () => {
       const graphDir = join(tmp, '.omk', 'graphs', 'doctor');
       assert.ok(existsSync(graphDir), 'graph sidecar dir should exist');
       const files = readdirSync(graphDir);
-      const jsonFile = files.find((file) => file.endsWith('.json'));
-      const mdFile = files.find((file) => file.endsWith('.md'));
+      const jsonFile = files.find((file) => file.endsWith('.graph.json'));
+      const mdFile = files.find((file) => file.endsWith('.card.md'));
       assert.ok(jsonFile, `expected graph json, got: ${files.join(', ')}`);
       assert.ok(mdFile, `expected evidence card markdown, got: ${files.join(', ')}`);
+      assert.match(jsonFile, /^review-\d{8}T\d{6}-\d+-[a-z0-9]{4}\.graph\.json$/);
       const graph = JSON.parse(readFileSync(join(graphDir, jsonFile), 'utf-8'));
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.equal(graph.source.sourceKind, 'doctor');

@@ -310,6 +310,7 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
     const cardId = `${safeName}-${safeId}`;
+    const graphStem = doctorGraphSidecarStem(skill.skillName, report.id);
     const filePath = join(dir, `${cardId}.json`);
     writeFileSync(filePath, JSON.stringify(perSkill, null, 2), 'utf8');
     // 产物发现索引:per-skill 报告落项目本地后,best-effort 追加全局轻卡片,让 studio 跨项目聚合。
@@ -323,7 +324,7 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
         skill,
         sourcePath: filePath,
         outputDir: dir,
-        fileStem: cardId,
+        fileStem: graphStem,
         lang,
       });
     } catch (err) {
@@ -341,7 +342,7 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
 // 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
 // 看文件名,所以同时清理新 `{name}-{id}.json` 与遗留 `{name}.json` 两种命名。
 export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
-  const candidates: { file: string; timestamp: string }[] = [];
+  const candidates: { file: string; graphStem: string; timestamp: string }[] = [];
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     try {
@@ -349,16 +350,25 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
       const kind = data?.kind === 'doctor' ? data.kind : null;
       if (!kind || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
       if (data.skills[0].skillName !== skillName) continue;
-      candidates.push({ file, timestamp: data.timestamp });
+      candidates.push({ file, graphStem: doctorGraphSidecarStem(skillName, data.id), timestamp: data.timestamp });
     } catch { /* skip corrupt / unrelated json */ }
   }
   if (candidates.length <= maxKeep) return;
   candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  for (const { file } of candidates.slice(maxKeep)) {
+  for (const { file, graphStem } of candidates.slice(maxKeep)) {
     try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
     // 连带删卡片:否则被 prune 掉的报告会经 listDoctorCards 合并在本项目 studio「复活」(正文已删、卡片还在)。
     // 卡片 id = 文件 stem(`{name}-{id}`),与 indexDoctorWrite 写入口径一致。
-    removeDoctorCard(file.replace(/\.json$/, ''));
-    removeDoctorGraphSidecars(dir, file.replace(/\.json$/, ''));
+    const doctorStem = file.replace(/\.json$/, '');
+    removeDoctorCard(doctorStem);
+    removeDoctorGraphSidecars(dir, graphStem);
+    removeDoctorGraphSidecars(dir, doctorStem);
   }
+}
+
+function doctorGraphSidecarStem(skillName: string, reportId: string): string {
+  const safeName = skillName.replace(/[/\\:*?"<>|]/g, '_');
+  const safeId = reportId.replace(/[/\\:*?"<>|]/g, '_');
+  const runSuffix = safeId.startsWith('doctor-') ? safeId.slice('doctor-'.length) : safeId;
+  return `${safeName}-${runSuffix}`;
 }

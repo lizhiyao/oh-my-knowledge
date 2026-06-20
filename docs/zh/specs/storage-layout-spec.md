@@ -23,19 +23,20 @@
 | 产物 | 删了能重建？ | 绑项目吗？ | 放哪 |
 |---|---|---|---|
 | `reports` / `observe-health` / `doctors` / `observe-inbox` | 不能，要留 | 绑用例集 | 项目本地 `.omk/` 默认，全局兜底读 |
+| `graphs` | 不能，要留 | 绑它的来源 run | 跟随主写入命令的 `.omk/` 根目录 |
 | `managed` | 不能，要留 | 绑被治理 skill 装在哪 | 项目优先 → 全局兜底 |
 | `cache` / `trees` / `isolated-cwd` | 能 | 哪个项目都能共用 | 全局 `state/` 子树 |
 | `jobs` / `artifact-index` | 能 | 从测量派生出来的 | 全局 `state/` 子树 |
 
 一句话：要留 + 绑项目 → 放本地；删了能重建 → 扔进可整删的 `state/` 子树（哪都能用的留全局）。**最容易犯的错，就是把「要留 + 绑项目」的测量结论，当成「哪都能用」的缓存来放——global-default 正是这个错。**
 
-第一行四者放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore），写全局都走 `--global` 开关：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
+第一行测量产物放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore）。主写入命令用 `--global` 写全局：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`graphs` 这类 sidecar 跟随产生它的主产物输出根目录，不另起一套路由。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
 
 ## 三、最终长这样
 
 ```
 ~/.oh-my-knowledge/             # 电脑全局目录（认 OMK_HOME，可整体搬走）
-  reports/ observe-health/ doctors/ observe-inbox/   # 只有 omk ... --global 主动跑时才写这里
+  reports/ observe-health/ doctors/ observe-inbox/ graphs/   # 只有 omk ... --global 主动跑时才写这里
   managed/                      # 全局装的 skill 的治理档案
   update-check.json
   state/                        # 草稿区 · 随时可整删
@@ -43,20 +44,38 @@
     artifact-index/<domain>/<id>.json   # 跨项目总览用的索引卡片（见第六节）
 
 <项目>/.omk/                    # 项目本地 · 要留 · 绑这个项目的用例集
-  reports/  observe-health/  doctors/  observe-inbox/   # 测量产物与收件箱 —— 默认 gitignore，不进库
+  reports/  observe-health/  doctors/  observe-inbox/  graphs/   # 测量产物、收件箱与 sidecar —— 默认 gitignore，不进库
   backups/                      # doctor --fix 改 skill 前存的原件（撤销用）—— 默认 gitignore，不进库
   managed/                      # 项目自带 skill 的治理档案 —— 可以提交（决策史）
   eval-samples.yaml / eval.yaml # 测量定义 —— 提交
 ```
 
-`OMK_HOME` 是这棵全局树的总开关：改一处，`reports` / `doctors` / `observe-health` / `state`（含里面的 `cache` / `trees` / `jobs` / `artifact-index`）一起搬。整盘迁移靠它，测试也靠它一把把整棵树指到临时目录、不脏你真实的 home。
+`OMK_HOME` 是这棵全局树的总开关：改一处，`reports` / `doctors` / `observe-health` / `graphs` / `state`（含里面的 `cache` / `trees` / `jobs` / `artifact-index`）一起搬。整盘迁移靠它，测试也靠它一把把整棵树指到临时目录、不脏你真实的 home。
+
+### 文件命名语法
+
+目录和文件名各自承载不同含义：
+
+- **目录表达产品域**。例如 `.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar，新文件名不要再重复 `doctor`，除非它是在保留一个已经公开的 id。
+- **主运行产物可以保留公开 id**。现有 `.omk/reports/<reportId>.json`、`.omk/doctors/<skill>-<doctorReportId>.json`、`.omk/observe-health/<observeHealthId>.json` 都是公开查找键；要改名必须带兼容读取和迁移说明。
+- **新的 run-derived sidecar 用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名，`runSuffix` 是让本次运行唯一的时间戳 / 计数 / 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
+- **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
+- **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
+
+示例：
+
+```
+.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
+.omk/doctors/service-guide-doctor-20260620T051909-1-aqgq.json   # 既有公开 doctor 报告形态
+```
 
 ## 四、skill、测量、治理是三层，别混成一栏
 
 有人会问：skill 装在全局，那还管得住吗？这问题点破一件事——skill 本身、对它的测量、对它的治理，是三层，各归各的：
 
 - **skill 本身 = 全局资产**。装在 `~/.claude/skills` 那种，全局认它。这层不动。
-- **测量结果（`reports` / `observe-health` / `doctors`）= 绑用例集**。同一个 skill 换套用例分数就变，所以报告跟项目走。
+- **测量结果（`reports` / `observe-health` / `doctors` / `graphs`）= 绑用例集**。同一个 skill 换套用例分数就变，所以报告及其 sidecar 跟项目走。
 - **治理档案（`managed`，记着「这个 skill 凭什么准上线」）= 跟 skill 装在哪走**，不跟测量走。全局装的 skill，治理档案放全局；项目里自带的，放项目。
 
 **怎么连起来**：治理档案里不存报告的文件路径，而是把要用的字段（报告 `id`、内容指纹、结论）直接抄一份进去（专业叫 denormalize）。所以哪怕报告是项目本地的、治理档案是全局的，上线门禁照样查、报告搬家也不受影响。想给全局 skill 一个「全局成绩」：挑一套代表通用用法的标准用例集（golden set），用 `omk eval --global` 专门跑它、写全局——这比把各项目八竿子打不着的用例硬倒进一个桶假装全局成绩，要诚实得多。`--global` 在这套布局里是正经的一等模式，没被砍。
@@ -71,7 +90,7 @@
 
 `.omk/` 里面也分两类：
 
-- 会越长越大的 `reports` / `observe-health` / `doctors` / `observe-inbox` → 默认 gitignore，不提交。
+- 会越长越大的 `reports` / `observe-health` / `doctors` / `observe-inbox` / `graphs` → 默认 gitignore，不提交。
 - 小而重要的治理决策 `managed` → 可以提交，像 CHANGELOG / ADR 那样，队友 clone 下来就看到「当初凭什么放行这个版本」。
 - 用例集 / `eval.yaml` → 提交。
 
@@ -122,7 +141,7 @@
 
 ## 九、几个关键决策
 
-- **测量产物默认放项目**（reports / observe-health / doctors 默认 `.omk/`，`--global` 主动写全局）。理由：跟 omk 的项目模型（用例集就是上下文）一致；让「放对地方」成为默认行为，而不是一条容易被忘的约定。
+- **测量产物默认放项目**（reports / observe-health / doctors / graphs 默认 `.omk/`，主写入命令通过 `--global` 主动写全局，sidecar 跟随该根目录）。理由：跟 omk 的项目模型（用例集就是上下文）一致；让「放对地方」成为默认行为，而不是一条容易被忘的约定。
 - **reports 读的时候用 overlay**（先看项目、项目没有再看全局；列表两边合并、项目优先），不是「二选一目录」。因为 reports 是按 `id` 取的（resume、跟 gold 对比、批量子报告都靠它），二选一会让目标 `id` 在另一个目录时取不到、断掉复用。
 - **studio 当机器级总览**（索引卡片聚合），不是「默认只看当前项目」。因为「不能比」管的是比较、不是看（见第六节）。
 - **项目级保留全局兜底**（`.omk/x` 不存在就读全局），不是纯项目级。跟 `observe-inbox` 一个样，迁移更平滑。
