@@ -29,6 +29,7 @@ import type {
   SkillEvalSnapshot,
   SkillObserveSnapshot,
   SkillGraphSnapshot,
+  SkillGraphNodePreview,
   SkillIndexEntry,
   SkillIndexSummary,
   SkillIndex,
@@ -511,6 +512,25 @@ function countGraphNodes(graph: ArtifactGraphDocument, nodeKind: ArtifactGraphNo
   return graph.nodes.filter((node) => node.nodeKind === nodeKind).length;
 }
 
+function graphNodePreview(node: ArtifactGraphNode): SkillGraphNodePreview {
+  return {
+    nodeKind: node.nodeKind,
+    label: node.label,
+    ...(node.status ? { status: node.status } : {}),
+  };
+}
+
+function graphNodePreviews(
+  graph: ArtifactGraphDocument,
+  nodeKinds: readonly ArtifactGraphNode['nodeKind'][],
+  nodeIds?: Set<string>,
+): SkillGraphNodePreview[] {
+  const kinds = new Set(nodeKinds);
+  return graph.nodes
+    .filter((node) => kinds.has(node.nodeKind) && (!nodeIds || nodeIds.has(node.id)))
+    .map(graphNodePreview);
+}
+
 interface ProjectedGraphStage<T> {
   stage: T;
   artifactHash?: string;
@@ -538,6 +558,18 @@ function projectDoctorStage(graph: ArtifactGraphDocument, path: string): Project
       workflows: countGraphNodes(graph, 'workflow'),
       workflowNodes: countGraphNodes(graph, 'workflow_node'),
       hardRules: countGraphNodes(graph, 'hard_rule'),
+      definitionNodes: graphNodePreviews(graph, [
+        'skill_file',
+        'frontmatter',
+        'reference',
+        'script',
+        'preflight',
+        'tool',
+        'hard_rule',
+        'workflow',
+        'workflow_node',
+        'doctor_rule_result',
+      ]),
     },
     ...(graph.scope.artifactHash ? { artifactHash: graph.scope.artifactHash } : {}),
     ...(sourceLocator ? { sourceLocator } : {}),
@@ -597,6 +629,12 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     if (to?.nodeKind === 'diagnostic') diagnosticIds.add(to.id);
     if (edge.edgeKind === 'fails') failedAssertionEdges += 1;
   }
+  const measurementNodes = graphNodePreviews(graph, [
+    'sample',
+    'assertion',
+    'eval_result',
+    'diagnostic',
+  ], projectedNodeIds);
 
   return {
     stage: {
@@ -612,6 +650,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
       assertions: assertionIds.size,
       failedAssertionEdges,
       diagnostics: diagnosticIds.size,
+      measurementNodes,
     },
     ...(artifactHash ? { artifactHash } : {}),
     ...(sourceLocator ? { sourceLocator } : {}),
