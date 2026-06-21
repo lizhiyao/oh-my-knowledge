@@ -727,6 +727,12 @@ describe('report-server', () => {
     assert.ok(res.body.includes('Back to Skills') || res.body.includes('返回 Skill 列表'));
   });
 
+  it('GET /skills/:name with malformed encoding returns 404', async () => {
+    const res = await fetch(`${baseUrl}/skills/%`);
+    assert.equal(res.status, 404);
+    assert.ok(res.body.includes('未找到该 skill'));
+  });
+
   it('GET unknown path returns 404', async () => {
     const res = await fetch(`${baseUrl}/unknown`);
     assert.equal(res.status, 404);

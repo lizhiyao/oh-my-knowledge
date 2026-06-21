@@ -1175,7 +1175,14 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       const skillHubMatch = path.match(/^\/skills\/(.+)$/);
       if (skillHubMatch) {
-        const skillName = decodeURIComponent(skillHubMatch[1]);
+        let skillName: string;
+        try {
+          skillName = decodeURIComponent(skillHubMatch[1]);
+        } catch {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
+          return;
+        }
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         const entry = idx.entries.find((en) => en.skillName === skillName);

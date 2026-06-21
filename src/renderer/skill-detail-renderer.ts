@@ -1242,7 +1242,26 @@ function stageText(entry: SkillIndexEntry, stage: 'doctor' | 'eval' | 'observe',
 }
 
 function mermaidCardLabel(label: string): string {
-  return label.replace(/[&"<>]/g, (ch) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[ch] ?? ch));
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '\\': '&#92;',
+    '"': '&quot;',
+    '[': '&#91;',
+    ']': '&#93;',
+    '(': '&#40;',
+    ')': '&#41;',
+    '{': '&#123;',
+    '}': '&#125;',
+    '|': '&#124;',
+    '#': '&#35;',
+    ';': '&#59;',
+    '<': '&lt;',
+    '>': '&gt;',
+  };
+  return label
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[&\\"[\](){}|#;<>]/g, (ch) => entities[ch] ?? ch);
 }
 
 function markdownInline(value: string | undefined): string {
@@ -1310,7 +1329,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `| ${zh ? '阶段' : 'Stage'} | ${zh ? '状态' : 'Status'} | ${zh ? '证据' : 'Evidence'} |`,
     '| --- | --- | --- |',
     `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
-    `| eval | ${evalStatus} | ${evalGraph ? `${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
+    `| eval | ${evalStatus} | ${evalGraph ? `${zh ? 'variant 子图' : 'variant subgraph'}: ${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
     '',
     zh ? '### 关键计数' : '### Key Counts',
@@ -1353,7 +1372,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
       <span class="si-sect-title">🗺 ${zh ? 'Skill Map' : 'Skill Map'}</span>
-      <span class="si-sect-meta">${doctor ? `${doctor.nodeCount} definition nodes` : (zh ? 'definition 未生成' : 'definition missing')} · ${evalGraph ? `${evalGraph.nodeCount} measurement nodes` : (zh ? 'measurement 未生成' : 'measurement missing')}</span>
+      <span class="si-sect-meta">${doctor ? `${doctor.nodeCount} definition nodes` : (zh ? 'definition 未生成' : 'definition missing')} · ${evalGraph ? `${evalGraph.nodeCount} variant subgraph nodes` : (zh ? 'measurement 未生成' : 'measurement missing')}</span>
     </div>
     <div class="sm-body">
       <div class="sm-canvas" aria-label="Skill Map">

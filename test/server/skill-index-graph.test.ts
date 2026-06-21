@@ -313,6 +313,7 @@ describe('SkillIndex graph projection', () => {
     assert.match(html, /复制 Markdown Evidence Card/);
     assert.ok(html.includes('references / 1'));
     assert.ok(html.includes('samples / 2'));
+    assert.match(html, /variant 子图/);
     assert.match(html, /doctorGraphId/);
     assert.match(html, /evalGraphId/);
   });
