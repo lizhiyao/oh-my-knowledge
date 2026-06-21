@@ -442,6 +442,35 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .si-sect-fold-body { padding-top:6px;display:flex;flex-direction:column;gap:5px }
 .si-sect-skipped { font-size:11px;color:var(--text-muted);font-style:italic;margin-top:6px }
 
+/* Skill Map：用户视角的轻量图，不暴露完整 graph JSON 拓扑 */
+.sm-sect { border-left-color:#4f46e5 }
+.sm-body { display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:14px;align-items:stretch }
+@media(max-width:900px){ .sm-body { grid-template-columns:1fr } }
+.sm-canvas { position:relative;display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;align-items:center;min-height:230px;padding:18px;background:linear-gradient(180deg,#fbfcff 0%,#f7f9fd 100%);border:1px solid #e4e8f1;border-radius:8px;overflow:hidden }
+.sm-canvas::before { content:'';position:absolute;left:18%;right:18%;top:50%;height:2px;background:#dbe2ee;z-index:0 }
+.sm-col { position:relative;z-index:1;display:flex;flex-direction:column;gap:14px;align-items:stretch }
+.sm-col--root { align-items:center }
+.sm-node { min-height:68px;padding:12px 14px;border:1px solid #d8deea;border-radius:8px;background:#fff;box-shadow:0 8px 18px rgba(31,41,55,5%);display:flex;flex-direction:column;justify-content:center;gap:4px;text-align:center }
+.sm-node--skill { width:170px;min-height:96px;border-color:#4f46e5;background:#f7f8ff }
+.sm-node--stage { border-color:#b8c5d8;background:#fff }
+.sm-node--evidence { border-color:#b7d8cf;background:#f4fbf8 }
+.sm-node--pending { border-style:dashed;background:#f8f9fb;color:#637083 }
+.sm-node-title { font-size:13px;font-weight:700;color:#182033;line-height:1.35;word-break:break-word }
+.sm-node-meta { font-size:11.5px;color:#637083;line-height:1.4;word-break:break-word }
+.sm-bind { margin-top:-6px;padding:3px 8px;border-radius:10px;background:#fff;border:1px solid #e4e8f1;color:#637083;font-size:10.5px;font-family:"SF Mono",Menlo,monospace;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.sm-side { display:flex;flex-direction:column;gap:12px }
+.sm-summary { padding:11px 12px;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:8px;font-size:13px;line-height:1.55;color:#384255 }
+.sm-kpis { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px }
+.sm-kpis div { padding:10px 12px;background:#fff;border:1px solid #e4e8f1;border-radius:8px }
+.sm-kpis b { display:block;font-size:20px;line-height:1;color:#182033;font-variant-numeric:tabular-nums }
+.sm-kpis span { display:block;margin-top:5px;font-size:11.5px;color:#637083 }
+.sm-card { border:1px solid #e4e8f1;border-radius:8px;background:#fff;overflow:hidden }
+.sm-card > summary { cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:#4f46e5;user-select:none }
+.sm-card > summary::-webkit-details-marker { display:none }
+.sm-card > summary::before { content:'▸ ';color:#94a3b8;font-size:10px }
+.sm-card[open] > summary::before { content:'▾ ' }
+.sm-card textarea { width:100%;min-height:260px;border:0;border-top:1px solid #e4e8f1;background:#fbfcff;padding:12px;font-family:"SF Mono",Menlo,monospace;font-size:11.5px;line-height:1.55;color:#182033;resize:vertical;box-sizing:border-box }
+
 /* doctor 规则展示(用在 doctor section 和 observe section) */
 .sd-grid { display:flex;flex-direction:column;gap:4px }
 .sd-dim { border-radius:6px;border:1px solid var(--border);overflow:hidden }
@@ -1184,6 +1213,174 @@ function renderObserveSection(
   </section>`;
 }
 
+function skillMapBand(entry: SkillIndexEntry): 'green' | 'yellow' | 'red' | 'gray' {
+  if (entry.doctor?.failCount || entry.eval?.failCount) return 'red';
+  if (entry.doctor?.warnCount || (entry.eval?.compositeScore != null && entry.eval.compositeScore < 3.5)) return 'yellow';
+  if (entry.doctor || entry.eval || entry.observe) return 'green';
+  return 'gray';
+}
+
+function stageText(entry: SkillIndexEntry, stage: 'doctor' | 'eval' | 'observe', lang: Lang): string {
+  const zh = lang === 'zh';
+  if (stage === 'doctor') {
+    if (!entry.doctor) return zh ? '未体检' : 'not checked';
+    if (entry.doctor.failCount > 0) return zh ? '未通过' : 'failed';
+    if (entry.doctor.warnCount > 0) return zh ? '有警告' : 'warnings';
+    return zh ? '已通过' : 'passed';
+  }
+  if (stage === 'eval') {
+    if (!entry.eval) return zh ? '未测量' : 'not measured';
+    if (entry.eval.resultsStripped) return entry.eval.compositeScore != null ? `${entry.eval.compositeScore.toFixed(2)}/5` : (zh ? '已测量' : 'measured');
+    return zh
+      ? `${entry.eval.passCount}/${entry.eval.totalSamples} 用例通过`
+      : `${entry.eval.passCount}/${entry.eval.totalSamples} samples pass`;
+  }
+  if (!entry.observe) return zh ? '未观察' : 'not observed';
+  return zh
+    ? `${entry.observe.segmentCount} 段，gap ${Math.round(entry.observe.gapRate * 100)}%`
+    : `${entry.observe.segmentCount} segments, gap ${Math.round(entry.observe.gapRate * 100)}%`;
+}
+
+function mermaidCardLabel(label: string): string {
+  return label.replace(/[&"<>]/g, (ch) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[ch] ?? ch));
+}
+
+function markdownInline(value: string | undefined): string {
+  if (!value) return '`unknown`';
+  return `\`${value.replaceAll('`', '\\`')}\``;
+}
+
+function sourceCommandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+-]+$/.test(value)) return value;
+  return JSON.stringify(value);
+}
+
+function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
+  const zh = lang === 'zh';
+  const graph = entry.graph;
+  const doctor = graph?.doctor;
+  const evalGraph = graph?.eval;
+  const source = graph?.sourceLocator ?? entry.skillName;
+  const sourceArg = sourceCommandArg(source);
+  const doctorStatus = stageText(entry, 'doctor', lang);
+  const evalStatus = stageText(entry, 'eval', lang);
+  const observeStatus = stageText(entry, 'observe', lang);
+  const stepSeparator = zh ? '：' : ':';
+  const summary = zh
+    ? `这个 skill 当前处于「doctor ${doctorStatus}，eval ${evalStatus}，observe ${observeStatus}」状态。`
+    : `Current state: doctor ${doctorStatus}, eval ${evalStatus}, observe ${observeStatus}.`;
+  const nextSteps = [
+    !entry.doctor ? `- ${zh ? '体检结构' : 'Check structure'}${stepSeparator} \`omk doctor ${sourceArg}\`` : '',
+    !entry.eval ? `- ${zh ? '测量效果' : 'Measure impact'}${stepSeparator} \`omk eval --control baseline --treatment ${sourceArg}\`` : '',
+    !entry.observe ? `- ${zh ? '接入观察' : 'Add observation'}${stepSeparator} \`omk observe ingest <trace-dir>\`` : '',
+  ].filter(Boolean);
+
+  return [
+    `## Skill Evidence Card：${entry.skillName}`,
+    '',
+    summary,
+    '',
+    '```mermaid',
+    'flowchart LR',
+    `  skill["SKILL.md: ${mermaidCardLabel(entry.skillName)}"]`,
+    `  doctor["doctor: ${mermaidCardLabel(doctorStatus)}"]`,
+    `  eval["eval: ${mermaidCardLabel(evalStatus)}"]`,
+    `  observe["observe: ${mermaidCardLabel(observeStatus)}"]`,
+    ...(doctor ? [
+      `  refs["references / ${doctor.references}"]`,
+      `  scripts["scripts / ${doctor.scripts}"]`,
+      `  workflows["workflows / ${doctor.workflows}"]`,
+      '  skill --> refs',
+      '  skill --> scripts',
+      '  skill --> workflows',
+    ] : []),
+    ...(evalGraph ? [
+      `  samples["samples / ${evalGraph.samples}"]`,
+      `  assertions["assertions / ${evalGraph.assertions}"]`,
+      '  skill --> samples',
+      '  samples --> assertions',
+    ] : []),
+    '  skill --> doctor',
+    '  doctor --> eval',
+    '  eval --> observe',
+    '```',
+    '',
+    zh ? '### 三阶段状态' : '### Stage Status',
+    '',
+    `| ${zh ? '阶段' : 'Stage'} | ${zh ? '状态' : 'Status'} | ${zh ? '证据' : 'Evidence'} |`,
+    '| --- | --- | --- |',
+    `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
+    `| eval | ${evalStatus} | ${evalGraph ? `${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
+    `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
+    '',
+    zh ? '### 关键计数' : '### Key Counts',
+    '',
+    '| references | scripts | workflows | workflow nodes | samples | failed samples |',
+    '| ---: | ---: | ---: | ---: | ---: | ---: |',
+    `| ${doctor?.references ?? 0} | ${doctor?.scripts ?? 0} | ${doctor?.workflows ?? 0} | ${doctor?.workflowNodes ?? 0} | ${entry.eval?.totalSamples ?? 0} | ${entry.eval?.failCount ?? 0} |`,
+    ...(nextSteps.length > 0 ? ['', zh ? '### 下一步' : '### Next Steps', '', ...nextSteps] : []),
+    '',
+    zh ? '### 复现信息' : '### Reproduction',
+    '',
+    `- source：${markdownInline(source)}`,
+    `- artifactHash：${markdownInline(graph?.artifactHash)}`,
+    `- binding：${markdownInline(graph?.bindingStrength)}`,
+    `- doctorGraphId：${markdownInline(doctor?.graphId)}`,
+    `- evalGraphId：${markdownInline(evalGraph?.graphId)}`,
+    '',
+  ].join('\n');
+}
+
+function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
+  const graph = entry.graph;
+  if (!graph) return '';
+  const zh = lang === 'zh';
+  const doctor = graph.doctor;
+  const evalGraph = graph.eval;
+  const band = skillMapBand(entry);
+  const markdown = renderSkillEvidenceMarkdown(entry, lang);
+  const statusSentence = zh
+    ? `这张图按 ${graph.bindingStrength === 'content-hash' ? '内容哈希' : graph.bindingStrength === 'source-locator' ? '来源路径' : '名称'} 绑定 doctor / eval 证据，展示当前已知结构与测量状态。`
+    : `This map binds doctor / eval evidence by ${graph.bindingStrength} and shows the known structure and measurement state.`;
+  const node = (cls: string, title: string, meta: string): string => `<div class="sm-node sm-node--${cls}"><div class="sm-node-title">${e(title)}</div><div class="sm-node-meta">${e(meta)}</div></div>`;
+  return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
+    <div class="si-sect-h">
+      <span class="si-sect-title">🗺 ${zh ? 'Skill Map' : 'Skill Map'}</span>
+      <span class="si-sect-meta">${doctor ? `${doctor.nodeCount} definition nodes` : (zh ? 'definition 未生成' : 'definition missing')} · ${evalGraph ? `${evalGraph.nodeCount} measurement nodes` : (zh ? 'measurement 未生成' : 'measurement missing')}</span>
+    </div>
+    <div class="sm-body">
+      <div class="sm-canvas" aria-label="Skill Map">
+        <div class="sm-col">
+          ${node('evidence', zh ? '结构证据' : 'Structure', doctor ? `${doctor.references} refs · ${doctor.scripts} scripts · ${doctor.workflows} workflows` : (zh ? '未生成 doctor graph' : 'doctor graph missing'))}
+          ${node('stage', 'doctor', stageText(entry, 'doctor', lang))}
+        </div>
+        <div class="sm-col sm-col--root">
+          ${node('skill', `SKILL.md`, entry.skillName)}
+          <div class="sm-bind">${e(graph.artifactHash ? `hash ${graph.artifactHash}` : graph.bindingStrength)}</div>
+        </div>
+        <div class="sm-col">
+          ${node('evidence', zh ? '测量证据' : 'Measurement', evalGraph ? `${evalGraph.samples} samples · ${evalGraph.assertions} assertions · ${evalGraph.diagnostics} diagnostics` : (zh ? '未生成 eval graph' : 'eval graph missing'))}
+          ${node('stage', 'eval', stageText(entry, 'eval', lang))}
+          ${node('pending', 'observe', stageText(entry, 'observe', lang))}
+        </div>
+      </div>
+      <div class="sm-side">
+        <div class="sm-summary">${e(statusSentence)}</div>
+        <div class="sm-kpis">
+          <div><b>${doctor?.references ?? 0}</b><span>references</span></div>
+          <div><b>${doctor?.workflows ?? 0}</b><span>workflows</span></div>
+          <div><b>${entry.eval?.totalSamples ?? 0}</b><span>samples</span></div>
+          <div><b>${entry.eval?.failCount ?? 0}</b><span>${zh ? '失败用例' : 'failed'}</span></div>
+        </div>
+        <details class="sm-card">
+          <summary>${zh ? '复制 Markdown Evidence Card' : 'Copy Markdown Evidence Card'}</summary>
+          <textarea readonly>${e(markdown)}</textarea>
+        </details>
+      </div>
+    </div>
+  </section>`;
+}
+
 // ────────── 主入口 ──────────
 
 export function renderSkillDetail(
@@ -1201,6 +1398,7 @@ export function renderSkillDetail(
     <main>
       <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skill 列表' : '← Back to Skills'}</a>
       ${renderHero(entry, insights, lastTs, reportCount, lang)}
+      ${renderSkillMapSection(entry, lang)}
       ${renderDoctorSection(entry.doctor, entry.doctorHistory, entry.skillName, lang)}
       ${renderEvalSection(entry.eval, evalReport, entry.evalHistory, langQ, lang)}
       ${renderObserveSection(entry.observe, langQ, lang)}

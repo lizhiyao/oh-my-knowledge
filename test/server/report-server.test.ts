@@ -625,10 +625,9 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
-    // 点行直接进该 skill 的报告(eval 优先,否则 doctor),不再走中间 hub(/skills 已下线)。
+    // 点行先进入 skill hub,由 hub 展示 Skill Map / 三阶段状态 / Evidence Card。
     // 行跳转走 data-href + 事件委托(非内联 onclick,见 skill-list-renderer)。
-    assert.ok(res.body.includes('data-href="/reports/') || res.body.includes('data-href="/doctors/'));
-    assert.ok(!res.body.includes('data-href="/skills/'));
+    assert.ok(res.body.includes('data-href="/skills/'));
   });
 
   it('GET /reports/:id returns HTML detail page', async () => {
@@ -642,8 +641,8 @@ describe('report-server', () => {
     const list = await fetch(`${baseUrl}/?lang=en`);
     assert.equal(list.status, 200);
     assert.ok(list.body.includes('data-lang="en"'));
-    // 列表行链接到报告(reports/doctors)并保留 ?lang=en
-    assert.ok(/data-href="\/(reports|doctors)\/[^"]*lang=en/.test(list.body));
+    // 列表行链接到 skill hub 并保留 ?lang=en
+    assert.ok(/data-href="\/skills\/[^"]*\?lang=en/.test(list.body));
 
     const detail = await fetch(`${baseUrl}/reports/test-run-001?lang=en`);
     assert.equal(detail.status, 200);
@@ -720,9 +719,12 @@ describe('report-server', () => {
     assert.ok(en.body.includes('doctor report not found'));
   });
 
-  it('GET /skills/:name 已下线(hub 不再存在,不做兼容重定向)→ 404', async () => {
+  it('GET /skills/:name returns the skill hub', async () => {
     const res = await fetch(`${baseUrl}/skills/v1`);
-    assert.equal(res.status, 404);
+    assert.equal(res.status, 200);
+    assert.ok(res.headers['content-type']!.includes('text/html'));
+    assert.ok(res.body.includes('v1'));
+    assert.ok(res.body.includes('Back to Skills') || res.body.includes('返回 Skill 列表'));
   });
 
   it('GET unknown path returns 404', async () => {

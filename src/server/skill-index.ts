@@ -15,8 +15,10 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, isAbsolute, basename, dirname } from 'node:path';
-import { isReportFileName, reportFileStem } from '../eval-core/artifact-file-names.js';
+import { GRAPH_FILE_SUFFIX, graphFileName, isReportFileName, reportFileStem } from '../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
+import { doctorGraphDirForDoctorOutput } from '../artifact-graph/doctor.js';
+import { evalGraphDirForReportOutput } from '../artifact-graph/eval.js';
 import type {
   ReportDocument,
   EvaluationReport,
@@ -26,15 +28,18 @@ import type {
   SkillDoctorSnapshot,
   SkillEvalSnapshot,
   SkillObserveSnapshot,
+  SkillGraphSnapshot,
   SkillIndexEntry,
   SkillIndexSummary,
   SkillIndex,
   Insight,
+  ArtifactGraphDocument,
+  ArtifactGraphNode,
 } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
-import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards, listLiveReportCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
@@ -129,7 +134,75 @@ function safeDirJsonContentFingerprint(dir: string): string {
   return `${dir}|${dirMtimeMs}|${fileParts.join(',')}`;
 }
 
-function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string, observationsDir: string, includeObserveCards: boolean, includeDoctorCards: boolean): string {
+function safeDirGraphContentFingerprint(dir: string): string {
+  let dirMtimeMs: number;
+  let graphFiles: string[];
+  try {
+    dirMtimeMs = statSync(dir).mtimeMs;
+    graphFiles = readdirSync(dir).filter((f) => f.endsWith(GRAPH_FILE_SUFFIX)).sort();
+  } catch {
+    return `missing:${dir}`;
+  }
+  const fileParts = graphFiles.map((f) => {
+    try {
+      const fStat = statSync(join(dir, f));
+      return `${f}:${fStat.mtimeMs}:${fStat.size}`;
+    } catch {
+      return `${f}:?`;
+    }
+  });
+  return `${dir}|${dirMtimeMs}|${fileParts.join(',')}`;
+}
+
+function fileFingerprint(path: string): string {
+  try {
+    const stat = statSync(path);
+    return `${path}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return `${path}:missing`;
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort();
+}
+
+function graphSidecarPathForReportPath(reportPath: string, reportId: string): string {
+  return join(evalGraphDirForReportOutput(dirname(reportPath)), graphFileName(reportId));
+}
+
+function graphSidecarPathForDoctorCard(cardPath: string, cardId: string): string {
+  return join(doctorGraphDirForDoctorOutput(dirname(cardPath)), graphFileName(cardId));
+}
+
+function buildGraphFingerprint(
+  evalGraphDirs: string[],
+  doctorGraphDirs: string[],
+  includeReportCards: boolean,
+  includeDoctorCards: boolean,
+): string {
+  const dirPart = [
+    ...uniqueStrings(evalGraphDirs).map((dir) => `eg:${safeDirGraphContentFingerprint(dir)}`),
+    ...uniqueStrings(doctorGraphDirs).map((dir) => `dg:${safeDirGraphContentFingerprint(dir)}`),
+  ].join('|');
+  const reportCardPart = includeReportCards
+    ? listLiveReportCards().map((card) => fileFingerprint(graphSidecarPathForReportPath(card.path, card.id))).sort().join('|')
+    : '';
+  const doctorCardPart = includeDoctorCards
+    ? listLiveDoctorCards().map((card) => fileFingerprint(graphSidecarPathForDoctorCard(card.path, card.id))).sort().join('|')
+    : '';
+  return `${dirPart}|erc:${reportCardPart}|drc:${doctorCardPart}`;
+}
+
+function buildIndexFingerprint(
+  reports: ReportDocument[],
+  analysesDir: string,
+  doctorsDir: string,
+  observationsDir: string,
+  includeObserveCards: boolean,
+  includeDoctorCards: boolean,
+  graphFingerprint: string,
+): string {
   // `d:` 跟 `o:` 前缀("d for doctors / o for observability analyses")沿用 pre-fix
   // 字面格式,避免外部 logging / debug 时 grep fingerprint 字符串的格式漂移。
   // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
@@ -148,7 +221,7 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   // 卡片目录指纹 + 真身存在性 sentinel 都纳入:后者使「卡片真身被带外删」也能让缓存失效(否则悬空卡片继续展示)。
   const doctorCardsFp = includeDoctorCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('doctor'))}|t:${cardTargetSentinel('doctor')}` : '';
   const observeCardsFp = includeObserveCards ? `${safeDirJsonContentFingerprint(artifactIndexDir('observe-health'))}|t:${cardTargetSentinel('observe-health')}` : '';
-  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}|dc:${doctorCardsFp}|oc:${observeCardsFp}|inc:${includeObserveCards ? 'o' : ''}${includeDoctorCards ? 'd' : ''}`;
+  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}|dc:${doctorCardsFp}|oc:${observeCardsFp}|g:${graphFingerprint}|inc:${includeObserveCards ? 'o' : ''}${includeDoctorCards ? 'd' : ''}`;
 }
 
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
@@ -293,6 +366,196 @@ function latestEvalSnapshot(list: SkillEvalSnapshot[]): SkillEvalSnapshot | null
   return list[list.length - 1];
 }
 
+interface LoadedArtifactGraph {
+  graph: ArtifactGraphDocument;
+  path: string;
+}
+
+function isArtifactGraphDocument(value: unknown): value is ArtifactGraphDocument {
+  if (!value || typeof value !== 'object') return false;
+  const graph = value as Partial<ArtifactGraphDocument>;
+  return graph.documentKind === 'artifact-graph'
+    && graph.schemaVersion === 1
+    && typeof graph.graphId === 'string'
+    && !!graph.source
+    && (graph.source.sourceKind === 'doctor' || graph.source.sourceKind === 'eval' || graph.source.sourceKind === 'observe')
+    && Array.isArray(graph.nodes)
+    && Array.isArray(graph.edges);
+}
+
+function readArtifactGraph(path: string): LoadedArtifactGraph | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
+    if (!isArtifactGraphDocument(parsed)) return null;
+    return { graph: parsed, path };
+  } catch {
+    return null;
+  }
+}
+
+function scanGraphDir(dir: string): LoadedArtifactGraph[] {
+  if (!existsSync(dir)) return [];
+  const out: LoadedArtifactGraph[] = [];
+  for (const file of readdirSync(dir).sort()) {
+    if (!file.endsWith(GRAPH_FILE_SUFFIX)) continue;
+    const loaded = readArtifactGraph(join(dir, file));
+    if (loaded) out.push(loaded);
+  }
+  return out;
+}
+
+function loadGraphsForSkillIndex(options: {
+  evalGraphDirs: string[];
+  doctorGraphDirs: string[];
+  includeReportCards: boolean;
+  includeDoctorCards: boolean;
+}): LoadedArtifactGraph[] {
+  const byPath = new Map<string, LoadedArtifactGraph>();
+  const add = (loaded: LoadedArtifactGraph | null): void => {
+    if (loaded) byPath.set(loaded.path, loaded);
+  };
+  for (const dir of uniqueStrings(options.evalGraphDirs)) {
+    for (const graph of scanGraphDir(dir)) add(graph);
+  }
+  for (const dir of uniqueStrings(options.doctorGraphDirs)) {
+    for (const graph of scanGraphDir(dir)) add(graph);
+  }
+  if (options.includeReportCards) {
+    for (const card of listLiveReportCards()) {
+      add(readArtifactGraph(graphSidecarPathForReportPath(card.path, card.id)));
+    }
+  }
+  if (options.includeDoctorCards) {
+    for (const card of listLiveDoctorCards()) {
+      add(readArtifactGraph(graphSidecarPathForDoctorCard(card.path, card.id)));
+    }
+  }
+  return [...byPath.values()];
+}
+
+function graphSkillNodes(graph: ArtifactGraphDocument): ArtifactGraphNode[] {
+  return graph.nodes.filter((node) => node.nodeKind === 'skill');
+}
+
+function graphSkillNames(graph: ArtifactGraphDocument): string[] {
+  return uniqueStrings([
+    graph.scope.skillName ?? '',
+    ...graphSkillNodes(graph).map((node) => node.label),
+  ]);
+}
+
+function graphArtifactHashes(graph: ArtifactGraphDocument): string[] {
+  return uniqueStrings([
+    graph.scope.artifactHash ?? '',
+    ...graphSkillNodes(graph).map((node) => node.binding?.keys?.artifactHash ?? ''),
+  ]);
+}
+
+function graphSourceLocator(graph: ArtifactGraphDocument): string | undefined {
+  const skillDisplay = graphSkillNodes(graph)
+    .map((node) => node.attrs?.display)
+    .find((display) => display && typeof display.sourceLocator === 'string');
+  return graph.scope.sourceLocator
+    ?? (typeof skillDisplay?.sourceLocator === 'string' ? skillDisplay.sourceLocator : undefined);
+}
+
+function graphHasSkill(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
+  const names = graphSkillNames(graph);
+  return names.includes(entry.skillName) || (entry.eval ? names.includes(entry.eval.variantName) : false);
+}
+
+function graphMatchesEntry(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
+  const hashes = graphArtifactHashes(graph);
+  const entryHash = entry.graph?.artifactHash;
+  if (entryHash && hashes.includes(entryHash)) return true;
+  return graphHasSkill(graph, entry);
+}
+
+function pickLatestGraph(graphs: LoadedArtifactGraph[]): LoadedArtifactGraph | null {
+  if (graphs.length === 0) return null;
+  return [...graphs].sort((a, b) => {
+    const at = a.graph.generatedAt || '';
+    const bt = b.graph.generatedAt || '';
+    if (at !== bt) return at.localeCompare(bt);
+    return a.graph.graphId.localeCompare(b.graph.graphId);
+  })[graphs.length - 1];
+}
+
+function countGraphNodes(graph: ArtifactGraphDocument, nodeKind: ArtifactGraphNode['nodeKind']): number {
+  return graph.nodes.filter((node) => node.nodeKind === nodeKind).length;
+}
+
+function sourceStage(graph: ArtifactGraphDocument, path: string): SkillGraphSnapshot['doctor'] | SkillGraphSnapshot['eval'] | undefined {
+  const base = {
+    sourceKind: graph.source.sourceKind,
+    sourceId: graph.source.sourceId,
+    graphId: graph.graphId,
+    generatedAt: graph.generatedAt,
+    graphPath: path,
+    nodeCount: graph.nodes.length,
+    edgeCount: graph.edges.length,
+  };
+  if (graph.source.sourceKind === 'doctor') {
+    return {
+      ...base,
+      sourceKind: 'doctor',
+      references: countGraphNodes(graph, 'reference'),
+      scripts: countGraphNodes(graph, 'script'),
+      workflows: countGraphNodes(graph, 'workflow'),
+      workflowNodes: countGraphNodes(graph, 'workflow_node'),
+      hardRules: countGraphNodes(graph, 'hard_rule'),
+    };
+  }
+  if (graph.source.sourceKind === 'eval') {
+    const variantNode = graph.nodes.find((node) => node.nodeKind === 'variant' && node.binding?.keys?.artifactHash && node.binding.keys.artifactHash !== 'no-skill');
+    return {
+      ...base,
+      sourceKind: 'eval',
+      variantName: variantNode?.label,
+      samples: countGraphNodes(graph, 'sample'),
+      assertions: countGraphNodes(graph, 'assertion'),
+      failedAssertionEdges: graph.edges.filter((edge) => edge.edgeKind === 'fails').length,
+      diagnostics: countGraphNodes(graph, 'diagnostic'),
+    };
+  }
+  return undefined;
+}
+
+function graphSnapshotForEntry(entry: SkillIndexEntry, graphs: LoadedArtifactGraph[]): SkillGraphSnapshot | undefined {
+  const doctorCandidates = graphs.filter(({ graph }) =>
+    graph.source.sourceKind === 'doctor'
+      && (!entry.doctor || graph.source.sourceId === entry.doctor.reportId)
+      && graphMatchesEntry(graph, entry),
+  );
+  const evalCandidates = graphs.filter(({ graph }) =>
+    graph.source.sourceKind === 'eval'
+      && (!entry.eval || graph.source.sourceId === entry.eval.reportId)
+      && graphMatchesEntry(graph, entry),
+  );
+  const doctor = pickLatestGraph(doctorCandidates);
+  const evalGraph = pickLatestGraph(evalCandidates);
+  if (!doctor && !evalGraph) return undefined;
+
+  const hashes = uniqueStrings([
+    ...(doctor ? graphArtifactHashes(doctor.graph) : []),
+    ...(evalGraph ? graphArtifactHashes(evalGraph.graph) : []),
+  ]);
+  const sourceLocator = doctor ? graphSourceLocator(doctor.graph) : evalGraph ? graphSourceLocator(evalGraph.graph) : undefined;
+  const bindingStrength: SkillGraphSnapshot['bindingStrength'] = hashes.length > 0
+    ? 'content-hash'
+    : sourceLocator
+      ? 'source-locator'
+      : 'name-only';
+
+  return {
+    bindingStrength,
+    ...(hashes[0] ? { artifactHash: hashes[0] } : {}),
+    ...(sourceLocator ? { sourceLocator } : {}),
+    ...(doctor ? { doctor: sourceStage(doctor.graph, doctor.path) as SkillGraphSnapshot['doctor'] } : {}),
+    ...(evalGraph ? { eval: sourceStage(evalGraph.graph, evalGraph.path) as SkillGraphSnapshot['eval'] } : {}),
+  };
+}
+
 /** 扫 doctorsDir/*.report.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
  *  renderer 用最后一项做"当前",前面项画 sparkline。 */
 function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
@@ -334,6 +597,12 @@ export interface BuildSkillIndexOptions {
   includeObserveCards?: boolean;
   /** 合并别项目 doctor 卡片(机器级模式)。固定 --doctors-dir / --global 时为 false,只看该目录。 */
   includeDoctorCards?: boolean;
+  /** 合并别项目 eval report 卡片对应的 graph sidecar。 */
+  includeReportCards?: boolean;
+  /** 当前可见 eval graph sidecar 目录。 */
+  evalGraphDirs?: string[];
+  /** 当前可见 doctor graph sidecar 目录。默认跟随 doctorsDir 推导。 */
+  doctorGraphDirs?: string[];
 }
 
 export function buildSkillIndex(
@@ -345,8 +614,15 @@ export function buildSkillIndex(
 ): SkillIndex {
   const includeObserveCards = opts.includeObserveCards ?? false;
   const includeDoctorCards = opts.includeDoctorCards ?? false;
+  const includeReportCards = opts.includeReportCards ?? false;
+  const evalGraphDirs = uniqueStrings(opts.evalGraphDirs ?? []);
+  const doctorGraphDirs = uniqueStrings([
+    doctorGraphDirForDoctorOutput(doctorsDir),
+    ...(opts.doctorGraphDirs ?? []),
+  ]);
+  const graphFingerprint = buildGraphFingerprint(evalGraphDirs, doctorGraphDirs, includeReportCards, includeDoctorCards);
   // 命中缓存就直接返回(fingerprint 覆盖 reports + 两个 dir + 卡片 include 模式的变化信号)
-  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards);
+  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards, graphFingerprint);
   if (_indexCache && _indexCache.fingerprint === fp) {
     return _indexCache.result;
   }
@@ -482,6 +758,17 @@ export function buildSkillIndex(
     const hasMed = ins.some((i) => i.severity === 'medium');
     if (hasHigh) ent.band = 'red';
     else if (hasMed) ent.band = 'yellow';
+  }
+
+  const graphs = loadGraphsForSkillIndex({
+    evalGraphDirs,
+    doctorGraphDirs,
+    includeReportCards,
+    includeDoctorCards,
+  });
+  for (const ent of entries) {
+    const graph = graphSnapshotForEntry(ent, graphs);
+    if (graph) ent.graph = graph;
   }
   summary.red = entries.filter((e) => e.band === 'red').length;
   summary.yellow = entries.filter((e) => e.band === 'yellow').length;
