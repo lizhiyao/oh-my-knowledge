@@ -67,8 +67,8 @@ describe('mergeEvolveReports', () => {
     // totalCostUSD
     assert.equal(merged.meta.totalCostUSD, 1.5);
 
-    // id = evolve-<skill>-YYYYMMDD-HHmmss-rand4(含日期,可追溯 / 可扫读)
-    assert.match(merged.id, /^evolve-test-skill-\d{8}-\d{6}-[a-z0-9]{4}$/);
+    // id = evolve-<skill>-YYYYMMDDTHHmmss-rand4(含日期,可追溯 / 可扫读)
+    assert.match(merged.id, /^evolve-test-skill-\d{8}T\d{6}-[a-z0-9]{4}$/);
   });
 
   it('单轮（仅 baseline）也能正常生成报告', () => {

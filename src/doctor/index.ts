@@ -10,6 +10,7 @@
 
 import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { runFileSuffix } from '../eval-core/artifact-file-names.js';
 import { discoverVariants, resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
   Artifact,
@@ -180,14 +181,8 @@ function inferSkillPath(artifact: Artifact, baseDir: string): string {
 // Public entry
 // ---------------------------------------------------------------------------
 
-let reportIdCounter = 0;
 function nextReportId(): string {
-  reportIdCounter += 1;
-  const ts = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
-  // 进程内计数器只防同进程同秒撞;跨进程同秒(两个 omk doctor 并发 / 不同项目)仍会撞同 id,
-  // 经机器级卡片 dedup 当唯一键用时会静默并掉一份。加 4 位随机根治跨进程撞名(id 是标签非测量数)。
-  const rand = Math.random().toString(36).slice(2, 6);
-  return `doctor-${ts}-${reportIdCounter}-${rand}`;
+  return `doctor-${runFileSuffix()}`;
 }
 
 function readCliVersion(): string {

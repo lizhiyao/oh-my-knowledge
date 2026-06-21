@@ -14,7 +14,7 @@ function cardShellEntry(): SkillIndexEntry {
     skillName: 'cross-project-skill',
     doctor: null,
     eval: {
-      reportId: 'baseline-vs-x-20260614-141600-ab12',
+      reportId: 'x-20260614T141600-ab12',
       timestamp: '2026-06-14T14:16:00Z',
       variantName: 'x',
       verdictLevel: 'PROGRESS',

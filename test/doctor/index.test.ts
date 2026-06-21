@@ -343,7 +343,7 @@ describe('runDoctor', () => {
       rules: [passingRule],
     });
     assert.equal(typeof report.id, 'string');
-    assert.ok(report.id.startsWith('doctor-'));
+    assert.match(report.id, /^doctor-\d{8}T\d{6}-[a-z0-9]{4}$/);
     assert.equal(typeof report.timestamp, 'string');
     assert.equal(typeof report.cliVersion, 'string');
     for (const skill of report.skills) {

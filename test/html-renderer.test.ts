@@ -14,10 +14,10 @@ function normalizeForSnapshot(html: string): string {
 
 const SAMPLE_REPORT: Report = {
   kind: 'evaluation',
-  // 用生产 id 格式 YYYYMMDD-HHmmss-rand4(含秒+随机),让列表页 row 时间走 formatDateFromId
+  // 用生产 id 格式 YYYYMMDDTHHmmss-rand4(含秒+随机),让列表页 row 时间走 formatDateFromId
   // 的 id 直接提取路径 (deterministic, 不走时区敏感的 toLocaleString — 后者会让 snapshot 在 CI UTC
   // 和本地 CST 之间不一致)。秒段在展示时被丢弃,派生出的 MM/DD HH:MM 与旧格式一致,快照稳定。
-  id: 'test-run-20260325-100000-abcd',
+  id: 'test-run-20260325T100000-abcd',
   meta: {
     variants: ['v1', 'v2'],
     model: 'sonnet',
@@ -102,9 +102,9 @@ describe('renderRunList', () => {
 
   it('renders run list with data', () => {
     const html = renderRunList([SAMPLE_REPORT]);
-    assert.ok(html.includes('test-run-20260325-1000'));
+    assert.ok(html.includes('test-run-20260325T1000'));
     assert.ok(html.includes('sonnet'));
-    assert.ok(html.includes('test-run-20260325-1000'));
+    assert.ok(html.includes('test-run-20260325T1000'));
   });
 
   it('includes delete button', () => {

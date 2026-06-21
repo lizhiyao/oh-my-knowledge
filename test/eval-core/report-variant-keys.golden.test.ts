@@ -254,11 +254,14 @@ describe('GOLDEN report variant keys', () => {
     expect(projectVariantSurfaces(report)).toMatchSnapshot();
   });
 
-  it('generateRunId encodes variant names in order, sanitized', () => {
-    // 格式:<variants>-<YYYYMMDD>-<HHmmss>-<rand4>。秒 + 4 位随机后缀保证跨项目 / 同分钟重跑全局唯一。
-    assert.match(generateRunId(['baseline', 'greeter']), /^baseline-vs-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
-    assert.match(generateRunId(['v1/greeter', 'v2/greeter']), /^v1-greeter-vs-v2-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
-    assert.match(generateRunId(['git:HEAD:greeter']), /^git-HEAD-greeter-\d{8}-\d{6}-[a-z0-9]{4}$/);
+  it('generateRunId uses the primary subject, not the full variant relationship', () => {
+    // 格式:<subject>-<YYYYMMDDTHHmmss>-<rand4>。baseline / 对照关系留在 report JSON 里,
+    // 文件名只表达主评测对象和本次运行唯一性。
+    const baselineRunId = generateRunId(['baseline', 'greeter']);
+    assert.match(baselineRunId, /^greeter-\d{8}T\d{6}-[a-z0-9]{4}$/);
+    assert.doesNotMatch(baselineRunId, /^baseline-vs-/);
+    assert.match(generateRunId(['v1/greeter', 'v2/greeter']), /^v2-greeter-\d{8}T\d{6}-[a-z0-9]{4}$/);
+    assert.match(generateRunId(['git:HEAD:greeter']), /^git-HEAD-greeter-\d{8}T\d{6}-[a-z0-9]{4}$/);
   });
 
   it('generateRunId 同时刻两次产出不同 id(撞名根治)', () => {

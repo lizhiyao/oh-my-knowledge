@@ -32,7 +32,7 @@
 
 第一行测量产物放法一致（项目本地默认 + 全局兜底读 + 默认 gitignore）。主写入命令用 `--global` 写全局：`reports` / `observe-health` / `doctors` 拿标准用例集跑分时写全局（见第四节），`observe-inbox` 也支持（`omk observe ingest --global` 写、`omk observe inbox --global` 读），补全全局 skill 的观测闭环。`graphs` 这类 sidecar 跟随产生它的主产物输出根目录，不另起一套路由。`managed` 是例外，不靠开关，按被治理 skill 装在哪自动走。
 
-doctor graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors` → `.omk/graphs/doctor`。如果用户传入的自定义 `--output-dir` 不是名为 `doctors` 的标准目录，graph sidecar 留在显式目录内部：`<output-dir>/graphs/doctor`。
+doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors` → `.omk/graphs/doctor`，`.omk/reports` → `.omk/graphs/eval`。如果用户传入的自定义 `--output-dir` 不是对应主写入命令的标准目录，graph sidecar 留在显式目录内部，例如 `<output-dir>/graphs/doctor` 或 `<output-dir>/graphs/eval`。
 
 ## 三、最终长这样
 
@@ -59,7 +59,7 @@ doctor graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors`
 目录和文件名各自承载不同含义：
 
 - **目录表达产品域**。例如 `.omk/doctors/` 已经说明这是 doctor，`.omk/graphs/doctor/` 已经说明这是 doctor 产生的图谱 sidecar；文件名不再重复这些 domain 词。
-- **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名，`runSuffix` 是让本次运行唯一的时间戳 / 计数 / 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
+- **所有 run-derived artifact 都用 `<subject>-<runSuffix>.<artifactKind>.<ext>`**。`subject` 通常是 skill 或 artifact 名（eval 取主评测对象，也就是非 baseline treatment，而不是完整 control-vs-treatment 关系），`runSuffix` 是让本次运行唯一的时间戳 + 随机后缀，`artifactKind` 说明文件是什么，`ext` 说明怎么解析。
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
 - **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
 
@@ -68,12 +68,13 @@ doctor graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors`
 示例：
 
 ```
-.omk/reports/baseline-vs-service-guide-20260620-105109-aqgq.report.json
-.omk/doctors/service-guide-20260620T105109-1-aqgq.report.json
+.omk/reports/service-guide-20260620T105109-aqgq.report.json
+.omk/doctors/service-guide-20260620T105109-aqgq.report.json
 .omk/observe-health/20260620T105109-aqgq.report.json
 .omk/observe-inbox/20260620T105109-aqgq.report.json
-.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.graph.json
-.omk/graphs/doctor/service-guide-20260620T051909-1-aqgq.card.md
+.omk/graphs/eval/service-guide-20260620T105109-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-aqgq.graph.json
+.omk/graphs/doctor/service-guide-20260620T051909-aqgq.card.md
 ```
 
 ## 四、skill、测量、治理是三层，别混成一栏
@@ -123,7 +124,7 @@ doctor graph sidecar 对标准报告目录保留 sibling 布局：`.omk/doctors`
 - **逃生舱不掺卡片**：`--global` 和显式指定的 `--reports-dir` / `--doctors-dir` / `--analyses-dir` 只看你点名的那一个目录，不并卡片，干净。
 - **`observe-inbox` 故意不进索引**：`domain` 只有 `report` / `doctor` / `observe-health` 三类、没有 `observe-inbox`。发现索引服务的是「可比的复盘产物」（你会跨项目浏览、对照的结论）；收件箱是当前项目的 triage 工作台，在 A 项目的 studio 里翻 B 项目的待办队列价值低又容易误操作。所以汇总（observe-health）进索引、原始待办（observe-inbox）不进，是有意的边界——它照样支持 `--global` 写 / 读，只是不做机器级跨项目聚合。
 
-另外 `id` 统一加了随机后缀防撞名（两个项目同一秒出产物，撞了 id 会被去重误并、悄悄丢数据）：report 用「秒 + 随机」、doctor 用「秒 + 计数 + 随机」、observe-health 文件名带随机段。`id` 只是个标签、不是算出来的分数，这个改动**不影响跨版本可比性**。
+另外 `id` 统一加了随机后缀防撞名（两个项目同一秒出产物，撞了 id 会被去重误并、悄悄丢数据）：report、doctor、observe-health 文件名都带「秒 + 随机」。`id` 只是个标签、不是算出来的分数，这个改动**不影响跨版本可比性**。
 
 ## 七、什么自动清、什么永远留
 
