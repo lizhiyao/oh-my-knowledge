@@ -14,7 +14,7 @@ function makeEvalReport(): EvaluationReport {
     kind: 'evaluation',
     id: 'service-guide-20260621T120000-abcd',
     meta: {
-      variants: ['baseline', 'service-guide'],
+      variants: ['baseline', 'service-guide', 'release-helper'],
       model: 'fixture',
       executor: 'fixture',
       sampleCount: 2,
@@ -23,21 +23,35 @@ function makeEvalReport(): EvaluationReport {
       timestamp: '2026-06-21T12:00:00.000Z',
       cliVersion: '0.0.0-test',
       nodeVersion: process.version,
-      artifactHashes: { baseline: 'no-skill', 'service-guide': 'hash-service-guide' },
+      artifactHashes: { baseline: 'no-skill', 'service-guide': 'hash-service-guide', 'release-helper': 'hash-release-helper' },
       sampleHashes: { s001: 'sample-1', s002: 'sample-2' },
       judgeModels: [],
-      variantConfigs: [{
-        variant: 'service-guide',
-        artifactKind: 'skill',
-        artifactSource: 'file-path',
-        artifactPath: '/repo/skills/service-guide/SKILL.md',
-        executionStrategy: 'system-prompt',
-        experimentType: 'artifact-injection',
-        experimentRole: 'treatment',
-        hasArtifactContent: true,
-        cwd: null,
-        locator: '/repo/skills/service-guide/SKILL.md',
-      }],
+      variantConfigs: [
+        {
+          variant: 'service-guide',
+          artifactKind: 'skill',
+          artifactSource: 'file-path',
+          artifactPath: '/repo/skills/service-guide/SKILL.md',
+          executionStrategy: 'system-prompt',
+          experimentType: 'artifact-injection',
+          experimentRole: 'treatment',
+          hasArtifactContent: true,
+          cwd: null,
+          locator: '/repo/skills/service-guide/SKILL.md',
+        },
+        {
+          variant: 'release-helper',
+          artifactKind: 'skill',
+          artifactSource: 'file-path',
+          artifactPath: '/repo/skills/release-helper/SKILL.md',
+          executionStrategy: 'system-prompt',
+          experimentType: 'artifact-injection',
+          experimentRole: 'treatment',
+          hasArtifactContent: true,
+          cwd: null,
+          locator: '/repo/skills/release-helper/SKILL.md',
+        },
+      ],
     },
     summary: {
       'service-guide': {
@@ -46,6 +60,13 @@ function makeEvalReport(): EvaluationReport {
         errorCount: 0,
         errorRate: 0,
         avgCompositeScore: 3.2,
+      },
+      'release-helper': {
+        totalSamples: 2,
+        successCount: 2,
+        errorCount: 0,
+        errorRate: 0,
+        avgCompositeScore: 2.1,
       },
     },
     sampleSnapshots: {
@@ -72,6 +93,23 @@ function makeEvalReport(): EvaluationReport {
             compositeScore: 4,
             assertions: { passed: 1, total: 1, score: 5, details: [{ type: 'contains_any', value: 'rollback', weight: 1, passed: true }] },
           },
+          'release-helper': {
+            ok: true,
+            durationMs: 10,
+            durationApiMs: 8,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            execCostUSD: 0,
+            judgeCostUSD: 0,
+            costUSD: 0,
+            numTurns: 1,
+            compositeScore: 1.5,
+            assertions: { passed: 0, total: 1, score: 1, details: [{ type: 'contains_any', value: 'handoff', weight: 1, passed: false }] },
+            diagnostic: { ok: false, rootCause: ['missing_handoff'], failureModes: ['other'] },
+          },
         },
       },
       {
@@ -92,6 +130,23 @@ function makeEvalReport(): EvaluationReport {
             numTurns: 1,
             compositeScore: 2.5,
             assertions: { passed: 0, total: 1, score: 1, details: [{ type: 'contains_all', value: 'owner', weight: 1, passed: false }] },
+            diagnostic: { ok: true, rootCause: ['missing_owner'], failureModes: ['skill-doc-gap'] },
+          },
+          'release-helper': {
+            ok: true,
+            durationMs: 10,
+            durationApiMs: 8,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            execCostUSD: 0,
+            judgeCostUSD: 0,
+            costUSD: 0,
+            numTurns: 1,
+            compositeScore: 2.7,
+            assertions: { passed: 1, total: 1, score: 5, details: [{ type: 'contains_all', value: 'owner', weight: 1, passed: true }] },
           },
         },
       },
@@ -160,18 +215,38 @@ function evalGraph(): ArtifactGraphDocument {
     source: { sourceKind: 'eval', sourceId: 'service-guide-20260621T120000-abcd', sourcePath: '/repo/.omk/reports/service-guide.report.json' },
     scope: { cwd: '/repo', artifactKind: 'skill', sourceLocator: '/repo/.omk/samples.json', sampleSetHash: 'sample-set' },
     nodes: [
-      { id: 'skill', stableKey: 'v1:skill:hash-service-guide', nodeKind: 'skill', nodeRole: 'entity', layer: 'measurement', label: 'service-guide', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'skill', stableKey: 'v1:skill:hash-service-guide', nodeKind: 'skill', nodeRole: 'entity', layer: 'measurement', label: 'service-guide', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } }, attrs: { display: { sourceLocator: '/repo/skills/service-guide/SKILL.md' } } },
       { id: 'variant', stableKey: 'v1:variant:service-guide-20260621T120000-abcd:service-guide', nodeKind: 'variant', nodeRole: 'entity', layer: 'measurement', label: 'service-guide', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'skill-other', stableKey: 'v1:skill:hash-release-helper', nodeKind: 'skill', nodeRole: 'entity', layer: 'measurement', label: 'release-helper', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-release-helper' } }, attrs: { display: { sourceLocator: '/repo/skills/release-helper/SKILL.md' } } },
+      { id: 'variant-other', stableKey: 'v1:variant:service-guide-20260621T120000-abcd:release-helper', nodeKind: 'variant', nodeRole: 'entity', layer: 'measurement', label: 'release-helper', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-release-helper' } } },
       { id: 's001', stableKey: 'v1:sample:sample-1', nodeKind: 'sample', nodeRole: 'entity', layer: 'measurement', label: 's001' },
       { id: 's002', stableKey: 'v1:sample:sample-2', nodeKind: 'sample', nodeRole: 'entity', layer: 'measurement', label: 's002' },
       { id: 'a1', stableKey: 'v1:sample:sample-1:assertion:0', nodeKind: 'assertion', nodeRole: 'entity', layer: 'measurement', label: 'assertion: contains_any' },
       { id: 'a2', stableKey: 'v1:sample:sample-2:assertion:0', nodeKind: 'assertion', nodeRole: 'entity', layer: 'measurement', label: 'assertion: contains_all' },
+      { id: 'a3', stableKey: 'v1:sample:sample-1:assertion:extra', nodeKind: 'assertion', nodeRole: 'entity', layer: 'measurement', label: 'assertion: contains_any' },
+      { id: 'er1', stableKey: 'v1:eval-result:service-guide-20260621T120000-abcd:service-guide:s001', nodeKind: 'eval_result', nodeRole: 'observation', layer: 'measurement', label: 'service-guide / s001' },
+      { id: 'er2', stableKey: 'v1:eval-result:service-guide-20260621T120000-abcd:service-guide:s002', nodeKind: 'eval_result', nodeRole: 'observation', layer: 'measurement', label: 'service-guide / s002' },
+      { id: 'er-other', stableKey: 'v1:eval-result:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'eval_result', nodeRole: 'observation', layer: 'measurement', label: 'release-helper / s001' },
       { id: 'diag', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:service-guide:s002', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: service-guide / s002' },
+      { id: 'diag-other', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: release-helper / s001' },
     ],
     edges: [
-      { id: 'e1', fromNodeId: 'variant', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement', status: 'ok' },
-      { id: 'e2', fromNodeId: 'variant', toNodeId: 's002', edgeKind: 'evaluates', layer: 'measurement', status: 'failed' },
-      { id: 'e3', fromNodeId: 's002', toNodeId: 'a2', edgeKind: 'fails', layer: 'measurement', status: 'failed' },
+      { id: 'e1', fromNodeId: 'variant', toNodeId: 'skill', edgeKind: 'derived_from', layer: 'measurement' },
+      { id: 'e2', fromNodeId: 'variant-other', toNodeId: 'skill-other', edgeKind: 'derived_from', layer: 'measurement' },
+      { id: 'e3', fromNodeId: 'variant', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement', status: 'ok' },
+      { id: 'e4', fromNodeId: 'variant', toNodeId: 's002', edgeKind: 'evaluates', layer: 'measurement', status: 'failed' },
+      { id: 'e5', fromNodeId: 'er1', toNodeId: 'variant', edgeKind: 'derived_from', layer: 'measurement' },
+      { id: 'e6', fromNodeId: 'er1', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement' },
+      { id: 'e7', fromNodeId: 'er1', toNodeId: 'a1', edgeKind: 'passes', layer: 'measurement', status: 'ok' },
+      { id: 'e8', fromNodeId: 'er2', toNodeId: 'variant', edgeKind: 'derived_from', layer: 'measurement' },
+      { id: 'e9', fromNodeId: 'er2', toNodeId: 's002', edgeKind: 'evaluates', layer: 'measurement' },
+      { id: 'e10', fromNodeId: 'er2', toNodeId: 'a2', edgeKind: 'fails', layer: 'measurement', status: 'failed' },
+      { id: 'e11', fromNodeId: 'diag', toNodeId: 'er2', edgeKind: 'diagnoses', layer: 'measurement', status: 'warning' },
+      { id: 'e12', fromNodeId: 'variant-other', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement', status: 'failed' },
+      { id: 'e13', fromNodeId: 'er-other', toNodeId: 'variant-other', edgeKind: 'derived_from', layer: 'measurement' },
+      { id: 'e14', fromNodeId: 'er-other', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement' },
+      { id: 'e15', fromNodeId: 'er-other', toNodeId: 'a3', edgeKind: 'fails', layer: 'measurement', status: 'failed' },
+      { id: 'e16', fromNodeId: 'diag-other', toNodeId: 'er-other', edgeKind: 'diagnoses', layer: 'measurement', status: 'failed' },
     ],
   };
 }
@@ -229,6 +304,9 @@ describe('SkillIndex graph projection', () => {
     assert.equal(entry.graph?.eval?.assertions, 2);
     assert.equal(entry.graph?.eval?.failedAssertionEdges, 1);
     assert.equal(entry.graph?.eval?.diagnostics, 1);
+    assert.equal(entry.graph?.eval?.variantName, 'service-guide');
+    assert.equal(entry.graph?.eval?.nodeCount, 9);
+    assert.equal(entry.graph?.eval?.edgeCount, 10);
 
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
@@ -237,6 +315,64 @@ describe('SkillIndex graph projection', () => {
     assert.ok(html.includes('samples / 2'));
     assert.match(html, /doctorGraphId/);
     assert.match(html, /evalGraphId/);
+  });
+
+  it('does not claim content-hash binding when doctor and eval graphs point to different artifact hashes', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-skill-map-mixed-'));
+    cleanup.push(tmp);
+    const doctorsDir = join(tmp, '.omk', 'doctors');
+    const analysesDir = join(tmp, '.omk', 'observe-health');
+    const observationsDir = join(tmp, '.omk', 'observe-inbox');
+    const doctorGraphDir = join(tmp, '.omk', 'graphs', 'doctor');
+    const evalGraphDir = join(tmp, '.omk', 'graphs', 'eval');
+    mkdirSync(doctorsDir, { recursive: true });
+    mkdirSync(doctorGraphDir, { recursive: true });
+    mkdirSync(evalGraphDir, { recursive: true });
+
+    const report = makeEvalReport();
+    const doctor = makeDoctorReport();
+    const staleDoctorGraph = doctorGraph();
+    staleDoctorGraph.scope.artifactHash = 'hash-stale-service-guide';
+    writeFileSync(join(doctorsDir, reportFileName('service-guide-doctor-20260621T115900-abcd')), JSON.stringify(doctor, null, 2));
+    writeFileSync(join(doctorGraphDir, graphFileName('service-guide-doctor-20260621T115900-abcd')), JSON.stringify(staleDoctorGraph, null, 2));
+    writeFileSync(join(evalGraphDir, graphFileName(report.id)), JSON.stringify(evalGraph(), null, 2));
+
+    const idx = buildSkillIndex([report], analysesDir, doctorsDir, observationsDir, {
+      evalGraphDirs: [evalGraphDir],
+      doctorGraphDirs: [doctorGraphDir],
+    });
+
+    const entry = idx.entries.find((item) => item.skillName === 'service-guide');
+    assert.ok(entry);
+    assert.equal(entry.graph?.bindingStrength, 'mixed');
+    assert.equal(entry.graph?.artifactHash, undefined);
+    const html = renderSkillDetail(entry, report, 'zh');
+    assert.match(html, /混合证据/);
+  });
+
+  it('uses the matched skill node locator for eval-only evidence cards instead of samplesPath', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-skill-map-eval-only-'));
+    cleanup.push(tmp);
+    const doctorsDir = join(tmp, '.omk', 'doctors');
+    const analysesDir = join(tmp, '.omk', 'observe-health');
+    const observationsDir = join(tmp, '.omk', 'observe-inbox');
+    const evalGraphDir = join(tmp, '.omk', 'graphs', 'eval');
+    mkdirSync(evalGraphDir, { recursive: true });
+
+    const report = makeEvalReport();
+    writeFileSync(join(evalGraphDir, graphFileName(report.id)), JSON.stringify(evalGraph(), null, 2));
+
+    const idx = buildSkillIndex([report], analysesDir, doctorsDir, observationsDir, {
+      evalGraphDirs: [evalGraphDir],
+    });
+
+    const entry = idx.entries.find((item) => item.skillName === 'service-guide');
+    assert.ok(entry);
+    assert.equal(entry.graph?.sourceLocator, '/repo/skills/service-guide/SKILL.md');
+    assert.equal(entry.graph?.bindingStrength, 'content-hash');
+    const html = renderSkillDetail(entry, report, 'zh');
+    assert.ok(html.includes('omk doctor /repo/skills/service-guide/SKILL.md'));
+    assert.ok(!html.includes('omk doctor /repo/.omk/samples.json'));
   });
 
   it('links the skill list to the skill hub instead of a stage-specific report', () => {

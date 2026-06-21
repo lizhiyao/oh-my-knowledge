@@ -444,19 +444,26 @@ function graphSkillNames(graph: ArtifactGraphDocument): string[] {
   ]);
 }
 
-function graphArtifactHashes(graph: ArtifactGraphDocument): string[] {
-  return uniqueStrings([
-    graph.scope.artifactHash ?? '',
-    ...graphSkillNodes(graph).map((node) => node.binding?.keys?.artifactHash ?? ''),
-  ]);
+function nodeArtifactHash(node: ArtifactGraphNode | undefined): string | undefined {
+  const hash = node?.binding?.keys?.artifactHash;
+  return hash && hash !== 'no-skill' ? hash : undefined;
 }
 
-function graphSourceLocator(graph: ArtifactGraphDocument): string | undefined {
-  const skillDisplay = graphSkillNodes(graph)
-    .map((node) => node.attrs?.display)
-    .find((display) => display && typeof display.sourceLocator === 'string');
-  return graph.scope.sourceLocator
-    ?? (typeof skillDisplay?.sourceLocator === 'string' ? skillDisplay.sourceLocator : undefined);
+function nodeSourceLocator(node: ArtifactGraphNode | undefined): string | undefined {
+  const locator = node?.attrs?.display?.sourceLocator;
+  return typeof locator === 'string' && locator.trim() ? locator : undefined;
+}
+
+function graphSourceLocator(graph: ArtifactGraphDocument, skillNode?: ArtifactGraphNode): string | undefined {
+  if (graph.source.sourceKind === 'eval') {
+    // Eval graph 的 scope.sourceLocator 是 samplesPath；skill 路径在 skill node 上。
+    return nodeSourceLocator(skillNode);
+  }
+  return graph.scope.sourceLocator ?? nodeSourceLocator(skillNode);
+}
+
+function graphNodeMap(graph: ArtifactGraphDocument): Map<string, ArtifactGraphNode> {
+  return new Map(graph.nodes.map((node) => [node.id, node]));
 }
 
 function graphHasSkill(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
@@ -464,11 +471,30 @@ function graphHasSkill(graph: ArtifactGraphDocument, entry: SkillIndexEntry): bo
   return names.includes(entry.skillName) || (entry.eval ? names.includes(entry.eval.variantName) : false);
 }
 
-function graphMatchesEntry(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
-  const hashes = graphArtifactHashes(graph);
-  const entryHash = entry.graph?.artifactHash;
-  if (entryHash && hashes.includes(entryHash)) return true;
+function graphMatchesDoctorEntry(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
   return graphHasSkill(graph, entry);
+}
+
+function evalVariantName(entry: SkillIndexEntry): string | null {
+  return entry.eval?.variantName ?? null;
+}
+
+function evalVariantNode(graph: ArtifactGraphDocument, entry: SkillIndexEntry): ArtifactGraphNode | undefined {
+  const variantName = evalVariantName(entry);
+  if (!variantName) return undefined;
+  return graph.nodes.find((node) => node.nodeKind === 'variant' && node.label === variantName);
+}
+
+function evalSkillNodeForVariant(graph: ArtifactGraphDocument, variantNode: ArtifactGraphNode): ArtifactGraphNode | undefined {
+  const nodesById = graphNodeMap(graph);
+  return graph.edges
+    .filter((edge) => edge.fromNodeId === variantNode.id && edge.edgeKind === 'derived_from')
+    .map((edge) => nodesById.get(edge.toNodeId))
+    .find((node): node is ArtifactGraphNode => node?.nodeKind === 'skill');
+}
+
+function graphMatchesEvalEntry(graph: ArtifactGraphDocument, entry: SkillIndexEntry): boolean {
+  return evalVariantNode(graph, entry) !== undefined;
 }
 
 function pickLatestGraph(graphs: LoadedArtifactGraph[]): LoadedArtifactGraph | null {
@@ -485,9 +511,18 @@ function countGraphNodes(graph: ArtifactGraphDocument, nodeKind: ArtifactGraphNo
   return graph.nodes.filter((node) => node.nodeKind === nodeKind).length;
 }
 
-function sourceStage(graph: ArtifactGraphDocument, path: string): SkillGraphSnapshot['doctor'] | SkillGraphSnapshot['eval'] | undefined {
+interface ProjectedGraphStage<T> {
+  stage: T;
+  artifactHash?: string;
+  sourceLocator?: string;
+}
+
+function projectDoctorStage(graph: ArtifactGraphDocument, path: string): ProjectedGraphStage<NonNullable<SkillGraphSnapshot['doctor']>> | undefined {
+  if (graph.source.sourceKind !== 'doctor') return undefined;
+  const skillNode = graphSkillNodes(graph)[0];
+  const sourceLocator = graphSourceLocator(graph, skillNode);
   const base = {
-    sourceKind: graph.source.sourceKind,
+    sourceKind: 'doctor' as const,
     sourceId: graph.source.sourceId,
     graphId: graph.graphId,
     generatedAt: graph.generatedAt,
@@ -495,64 +530,135 @@ function sourceStage(graph: ArtifactGraphDocument, path: string): SkillGraphSnap
     nodeCount: graph.nodes.length,
     edgeCount: graph.edges.length,
   };
-  if (graph.source.sourceKind === 'doctor') {
-    return {
+  return {
+    stage: {
       ...base,
-      sourceKind: 'doctor',
       references: countGraphNodes(graph, 'reference'),
       scripts: countGraphNodes(graph, 'script'),
       workflows: countGraphNodes(graph, 'workflow'),
       workflowNodes: countGraphNodes(graph, 'workflow_node'),
       hardRules: countGraphNodes(graph, 'hard_rule'),
-    };
+    },
+    ...(graph.scope.artifactHash ? { artifactHash: graph.scope.artifactHash } : {}),
+    ...(sourceLocator ? { sourceLocator } : {}),
+  };
+}
+
+function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: SkillIndexEntry): ProjectedGraphStage<NonNullable<SkillGraphSnapshot['eval']>> | undefined {
+  if (graph.source.sourceKind !== 'eval') return undefined;
+  const variantNode = evalVariantNode(graph, entry);
+  if (!variantNode) return undefined;
+  const skillNode = evalSkillNodeForVariant(graph, variantNode);
+  const artifactHash = nodeArtifactHash(variantNode) ?? nodeArtifactHash(skillNode);
+  const sourceLocator = graphSourceLocator(graph, skillNode);
+  const nodesById = graphNodeMap(graph);
+  const projectedNodeIds = new Set<string>([variantNode.id]);
+  const projectedEdgeIds = new Set<string>();
+  if (skillNode) projectedNodeIds.add(skillNode.id);
+
+  const addEdge = (edge: ArtifactGraphDocument['edges'][number]): void => {
+    projectedEdgeIds.add(edge.id);
+    projectedNodeIds.add(edge.fromNodeId);
+    projectedNodeIds.add(edge.toNodeId);
+  };
+
+  for (const edge of graph.edges) {
+    if (edge.fromNodeId === variantNode.id && (edge.edgeKind === 'evaluates' || edge.edgeKind === 'derived_from')) {
+      addEdge(edge);
+    }
   }
-  if (graph.source.sourceKind === 'eval') {
-    const variantNode = graph.nodes.find((node) => node.nodeKind === 'variant' && node.binding?.keys?.artifactHash && node.binding.keys.artifactHash !== 'no-skill');
-    return {
-      ...base,
+
+  const evalResultNodes = graph.edges
+    .filter((edge) => edge.toNodeId === variantNode.id && edge.edgeKind === 'derived_from')
+    .map((edge) => nodesById.get(edge.fromNodeId))
+    .filter((node): node is ArtifactGraphNode => node?.nodeKind === 'eval_result');
+  for (const node of evalResultNodes) projectedNodeIds.add(node.id);
+
+  for (const edge of graph.edges) {
+    if (!evalResultNodes.some((node) => node.id === edge.fromNodeId || node.id === edge.toNodeId)) continue;
+    if (edge.edgeKind === 'derived_from' || edge.edgeKind === 'evaluates' || edge.edgeKind === 'passes' || edge.edgeKind === 'fails' || edge.edgeKind === 'diagnoses') {
+      addEdge(edge);
+    }
+  }
+
+  const sampleIds = new Set<string>();
+  const assertionIds = new Set<string>();
+  const diagnosticIds = new Set<string>();
+  let failedAssertionEdges = 0;
+  for (const edge of graph.edges) {
+    if (!projectedEdgeIds.has(edge.id)) continue;
+    const from = nodesById.get(edge.fromNodeId);
+    const to = nodesById.get(edge.toNodeId);
+    if (from?.nodeKind === 'sample') sampleIds.add(from.id);
+    if (to?.nodeKind === 'sample') sampleIds.add(to.id);
+    if (from?.nodeKind === 'assertion') assertionIds.add(from.id);
+    if (to?.nodeKind === 'assertion') assertionIds.add(to.id);
+    if (from?.nodeKind === 'diagnostic') diagnosticIds.add(from.id);
+    if (to?.nodeKind === 'diagnostic') diagnosticIds.add(to.id);
+    if (edge.edgeKind === 'fails') failedAssertionEdges += 1;
+  }
+
+  return {
+    stage: {
       sourceKind: 'eval',
-      variantName: variantNode?.label,
-      samples: countGraphNodes(graph, 'sample'),
-      assertions: countGraphNodes(graph, 'assertion'),
-      failedAssertionEdges: graph.edges.filter((edge) => edge.edgeKind === 'fails').length,
-      diagnostics: countGraphNodes(graph, 'diagnostic'),
-    };
+      sourceId: graph.source.sourceId,
+      graphId: graph.graphId,
+      generatedAt: graph.generatedAt,
+      graphPath: path,
+      nodeCount: projectedNodeIds.size,
+      edgeCount: projectedEdgeIds.size,
+      variantName: variantNode.label,
+      samples: sampleIds.size,
+      assertions: assertionIds.size,
+      failedAssertionEdges,
+      diagnostics: diagnosticIds.size,
+    },
+    ...(artifactHash ? { artifactHash } : {}),
+    ...(sourceLocator ? { sourceLocator } : {}),
+  };
+}
+
+function graphSnapshotBinding(stages: ProjectedGraphStage<unknown>[]): Pick<SkillGraphSnapshot, 'artifactHash' | 'bindingStrength' | 'sourceLocator'> {
+  const hashes = uniqueStrings(stages.map((stage) => stage.artifactHash ?? ''));
+  const locators = uniqueStrings(stages.map((stage) => stage.sourceLocator ?? ''));
+  if (stages.length > 0 && hashes.length === 1 && stages.every((stage) => stage.artifactHash === hashes[0])) {
+    return { bindingStrength: 'content-hash', artifactHash: hashes[0], ...(locators[0] ? { sourceLocator: locators[0] } : {}) };
   }
-  return undefined;
+  if (hashes.length > 0) {
+    return { bindingStrength: 'mixed', ...(locators[0] ? { sourceLocator: locators[0] } : {}) };
+  }
+  if (locators.length > 0) {
+    return { bindingStrength: 'source-locator', sourceLocator: locators[0] };
+  }
+  return { bindingStrength: 'name-only' };
 }
 
 function graphSnapshotForEntry(entry: SkillIndexEntry, graphs: LoadedArtifactGraph[]): SkillGraphSnapshot | undefined {
   const doctorCandidates = graphs.filter(({ graph }) =>
     graph.source.sourceKind === 'doctor'
       && (!entry.doctor || graph.source.sourceId === entry.doctor.reportId)
-      && graphMatchesEntry(graph, entry),
+      && graphMatchesDoctorEntry(graph, entry),
   );
   const evalCandidates = graphs.filter(({ graph }) =>
     graph.source.sourceKind === 'eval'
       && (!entry.eval || graph.source.sourceId === entry.eval.reportId)
-      && graphMatchesEntry(graph, entry),
+      && graphMatchesEvalEntry(graph, entry),
   );
   const doctor = pickLatestGraph(doctorCandidates);
   const evalGraph = pickLatestGraph(evalCandidates);
   if (!doctor && !evalGraph) return undefined;
 
-  const hashes = uniqueStrings([
-    ...(doctor ? graphArtifactHashes(doctor.graph) : []),
-    ...(evalGraph ? graphArtifactHashes(evalGraph.graph) : []),
-  ]);
-  const sourceLocator = doctor ? graphSourceLocator(doctor.graph) : evalGraph ? graphSourceLocator(evalGraph.graph) : undefined;
-  const bindingStrength: SkillGraphSnapshot['bindingStrength'] = hashes.length > 0
-    ? 'content-hash'
-    : sourceLocator
-      ? 'source-locator'
-      : 'name-only';
+  const doctorStage = doctor ? projectDoctorStage(doctor.graph, doctor.path) : undefined;
+  const evalStage = evalGraph ? projectEvalStage(evalGraph.graph, evalGraph.path, entry) : undefined;
+  const projectedStages: ProjectedGraphStage<unknown>[] = [];
+  if (doctorStage) projectedStages.push(doctorStage);
+  if (evalStage) projectedStages.push(evalStage);
+  const binding = graphSnapshotBinding(projectedStages);
 
   return {
-    bindingStrength,
-    ...(hashes[0] ? { artifactHash: hashes[0] } : {}),
-    ...(sourceLocator ? { sourceLocator } : {}),
-    ...(doctor ? { doctor: sourceStage(doctor.graph, doctor.path) as SkillGraphSnapshot['doctor'] } : {}),
-    ...(evalGraph ? { eval: sourceStage(evalGraph.graph, evalGraph.path) as SkillGraphSnapshot['eval'] } : {}),
+    ...binding,
+    ...(doctorStage ? { doctor: doctorStage.stage } : {}),
+    ...(evalStage ? { eval: evalStage.stage } : {}),
   };
 }
 

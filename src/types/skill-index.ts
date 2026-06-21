@@ -58,7 +58,7 @@ export interface SkillGraphStageSnapshot {
 
 export interface SkillGraphSnapshot {
   /** Studio 聚合 graph sidecar 时实际采用的绑定强度。 */
-  bindingStrength: 'content-hash' | 'source-locator' | 'name-only';
+  bindingStrength: 'content-hash' | 'source-locator' | 'name-only' | 'mixed';
   artifactHash?: string;
   sourceLocator?: string;
   doctor?: SkillGraphStageSnapshot & {

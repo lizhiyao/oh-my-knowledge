@@ -1339,9 +1339,16 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const evalGraph = graph.eval;
   const band = skillMapBand(entry);
   const markdown = renderSkillEvidenceMarkdown(entry, lang);
+  const bindingLabel = graph.bindingStrength === 'content-hash'
+    ? (zh ? '内容哈希' : 'content hash')
+    : graph.bindingStrength === 'source-locator'
+      ? (zh ? '来源路径' : 'source locator')
+      : graph.bindingStrength === 'mixed'
+        ? (zh ? '混合证据' : 'mixed evidence')
+        : (zh ? '名称' : 'name');
   const statusSentence = zh
-    ? `这张图按 ${graph.bindingStrength === 'content-hash' ? '内容哈希' : graph.bindingStrength === 'source-locator' ? '来源路径' : '名称'} 绑定 doctor / eval 证据，展示当前已知结构与测量状态。`
-    : `This map binds doctor / eval evidence by ${graph.bindingStrength} and shows the known structure and measurement state.`;
+    ? `这张图按 ${bindingLabel} 绑定 doctor / eval 证据，展示当前已知结构与测量状态。`
+    : `This map binds doctor / eval evidence by ${bindingLabel} and shows the known structure and measurement state.`;
   const node = (cls: string, title: string, meta: string): string => `<div class="sm-node sm-node--${cls}"><div class="sm-node-title">${e(title)}</div><div class="sm-node-meta">${e(meta)}</div></div>`;
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
