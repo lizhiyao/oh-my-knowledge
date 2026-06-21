@@ -198,6 +198,8 @@ function doctorGraph(): ArtifactGraphDocument {
       { id: 'wf', stableKey: 'v1:workflow:hash-service-guide:release', nodeKind: 'workflow', nodeRole: 'entity', layer: 'definition', label: 'release' },
       { id: 'wfn', stableKey: 'v1:workflow-node:hash-service-guide:release.check', nodeKind: 'workflow_node', nodeRole: 'entity', layer: 'definition', label: '检查发布' },
       { id: 'rule', stableKey: 'v1:hard-rule:hash-service-guide:cite', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'cite' },
+      { id: 'rule2', stableKey: 'v1:hard-rule:hash-service-guide:rollback', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'rollback' },
+      { id: 'rule3', stableKey: 'v1:hard-rule:hash-service-guide:handoff', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'handoff', status: 'ok" onclick="alert(1)' as ArtifactGraphDocument['nodes'][number]['status'] },
     ],
     edges: [
       { id: 'e1', fromNodeId: 'skill', toNodeId: 'ref', edgeKind: 'references', layer: 'definition' },
@@ -311,9 +313,55 @@ describe('SkillIndex graph projection', () => {
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
     assert.match(html, /复制 Markdown Evidence Card/);
-    assert.ok(html.includes('references / 1'));
-    assert.ok(html.includes('samples / 2'));
+    assert.ok(html.includes('class="sm-svg"'));
+    assert.ok(html.includes('class="sm-edge sm-edge--definition"'));
+    assert.ok(html.includes('class="sm-edge sm-edge--measurement"'));
+    assert.ok(!html.includes('class="sm-note"'));
+    assert.ok(!html.includes('d="M 470 260 C'));
+    assert.ok(html.includes('data-sm-leaf="1"'));
+    assert.ok(html.includes('data-sm-draggable="1"'));
+    assert.match(html, /data-sm-root[^>]*data-sm-node-id="skill-root"[^>]*data-sm-draggable="1"/);
+    assert.ok(html.includes('data-sm-node-id="definition-'));
+    assert.ok(html.includes('data-sm-edge-to="definition-'));
+    assert.ok(html.includes('data-sm-edge-from-node="skill-root"'));
+    assert.ok(html.includes('data-sm-more-toggle="definition"'));
+    assert.match(html, /data-sm-node-id="definition-more"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-node-id="definition-overflow-0"[^>]*data-sm-draggable="1"/);
+    assert.ok(html.includes('data-sm-overflow-group="definition" hidden'));
+    assert.ok(html.includes('data-sm-edge-from-node="definition-more"'));
+    assert.ok(html.includes('data-sm-edge-from-x="310"'));
+    assert.ok(html.includes('data-sm-expanded-label="收起结构节点"'));
+    assert.ok(html.includes('updateEdgesFromNode'));
+    assert.ok(html.includes('refreshEdges'));
+    assert.ok(html.includes('suppressMoreClickUntil'));
+    assert.ok(html.includes('data-sm-origin-x="'));
+    assert.ok(html.includes('data-sm-root-x="470"'));
+    assert.ok(!html.includes('class="sm-bind"'));
+    assert.ok(!html.includes('alert(1)'));
+    assert.ok(!html.includes('sm-node--ok"'));
+    assert.ok(html.includes('background-size:auto,28px 28px,28px 28px,auto'));
+    assert.ok(html.includes('outline:4px solid rgba(79,70,229,.07)'));
+    assert.ok(html.includes('title="sample: s001"'));
+    assert.ok(html.includes('<div class="sm-node-title">s001</div>'));
+    assert.ok(html.includes('class="sm-stage-rail"'));
+    assert.ok(html.indexOf('class="sm-stage-rail"') < html.indexOf('class="sm-toolbar"'));
+    assert.ok(html.indexOf('class="sm-toolbar"') < html.indexOf('class="sm-canvas"'));
+    assert.ok(!html.includes('sm-edge--stage'));
+    assert.ok(html.includes('data-sm-action="zoom-in"'));
+    assert.ok(html.includes('data-sm-action="zoom-out"'));
+    assert.ok(html.includes('data-sm-toggle-layer="definition"'));
+    assert.ok(html.includes('data-sm-toggle-layer="measurement"'));
+    assert.ok(!html.includes('data-sm-toggle-layer="stage"'));
+    assert.ok(html.includes('data-sm-toggle-leaves'));
+    assert.ok(!html.includes('sm-branch'));
+    assert.ok(html.includes('references/a.md'));
+    assert.ok(html.includes('scripts/a.sh'));
+    assert.ok(html.includes('workflow: release'));
+    assert.ok(html.includes('sample: s001'));
+    assert.ok(html.includes('assertion: contains_all'));
     assert.match(html, /variant 子图/);
+    assert.match(html, /artifactHash/);
+    assert.match(html, /binding/);
     assert.match(html, /doctorGraphId/);
     assert.match(html, /evalGraphId/);
   });
@@ -348,7 +396,8 @@ describe('SkillIndex graph projection', () => {
     assert.equal(entry.graph?.bindingStrength, 'mixed');
     assert.equal(entry.graph?.artifactHash, undefined);
     const html = renderSkillDetail(entry, report, 'zh');
-    assert.match(html, /混合证据/);
+    assert.ok(!html.includes('class="sm-bind"'));
+    assert.match(html, /binding：`mixed`/);
   });
 
   it('uses the matched skill node locator for eval-only evidence cards instead of samplesPath', () => {

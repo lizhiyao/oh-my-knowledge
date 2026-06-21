@@ -20,6 +20,7 @@ import type {
   SkillDoctorSnapshot,
   SkillEvalSnapshot,
   SkillObserveSnapshot,
+  SkillGraphNodePreview,
   Insight,
   InsightIllustration,
 } from '../types/index.js';
@@ -442,34 +443,70 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .si-sect-fold-body { padding-top:6px;display:flex;flex-direction:column;gap:5px }
 .si-sect-skipped { font-size:11px;color:var(--text-muted);font-style:italic;margin-top:6px }
 
-/* Skill Map：用户视角的轻量图，不暴露完整 graph JSON 拓扑 */
+/* Skill Map：以 SKILL.md 为根的轻量知识图，不暴露完整 graph JSON 拓扑 */
 .sm-sect { border-left-color:#4f46e5 }
-.sm-body { display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:14px;align-items:stretch }
-@media(max-width:900px){ .sm-body { grid-template-columns:1fr } }
-.sm-canvas { position:relative;display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;align-items:center;min-height:230px;padding:18px;background:linear-gradient(180deg,#fbfcff 0%,#f7f9fd 100%);border:1px solid #e4e8f1;border-radius:8px;overflow:hidden }
-.sm-canvas::before { content:'';position:absolute;left:18%;right:18%;top:50%;height:2px;background:#dbe2ee;z-index:0 }
-.sm-col { position:relative;z-index:1;display:flex;flex-direction:column;gap:14px;align-items:stretch }
-.sm-col--root { align-items:center }
-.sm-node { min-height:68px;padding:12px 14px;border:1px solid #d8deea;border-radius:8px;background:#fff;box-shadow:0 8px 18px rgba(31,41,55,5%);display:flex;flex-direction:column;justify-content:center;gap:4px;text-align:center }
-.sm-node--skill { width:170px;min-height:96px;border-color:#4f46e5;background:#f7f8ff }
-.sm-node--stage { border-color:#b8c5d8;background:#fff }
-.sm-node--evidence { border-color:#b7d8cf;background:#f4fbf8 }
-.sm-node--pending { border-style:dashed;background:#f8f9fb;color:#637083 }
-.sm-node-title { font-size:13px;font-weight:700;color:#182033;line-height:1.35;word-break:break-word }
-.sm-node-meta { font-size:11.5px;color:#637083;line-height:1.4;word-break:break-word }
-.sm-bind { margin-top:-6px;padding:3px 8px;border-radius:10px;background:#fff;border:1px solid #e4e8f1;color:#637083;font-size:10.5px;font-family:"SF Mono",Menlo,monospace;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-.sm-side { display:flex;flex-direction:column;gap:12px }
-.sm-summary { padding:11px 12px;background:#f8f9fd;border:1px solid #e4e8f1;border-radius:8px;font-size:13px;line-height:1.55;color:#384255 }
-.sm-kpis { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px }
-.sm-kpis div { padding:10px 12px;background:#fff;border:1px solid #e4e8f1;border-radius:8px }
-.sm-kpis b { display:block;font-size:20px;line-height:1;color:#182033;font-variant-numeric:tabular-nums }
-.sm-kpis span { display:block;margin-top:5px;font-size:11.5px;color:#637083 }
+.sm-body { display:flex;flex-direction:column;gap:10px }
+.sm-toolbar { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid #e4e8f1;border-radius:8px;background:#fff }
+.sm-tools,.sm-toggles { display:flex;align-items:center;gap:6px;flex-wrap:wrap }
+.sm-tool { min-width:30px;height:28px;padding:0 9px;border:1px solid #dbe2ee;border-radius:6px;background:#fff;color:#384255;font-size:13px;font-weight:700;cursor:pointer }
+.sm-tool:hover { background:#f7f8ff;border-color:#c7d2fe }
+.sm-zoom-label { min-width:44px;text-align:center;font-size:11.5px;color:#637083;font-variant-numeric:tabular-nums }
+.sm-toggle { display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 8px;border:1px solid #dbe2ee;border-radius:14px;background:#fff;color:#384255;font-size:11.5px;cursor:pointer;user-select:none }
+.sm-toggle input { margin:0;accent-color:#4f46e5 }
+.sm-canvas { position:relative;height:min(68vh,620px);min-height:520px;padding:0;background:
+  linear-gradient(90deg,rgba(31,157,99,.045) 0%,rgba(31,157,99,.026) 39%,transparent 39%,transparent 58%,rgba(79,70,229,.026) 58%,rgba(79,70,229,.045) 100%),
+  linear-gradient(rgba(148,163,184,.075) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(148,163,184,.06) 1px,transparent 1px),
+  linear-gradient(#fff,#fbfcff);background-size:auto,28px 28px,28px 28px,auto;background-position:0 0;border:1px solid #e4e8f1;border-radius:8px;overflow:auto;overscroll-behavior:contain }
+.sm-graph-stage { position:relative;width:1100px;height:560px }
+.sm-graph { position:absolute;left:0;top:0;width:1100px;height:560px;transform-origin:0 0;transition:transform .12s ease }
+.sm-graph [hidden] { display:none !important }
+.sm-svg { position:absolute;inset:0;width:100%;height:100%;pointer-events:none }
+.sm-edge { fill:none;stroke:#d8e0ec;stroke-width:1.45;stroke-linecap:round;opacity:.86;vector-effect:non-scaling-stroke }
+.sm-edge--definition { stroke:#a9cfc4 }
+.sm-edge--measurement { stroke:#bbc7ff }
+.sm-node { position:absolute;z-index:1;box-sizing:border-box;transform:translate(-50%,-50%);width:148px;min-height:54px;padding:8px 10px;border:1px solid #d8deea;border-radius:7px;background:rgba(255,255,255,.96);box-shadow:0 8px 20px rgba(31,41,55,6%);display:flex;flex-direction:column;justify-content:center;gap:4px;text-align:center;backdrop-filter:blur(4px) }
+.sm-node[data-sm-draggable="1"] { cursor:grab;touch-action:none;user-select:none }
+.sm-node[data-sm-draggable="1"].is-dragging { cursor:grabbing;z-index:3;box-shadow:0 16px 34px rgba(31,41,55,14%) }
+.sm-node[data-sm-more-toggle] { cursor:pointer;user-select:none }
+.sm-node[data-sm-draggable="1"][data-sm-more-toggle] { cursor:grab }
+.sm-node[data-sm-draggable="1"][data-sm-more-toggle].is-dragging { cursor:grabbing }
+.sm-node[data-sm-more-toggle]:hover,.sm-node[data-sm-more-toggle]:focus-visible { border-color:#9fbfb5;background:#f1fbf7;outline:none }
+.sm-node--skill { width:172px;min-height:86px;border-color:#4f46e5;background:linear-gradient(180deg,#fff 0%,#f7f8ff 100%);box-shadow:0 16px 34px rgba(79,70,229,14%);outline:4px solid rgba(79,70,229,.07) }
+.sm-node--definition { border-color:#b7d8cf;background:#f4fbf8 }
+.sm-node--measurement { border-color:#c7d2fe;background:#f7f8ff }
+.sm-node--ok { border-color:rgba(31,157,99,.38);background:rgba(31,157,99,.06) }
+.sm-node--warning { border-color:rgba(217,119,6,.38);background:rgba(217,119,6,.07) }
+.sm-node--failed { border-color:rgba(220,38,38,.38);background:rgba(220,38,38,.06) }
+.sm-node--pending,.sm-node--more { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
+.sm-node-title { font-size:12.2px;font-weight:700;color:#182033;line-height:1.28;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
+.sm-node--skill .sm-node-title { font-size:15px;line-height:1.2 }
+.sm-node-meta { font-size:10.5px;color:#637083;line-height:1.35;word-break:break-word }
+.sm-node--skill .sm-node-meta { font-size:11.5px }
+.sm-node-kind { font-size:9.5px;text-transform:uppercase;letter-spacing:0;color:#8792a4;font-family:"SF Mono",Menlo,monospace;line-height:1 }
+.sm-stage-rail { display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e4e8f1;border-radius:8px;background:#fff }
+.sm-stage-card { min-height:50px;padding:9px 11px;border:1px solid #dbe2ee;border-radius:8px;background:#fbfcff;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:3px }
+.sm-stage-card--ok { border-color:rgba(31,157,99,.38);background:rgba(31,157,99,.06) }
+.sm-stage-card--warning { border-color:rgba(217,119,6,.38);background:rgba(217,119,6,.07) }
+.sm-stage-card--failed { border-color:rgba(220,38,38,.38);background:rgba(220,38,38,.06) }
+.sm-stage-card--pending { border-style:dashed;color:#637083;background:#f8f9fb }
+.sm-stage-k { font-size:10px;text-transform:uppercase;letter-spacing:0;color:#7b8798;font-family:"SF Mono",Menlo,monospace;line-height:1 }
+.sm-stage-v { font-size:13px;font-weight:700;color:#182033;line-height:1.35 }
+.sm-stage-arrow { color:#b8c5d8;font-size:18px;line-height:1;text-align:center }
 .sm-card { border:1px solid #e4e8f1;border-radius:8px;background:#fff;overflow:hidden }
 .sm-card > summary { cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:#4f46e5;user-select:none }
 .sm-card > summary::-webkit-details-marker { display:none }
 .sm-card > summary::before { content:'▸ ';color:#94a3b8;font-size:10px }
 .sm-card[open] > summary::before { content:'▾ ' }
 .sm-card textarea { width:100%;min-height:260px;border:0;border-top:1px solid #e4e8f1;background:#fbfcff;padding:12px;font-family:"SF Mono",Menlo,monospace;font-size:11.5px;line-height:1.55;color:#182033;resize:vertical;box-sizing:border-box }
+@media(max-width:900px){
+  .sm-toolbar { align-items:flex-start }
+  .sm-stage-rail { grid-template-columns:1fr;gap:6px }
+  .sm-stage-arrow { transform:rotate(90deg);font-size:16px }
+  .sm-canvas { height:620px;min-height:620px }
+  .sm-node { width:142px }
+  .sm-node--skill { width:168px }
+}
 
 /* doctor 规则展示(用在 doctor section 和 observe section) */
 .sd-grid { display:flex;flex-direction:column;gap:4px }
@@ -839,6 +876,323 @@ const TREND_INIT_SCRIPT = `
       console.warn('trend chart init failed:', e);
       showFallback(canvas, L === 'en' ? 'Trend chart error' : '趋势图渲染异常');
     }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>`;
+
+const SKILL_MAP_INIT_SCRIPT = `
+<script>
+(function(){
+  function clamp(value, min, max){
+    return Math.max(min, Math.min(max, value));
+  }
+  function initSkillMap(map){
+    var viewport = map.querySelector('[data-sm-viewport]');
+    var stage = map.querySelector('[data-sm-graph-stage]');
+    var graph = map.querySelector('[data-sm-graph]');
+    var label = map.querySelector('[data-sm-zoom-label]');
+    if (!viewport || !stage || !graph) return;
+    var baseWidth = Number(map.getAttribute('data-sm-base-width')) || 1100;
+    var baseHeight = Number(map.getAttribute('data-sm-base-height')) || 560;
+    var rootX = Number(map.getAttribute('data-sm-root-x')) || 470;
+    var rootY = Number(map.getAttribute('data-sm-root-y')) || 260;
+    var zoom = 1;
+    var dragState = null;
+    var suppressMoreClickUntil = 0;
+
+    function edgePoint(fromX, fromY, toX, toY, box){
+      var dx = toX - fromX;
+      var dy = toY - fromY;
+      if (!dx && !dy) return { x: fromX, y: fromY };
+      var halfW = Math.max(1, (box.width || 154) / 2);
+      var halfH = Math.max(1, (box.height || 58) / 2);
+      var scaleX = dx === 0 ? Infinity : halfW / Math.abs(dx);
+      var scaleY = dy === 0 ? Infinity : halfH / Math.abs(dy);
+      var scale = Math.min(scaleX, scaleY);
+      return { x: fromX + dx * scale, y: fromY + dy * scale };
+    }
+
+    function nodeBox(node, fallbackWidth, fallbackHeight){
+      return {
+        width: node && node.offsetWidth ? node.offsetWidth : fallbackWidth,
+        height: node && node.offsetHeight ? node.offsetHeight : fallbackHeight
+      };
+    }
+
+    function nodeCenter(node, fallbackX, fallbackY){
+      if (!node) return { x: fallbackX, y: fallbackY };
+      return {
+        x: Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || fallbackX,
+        y: Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || fallbackY
+      };
+    }
+
+    function pathData(fromX, fromY, toX, toY, fromBox, toBox){
+      var start = edgePoint(fromX, fromY, toX, toY, fromBox);
+      var end = edgePoint(toX, toY, fromX, fromY, toBox);
+      var sx = start.x;
+      var sy = start.y;
+      var tx = end.x;
+      var ty = end.y;
+      var dx = Math.abs(tx - sx);
+      var c1x = sx + (tx >= sx ? dx * 0.45 : -dx * 0.45);
+      var c2x = tx - (tx >= sx ? dx * 0.45 : -dx * 0.45);
+      return 'M ' + sx + ' ' + sy + ' C ' + c1x + ' ' + sy + ', ' + c2x + ' ' + ty + ', ' + tx + ' ' + ty;
+    }
+
+    function setNodePosition(node, x, y){
+      node.setAttribute('data-sm-x', String(Math.round(x * 10) / 10));
+      node.setAttribute('data-sm-y', String(Math.round(y * 10) / 10));
+      node.style.left = x + 'px';
+      node.style.top = y + 'px';
+    }
+
+    function updateEdgesForNode(nodeId, x, y){
+      map.querySelectorAll('[data-sm-edge-to]').forEach(function(edge){
+        if (edge.getAttribute('data-sm-edge-to') !== nodeId) return;
+        var fromNodeId = edge.getAttribute('data-sm-edge-from-node');
+        var fromNode = fromNodeId ? graph.querySelector('[data-sm-node-id="' + fromNodeId + '"]') : graph.querySelector('[data-sm-root]');
+        var toNode = graph.querySelector('[data-sm-node-id="' + nodeId + '"]');
+        var fromCenter = nodeCenter(fromNode, rootX, rootY);
+        edge.setAttribute('d', pathData(
+          fromCenter.x,
+          fromCenter.y,
+          x,
+          y,
+          nodeBox(fromNode, 184, 108),
+          nodeBox(toNode, 154, 58)
+        ));
+      });
+    }
+
+    function updateEdgesFromNode(nodeId, x, y){
+      map.querySelectorAll('[data-sm-edge-from-node]').forEach(function(edge){
+        if (edge.getAttribute('data-sm-edge-from-node') !== nodeId) return;
+        var toId = edge.getAttribute('data-sm-edge-to');
+        var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
+        if (!toNode) return;
+        var toCenter = nodeCenter(toNode, 0, 0);
+        edge.setAttribute('data-sm-edge-from-x', String(Math.round(x * 10) / 10));
+        edge.setAttribute('data-sm-edge-from-y', String(Math.round(y * 10) / 10));
+        edge.setAttribute('d', pathData(
+          x,
+          y,
+          toCenter.x,
+          toCenter.y,
+          nodeBox(graph.querySelector('[data-sm-node-id="' + nodeId + '"]'), 154, 58),
+          nodeBox(toNode, 154, 58)
+        ));
+      });
+    }
+
+    function refreshEdges(){
+      map.querySelectorAll('[data-sm-edge-to]').forEach(function(edge){
+        var toId = edge.getAttribute('data-sm-edge-to');
+        var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
+        if (!toNode) return;
+        var toCenter = nodeCenter(toNode, 0, 0);
+        updateEdgesForNode(toId, toCenter.x, toCenter.y);
+      });
+    }
+
+    function resetNodePositions(){
+      graph.querySelectorAll('[data-sm-draggable="1"]').forEach(function(node){
+        var nodeId = node.getAttribute('data-sm-node-id');
+        var originX = Number(node.getAttribute('data-sm-origin-x')) || Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || 0;
+        var originY = Number(node.getAttribute('data-sm-origin-y')) || Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || 0;
+        setNodePosition(node, originX, originY);
+        if (nodeId) updateEdgesForNode(nodeId, originX, originY);
+        if (nodeId) updateEdgesFromNode(nodeId, originX, originY);
+      });
+    }
+
+    function applyZoom(){
+      stage.style.width = Math.ceil(baseWidth * zoom) + 'px';
+      stage.style.height = Math.ceil(baseHeight * zoom) + 'px';
+      graph.style.transform = 'scale(' + zoom + ')';
+      if (label) label.textContent = Math.round(zoom * 100) + '%';
+    }
+
+    function setZoom(nextZoom, anchorX, anchorY){
+      var oldZoom = zoom;
+      var x = anchorX == null ? viewport.clientWidth / 2 : anchorX;
+      var y = anchorY == null ? viewport.clientHeight / 2 : anchorY;
+      var graphX = (viewport.scrollLeft + x) / oldZoom;
+      var graphY = (viewport.scrollTop + y) / oldZoom;
+      zoom = clamp(nextZoom, 0.65, 1.8);
+      applyZoom();
+      viewport.scrollLeft = Math.max(0, graphX * zoom - x);
+      viewport.scrollTop = Math.max(0, graphY * zoom - y);
+    }
+
+    function centerRoot(){
+      var rootNode = graph.querySelector('[data-sm-root]');
+      var rootCenter = nodeCenter(rootNode, rootX, rootY);
+      var scaledRootX = rootCenter.x * zoom;
+      var scaledRootY = rootCenter.y * zoom;
+      viewport.scrollLeft = Math.max(0, scaledRootX - viewport.clientWidth / 2);
+      viewport.scrollTop = Math.max(0, scaledRootY - viewport.clientHeight / 2);
+    }
+
+    function layerEnabled(layer){
+      var input = map.querySelector('[data-sm-toggle-layer="' + layer + '"]');
+      return !input || input.checked;
+    }
+
+    function overflowGroupExpanded(group){
+      if (!group) return true;
+      var toggle = map.querySelector('[data-sm-more-toggle="' + group + '"]');
+      return !!toggle && toggle.getAttribute('aria-expanded') === 'true';
+    }
+
+    function updateVisibility(){
+      var showLeaves = true;
+      var leafToggle = map.querySelector('[data-sm-toggle-leaves]');
+      if (leafToggle) showLeaves = leafToggle.checked;
+      var layers = {
+        definition: layerEnabled('definition'),
+        measurement: layerEnabled('measurement')
+      };
+      map.querySelectorAll('[data-sm-layer]').forEach(function(el){
+        var layer = el.getAttribute('data-sm-layer');
+        var isLeaf = el.getAttribute('data-sm-leaf') === '1';
+        var overflowGroup = el.getAttribute('data-sm-overflow-group');
+        var shouldHide = !layers[layer] || (isLeaf && !showLeaves) || !overflowGroupExpanded(overflowGroup);
+        el.hidden = shouldHide;
+        el.toggleAttribute('hidden', shouldHide);
+        el.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
+        el.style.display = shouldHide ? 'none' : '';
+      });
+    }
+
+    function setMoreExpanded(toggle, expanded){
+      toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      var nextLabel = expanded
+        ? toggle.getAttribute('data-sm-expanded-label')
+        : toggle.getAttribute('data-sm-collapsed-label');
+      var title = toggle.querySelector('.sm-node-title');
+      if (title && nextLabel) title.textContent = nextLabel;
+      if (nextLabel) toggle.setAttribute('title', nextLabel);
+      updateVisibility();
+      refreshEdges();
+    }
+
+    function collapseMoreGroups(){
+      map.querySelectorAll('[data-sm-more-toggle]').forEach(function(toggle){
+        setMoreExpanded(toggle, false);
+      });
+    }
+
+    map.querySelectorAll('[data-sm-action]').forEach(function(button){
+      button.addEventListener('click', function(){
+        var action = button.getAttribute('data-sm-action');
+        if (action === 'zoom-in') setZoom(zoom + 0.15);
+        if (action === 'zoom-out') setZoom(zoom - 0.15);
+        if (action === 'reset') {
+          zoom = 1;
+          collapseMoreGroups();
+          resetNodePositions();
+          applyZoom();
+          centerRoot();
+        }
+      });
+    });
+
+    map.querySelectorAll('[data-sm-toggle-layer], [data-sm-toggle-leaves]').forEach(function(input){
+      input.addEventListener('change', updateVisibility);
+    });
+
+    graph.querySelectorAll('[data-sm-more-toggle]').forEach(function(toggle){
+      toggle.addEventListener('click', function(ev){
+        if (Date.now() < suppressMoreClickUntil) {
+          ev.preventDefault();
+          return;
+        }
+        ev.preventDefault();
+        setMoreExpanded(toggle, toggle.getAttribute('aria-expanded') !== 'true');
+      });
+      toggle.addEventListener('keydown', function(ev){
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        ev.preventDefault();
+        setMoreExpanded(toggle, toggle.getAttribute('aria-expanded') !== 'true');
+      });
+    });
+
+    graph.querySelectorAll('[data-sm-draggable="1"]').forEach(function(node){
+      node.addEventListener('pointerdown', function(ev){
+        if (ev.button != null && ev.button !== 0) return;
+        if (node.hidden) return;
+        var nodeId = node.getAttribute('data-sm-node-id');
+        if (!nodeId) return;
+        ev.preventDefault();
+        dragState = {
+          node: node,
+          nodeId: nodeId,
+          pointerId: ev.pointerId,
+          startClientX: ev.clientX,
+          startClientY: ev.clientY,
+          startX: Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || 0,
+          startY: Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || 0,
+          moved: false
+        };
+        node.classList.add('is-dragging');
+        node.setPointerCapture(ev.pointerId);
+      });
+
+      node.addEventListener('pointermove', function(ev){
+        if (!dragState || dragState.node !== node) return;
+        ev.preventDefault();
+        var deltaX = ev.clientX - dragState.startClientX;
+        var deltaY = ev.clientY - dragState.startClientY;
+        if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > 3) dragState.moved = true;
+        var nextX = clamp(dragState.startX + deltaX / zoom, 52, baseWidth - 52);
+        var nextY = clamp(dragState.startY + deltaY / zoom, 36, baseHeight - 36);
+        setNodePosition(node, nextX, nextY);
+        updateEdgesForNode(dragState.nodeId, nextX, nextY);
+        updateEdgesFromNode(dragState.nodeId, nextX, nextY);
+      });
+
+      function finishDrag(ev){
+        if (!dragState || dragState.node !== node) return;
+        var wasMoved = dragState.moved;
+        var isMoreToggle = node.hasAttribute('data-sm-more-toggle');
+        node.classList.remove('is-dragging');
+        if (node.hasPointerCapture && node.hasPointerCapture(dragState.pointerId)) {
+          node.releasePointerCapture(dragState.pointerId);
+        }
+        dragState = null;
+        if (!wasMoved && isMoreToggle) {
+          suppressMoreClickUntil = Date.now() + 300;
+          setMoreExpanded(node, node.getAttribute('aria-expanded') !== 'true');
+        } else if (wasMoved && isMoreToggle) {
+          suppressMoreClickUntil = Date.now() + 300;
+        }
+      }
+
+      node.addEventListener('pointerup', finishDrag);
+      node.addEventListener('pointercancel', finishDrag);
+    });
+
+    viewport.addEventListener('wheel', function(ev){
+      if (!ev.ctrlKey && !ev.metaKey) return;
+      ev.preventDefault();
+      var rect = viewport.getBoundingClientRect();
+      var delta = ev.deltaY < 0 ? 0.12 : -0.12;
+      setZoom(zoom + delta, ev.clientX - rect.left, ev.clientY - rect.top);
+    }, { passive: false });
+
+    applyZoom();
+    updateVisibility();
+    requestAnimationFrame(function(){
+      refreshEdges();
+      centerRoot();
+    });
+  }
+
+  function init(){
+    document.querySelectorAll('[data-sm-map]').forEach(initSkillMap);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -1274,6 +1628,243 @@ function sourceCommandArg(value: string): string {
   return JSON.stringify(value);
 }
 
+const DEFINITION_PREVIEW_KINDS = new Set([
+  'frontmatter',
+  'reference',
+  'script',
+  'hard_rule',
+  'workflow',
+  'workflow_node',
+]);
+
+const MEASUREMENT_PREVIEW_KINDS = new Set([
+  'sample',
+  'assertion',
+  'diagnostic',
+]);
+
+function nodeKindLabel(kind: string, lang: Lang): string {
+  const zh = lang === 'zh';
+  const labels: Record<string, [string, string]> = {
+    frontmatter: ['meta', 'meta'],
+    reference: ['ref', 'ref'],
+    script: ['script', 'script'],
+    tool: ['tool', 'tool'],
+    preflight: ['preflight', 'preflight'],
+    hard_rule: ['rule', 'rule'],
+    workflow: ['workflow', 'workflow'],
+    workflow_node: ['step', 'step'],
+    sample: ['sample', 'sample'],
+    assertion: ['assert', 'assert'],
+    diagnostic: ['diag', 'diag'],
+    doctor_rule_result: ['doctor', 'doctor'],
+    eval_result: ['eval', 'eval'],
+    trace_session: ['observe', 'observe'],
+    more: ['more', 'more'],
+  };
+  const pair = labels[kind] ?? [kind, kind];
+  return zh ? pair[0] : pair[1];
+}
+
+function graphNodeDisplayLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  const zh = lang === 'zh';
+  switch (node.nodeKind) {
+    case 'workflow':
+      return `${zh ? 'workflow' : 'workflow'}: ${node.label}`;
+    case 'hard_rule':
+      return `${zh ? 'rule' : 'rule'}: ${node.label}`;
+    case 'tool':
+      return `${zh ? 'tool' : 'tool'}: ${node.label}`;
+    case 'sample':
+      return `${zh ? 'sample' : 'sample'}: ${node.label}`;
+    case 'diagnostic':
+      return node.label.startsWith('diagnostic') ? node.label : `${zh ? 'diagnostic' : 'diagnostic'}: ${node.label}`;
+    default:
+      return node.label;
+  }
+}
+
+function graphNodeMapLabel(node: SkillGraphNodePreview): string {
+  switch (node.nodeKind) {
+    case 'workflow':
+    case 'hard_rule':
+    case 'tool':
+    case 'sample':
+      return node.label;
+    case 'assertion':
+      return node.label.replace(/^assertion:\s*/i, '');
+    case 'diagnostic':
+      return node.label.replace(/^diagnostic:\s*/i, '');
+    default:
+      return node.label;
+  }
+}
+
+function previewNodes(
+  nodes: SkillGraphNodePreview[] | undefined,
+  allowedKinds: Set<string>,
+  limit: number,
+): { visible: SkillGraphNodePreview[]; hiddenCount: number } {
+  const filtered = (nodes ?? []).filter((node) => allowedKinds.has(node.nodeKind));
+  return { visible: filtered.slice(0, limit), hiddenCount: Math.max(0, filtered.length - limit) };
+}
+
+interface SkillMapPositionedNode {
+  id: string;
+  node: SkillGraphNodePreview;
+  layer: 'definition' | 'measurement';
+  x: number;
+  y: number;
+  edgeFrom?: { x: number; y: number };
+  overflowGroup?: 'definition' | 'measurement';
+  moreToggle?: {
+    group: 'definition' | 'measurement';
+    collapsedLabel: string;
+    expandedLabel: string;
+  };
+}
+
+const SKILL_MAP_WIDTH = 1100;
+const SKILL_MAP_HEIGHT = 560;
+const SKILL_MAP_ROOT_ID = 'skill-root';
+const SKILL_MAP_ROOT = { x: 470, y: 260 };
+const SKILL_MAP_ROOT_SIZE = { width: 172, height: 86 };
+const SKILL_MAP_NODE_SIZE = { width: 148, height: 54 };
+const SKILL_MAP_DEFINITION_COORDS = [
+  { x: 170, y: 112 },
+  { x: 140, y: 255 },
+  { x: 220, y: 420 },
+  { x: 392, y: 112 },
+  { x: 382, y: 425 },
+  { x: 312, y: 190 },
+  { x: 310, y: 328 },
+];
+const SKILL_MAP_MEASUREMENT_COORDS = [
+  { x: 720, y: 105 },
+  { x: 920, y: 165 },
+  { x: 750, y: 275 },
+  { x: 948, y: 318 },
+  { x: 770, y: 430 },
+  { x: 960, y: 430 },
+];
+const SKILL_MAP_NODE_MARGIN = { x: 92, y: 48 };
+const SKILL_MAP_STATUS_CLASSES = new Set(['ok', 'warning', 'failed', 'skipped', 'unknown', 'not_measured']);
+
+function graphNodeStatusClass(node: SkillGraphNodePreview): string {
+  return node.status && SKILL_MAP_STATUS_CLASSES.has(node.status) ? ` sm-node--${node.status}` : '';
+}
+
+function positionedNodeStyle(node: Pick<SkillMapPositionedNode, 'x' | 'y'>): string {
+  return `left:${node.x}px;top:${node.y}px`;
+}
+
+function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
+  const title = graphNodeMapLabel(item.node);
+  const fullTitle = graphNodeDisplayLabel(item.node, lang);
+  const kindClass = item.node.nodeKind === 'more' ? ' sm-node--more' : '';
+  const leaf = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-leaf="1"' : '';
+  const draggable = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-draggable="1"' : '';
+  const overflow = item.overflowGroup ? ` data-sm-overflow-group="${item.overflowGroup}" hidden aria-hidden="true"` : '';
+  const moreToggle = item.moreToggle
+    ? ` data-sm-more-toggle="${item.moreToggle.group}" data-sm-collapsed-label="${e(item.moreToggle.collapsedLabel)}" data-sm-expanded-label="${e(item.moreToggle.expandedLabel)}" role="button" tabindex="0" aria-expanded="false"`
+    : '';
+  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}">
+    <div class="sm-node-kind">${e(nodeKindLabel(item.node.nodeKind, lang))}</div>
+    <div class="sm-node-title">${e(title)}</div>
+  </div>`;
+}
+
+function edgePoint(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  box: { width: number; height: number },
+): { x: number; y: number } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return from;
+  const scale = Math.min(
+    dx === 0 ? Infinity : box.width / 2 / Math.abs(dx),
+    dy === 0 ? Infinity : box.height / 2 / Math.abs(dy),
+  );
+  return { x: from.x + dx * scale, y: from.y + dy * scale };
+}
+
+function skillMapPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  fromBox: { width: number; height: number },
+  toBox: { width: number; height: number },
+): string {
+  const start = edgePoint(from, to, fromBox);
+  const end = edgePoint(to, from, toBox);
+  const dx = Math.abs(end.x - start.x);
+  const c1x = start.x + (end.x >= start.x ? dx * 0.45 : -dx * 0.45);
+  const c2x = end.x - (end.x >= start.x ? dx * 0.45 : -dx * 0.45);
+  return `M ${start.x} ${start.y} C ${c1x} ${start.y}, ${c2x} ${end.y}, ${end.x} ${end.y}`;
+}
+
+function renderSkillMapEdges(nodes: SkillMapPositionedNode[], dimensions: { width: number; height: number }): string {
+  const rootEdges = nodes
+    .map((node) => {
+      const from = node.edgeFrom ?? SKILL_MAP_ROOT;
+      const fromBox = node.edgeFrom ? SKILL_MAP_NODE_SIZE : SKILL_MAP_ROOT_SIZE;
+      const overflow = node.overflowGroup ? ` data-sm-overflow-group="${node.overflowGroup}" hidden aria-hidden="true"` : '';
+      const fromNodeId = node.overflowGroup ? `${node.overflowGroup}-more` : SKILL_MAP_ROOT_ID;
+      return `<path class="sm-edge sm-edge--${node.layer}" data-sm-layer="${node.layer}" data-sm-leaf="1" data-sm-edge-to="${e(node.id)}" data-sm-edge-from-node="${e(fromNodeId)}" data-sm-edge-from-x="${from.x}" data-sm-edge-from-y="${from.y}"${overflow} d="${skillMapPath(from, node, fromBox, SKILL_MAP_NODE_SIZE)}"></path>`;
+    })
+    .join('');
+  return `<svg class="sm-svg" viewBox="0 0 ${dimensions.width} ${dimensions.height}" aria-hidden="true">${rootEdges}</svg>`;
+}
+
+function moreNode(label: string): SkillGraphNodePreview {
+  return { nodeKind: 'more', label };
+}
+
+function overflowNodePosition(layer: 'definition' | 'measurement', index: number): { x: number; y: number } {
+  const columns = layer === 'definition' ? [112, 270, 428] : [720, 880, 1040];
+  const startY = layer === 'definition' ? 500 : 560;
+  return {
+    x: columns[index % columns.length],
+    y: startY + Math.floor(index / columns.length) * 98,
+  };
+}
+
+function skillMapDimensions(nodes: SkillMapPositionedNode[]): { width: number; height: number } {
+  return {
+    width: Math.max(SKILL_MAP_WIDTH, ...nodes.map((node) => node.x + SKILL_MAP_NODE_MARGIN.x)),
+    height: Math.max(SKILL_MAP_HEIGHT, ...nodes.map((node) => node.y + SKILL_MAP_NODE_MARGIN.y)),
+  };
+}
+
+function renderSkillStageRail(entry: SkillIndexEntry, lang: Lang): string {
+  const doctorStatus = entry.doctor?.failCount ? 'failed' : entry.doctor?.warnCount ? 'warning' : entry.doctor ? 'ok' : 'pending';
+  const evalStatus = entry.eval?.failCount ? 'failed' : entry.eval ? 'ok' : 'pending';
+  const observeStatus = entry.observe ? (entry.observe.healthBand === 'red' ? 'failed' : entry.observe.healthBand === 'yellow' ? 'warning' : 'ok') : 'pending';
+  const card = (key: string, value: string, status: string): string => `<div class="sm-stage-card sm-stage-card--${status}">
+    <div class="sm-stage-k">${e(key)}</div>
+    <div class="sm-stage-v">${e(value)}</div>
+  </div>`;
+  return `<div class="sm-stage-rail" aria-label="${lang === 'zh' ? '三阶段状态' : 'Stage status'}">
+    ${card('doctor', stageText(entry, 'doctor', lang), doctorStatus)}
+    <div class="sm-stage-arrow">→</div>
+    ${card('eval', stageText(entry, 'eval', lang), evalStatus)}
+    <div class="sm-stage-arrow">→</div>
+    ${card('observe', stageText(entry, 'observe', lang), observeStatus)}
+  </div>`;
+}
+
+function orderedPreviewNodes(
+  nodes: SkillGraphNodePreview[] | undefined,
+  allowedKinds: Set<string>,
+  priority: Record<string, number>,
+): SkillGraphNodePreview[] {
+  return (nodes ?? [])
+    .map((node, index) => ({ node, index }))
+    .filter(({ node }) => allowedKinds.has(node.nodeKind))
+    .sort((a, b) => (priority[a.node.nodeKind] ?? 99) - (priority[b.node.nodeKind] ?? 99) || a.index - b.index)
+    .map(({ node }) => node);
+}
+
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
   const zh = lang === 'zh';
   const graph = entry.graph;
@@ -1293,6 +1884,18 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     !entry.eval ? `- ${zh ? '测量效果' : 'Measure impact'}${stepSeparator} \`omk eval --control baseline --treatment ${sourceArg}\`` : '',
     !entry.observe ? `- ${zh ? '接入观察' : 'Add observation'}${stepSeparator} \`omk observe ingest <trace-dir>\`` : '',
   ].filter(Boolean);
+  const definitionPreview = previewNodes(doctor?.definitionNodes, DEFINITION_PREVIEW_KINDS, 8);
+  const measurementPreview = previewNodes(evalGraph?.measurementNodes, MEASUREMENT_PREVIEW_KINDS, 8);
+  const previewMermaidLines = [
+    ...definitionPreview.visible.flatMap((node, index) => [
+      `  def_${index}["${mermaidCardLabel(graphNodeDisplayLabel(node, lang))}"]`,
+      `  skill --> def_${index}`,
+    ]),
+    ...measurementPreview.visible.flatMap((node, index) => [
+      `  measure_${index}["${mermaidCardLabel(graphNodeDisplayLabel(node, lang))}"]`,
+      `  skill --> measure_${index}`,
+    ]),
+  ];
 
   return [
     `## Skill Evidence Card：${entry.skillName}`,
@@ -1305,21 +1908,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `  doctor["doctor: ${mermaidCardLabel(doctorStatus)}"]`,
     `  eval["eval: ${mermaidCardLabel(evalStatus)}"]`,
     `  observe["observe: ${mermaidCardLabel(observeStatus)}"]`,
-    ...(doctor ? [
-      `  refs["references / ${doctor.references}"]`,
-      `  scripts["scripts / ${doctor.scripts}"]`,
-      `  workflows["workflows / ${doctor.workflows}"]`,
-      '  skill --> refs',
-      '  skill --> scripts',
-      '  skill --> workflows',
-    ] : []),
-    ...(evalGraph ? [
-      `  samples["samples / ${evalGraph.samples}"]`,
-      `  assertions["assertions / ${evalGraph.assertions}"]`,
-      '  skill --> samples',
-      '  samples --> assertions',
-    ] : []),
-    '  skill --> doctor',
+    ...previewMermaidLines,
     '  doctor --> eval',
     '  eval --> observe',
     '```',
@@ -1358,51 +1947,119 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const evalGraph = graph.eval;
   const band = skillMapBand(entry);
   const markdown = renderSkillEvidenceMarkdown(entry, lang);
-  const bindingLabel = graph.bindingStrength === 'content-hash'
-    ? (zh ? '内容哈希' : 'content hash')
-    : graph.bindingStrength === 'source-locator'
-      ? (zh ? '来源路径' : 'source locator')
-      : graph.bindingStrength === 'mixed'
-        ? (zh ? '混合证据' : 'mixed evidence')
-        : (zh ? '名称' : 'name');
-  const statusSentence = zh
-    ? `这张图按 ${bindingLabel} 绑定 doctor / eval 证据，展示当前已知结构与测量状态。`
-    : `This map binds doctor / eval evidence by ${bindingLabel} and shows the known structure and measurement state.`;
-  const node = (cls: string, title: string, meta: string): string => `<div class="sm-node sm-node--${cls}"><div class="sm-node-title">${e(title)}</div><div class="sm-node-meta">${e(meta)}</div></div>`;
+  const definitionCandidates = orderedPreviewNodes(doctor?.definitionNodes, DEFINITION_PREVIEW_KINDS, {
+    reference: 1,
+    script: 2,
+    workflow: 3,
+    hard_rule: 4,
+    frontmatter: 5,
+    workflow_node: 6,
+  });
+  const measurementCandidates = orderedPreviewNodes(evalGraph?.measurementNodes, MEASUREMENT_PREVIEW_KINDS, {
+    sample: 1,
+    diagnostic: 2,
+    assertion: 3,
+  });
+  const definitionLimit = SKILL_MAP_DEFINITION_COORDS.length - 1;
+  const measurementLimit = SKILL_MAP_MEASUREMENT_COORDS.length - 1;
+  const definitionVisible = definitionCandidates.slice(0, definitionLimit);
+  const definitionOverflow = definitionCandidates.slice(definitionLimit);
+  const measurementVisible = measurementCandidates.slice(0, measurementLimit);
+  const measurementOverflow = measurementCandidates.slice(measurementLimit);
+  const definitionMorePosition = SKILL_MAP_DEFINITION_COORDS[SKILL_MAP_DEFINITION_COORDS.length - 1];
+  const measurementMorePosition = SKILL_MAP_MEASUREMENT_COORDS[SKILL_MAP_MEASUREMENT_COORDS.length - 1];
+  const definitionNodes: SkillMapPositionedNode[] = [
+    ...definitionVisible.map((node, index) => ({
+      id: `definition-${index}`,
+      node,
+      layer: 'definition' as const,
+      ...SKILL_MAP_DEFINITION_COORDS[index],
+    })),
+    ...(definitionOverflow.length > 0 ? [{
+      id: 'definition-more',
+      node: moreNode(`+ ${definitionOverflow.length} ${zh ? '更多结构节点' : 'more structure nodes'}`),
+      layer: 'definition' as const,
+      moreToggle: {
+        group: 'definition' as const,
+        collapsedLabel: `+ ${definitionOverflow.length} ${zh ? '更多结构节点' : 'more structure nodes'}`,
+        expandedLabel: zh ? '收起结构节点' : 'collapse structure nodes',
+      },
+      ...definitionMorePosition,
+    }] : []),
+    ...definitionOverflow.map((node, index) => ({
+      id: `definition-overflow-${index}`,
+      node,
+      layer: 'definition' as const,
+      edgeFrom: definitionMorePosition,
+      overflowGroup: 'definition' as const,
+      ...overflowNodePosition('definition', index),
+    })),
+  ];
+  const measurementNodes: SkillMapPositionedNode[] = [
+    ...measurementVisible.map((node, index) => ({
+      id: `measurement-${index}`,
+      node,
+      layer: 'measurement' as const,
+      ...SKILL_MAP_MEASUREMENT_COORDS[index],
+    })),
+    ...(measurementOverflow.length > 0 ? [{
+      id: 'measurement-more',
+      node: moreNode(`+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`),
+      layer: 'measurement' as const,
+      moreToggle: {
+        group: 'measurement' as const,
+        collapsedLabel: `+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`,
+        expandedLabel: zh ? '收起测量节点' : 'collapse measurement nodes',
+      },
+      ...measurementMorePosition,
+    }] : []),
+    ...measurementOverflow.map((node, index) => ({
+      id: `measurement-overflow-${index}`,
+      node,
+      layer: 'measurement' as const,
+      edgeFrom: measurementMorePosition,
+      overflowGroup: 'measurement' as const,
+      ...overflowNodePosition('measurement', index),
+    })),
+  ];
+  const mapNodes = [...definitionNodes, ...measurementNodes];
+  const mapDimensions = skillMapDimensions(mapNodes);
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
       <span class="si-sect-title">🗺 ${zh ? 'Skill Map' : 'Skill Map'}</span>
       <span class="si-sect-meta">${doctor ? `${doctor.nodeCount} definition nodes` : (zh ? 'definition 未生成' : 'definition missing')} · ${evalGraph ? `${evalGraph.nodeCount} variant subgraph nodes` : (zh ? 'measurement 未生成' : 'measurement missing')}</span>
     </div>
-    <div class="sm-body">
-      <div class="sm-canvas" aria-label="Skill Map">
-        <div class="sm-col">
-          ${node('evidence', zh ? '结构证据' : 'Structure', doctor ? `${doctor.references} refs · ${doctor.scripts} scripts · ${doctor.workflows} workflows` : (zh ? '未生成 doctor graph' : 'doctor graph missing'))}
-          ${node('stage', 'doctor', stageText(entry, 'doctor', lang))}
+    <div class="sm-body" data-sm-map data-sm-base-width="${mapDimensions.width}" data-sm-base-height="${mapDimensions.height}" data-sm-root-x="${SKILL_MAP_ROOT.x}" data-sm-root-y="${SKILL_MAP_ROOT.y}">
+      ${renderSkillStageRail(entry, lang)}
+      <div class="sm-toolbar" aria-label="${zh ? 'Skill Map 控制' : 'Skill Map controls'}">
+        <div class="sm-tools">
+          <button class="sm-tool" type="button" data-sm-action="zoom-out" title="${zh ? '缩小' : 'Zoom out'}">−</button>
+          <span class="sm-zoom-label" data-sm-zoom-label>100%</span>
+          <button class="sm-tool" type="button" data-sm-action="zoom-in" title="${zh ? '放大' : 'Zoom in'}">+</button>
+          <button class="sm-tool" type="button" data-sm-action="reset" title="${zh ? '重置视图' : 'Reset view'}">${zh ? '重置' : 'Reset'}</button>
         </div>
-        <div class="sm-col sm-col--root">
-          ${node('skill', `SKILL.md`, entry.skillName)}
-          <div class="sm-bind">${e(graph.artifactHash ? `hash ${graph.artifactHash}` : graph.bindingStrength)}</div>
-        </div>
-        <div class="sm-col">
-          ${node('evidence', zh ? '测量证据' : 'Measurement', evalGraph ? `${evalGraph.samples} samples · ${evalGraph.assertions} assertions · ${evalGraph.diagnostics} diagnostics` : (zh ? '未生成 eval graph' : 'eval graph missing'))}
-          ${node('stage', 'eval', stageText(entry, 'eval', lang))}
-          ${node('pending', 'observe', stageText(entry, 'observe', lang))}
+        <div class="sm-toggles">
+          <label class="sm-toggle"><input type="checkbox" data-sm-toggle-layer="definition" checked> ${zh ? '定义' : 'Definition'}</label>
+          <label class="sm-toggle"><input type="checkbox" data-sm-toggle-layer="measurement" checked> ${zh ? '测量' : 'Measurement'}</label>
+          <label class="sm-toggle"><input type="checkbox" data-sm-toggle-leaves checked> ${zh ? '叶子节点' : 'Leaf nodes'}</label>
         </div>
       </div>
-      <div class="sm-side">
-        <div class="sm-summary">${e(statusSentence)}</div>
-        <div class="sm-kpis">
-          <div><b>${doctor?.references ?? 0}</b><span>references</span></div>
-          <div><b>${doctor?.workflows ?? 0}</b><span>workflows</span></div>
-          <div><b>${entry.eval?.totalSamples ?? 0}</b><span>samples</span></div>
-          <div><b>${entry.eval?.failCount ?? 0}</b><span>${zh ? '失败用例' : 'failed'}</span></div>
+      <div class="sm-canvas" data-sm-viewport aria-label="Skill Map">
+        <div class="sm-graph-stage" data-sm-graph-stage style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
+          <div class="sm-graph" data-sm-graph style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
+            ${renderSkillMapEdges(mapNodes, mapDimensions)}
+            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_ROOT.x}" data-sm-y="${SKILL_MAP_ROOT.y}" data-sm-origin-x="${SKILL_MAP_ROOT.x}" data-sm-origin-y="${SKILL_MAP_ROOT.y}" data-sm-draggable="1" style="${positionedNodeStyle(SKILL_MAP_ROOT)}">
+              <div class="sm-node-title">SKILL.md</div>
+              <div class="sm-node-meta">${e(entry.skillName)}</div>
+            </div>
+            ${mapNodes.map((node) => renderSkillMapNode(node, lang)).join('')}
+          </div>
         </div>
-        <details class="sm-card">
-          <summary>${zh ? '复制 Markdown Evidence Card' : 'Copy Markdown Evidence Card'}</summary>
-          <textarea readonly>${e(markdown)}</textarea>
-        </details>
       </div>
+      <details class="sm-card">
+        <summary>${zh ? '复制 Markdown Evidence Card' : 'Copy Markdown Evidence Card'}</summary>
+        <textarea readonly>${e(markdown)}</textarea>
+      </details>
     </div>
   </section>`;
 }
@@ -1431,5 +2088,6 @@ export function renderSkillDetail(
     </main>
     <style>${SKILL_DETAIL_CSS}</style>
     ${TREND_INIT_SCRIPT}
+    ${SKILL_MAP_INIT_SCRIPT}
   `, lang);
 }

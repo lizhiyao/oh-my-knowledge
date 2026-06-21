@@ -56,6 +56,12 @@ export interface SkillGraphStageSnapshot {
   edgeCount: number;
 }
 
+export interface SkillGraphNodePreview {
+  nodeKind: string;
+  label: string;
+  status?: string;
+}
+
 export interface SkillGraphSnapshot {
   /** Studio 聚合 graph sidecar 时实际采用的绑定强度。 */
   bindingStrength: 'content-hash' | 'source-locator' | 'name-only' | 'mixed';
@@ -67,6 +73,7 @@ export interface SkillGraphSnapshot {
     workflows: number;
     workflowNodes: number;
     hardRules: number;
+    definitionNodes: SkillGraphNodePreview[];
   };
   eval?: SkillGraphStageSnapshot & {
     variantName?: string;
@@ -74,6 +81,7 @@ export interface SkillGraphSnapshot {
     assertions: number;
     failedAssertionEdges: number;
     diagnostics: number;
+    measurementNodes: SkillGraphNodePreview[];
   };
 }
 
