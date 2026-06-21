@@ -164,7 +164,7 @@ function makeDoctorReport(): DoctorReport {
     cwd: '/repo',
     executorName: 'fixture',
     model: 'fixture',
-    outcome: 'pass',
+    outcome: 'passed',
     totals: { pass: 1, warn: 0, fail: 0 },
     ruleStats: { pass: 1, warn: 0, fail: 0, skipped: 0, total: 1 },
     skills: [{
