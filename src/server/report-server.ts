@@ -7,7 +7,7 @@ import { renderSkillList } from '../renderer/skill-list-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderDoctorDetail } from '../renderer/doctor-detail-renderer.js';
 import type { SkillReportContext } from '../renderer/report-shell.js';
-import { assessHealth } from '../renderer/skill-detail-renderer.js';
+import { assessHealth, renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
@@ -15,6 +15,7 @@ import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedD
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
+import { evalGraphDirForReportOutput } from '../artifact-graph/eval.js';
 import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../eval-core/artifact-index.js';
 import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
@@ -704,6 +705,19 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         ? (): string => doctorsDir
         : (): string => resolveDoctorsDir(projectDoctorsDir());
 
+  const includeReportCards = reportsDir === undefined && store == null;
+  const evalGraphDirs = reportsDir !== undefined
+    ? [evalGraphDirForReportOutput(reportsDir)]
+    : store
+      ? []
+      : [evalGraphDirForReportOutput(projectReportsDir()), evalGraphDirForReportOutput(globalReportsDir())];
+  const skillIndexOptions = (): Parameters<typeof buildSkillIndex>[4] => ({
+    includeObserveCards,
+    includeDoctorCards,
+    includeReportCards,
+    evalGraphDirs,
+  });
+
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const parsed = new URL(req.url || '/', 'http://127.0.0.1');
@@ -851,7 +865,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       if (path === '/api/observe-inbox/diagnostics') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           sourceCoverage: idx.diagnosisSummary.sourceCoverage,
@@ -940,7 +954,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         let ctx: SkillReportContext | undefined;
         if (skillName) {
           const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
           const entry = idx.entries.find((en) => en.skillName === skillName);
           if (entry) ctx = buildSkillContext(entry, 'doctor', id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
         }
@@ -1114,7 +1128,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         let ctx: SkillReportContext | undefined;
         if (report && report.kind === 'evaluation') {
           const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
           // 按 evalHistory 匹配(非仅最新),历史 eval 报告也能定位到所属 skill。
           const entry = idx.entries.find((en) => en.evalHistory.some((h) => h.reportId === reportId));
           if (entry) ctx = buildSkillContext(entry, 'eval', reportId, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
@@ -1137,7 +1151,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       // list renderer 直接消费,不再每请求 N×detectInsights 重算。
       if (path === '/') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
         return;
@@ -1145,7 +1159,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
       if (path === '/api/skills') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({
@@ -1159,16 +1173,36 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         return;
       }
 
-      // 注:/skills/<name> 详情页(hub)已下线 — 首页点行直接进 eval/doctor 报告,跨维度靠
-      // 报告页 chip 条 +「全部历史」弹框,不再有中间汇总页。该路由不做兼容重定向:Studio
-      // 是本地临时服务器、端口每次启动都变,跨会话书签 localhost:<port> 本就失效,且 PR 内
-      // 已无任何链接指向它。未匹配的 /skills/<name> 直接落到下方通用 404。
+      const skillHubMatch = path.match(/^\/skills\/(.+)$/);
+      if (skillHubMatch) {
+        let skillName: string;
+        try {
+          skillName = decodeURIComponent(skillHubMatch[1]);
+        } catch {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
+          return;
+        }
+        const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const entry = idx.entries.find((en) => en.skillName === skillName);
+        if (!entry) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
+          return;
+        }
+        const report = entry.eval ? await queryRun(reportStore, entry.eval.reportId) : null;
+        const evalReport = report?.kind === 'evaluation' ? report : null;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderSkillDetail(entry, evalReport, lang, idx.insightsBySkill.get(entry.skillName) ?? []));
+        return;
+      }
 
       const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
       if (skillDiagnosticsApiMatch) {
         const skillName = decodeURIComponent(skillDiagnosticsApiMatch[1]);
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, { includeObserveCards, includeDoctorCards });
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         const diagnostics = idx.diagnosticsBySkill.get(skillName);
         if (!diagnostics) {
           res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });

@@ -46,6 +46,37 @@ export interface SkillObserveSnapshot {
   confidence: 'high' | 'low' | 'underpowered';
 }
 
+export interface SkillGraphStageSnapshot {
+  sourceKind: 'doctor' | 'eval' | 'observe';
+  sourceId: string;
+  graphId: string;
+  generatedAt: string;
+  graphPath?: string;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export interface SkillGraphSnapshot {
+  /** Studio 聚合 graph sidecar 时实际采用的绑定强度。 */
+  bindingStrength: 'content-hash' | 'source-locator' | 'name-only' | 'mixed';
+  artifactHash?: string;
+  sourceLocator?: string;
+  doctor?: SkillGraphStageSnapshot & {
+    references: number;
+    scripts: number;
+    workflows: number;
+    workflowNodes: number;
+    hardRules: number;
+  };
+  eval?: SkillGraphStageSnapshot & {
+    variantName?: string;
+    samples: number;
+    assertions: number;
+    failedAssertionEdges: number;
+    diagnostics: number;
+  };
+}
+
 export interface SkillIndexEntry {
   skillName: string;
   /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。renderer
@@ -60,6 +91,8 @@ export interface SkillIndexEntry {
   /** 综合健康灯。doctor / eval / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
   band: 'green' | 'yellow' | 'red' | 'gray';
+  /** doctor/eval/observe graph sidecar 的轻量 Studio 投影。 */
+  graph?: SkillGraphSnapshot;
 }
 
 export interface SkillIndexSummary {
