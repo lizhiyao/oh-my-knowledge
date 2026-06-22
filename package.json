@@ -108,7 +108,7 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.5.0",
+    "@types/node": "^26.0.0",
     "eslint": "^10.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4",
