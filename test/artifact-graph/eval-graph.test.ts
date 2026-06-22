@@ -228,7 +228,7 @@ describe('eval artifact graph', () => {
         && node.stableKey === 'v1:workflow-node:skillhash1234:release.check',
     ));
     const sampleNode = graph.nodes.find((node) => node.nodeKind === 'sample' && node.label === 's001');
-    assert.equal(sampleNode?.attrs?.display?.coveredTargetCount, 2);
+    assert.equal(sampleNode?.attrs?.display?.declaredCoverageTargetCount, 2);
   });
 
   it('points assertion evidence at eval result details when sample snapshot is absent', () => {

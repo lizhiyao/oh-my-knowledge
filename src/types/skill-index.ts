@@ -61,7 +61,7 @@ export interface SkillGraphNodePreview {
   nodeKind: string;
   label: string;
   status?: string;
-  coverage?: 'covered' | 'not_covered';
+  coverage?: 'declared' | 'undeclared';
 }
 
 export interface SkillGraphSnapshot {
@@ -85,7 +85,7 @@ export interface SkillGraphSnapshot {
     diagnostics: number;
     measurementNodes: SkillGraphNodePreview[];
     coverageEdges: number;
-    coveredDefinitionStableKeys: string[];
+    declaredCoverageStableKeys: string[];
   };
 }
 

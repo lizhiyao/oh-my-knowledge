@@ -316,7 +316,7 @@ describe('SkillIndex graph projection', () => {
     assert.equal(entry.graph?.eval?.nodeCount, 11);
     assert.equal(entry.graph?.eval?.edgeCount, 12);
     assert.equal(entry.graph?.eval?.coverageEdges, 2);
-    assert.deepEqual(entry.graph?.eval?.coveredDefinitionStableKeys, [
+    assert.deepEqual(entry.graph?.eval?.declaredCoverageStableKeys, [
       'v1:reference:hash-service-guide:references/a.md',
       'v1:workflow:hash-service-guide:release',
     ]);
@@ -350,9 +350,9 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('class="sm-bind"'));
     assert.ok(!html.includes('alert(1)'));
     assert.ok(!html.includes('sm-node--ok"'));
-    assert.ok(html.includes('sm-node--covered'));
-    assert.ok(html.includes('sm-node--not-covered'));
-    assert.ok(html.includes('覆盖锚点 2/7'));
+    assert.ok(html.includes('sm-node--coverage-declared'));
+    assert.ok(html.includes('sm-node--coverage-undeclared'));
+    assert.ok(html.includes('声明锚点 2/7'));
     assert.ok(html.includes('background-size:auto,28px 28px,28px 28px,auto'));
     assert.ok(html.includes('outline:4px solid rgba(79,70,229,.07)'));
     assert.ok(html.includes('title="sample: s001"'));

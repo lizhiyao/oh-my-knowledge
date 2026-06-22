@@ -69,13 +69,13 @@ A sample can also carry **metadata** (documentation / diagnostics only — these
 | `difficulty` | `'easy' \| 'medium' \| 'hard'` | difficulty bucket (strict enum) |
 | `construct` | `string` | what it measures: `necessity` / `quality` / `capability` (custom allowed) |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
-| `covers` | `{ targetKind, ref }[]` | explicit skill-structure anchors this sample covers; used by Skill Map only |
+| `covers` | `{ targetKind, ref }[]` | optional declared skill-structure anchors for high-value samples; used by Skill Map only |
 | `mocks` | `object[]` | tool-call interception list — return fake data instead of really calling the tool |
 | `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `false`) |
 | `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
 | `environment` | `object` | declared "already provisioned" preconditions: `cli_available` / `files_available` / `notes` |
 
-`covers` is intentionally explicit, not inferred from prompt text. It lets Studio draw which parts of a skill are actually exercised:
+`covers` is optional and intentionally explicit, not inferred from prompt text. Use it first on critical or high-signal samples, so Studio can draw declared structure edges without forcing every sample to become a maintenance task. Omitting `covers` means the structure edge is undeclared in Skill Map, not proven untested:
 
 ```yaml
 - sample_id: release-risk-summary

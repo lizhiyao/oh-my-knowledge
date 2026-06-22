@@ -325,7 +325,7 @@ export interface ResultEntry {
  *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
  *   - mocks: 工具调用模拟返回(LLM 调到匹配的 tool/参数时拿到这段假返回,而不是真去调外部系统)
  *   - capability / construct / difficulty: 元数据
- *   - covers: sample 显式覆盖的 skill 结构锚点
+ *   - covers: sample 可选声明的 skill 结构锚点
  *   - context: 附加上下文(代码片段等)
  *
  * 旧 report 没有这个字段,renderer 据此 fallback(隐藏单测 tab 或提示"无设计快照")。

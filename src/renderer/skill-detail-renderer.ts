@@ -480,8 +480,8 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-node--warning { border-color:rgba(217,119,6,.38);background:rgba(217,119,6,.07) }
 .sm-node--failed { border-color:rgba(220,38,38,.38);background:rgba(220,38,38,.06) }
 .sm-node--pending,.sm-node--more { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
-.sm-node--covered { border-color:rgba(31,157,99,.42);box-shadow:0 10px 24px rgba(31,157,99,.08) }
-.sm-node--not-covered { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
+.sm-node--coverage-declared { border-color:rgba(31,157,99,.42);box-shadow:0 10px 24px rgba(31,157,99,.08) }
+.sm-node--coverage-undeclared { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
 .sm-node-title { font-size:12.2px;font-weight:700;color:#182033;line-height:1.28;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
 .sm-node--skill .sm-node-title { font-size:15px;line-height:1.2 }
 .sm-node-meta { font-size:10.5px;color:#637083;line-height:1.35;word-break:break-word }
@@ -1772,14 +1772,14 @@ function graphNodeStatusClass(node: SkillGraphNodePreview): string {
 }
 
 function graphNodeCoverageClass(node: SkillGraphNodePreview): string {
-  if (node.coverage === 'covered') return ' sm-node--covered';
-  if (node.coverage === 'not_covered') return ' sm-node--not-covered';
+  if (node.coverage === 'declared') return ' sm-node--coverage-declared';
+  if (node.coverage === 'undeclared') return ' sm-node--coverage-undeclared';
   return '';
 }
 
 function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string {
-  if (node.coverage === 'covered') return lang === 'zh' ? '已被用例覆盖' : 'covered by samples';
-  if (node.coverage === 'not_covered') return lang === 'zh' ? '暂无显式覆盖用例' : 'no explicit sample coverage';
+  if (node.coverage === 'declared') return lang === 'zh' ? '已声明覆盖关系' : 'declared coverage';
+  if (node.coverage === 'undeclared') return lang === 'zh' ? '未声明覆盖关系' : 'coverage not declared';
   return '';
 }
 
@@ -1895,32 +1895,32 @@ function orderedPreviewNodes(
     .map(({ node }) => node);
 }
 
-function applyDefinitionCoverage(
+function applyDefinitionCoverageDeclarations(
   nodes: SkillGraphNodePreview[] | undefined,
-  coveredStableKeys: string[] | undefined,
+  declaredStableKeys: string[] | undefined,
 ): SkillGraphNodePreview[] | undefined {
   if (!nodes) return undefined;
-  if (!coveredStableKeys || coveredStableKeys.length === 0) return nodes;
-  const covered = new Set(coveredStableKeys);
+  if (!declaredStableKeys || declaredStableKeys.length === 0) return nodes;
+  const declared = new Set(declaredStableKeys);
   return nodes.map((node) => {
     if (!node.stableKey || !DEFINITION_PREVIEW_KINDS.has(node.nodeKind)) return node;
-    return { ...node, coverage: covered.has(node.stableKey) ? 'covered' : 'not_covered' };
+    return { ...node, coverage: declared.has(node.stableKey) ? 'declared' : 'undeclared' };
   });
 }
 
-function skillMapCoverageSummary(
+function skillMapCoverageDeclarationSummary(
   doctor: NonNullable<SkillGraphSnapshot['doctor']> | undefined,
   evalGraph: NonNullable<SkillGraphSnapshot['eval']> | undefined,
   lang: Lang,
 ): string | null {
-  const coveredKeys = new Set(evalGraph?.coveredDefinitionStableKeys ?? []);
-  if (!doctor || coveredKeys.size === 0) return null;
+  const declaredKeys = new Set(evalGraph?.declaredCoverageStableKeys ?? []);
+  if (!doctor || declaredKeys.size === 0) return null;
   const coverable = doctor.definitionNodes.filter((node) => node.stableKey && DEFINITION_PREVIEW_KINDS.has(node.nodeKind));
   if (coverable.length === 0) return null;
-  const coveredCount = coverable.filter((node) => node.stableKey && coveredKeys.has(node.stableKey)).length;
+  const declaredCount = coverable.filter((node) => node.stableKey && declaredKeys.has(node.stableKey)).length;
   return lang === 'zh'
-    ? `覆盖锚点 ${coveredCount}/${coverable.length}`
-    : `coverage anchors ${coveredCount}/${coverable.length}`;
+    ? `声明锚点 ${declaredCount}/${coverable.length}`
+    : `declared anchors ${declaredCount}/${coverable.length}`;
 }
 
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
@@ -1942,8 +1942,8 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     !entry.eval ? `- ${zh ? '测量效果' : 'Measure impact'}${stepSeparator} \`omk eval --control baseline --treatment ${sourceArg}\`` : '',
     !entry.observe ? `- ${zh ? '接入观察' : 'Add observation'}${stepSeparator} \`omk observe ingest <trace-dir>\`` : '',
   ].filter(Boolean);
-  const coverageSummary = skillMapCoverageSummary(doctor, evalGraph, lang);
-  const definitionPreview = previewNodes(applyDefinitionCoverage(doctor?.definitionNodes, evalGraph?.coveredDefinitionStableKeys), DEFINITION_PREVIEW_KINDS, 8);
+  const coverageSummary = skillMapCoverageDeclarationSummary(doctor, evalGraph, lang);
+  const definitionPreview = previewNodes(applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys), DEFINITION_PREVIEW_KINDS, 8);
   const measurementPreview = previewNodes(evalGraph?.measurementNodes, MEASUREMENT_PREVIEW_KINDS, 8);
   const previewMermaidLines = [
     ...definitionPreview.visible.flatMap((node, index) => [
@@ -1979,7 +1979,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| eval | ${evalStatus} | ${evalGraph ? `${zh ? 'variant 子图' : 'variant subgraph'}: ${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
-    ...(coverageSummary ? ['', zh ? '### 覆盖锚点' : '### Coverage Anchors', '', coverageSummary] : []),
+    ...(coverageSummary ? ['', zh ? '### 声明锚点' : '### Declared Anchors', '', coverageSummary] : []),
     '',
     zh ? '### 关键计数' : '### Key Counts',
     '',
@@ -2007,9 +2007,9 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const evalGraph = graph.eval;
   const band = skillMapBand(entry);
   const markdown = renderSkillEvidenceMarkdown(entry, lang);
-  const coveredDefinitionNodes = applyDefinitionCoverage(doctor?.definitionNodes, evalGraph?.coveredDefinitionStableKeys);
-  const coverageSummary = skillMapCoverageSummary(doctor, evalGraph, lang);
-  const definitionCandidates = orderedPreviewNodes(coveredDefinitionNodes, DEFINITION_PREVIEW_KINDS, {
+  const definitionNodesWithCoverageDeclarations = applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys);
+  const coverageSummary = skillMapCoverageDeclarationSummary(doctor, evalGraph, lang);
+  const definitionCandidates = orderedPreviewNodes(definitionNodesWithCoverageDeclarations, DEFINITION_PREVIEW_KINDS, {
     reference: 1,
     script: 2,
     workflow: 3,

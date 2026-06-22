@@ -173,7 +173,7 @@ function sampleAttrs(snapshot: SampleSnapshot | undefined): ArtifactGraphNode['a
   if (snapshot.provenance) display.provenance = snapshot.provenance;
   if (snapshot.tripwire) display.tripwire = true;
   if (snapshot.assertions?.length) display.assertionCount = snapshot.assertions.length;
-  if (snapshot.covers?.length) display.coveredTargetCount = snapshot.covers.length;
+  if (snapshot.covers?.length) display.declaredCoverageTargetCount = snapshot.covers.length;
   return Object.keys(display).length > 0 ? { display } : undefined;
 }
 

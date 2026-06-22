@@ -121,7 +121,7 @@ The Sample schema has optional metadata fields, purely for documentation / diagn
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — difficulty bucket (strict enum).
 - **`construct?: string`** — the construct type this sample tests. Suggested: `'necessity'` (tests necessity, baseline-vs-skill) / `'quality'` (tests whether the skill is well-written) / `'capability'` (tests a specific capability). Free-form string allows custom values.
 - **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — data source.
-- **`covers?: { targetKind: string; ref: string }[]`** — explicit skill-structure anchors this sample exercises, used by Skill Map to show covered / uncovered definition nodes.
+- **`covers?: { targetKind: string; ref: string }[]`** — optional declared skill-structure anchors this sample is intended to exercise, used by Skill Map to show declared / undeclared definition nodes.
 
 **construct vs. capability** (the two fields users most often confuse):
 - **construct** = **what class of thing** this sample tests (necessity / quality / capability). It's the experiment-design level — running baseline-vs-skill tests necessity, running skill-v1-vs-skill-v2 tests quality.

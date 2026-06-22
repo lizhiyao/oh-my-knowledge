@@ -614,7 +614,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     }
   }
 
-  const coveredDefinitionStableKeys = new Set<string>();
+  const declaredCoverageStableKeys = new Set<string>();
   let coverageEdges = 0;
   for (const edge of graph.edges) {
     if (edge.edgeKind !== 'covers') continue;
@@ -625,7 +625,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     if (artifactHash && nodeArtifactHash(to) !== artifactHash) continue;
     addEdge(edge);
     coverageEdges += 1;
-    if (to.stableKey) coveredDefinitionStableKeys.add(to.stableKey);
+    if (to.stableKey) declaredCoverageStableKeys.add(to.stableKey);
   }
 
   const sampleIds = new Set<string>();
@@ -667,7 +667,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
       diagnostics: diagnosticIds.size,
       measurementNodes,
       coverageEdges,
-      coveredDefinitionStableKeys: [...coveredDefinitionStableKeys].sort(),
+      declaredCoverageStableKeys: [...declaredCoverageStableKeys].sort(),
     },
     ...(artifactHash ? { artifactHash } : {}),
     ...(sourceLocator ? { sourceLocator } : {}),

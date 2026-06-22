@@ -31,7 +31,7 @@ export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
 /** sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
 export type SampleDifficulty = 'easy' | 'medium' | 'hard';
 
-/** Sample 显式覆盖的 skill 结构锚点。用于 Skill Map / 诊断，不参与 grading / judge / verdict。 */
+/** Sample 可选声明的 skill 结构锚点。用于 Skill Map / 诊断，不参与 grading / judge / verdict。 */
 export type SampleCoverageTargetKind =
   | 'skill'
   | 'skill_file'
@@ -135,7 +135,7 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
-  /** 该 sample 显式覆盖的 skill 结构锚点。纯文档 / 图谱诊断用，不进入评分、评委或 verdict。 */
+  /** 该 sample 可选声明的 skill 结构锚点。纯文档 / 图谱诊断用，不进入评分、评委或 verdict。 */
   covers?: SampleCoverageTarget[];
   /** 诱错样本(tripwire)标记。true = 此 sample 故意设计成 LLM 应该 fail 的诱导陷阱
    *  (如:用户用错误前提诱导 / 跳步骤 / 用错参数类型),用于测 skill 是否能让 LLM

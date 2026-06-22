@@ -69,13 +69,13 @@
 | `difficulty` | `'easy' \| 'medium' \| 'hard'` | 难度分桶（强枚举） |
 | `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
-| `covers` | `{ targetKind, ref }[]` | 这条用例显式覆盖的 skill 结构锚点，仅用于 Skill Map |
+| `covers` | `{ targetKind, ref }[]` | 可选声明的 skill 结构锚点，建议先用于关键用例；仅用于 Skill Map |
 | `mocks` | `object[]` | 工具调用拦截列表 —— 返回假数据而非真调工具 |
 | `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
 | `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
 | `environment` | `object` | 声明性「已就绪」前置：`cli_available` / `files_available` / `notes` |
 
-`covers` 必须显式声明，不从 prompt 文本里推断。Studio 会用它画出哪些 skill 结构已被用例真正测到：
+`covers` 是可选的显式声明字段，不从 prompt 文本里推断。建议先给关键用例、关键 reference / workflow / hard rule 声明它，让 Studio 能画出已声明的结构边，而不是要求每条用例都变成维护负担。不写只表示 Skill Map 暂无这条声明边，不代表该结构一定没被测到：
 
 ```yaml
 - sample_id: release-risk-summary
