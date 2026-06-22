@@ -6,7 +6,7 @@ import { buildJudgePrompt } from '../../src/grading/judge.js';
  * Defensive test (R11 from sample-design plan).
  *
  * Sample design metadata fields (capability / difficulty / construct / provenance /
- * llm-generated / human / production-trace) are PURE DOCUMENTATION — they must NEVER
+ * covers / llm-generated / human / production-trace) are PURE DOCUMENTATION — they must NEVER
  * leak into the judge prompt because:
  *  - They'd let evaluator (judge) see "this sample is testing necessity" → bias scoring
  *  - They'd violate construct validity (judge should be blind to test design intent)
@@ -28,11 +28,15 @@ describe('buildJudgePrompt — sample metadata isolation', () => {
     'difficulty:',
     'construct:',
     'provenance:',
+    'covers:',
+    'targetKind:',
     'sampleId:',
     '"capability"',         // JSON-style key (double-quoted)
     '"difficulty"',
     '"construct"',
     '"provenance"',
+    '"covers"',
+    '"targetKind"',
     "'capability'",         // single-quoted (less common but possible)
     '"llm-generated"',      // unique enum values that wouldn't appear naturally
     '"production-trace"',

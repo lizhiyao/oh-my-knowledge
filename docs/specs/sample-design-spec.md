@@ -20,13 +20,18 @@ samples:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
 
-    # 4 optional metadata fields (docs/diagnostics only, never enter grading)
+    # Measurement metadata (docs/diagnostics only, never enter grading)
     capability:
       - component-recognition          # string[], capability dimensions, multiple allowed; normalized case/dash/camelCase-insensitive
       - api-selection
     difficulty: easy                    # 'easy' | 'medium' | 'hard' (strict enum, typo-proof)
     construct: necessity                # 'necessity' | 'quality' | 'capability' suggested, custom string allowed
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
+    covers:                             # explicit skill-structure anchors for Skill Map
+      - targetKind: reference
+        ref: references/chart-api.md
+      - targetKind: workflow_node
+        ref: chart.render
 ```
 
 ### Field semantics
@@ -39,12 +44,14 @@ samples:
   - `capability`: measures the difference along one concrete capability dimension.
   Custom strings are allowed (e.g. `regression-test` / `cost-efficiency`); the studio won't error on a custom value.
 - **provenance** (enum): data source. `human` (hand-curated) / `llm-generated` (auto-injected by `omk sample`) / `production-trace` (sampled from production traces, which you import yourself).
+- **covers** (`{ targetKind, ref }[]`): explicit skill-structure anchors this sample exercises. This is the structural sibling of `capability`: capability says which ability dimension is tested; covers says which concrete SKILL.md node, reference, script, hard rule, workflow, or workflow node the sample is meant to exercise. Studio uses it to show covered vs uncovered nodes in Skill Map. It is not inferred from prompt text.
 
 ### Never enters grading / judge / verdict
 
-These 4 fields are used only for:
+These metadata fields are used only for:
 
 - the studio coverage block, plus the `rubric_clarity_low` / `capability_thin` issue detectors
+- Skill Map coverage anchors (`covers`)
 - the `report.analysis.sampleQuality` aggregate (for tools to read)
 
 **They never enter the judge prompt** (`buildJudgePrompt(prompt, rubric, output, traceSummary)` has no sample object in its signature, and `test/grading/judge-prompt-isolation.test.ts` guards against regressions). **They never affect the verdict algorithm.** This is a hard requirement for construct-validity protection — a judge seeing "construct: necessity" is a judge that knows the answer key.
@@ -142,6 +149,7 @@ Run through this before an eval; any "no" is a reason to stop and think:
 
 - [ ] **Construct declared**: does each sample know whether it measures necessity / quality / capability?
 - [ ] **Capability coverage**: you claim to test N capability dimensions — does the sample set actually cover N? (the studio coverage block shows the real distribution)
+- [ ] **Structure coverage**: do key references / workflows / hard rules have at least one sample declaring `covers`, so Skill Map can show real test-design blind spots?
 - [ ] **Difficulty stratified**: do you have easy / medium / hard, or is everything hard so noise dominates?
 - [ ] **Provenance transparent**: is the human-curated / LLM-generated / production-trace ratio reasonable? When LLM-generated is > 50%, watch for self-instruct risk (a self-reinforcing judge-bias loop).
 - [ ] **Sample count**: `N < 5` (exploratory) / `N < 20` (only large effects detectable) / `N ≥ 20` (medium effects detectable) — omk pre-flight already warns.
@@ -173,7 +181,7 @@ omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / 
 | 1 | **IRT item discrimination**: each item gets a (discrimination) / b (difficulty) / c (guessing) parameters; a < 0.3 is a junk item | [IrtNet (2510.00844)](https://arxiv.org/pdf/2510.00844), [Columbia IRT primer](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory) | **out-of-scope** (IRT is unreliable at N<30; left as follow-up — the v1 `flat_scores` heuristic already covers part of it) |
 | 2 | **Difficulty stratification**: stratify samples by difficulty (MMLU-Pro filters difficulty via multi-model majority-correct) | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**: `Sample.difficulty` enum + studio bucketing |
 | 3 | **Construct-validity trio** (structural / convergent / discriminant) | [Measuring what Matters (2511.04703)](https://arxiv.org/abs/2511.04703), [Measurement to Meaning (2505.10573)](https://arxiv.org/html/2505.10573v3) | **in-scope**: `Sample.construct` field (suggested: necessity / quality / capability) + verdict-interpretation callout; convergent / discriminant auto-detection is follow-up |
-| 4 | **Capability-matrix coverage** (HELM's 16×7 matrix) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**: `Sample.capability` string[] field + studio coverage bucketing + `capability_thin` issue; detailed matrix visualization is follow-up |
+| 4 | **Capability-matrix coverage** (HELM's 16×7 matrix) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**: `Sample.capability` string[] field + studio coverage bucketing + `capability_thin` issue; `Sample.covers` adds explicit structure anchors for Skill Map; detailed matrix visualization is follow-up |
 | 5 | **Contamination detection** (canary / paraphrase / timestamp-locked) | [BIG-Bench canary](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4), [LiveBench](https://livebench.ai/livebench.pdf), [contamination survey (2404.00699)](https://arxiv.org/html/2404.00699v4) | **partial**: `Sample.provenance` does "declarative" contamination tracking; real auto-detection is follow-up (needs an embedding model or training-data access) |
 | 6 | **Sample provenance / dataset card** (the annotations_creators standard) | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards), [Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**: `Sample.provenance` enum + `omk sample` auto-injects `'llm-generated'` |
 | 7 | **Adversarial / failure-driven mining** (Dynabench) | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**: `omk evolve` is currently one-directional; adversarial mining is follow-up |
@@ -194,7 +202,7 @@ omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / 
 
 ### 6.3 v2 schema-extension candidates & rejection list
 
-The v1 schema has only 4 fields (capability / difficulty / construct / provenance), all on the **measurement-validity** axis — answering *does this sample measure what it claims to measure?* Another common community ask sits on the **asset-governance** axis: tags / risk_level / expected_facts / source_ids / owner — answering *who owns this sample, where it came from, how important it is.* The two axes are orthogonal and don't conflict, but governance assumes measurement is already solid; v1 chose to solve measurement first. This section records the v2 candidates and the rejection list so future decisions don't re-litigate them.
+The initial schema kept four measurement-validity fields (capability / difficulty / construct / provenance) that answer *does this sample measure what it claims to measure?* `covers` extends that same diagnostic-only philosophy to the structural axis: *which concrete skill nodes does this sample exercise?* Another common community ask sits on the **asset-governance** axis: tags / risk_level / expected_facts / source_ids / owner — answering *who owns this sample, where it came from, how important it is.* The axes are orthogonal and don't conflict, but governance assumes measurement is already solid; v1 chose to solve measurement first. This section records the v2 candidates and the rejection list so future decisions don't re-litigate them.
 
 **v2 candidates (high-value, low-risk; add when real user demand triggers it)**
 
@@ -213,7 +221,7 @@ The v1 schema has only 4 fields (capability / difficulty / construct / provenanc
 - Must not enter the `buildJudgePrompt` signature (`test/grading/judge-prompt-isolation.test.ts` guards the regression)
 - Must not enter the `sampleHash` computation (else it breaks cache-key cross-version comparability)
 - Must not enter the verdict / Δ algorithm
-- Must not semantically overlap the existing 4 fields + `rubric` / `assertions`
+- Must not semantically overlap the existing metadata fields + `rubric` / `assertions`
 
 ### 6.4 Sources
 

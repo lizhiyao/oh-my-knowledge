@@ -31,6 +31,24 @@ export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
 /** sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
 export type SampleDifficulty = 'easy' | 'medium' | 'hard';
 
+/** Sample 显式覆盖的 skill 结构锚点。用于 Skill Map / 诊断，不参与 grading / judge / verdict。 */
+export type SampleCoverageTargetKind =
+  | 'skill'
+  | 'skill_file'
+  | 'frontmatter'
+  | 'reference'
+  | 'script'
+  | 'hard_rule'
+  | 'workflow'
+  | 'workflow_node';
+
+export interface SampleCoverageTarget {
+  /** 目标类型。避免裸 kind，保持 Artifact.kind 语义唯一。 */
+  targetKind: SampleCoverageTargetKind;
+  /** 稳定引用：路径或 ID。reference/script 用 skill 根相对路径，workflow_node 用 workflowId.nodeId。 */
+  ref: string;
+}
+
 /** Sample 评测环境前置:声明性"已就绪"清单,LLM 看到后跳过环境探测,直接进入工作流。
  *  类比 unit test 的 fixture / setup —— 评测是测 skill 工作流,不是测环境探测能力。 */
 export interface SampleEnvironment {
@@ -117,6 +135,8 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
+  /** 该 sample 显式覆盖的 skill 结构锚点。纯文档 / 图谱诊断用，不进入评分、评委或 verdict。 */
+  covers?: SampleCoverageTarget[];
   /** 诱错样本(tripwire)标记。true = 此 sample 故意设计成 LLM 应该 fail 的诱导陷阱
    *  (如:用户用错误前提诱导 / 跳步骤 / 用错参数类型),用于测 skill 是否能让 LLM
    *  识破并纠正。Diagnostic 看到 tripwire:true 时会建议"无需改 skill"(rootCause:

@@ -20,13 +20,18 @@ samples:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
 
-    # 4 个可选元数据字段（纯文档/诊断，不参与 grading）
+    # 测量元数据（纯文档 / 诊断，不参与 grading）
     capability:
       - component-recognition          # string[]，能力维度，可多个；归一时大小写/短横线/驼峰不敏感
       - api-selection
     difficulty: easy                    # 'easy' | 'medium' | 'hard'（强枚举，防错）
     construct: necessity                # 'necessity' | 'quality' | 'capability' suggested，允许自定义 string
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
+    covers:                             # Skill Map 使用的显式 skill 结构锚点
+      - targetKind: reference
+        ref: references/chart-api.md
+      - targetKind: workflow_node
+        ref: chart.render
 ```
 
 ### 字段语义
@@ -39,12 +44,14 @@ samples:
   - `capability`（能力）：测某具体能力维度的差异。
   允许自定义 string（比如 `regression-test` / `cost-efficiency` 等），studio 看到自定义值不报错。
 - **provenance**（enum）：数据来源。`human`（人工 curated）/ `llm-generated`（`omk sample` 自动注入）/ `production-trace`（生产 trace 抽样，需用户自己导入）。
+- **covers**（`{ targetKind, ref }[]`）：这条 sample 显式覆盖的 skill 结构锚点。它是 `capability` 的结构侧补充：capability 说这条用例测哪个能力维度；covers 说这条用例具体测到哪个 SKILL.md 节点、reference、script、hard rule、workflow 或 workflow node。Studio 用它在 Skill Map 中标出已覆盖 / 未覆盖节点。它不会从 prompt 文本里自动推断。
 
 ### 不参与 grading / judge / verdict
 
-这 4 字段只用于：
+这些元数据字段只用于：
 
 - studio coverage 块 + `rubric_clarity_low` / `capability_thin` 两个 issue 检测
+- Skill Map 覆盖锚点（`covers`）
 - `report.analysis.sampleQuality` 聚合数据（供工具读）
 
 **绝对不进 judge prompt**（`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象，且有 `test/grading/judge-prompt-isolation.test.ts` 防御回归）。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 —— judge 看到 "construct: necessity" 等于知道试题答案。
@@ -142,6 +149,7 @@ studio 把每份报告的 sample design coverage 渲染成下面这种摘要：
 
 - [ ] **Construct 声明**：每个 sample 知道自己测的是 necessity / quality / capability 中哪一类吗？
 - [ ] **Capability 覆盖**：声称要测 N 个能力维度，sample 集真覆盖了 N 个吗？（studio coverage 块给出真实分布）
+- [ ] **结构覆盖**：关键 references / workflows / hard rules 是否至少有一条 sample 声明了 `covers`，让 Skill Map 能暴露真实测试设计盲区？
 - [ ] **Difficulty 分层**：有 easy / medium / hard 都有吗？还是全 hard 让模型 noise 主导？
 - [ ] **Provenance 透明**：human-curated / LLM-generated / production-trace 比例合理吗？LLM-generated 占比 > 50% 时小心 self-instruct 风险（judge bias 自我循环）。
 - [ ] **Sample 数量**：`N < 5`（探索级）/ `N < 20`（只大效应可测）/ `N ≥ 20`（中等效应可测）—— omk pre-flight 已警告。
@@ -173,7 +181,7 @@ omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / sat
 | 1 | **IRT item discrimination**：每题给 a (discrimination) / b (difficulty) / c (guessing) 三参数，a < 0.3 是垃圾题 | [IrtNet (2510.00844)](https://arxiv.org/pdf/2510.00844)，[Columbia IRT primer](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory) | **out-of-scope**（N<30 IRT 不可靠，留 follow-up；v1 启发式 `flat_scores` 已 cover 部分） |
 | 2 | **Difficulty stratification**：用例分层（MMLU-Pro 用多模型多数答对过滤难度） | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**：`Sample.difficulty` enum + studio 分桶呈现 |
 | 3 | **Construct validity 三件套**（structural / convergent / discriminant） | [Measuring what Matters (2511.04703)](https://arxiv.org/abs/2511.04703)，[Measurement to Meaning (2505.10573)](https://arxiv.org/html/2505.10573v3) | **in-scope**：`Sample.construct` 字段（suggested：necessity / quality / capability）+ verdict 解读 callout；convergent / discriminant 自动检测 follow-up |
-| 4 | **Capability matrix coverage**（HELM 16×7 矩阵） | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**：`Sample.capability` string[] 字段 + studio coverage 分桶 + `capability_thin` issue；详细矩阵可视化 follow-up |
+| 4 | **Capability matrix coverage**（HELM 16×7 矩阵） | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**：`Sample.capability` string[] 字段 + studio coverage 分桶 + `capability_thin` issue；`Sample.covers` 为 Skill Map 增加显式结构锚点；详细矩阵可视化 follow-up |
 | 5 | **Contamination 检测**（canary / paraphrase / timestamp-locked） | [BIG-Bench canary](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4)，[LiveBench](https://livebench.ai/livebench.pdf)，[contamination survey (2404.00699)](https://arxiv.org/html/2404.00699v4) | **partial**：`Sample.provenance` 做「声明式」contamination tracking，真正自动检测 follow-up（需要 embedding model 或训练数据访问） |
 | 6 | **Sample provenance / dataset card**（annotations_creators 标准） | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards)，[Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**：`Sample.provenance` enum + `omk sample` 自动注入 `'llm-generated'` |
 | 7 | **Adversarial / failure-driven mining**（Dynabench） | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**：`omk evolve` 当前是单向演化；adversarial mining follow-up |
@@ -194,7 +202,7 @@ omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / sat
 
 ### 6.3 v2 schema 扩展候选与拒绝清单
 
-v1 schema 只有 4 字段（capability / difficulty / construct / provenance），都属于「测量学正确性」（measurement validity）轴——回答**这条用例测的事是它声称要测的事吗**。社区另一类常见建议走的是「资产治理」（asset governance）轴：tags / risk_level / expected_facts / source_ids / owner——回答**这条用例归谁、来自哪里、有多重要**。两轴正交不冲突，但治理假设测量学先稳固；v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单，供后续决策时不必重新讨论一遍。
+初始 schema 只有 4 个测量效度字段（capability / difficulty / construct / provenance），回答**这条用例测的事是它声称要测的事吗**。`covers` 延续同一条「仅诊断、不进评分」原则，把能力维度之外的结构轴补上：**这条用例具体测到了哪些 skill 节点**。社区另一类常见建议走的是「资产治理」（asset governance）轴：tags / risk_level / expected_facts / source_ids / owner——回答**这条用例归谁、来自哪里、有多重要**。这些轴正交不冲突，但治理假设测量学先稳固；v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单，供后续决策时不必重新讨论一遍。
 
 **v2 候选（高价值低风险，等真实用户需求触发再加）**
 
@@ -213,7 +221,7 @@ v1 schema 只有 4 字段（capability / difficulty / construct / provenance）�
 - 不进 `buildJudgePrompt` signature（`test/grading/judge-prompt-isolation.test.ts` 防御回归）
 - 不进 `sampleHash` 计算（否则破 cache key 跨版本可比性）
 - 不进 verdict / Δ 算法
-- 跟现有 4 字段 + `rubric` / `assertions` 语义不重叠
+- 跟现有元数据字段 + `rubric` / `assertions` 语义不重叠
 
 ### 6.4 参考
 

@@ -20,6 +20,7 @@ import type {
   SkillDoctorSnapshot,
   SkillEvalSnapshot,
   SkillObserveSnapshot,
+  SkillGraphSnapshot,
   SkillGraphNodePreview,
   Insight,
   InsightIllustration,
@@ -479,6 +480,8 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-node--warning { border-color:rgba(217,119,6,.38);background:rgba(217,119,6,.07) }
 .sm-node--failed { border-color:rgba(220,38,38,.38);background:rgba(220,38,38,.06) }
 .sm-node--pending,.sm-node--more { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
+.sm-node--covered { border-color:rgba(31,157,99,.42);box-shadow:0 10px 24px rgba(31,157,99,.08) }
+.sm-node--not-covered { border-style:dashed;background:rgba(248,249,251,.94);color:#637083 }
 .sm-node-title { font-size:12.2px;font-weight:700;color:#182033;line-height:1.28;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden }
 .sm-node--skill .sm-node-title { font-size:15px;line-height:1.2 }
 .sm-node-meta { font-size:10.5px;color:#637083;line-height:1.35;word-break:break-word }
@@ -1060,10 +1063,24 @@ const SKILL_MAP_INIT_SCRIPT = `
         var isLeaf = el.getAttribute('data-sm-leaf') === '1';
         var overflowGroup = el.getAttribute('data-sm-overflow-group');
         var shouldHide = !layers[layer] || (isLeaf && !showLeaves) || !overflowGroupExpanded(overflowGroup);
+        el.setAttribute('data-sm-filter-hidden', shouldHide ? '1' : '0');
         el.hidden = shouldHide;
         el.toggleAttribute('hidden', shouldHide);
         el.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
         el.style.display = shouldHide ? 'none' : '';
+      });
+      map.querySelectorAll('[data-sm-edge-to]').forEach(function(edge){
+        var toId = edge.getAttribute('data-sm-edge-to');
+        var fromId = edge.getAttribute('data-sm-edge-from-node');
+        var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
+        var fromNode = fromId ? graph.querySelector('[data-sm-node-id="' + fromId + '"]') : null;
+        var filterHidden = edge.getAttribute('data-sm-filter-hidden') === '1';
+        var endpointHidden = (toNode && toNode.hidden) || (fromNode && fromNode.hidden);
+        var shouldHideEdge = filterHidden || endpointHidden;
+        edge.hidden = shouldHideEdge;
+        edge.toggleAttribute('hidden', shouldHideEdge);
+        edge.setAttribute('aria-hidden', shouldHideEdge ? 'true' : 'false');
+        edge.style.display = shouldHideEdge ? 'none' : '';
       });
     }
 
@@ -1754,13 +1771,26 @@ function graphNodeStatusClass(node: SkillGraphNodePreview): string {
   return node.status && SKILL_MAP_STATUS_CLASSES.has(node.status) ? ` sm-node--${node.status}` : '';
 }
 
+function graphNodeCoverageClass(node: SkillGraphNodePreview): string {
+  if (node.coverage === 'covered') return ' sm-node--covered';
+  if (node.coverage === 'not_covered') return ' sm-node--not-covered';
+  return '';
+}
+
+function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  if (node.coverage === 'covered') return lang === 'zh' ? '已被用例覆盖' : 'covered by samples';
+  if (node.coverage === 'not_covered') return lang === 'zh' ? '暂无显式覆盖用例' : 'no explicit sample coverage';
+  return '';
+}
+
 function positionedNodeStyle(node: Pick<SkillMapPositionedNode, 'x' | 'y'>): string {
   return `left:${node.x}px;top:${node.y}px`;
 }
 
 function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
   const title = graphNodeMapLabel(item.node);
-  const fullTitle = graphNodeDisplayLabel(item.node, lang);
+  const coverageLabel = graphNodeCoverageLabel(item.node, lang);
+  const fullTitle = [graphNodeDisplayLabel(item.node, lang), coverageLabel].filter(Boolean).join(' · ');
   const kindClass = item.node.nodeKind === 'more' ? ' sm-node--more' : '';
   const leaf = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-leaf="1"' : '';
   const draggable = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-draggable="1"' : '';
@@ -1768,7 +1798,7 @@ function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
   const moreToggle = item.moreToggle
     ? ` data-sm-more-toggle="${item.moreToggle.group}" data-sm-collapsed-label="${e(item.moreToggle.collapsedLabel)}" data-sm-expanded-label="${e(item.moreToggle.expandedLabel)}" role="button" tabindex="0" aria-expanded="false"`
     : '';
-  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}">
+  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}">
     <div class="sm-node-kind">${e(nodeKindLabel(item.node.nodeKind, lang))}</div>
     <div class="sm-node-title">${e(title)}</div>
   </div>`;
@@ -1865,6 +1895,34 @@ function orderedPreviewNodes(
     .map(({ node }) => node);
 }
 
+function applyDefinitionCoverage(
+  nodes: SkillGraphNodePreview[] | undefined,
+  coveredStableKeys: string[] | undefined,
+): SkillGraphNodePreview[] | undefined {
+  if (!nodes) return undefined;
+  if (!coveredStableKeys || coveredStableKeys.length === 0) return nodes;
+  const covered = new Set(coveredStableKeys);
+  return nodes.map((node) => {
+    if (!node.stableKey || !DEFINITION_PREVIEW_KINDS.has(node.nodeKind)) return node;
+    return { ...node, coverage: covered.has(node.stableKey) ? 'covered' : 'not_covered' };
+  });
+}
+
+function skillMapCoverageSummary(
+  doctor: NonNullable<SkillGraphSnapshot['doctor']> | undefined,
+  evalGraph: NonNullable<SkillGraphSnapshot['eval']> | undefined,
+  lang: Lang,
+): string | null {
+  const coveredKeys = new Set(evalGraph?.coveredDefinitionStableKeys ?? []);
+  if (!doctor || coveredKeys.size === 0) return null;
+  const coverable = doctor.definitionNodes.filter((node) => node.stableKey && DEFINITION_PREVIEW_KINDS.has(node.nodeKind));
+  if (coverable.length === 0) return null;
+  const coveredCount = coverable.filter((node) => node.stableKey && coveredKeys.has(node.stableKey)).length;
+  return lang === 'zh'
+    ? `覆盖锚点 ${coveredCount}/${coverable.length}`
+    : `coverage anchors ${coveredCount}/${coverable.length}`;
+}
+
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
   const zh = lang === 'zh';
   const graph = entry.graph;
@@ -1884,7 +1942,8 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     !entry.eval ? `- ${zh ? '测量效果' : 'Measure impact'}${stepSeparator} \`omk eval --control baseline --treatment ${sourceArg}\`` : '',
     !entry.observe ? `- ${zh ? '接入观察' : 'Add observation'}${stepSeparator} \`omk observe ingest <trace-dir>\`` : '',
   ].filter(Boolean);
-  const definitionPreview = previewNodes(doctor?.definitionNodes, DEFINITION_PREVIEW_KINDS, 8);
+  const coverageSummary = skillMapCoverageSummary(doctor, evalGraph, lang);
+  const definitionPreview = previewNodes(applyDefinitionCoverage(doctor?.definitionNodes, evalGraph?.coveredDefinitionStableKeys), DEFINITION_PREVIEW_KINDS, 8);
   const measurementPreview = previewNodes(evalGraph?.measurementNodes, MEASUREMENT_PREVIEW_KINDS, 8);
   const previewMermaidLines = [
     ...definitionPreview.visible.flatMap((node, index) => [
@@ -1920,6 +1979,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| eval | ${evalStatus} | ${evalGraph ? `${zh ? 'variant 子图' : 'variant subgraph'}: ${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
+    ...(coverageSummary ? ['', zh ? '### 覆盖锚点' : '### Coverage Anchors', '', coverageSummary] : []),
     '',
     zh ? '### 关键计数' : '### Key Counts',
     '',
@@ -1947,7 +2007,9 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const evalGraph = graph.eval;
   const band = skillMapBand(entry);
   const markdown = renderSkillEvidenceMarkdown(entry, lang);
-  const definitionCandidates = orderedPreviewNodes(doctor?.definitionNodes, DEFINITION_PREVIEW_KINDS, {
+  const coveredDefinitionNodes = applyDefinitionCoverage(doctor?.definitionNodes, evalGraph?.coveredDefinitionStableKeys);
+  const coverageSummary = skillMapCoverageSummary(doctor, evalGraph, lang);
+  const definitionCandidates = orderedPreviewNodes(coveredDefinitionNodes, DEFINITION_PREVIEW_KINDS, {
     reference: 1,
     script: 2,
     workflow: 3,
@@ -2024,10 +2086,15 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   ];
   const mapNodes = [...definitionNodes, ...measurementNodes];
   const mapDimensions = skillMapDimensions(mapNodes);
+  const topMeta = [
+    coverageSummary,
+    !coverageSummary && doctor ? `${doctor.nodeCount} ${zh ? '结构节点' : 'definition nodes'}` : '',
+    evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
+  ].filter(Boolean).join(' · ');
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
       <span class="si-sect-title">🗺 ${zh ? 'Skill Map' : 'Skill Map'}</span>
-      <span class="si-sect-meta">${doctor ? `${doctor.nodeCount} definition nodes` : (zh ? 'definition 未生成' : 'definition missing')} · ${evalGraph ? `${evalGraph.nodeCount} variant subgraph nodes` : (zh ? 'measurement 未生成' : 'measurement missing')}</span>
+      <span class="si-sect-meta">${e(topMeta || (zh ? '图谱数据未生成' : 'graph data missing'))}</span>
     </div>
     <div class="sm-body" data-sm-map data-sm-base-width="${mapDimensions.width}" data-sm-base-height="${mapDimensions.height}" data-sm-root-x="${SKILL_MAP_ROOT.x}" data-sm-root-y="${SKILL_MAP_ROOT.y}">
       ${renderSkillStageRail(entry, lang)}

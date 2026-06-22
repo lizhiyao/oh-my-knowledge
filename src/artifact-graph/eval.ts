@@ -13,6 +13,8 @@ import type {
   ArtifactGraphNodeRole,
   ArtifactGraphStatus,
   EvaluationReport,
+  SampleCoverageTarget,
+  SampleCoverageTargetKind,
   SampleSnapshot,
   VariantConfig,
   VariantResult,
@@ -171,7 +173,81 @@ function sampleAttrs(snapshot: SampleSnapshot | undefined): ArtifactGraphNode['a
   if (snapshot.provenance) display.provenance = snapshot.provenance;
   if (snapshot.tripwire) display.tripwire = true;
   if (snapshot.assertions?.length) display.assertionCount = snapshot.assertions.length;
+  if (snapshot.covers?.length) display.coveredTargetCount = snapshot.covers.length;
   return Object.keys(display).length > 0 ? { display } : undefined;
+}
+
+const COVERAGE_TARGET_NODE_KIND: Record<SampleCoverageTargetKind, ArtifactGraphNodeKind> = {
+  skill: 'skill',
+  skill_file: 'skill_file',
+  frontmatter: 'frontmatter',
+  reference: 'reference',
+  script: 'script',
+  hard_rule: 'hard_rule',
+  workflow: 'workflow',
+  workflow_node: 'workflow_node',
+};
+
+function normalizeCoverageRef(target: SampleCoverageTarget): string {
+  const raw = target.ref.trim().replaceAll('\\', '/');
+  if (target.targetKind === 'reference' || target.targetKind === 'script' || target.targetKind === 'skill_file') {
+    return raw.replace(/^\/+/, '').replace(/^\.\//, '');
+  }
+  return raw;
+}
+
+function coverageTargetStableKey(target: SampleCoverageTarget, artifactHash: string): string {
+  const ref = normalizeCoverageRef(target);
+  switch (target.targetKind) {
+    case 'skill':
+      return `v1:skill:${artifactHash}`;
+    case 'skill_file':
+      return `v1:skill-file:${artifactHash}:${ref || 'SKILL.md'}`;
+    case 'frontmatter':
+      return `v1:frontmatter:${artifactHash}`;
+    case 'reference':
+      return `v1:reference:${artifactHash}:${ref}`;
+    case 'script':
+      return `v1:script:${artifactHash}:${ref}`;
+    case 'hard_rule':
+      return `v1:hard-rule:${artifactHash}:${ref}`;
+    case 'workflow':
+      return `v1:workflow:${artifactHash}:${ref}`;
+    case 'workflow_node':
+      return `v1:workflow-node:${artifactHash}:${ref}`;
+  }
+}
+
+function coverageTargetLabel(target: SampleCoverageTarget): string {
+  const ref = normalizeCoverageRef(target);
+  switch (target.targetKind) {
+    case 'skill':
+      return ref && ref !== 'skill' ? ref : 'SKILL.md';
+    case 'skill_file':
+      return ref || 'SKILL.md';
+    case 'frontmatter':
+      return 'frontmatter';
+    default:
+      return ref;
+  }
+}
+
+function coverageEvidence(
+  report: EvaluationReport,
+  sampleId: string,
+  targetIndex: number,
+  target: SampleCoverageTarget,
+): ArtifactGraphEvidenceRef[] {
+  return [{
+    sourceKind: 'sample',
+    sourceId: sampleId,
+    selector: {
+      selectorKind: 'json-pointer',
+      value: `/sampleSnapshots/${jsonPointerToken(sampleId)}/covers/${targetIndex}`,
+    },
+    contentHash: report.meta.sampleHashes?.[sampleId],
+    label: `${sampleId} covers ${target.targetKind}:${normalizeCoverageRef(target)}`,
+  }];
 }
 
 export function evalGraphDirForReportOutput(reportOutputDir: string): string {
@@ -187,6 +263,18 @@ export function buildEvalArtifactGraph(options: BuildEvalGraphOptions): Artifact
   const edges: ArtifactGraphEdge[] = [];
   const nodeIdsByStableKey = new Map<string, string>();
   const configs = variantConfigByName(report);
+  const skillArtifacts = report.meta.variants
+    .map((variant) => ({
+      variant,
+      artifactHash: report.meta.artifactHashes?.[variant],
+      config: configs.get(variant),
+    }))
+    .filter((item): item is { variant: string; artifactHash: string; config: VariantConfig } =>
+      item.config?.artifactKind === 'skill'
+        && typeof item.artifactHash === 'string'
+        && item.artifactHash.length > 0
+        && item.artifactHash !== 'no-skill',
+    );
 
   const addNode = (
     stableKey: string,
@@ -225,6 +313,54 @@ export function buildEvalArtifactGraph(options: BuildEvalGraphOptions): Artifact
       edgeKind,
       layer: 'measurement',
       ...extra,
+    });
+  };
+
+  const addCoverageEdges = (sampleId: string, sampleNodeId: string, snapshot: SampleSnapshot): void => {
+    if (!snapshot.covers?.length || skillArtifacts.length === 0) return;
+    const seen = new Set<string>();
+    snapshot.covers.forEach((target, targetIndex) => {
+      const targetRef = normalizeCoverageRef(target);
+      if (!targetRef && target.targetKind !== 'skill' && target.targetKind !== 'frontmatter') return;
+      for (const artifact of skillArtifacts) {
+        const stableKey = coverageTargetStableKey(target, artifact.artifactHash);
+        const dedupeKey = `${sampleNodeId}|${stableKey}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const evidenceRefs = coverageEvidence(report, sampleId, targetIndex, target);
+        const targetNodeId = addNode(
+          stableKey,
+          COVERAGE_TARGET_NODE_KIND[target.targetKind],
+          'entity',
+          coverageTargetLabel(target),
+          {
+            binding: { bindingStrength: 'content-hash', keys: { artifactHash: artifact.artifactHash } },
+            attrs: {
+              display: {
+                targetKind: target.targetKind,
+                ref: targetRef,
+                variant: artifact.variant,
+                sourceLocator: artifact.config.locator,
+              },
+            },
+            evidenceRefs,
+          },
+        );
+        addEdge(sampleNodeId, targetNodeId, 'covers', {
+          confidence: 1,
+          binding: {
+            bindingStrength: 'explicit',
+            keys: {
+              sampleId,
+              targetKind: target.targetKind,
+              targetRef,
+              artifactHash: artifact.artifactHash,
+            },
+          },
+          attrs: { producer: { source: 'sample.covers' } },
+          evidenceRefs,
+        });
+      }
     });
   };
 
@@ -320,6 +456,7 @@ export function buildEvalArtifactGraph(options: BuildEvalGraphOptions): Artifact
       );
       addEdge(sampleNodeId, assertionNodeId, 'contains');
     });
+    addCoverageEdges(sampleId, sampleNodeId, snapshot);
   }
 
   for (const [resultIndex, result] of report.results.entries()) {

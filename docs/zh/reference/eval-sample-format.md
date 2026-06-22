@@ -69,10 +69,27 @@
 | `difficulty` | `'easy' \| 'medium' \| 'hard'` | 难度分桶（强枚举） |
 | `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
+| `covers` | `{ targetKind, ref }[]` | 这条用例显式覆盖的 skill 结构锚点，仅用于 Skill Map |
 | `mocks` | `object[]` | 工具调用拦截列表 —— 返回假数据而非真调工具 |
 | `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
 | `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
 | `environment` | `object` | 声明性「已就绪」前置：`cli_available` / `files_available` / `notes` |
+
+`covers` 必须显式声明，不从 prompt 文本里推断。Studio 会用它画出哪些 skill 结构已被用例真正测到：
+
+```yaml
+- sample_id: release-risk-summary
+  prompt: "总结发布风险和回滚方案。"
+  covers:
+    - targetKind: reference
+      ref: references/release-policy.md
+    - targetKind: workflow
+      ref: release
+    - targetKind: workflow_node
+      ref: release.check
+```
+
+`targetKind` 支持 `skill`、`skill_file`、`frontmatter`、`reference`、`script`、`hard_rule`、`workflow`、`workflow_node`。`reference` / `script` 的 `ref` 是相对 skill 根目录的路径；`hard_rule` / `workflow` 使用规则或 workflow id；`workflow_node` 使用 `workflowId.nodeId`。这个字段不进入 grading、评委 prompt、verdict，也不进入 sample 指纹。
 
 ## URL 自动抓取
 
