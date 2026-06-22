@@ -325,6 +325,7 @@ export interface ResultEntry {
  *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
  *   - mocks: 工具调用模拟返回(LLM 调到匹配的 tool/参数时拿到这段假返回,而不是真去调外部系统)
  *   - capability / construct / difficulty: 元数据
+ *   - covers: sample 可选声明的 skill 结构锚点
  *   - context: 附加上下文(代码片段等)
  *
  * 旧 report 没有这个字段,renderer 据此 fallback(隐藏单测 tab 或提示"无设计快照")。
@@ -340,6 +341,7 @@ export interface SampleSnapshot {
   difficulty?: import('./eval.js').SampleDifficulty;
   construct?: string;
   provenance?: import('./eval.js').SampleProvenance;
+  covers?: import('./eval.js').SampleCoverageTarget[];
   /** Diagnostic 用 — tripwire sample 不该建议改 skill。 */
   tripwire?: boolean;
 }
@@ -466,7 +468,7 @@ export interface AnalysisResult {
   coverage?: Record<string, KnowledgeCoverage>;
   /** Per-variant knowledge gap reports. See docs/specs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;
-  /** Sample design science aggregate. Built from sample metadata
+  /** Sample design science aggregate. Built from measurement metadata
    *  (capability / difficulty / construct / provenance); persisted on report
    *  for studio to surface coverage gaps. See docs/specs/sample-design-spec.md. */
   sampleQuality?: SampleQualityAggregate;

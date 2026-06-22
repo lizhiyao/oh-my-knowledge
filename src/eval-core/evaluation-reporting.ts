@@ -355,6 +355,7 @@ export function aggregateReport({
       ...(s.difficulty ? { difficulty: s.difficulty } : {}),
       ...(s.construct ? { construct: s.construct } : {}),
       ...(s.provenance ? { provenance: s.provenance } : {}),
+      ...(s.covers && s.covers.length > 0 ? { covers: s.covers } : {}),
       ...(s.tripwire ? { tripwire: true } : {}),
     }])),
   };

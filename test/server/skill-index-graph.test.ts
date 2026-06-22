@@ -231,6 +231,9 @@ function evalGraph(): ArtifactGraphDocument {
       { id: 'er-other', stableKey: 'v1:eval-result:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'eval_result', nodeRole: 'observation', layer: 'measurement', label: 'release-helper / s001' },
       { id: 'diag', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:service-guide:s002', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: service-guide / s002' },
       { id: 'diag-other', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: release-helper / s001' },
+      { id: 'cover-ref', stableKey: 'v1:reference:hash-service-guide:references/a.md', nodeKind: 'reference', nodeRole: 'entity', layer: 'measurement', label: 'references/a.md', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'cover-workflow', stableKey: 'v1:workflow:hash-service-guide:release', nodeKind: 'workflow', nodeRole: 'entity', layer: 'measurement', label: 'release', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'cover-other', stableKey: 'v1:reference:hash-release-helper:references/a.md', nodeKind: 'reference', nodeRole: 'entity', layer: 'measurement', label: 'references/a.md', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-release-helper' } } },
     ],
     edges: [
       { id: 'e1', fromNodeId: 'variant', toNodeId: 'skill', edgeKind: 'derived_from', layer: 'measurement' },
@@ -249,6 +252,9 @@ function evalGraph(): ArtifactGraphDocument {
       { id: 'e14', fromNodeId: 'er-other', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement' },
       { id: 'e15', fromNodeId: 'er-other', toNodeId: 'a3', edgeKind: 'fails', layer: 'measurement', status: 'failed' },
       { id: 'e16', fromNodeId: 'diag-other', toNodeId: 'er-other', edgeKind: 'diagnoses', layer: 'measurement', status: 'failed' },
+      { id: 'e17', fromNodeId: 's001', toNodeId: 'cover-ref', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's001', targetKind: 'reference', targetRef: 'references/a.md', artifactHash: 'hash-service-guide' } } },
+      { id: 'e18', fromNodeId: 's002', toNodeId: 'cover-workflow', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's002', targetKind: 'workflow', targetRef: 'release', artifactHash: 'hash-service-guide' } } },
+      { id: 'e19', fromNodeId: 's001', toNodeId: 'cover-other', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's001', targetKind: 'reference', targetRef: 'references/a.md', artifactHash: 'hash-release-helper' } } },
     ],
   };
 }
@@ -307,8 +313,13 @@ describe('SkillIndex graph projection', () => {
     assert.equal(entry.graph?.eval?.failedAssertionEdges, 1);
     assert.equal(entry.graph?.eval?.diagnostics, 1);
     assert.equal(entry.graph?.eval?.variantName, 'service-guide');
-    assert.equal(entry.graph?.eval?.nodeCount, 9);
-    assert.equal(entry.graph?.eval?.edgeCount, 10);
+    assert.equal(entry.graph?.eval?.nodeCount, 11);
+    assert.equal(entry.graph?.eval?.edgeCount, 12);
+    assert.equal(entry.graph?.eval?.coverageEdges, 2);
+    assert.deepEqual(entry.graph?.eval?.declaredCoverageStableKeys, [
+      'v1:reference:hash-service-guide:references/a.md',
+      'v1:workflow:hash-service-guide:release',
+    ]);
 
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
@@ -339,6 +350,9 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('class="sm-bind"'));
     assert.ok(!html.includes('alert(1)'));
     assert.ok(!html.includes('sm-node--ok"'));
+    assert.ok(html.includes('sm-node--coverage-declared'));
+    assert.ok(html.includes('sm-node--coverage-undeclared'));
+    assert.ok(html.includes('声明锚点 2/7'));
     assert.ok(html.includes('background-size:auto,28px 28px,28px 28px,auto'));
     assert.ok(html.includes('outline:4px solid rgba(79,70,229,.07)'));
     assert.ok(html.includes('title="sample: s001"'));

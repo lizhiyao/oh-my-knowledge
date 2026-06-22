@@ -62,7 +62,7 @@ describe('loadSamples', () => {
 
   // sample design metadata fields validation
   describe('sample design metadata', () => {
-    it('接受 capability / difficulty / construct / provenance 4 个新字段', () => {
+    it('接受 capability / difficulty / construct / provenance / covers 字段', () => {
       const p = writeJsonSamples('with-meta.json', [{
         sample_id: 's1',
         prompt: 'p',
@@ -70,12 +70,20 @@ describe('loadSamples', () => {
         difficulty: 'medium',
         construct: 'necessity',
         provenance: 'human',
+        covers: [
+          { targetKind: 'reference', ref: 'references/release.md' },
+          { targetKind: 'workflow_node', ref: 'release.check' },
+        ],
       }]);
       const { samples } = loadSamples(p);
       assert.deepEqual(samples[0].capability, ['api-selection', 'error-diagnosis']);
       assert.equal(samples[0].difficulty, 'medium');
       assert.equal(samples[0].construct, 'necessity');
       assert.equal(samples[0].provenance, 'human');
+      assert.deepEqual(samples[0].covers, [
+        { targetKind: 'reference', ref: 'references/release.md' },
+        { targetKind: 'workflow_node', ref: 'release.check' },
+      ]);
     });
 
     it('老 sample(无新字段)仍正常解析', () => {
@@ -111,6 +119,24 @@ describe('loadSamples', () => {
         file: 'bad-cap-elem.json',
         value: [{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] }],
         error: /capability\[1\] must be a non-empty string/,
+      },
+      {
+        name: 'covers is not array',
+        file: 'bad-covers.json',
+        value: [{ sample_id: 's1', prompt: 'p', covers: 'references/a.md' }],
+        error: /invalid covers.*array/,
+      },
+      {
+        name: 'covers targetKind invalid',
+        file: 'bad-covers-kind.json',
+        value: [{ sample_id: 's1', prompt: 'p', covers: [{ targetKind: 'file', ref: 'references/a.md' }] }],
+        error: /covers\[0\] invalid targetKind/,
+      },
+      {
+        name: 'covers ref empty',
+        file: 'bad-covers-ref.json',
+        value: [{ sample_id: 's1', prompt: 'p', covers: [{ targetKind: 'reference', ref: '' }] }],
+        error: /covers\[0\] invalid ref/,
       },
     ];
 

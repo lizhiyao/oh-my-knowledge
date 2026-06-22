@@ -514,6 +514,7 @@ function countGraphNodes(graph: ArtifactGraphDocument, nodeKind: ArtifactGraphNo
 
 function graphNodePreview(node: ArtifactGraphNode): SkillGraphNodePreview {
   return {
+    stableKey: node.stableKey,
     nodeKind: node.nodeKind,
     label: node.label,
     ...(node.status ? { status: node.status } : {}),
@@ -613,6 +614,20 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     }
   }
 
+  const declaredCoverageStableKeys = new Set<string>();
+  let coverageEdges = 0;
+  for (const edge of graph.edges) {
+    if (edge.edgeKind !== 'covers') continue;
+    const from = nodesById.get(edge.fromNodeId);
+    const to = nodesById.get(edge.toNodeId);
+    if (from?.nodeKind !== 'sample' || !to) continue;
+    if (!projectedNodeIds.has(from.id)) continue;
+    if (artifactHash && nodeArtifactHash(to) !== artifactHash) continue;
+    addEdge(edge);
+    coverageEdges += 1;
+    if (to.stableKey) declaredCoverageStableKeys.add(to.stableKey);
+  }
+
   const sampleIds = new Set<string>();
   const assertionIds = new Set<string>();
   const diagnosticIds = new Set<string>();
@@ -651,6 +666,8 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
       failedAssertionEdges,
       diagnostics: diagnosticIds.size,
       measurementNodes,
+      coverageEdges,
+      declaredCoverageStableKeys: [...declaredCoverageStableKeys].sort(),
     },
     ...(artifactHash ? { artifactHash } : {}),
     ...(sourceLocator ? { sourceLocator } : {}),

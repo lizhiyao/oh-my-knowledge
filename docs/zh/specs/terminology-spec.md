@@ -115,12 +115,13 @@
 
 #### 6.1 Sample 元数据字段
 
-Sample schema 含 4 个可选元数据字段，纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/zh/specs/sample-design-spec.md](sample-design-spec.md)。
+Sample schema 含一组可选元数据字段，纯文档 / 诊断用，**不参与 grading / judge / verdict**。详见 [docs/zh/specs/sample-design-spec.md](sample-design-spec.md)。
 
 - **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
 - **`construct?: string`** — 该 sample 测的 construct 类型。Suggested:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好)/ `'capability'`(测某具体能力)。Free-form string 允许自定义。
 - **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
+- **`covers?: { targetKind: string; ref: string }[]`** — 这条 sample 可选声明的 skill 结构锚点，Skill Map 用它展示已声明 / 未声明的定义节点。
 
 **construct 跟 capability 区别**(用户最常混淆的两个字段):
 - **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性，跑 skill-v1-vs-skill-v2 是测质量。

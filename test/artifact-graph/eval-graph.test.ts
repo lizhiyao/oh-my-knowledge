@@ -202,6 +202,35 @@ describe('eval artifact graph', () => {
     assert.ok(!graph.edges.some((edge) => edge.edgeKind === 'covers'));
   });
 
+  it('emits explicit sample covers edges to skill definition anchors', () => {
+    const report = makeReport();
+    report.sampleSnapshots!.s001.covers = [
+      { targetKind: 'reference', ref: './references/release-policy.md' },
+      { targetKind: 'workflow_node', ref: 'release.check' },
+    ];
+
+    const graph = buildEvalArtifactGraph({
+      report,
+      sourcePath: '/tmp/.omk/reports/service-guide.report.json',
+      generatedAt: '2026-06-20T10:30:00.000Z',
+    });
+
+    const coversEdges = graph.edges.filter((edge) => edge.edgeKind === 'covers');
+    assert.equal(coversEdges.length, 2);
+    assert.ok(coversEdges.every((edge) => edge.binding?.bindingStrength === 'explicit'));
+    assert.ok(coversEdges.every((edge) => edge.confidence === 1));
+    assert.ok(graph.nodes.some((node) =>
+      node.nodeKind === 'reference'
+        && node.stableKey === 'v1:reference:skillhash1234:references/release-policy.md',
+    ));
+    assert.ok(graph.nodes.some((node) =>
+      node.nodeKind === 'workflow_node'
+        && node.stableKey === 'v1:workflow-node:skillhash1234:release.check',
+    ));
+    const sampleNode = graph.nodes.find((node) => node.nodeKind === 'sample' && node.label === 's001');
+    assert.equal(sampleNode?.attrs?.display?.declaredCoverageTargetCount, 2);
+  });
+
   it('points assertion evidence at eval result details when sample snapshot is absent', () => {
     const report = makeReport();
     report.sampleSnapshots = {};

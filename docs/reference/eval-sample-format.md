@@ -69,10 +69,27 @@ A sample can also carry **metadata** (documentation / diagnostics only — these
 | `difficulty` | `'easy' \| 'medium' \| 'hard'` | difficulty bucket (strict enum) |
 | `construct` | `string` | what it measures: `necessity` / `quality` / `capability` (custom allowed) |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
+| `covers` | `{ targetKind, ref }[]` | optional declared skill-structure anchors for high-value samples; used by Skill Map only |
 | `mocks` | `object[]` | tool-call interception list — return fake data instead of really calling the tool |
 | `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `false`) |
 | `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
 | `environment` | `object` | declared "already provisioned" preconditions: `cli_available` / `files_available` / `notes` |
+
+`covers` is optional and intentionally explicit, not inferred from prompt text. Use it first on critical or high-signal samples, so Studio can draw declared structure edges without forcing every sample to become a maintenance task. Omitting `covers` means the structure edge is undeclared in Skill Map, not proven untested:
+
+```yaml
+- sample_id: release-risk-summary
+  prompt: "Summarize release risk and rollback plan."
+  covers:
+    - targetKind: reference
+      ref: references/release-policy.md
+    - targetKind: workflow
+      ref: release
+    - targetKind: workflow_node
+      ref: release.check
+```
+
+Allowed `targetKind` values are `skill`, `skill_file`, `frontmatter`, `reference`, `script`, `hard_rule`, `workflow`, and `workflow_node`. For `reference` / `script`, `ref` is the path relative to the skill root. For `hard_rule` / `workflow`, use the rule or workflow id. For `workflow_node`, use `workflowId.nodeId`. This field never enters grading, the judge prompt, the verdict, or the sample fingerprint.
 
 ## URL auto-fetching
 

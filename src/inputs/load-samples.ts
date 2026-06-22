@@ -143,6 +143,16 @@ export function validateSamples(samples: Sample[]): void {
   // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
   const VALID_DIFFICULTY: ReadonlySet<string> = new Set(['easy', 'medium', 'hard']);
   const VALID_PROVENANCE: ReadonlySet<string> = new Set(['human', 'llm-generated', 'production-trace']);
+  const VALID_COVERAGE_TARGET_KIND: ReadonlySet<string> = new Set([
+    'skill',
+    'skill_file',
+    'frontmatter',
+    'reference',
+    'script',
+    'hard_rule',
+    'workflow',
+    'workflow_node',
+  ]);
 
   for (const [i, sample] of samples.entries()) {
     if (!sample.sample_id || typeof sample.sample_id !== 'string') {
@@ -181,6 +191,31 @@ export function validateSamples(samples: Sample[]): void {
       throw new Error(
         `samples[${i}] (${sample.sample_id}) invalid construct: must be a string (got ${typeof sample.construct})`,
       );
+    }
+    if (sample.covers !== undefined) {
+      if (!Array.isArray(sample.covers)) {
+        throw new Error(
+          `samples[${i}] (${sample.sample_id}) invalid covers: must be an array of coverage target objects`,
+        );
+      }
+      for (const [j, target] of sample.covers.entries()) {
+        if (!target || typeof target !== 'object' || Array.isArray(target)) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) covers[${j}] must be an object with targetKind/ref`,
+          );
+        }
+        const record = target as unknown as Record<string, unknown>;
+        if (typeof record.targetKind !== 'string' || !VALID_COVERAGE_TARGET_KIND.has(record.targetKind)) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) covers[${j}] invalid targetKind: ${JSON.stringify(record.targetKind)}, expected one of [${[...VALID_COVERAGE_TARGET_KIND].join(', ')}]`,
+          );
+        }
+        if (typeof record.ref !== 'string' || !record.ref.trim()) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) covers[${j}] invalid ref: must be a non-empty string`,
+          );
+        }
+      }
     }
 
     // tools_called / tools_not_called: values 必须非空。空 values 在 grader 里
