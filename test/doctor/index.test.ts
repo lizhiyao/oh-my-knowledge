@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/typ
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE_SKILLS_DIR = join(__dirname, '..', 'fixtures', 'code-review', 'skills');
+const PACKAGE_VERSION = (JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8')) as { version: string }).version;
 
 const passingRule: DoctorRule = {
   id: 'test_pass',
@@ -354,6 +355,26 @@ describe('runDoctor', () => {
         assert.equal(typeof r.message, 'string');
         assert.equal(typeof r.durationMs, 'number');
       }
+    }
+  });
+
+  it('uses package version when npm package env is absent', async () => {
+    const originalVersion = process.env.npm_package_version;
+    delete process.env.npm_package_version;
+    try {
+      const report = await runDoctor({
+        target: EXAMPLE_SKILLS_DIR,
+        cwd: '/tmp',
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        rules: [passingRule],
+      });
+      assert.equal(report.cliVersion, PACKAGE_VERSION);
+    } finally {
+      if (originalVersion === undefined) delete process.env.npm_package_version;
+      else process.env.npm_package_version = originalVersion;
     }
   });
 
