@@ -26,7 +26,7 @@ omk doctor skills/release-readiness --static-only
 - `.omk/graphs/doctor/<skill>-<run>.graph.json`
 - `.omk/graphs/doctor/<skill>-<run>.card.md`
 
-Markdown 文件是可分享的 Evidence Card。它应该展示 references、scripts、workflows、workflow nodes、sample count 和 doctor status。
+Markdown 文件是可分享的证据卡片。它应该展示 references、scripts、workflows、workflow nodes、sample count 和 doctor status。
 
 继续进入评测前，先预览任务计划：
 
