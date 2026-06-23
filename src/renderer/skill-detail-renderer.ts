@@ -1778,8 +1778,8 @@ function graphNodeCoverageClass(node: SkillGraphNodePreview): string {
 }
 
 function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string {
-  if (node.coverage === 'declared') return lang === 'zh' ? '已声明覆盖关系' : 'declared coverage';
-  if (node.coverage === 'undeclared') return lang === 'zh' ? '未声明覆盖关系' : 'coverage not declared';
+  if (node.coverage === 'declared') return lang === 'zh' ? '已由评测用例声明' : 'declared by eval samples';
+  if (node.coverage === 'undeclared') return lang === 'zh' ? '尚未由评测用例声明' : 'not declared by eval samples';
   return '';
 }
 
@@ -1920,14 +1920,14 @@ function skillMapCoverageDeclarationSummary(
   const declaredCount = coverable.filter((node) => node.stableKey && declaredKeys.has(node.stableKey)).length;
   const samples = evalGraph?.samples ?? 0;
   return lang === 'zh'
-    ? `${samples} 条用例声明了 ${declaredCount}/${coverable.length} 个结构节点`
-    : `${samples} samples declared ${declaredCount}/${coverable.length} structure nodes`;
+    ? `${samples} 条评测用例声明了 ${declaredCount}/${coverable.length} 个结构节点`
+    : `${samples} eval samples declared ${declaredCount}/${coverable.length} structure nodes`;
 }
 
 function skillMapCoverageDeclarationHint(lang: Lang): string {
   return lang === 'zh'
-    ? '这些声明来自 sample.covers，用于说明用例主要触达哪些 reference、hard rule 或 workflow；未声明不代表没有测到。'
-    : 'These declarations come from sample.covers and show which references, hard rules, or workflows the samples intentionally target; undeclared does not mean untested.';
+    ? '这些关系来自 sample.covers，表示评测用例显式标注的主要触达节点；尚未声明只表示还没有被评测用例显式标注，不应直接视为测试缺口。'
+    : 'These relationships come from sample.covers and show the main nodes explicitly annotated by eval samples; not declared only means not explicitly annotated yet, not necessarily a test gap.';
 }
 
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {

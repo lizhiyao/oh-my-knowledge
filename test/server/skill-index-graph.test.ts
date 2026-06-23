@@ -352,8 +352,9 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('sm-node--ok"'));
     assert.ok(html.includes('sm-node--coverage-declared'));
     assert.ok(html.includes('sm-node--coverage-undeclared'));
-    assert.ok(html.includes('2 条用例声明了 2/7 个结构节点'));
-    assert.ok(html.includes('这些声明来自 sample.covers'));
+    assert.ok(html.includes('2 条评测用例声明了 2/7 个结构节点'));
+    assert.ok(html.includes('这些关系来自 sample.covers'));
+    assert.ok(html.includes('尚未声明只表示还没有被评测用例显式标注'));
     assert.ok(html.includes('background-size:auto,28px 28px,28px 28px,auto'));
     assert.ok(html.includes('outline:4px solid rgba(79,70,229,.07)'));
     assert.ok(html.includes('title="sample: s001"'));
