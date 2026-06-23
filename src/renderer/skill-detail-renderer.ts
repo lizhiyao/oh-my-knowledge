@@ -473,7 +473,10 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-node[data-sm-draggable="1"][data-sm-more-toggle] { cursor:grab }
 .sm-node[data-sm-draggable="1"][data-sm-more-toggle].is-dragging { cursor:grabbing }
 .sm-node[data-sm-more-toggle]:hover,.sm-node[data-sm-more-toggle]:focus-visible { border-color:#9fbfb5;background:#f1fbf7;outline:none }
+.sm-node:hover,.sm-node:focus-visible,.sm-node.is-selected { border-color:#4f46e5;outline:3px solid rgba(79,70,229,.12);outline-offset:2px }
+.sm-node.is-selected { z-index:2;box-shadow:0 14px 30px rgba(79,70,229,13%) }
 .sm-node--skill { width:172px;min-height:86px;border-color:#4f46e5;background:linear-gradient(180deg,#fff 0%,#f7f8ff 100%);box-shadow:0 16px 34px rgba(79,70,229,14%);outline:4px solid rgba(79,70,229,.07) }
+.sm-node--skill.is-selected { outline-color:rgba(79,70,229,.15) }
 .sm-node--definition { border-color:#b7d8cf;background:#f4fbf8 }
 .sm-node--measurement { border-color:#c7d2fe;background:#f7f8ff }
 .sm-node--ok { border-color:rgba(31,157,99,.38);background:rgba(31,157,99,.06) }
@@ -496,6 +499,16 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-stage-k { font-size:10px;text-transform:uppercase;letter-spacing:0;color:#7b8798;font-family:"SF Mono",Menlo,monospace;line-height:1 }
 .sm-stage-v { font-size:13px;font-weight:700;color:#182033;line-height:1.35 }
 .sm-stage-arrow { color:#b8c5d8;font-size:18px;line-height:1;text-align:center }
+.sm-detail { display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(260px,2fr);gap:12px;align-items:start;padding:12px;border:1px solid #e4e8f1;border-radius:8px;background:linear-gradient(180deg,#fff 0%,#fbfcff 100%) }
+.sm-detail-head { min-width:0 }
+.sm-detail-kind { display:inline-flex;align-items:center;min-height:20px;padding:0 7px;border-radius:10px;background:#eef2ff;color:#4f46e5;font-size:10.5px;font-weight:700;line-height:1 }
+.sm-detail-title { margin-top:8px;font-size:15px;font-weight:700;line-height:1.35;color:#182033;word-break:break-word }
+.sm-detail-subtitle { margin-top:3px;font-size:12px;line-height:1.45;color:#637083;word-break:break-word }
+.sm-detail-list { margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px }
+.sm-detail-row { min-width:0;padding:8px 10px;border:1px solid #eef2f7;border-radius:7px;background:#fff }
+.sm-detail-row[hidden] { display:none !important }
+.sm-detail-row dt { margin:0 0 3px;font-size:10.5px;color:#8792a4;font-weight:600;line-height:1.2 }
+.sm-detail-row dd { margin:0;font-size:12px;color:#384255;line-height:1.45;word-break:break-word }
 .sm-card { border:1px solid #e4e8f1;border-radius:8px;background:#fff;overflow:hidden }
 .sm-card > summary { cursor:pointer;list-style:none;padding:10px 12px;font-size:12.5px;font-weight:600;color:#4f46e5;user-select:none }
 .sm-card > summary::-webkit-details-marker { display:none }
@@ -507,6 +520,8 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
   .sm-stage-rail { grid-template-columns:1fr;gap:6px }
   .sm-stage-arrow { transform:rotate(90deg);font-size:16px }
   .sm-canvas { height:620px;min-height:620px }
+  .sm-detail { grid-template-columns:1fr }
+  .sm-detail-list { grid-template-columns:1fr }
   .sm-node { width:142px }
   .sm-node--skill { width:168px }
 }
@@ -896,6 +911,7 @@ const SKILL_MAP_INIT_SCRIPT = `
     var stage = map.querySelector('[data-sm-graph-stage]');
     var graph = map.querySelector('[data-sm-graph]');
     var label = map.querySelector('[data-sm-zoom-label]');
+    var detail = map.querySelector('[data-sm-detail]');
     if (!viewport || !stage || !graph) return;
     var baseWidth = Number(map.getAttribute('data-sm-base-width')) || 1100;
     var baseHeight = Number(map.getAttribute('data-sm-base-height')) || 560;
@@ -904,6 +920,7 @@ const SKILL_MAP_INIT_SCRIPT = `
     var zoom = 1;
     var dragState = null;
     var suppressMoreClickUntil = 0;
+    var selectedNodeId = '';
 
     function edgePoint(fromX, fromY, toX, toY, box){
       var dx = toX - fromX;
@@ -950,6 +967,62 @@ const SKILL_MAP_INIT_SCRIPT = `
       node.setAttribute('data-sm-y', String(Math.round(y * 10) / 10));
       node.style.left = x + 'px';
       node.style.top = y + 'px';
+    }
+
+    function detailText(node, attr, fallback){
+      var value = node ? node.getAttribute(attr) : '';
+      return value && value.trim() ? value : (fallback || '');
+    }
+
+    function setDetailValue(key, value, required){
+      if (!detail) return;
+      var row = detail.querySelector('[data-sm-detail-row="' + key + '"]');
+      var valueEl = detail.querySelector('[data-sm-detail-value="' + key + '"]');
+      var hasValue = !!(value && value.trim());
+      if (valueEl) valueEl.textContent = hasValue ? value : '—';
+      if (row) {
+        var hidden = !hasValue && !required;
+        row.hidden = hidden;
+        row.toggleAttribute('hidden', hidden);
+      }
+    }
+
+    function selectedMoreStatus(node){
+      if (!node || !node.hasAttribute('data-sm-more-toggle')) return '';
+      var attr = node.getAttribute('aria-expanded') === 'true'
+        ? 'data-sm-detail-expanded-status'
+        : 'data-sm-detail-collapsed-status';
+      return node.getAttribute(attr) || '';
+    }
+
+    function setSelectedNode(node){
+      if (!node || node.hidden) return;
+      var nodeId = node.getAttribute('data-sm-node-id') || '';
+      selectedNodeId = nodeId;
+      graph.querySelectorAll('.sm-node.is-selected').forEach(function(item){
+        item.classList.remove('is-selected');
+        item.setAttribute('aria-pressed', 'false');
+      });
+      node.classList.add('is-selected');
+      node.setAttribute('aria-pressed', 'true');
+      if (!detail) return;
+      var title = detailText(node, 'data-sm-detail-title', node.textContent || '');
+      var subtitle = detailText(node, 'data-sm-detail-subtitle', '');
+      var kind = detailText(node, 'data-sm-detail-kind', '');
+      var kindEl = detail.querySelector('[data-sm-detail-kind-label]');
+      var titleEl = detail.querySelector('[data-sm-detail-title]');
+      var subtitleEl = detail.querySelector('[data-sm-detail-subtitle]');
+      if (kindEl) kindEl.textContent = kind;
+      if (titleEl) titleEl.textContent = title;
+      if (subtitleEl) {
+        subtitleEl.textContent = subtitle;
+        subtitleEl.hidden = !subtitle;
+        subtitleEl.toggleAttribute('hidden', !subtitle);
+      }
+      setDetailValue('scope', detailText(node, 'data-sm-detail-scope', ''), true);
+      setDetailValue('source', detailText(node, 'data-sm-detail-source', ''), false);
+      setDetailValue('coverage', detailText(node, 'data-sm-detail-coverage', ''), false);
+      setDetailValue('status', selectedMoreStatus(node) || detailText(node, 'data-sm-detail-status', ''), false);
     }
 
     function updateEdgesForNode(nodeId, x, y){
@@ -1082,6 +1155,13 @@ const SKILL_MAP_INIT_SCRIPT = `
         edge.setAttribute('aria-hidden', shouldHideEdge ? 'true' : 'false');
         edge.style.display = shouldHideEdge ? 'none' : '';
       });
+      if (selectedNodeId) {
+        var selectedNode = graph.querySelector('[data-sm-node-id="' + selectedNodeId + '"]');
+        if (selectedNode && selectedNode.hidden) {
+          var rootNode = graph.querySelector('[data-sm-root]');
+          if (rootNode) setSelectedNode(rootNode);
+        }
+      }
     }
 
     function setMoreExpanded(toggle, expanded){
@@ -1094,6 +1174,7 @@ const SKILL_MAP_INIT_SCRIPT = `
       if (nextLabel) toggle.setAttribute('title', nextLabel);
       updateVisibility();
       refreshEdges();
+      if (selectedNodeId && toggle.getAttribute('data-sm-node-id') === selectedNodeId) setSelectedNode(toggle);
     }
 
     function collapseMoreGroups(){
@@ -1128,11 +1209,13 @@ const SKILL_MAP_INIT_SCRIPT = `
           return;
         }
         ev.preventDefault();
+        setSelectedNode(toggle);
         setMoreExpanded(toggle, toggle.getAttribute('aria-expanded') !== 'true');
       });
       toggle.addEventListener('keydown', function(ev){
         if (ev.key !== 'Enter' && ev.key !== ' ') return;
         ev.preventDefault();
+        setSelectedNode(toggle);
         setMoreExpanded(toggle, toggle.getAttribute('aria-expanded') !== 'true');
       });
     });
@@ -1144,6 +1227,7 @@ const SKILL_MAP_INIT_SCRIPT = `
         var nodeId = node.getAttribute('data-sm-node-id');
         if (!nodeId) return;
         ev.preventDefault();
+        setSelectedNode(node);
         dragState = {
           node: node,
           nodeId: nodeId,
@@ -1192,6 +1276,19 @@ const SKILL_MAP_INIT_SCRIPT = `
       node.addEventListener('pointercancel', finishDrag);
     });
 
+    graph.querySelectorAll('[data-sm-node-id]').forEach(function(node){
+      node.addEventListener('click', function(){
+        if (node.hasAttribute('data-sm-more-toggle') && Date.now() < suppressMoreClickUntil) return;
+        setSelectedNode(node);
+      });
+      node.addEventListener('keydown', function(ev){
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        if (node.hasAttribute('data-sm-more-toggle')) return;
+        ev.preventDefault();
+        setSelectedNode(node);
+      });
+    });
+
     viewport.addEventListener('wheel', function(ev){
       if (!ev.ctrlKey && !ev.metaKey) return;
       ev.preventDefault();
@@ -1202,6 +1299,8 @@ const SKILL_MAP_INIT_SCRIPT = `
 
     applyZoom();
     updateVisibility();
+    var initialRoot = graph.querySelector('[data-sm-root]');
+    if (initialRoot) setSelectedNode(initialRoot);
     requestAnimationFrame(function(){
       refreshEdges();
       centerRoot();
@@ -1783,6 +1882,163 @@ function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string
   return '';
 }
 
+function graphNodeDetailKindLabel(nodeKind: string, lang: Lang): string {
+  const zh = lang === 'zh';
+  const labels: Record<string, [string, string]> = {
+    skill: ['Skill 根节点', 'Skill root'],
+    skill_file: ['Skill 文件', 'Skill file'],
+    frontmatter: ['Frontmatter', 'Frontmatter'],
+    reference: ['引用文档', 'Reference'],
+    script: ['脚本', 'Script'],
+    tool: ['工具', 'Tool'],
+    hard_rule: ['硬规则', 'Hard rule'],
+    workflow: ['流程', 'Workflow'],
+    workflow_node: ['流程节点', 'Workflow node'],
+    sample: ['评测用例', 'Eval sample'],
+    assertion: ['断言', 'Assertion'],
+    eval_result: ['评测结果', 'Eval result'],
+    diagnostic: ['诊断', 'Diagnostic'],
+    more: ['折叠分组', 'Collapsed group'],
+  };
+  const pair = labels[nodeKind] ?? [nodeKind, nodeKind];
+  return zh ? pair[0] : pair[1];
+}
+
+function graphNodeStatusLabel(status: string | undefined, lang: Lang): string {
+  if (!status) return '';
+  const zh = lang === 'zh';
+  const labels: Record<string, [string, string]> = {
+    ok: ['正常', 'ok'],
+    warning: ['告警', 'warning'],
+    failed: ['失败', 'failed'],
+    skipped: ['已跳过', 'skipped'],
+    unknown: ['未知', 'unknown'],
+    not_measured: ['未测量', 'not measured'],
+  };
+  const pair = labels[status];
+  if (!pair) return '';
+  return zh ? pair[0] : pair[1];
+}
+
+function skillMapLayerLabel(layer: 'definition' | 'measurement', lang: Lang): string {
+  if (layer === 'definition') return lang === 'zh' ? '结构定义' : 'Definition';
+  return lang === 'zh' ? '评测测量' : 'Measurement';
+}
+
+function graphNodeDetailSource(node: SkillGraphNodePreview, lang: Lang): string {
+  const zh = lang === 'zh';
+  switch (node.nodeKind) {
+    case 'reference':
+    case 'script':
+      return node.label;
+    case 'workflow':
+      return `${zh ? 'workflow id' : 'workflow id'}: ${node.label}`;
+    case 'workflow_node':
+      return `${zh ? 'workflow node' : 'workflow node'}: ${node.label}`;
+    case 'hard_rule':
+      return `${zh ? 'rule id' : 'rule id'}: ${node.label}`;
+    case 'sample':
+      return `${zh ? 'sample_id' : 'sample_id'}: ${node.label}`;
+    case 'assertion':
+    case 'diagnostic':
+    case 'eval_result':
+    case 'tool':
+    case 'frontmatter':
+      return node.label;
+    default:
+      return '';
+  }
+}
+
+function attr(name: string, value: string | undefined | null): string {
+  return value ? ` ${name}="${e(value)}"` : '';
+}
+
+function renderSkillMapDetailAttrs(item: SkillMapPositionedNode, lang: Lang): string {
+  const coverageLabel = graphNodeCoverageLabel(item.node, lang);
+  const isMore = item.node.nodeKind === 'more';
+  const scope = skillMapLayerLabel(item.layer, lang);
+  const status = isMore ? (lang === 'zh' ? '已收起' : 'collapsed') : graphNodeStatusLabel(item.node.status, lang);
+  return [
+    attr('data-sm-detail-kind', graphNodeDetailKindLabel(item.node.nodeKind, lang)),
+    attr('data-sm-detail-title', isMore ? item.node.label : graphNodeDisplayLabel(item.node, lang)),
+    attr('data-sm-detail-subtitle', isMore ? scope : graphNodeDetailSource(item.node, lang)),
+    attr('data-sm-detail-scope', scope),
+    attr('data-sm-detail-source', graphNodeDetailSource(item.node, lang)),
+    attr('data-sm-detail-coverage', coverageLabel),
+    attr('data-sm-detail-status', status),
+    ...(item.moreToggle ? [
+      attr('data-sm-detail-collapsed-status', lang === 'zh' ? '已收起' : 'collapsed'),
+      attr('data-sm-detail-expanded-status', lang === 'zh' ? '已展开' : 'expanded'),
+    ] : []),
+  ].join('');
+}
+
+interface SkillMapRootDetail {
+  kindLabel: string;
+  title: string;
+  subtitle: string;
+  scope: string;
+  source: string;
+  coverage: string;
+  status: string;
+}
+
+function skillMapRootDetail(entry: SkillIndexEntry, coverageSummary: string | null, lang: Lang): SkillMapRootDetail {
+  const zh = lang === 'zh';
+  return {
+    kindLabel: graphNodeDetailKindLabel('skill', lang),
+    title: 'SKILL.md',
+    subtitle: entry.skillName,
+    scope: zh ? '中心节点' : 'Root',
+    source: 'SKILL.md',
+    coverage: coverageSummary ?? '',
+    status: [
+      `doctor ${stageText(entry, 'doctor', lang)}`,
+      `eval ${stageText(entry, 'eval', lang)}`,
+      `observe ${stageText(entry, 'observe', lang)}`,
+    ].join(' · '),
+  };
+}
+
+function renderSkillMapRootDetailAttrs(entry: SkillIndexEntry, coverageSummary: string | null, lang: Lang): string {
+  const detail = skillMapRootDetail(entry, coverageSummary, lang);
+  return [
+    attr('data-sm-detail-kind', detail.kindLabel),
+    attr('data-sm-detail-title', detail.title),
+    attr('data-sm-detail-subtitle', detail.subtitle),
+    attr('data-sm-detail-scope', detail.scope),
+    attr('data-sm-detail-source', detail.source),
+    attr('data-sm-detail-coverage', detail.coverage),
+    attr('data-sm-detail-status', detail.status),
+  ].join('');
+}
+
+function renderSkillMapInspector(entry: SkillIndexEntry, coverageSummary: string | null, lang: Lang): string {
+  const zh = lang === 'zh';
+  const detail = skillMapRootDetail(entry, coverageSummary, lang);
+  const row = (key: string, label: string, value: string, required = false): string => {
+    const hidden = !value && !required ? ' hidden' : '';
+    return `<div class="sm-detail-row" data-sm-detail-row="${e(key)}"${hidden}>
+      <dt>${e(label)}</dt>
+      <dd data-sm-detail-value="${e(key)}">${e(value || '—')}</dd>
+    </div>`;
+  };
+  return `<div class="sm-detail" data-sm-detail>
+    <div class="sm-detail-head">
+      <div class="sm-detail-kind" data-sm-detail-kind-label>${e(detail.kindLabel)}</div>
+      <div class="sm-detail-title" data-sm-detail-title>${e(detail.title)}</div>
+      <div class="sm-detail-subtitle" data-sm-detail-subtitle>${e(detail.subtitle)}</div>
+    </div>
+    <dl class="sm-detail-list">
+      ${row('scope', zh ? '范围' : 'Scope', detail.scope, true)}
+      ${row('source', zh ? '来源' : 'Source', detail.source)}
+      ${row('coverage', zh ? '声明' : 'Declaration', detail.coverage)}
+      ${row('status', zh ? '状态' : 'Status', detail.status)}
+    </dl>
+  </div>`;
+}
+
 function positionedNodeStyle(node: Pick<SkillMapPositionedNode, 'x' | 'y'>): string {
   return `left:${node.x}px;top:${node.y}px`;
 }
@@ -1797,8 +2053,8 @@ function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
   const overflow = item.overflowGroup ? ` data-sm-overflow-group="${item.overflowGroup}" hidden aria-hidden="true"` : '';
   const moreToggle = item.moreToggle
     ? ` data-sm-more-toggle="${item.moreToggle.group}" data-sm-collapsed-label="${e(item.moreToggle.collapsedLabel)}" data-sm-expanded-label="${e(item.moreToggle.expandedLabel)}" role="button" tabindex="0" aria-expanded="false"`
-    : '';
-  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}">
+    : ' role="button" tabindex="0"';
+  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle}${renderSkillMapDetailAttrs(item, lang)} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}" aria-label="${e(fullTitle)}">
     <div class="sm-node-kind">${e(nodeKindLabel(item.node.nodeKind, lang))}</div>
     <div class="sm-node-title">${e(title)}</div>
   </div>`;
@@ -2122,7 +2378,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
         <div class="sm-graph-stage" data-sm-graph-stage style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
           <div class="sm-graph" data-sm-graph style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
             ${renderSkillMapEdges(mapNodes, mapDimensions)}
-            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_ROOT.x}" data-sm-y="${SKILL_MAP_ROOT.y}" data-sm-origin-x="${SKILL_MAP_ROOT.x}" data-sm-origin-y="${SKILL_MAP_ROOT.y}" data-sm-draggable="1" style="${positionedNodeStyle(SKILL_MAP_ROOT)}">
+            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_ROOT.x}" data-sm-y="${SKILL_MAP_ROOT.y}" data-sm-origin-x="${SKILL_MAP_ROOT.x}" data-sm-origin-y="${SKILL_MAP_ROOT.y}" data-sm-draggable="1"${renderSkillMapRootDetailAttrs(entry, coverageSummary, lang)} role="button" tabindex="0" aria-label="SKILL.md ${e(entry.skillName)}" style="${positionedNodeStyle(SKILL_MAP_ROOT)}">
               <div class="sm-node-title">SKILL.md</div>
               <div class="sm-node-meta">${e(entry.skillName)}</div>
             </div>
@@ -2130,6 +2386,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
           </div>
         </div>
       </div>
+      ${renderSkillMapInspector(entry, coverageSummary, lang)}
       <details class="sm-card">
         <summary>${zh ? '复制图谱摘要' : 'Copy Skill Map Summary'}</summary>
         <textarea readonly>${e(markdown)}</textarea>

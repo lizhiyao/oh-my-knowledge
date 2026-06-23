@@ -332,6 +332,7 @@ describe('SkillIndex graph projection', () => {
     assert.ok(html.includes('data-sm-leaf="1"'));
     assert.ok(html.includes('data-sm-draggable="1"'));
     assert.match(html, /data-sm-root[^>]*data-sm-node-id="skill-root"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-root[^>]*role="button"[^>]*tabindex="0"/);
     assert.ok(html.includes('data-sm-node-id="definition-'));
     assert.ok(html.includes('data-sm-edge-to="definition-'));
     assert.ok(html.includes('data-sm-edge-from-node="skill-root"'));
@@ -348,6 +349,19 @@ describe('SkillIndex graph projection', () => {
     assert.ok(html.includes('data-sm-origin-x="'));
     assert.ok(html.includes('data-sm-root-x="470"'));
     assert.ok(!html.includes('class="sm-bind"'));
+    assert.ok(html.includes('class="sm-detail" data-sm-detail'));
+    assert.ok(html.includes('data-sm-detail-title="SKILL.md"'));
+    assert.ok(html.includes('data-sm-detail-kind="Skill 根节点"'));
+    assert.ok(html.includes('data-sm-detail-kind="引用文档"'));
+    assert.ok(html.includes('data-sm-detail-coverage="已由评测用例声明"'));
+    assert.ok(html.includes('data-sm-detail-coverage="尚未由评测用例声明"'));
+    assert.ok(html.includes('data-sm-detail-expanded-status="已展开"'));
+    assert.ok(html.includes('data-sm-detail-collapsed-status="已收起"'));
+    assert.ok(html.includes('data-sm-detail-row="scope"'));
+    assert.ok(html.includes('data-sm-detail-value="status"'));
+    assert.ok(html.includes('setSelectedNode'));
+    assert.ok(html.includes('aria-pressed'));
+    assert.ok(!html.includes('aria-selected'));
     assert.ok(!html.includes('alert(1)'));
     assert.ok(!html.includes('sm-node--ok"'));
     assert.ok(html.includes('sm-node--coverage-declared'));
