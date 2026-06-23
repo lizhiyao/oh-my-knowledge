@@ -323,7 +323,7 @@ describe('SkillIndex graph projection', () => {
 
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
-    assert.match(html, /复制证据卡片/);
+    assert.match(html, /复制图谱摘要/);
     assert.ok(html.includes('class="sm-svg"'));
     assert.ok(html.includes('class="sm-edge sm-edge--definition"'));
     assert.ok(html.includes('class="sm-edge sm-edge--measurement"'));

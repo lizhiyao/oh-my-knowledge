@@ -1964,7 +1964,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
   ];
 
   return [
-    `## ${zh ? '知识证据卡片' : 'Skill Evidence Card'}${zh ? '：' : ': '}${entry.skillName}`,
+    `## ${zh ? '知识图谱摘要' : 'Skill Map Summary'}${zh ? '：' : ': '}${entry.skillName}`,
     '',
     summary,
     '',
@@ -2131,7 +2131,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
         </div>
       </div>
       <details class="sm-card">
-        <summary>${zh ? '复制证据卡片' : 'Copy Markdown Evidence Card'}</summary>
+        <summary>${zh ? '复制图谱摘要' : 'Copy Skill Map Summary'}</summary>
         <textarea readonly>${e(markdown)}</textarea>
       </details>
     </div>

@@ -12,7 +12,7 @@
 
 ## 怎么选
 
-- 想理解「知识图谱」需要哪些输入，从 `skill-map-showcase` 开始。当前 main 会先展示 doctor 体检产物；启用 Skill Information Graph 的构建里，同一条 doctor 命令还会生成图谱 sidecar 和 Markdown 证据卡片。
+- 想理解「知识图谱」需要哪些输入，从 `skill-map-showcase` 开始。当前 main 会先展示 doctor 体检产物；启用 Skill Information Graph 的构建里，同一条 doctor 命令还会生成图谱 sidecar 和 Markdown 图谱摘要。
 - 只想确认本机 CLI、样本加载、executor 协议、报告写入都正常，先跑 `custom-executor`。
 - 要向同事解释 omk 的「固定模型，只改知识载体」对照实验模型，用 `code-review-ab`。
 - 你的 artifact 负责基于检索上下文回答问题，用 `rag-eval`。
