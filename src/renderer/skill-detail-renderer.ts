@@ -1778,8 +1778,8 @@ function graphNodeCoverageClass(node: SkillGraphNodePreview): string {
 }
 
 function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string {
-  if (node.coverage === 'declared') return lang === 'zh' ? '已声明覆盖关系' : 'declared coverage';
-  if (node.coverage === 'undeclared') return lang === 'zh' ? '未声明覆盖关系' : 'coverage not declared';
+  if (node.coverage === 'declared') return lang === 'zh' ? '已由评测用例声明' : 'declared by eval samples';
+  if (node.coverage === 'undeclared') return lang === 'zh' ? '尚未由评测用例声明' : 'not declared by eval samples';
   return '';
 }
 
@@ -1918,9 +1918,16 @@ function skillMapCoverageDeclarationSummary(
   const coverable = doctor.definitionNodes.filter((node) => node.stableKey && DEFINITION_PREVIEW_KINDS.has(node.nodeKind));
   if (coverable.length === 0) return null;
   const declaredCount = coverable.filter((node) => node.stableKey && declaredKeys.has(node.stableKey)).length;
+  const samples = evalGraph?.samples ?? 0;
   return lang === 'zh'
-    ? `声明锚点 ${declaredCount}/${coverable.length}`
-    : `declared anchors ${declaredCount}/${coverable.length}`;
+    ? `${samples} 条评测用例声明了 ${declaredCount}/${coverable.length} 个结构节点`
+    : `${samples} eval samples declared ${declaredCount}/${coverable.length} structure nodes`;
+}
+
+function skillMapCoverageDeclarationHint(lang: Lang): string {
+  return lang === 'zh'
+    ? '这些关系来自 sample.covers，表示评测用例显式标注的主要触达节点；尚未声明只表示还没有被评测用例显式标注，不应直接视为测试缺口。'
+    : 'These relationships come from sample.covers and show the main nodes explicitly annotated by eval samples; not declared only means not explicitly annotated yet, not necessarily a test gap.';
 }
 
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
@@ -1957,7 +1964,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
   ];
 
   return [
-    `## Skill Evidence Card：${entry.skillName}`,
+    `## ${zh ? '知识图谱摘要' : 'Skill Map Summary'}${zh ? '：' : ': '}${entry.skillName}`,
     '',
     summary,
     '',
@@ -1979,7 +1986,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| eval | ${evalStatus} | ${evalGraph ? `${zh ? 'variant 子图' : 'variant subgraph'}: ${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
-    ...(coverageSummary ? ['', zh ? '### 声明锚点' : '### Declared Anchors', '', coverageSummary] : []),
+    ...(coverageSummary ? ['', zh ? '### 声明锚点' : '### Declared Anchors', '', coverageSummary, '', skillMapCoverageDeclarationHint(lang)] : []),
     '',
     zh ? '### 关键计数' : '### Key Counts',
     '',
@@ -2089,7 +2096,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const topMeta = [
     coverageSummary,
     !coverageSummary && doctor ? `${doctor.nodeCount} ${zh ? '结构节点' : 'definition nodes'}` : '',
-    evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
+    !coverageSummary && evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
   ].filter(Boolean).join(' · ');
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
@@ -2124,7 +2131,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
         </div>
       </div>
       <details class="sm-card">
-        <summary>${zh ? '复制 Markdown Evidence Card' : 'Copy Markdown Evidence Card'}</summary>
+        <summary>${zh ? '复制图谱摘要' : 'Copy Skill Map Summary'}</summary>
         <textarea readonly>${e(markdown)}</textarea>
       </details>
     </div>

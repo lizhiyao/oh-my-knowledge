@@ -671,7 +671,7 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
   const hiddenStructure = renderStructureDetails(graph, lang);
 
   return [
-    `## ${zh ? 'Skill Evidence Card' : 'Skill Evidence Card'}：${skill.skillName}`,
+    `## ${zh ? '知识图谱摘要' : 'Skill Map Summary'}${zh ? '：' : ': '}${skill.skillName}`,
     '',
     statusSentence,
     '',

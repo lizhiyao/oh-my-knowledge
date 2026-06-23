@@ -307,7 +307,7 @@ describe('omk doctor CLI', () => {
       assert.ok(graph.nodes.some((node: { nodeKind: string; label: string }) => node.nodeKind === 'reference' && node.label === 'references/rules.md'));
       assert.ok(!graph.edges.some((edge: { edgeKind: string }) => edge.edgeKind === 'covers'));
       const card = readFileSync(join(graphDir, mdFile), 'utf-8');
-      assert.ok(card.includes('Skill Evidence Card'));
+      assert.ok(card.includes('知识图谱摘要'));
       assert.ok(card.includes('eval 未测量'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });

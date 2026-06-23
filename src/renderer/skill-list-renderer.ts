@@ -110,7 +110,7 @@ function renderPanel(a: Agg, lang: Lang): string {
 
 function renderRow(entry: SkillIndexEntry, insights: Insight[], langQ: string, lang: Lang): string {
   const h = assessHealth(entry, insights, lang);
-  // 点行先进入 skill hub：Skill Map / 三阶段状态 / Evidence Card 是用户第一视角。
+  // 点行先进入 skill hub：Skill Map / 三阶段状态 / 图谱摘要是用户第一视角。
   const href = `/skills/${encodeURIComponent(entry.skillName)}${langQ}`;
   const dT = entry.doctor ? entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount : 0;
   const dP = dT > 0 ? Math.round(((entry.doctor!.passCount + entry.doctor!.warnCount * 0.5) / dT) * 100) : null;
