@@ -9,7 +9,7 @@ import { icon as svgIcon } from './icons.js';
 import { e, DEFAULT_LANG } from './layout.js';
 import type { Lang, DoctorReport, DoctorSkillReport, DoctorRuleResult } from '../types/index.js';
 
-interface Finding { level?: string; description?: string; suggestion?: string }
+interface Finding { level?: string; description?: string; suggestion?: string; support?: { k?: number; n?: number } }
 function getDetail(r: DoctorRuleResult): { displayName?: string; level?: string; findings?: Finding[] } {
   return (r.detail ?? {}) as { displayName?: string; level?: string; findings?: Finding[] };
 }
@@ -50,8 +50,13 @@ function renderRuleCard(r: DoctorRuleResult, lang: Lang, forceOpen = false): str
     const mIcon = isErr
       ? svgIcon('x', { size: 14, style: 'color:#dc2626;vertical-align:-2px;margin-right:5px' })
       : svgIcon('warn', { size: 14, style: `color:${f.level === '警告' ? '#d97706' : '#637083'};vertical-align:-2px;margin-right:5px` });
+    // 多采样支持度 k/n:仅 n>1 时展示(单次采样无意义)。k<n 用偏灰提示"非每次都报"。
+    const sup = f.support;
+    const supBadge = sup && typeof sup.n === 'number' && sup.n > 1 && typeof sup.k === 'number'
+      ? `<span class="rs-badge rs-badge--${sup.k >= sup.n ? 'pass' : 'warn'}" title="${sup.n} 次采样里有 ${sup.k} 次报了这条" style="margin-left:6px">${sup.k}/${sup.n}</span>`
+      : '';
     return `<div class="rs-finding rs-finding--${isErr ? 'err' : 'warn'}">
-      <div class="rs-finding-desc">${mIcon}${e(f.description ?? '')}</div>
+      <div class="rs-finding-desc">${mIcon}${e(f.description ?? '')}${supBadge}</div>
       ${f.suggestion ? `<div class="rs-finding-sug">${svgIcon('bulb', { size: 13, style: 'vertical-align:-2px;margin-right:5px' })}${e(f.suggestion)}</div>` : ''}
     </div>`;
   }).join('');

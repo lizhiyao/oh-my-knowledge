@@ -22,6 +22,9 @@ export interface HealthFinding {
   evidence: string;
   description: string;
   suggestion?: string;
+  /** 多采样共识的支持度:N 次采样里有 k 次报了这条(同根因)finding。
+   *  单次采样(healthSamples=1)时不设或为 {k:1,n:1};renderer 仅在 n>1 时展示。 */
+  support?: { k: number; n: number };
 }
 
 export interface HealthDimensionResult {

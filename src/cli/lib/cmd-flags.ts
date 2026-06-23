@@ -65,11 +65,12 @@ export interface DoctorFlags {
   gate: boolean;
   executor?: string;
   model?: string;
-  samples?: string;
   timeout?: string;
   'output-dir'?: string;
   dimensions?: string;
-  'static-only': boolean;
+  repeat?: string;
+  concurrency?: string;
+  effort?: string;
 }
 
 // ── eval ──────────────────────────────────────────────────────────────────────

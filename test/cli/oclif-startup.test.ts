@@ -111,7 +111,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only'], { env });
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -124,7 +124,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only', '--lang', 'zh'], { env });
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -147,7 +147,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
     // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
     try {
-      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill', '--static-only']);
+      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

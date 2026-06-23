@@ -28,7 +28,7 @@ describe('omk doctor CLI', () => {
     assert.ok(stdout.includes('健康度'));
     assert.ok(stdout.includes('--json'));
     assert.ok(stdout.includes('--gate'));
-    assert.ok(stdout.includes('--samples'));
+    assert.ok(stdout.includes('--repeat'));
   });
 
   it('--help --lang en shows English usage', async () => {
@@ -51,6 +51,17 @@ describe('omk doctor CLI', () => {
     assert.ok(Array.isArray(parsed.skills));
     assert.ok(parsed.skills.length >= 1);
     assert.equal(parsed.outcome, 'passed');
+  });
+
+  it('--static-only runs offline (no executor) with static rules only, no LLM / samples-contract', async () => {
+    // 不给 --executor → 证明 --static-only 不需要 LLM
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', EXAMPLE_SKILL, '--static-only', '--json']);
+    const ids = (JSON.parse(stdout).skills[0].results as Array<{ ruleId: string }>).map((r) => r.ruleId);
+    assert.ok(ids.includes('skill_readable'), `expected skill_readable, got: ${ids.join(',')}`);
+    assert.ok(ids.includes('skill_metadata'));
+    assert.ok(ids.includes('dependencies_present'));
+    assert.ok(!ids.includes('samples_contract_aligned'), 'samples-contract 不归 CLI static-only');
+    assert.ok(!ids.some((id) => id.startsWith('skill_health')), '不跑 LLM 健康审计');
   });
 
   it('--json on directory batches all skills', async () => {
@@ -123,146 +134,6 @@ describe('omk doctor CLI', () => {
     assert.ok(stderr.includes('总览:'));
   });
 
-  it('auto-detects samples from the target project when cwd differs', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const tmp = mkdtempSync(join(tmpdir(), 'doctor-target-samples-'));
-    const outside = mkdtempSync(join(tmpdir(), 'doctor-outside-cwd-'));
-    try {
-      const project = join(tmp, 'project');
-      const skillRoot = join(project, 'skills', 'review');
-      mkdirSync(skillRoot, { recursive: true });
-      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
-      writeFileSync(join(project, 'eval-samples.json'), JSON.stringify([
-        { sample_id: 's1', prompt: 'review this code' },
-      ]));
-
-      const { stderr } = await execFileAsync('node', [
-        CLI,
-        'doctor',
-        join(project, 'skills'),
-        '--lang', 'zh',
-        '--executor', DOCTOR_FIXTURE,
-      ], { cwd: outside });
-      assert.ok(stderr.includes('使用评测用例文件'), stderr);
-      assert.ok(stderr.includes('eval-samples.json'), stderr);
-      assert.ok(!stderr.includes('未提供 samples'), stderr);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-      rmSync(outside, { recursive: true, force: true });
-    }
-  });
-
-  it('auto-detects skill-local .omk samples for a directory skill target', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const tmp = mkdtempSync(join(tmpdir(), 'doctor-skill-local-samples-'));
-    try {
-      const skillRoot = join(tmp, 'skills', 'release-readiness');
-      mkdirSync(join(skillRoot, '.omk'), { recursive: true });
-      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的发布检查 skill，内容足够长。');
-      writeFileSync(join(skillRoot, '.omk', 'samples.json'), JSON.stringify([
-        { sample_id: 's1', prompt: 'review release readiness' },
-      ]));
-
-      const { stderr } = await execFileAsync('node', [
-        CLI,
-        'doctor',
-        skillRoot,
-        '--static-only',
-        '--lang', 'zh',
-        '--executor', DOCTOR_FIXTURE,
-      ], { cwd: tmp });
-      assert.ok(stderr.includes('使用评测用例文件'), stderr);
-      assert.ok(stderr.includes(join(skillRoot, '.omk')), stderr);
-      assert.ok(stderr.includes('用例 1 条'), stderr);
-      assert.ok(!stderr.includes('未提供 samples'), stderr);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('warns when directory skill still uses deprecated eval-samples path', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const tmp = mkdtempSync(join(tmpdir(), 'doctor-deprecated-samples-'));
-    try {
-      const skillRoot = join(tmp, 'skills', 'review');
-      mkdirSync(skillRoot, { recursive: true });
-      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
-      writeFileSync(join(skillRoot, 'eval-samples.json'), JSON.stringify([
-        { sample_id: 's1', prompt: 'review legacy samples location' },
-      ]));
-
-      const { stderr } = await execFileAsync('node', [
-        CLI,
-        'doctor',
-        skillRoot,
-        '--static-only',
-        '--lang', 'zh',
-        '--executor', DOCTOR_FIXTURE,
-      ], { cwd: tmp });
-      assert.ok(stderr.includes('发现旧的目录 skill 用例位置'), stderr);
-      assert.ok(stderr.includes(join(skillRoot, 'eval-samples.json')), stderr);
-      assert.ok(stderr.includes(join(skillRoot, '.omk', 'samples.json')), stderr);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('--samples overrides auto-detected samples', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const tmp = mkdtempSync(join(tmpdir(), 'doctor-explicit-samples-'));
-    try {
-      const skillRoot = join(tmp, 'skills', 'review');
-      mkdirSync(skillRoot, { recursive: true });
-      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
-      writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify([
-        { sample_id: 'auto', prompt: 'auto sample' },
-      ]));
-      const explicitSamples = join(tmp, 'explicit-samples.json');
-      writeFileSync(explicitSamples, JSON.stringify([
-        { sample_id: 'e1', prompt: 'explicit sample 1' },
-        { sample_id: 'e2', prompt: 'explicit sample 2' },
-      ]));
-
-      const { stderr } = await execFileAsync('node', [
-        CLI,
-        'doctor',
-        join(tmp, 'skills'),
-        '--samples', explicitSamples,
-        '--lang', 'zh',
-        '--executor', DOCTOR_FIXTURE,
-      ], { cwd: tmp });
-      assert.ok(stderr.includes(`使用评测用例文件：${explicitSamples}`), stderr);
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('--static-only runs offline (no executor needed) and emits DoctorReport with static rule results', async () => {
-    // Note: no --executor flag here — --static-only must not require an LLM.
-    // The default 'claude' executor in PATH may or may not exist; either way
-    // doctor should exit cleanly because no rule actually calls it.
-    const { stdout } = await execFileAsync('node', [
-      CLI,
-      'doctor',
-      EXAMPLE_SKILL,
-      '--json',
-      '--static-only',
-    ]);
-    const parsed = JSON.parse(stdout);
-    assert.equal(parsed.kind, 'doctor');
-    assert.ok(parsed.skills.length >= 1);
-    // Static rules present, composer (skill_health) absent under --static-only.
-    const staticRuleIds = parsed.skills[0].results.map((r: { ruleId: string }) => r.ruleId);
-    assert.ok(staticRuleIds.includes('skill_readable'), `expected skill_readable, got: ${staticRuleIds.join(',')}`);
-    assert.ok(staticRuleIds.includes('skill_metadata'), `expected skill_metadata, got: ${staticRuleIds.join(',')}`);
-    assert.ok(!staticRuleIds.some((id: string) => id.startsWith('skill_health')),
-      `expected no skill_health composer results in static-only mode, got: ${staticRuleIds.join(',')}`);
-  });
-
   it('persists doctor graph sidecar and Markdown evidence card', async () => {
     const { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
@@ -288,7 +159,8 @@ describe('omk doctor CLI', () => {
         CLI,
         'doctor',
         skillRoot,
-        '--static-only',
+        '--repeat', '1',
+        '--executor', DOCTOR_FIXTURE,
         '--output-dir', outputDir,
       ], { cwd: tmp });
 

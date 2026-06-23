@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -145,7 +145,8 @@ omk doctor                              # 体检当前目录或 ./skills
 omk doctor skills/v1.md                 # 体检单个 skill
 omk doctor skills/ --json > r.json      # JSON 给 CI / 外部工具消费
 omk doctor --gate; echo $?              # 静默门禁，fatal 问题 exit 1，警告不阻断
-omk doctor --static-only                # 离线模式：只跑静态检查，不调 LLM
+omk doctor --repeat 1                    # 单次快速体检（不采样、不归并，最省）
+omk doctor --static-only                 # 只跑静态检测：不调 LLM、不读 samples —— 结构 + 正文依赖
 ```
 
 <!-- omk:cli:doctor:flags:start -->
@@ -153,19 +154,20 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
-  --dimensions <value>  自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
-  --effort <value>      LLM 推理 effort：low / medium / high / xhigh / max。
-  --executor <value>    执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
-  --fix                 交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
-  --gate                静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
-  --global              写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
-  --json                JSON 输出到 stdout，适合 CI / 外部脚本消费。
-  --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>       LLM model 名，默认 sonnet。
-  --output-dir <value>  报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
-  --samples <value>     用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
-  --static-only         离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
-  --timeout <value>     单次 LLM 会话超时秒数，默认 600(10 分钟）。
+  --concurrency <value>  多次采样的并发数。默认 = --repeat（全并行，各遍相互独立，压墙钟时间）。设 1 = 串行。成本不变，只抬高瞬时并发（rate-limit 敏感时调小）。
+  --dimensions <value>   自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
+  --effort <value>       LLM 推理 effort：low / medium / high / xhigh / max。
+  --executor <value>     执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
+  --fix                  交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
+  --gate                 静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
+  --global               写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
+  --json                 JSON 输出到 stdout，适合 CI / 外部脚本消费。
+  --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --model <value>        LLM model 名，默认 sonnet。
+  --output-dir <value>   报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
+  --repeat <value>       健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。
+  --static-only          只跑静态检测（不调 LLM、不读 samples.json）：skill 可读性 / frontmatter 合法性 / 正文引用的脚本·CLI·文件·env 是否存在。CI 无 LLM 凭证或断网时用。
+  --timeout <value>      单次 LLM 会话超时秒数，默认 600(10 分钟）。
 ```
 
 完整描述见 `omk doctor --help`。
@@ -174,7 +176,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 
 LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
 
-通过 `--dimensions <yaml>` 自定义维度：每条维度二选一 —— **LLM 维度**（`promptSection`，并入健康度 LLM 调用）或**接口维度**（`endpoint`，doctor 把 skill 快照 POST 给你的服务并把响应映射成判定）。同一条维度两者互斥。接口维度属于「在线」检查（默认运行，`--static-only` 下跳过），可以做 prompt 表达不了的深度检查 —— 例如调用外部安全审查服务。
+通过 `--dimensions <yaml>` 自定义维度：每条维度二选一 —— **LLM 维度**（`promptSection`，并入健康度 LLM 调用）或**接口维度**（`endpoint`，doctor 把 skill 快照 POST 给你的服务并把响应映射成判定）。同一条维度两者互斥。接口维度属于「在线」检查（与健康度 LLM 审计一起运行），可以做 prompt 表达不了的深度检查 —— 例如调用外部安全审查服务。
 
 ```yaml
 dimensions:
@@ -200,9 +202,9 @@ dimensions:
 
 endpoint 地址校验：只接受 `http` / `https` 协议；指向私网/本机的地址 —— localhost、`*.local`、`::1`、127.0.0.0/8、10.0.0.0/8、172.16.0.0/12、192.168.0.0/16、169.254.0.0/16（含云 metadata `169.254.169.254`）—— 默认拒绝：doctor 会把 skill 完整快照发给 endpoint 并把响应回填进报告，不设防就会成为 SSRF 跳板。确认内网服务可信后，在该维度配置 `allowPrivateHost: true` 放行。此校验只看字面 hostname（defense-in-depth），不做 DNS 解析；公网域名解析到内网（DNS rebinding）不在防护范围。
 
-离线静态模式（`--static-only`）：CI 节点没装 claude / codex、本地断网调试等场景下跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用、零成本。结果同样进 `DoctorReport`，可与 `--json` / `--gate` 组合。
+采样与共识：默认 `omk doctor` 把审计 `--repeat 2` 遍并行跑，finding 取并集，再用一次额外的 LLM 聚类把同根因（措辞不同）的 finding 归并，每条标注 `k/n` 支持度（n 遍里有 k 遍报了它）。这样重复体检会收敛，而不是每次暴露不同的子集。`--repeat 1` 单次快检；调大做更深、更稳的审计。`--concurrency` 节流并发（默认 = `--repeat`）。
 
-`omk eval` 内部继续跑静态 readability / metadata / dependency / samples 契约 gate 保护评测质量，这条路径与用户入口的 `omk doctor` 角色分离，互不干扰。
+静态检测（`--static-only`）：跑静态 lint 规则，零 LLM 调用、**且不加载 `samples.json`** —— skill 可读性、frontmatter 合法性、以及 **skill 正文** 里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `claude` / `codex` 或断网调试时用。samples 契约检查被有意排除（它需要 `samples.json`），留给 `omk eval` 的评测前置门禁 —— 在那里依赖检查还会用上用例声明的 `requires` 做增强。
 
 ## `omk eval`
 

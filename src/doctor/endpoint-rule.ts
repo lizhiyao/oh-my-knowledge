@@ -234,7 +234,7 @@ export function makeEndpointRule(
     severity: spec.severity,
     // 自定义 key 不在 DOCTOR_MESSAGES 字典里,renderer 会 fallback 到 ruleId(=spec.id)。
     labelKey: `cli.doctor.endpoint.${spec.id}`,
-    // 网络检查,与 health composer 同档:默认跑,--static-only 跳过。
+    // 网络检查,与 health composer 同档:CLI doctor 默认跑(在线检查)。
     external: true,
     async check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome> {
       // SSRF 防护(defense-in-depth):endpoint 会收到 skill 完整快照,且响应

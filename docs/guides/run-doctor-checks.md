@@ -13,13 +13,25 @@ omk doctor skills/v1.md            # audit a single skill
 
 You get per-dimension health scores (trigger boundary, doc clarity, instruction precision, dependencies, tool conventions, security, examples), findings, and concrete suggestions, sorted fail → warn → pass. Open the report in `omk studio`.
 
-## Offline / no-LLM mode
+## Sampling & consensus
 
-On a CI node without `claude` / `codex`, or when debugging offline, run only the static rules (readability / metadata / dependencies / samples-contract) — zero LLM calls, zero cost:
+By default `omk doctor` runs the audit twice in parallel (`--repeat 2`), takes the union of findings, and merges same-root-cause findings via an extra LLM clustering pass — each finding is tagged with `k/n` support (how many of the `n` passes reported it). Repeated runs converge instead of surfacing a different subset each time.
+
+```bash
+omk doctor skills/v1.md --repeat 1             # single quick pass, cheapest
+omk doctor skills/v1.md --repeat 3             # deeper, more stable audit
+omk doctor skills/ --repeat 3 --concurrency 1  # serial (lower peak concurrency)
+```
+
+`--concurrency` defaults to `--repeat` (full parallel); lower it if you're rate-limited. Cost scales with `--repeat`; wall-clock is roughly one pass (parallel) plus the merge.
+
+## Static checks (no LLM)
 
 ```bash
 omk doctor skills/ --static-only
 ```
+
+Runs the static lint rules with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `claude` / `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
 
 ## As a CI gate
 
@@ -27,7 +39,7 @@ omk doctor skills/ --static-only
 omk doctor --gate; echo $?        # quiet; exit 1 on fatal problems, warnings don't block
 ```
 
-`--gate` prints only a stderr summary on failure and signals the result via exit code, so you can wire it into a pipeline. Pair with `--static-only` for a fast, LLM-free preflight gate.
+`--gate` prints only a stderr summary on failure and signals the result via exit code, so you can wire it into a pipeline.
 
 ## Machine-readable output
 

@@ -53,7 +53,7 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     '--permission-mode', 'bypassPermissions'];
   if (system) args.push('--system-prompt', system);
   // effort 决策:
-  //   - lean=true(纯文本生成):默认 'low',但允许调用方显式覆盖(如 doctor 对大 skill 需要 'medium')。
+  //   - lean=true(纯文本生成):默认 'low',但允许调用方显式覆盖(如 doctor 用 --effort 调高)。
   //   - 否则用调用方传入的 effort,或 sonnet 默认(不传 flag = claude CLI 自己定)。
   const effectiveEffort = lean ? (effort ?? 'low') : effort;
   if (lean) {

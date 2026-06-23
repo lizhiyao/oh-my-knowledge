@@ -61,7 +61,7 @@ describe('update check background refresh must not delay CLI exit', () => {
     const t0 = Date.now();
     try {
       // doctor 指向不存在的 skill,快速失败(exit 1);execFileAsync 因非零退出 reject,计时照常
-      await execFileAsync('node', [CLI, 'doctor', join(home, 'no-such-skill'), '--static-only'], { env });
+      await execFileAsync('node', [CLI, 'doctor', join(home, 'no-such-skill')], { env });
     } catch {
       /* 预期非零退出,忽略 */
     }

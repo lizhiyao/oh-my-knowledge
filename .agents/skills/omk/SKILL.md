@@ -121,11 +121,11 @@ omk sample --batch
 ### 体检 skill 写法
 
 ```bash
-# 全量体检（含 LLM-judge 维度）
+# 健康度审计（默认 --repeat 2 采样 + k/n 共识归并）
 omk doctor
 
-# 只跑静态检查不调 LLM
-omk doctor --static-only
+# 单次快检（不采样、不归并，最省）
+omk doctor --repeat 1
 
 # 针对单 skill
 omk doctor skills/my-skill.md

@@ -34,6 +34,7 @@ export type DoctorMessageKey =
   | 'cli.doctor.health.dim.missing'
   | 'cli.doctor.health.summary.label'
   | 'cli.doctor.health.summary.message'
+  | 'cli.doctor.health.summary.samples'
   | 'cli.doctor.health.summary.no_top'
   | 'cli.doctor.health.dim.trigger-boundary'
   | 'cli.doctor.health.dim.doc-clarity'
@@ -139,6 +140,10 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
   'cli.doctor.health.summary.message': {
     zh: '{overall} | 维度: 健康 {h}/亚健康 {sh}/不健康 {bad}/不适用 {na} | finding: 错误 {err}/警告 {warn}/建议 {sug}',
     en: '{overall} | dims: healthy {h}/sub {sh}/unhealthy {bad}/n-a {na} | findings: err {err}/warn {warn}/sug {sug}',
+  },
+  'cli.doctor.health.summary.samples': {
+    zh: ' | 采样 {succeeded}/{requested} 次（并集去重，finding 标注 k/n 支持度）',
+    en: ' | sampled {succeeded}/{requested} (unioned & deduped; findings tagged k/n support)',
   },
   'cli.doctor.health.summary.no_top': {
     zh: '完整详情见 --json 输出或 --html 报告',

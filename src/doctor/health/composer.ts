@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { tDoctorMessage } from '../messages.js';
 import type { Lang } from '../../types/shared.js';
 import { createExecutor } from '../../executors/index.js';
-import type { ExecutorFn } from '../../types/executor.js';
+import type { ExecResult, ExecutorFn } from '../../types/executor.js';
 import type {
   ComposerOutcome,
   ComposerRule,
@@ -31,7 +31,14 @@ import type {
 } from './dimension-spec.js';
 import { getRegisteredHealthDimensions } from './dimension-registry.js';
 import { buildHealthPrompt } from './prompt-builder.js';
-import { deriveOverallHealth, extractJson, parseHealthOutput } from './parser.js';
+import { deriveOverallHealth, extractJson, parseHealthOutput, type HealthParseResult } from './parser.js';
+import {
+  enumerateFindingsForMerge,
+  mergeHealthSamples,
+  mergeHealthSamplesLlm,
+  parseMergeClusters,
+} from './consensus.js';
+import { buildHealthMergePrompt } from '../../shared/llm-prompts/skill-health-merge.js';
 
 export const SKILL_HEALTH_COMPOSER_ID = 'skill_health';
 
@@ -119,6 +126,30 @@ function listSiblingSkills(skillRoot: string | null): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// 有界并发 map
+// ---------------------------------------------------------------------------
+
+/** 最多 limit 个任务并发,返回与 items 同序的结果(worker-pool,对齐 eval-core 口径)。 */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  const workers = Math.max(1, Math.min(Number.isFinite(limit) ? limit : 1, items.length));
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Composer factory
 // ---------------------------------------------------------------------------
 
@@ -141,7 +172,7 @@ async function composerCheckAll(
   const dims = getRegisteredHealthDimensions();
 
   // Programmatic opt-out: runHealthCheck=false → 给 summary 一条 skipped,
-  // 各维度不展开避免污染报告。CLI 的 --static-only 会直接过滤掉 composer rule。
+  // 各维度不展开避免污染报告。eval preflight 走这条(只跑静态 rule,不触发 LLM)。
   if (!ctx.runHealthCheck) {
     return [{
       subId: '_summary',
@@ -186,46 +217,126 @@ async function composerCheckAll(
   );
 
   const executor = execFactory(ctx.executorName);
-  let res;
-  try {
-    res = await executor({
-      model: ctx.model,
-      prompt,
-      cwd: skillRoot ?? ctx.cwd,
-      skillDir: skillRoot ?? null,
-      timeoutMs: ctx.timeoutMs,
-      effort: ctx.effort ?? 'medium',
-      lean: true,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return [errorSummaryOutcome(ctx, 'executor', msg)];
+  // 采样次数(self-consistency):默认 1;非有限值(NaN/Infinity)兜底 1;上限 10 防 fat-finger
+  // / 资源耗尽(并发默认=采样数,会一起放大)。
+  const MAX_HEALTH_SAMPLES = 10;
+  const rawSamples = ctx.healthSamples;
+  const requested = Math.min(
+    MAX_HEALTH_SAMPLES,
+    Math.max(1, Math.floor(Number.isFinite(rawSamples) ? (rawSamples as number) : 1)),
+  );
+
+  // 跨采样累计的执行指标(token / cost / 时长 / 轮次都求和,反映真实总开销)。
+  const agg = {
+    durationMs: 0, durationApiMs: 0,
+    inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+    costUSD: 0, numTurns: 0, fullNumTurns: 0,
+  };
+  const accumulate = (r: ExecResult): void => {
+    agg.durationMs += r.durationMs ?? 0;
+    agg.durationApiMs += r.durationApiMs ?? 0;
+    agg.inputTokens += r.inputTokens ?? 0;
+    agg.outputTokens += r.outputTokens ?? 0;
+    agg.cacheReadTokens += r.cacheReadTokens ?? 0;
+    agg.cacheCreationTokens += r.cacheCreationTokens ?? 0;
+    agg.costUSD += r.costUSD ?? 0;
+    agg.numTurns += r.numTurns ?? 0;
+    agg.fullNumTurns += r.fullNumTurns ?? 0;
+  };
+
+  // 采样并发:默认全并行(并发=采样数,样本间相互独立),`--concurrency 1` 退回串行。
+  // 非有限值兜底为 requested。
+  const rawConc = ctx.healthConcurrency;
+  const concurrency = Math.max(1, Math.min(requested,
+    Math.floor(Number.isFinite(rawConc) ? (rawConc as number) : requested)));
+
+  type SampleError = { phase: 'executor' | 'empty_output' | 'extract'; msg: string; extra?: Record<string, unknown> };
+  interface SampleResult { res?: ExecResult; parsed?: HealthParseResult; error?: SampleError }
+  const runSample = async (): Promise<SampleResult> => {
+    let res: ExecResult;
+    try {
+      res = await executor({
+        model: ctx.model,
+        prompt,
+        cwd: skillRoot ?? ctx.cwd,
+        skillDir: skillRoot ?? null,
+        timeoutMs: ctx.timeoutMs,
+        effort: ctx.effort ?? 'low',
+        lean: true,
+      });
+    } catch (err) {
+      return { error: { phase: 'executor', msg: err instanceof Error ? err.message : String(err) } };
+    }
+    if (!res.ok) return { res, error: { phase: 'executor', msg: res.error ?? 'unknown' } };
+    if (!res.output || res.output.trim().length === 0) return { res, error: { phase: 'empty_output', msg: '' } };
+    const cleaned = extractJson(res.output);
+    if (cleaned === null) return { res, error: { phase: 'extract', msg: '', extra: { rawOutput: res.output.slice(0, 4000) } } };
+    const pr = parseHealthOutput(cleaned, dims);
+    // 全维度 _missing → 该样本的 JSON 里 dim_id 缺失或写错,丢弃(不当作"全部通过")。
+    if ([...pr.byDimId.values()].every((r) => r._missing)) {
+      return { res, error: { phase: 'extract', msg: 'LLM output missing all dimension IDs', extra: { rawSample: cleaned.slice(0, 3000) } } };
+    }
+    return { res, parsed: pr };
+  };
+
+  // 跑 N 次(并发受 concurrency 限),收集成功解析的样本。单样本报错 / 空输出 / JSON 抽不出 /
+  // 全维度漏报都跳过(记最后一次错误);只要 ≥1 成功就走并集合并,全失败才报 fail。
+  const sampleResults = await mapWithConcurrency(
+    Array.from({ length: requested }, (_, i) => i), concurrency, () => runSample(),
+  );
+  const parsed: HealthParseResult[] = [];
+  let lastError: SampleError | null = null;
+  for (const sr of sampleResults) {
+    if (sr.res) accumulate(sr.res);
+    if (sr.parsed) parsed.push(sr.parsed);
+    else if (sr.error) lastError = sr.error;
   }
 
-  if (!res.ok) {
-    return [errorSummaryOutcome(ctx, 'executor', res.error ?? 'unknown')];
-  }
-  if (!res.output || res.output.trim().length === 0) {
-    return [errorSummaryOutcome(ctx, 'empty_output', '')];
-  }
-  const cleaned = extractJson(res.output);
-  if (cleaned === null) {
-    return [errorSummaryOutcome(ctx, 'extract', '', { rawOutput: res.output.slice(0, 4000) })];
+  if (parsed.length === 0) {
+    return [errorSummaryOutcome(ctx, lastError?.phase ?? 'extract', lastError?.msg ?? '', lastError?.extra ?? {})];
   }
 
-  const parseResult = parseHealthOutput(cleaned, dims);
-  const overall = parseResult.overall ?? deriveOverallHealth(parseResult.byDimId);
-  // 诊断:如果所有维度都被标 _missing,说明 LLM 输出 JSON 里 dim_id 字段缺失或写错。
-  // 此时应报 fail(解析失败),不能当作"全部通过"。
-  const allMissing = [...parseResult.byDimId.values()].every((r) => r._missing);
-  if (allMissing) {
-    return [errorSummaryOutcome(ctx, 'extract', 'LLM output missing all dimension IDs', { rawSample: cleaned.slice(0, 3000) })];
+  // 归并:healthMerge='string' 走字符串键;='llm'(CLI 默认)且确有可并 finding 时,多跑一次
+  // LLM 聚类(跨措辞同根因归并),失败回退 string。单样本时两者都等价于直通 + support={1,1}。
+  const mergeStrategy = ctx.healthMerge ?? 'string';
+  let merged: HealthParseResult | null = null;
+  let mergeMode = 'string';
+  if (mergeStrategy === 'llm' && parsed.length > 1) {
+    const tagged = enumerateFindingsForMerge(parsed, dims);
+    // 仅当某维度内 ≥2 条 finding 才值得跑 LLM 聚类(否则没东西可并,白花一次调用)。
+    const mergeable = dims.some((d) => tagged.filter((t) => t.dimId === d.id).length >= 2);
+    if (mergeable) {
+      let mres: ExecResult | null = null;
+      try {
+        mres = await executor({
+          model: ctx.model,
+          prompt: buildHealthMergePrompt(dims, tagged),
+          cwd: skillRoot ?? ctx.cwd,
+          skillDir: skillRoot ?? null,
+          timeoutMs: ctx.timeoutMs,
+          effort: ctx.effort ?? 'low',
+          lean: true,
+        });
+      } catch { mres = null; }
+      if (mres) accumulate(mres);
+      const cleaned = mres?.ok && mres.output ? extractJson(mres.output) : null;
+      const clusters = cleaned ? parseMergeClusters(cleaned) : null;
+      if (clusters) {
+        merged = mergeHealthSamplesLlm(parsed, dims, tagged, clusters);
+        mergeMode = 'llm';
+      } else {
+        mergeMode = 'string(llm-fallback)'; // LLM 合并失败 → 用字符串键兜底
+      }
+    }
   }
+  if (!merged) merged = mergeHealthSamples(parsed, dims);
+  const overall = merged.overall ?? deriveOverallHealth(merged.byDimId);
+  const succeeded = parsed.length;
 
   // 汇总 finding 计数(框架算,不信 LLM 算术)
   const finding = { '错误': 0, '警告': 0, '建议': 0 };
   const dimCount = { '健康': 0, '亚健康': 0, '不健康': 0, '不适用': 0 };
-  for (const r of parseResult.byDimId.values()) {
+  for (const r of merged.byDimId.values()) {
     if (r._missing) continue;
     dimCount[r.level] += 1;
     for (const f of r.findings) finding[f.level] += 1;
@@ -233,7 +344,7 @@ async function composerCheckAll(
 
   // N 条维度 outcome
   const dimOutcomes: ComposerOutcome[] = dims.map((dim) => {
-    const r = parseResult.byDimId.get(dim.id)!;
+    const r = merged.byDimId.get(dim.id)!;
     return {
       subId: dim.id,
       labelKey: dim.labelKey,
@@ -252,35 +363,45 @@ async function composerCheckAll(
     };
   });
 
+  // summary message:多采样时(requested>1)追加采样次数说明,让终端看到"并集来自几次采样"。
+  let summaryMessage = tDoctorMessage('cli.doctor.health.summary.message', ctx.lang, {
+    overall,
+    h: dimCount['健康'], sh: dimCount['亚健康'], bad: dimCount['不健康'], na: dimCount['不适用'],
+    err: finding['错误'], warn: finding['警告'], sug: finding['建议'],
+  });
+  if (requested > 1) {
+    summaryMessage += tDoctorMessage('cli.doctor.health.summary.samples', ctx.lang, { requested, succeeded });
+  }
+
   // 1 条 summary outcome
   const summaryOutcome: ComposerOutcome = {
     subId: '_summary',
     severity: 'info',
     labelKey: 'cli.doctor.health.summary.label',
     status: 'pass', // summary 永远 pass(信息性,不影响 outcome)
-    message: tDoctorMessage('cli.doctor.health.summary.message', ctx.lang, {
-      overall,
-      h: dimCount['健康'], sh: dimCount['亚健康'], bad: dimCount['不健康'], na: dimCount['不适用'],
-      err: finding['错误'], warn: finding['警告'], sug: finding['建议'],
-    }),
-    hint: parseResult.topSuggestions.slice(0, 3).join(' | ')
+    message: summaryMessage,
+    hint: merged.topSuggestions.slice(0, 3).join(' | ')
       || tDoctorMessage('cli.doctor.health.summary.no_top', ctx.lang),
     detail: {
       overall,
+      // 采样次数:requested=请求几次,succeeded=成功解析几次。finding 的 support=k/n
+      // 即"被评估的 n 次里有 k 次报了这条"。mergeMode=归并实现(string / llm / 回退)。
+      samples: { requested, succeeded, concurrency },
+      mergeMode,
       dimensionLevelCount: dimCount,
       findingCountByLevel: finding,
-      topSuggestions: parseResult.topSuggestions,
-      featurePoints: parseResult.featurePoints,
-      durationMs: res.durationMs,
-      durationApiMs: res.durationApiMs,
-      // turns:claude-cli 在内部跑的 LLM 轮次(每轮 = 1 次 messages.create)
+      topSuggestions: merged.topSuggestions,
+      featurePoints: merged.featurePoints,
+      durationMs: agg.durationMs,
+      durationApiMs: agg.durationApiMs,
+      // turns:claude-cli 在内部跑的 LLM 轮次(每轮 = 1 次 messages.create),多采样累加。
       // numTurns:assistant turn 数 / fullNumTurns:含 tool turn 的总数
-      llmTurns: { numTurns: res.numTurns, fullNumTurns: res.fullNumTurns },
+      llmTurns: { numTurns: agg.numTurns, fullNumTurns: agg.fullNumTurns },
       tokens: {
-        input: res.inputTokens, output: res.outputTokens,
-        cacheRead: res.cacheReadTokens, cacheCreation: res.cacheCreationTokens,
+        input: agg.inputTokens, output: agg.outputTokens,
+        cacheRead: agg.cacheReadTokens, cacheCreation: agg.cacheCreationTokens,
       },
-      costUSD: res.costUSD,
+      costUSD: agg.costUSD,
       executor: { name: ctx.executorName, model: ctx.model },
     },
   };
