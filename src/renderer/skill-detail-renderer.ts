@@ -1918,9 +1918,16 @@ function skillMapCoverageDeclarationSummary(
   const coverable = doctor.definitionNodes.filter((node) => node.stableKey && DEFINITION_PREVIEW_KINDS.has(node.nodeKind));
   if (coverable.length === 0) return null;
   const declaredCount = coverable.filter((node) => node.stableKey && declaredKeys.has(node.stableKey)).length;
+  const samples = evalGraph?.samples ?? 0;
   return lang === 'zh'
-    ? `声明锚点 ${declaredCount}/${coverable.length}`
-    : `declared anchors ${declaredCount}/${coverable.length}`;
+    ? `${samples} 条用例声明了 ${declaredCount}/${coverable.length} 个结构节点`
+    : `${samples} samples declared ${declaredCount}/${coverable.length} structure nodes`;
+}
+
+function skillMapCoverageDeclarationHint(lang: Lang): string {
+  return lang === 'zh'
+    ? '这些声明来自 sample.covers，用于说明用例主要触达哪些 reference、hard rule 或 workflow；未声明不代表没有测到。'
+    : 'These declarations come from sample.covers and show which references, hard rules, or workflows the samples intentionally target; undeclared does not mean untested.';
 }
 
 function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string {
@@ -1979,7 +1986,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     `| doctor | ${doctorStatus} | ${doctor ? `${doctor.nodeCount} nodes / ${doctor.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| eval | ${evalStatus} | ${evalGraph ? `${zh ? 'variant 子图' : 'variant subgraph'}: ${evalGraph.nodeCount} nodes / ${evalGraph.edgeCount} edges` : (zh ? '无 graph' : 'no graph')} |`,
     `| observe | ${observeStatus} | ${zh ? '未接 production graph' : 'production graph not connected'} |`,
-    ...(coverageSummary ? ['', zh ? '### 声明锚点' : '### Declared Anchors', '', coverageSummary] : []),
+    ...(coverageSummary ? ['', zh ? '### 声明锚点' : '### Declared Anchors', '', coverageSummary, '', skillMapCoverageDeclarationHint(lang)] : []),
     '',
     zh ? '### 关键计数' : '### Key Counts',
     '',
@@ -2089,7 +2096,7 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const topMeta = [
     coverageSummary,
     !coverageSummary && doctor ? `${doctor.nodeCount} ${zh ? '结构节点' : 'definition nodes'}` : '',
-    evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
+    !coverageSummary && evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
   ].filter(Boolean).join(' · ');
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
