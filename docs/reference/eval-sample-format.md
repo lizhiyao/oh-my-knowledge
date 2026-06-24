@@ -77,6 +77,8 @@ A sample can also carry **metadata** (documentation / diagnostics only — these
 
 `covers` is optional and intentionally explicit, not inferred from prompt text. Use it first on critical or high-signal samples, so Studio can draw declared structure edges without forcing every sample to become a maintenance task. Omitting `covers` means the structure edge is undeclared in Skill Map, not proven untested:
 
+Studio also surfaces this declaration in the Skill Map node detail panel: selecting a node shows whether its structure relation is explicitly declared by `sample.covers`.
+
 ```yaml
 - sample_id: release-risk-summary
   prompt: "Summarize release risk and rollback plan."
