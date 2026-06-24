@@ -587,6 +587,8 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
   const nodesById = graphNodeMap(graph);
   const projectedNodeIds = new Set<string>([variantNode.id]);
   const projectedEdgeIds = new Set<string>();
+  const sampleStatusByNodeId = new Map<string, string>();
+  const assertionStatusByNodeId = new Map<string, string>();
   if (skillNode) projectedNodeIds.add(skillNode.id);
 
   const addEdge = (edge: ArtifactGraphDocument['edges'][number]): void => {
@@ -598,6 +600,8 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
   for (const edge of graph.edges) {
     if (edge.fromNodeId === variantNode.id && (edge.edgeKind === 'evaluates' || edge.edgeKind === 'derived_from')) {
       addEdge(edge);
+      const to = nodesById.get(edge.toNodeId);
+      if (edge.status && to?.nodeKind === 'sample') sampleStatusByNodeId.set(to.id, edge.status);
     }
   }
 
@@ -615,6 +619,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
   }
 
   const declaredCoverageStableKeys = new Set<string>();
+  const declaredCoverageEdges: NonNullable<SkillGraphSnapshot['eval']>['declaredCoverageEdges'] = [];
   let coverageEdges = 0;
   for (const edge of graph.edges) {
     if (edge.edgeKind !== 'covers') continue;
@@ -626,6 +631,17 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     addEdge(edge);
     coverageEdges += 1;
     if (to.stableKey) declaredCoverageStableKeys.add(to.stableKey);
+    if (to.stableKey) {
+      const sampleStatus = sampleStatusByNodeId.get(from.id);
+      declaredCoverageEdges.push({
+        ...(from.stableKey ? { sampleStableKey: from.stableKey } : {}),
+        sampleLabel: from.label,
+        ...(sampleStatus ? { sampleStatus } : {}),
+        targetStableKey: to.stableKey,
+        targetNodeKind: to.nodeKind,
+        targetLabel: to.label,
+      });
+    }
   }
 
   const sampleIds = new Set<string>();
@@ -643,13 +659,27 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     if (from?.nodeKind === 'diagnostic') diagnosticIds.add(from.id);
     if (to?.nodeKind === 'diagnostic') diagnosticIds.add(to.id);
     if (edge.edgeKind === 'fails') failedAssertionEdges += 1;
+    if ((edge.edgeKind === 'passes' || edge.edgeKind === 'fails') && edge.status) {
+      if (from?.nodeKind === 'assertion') assertionStatusByNodeId.set(from.id, edge.status);
+      if (to?.nodeKind === 'assertion') assertionStatusByNodeId.set(to.id, edge.status);
+    }
   }
   const measurementNodes = graphNodePreviews(graph, [
     'sample',
     'assertion',
     'eval_result',
     'diagnostic',
-  ], projectedNodeIds);
+  ], projectedNodeIds).map((node) => {
+    if (!node.stableKey) return node;
+    const sourceNode = [...nodesById.values()].find((candidate) => candidate.stableKey === node.stableKey);
+    if (!sourceNode) return node;
+    const status = sourceNode.nodeKind === 'sample'
+      ? sampleStatusByNodeId.get(sourceNode.id)
+      : sourceNode.nodeKind === 'assertion'
+        ? assertionStatusByNodeId.get(sourceNode.id)
+        : undefined;
+    return status ? { ...node, status } : node;
+  });
 
   return {
     stage: {
@@ -668,6 +698,9 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
       measurementNodes,
       coverageEdges,
       declaredCoverageStableKeys: [...declaredCoverageStableKeys].sort(),
+      declaredCoverageEdges: declaredCoverageEdges.sort((a, b) =>
+        a.sampleLabel.localeCompare(b.sampleLabel) || a.targetStableKey.localeCompare(b.targetStableKey),
+      ),
     },
     ...(artifactHash ? { artifactHash } : {}),
     ...(sourceLocator ? { sourceLocator } : {}),
