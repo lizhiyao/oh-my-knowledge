@@ -10,6 +10,8 @@ import { e, DEFAULT_LANG } from './layout.js';
 import type { Lang, DoctorReport, DoctorSkillReport, DoctorRuleResult } from '../types/index.js';
 
 interface Finding { level?: string; description?: string; suggestion?: string; support?: { k?: number; n?: number } }
+interface SummarySamples { requested?: number; succeeded?: number; concurrency?: number; degraded?: boolean }
+interface SummaryDetail { samples?: SummarySamples }
 function getDetail(r: DoctorRuleResult): { displayName?: string; level?: string; findings?: Finding[] } {
   return (r.detail ?? {}) as { displayName?: string; level?: string; findings?: Finding[] };
 }
@@ -52,8 +54,13 @@ function renderRuleCard(r: DoctorRuleResult, lang: Lang, forceOpen = false): str
       : svgIcon('warn', { size: 14, style: `color:${f.level === '警告' ? '#d97706' : '#637083'};vertical-align:-2px;margin-right:5px` });
     // 多采样支持度 k/n:仅 n>1 时展示(单次采样无意义)。k<n 用偏灰提示"非每次都报"。
     const sup = f.support;
+    const supportTitle = sup && typeof sup.n === 'number' && typeof sup.k === 'number'
+      ? (lang === 'zh'
+        ? `${sup.n} 次采样里有 ${sup.k} 次报了这条`
+        : `Reported by ${sup.k} of ${sup.n} samples`)
+      : '';
     const supBadge = sup && typeof sup.n === 'number' && sup.n > 1 && typeof sup.k === 'number'
-      ? `<span class="rs-badge rs-badge--${sup.k >= sup.n ? 'pass' : 'warn'}" title="${sup.n} 次采样里有 ${sup.k} 次报了这条" style="margin-left:6px">${sup.k}/${sup.n}</span>`
+      ? `<span class="rs-badge rs-badge--${sup.k >= sup.n ? 'pass' : 'warn'}" title="${e(supportTitle)}" style="margin-left:6px">${sup.k}/${sup.n}</span>`
       : '';
     return `<div class="rs-finding rs-finding--${isErr ? 'err' : 'warn'}">
       <div class="rs-finding-desc">${mIcon}${e(f.description ?? '')}${supBadge}</div>
@@ -67,7 +74,24 @@ function renderRuleCard(r: DoctorRuleResult, lang: Lang, forceOpen = false): str
   </details>`;
 }
 
+function renderSampleDegradedAlert(summary: DoctorRuleResult | undefined, lang: Lang): string {
+  const samples = (summary?.detail as SummaryDetail | undefined)?.samples;
+  if (!samples || samples.degraded !== true) return '';
+  const requested = typeof samples.requested === 'number' ? samples.requested : 0;
+  const succeeded = typeof samples.succeeded === 'number' ? samples.succeeded : 0;
+  if (requested <= 1 || succeeded >= requested) return '';
+  const title = lang === 'zh' ? '共识置信降级' : 'Consensus confidence degraded';
+  const body = lang === 'zh'
+    ? `本次只成功解析 ${succeeded}/${requested} 次采样，finding 支持度仅基于成功样本。建议重跑，或在限流场景下降低并发。`
+    : `Only ${succeeded}/${requested} samples parsed successfully. Finding support is based on successful samples only. Re-run or lower concurrency if rate-limited.`;
+  return `<div class="rs-alert rs-alert--warn">
+    <div class="rs-alert-title">${e(title)}</div>
+    <div class="rs-alert-body">${e(body)}</div>
+  </div>`;
+}
+
 function renderSkillBlock(sk: DoctorSkillReport, lang: Lang): string {
+  const summary = sk.results.find((r) => r.ruleId.endsWith(':_summary'));
   const rules = sk.results.filter((r) => !r.ruleId.endsWith(':_summary'));
   const pass = rules.filter((r) => r.status === 'pass').length;
   const warn = rules.filter((r) => r.status === 'warn').length;
@@ -93,7 +117,7 @@ function renderSkillBlock(sk: DoctorSkillReport, lang: Lang): string {
     ? `<div class="rs-panel"><details class="rs-fold"><summary>${zh ? `展开 ${oks.length} 条通过的规则` : `Show ${oks.length} passed rules`}</summary>${oks.map((r) => renderRuleCard(r, lang)).join('')}</details></div>`
     : '';
 
-  return stats + issuesHtml + oksHtml;
+  return renderSampleDegradedAlert(summary, lang) + stats + issuesHtml + oksHtml;
 }
 
 export function renderDoctorDetail(report: DoctorReport, skillName: string, langQ: string, lang: Lang = DEFAULT_LANG, skillContext?: SkillReportContext): string {
@@ -130,4 +154,3 @@ export function renderDoctorDetail(report: DoctorReport, skillName: string, lang
     skillContext,
   }, lang);
 }
-

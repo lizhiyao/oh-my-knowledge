@@ -370,15 +370,22 @@ async function composerCheckAll(
     err: finding['错误'], warn: finding['警告'], sug: finding['建议'],
   });
   if (requested > 1) {
-    summaryMessage += tDoctorMessage('cli.doctor.health.summary.samples', ctx.lang, { requested, succeeded });
+    summaryMessage += tDoctorMessage(
+      succeeded < requested
+        ? 'cli.doctor.health.summary.samples_degraded'
+        : 'cli.doctor.health.summary.samples',
+      ctx.lang,
+      { requested, succeeded },
+    );
   }
+  const sampleDegraded = requested > 1 && succeeded < requested;
 
   // 1 条 summary outcome
   const summaryOutcome: ComposerOutcome = {
     subId: '_summary',
     severity: 'info',
     labelKey: 'cli.doctor.health.summary.label',
-    status: 'pass', // summary 永远 pass(信息性,不影响 outcome)
+    status: sampleDegraded ? 'warn' : 'pass',
     message: summaryMessage,
     hint: merged.topSuggestions.slice(0, 3).join(' | ')
       || tDoctorMessage('cli.doctor.health.summary.no_top', ctx.lang),
@@ -386,7 +393,7 @@ async function composerCheckAll(
       overall,
       // 采样次数:requested=请求几次,succeeded=成功解析几次。finding 的 support=k/n
       // 即"被评估的 n 次里有 k 次报了这条"。mergeMode=归并实现(string / llm / 回退)。
-      samples: { requested, succeeded, concurrency },
+      samples: { requested, succeeded, concurrency, degraded: sampleDegraded },
       mergeMode,
       dimensionLevelCount: dimCount,
       findingCountByLevel: finding,

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
-import { numberStringParser } from '../oclif/parsers.js';
+import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
@@ -127,18 +127,21 @@ export default class Doctor extends BaseCommand {
         zh: 'LLM 推理 effort：low / medium / high / xhigh / max。',
         en: 'LLM reasoning effort: low / medium / high / xhigh / max.',
       }),
+      parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
     }),
     repeat: Flags.string({
       description: bilingual({
         zh: '健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。',
         en: 'Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).',
       }),
+      parse: integerStringParser('--repeat', { min: 1, max: 10 }),
     }),
     concurrency: Flags.string({
       description: bilingual({
         zh: '多次采样的并发数。默认 = --repeat（全并行，各遍相互独立，压墙钟时间）。设 1 = 串行。成本不变，只抬高瞬时并发（rate-limit 敏感时调小）。',
         en: 'Concurrency across the repeated passes. Default = --repeat (full parallel; passes are independent, cuts wall-clock). Set 1 for serial. Cost unchanged; only raises peak concurrency (lower it if rate-limited).',
       }),
+      parse: integerStringParser('--concurrency', { min: 1, max: 10 }),
     }),
     'static-only': Flags.boolean({
       description: bilingual({
@@ -160,19 +163,13 @@ export default class Doctor extends BaseCommand {
       // --static-only = 只跑静态检测(readable / metadata / 正文依赖,不调 LLM、不读 samples)。
       // samples_contract_aligned 仍只归 eval preflight(它要 samples.json,与离线解耦)。
       // 健康度体检重复采样次数(CLI flag --repeat → 内部 healthSamples 字段):默认 2,
-      // 设 1 = 单次快检。非法值(<1 / NaN)回退 2。
-      const healthSamplesRaw = flags.repeat != null ? Number(flags.repeat) : 2;
-      const healthSamples = Number.isFinite(healthSamplesRaw) && healthSamplesRaw >= 1
-        ? Math.floor(healthSamplesRaw)
-        : 2;
+      // 设 1 = 单次快检。合法范围由 oclif parser 拦截。
+      const healthSamples = flags.repeat != null ? Number(flags.repeat) : 2;
       // 归并策略:CLI 恒用 llm(硬逻辑,不暴露开关);samples=1 时 composer 自动跳过归并。
       // 失败回退 string 仍在 composer 内兜底。programmatic runDoctor 默认仍是 string。
       const healthMerge: 'string' | 'llm' = 'llm';
       // 并发数(--concurrency → healthConcurrency):默认不传(composer 取 = healthSamples 全并行);显式 ≥1 才覆盖。
-      const concurrencyRaw = flags.concurrency != null ? Number(flags.concurrency) : undefined;
-      const healthConcurrency = concurrencyRaw != null && Number.isFinite(concurrencyRaw) && concurrencyRaw >= 1
-        ? Math.floor(concurrencyRaw)
-        : undefined;
+      const healthConcurrency = flags.concurrency != null ? Number(flags.concurrency) : undefined;
       const defaultTimeoutSec = 600;
       const timeoutSec = flags.timeout != null ? Number(flags.timeout) : defaultTimeoutSec;
       const timeoutMs = Math.max(
@@ -211,8 +208,7 @@ export default class Doctor extends BaseCommand {
       // --json 进度走 stderr 不污染 stdout 的 JSON。
       const onProgress = flags.gate ? undefined : makeDoctorProgress(lang);
 
-      // --effort 校验:只接受合法档位,否则忽略(composer 走默认 low)。透传给健康审计,
-      // 否则这个 flag 是死的(此前 bug:解析了但从不传进 runDoctor)。
+      // --effort 合法性由 oclif parser 拦截。这里仅做窄化后透传给健康审计。
       const validEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
       const effort = flags.effort && (validEfforts as readonly string[]).includes(flags.effort)
         ? flags.effort as (typeof validEfforts)[number]

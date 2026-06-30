@@ -35,6 +35,7 @@ export type DoctorMessageKey =
   | 'cli.doctor.health.summary.label'
   | 'cli.doctor.health.summary.message'
   | 'cli.doctor.health.summary.samples'
+  | 'cli.doctor.health.summary.samples_degraded'
   | 'cli.doctor.health.summary.no_top'
   | 'cli.doctor.health.dim.trigger-boundary'
   | 'cli.doctor.health.dim.doc-clarity'
@@ -144,6 +145,10 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
   'cli.doctor.health.summary.samples': {
     zh: ' | 采样 {succeeded}/{requested} 次（并集去重，finding 标注 k/n 支持度）',
     en: ' | sampled {succeeded}/{requested} (unioned & deduped; findings tagged k/n support)',
+  },
+  'cli.doctor.health.summary.samples_degraded': {
+    zh: ' | 采样仅成功解析 {succeeded}/{requested} 次（已降级，finding 的 k/n 只基于成功样本）',
+    en: ' | parsed only {succeeded}/{requested} samples (degraded; k/n support uses successful samples only)',
   },
   'cli.doctor.health.summary.no_top': {
     zh: '完整详情见 --json 输出或 --html 报告',

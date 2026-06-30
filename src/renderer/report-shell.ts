@@ -256,6 +256,11 @@ a.rs-dim:hover{background:#f1f4f9;color:#182033}
 .rs-stat--fail .rs-stat-num{color:#dc2626}
 .rs-stat--total .rs-stat-num{color:#182033}
 
+/* ── 提示条 ── */
+.rs-alert{display:flex;flex-direction:column;gap:3px;padding:12px 16px;border:1px solid #f5c26b;border-radius:10px;background:#fff8ed;color:#92400e;box-shadow:0 8px 24px rgba(31,41,55,4%);margin-bottom:16px}
+.rs-alert-title{font-size:13px;font-weight:800}
+.rs-alert-body{font-size:12.5px;line-height:1.65}
+
 /* ── Panel（内容区块） ── */
 .rs-panel{background:#fff;border:1px solid #e4e8f1;border-radius:12px;box-shadow:0 8px 24px rgba(31,41,55,4%);padding:18px 20px;margin-bottom:16px}
 .rs-panel-title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#182033;margin-bottom:14px}

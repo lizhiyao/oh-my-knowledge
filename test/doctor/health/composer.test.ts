@@ -317,7 +317,7 @@ describe('skill_health composer — multi-sample consensus', () => {
     const composer = makeSkillHealthComposer(factory(mockExecutorSeq(outputs)));
     const out = await composer.checkAll(ctxWith(sampleSkill(), { healthSamples: 2 }));
     const summary = out.find((o) => o.subId === '_summary')!;
-    assert.deepEqual((summary.detail as { samples?: unknown }).samples, { requested: 2, succeeded: 2, concurrency: 2 });
+    assert.deepEqual((summary.detail as { samples?: unknown }).samples, { requested: 2, succeeded: 2, concurrency: 2, degraded: false });
     assert.match(summary.message, /2\/2/);
   });
 
@@ -362,7 +362,9 @@ describe('skill_health composer — multi-sample consensus', () => {
     const composer = makeSkillHealthComposer(factory(mockExecutorSeq(outputs)));
     const out = await composer.checkAll(ctxWith(sampleSkill(), { healthSamples: 2 }));
     const summary = out.find((o) => o.subId === '_summary')!;
-    assert.deepEqual((summary.detail as { samples?: unknown }).samples, { requested: 2, succeeded: 1, concurrency: 2 });
+    assert.equal(summary.status, 'warn');
+    assert.deepEqual((summary.detail as { samples?: unknown }).samples, { requested: 2, succeeded: 1, concurrency: 2, degraded: true });
+    assert.match(summary.message, /仅成功解析 1\/2 次/);
     const a = out.find((o) => o.subId === 'a')!;
     assert.equal(a.status, 'fail');
     assert.deepEqual((a.detail as unknown as DimDetail).findings[0].support, { k: 1, n: 1 });

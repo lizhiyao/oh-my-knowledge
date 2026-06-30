@@ -54,4 +54,15 @@ describe('oclif doctor', () => {
       assert.ok(e.stderr.includes('Nonexistent flag'), 'stderr should mention nonexistent flag');
     }
   });
+
+  it('非法采样参数 → exit code 2, 不进入 LLM 体检', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'doctor', '--repeat', 'abc', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1[\s\S]*10/, `stderr missing parser range:\n${e.stderr}`);
+    }
+  });
 });
