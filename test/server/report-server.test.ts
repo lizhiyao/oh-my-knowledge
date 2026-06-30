@@ -625,7 +625,7 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
-    // 点行先进入 skill hub,由 hub 展示 Skill Map / 三阶段状态 / Evidence Card。
+    // 点行先进入 skill hub,由 hub 展示 Skill Map / 三阶段状态 / 图谱摘要。
     // 行跳转走 data-href + 事件委托(非内联 onclick,见 skill-list-renderer)。
     assert.ok(res.body.includes('data-href="/skills/'));
   });

@@ -104,7 +104,7 @@ describe('doctor artifact graph', () => {
       assert.ok(!graph.edges.some((edge) => edge.edgeKind === 'covers'));
 
       const card = renderDoctorEvidenceCard(graph, report.skills[0], 'zh');
-      assert.ok(card.includes('Skill Evidence Card'));
+      assert.ok(card.includes('知识图谱摘要'));
       assert.ok(card.includes('doctor 有警告'));
       assert.ok(card.includes('SKILL.md: review-skill'));
       assert.ok(card.includes('file --> refs'));
@@ -150,7 +150,7 @@ describe('doctor artifact graph', () => {
       assert.equal(result.evidenceCardPath, join(doctorGraphDirForDoctorOutput(outputDir), 'review-skill-doctor-test.card.md'));
       const graph = JSON.parse(readFileSync(result.graphPath, 'utf-8')) as { documentKind: string };
       assert.equal(graph.documentKind, 'artifact-graph');
-      assert.ok(readFileSync(result.evidenceCardPath, 'utf-8').includes('Skill Evidence Card'));
+      assert.ok(readFileSync(result.evidenceCardPath, 'utf-8').includes('知识图谱摘要'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

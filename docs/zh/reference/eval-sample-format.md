@@ -69,10 +69,29 @@
 | `difficulty` | `'easy' \| 'medium' \| 'hard'` | 难度分桶（强枚举） |
 | `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
+| `covers` | `{ targetKind, ref }[]` | 可选声明的 skill 结构锚点，建议先用于关键用例；仅用于 Skill Map |
 | `mocks` | `object[]` | 工具调用拦截列表 —— 返回假数据而非真调工具 |
 | `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
 | `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
 | `environment` | `object` | 声明性「已就绪」前置：`cli_available` / `files_available` / `notes` |
+
+`covers` 是可选的显式声明字段，不从 prompt 文本里推断。建议先给关键用例、关键 reference / workflow / hard rule 声明它，让 Studio 能画出已声明的结构边，而不是要求每条用例都变成维护负担。不写只表示 Skill Map 暂无这条声明边，不代表该结构一定没被测到：
+
+Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节点时，会显示该结构关系是否由 `sample.covers` 显式声明。
+
+```yaml
+- sample_id: release-risk-summary
+  prompt: "总结发布风险和回滚方案。"
+  covers:
+    - targetKind: reference
+      ref: references/release-policy.md
+    - targetKind: workflow
+      ref: release
+    - targetKind: workflow_node
+      ref: release.check
+```
+
+`targetKind` 支持 `skill`、`skill_file`、`frontmatter`、`reference`、`script`、`hard_rule`、`workflow`、`workflow_node`。`reference` / `script` 的 `ref` 是相对 skill 根目录的路径；`hard_rule` / `workflow` 使用规则或 workflow id；`workflow_node` 使用 `workflowId.nodeId`。这个字段不进入 grading、评委 prompt、verdict，也不进入 sample 指纹。
 
 ## URL 自动抓取
 

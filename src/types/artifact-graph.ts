@@ -68,7 +68,7 @@ export type ArtifactGraphStatus =
   | 'not_measured';
 
 export interface ArtifactGraphBinding {
-  bindingStrength: 'content-hash' | 'source-locator' | 'runtime-trace' | 'name-only' | 'aggregate';
+  bindingStrength: 'content-hash' | 'source-locator' | 'runtime-trace' | 'name-only' | 'aggregate' | 'explicit';
   keys: Record<string, string>;
 }
 

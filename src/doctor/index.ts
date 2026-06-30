@@ -8,8 +8,9 @@
  * CLI 据此 exit 1 / abort eval。
  */
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runFileSuffix } from '../eval-core/artifact-file-names.js';
 import { discoverVariants, resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
@@ -25,6 +26,8 @@ import type {
 } from '../types/index.js';
 import { DOCTOR_REPORT_SCHEMA_VERSION, isComposerRule } from '../types/doctor.js';
 import { getRegisteredRules } from './rules.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Target resolution
@@ -185,9 +188,24 @@ function nextReportId(): string {
   return `doctor-${runFileSuffix()}`;
 }
 
+function findPackageJson(startDir: string): string {
+  let dir = startDir;
+  for (let i = 0; i < 5; i += 1) {
+    const candidate = join(dir, 'package.json');
+    if (existsSync(candidate)) return candidate;
+    dir = dirname(dir);
+  }
+  return join(startDir, '..', 'package.json');
+}
+
 function readCliVersion(): string {
-  // 不依赖 package.json import(避免 type 解析复杂度);用环境变量或退回 'unknown'
-  return process.env.npm_package_version ?? '0.0.0';
+  const envVersion = process.env.npm_package_version;
+  if (envVersion) return envVersion;
+  try {
+    const pkg = JSON.parse(readFileSync(findPackageJson(__dirname), 'utf-8')) as { version?: unknown };
+    if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;
+  } catch { /* fall through */ }
+  return '0.0.0';
 }
 
 export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {

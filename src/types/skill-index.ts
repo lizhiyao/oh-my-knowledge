@@ -57,9 +57,21 @@ export interface SkillGraphStageSnapshot {
 }
 
 export interface SkillGraphNodePreview {
+  stableKey?: string;
   nodeKind: string;
   label: string;
   status?: string;
+  coverage?: 'declared' | 'undeclared';
+  coveredBySamples?: string[];
+}
+
+export interface SkillGraphCoverageEdgePreview {
+  sampleStableKey?: string;
+  sampleLabel: string;
+  sampleStatus?: string;
+  targetStableKey: string;
+  targetNodeKind: string;
+  targetLabel: string;
 }
 
 export interface SkillGraphSnapshot {
@@ -82,6 +94,9 @@ export interface SkillGraphSnapshot {
     failedAssertionEdges: number;
     diagnostics: number;
     measurementNodes: SkillGraphNodePreview[];
+    coverageEdges: number;
+    declaredCoverageStableKeys: string[];
+    declaredCoverageEdges: SkillGraphCoverageEdgePreview[];
   };
 }
 

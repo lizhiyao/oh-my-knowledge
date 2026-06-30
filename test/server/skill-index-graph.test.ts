@@ -195,6 +195,7 @@ function doctorGraph(): ArtifactGraphDocument {
       { id: 'skill', stableKey: 'v1:skill:hash-service-guide', nodeKind: 'skill', nodeRole: 'entity', layer: 'definition', label: 'service-guide', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
       { id: 'ref', stableKey: 'v1:reference:hash-service-guide:references/a.md', nodeKind: 'reference', nodeRole: 'entity', layer: 'definition', label: 'references/a.md' },
       { id: 'script', stableKey: 'v1:script:hash-service-guide:scripts/a.sh', nodeKind: 'script', nodeRole: 'entity', layer: 'definition', label: 'scripts/a.sh' },
+      { id: 'frontmatter', stableKey: 'v1:frontmatter:hash-service-guide', nodeKind: 'frontmatter', nodeRole: 'entity', layer: 'definition', label: 'frontmatter' },
       { id: 'wf', stableKey: 'v1:workflow:hash-service-guide:release', nodeKind: 'workflow', nodeRole: 'entity', layer: 'definition', label: 'release' },
       { id: 'wfn', stableKey: 'v1:workflow-node:hash-service-guide:release.check', nodeKind: 'workflow_node', nodeRole: 'entity', layer: 'definition', label: '检查发布' },
       { id: 'rule', stableKey: 'v1:hard-rule:hash-service-guide:cite', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'cite' },
@@ -231,6 +232,9 @@ function evalGraph(): ArtifactGraphDocument {
       { id: 'er-other', stableKey: 'v1:eval-result:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'eval_result', nodeRole: 'observation', layer: 'measurement', label: 'release-helper / s001' },
       { id: 'diag', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:service-guide:s002', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: service-guide / s002' },
       { id: 'diag-other', stableKey: 'v1:diagnostic:service-guide-20260621T120000-abcd:release-helper:s001', nodeKind: 'diagnostic', nodeRole: 'observation', layer: 'measurement', label: 'diagnostic: release-helper / s001' },
+      { id: 'cover-ref', stableKey: 'v1:reference:hash-service-guide:references/a.md', nodeKind: 'reference', nodeRole: 'entity', layer: 'measurement', label: 'references/a.md', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'cover-workflow', stableKey: 'v1:workflow:hash-service-guide:release', nodeKind: 'workflow', nodeRole: 'entity', layer: 'measurement', label: 'release', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-service-guide' } } },
+      { id: 'cover-other', stableKey: 'v1:reference:hash-release-helper:references/a.md', nodeKind: 'reference', nodeRole: 'entity', layer: 'measurement', label: 'references/a.md', binding: { bindingStrength: 'content-hash', keys: { artifactHash: 'hash-release-helper' } } },
     ],
     edges: [
       { id: 'e1', fromNodeId: 'variant', toNodeId: 'skill', edgeKind: 'derived_from', layer: 'measurement' },
@@ -249,6 +253,9 @@ function evalGraph(): ArtifactGraphDocument {
       { id: 'e14', fromNodeId: 'er-other', toNodeId: 's001', edgeKind: 'evaluates', layer: 'measurement' },
       { id: 'e15', fromNodeId: 'er-other', toNodeId: 'a3', edgeKind: 'fails', layer: 'measurement', status: 'failed' },
       { id: 'e16', fromNodeId: 'diag-other', toNodeId: 'er-other', edgeKind: 'diagnoses', layer: 'measurement', status: 'failed' },
+      { id: 'e17', fromNodeId: 's001', toNodeId: 'cover-ref', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's001', targetKind: 'reference', targetRef: 'references/a.md', artifactHash: 'hash-service-guide' } } },
+      { id: 'e18', fromNodeId: 's002', toNodeId: 'cover-workflow', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's002', targetKind: 'workflow', targetRef: 'release', artifactHash: 'hash-service-guide' } } },
+      { id: 'e19', fromNodeId: 's001', toNodeId: 'cover-other', edgeKind: 'covers', layer: 'measurement', binding: { bindingStrength: 'explicit', keys: { sampleId: 's001', targetKind: 'reference', targetRef: 'references/a.md', artifactHash: 'hash-release-helper' } } },
     ],
   };
 }
@@ -307,12 +314,37 @@ describe('SkillIndex graph projection', () => {
     assert.equal(entry.graph?.eval?.failedAssertionEdges, 1);
     assert.equal(entry.graph?.eval?.diagnostics, 1);
     assert.equal(entry.graph?.eval?.variantName, 'service-guide');
-    assert.equal(entry.graph?.eval?.nodeCount, 9);
-    assert.equal(entry.graph?.eval?.edgeCount, 10);
+    assert.equal(entry.graph?.eval?.nodeCount, 11);
+    assert.equal(entry.graph?.eval?.edgeCount, 12);
+    assert.equal(entry.graph?.eval?.coverageEdges, 2);
+    assert.deepEqual(entry.graph?.eval?.declaredCoverageStableKeys, [
+      'v1:reference:hash-service-guide:references/a.md',
+      'v1:workflow:hash-service-guide:release',
+    ]);
+    assert.deepEqual(entry.graph?.eval?.declaredCoverageEdges, [
+      {
+        sampleStableKey: 'v1:sample:sample-1',
+        sampleLabel: 's001',
+        sampleStatus: 'ok',
+        targetStableKey: 'v1:reference:hash-service-guide:references/a.md',
+        targetNodeKind: 'reference',
+        targetLabel: 'references/a.md',
+      },
+      {
+        sampleStableKey: 'v1:sample:sample-2',
+        sampleLabel: 's002',
+        sampleStatus: 'failed',
+        targetStableKey: 'v1:workflow:hash-service-guide:release',
+        targetNodeKind: 'workflow',
+        targetLabel: 'release',
+      },
+    ]);
+    assert.equal(entry.graph?.eval?.measurementNodes.find((node) => node.label === 's002')?.status, 'failed');
+    assert.equal(entry.graph?.eval?.measurementNodes.find((node) => node.label === 'assertion: contains_all')?.status, 'failed');
 
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
-    assert.match(html, /复制 Markdown Evidence Card/);
+    assert.match(html, /复制图谱摘要/);
     assert.ok(html.includes('class="sm-svg"'));
     assert.ok(html.includes('class="sm-edge sm-edge--definition"'));
     assert.ok(html.includes('class="sm-edge sm-edge--measurement"'));
@@ -321,24 +353,83 @@ describe('SkillIndex graph projection', () => {
     assert.ok(html.includes('data-sm-leaf="1"'));
     assert.ok(html.includes('data-sm-draggable="1"'));
     assert.match(html, /data-sm-root[^>]*data-sm-node-id="skill-root"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-root[^>]*role="button"[^>]*tabindex="0"/);
     assert.ok(html.includes('data-sm-node-id="definition-'));
     assert.ok(html.includes('data-sm-edge-to="definition-'));
     assert.ok(html.includes('data-sm-edge-from-node="skill-root"'));
-    assert.ok(html.includes('data-sm-more-toggle="definition"'));
-    assert.match(html, /data-sm-node-id="definition-more"[^>]*data-sm-draggable="1"/);
-    assert.match(html, /data-sm-node-id="definition-overflow-0"[^>]*data-sm-draggable="1"/);
-    assert.ok(html.includes('data-sm-overflow-group="definition" hidden'));
-    assert.ok(html.includes('data-sm-edge-from-node="definition-more"'));
-    assert.ok(html.includes('data-sm-edge-from-x="310"'));
-    assert.ok(html.includes('data-sm-expanded-label="收起结构节点"'));
+    assert.ok(html.includes('data-sm-more-toggle="definition-group-references"'));
+    assert.ok(html.includes('data-sm-more-toggle="definition-group-workflow"'));
+    assert.ok(html.includes('data-sm-more-toggle="definition-group-rules"'));
+    assert.ok(!html.includes('data-sm-more-toggle="definition-group-assets"'));
+    assert.match(html, /data-sm-node-id="definition-group-references"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-node-id="definition-group-rules-node-0"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-node-id="definition-asset-0"[^>]*data-sm-draggable="1"/);
+    assert.match(html, /data-sm-node-id="definition-asset-1"[^>]*data-sm-draggable="1"/);
+    assert.ok(html.includes('<div class="sm-node-title">执行脚本</div>'));
+    assert.ok(html.includes('<div class="sm-node-title">元信息</div>'));
+    assert.ok(!html.includes('<div class="sm-node-kind">script</div>'));
+    assert.ok(!html.includes('<div class="sm-node-kind">meta</div>'));
+    assert.ok(html.includes('data-sm-overflow-group="definition-group-rules" hidden'));
+    assert.ok(html.includes('data-sm-edge-from-node="definition-group-rules"'));
+    assert.ok(html.includes('class="sm-node-toggle-icon"'));
+    assert.ok(html.includes('border-right:1.8px solid currentColor'));
+    assert.ok(!html.includes(".sm-node-toggle-icon::before { content:'+' }"));
+    assert.ok(!html.includes(".sm-node[data-sm-more-toggle][aria-expanded=\"true\"] .sm-node-toggle-icon::before { content:'−' }"));
+    assert.ok(html.includes('data-sm-collapsed-label="展开约束规则"'));
+    assert.ok(html.includes('data-sm-expanded-label="收起约束规则"'));
+    assert.ok(!html.includes('<div class="sm-node-title">收起'));
     assert.ok(html.includes('updateEdgesFromNode'));
     assert.ok(html.includes('refreshEdges'));
     assert.ok(html.includes('suppressMoreClickUntil'));
     assert.ok(html.includes('data-sm-origin-x="'));
-    assert.ok(html.includes('data-sm-root-x="470"'));
+    assert.ok(html.includes('data-sm-root-x="560"'));
+    assert.ok(html.includes('data-sm-boundary-x="560"'));
+    assert.ok(html.includes('data-sm-evidence-x="470"'));
+    assert.ok(html.includes('applyViewPositions'));
     assert.ok(!html.includes('class="sm-bind"'));
+    assert.ok(html.includes('class="sm-detail" data-sm-detail'));
+    assert.ok(html.includes('data-sm-detail-title="SKILL.md"'));
+    assert.ok(html.includes('data-sm-detail-kind="Skill 根节点"'));
+    assert.ok(html.includes('data-sm-detail-kind="知识分组"'));
+    assert.ok(html.includes('data-sm-detail-kind="引用文档"'));
+    assert.ok(html.includes('data-sm-detail-coverage="已由评测用例声明"'));
+    assert.ok(html.includes('data-sm-detail-coverage="尚未由评测用例声明"'));
+    assert.ok(html.includes('data-sm-detail-expanded-status="已展开"'));
+    assert.ok(html.includes('data-sm-detail-collapsed-status="已收起"'));
+    assert.ok(html.includes('data-sm-detail-row="scope"'));
+    assert.ok(html.includes('data-sm-detail-value="status"'));
+    assert.ok(html.includes('setSelectedNode'));
+    assert.ok(html.includes('aria-pressed'));
+    assert.ok(!html.includes('aria-selected'));
     assert.ok(!html.includes('alert(1)'));
-    assert.ok(!html.includes('sm-node--ok"'));
+    assert.ok(!html.includes('ok" onclick'));
+    assert.ok(!html.includes('ok&quot; onclick'));
+    assert.ok(html.includes('sm-node--ok'));
+    assert.ok(html.includes('sm-node--coverage-declared'));
+    assert.ok(html.includes('sm-node--coverage-undeclared'));
+    assert.ok(html.includes('class="sm-evidence-strip"'));
+    assert.ok(!html.includes('当前短板'));
+    assert.ok(html.includes('边界覆盖'));
+    assert.ok(html.includes('未声明'));
+    assert.ok(html.includes('失败证据'));
+    assert.ok(!html.includes('<span class="si-sect-meta">2 条评测用例声明了 2/8 个结构节点</span>'));
+    assert.ok(html.includes('引用材料'));
+    assert.ok(html.includes('执行流程'));
+    assert.ok(html.includes('约束规则'));
+    assert.ok(!html.includes('辅助资产'));
+    assert.ok(!html.includes('<div class="sm-node-kind">group</div>'));
+    assert.ok(html.includes('sm-edge--coverage'));
+    assert.ok(html.includes('data-sm-evidence-edge="1"'));
+    assert.ok(html.includes('data-sm-detail-evidence='));
+    assert.ok(html.includes('data-sm-detail-action='));
+    assert.ok(html.includes('优先查看这条失败用例'));
+    assert.ok(html.includes('由 s001 声明覆盖'));
+    assert.ok(html.includes('s002（失败）'));
+    assert.ok(html.includes('data-sm-detail-kind="评测用例"'));
+    assert.ok(html.includes('sm-node-signal--failed'));
+    assert.ok(html.includes('2 条评测用例声明了 2/8 个结构节点'));
+    assert.ok(html.includes('这些关系来自 sample.covers'));
+    assert.ok(html.includes('尚未声明只表示还没有被评测用例显式标注'));
     assert.ok(html.includes('background-size:auto,28px 28px,28px 28px,auto'));
     assert.ok(html.includes('outline:4px solid rgba(79,70,229,.07)'));
     assert.ok(html.includes('title="sample: s001"'));
@@ -349,13 +440,18 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('sm-edge--stage'));
     assert.ok(html.includes('data-sm-action="zoom-in"'));
     assert.ok(html.includes('data-sm-action="zoom-out"'));
-    assert.ok(html.includes('data-sm-toggle-layer="definition"'));
-    assert.ok(html.includes('data-sm-toggle-layer="measurement"'));
+    assert.ok(html.includes('data-sm-view="boundary"'));
+    assert.ok(html.includes('data-sm-view-button="boundary"'));
+    assert.ok(html.includes('data-sm-view-button="evidence"'));
+    assert.ok(html.includes('边界图'));
+    assert.ok(html.includes('证据视图'));
     assert.ok(!html.includes('data-sm-toggle-layer="stage"'));
+    assert.ok(!html.includes('data-sm-toggle-layer="measurement"'));
     assert.ok(html.includes('data-sm-toggle-leaves'));
     assert.ok(!html.includes('sm-branch'));
     assert.ok(html.includes('references/a.md'));
     assert.ok(html.includes('scripts/a.sh'));
+    assert.ok(html.includes('frontmatter'));
     assert.ok(html.includes('workflow: release'));
     assert.ok(html.includes('sample: s001'));
     assert.ok(html.includes('assertion: contains_all'));

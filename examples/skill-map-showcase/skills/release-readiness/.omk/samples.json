@@ -15,7 +15,37 @@
       }
     ],
     "capability": ["release-readiness", "risk-review"],
-    "construct": "capability"
+    "construct": "capability",
+    "covers": [
+      {
+        "targetKind": "reference",
+        "ref": "references/release-policy.md"
+      },
+      {
+        "targetKind": "reference",
+        "ref": "references/rollback-runbook.md"
+      },
+      {
+        "targetKind": "hard_rule",
+        "ref": "cite-release-policy"
+      },
+      {
+        "targetKind": "workflow",
+        "ref": "release-review"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "release-review.check-policy"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "release-review.verify-rollback"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "release-review.decide"
+      }
+    ]
   },
   {
     "sample_id": "missing-rollback",
@@ -28,7 +58,29 @@
       }
     ],
     "capability": ["release-readiness", "rollback"],
-    "construct": "necessity"
+    "construct": "necessity",
+    "covers": [
+      {
+        "targetKind": "reference",
+        "ref": "references/release-policy.md"
+      },
+      {
+        "targetKind": "reference",
+        "ref": "references/rollback-runbook.md"
+      },
+      {
+        "targetKind": "hard_rule",
+        "ref": "rollback-before-ship"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "release-review.verify-rollback"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "release-review.decide"
+      }
+    ]
   },
   {
     "sample_id": "post-release-incident",
@@ -41,6 +93,28 @@
       }
     ],
     "capability": ["incident-response", "rollback"],
-    "construct": "quality"
+    "construct": "quality",
+    "covers": [
+      {
+        "targetKind": "reference",
+        "ref": "references/rollback-runbook.md"
+      },
+      {
+        "targetKind": "workflow",
+        "ref": "incident-response"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "incident-response.assess-impact"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "incident-response.trigger-rollback"
+      },
+      {
+        "targetKind": "workflow_node",
+        "ref": "incident-response.communicate"
+      }
+    ]
   }
 ]
