@@ -174,7 +174,7 @@ omk doctor --static-only                 # 只跑静态检测：不调 LLM、不
 
 <!-- omk:cli:doctor:flags:end -->
 
-LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
+默认 doctor 会先跑静态规则（skill 可读性、frontmatter、正文依赖），再跑 LLM 健康度审计。单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
 
 通过 `--dimensions <yaml>` 自定义维度：每条维度二选一 —— **LLM 维度**（`promptSection`，并入健康度 LLM 调用）或**接口维度**（`endpoint`，doctor 把 skill 快照 POST 给你的服务并把响应映射成判定）。同一条维度两者互斥。接口维度属于「在线」检查（与健康度 LLM 审计一起运行），可以做 prompt 表达不了的深度检查 —— 例如调用外部安全审查服务。
 
@@ -204,7 +204,7 @@ endpoint 地址校验：只接受 `http` / `https` 协议；指向私网/本机�
 
 采样与共识：默认 `omk doctor` 把审计 `--repeat 2` 遍并行跑，finding 取并集，再用一次额外的 LLM 聚类把同根因（措辞不同）的 finding 归并，每条标注 `k/n` 支持度（n 遍里有 k 遍报了它）。这样重复体检会收敛，而不是每次暴露不同的子集。`--repeat 1` 单次快检；调大做更深、更稳的审计。`--concurrency` 节流并发（默认 = `--repeat`）。
 
-静态检测（`--static-only`）：跑静态 lint 规则，零 LLM 调用、**且不加载 `samples.json`** —— skill 可读性、frontmatter 合法性、以及 **skill 正文** 里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `claude` / `codex` 或断网调试时用。samples 契约检查被有意排除（它需要 `samples.json`），留给 `omk eval` 的评测前置门禁 —— 在那里依赖检查还会用上用例声明的 `requires` 做增强。
+静态检测（`--static-only`）：只跑默认 doctor 里同一套静态 lint 规则，零 LLM 调用、**且不加载 `samples.json`** —— skill 可读性、frontmatter 合法性、以及 **skill 正文** 里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `claude` / `codex` 或断网调试时用。samples 契约检查被有意排除（它需要 `samples.json`），留给 `omk eval` 的评测前置门禁 —— 在那里依赖检查还会用上用例声明的 `requires` 做增强。
 
 ## `omk eval`
 

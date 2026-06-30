@@ -6,7 +6,7 @@
 
 ## omk doctor
 
-体检 omk 工作目录：对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。
+体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。
 
 **用法:**
 
@@ -37,7 +37,7 @@ omk doctor [target] [flags]
 
 **示例:**
 
-> 默认模式跑 LLM 健康度审计(7 内置维度）。
+> 默认模式跑静态规则 + LLM 健康度审计（7 内置维度）。
 
 ```bash
 omk doctor

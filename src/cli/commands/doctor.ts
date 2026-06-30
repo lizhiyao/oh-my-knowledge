@@ -17,15 +17,15 @@ import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '..
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
-    zh: '体检 omk 工作目录：对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。',
-    en: 'Preflight health checks for omk workdir: multi-dimension LLM health audit of your skills (default --repeat 2 sampling + consensus merge).',
+    zh: '体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。',
+    en: 'Preflight health checks for omk workdir: static rules plus multi-dimension LLM health audit of your skills (default --repeat 2 sampling + consensus merge).',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '默认模式跑 LLM 健康度审计(7 内置维度）。',
-        en: 'Default mode runs LLM-driven health audit (7 built-in dimensions).',
+        zh: '默认模式跑静态规则 + LLM 健康度审计（7 内置维度）。',
+        en: 'Default mode runs static rules plus LLM-driven health audit (7 built-in dimensions).',
       }),
       command: '<%= config.bin %> doctor',
     },
@@ -159,7 +159,7 @@ export default class Doctor extends BaseCommand {
       const target: string | null = args.target ?? null;
       const executorName = flags.executor ?? 'claude';
       const model = flags.model ?? 'sonnet';
-      // omk doctor 默认 = LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);
+      // omk doctor 默认 = 静态规则 + LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);
       // --static-only = 只跑静态检测(readable / metadata / 正文依赖,不调 LLM、不读 samples)。
       // samples_contract_aligned 仍只归 eval preflight(它要 samples.json,与离线解耦)。
       // 健康度体检重复采样次数(CLI flag --repeat → 内部 healthSamples 字段):默认 2,
@@ -194,7 +194,7 @@ export default class Doctor extends BaseCommand {
       const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
       const { isComposerRule } = await import('../../types/doctor.js');
-      // 默认:只跑在线检查(LLM health composer + endpoint 自定义维度 external=true)。
+      // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
       // --static-only:只跑静态检测(纯静态内置 rule),但排除 samples_contract_aligned
       // (那条要 samples.json,与离线解耦) → 且不加载 samples,依赖检查只扫 skill 正文。
       const staticOnly = flags['static-only'];
@@ -202,7 +202,7 @@ export default class Doctor extends BaseCommand {
         isComposerRule(r) || (r as DoctorRule).external === true;
       const rulesOverride = staticOnly
         ? getRegisteredRules().filter((r) => !isOnline(r) && r.id !== 'samples_contract_aligned')
-        : getRegisteredRules().filter(isOnline);
+        : getRegisteredRules().filter((r) => r.id !== 'samples_contract_aligned');
 
       // 批量体检进度(per-skill,写 stderr)。--gate 是静默模式,不报进度;
       // --json 进度走 stderr 不污染 stdout 的 JSON。

@@ -86,10 +86,11 @@ export interface DoctorContext {
   lang: 'zh' | 'en';
   timeoutMs: number;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  /** 深度健康检查(LLM-judge,多维度)开关。CLI doctor 恒为 true(纯 LLM 健康审计);
-   *  programmatic API 默认 false,只跑静态 rule(eval preflight 走这条)。true 时
-   *  skill_health composer 才真正调 LLM。composer 不在 BUILTIN_RULES,必须先
-   *  import './doctor/health/register.js' 让 registerRule 副作用生效。 */
+  /** 深度健康检查(LLM-judge,多维度)开关。CLI `omk doctor` 默认 true,并与
+   *  静态 rule 一起运行;`--static-only` 置 false。programmatic API 默认 false,
+   *  eval preflight 走静态 rule 路径。true 时 skill_health composer 才真正调 LLM。
+   *  composer 不在 BUILTIN_RULES,必须先 import './doctor/health/register.js'
+   *  让 registerRule 副作用生效。 */
   runHealthCheck?: boolean;
   /** 健康度体检的采样次数(self-consistency)。composer 跑 N 次 LLM(默认并行),把各次
    *  finding 取并集去重,每条标注支持度 k/N(N 次里出现 k 次)。默认 1 = 单次采样;注意
@@ -112,8 +113,9 @@ export interface DoctorRule {
   /** i18n key,terminal 渲染时用作 rule 标题。 */
   labelKey: string;
   /** true = 需要外部 I/O(网络 / LLM)的"在线"检查,跟 skill_health composer 同档:
-   *  CLI `omk doctor` 会跑(endpoint 自定义维度置 true)。缺省(undefined/false)=
-   *  纯静态低成本检查(内置 4 条),只在 eval preflight 门禁里跑,不从 CLI 暴露。 */
+   *  CLI `omk doctor` 默认会跑(endpoint 自定义维度置 true),`--static-only` 会跳过。
+   *  缺省(undefined/false)= 纯静态低成本检查(内置 4 条),由默认 doctor、
+   *  `--static-only` 与 eval preflight 共同复用。 */
   external?: boolean;
   check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome>;
 }
@@ -189,7 +191,8 @@ export interface DoctorRunOptions {
    *  既可以是普通 DoctorRule,也可以是 ComposerRule(健康度体检走这条)。 */
   rules?: DoctorRuleLike[];
   /** 深度健康检查(7 维 LLM-judge)。透传给 DoctorContext.runHealthCheck。
-   *  CLI doctor 恒为 true;programmatic API 默认 false(eval preflight 只跑静态 rule)。 */
+   *  CLI `omk doctor` 默认 true;`--static-only` 置 false。programmatic API 默认 false
+   *  (eval preflight 只跑静态 rule)。 */
   runHealthCheck?: boolean;
   /** 健康度体检采样次数(self-consistency)。透传给 DoctorContext.healthSamples。
    *  默认 1(单次,行为与历史一致)。CLI 用 `--repeat` 暴露。 */

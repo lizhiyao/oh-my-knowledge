@@ -51,6 +51,12 @@ describe('omk doctor CLI', () => {
     assert.ok(Array.isArray(parsed.skills));
     assert.ok(parsed.skills.length >= 1);
     assert.equal(parsed.outcome, 'passed');
+    const ids = (parsed.skills[0].results as Array<{ ruleId: string }>).map((r) => r.ruleId);
+    assert.ok(ids.includes('skill_readable'), `default doctor should run static rules, got: ${ids.join(',')}`);
+    assert.ok(ids.includes('skill_metadata'));
+    assert.ok(ids.includes('dependencies_present'));
+    assert.ok(!ids.includes('samples_contract_aligned'), 'samples-contract 不归 CLI 默认 doctor');
+    assert.ok(ids.some((id) => id.startsWith('skill_health')), 'default doctor should run LLM health audit');
   });
 
   it('--static-only runs offline (no executor) with static rules only, no LLM / samples-contract', async () => {

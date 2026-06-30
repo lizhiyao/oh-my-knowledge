@@ -174,7 +174,7 @@ For full descriptions: `omk doctor --help`.
 
 <!-- omk:cli:doctor:flags:end -->
 
-LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
+By default doctor runs static rules first (skill readability, frontmatter, body dependencies), then the LLM health audit. A single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
 
 Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimension** (`promptSection` — folded into the health LLM call) or an **endpoint dimension** (`endpoint` — doctor POSTs the skill snapshot to your service and maps the response). The two are mutually exclusive per dimension. Endpoint dimensions are "online" checks (run alongside the LLM audit), letting you do deep checks that prompts can't express — e.g. calling an external security-audit service.
 
@@ -204,7 +204,7 @@ Endpoint URL validation: only `http` / `https` schemes are accepted, and endpoin
 
 Sampling & consensus: by default `omk doctor` runs the audit `--repeat 2` times in parallel, takes the union of findings, and merges same-root-cause findings (across differing wording) via one extra LLM clustering pass, tagging each finding with `k/n` support (how many of the n passes reported it). This makes repeated runs converge instead of surfacing a different subset each time. Set `--repeat 1` for a single quick pass; raise it for a deeper, more stable audit. `--concurrency` throttles the parallelism (default = `--repeat`).
 
-Static-only checks (`--static-only`): runs the static lint rules with zero LLM calls and **without loading `samples.json`** — skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the **skill body** exist. Useful for CI nodes without `claude` / `codex`, or offline debugging. The samples-contract check is intentionally excluded (it needs `samples.json`); it stays as `omk eval`'s pre-evaluation gate, alongside the same dependency check enriched there with the samples' declared `requires`.
+Static-only checks (`--static-only`): runs only the same static lint rules included in default doctor with zero LLM calls and **without loading `samples.json`** — skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the **skill body** exist. Useful for CI nodes without `claude` / `codex`, or offline debugging. The samples-contract check is intentionally excluded (it needs `samples.json`); it stays as `omk eval`'s pre-evaluation gate, alongside the same dependency check enriched there with the samples' declared `requires`.
 
 ## `omk eval`
 

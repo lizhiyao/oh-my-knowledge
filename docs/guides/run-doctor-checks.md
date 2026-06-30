@@ -11,7 +11,7 @@ omk doctor                         # audit the current dir or ./skills
 omk doctor skills/v1.md            # audit a single skill
 ```
 
-You get per-dimension health scores (trigger boundary, doc clarity, instruction precision, dependencies, tool conventions, security, examples), findings, and concrete suggestions, sorted fail → warn → pass. Open the report in `omk studio`.
+By default doctor runs static rules first (skill readability, frontmatter, body dependencies), then the multi-dimension health audit (trigger boundary, doc clarity, instruction precision, dependencies, tool conventions, security, examples). You get findings and concrete suggestions, sorted fail → warn → pass. Open the report in `omk studio`.
 
 ## Sampling & consensus
 
@@ -31,7 +31,7 @@ omk doctor skills/ --repeat 3 --concurrency 1  # serial (lower peak concurrency)
 omk doctor skills/ --static-only
 ```
 
-Runs the static lint rules with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `claude` / `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
+Runs the same static lint rules included in default doctor with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `claude` / `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
 
 ## As a CI gate
 
