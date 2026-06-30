@@ -104,7 +104,7 @@ describe('scripts/build-docs codegen', () => {
     assert.ok(!body.includes('Output language zh|en'), 'lang flag en description leaked');
   });
 
-  it('doctor flags include --json --gate --static-only', () => {
+  it('doctor flags include --json --gate --repeat --static-only', () => {
     const content = readFileSync(COMMANDS_MD, 'utf8');
     const doctorIdx = content.indexOf('\n## omk doctor\n');
     const nextH2Idx = content.indexOf('\n## omk eval\n', doctorIdx + 1);
@@ -112,6 +112,7 @@ describe('scripts/build-docs codegen', () => {
     const doctorBlock = content.slice(doctorIdx, nextH2Idx);
     assert.ok(doctorBlock.includes('`--json`'), 'doctor must list --json');
     assert.ok(doctorBlock.includes('`--gate`'), 'doctor must list --gate');
+    assert.ok(doctorBlock.includes('`--repeat`'), 'doctor must list --repeat');
     assert.ok(doctorBlock.includes('`--static-only`'), 'doctor must list --static-only');
   });
 
@@ -219,7 +220,7 @@ describe('scripts/build-docs codegen', () => {
     // 这些 prose 在 marker 之外,本 codegen 不应触碰
     assert.ok(content.includes('Runs the offline evaluation, applies the verdict gate'), 'eval intro prose missing');
     assert.ok(content.includes('The HTML report has two tabs'), 'HTML report two-tabs prose missing');
-    assert.ok(content.includes('Static-only mode'), 'doctor static-only prose missing');
+    assert.ok(content.includes('pre-evaluation gate'), 'doctor sampling / eval-gate prose missing');
     assert.ok(content.includes('Studio is skill-centric'), 'Studio IA prose missing');
   });
 
@@ -227,7 +228,7 @@ describe('scripts/build-docs codegen', () => {
     const content = readFileSync(CLI_ZH, 'utf8');
     assert.ok(content.includes('运行离线评测'), 'eval intro zh prose missing');
     assert.ok(content.includes('HTML 报告有两个 tab'), 'HTML 报告 tabs zh prose missing');
-    assert.ok(content.includes('离线静态模式'), 'doctor static-only zh prose missing');
+    assert.ok(content.includes('评测前置门禁'), 'doctor sampling / eval-gate zh prose missing');
   });
 
   it('docs/reference/cli.md eval block has flags in alphabetic order', () => {

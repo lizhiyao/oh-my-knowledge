@@ -15,7 +15,6 @@ const PROJECT_ROOT = join(__dirname, '..');
 const FIXTURES_ROOT = join(__dirname, 'fixtures');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'echo-executor.sh');
-const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 
 interface ExecError extends Error {
   code?: number;
@@ -330,24 +329,6 @@ describe('CLI', () => {
     try {
       const { stdout } = await execFileAsync('node', [CLI, 'init', dir]);
       assert.ok(stdout.includes('已初始化 omk 项目'));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('doctor auto-detects cwd eval-samples.json', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-doctor-samples-'));
-    try {
-      const skillDir = join(dir, 'skills', 'review');
-      await mkdir(skillDir, { recursive: true });
-      await writeFile(join(skillDir, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
-      await writeFile(join(dir, 'eval-samples.json'), JSON.stringify([
-        { sample_id: 's1', prompt: 'review this code' },
-      ]));
-
-      const { stderr } = await execFileAsync('node', [CLI, 'doctor', '--executor', DOCTOR_FIXTURE], { cwd: dir });
-      assert.ok(stderr.includes('使用评测用例文件'), stderr);
-      assert.ok(!stderr.includes('未提供 samples'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

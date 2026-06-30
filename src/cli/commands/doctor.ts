@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
-import { numberStringParser } from '../oclif/parsers.js';
+import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
@@ -12,36 +12,41 @@ import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-ind
 import { doctorReportFileStem, isReportFileName, reportFilePath } from '../../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../../eval-core/report-file-migration.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
-import { findDoctorDeprecatedSamplesHint, findDoctorSamplesPath } from '../../inputs/sample-locator.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
-import type { DoctorOutcome, DoctorReport, Sample, DoctorRule, DoctorRuleLike } from '../../types/index.js';
-import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
+import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../types/index.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
-    zh: '体检 omk 工作目录，检查 skill 配置 / 依赖 / executor 连通性。',
-    en: 'Preflight health checks for omk workdir: skill config / deps / executor connectivity.',
+    zh: '体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。',
+    en: 'Preflight health checks for omk workdir: static rules plus multi-dimension LLM health audit of your skills (default --repeat 2 sampling + consensus merge).',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '默认模式跑 LLM 健康度审计(7 内置维度）。',
-        en: 'Default mode runs LLM-driven health audit (7 built-in dimensions).',
+        zh: '默认模式跑静态规则 + LLM 健康度审计（7 内置维度）。',
+        en: 'Default mode runs static rules plus LLM-driven health audit (7 built-in dimensions).',
       }),
       command: '<%= config.bin %> doctor',
     },
     {
       description: bilingual({
-        zh: '离线静态模式，只跑 4 条静态 rule，不调 LLM,CI 无 LLM 凭证时用。',
-        en: 'Offline static mode, only 4 static rules, no LLM call. Use when CI lacks LLM credentials.',
+        zh: '单次快速体检（不采样、不归并，最省）。',
+        en: 'Single quick pass (no sampling/merge, cheapest).',
+      }),
+      command: '<%= config.bin %> doctor --repeat 1',
+    },
+    {
+      description: bilingual({
+        zh: '只跑静态检测（不调 LLM、不读 samples）：结构 + 正文依赖检查。',
+        en: 'Static checks only (no LLM, no samples): structural + body-dependency checks.',
       }),
       command: '<%= config.bin %> doctor --static-only',
     },
     {
       description: bilingual({
-        zh: 'JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。',
-        en: 'JSON output + HTML report, for CI exit code + human review.',
+        zh: 'JSON 输出 + 静默 gate，给 CI 抓 exit code 同时人看。',
+        en: 'JSON output + silent gate, for CI exit code + human review.',
       }),
       command: '<%= config.bin %> doctor --json --gate',
     },
@@ -85,12 +90,6 @@ export default class Doctor extends BaseCommand {
         en: 'LLM model name, default sonnet.',
       }),
     }),
-    samples: Flags.string({
-      description: bilingual({
-        zh: '用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
-        en: 'Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.',
-      }),
-    }),
     timeout: Flags.string({
       description: bilingual({
         zh: '单次 LLM 会话超时秒数，默认 600(10 分钟）。',
@@ -116,13 +115,6 @@ export default class Doctor extends BaseCommand {
         en: 'Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.',
       }),
     }),
-    'static-only': Flags.boolean({
-      description: bilingual({
-        zh: '离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。',
-        en: 'Offline static mode: only 4 static rules, no LLM call.',
-      }),
-      default: false,
-    }),
     fix: Flags.boolean({
       description: bilingual({
         zh: '交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。',
@@ -135,6 +127,28 @@ export default class Doctor extends BaseCommand {
         zh: 'LLM 推理 effort：low / medium / high / xhigh / max。',
         en: 'LLM reasoning effort: low / medium / high / xhigh / max.',
       }),
+      parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
+    }),
+    repeat: Flags.string({
+      description: bilingual({
+        zh: '健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。',
+        en: 'Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).',
+      }),
+      parse: integerStringParser('--repeat', { min: 1, max: 10 }),
+    }),
+    concurrency: Flags.string({
+      description: bilingual({
+        zh: '多次采样的并发数。默认 = --repeat（全并行，各遍相互独立，压墙钟时间）。设 1 = 串行。成本不变，只抬高瞬时并发（rate-limit 敏感时调小）。',
+        en: 'Concurrency across the repeated passes. Default = --repeat (full parallel; passes are independent, cuts wall-clock). Set 1 for serial. Cost unchanged; only raises peak concurrency (lower it if rate-limited).',
+      }),
+      parse: integerStringParser('--concurrency', { min: 1, max: 10 }),
+    }),
+    'static-only': Flags.boolean({
+      description: bilingual({
+        zh: '只跑静态检测（不调 LLM、不读 samples.json）：skill 可读性 / frontmatter 合法性 / 正文引用的脚本·CLI·文件·env 是否存在。CI 无 LLM 凭证或断网时用。',
+        en: 'Static checks only (no LLM, no samples.json): readability / frontmatter / existence of scripts·CLI·files·env referenced in the skill body. For CI without LLM creds / offline.',
+      }),
+      default: false,
     }),
   };
 
@@ -145,11 +159,17 @@ export default class Doctor extends BaseCommand {
       const target: string | null = args.target ?? null;
       const executorName = flags.executor ?? 'claude';
       const model = flags.model ?? 'sonnet';
-      // 默认 LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);--static-only 切到
-      // 离线静态模式:只跑 4 条静态 rule,不调 LLM。CI 节点没装 claude/codex、本地断网
-      // 调试等场景。
-      const staticOnly = flags['static-only'];
-      const runHealthCheck = !staticOnly;
+      // omk doctor 默认 = 静态规则 + LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);
+      // --static-only = 只跑静态检测(readable / metadata / 正文依赖,不调 LLM、不读 samples)。
+      // samples_contract_aligned 仍只归 eval preflight(它要 samples.json,与离线解耦)。
+      // 健康度体检重复采样次数(CLI flag --repeat → 内部 healthSamples 字段):默认 2,
+      // 设 1 = 单次快检。合法范围由 oclif parser 拦截。
+      const healthSamples = flags.repeat != null ? Number(flags.repeat) : 2;
+      // 归并策略:CLI 恒用 llm(硬逻辑,不暴露开关);samples=1 时 composer 自动跳过归并。
+      // 失败回退 string 仍在 composer 内兜底。programmatic runDoctor 默认仍是 string。
+      const healthMerge: 'string' | 'llm' = 'llm';
+      // 并发数(--concurrency → healthConcurrency):默认不传(composer 取 = healthSamples 全并行);显式 ≥1 才覆盖。
+      const healthConcurrency = flags.concurrency != null ? Number(flags.concurrency) : undefined;
       const defaultTimeoutSec = 600;
       const timeoutSec = flags.timeout != null ? Number(flags.timeout) : defaultTimeoutSec;
       const timeoutMs = Math.max(
@@ -158,29 +178,6 @@ export default class Doctor extends BaseCommand {
       );
 
       const cwd = process.cwd();
-      const samplesPath = flags.samples ? resolve(flags.samples) : findDoctorSamplesPath(target, cwd);
-      const deprecatedSamplesHint = !flags.samples && !samplesPath
-        ? findDoctorDeprecatedSamplesHint(target, cwd)
-        : null;
-      if (deprecatedSamplesHint) {
-        process.stderr.write(tCli('cli.common.deprecated_skill_samples_path', lang, {
-          oldPath: deprecatedSamplesHint.oldPath,
-          newPath: deprecatedSamplesHint.newPath,
-        }));
-      }
-      let samples: Sample[] | undefined;
-      let requires: DependencyRequirements | undefined;
-      if (samplesPath) {
-        try {
-          const { loadSamples } = await import('../../inputs/load-samples.js');
-          const loaded = loadSamples(samplesPath);
-          samples = loaded.samples;
-          requires = loaded.requires;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, { path: samplesPath, message: msg }));
-        }
-      }
 
       // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
       await import('../../doctor/health/register.js');
@@ -197,17 +194,25 @@ export default class Doctor extends BaseCommand {
       const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
       const { isComposerRule } = await import('../../types/doctor.js');
-      // 在线检查(LLM health composer + endpoint 自定义维度)默认跑;--static-only
-      // 离线模式只跑纯静态的内置 rule(无网络 / LLM)。endpoint rule 标了 external=true。
+      // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
+      // --static-only:只跑静态检测(纯静态内置 rule),但排除 samples_contract_aligned
+      // (那条要 samples.json,与离线解耦) → 且不加载 samples,依赖检查只扫 skill 正文。
+      const staticOnly = flags['static-only'];
       const isOnline = (r: DoctorRuleLike): boolean =>
         isComposerRule(r) || (r as DoctorRule).external === true;
       const rulesOverride = staticOnly
-        ? getRegisteredRules().filter((r) => !isOnline(r))
-        : getRegisteredRules().filter(isOnline);
+        ? getRegisteredRules().filter((r) => !isOnline(r) && r.id !== 'samples_contract_aligned')
+        : getRegisteredRules().filter((r) => r.id !== 'samples_contract_aligned');
 
       // 批量体检进度(per-skill,写 stderr)。--gate 是静默模式,不报进度;
       // --json 进度走 stderr 不污染 stdout 的 JSON。
       const onProgress = flags.gate ? undefined : makeDoctorProgress(lang);
+
+      // --effort 合法性由 oclif parser 拦截。这里仅做窄化后透传给健康审计。
+      const validEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+      const effort = flags.effort && (validEfforts as readonly string[]).includes(flags.effort)
+        ? flags.effort as (typeof validEfforts)[number]
+        : undefined;
 
       let report;
       try {
@@ -218,10 +223,12 @@ export default class Doctor extends BaseCommand {
           model,
           timeoutMs,
           lang,
-          runHealthCheck,
+          runHealthCheck: !staticOnly,
+          healthSamples,
+          healthMerge,
+          healthConcurrency,
+          effort,
           rules: rulesOverride,
-          samples,
-          requires,
           onProgress,
         });
       } catch (err) {
@@ -247,9 +254,6 @@ export default class Doctor extends BaseCommand {
           console.error(summary);
         }
       } else {
-        if (samplesPath && samples) {
-          process.stderr.write(tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n');
-        }
         renderDoctorReportText(report, lang);
       }
 
@@ -264,7 +268,7 @@ export default class Doctor extends BaseCommand {
           throw new CliExit(0);
         }
         const { runDoctorFix } = await import('../../doctor/fixer.js');
-        const changed = await runDoctorFix({ report: existing, executorName, model, timeoutMs });
+        const changed = await runDoctorFix({ report: existing, executorName, model, timeoutMs, effort });
         throw new CliExit(changed ? 0 : (existing.outcome === 'failed' ? 1 : 0));
       }
 

@@ -240,6 +240,9 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     timeoutMs: opts.timeoutMs,
     effort: opts.effort,
     runHealthCheck: opts.runHealthCheck ?? false,
+    healthSamples: opts.healthSamples,
+    healthMerge: opts.healthMerge,
+    healthConcurrency: opts.healthConcurrency,
   };
 
   const skillReports: DoctorSkillReport[] = [];

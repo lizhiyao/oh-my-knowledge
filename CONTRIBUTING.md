@@ -195,7 +195,7 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
 - 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
-- CLI reference 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
+- CLI reference 的 prose 段（doctor 采样/共识与 eval 门禁说明 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
 - 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 `docs/reference/cli.md` / `docs/zh/reference/cli.md` 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
 - 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
 

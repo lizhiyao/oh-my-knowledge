@@ -6,6 +6,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,49 +24,53 @@ interface ExecError extends Error {
 }
 
 /**
- * 用一个保证不可达的 registry 让 fetch 走满 timeout。如果短路径生效,
- * --help 会在网络 I/O 之前 resolve;反之会被拖到 ~3s timeout。
- * 阈值给得宽松(800ms),既能挡住 1100ms 回归又不被偶发 GC / IO 抖动误判。
+ * 用一个保证不可达的 registry 模拟最坏情况。短路径不该触发 update check:
+ * - 用 timeout 兜住真正被网络拖住的回归（worker fetch 超时约 3s）。
+ * - 用临时 HOME 断言没有写 update-check cache，这是确定性信号，避免用 800ms
+ *   这类 wall-clock 阈值跟本机负载赛跑。
  */
-const HOSTILE_ENV: NodeJS.ProcessEnv = {
-  PATH: process.env.PATH,
-  HOME: process.env.HOME,
-  USER: process.env.USER,
-  TMPDIR: process.env.TMPDIR,
-  LANG: process.env.LANG,
-  npm_config_registry: 'http://127.0.0.1:1/',
-};
-const STARTUP_BUDGET_MS = 800;
+const SHORT_PATH_TIMEOUT_MS = 2500;
 
-async function timed(args: string[]): Promise<number> {
-  const t0 = Date.now();
-  await execFileAsync('node', [CLI, ...args], { env: HOSTILE_ENV });
-  return Date.now() - t0;
+function hostileEnv(home: string): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH,
+    HOME: home,
+    USERPROFILE: home,
+    USER: process.env.USER,
+    TMPDIR: process.env.TMPDIR,
+    LANG: process.env.LANG,
+    npm_config_registry: 'http://127.0.0.1:1/',
+  };
+}
+
+async function runShortPath(args: string[]): Promise<void> {
+  const home = mkdtempSync(join(tmpdir(), 'omk-startup-short-'));
+  try {
+    await execFileAsync('node', [CLI, ...args], {
+      env: hostileEnv(home),
+      timeout: SHORT_PATH_TIMEOUT_MS,
+    });
+    assert.equal(
+      existsSync(join(home, '.oh-my-knowledge', 'update-check.json')),
+      false,
+      `${args.join(' ')} should skip checkUpdate and not write update-check cache`,
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 }
 
 describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', () => {
-  it(`--help 在 ${STARTUP_BUDGET_MS}ms 内完成(不被 checkUpdate fetch 拖)`, async () => {
-    const ms = await timed(['--help']);
-    assert.ok(
-      ms < STARTUP_BUDGET_MS,
-      `--help took ${ms}ms, expected < ${STARTUP_BUDGET_MS}ms (regression: checkUpdate fetch should be skipped on short path)`,
-    );
+  it('--help 不触发 checkUpdate（不写缓存、不被 hostile registry 拖住）', async () => {
+    await runShortPath(['--help']);
   });
 
-  it(`--version 在 ${STARTUP_BUDGET_MS}ms 内完成`, async () => {
-    const ms = await timed(['--version']);
-    assert.ok(
-      ms < STARTUP_BUDGET_MS,
-      `--version took ${ms}ms, expected < ${STARTUP_BUDGET_MS}ms`,
-    );
+  it('--version 不触发 checkUpdate', async () => {
+    await runShortPath(['--version']);
   });
 
-  it(`doctor --help 在 ${STARTUP_BUDGET_MS}ms 内完成(子命令 --help 同样走短路径)`, async () => {
-    const ms = await timed(['doctor', '--help']);
-    assert.ok(
-      ms < STARTUP_BUDGET_MS,
-      `doctor --help took ${ms}ms, expected < ${STARTUP_BUDGET_MS}ms`,
-    );
+  it('doctor --help 不触发 checkUpdate（子命令 --help 同样走短路径）', async () => {
+    await runShortPath(['doctor', '--help']);
   });
 
   it(`-h 短开关跟 --help 等价(走 oclif additionalHelpFlags)`, async () => {
@@ -111,7 +117,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only'], { env });
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -124,7 +130,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only', '--lang', 'zh'], { env });
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -147,7 +153,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
     // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
     try {
-      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill', '--static-only']);
+      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

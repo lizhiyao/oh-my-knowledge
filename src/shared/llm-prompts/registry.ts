@@ -94,5 +94,6 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   { promptId: 'sample-fixer', purpose: '坏用例修复', module: 'src/authoring/sample-fixer.ts', measurementInvariant: false },
   { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/authoring/evolver.ts', measurementInvariant: false },
   { promptId: 'doctor-fixer', purpose: 'doctor 健康项修复向导', module: 'src/doctor/fixer.ts', measurementInvariant: false },
-  { promptId: 'skill-health', purpose: 'skill 健康检查打分', module: 'src/shared/llm-prompts/skill-health.ts', measurementInvariant: false },
+  { promptId: 'skill-health', purpose: 'skill 健康度审计(仅 CLI doctor,不进 eval 评分门禁)', module: 'src/shared/llm-prompts/skill-health.ts', measurementInvariant: false },
+  { promptId: 'skill-health-merge', purpose: '多采样 finding 同根因归并(doctor 多采样默认 llm 归并)', module: 'src/shared/llm-prompts/skill-health-merge.ts', measurementInvariant: false },
 ];

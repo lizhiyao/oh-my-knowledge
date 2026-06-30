@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -145,7 +145,8 @@ omk doctor                              # audit current dir / ./skills
 omk doctor skills/v1.md                 # audit one skill file
 omk doctor skills/ --json > r.json      # JSON for CI / external tools
 omk doctor --gate; echo $?              # silent gate; exit 1 on fatal failures, warnings do not block
-omk doctor --static-only                # offline mode: static checks only, no LLM call
+omk doctor --repeat 1                    # single quick pass (no sampling/merge, cheapest)
+omk doctor --static-only                 # static checks only: no LLM, no samples — structural + body-deps
 ```
 
 <!-- omk:cli:doctor:flags:start -->
@@ -153,28 +154,29 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
-  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.
-  --effort <value>      LLM reasoning effort: low / medium / high / xhigh / max.
-  --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
-  --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
-  --gate                Silent mode: only emit stderr summary on fail. Exit code carries the signal.
-  --global              Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors
-  --json                JSON output to stdout, for CI / external script consumption.
-  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>       LLM model name, default sonnet.
-  --output-dir <value>  Report output dir, default project-level .omk/doctors (--global for global).
-  --samples <value>     Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
-  --static-only         Offline static mode: only 4 static rules, no LLM call.
-  --timeout <value>     Single-session LLM timeout sec, default 600 (10 min).
+  --concurrency <value>  Concurrency across the repeated passes. Default = --repeat (full parallel; passes are independent, cuts wall-clock). Set 1 for serial. Cost unchanged; only raises peak concurrency (lower it if rate-limited).
+  --dimensions <value>   Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.
+  --effort <value>       LLM reasoning effort: low / medium / high / xhigh / max.
+  --executor <value>     Executor name, default claude. Pass a test fixture path to use in tests.
+  --fix                  Interactive fix: use LLM agent to fix skill issues reported by doctor.
+  --gate                 Silent mode: only emit stderr summary on fail. Exit code carries the signal.
+  --global               Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors
+  --json                 JSON output to stdout, for CI / external script consumption.
+  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>        LLM model name, default sonnet.
+  --output-dir <value>   Report output dir, default project-level .omk/doctors (--global for global).
+  --repeat <value>       Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).
+  --static-only          Static checks only (no LLM, no samples.json): readability / frontmatter / existence of scripts·CLI·files·env referenced in the skill body. For CI without LLM creds / offline.
+  --timeout <value>      Single-session LLM timeout sec, default 600 (10 min).
 ```
 
 For full descriptions: `omk doctor --help`.
 
 <!-- omk:cli:doctor:flags:end -->
 
-LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
+By default doctor runs static rules first (skill readability, frontmatter, body dependencies), then the LLM health audit. A single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
 
-Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimension** (`promptSection` — folded into the health LLM call) or an **endpoint dimension** (`endpoint` — doctor POSTs the skill snapshot to your service and maps the response). The two are mutually exclusive per dimension. Endpoint dimensions are "online" checks (run by default, skipped under `--static-only`), letting you do deep checks that prompts can't express — e.g. calling an external security-audit service.
+Custom dimensions via `--dimensions <yaml>`: each entry is either an **LLM dimension** (`promptSection` — folded into the health LLM call) or an **endpoint dimension** (`endpoint` — doctor POSTs the skill snapshot to your service and maps the response). The two are mutually exclusive per dimension. Endpoint dimensions are "online" checks (run alongside the LLM audit), letting you do deep checks that prompts can't express — e.g. calling an external security-audit service.
 
 ```yaml
 dimensions:
@@ -200,9 +202,9 @@ Request body (doctor → endpoint): `{ dimensionId, params, skill: { name, conte
 
 Endpoint URL validation: only `http` / `https` schemes are accepted, and endpoints pointing at private/loopback hosts — localhost, `*.local`, `::1`, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 (including cloud metadata `169.254.169.254`) — are refused by default: doctor sends the full skill snapshot to the endpoint and echoes its response into the report, which would otherwise make it an SSRF vector. Set `allowPrivateHost: true` on a dimension to opt in for a trusted internal service. This is a literal hostname check (defense-in-depth) — no DNS resolution is performed, so a public domain resolving to a private IP (DNS rebinding) is out of scope.
 
-Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate`.
+Sampling & consensus: by default `omk doctor` runs the audit `--repeat 2` times in parallel, takes the union of findings, and merges same-root-cause findings (across differing wording) via one extra LLM clustering pass, tagging each finding with `k/n` support (how many of the n passes reported it). This makes repeated runs converge instead of surfacing a different subset each time. Set `--repeat 1` for a single quick pass; raise it for a deeper, more stable audit. `--concurrency` throttles the parallelism (default = `--repeat`).
 
-`omk eval` still runs its own static readability / metadata / dependency / samples-contract gates internally to protect eval quality; that path is separate from this user-facing `omk doctor` command and the two roles do not overlap.
+Static-only checks (`--static-only`): runs only the same static lint rules included in default doctor with zero LLM calls and **without loading `samples.json`** — skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the **skill body** exist. Useful for CI nodes without `claude` / `codex`, or offline debugging. The samples-contract check is intentionally excluded (it needs `samples.json`); it stays as `omk eval`'s pre-evaluation gate, alongside the same dependency check enriched there with the samples' declared `requires`.
 
 ## `omk eval`
 

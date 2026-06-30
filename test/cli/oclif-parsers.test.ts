@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import Eval from '../../src/cli/commands/eval/index.js';
 import { DEFAULT_GATE_THRESHOLD } from '../../src/eval-core/verdict.js';
 import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
+import Doctor from '../../src/cli/commands/doctor.js';
 import Evolve from '../../src/cli/commands/evolve.js';
 import Sample from '../../src/cli/commands/sample.js';
 import Studio from '../../src/cli/commands/studio.js';
@@ -61,6 +62,11 @@ describe('oclif custom parsers', () => {
     }
     await assertParserWired(flagsOf(Eval.flags), 'effort', 'turbo');
 
+    for (const name of ['repeat', 'concurrency']) {
+      await assertParserWired(flagsOf(Doctor.flags), name, '1.5');
+    }
+    await assertParserWired(flagsOf(Doctor.flags), 'effort', 'turbo');
+
     for (const name of ['rounds', 'concurrency']) {
       await assertParserWired(flagsOf(Evolve.flags), name, '1.5');
     }
@@ -83,6 +89,12 @@ describe('oclif custom parsers', () => {
     assert.equal(await parsePort('65535'), '65535');
     await assert.rejects(() => parsePort('-1'), /--port.*0.*65535/);
     await assert.rejects(() => parsePort('65536'), /--port.*0.*65535/);
+
+    const parseDoctorRepeat = parserFor(flagsOf(Doctor.flags), 'repeat');
+    assert.equal(await parseDoctorRepeat('1'), '1');
+    assert.equal(await parseDoctorRepeat('10'), '10');
+    await assert.rejects(() => parseDoctorRepeat('0'), /--repeat.*1.*10/);
+    await assert.rejects(() => parseDoctorRepeat('11'), /--repeat.*1.*10/);
   });
 
   it('keeps the --threshold help text wired to DEFAULT_GATE_THRESHOLD', () => {

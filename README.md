@@ -102,7 +102,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **30+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
 | **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
-| **LLM health audit** | `omk doctor` grades 7 builtin dimensions; `--static-only` runs offline without an LLM |
+| **LLM health audit** | `omk doctor` grades 7 builtin dimensions; repeats the audit (`--repeat`) and merges findings by k/n consensus |
 | **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |

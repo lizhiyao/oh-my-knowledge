@@ -6,7 +6,7 @@
 
 ## omk doctor
 
-体检 omk 工作目录，检查 skill 配置 / 依赖 / executor 连通性。
+体检 omk 工作目录：先跑静态规则，再对 skill 做多维度 LLM 健康度审计（默认 --repeat 2 采样 + 共识归并）。
 
 **用法:**
 
@@ -20,6 +20,7 @@ omk doctor [target] [flags]
 
 **Flags:**
 
+- `--concurrency` `option`:多次采样的并发数。默认 = --repeat（全并行，各遍相互独立，压墙钟时间）。设 1 = 串行。成本不变，只抬高瞬时并发（rate-limit 敏感时调小）。
 - `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
 - `--effort` `option`:LLM 推理 effort：low / medium / high / xhigh / max。
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
@@ -30,25 +31,31 @@ omk doctor [target] [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
 - `--output-dir` `option`:报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
-- `--samples` `option`:用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
-- `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
+- `--repeat` `option`:健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。
+- `--static-only` `boolean`:只跑静态检测（不调 LLM、不读 samples.json）：skill 可读性 / frontmatter 合法性 / 正文引用的脚本·CLI·文件·env 是否存在。CI 无 LLM 凭证或断网时用。
 - `--timeout` `option`:单次 LLM 会话超时秒数，默认 600(10 分钟）。
 
 **示例:**
 
-> 默认模式跑 LLM 健康度审计(7 内置维度）。
+> 默认模式跑静态规则 + LLM 健康度审计（7 内置维度）。
 
 ```bash
 omk doctor
 ```
 
-> 离线静态模式，只跑 4 条静态 rule，不调 LLM,CI 无 LLM 凭证时用。
+> 单次快速体检（不采样、不归并，最省）。
+
+```bash
+omk doctor --repeat 1
+```
+
+> 只跑静态检测（不调 LLM、不读 samples）：结构 + 正文依赖检查。
 
 ```bash
 omk doctor --static-only
 ```
 
-> JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。
+> JSON 输出 + 静默 gate，给 CI 抓 exit code 同时人看。
 
 ```bash
 omk doctor --json --gate

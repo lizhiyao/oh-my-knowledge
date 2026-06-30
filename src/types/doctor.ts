@@ -86,11 +86,25 @@ export interface DoctorContext {
   lang: 'zh' | 'en';
   timeoutMs: number;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  /** 深度健康检查(LLM-judge,多维度)开关。CLI doctor 默认 true,`--static-only`
-   *  会过滤 composer rule;programmatic API 默认 false,只跑静态 rule。true 时
-   *  skill_health composer 才真正调 LLM。composer 不在 BUILTIN_RULES,必须先
-   *  import './doctor/health/register.js' 让 registerRule 副作用生效。 */
+  /** 深度健康检查(LLM-judge,多维度)开关。CLI `omk doctor` 默认 true,并与
+   *  静态 rule 一起运行;`--static-only` 置 false。programmatic API 默认 false,
+   *  eval preflight 走静态 rule 路径。true 时 skill_health composer 才真正调 LLM。
+   *  composer 不在 BUILTIN_RULES,必须先 import './doctor/health/register.js'
+   *  让 registerRule 副作用生效。 */
   runHealthCheck?: boolean;
+  /** 健康度体检的采样次数(self-consistency)。composer 跑 N 次 LLM(默认并行),把各次
+   *  finding 取并集去重,每条标注支持度 k/N(N 次里出现 k 次)。默认 1 = 单次采样;注意
+   *  即便 N=1 也走统一归并路径,框架重算 dim level / overall(不再保留 LLM 自报值,
+   *  与历史单次路径在"LLM 自报 level 与 finding 矛盾"时会有差异)。N>1 压低采样方差。 */
+  healthSamples?: number;
+  /** 多采样 finding 归并策略。`string`(默认)= 反引号锚点 / 归一化文本字符串键去重,
+   *  便宜无额外 LLM 调用,但同根因不同措辞可能漏并。`llm` = 多跑一次 LLM 聚类
+   *  (skill-health-merge prompt),跨措辞归并最准,代价是 +1 次 LLM 调用;失败回退
+   *  string。仅 healthSamples>1 时生效。 */
+  healthMerge?: 'string' | 'llm';
+  /** 多采样并发数。默认 = healthSamples(全并行,样本相互独立)。设 1 = 串行。
+   *  并发只压墙钟时间,不改成本(调用次数不变),但会抬高瞬时并发(rate-limit 敏感时调小)。 */
+  healthConcurrency?: number;
 }
 
 export interface DoctorRule {
@@ -99,8 +113,9 @@ export interface DoctorRule {
   /** i18n key,terminal 渲染时用作 rule 标题。 */
   labelKey: string;
   /** true = 需要外部 I/O(网络 / LLM)的"在线"检查,跟 skill_health composer 同档:
-   *  默认 `omk doctor` 会跑,`--static-only` 离线模式跳过。endpoint 自定义维度置 true。
-   *  缺省(undefined/false)= 纯静态低成本检查(内置 4 条),静态模式才跑。 */
+   *  CLI `omk doctor` 默认会跑(endpoint 自定义维度置 true),`--static-only` 会跳过。
+   *  缺省(undefined/false)= 纯静态低成本检查(内置 4 条),由默认 doctor、
+   *  `--static-only` 与 eval preflight 共同复用。 */
   external?: boolean;
   check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome>;
 }
@@ -176,9 +191,18 @@ export interface DoctorRunOptions {
    *  既可以是普通 DoctorRule,也可以是 ComposerRule(健康度体检走这条)。 */
   rules?: DoctorRuleLike[];
   /** 深度健康检查(7 维 LLM-judge)。透传给 DoctorContext.runHealthCheck。
-   *  CLI doctor 默认开启;`--static-only` 通过过滤 composer rule 切到离线静态模式。
-   *  programmatic API 默认 false。 */
+   *  CLI `omk doctor` 默认 true;`--static-only` 置 false。programmatic API 默认 false
+   *  (eval preflight 只跑静态 rule)。 */
   runHealthCheck?: boolean;
+  /** 健康度体检采样次数(self-consistency)。透传给 DoctorContext.healthSamples。
+   *  默认 1(单次,行为与历史一致)。CLI 用 `--repeat` 暴露。 */
+  healthSamples?: number;
+  /** 多采样 finding 归并策略,透传给 DoctorContext.healthMerge。programmatic 默认 `string`;
+   *  CLI(`omk doctor`)恒传 `llm`(不暴露开关)。 */
+  healthMerge?: 'string' | 'llm';
+  /** 多采样并发数,透传给 DoctorContext.healthConcurrency。默认 = healthSamples(全并行)。
+   *  CLI 用 `--concurrency` 暴露。 */
+  healthConcurrency?: number;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** 批量体检进度回调(per-skill)。CLI 非 gate 模式注入、写 stderr;eval 内嵌
    *  调用不传(eval 有自己的进度体系,不应冒出 doctor 进度)。 */

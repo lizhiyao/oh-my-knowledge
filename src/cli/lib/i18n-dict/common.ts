@@ -24,7 +24,6 @@ export type CommonMessageKey =
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
   | 'cli.doctor.no_skill_found'
-  | 'cli.doctor.samples_detected'
   | 'cli.doctor.progress_skill_start'
   | 'cli.doctor.progress_skill_done';
 
@@ -120,10 +119,6 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.doctor.no_skill_found': {
     zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
     en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
-  },
-  'cli.doctor.samples_detected': {
-    zh: '✓ 使用评测用例文件：{path}',
-    en: '✓ Using eval samples file: {path}',
   },
   'cli.doctor.progress_skill_start': {
     zh: '{prefix}{skill} ⏳ 体检中...\n',

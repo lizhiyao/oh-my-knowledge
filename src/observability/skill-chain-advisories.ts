@@ -54,8 +54,8 @@ const ADVISORIES: Record<SkillChainAdvisoryCode, SkillChainAdvisory> = {
   skill_md_not_found: {
     code: 'skill_md_not_found',
     shortLabel: '本地未找到 SKILL.md',
-    message: '本地常见 skill 目录里没有这个 skill 的 SKILL.md，inbox 跑不了静态/运行时审计。如果你想看更多体检维度（依赖检查、可读性等），可以试试 omk doctor；inbox 本身不依赖它。',
-    commandTemplate: 'omk doctor ~/.claude/skills/${skillName}/SKILL.md --static-only',
+    message: '本地常见 skill 目录里没有这个 skill 的 SKILL.md，inbox 跑不了静态/运行时审计。如果你想看 LLM 健康度审计（触发边界 / 文档 / 依赖 / 安全等 7 维），可以试试 omk doctor；inbox 本身不依赖它。',
+    commandTemplate: 'omk doctor ~/.claude/skills/${skillName}/SKILL.md',
   },
 };
 
