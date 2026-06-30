@@ -447,11 +447,21 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 /* Skill Map：以 SKILL.md 为根的轻量知识图，不暴露完整 graph JSON 拓扑 */
 .sm-sect { border-left-color:#4f46e5 }
 .sm-body { display:flex;flex-direction:column;gap:10px }
+.sm-evidence-strip { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px }
+.sm-evidence-item { min-height:44px;padding:8px 10px;border:1px solid #e4e8f1;border-radius:8px;background:#fff;display:flex;flex-direction:column;justify-content:center;gap:2px }
+.sm-evidence-item--risk { border-color:rgba(220,38,38,.34);background:rgba(220,38,38,.055) }
+.sm-evidence-item--action { border-color:rgba(245,158,11,.42);background:rgba(245,158,11,.075) }
+.sm-evidence-k { font-size:10px;color:#8792a4;font-weight:700;line-height:1;text-transform:uppercase;font-family:"SF Mono",Menlo,monospace }
+.sm-evidence-v { font-size:12.5px;color:#182033;font-weight:700;line-height:1.35;word-break:break-word }
 .sm-toolbar { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid #e4e8f1;border-radius:8px;background:#fff }
 .sm-tools,.sm-toggles { display:flex;align-items:center;gap:6px;flex-wrap:wrap }
 .sm-tool { min-width:30px;height:28px;padding:0 9px;border:1px solid #dbe2ee;border-radius:6px;background:#fff;color:#384255;font-size:13px;font-weight:700;cursor:pointer }
 .sm-tool:hover { background:#f7f8ff;border-color:#c7d2fe }
 .sm-zoom-label { min-width:44px;text-align:center;font-size:11.5px;color:#637083;font-variant-numeric:tabular-nums }
+.sm-view-switch { display:inline-flex;align-items:center;gap:3px;padding:3px;border:1px solid #dbe2ee;border-radius:8px;background:#f8fafc }
+.sm-view { height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#637083;font-size:11.5px;font-weight:700;cursor:pointer }
+.sm-view:hover { color:#384255;background:#fff }
+.sm-view.is-active { color:#182033;background:#fff;box-shadow:0 1px 4px rgba(31,41,55,.08) }
 .sm-toggle { display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 8px;border:1px solid #dbe2ee;border-radius:14px;background:#fff;color:#384255;font-size:11.5px;cursor:pointer;user-select:none }
 .sm-toggle input { margin:0;accent-color:#4f46e5 }
 .sm-canvas { position:relative;height:min(68vh,620px);min-height:520px;padding:0;background:
@@ -459,6 +469,13 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
   linear-gradient(rgba(148,163,184,.075) 1px,transparent 1px),
   linear-gradient(90deg,rgba(148,163,184,.06) 1px,transparent 1px),
   linear-gradient(#fff,#fbfcff);background-size:auto,28px 28px,28px 28px,auto;background-position:0 0;border:1px solid #e4e8f1;border-radius:8px;overflow:auto;overscroll-behavior:contain }
+.sm-body[data-sm-view="boundary"] .sm-canvas { background:
+  linear-gradient(90deg,rgba(31,157,99,.052) 0%,rgba(31,157,99,.025) 42%,transparent 42%,transparent 100%),
+  linear-gradient(rgba(148,163,184,.07) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(148,163,184,.055) 1px,transparent 1px),
+  linear-gradient(#fff,#fbfcff);background-size:auto,28px 28px,28px 28px,auto;background-position:0 0 }
+.sm-body[data-sm-view="boundary"] [data-sm-layer="measurement"],
+.sm-body[data-sm-view="boundary"] [data-sm-evidence-edge="1"] { display:none !important }
 .sm-graph-stage { position:relative;width:1100px;height:560px }
 .sm-graph { position:absolute;left:0;top:0;width:1100px;height:560px;transform-origin:0 0;transition:transform .12s ease }
 .sm-graph [hidden] { display:none !important }
@@ -466,6 +483,11 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-edge { fill:none;stroke:#d8e0ec;stroke-width:1.45;stroke-linecap:round;opacity:.86;vector-effect:non-scaling-stroke }
 .sm-edge--definition { stroke:#a9cfc4 }
 .sm-edge--measurement { stroke:#bbc7ff }
+.sm-edge--coverage { stroke:#f59e0b;stroke-width:2;stroke-dasharray:5 5;opacity:.9 }
+.sm-edge--coverage-failed { stroke:#dc2626;stroke-width:2.2;opacity:.92 }
+.sm-zone-label { position:absolute;top:16px;z-index:1;font-size:10.5px;font-weight:800;letter-spacing:0;text-transform:uppercase;color:#8792a4;font-family:"SF Mono",Menlo,monospace;background:rgba(255,255,255,.82);border:1px solid #e4e8f1;border-radius:12px;padding:4px 9px;pointer-events:none }
+.sm-zone-label--definition { left:36px;color:#2f7d68;border-color:rgba(47,125,104,.22);background:rgba(244,251,248,.86) }
+.sm-zone-label--measurement { right:36px;color:#4f46e5;border-color:rgba(79,70,229,.22);background:rgba(247,248,255,.86) }
 .sm-node { position:absolute;z-index:1;box-sizing:border-box;transform:translate(-50%,-50%);width:148px;min-height:54px;padding:8px 10px;border:1px solid #d8deea;border-radius:7px;background:rgba(255,255,255,.96);box-shadow:0 8px 20px rgba(31,41,55,6%);display:flex;flex-direction:column;justify-content:center;gap:4px;text-align:center;backdrop-filter:blur(4px) }
 .sm-node[data-sm-draggable="1"] { cursor:grab;touch-action:none;user-select:none }
 .sm-node[data-sm-draggable="1"].is-dragging { cursor:grabbing;z-index:3;box-shadow:0 16px 34px rgba(31,41,55,14%) }
@@ -475,6 +497,7 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-node[data-sm-more-toggle]:hover,.sm-node[data-sm-more-toggle]:focus-visible { border-color:#9fbfb5;background:#f1fbf7;outline:none }
 .sm-node:hover,.sm-node:focus-visible,.sm-node.is-selected { border-color:#4f46e5;outline:3px solid rgba(79,70,229,.12);outline-offset:2px }
 .sm-node.is-selected { z-index:2;box-shadow:0 14px 30px rgba(79,70,229,13%) }
+.sm-node.is-related { z-index:2;outline:3px solid rgba(245,158,11,.14);outline-offset:2px;box-shadow:0 12px 26px rgba(245,158,11,.12) }
 .sm-node--skill { width:172px;min-height:86px;border-color:#4f46e5;background:linear-gradient(180deg,#fff 0%,#f7f8ff 100%);box-shadow:0 16px 34px rgba(79,70,229,14%);outline:4px solid rgba(79,70,229,.07) }
 .sm-node--skill.is-selected { outline-color:rgba(79,70,229,.15) }
 .sm-node--definition { border-color:#b7d8cf;background:#f4fbf8 }
@@ -490,6 +513,18 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-node-meta { font-size:10.5px;color:#637083;line-height:1.35;word-break:break-word }
 .sm-node--skill .sm-node-meta { font-size:11.5px }
 .sm-node-kind { font-size:9.5px;text-transform:uppercase;letter-spacing:0;color:#8792a4;font-family:"SF Mono",Menlo,monospace;line-height:1 }
+.sm-node--group { width:164px;min-height:66px;border-color:rgba(47,125,104,.42);background:linear-gradient(180deg,#fff 0%,#f4fbf8 100%);box-shadow:0 12px 28px rgba(47,125,104,.1) }
+.sm-node--group .sm-node-title { font-size:13px }
+.sm-node-toggle-icon { position:absolute;right:7px;top:7px;width:17px;height:17px;border:1px solid rgba(47,125,104,.24);border-radius:50%;background:rgba(255,255,255,.72);box-shadow:0 4px 10px rgba(47,125,104,.06);color:#2f7d68;display:flex;align-items:center;justify-content:center;transition:background .14s ease,border-color .14s ease,box-shadow .14s ease }
+.sm-node-toggle-icon::before { content:'';width:5px;height:5px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:translateY(-1px) rotate(45deg);transition:transform .14s ease }
+.sm-node[data-sm-more-toggle]:hover .sm-node-toggle-icon,.sm-node[data-sm-more-toggle]:focus-visible .sm-node-toggle-icon { background:#fff;border-color:rgba(47,125,104,.42);box-shadow:0 5px 12px rgba(47,125,104,.11) }
+.sm-node[data-sm-more-toggle][aria-expanded="true"] .sm-node-toggle-icon { background:rgba(47,125,104,.1);border-color:rgba(47,125,104,.34);box-shadow:0 4px 10px rgba(47,125,104,.08) }
+.sm-node[data-sm-more-toggle][aria-expanded="true"] .sm-node-toggle-icon::before { transform:translateY(1px) rotate(225deg) }
+.sm-node-signal { align-self:center;max-width:100%;padding:1px 6px;border-radius:9px;font-size:9.5px;font-weight:700;line-height:1.25;color:#637083;background:#eef2f7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.sm-node-signal--failed { color:#dc2626;background:rgba(220,38,38,.12) }
+.sm-node-signal--warning { color:#d97706;background:rgba(217,119,6,.13) }
+.sm-node-signal--declared { color:#1f9d63;background:rgba(31,157,99,.13) }
+.sm-node-signal--undeclared { color:#637083;background:#eef2f7;border:1px dashed #cbd5e1 }
 .sm-stage-rail { display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:8px;padding:10px 12px;border:1px solid #e4e8f1;border-radius:8px;background:#fff }
 .sm-stage-card { min-height:50px;padding:9px 11px;border:1px solid #dbe2ee;border-radius:8px;background:#fbfcff;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:3px }
 .sm-stage-card--ok { border-color:rgba(31,157,99,.38);background:rgba(31,157,99,.06) }
@@ -517,6 +552,7 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-card textarea { width:100%;min-height:260px;border:0;border-top:1px solid #e4e8f1;background:#fbfcff;padding:12px;font-family:"SF Mono",Menlo,monospace;font-size:11.5px;line-height:1.55;color:#182033;resize:vertical;box-sizing:border-box }
 @media(max-width:900px){
   .sm-toolbar { align-items:flex-start }
+  .sm-evidence-strip { grid-template-columns:1fr }
   .sm-stage-rail { grid-template-columns:1fr;gap:6px }
   .sm-stage-arrow { transform:rotate(90deg);font-size:16px }
   .sm-canvas { height:620px;min-height:620px }
@@ -921,6 +957,7 @@ const SKILL_MAP_INIT_SCRIPT = `
     var dragState = null;
     var suppressMoreClickUntil = 0;
     var selectedNodeId = '';
+    var currentView = map.getAttribute('data-sm-view') || 'boundary';
 
     function edgePoint(fromX, fromY, toX, toY, box){
       var dx = toX - fromX;
@@ -967,6 +1004,33 @@ const SKILL_MAP_INIT_SCRIPT = `
       node.setAttribute('data-sm-y', String(Math.round(y * 10) / 10));
       node.style.left = x + 'px';
       node.style.top = y + 'px';
+    }
+
+    function nodeViewPosition(node, view){
+      var prefix = view === 'evidence' ? 'data-sm-evidence' : 'data-sm-boundary';
+      var x = Number(node.getAttribute(prefix + '-x'));
+      var y = Number(node.getAttribute(prefix + '-y'));
+      if (Number.isFinite(x) && Number.isFinite(y)) return { x: x, y: y };
+      return {
+        x: Number(node.getAttribute('data-sm-origin-x')) || Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || 0,
+        y: Number(node.getAttribute('data-sm-origin-y')) || Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || 0
+      };
+    }
+
+    function hideFilteredNode(node){
+      node.hidden = true;
+      node.toggleAttribute('hidden', true);
+      node.setAttribute('aria-hidden', 'true');
+      node.style.display = 'none';
+    }
+
+    function revealNode(node, transient){
+      node.hidden = false;
+      node.toggleAttribute('hidden', false);
+      node.setAttribute('aria-hidden', 'false');
+      node.style.display = '';
+      node.setAttribute('data-sm-filter-hidden', '0');
+      if (transient) node.setAttribute('data-sm-evidence-revealed', '1');
     }
 
     function detailText(node, attr, fallback){
@@ -1023,6 +1087,9 @@ const SKILL_MAP_INIT_SCRIPT = `
       setDetailValue('source', detailText(node, 'data-sm-detail-source', ''), false);
       setDetailValue('coverage', detailText(node, 'data-sm-detail-coverage', ''), false);
       setDetailValue('status', selectedMoreStatus(node) || detailText(node, 'data-sm-detail-status', ''), false);
+      setDetailValue('evidence', detailText(node, 'data-sm-detail-evidence', ''), false);
+      setDetailValue('action', detailText(node, 'data-sm-detail-action', ''), false);
+      updateEvidenceFocus();
     }
 
     function updateEdgesForNode(nodeId, x, y){
@@ -1074,13 +1141,16 @@ const SKILL_MAP_INIT_SCRIPT = `
     }
 
     function resetNodePositions(){
+      applyViewPositions(currentView);
+    }
+
+    function applyViewPositions(view){
       graph.querySelectorAll('[data-sm-draggable="1"]').forEach(function(node){
         var nodeId = node.getAttribute('data-sm-node-id');
-        var originX = Number(node.getAttribute('data-sm-origin-x')) || Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || 0;
-        var originY = Number(node.getAttribute('data-sm-origin-y')) || Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || 0;
-        setNodePosition(node, originX, originY);
-        if (nodeId) updateEdgesForNode(nodeId, originX, originY);
-        if (nodeId) updateEdgesFromNode(nodeId, originX, originY);
+        var next = nodeViewPosition(node, view);
+        setNodePosition(node, next.x, next.y);
+        if (nodeId) updateEdgesForNode(nodeId, next.x, next.y);
+        if (nodeId) updateEdgesFromNode(nodeId, next.x, next.y);
       });
     }
 
@@ -1112,15 +1182,51 @@ const SKILL_MAP_INIT_SCRIPT = `
       viewport.scrollTop = Math.max(0, scaledRootY - viewport.clientHeight / 2);
     }
 
-    function layerEnabled(layer){
-      var input = map.querySelector('[data-sm-toggle-layer="' + layer + '"]');
-      return !input || input.checked;
-    }
-
     function overflowGroupExpanded(group){
       if (!group) return true;
       var toggle = map.querySelector('[data-sm-more-toggle="' + group + '"]');
       return !!toggle && toggle.getAttribute('aria-expanded') === 'true';
+    }
+
+    function updateViewButtons(){
+      map.setAttribute('data-sm-view', currentView);
+      map.querySelectorAll('[data-sm-view-button]').forEach(function(button){
+        var active = button.getAttribute('data-sm-view-button') === currentView;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    function updateEvidenceFocus(){
+      if (!graph) return;
+      graph.querySelectorAll('[data-sm-evidence-revealed="1"]').forEach(function(node){
+        node.removeAttribute('data-sm-evidence-revealed');
+        if (node.getAttribute('data-sm-layer') === 'definition' && currentView === 'evidence') hideFilteredNode(node);
+      });
+      graph.querySelectorAll('.sm-node.is-related').forEach(function(node){
+        node.classList.remove('is-related');
+      });
+      map.querySelectorAll('[data-sm-evidence-edge="1"]').forEach(function(edge){
+        var toId = edge.getAttribute('data-sm-edge-to');
+        var fromId = edge.getAttribute('data-sm-edge-from-node');
+        var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
+        var fromNode = fromId ? graph.querySelector('[data-sm-node-id="' + fromId + '"]') : null;
+        var focused = currentView === 'evidence' && !!selectedNodeId && (toId === selectedNodeId || fromId === selectedNodeId);
+        if (focused) {
+          if (toNode) revealNode(toNode, true);
+          if (fromNode) revealNode(fromNode, true);
+        }
+        var endpointHidden = (toNode && toNode.hidden) || (fromNode && fromNode.hidden);
+        var shouldHide = !focused || endpointHidden;
+        edge.hidden = shouldHide;
+        edge.toggleAttribute('hidden', shouldHide);
+        edge.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
+        edge.style.display = shouldHide ? 'none' : '';
+        if (!shouldHide) {
+          if (toNode && toId !== selectedNodeId) toNode.classList.add('is-related');
+          if (fromNode && fromId !== selectedNodeId) fromNode.classList.add('is-related');
+        }
+      });
     }
 
     function updateVisibility(){
@@ -1128,8 +1234,8 @@ const SKILL_MAP_INIT_SCRIPT = `
       var leafToggle = map.querySelector('[data-sm-toggle-leaves]');
       if (leafToggle) showLeaves = leafToggle.checked;
       var layers = {
-        definition: layerEnabled('definition'),
-        measurement: layerEnabled('measurement')
+        definition: currentView === 'boundary',
+        measurement: currentView === 'evidence'
       };
       map.querySelectorAll('[data-sm-layer]').forEach(function(el){
         var layer = el.getAttribute('data-sm-layer');
@@ -1143,6 +1249,7 @@ const SKILL_MAP_INIT_SCRIPT = `
         el.style.display = shouldHide ? 'none' : '';
       });
       map.querySelectorAll('[data-sm-edge-to]').forEach(function(edge){
+        if (edge.getAttribute('data-sm-evidence-edge') === '1') return;
         var toId = edge.getAttribute('data-sm-edge-to');
         var fromId = edge.getAttribute('data-sm-edge-from-node');
         var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
@@ -1162,6 +1269,16 @@ const SKILL_MAP_INIT_SCRIPT = `
           if (rootNode) setSelectedNode(rootNode);
         }
       }
+      updateEvidenceFocus();
+    }
+
+    function setView(view){
+      currentView = view === 'evidence' ? 'evidence' : 'boundary';
+      applyViewPositions(currentView);
+      updateViewButtons();
+      updateVisibility();
+      refreshEdges();
+      centerRoot();
     }
 
     function setMoreExpanded(toggle, expanded){
@@ -1169,9 +1286,8 @@ const SKILL_MAP_INIT_SCRIPT = `
       var nextLabel = expanded
         ? toggle.getAttribute('data-sm-expanded-label')
         : toggle.getAttribute('data-sm-collapsed-label');
-      var title = toggle.querySelector('.sm-node-title');
-      if (title && nextLabel) title.textContent = nextLabel;
       if (nextLabel) toggle.setAttribute('title', nextLabel);
+      if (nextLabel) toggle.setAttribute('aria-label', nextLabel);
       updateVisibility();
       refreshEdges();
       if (selectedNodeId && toggle.getAttribute('data-sm-node-id') === selectedNodeId) setSelectedNode(toggle);
@@ -1198,7 +1314,13 @@ const SKILL_MAP_INIT_SCRIPT = `
       });
     });
 
-    map.querySelectorAll('[data-sm-toggle-layer], [data-sm-toggle-leaves]').forEach(function(input){
+    map.querySelectorAll('[data-sm-view-button]').forEach(function(button){
+      button.addEventListener('click', function(){
+        setView(button.getAttribute('data-sm-view-button') || 'boundary');
+      });
+    });
+
+    map.querySelectorAll('[data-sm-toggle-leaves]').forEach(function(input){
       input.addEventListener('change', updateVisibility);
     });
 
@@ -1297,6 +1419,7 @@ const SKILL_MAP_INIT_SCRIPT = `
       setZoom(zoom + delta, ev.clientX - rect.left, ev.clientY - rect.top);
     }, { passive: false });
 
+    updateViewButtons();
     applyZoom();
     updateVisibility();
     var initialRoot = graph.querySelector('[data-sm-root]');
@@ -1777,6 +1900,7 @@ function nodeKindLabel(kind: string, lang: Lang): string {
     eval_result: ['eval', 'eval'],
     trace_session: ['observe', 'observe'],
     more: ['more', 'more'],
+    knowledge_group: ['group', 'group'],
   };
   const pair = labels[kind] ?? [kind, kind];
   return zh ? pair[0] : pair[1];
@@ -1831,37 +1955,134 @@ interface SkillMapPositionedNode {
   layer: 'definition' | 'measurement';
   x: number;
   y: number;
+  boundaryPosition?: { x: number; y: number };
+  evidencePosition?: { x: number; y: number };
   edgeFrom?: { x: number; y: number };
-  overflowGroup?: 'definition' | 'measurement';
+  edgeFromId?: string;
+  overflowGroup?: string;
+  isLeaf?: boolean;
+  presentation?: {
+    title: string;
+    detailTitle?: string;
+    hideKind?: boolean;
+  };
   moreToggle?: {
-    group: 'definition' | 'measurement';
+    group: string;
     collapsedLabel: string;
     expandedLabel: string;
   };
 }
 
+interface SkillMapGroupSummary {
+  total: number;
+  declared: number;
+}
+
+type SkillMapDefinitionGroupKey = 'references' | 'workflow' | 'rules';
+
+interface SkillMapDefinitionGroupSpec {
+  key: SkillMapDefinitionGroupKey;
+  labelZh: string;
+  labelEn: string;
+  descriptionZh: string;
+  descriptionEn: string;
+  nodeKinds: readonly string[];
+  boundaryPosition: { x: number; y: number };
+  evidencePosition: { x: number; y: number };
+  childBoundaryPositions: readonly { x: number; y: number }[];
+}
+
+interface SkillMapEvidenceLink {
+  fromId: string;
+  toId: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  failed?: boolean;
+}
+
 const SKILL_MAP_WIDTH = 1100;
 const SKILL_MAP_HEIGHT = 560;
 const SKILL_MAP_ROOT_ID = 'skill-root';
-const SKILL_MAP_ROOT = { x: 470, y: 260 };
+const SKILL_MAP_BOUNDARY_ROOT = { x: 560, y: 285 };
+const SKILL_MAP_EVIDENCE_ROOT = { x: 470, y: 260 };
 const SKILL_MAP_ROOT_SIZE = { width: 172, height: 86 };
 const SKILL_MAP_NODE_SIZE = { width: 148, height: 54 };
-const SKILL_MAP_DEFINITION_COORDS = [
-  { x: 170, y: 112 },
-  { x: 140, y: 255 },
-  { x: 220, y: 420 },
-  { x: 392, y: 112 },
-  { x: 382, y: 425 },
-  { x: 312, y: 190 },
-  { x: 310, y: 328 },
+const SKILL_MAP_DEFINITION_GROUPS: readonly SkillMapDefinitionGroupSpec[] = [
+  {
+    key: 'references',
+    labelZh: '引用材料',
+    labelEn: 'References',
+    descriptionZh: 'Skill 显式依赖的参考文档和知识来源。',
+    descriptionEn: 'Reference docs and knowledge sources the Skill depends on.',
+    nodeKinds: ['reference'],
+    boundaryPosition: { x: 270, y: 225 },
+    evidencePosition: { x: 140, y: 145 },
+    childBoundaryPositions: [
+      { x: 135, y: 125 },
+      { x: 130, y: 325 },
+      { x: 270, y: 435 },
+      { x: 410, y: 125 },
+      { x: 405, y: 325 },
+    ],
+  },
+  {
+    key: 'workflow',
+    labelZh: '执行流程',
+    labelEn: 'Workflow',
+    descriptionZh: 'Skill 期望代理遵循的流程与步骤。',
+    descriptionEn: 'Workflows and steps the agent is expected to follow.',
+    nodeKinds: ['workflow', 'workflow_node'],
+    boundaryPosition: { x: 850, y: 225 },
+    evidencePosition: { x: 960, y: 145 },
+    childBoundaryPositions: [
+      { x: 990, y: 125 },
+      { x: 990, y: 325 },
+      { x: 850, y: 435 },
+      { x: 710, y: 125 },
+      { x: 715, y: 325 },
+    ],
+  },
+  {
+    key: 'rules',
+    labelZh: '约束规则',
+    labelEn: 'Rules',
+    descriptionZh: 'Skill 中不可违反的硬规则和输出约束。',
+    descriptionEn: 'Hard rules and output constraints that must not be violated.',
+    nodeKinds: ['hard_rule'],
+    boundaryPosition: { x: 560, y: 105 },
+    evidencePosition: { x: 140, y: 285 },
+    childBoundaryPositions: [
+      { x: 360, y: 80 },
+      { x: 760, y: 80 },
+      { x: 560, y: 30 },
+      { x: 360, y: 160 },
+      { x: 760, y: 160 },
+    ],
+  },
 ];
-const SKILL_MAP_MEASUREMENT_COORDS = [
-  { x: 720, y: 105 },
-  { x: 920, y: 165 },
-  { x: 750, y: 275 },
-  { x: 948, y: 318 },
-  { x: 770, y: 430 },
-  { x: 960, y: 430 },
+const SKILL_MAP_BOUNDARY_ASSET_COORDS = [
+  { x: 380, y: 455 },
+  { x: 740, y: 455 },
+  { x: 205, y: 455 },
+  { x: 915, y: 455 },
+  { x: 560, y: 510 },
+];
+const SKILL_MAP_EVIDENCE_DEFINITION_COORDS = [
+  { x: 145, y: 145 },
+  { x: 145, y: 285 },
+  { x: 145, y: 425 },
+  { x: 955, y: 145 },
+  { x: 955, y: 285 },
+  { x: 955, y: 425 },
+  { x: 560, y: 485 },
+];
+const SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS = [
+  { x: 320, y: 140 },
+  { x: 560, y: 115 },
+  { x: 800, y: 150 },
+  { x: 345, y: 360 },
+  { x: 775, y: 365 },
+  { x: 560, y: 455 },
 ];
 const SKILL_MAP_NODE_MARGIN = { x: 92, y: 48 };
 const SKILL_MAP_STATUS_CLASSES = new Set(['ok', 'warning', 'failed', 'skipped', 'unknown', 'not_measured']);
@@ -1877,8 +2098,57 @@ function graphNodeCoverageClass(node: SkillGraphNodePreview): string {
 }
 
 function graphNodeCoverageLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  const groupSummary = skillMapGroupSummary(node);
+  if (groupSummary) {
+    return lang === 'zh'
+      ? `${groupSummary.declared}/${groupSummary.total} 个节点已被评测用例声明`
+      : `${groupSummary.declared}/${groupSummary.total} nodes declared by eval samples`;
+  }
   if (node.coverage === 'declared') return lang === 'zh' ? '已由评测用例声明' : 'declared by eval samples';
   if (node.coverage === 'undeclared') return lang === 'zh' ? '尚未由评测用例声明' : 'not declared by eval samples';
+  return '';
+}
+
+function graphNodeEvidenceLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  const zh = lang === 'zh';
+  const groupSummary = skillMapGroupSummary(node);
+  if (groupSummary) {
+    return zh
+      ? `包含 ${groupSummary.total} 个结构节点，其中 ${groupSummary.declared} 个已有评测用例声明。`
+      : `Contains ${groupSummary.total} structure nodes; ${groupSummary.declared} are declared by eval samples.`;
+  }
+  if (node.coveredBySamples?.length) {
+    const samples = node.coveredBySamples.slice(0, 3).join(zh ? '、' : ', ');
+    const more = node.coveredBySamples.length > 3 ? (zh ? ` 等 ${node.coveredBySamples.length} 条用例` : ` and ${node.coveredBySamples.length} samples`) : '';
+    return zh ? `由 ${samples}${more} 声明覆盖` : `Declared by ${samples}${more}`;
+  }
+  if (node.coverage === 'undeclared') return zh ? '暂无评测用例显式声明覆盖' : 'No eval sample explicitly declares this node yet';
+  if (node.status === 'failed') return zh ? '当前测量证据失败' : 'Current measurement evidence failed';
+  if (node.status === 'warning') return zh ? '当前测量证据有告警' : 'Current measurement evidence has warnings';
+  if (node.nodeKind === 'sample') return zh ? '这条用例用于测量当前 Skill' : 'This sample measures the current Skill';
+  if (node.nodeKind === 'assertion') return zh ? '断言用于把用例输出转成可比较证据' : 'Assertion turns sample output into comparable evidence';
+  return '';
+}
+
+function graphNodeActionLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  const zh = lang === 'zh';
+  if (node.nodeKind === 'knowledge_group') {
+    return zh
+      ? '点击分组展开叶子节点；优先检查未声明或失败证据集中的节点。'
+      : 'Open the group to inspect leaves; prioritize undeclared nodes or nodes linked to failures.';
+  }
+  if (node.status === 'failed' && node.nodeKind === 'sample') {
+    return zh ? '优先查看这条失败用例的输出，确认是 Skill 缺知识、流程缺口还是断言过严。' : 'Inspect this failed sample first and decide whether the Skill, workflow, or assertion needs work.';
+  }
+  if (node.status === 'failed' && node.nodeKind === 'assertion') {
+    return zh ? '回到对应用例，检查失败断言期望是否与 Skill 边界一致。' : 'Go back to the sample and verify whether the failed assertion matches the Skill boundary.';
+  }
+  if (node.coverage === 'undeclared') {
+    return zh ? '如果这是关键知识边界，给代表性评测用例补 `sample.covers`；否则可保持未声明。' : 'If this is a key boundary, add sample.covers to a representative eval sample; otherwise leave it undeclared.';
+  }
+  if (node.coveredBySamples?.length) {
+    return zh ? '优先看覆盖它的用例是否失败；失败集中时，回到这条知识边界修 Skill。' : 'Check whether samples covering this node fail; clustered failures point back to this Skill boundary.';
+  }
   return '';
 }
 
@@ -1899,6 +2169,7 @@ function graphNodeDetailKindLabel(nodeKind: string, lang: Lang): string {
     eval_result: ['评测结果', 'Eval result'],
     diagnostic: ['诊断', 'Diagnostic'],
     more: ['折叠分组', 'Collapsed group'],
+    knowledge_group: ['知识分组', 'Knowledge group'],
   };
   const pair = labels[nodeKind] ?? [nodeKind, nodeKind];
   return zh ? pair[0] : pair[1];
@@ -1925,9 +2196,19 @@ function skillMapLayerLabel(layer: 'definition' | 'measurement', lang: Lang): st
   return lang === 'zh' ? '评测测量' : 'Measurement';
 }
 
+function skillMapGroupSummary(node: SkillGraphNodePreview): SkillMapGroupSummary | undefined {
+  return (node as SkillGraphNodePreview & { groupSummary?: SkillMapGroupSummary }).groupSummary;
+}
+
+function skillMapGroupDescription(node: SkillGraphNodePreview): string {
+  return (node as SkillGraphNodePreview & { groupDescription?: string }).groupDescription ?? '';
+}
+
 function graphNodeDetailSource(node: SkillGraphNodePreview, lang: Lang): string {
   const zh = lang === 'zh';
   switch (node.nodeKind) {
+    case 'knowledge_group':
+      return skillMapGroupDescription(node);
     case 'reference':
     case 'script':
       return node.label;
@@ -1957,21 +2238,51 @@ function attr(name: string, value: string | undefined | null): string {
 function renderSkillMapDetailAttrs(item: SkillMapPositionedNode, lang: Lang): string {
   const coverageLabel = graphNodeCoverageLabel(item.node, lang);
   const isMore = item.node.nodeKind === 'more';
+  const isGroup = item.node.nodeKind === 'knowledge_group';
+  const groupSummary = skillMapGroupSummary(item.node);
   const scope = skillMapLayerLabel(item.layer, lang);
-  const status = isMore ? (lang === 'zh' ? '已收起' : 'collapsed') : graphNodeStatusLabel(item.node.status, lang);
+  const detailTitle = item.presentation?.detailTitle ?? item.presentation?.title;
+  const status = isMore
+    ? (lang === 'zh' ? '已收起' : 'collapsed')
+    : isGroup && groupSummary
+      ? (lang === 'zh' ? `${groupSummary.total} 个节点` : `${groupSummary.total} nodes`)
+      : graphNodeStatusLabel(item.node.status, lang);
   return [
     attr('data-sm-detail-kind', graphNodeDetailKindLabel(item.node.nodeKind, lang)),
-    attr('data-sm-detail-title', isMore ? item.node.label : graphNodeDisplayLabel(item.node, lang)),
+    attr('data-sm-detail-title', isMore ? item.node.label : detailTitle ?? graphNodeDisplayLabel(item.node, lang)),
     attr('data-sm-detail-subtitle', isMore ? scope : graphNodeDetailSource(item.node, lang)),
     attr('data-sm-detail-scope', scope),
     attr('data-sm-detail-source', graphNodeDetailSource(item.node, lang)),
     attr('data-sm-detail-coverage', coverageLabel),
     attr('data-sm-detail-status', status),
+    attr('data-sm-detail-evidence', graphNodeEvidenceLabel(item.node, lang)),
+    attr('data-sm-detail-action', graphNodeActionLabel(item.node, lang)),
     ...(item.moreToggle ? [
       attr('data-sm-detail-collapsed-status', lang === 'zh' ? '已收起' : 'collapsed'),
       attr('data-sm-detail-expanded-status', lang === 'zh' ? '已展开' : 'expanded'),
     ] : []),
   ].join('');
+}
+
+function graphNodeSignalLabel(node: SkillGraphNodePreview, lang: Lang): string {
+  const zh = lang === 'zh';
+  const groupSummary = skillMapGroupSummary(node);
+  if (groupSummary) return zh ? `${groupSummary.declared}/${groupSummary.total} 已声明` : `${groupSummary.declared}/${groupSummary.total} declared`;
+  if (node.status === 'failed') return zh ? '失败证据' : 'failed';
+  if (node.status === 'warning') return zh ? '告警' : 'warning';
+  if (node.coverage === 'declared') return zh ? '已声明覆盖' : 'declared';
+  if (node.coverage === 'undeclared') return zh ? '未声明' : 'undeclared';
+  return '';
+}
+
+function graphNodeSignalClass(node: SkillGraphNodePreview): string {
+  const groupSummary = skillMapGroupSummary(node);
+  if (groupSummary) return groupSummary.declared === groupSummary.total ? ' sm-node-signal--declared' : ' sm-node-signal--undeclared';
+  if (node.status === 'failed') return ' sm-node-signal--failed';
+  if (node.status === 'warning') return ' sm-node-signal--warning';
+  if (node.coverage === 'declared') return ' sm-node-signal--declared';
+  if (node.coverage === 'undeclared') return ' sm-node-signal--undeclared';
+  return '';
 }
 
 interface SkillMapRootDetail {
@@ -1982,10 +2293,13 @@ interface SkillMapRootDetail {
   source: string;
   coverage: string;
   status: string;
+  evidence: string;
+  action: string;
 }
 
 function skillMapRootDetail(entry: SkillIndexEntry, coverageSummary: string | null, lang: Lang): SkillMapRootDetail {
   const zh = lang === 'zh';
+  const failedSamples = entry.eval?.failCount ?? 0;
   return {
     kindLabel: graphNodeDetailKindLabel('skill', lang),
     title: 'SKILL.md',
@@ -1998,6 +2312,10 @@ function skillMapRootDetail(entry: SkillIndexEntry, coverageSummary: string | nu
       `eval ${stageText(entry, 'eval', lang)}`,
       `observe ${stageText(entry, 'observe', lang)}`,
     ].join(' · '),
+    evidence: coverageSummary ?? (zh ? '尚未形成声明锚点' : 'No declared anchors yet'),
+    action: failedSamples > 0
+      ? (zh ? `先处理 ${failedSamples} 条失败评测用例，再回看其覆盖的知识边界。` : `Start with ${failedSamples} failed eval samples, then inspect the covered Skill boundaries.`)
+      : (zh ? '继续补充关键场景的 sample.covers，让图谱从结构图变成证据图。' : 'Keep adding sample.covers for key scenarios so the map becomes evidence-oriented.'),
   };
 }
 
@@ -2011,6 +2329,8 @@ function renderSkillMapRootDetailAttrs(entry: SkillIndexEntry, coverageSummary: 
     attr('data-sm-detail-source', detail.source),
     attr('data-sm-detail-coverage', detail.coverage),
     attr('data-sm-detail-status', detail.status),
+    attr('data-sm-detail-evidence', detail.evidence),
+    attr('data-sm-detail-action', detail.action),
   ].join('');
 }
 
@@ -2035,6 +2355,8 @@ function renderSkillMapInspector(entry: SkillIndexEntry, coverageSummary: string
       ${row('source', zh ? '来源' : 'Source', detail.source)}
       ${row('coverage', zh ? '声明' : 'Declaration', detail.coverage)}
       ${row('status', zh ? '状态' : 'Status', detail.status)}
+      ${row('evidence', zh ? '证据' : 'Evidence', detail.evidence)}
+      ${row('action', zh ? '下一步' : 'Next', detail.action)}
     </dl>
   </div>`;
 }
@@ -2043,20 +2365,41 @@ function positionedNodeStyle(node: Pick<SkillMapPositionedNode, 'x' | 'y'>): str
   return `left:${node.x}px;top:${node.y}px`;
 }
 
+function renderSkillMapViewPositionAttrs(item: SkillMapPositionedNode): string {
+  const attrs = [];
+  if (item.boundaryPosition) {
+    attrs.push(` data-sm-boundary-x="${item.boundaryPosition.x}" data-sm-boundary-y="${item.boundaryPosition.y}"`);
+  }
+  if (item.evidencePosition) {
+    attrs.push(` data-sm-evidence-x="${item.evidencePosition.x}" data-sm-evidence-y="${item.evidencePosition.y}"`);
+  }
+  return attrs.join('');
+}
+
 function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
-  const title = graphNodeMapLabel(item.node);
+  const title = item.presentation?.title ?? graphNodeMapLabel(item.node);
   const coverageLabel = graphNodeCoverageLabel(item.node, lang);
-  const fullTitle = [graphNodeDisplayLabel(item.node, lang), coverageLabel].filter(Boolean).join(' · ');
-  const kindClass = item.node.nodeKind === 'more' ? ' sm-node--more' : '';
-  const leaf = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-leaf="1"' : '';
+  const fullTitle = [
+    item.presentation?.title,
+    graphNodeDisplayLabel(item.node, lang),
+    coverageLabel,
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index).join(' · ');
+  const signal = graphNodeSignalLabel(item.node, lang);
+  const kindLabel = item.presentation?.hideKind || item.node.nodeKind === 'knowledge_group' ? '' : nodeKindLabel(item.node.nodeKind, lang);
+  const kindClass = item.node.nodeKind === 'more' ? ' sm-node--more' : item.node.nodeKind === 'knowledge_group' ? ' sm-node--group' : '';
+  const isLeaf = item.isLeaf !== false;
+  const leaf = isLeaf ? ' data-sm-leaf="1"' : '';
   const draggable = item.layer === 'definition' || item.layer === 'measurement' ? ' data-sm-draggable="1"' : '';
   const overflow = item.overflowGroup ? ` data-sm-overflow-group="${item.overflowGroup}" hidden aria-hidden="true"` : '';
+  const toggleIcon = item.moreToggle ? '<span class="sm-node-toggle-icon" aria-hidden="true"></span>' : '';
   const moreToggle = item.moreToggle
     ? ` data-sm-more-toggle="${item.moreToggle.group}" data-sm-collapsed-label="${e(item.moreToggle.collapsedLabel)}" data-sm-expanded-label="${e(item.moreToggle.expandedLabel)}" role="button" tabindex="0" aria-expanded="false"`
     : ' role="button" tabindex="0"';
-  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${leaf}${draggable}${overflow}${moreToggle}${renderSkillMapDetailAttrs(item, lang)} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}" aria-label="${e(fullTitle)}">
-    <div class="sm-node-kind">${e(nodeKindLabel(item.node.nodeKind, lang))}</div>
+  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${renderSkillMapViewPositionAttrs(item)}${leaf}${draggable}${overflow}${moreToggle}${renderSkillMapDetailAttrs(item, lang)} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}" aria-label="${e(fullTitle)}">
+    ${toggleIcon}
+    ${kindLabel ? `<div class="sm-node-kind">${e(kindLabel)}</div>` : ''}
     <div class="sm-node-title">${e(title)}</div>
+    ${signal ? `<div class="sm-node-signal${graphNodeSignalClass(item.node)}">${e(signal)}</div>` : ''}
   </div>`;
 }
 
@@ -2089,36 +2432,224 @@ function skillMapPath(
   return `M ${start.x} ${start.y} C ${c1x} ${start.y}, ${c2x} ${end.y}, ${end.x} ${end.y}`;
 }
 
-function renderSkillMapEdges(nodes: SkillMapPositionedNode[], dimensions: { width: number; height: number }): string {
+function renderSkillMapEdges(
+  nodes: SkillMapPositionedNode[],
+  dimensions: { width: number; height: number },
+  evidenceLinks: SkillMapEvidenceLink[],
+): string {
   const rootEdges = nodes
     .map((node) => {
-      const from = node.edgeFrom ?? SKILL_MAP_ROOT;
+      const from = node.edgeFrom ?? SKILL_MAP_BOUNDARY_ROOT;
       const fromBox = node.edgeFrom ? SKILL_MAP_NODE_SIZE : SKILL_MAP_ROOT_SIZE;
       const overflow = node.overflowGroup ? ` data-sm-overflow-group="${node.overflowGroup}" hidden aria-hidden="true"` : '';
-      const fromNodeId = node.overflowGroup ? `${node.overflowGroup}-more` : SKILL_MAP_ROOT_ID;
-      return `<path class="sm-edge sm-edge--${node.layer}" data-sm-layer="${node.layer}" data-sm-leaf="1" data-sm-edge-to="${e(node.id)}" data-sm-edge-from-node="${e(fromNodeId)}" data-sm-edge-from-x="${from.x}" data-sm-edge-from-y="${from.y}"${overflow} d="${skillMapPath(from, node, fromBox, SKILL_MAP_NODE_SIZE)}"></path>`;
+      const fromNodeId = node.edgeFromId ?? (node.overflowGroup ? `${node.overflowGroup}-more` : SKILL_MAP_ROOT_ID);
+      const leaf = node.isLeaf === false ? '' : ' data-sm-leaf="1"';
+      return `<path class="sm-edge sm-edge--${node.layer}" data-sm-layer="${node.layer}"${leaf} data-sm-edge-to="${e(node.id)}" data-sm-edge-from-node="${e(fromNodeId)}" data-sm-edge-from-x="${from.x}" data-sm-edge-from-y="${from.y}"${overflow} d="${skillMapPath(from, node, fromBox, SKILL_MAP_NODE_SIZE)}"></path>`;
     })
     .join('');
-  return `<svg class="sm-svg" viewBox="0 0 ${dimensions.width} ${dimensions.height}" aria-hidden="true">${rootEdges}</svg>`;
+  const evidenceEdges = evidenceLinks
+    .map((link, index) => `<path class="sm-edge sm-edge--coverage${link.failed ? ' sm-edge--coverage-failed' : ''}" data-sm-layer="measurement" data-sm-leaf="1" data-sm-evidence-edge="1" data-sm-edge-to="${e(link.toId)}" data-sm-edge-from-node="${e(link.fromId)}" data-sm-edge-from-x="${link.from.x}" data-sm-edge-from-y="${link.from.y}" d="${skillMapPath(link.from, link.to, SKILL_MAP_NODE_SIZE, SKILL_MAP_NODE_SIZE)}" data-sm-edge-index="${index}" hidden aria-hidden="true"></path>`)
+    .join('');
+  return `<svg class="sm-svg" viewBox="0 0 ${dimensions.width} ${dimensions.height}" aria-hidden="true">${rootEdges}${evidenceEdges}</svg>`;
+}
+
+function coverageSamplesByStableKey(evalGraph: NonNullable<SkillGraphSnapshot['eval']> | undefined, lang: Lang): Map<string, string[]> {
+  const zh = lang === 'zh';
+  const out = new Map<string, string[]>();
+  for (const edge of evalGraph?.declaredCoverageEdges ?? []) {
+    const samples = out.get(edge.targetStableKey) ?? [];
+    const sampleLabel = edge.sampleStatus === 'failed'
+      ? (zh ? `${edge.sampleLabel}（失败）` : `${edge.sampleLabel} (failed)`)
+      : edge.sampleLabel;
+    if (!samples.includes(sampleLabel)) samples.push(sampleLabel);
+    out.set(edge.targetStableKey, samples);
+  }
+  return out;
+}
+
+function skillMapEvidenceLinks(
+  nodes: SkillMapPositionedNode[],
+  evalGraph: NonNullable<SkillGraphSnapshot['eval']> | undefined,
+): SkillMapEvidenceLink[] {
+  if (!evalGraph?.declaredCoverageEdges.length) return [];
+  const targetByStableKey = new Map<string, SkillMapPositionedNode>();
+  const sampleByLabel = new Map<string, SkillMapPositionedNode>();
+  for (const node of nodes) {
+    if (node.node.stableKey) targetByStableKey.set(node.node.stableKey, node);
+    if (node.node.nodeKind === 'sample') sampleByLabel.set(node.node.label, node);
+  }
+  return evalGraph.declaredCoverageEdges
+    .map((edge): SkillMapEvidenceLink | null => {
+      const from = sampleByLabel.get(edge.sampleLabel);
+      const to = targetByStableKey.get(edge.targetStableKey);
+      if (!from || !to) return null;
+      return {
+        fromId: from.id,
+        toId: to.id,
+        from: { x: from.x, y: from.y },
+        to: { x: to.x, y: to.y },
+        ...(edge.sampleStatus === 'failed' ? { failed: true } : {}),
+      };
+    })
+    .filter((link): link is SkillMapEvidenceLink => Boolean(link));
 }
 
 function moreNode(label: string): SkillGraphNodePreview {
   return { nodeKind: 'more', label };
 }
 
-function overflowNodePosition(layer: 'definition' | 'measurement', index: number): { x: number; y: number } {
-  const columns = layer === 'definition' ? [112, 270, 428] : [720, 880, 1040];
-  const startY = layer === 'definition' ? 500 : 560;
+function overflowNodePosition(layer: 'definition' | 'measurement', index: number, view: 'boundary' | 'evidence'): { x: number; y: number } {
+  const columns = layer === 'definition'
+    ? view === 'boundary' ? [205, 382, 560, 738, 915] : [120, 290, 810, 980]
+    : [250, 430, 610, 790, 970];
+  const startY = layer === 'definition'
+    ? view === 'boundary' ? 570 : 535
+    : 555;
   return {
     x: columns[index % columns.length],
     y: startY + Math.floor(index / columns.length) * 98,
   };
 }
 
-function skillMapDimensions(nodes: SkillMapPositionedNode[]): { width: number; height: number } {
+function definitionGroupSpecForNode(node: SkillGraphNodePreview): SkillMapDefinitionGroupSpec | undefined {
+  return SKILL_MAP_DEFINITION_GROUPS.find((group) => group.nodeKinds.includes(node.nodeKind));
+}
+
+function definitionGroupLabel(group: SkillMapDefinitionGroupSpec, lang: Lang): string {
+  return lang === 'zh' ? group.labelZh : group.labelEn;
+}
+
+function definitionGroupDescription(group: SkillMapDefinitionGroupSpec, lang: Lang): string {
+  return lang === 'zh' ? group.descriptionZh : group.descriptionEn;
+}
+
+function knowledgeGroupNode(group: SkillMapDefinitionGroupSpec, children: SkillGraphNodePreview[], lang: Lang): SkillGraphNodePreview {
+  const declared = children.filter((node) => node.coverage === 'declared').length;
   return {
-    width: Math.max(SKILL_MAP_WIDTH, ...nodes.map((node) => node.x + SKILL_MAP_NODE_MARGIN.x)),
-    height: Math.max(SKILL_MAP_HEIGHT, ...nodes.map((node) => node.y + SKILL_MAP_NODE_MARGIN.y)),
+    nodeKind: 'knowledge_group',
+    label: definitionGroupLabel(group, lang),
+    groupDescription: definitionGroupDescription(group, lang),
+    groupSummary: {
+      total: children.length,
+      declared,
+    },
+  } as SkillGraphNodePreview & { groupDescription: string; groupSummary: SkillMapGroupSummary };
+}
+
+function definitionGroupChildPosition(group: SkillMapDefinitionGroupSpec, index: number): { x: number; y: number } {
+  const position = group.childBoundaryPositions[index];
+  if (position) return position;
+  const columns = group.key === 'references'
+    ? [120, 290, 460]
+    : group.key === 'workflow'
+      ? [660, 830, 1000]
+      : [250, 405, 560, 715, 870];
+  const startY = group.key === 'rules' ? 190 : 500;
+  return {
+    x: columns[index % columns.length],
+    y: startY + Math.floor(index / columns.length) * 92,
+  };
+}
+
+function standaloneAssetPosition(index: number): { x: number; y: number } {
+  const position = SKILL_MAP_BOUNDARY_ASSET_COORDS[index];
+  if (position) return position;
+  const columns = [205, 380, 560, 740, 915];
+  return {
+    x: columns[index % columns.length],
+    y: 610 + Math.floor(index / columns.length) * 92,
+  };
+}
+
+function standaloneAssetPresentation(node: SkillGraphNodePreview, lang: Lang): SkillMapPositionedNode['presentation'] {
+  const zh = lang === 'zh';
+  if (node.nodeKind === 'script') {
+    return {
+      title: zh ? '执行脚本' : 'Script',
+      detailTitle: zh ? '执行脚本' : 'Script',
+      hideKind: true,
+    };
+  }
+  if (node.nodeKind === 'frontmatter') {
+    return {
+      title: zh ? '元信息' : 'Metadata',
+      detailTitle: zh ? '元信息' : 'Metadata',
+      hideKind: true,
+    };
+  }
+  return undefined;
+}
+
+function buildDefinitionMapNodes(candidates: SkillGraphNodePreview[], lang: Lang): SkillMapPositionedNode[] {
+  let evidenceIndex = 0;
+  const groupNodes = SKILL_MAP_DEFINITION_GROUPS.flatMap((group) => {
+    const children = candidates.filter((node) => definitionGroupSpecForNode(node)?.key === group.key);
+    if (children.length === 0) return [];
+    const groupId = `definition-group-${group.key}`;
+    const label = definitionGroupLabel(group, lang);
+    const groupNode: SkillMapPositionedNode = {
+      id: groupId,
+      node: knowledgeGroupNode(group, children, lang),
+      layer: 'definition',
+      x: group.boundaryPosition.x,
+      y: group.boundaryPosition.y,
+      boundaryPosition: group.boundaryPosition,
+      evidencePosition: group.evidencePosition,
+      isLeaf: false,
+      moreToggle: {
+        group: groupId,
+        collapsedLabel: lang === 'zh' ? `展开${label}` : `Expand ${label}`,
+        expandedLabel: lang === 'zh' ? `收起${label}` : `Collapse ${label}`,
+      },
+    };
+    const childNodes = children.map((node, index): SkillMapPositionedNode => {
+      const boundaryPosition = definitionGroupChildPosition(group, index);
+      const evidencePosition = SKILL_MAP_EVIDENCE_DEFINITION_COORDS[evidenceIndex] ?? overflowNodePosition('definition', evidenceIndex - SKILL_MAP_EVIDENCE_DEFINITION_COORDS.length, 'evidence');
+      evidenceIndex += 1;
+      return {
+        id: `${groupId}-node-${index}`,
+        node,
+        layer: 'definition',
+        edgeFrom: group.boundaryPosition,
+        edgeFromId: groupId,
+        overflowGroup: groupId,
+        x: boundaryPosition.x,
+        y: boundaryPosition.y,
+        boundaryPosition,
+        evidencePosition,
+      };
+    });
+    return [groupNode, ...childNodes];
+  });
+  const standaloneAssets = candidates
+    .filter((node) => node.nodeKind === 'script' || node.nodeKind === 'frontmatter')
+    .map((node, index): SkillMapPositionedNode => {
+      const boundaryPosition = standaloneAssetPosition(index);
+      const evidencePosition = SKILL_MAP_EVIDENCE_DEFINITION_COORDS[evidenceIndex] ?? overflowNodePosition('definition', evidenceIndex - SKILL_MAP_EVIDENCE_DEFINITION_COORDS.length, 'evidence');
+      evidenceIndex += 1;
+      return {
+        id: `definition-asset-${index}`,
+        node,
+        layer: 'definition',
+        x: boundaryPosition.x,
+        y: boundaryPosition.y,
+        boundaryPosition,
+        evidencePosition,
+        presentation: standaloneAssetPresentation(node, lang),
+      };
+    });
+  return [...groupNodes, ...standaloneAssets];
+}
+
+function skillMapDimensions(nodes: SkillMapPositionedNode[]): { width: number; height: number } {
+  const allPositions = nodes.flatMap((node) => [
+    { x: node.x, y: node.y },
+    ...(node.boundaryPosition ? [node.boundaryPosition] : []),
+    ...(node.evidencePosition ? [node.evidencePosition] : []),
+  ]);
+  return {
+    width: Math.max(SKILL_MAP_WIDTH, ...allPositions.map((node) => node.x + SKILL_MAP_NODE_MARGIN.x)),
+    height: Math.max(SKILL_MAP_HEIGHT, ...allPositions.map((node) => node.y + SKILL_MAP_NODE_MARGIN.y)),
   };
 }
 
@@ -2139,6 +2670,30 @@ function renderSkillStageRail(entry: SkillIndexEntry, lang: Lang): string {
   </div>`;
 }
 
+function renderSkillMapEvidenceStrip(
+  entry: SkillIndexEntry,
+  doctor: NonNullable<SkillGraphSnapshot['doctor']> | undefined,
+  evalGraph: NonNullable<SkillGraphSnapshot['eval']> | undefined,
+  lang: Lang,
+): string {
+  const zh = lang === 'zh';
+  const failedSamples = entry.eval?.failCount ?? 0;
+  const totalSamples = entry.eval?.totalSamples ?? evalGraph?.samples ?? 0;
+  const declaredKeys = new Set(evalGraph?.declaredCoverageStableKeys ?? []);
+  const coverable = doctor?.definitionNodes.filter((node) => node.stableKey && DEFINITION_PREVIEW_KINDS.has(node.nodeKind)) ?? [];
+  const declaredCount = coverable.filter((node) => node.stableKey && declaredKeys.has(node.stableKey)).length;
+  const undeclaredCount = coverable.filter((node) => node.stableKey && !declaredKeys.has(node.stableKey)).length;
+  const item = (key: string, value: string, tone = ''): string => `<div class="sm-evidence-item${tone ? ` sm-evidence-item--${tone}` : ''}">
+    <div class="sm-evidence-k">${e(key)}</div>
+    <div class="sm-evidence-v">${e(value)}</div>
+  </div>`;
+  return `<div class="sm-evidence-strip" aria-label="${zh ? '图谱诊断摘要' : 'Map diagnosis summary'}">
+    ${item(zh ? '边界覆盖' : 'Boundary coverage', coverable.length > 0 ? `${declaredCount}/${coverable.length} ${zh ? '个结构节点' : 'structure nodes'}` : (zh ? '暂无结构节点' : 'no structure nodes'))}
+    ${item(zh ? '未声明' : 'Undeclared', coverable.length > 0 ? `${undeclaredCount} ${zh ? '个结构节点' : 'structure nodes'}` : (zh ? '暂无' : 'none'), undeclaredCount > 0 ? 'action' : '')}
+    ${item(zh ? '失败证据' : 'Failed evidence', totalSamples > 0 ? `${failedSamples}/${totalSamples} ${zh ? '条评测用例' : 'eval samples'}` : (zh ? '暂无评测用例' : 'no eval samples'), failedSamples > 0 ? 'risk' : '')}
+  </div>`;
+}
+
 function orderedPreviewNodes(
   nodes: SkillGraphNodePreview[] | undefined,
   allowedKinds: Set<string>,
@@ -2151,16 +2706,29 @@ function orderedPreviewNodes(
     .map(({ node }) => node);
 }
 
+function measurementStatusPriority(node: SkillGraphNodePreview): number {
+  if (node.status === 'failed') return 0;
+  if (node.status === 'warning') return 1;
+  if (node.nodeKind === 'sample') return 2;
+  return 3;
+}
+
 function applyDefinitionCoverageDeclarations(
   nodes: SkillGraphNodePreview[] | undefined,
   declaredStableKeys: string[] | undefined,
+  coveredByStableKey?: Map<string, string[]>,
 ): SkillGraphNodePreview[] | undefined {
   if (!nodes) return undefined;
-  if (!declaredStableKeys || declaredStableKeys.length === 0) return nodes;
+  if ((!declaredStableKeys || declaredStableKeys.length === 0) && (!coveredByStableKey || coveredByStableKey.size === 0)) return nodes;
   const declared = new Set(declaredStableKeys);
   return nodes.map((node) => {
     if (!node.stableKey || !DEFINITION_PREVIEW_KINDS.has(node.nodeKind)) return node;
-    return { ...node, coverage: declared.has(node.stableKey) ? 'declared' : 'undeclared' };
+    const coveredBySamples = coveredByStableKey?.get(node.stableKey) ?? [];
+    return {
+      ...node,
+      coverage: declared.has(node.stableKey) ? 'declared' : 'undeclared',
+      ...(coveredBySamples.length > 0 ? { coveredBySamples } : {}),
+    };
   });
 }
 
@@ -2206,7 +2774,7 @@ function renderSkillEvidenceMarkdown(entry: SkillIndexEntry, lang: Lang): string
     !entry.observe ? `- ${zh ? '接入观察' : 'Add observation'}${stepSeparator} \`omk observe ingest <trace-dir>\`` : '',
   ].filter(Boolean);
   const coverageSummary = skillMapCoverageDeclarationSummary(doctor, evalGraph, lang);
-  const definitionPreview = previewNodes(applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys), DEFINITION_PREVIEW_KINDS, 8);
+  const definitionPreview = previewNodes(applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys, coverageSamplesByStableKey(evalGraph, lang)), DEFINITION_PREVIEW_KINDS, 8);
   const measurementPreview = previewNodes(evalGraph?.measurementNodes, MEASUREMENT_PREVIEW_KINDS, 8);
   const previewMermaidLines = [
     ...definitionPreview.visible.flatMap((node, index) => [
@@ -2270,7 +2838,8 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
   const evalGraph = graph.eval;
   const band = skillMapBand(entry);
   const markdown = renderSkillEvidenceMarkdown(entry, lang);
-  const definitionNodesWithCoverageDeclarations = applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys);
+  const coverageSamples = coverageSamplesByStableKey(evalGraph, lang);
+  const definitionNodesWithCoverageDeclarations = applyDefinitionCoverageDeclarations(doctor?.definitionNodes, evalGraph?.declaredCoverageStableKeys, coverageSamples);
   const coverageSummary = skillMapCoverageDeclarationSummary(doctor, evalGraph, lang);
   const definitionCandidates = orderedPreviewNodes(definitionNodesWithCoverageDeclarations, DEFINITION_PREVIEW_KINDS, {
     reference: 1,
@@ -2284,53 +2853,27 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
     sample: 1,
     diagnostic: 2,
     assertion: 3,
-  });
-  const definitionLimit = SKILL_MAP_DEFINITION_COORDS.length - 1;
-  const measurementLimit = SKILL_MAP_MEASUREMENT_COORDS.length - 1;
-  const definitionVisible = definitionCandidates.slice(0, definitionLimit);
-  const definitionOverflow = definitionCandidates.slice(definitionLimit);
+  }).sort((a, b) => measurementStatusPriority(a) - measurementStatusPriority(b));
+  const measurementLimit = SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS.length - 1;
   const measurementVisible = measurementCandidates.slice(0, measurementLimit);
   const measurementOverflow = measurementCandidates.slice(measurementLimit);
-  const definitionMorePosition = SKILL_MAP_DEFINITION_COORDS[SKILL_MAP_DEFINITION_COORDS.length - 1];
-  const measurementMorePosition = SKILL_MAP_MEASUREMENT_COORDS[SKILL_MAP_MEASUREMENT_COORDS.length - 1];
-  const definitionNodes: SkillMapPositionedNode[] = [
-    ...definitionVisible.map((node, index) => ({
-      id: `definition-${index}`,
-      node,
-      layer: 'definition' as const,
-      ...SKILL_MAP_DEFINITION_COORDS[index],
-    })),
-    ...(definitionOverflow.length > 0 ? [{
-      id: 'definition-more',
-      node: moreNode(`+ ${definitionOverflow.length} ${zh ? '更多结构节点' : 'more structure nodes'}`),
-      layer: 'definition' as const,
-      moreToggle: {
-        group: 'definition' as const,
-        collapsedLabel: `+ ${definitionOverflow.length} ${zh ? '更多结构节点' : 'more structure nodes'}`,
-        expandedLabel: zh ? '收起结构节点' : 'collapse structure nodes',
-      },
-      ...definitionMorePosition,
-    }] : []),
-    ...definitionOverflow.map((node, index) => ({
-      id: `definition-overflow-${index}`,
-      node,
-      layer: 'definition' as const,
-      edgeFrom: definitionMorePosition,
-      overflowGroup: 'definition' as const,
-      ...overflowNodePosition('definition', index),
-    })),
-  ];
+  const measurementMorePosition = SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS.length - 1];
+  const definitionNodes = buildDefinitionMapNodes(definitionCandidates, lang);
   const measurementNodes: SkillMapPositionedNode[] = [
     ...measurementVisible.map((node, index) => ({
       id: `measurement-${index}`,
       node,
       layer: 'measurement' as const,
-      ...SKILL_MAP_MEASUREMENT_COORDS[index],
+      ...SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
+      boundaryPosition: SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
+      evidencePosition: SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
     })),
     ...(measurementOverflow.length > 0 ? [{
       id: 'measurement-more',
       node: moreNode(`+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`),
       layer: 'measurement' as const,
+      boundaryPosition: measurementMorePosition,
+      evidencePosition: measurementMorePosition,
       moreToggle: {
         group: 'measurement' as const,
         collapsedLabel: `+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`,
@@ -2344,23 +2887,23 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
       layer: 'measurement' as const,
       edgeFrom: measurementMorePosition,
       overflowGroup: 'measurement' as const,
-      ...overflowNodePosition('measurement', index),
+      ...overflowNodePosition('measurement', index, 'evidence'),
+      boundaryPosition: overflowNodePosition('measurement', index, 'evidence'),
+      evidencePosition: overflowNodePosition('measurement', index, 'evidence'),
     })),
   ];
   const mapNodes = [...definitionNodes, ...measurementNodes];
+  const evidenceLinks = skillMapEvidenceLinks(mapNodes, evalGraph);
   const mapDimensions = skillMapDimensions(mapNodes);
-  const topMeta = [
-    coverageSummary,
-    !coverageSummary && doctor ? `${doctor.nodeCount} ${zh ? '结构节点' : 'definition nodes'}` : '',
-    !coverageSummary && evalGraph ? `${evalGraph.samples} ${zh ? '用例' : 'samples'}` : '',
-  ].filter(Boolean).join(' · ');
+  const topMeta = '';
   return `<section id="section-skill-map" class="si-sect si-sect--${band} sm-sect">
     <div class="si-sect-h">
       <span class="si-sect-title">🗺 ${zh ? 'Skill Map' : 'Skill Map'}</span>
-      <span class="si-sect-meta">${e(topMeta || (zh ? '图谱数据未生成' : 'graph data missing'))}</span>
+      ${topMeta ? `<span class="si-sect-meta">${e(topMeta)}</span>` : ''}
     </div>
-    <div class="sm-body" data-sm-map data-sm-base-width="${mapDimensions.width}" data-sm-base-height="${mapDimensions.height}" data-sm-root-x="${SKILL_MAP_ROOT.x}" data-sm-root-y="${SKILL_MAP_ROOT.y}">
+    <div class="sm-body" data-sm-map data-sm-view="boundary" data-sm-base-width="${mapDimensions.width}" data-sm-base-height="${mapDimensions.height}" data-sm-root-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-root-y="${SKILL_MAP_BOUNDARY_ROOT.y}">
       ${renderSkillStageRail(entry, lang)}
+      ${renderSkillMapEvidenceStrip(entry, doctor, evalGraph, lang)}
       <div class="sm-toolbar" aria-label="${zh ? 'Skill Map 控制' : 'Skill Map controls'}">
         <div class="sm-tools">
           <button class="sm-tool" type="button" data-sm-action="zoom-out" title="${zh ? '缩小' : 'Zoom out'}">−</button>
@@ -2369,16 +2912,20 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
           <button class="sm-tool" type="button" data-sm-action="reset" title="${zh ? '重置视图' : 'Reset view'}">${zh ? '重置' : 'Reset'}</button>
         </div>
         <div class="sm-toggles">
-          <label class="sm-toggle"><input type="checkbox" data-sm-toggle-layer="definition" checked> ${zh ? '定义' : 'Definition'}</label>
-          <label class="sm-toggle"><input type="checkbox" data-sm-toggle-layer="measurement" checked> ${zh ? '测量' : 'Measurement'}</label>
+          <div class="sm-view-switch" role="group" aria-label="${zh ? '图谱视图' : 'Map view'}">
+            <button class="sm-view is-active" type="button" data-sm-view-button="boundary" aria-pressed="true">${zh ? '边界图' : 'Boundary'}</button>
+            <button class="sm-view" type="button" data-sm-view-button="evidence" aria-pressed="false">${zh ? '证据视图' : 'Evidence'}</button>
+          </div>
           <label class="sm-toggle"><input type="checkbox" data-sm-toggle-leaves checked> ${zh ? '叶子节点' : 'Leaf nodes'}</label>
         </div>
       </div>
       <div class="sm-canvas" data-sm-viewport aria-label="Skill Map">
         <div class="sm-graph-stage" data-sm-graph-stage style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
           <div class="sm-graph" data-sm-graph style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
-            ${renderSkillMapEdges(mapNodes, mapDimensions)}
-            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_ROOT.x}" data-sm-y="${SKILL_MAP_ROOT.y}" data-sm-origin-x="${SKILL_MAP_ROOT.x}" data-sm-origin-y="${SKILL_MAP_ROOT.y}" data-sm-draggable="1"${renderSkillMapRootDetailAttrs(entry, coverageSummary, lang)} role="button" tabindex="0" aria-label="SKILL.md ${e(entry.skillName)}" style="${positionedNodeStyle(SKILL_MAP_ROOT)}">
+            <div class="sm-zone-label sm-zone-label--definition" data-sm-layer="definition">${zh ? '知识边界' : 'Knowledge'}</div>
+            <div class="sm-zone-label sm-zone-label--measurement" data-sm-layer="measurement">${zh ? '评测证据' : 'Evidence'}</div>
+            ${renderSkillMapEdges(mapNodes, mapDimensions, evidenceLinks)}
+            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-origin-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-origin-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-boundary-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-boundary-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-evidence-x="${SKILL_MAP_EVIDENCE_ROOT.x}" data-sm-evidence-y="${SKILL_MAP_EVIDENCE_ROOT.y}" data-sm-draggable="1"${renderSkillMapRootDetailAttrs(entry, coverageSummary, lang)} role="button" tabindex="0" aria-label="SKILL.md ${e(entry.skillName)}" style="${positionedNodeStyle(SKILL_MAP_BOUNDARY_ROOT)}">
               <div class="sm-node-title">SKILL.md</div>
               <div class="sm-node-meta">${e(entry.skillName)}</div>
             </div>
