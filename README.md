@@ -8,8 +8,8 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**Did your prompt actually get better?**
-A/B test your prompts and skills with statistical rigor — bootstrap CI and length-debias on by default, Krippendorff α the moment you add a gold set.
+**Is this knowledge input (prompt / skill / RAG / agent) any good, and can you ship it with evidence?**
+`doctor` checks whether this knowledge input is coherent enough to measure; `eval` fixes the model and samples, changes only the knowledge input, and tells you whether the new version is genuinely better. Bootstrap CI and length-debias are on by default; Krippendorff α appears the moment you add a gold set.
 
 📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
 
@@ -34,6 +34,20 @@ Prerequisite: the default executor and judge use the `claude` CLI — install an
 Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users). More runnable examples (Skill Map, A/B, offline executor, agent runtime, RAG) live in the repo's [example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples).
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
+
+## The first workflow
+
+omk is primarily for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The first workflow is deliberately small:
+
+```text
+change a skill / prompt / agent artifact
+→ run omk doctor to catch structure, dependency, and measurability problems
+→ run omk eval to compare against a baseline on the same samples
+→ read the report / Studio view for the next concrete fix
+→ decide ship / don't ship
+```
+
+`observe` is the later production-feedback loop: useful once real usage traces exist, but not required for omk's first value. The trunk is the pre-ship doctor → eval decision.
 
 ## Use inside AI Coding Agents
 
@@ -73,7 +87,7 @@ You can also describe the goal in natural language, such as "compare v1 vs v2" o
 
 ## Why this tool
 
-Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "why is v2 better than v1", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
+Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "can we ship v2, and why?", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
 
 ## Why omk over alternatives
 
