@@ -4,7 +4,7 @@
 
 ## In one line
 
-omk turns "is this knowledge input (prompt / skill / RAG / agent) any good?" from a gut call into a **comparable, evidence-backed decision** — hold the model fixed, vary only the knowledge, and measure the difference with statistical rigor.
+omk turns "is this knowledge input (prompt / skill / RAG / agent) any good, and can I ship it?" from a gut call into a **comparable, evidence-backed decision** — first check whether the artifact is measurable, then hold the model fixed, vary only the knowledge input, and measure the difference with statistical rigor.
 
 ## The problem, in two layers
 
@@ -14,11 +14,25 @@ omk turns "is this knowledge input (prompt / skill / RAG / agent) any good?" fro
 
 **Upper layer — is this knowledge worth having at all?** One level up: did the skill actually make the model stronger, or did the model already know this and the skill just reworded existing capability? A baseline-vs-skill comparison can measure *necessity* (the model lacked this knowledge) rather than *quality* (the skill is well written) — both produce impressive verdict numbers while answering different questions. This is a construct-validity question, and it decides whether a piece of knowledge is worth maintaining. (See the [sample design guide](../specs/sample-design-spec).)
 
-The lower layer is what authors ask daily; the upper layer is what adopters / platforms ask when deciding what to use and keep. omk's two-layer ruler maps to two kinds of people.
+The lower layer is what authors ask daily before shipping a change; the upper layer is what adopters / platforms ask when deciding what to use and keep. omk's two-layer ruler maps to two kinds of people.
+
+## The first workflow
+
+omk's first workflow is the pre-ship loop for a knowledge artifact:
+
+```text
+change a skill / prompt / agent artifact
+→ doctor: is it structured, runnable, and measurable enough?
+→ eval: did the change beat the baseline on the same samples?
+→ report / Studio: what concrete thing should I fix next?
+→ decide ship / don't ship
+```
+
+That is the trunk. `observe` matters after real usage exists, but it is not required for omk's first value. A product direction that makes doctor and eval more trustworthy for this ship/no-ship moment should outrank one that only adds a new surface area.
 
 ## Who it's for
 
-**Primary: authors / maintainers of knowledge inputs.** Iterating on a prompt / skill / RAG / agent, needing to answer "is my change a real improvement, and is it shippable?" omk's doctor → eval → observe loop is built for them: change a version, measure, read the verdict, change again.
+**Primary: authors / maintainers of knowledge inputs.** Iterating on a prompt / skill / RAG / agent, needing to answer "is my change a real improvement, and is it shippable?" omk's first promise is the doctor → eval release-prep loop: make the artifact measurable, compare it against a baseline, read the verdict, then fix or ship.
 
 **Second pillar: adopters / platform-governance teams.** Deciding "should our team use this third-party skill, and which knowledge inputs should we approve and keep?" They don't trust the author's bundled benchmark — they run it against *their own* sample set, and record "what we adopted, on what evidence" as a traceable decision log (see [evidence-gated management](../specs/evidence-gated-management)). This isn't an add-on — the governance gate cites the same kind of eval report (reportId) the author loop produces, only run on the adopter's own cases; it's the same measurement ruler extended to team scale.
 
@@ -28,9 +42,9 @@ The lower layer is what authors ask daily; the upper layer is what adopters / pl
 
 omk's three stages reach different audiences:
 
-- **doctor (check)** — a cheap pre-flight / smoke test. Authors use it as a CI gate; adopters run it right after install to see "is this skill broken?" Both.
-- **eval (evaluate)** — a statistical A/B that needs a sample set and measurement intent. Author iteration + adopter procurement. Passive users don't touch it.
-- **observe (observe)** — mines signal from real session traces. This stage is closest to someone actually *using* a skill: no sample set required, it reads their own usage to show "did this skill actually help?"
+- **doctor (check)** — the pre-ship health gate. Authors use it before trusting an eval; adopters run it right after install to see "is this skill broken?" Both.
+- **eval (evaluate)** — the release decision core. It needs a sample set and measurement intent, so it belongs to author iteration and adopter procurement. Passive users don't touch it.
+- **observe (observe)** — the post-ship feedback loop. It mines real session traces for gaps and should feed the next sample set, but it is not a replacement for controlled eval and should not be the first surface a new user needs.
 
 ## Boundaries: what omk doesn't do
 

@@ -4,6 +4,7 @@
 
 ## 我想用 omk
 
+- [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 用户、问题和第一条发布判断工作流
 - [快速上手](./quickstart-skill-eval.md) —— 5 分钟跑完第一次评测
 - [安装 omk Agent Skill](./quickstart-skill-eval.md) —— 用 `omk install omk-agent-skill` 开启 agent 驱动工作流
 - [CLI 参考](./reference/cli.md)
@@ -23,6 +24,7 @@
 
 ## 我想懂工作原理
 
+- [omk 为谁做、解决什么](./explanation/who-omk-is-for.md) —— 为什么 doctor / eval 是发布前主干，observe 是发布后反馈
 - [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [工作原理](./explanation/architecture.md)
 - [统计严谨性](./explanation/statistical-rigor.md)

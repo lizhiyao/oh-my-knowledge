@@ -4,6 +4,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 
 ## I want to use omk
 
+- [Who omk is for](./explanation/who-omk-is-for.md) — the user, problem, and first ship/no-ship workflow
 - [Quickstart](./quickstart-skill-eval.md) — first eval in 5 minutes
 - [Install the omk Agent Skill](./quickstart-skill-eval.md) — agent-driven onboarding with `omk install omk-agent-skill`
 - [CLI reference](./reference/cli.md)
@@ -23,6 +24,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 
 ## I want to understand how it works
 
+- [Who omk is for](./explanation/who-omk-is-for.md) — why doctor / eval are the pre-ship trunk and observe is post-ship feedback
 - [The three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [Architecture](./explanation/architecture.md)
 - [Statistical rigor](./explanation/statistical-rigor.md)

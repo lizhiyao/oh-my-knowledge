@@ -8,8 +8,8 @@
 
 [English](./README.md) | **简体中文**
 
-**你改完 prompt，真的变好了吗？**
-用统计严谨性 A/B 测试你的 prompt 和 skill —— Bootstrap 置信区间、长度去偏默认开，配一份人工 gold 就自动算 Krippendorff α。
+**一段知识输入（prompt / skill / RAG / agent）好不好，能不能有证据地发布？**
+`doctor` 先检查这类知识输入是否清楚到值得测；`eval` 固定模型和用例，只改变知识输入，判断新版本是否真的更好。Bootstrap 置信区间、长度去偏默认开，配一份人工 gold 就自动算 Krippendorff α。
 
 📖 **完整文档：[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)**（可搜索，可切换英文）
 
@@ -34,6 +34,20 @@ omk eval --control code-review-v1 --treatment code-review-v2
 手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户）。更多可跑示例（Skill Map、A/B、离线执行器、agent runtime、RAG）见仓库的[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)。
 
 深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [artifact 布局](docs/zh/reference/artifact-layout.md)
+
+## 第一条工作流
+
+omk 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。第一条工作流应该很短：
+
+```text
+改了一个 skill / prompt / agent artifact
+→ 跑 omk doctor，先抓结构、依赖和可测性问题
+→ 跑 omk eval，在同一批用例上和 baseline 对比
+→ 看报告 / Studio，知道下一步具体该改哪里
+→ 决定发布 / 不发布
+```
+
+`observe` 是后续的生产反馈闭环：等真实使用 trace 存在后很有价值，但不是 omk 第一价值的前提。主干先是发布前的 doctor → eval 判断。
 
 ## 在 AI Coding Agent 中使用
 
@@ -73,7 +87,7 @@ omk sample skills/my-skill.md
 
 ## 为什么需要这个工具
 
-做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到「v2 比 v1 好在哪」时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：**相同模型、相同评测用例，只改变知识载体。**
+做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到「v2 能不能发、为什么」时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：**相同模型、相同评测用例，只改变知识载体。**
 
 ## 为什么选 omk
 
