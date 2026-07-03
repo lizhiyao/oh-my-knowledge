@@ -25,8 +25,8 @@ const MESSAGES: Record<EvalWorkflowMessageCode, MessageEntry> = {
     en: '⚠ --repeat=1: single-run cannot measure stability (CV will be marked "not measured"). Use --repeat 3+ to detect within-variant variance.',
   },
   doctor_gate_blocked: {
-    zh: 'skill 健康检查未通过，评测已中止。doctor 是评测必经环节，无 skip 选项——请修复上述问题后重跑。',
-    en: 'skill health check failed; evaluation aborted. doctor is mandatory and not skippable — fix the issues above and re-run.',
+    zh: '发布前 doctor 门禁未通过，评测已中止。\n下一步：先修复上面的阻塞项，再重跑 `omk eval`。\n原因：这段输入还不值得测，继续比较分数会是 garbage-in。\n如果依赖确实由 mock / stub 提供、doctor 误报，可用 `--skip-doctor` 绕过，但这次结果由你承担不可比风险。',
+    en: 'pre-ship doctor gate failed; evaluation aborted.\nNext: fix the blocking findings above, then re-run `omk eval`.\nWhy: this input is not measurable enough yet, and comparing scores now would be garbage-in.\nIf deps are truly supplied by mocks/stubs and doctor is a false positive, use `--skip-doctor`, but you own the comparability risk.',
   },
 };
 

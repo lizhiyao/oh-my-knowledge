@@ -255,7 +255,7 @@ export async function runEvaluation({
       });
       if (doctorReport.outcome === 'failed') {
         renderDoctorReportText(doctorReport, lang);
-        throw new Error(`doctor failed: ${tEvalWorkflowMessage('doctor_gate_blocked', lang)}`);
+        throw new Error(`doctor failed:\n${tEvalWorkflowMessage('doctor_gate_blocked', lang)}`);
       }
     }
   }

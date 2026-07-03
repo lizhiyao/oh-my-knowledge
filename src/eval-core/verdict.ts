@@ -675,9 +675,42 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
   }
 }
 
+function releaseNextStep(level: VerdictLevel, lang: Lang): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':
+        return '把报告作为发布证据留存；如果这是受管 skill，可以继续 promote。';
+      case 'CAUTIOUS':
+        return '先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
+      case 'REGRESS':
+        return '不要发布；定位最差层和失败用例，修复后重跑。';
+      case 'NOISE':
+        return '先别发布；增加样本数或提高用例区分度，再重跑。';
+      case 'UNDERPOWERED':
+        return '把样本数加到至少 20，或先按当前规模 2× 扩充后重跑。';
+      case 'SOLO':
+        return '补一个 baseline 对照，再跑 `omk eval --control baseline --treatment <名字>`。';
+    }
+  }
+  switch (level) {
+    case 'PROGRESS':
+      return 'keep the report as release evidence; for a managed skill, continue to promote.';
+    case 'CAUTIOUS':
+      return 'inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
+    case 'REGRESS':
+      return 'do not ship; inspect the weakest layer and failing samples, fix them, then re-run.';
+    case 'NOISE':
+      return 'do not ship yet; add samples or sharpen the test set, then re-run.';
+    case 'UNDERPOWERED':
+      return 'increase the sample set to at least 20, or roughly 2x the current size, then re-run.';
+    case 'SOLO':
+      return 'add a baseline control and re-run `omk eval --control baseline --treatment <name>`.';
+  }
+}
+
 /**
  * Plain-text formatter for the `omk eval` verdict. Stays under 6 lines per the
- *  spec — one verdict + four rationale bullets + one ship recommendation.
+ *  spec — one verdict, rationale bullets, one ship recommendation, and one next step.
  */
 export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean; lang?: Lang } = {}): string {
   // lang 默认 'en':保留既有英文输出逐字节不变(verdict.test 与历史 CLI 行为)。zh 只本地化
@@ -695,6 +728,7 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   if (result.rationale.gapSignal) lines.push(zh ? `  知识缺口：${result.rationale.gapSignal}` : `  Gap signal:    ${result.rationale.gapSignal}`);
   if (result.rationale.shipRecommendation) {
     lines.push(`  ${zh ? recommendation(result.level, [], 'zh') : result.rationale.shipRecommendation}`);
+    lines.push(zh ? `  下一步：${releaseNextStep(result.level, 'zh')}` : `  Next: ${releaseNextStep(result.level, 'en')}`);
   }
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');

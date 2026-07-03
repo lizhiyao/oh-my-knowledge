@@ -191,7 +191,7 @@ export default class Doctor extends BaseCommand {
       }
 
       const { runDoctor } = await import('../../doctor/index.js');
-      const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
+      const { renderDoctorReportText, renderDoctorReportJson, renderDoctorActionPlanText } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
       const { isComposerRule } = await import('../../types/doctor.js');
       // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
@@ -252,6 +252,7 @@ export default class Doctor extends BaseCommand {
             ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
             : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
           console.error(summary);
+          process.stderr.write(renderDoctorActionPlanText(report, lang));
         }
       } else {
         renderDoctorReportText(report, lang);

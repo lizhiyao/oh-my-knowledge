@@ -121,6 +121,9 @@ describe('omk doctor CLI', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'));
+          assert.ok(e.stderr.includes('修复清单'), e.stderr);
+          assert.ok(e.stderr.includes('下一步：先修阻塞项'), e.stderr);
+          assert.ok(e.stderr.includes('omk doctor --gate'), e.stderr);
           return true;
         },
       );
@@ -138,6 +141,7 @@ describe('omk doctor CLI', () => {
     ]);
     assert.ok(stderr.includes('健康检查'));
     assert.ok(stderr.includes('总览:'));
+    assert.ok(stderr.includes('下一步：doctor 已通过，可以继续运行 `omk eval`。'));
   });
 
   it('persists doctor graph sidecar and Markdown evidence card', async () => {

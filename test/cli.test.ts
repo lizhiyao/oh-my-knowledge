@@ -417,6 +417,7 @@ describe('CLI', () => {
           assert.equal(e.code, 1);
           // 非 TTY:verdict 文案走 stderr,stdout 留作纯 report JSON。verdict 随 lang 本地化(判定：/ Verdict:)。
           assert.ok(/判定：|Verdict:/.test(e.stderr), e.stderr);
+          assert.ok(/下一步：|Next:/.test(e.stderr), e.stderr);
           const parsed = JSON.parse(e.stdout) as { kind?: unknown };
           assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${e.stdout.slice(0, 200)}`);
           assert.ok(e.stderr.includes('omk studio'), e.stderr);
@@ -453,6 +454,7 @@ describe('CLI', () => {
       const parsed = JSON.parse(stdout) as { kind?: unknown };
       assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${stdout.slice(0, 200)}`);
       assert.ok(/判定：|Verdict:/.test(stderr), stderr);
+      assert.ok(/下一步：|Next:/.test(stderr), stderr);
       assert.ok(stderr.includes('report-only'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -483,6 +485,7 @@ describe('CLI', () => {
           const parsed = JSON.parse(e.stdout) as { kind?: unknown };
           assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 batch report JSON:\n${e.stdout.slice(0, 200)}`);
           assert.ok(e.stderr.includes('批量评测结论：未通过'), e.stderr);
+          assert.ok(e.stderr.includes('下一步：先处理未通过的 skill'), e.stderr);
           assert.ok(!e.stderr.includes('Batch verdict:'), e.stderr);
           assert.ok(e.stderr.includes('UNDERPOWERED:'), e.stderr);
           assert.ok(e.stderr.includes('omk studio'), e.stderr);

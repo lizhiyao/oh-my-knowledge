@@ -55,6 +55,83 @@ function renderRuleLine(result: DoctorRuleResult, ruleLabel: string, lang: Lang,
   return line;
 }
 
+interface DoctorRepairItem {
+  skillName: string;
+  status: DoctorRuleStatus;
+  label: string;
+  action: string;
+  isSummary: boolean;
+}
+
+function compactActionText(text: string | undefined): string {
+  return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function collectDoctorRepairItems(report: DoctorReport, lang: Lang): { items: DoctorRepairItem[]; total: number } {
+  const allItems: DoctorRepairItem[] = [];
+  for (const skill of report.skills) {
+    for (const result of skill.results) {
+      if (result.status !== 'fail' && result.status !== 'warn') continue;
+      const action = compactActionText(result.hint || result.message);
+      allItems.push({
+        skillName: skill.skillName,
+        status: result.status,
+        label: renderRuleLabel(result, lang),
+        action,
+        isSummary: result.ruleId.endsWith(':_summary'),
+      });
+    }
+  }
+
+  const focusedItems = allItems.filter((item) => !item.isSummary);
+  const source = focusedItems.length > 0 ? focusedItems : allItems;
+  const sorted = [...source].sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
+  return { items: sorted.slice(0, 6), total: source.length };
+}
+
+export function renderDoctorActionPlanText(report: DoctorReport, lang: Lang): string {
+  const { items, total } = collectDoctorRepairItems(report, lang);
+  if (items.length === 0) {
+    return lang === 'zh'
+      ? '\n下一步：doctor 已通过，可以继续运行 `omk eval`。\n'
+      : '\nNext: doctor passed; continue with `omk eval`.\n';
+  }
+
+  const hasFail = items.some((item) => item.status === 'fail');
+  const lines: string[] = [
+    '',
+    lang === 'zh'
+      ? (hasFail ? '修复清单（先处理阻塞项）：' : '修复清单（建议处理，不阻断 eval）：')
+      : (hasFail ? 'Repair checklist (fix blocking items first):' : 'Repair checklist (recommended; does not block eval):'),
+  ];
+
+  items.forEach((item, index) => {
+    const status = statusLabel(item.status, lang);
+    if (lang === 'zh') {
+      lines.push(`  ${index + 1}. [${item.skillName}] ${status}：${item.label}。${item.action}`);
+    } else {
+      lines.push(`  ${index + 1}. [${item.skillName}] ${status}: ${item.label}. ${item.action}`);
+    }
+  });
+
+  const remaining = total - items.length;
+  if (remaining > 0) {
+    lines.push(lang === 'zh'
+      ? `  ……还有 ${remaining} 项，完整明细见上方 doctor 输出。`
+      : `  ...and ${remaining} more; see the doctor output above for full detail.`);
+  }
+
+  lines.push(hasFail
+    ? (lang === 'zh'
+      ? '下一步：先修阻塞项，重跑 `omk doctor --gate`；通过后再跑 `omk eval`。'
+      : 'Next: fix the blocking items, re-run `omk doctor --gate`, then run `omk eval`.')
+    : (lang === 'zh'
+      ? '下一步：可以先跑 `omk eval`，但发布前建议把这些 warning 处理掉。'
+      : 'Next: you can run `omk eval`, but clear these warnings before shipping.'));
+
+  return `${lines.join('\n')}\n`;
+}
+
 /** 把 result 列表按 groupId 拆成段(普通 rule 段长度 1, composer 段长度 N+1)。
  *  保留原顺序:每个 group 在它第一条 result 出现的位置占位。 */
 interface ResultSegment {
@@ -144,6 +221,7 @@ export function renderDoctorReportText(
     ? `\n总览: ${report.totals.pass} 通过 / ${report.totals.warn} 警告 / ${report.totals.fail} 失败\n`
     : `\nSummary: ${report.totals.pass} pass / ${report.totals.warn} warn / ${report.totals.fail} fail\n`;
   write(summary);
+  write(renderDoctorActionPlanText(report, lang));
 }
 
 export function renderDoctorReportJson(report: DoctorReport): string {

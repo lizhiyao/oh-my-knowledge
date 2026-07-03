@@ -23,6 +23,7 @@ export type RunMessageKey =
   | 'cli.run.run_section'
   | 'cli.run.batch_complete'
   | 'cli.run.batch_verdict_header'
+  | 'cli.run.batch_verdict_next_step'
   | 'cli.run.batch_child_report_missing'
   | 'cli.run.eval_complete'
   | 'cli.run.tally'
@@ -128,6 +129,10 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.batch_verdict_header': {
     zh: '批量评测结论：{status}（{passed}/{total} 通过）',
     en: 'Batch verdict: {status} ({passed}/{total} passed)',
+  },
+  'cli.run.batch_verdict_next_step': {
+    zh: '  下一步：{next}',
+    en: '  Next: {next}',
   },
   'cli.run.batch_child_report_missing': {
     zh: '⚠ 子报告缺失：{id}，将按不可 ship 处理。\n',
