@@ -303,7 +303,7 @@ describe('computeVerdict', () => {
     const text = formatVerdictText(v);
     const lines = text.split('\n');
     assert.ok(lines.length <= 8, `expected ≤8 lines, got ${lines.length}: ${text}`);
-    assert.match(text, /Next: keep the report as release evidence/);
+    assert.match(text, /Next: ready for release/);
   });
 
   it('formatVerdictText gives zh release next step', () => {
@@ -320,7 +320,7 @@ describe('computeVerdict', () => {
     });
     const text = formatVerdictText(computeVerdict(r), { lang: 'zh' });
     assert.match(text, /可发布/);
-    assert.match(text, /下一步：把报告作为发布证据留存/);
+    assert.match(text, /下一步：可以进入发布流程/);
   });
 
   it('rationale.stability 在单轮(无 variance)时显式说"未测量"', () => {

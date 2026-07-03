@@ -679,7 +679,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
   if (lang === 'zh') {
     switch (level) {
       case 'PROGRESS':
-        return '把报告作为发布证据留存；如果这是受管 skill，可以继续 promote。';
+        return '可以进入发布流程：请留存本次报告作为发布证据；如果这是受管 skill，再运行 `omk promote`。';
       case 'CAUTIOUS':
         return '先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
       case 'REGRESS':
@@ -694,7 +694,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
   }
   switch (level) {
     case 'PROGRESS':
-      return 'keep the report as release evidence; for a managed skill, continue to promote.';
+      return 'ready for release: keep this report as release evidence; for a managed skill, run `omk promote`.';
     case 'CAUTIOUS':
       return 'inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
     case 'REGRESS':

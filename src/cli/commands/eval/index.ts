@@ -210,10 +210,10 @@ async function emitBatchVerdict(
   }
   const next = lang === 'zh'
     ? (failed === 0
-      ? '全部通过，可以把这些报告作为发布证据；如果是受管 skill，可以继续 promote。'
+      ? '全部通过，可以进入发布流程：请留存这些报告作为发布证据；如果是受管 skill，再运行 `omk promote`。'
       : '先处理未通过的 skill；逐个打开对应报告，看最差层和失败用例后再重跑。')
     : (failed === 0
-      ? 'all skills passed; keep these reports as release evidence, and promote managed skills when ready.'
+      ? 'all skills passed and are ready for release: keep these reports as release evidence; for managed skills, run `omk promote`.'
       : 'fix the failing skills first; open each report, inspect the weakest layer and failing samples, then re-run.');
   emitVerdictText(tCli('cli.run.batch_verdict_next_step', lang, { next }));
   return failed === 0 ? 0 : 1;
