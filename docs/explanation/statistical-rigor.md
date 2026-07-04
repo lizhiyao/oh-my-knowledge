@@ -33,11 +33,13 @@ CI tells you "is the judge stable across resamples". α tells you "is the judge 
 - **Stable + high α** = trust the judge for this rubric
 - **Unstable + low α** = judge is broken
 
-omk auto-detects gold-judge collusion: if the gold annotator is the same model as the judge (e.g., both `claude-3.5-sonnet`), α inflates because both share the same biases. omk warns and reports adjusted α.
+omk auto-detects gold-judge collusion: if the gold annotator is the same model as the judge (e.g., both `claude-3.5-sonnet`), α inflates because both share the same biases. omk warns and treats that α as an upper-bound calibration signal, not as an adjusted score.
 
 The same logic applies on the judge-vs-output axis: if the judge is the same model family as the executor that produced the outputs — the default, where `claude:haiku` judges `claude:sonnet` output — the judge's self-preference inflates scores. omk flags this (`judge_self_preference`, plus `single_vendor_ensemble` when a multi-judge panel is all one vendor) and points to the fix: a cross-vendor judge (`--judge-models openai-api:gpt-4o`) or gold calibration. Because omk holds the model fixed across baseline and treatment, self-preference largely cancels in the A/B **delta** — it bites absolute scores, version-regression curves, and cross-model comparisons, which is what the warning scopes itself to.
 
-**Formula**: standard Krippendorff α with interval distance metric (δ²=(c−k)²; a defensible choice for 1-5 Likert). Implementation: `src/grading/human-gold.ts`. Inputs: `<gold-dir>/<sample_id>.json` files with human scores per dimension.
+Today gold is reported as calibration evidence in the report and CLI output. It does not by itself change the headline verdict; use it to decide whether the judge is trustworthy enough for the decision context.
+
+**Formula**: standard Krippendorff α with interval distance metric (δ²=(c−k)²; a defensible choice for 1-5 Likert). Implementation: `src/grading/human-gold.ts`. Inputs: a gold dataset directory with `metadata.yaml` and one or more annotation YAML files containing `annotations: [{ sample_id, score, reason? }]`.
 
 ## 3. Debiased judge prompt: length / presentation / tone (default ON)
 

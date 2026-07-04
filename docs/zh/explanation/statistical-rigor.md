@@ -33,11 +33,13 @@ CI 告诉你"评委在重采样里稳不稳"。α 告诉你"评委跟人工标�
 - **稳定 + α 高** = 这个 rubric 下评委可信
 - **不稳定 + α 低** = 评委坏了
 
-omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同一个模型（比如都是 `claude-3.5-sonnet`），α 会被抬高（两者共享偏差）。omk 警告 + 报告调整后的 α。
+omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同一个模型（比如都是 `claude-3.5-sonnet`），α 会被抬高（两者共享偏差）。omk 会警告，并把这个 α 视为上界校准信号，而不是报告一个已调整分数。
 
 同一逻辑也适用于评委-vs-输出这条轴：如果评委与产出被测输出的执行器同模型家族——默认就是，`claude:haiku` 评 `claude:sonnet` 的输出——评委的自我偏好会抬高分数。omk 会标记（`judge_self_preference`；多评委且全同一厂商时再标 `single_vendor_ensemble`）并指出修法：换跨厂商评委（`--judge-models openai-api:gpt-4o`）或挂 gold 校准。因为 omk 固定模型、baseline 与 treatment 同源，自我偏好在 A/B **差值**里大幅抵消——真正受影响的是绝对分、版本回归曲线、跨模型比较，警告也只把自己限定在这些范围。
 
-**公式**：标准 Krippendorff α + 区间距离度量（δ²=(c−k)²,1-5 Likert 的 defensible 选择）。实现：`src/grading/human-gold.ts`。输入：`<gold-dir>/<sample_id>.json` per-用例每维度的人工评分。
+当前 gold 会作为校准证据写入报告和 CLI 输出，但不会单独改变 headline verdict；它的作用是帮助你判断当前决策场景里是否足够信任评委。
+
+**公式**：标准 Krippendorff α + 区间距离度量（δ²=(c−k)²，1-5 Likert 的 defensible 选择）。实现：`src/grading/human-gold.ts`。输入：gold 数据集目录，包含 `metadata.yaml` 和一个或多个 annotation YAML 文件，文件中声明 `annotations: [{ sample_id, score, reason? }]`。
 
 ## 3. 评委 prompt 去偏：长度 / 排版 / 语气（默认开启）
 
