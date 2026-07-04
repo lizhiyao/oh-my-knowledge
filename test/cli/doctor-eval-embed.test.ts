@@ -70,6 +70,12 @@ describe('omk eval doctor preflight embedding', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `stderr should include 'doctor failed:': ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `stderr should explain the pre-ship gate: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('修复清单'), `stderr should include a repair checklist: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('omk doctor --gate'), `stderr should explain how to verify doctor fixes: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('继续比较分数会是 garbage-in'), `stderr should explain why eval stopped: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('重跑 `omk eval`'), `stderr should tell users what to do next: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('--skip-doctor'), `stderr should mention the explicit escape hatch: ${e.stderr.slice(0, 800)}`);
           return true;
         },
       );
@@ -94,6 +100,35 @@ describe('omk eval doctor preflight embedding', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `eval should gate on doctor: ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `eval should explain the doctor gate: ${e.stderr.slice(0, 800)}`);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(broken, { recursive: true, force: true });
+    }
+  });
+
+  it('eval doctor gate is actionable in English too', async () => {
+    const broken = setupBrokenSkillDir();
+    try {
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI, 'eval',
+          '--samples', join(broken, 'eval-samples.json'),
+          '--skill-dir', join(broken, 'skills'),
+          '--control', 'v1',
+          '--treatment', 'v2',
+          '--dry-run',
+          '--lang', 'en',
+        ], { cwd: broken }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1);
+          assert.ok(e.stderr.includes('pre-ship doctor gate failed'), `stderr should explain the pre-ship gate: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('re-run `omk eval`'), `stderr should tell users what to do next: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('garbage-in'), `stderr should explain why eval stopped: ${e.stderr.slice(0, 800)}`);
+          assert.ok(e.stderr.includes('--skip-doctor'), `stderr should mention the explicit escape hatch: ${e.stderr.slice(0, 800)}`);
           return true;
         },
       );
@@ -119,8 +154,8 @@ describe('omk eval doctor preflight embedding', () => {
   });
 
   it('--skip-connectivity does not bypass doctor', async () => {
-    // doctor 是强制门禁, 没有 skip flag — broken skill 一定 abort,
-    // --skip-connectivity 只跳 LLM 连通性, 不影响 doctor。
+    // --skip-connectivity 只跳 LLM 连通性，不影响 doctor gate；
+    // 真要绕开 doctor 必须显式用 --skip-doctor。
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
@@ -137,6 +172,7 @@ describe('omk eval doctor preflight embedding', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `doctor should still gate: ${e.stderr.slice(0, 400)}`);
+          assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `doctor gate should stay actionable: ${e.stderr.slice(0, 800)}`);
           return true;
         },
       );
@@ -162,6 +198,7 @@ describe('omk eval doctor preflight embedding', () => {
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `batch dry-run should gate on doctor: ${e.stderr.slice(0, 500)}`);
           assert.ok(e.stderr.includes('skill=broken'), `error should name the failing skill: ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `batch error should keep the actionable gate text: ${e.stderr.slice(0, 800)}`);
           return true;
         },
       );

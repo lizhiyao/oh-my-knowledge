@@ -287,7 +287,7 @@ describe('computeVerdict', () => {
     assert.equal(v.perPair?.length, 2);
   });
 
-  it('formatVerdictText stays under 7 lines for the headline path (含 stability rationale)', () => {
+  it('formatVerdictText stays under 8 lines for the headline path (含 stability rationale + next step)', () => {
     const r = buildReport({
       variants: ['baseline', 'skill'],
       perVariantAvg: {
@@ -302,7 +302,25 @@ describe('computeVerdict', () => {
     const v = computeVerdict(r);
     const text = formatVerdictText(v);
     const lines = text.split('\n');
-    assert.ok(lines.length <= 7, `expected ≤7 lines, got ${lines.length}: ${text}`);
+    assert.ok(lines.length <= 8, `expected ≤8 lines, got ${lines.length}: ${text}`);
+    assert.match(text, /Next: ready for release/);
+  });
+
+  it('formatVerdictText gives zh release next step', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.3, composite: 4.3 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: 0.1, high: 0.5, estimate: 0.3, samples: 1000, significant: true },
+      }],
+    });
+    const text = formatVerdictText(computeVerdict(r), { lang: 'zh' });
+    assert.match(text, /可发布/);
+    assert.match(text, /下一步：可以进入发布流程/);
   });
 
   it('rationale.stability 在单轮(无 variance)时显式说"未测量"', () => {
@@ -356,6 +374,20 @@ describe('computeVerdict', () => {
     const v = computeVerdict(r);
     assert.equal(v.level, 'SOLO');
     assert.match(v.rationale.stability ?? '', /未测量/);
+  });
+
+  it('formatVerdictText gives SOLO a control-building next step', () => {
+    const r = buildReport({
+      variants: ['solo'],
+      perVariantAvg: { solo: { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const zhText = formatVerdictText(computeVerdict(r), { lang: 'zh' });
+    assert.match(zhText, /缺对照/);
+    assert.match(zhText, /下一步：补一个 baseline 对照/);
+
+    const enText = formatVerdictText(computeVerdict(r), { lang: 'en' });
+    assert.match(enText, /ADD A CONTROL/);
+    assert.match(enText, /Next: add a baseline control/);
   });
 
   // --- 稳定性门控(PR4)----------------------------------------------------
