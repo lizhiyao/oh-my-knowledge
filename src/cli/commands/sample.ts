@@ -398,7 +398,7 @@ async function runSampleFix(
     : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${outputTarget}${cost}\n`);
 }
 
-async function runSampleFromTraces(
+export async function runSampleFromTraces(
   flags: SampleFlags,
   lang: CliLang,
 ): Promise<void> {
@@ -415,11 +415,14 @@ async function runSampleFromTraces(
 
   // Drop noise-tier signals up front: they're exactly what the generator is told to
   // skip, so filtering here avoids feeding junk to the LLM and keeps the no-op path clean.
-  const items = queryObservationInbox(obsDir).filter((it) => it.severity !== 'noise');
+  let items = queryObservationInbox(obsDir).filter((it) => it.severity !== 'noise');
+  if (flags.skill) {
+    items = items.filter((it) => it.skillName === flags.skill);
+  }
   if (items.length === 0) {
     process.stderr.write(lang === 'zh'
-      ? `✅ ${obsDir} 没有可回流的失败信号（噪声级已跳过）\n`
-      : `✅ No recyclable failure signals in ${obsDir} (noise-level skipped)\n`);
+      ? `✅ ${obsDir}${flags.skill ? ` 中 ${flags.skill}` : ''} 没有可回流的失败信号（噪声级已跳过）\n`
+      : `✅ No recyclable failure signals${flags.skill ? ` for ${flags.skill}` : ''} in ${obsDir} (noise-level skipped)\n`);
     return;
   }
 
@@ -433,8 +436,8 @@ async function runSampleFromTraces(
 
   const count: number | undefined = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
   process.stderr.write(lang === 'zh'
-    ? `🔭 发现 ${items.length} 个失败信号，正在生成回归用例草稿...\n`
-    : `🔭 Found ${items.length} failure signal(s); generating regression-sample drafts...\n`);
+    ? `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成回归用例草稿...\n`
+    : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
     const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model: flags.model, executorName: flags.executor });
@@ -464,6 +467,10 @@ async function runSample(
   flags: SampleFlags,
   lang: CliLang,
 ): Promise<void> {
+  if (flags.skill && !flags['from-traces']) {
+    console.error(lang === 'zh' ? '--skill 仅支持 --from-traces 模式。' : '--skill is only supported with --from-traces.');
+    throw new CliExit(2);
+  }
   // --append 目前只在单 skill 生成路径实现;batch / from-traces / fix 不处理它,
   // 静默忽略会误导(用户以为在追加,实际没有)。提前互斥校验,明确报错。
   if (flags.append && (flags.batch || flags['from-traces'] || flags.fix)) {
@@ -759,6 +766,12 @@ export default class Sample extends BaseCommand {
       description: bilingual({
         zh: 'observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。',
         en: 'Observe inbox dir (from-traces mode), default project .omk/observe-inbox.',
+      }),
+    }),
+    skill: Flags.string({
+      description: bilingual({
+        zh: '仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。',
+        en: 'Only draft from observe-inbox signals for the specified skill (from-traces mode only).',
       }),
     }),
   };

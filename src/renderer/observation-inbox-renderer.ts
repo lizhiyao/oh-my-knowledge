@@ -42,6 +42,7 @@ import {
   skillAnchor,
   truncateText,
 } from './observation-inbox/helpers.js';
+import { shellQuoteArg } from '../shared/shell-quote.js';
 export { renderFeedbackAttributionLabel } from './observation-inbox/helpers.js';
 import type {
   ExperienceAssistiveInference,
@@ -69,6 +70,7 @@ import type {
 
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
 	  const {
+	    observationsDir,
 	    activeSkill,
 	    allItems,
 	    items,
@@ -5121,6 +5123,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  const empty = items.length === 0 && !experience
 	    ? `<p style="color:var(--text-muted);margin-top:24px">${activeSkill ? `当前 skill 没有可展示的调用或过程发现：${e(activeSkill)}` : (lang === 'zh' ? '暂无 inbox item。运行 omk observe ingest <sessions-dir> 生成。' : 'No inbox items. Run omk observe ingest <sessions-dir> first.')}</p>`
 	    : '';
+  const recyclableObservationCount = allItems.filter((item) => item.severity !== 'noise').reduce((sum, item) => sum + item.occurrences, 0);
+  const sampleFromTracesBaseCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(observationsDir || '.omk/observe-inbox')}`;
+  const sampleFromTracesCommand = activeSkill
+    ? `${sampleFromTracesBaseCommand} --skill ${shellQuoteArg(activeSkill)}`
+    : sampleFromTracesBaseCommand;
+  const observeLoopCta = recyclableObservationCount > 0
+    ? `<section data-observe-feedback-loop style="margin-top:14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted);padding:12px 14px;font-size:13px;line-height:1.55">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;color:var(--text-primary)">${lang === 'zh' ? '把已确认的 observe gap 回流成 eval sample' : 'Recycle confirmed observe gaps into eval samples'}</div>
+            <div style="color:var(--text-muted);margin-top:3px">${lang === 'zh' ? `当前有 ${recyclableObservationCount} 个非噪声信号。先 review 高风险或抽样信号，确认可复现后生成草稿。` : `${recyclableObservationCount} non-noise signal(s) are available. Review high-risk / sampled signals first, then draft reproducible cases.`}</div>
+          </div>
+          <code style="display:block;max-width:100%;overflow:auto;white-space:nowrap;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface);color:var(--text-primary)">${e(sampleFromTracesCommand)}</code>
+        </div>
+      </section>`
+    : '';
   const v0SummarySection = `
       <section class="observe-summary-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px">
         <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface)">
@@ -5176,6 +5194,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <div class="metric-guide-body">${metricGuideHtml}</div>
       </aside>
       ${empty}
+      ${observeLoopCta}
       ${experienceSection}
       <div data-v0-observation-view style="display:none">
       <div class="report-version-divider" aria-label="1.0 和 2.0 报告分隔">

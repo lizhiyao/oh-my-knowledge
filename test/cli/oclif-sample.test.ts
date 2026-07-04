@@ -30,11 +30,13 @@ describe('oclif sample', () => {
     assert.ok(stdout.includes('为指定 skill 生成评测用例'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--batch'), 'stdout missing --batch flag');
     assert.ok(stdout.includes('--fix'), 'stdout missing --fix flag');
+    assert.ok(stdout.includes('--skill'), 'stdout missing --skill flag');
   });
 
   it('--help --lang en 切英文', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Generate eval samples'), 'stdout should contain en description');
+    assert.ok(stdout.includes('specified skill'), 'stdout should describe --skill in English');
   });
 
   it('缺 positional + 非 batch + 非 fix → exit 1 (生产 execute 透传)', async () => {
@@ -61,6 +63,20 @@ describe('oclif sample', () => {
       assert.ok(
         e.stderr.includes('--append') && e.stderr.includes('单 skill'),
         `stderr missing append-single-only hint:\n${e.stderr}`,
+      );
+    }
+  });
+
+  it('--skill 仅支持 --from-traces → exit 2 + 中文提示', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'sample', 'skills/demo/SKILL.md', '--skill', 'audit']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.ok(
+        e.stderr.includes('--skill') && e.stderr.includes('--from-traces'),
+        `stderr missing skill-from-traces-only hint:\n${e.stderr}`,
       );
     }
   });

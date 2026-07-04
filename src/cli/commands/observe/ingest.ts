@@ -3,6 +3,7 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
+import { shellQuoteArg } from '../../../shared/shell-quote.js';
 
 export default class ObserveIngest extends BaseCommand {
   static description = bilingual({
@@ -75,9 +76,11 @@ export default class ObserveIngest extends BaseCommand {
       report.diagnostics = buildObserveDiagnosticsFromReport(report);
       const path = saveObservationInboxReport(report, outDir);
       console.log(JSON.stringify(report, null, 2));
+      const inboxCommand = `omk observe inbox --input-dir ${shellQuoteArg(outDir)}`;
+      const sampleCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(outDir)}`;
       process.stderr.write(lang === 'zh'
-        ? `observe inbox 已写入: ${path}\n`
-        : `observe inbox written to: ${path}\n`);
+        ? `observe inbox 已写入：${path}\n下一步：${inboxCommand}\n确认高风险或抽样信号后，可生成回归用例草稿：${sampleCommand}\n`
+        : `observe inbox written to: ${path}\nNext: ${inboxCommand}\nAfter confirming high-risk / sampled signals, draft regression samples: ${sampleCommand}\n`);
     });
   }
 }

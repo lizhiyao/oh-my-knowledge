@@ -604,6 +604,7 @@ omk sample [skillPath] [flags]
 - `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
 - `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
+- `--skill` `option`:仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
 - `--treatment` `option`:指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 

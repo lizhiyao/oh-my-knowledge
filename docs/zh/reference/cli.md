@@ -422,6 +422,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --no-mock                   不生成 mocks，eval 时所有工具调用真实执行。
   --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
   --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
+  --skill <value>             仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
   --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
   --treatment <value>         指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 ```
