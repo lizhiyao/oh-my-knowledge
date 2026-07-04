@@ -5,6 +5,7 @@ export type InitMessageKey =
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_run'
   | 'cli.init.next_step_executor'
+  | 'cli.init.next_step_underpowered'
   | 'cli.init.next_step_customize'
   | 'cli.init.note_codex_executor';
 
@@ -27,6 +28,10 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.next_step_executor': {
     zh: '     默认执行器与评委用 claude CLI，需先装好并登录；想换别的模型或离线跑（无需 API key）见文档「执行器」。',
     en: '     The default executor and judge use the claude CLI (install and log in first); to use another model or run offline (no API key) see the Executors docs.',
+  },
+  'cli.init.next_step_underpowered': {
+    zh: '     模板只有 3 条用例，首跑出现 UNDERPOWERED 是正常起点；要做发布判断时，把用例扩到约 20 条以上后重跑。',
+    en: '     The starter has only 3 cases, so UNDERPOWERED on the first run is normal; for a release decision, grow to roughly 20+ cases and re-run.',
   },
   'cli.init.next_step_customize': {
     zh: '  2. 跑通后，把 skills/code-review-v1/SKILL.md 和 skills/code-review-v2/SKILL.md 与 eval-samples.json 换成你自己的 skill 和用例',
