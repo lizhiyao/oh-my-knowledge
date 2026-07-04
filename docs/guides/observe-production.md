@@ -21,7 +21,7 @@ Scope the window with `--last 7d` / `--from … --to …`, and narrow to specifi
 
 ## B. Inbox: the reviewer loop
 
-When you want to triage observations one by one (and feed the good ones back as regression cases), use the inbox. The whole pipeline is local-only and LLM-free.
+When you want to triage observations one by one, use the inbox. Steps 1-3 below are local-only and LLM-free; drafting regression samples is a separate optional authoring step that calls a generation model.
 
 ```bash
 # 1. Parse traces, aggregate + de-noise signals, write to .omk/observe-inbox/
@@ -45,6 +45,14 @@ Supported trace formats: Claude Code session JSONL, OpenClaw session JSONL, and 
 ## Turning observations into samples
 
 Confirmed gaps from observe are exactly the failures your eval set is missing. `omk sample --from-traces` can draft regression cases from those signals — closing the observe → eval loop.
+
+This command calls the sample generator through your configured executor and model, so trace-derived evidence is sent to that model and may incur generation cost:
+
+```bash
+omk sample --from-traces
+```
+
+It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: inspect the draft, keep only reproducible cases, then merge the accepted ones into your real `eval-samples` file.
 
 ## Related
 

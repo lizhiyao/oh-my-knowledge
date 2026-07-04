@@ -8,6 +8,7 @@ import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js
 import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
 import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
+import { shellQuoteArg } from '../../../shared/shell-quote.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   if (!value || value[skillName] == null) return undefined;
@@ -71,6 +72,11 @@ export async function runObserveInbox(
   if (flags.skill) {
     items = items.filter((item) => item.skillName === flags.skill);
   }
+  const recyclableCount = items.filter((item) => item.severity !== 'noise').length;
+  const sampleCommandBase = `omk sample --from-traces --observations-dir ${shellQuoteArg(dir)}`;
+  const sampleCommand = flags.skill
+    ? `${sampleCommandBase} --skill ${shellQuoteArg(flags.skill)}`
+    : sampleCommandBase;
   if (flags['by-skill']) {
     const reports = flags.skill
       ? loadLatestObservationInboxReports(dir).map((report) => ({
@@ -96,6 +102,11 @@ export async function runObserveInbox(
     console.log(lang === 'zh' ? 'observe inbox by skill:' : 'observe inbox by skill:');
     for (const row of rows) {
       console.log(`- ${row.skillName} invocations=${row.invocationCount} sessions=${row.sessionCount} processFindings=${row.observationCount} high=${row.highCount} medium=${row.mediumCount} low=${row.lowCount} noise=${row.noiseCount}${row.latestSeen ? ` latest=${row.latestSeen}` : ''}`);
+    }
+    if (recyclableCount > 0) {
+      console.log(lang === 'zh'
+        ? `提示：确认信号后生成回归用例草稿：${sampleCommand}`
+        : `Tip: after confirming signals, draft regression samples: ${sampleCommand}`);
     }
     return;
   }
@@ -130,6 +141,11 @@ export async function runObserveInbox(
   console.log(lang === 'zh'
     ? 'Tip: omk observe inbox --explore 10 --include-noise  # 显式包含 noise 桶'
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
+  if (recyclableCount > 0) {
+    console.log(lang === 'zh'
+      ? `提示：确认高风险或抽样信号后生成回归用例草稿：${sampleCommand}`
+      : `Tip: after confirming high-risk / sampled signals, draft regression samples: ${sampleCommand}`);
+  }
 }
 
 function hasLlmEnhancedRuntimeEvidence(evidence: SkillLlmEnhancedRuntimeEvidence): boolean {

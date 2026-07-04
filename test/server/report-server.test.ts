@@ -558,6 +558,21 @@ describe('report-server', () => {
     assert.equal(data[0].severity, 'high');
   });
 
+  it('GET /observe-inbox exposes the observe → sample draft next action', async () => {
+    const res = await fetch(`${baseUrl}/observe-inbox`);
+    assert.equal(res.status, 200);
+    assert.match(res.body, /data-observe-feedback-loop/);
+    assert.match(res.body, /把已确认的 observe gap 回流成 eval sample/);
+    assert.match(res.body, /omk sample --from-traces --observations-dir/);
+  });
+
+  it('GET /observe-inbox?skill exposes a skill-scoped sample draft command', async () => {
+    const res = await fetch(`${baseUrl}/observe-inbox?skill=audit`);
+    assert.equal(res.status, 200);
+    assert.match(res.body, /data-observe-feedback-loop/);
+    assert.match(res.body, /omk sample --from-traces --observations-dir[^<]*--skill audit/);
+  });
+
   it('GET /api/observe-inbox/diagnostics exposes observe-backed Diagnosis data', async () => {
     const res = await fetch(`${baseUrl}/api/observe-inbox/diagnostics`);
     assert.equal(res.status, 200);

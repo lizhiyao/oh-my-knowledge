@@ -422,6 +422,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --no-mock                   Skip mock generation; all tool calls execute for real during eval.
   --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
   --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
+  --skill <value>             Only draft from observe-inbox signals for the specified skill (from-traces mode only).
   --skill-dir <value>         Skill root dir, default skills. Used by batch mode.
   --treatment <value>         Treatment name (fix mode), defaults to skill-path inference.
 ```

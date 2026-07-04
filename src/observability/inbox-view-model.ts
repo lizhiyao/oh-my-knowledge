@@ -20,6 +20,7 @@ import {
 import { durationMsBetween } from '../shared/time.js';
 
 export interface ObservationInboxViewModel {
+  observationsDir?: string;
   activeSkill?: string;
   allItems: ObservationInboxItem[];
   items: ObservationInboxItem[];
@@ -121,6 +122,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
   }
 
   return {
+    observationsDir,
     activeSkill,
     allItems,
     items,
