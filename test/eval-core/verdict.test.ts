@@ -376,6 +376,20 @@ describe('computeVerdict', () => {
     assert.match(v.rationale.stability ?? '', /未测量/);
   });
 
+  it('formatVerdictText gives SOLO a control-building next step', () => {
+    const r = buildReport({
+      variants: ['solo'],
+      perVariantAvg: { solo: { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const zhText = formatVerdictText(computeVerdict(r), { lang: 'zh' });
+    assert.match(zhText, /缺对照/);
+    assert.match(zhText, /下一步：补一个 baseline 对照/);
+
+    const enText = formatVerdictText(computeVerdict(r), { lang: 'en' });
+    assert.match(enText, /ADD A CONTROL/);
+    assert.match(enText, /Next: add a baseline control/);
+  });
+
   // --- 稳定性门控(PR4)----------------------------------------------------
   // 一个干净的显著正向 PROGRESS,只叠加 variance 数据,隔离稳定性门控这一条。
   const cleanProgressWithVariance = (perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }>, runs = 3): Report => buildReport({

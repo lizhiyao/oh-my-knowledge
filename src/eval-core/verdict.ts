@@ -173,6 +173,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
         ...(judgeInd.rationale ? { judgeAgreement: judgeInd.rationale } : {}),
         ...(overfit.rationale ? { overfitting: overfit.rationale } : {}),
         ...(gap.rationale ? { gapSignal: gap.rationale } : {}),
+        shipRecommendation: recommendation('SOLO', []),
       },
       ...((overfit.data || gap.data) ? {
         caveats: {
@@ -709,7 +710,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
 }
 
 /**
- * Plain-text formatter for the `omk eval` verdict. Stays under 6 lines per the
+ * Plain-text formatter for the `omk eval` verdict. Stays terse for the
  *  spec — one verdict, rationale bullets, one ship recommendation, and one next step.
  */
 export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean; lang?: Lang } = {}): string {

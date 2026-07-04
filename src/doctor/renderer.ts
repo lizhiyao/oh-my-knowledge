@@ -117,8 +117,8 @@ export function renderDoctorActionPlanText(report: DoctorReport, lang: Lang): st
   const remaining = total - items.length;
   if (remaining > 0) {
     lines.push(lang === 'zh'
-      ? `  ……还有 ${remaining} 项，完整明细见上方 doctor 输出。`
-      : `  ...and ${remaining} more; see the doctor output above for full detail.`);
+      ? `  ……还有 ${remaining} 项，运行 \`omk doctor\` 查看完整明细。`
+      : `  ...and ${remaining} more; run \`omk doctor\` for full detail.`);
   }
 
   lines.push(hasFail
