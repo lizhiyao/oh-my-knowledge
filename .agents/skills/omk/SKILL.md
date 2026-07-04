@@ -154,9 +154,9 @@ Studio 是 skill-centric：列表页（`/`）按 skill 卡片展示健康等级 
 
 1. **结论**：verdict 是 PROGRESS / NOISE / REGRESSION / CAUTIOUS，哪个 variant 更好
 2. **质量分数**：各 variant 的平均综合分（0-5 分）+ Δ + 95% CI
-3. **成本对比**：token 消耗、execCostUSD、判官花费、diagnostic 花费
+3. **成本对比**：token 消耗、execCostUSD、评委花费、diagnostic 花费
 4. **低分样本**：哪些样本两个版本差异最大，rubric 期望 vs 实际差在哪
-5. **建议**：基于数据给出的下一步行动建议
+5. **下一步动作**：基于 verdict 给出动作；`PROGRESS` 时明确说明可以进入发布流程、留存报告作为发布证据，受管 skill 继续 `omk promote`；其它 verdict 给出扩样 / 修复 / 重跑建议
 
 示例输出：
 
@@ -165,7 +165,7 @@ v2 比 v1 更好（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
 - 质量：v2 平均 4.5 分 vs v1 平均 3.8 分（+18%）
 - 成本：v2 略高（$0.15 vs $0.12），因为输出更详细
 - 亮点：v2 在 s002（错误处理）上显著提升（2.5 → 4.5），因为新增了"列出所有缺失的错误处理场景"指令
-- 建议：v2 可以上线，但 s003（XSS 检测）仍然有提升空间
+- 建议：v2 可以进入发布流程；留存本次报告作为发布证据。如果这是受管 skill，继续运行 `omk promote` 记录接受决定。s003（XSS 检测）仍然可以作为下一轮优化点。
 ```
 
 ### evolve 模式
