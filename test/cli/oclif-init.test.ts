@@ -51,6 +51,8 @@ describe('oclif init', () => {
       const target = join(dir, 'project');
       const { stdout } = await execFileAsync('node', [CLI, 'init', target]);
       assert.ok(stdout.includes('已初始化 omk 项目'), `stdout missing scaffolded msg:\n${stdout}`);
+      assert.ok(stdout.includes('UNDERPOWERED'), `stdout should set first-run expectation:\n${stdout}`);
+      assert.ok(stdout.includes('20 条以上'), `stdout should suggest growing the sample set before release decisions:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
       assert.ok(existsSync(join(target, 'eval-samples.json')), 'eval-samples.json not created');
       // 预置 .omk/.gitignore:测量 bulk 不入库,managed/ 不被忽略(默认 track)。
