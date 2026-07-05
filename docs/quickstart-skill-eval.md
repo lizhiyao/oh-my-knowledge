@@ -59,11 +59,13 @@ The omk skill takes care of the rest: it auto-generates samples if `eval-samples
 ### Path B: command line
 
 ```bash
-omk sample skills/my-skill.md                       # first time: AI-generate eval samples
-omk eval --control v1 --treatment v2 --dry-run      # preview the task plan
-omk eval --control v1 --treatment v2                # run for real
-omk studio                                          # open the report browser
+omk sample skills/my-skill-v2.md                                  # first time: AI-generate eval samples
+omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run  # preview the task plan
+omk eval --control my-skill-v1 --treatment my-skill-v2            # run for real
+omk studio                                                        # open the report browser
 ```
+
+Variant names come from the skill file or directory names under `skills/`; for the layout above, use `my-skill-v1` and `my-skill-v2`.
 
 `--dry-run` prints expected call count and cost estimates — confirm, drop the flag, and run. `omk eval` runs a doctor health check as a preflight gate by default; if a skill has structural problems it gets blocked early. Pass `--skip-doctor` to bypass when you know what you're doing.
 

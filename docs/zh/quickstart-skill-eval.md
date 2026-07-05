@@ -59,11 +59,13 @@ omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例�
 ### 路径 B：直接命令行
 
 ```bash
-omk sample skills/my-skill.md                       # 第一次:让 AI 给你的 skill 生成评测用例
-omk eval --control v1 --treatment v2 --dry-run      # 预览要跑什么
-omk eval --control v1 --treatment v2                # 真跑
-omk studio                                          # 启动报告浏览器
+omk sample skills/my-skill-v2.md                                  # 第一次:让 AI 给你的 skill 生成评测用例
+omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run  # 预览要跑什么
+omk eval --control my-skill-v1 --treatment my-skill-v2            # 真跑
+omk studio                                                        # 启动报告浏览器
 ```
+
+variant 名来自 `skills/` 下的 skill 文件名或目录名；按上面的布局，就是 `my-skill-v1` 和 `my-skill-v2`。
 
 `--dry-run` 预览时会告诉你预估调用次数和成本，确认 OK 再去掉 flag 真跑。`omk eval` 默认会先跑一次 doctor 健康度检查当门禁，发现 skill 写法有大问题就直接拦下来；如果你确认知道自己在干嘛，加 `--skip-doctor` 绕过。
 
