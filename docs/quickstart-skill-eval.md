@@ -47,14 +47,14 @@ Both layouts are recognized; mixing them is fine. For a v1 vs v2 A/B, drop in tw
 
 Open Claude Code, `cd` into your project, and say:
 
-> Use omk to benchmark skills/my-skill
+> Use omk to compare skills/my-skill-v1 against skills/my-skill-v2
 
 The omk skill takes care of the rest: it auto-generates samples if `eval-samples.json` is missing, runs the eval, and opens the report in your browser. Other useful phrasings:
 
 - "Use omk to compare skills/my-skill-v1 against skills/my-skill-v2"
 - "Use omk to run a baseline control for skills/audit (with-skill vs without-skill)"
 - "Use omk to batch-evaluate every skill under skills/"
-- "Use omk evolve to auto-improve skills/my-skill over 5 rounds"
+- "Use omk evolve to auto-improve skills/my-skill-v2 over 5 rounds"
 
 ### Path B: command line
 
