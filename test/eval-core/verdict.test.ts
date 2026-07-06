@@ -303,7 +303,8 @@ describe('computeVerdict', () => {
     const text = formatVerdictText(v);
     const lines = text.split('\n');
     assert.ok(lines.length <= 8, `expected ≤8 lines, got ${lines.length}: ${text}`);
-    assert.match(text, /Next: ready for release/);
+    assert.match(text, /Next: ship through your normal release path/);
+    assert.match(text, /omk promote skill/);
   });
 
   it('formatVerdictText gives zh release next step', () => {
@@ -320,7 +321,31 @@ describe('computeVerdict', () => {
     });
     const text = formatVerdictText(computeVerdict(r), { lang: 'zh' });
     assert.match(text, /可发布/);
-    assert.match(text, /下一步：可以进入发布流程/);
+    assert.match(text, /下一步：可以发布/);
+    assert.match(text, /omk promote skill/);
+  });
+
+  it('formatVerdictText shell-quotes action commands when variant names need it', () => {
+    const progressReport = buildReport({
+      variants: ['baseline', 'review skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        'review skill': { fact: 4.3, behavior: 4.3, judge: 4.3, composite: 4.3 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'review skill',
+        diffBootstrapCI: { low: 0.1, high: 0.5, estimate: 0.3, samples: 1000, significant: true },
+      }],
+    });
+    const progressText = formatVerdictText(computeVerdict(progressReport), { lang: 'zh' });
+    assert.match(progressText, /omk promote 'review skill'/);
+
+    const soloReport = buildReport({
+      variants: ['review skill'],
+      perVariantAvg: { 'review skill': { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const soloText = formatVerdictText(computeVerdict(soloReport), { lang: 'en' });
+    assert.match(soloText, /omk eval --control baseline --treatment 'review skill'/);
   });
 
   it('rationale.stability 在单轮(无 variance)时显式说"未测量"', () => {
@@ -384,10 +409,12 @@ describe('computeVerdict', () => {
     const zhText = formatVerdictText(computeVerdict(r), { lang: 'zh' });
     assert.match(zhText, /缺对照/);
     assert.match(zhText, /下一步：补一个 baseline 对照/);
+    assert.match(zhText, /omk eval --control baseline --treatment solo/);
 
     const enText = formatVerdictText(computeVerdict(r), { lang: 'en' });
     assert.match(enText, /ADD A CONTROL/);
     assert.match(enText, /Next: add a baseline control/);
+    assert.match(enText, /omk eval --control baseline --treatment solo/);
   });
 
   // --- 稳定性门控(PR4)----------------------------------------------------

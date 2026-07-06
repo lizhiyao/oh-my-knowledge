@@ -33,6 +33,7 @@ import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
 import { analyzeJudgeIndependence } from './judge-independence.js';
 import { MIN_HOLDOUT_SUBSET } from './holdout.js';
+import { shellQuoteArg } from '../shared/shell-quote.js';
 
 /**
  * Below this sample count a non-significant diff is read as UNDERPOWERED
@@ -676,13 +677,21 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
   }
 }
 
-function releaseNextStep(level: VerdictLevel, lang: Lang): string {
+function nextStepTreatmentName(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>): string {
+  if (result.representative?.treatment) return result.representative.treatment;
+  if (result.level === 'SOLO') return result.variants[0] ?? '<name>';
+  return result.variants[1] ?? '<name>';
+}
+
+function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>, lang: Lang): string {
+  const treatment = nextStepTreatmentName(result);
+  const treatmentArg = shellQuoteArg(treatment);
   if (lang === 'zh') {
-    switch (level) {
+    switch (result.level) {
       case 'PROGRESS':
-        return '可以进入发布流程：请留存本次报告作为发布证据；如果这是受管 skill，再运行 `omk promote`。';
+        return `可以发布：按你的正常发布流程发布，并留存本次报告作为发布证据；如果这是受管 skill，继续运行 \`omk promote ${treatmentArg}\` 记录接受决定。`;
       case 'CAUTIOUS':
-        return '先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
+        return '不要直接发布；先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
       case 'REGRESS':
         return '不要发布；定位最差层和失败用例，修复后重跑。';
       case 'NOISE':
@@ -690,14 +699,14 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
       case 'UNDERPOWERED':
         return '把样本数加到至少 20，或先按当前规模 2× 扩充后重跑。';
       case 'SOLO':
-        return '补一个 baseline 对照，再跑 `omk eval --control baseline --treatment <名字>`。';
+        return `补一个 baseline 对照，再跑 \`omk eval --control baseline --treatment ${treatmentArg}\`。`;
     }
   }
-  switch (level) {
+  switch (result.level) {
     case 'PROGRESS':
-      return 'ready for release: keep this report as release evidence; for a managed skill, run `omk promote`.';
+      return `ship through your normal release path and keep this report as release evidence; for a managed skill, run \`omk promote ${treatmentArg}\` to record acceptance.`;
     case 'CAUTIOUS':
-      return 'inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
+      return 'do not ship directly; inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
     case 'REGRESS':
       return 'do not ship; inspect the weakest layer and failing samples, fix them, then re-run.';
     case 'NOISE':
@@ -705,7 +714,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
     case 'UNDERPOWERED':
       return 'increase the sample set to at least 20, or roughly 2x the current size, then re-run.';
     case 'SOLO':
-      return 'add a baseline control and re-run `omk eval --control baseline --treatment <name>`.';
+      return `add a baseline control and re-run \`omk eval --control baseline --treatment ${treatmentArg}\`.`;
   }
 }
 
@@ -729,7 +738,7 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   if (result.rationale.gapSignal) lines.push(zh ? `  知识缺口：${result.rationale.gapSignal}` : `  Gap signal:    ${result.rationale.gapSignal}`);
   if (result.rationale.shipRecommendation) {
     lines.push(`  ${zh ? recommendation(result.level, [], 'zh') : result.rationale.shipRecommendation}`);
-    lines.push(zh ? `  下一步：${releaseNextStep(result.level, 'zh')}` : `  Next: ${releaseNextStep(result.level, 'en')}`);
+    lines.push(zh ? `  下一步：${releaseNextStep(result, 'zh')}` : `  Next: ${releaseNextStep(result, 'en')}`);
   }
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');
