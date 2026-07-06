@@ -47,14 +47,14 @@ skills/
 
 打开 Claude Code，进入项目目录，直接说一句话：
 
-> 帮我用 omk 给 skills/my-skill 跑一次评测
+> 用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2
 
 omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例，然后跑评测，最后把报告浏览器弹出来。常见说法：
 
 - 「用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2」
 - 「用 omk 给 skills/audit 跑 baseline 对照（有 skill vs 没 skill）」
 - 「用 omk 跑 skills/ 下面所有 skill 的批量评测」
-- 「用 omk evolve 自动改进 skills/my-skill，跑 5 轮」
+- 「用 omk evolve 自动改进 skills/my-skill-v2，跑 5 轮」
 
 ### 路径 B：直接命令行
 
