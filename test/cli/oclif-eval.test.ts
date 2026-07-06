@@ -128,6 +128,8 @@ describe('oclif eval', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
           assert.ok(e.stderr.includes('未找到评测用例'), e.stderr);
+          assert.ok(e.stderr.includes('下一步'), e.stderr);
+          assert.ok(e.stderr.includes('omk sample skills/review'), e.stderr);
           assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
           return true;
         },
@@ -164,6 +166,7 @@ describe('oclif eval', () => {
           assert.ok(e.stderr.includes('发现旧的目录 skill 用例位置'), e.stderr);
           assert.ok(e.stderr.includes(join(skillRoot, 'eval-samples.json')), e.stderr);
           assert.ok(e.stderr.includes(join(skillRoot, '.omk', 'samples.json')), e.stderr);
+          assert.ok(!e.stderr.includes('omk sample skills/review'), e.stderr);
           assert.ok(!e.stderr.includes('ENOENT'), e.stderr);
           return true;
         },
