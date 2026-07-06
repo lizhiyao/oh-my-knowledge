@@ -22,8 +22,8 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
   // 跑出第一份报告是冷启动最该先发生的事;「换成你自己的」放到跑通之后。这也消除了
   // 主 README「不用改任何文件」与旧 init「先编辑」的矛盾。
   'cli.init.next_step_run': {
-    zh: '  1. 直接跑通（无需先改任何文件）：omk eval --control code-review-v1 --treatment code-review-v2',
-    en: '  1. Run it as-is (no edits needed): omk eval --control code-review-v1 --treatment code-review-v2',
+    zh: '  1. 直接跑通（无需先改任何文件）：{command}',
+    en: '  1. Run it as-is (no edits needed): {command}',
   },
   'cli.init.next_step_executor': {
     zh: '     默认执行器与评委用 claude CLI，需先装好并登录；想换别的模型或离线跑（无需 API key）见文档「执行器」。',

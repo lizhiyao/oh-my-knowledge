@@ -1,8 +1,9 @@
-import { resolve, join } from 'node:path';
+import { resolve, join, relative } from 'node:path';
 import { Args } from '@oclif/core';
 import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
+import { shellQuoteArg } from '../../shared/shell-quote.js';
 
 // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
 // managed/ 治理档案 + 配置不在此列,默认 track。
@@ -99,6 +100,14 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
 `;
 
+const INIT_EVAL_COMMAND = 'omk eval --control code-review-v1 --treatment code-review-v2';
+
+function nextEvalCommand(targetDir: string): string {
+  const rel = relative(resolve('.'), targetDir);
+  if (!rel) return INIT_EVAL_COMMAND;
+  return `cd ${shellQuoteArg(rel)} && ${INIT_EVAL_COMMAND}`;
+}
+
 export default class Init extends BaseCommand {
   static description = bilingual({
     zh: '初始化一个 omk 项目：在目标目录铺好待测知识载体（skills/）与评测用例（eval-samples.json），供 omk eval / doctor / evolve / observe / list 操作。默认是两版 code-review skill 的 A/B 起步模板。',
@@ -169,7 +178,7 @@ export default class Init extends BaseCommand {
       console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
       console.log('');
       console.log(tCli('cli.init.next_steps_title', lang));
-      console.log(tCli('cli.init.next_step_run', lang));
+      console.log(tCli('cli.init.next_step_run', lang, { command: nextEvalCommand(targetDir) }));
       console.log(tCli('cli.init.next_step_executor', lang));
       console.log(tCli('cli.init.next_step_underpowered', lang));
       console.log(tCli('cli.init.next_step_customize', lang));

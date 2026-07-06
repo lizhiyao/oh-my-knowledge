@@ -49,8 +49,12 @@ describe('oclif init', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-'));
     try {
       const target = join(dir, 'project');
-      const { stdout } = await execFileAsync('node', [CLI, 'init', target]);
+      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project'], { cwd: dir });
       assert.ok(stdout.includes('已初始化 omk 项目'), `stdout missing scaffolded msg:\n${stdout}`);
+      assert.ok(
+        stdout.includes(`cd project && omk eval --control code-review-v1 --treatment code-review-v2`),
+        `stdout should include a copy/paste command that enters the target dir first:\n${stdout}`,
+      );
       assert.ok(stdout.includes('UNDERPOWERED'), `stdout should set first-run expectation:\n${stdout}`);
       assert.ok(stdout.includes('20 条以上'), `stdout should suggest growing the sample set before release decisions:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
@@ -63,6 +67,21 @@ describe('oclif init', () => {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
       assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('指定目录带空格时，下一步命令会 shell quote cd 目标', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-'));
+    try {
+      const target = join(dir, 'project with spaces');
+      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project with spaces'], { cwd: dir });
+      assert.ok(
+        stdout.includes(`cd 'project with spaces' && omk eval --control code-review-v1 --treatment code-review-v2`),
+        `stdout should quote the target dir in the copy/paste command:\n${stdout}`,
+      );
+      assert.ok(existsSync(target), 'target dir should still be created');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
