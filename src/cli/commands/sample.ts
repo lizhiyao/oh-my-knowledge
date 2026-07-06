@@ -1,4 +1,4 @@
-import { resolve, join, basename, dirname, extname } from 'node:path';
+import { resolve, join, basename, dirname, extname, relative, sep } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { Args, Flags } from '@oclif/core';
@@ -17,8 +17,10 @@ import {
 } from '../../inputs/sample-locator.js';
 import { hashSample } from '../../eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../inputs/content-hash.js';
+import { shellQuoteArg } from '../../shared/shell-quote.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
 import type { Report, Sample as SampleType } from '../../types/index.js';
+import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {
   samples: unknown[];
@@ -47,6 +49,19 @@ function getSamplesArray(document: unknown, filePath: string): SampleType[] {
 function stringifySampleDocument(filePath: string, document: unknown): string {
   if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
   return JSON.stringify(document, null, 2);
+}
+
+function userFacingPath(filePath: string): string {
+  const rel = relative(process.cwd(), filePath);
+  if (rel && rel !== '..' && !rel.startsWith(`..${sep}`)) return rel;
+  return filePath;
+}
+
+export function sampleNextEvalCommand(
+  resolved: Pick<ResolvedSkillInput, 'isDirectorySkill' | 'skillDir' | 'skillPath'>,
+): string {
+  const treatmentPath = resolved.isDirectorySkill ? resolved.skillDir : resolved.skillPath;
+  return `omk eval --control baseline --treatment ${shellQuoteArg(userFacingPath(treatmentPath))}`;
 }
 
 /** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
@@ -624,7 +639,7 @@ async function runSample(
           n: samples.length, path: outputPath, cost,
         }));
       }
-      console.log(tCli('cli.gen.review_hint', lang));
+      console.log(tCli('cli.gen.review_hint', lang, { command: sampleNextEvalCommand(resolved) }));
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
       console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));

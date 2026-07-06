@@ -77,8 +77,8 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: '--append currently supports single-skill mode only; it cannot be combined with --batch / --from-traces / --fix.\n',
   },
   'cli.gen.review_hint': {
-    zh: '\n请审查生成的评测用例后运行: omk eval',
-    en: '\nReview the generated test cases, then run: omk eval',
+    zh: '\n请审查生成的评测用例后运行：{command}',
+    en: '\nReview the generated test cases, then run: {command}',
   },
   'cli.gen.failed': {
     zh: '生成失败: {message}',
