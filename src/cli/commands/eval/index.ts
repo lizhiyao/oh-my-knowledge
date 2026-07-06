@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -18,6 +20,7 @@ import {
   findSingleTreatmentDeprecatedSamplesHint,
   hasUsableSamplesPath,
 } from '../../../inputs/sample-locator.js';
+import { shellQuoteArg } from '../../../shared/shell-quote.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -73,6 +76,28 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
   if (!reportOnlyMode(values)) return code;
   process.stderr.write(tCli('cli.run.report_only_gate_skipped', lang));
   return 0;
+}
+
+function userFacingPath(path: string): string {
+  const rel = relative(process.cwd(), path);
+  if (rel && rel !== '..' && !rel.startsWith(`..${sep}`)) return rel;
+  return path;
+}
+
+function sampleCommandForSingleTreatment(treatment: string, skillDir: string): string | null {
+  if (existsSync(treatment)) return `omk sample ${shellQuoteArg(treatment)}`;
+
+  const dirSkillPath = join(skillDir, treatment);
+  if (existsSync(join(dirSkillPath, 'SKILL.md'))) {
+    return `omk sample ${shellQuoteArg(userFacingPath(dirSkillPath))}`;
+  }
+
+  const flatSkillPath = join(skillDir, `${treatment}.md`);
+  if (existsSync(flatSkillPath)) {
+    return `omk sample ${shellQuoteArg(userFacingPath(flatSkillPath))}`;
+  }
+
+  return null;
 }
 
 /**
@@ -277,8 +302,15 @@ async function runEval(
         newPath: deprecatedSamplesHint.newPath,
       }));
     }
+    const sampleCommand = !deprecatedSamplesHint && !values.samples && !evalConfig?.samples && treatments.length === 1
+      ? sampleCommandForSingleTreatment(treatments[0], config.skillDir)
+      : null;
+    const missingSamplesMessage = [
+      tCli('cli.common.samples_not_found', lang, { path: config.samplesPath }),
+      sampleCommand ? tCli('cli.common.samples_not_found_hint', lang, { command: sampleCommand }) : '',
+    ].filter(Boolean).join('\n');
     console.error(tCli('cli.common.error_prefix', lang, {
-      message: tCli('cli.common.samples_not_found', lang, { path: config.samplesPath }),
+      message: missingSamplesMessage,
     }));
     throw new CliExit(1);
   }
