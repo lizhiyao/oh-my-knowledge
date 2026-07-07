@@ -206,27 +206,29 @@ export function formatConnectivityFailureHint(
   config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
   lang: CliLang,
 ): string {
+  const failedTarget = preflightFailedTarget(message);
+  if (failedTarget) {
+    const matches = matchingPreflightRuntimes(config, failedTarget);
+    if (matches.length === 0) return '';
+
+    if (hasExecutor(matches, CLAUDE_EXECUTORS)) {
+      return tCli('cli.run.codex_fallback_hint', lang, {
+        flags: fallbackFlags(matches, 'codex', '<codex-model>', '<codex-model>', shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
+      });
+    }
+    if (hasExecutor(matches, CODEX_EXECUTORS)) {
+      return tCli('cli.run.codex_auth_hint', lang, {
+        claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+        openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+      });
+    }
+    if (hasExecutor(matches, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
+    if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
+    return '';
+  }
+
   if (message.includes('OPENAI_API_KEY') && configHasExecutor(config, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
   if (message.includes('ANTHROPIC_API_KEY') && configHasExecutor(config, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
-
-  const failedTarget = preflightFailedTarget(message);
-  if (!failedTarget) return '';
-  const matches = matchingPreflightRuntimes(config, failedTarget);
-  if (matches.length === 0) return '';
-
-  if (hasExecutor(matches, CLAUDE_EXECUTORS)) {
-    return tCli('cli.run.codex_fallback_hint', lang, {
-      flags: fallbackFlags(matches, 'codex', '<codex-model>', '<codex-model>', shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
-    });
-  }
-  if (hasExecutor(matches, CODEX_EXECUTORS)) {
-    return tCli('cli.run.codex_auth_hint', lang, {
-      claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
-      openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
-    });
-  }
-  if (hasExecutor(matches, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
-  if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
   return '';
 }
 
