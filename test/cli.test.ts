@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -456,6 +456,88 @@ describe('CLI', () => {
       assert.ok(/判定：|Verdict:/.test(stderr), stderr);
       assert.ok(/下一步：|Next:/.test(stderr), stderr);
       assert.ok(stderr.includes('report-only'), stderr);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('eval config alias promotes the managed skill NAME, not the treatment label', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-cli-promote-target-'));
+    try {
+      const skillsDir = join(dir, 'skills', 'review');
+      await mkdir(skillsDir, { recursive: true });
+      await writeFile(join(skillsDir, 'SKILL.md'), [
+        '---',
+        'name: review',
+        'description: e2e promote target fixture',
+        '---',
+        '# review',
+        '',
+        'PROMOTE_TARGET_E2E',
+      ].join('\n'));
+
+      const samples = Array.from({ length: 20 }, (_, i) => ({
+        sample_id: `s${String(i + 1).padStart(2, '0')}`,
+        prompt: 'Return the pass token.',
+        assertions: [{ type: 'contains', value: 'PASS', weight: 1 }],
+      }));
+      await writeFile(join(dir, 'samples.json'), JSON.stringify(samples, null, 2));
+
+      const executor = join(dir, 'executor.mjs');
+      await writeFile(executor, [
+        'import { readFileSync } from "node:fs";',
+        'const req = JSON.parse(readFileSync(0, "utf8"));',
+        'const output = req.system.includes("PROMOTE_TARGET_E2E") ? "PASS" : "FAIL";',
+        'console.log(JSON.stringify({ output }));',
+      ].join('\n'));
+
+      await writeFile(join(dir, 'eval.yaml'), [
+        'samples: ./samples.json',
+        `executor: ${JSON.stringify(`node ${executor}`)}`,
+        'noJudge: true',
+        'noDiagnostic: true',
+        'skipDoctor: true',
+        'bootstrap: true',
+        'bootstrapSamples: 100',
+        'variants:',
+        '  - name: baseline',
+        '    role: control',
+        '    artifact: baseline',
+        '    allowedSkills: []',
+        '  - name: candidate',
+        '    role: treatment',
+        '    artifact: ./skills/review',
+      ].join('\n'));
+
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', join(dir, 'dist-skills')], {
+        cwd: dir,
+        env: { ...process.env, HOME: dir, OMK_SKIP_UPDATE_CHECK: '1' },
+      });
+
+      const { stdout, stderr } = await execFileAsync('node', [
+        CLI, 'eval',
+        '--config', 'eval.yaml',
+        '--output-dir', join(dir, 'reports'),
+        '--skip-connectivity',
+        '--no-serve',
+        '--lang', 'en',
+      ], {
+        cwd: dir,
+        env: { ...process.env, HOME: dir, OMK_SKIP_UPDATE_CHECK: '1' },
+        maxBuffer: 2 * 1024 * 1024,
+      });
+
+      assert.equal((JSON.parse(stdout) as { kind?: unknown }).kind, 'evaluation', `stdout 应为 report JSON:\n${stdout.slice(0, 200)}`);
+      assert.match(stderr, /Verdict: PROGRESS/, stderr);
+      assert.ok(stderr.includes('omk promote review'), stderr);
+      assert.ok(!stderr.includes('omk promote candidate'), stderr);
+      assert.ok(stderr.includes('Recorded eval evidence for managed skill "review"'), stderr);
+
+      const managedDir = join(dir, '.omk', 'managed');
+      const managedFiles = (await readdir(managedDir)).filter((file) => file.endsWith('.json'));
+      assert.equal(managedFiles.length, 1, `expected one managed record, got ${managedFiles.join(', ')}`);
+      const record = JSON.parse(await readFile(join(managedDir, managedFiles[0]), 'utf8')) as { evidence?: unknown[] };
+      assert.equal(record.evidence?.length, 1, 'eval should append evidence to the managed review record');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
