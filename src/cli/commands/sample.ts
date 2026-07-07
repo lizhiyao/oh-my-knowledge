@@ -610,7 +610,7 @@ async function runSample(
 
     // 已有用例文件:默认报错保护;--append 时追加(下面合并),不报错。
     if (existingFile && !flags.append) {
-      console.error(tCli('cli.gen.samples_already_exists', lang));
+      console.error(tCli('cli.gen.samples_already_exists', lang, { command: sampleNextEvalCommand(resolved) }));
       throw new CliExit(1);
     }
 

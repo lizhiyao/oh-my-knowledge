@@ -2,6 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { sampleNextEvalCommand } from '../../src/cli/commands/sample.js';
+import { tCli } from '../../src/cli/lib/i18n.js';
 
 describe('sampleNextEvalCommand', () => {
   it('目录 skill 用目录路径作为 treatment', () => {
@@ -46,5 +47,16 @@ describe('sampleNextEvalCommand', () => {
       }),
       "omk eval --control baseline --treatment 'skills/review skill'",
     );
+  });
+
+  it('生成后提示先 dry-run 再正式 eval', () => {
+    const command = "omk eval --control baseline --treatment 'skills/review skill'";
+    const zh = tCli('cli.gen.review_hint', 'zh', { command });
+    assert.match(zh, /预览任务：omk eval --control baseline --treatment 'skills\/review skill' --dry-run/);
+    assert.match(zh, /跑评测：omk eval --control baseline --treatment 'skills\/review skill'/);
+
+    const en = tCli('cli.gen.review_hint', 'en', { command });
+    assert.match(en, /Preview the task plan: omk eval --control baseline --treatment 'skills\/review skill' --dry-run/);
+    assert.match(en, /Run the eval: omk eval --control baseline --treatment 'skills\/review skill'/);
   });
 });

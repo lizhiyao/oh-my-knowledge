@@ -5,9 +5,9 @@ export type InitMessageKey =
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_run'
   | 'cli.init.next_step_executor'
-  | 'cli.init.next_step_underpowered'
+  | 'cli.init.next_step_report'
   | 'cli.init.next_step_customize'
-  | 'cli.init.note_codex_executor';
+  | 'cli.init.note_skill_injection';
 
 export const initDict: Record<InitMessageKey, CliMessage> = {
   'cli.init.scaffolded': {
@@ -25,20 +25,20 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     zh: '  1. 直接跑通（无需先改任何文件）：{command}',
     en: '  1. Run it as-is (no edits needed): {command}',
   },
-  'cli.init.next_step_executor': {
-    zh: '     默认执行器与评委用 claude CLI，需先装好并登录；想换别的模型或离线跑（无需 API key）见文档「执行器」。',
-    en: '     The default executor and judge use the claude CLI (install and log in first); to use another model or run offline (no API key) see the Executors docs.',
+  'cli.init.next_step_report': {
+    zh: '  2. 看报告里的 verdict 和“下一步”：PROGRESS 才能发布；UNDERPOWERED / NOISE 先扩样到约 20 条以上后重跑。',
+    en: '  2. Read the report verdict and Next line: PROGRESS can ship; UNDERPOWERED / NOISE means grow to roughly 20+ samples and re-run.',
   },
-  'cli.init.next_step_underpowered': {
-    zh: '     模板只有 3 条用例，首跑出现 UNDERPOWERED 是正常起点；要做发布判断时，把用例扩到约 20 条以上后重跑。',
-    en: '     The starter has only 3 cases, so UNDERPOWERED on the first run is normal; for a release decision, grow to roughly 20+ cases and re-run.',
+  'cli.init.next_step_executor': {
+    zh: '     默认 executor / judge 使用 claude CLI；离线或其它模型见 docs/reference/executors.md。',
+    en: '     The default executor / judge use the claude CLI; for offline or other models see docs/reference/executors.md.',
   },
   'cli.init.next_step_customize': {
-    zh: '  2. 跑通后，把 skills/code-review-v1/SKILL.md 和 skills/code-review-v2/SKILL.md 与 eval-samples.json 换成你自己的 skill 和用例',
-    en: '  2. Once it runs, replace skills/code-review-v1/SKILL.md and skills/code-review-v2/SKILL.md and eval-samples.json with your own skills and cases',
+    zh: '  3. 跑通后，替换为你自己的 skill 和 eval-samples.json；还没有用例时先运行 omk sample <skill-path>。',
+    en: '  3. Once it runs, replace the starter skills and eval-samples.json with your own; if you have no samples yet, run omk sample <skill-path>.',
   },
-  'cli.init.note_codex_executor': {
-    zh: '\n注: omk 评测时把 SKILL.md 整文(含 frontmatter)作为 system prompt 注入——跨 executor 一致(claude / codex / openai-api / gemini 都走同一条路径,不依赖任何 executor 的 native skill auto-discovery 或 Skill 工具机制)。frontmatter 在 prompt 头部对 model 行为无显著影响。\n模板带 Claude Code 兼容的 frontmatter(name + description)是为了让同一份 directory-skill 也能 deploy 到 Claude Code:把整个目录复制到 ~/.claude/skills/code-review-v1/(整目录,不是单个 SKILL.md),Claude SDK 才能识别。这是 omk 评测之外的 bonus,一份文件双向 dogfood。',
-    en: '\nNote: during omk evaluation the full SKILL.md (frontmatter included) is injected as the system prompt — uniformly across executors (claude / codex / openai-api / gemini all take the same path; omk does not rely on any executor\'s native skill auto-discovery or Skill tool). Frontmatter has no measurable impact on model behavior in this position.\nThe template ships with Claude Code-compatible frontmatter (name + description) so the same directory-skill can also be deployed to Claude Code: copy the whole directory to ~/.claude/skills/code-review-v1/ (the directory, not just SKILL.md) so Claude SDK can recognize it. That is a bonus beyond omk evaluation — one source, two-way dogfood.',
+  'cli.init.note_skill_injection': {
+    zh: '     注：omk eval 会把 SKILL.md 作为 system prompt 注入；模板 frontmatter 只是方便同一目录复用为 agent skill。',
+    en: '     Note: omk eval injects SKILL.md as the system prompt; the starter frontmatter only helps reuse the same directory as an agent skill.',
   },
 };

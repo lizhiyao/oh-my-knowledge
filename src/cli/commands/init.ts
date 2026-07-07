@@ -180,9 +180,9 @@ export default class Init extends BaseCommand {
       console.log(tCli('cli.init.next_steps_title', lang));
       console.log(tCli('cli.init.next_step_run', lang, { command: nextEvalCommand(targetDir) }));
       console.log(tCli('cli.init.next_step_executor', lang));
-      console.log(tCli('cli.init.next_step_underpowered', lang));
+      console.log(tCli('cli.init.next_step_report', lang));
       console.log(tCli('cli.init.next_step_customize', lang));
-      console.log(tCli('cli.init.note_codex_executor', lang));
+      console.log(tCli('cli.init.note_skill_injection', lang));
     });
   }
 }
