@@ -223,7 +223,7 @@ export async function executeEvaluationPipeline({
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
       // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
       // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
-      await preflight(executor, model);
+      await preflight(executor, model, undefined, `${executorName}:${model}`);
       if (!noJudge) {
         await preflightAllJudges(resolvedJudgeModels, resolvedJudgeExecutors);
       }

@@ -397,7 +397,7 @@ export async function executeTasks({
   return { results, totalCostUSD, skipped, budgetExhausted };
 }
 
-export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 180000): Promise<void> {
+export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 180000, label?: string): Promise<void> {
   const result = await executor({
     model,
     system: '',
@@ -406,7 +406,7 @@ export async function preflight(executor: ExecutorFn, model: string, timeoutMs: 
     timeoutMs,
   });
   if (!result.ok) {
-    throw new Error(`preflight failed [${model}]: ${result.error}`);
+    throw new Error(`preflight failed [${label ?? model}]: ${result.error}`);
   }
 }
 
@@ -436,6 +436,6 @@ export async function preflightAllJudges(
     if (!exec) {
       throw new Error(`preflight: no executor registered for "${jc.executor}" (judge "${key}"); pipeline must populate judgeExecutors before preflight`);
     }
-    await preflight(exec, jc.model, timeoutMs);
+    await preflight(exec, jc.model, timeoutMs, key);
   }
 }

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { preflightAllJudges } from '../../src/eval-core/evaluation-execution.js';
+import { preflight, preflightAllJudges } from '../../src/eval-core/evaluation-execution.js';
 import type { ExecResult, ExecutorFn, JudgeConfig } from '../../src/types/index.js';
 
 const okResult: ExecResult = {
@@ -32,6 +32,14 @@ function failingExecutor(name: string, calls: string[]): ExecutorFn {
 }
 
 describe('preflightAllJudges', () => {
+  it('includes the explicit runtime label in preflight errors', async () => {
+    const calls: string[] = [];
+    await assert.rejects(
+      () => preflight(failingExecutor('exec-task', calls), 'shared-model', 5000, 'codex:shared-model'),
+      /preflight failed \[codex:shared-model\]: auth failed/,
+    );
+  });
+
   it('preflights every unique (executor, model) judge in an ensemble', async () => {
     const calls: string[] = [];
     const judgeExecutors = {
@@ -84,7 +92,7 @@ describe('preflightAllJudges', () => {
         ],
         judgeExecutors,
       ),
-      /preflight failed/,
+      /preflight failed \[exec-bad:m-fail\]: auth failed/,
     );
 
     // m-ok 通过 → 然后 m-fail 抛错 → m-after-fail 不被探测(fail-fast)。
