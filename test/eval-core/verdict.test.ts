@@ -304,7 +304,8 @@ describe('computeVerdict', () => {
     const lines = text.split('\n');
     assert.ok(lines.length <= 8, `expected ≤8 lines, got ${lines.length}: ${text}`);
     assert.match(text, /Next: ship through your normal release path/);
-    assert.match(text, /omk promote skill/);
+    assert.match(text, /omk promote <name>/);
+    assert.doesNotMatch(text, /omk promote skill/);
   });
 
   it('formatVerdictText gives zh release next step', () => {
@@ -322,10 +323,11 @@ describe('computeVerdict', () => {
     const text = formatVerdictText(computeVerdict(r), { lang: 'zh' });
     assert.match(text, /可发布/);
     assert.match(text, /下一步：可以发布/);
-    assert.match(text, /omk promote skill/);
+    assert.match(text, /omk promote <name>/);
+    assert.match(text, /omk list/);
   });
 
-  it('formatVerdictText shell-quotes action commands when variant names need it', () => {
+  it('formatVerdictText shell-quotes next-step commands when names need it', () => {
     const progressReport = buildReport({
       variants: ['baseline', 'review skill'],
       perVariantAvg: {
@@ -337,8 +339,9 @@ describe('computeVerdict', () => {
         diffBootstrapCI: { low: 0.1, high: 0.5, estimate: 0.3, samples: 1000, significant: true },
       }],
     });
-    const progressText = formatVerdictText(computeVerdict(progressReport), { lang: 'zh' });
-    assert.match(progressText, /omk promote 'review skill'/);
+    const progressText = formatVerdictText(computeVerdict(progressReport), { lang: 'zh', promoteTarget: 'managed skill' });
+    assert.match(progressText, /omk promote 'managed skill'/);
+    assert.doesNotMatch(progressText, /omk promote 'review skill'/);
 
     const soloReport = buildReport({
       variants: ['review skill'],

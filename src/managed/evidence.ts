@@ -86,6 +86,7 @@ export function buildEvidenceRef(
 export interface RecordedEvidence {
   recordId: string;
   name: string;
+  variant: string;
   contentHash: string;
   /** true ⇒ evidence.contentHash 等于记录当前 contentHash → deriveManagedState 计为当前证据 →
    *  measurable。false ⇒ 测的是旧内容(已 drift),证据留存但不绑当前版本。 */
@@ -164,7 +165,7 @@ export function recordEvalEvidence(
     if (!ref) continue;
     const merged = appendManagedEvidence(dir, rec.id, ref);
     if (!merged) continue;
-    out.push({ recordId: rec.id, name: rec.name, contentHash: ref.contentHash, bound: ref.contentHash === merged.contentHash });
+    out.push({ recordId: rec.id, name: rec.name, variant: variantKey, contentHash: ref.contentHash, bound: ref.contentHash === merged.contentHash });
   }
   return out;
 }

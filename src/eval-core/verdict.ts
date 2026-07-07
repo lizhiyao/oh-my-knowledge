@@ -683,13 +683,25 @@ function nextStepTreatmentName(result: Pick<VerdictResult, 'level' | 'representa
   return result.variants[1] ?? '<name>';
 }
 
-function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>, lang: Lang): string {
+interface VerdictTextOptions {
+  verbose?: boolean;
+  lang?: Lang;
+  /** Managed skill NAME from `omk list`; omitted when the formatter cannot know it safely. */
+  promoteTarget?: string;
+}
+
+function promoteCommand(target: string | undefined): string {
+  return target ? `omk promote ${shellQuoteArg(target)}` : 'omk promote <name>';
+}
+
+function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>, lang: Lang, promoteTarget?: string): string {
   const treatment = nextStepTreatmentName(result);
   const treatmentArg = shellQuoteArg(treatment);
+  const promote = promoteCommand(promoteTarget);
   if (lang === 'zh') {
     switch (result.level) {
       case 'PROGRESS':
-        return `可以发布：按你的正常发布流程发布，并留存本次报告作为发布证据；如果这是受管 skill，继续运行 \`omk promote ${treatmentArg}\` 记录接受决定。`;
+        return `可以发布：按你的正常发布流程发布，并留存本次报告作为发布证据；如果这是受管 skill，继续运行 \`${promote}\` 记录接受决定（name 以 \`omk list\` 的 NAME 为准）。`;
       case 'CAUTIOUS':
         return '不要直接发布；先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
       case 'REGRESS':
@@ -704,7 +716,7 @@ function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' 
   }
   switch (result.level) {
     case 'PROGRESS':
-      return `ship through your normal release path and keep this report as release evidence; for a managed skill, run \`omk promote ${treatmentArg}\` to record acceptance.`;
+      return `ship through your normal release path and keep this report as release evidence; for a managed skill, run \`${promote}\` to record acceptance (name is the NAME from \`omk list\`).`;
     case 'CAUTIOUS':
       return 'do not ship directly; inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
     case 'REGRESS':
@@ -722,7 +734,7 @@ function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' 
  * Plain-text formatter for the `omk eval` verdict. Stays terse for the
  *  spec — one verdict, rationale bullets, one ship recommendation, and one next step.
  */
-export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean; lang?: Lang } = {}): string {
+export function formatVerdictText(result: VerdictResult, options: VerdictTextOptions = {}): string {
   // lang 默认 'en':保留既有英文输出逐字节不变(verdict.test 与历史 CLI 行为)。zh 只本地化
   //  标签与 ship 建议;headline 是 Δ/CI/N 统计记号 —— 跨语言中性、且会随 report 持久化,
   //  不翻译(翻它=改可比性锚点)。recommendation 在 format 时按 lang 重新派生,不动 computeVerdict。
@@ -738,7 +750,7 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   if (result.rationale.gapSignal) lines.push(zh ? `  知识缺口：${result.rationale.gapSignal}` : `  Gap signal:    ${result.rationale.gapSignal}`);
   if (result.rationale.shipRecommendation) {
     lines.push(`  ${zh ? recommendation(result.level, [], 'zh') : result.rationale.shipRecommendation}`);
-    lines.push(zh ? `  下一步：${releaseNextStep(result, 'zh')}` : `  Next: ${releaseNextStep(result, 'en')}`);
+    lines.push(zh ? `  下一步：${releaseNextStep(result, 'zh', options.promoteTarget)}` : `  Next: ${releaseNextStep(result, 'en', options.promoteTarget)}`);
   }
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');
