@@ -129,8 +129,8 @@ export function createScriptExecutor(command: string): ExecutorFn {
       timeoutMs,
       ...(cwd && { cwd }),
     });
-    child.stdin?.write(input);
-    child.stdin?.end();
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(input);
 
     try {
       const r = await done;
