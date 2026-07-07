@@ -4,7 +4,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
@@ -58,6 +58,8 @@ describe('oclif init', () => {
       assert.ok(stdout.includes('UNDERPOWERED'), `stdout should set first-run expectation:\n${stdout}`);
       assert.ok(stdout.includes('20 条以上'), `stdout should suggest growing the sample set before release decisions:\n${stdout}`);
       assert.ok(stdout.includes('看报告里的 verdict'), `stdout should tell users where to make the release decision:\n${stdout}`);
+      assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should link to public executor docs:\n${stdout}`);
+      assert.ok(!stdout.includes('docs/reference/executors.md'), `stdout should not point a fresh project at a missing local docs path:\n${stdout}`);
       assert.ok(stdout.includes('omk sample <skill-path>'), `stdout should route users with no samples back to sample generation:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
       assert.ok(existsSync(join(target, 'eval-samples.json')), 'eval-samples.json not created');
@@ -69,6 +71,24 @@ describe('oclif init', () => {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
       assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('指定当前目录外的目标目录时，下一步命令使用绝对 cd 路径', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-outside-'));
+    try {
+      const cwd = join(dir, 'cwd');
+      const target = join(dir, 'project');
+      await mkdir(cwd);
+      const { stdout } = await execFileAsync('node', [CLI, 'init', target], { cwd });
+      assert.ok(
+        stdout.includes(`cd ${target} && omk eval --control code-review-v1 --treatment code-review-v2`),
+        `stdout should avoid awkward ../ paths for targets outside cwd:\n${stdout}`,
+      );
+      assert.ok(!stdout.includes('..'), `stdout should not ask users to copy a parent-directory cd path:\n${stdout}`);
+      assert.ok(existsSync(target), 'target dir should still be created');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
