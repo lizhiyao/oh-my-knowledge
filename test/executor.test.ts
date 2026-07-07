@@ -102,6 +102,17 @@ describe('createExecutor', () => {
     }
   });
 
+  it('does not surface stdin EPIPE when a script command exits without reading input', async () => {
+    const executor = createExecutor('/bin/echo \'{"output":"done"}\'');
+    const result = await executor({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.output, 'done');
+  });
+
   it('does not rewrite interpreter module names as local paths', async () => {
     const baseCwd = await mkdtemp(join(tmpdir(), 'omk-script-executor-module-'));
     const taskCwd = await mkdtemp(join(tmpdir(), 'omk-script-executor-module-task-'));
