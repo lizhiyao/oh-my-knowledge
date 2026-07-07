@@ -312,6 +312,45 @@ describe('CLI', () => {
     );
   });
 
+  it('sample openai-api 缺 key 时给出认证和切换提示', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-sample-auth-hint-'));
+    try {
+      const skillDir = join(dir, 'skills', 'triage');
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: triage',
+        'description: 判断用户问题优先级并给出处理建议',
+        '---',
+        '',
+        '# Triage',
+        '',
+        '把用户问题分为 P0、P1、P2，并给出下一步处理建议。',
+      ].join('\n'));
+
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI, 'sample', 'skills/triage',
+          '--executor', 'openai-api',
+          '--model', 'gpt-4o-mini',
+          '--count', '1',
+          '--lang', 'zh',
+        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '' } }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1);
+          assert.ok(e.stderr.includes('OPENAI_API_KEY environment variable is not set'), e.stderr);
+          assert.ok(e.stderr.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), e.stderr);
+          assert.ok(e.stderr.includes('--executor claude --model sonnet'), e.stderr);
+          assert.ok(e.stderr.includes('--executor codex --model <codex-model>'), e.stderr);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('studio --help shows local workbench usage', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help']);
     assert.ok(stdout.includes('omk studio'));

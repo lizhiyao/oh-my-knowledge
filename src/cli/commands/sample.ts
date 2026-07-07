@@ -138,6 +138,49 @@ function formatIdList(ids: string[]): string {
   return shown.join(', ') + suffix;
 }
 
+const CLAUDE_SAMPLE_EXECUTORS = new Set(['claude', 'claude-sdk']);
+const CODEX_SAMPLE_EXECUTORS = new Set(['codex', 'codex-sdk']);
+const OPENAI_API_SAMPLE_EXECUTORS = new Set(['openai-api']);
+const ANTHROPIC_API_SAMPLE_EXECUTORS = new Set(['anthropic-api']);
+
+function looksLikeConnectivityFailure(message: string): boolean {
+  return /auth|login|credential|API[_ ]?KEY|BASE_URL|API error|ENOENT|not found|ECONN|ENOTFOUND|ETIMEDOUT|timeout|timed out|401|403|404/i.test(message);
+}
+
+export function formatSampleGenerationFailureHint(
+  message: string,
+  executorName: string | undefined,
+  lang: CliLang,
+): string {
+  const executor = executorName ?? 'claude';
+  if (!looksLikeConnectivityFailure(message)) return '';
+
+  if (CLAUDE_SAMPLE_EXECUTORS.has(executor)) {
+    return tCli('cli.gen.claude_auth_hint', lang, {
+      codexFlags: '--executor codex --model <codex-model>',
+      openaiFlags: '--executor openai-api --model <openai-model>',
+    });
+  }
+  if (CODEX_SAMPLE_EXECUTORS.has(executor)) {
+    return tCli('cli.gen.codex_auth_hint', lang, {
+      claudeFlags: '--executor claude --model sonnet',
+      openaiFlags: '--executor openai-api --model <openai-model>',
+    });
+  }
+  if (OPENAI_API_SAMPLE_EXECUTORS.has(executor)) {
+    return tCli('cli.gen.openai_api_auth_hint', lang, {
+      claudeFlags: '--executor claude --model sonnet',
+      codexFlags: '--executor codex --model <codex-model>',
+    });
+  }
+  if (ANTHROPIC_API_SAMPLE_EXECUTORS.has(executor)) {
+    return tCli('cli.gen.anthropic_api_auth_hint', lang, {
+      claudeFlags: '--executor claude --model sonnet',
+    });
+  }
+  return '';
+}
+
 // 下面 3 个 helper 在 sample-fix.test.ts 单测内 in-process import 验证 fix 逻辑。
 
 export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, treatmentName: string): Set<string> {
@@ -472,7 +515,9 @@ export async function runSampleFromTraces(
       : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
-    console.error(lang === 'zh' ? `生成失败: ${(err as Error).message}` : `Generation failed: ${(err as Error).message}`);
+    const message = (err as Error).message;
+    console.error((lang === 'zh' ? `生成失败: ${message}` : `Generation failed: ${message}`)
+      + formatSampleGenerationFailureHint(message, flags.executor, lang));
     throw new CliExit(1);
   }
 }
@@ -568,8 +613,9 @@ async function runSample(
         }));
         generated++;
       } catch (err: unknown) {
+        const message = (err as Error).message;
         process.stderr.write(tCli('cli.gen.skill_failed', lang, {
-          name, message: (err as Error).message,
+          name, message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
         }));
       }
     }
@@ -642,7 +688,10 @@ async function runSample(
       console.log(tCli('cli.gen.review_hint', lang, { command: sampleNextEvalCommand(resolved) }));
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
-      console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));
+      const message = (err as Error).message;
+      console.error(tCli('cli.gen.failed', lang, {
+        message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
+      }));
       throw new CliExit(1);
     }
   }
