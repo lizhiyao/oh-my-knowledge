@@ -30,7 +30,7 @@ export const initDict: Record<InitMessageKey, CliMessage> = {
     en: '  2. Read the report verdict and Next line: PROGRESS can ship; UNDERPOWERED / NOISE means grow to roughly 20+ samples and re-run.',
   },
   'cli.init.next_step_executor': {
-    zh: '     默认 executor / judge 使用 claude CLI；离线或其它模型见 https://oh-my-knowledge.pages.dev/reference/executors。',
+    zh: '     默认 executor / judge 使用 claude CLI；离线或其它模型见 https://oh-my-knowledge.pages.dev/zh/reference/executors。',
     en: '     The default executor / judge use the claude CLI; for offline or other models see https://oh-my-knowledge.pages.dev/reference/executors.',
   },
   'cli.init.next_step_customize': {

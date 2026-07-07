@@ -58,7 +58,8 @@ describe('oclif init', () => {
       assert.ok(stdout.includes('UNDERPOWERED'), `stdout should set first-run expectation:\n${stdout}`);
       assert.ok(stdout.includes('20 条以上'), `stdout should suggest growing the sample set before release decisions:\n${stdout}`);
       assert.ok(stdout.includes('看报告里的 verdict'), `stdout should tell users where to make the release decision:\n${stdout}`);
-      assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should link to public executor docs:\n${stdout}`);
+      assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/zh/reference/executors'), `stdout should link zh users to public zh executor docs:\n${stdout}`);
+      assert.ok(!stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should not link zh users to the en executor docs:\n${stdout}`);
       assert.ok(!stdout.includes('docs/reference/executors.md'), `stdout should not point a fresh project at a missing local docs path:\n${stdout}`);
       assert.ok(stdout.includes('omk sample <skill-path>'), `stdout should route users with no samples back to sample generation:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
@@ -71,6 +72,18 @@ describe('oclif init', () => {
         assert.ok(gi.includes(d), `.omk/.gitignore should ignore ${d}`);
       }
       assert.ok(!/^managed\/?$/m.test(gi), '.omk/.gitignore must not ignore managed/');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('英文输出链接到英文 executor 文档', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-en-'));
+    try {
+      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project', '--lang', 'en'], { cwd: dir });
+      assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should link en users to public en executor docs:\n${stdout}`);
+      assert.ok(!stdout.includes('https://oh-my-knowledge.pages.dev/zh/reference/executors'), `stdout should not link en users to the zh executor docs:\n${stdout}`);
+      assert.ok(!stdout.includes('docs/reference/executors.md'), `stdout should not point a fresh project at a missing local docs path:\n${stdout}`);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
