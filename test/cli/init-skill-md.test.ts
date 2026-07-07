@@ -79,19 +79,16 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
     }
   });
 
-  it('next-step output explains evaluation injection, cross-executor parity, and the directory-level deploy path', () => {
+  it('next-step output keeps evaluation injection as a concise note', () => {
     const output = execFileSync('node', [CLI, 'init', tmpDir], { encoding: 'utf-8' });
-    assert.match(output, /code-review-v1\/SKILL\.md/);
-    assert.match(output, /code-review-v2\/SKILL\.md/);
+    assert.match(output, /看报告里的 verdict|Read the report verdict/);
+    assert.match(output, /omk sample <skill-path>/);
 
     // Evaluation path: omk injects SKILL.md as system prompt uniformly across executors.
     // The note must NOT claim Claude executor goes through native skill auto-discovery,
     // because that's the runtime mechanism (~/.claude/skills/), not omk's eval path.
     assert.match(output, /system prompt|system 注入/);
-    assert.match(output, /跨 executor|cross-executor|claude.*codex|codex.*claude/);
     assert.doesNotMatch(output, /Claude executor 走 native skill/);
-
-    // Deploy path: must point at ~/.claude/skills/<name>/ as a directory, not just the file.
-    assert.match(output, /~\/\.claude\/skills\/code-review-v1|the whole directory|整个目录|整目录/);
+    assert.doesNotMatch(output, /~\/\.claude\/skills\/code-review-v1/);
   });
 });

@@ -45,16 +45,16 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: 'No eval-samples need generating (all skills already have paired files)',
   },
   'cli.gen.batch_summary': {
-    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk eval --batch',
-    en: '\nGenerated {n} eval-samples files. Review them, then run: omk eval --batch',
+    zh: '\n共生成 {n} 份 eval-samples。下一步：\n  1. 人工审查生成的评测用例，删掉不可信样本，补边界、反例\n  2. 预览任务：omk eval --batch --dry-run\n  3. 跑评测：omk eval --batch',
+    en: '\nGenerated {n} eval-samples files. Next steps:\n  1. Review the generated samples; drop weak cases and add boundary / counterexamples\n  2. Preview the task plan: omk eval --batch --dry-run\n  3. Run the eval: omk eval --batch',
   },
   'cli.gen.specify_skill_path': {
     zh: '请指定 skill 文件路径, 例如: omk sample skills/my-skill.md',
     en: 'Please specify a skill file path, e.g.: omk sample skills/my-skill.md',
   },
   'cli.gen.samples_already_exists': {
-    zh: 'eval-samples.json 已存在。如需覆盖请先删除该文件。',
-    en: 'eval-samples.json already exists. Delete it first if you want to overwrite.',
+    zh: 'eval-samples 已存在。要补场景请加 --append（常配 --focus）；要继续评测，运行：{command}',
+    en: 'eval-samples already exist. To add scenarios, use --append (often with --focus); to continue, run: {command}',
   },
   'cli.gen.single_generating': {
     zh: '🔄 正在生成 {count} 条评测用例...\n',
@@ -77,8 +77,8 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: '--append currently supports single-skill mode only; it cannot be combined with --batch / --from-traces / --fix.\n',
   },
   'cli.gen.review_hint': {
-    zh: '\n请审查生成的评测用例后运行：{command}',
-    en: '\nReview the generated test cases, then run: {command}',
+    zh: '\n下一步：\n  1. 人工审查生成的评测用例，删掉不可信样本，补边界、反例\n  2. 预览任务：{command} --dry-run\n  3. 跑评测：{command}',
+    en: '\nNext steps:\n  1. Review the generated samples; drop weak cases and add boundary / counterexamples\n  2. Preview the task plan: {command} --dry-run\n  3. Run the eval: {command}',
   },
   'cli.gen.failed': {
     zh: '生成失败: {message}',
