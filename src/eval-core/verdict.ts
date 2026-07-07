@@ -33,6 +33,7 @@ import { evaluateLayerGates } from './layer-gates.js';
 import { ciLevelLabel } from './bootstrap.js';
 import { analyzeJudgeIndependence } from './judge-independence.js';
 import { MIN_HOLDOUT_SUBSET } from './holdout.js';
+import { shellQuoteArg } from '../shared/shell-quote.js';
 
 /**
  * Below this sample count a non-significant diff is read as UNDERPOWERED
@@ -676,13 +677,33 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
   }
 }
 
-function releaseNextStep(level: VerdictLevel, lang: Lang): string {
+function nextStepTreatmentName(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>): string {
+  if (result.representative?.treatment) return result.representative.treatment;
+  if (result.level === 'SOLO') return result.variants[0] ?? '<name>';
+  return result.variants[1] ?? '<name>';
+}
+
+interface VerdictTextOptions {
+  verbose?: boolean;
+  lang?: Lang;
+  /** Managed skill NAME from `omk list`; omitted when the formatter cannot know it safely. */
+  promoteTarget?: string;
+}
+
+function promoteCommand(target: string | undefined): string {
+  return target ? `omk promote ${shellQuoteArg(target)}` : 'omk promote <name>';
+}
+
+function releaseNextStep(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>, lang: Lang, promoteTarget?: string): string {
+  const treatment = nextStepTreatmentName(result);
+  const treatmentArg = shellQuoteArg(treatment);
+  const promote = promoteCommand(promoteTarget);
   if (lang === 'zh') {
-    switch (level) {
+    switch (result.level) {
       case 'PROGRESS':
-        return '可以进入发布流程：请留存本次报告作为发布证据；如果这是受管 skill，再运行 `omk promote`。';
+        return `可以发布：按你的正常发布流程发布，并留存本次报告作为发布证据；如果这是受管 skill，继续运行 \`${promote}\` 记录接受决定（name 以 \`omk list\` 的 NAME 为准）。`;
       case 'CAUTIOUS':
-        return '先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
+        return '不要直接发布；先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑。';
       case 'REGRESS':
         return '不要发布；定位最差层和失败用例，修复后重跑。';
       case 'NOISE':
@@ -690,14 +711,14 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
       case 'UNDERPOWERED':
         return '把样本数加到至少 20，或先按当前规模 2× 扩充后重跑。';
       case 'SOLO':
-        return '补一个 baseline 对照，再跑 `omk eval --control baseline --treatment <名字>`。';
+        return `补一个 baseline 对照，再跑 \`omk eval --control baseline --treatment ${treatmentArg}\`。`;
     }
   }
-  switch (level) {
+  switch (result.level) {
     case 'PROGRESS':
-      return 'ready for release: keep this report as release evidence; for a managed skill, run `omk promote`.';
+      return `ship through your normal release path and keep this report as release evidence; for a managed skill, run \`${promote}\` to record acceptance (name is the NAME from \`omk list\`).`;
     case 'CAUTIOUS':
-      return 'inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
+      return 'do not ship directly; inspect the warnings (layer gates, judge dissent, stability, or holdout), fix them, then re-run.';
     case 'REGRESS':
       return 'do not ship; inspect the weakest layer and failing samples, fix them, then re-run.';
     case 'NOISE':
@@ -705,7 +726,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
     case 'UNDERPOWERED':
       return 'increase the sample set to at least 20, or roughly 2x the current size, then re-run.';
     case 'SOLO':
-      return 'add a baseline control and re-run `omk eval --control baseline --treatment <name>`.';
+      return `add a baseline control and re-run \`omk eval --control baseline --treatment ${treatmentArg}\`.`;
   }
 }
 
@@ -713,7 +734,7 @@ function releaseNextStep(level: VerdictLevel, lang: Lang): string {
  * Plain-text formatter for the `omk eval` verdict. Stays terse for the
  *  spec — one verdict, rationale bullets, one ship recommendation, and one next step.
  */
-export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean; lang?: Lang } = {}): string {
+export function formatVerdictText(result: VerdictResult, options: VerdictTextOptions = {}): string {
   // lang 默认 'en':保留既有英文输出逐字节不变(verdict.test 与历史 CLI 行为)。zh 只本地化
   //  标签与 ship 建议;headline 是 Δ/CI/N 统计记号 —— 跨语言中性、且会随 report 持久化,
   //  不翻译(翻它=改可比性锚点)。recommendation 在 format 时按 lang 重新派生,不动 computeVerdict。
@@ -729,7 +750,7 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   if (result.rationale.gapSignal) lines.push(zh ? `  知识缺口：${result.rationale.gapSignal}` : `  Gap signal:    ${result.rationale.gapSignal}`);
   if (result.rationale.shipRecommendation) {
     lines.push(`  ${zh ? recommendation(result.level, [], 'zh') : result.rationale.shipRecommendation}`);
-    lines.push(zh ? `  下一步：${releaseNextStep(result.level, 'zh')}` : `  Next: ${releaseNextStep(result.level, 'en')}`);
+    lines.push(zh ? `  下一步：${releaseNextStep(result, 'zh', options.promoteTarget)}` : `  Next: ${releaseNextStep(result, 'en', options.promoteTarget)}`);
   }
   if (options.verbose && result.perPair && result.perPair.length > 1) {
     lines.push('');

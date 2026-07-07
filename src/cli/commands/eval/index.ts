@@ -13,6 +13,7 @@ import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from '../../lib/shared.js';
+import type { VerdictResult } from '../../../eval-core/verdict.js';
 import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
 import { DEFAULT_GATE_THRESHOLD } from '../../../eval-core/verdict.js';
 import { EVALUATION_REPORT_SCHEMA_VERSION } from '../../../eval-core/evaluation-reporting.js';
@@ -41,6 +42,12 @@ interface RepeatProgressInfo {
 }
 
 type ParsedValues = Record<string, string | boolean | undefined>;
+
+interface RecordedEvidenceForPrompt {
+  name: string;
+  variant: string;
+  bound: boolean;
+}
 
 function isDryRunReport(report: unknown): report is DryRunReport {
   return Boolean(report && typeof report === 'object' && (report as { dryRun?: unknown }).dryRun === true);
@@ -122,11 +129,36 @@ function emitVerdictText(text: string): void {
   stream.write(text + '\n');
 }
 
+function treatmentVariantFromVerdict(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>): string | undefined {
+  if (result.representative?.treatment) return result.representative.treatment;
+  if (result.level === 'SOLO') return result.variants[0];
+  return result.variants[1];
+}
+
+function promoteTargetFromEvidence(
+  result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>,
+  records: RecordedEvidenceForPrompt[],
+): string | undefined {
+  const treatment = treatmentVariantFromVerdict(result);
+  const matched = treatment ? records.filter((r) => r.variant === treatment) : records;
+  const names = new Set(matched.filter((r) => r.bound).map((r) => r.name));
+  return names.size === 1 ? [...names][0] : undefined;
+}
+
+function emitRecordedEvidence(records: RecordedEvidenceForPrompt[], lang: CliLang): void {
+  for (const w of records) {
+    process.stderr.write(
+      tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name }),
+    );
+  }
+}
+
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues, lang: CliLang): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
-  emitVerdictText(formatVerdictText(result, { verbose: true, lang }));
-  await recordEvidenceSafely(report, result.level, values, lang);
+  const written = await recordEvidenceSafely(report, result.level, values);
+  emitVerdictText(formatVerdictText(result, { verbose: true, lang, promoteTarget: promoteTargetFromEvidence(result, written) }));
+  emitRecordedEvidence(written, lang);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
 }
 
@@ -139,19 +171,14 @@ async function recordEvidenceSafely(
   report: EvaluationReport,
   verdict: string,
   values: ParsedValues,
-  lang: CliLang,
-): Promise<void> {
-  if (values['no-evidence'] === true) return;
+): Promise<RecordedEvidenceForPrompt[]> {
+  if (values['no-evidence'] === true) return [];
   try {
     const { recordEvalEvidence } = await import('../../../managed/index.js');
-    const written = recordEvalEvidence(report, verdict, new Date().toISOString());
-    for (const w of written) {
-      process.stderr.write(
-        tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name }),
-      );
-    }
+    return recordEvalEvidence(report, verdict, new Date().toISOString());
   } catch {
     // 证据写入是旁路,任何异常都不该让评测失败
+    return [];
   }
 }
 
@@ -217,7 +244,7 @@ async function emitBatchVerdict(
   // batch 每个子报告各自是一份独立 skill 的评测 → 各自写证据。
   for (const child of childReports) {
     const v = results.find((r) => r.id === child.id)?.verdict.level ?? 'SOLO';
-    await recordEvidenceSafely(child, v, values, lang);
+    emitRecordedEvidence(await recordEvidenceSafely(child, v, values), lang);
   }
   const passed = results.filter((r) => verdictPasses(r.verdict.level, r.verdict.headline)).length;
   const failed = results.length - passed;

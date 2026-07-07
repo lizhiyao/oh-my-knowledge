@@ -183,6 +183,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     const written = recordEvalEvidence(report, 'PROGRESS', '2026-06-08T00:00:00.000Z', { dir: managed });
     assert.equal(written.length, 1, '匹配到一条受管记录');
     assert.equal(written[0].name, 'review');
+    assert.equal(written[0].variant, 'review');
     assert.equal(written[0].bound, true, '指纹同空间 → 绑定当前版本');
 
     const rec = loadManagedRecord(managed, managedRecordId('skill', 'review'))!;
@@ -217,6 +218,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
     assert.equal(written.length, 1, '按 contentHash 连接,不靠 variant 名');
     assert.equal(written[0].name, 'review', 'CLI 提示用受管记录名而非 git 表达式');
+    assert.equal(written[0].variant, 'git:HEAD:skills/review', '同时保留报告里的 treatment variant 供 CLI 对齐');
     assert.equal(written[0].bound, true);
     const rec = loadManagedRecord(managed, managedRecordId('skill', 'review'))!;
     assert.equal(deriveManagedState({ record: rec, currentContentHash: realHash }).label, 'measurable');
@@ -231,6 +233,8 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     });
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
     assert.equal(written.length, 1, '别名与记录名不同也能按指纹绑定');
+    assert.equal(written[0].name, 'review');
+    assert.equal(written[0].variant, 'candidate');
     assert.equal(written[0].bound, true);
   });
 
