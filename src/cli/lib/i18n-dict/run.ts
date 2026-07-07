@@ -29,6 +29,7 @@ export type RunMessageKey =
   | 'cli.run.tally'
   | 'cli.run.report_saved'
   | 'cli.run.evidence_recorded'
+  | 'cli.run.evidence_recorded_promotable'
   | 'cli.run.evidence_recorded_unbound'
   | 'cli.run.report_only_gate_skipped'
   | 'cli.run.report_server_running'
@@ -151,6 +152,10 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '📄 Report saved to: {path}\n',
   },
   'cli.run.evidence_recorded': {
+    zh: '🔖 已为受管 skill「{name}」记录评测证据 → measurable\n',
+    en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable\n',
+  },
+  'cli.run.evidence_recorded_promotable': {
     zh: '🔖 已为受管 skill「{name}」记录评测证据 → measurable。运行 {command} 接受当前版本。\n',
     en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable. Run {command} to accept this version.\n',
   },

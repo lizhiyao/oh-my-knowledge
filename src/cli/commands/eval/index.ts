@@ -145,11 +145,14 @@ function promoteTargetFromEvidence(
   return names.size === 1 ? [...names][0] : undefined;
 }
 
-function emitRecordedEvidence(records: RecordedEvidenceForPrompt[], lang: CliLang): void {
+function emitRecordedEvidence(records: RecordedEvidenceForPrompt[], lang: CliLang, verdict: string): void {
   for (const w of records) {
     const command = `omk promote ${shellQuoteArg(w.name)}`;
+    const key = w.bound && verdict === 'PROGRESS'
+      ? 'cli.run.evidence_recorded_promotable'
+      : (w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound');
     process.stderr.write(
-      tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name, command }),
+      tCli(key, lang, { name: w.name, command }),
     );
   }
 }
@@ -159,7 +162,7 @@ async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedVal
   const result = computeVerdict(report, verdictOptions(values));
   const written = await recordEvidenceSafely(report, result.level, values);
   emitVerdictText(formatVerdictText(result, { verbose: true, lang, promoteTarget: promoteTargetFromEvidence(result, written) }));
-  emitRecordedEvidence(written, lang);
+  emitRecordedEvidence(written, lang, result.level);
   return verdictPasses(result.level, result.headline) ? 0 : 1;
 }
 
@@ -245,7 +248,7 @@ async function emitBatchVerdict(
   // batch 每个子报告各自是一份独立 skill 的评测 → 各自写证据。
   for (const child of childReports) {
     const v = results.find((r) => r.id === child.id)?.verdict.level ?? 'SOLO';
-    emitRecordedEvidence(await recordEvidenceSafely(child, v, values), lang);
+    emitRecordedEvidence(await recordEvidenceSafely(child, v, values), lang, v);
   }
   const passed = results.filter((r) => verdictPasses(r.verdict.level, r.verdict.headline)).length;
   const failed = results.length - passed;
