@@ -351,6 +351,45 @@ describe('CLI', () => {
     }
   });
 
+  it('sample --batch 生成失败时不误报为无需生成', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-sample-batch-fail-'));
+    try {
+      const skillDir = join(dir, 'skills', 'triage');
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: triage',
+        'description: 判断用户问题优先级',
+        '---',
+        '',
+        '# Triage',
+        '',
+        '把用户问题分为 P0、P1、P2。',
+      ].join('\n'));
+
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI, 'sample', '--batch',
+          '--skill-dir', 'skills',
+          '--executor', 'openai-api',
+          '--model', 'gpt-4o-mini',
+          '--count', '1',
+          '--lang', 'zh',
+        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '' } }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1);
+          assert.ok(e.stderr.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), e.stderr);
+          assert.ok(e.stderr.includes('生成未完成：已生成 0 份，失败 1 份'), e.stderr);
+          assert.ok(!e.stdout.includes('没有需要生成的 eval-samples'), e.stdout);
+          return true;
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('studio --help shows local workbench usage', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help']);
     assert.ok(stdout.includes('omk studio'));

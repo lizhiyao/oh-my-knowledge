@@ -566,6 +566,7 @@ async function runSample(
 
     const entries: string[] = readdirSync(skillDir);
     let generated: number = 0;
+    let failed: number = 0;
 
     for (const entry of entries) {
       let name: string;
@@ -613,6 +614,7 @@ async function runSample(
         }));
         generated++;
       } catch (err: unknown) {
+        failed++;
         const message = (err as Error).message;
         process.stderr.write(tCli('cli.gen.skill_failed', lang, {
           name, message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
@@ -620,6 +622,10 @@ async function runSample(
       }
     }
 
+    if (failed > 0) {
+      console.error(tCli('cli.gen.batch_failed_summary', lang, { generated, failed }));
+      throw new CliExit(1);
+    }
     if (generated === 0) {
       console.log(tCli('cli.gen.batch_none_needed', lang));
     } else {

@@ -7,6 +7,7 @@ export type GenMessageKey =
   | 'cli.gen.skill_done'
   | 'cli.gen.skill_failed'
   | 'cli.gen.batch_none_needed'
+  | 'cli.gen.batch_failed_summary'
   | 'cli.gen.batch_summary'
   | 'cli.gen.specify_skill_path'
   | 'cli.gen.samples_already_exists'
@@ -47,6 +48,10 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
   'cli.gen.batch_none_needed': {
     zh: '没有需要生成的 eval-samples (所有 skill 都已有配对文件)',
     en: 'No eval-samples need generating (all skills already have paired files)',
+  },
+  'cli.gen.batch_failed_summary': {
+    zh: '\n生成未完成：已生成 {generated} 份，失败 {failed} 份。请按上面的错误提示修复后重试；全部生成成功后再运行 omk eval --batch --dry-run。',
+    en: '\nGeneration incomplete: generated {generated}, failed {failed}. Fix the errors above and retry; once everything succeeds, run omk eval --batch --dry-run.',
   },
   'cli.gen.batch_summary': {
     zh: '\n共生成 {n} 份 eval-samples。下一步：\n  1. 人工审查生成的评测用例，删掉不可信样本，补边界、反例\n  2. 预览任务：omk eval --batch --dry-run\n  3. 跑评测：omk eval --batch',
