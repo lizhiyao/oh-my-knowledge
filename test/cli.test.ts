@@ -378,6 +378,7 @@ describe('CLI', () => {
       '--lang', 'zh',
     ]);
     assert.ok(stdout.includes('eval dry-run'));
+    assert.ok(stdout.includes('去掉 --dry-run 运行正式评测'));
     assert.ok(stderr.includes('只能识别很大的效果'));
     assert.ok(!stderr.includes('exploration-only'));
   });

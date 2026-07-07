@@ -116,8 +116,8 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '⚠ --bootstrap-samples {n} is large and may take several seconds. 1000 is the industry standard and usually sufficient.\n',
   },
   'cli.run.dry_run_no_scores': {
-    zh: 'eval dry-run：仅预览任务，不检查分数',
-    en: 'Eval dry-run: no scores to check',
+    zh: 'eval dry-run：仅预览任务，不检查分数。下一步：确认任务无误后，去掉 --dry-run 运行正式评测。',
+    en: 'Eval dry-run: no scores checked. Next: remove --dry-run to run the eval.',
   },
   'cli.run.skill_section': {
     zh: '\n=== [{i}/{n}] Skill: {skill} ===\n',

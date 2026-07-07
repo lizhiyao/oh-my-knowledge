@@ -97,6 +97,70 @@ describe('eval connectivity failure hint', () => {
     assert.ok(!hint.includes('--executor codex'), hint);
   });
 
+  it('honors the preflight target before API-key fallback text in mixed runs', () => {
+    const hint = formatConnectivityFailureHint(
+      'preflight failed [codex:gpt-5-codex]: missing OPENAI_API_KEY',
+      {
+        executorName: 'codex',
+        model: 'gpt-5-codex',
+        judgeModels: [{ executor: 'openai-api', model: 'gpt-4o-mini' }],
+        noJudge: false,
+      },
+      'zh',
+    );
+
+    assert.ok(hint.includes('Codex CLI / SDK'), hint);
+    assert.ok(hint.includes('--executor claude --model sonnet'), hint);
+    assert.ok(!hint.includes('当前失败的是 OpenAI API 执行器'), hint);
+  });
+
+  it('suggests OpenAI API key checks for direct executor configuration errors', () => {
+    const hint = formatConnectivityFailureHint(
+      'OPENAI_API_KEY environment variable is not set',
+      {
+        executorName: 'openai-api',
+        model: 'gpt-4o-mini',
+        judgeModels: [{ executor: 'openai-api', model: 'gpt-4o-mini' }],
+        noJudge: false,
+      },
+      'zh',
+    );
+
+    assert.ok(hint.includes('OPENAI_API_KEY'), hint);
+    assert.ok(hint.includes('OPENAI_BASE_URL'), hint);
+  });
+
+  it('suggests Anthropic API key checks for direct executor configuration errors', () => {
+    const hint = formatConnectivityFailureHint(
+      'ANTHROPIC_API_KEY environment variable is not set',
+      {
+        executorName: 'anthropic-api',
+        model: 'claude-sonnet-4-5',
+        judgeModels: [{ executor: 'anthropic-api', model: 'claude-haiku-4-5' }],
+        noJudge: false,
+      },
+      'en',
+    );
+
+    assert.ok(hint.includes('ANTHROPIC_API_KEY'), hint);
+    assert.ok(hint.includes('ANTHROPIC_BASE_URL'), hint);
+  });
+
+  it('does not treat API-key text as connectivity guidance for unrelated runtimes', () => {
+    const hint = formatConnectivityFailureHint(
+      'doctor failed: sample text mentions OPENAI_API_KEY',
+      {
+        executorName: 'claude',
+        model: 'sonnet',
+        judgeModels: [{ executor: 'claude', model: 'haiku' }],
+        noJudge: false,
+      },
+      'zh',
+    );
+
+    assert.equal(hint, '');
+  });
+
   it('suggests only judge flags when a Claude judge fails even if the task executor is custom', () => {
     const hint = formatConnectivityFailureHint(
       'preflight failed [claude:haiku]: auth failed',
