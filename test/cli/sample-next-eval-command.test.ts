@@ -68,6 +68,7 @@ describe('formatSampleGenerationFailureHint', () => {
       'OPENAI_API_KEY environment variable is not set',
       'openai-api',
       'zh',
+      { CODEX_HOME: '/tmp/omk-empty-codex-home-for-tests' },
     );
 
     assert.ok(hint.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), hint);
@@ -80,6 +81,7 @@ describe('formatSampleGenerationFailureHint', () => {
       'generation failed after 3 attempts (JSON invalid): JSON 解析失败',
       'claude',
       'zh',
+      { CODEX_HOME: '/tmp/omk-empty-codex-home-for-tests' },
     );
 
     assert.equal(hint, '');
@@ -90,6 +92,7 @@ describe('formatSampleGenerationFailureHint', () => {
       'OPENAI_API_KEY environment variable is not set',
       './sample-generator.sh',
       'zh',
+      { CODEX_HOME: '/tmp/omk-empty-codex-home-for-tests' },
     );
 
     assert.equal(hint, '');

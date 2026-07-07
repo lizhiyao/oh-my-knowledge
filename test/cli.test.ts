@@ -335,7 +335,7 @@ describe('CLI', () => {
           '--model', 'gpt-4o-mini',
           '--count', '1',
           '--lang', 'zh',
-        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '' } }),
+        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '', CODEX_HOME: join(dir, '.codex-empty') } }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
@@ -375,7 +375,7 @@ describe('CLI', () => {
           '--model', 'gpt-4o-mini',
           '--count', '1',
           '--lang', 'zh',
-        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '' } }),
+        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '', CODEX_HOME: join(dir, '.codex-empty') } }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
@@ -416,7 +416,7 @@ describe('CLI', () => {
           '--skip-doctor',
           '--skip-connectivity',
           '--lang', 'zh',
-        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '' } }),
+        ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '', CODEX_HOME: join(dir, '.codex-empty') } }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);

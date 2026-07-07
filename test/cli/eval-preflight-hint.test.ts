@@ -1,8 +1,22 @@
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { formatConnectivityFailureHint } from '../../src/cli/commands/eval/index.js';
 
+const ORIGINAL_CODEX_HOME = process.env.CODEX_HOME;
+
 describe('eval connectivity failure hint', () => {
+  beforeEach(() => {
+    process.env.CODEX_HOME = '/tmp/omk-empty-codex-home-for-tests';
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_CODEX_HOME === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = ORIGINAL_CODEX_HOME;
+  });
+
   it('suggests Codex flags when default Claude preflight fails', () => {
     const hint = formatConnectivityFailureHint(
       'preflight failed [claude:sonnet]: Failed to authenticate. API Error: 401 Invalid authentication credentials',
@@ -17,6 +31,27 @@ describe('eval connectivity failure hint', () => {
 
     assert.ok(hint.includes('--executor codex --model <codex-model> --judge-models codex:<codex-model>'), hint);
     assert.ok(hint.includes('costUSD'), hint);
+  });
+
+  it('fills Codex fallback flags from local Codex config when available', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-eval-hint-'));
+    await writeFile(join(dir, 'config.toml'), 'model = "gpt-5.5"\n');
+
+    const hint = formatConnectivityFailureHint(
+      'preflight failed [claude:sonnet]: auth failed',
+      {
+        executorName: 'claude',
+        model: 'sonnet',
+        judgeModels: [{ executor: 'claude', model: 'haiku' }],
+        noJudge: false,
+      },
+      'zh',
+      { CODEX_HOME: dir },
+    );
+
+    assert.ok(hint.includes('--executor codex --model gpt-5.5 --judge-models codex:gpt-5.5'), hint);
+    assert.ok(hint.includes('model=gpt-5.5'), hint);
+    assert.ok(!hint.includes('<codex-model>'), hint);
   });
 
   it('omits judge flags when the run has --no-judge', () => {

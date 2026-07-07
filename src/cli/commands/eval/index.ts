@@ -9,6 +9,7 @@ import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseRunConfig, type RunConfig } from '../../lib/parse-run-config.js';
 import { makeOnProgress } from '../../lib/progress.js';
 import { computeRunTally } from '../../lib/run-tally.js';
+import { codexModelFlagValue, codexModelHint } from '../../lib/codex-model-hint.js';
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
@@ -205,6 +206,7 @@ export function formatConnectivityFailureHint(
   message: string,
   config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
   lang: CliLang,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
   const failedTarget = preflightFailedTarget(message);
   if (failedTarget) {
@@ -212,8 +214,10 @@ export function formatConnectivityFailureHint(
     if (matches.length === 0) return '';
 
     if (hasExecutor(matches, CLAUDE_EXECUTORS)) {
+      const codexModel = codexModelFlagValue(env);
       return tCli('cli.run.codex_fallback_hint', lang, {
-        flags: fallbackFlags(matches, 'codex', '<codex-model>', '<codex-model>', shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
+        flags: fallbackFlags(matches, 'codex', codexModel, codexModel, shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
+        codexModelHint: codexModelHint(lang, env),
       });
     }
     if (hasExecutor(matches, CODEX_EXECUTORS)) {
