@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecutor } from '../src/executors/index.js';
@@ -99,6 +99,37 @@ describe('createExecutor', () => {
     } finally {
       process.chdir(prevCwd);
       await rm(baseCwd, { recursive: true, force: true });
+    }
+  });
+
+  it('does not rewrite interpreter module names as local paths', async () => {
+    const baseCwd = await mkdtemp(join(tmpdir(), 'omk-script-executor-module-'));
+    const taskCwd = await mkdtemp(join(tmpdir(), 'omk-script-executor-module-task-'));
+    const prevCwd = process.cwd();
+    try {
+      await mkdir(join(baseCwd, 'my_provider'));
+      const fakePython = join(baseCwd, 'python');
+      await writeFile(fakePython, [
+        '#!/usr/bin/env node',
+        'import { readFileSync } from "node:fs";',
+        'readFileSync(0, "utf8");',
+        'console.log(JSON.stringify({ output: process.argv.slice(2).join("|") }));',
+      ].join('\n'));
+      await chmod(fakePython, 0o755);
+      process.chdir(baseCwd);
+      const executor = createExecutor('./python -m my_provider');
+      const result = await executor({
+        model: 'test',
+        system: '',
+        prompt: 'hello',
+        cwd: taskCwd,
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.output, '-m|my_provider');
+    } finally {
+      process.chdir(prevCwd);
+      await rm(baseCwd, { recursive: true, force: true });
+      await rm(taskCwd, { recursive: true, force: true });
     }
   });
 

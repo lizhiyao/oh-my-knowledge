@@ -15,10 +15,32 @@ import {
 // 让用户知道 strict-baseline / 显式 allowedSkills 在 script executor 下静默无效。
 let scriptIsolationWarned = false;
 
+const SCRIPT_FILE_INTERPRETERS = new Set([
+  'node',
+  'nodejs',
+  'bash',
+  'sh',
+  'zsh',
+  'ruby',
+  'perl',
+  'php',
+  'bun',
+  'deno',
+]);
+
+const SCRIPTLESS_INTERPRETER_FLAGS_WITH_VALUE = new Set(['-m', '-c', '-e', '-p', '--eval', '--print']);
+
 function resolvesBareFileArgs(commandPath: string): boolean {
   const name = basename(commandPath).toLowerCase().replace(/\.(exe|cmd|bat)$/, '');
-  return new Set(['node', 'python', 'python2', 'python3', 'bash', 'sh', 'zsh', 'ruby', 'perl', 'php', 'bun', 'deno'])
-    .has(name);
+  return SCRIPT_FILE_INTERPRETERS.has(name) || /^python(?:\d+(?:\.\d+)*)?$/.test(name);
+}
+
+function isBareScriptFileArg(part: string): boolean {
+  return !part.includes('/') && !part.startsWith('.') && /\.(?:cjs|cts|js|jsx|mjs|mts|php|pl|py|pyw|rb|sh|ts|tsx)$/i.test(part);
+}
+
+function isInlineScriptlessInterpreterFlag(arg: string): boolean {
+  return /^(?:--eval=|--print=|-[mcep].+)/.test(arg);
 }
 
 function resolveExecutorPath(part: string, baseCwd: string, options: { resolveBare?: boolean } = {}): string {
@@ -30,14 +52,42 @@ function resolveExecutorPath(part: string, baseCwd: string, options: { resolveBa
   return existsSync(candidate) ? candidate : part;
 }
 
+function resolveExecutorArgs(args: string[], commandPath: string, baseCwd: string): string[] {
+  if (!resolvesBareFileArgs(commandPath)) return args.map((a) => resolveExecutorPath(a, baseCwd));
+
+  let scriptResolved = false;
+  let scriptPositionClosed = false;
+  let skipNext = false;
+  return args.map((arg) => {
+    if (skipNext) {
+      skipNext = false;
+      return arg;
+    }
+    if (!scriptResolved && !scriptPositionClosed) {
+      if (SCRIPTLESS_INTERPRETER_FLAGS_WITH_VALUE.has(arg)) {
+        skipNext = true;
+        scriptPositionClosed = true;
+        return arg;
+      }
+      if (isInlineScriptlessInterpreterFlag(arg)) {
+        scriptPositionClosed = true;
+        return arg;
+      }
+      if (arg.startsWith('-') && arg !== '--') return arg;
+      if (arg === '--') return arg;
+      scriptResolved = true;
+      return resolveExecutorPath(arg, baseCwd, { resolveBare: isBareScriptFileArg(arg) });
+    }
+    return resolveExecutorPath(arg, baseCwd);
+  });
+}
+
 export function createScriptExecutor(command: string): ExecutorFn {
   const baseCwd = process.cwd();
   const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [command];
   const cmd = resolveExecutorPath(parts[0].replace(/^["']|["']$/g, ''), baseCwd);
-  const resolveBareArgs = resolvesBareFileArgs(cmd);
-  const args = parts.slice(1)
-    .map((a) => a.replace(/^["']|["']$/g, ''))
-    .map((a) => resolveExecutorPath(a, baseCwd, { resolveBare: resolveBareArgs }));
+  const rawArgs = parts.slice(1).map((a) => a.replace(/^["']|["']$/g, ''));
+  const args = resolveExecutorArgs(rawArgs, cmd, baseCwd);
 
   return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
