@@ -7,6 +7,7 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
+import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadSamples, parseYaml, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import {
@@ -136,49 +137,6 @@ function formatIdList(ids: string[]): string {
   const shown = ids.slice(0, 5);
   const suffix = ids.length > shown.length ? ` +${ids.length - shown.length}` : '';
   return shown.join(', ') + suffix;
-}
-
-const CLAUDE_SAMPLE_EXECUTORS = new Set(['claude', 'claude-sdk']);
-const CODEX_SAMPLE_EXECUTORS = new Set(['codex', 'codex-sdk']);
-const OPENAI_API_SAMPLE_EXECUTORS = new Set(['openai-api']);
-const ANTHROPIC_API_SAMPLE_EXECUTORS = new Set(['anthropic-api']);
-
-function looksLikeConnectivityFailure(message: string): boolean {
-  return /auth|login|credential|API[_ ]?KEY|BASE_URL|API error|ENOENT|not found|ECONN|ENOTFOUND|ETIMEDOUT|timeout|timed out|401|403|404/i.test(message);
-}
-
-export function formatSampleGenerationFailureHint(
-  message: string,
-  executorName: string | undefined,
-  lang: CliLang,
-): string {
-  const executor = executorName ?? 'claude';
-  if (!looksLikeConnectivityFailure(message)) return '';
-
-  if (CLAUDE_SAMPLE_EXECUTORS.has(executor)) {
-    return tCli('cli.gen.claude_auth_hint', lang, {
-      codexFlags: '--executor codex --model <codex-model>',
-      openaiFlags: '--executor openai-api --model <openai-model>',
-    });
-  }
-  if (CODEX_SAMPLE_EXECUTORS.has(executor)) {
-    return tCli('cli.gen.codex_auth_hint', lang, {
-      claudeFlags: '--executor claude --model sonnet',
-      openaiFlags: '--executor openai-api --model <openai-model>',
-    });
-  }
-  if (OPENAI_API_SAMPLE_EXECUTORS.has(executor)) {
-    return tCli('cli.gen.openai_api_auth_hint', lang, {
-      claudeFlags: '--executor claude --model sonnet',
-      codexFlags: '--executor codex --model <codex-model>',
-    });
-  }
-  if (ANTHROPIC_API_SAMPLE_EXECUTORS.has(executor)) {
-    return tCli('cli.gen.anthropic_api_auth_hint', lang, {
-      claudeFlags: '--executor claude --model sonnet',
-    });
-  }
-  return '';
 }
 
 // 下面 3 个 helper 在 sample-fix.test.ts 单测内 in-process import 验证 fix 逻辑。
