@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { basename, isAbsolute, resolve } from 'node:path';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
 import {
@@ -15,9 +15,17 @@ import {
 // 让用户知道 strict-baseline / 显式 allowedSkills 在 script executor 下静默无效。
 let scriptIsolationWarned = false;
 
-function resolveExecutorPath(part: string, baseCwd: string): string {
+function resolvesBareFileArgs(commandPath: string): boolean {
+  const name = basename(commandPath).toLowerCase().replace(/\.(exe|cmd|bat)$/, '');
+  return new Set(['node', 'python', 'python2', 'python3', 'bash', 'sh', 'zsh', 'ruby', 'perl', 'php', 'bun', 'deno'])
+    .has(name);
+}
+
+function resolveExecutorPath(part: string, baseCwd: string, options: { resolveBare?: boolean } = {}): string {
   if (isAbsolute(part)) return part;
-  if (!part.includes('/') && !part.startsWith('.')) return part;
+  if (part.startsWith('-')) return part;
+  const pathLike = part.includes('/') || part.startsWith('.');
+  if (!pathLike && !options.resolveBare) return part;
   const candidate = resolve(baseCwd, part);
   return existsSync(candidate) ? candidate : part;
 }
@@ -26,9 +34,10 @@ export function createScriptExecutor(command: string): ExecutorFn {
   const baseCwd = process.cwd();
   const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [command];
   const cmd = resolveExecutorPath(parts[0].replace(/^["']|["']$/g, ''), baseCwd);
+  const resolveBareArgs = resolvesBareFileArgs(cmd);
   const args = parts.slice(1)
     .map((a) => a.replace(/^["']|["']$/g, ''))
-    .map((a) => resolveExecutorPath(a, baseCwd));
+    .map((a) => resolveExecutorPath(a, baseCwd, { resolveBare: resolveBareArgs }));
 
   return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
