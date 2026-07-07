@@ -20,18 +20,21 @@
 ```bash
 npm i -g oh-my-knowledge
 omk init demo && cd demo
+omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件，`omk eval` 跑控制变量 A/B，约 5 分钟出 HTML 报告 + 一行 verdict；跑通后再把 skill 和用例换成你自己的。
+开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览调用次数和成本；`omk eval` 跑控制变量 A/B，约 5 分钟出 HTML 报告 + 一行 verdict。跑通后再把 skill 和用例换成你自己的。
 
 前置：默认执行器与评委用 `claude` CLI，需先安装并登录（见[系统要求](#系统要求)）；想用别的模型或离线跑（无需 API key）见[执行器](docs/zh/reference/executors.md)。
+
+Codex 或 OpenAI 兼容 API 用户可以继续用同一条流程，只是加 runtime 参数，例如 `--executor codex --model <codex-model> --judge-models codex:<codex-model>`，或 `--executor openai-api --model <model> --judge-models openai-api:<model>`。
 
 > 首跑只有 3 条用例，verdict 多半是「数据不足（UNDERPOWERED）」——这是正常起点而非出错；把用例加到约 20 条以上，再看「可发布」结论。
 
 > 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
 
-手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户）。更多可跑示例（Skill Map、A/B、离线执行器、agent runtime、RAG）见仓库的[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)。
+手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户，覆盖 demo → 自己的 skill → verdict 动作）。更多可跑示例（Skill Map、A/B、离线执行器、agent runtime、RAG）见仓库的[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)。
 
 深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [artifact 布局](docs/zh/reference/artifact-layout.md)
 

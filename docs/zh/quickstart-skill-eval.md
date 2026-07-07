@@ -1,6 +1,6 @@
-# omk 快速上手：给 skill 跑评测
+# omk 快速上手：跑出第一份 verdict
 
-5 分钟跑出第一份报告。目标读者：手里有一版（或几版）skill，想用数据看看「这版 skill 到底好不好」「v1 跟 v2 哪版更稳」。
+5 分钟跑出第一份报告，然后把 demo 换成你自己的 skill。目标读者：手里有一版（或几版）skill，想用数据看看「这版 skill 到底好不好」「v2 有没有变好」「能不能带证据发布」。
 
 ## 前置（1 分钟）
 
@@ -9,6 +9,8 @@ npm i oh-my-knowledge -g
 omk --version    # 能输出版本号即装好
 ```
 
+默认 runtime 使用 `claude` CLI 作为执行器和评委，所以需要先安装并登录 Claude Code。如果你在 Codex 或 OpenAI 兼容 API 环境里，也可以继续往下看，首跑命令里会标出 runtime 参数怎么替换。
+
 如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk Agent Skill 装到你的 agent 工具里：
 
 ```bash
@@ -16,6 +18,37 @@ omk install omk-agent-skill
 ```
 
 默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+
+## 最快首跑：先用 demo 脚手架
+
+如果你第一次用 omk，先不要急着接自己的文件，从这里开始：
+
+```bash
+omk init demo
+cd demo
+omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
+omk eval --control code-review-v1 --treatment code-review-v2
+```
+
+`omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览任务计划和预估调用次数；真跑后会打开 HTML 报告。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
+
+如果默认 Claude runtime 不可用，同一套 demo 可以加 runtime 参数：
+
+```bash
+# Codex CLI / SDK 路径
+omk eval --control code-review-v1 --treatment code-review-v2 \
+  --executor codex --model <codex-model> \
+  --judge-models codex:<codex-model>
+
+# OpenAI 兼容 API 路径
+export OPENAI_API_KEY="..."
+export OPENAI_BASE_URL="https://api.example.com/v1"
+omk eval --control code-review-v1 --treatment code-review-v2 \
+  --executor openai-api --model <model> \
+  --judge-models openai-api:<model>
+```
+
+Codex 的 `<codex-model>` 要换成本机 Codex 可用模型；可查看 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里的 `model`。OpenAI 兼容 API 则要确认模型名和 `OPENAI_BASE_URL` 指向的端点匹配。
 
 ## 准备 skill（1 分钟）
 
@@ -41,15 +74,15 @@ skills/
 
 两种形式 omk 都能识别，混用也行。要跑 v1 vs v2 对比就按上面放两版；只想看「有 skill vs 没 skill」的差距，放一份就够，用 baseline 对照。
 
-## 跑评测（3 分钟）
+## 把 demo 换成你自己的 skill
 
 ### 路径 A：自然语言（推荐）
 
-打开 Claude Code，进入项目目录，直接说一句话：
+打开你的 coding agent，进入项目目录，直接说一句话：
 
 > 用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2
 
-omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例，然后跑评测，最后把报告浏览器弹出来。常见说法：
+omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例，然后跑评测，最后把报告浏览器弹出来。Claude Code 可以直接使用已安装的 omk skill；在 Codex 里则让 agent 执行 `omk` CLI。常见说法：
 
 - 「用 omk 对比 skills/my-skill-v1 跟 skills/my-skill-v2」
 - 「用 omk 给 skills/audit 跑 baseline 对照（有 skill vs 没 skill）」
@@ -58,6 +91,16 @@ omk skill 会自动判断：没有 `eval-samples.json` 就先帮你生成用例�
 
 ### 路径 B：直接命令行
 
+如果你只有一版 skill，最短有用对比是「有这个 skill」vs `baseline`：
+
+```bash
+omk sample skills/my-skill.md                         # 第一次：让 AI 给你的 skill 生成评测用例
+omk eval --control baseline --treatment my-skill --dry-run
+omk eval --control baseline --treatment my-skill
+```
+
+如果你已经有 v1 / v2 两版，再做版本对比：
+
 ```bash
 omk sample skills/my-skill-v2.md                                  # 第一次:让 AI 给你的 skill 生成评测用例
 omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run  # 预览要跑什么
@@ -65,9 +108,18 @@ omk eval --control my-skill-v1 --treatment my-skill-v2            # 真跑
 omk studio                                                        # 启动报告浏览器
 ```
 
-variant 名来自 `skills/` 下的 skill 文件名或目录名；按上面的布局，就是 `my-skill-v1` 和 `my-skill-v2`。
+variant 名来自 `skills/` 下的 skill 文件名或目录名；`skills/my-skill.md` 对应 `my-skill`，上面的 v1 / v2 布局对应 `my-skill-v1` 和 `my-skill-v2`。
 
 `--dry-run` 预览时会告诉你预估调用次数和成本，确认 OK 再去掉 flag 真跑。`omk eval` 默认会先跑一次 doctor 健康度检查当门禁，发现 skill 写法有大问题就直接拦下来；如果你确认知道自己在干嘛，加 `--skip-doctor` 绕过。
+
+### 模型或执行器失败时
+
+CLI 会尽量把首跑失败变成可执行的下一步：
+
+- Claude 失败：先登录 Claude Code，或按上面的参数切到 Codex / OpenAI API。
+- Codex 模型失败：换成 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里配置的模型，再用 `codex exec -m <codex-model> "hi"` 验证。
+- OpenAI / Anthropic API 模型失败：检查 `--model`、`--judge-models`、base URL，以及账号是否有该模型权限。
+- 如果只是想先验证断言和报告链路，加 `--no-judge`；它会跳过 LLM 评委，只使用断言分数。
 
 ## 看结果（1 分钟）
 
