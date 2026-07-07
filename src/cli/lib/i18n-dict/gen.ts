@@ -19,6 +19,7 @@ export type GenMessageKey =
   | 'cli.gen.review_hint'
   | 'cli.gen.claude_auth_hint'
   | 'cli.gen.codex_auth_hint'
+  | 'cli.gen.codex_model_hint'
   | 'cli.gen.openai_api_auth_hint'
   | 'cli.gen.anthropic_api_auth_hint'
   | 'cli.gen.failed'
@@ -90,16 +91,20 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: '\nNext steps:\n  1. Review the generated samples; drop weak cases and add boundary / counterexamples\n  2. Preview the task plan: {command} --dry-run\n  3. Run the eval: {command}',
   },
   'cli.gen.claude_auth_hint': {
-    zh: '\n提示：当前 sample 生成使用 Claude 系列执行器。先确认 Claude Code 已安装并完成登录；如果你在 Codex 环境里，可以改用：{codexFlags}；如果要走 OpenAI API，可以改用：{openaiFlags}，并设置 OPENAI_API_KEY。',
-    en: '\nHint: sample generation is using a Claude-based executor. First confirm Claude Code is installed and authenticated; in a Codex environment, switch to: {codexFlags}; to use the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY.',
+    zh: '\n提示：当前 sample 生成使用 Claude 系列执行器。先确认 Claude Code 已安装并完成登录；如果你在 Codex 环境里，可以改用：{codexFlags}（{codexModelHint}）；如果要走 OpenAI API，可以改用：{openaiFlags}，并设置 OPENAI_API_KEY。',
+    en: '\nHint: sample generation is using a Claude-based executor. First confirm Claude Code is installed and authenticated; in a Codex environment, switch to: {codexFlags} ({codexModelHint}); to use the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY.',
   },
   'cli.gen.codex_auth_hint': {
     zh: '\n提示：当前 sample 生成使用 Codex 系列执行器。先确认 Codex CLI / SDK 已安装并完成登录；如果你有 Claude Code 可用，可以改用：{claudeFlags}；如果要走 OpenAI API，可以改用：{openaiFlags}，并设置 OPENAI_API_KEY。',
     en: '\nHint: sample generation is using a Codex-based executor. First confirm the Codex CLI / SDK is installed and authenticated; if Claude Code is available, switch to: {claudeFlags}; to use the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY.',
   },
+  'cli.gen.codex_model_hint': {
+    zh: '\n提示：当前 sample 生成使用 Codex 系列执行器，但模型名看起来不可用。可以先按本机 Codex 配置重试：{codexFlags}（{codexModelHint}）；也可以先运行 `{codexExec}` 验证模型是否可用。若只是想先跑通，可以改用：{claudeFlags}；或走 OpenAI API：{openaiFlags}，并设置 OPENAI_API_KEY。',
+    en: '\nHint: sample generation is using a Codex-based executor, but the model name appears unavailable. Retry with the local Codex config model: {codexFlags} ({codexModelHint}); you can also run `{codexExec}` to verify the model. To just get a first run through, switch to: {claudeFlags}; or use the OpenAI API path: {openaiFlags}, and set OPENAI_API_KEY.',
+  },
   'cli.gen.openai_api_auth_hint': {
-    zh: '\n提示：当前 sample 生成使用 OpenAI API 执行器。请检查 OPENAI_API_KEY / OPENAI_BASE_URL 是否可用，并确认模型名对当前端点可用；如果只是想先跑通，也可以改用：{claudeFlags}，或：{codexFlags}。',
-    en: '\nHint: sample generation is using the OpenAI API executor. Check OPENAI_API_KEY / OPENAI_BASE_URL and confirm the model is available on that endpoint; to just get a first run through, you can also switch to: {claudeFlags}, or: {codexFlags}.',
+    zh: '\n提示：当前 sample 生成使用 OpenAI API 执行器。请检查 OPENAI_API_KEY / OPENAI_BASE_URL 是否可用，并确认模型名对当前端点可用；如果只是想先跑通，也可以改用：{claudeFlags}，或：{codexFlags}（{codexModelHint}）。',
+    en: '\nHint: sample generation is using the OpenAI API executor. Check OPENAI_API_KEY / OPENAI_BASE_URL and confirm the model is available on that endpoint; to just get a first run through, you can also switch to: {claudeFlags}, or: {codexFlags} ({codexModelHint}).',
   },
   'cli.gen.anthropic_api_auth_hint': {
     zh: '\n提示：当前 sample 生成使用 Anthropic API 执行器。请检查 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL 是否可用，并确认模型名对当前端点可用；如果你有 Claude Code 可用，也可以改用：{claudeFlags}。',

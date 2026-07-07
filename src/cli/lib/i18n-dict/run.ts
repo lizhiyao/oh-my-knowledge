@@ -204,8 +204,8 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '\n⚠ {warning}\n',
   },
   'cli.run.codex_fallback_hint': {
-    zh: '\n提示：当前失败的是 Claude 系列执行器。先确认 Claude Code 已登录；如果你在 Codex 环境里，也可以把模型运行参数改为：{flags}。把 <codex-model> 换成本机 Codex 可用的模型；codex 执行器目前不会报告 costUSD。',
-    en: '\nHint: the failing runtime is Claude-based. First confirm Claude Code is authenticated; in a Codex environment, you can also switch the model runtime flags to: {flags}. Replace <codex-model> with a model your local Codex can run; the codex executor does not report costUSD yet.',
+    zh: '\n提示：当前失败的是 Claude 系列执行器。先确认 Claude Code 已登录；如果你在 Codex 环境里，也可以把模型运行参数改为：{flags}。{codexModelHint}codex 执行器目前不会报告 costUSD。',
+    en: '\nHint: the failing runtime is Claude-based. First confirm Claude Code is authenticated; in a Codex environment, you can also switch the model runtime flags to: {flags}. {codexModelHint} The codex executor does not report costUSD yet.',
   },
   'cli.run.codex_auth_hint': {
     zh: '\n提示：当前失败的是 Codex 系列执行器。先确认 Codex CLI / SDK 已安装并完成登录；如果你有 Claude Code 可用，可以改走 Claude：{claudeFlags}；如果要继续走 OpenAI API，可以改为：{openaiFlags}，并设置 OPENAI_API_KEY。openai-api 会按 API 响应记录 token / cost。',
