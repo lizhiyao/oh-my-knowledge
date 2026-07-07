@@ -53,7 +53,7 @@ describe('eval connectivity failure hint', () => {
 
   it('does not suggest Codex for non-Claude executor failures', () => {
     const hint = formatConnectivityFailureHint(
-      'preflight failed [./my-executor.sh:sonnet]: custom executor failed',
+      'preflight failed [custom:sonnet]: custom executor failed',
       {
         executorName: './my-executor.sh',
         model: 'sonnet',

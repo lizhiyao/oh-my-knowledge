@@ -23,7 +23,7 @@
  */
 
 import { aggregateReport, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
-import { executeTasks, preflight, preflightAllJudges } from '../eval-core/evaluation-execution.js';
+import { executeTasks, preflight, preflightAllJudges, preflightRuntimeLabel } from '../eval-core/evaluation-execution.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import { stopAllServers } from '../inputs/mcp-resolver.js';
 import type {
@@ -223,7 +223,7 @@ export async function executeEvaluationPipeline({
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
       // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
       // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
-      await preflight(executor, model, undefined, `${executorName}:${model}`);
+      await preflight(executor, model, undefined, preflightRuntimeLabel(executorName, model));
       if (!noJudge) {
         await preflightAllJudges(resolvedJudgeModels, resolvedJudgeExecutors);
       }

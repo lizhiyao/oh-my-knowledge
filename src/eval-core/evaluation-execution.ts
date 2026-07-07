@@ -18,6 +18,16 @@ import type {
   VariantResult,
 } from '../types/index.js';
 
+const PREFLIGHT_RUNTIME_LABEL_EXECUTORS = new Set([
+  'claude',
+  'claude-sdk',
+  'codex',
+  'codex-sdk',
+  'gemini',
+  'anthropic-api',
+  'openai-api',
+]);
+
 export interface ExecuteTasksOptions {
   tasks: Task[];
   executor: ExecutorFn;
@@ -397,6 +407,10 @@ export async function executeTasks({
   return { results, totalCostUSD, skipped, budgetExhausted };
 }
 
+export function preflightRuntimeLabel(executorName: string, model: string): string {
+  return PREFLIGHT_RUNTIME_LABEL_EXECUTORS.has(executorName) ? `${executorName}:${model}` : `custom:${model}`;
+}
+
 export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 180000, label?: string): Promise<void> {
   const result = await executor({
     model,
@@ -436,6 +450,6 @@ export async function preflightAllJudges(
     if (!exec) {
       throw new Error(`preflight: no executor registered for "${jc.executor}" (judge "${key}"); pipeline must populate judgeExecutors before preflight`);
     }
-    await preflight(exec, jc.model, timeoutMs, key);
+    await preflight(exec, jc.model, timeoutMs, preflightRuntimeLabel(jc.executor, jc.model));
   }
 }
