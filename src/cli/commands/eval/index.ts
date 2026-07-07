@@ -10,6 +10,7 @@ import { parseRunConfig, type RunConfig } from '../../lib/parse-run-config.js';
 import { makeOnProgress } from '../../lib/progress.js';
 import { computeRunTally } from '../../lib/run-tally.js';
 import { codexModelFlagValue, codexModelHint } from '../../lib/codex-model-hint.js';
+import { looksLikeModelUnavailableFailure } from '../../lib/llm-failure-classifier.js';
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
@@ -221,13 +222,27 @@ export function formatConnectivityFailureHint(
       });
     }
     if (hasExecutor(matches, CODEX_EXECUTORS)) {
+      if (looksLikeModelUnavailableFailure(message)) {
+        const codexModel = codexModelFlagValue(env);
+        return tCli('cli.run.codex_model_hint', lang, {
+          codexFlags: fallbackFlags(matches, 'codex', codexModel, codexModel, shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+          codexExec: `codex exec -m ${codexModel} "hi"`,
+          claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+          openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+          codexModelHint: codexModelHint(lang, env),
+        });
+      }
       return tCli('cli.run.codex_auth_hint', lang, {
         claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
         openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
       });
     }
-    if (hasExecutor(matches, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
-    if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
+    if (hasExecutor(matches, OPENAI_API_EXECUTORS)) {
+      return tCli(looksLikeModelUnavailableFailure(message) ? 'cli.run.openai_api_model_hint' : 'cli.run.openai_api_auth_hint', lang);
+    }
+    if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) {
+      return tCli(looksLikeModelUnavailableFailure(message) ? 'cli.run.anthropic_api_model_hint' : 'cli.run.anthropic_api_auth_hint', lang);
+    }
     return '';
   }
 

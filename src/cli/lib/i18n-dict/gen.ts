@@ -21,7 +21,9 @@ export type GenMessageKey =
   | 'cli.gen.codex_auth_hint'
   | 'cli.gen.codex_model_hint'
   | 'cli.gen.openai_api_auth_hint'
+  | 'cli.gen.openai_api_model_hint'
   | 'cli.gen.anthropic_api_auth_hint'
+  | 'cli.gen.anthropic_api_model_hint'
   | 'cli.gen.failed'
   | 'cli.gen.focus_applied';
 
@@ -106,9 +108,17 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     zh: '\n提示：当前 sample 生成使用 OpenAI API 执行器。请检查 OPENAI_API_KEY / OPENAI_BASE_URL 是否可用，并确认模型名对当前端点可用；如果只是想先跑通，也可以改用：{claudeFlags}，或：{codexFlags}（{codexModelHint}）。',
     en: '\nHint: sample generation is using the OpenAI API executor. Check OPENAI_API_KEY / OPENAI_BASE_URL and confirm the model is available on that endpoint; to just get a first run through, you can also switch to: {claudeFlags}, or: {codexFlags} ({codexModelHint}).',
   },
+  'cli.gen.openai_api_model_hint': {
+    zh: '\n提示：当前 sample 生成使用 OpenAI API 执行器，但模型名看起来对当前端点不可用。请检查 --model、OPENAI_BASE_URL 与账号权限是否匹配；如果只是想先跑通，也可以改用：{claudeFlags}，或：{codexFlags}（{codexModelHint}）。',
+    en: '\nHint: sample generation is using the OpenAI API executor, but the model name appears unavailable on the current endpoint. Check --model, OPENAI_BASE_URL, and account access; to just get a first run through, you can also switch to: {claudeFlags}, or: {codexFlags} ({codexModelHint}).',
+  },
   'cli.gen.anthropic_api_auth_hint': {
     zh: '\n提示：当前 sample 生成使用 Anthropic API 执行器。请检查 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL 是否可用，并确认模型名对当前端点可用；如果你有 Claude Code 可用，也可以改用：{claudeFlags}。',
     en: '\nHint: sample generation is using the Anthropic API executor. Check ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL and confirm the model is available on that endpoint; if Claude Code is available, you can also switch to: {claudeFlags}.',
+  },
+  'cli.gen.anthropic_api_model_hint': {
+    zh: '\n提示：当前 sample 生成使用 Anthropic API 执行器，但模型名看起来对当前端点不可用。请检查 --model、ANTHROPIC_BASE_URL 与账号权限是否匹配；如果你有 Claude Code 可用，也可以改用：{claudeFlags}。',
+    en: '\nHint: sample generation is using the Anthropic API executor, but the model name appears unavailable on the current endpoint. Check --model, ANTHROPIC_BASE_URL, and account access; if Claude Code is available, you can also switch to: {claudeFlags}.',
   },
   'cli.gen.failed': {
     zh: '生成失败: {message}',

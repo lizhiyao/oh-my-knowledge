@@ -165,6 +165,23 @@ describe('eval connectivity failure hint', () => {
     assert.ok(hint.includes('OPENAI_BASE_URL'), hint);
   });
 
+  it('suggests OpenAI API model checks for preflight model failures', () => {
+    const hint = formatConnectivityFailureHint(
+      'preflight failed [openai-api:gpt-5]: invalid_request_error: The model `gpt-5` does not exist or you do not have access to it.',
+      {
+        executorName: 'openai-api',
+        model: 'gpt-5',
+        judgeModels: [{ executor: 'openai-api', model: 'gpt-5' }],
+        noJudge: false,
+      },
+      'zh',
+    );
+
+    assert.ok(hint.includes('模型名看起来对当前端点不可用'), hint);
+    assert.ok(hint.includes('--model / --judge-models、OPENAI_BASE_URL 与账号权限'), hint);
+    assert.ok(!hint.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), hint);
+  });
+
   it('suggests Anthropic API key checks for direct executor configuration errors', () => {
     const hint = formatConnectivityFailureHint(
       'ANTHROPIC_API_KEY environment variable is not set',
@@ -179,6 +196,45 @@ describe('eval connectivity failure hint', () => {
 
     assert.ok(hint.includes('ANTHROPIC_API_KEY'), hint);
     assert.ok(hint.includes('ANTHROPIC_BASE_URL'), hint);
+  });
+
+  it('suggests Anthropic API model checks for preflight model failures', () => {
+    const hint = formatConnectivityFailureHint(
+      'preflight failed [anthropic-api:claude-unknown]: unsupported model: claude-unknown is not available for this account',
+      {
+        executorName: 'anthropic-api',
+        model: 'claude-unknown',
+        judgeModels: [{ executor: 'anthropic-api', model: 'claude-unknown' }],
+        noJudge: false,
+      },
+      'zh',
+    );
+
+    assert.ok(hint.includes('模型名看起来对当前端点不可用'), hint);
+    assert.ok(hint.includes('--model / --judge-models、ANTHROPIC_BASE_URL 与账号权限'), hint);
+    assert.ok(!hint.includes('ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL'), hint);
+  });
+
+  it('suggests local Codex model checks for preflight model failures', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-model-eval-hint-'));
+    await writeFile(join(dir, 'config.toml'), 'model = "gpt-5.5"\n');
+
+    const hint = formatConnectivityFailureHint(
+      'preflight failed [codex:gpt-5]: invalid_request_error: The model `gpt-5` is not supported when using Codex with a ChatGPT account.',
+      {
+        executorName: 'codex',
+        model: 'gpt-5',
+        judgeModels: [{ executor: 'codex', model: 'gpt-5' }],
+        noJudge: false,
+      },
+      'zh',
+      { CODEX_HOME: dir },
+    );
+
+    assert.ok(hint.includes('模型名看起来不可用'), hint);
+    assert.ok(hint.includes('--executor codex --model gpt-5.5 --judge-models codex:gpt-5.5'), hint);
+    assert.ok(hint.includes('codex exec -m gpt-5.5 "hi"'), hint);
+    assert.ok(!hint.includes('先确认 Codex CLI / SDK 已安装并完成登录'), hint);
   });
 
   it('does not treat API-key text as connectivity guidance for unrelated runtimes', () => {
