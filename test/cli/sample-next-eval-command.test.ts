@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { sampleNextEvalCommand } from '../../src/cli/commands/sample.js';
+import { formatSampleGenerationFailureHint, sampleNextEvalCommand } from '../../src/cli/commands/sample.js';
 import { tCli } from '../../src/cli/lib/i18n.js';
 
 describe('sampleNextEvalCommand', () => {
@@ -58,5 +58,39 @@ describe('sampleNextEvalCommand', () => {
     const en = tCli('cli.gen.review_hint', 'en', { command });
     assert.match(en, /Preview the task plan: omk eval --control baseline --treatment 'skills\/review skill' --dry-run/);
     assert.match(en, /Run the eval: omk eval --control baseline --treatment 'skills\/review skill'/);
+  });
+});
+
+describe('formatSampleGenerationFailureHint', () => {
+  it('adds API-key guidance for OpenAI API sample generation failures', () => {
+    const hint = formatSampleGenerationFailureHint(
+      'OPENAI_API_KEY environment variable is not set',
+      'openai-api',
+      'zh',
+    );
+
+    assert.ok(hint.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), hint);
+    assert.ok(hint.includes('--executor claude --model sonnet'), hint);
+    assert.ok(hint.includes('--executor codex --model <codex-model>'), hint);
+  });
+
+  it('does not misclassify model-output JSON errors as auth failures', () => {
+    const hint = formatSampleGenerationFailureHint(
+      'generation failed after 3 attempts (JSON invalid): JSON 解析失败',
+      'claude',
+      'zh',
+    );
+
+    assert.equal(hint, '');
+  });
+
+  it('does not add vendor guidance for custom script executors', () => {
+    const hint = formatSampleGenerationFailureHint(
+      'OPENAI_API_KEY environment variable is not set',
+      './sample-generator.sh',
+      'zh',
+    );
+
+    assert.equal(hint, '');
   });
 });
