@@ -171,6 +171,14 @@ function hasExecutor(matches: PreflightRuntimeMatch[], executors: Set<string>): 
   return matches.some((match) => executors.has(match.executor));
 }
 
+function configHasExecutor(
+  config: Pick<RunConfig, 'executorName' | 'judgeModels' | 'noJudge'>,
+  executors: Set<string>,
+): boolean {
+  if (config.executorName && executors.has(config.executorName)) return true;
+  return !config.noJudge && config.judgeModels.some((judge) => executors.has(judge.executor));
+}
+
 function shouldSwitchJudgeWithTask(
   config: Pick<RunConfig, 'judgeModels' | 'noJudge'>,
   executors: Set<string>,
@@ -198,6 +206,9 @@ export function formatConnectivityFailureHint(
   config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
   lang: CliLang,
 ): string {
+  if (message.includes('OPENAI_API_KEY') && configHasExecutor(config, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
+  if (message.includes('ANTHROPIC_API_KEY') && configHasExecutor(config, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
+
   const failedTarget = preflightFailedTarget(message);
   if (!failedTarget) return '';
   const matches = matchingPreflightRuntimes(config, failedTarget);
