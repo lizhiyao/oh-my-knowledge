@@ -40,6 +40,10 @@ export type RunMessageKey =
   | 'cli.run.gold_load_failed'
   | 'cli.run.gold_load_issue'
   | 'cli.run.contamination_warning'
+  | 'cli.run.codex_fallback_hint'
+  | 'cli.run.codex_auth_hint'
+  | 'cli.run.openai_api_auth_hint'
+  | 'cli.run.anthropic_api_auth_hint'
   | 'cli.run.skip_connectivity_warning';
 
 export const runDict: Record<RunMessageKey, CliMessage> = {
@@ -198,6 +202,22 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.contamination_warning': {
     zh: '\n⚠ {warning}\n',
     en: '\n⚠ {warning}\n',
+  },
+  'cli.run.codex_fallback_hint': {
+    zh: '\n提示：当前失败的是 Claude 系列执行器。先确认 Claude Code 已登录；如果你在 Codex 环境里，也可以把模型运行参数改为：{flags}。把 <codex-model> 换成本机 Codex 可用的模型；codex 执行器目前不会报告 costUSD。',
+    en: '\nHint: the failing runtime is Claude-based. First confirm Claude Code is authenticated; in a Codex environment, you can also switch the model runtime flags to: {flags}. Replace <codex-model> with a model your local Codex can run; the codex executor does not report costUSD yet.',
+  },
+  'cli.run.codex_auth_hint': {
+    zh: '\n提示：当前失败的是 Codex 系列执行器。先确认 Codex CLI / SDK 已安装并完成登录；如果你有 Claude Code 可用，可以改走 Claude：{claudeFlags}；如果要继续走 OpenAI API，可以改为：{openaiFlags}，并设置 OPENAI_API_KEY。openai-api 会按 API 响应记录 token / cost。',
+    en: '\nHint: the failing runtime is Codex-based. First confirm the Codex CLI / SDK is installed and authenticated; if Claude Code is available, switch to Claude: {claudeFlags}; to stay on the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY. openai-api records token / cost from API responses.',
+  },
+  'cli.run.openai_api_auth_hint': {
+    zh: '\n提示：当前失败的是 OpenAI API 执行器。请检查 OPENAI_API_KEY / OPENAI_BASE_URL 是否可用，并确认模型名对当前端点可用。',
+    en: '\nHint: the failing runtime is the OpenAI API executor. Check OPENAI_API_KEY / OPENAI_BASE_URL and confirm the model is available on that endpoint.',
+  },
+  'cli.run.anthropic_api_auth_hint': {
+    zh: '\n提示：当前失败的是 Anthropic API 执行器。请检查 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL 是否可用，并确认模型名对当前端点可用。',
+    en: '\nHint: the failing runtime is the Anthropic API executor. Check ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL and confirm the model is available on that endpoint.',
   },
   'cli.run.skip_connectivity_warning': {
     zh: '⚠️  --skip-connectivity 已启用: 跳过 LLM 模型连通性检测。请确保 executor / judge 已通过其他方式验证可达。',

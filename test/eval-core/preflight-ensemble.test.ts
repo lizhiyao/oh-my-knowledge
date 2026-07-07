@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { preflightAllJudges } from '../../src/eval-core/evaluation-execution.js';
+import { preflight, preflightAllJudges, preflightRuntimeLabel } from '../../src/eval-core/evaluation-execution.js';
 import type { ExecResult, ExecutorFn, JudgeConfig } from '../../src/types/index.js';
 
 const okResult: ExecResult = {
@@ -32,6 +32,41 @@ function failingExecutor(name: string, calls: string[]): ExecutorFn {
 }
 
 describe('preflightAllJudges', () => {
+  it('keeps built-in executor names in runtime labels', () => {
+    assert.equal(preflightRuntimeLabel('codex', 'gpt-5-codex'), 'codex:gpt-5-codex');
+  });
+
+  it('uses a generic label for custom executor commands', () => {
+    assert.equal(preflightRuntimeLabel('TOKEN=secret ./judge.sh', 'local-model'), 'custom:local-model');
+  });
+
+  it('includes the explicit runtime label in preflight errors', async () => {
+    const calls: string[] = [];
+    await assert.rejects(
+      () => preflight(failingExecutor('exec-task', calls), 'shared-model', 5000, 'codex:shared-model'),
+      /preflight failed \[codex:shared-model\]: auth failed/,
+    );
+  });
+
+  it('does not leak custom judge executor commands in preflight errors', async () => {
+    const calls: string[] = [];
+    const executorName = 'TOKEN=secret ./judge.sh';
+
+    await assert.rejects(
+      () => preflightAllJudges(
+        [{ executor: executorName, model: 'local-judge' }],
+        { [executorName]: failingExecutor('custom-judge', calls) },
+      ),
+      (error: unknown) => {
+        const message = (error as Error).message;
+        assert.match(message, /preflight failed \[custom:local-judge\]: auth failed/);
+        assert.doesNotMatch(message, /TOKEN=secret/);
+        assert.doesNotMatch(message, /judge\.sh/);
+        return true;
+      },
+    );
+  });
+
   it('preflights every unique (executor, model) judge in an ensemble', async () => {
     const calls: string[] = [];
     const judgeExecutors = {
@@ -71,24 +106,24 @@ describe('preflightAllJudges', () => {
   it('throws fail-fast when any judge fails preflight (does not silently continue)', async () => {
     const calls: string[] = [];
     const judgeExecutors = {
-      'exec-a': trackingExecutor('exec-a', calls),
-      'exec-bad': failingExecutor('exec-bad', calls),
+      claude: trackingExecutor('claude', calls),
+      'openai-api': failingExecutor('openai-api', calls),
     };
 
     await assert.rejects(
       () => preflightAllJudges(
         [
-          { executor: 'exec-a', model: 'm-ok' },
-          { executor: 'exec-bad', model: 'm-fail' },
-          { executor: 'exec-a', model: 'm-after-fail' },
+          { executor: 'claude', model: 'm-ok' },
+          { executor: 'openai-api', model: 'm-fail' },
+          { executor: 'claude', model: 'm-after-fail' },
         ],
         judgeExecutors,
       ),
-      /preflight failed/,
+      /preflight failed \[openai-api:m-fail\]: auth failed/,
     );
 
     // m-ok 通过 → 然后 m-fail 抛错 → m-after-fail 不被探测(fail-fast)。
-    assert.deepEqual(calls, ['exec-a:m-ok', 'exec-bad:m-fail']);
+    assert.deepEqual(calls, ['claude:m-ok', 'openai-api:m-fail']);
   });
 
   it('throws when judge entry references an executor missing from the map', async () => {

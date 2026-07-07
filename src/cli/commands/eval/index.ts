@@ -6,7 +6,7 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../../oclif/parsers.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
-import { parseRunConfig } from '../../lib/parse-run-config.js';
+import { parseRunConfig, type RunConfig } from '../../lib/parse-run-config.js';
 import { makeOnProgress } from '../../lib/progress.js';
 import { computeRunTally } from '../../lib/run-tally.js';
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
@@ -43,11 +43,21 @@ interface RepeatProgressInfo {
 
 type ParsedValues = Record<string, string | boolean | undefined>;
 
+const CLAUDE_EXECUTORS = new Set(['claude', 'claude-sdk']);
+const CODEX_EXECUTORS = new Set(['codex', 'codex-sdk']);
+const OPENAI_API_EXECUTORS = new Set(['openai-api']);
+const ANTHROPIC_API_EXECUTORS = new Set(['anthropic-api']);
+
 interface RecordedEvidenceForPrompt {
   name: string;
   variant: string;
   bound: boolean;
 }
+
+type PreflightRuntimeMatch = {
+  executor: string;
+  role: 'task' | 'judge';
+};
 
 function isDryRunReport(report: unknown): report is DryRunReport {
   return Boolean(report && typeof report === 'object' && (report as { dryRun?: unknown }).dryRun === true);
@@ -127,6 +137,86 @@ function emitVerdictText(text: string): void {
   // 与 console.log 等价(对单个字符串 = write(text + '\n')),只切换目标流,逐字节保留既有文案。
   const stream = process.stdout.isTTY ? process.stdout : process.stderr;
   stream.write(text + '\n');
+}
+
+function preflightFailedTarget(message: string): string | null {
+  return message.match(/(^|\n)preflight failed \[([^\]]+)\]:/)?.[2] ?? null;
+}
+
+function runtimeKey(executor: string, model: string): string {
+  return `${executor}:${model}`;
+}
+
+function matchesPreflightTarget(target: string, executor: string, model: string): boolean {
+  return target.includes(':') ? target === runtimeKey(executor, model) : target === model;
+}
+
+function matchingPreflightRuntimes(
+  config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
+  failedTarget: string,
+): PreflightRuntimeMatch[] {
+  const matches: PreflightRuntimeMatch[] = [];
+  if (config.executorName && matchesPreflightTarget(failedTarget, config.executorName, config.model ?? '')) {
+    matches.push({ executor: config.executorName, role: 'task' });
+  }
+  if (!config.noJudge) {
+    for (const judge of config.judgeModels) {
+      if (matchesPreflightTarget(failedTarget, judge.executor, judge.model)) matches.push({ executor: judge.executor, role: 'judge' });
+    }
+  }
+  return matches;
+}
+
+function hasExecutor(matches: PreflightRuntimeMatch[], executors: Set<string>): boolean {
+  return matches.some((match) => executors.has(match.executor));
+}
+
+function shouldSwitchJudgeWithTask(
+  config: Pick<RunConfig, 'judgeModels' | 'noJudge'>,
+  executors: Set<string>,
+): boolean {
+  return !config.noJudge && config.judgeModels.length === 1 && executors.has(config.judgeModels[0].executor);
+}
+
+function fallbackFlags(
+  matches: PreflightRuntimeMatch[],
+  executor: string,
+  taskModel: string,
+  judgeModel: string,
+  includeJudgeWithTask: boolean,
+): string {
+  const hasTask = matches.some((match) => match.role === 'task');
+  const hasJudge = matches.some((match) => match.role === 'judge') || (hasTask && includeJudgeWithTask);
+  return [
+    hasTask ? `--executor ${executor} --model ${taskModel}` : '',
+    hasJudge ? `--judge-models ${executor}:${judgeModel}` : '',
+  ].filter(Boolean).join(' ');
+}
+
+export function formatConnectivityFailureHint(
+  message: string,
+  config: Pick<RunConfig, 'executorName' | 'model' | 'judgeModels' | 'noJudge'>,
+  lang: CliLang,
+): string {
+  const failedTarget = preflightFailedTarget(message);
+  if (!failedTarget) return '';
+  const matches = matchingPreflightRuntimes(config, failedTarget);
+  if (matches.length === 0) return '';
+
+  if (hasExecutor(matches, CLAUDE_EXECUTORS)) {
+    return tCli('cli.run.codex_fallback_hint', lang, {
+      flags: fallbackFlags(matches, 'codex', '<codex-model>', '<codex-model>', shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
+    });
+  }
+  if (hasExecutor(matches, CODEX_EXECUTORS)) {
+    return tCli('cli.run.codex_auth_hint', lang, {
+      claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+      openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
+    });
+  }
+  if (hasExecutor(matches, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
+  if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
+  return '';
 }
 
 function treatmentVariantFromVerdict(result: Pick<VerdictResult, 'level' | 'representative' | 'variants'>): string | undefined {
@@ -496,7 +586,10 @@ async function runEval(
     throw new CliExit(applyGateExitCode(exitCode, values, lang));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
-    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
+    const message = (err as Error).message;
+    console.error(tCli('cli.common.error_prefix', lang, {
+      message: `${message}${formatConnectivityFailureHint(message, config, lang)}`,
+    }));
     throw new CliExit(1);
   }
 }
