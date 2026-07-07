@@ -531,7 +531,7 @@ describe('CLI', () => {
       assert.match(stderr, /Verdict: PROGRESS/, stderr);
       assert.ok(stderr.includes('omk promote review'), stderr);
       assert.ok(!stderr.includes('omk promote candidate'), stderr);
-      assert.ok(stderr.includes('Recorded eval evidence for managed skill "review"'), stderr);
+      assert.ok(stderr.includes('Recorded eval evidence for managed skill "review" → measurable. Run omk promote review to accept this version.'), stderr);
 
       const managedDir = join(dir, '.omk', 'managed');
       const managedFiles = (await readdir(managedDir)).filter((file) => file.endsWith('.json'));

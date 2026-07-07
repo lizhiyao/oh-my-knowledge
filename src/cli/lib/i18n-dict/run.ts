@@ -151,8 +151,8 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '📄 Report saved to: {path}\n',
   },
   'cli.run.evidence_recorded': {
-    zh: '🔖 已为受管 skill「{name}」记录评测证据 → measurable\n',
-    en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable\n',
+    zh: '🔖 已为受管 skill「{name}」记录评测证据 → measurable。运行 {command} 接受当前版本。\n',
+    en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable. Run {command} to accept this version.\n',
   },
   'cli.run.evidence_recorded_unbound': {
     zh: '🔖 受管 skill「{name}」：评测内容与当前安装版本指纹不一致，证据已留存但不绑当前版本\n',

@@ -147,8 +147,9 @@ function promoteTargetFromEvidence(
 
 function emitRecordedEvidence(records: RecordedEvidenceForPrompt[], lang: CliLang): void {
   for (const w of records) {
+    const command = `omk promote ${shellQuoteArg(w.name)}`;
     process.stderr.write(
-      tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name }),
+      tCli(w.bound ? 'cli.run.evidence_recorded' : 'cli.run.evidence_recorded_unbound', lang, { name: w.name, command }),
     );
   }
 }
