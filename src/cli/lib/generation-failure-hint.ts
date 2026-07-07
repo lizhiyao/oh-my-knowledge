@@ -1,18 +1,11 @@
 import { tCli, type CliLang } from './i18n.js';
 import { codexExecutorFlags, codexModelFlagValue, codexModelHint } from './codex-model-hint.js';
+import { looksLikeLlmSetupFailure, looksLikeModelUnavailableFailure } from './llm-failure-classifier.js';
 
 const CLAUDE_SAMPLE_EXECUTORS = new Set(['claude', 'claude-sdk']);
 const CODEX_SAMPLE_EXECUTORS = new Set(['codex', 'codex-sdk']);
 const OPENAI_API_SAMPLE_EXECUTORS = new Set(['openai-api']);
 const ANTHROPIC_API_SAMPLE_EXECUTORS = new Set(['anthropic-api']);
-
-function looksLikeConnectivityFailure(message: string): boolean {
-  return /auth|login|credential|API[_ ]?KEY|BASE_URL|API error|ENOENT|not found|ECONN|ENOTFOUND|ETIMEDOUT|timeout|timed out|401|403|404|invalid_request_error|model .*not supported|model is not supported/i.test(message);
-}
-
-function looksLikeCodexModelFailure(message: string): boolean {
-  return /model .*not supported|model is not supported|unsupported model|invalid_request_error.*model|model.*invalid_request_error/i.test(message);
-}
 
 export function formatSampleGenerationFailureHint(
   message: string,
@@ -21,7 +14,7 @@ export function formatSampleGenerationFailureHint(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const executor = executorName ?? 'claude';
-  if (!looksLikeConnectivityFailure(message)) return '';
+  if (!looksLikeLlmSetupFailure(message)) return '';
 
   if (CLAUDE_SAMPLE_EXECUTORS.has(executor)) {
     return tCli('cli.gen.claude_auth_hint', lang, {
@@ -31,7 +24,7 @@ export function formatSampleGenerationFailureHint(
     });
   }
   if (CODEX_SAMPLE_EXECUTORS.has(executor)) {
-    if (looksLikeCodexModelFailure(message)) {
+    if (looksLikeModelUnavailableFailure(message)) {
       return tCli('cli.gen.codex_model_hint', lang, {
         codexFlags: codexExecutorFlags(env),
         codexExec: `codex exec -m ${codexModelFlagValue(env)} "hi"`,
@@ -46,6 +39,13 @@ export function formatSampleGenerationFailureHint(
     });
   }
   if (OPENAI_API_SAMPLE_EXECUTORS.has(executor)) {
+    if (looksLikeModelUnavailableFailure(message)) {
+      return tCli('cli.gen.openai_api_model_hint', lang, {
+        claudeFlags: '--executor claude --model sonnet',
+        codexFlags: codexExecutorFlags(env),
+        codexModelHint: codexModelHint(lang, env),
+      });
+    }
     return tCli('cli.gen.openai_api_auth_hint', lang, {
       claudeFlags: '--executor claude --model sonnet',
       codexFlags: codexExecutorFlags(env),
@@ -53,6 +53,11 @@ export function formatSampleGenerationFailureHint(
     });
   }
   if (ANTHROPIC_API_SAMPLE_EXECUTORS.has(executor)) {
+    if (looksLikeModelUnavailableFailure(message)) {
+      return tCli('cli.gen.anthropic_api_model_hint', lang, {
+        claudeFlags: '--executor claude --model sonnet',
+      });
+    }
     return tCli('cli.gen.anthropic_api_auth_hint', lang, {
       claudeFlags: '--executor claude --model sonnet',
     });

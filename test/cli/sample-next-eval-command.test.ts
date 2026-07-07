@@ -76,6 +76,35 @@ describe('formatSampleGenerationFailureHint', () => {
     assert.ok(hint.includes('--executor codex --model <codex-model>'), hint);
   });
 
+  it('adds model guidance for OpenAI API sample generation model failures', () => {
+    const hint = formatSampleGenerationFailureHint(
+      'invalid_request_error: The model `gpt-5` does not exist or you do not have access to it.',
+      'openai-api',
+      'zh',
+      { CODEX_HOME: '/tmp/omk-empty-codex-home-for-tests' },
+    );
+
+    assert.ok(hint.includes('模型名看起来对当前端点不可用'), hint);
+    assert.ok(hint.includes('--model、OPENAI_BASE_URL 与账号权限'), hint);
+    assert.ok(!hint.includes('OPENAI_API_KEY / OPENAI_BASE_URL'), hint);
+    assert.ok(hint.includes('--executor claude --model sonnet'), hint);
+    assert.ok(hint.includes('--executor codex --model <codex-model>'), hint);
+  });
+
+  it('adds model guidance for Anthropic API sample generation model failures', () => {
+    const hint = formatSampleGenerationFailureHint(
+      'unsupported model: claude-unknown is not available for this account',
+      'anthropic-api',
+      'zh',
+      { CODEX_HOME: '/tmp/omk-empty-codex-home-for-tests' },
+    );
+
+    assert.ok(hint.includes('模型名看起来对当前端点不可用'), hint);
+    assert.ok(hint.includes('--model、ANTHROPIC_BASE_URL 与账号权限'), hint);
+    assert.ok(!hint.includes('ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL'), hint);
+    assert.ok(hint.includes('--executor claude --model sonnet'), hint);
+  });
+
   it('does not misclassify model-output JSON errors as auth failures', () => {
     const hint = formatSampleGenerationFailureHint(
       'generation failed after 3 attempts (JSON invalid): JSON 解析失败',
