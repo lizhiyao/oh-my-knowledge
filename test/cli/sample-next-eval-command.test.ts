@@ -1,7 +1,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { formatSampleGenerationFailureHint, sampleNextEvalCommand } from '../../src/cli/commands/sample.js';
+import { sampleNextEvalCommand } from '../../src/cli/commands/sample.js';
+import { formatSampleGenerationFailureHint } from '../../src/cli/lib/generation-failure-hint.js';
 import { tCli } from '../../src/cli/lib/i18n.js';
 
 describe('sampleNextEvalCommand', () => {

@@ -7,6 +7,7 @@ import { enumStringParser, integerStringParser, numberStringParser } from '../oc
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { makeOnProgress } from '../lib/progress.js';
+import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type { EvolveOutcomeInput, EvolveOutcomeResult } from '../lib/record-evolve-outcome.js';
 import type { ProgressCallback } from '../../types/index.js';
@@ -208,7 +209,10 @@ export async function runEvolve(
         : `Generated ${samples.length} samples${cost}; starting evolution.\n`);
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
-      console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
+      const message = (err as Error).message;
+      console.error(tCli('cli.common.error_prefix', lang, {
+        message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
+      }));
       throw new CliExit(1);
     }
   }
