@@ -1,4 +1,4 @@
-import { resolve, join, relative } from 'node:path';
+import { resolve, join, relative, sep } from 'node:path';
 import { Args } from '@oclif/core';
 import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -102,10 +102,15 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 
 const INIT_EVAL_COMMAND = 'omk eval --control code-review-v1 --treatment code-review-v2';
 
+function isOutsideCwd(relPath: string): boolean {
+  return relPath === '..' || relPath.startsWith(`..${sep}`);
+}
+
 function nextEvalCommand(targetDir: string): string {
   const rel = relative(resolve('.'), targetDir);
   if (!rel) return INIT_EVAL_COMMAND;
-  return `cd ${shellQuoteArg(rel)} && ${INIT_EVAL_COMMAND}`;
+  const cdTarget = isOutsideCwd(rel) ? targetDir : rel;
+  return `cd ${shellQuoteArg(cdTarget)} && ${INIT_EVAL_COMMAND}`;
 }
 
 export default class Init extends BaseCommand {
