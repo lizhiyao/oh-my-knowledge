@@ -35,7 +35,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 如果默认 Claude runtime 不可用，同一套 demo 可以加 runtime 参数：
 
 ```bash
-# Codex CLI / SDK 路径
+# Codex CLI 路径
 omk eval --control code-review-v1 --treatment code-review-v2 \
   --executor codex --model <codex-model> \
   --judge-models codex:<codex-model>

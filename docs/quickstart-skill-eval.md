@@ -35,7 +35,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 If the default Claude runtime is unavailable, use the same demo with runtime flags:
 
 ```bash
-# Codex CLI / SDK path
+# Codex CLI path
 omk eval --control code-review-v1 --treatment code-review-v2 \
   --executor codex --model <codex-model> \
   --judge-models codex:<codex-model>
