@@ -23,7 +23,7 @@ jobs:
       # cache folder via the packageManager-pinned Yarn 4, not the runner's
       # preinstalled Yarn 1.
       - run: corepack enable
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: yarn
