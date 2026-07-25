@@ -1,6 +1,10 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { toolCallQuery } from '../../src/shared/tool-search.js';
+import {
+  isFailedSearchToolCall,
+  isSearchToolCall,
+  toolCallQuery,
+} from '../../src/shared/tool-search.js';
 import type { ToolCallInfo } from '../../src/types/index.js';
 
 function bashTc(command: string): ToolCallInfo {
@@ -110,5 +114,17 @@ describe('toolCallQuery — Bash structured parsing', () => {
     // either grep extraction wins (preferred) or path-only on cat — both are
     // acceptable; assert query exists when grep matches
     assert.equal(q.query, 'payment');
+  });
+
+  it('treats Codex web search as a structured search signal', () => {
+    const tc: ToolCallInfo = {
+      tool: 'web_search',
+      input: { type: 'search', query: 'payment schema' },
+      output: '{"status":"failed"}',
+      success: false,
+    };
+    assert.deepEqual(toolCallQuery(tc), { query: 'payment schema', path: undefined });
+    assert.equal(isSearchToolCall(tc), true);
+    assert.equal(isFailedSearchToolCall(tc), true);
   });
 });

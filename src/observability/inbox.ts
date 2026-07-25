@@ -439,6 +439,20 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
   const skillSessionCounts = Object.fromEntries(
     Array.from(sessionsBySkill.entries()).map(([skill, sessionIds]) => [skill, sessionIds.size]),
   );
+  const sessionsBySourceTrace = new Map(
+    sessions.map((session) => [session.sourcePath, session]),
+  );
+  const messageRefsBySourceTrace = new Map<string, ObservationMessageRef[]>();
+  const messageRefsForSourceTrace = (sourceTrace: string): ObservationMessageRef[] | undefined => {
+    if (messageRefsBySourceTrace.has(sourceTrace)) {
+      return messageRefsBySourceTrace.get(sourceTrace);
+    }
+    const session = sessionsBySourceTrace.get(sourceTrace);
+    if (!session) return undefined;
+    const messages = messageRefsFromRecords(session.records);
+    messageRefsBySourceTrace.set(sourceTrace, messages);
+    return messages;
+  };
   const aggregationState = createInboxAggregationState();
   for (const segment of segments) {
     const sourceTrace = segment.sourceTrace ?? tracePath;
@@ -450,7 +464,11 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
       };
       return {
         ...withSource,
-        messageWindow: buildObservationMessageWindow(withSource),
+        messageWindow: buildObservationMessageWindow(
+          withSource,
+          3,
+          messageRefsForSourceTrace(sourceTrace),
+        ),
       };
     });
     addInboxItemsToState(aggregationState, segmentItems);
@@ -693,11 +711,19 @@ export function findObservationInboxItem(id: string, dir: string = DEFAULT_OBSER
   return aggregateInboxItems(reports.flatMap((report) => report.items)).find((item) => item.id === id) ?? null;
 }
 
-export function buildObservationMessageWindow(item: Pick<ObservationInboxItem, 'sourceTrace' | 'signalType' | 'evidence'>, radius = 3): ObservationMessageWindow | undefined {
+export function buildObservationMessageWindow(
+  item: Pick<ObservationInboxItem, 'sourceTrace' | 'signalType' | 'evidence'>,
+  radius = 3,
+  preloadedMessages?: ObservationMessageRef[],
+): ObservationMessageWindow | undefined {
   if (!item.sourceTrace.endsWith('.jsonl')) return undefined;
   const index = item.evidence.messageIndex;
-  if (typeof index !== 'number' || index < 0 || !existsSync(item.sourceTrace)) return undefined;
-  const messages = readJsonlMessageRefs(item.sourceTrace);
+  if (
+    typeof index !== 'number'
+    || index < 0
+    || (preloadedMessages === undefined && !existsSync(item.sourceTrace))
+  ) return undefined;
+  const messages = preloadedMessages ?? readJsonlMessageRefs(item.sourceTrace);
   if (messages.length === 0) return undefined;
   const position = messages.findIndex((message) => message.messageIndex === index);
   if (position < 0) return undefined;
@@ -749,6 +775,10 @@ function readJsonlMessageRefs(path: string): ObservationMessageRef[] {
   } catch {
     return [];
   }
+  return messageRefsFromRecords(records);
+}
+
+function messageRefsFromRecords(records: unknown[]): ObservationMessageRef[] {
   return records
     .map((raw, index): ObservationMessageRef | null => {
       if (!raw || typeof raw !== 'object') return null;

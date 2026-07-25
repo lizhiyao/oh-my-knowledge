@@ -160,6 +160,162 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
 const SKILL_READ_FILE_RE = /(?:^|[/\s"'`])(?:[^\s"'`]*\/)?skills\/([^/\s"'`]+)\/SKILL\.md\b/;
 const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`(\[{:,])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
 
+function skipJsString(source: string, start: number): number {
+  const quote = source[start];
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (source[index] === quote) return index + 1;
+    index += 1;
+  }
+  return source.length;
+}
+
+function skipJsTrivia(source: string, start: number): number {
+  let index = start;
+  while (index < source.length) {
+    if (/\s/.test(source[index])) {
+      index += 1;
+      continue;
+    }
+    if (source.startsWith('//', index)) {
+      const newline = source.indexOf('\n', index + 2);
+      return newline < 0 ? source.length : skipJsTrivia(source, newline + 1);
+    }
+    if (source.startsWith('/*', index)) {
+      const end = source.indexOf('*/', index + 2);
+      return end < 0 ? source.length : skipJsTrivia(source, end + 2);
+    }
+    break;
+  }
+  return index;
+}
+
+function extractExecCommandLiteral(source: string, callStart: number): string | null {
+  let index = skipJsTrivia(source, callStart + 'tools.exec_command'.length);
+  if (source[index] !== '(') return null;
+  index = skipJsTrivia(source, index + 1);
+  if (source[index] !== '{') return null;
+
+  let depth = 1;
+  index += 1;
+  while (index < source.length && depth > 0) {
+    index = skipJsTrivia(source, index);
+    const char = source[index];
+    if (char === '"' || char === "'" || char === '`') {
+      index = skipJsString(source, index);
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+      index += 1;
+      continue;
+    }
+    if (char === '}') {
+      depth -= 1;
+      index += 1;
+      continue;
+    }
+    if (
+      depth === 1
+      && source.startsWith('cmd', index)
+      && !/[\w$]/.test(source[index - 1] ?? '')
+      && !/[\w$]/.test(source[index + 3] ?? '')
+    ) {
+      let valueStart = skipJsTrivia(source, index + 3);
+      if (source[valueStart] !== ':') {
+        index += 3;
+        continue;
+      }
+      valueStart = skipJsTrivia(source, valueStart + 1);
+      const quote = source[valueStart];
+      if (quote !== '"' && quote !== "'" && quote !== '`') return null;
+      const end = skipJsString(source, valueStart);
+      return source.slice(valueStart + 1, Math.max(valueStart + 1, end - 1));
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function extractExecCommandLiterals(source: string): string[] {
+  const commands: string[] = [];
+  let index = 0;
+  while (index < source.length) {
+    index = skipJsTrivia(source, index);
+    const char = source[index];
+    if (char === '"' || char === "'" || char === '`') {
+      index = skipJsString(source, index);
+      continue;
+    }
+    if (
+      source.startsWith('tools.exec_command', index)
+      && !/[\w$.]/.test(source[index - 1] ?? '')
+      && !/[\w$]/.test(source[index + 'tools.exec_command'.length] ?? '')
+    ) {
+      const command = extractExecCommandLiteral(source, index);
+      if (command) commands.push(command);
+      index += 'tools.exec_command'.length;
+      continue;
+    }
+    index += 1;
+  }
+  return commands;
+}
+
+function splitShellCommandSegments(command: string): string[] {
+  const segments: string[] = [];
+  let start = 0;
+  let quote: "'" | '"' | null = null;
+  let index = 0;
+  while (index < command.length) {
+    const char = command[index];
+    if (char === '\\') {
+      index += 2;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      index += 1;
+      continue;
+    }
+    const separatorLength = command.startsWith('&&', index) || command.startsWith('||', index)
+      ? 2
+      : char === ';' || char === '|' || char === '\n'
+        ? 1
+        : 0;
+    if (separatorLength > 0) {
+      segments.push(command.slice(start, index));
+      index += separatorLength;
+      start = index;
+      continue;
+    }
+    index += 1;
+  }
+  segments.push(command.slice(start));
+  return segments;
+}
+
+const SHELL_FILE_READER_RE = /^(?:(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*)?(?:(?:command|sudo)\s+)*(?:[\w./-]+\/)?(?:cat|sed|head|tail|less|more|bat|awk|wc)\b/;
+
+function extractShellSkillReadRef(command: string): SkillRef | null {
+  for (const segment of splitShellCommandSegments(command)) {
+    const normalized = segment.trim();
+    if (!SHELL_FILE_READER_RE.test(normalized)) continue;
+    const match = SKILL_READ_FILE_RE.exec(normalized);
+    if (match) return parseSkillRef(match[1]);
+  }
+  return null;
+}
+
 /**
  * 从 assistant message 的 Read / Bash tool_use 里提取 skill 名字(信号 3, fallback)。
  * Codex 通常用 shell 读取 `.agents/skills/<name>/SKILL.md`，Claude Code 与
@@ -181,12 +337,17 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
       }
     }
     if (part.type === 'tool_use' && (part.name === 'Bash' || part.name?.toLowerCase() === 'exec')) {
-      const command = part.name === 'Bash'
+      const rawCommand = part.name === 'Bash'
         ? part.input?.command
         : part.input?.input ?? part.input?.command;
-      if (typeof command === 'string') {
-        const m = SKILL_READ_FILE_RE.exec(command);
-        if (m) return parseSkillRef(m[1]);
+      const commands = typeof rawCommand !== 'string'
+        ? []
+        : part.name === 'Bash'
+          ? [rawCommand]
+          : extractExecCommandLiterals(rawCommand);
+      for (const command of commands) {
+        const skillRef = extractShellSkillReadRef(command);
+        if (skillRef) return skillRef;
       }
     }
   }
@@ -209,10 +370,14 @@ export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantR
       if (part.type === 'text' && typeof part.text === 'string') {
         texts.push(part.text);
       } else if (part.type === 'tool_use') {
-        const command = part.name?.toLowerCase() === 'exec'
+        const rawCommand = part.name?.toLowerCase() === 'exec'
           ? part.input?.input ?? part.input?.command
           : part.input?.command;
-        if (typeof command === 'string') texts.push(command);
+        if (typeof rawCommand === 'string') {
+          texts.push(...(part.name?.toLowerCase() === 'exec'
+            ? extractExecCommandLiterals(rawCommand)
+            : [rawCommand]));
+        }
       }
     }
   }

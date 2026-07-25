@@ -2,7 +2,11 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { isCodexJsonl, parseCodexSessionFile } from './codex-trace-adapter.js';
+import {
+  isCodexGuardianRollout,
+  isCodexJsonl,
+  parseCodexSessionFile,
+} from './codex-trace-adapter.js';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
 import { isToolResultFailureText } from './text-signals.js';
 import type { TraceSourceMetadata } from '../types/index.js';
@@ -139,7 +143,10 @@ function collectTraceFiles(dir: string): string[] {
 }
 
 function parseTraceFile(filePath: string): CcSession[] {
-  if (filePath.endsWith('.jsonl')) return [parseJsonlSessionFile(filePath)];
+  if (filePath.endsWith('.jsonl')) {
+    const session = parseJsonlSessionFile(filePath);
+    return session ? [session] : [];
+  }
   if (filePath.endsWith('.log')) return parseMarkdownLogFile(filePath);
   return [];
 }
@@ -217,7 +224,7 @@ function traceLabelFor(filePath: string, groupRoot: string, role: 'main' | 'suba
   return role === 'subagent' ? rel : `main/${basename(filePath)}`;
 }
 
-function parseJsonlSessionFile(filePath: string): CcSession {
+function parseJsonlSessionFile(filePath: string): CcSession | null {
   const content = readFileSync(filePath, 'utf-8');
   const records: CcRecord[] = [];
   for (const line of content.split('\n')) {
@@ -229,7 +236,10 @@ function parseJsonlSessionFile(filePath: string): CcSession {
       // malformed line → skip. cc 有罕见的截断 record, 不让单行 fail 整个 session
     }
   }
-  if (isCodexJsonl(records)) return parseCodexSessionFile(filePath, records);
+  if (isCodexJsonl(records)) {
+    if (isCodexGuardianRollout(records)) return null;
+    return parseCodexSessionFile(filePath, records);
+  }
   return isOpenClawJsonl(records) ? parseOpenClawSessionFile(filePath, records) : parseCcSessionFile(filePath, records);
 }
 

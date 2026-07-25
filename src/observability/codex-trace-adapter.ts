@@ -24,6 +24,18 @@ export function isCodexJsonl(records: CcRecord[]): boolean {
   );
 }
 
+export function isCodexGuardianRollout(records: CcRecord[]): boolean {
+  return records.some((record) => {
+    if (record.type !== 'session_meta') return false;
+    const raw = record as CodexRecord;
+    const payload = isObject(raw.payload) ? raw.payload : {};
+    const source = isObject(payload.source) ? payload.source : {};
+    const subagent = source.subagent;
+    return (typeof subagent === 'string' && subagent === 'guardian')
+      || (isObject(subagent) && stringValue(subagent.other) === 'guardian');
+  });
+}
+
 export function parseCodexSessionFile(filePath: string, rawRecords: CcRecord[]): CcSession {
   const meta = rawRecords.find((record) => record.type === 'session_meta') as CodexRecord | undefined;
   const metaPayload = isObject(meta?.payload) ? meta.payload : {};
@@ -87,6 +99,97 @@ function convertCodexRecords(
     if (record.type === 'response_item' && payloadType === 'message') {
       const converted = convertCodexMessage(payload, sessionId, timestamp, cwd, entrypoint, index, activeModel);
       if (converted) records.push(converted);
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'tool_search_call') {
+      const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `codex-tool-search-${index}`;
+      records.push(codexToolUseRecord({
+        callId,
+        id: stringValue(payload.id),
+        name: 'tool_search',
+        input: parseToolInput(payload.arguments),
+        sessionId,
+        timestamp,
+        cwd,
+        entrypoint,
+        model: activeModel,
+      }));
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'tool_search_output') {
+      const callId = stringValue(payload.call_id) ?? `codex-tool-search-${index}`;
+      const output = JSON.stringify({
+        status: stringValue(payload.status),
+        execution: stringValue(payload.execution),
+        tools: summarizeDiscoveredTools(payload.tools),
+      });
+      records.push(codexToolResultRecord({
+        callId,
+        output,
+        failed: codexStatusFailed(payload.status),
+        sessionId,
+        timestamp,
+        entrypoint,
+        index,
+      }));
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'web_search_call') {
+      const callId = stringValue(payload.id) ?? `codex-web-search-${index}`;
+      records.push(codexToolUseRecord({
+        callId,
+        id: stringValue(payload.id),
+        name: 'web_search',
+        input: isObject(payload.action) ? payload.action : {},
+        sessionId,
+        timestamp,
+        cwd,
+        entrypoint,
+        model: activeModel,
+      }));
+      records.push(codexToolResultRecord({
+        callId,
+        output: JSON.stringify({ status: stringValue(payload.status) }),
+        failed: codexStatusFailed(payload.status),
+        sessionId,
+        timestamp,
+        entrypoint,
+        index,
+      }));
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'image_generation_call') {
+      const callId = stringValue(payload.id) ?? `codex-image-generation-${index}`;
+      const result = typeof payload.result === 'string' ? payload.result : '';
+      records.push(codexToolUseRecord({
+        callId,
+        id: stringValue(payload.id),
+        name: 'image_generation',
+        input: {
+          prompt: stringValue(payload.revised_prompt),
+        },
+        sessionId,
+        timestamp,
+        cwd,
+        entrypoint,
+        model: activeModel,
+      }));
+      records.push(codexToolResultRecord({
+        callId,
+        output: JSON.stringify({
+          status: stringValue(payload.status),
+          resultBytes: result.length,
+        }),
+        failed: codexStatusFailed(payload.status),
+        sessionId,
+        timestamp,
+        entrypoint,
+        index,
+      }));
       return;
     }
 
@@ -214,6 +317,97 @@ function convertCodexRecords(
   });
 
   return records;
+}
+
+interface CodexToolUseRecordInput {
+  callId: string;
+  id?: string;
+  name: string;
+  input: Record<string, unknown>;
+  sessionId: string;
+  timestamp: string;
+  cwd?: string;
+  entrypoint: string;
+  model?: string;
+}
+
+function codexToolUseRecord(input: CodexToolUseRecordInput): CcAssistantRecord {
+  return {
+    type: 'assistant',
+    uuid: input.id ?? input.callId,
+    parentUuid: null,
+    sessionId: input.sessionId,
+    timestamp: input.timestamp,
+    cwd: input.cwd,
+    entrypoint: input.entrypoint,
+    message: {
+      role: 'assistant',
+      model: input.model,
+      content: [{
+        type: 'tool_use',
+        id: input.callId,
+        name: input.name,
+        input: input.input,
+      }],
+    },
+  };
+}
+
+interface CodexToolResultRecordInput {
+  callId: string;
+  output: string;
+  failed: boolean;
+  sessionId: string;
+  timestamp: string;
+  entrypoint: string;
+  index: number;
+}
+
+function codexToolResultRecord(input: CodexToolResultRecordInput): CcUserRecord {
+  return {
+    type: 'user',
+    uuid: `codex-output-${input.callId}-${input.index}`,
+    parentUuid: null,
+    sessionId: input.sessionId,
+    timestamp: input.timestamp,
+    entrypoint: input.entrypoint,
+    message: {
+      role: 'user',
+      content: [{
+        type: 'tool_result',
+        tool_use_id: input.callId,
+        content: input.output,
+        is_error: input.failed,
+      }],
+    },
+  };
+}
+
+function summarizeDiscoveredTools(value: unknown): Array<{
+  type?: string;
+  name?: string;
+  tools?: string[];
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isObject(entry)) return [];
+    const nested = Array.isArray(entry.tools)
+      ? entry.tools.flatMap((tool) => isObject(tool) && stringValue(tool.name) ? [stringValue(tool.name)!] : [])
+      : undefined;
+    return [{
+      type: stringValue(entry.type),
+      name: stringValue(entry.name),
+      ...(nested && nested.length > 0 ? { tools: nested } : {}),
+    }];
+  });
+}
+
+function codexStatusFailed(value: unknown): boolean {
+  const status = stringValue(value)?.toLowerCase();
+  return status === 'failed'
+    || status === 'error'
+    || status === 'cancelled'
+    || status === 'canceled';
 }
 
 function convertCodexMessage(

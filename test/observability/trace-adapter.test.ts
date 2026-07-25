@@ -445,6 +445,42 @@ describe('loadCcSessions', () => {
           },
         },
       },
+      {
+        timestamp: '2026-07-25T00:00:08.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'post-review',
+          name: 'exec',
+          input: [
+            'const body = `Example only: tools.exec_command({cmd:"cat .agents/skills/phantom-skill/SKILL.md"})`;',
+            'const cmd = "gh api repos/example/project/pulls/1/comments";',
+            'await tools.exec_command({cmd});',
+          ].join('\n'),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:09.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'post-review', output: '{"ok":true}' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:10.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'run-test',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: 'node -e "console.log(\'cat .agents/skills/phantom-bash/SKILL.md\')"',
+          }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:11.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'run-test', output: 'ok' },
+      },
     ]));
 
     const [session] = loadCcSessions(path);
@@ -463,6 +499,8 @@ describe('loadCcSessions', () => {
     assert.equal(beta.metrics.inputTokens, 80);
     assert.equal(beta.metrics.outputTokens, 8);
     assert.equal(beta.sourceMetadata?.model, 'gpt-5.6-sol');
+    assert.equal(segments.some((segment) => segment.skillName === 'phantom-skill'), false);
+    assert.equal(segments.some((segment) => segment.skillName === 'phantom-bash'), false);
 
     const experience = buildObservationExperienceReport({
       sessions: [session],
@@ -478,6 +516,137 @@ describe('loadCcSessions', () => {
       experience.invocations.find((invocation) => invocation.skillName === 'beta')?.sourceMetadata?.model,
       'gpt-5.6-sol',
     );
+  });
+
+  it('preserves modern Codex tool events without retaining large payloads', () => {
+    const path = join(tmpDir, 'rollout-codex-modern-tools.jsonl');
+    writeFileSync(path, jsonl([
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-modern-tools',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:00.100Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-1', model: 'gpt-codex-test' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-skill',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: 'cat .agents/skills/audit/SKILL.md' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'read-skill', output: '# Audit' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          id: 'web-1',
+          status: 'failed',
+          action: { type: 'search', query: 'revenue schema' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'tool_search_call',
+          id: 'tool-search-item',
+          call_id: 'tool-search-1',
+          status: 'completed',
+          arguments: { query: 'database tools' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'tool_search_output',
+          call_id: 'tool-search-1',
+          status: 'completed',
+          execution: 'client',
+          tools: [{
+            type: 'namespace',
+            name: 'database',
+            description: 'must not be retained',
+            tools: [{ type: 'function', name: 'query', description: 'large schema omitted' }],
+          }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'image_generation_call',
+          id: 'image-1',
+          status: 'generating',
+          revised_prompt: 'Draw an evaluation chart',
+          result: 'base64-image-payload',
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const audit = segmentBySkill(session).find((segment) => segment.skillName === 'audit');
+    assert.ok(audit);
+    assert.deepEqual(
+      audit.toolCalls.map((tool) => tool.tool),
+      ['Bash', 'web_search', 'tool_search', 'image_generation'],
+    );
+    assert.equal(audit.metrics.numToolCalls, 4);
+    assert.equal(audit.metrics.numToolFailures, 1);
+    assert.equal(audit.toolCalls.find((tool) => tool.tool === 'web_search')?.success, false);
+    const toolSearchOutput = String(audit.toolCalls.find((tool) => tool.tool === 'tool_search')?.output);
+    assert.match(toolSearchOutput, /"database"/);
+    assert.doesNotMatch(toolSearchOutput, /must not be retained|large schema omitted/);
+    const imageOutput = String(audit.toolCalls.find((tool) => tool.tool === 'image_generation')?.output);
+    assert.match(imageOutput, /"resultBytes":20/);
+    assert.doesNotMatch(imageOutput, /base64-image-payload/);
+  });
+
+  it('excludes Codex guardian rollouts from observation sessions', () => {
+    const path = join(tmpDir, 'rollout-codex-guardian.jsonl');
+    writeFileSync(path, jsonl([
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-guardian',
+          parent_thread_id: 'codex-parent',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          thread_source: 'subagent',
+          source: { subagent: { other: 'guardian' } },
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Assess a planned tool call.' }],
+        },
+      },
+    ]));
+
+    assert.deepEqual(loadCcSessions(path), []);
   });
 
   it('groups Codex main and child rollouts into one logical session', () => {

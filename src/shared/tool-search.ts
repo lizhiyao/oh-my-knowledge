@@ -5,6 +5,12 @@ export function toolCallQuery(tc: ToolCallInfo): { query?: string; path?: string
   if (tc.tool === 'Grep') return { query: String(input.pattern ?? ''), path: String(input.path ?? '') };
   if (tc.tool === 'Read') return { path: String(input.file_path ?? '') };
   if (tc.tool === 'Bash') return bashStructuredQuery(String(input.command ?? ''));
+  if (tc.tool === 'web_search') {
+    return {
+      query: typeof input.query === 'string' ? input.query : undefined,
+      path: typeof input.url === 'string' ? input.url : undefined,
+    };
+  }
   return {};
 }
 
@@ -70,6 +76,7 @@ export function bashSearchOrProbeCommand(command: string): boolean {
 
 export function isSearchToolCall(tc: ToolCallInfo): boolean {
   if (tc.tool === 'Read' || tc.tool === 'Grep') return true;
+  if (tc.tool === 'web_search') return true;
   if (tc.tool !== 'Bash') return false;
   const input = (tc.input && typeof tc.input === 'object') ? tc.input as Record<string, unknown> : {};
   return bashSearchOrProbeCommand(String(input.command ?? ''));
@@ -86,6 +93,10 @@ export function isFailedSearchToolCall(tc: ToolCallInfo): boolean {
   if (tc.tool === 'Grep') {
     if (tc.success === false) return true;
     return emptyOutput;
+  }
+
+  if (tc.tool === 'web_search') {
+    return tc.success === false;
   }
 
   if (tc.tool === 'Bash') {
