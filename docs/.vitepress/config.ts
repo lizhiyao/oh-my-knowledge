@@ -9,7 +9,7 @@ const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 // 约定）。第一刀只加首页 + 导航 / 侧栏 / 本地搜索，不重写任何文档正文。
 export default defineConfig({
   title: 'omk',
-  description: 'Measurement-grade evaluation for what you feed an LLM — prompt / RAG / skill / agent.',
+  description: 'Controlled evaluation for LLM knowledge artifacts — same model, same samples, only the artifact changes.',
   cleanUrls: true,
   lastUpdated: true,
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],

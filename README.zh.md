@@ -8,10 +8,22 @@
 
 [English](./README.md) | **简体中文**
 
-**一段知识输入（prompt / skill / RAG / agent）好不好，能不能有证据地发布？**
-`doctor` 先检查这类知识输入是否清楚到值得测；`eval` 固定模型和用例，只改变知识输入，判断新版本是否真的更好。Bootstrap 置信区间、长度去偏默认开，配一份人工 gold 就自动算 Krippendorff α。
+**别再凭感觉改 LLM 知识输入。**
+`oh-my-knowledge`（omk）是一套面向 prompt、RAG、skill、agent、workflow 的测量工作流。它固定执行模型和评测用例，只改变知识载体，然后回答发布时真正要追问的问题：**v2 能不能发，好在哪里？**
+
+![omk 知识载体评测流程：doctor / eval / observe / sample / evolve 闭环](./docs/public/omk-knowledge-flow-animated.gif)
 
 📖 **完整文档：[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)**（可搜索，可切换英文）
+
+## omk 让什么变得可测量
+
+| 决策问题 | 命令 | 你会得到的证据 |
+|------|------|------|
+| 这份知识载体是否清楚到值得评测？ | `omk doctor` | 结构、依赖、安全性、可测性检查 |
+| v2 是否真的优于 v1？ | `omk eval` | 一行 verdict、置信区间、失败样本、成本 |
+| 它为什么通过或失败？ | `omk studio` | 分数、诊断、样本证据的报告视图 |
+| 这个版本是否应成为接受版本？ | `omk promote` / `omk evolve` | 基于证据接受，或生成更好的候选版 |
+| 真实使用暴露了哪些知识缺口？ | `omk observe` / `omk sample --from-traces` | 将线上缺口生成待复核草稿，复核后再沉淀为评测样本 |
 
 ![omk 报告 — verdict pill「v2 明显优于 v1，可以发布」](./assets/screenshots/report-overview-zh.png)
 
@@ -36,21 +48,22 @@ Codex 或 OpenAI 兼容 API 用户可以继续用同一条流程，只是加 run
 
 手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户，覆盖 demo → 自己的 skill → verdict 动作）。更多可跑示例（Skill Map、A/B、离线执行器、agent runtime、RAG）见仓库的[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)。
 
-深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [artifact 布局](docs/zh/reference/artifact-layout.md)
+深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [知识载体布局](docs/zh/reference/artifact-layout.md)
 
-## 第一条工作流
+## omk 的闭环
 
-omk 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。第一条工作流应该很短：
+omk 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。主流程刻意保持受控：
 
 ```text
-改了一个 skill / prompt / agent artifact
-→ 跑 omk doctor，先抓结构、依赖和可测性问题
-→ 跑 omk eval，在同一批用例上和 baseline 对比
-→ 看报告 / Studio，知道下一步具体该改哪里
-→ 决定发布 / 不发布
+改了一份 prompt / RAG / skill / agent 知识载体
+→ 先跑 omk doctor
+→ 用相同模型、相同评测用例跑 omk eval
+→ 看 report / Studio 里的证据
+→ 证据足够则 promote，证据不足则 evolve 候选版
+→ observe 真实使用，把缺口生成待复核评测草稿
 ```
 
-`observe` 是后续的生产反馈闭环：等真实使用 trace 存在后很有价值，但不是 omk 第一价值的前提。主干先是发布前的 doctor → eval 判断。
+第一价值是发布前的 `doctor → eval` 判断。长期价值是闭环：`observe` 暴露真实使用里的知识缺口，`sample --from-traces` 先生成待人工复核的回归用例草稿，复核后的草稿再沉淀为固定评测样本，下一次 `eval` 就更难被偶然样本骗过。
 
 ## 在 AI Coding Agent 中使用
 
@@ -67,12 +80,12 @@ omk install omk-agent-skill
 当 `omk` skill 已在 Claude Code 中可用时，可以直接这样调用：
 
 ```bash
-/omk eval              # 评测当前项目的 artifact
+/omk eval              # 评测当前项目的知识载体
 /omk evolve            # 多轮自动迭代改进 skill
 /omk sample            # 生成或补齐评测用例
 ```
 
-这些 slash command 是自然语言入口 —— agent 会从对话上下文里推断要操作哪个 skill。也可以直接说「帮我评测 v1 和 v2 的差异」、「改进一下这个 artifact」，omk 会自动理解意图并调用对应命令。
+这些 slash command 是自然语言入口 —— agent 会从对话上下文里推断要操作哪个 skill。也可以直接说「帮我评测 v1 和 v2 的差异」、「改进一下这个知识载体」，omk 会自动理解意图并调用对应命令。
 
 ### 在 Codex 中使用
 
@@ -90,7 +103,9 @@ omk sample skills/my-skill.md
 
 ## 为什么需要这个工具
 
-做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到「v2 能不能发、为什么」时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：**相同模型、相同评测用例，只改变知识载体。**
+知识工程带来的是一个版本治理问题：prompt、RAG 配方、skill、agent、workflow 都会改变模型行为，但这些改动未必体现在应用代码里。当有人追问「v2 能不能发、为什么」时，回答更顺眼、体感更好，远远不够。
+
+omk 把知识载体当作被测变量：**相同模型、相同评测用例，只改变知识载体。** 这样得到的对比才可解释、可复跑，也适合进入 CI 或发布评审。
 
 ## 为什么选 omk
 
@@ -130,7 +145,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本用例 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹、judge prompt hash |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、知识载体版本指纹、judge prompt hash |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 文档
@@ -140,7 +155,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 - **[工作原理](docs/zh/explanation/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
-- **[执行器](docs/zh/reference/executors.md)** & **[artifact 布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
+- **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程
 - **[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)** —— 仓库里一组可直接跑的示例，按由简到全排成上手路径

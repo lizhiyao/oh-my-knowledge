@@ -8,10 +8,22 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**Is this knowledge input (prompt / skill / RAG / agent) any good, and can you ship it with evidence?**
-`doctor` checks whether this knowledge input is coherent enough to measure; `eval` fixes the model and samples, changes only the knowledge input, and tells you whether the new version is genuinely better. Bootstrap CI and length-debias are on by default; Krippendorff α appears the moment you add a gold set.
+**Stop editing LLM knowledge inputs by gut feel.**
+`oh-my-knowledge` (omk) is a measurement workflow for prompts, RAG context, skills, agents, and workflows. It fixes the executor model and the evaluation samples, changes only the knowledge artifact, then answers the release question that matters: **can v2 ship, and where is it better?**
+
+![omk knowledge artifact evaluation flow: doctor / eval / observe / sample / evolve loop](./docs/public/omk-knowledge-flow-en-animated.gif)
 
 📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
+
+## What omk makes measurable
+
+| Decision | Command | Evidence you get |
+|---|---|---|
+| Is this artifact coherent enough to evaluate? | `omk doctor` | structure, dependencies, safety, and measurability checks |
+| Is v2 actually better than v1? | `omk eval` | one-line verdict, confidence interval, failed samples, cost |
+| Why did it pass or fail? | `omk studio` | report view with scores, diagnostics, and examples |
+| Should this version become the accepted one? | `omk promote` / `omk evolve` | evidence-gated accept or generate a better candidate |
+| What did real usage expose? | `omk observe` / `omk sample --from-traces` | production gaps drafted for review; reviewed drafts can become eval samples |
 
 ![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
 
@@ -38,19 +50,20 @@ Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recomme
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
-## The first workflow
+## The omk loop
 
-omk is primarily for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The first workflow is deliberately small:
+omk is for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The main loop is deliberately controlled:
 
 ```text
-change a skill / prompt / agent artifact
-→ run omk doctor to catch structure, dependency, and measurability problems
-→ run omk eval to compare against a baseline on the same samples
-→ read the report / Studio view for the next concrete fix
-→ decide ship / don't ship
+change a prompt / RAG / skill / agent artifact
+→ run omk doctor before evaluation
+→ run omk eval with the same model and the same samples
+→ read the report / Studio evidence
+→ promote a proven version or evolve a candidate
+→ observe real usage and draft gap-derived samples for review
 ```
 
-`observe` is the later production-feedback loop: useful once real usage traces exist, but not required for omk's first value. The trunk is the pre-ship doctor → eval decision.
+The first value is the pre-ship `doctor → eval` decision. The long-term value is the closed loop: `observe` surfaces production gaps, `sample --from-traces` drafts regression samples for human review, and reviewed drafts can become fixed eval samples that make the next `eval` harder to game.
 
 ## Use inside AI Coding Agents
 
@@ -90,7 +103,9 @@ You can also describe the goal in natural language, such as "compare v1 vs v2" o
 
 ## Why this tool
 
-Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "can we ship v2, and why?", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
+Knowledge engineering creates a versioning problem: every prompt, RAG recipe, skill, agent, or workflow can change behavior without changing application code. When someone asks "can we ship v2, and why?", a prettier answer or a higher anecdotal success rate is not enough.
+
+omk treats the knowledge artifact as the variable under test: **same model, same evaluation samples, only the artifact changes.** That makes the comparison explainable, repeatable, and suitable for CI or release review.
 
 ## Why omk over alternatives
 

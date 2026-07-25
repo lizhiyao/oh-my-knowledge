@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1320" viewBox="0 0 720 1320" role="img" aria-labelledby="title desc">
+  <title id="title">omk 知识载体评测移动端流程图</title>
+  <desc id="desc">知识载体先进入受控评测和证据报告，证据足够则发布，证据不足则迭代；真实使用暴露知识缺口，观测沉淀后生成待复核用例草稿，复核后升级评测集并回到受控评测。</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 H 0 V 32" fill="none" stroke="#EAF0F7" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#0F172A" flood-opacity=".12"/>
+    </filter>
+    <marker id="arrow-blue" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto">
+      <path d="M2 2 L10 6 L2 10" fill="none" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto">
+      <path d="M2 2 L10 6 L2 10" fill="none" stroke="#0F766E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="11" markerHeight="11" orient="auto">
+      <path d="M2 2 L10 6 L2 10" fill="none" stroke="#D97706" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text{font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+      .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+      .eyebrow{fill:#2563EB;font-size:18px;font-weight:800;letter-spacing:.04em}
+      .h1{fill:#0F172A;font-size:42px;font-weight:900;letter-spacing:-.02em}
+      .sub{fill:#475569;font-size:22px;font-weight:650}
+      .label{fill:#0F172A;font-size:30px;font-weight:900}
+      .copy{fill:#475569;font-size:21px;font-weight:650}
+      .cmd{fill:#0F172A;font-size:20px;font-weight:800}
+      .small{fill:#64748B;font-size:18px;font-weight:700}
+      .card{fill:#FFFFFF;stroke:#DDE6F2;stroke-width:2;rx:18;filter:url(#shadow)}
+      .card-blue{fill:#F5F8FF;stroke:#AFC7FF}
+      .card-teal{fill:#EFFDF9;stroke:#7AD7C8}
+      .card-amber{fill:#FFF8E8;stroke:#F3C96C}
+      .card-dark{fill:#0F172A;stroke:#0F172A}
+      .dark-title{fill:#FFFFFF;font-size:30px;font-weight:900}
+      .dark-copy{fill:#CBD5E1;font-size:21px;font-weight:700}
+      .dark-cmd{fill:#BFD3FF;font-size:20px;font-weight:800}
+      .arrow{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .dashed{stroke-dasharray:10 12}
+    </style>
+  </defs>
+  <rect width="720" height="1320" fill="#F8FAFC"/>
+  <rect width="720" height="1320" fill="url(#grid)" opacity=".8"/>
+
+  <text class="eyebrow" x="60" y="72">OMK · 知识载体评测</text>
+  <text class="h1" x="60" y="126">把知识改动</text>
+  <text class="h1" x="60" y="178">变成发布证据</text>
+  <text class="sub" x="60" y="226">相同模型、相同评测用例，只改知识载体。</text>
+
+  <g transform="translate(60 270)">
+    <rect class="card" width="600" height="104"/>
+    <text class="label" x="300" y="42" text-anchor="middle">知识载体</text>
+    <text class="copy" x="300" y="74" text-anchor="middle">真正要改进的知识输入</text>
+    <text class="cmd mono" x="300" y="98" text-anchor="middle">prompt · RAG · skill · agent</text>
+  </g>
+  <path class="arrow" d="M360 384 V428" stroke="#2563EB" marker-end="url(#arrow-blue)"/>
+
+  <g transform="translate(60 438)">
+    <rect class="card card-blue" width="600" height="126"/>
+    <text class="label" x="300" y="45" text-anchor="middle">受控评测</text>
+    <text class="copy" x="300" y="79" text-anchor="middle">固定模型 + 固定评测集</text>
+    <text class="cmd mono" x="300" y="110" text-anchor="middle">omk doctor · omk eval</text>
+  </g>
+  <path class="arrow" d="M360 574 V618" stroke="#2563EB" marker-end="url(#arrow-blue)"/>
+
+  <g transform="translate(60 628)">
+    <rect class="card" width="600" height="112"/>
+    <text class="label" x="300" y="44" text-anchor="middle">证据报告</text>
+    <text class="copy" x="300" y="78" text-anchor="middle">结论、置信区间、失败样本</text>
+    <text class="cmd mono" x="300" y="104" text-anchor="middle">omk studio</text>
+  </g>
+  <path class="arrow" d="M360 750 V794" stroke="#2563EB" marker-end="url(#arrow-blue)"/>
+
+  <g transform="translate(60 804)">
+    <rect class="card card-dark" width="600" height="126"/>
+    <text class="dark-title" x="300" y="46" text-anchor="middle">发布 / 迭代</text>
+    <text class="dark-copy" x="300" y="80" text-anchor="middle">证据足够则接受，证据不足则生成候选版</text>
+    <text class="dark-cmd mono" x="300" y="110" text-anchor="middle">omk promote · omk evolve</text>
+  </g>
+  <path class="arrow" d="M360 940 V984" stroke="#D97706" marker-end="url(#arrow-amber)"/>
+
+  <g transform="translate(60 994)">
+    <rect class="card card-amber" width="600" height="100"/>
+    <text class="label" x="300" y="42" text-anchor="middle">真实使用</text>
+    <text class="copy" x="300" y="74" text-anchor="middle">使用日志暴露未知</text>
+  </g>
+  <path class="arrow" d="M360 1104 V1148" stroke="#0F766E" marker-end="url(#arrow-teal)"/>
+
+  <g transform="translate(60 1158)">
+    <rect class="card card-teal" width="600" height="104"/>
+    <text class="label" x="300" y="42" text-anchor="middle">观测沉淀</text>
+    <text class="copy" x="300" y="74" text-anchor="middle">知识缺口进入待复核池</text>
+    <text class="cmd mono" x="300" y="98" text-anchor="middle">omk observe inbox</text>
+  </g>
+
+  <path class="arrow dashed" d="M648 1210 C690 1210 690 505 660 505" stroke="#0F766E" marker-end="url(#arrow-teal)"/>
+  <text class="small" x="60" y="1282">omk sample --from-traces 先生成待复核草稿；</text>
+  <text class="small" x="60" y="1308">复核后再升级为固定评测样本。</text>
+</svg>

@@ -30,12 +30,15 @@ export function initLanding(lang) {
     eval:'A/B on release —— <b>is v2 really better than v1?</b>',
     observe:'In-prod observation —— <b>how is it doing? where are the gaps?</b>'
   };
-  const segs = document.querySelectorAll('.seg');
-  const panels = document.querySelectorAll('.panel');
+  const stage = document.querySelector('.stage');
+  const segs = stage ? stage.querySelectorAll('.seg') : [];
+  const panels = stage ? stage.querySelectorAll('.panel') : [];
   const stTitle = document.getElementById('stTitle');
   const thumb = document.getElementById('thumb');
   const railCap = document.getElementById('railCap');
+  const hasInteractiveStage = !!(stage && !stage.hasAttribute('hidden') && segs.length && panels.length && stTitle && thumb && railCap);
   function select(k){
+    if(!hasInteractiveStage) return;
     const active = order.indexOf(k);
     segs.forEach(n=>{
       const i = +n.dataset.i;
@@ -49,19 +52,20 @@ export function initLanding(lang) {
     thumb.classList.remove('liq'); void thumb.offsetWidth; thumb.classList.add('liq'); // 重触发液态回弹
     railCap.innerHTML = caps[k];
   }
-  segs.forEach(n=>{
-    n.addEventListener('click',()=>select(n.dataset.k));
-    n.addEventListener('mouseenter',()=>select(n.dataset.k));
-    n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(n.dataset.k)}});
-  });
-  select('eval');
+  if(hasInteractiveStage){
+    segs.forEach(n=>{
+      n.addEventListener('click',()=>select(n.dataset.k));
+      n.addEventListener('mouseenter',()=>select(n.dataset.k));
+      n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(n.dataset.k)}});
+    });
+    select('eval');
+  }
 
   // gentle auto-rotate until first interaction;尊重 prefers-reduced-motion(不自动轮播)
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let auto=true, i=1, t=null;
-  if(!reduceMotion){
+  if(hasInteractiveStage && !reduceMotion){
     t=setInterval(()=>{ if(!auto){clearInterval(t);t=null;return;} i=(i+1)%3; select(order[i]); },3200);
-    const stage=document.querySelector('.stage');
     if(stage) stage.addEventListener('mouseenter',()=>auto=false,{once:true});
   }
 
