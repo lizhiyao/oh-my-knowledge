@@ -192,7 +192,7 @@ export interface SkillChainAdvisory {
 // ---------- inbox ----------
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+export type ObservationSourceKind = 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
 export type ObservationSeverityReasonCode =
   | 'knowledge_gap_suspected'
   | 'repeated_failure_suspected'

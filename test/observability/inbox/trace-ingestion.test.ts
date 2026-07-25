@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   buildObservationInboxReport,
   formatObservationShow,
+  inferObservationSourceKind,
   loadObservationInboxReports,
   saveObservationInboxReport,
 } from '../../../src/observability/inbox.js';
@@ -70,6 +71,81 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.items[0].signalSubtype, 'hard_miss');
     assert.equal(report.items[0].confidence, 0.9);
     assert.equal(report.items[0].attributionConfidence, 0.85);
+  });
+
+  it('builds Codex rollout observations without mislabeling them as Claude', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-codex-'));
+    const file = join(dir, 'rollout-codex.jsonl');
+    const records = [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-1',
+          session_id: 'codex-1',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:00.100Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-1', model: 'gpt-codex-test' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          id: 'user-1',
+          role: 'user',
+          content: [{ type: 'input_text', text: '查找收入字段。' }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-skill',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: "sed -n '1,200p' .agents/skills/audit/SKILL.md" }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'read-skill', output: '# Audit Skill' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'search-1',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: 'rg revenue_schema src' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'search-1', output: 'No matches found' },
+      },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    assert.equal(report.meta.sessionCount, 1);
+    assert.equal(report.meta.skillInvocationCounts?.audit, 1);
+    assert.equal(report.experience?.sessions[0].sourceKind, 'codex');
+    assert.equal(report.experience?.sessions[0].entrypoint, 'codex-desktop');
+    assert.equal(report.experience?.sessions[0].sourceMetadata?.model, 'gpt-codex-test');
+    assert.equal(report.items.length, 1);
+    assert.equal(report.items[0].skillName, 'audit');
+    assert.equal(report.items[0].sourceKind, 'codex');
+    assert.equal(inferObservationSourceKind('C:\\Users\\me\\.codex\\sessions\\rollout.jsonl'), 'codex');
   });
 
   it('preserves openclaw sourceKind through inbox and experience reports', () => {

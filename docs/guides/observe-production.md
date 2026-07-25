@@ -1,14 +1,18 @@
 # Observe production traces
 
-`omk observe` turns **real Claude Code session traces** into insight: where your knowledge actually got used, where it bumped into gaps, how stable execution was. Unlike [`omk eval`](../reference/cli) (a controlled offline experiment), observe is read-only production observation — **it does not score**, it surfaces signals.
+`omk observe` turns **real Codex rollouts and Claude Code session traces** into insight: where your knowledge actually got used, where it bumped into gaps, how stable execution was. Unlike [`omk eval`](../reference/cli) (a controlled offline experiment), observe is read-only production observation — **it does not score**, it surfaces signals.
 
 It ships two workflows. For every flag see the [CLI reference](../reference/cli).
 
 ## A. Skill-health report (default)
 
-Point it at a Claude Code project's trace directory:
+Point it at a Codex or Claude Code trace directory:
 
 ```bash
+# ChatGPT desktop / Codex CLI
+omk observe ~/.codex/sessions --last 7d
+
+# Claude Code
 omk observe ~/.claude/projects/-Users-you-Documents-my-project
 omk observe ~/.claude/projects/my-project --last 7d
 omk observe ~/.claude/projects/my-project --skills audit,polish
@@ -25,6 +29,7 @@ When you want to triage observations one by one, use the inbox. Steps 1-3 below 
 
 ```bash
 # 1. Parse traces, aggregate + de-noise signals, write to .omk/observe-inbox/
+omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 
 # 2. Read the inbox (default top 20, sorted by severity / confidence / lastSeen)
@@ -40,7 +45,7 @@ omk observe show <inbox_id>
 
 Each observation carries its credibility (`confidence` + `attributionConfidence`, shown side by side so you can tell a strong signal from a shaky skill-attribution), a stable `severityReasonCode`, and a `messageWindow` (3 messages before / trigger / 3 after, plus whether the agent recovered) anchored back to the original JSONL.
 
-Supported trace formats: Claude Code session JSONL, OpenClaw session JSONL, and markdown conversation logs (`.log`).
+Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenClaw session JSONL, and markdown conversation logs (`.log`). Codex records preserve the model, parent / child task grouping, tool calls, token usage, and `sourceKind=codex`; skill attribution follows actual `skills/<name>/SKILL.md` reads.
 
 ## Turning observations into samples
 

@@ -211,6 +211,185 @@ describe('loadCcSessions', () => {
     assert.equal(skill.metrics.cacheReadTokens, 3);
   });
 
+  it('loads Codex rollout JSONL with skill attribution, tools, tokens, and parent task metadata', () => {
+    const path = join(tmpDir, 'rollout-codex.jsonl');
+    writeFileSync(path, jsonl([
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-child',
+          session_id: 'codex-parent',
+          parent_thread_id: 'codex-parent',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          thread_source: 'subagent',
+          model_provider: 'openai',
+          git: { branch: 'main' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:00.100Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-1', cwd: '/repo-codex', model: 'gpt-codex-test' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: { type: 'task_started', turn_id: 'turn-1' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          id: 'user-1',
+          role: 'user',
+          content: [{ type: 'input_text', text: '审计收入字段。' }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          id: 'call-item-read',
+          call_id: 'call-read',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: "sed -n '1,220p' .agents/skills/audit/SKILL.md",
+            workdir: '/repo-codex',
+          }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-read',
+          output: '# Audit Skill',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          id: 'call-item-search',
+          call_id: 'call-search',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: 'rg revenue_schema src',
+            workdir: '/repo-codex',
+          }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-search',
+          output: 'Process exited with code 1\nFinal output:\nNo matches found',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:07.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            last_token_usage: {
+              input_tokens: 120,
+              cached_input_tokens: 40,
+              cache_write_input_tokens: 2,
+              output_tokens: 15,
+            },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:08.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          id: 'assistant-1',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '没有找到该字段。' }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:09.000Z',
+        type: 'event_msg',
+        payload: { type: 'task_complete', turn_id: 'turn-1' },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    assert.equal(session.sessionId, 'codex-child');
+    assert.equal(session.sessionGroupId, 'codex-parent');
+    assert.equal(session.traceRole, 'subagent');
+    assert.equal(session.sourceKind, 'codex');
+    assert.equal(session.entrypoint, 'codex-desktop');
+    assert.equal(session.cwd, '/repo-codex');
+    assert.equal(session.gitBranch, 'main');
+    assert.deepEqual(session.sourceMetadata, {
+      provider: 'openai',
+      model: 'gpt-codex-test',
+      modelApi: 'codex',
+    });
+
+    const segments = segmentBySkill(session);
+    const audit = segments.find((segment) => segment.skillName === 'audit');
+    assert.ok(audit);
+    assert.equal(audit.attribution?.source, 'read-skill-md');
+    assert.equal(audit.sourceKind, 'codex');
+    assert.equal(audit.toolCalls.length, 2);
+    assert.deepEqual(audit.toolCalls.map((tool) => tool.tool), ['Bash', 'Bash']);
+    assert.equal((audit.toolCalls[0].input as { command?: string }).command?.includes('.agents/skills/audit/SKILL.md'), true);
+    assert.match(String(audit.toolCalls[1].output), /No matches found/);
+    assert.equal(audit.toolCalls[1].success, false);
+    assert.equal(audit.metrics.numToolFailures, 1);
+    assert.equal(audit.metrics.inputTokens, 120);
+    assert.equal(audit.metrics.outputTokens, 15);
+    assert.equal(audit.metrics.cacheReadTokens, 40);
+    assert.equal(audit.metrics.cacheCreationTokens, 2);
+  });
+
+  it('groups Codex main and child rollouts into one logical session', () => {
+    writeSession(tmpDir, 'rollout-main.jsonl', [{
+      timestamp: '2026-07-25T00:00:00.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'codex-parent',
+        session_id: 'codex-parent',
+        cwd: '/repo-codex',
+        originator: 'Codex Desktop',
+        model_provider: 'openai',
+      },
+    }]);
+    writeSession(tmpDir, 'rollout-child.jsonl', [{
+      timestamp: '2026-07-25T00:00:01.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'codex-child',
+        session_id: 'codex-parent',
+        parent_thread_id: 'codex-parent',
+        cwd: '/repo-codex',
+        originator: 'Codex Desktop',
+        thread_source: 'subagent',
+        model_provider: 'openai',
+      },
+    }]);
+
+    const sessions = loadCcSessions(tmpDir).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    assert.equal(sessions.length, 2);
+    assert.deepEqual(sessions.map((session) => session.traceRole), ['subagent', 'main']);
+    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['codex-parent']));
+    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupPath)), new Set(['codex:codex-parent']));
+  });
+
   it('keeps OpenClaw business action labels and splits by SKILL.md reads', () => {
     const path = join(tmpDir, 'openclaw-multi-action.jsonl');
     writeFileSync(path, jsonl([

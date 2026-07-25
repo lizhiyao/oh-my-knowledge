@@ -101,25 +101,25 @@ async function recordObserveFeedback(report: SkillHealthReport, reportId: string
 
 export default class Observe extends BaseCommand {
   static description = bilingual({
-    zh: '分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。',
-    en: 'Analyze skill invocation health from a sessions dir (default). Subcommands: ingest / inbox / show.',
+    zh: '分析 sessions 目录中的 Claude Code / Codex skill 调用健康度（默认行为）。子命令：ingest / inbox / show。',
+    en: 'Analyze Claude Code or Codex skill invocation health from a sessions dir (default). Subcommands: ingest / inbox / show.',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '分析最近 7 天',
-        en: 'Analyze last 7 days',
+        zh: '分析最近 7 天的 Codex rollout',
+        en: 'Analyze Codex rollouts from the last 7 days',
       }),
-      command: '<%= config.bin %> observe ~/.claude/sessions --last 7d',
+      command: '<%= config.bin %> observe ~/.codex/sessions --last 7d',
     },
   ];
 
   static args = {
     sessionsDir: Args.string({
       description: bilingual({
-        zh: 'sessions 目录路径（如 ~/.claude/sessions）',
-        en: 'Sessions dir path (e.g. ~/.claude/sessions)',
+        zh: 'sessions 目录路径（如 ~/.codex/sessions 或 ~/.claude/projects/<project>）',
+        en: 'Sessions dir path (e.g. ~/.codex/sessions or ~/.claude/projects/<project>)',
       }),
       required: false,
     }),

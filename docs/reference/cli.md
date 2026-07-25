@@ -286,6 +286,10 @@ The HTML report has two tabs:
 ### A. Skill-health report (default)
 
 ```bash
+# ChatGPT desktop / Codex CLI
+omk observe ~/.codex/sessions --last 7d
+
+# Claude Code
 omk observe ~/.claude/projects/-Users-you-Documents-my-project
 omk observe ~/.claude/projects/my-project --last 7d
 omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
@@ -313,14 +317,15 @@ For full descriptions: `omk observe --help`.
 
 <!-- omk:cli:observe:flags:end -->
 
-Turns real Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
+Turns real Codex rollouts and Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
 ### B. observe inbox: reviewer loop
 
-Parses, aggregates, and de-noises real session traces into a per-observation list a human can review. The whole pipeline is local-only and LLM-free.
+Parses, aggregates, and de-noises real session traces into a per-observation list a human can review. The base pipeline is local-only and LLM-free; `--llm-enhanced-review` is an explicit optional model call.
 
 ```bash
 # 1. Parse traces, aggregate signals, write to .omk/observe-inbox/
+omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
 
@@ -345,7 +350,7 @@ Every observation carries:
 - `messageWindow` — 3 messages before / trigger / 3 messages after, plus `resolutionAfter` (whether the agent recovered)
 - `evidence.{messageIndex,messageUuid,toolUseId}` — anchors for round-tripping back to the original jsonl
 
-Supported trace formats: Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
+Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
 ## `omk evolve`
 

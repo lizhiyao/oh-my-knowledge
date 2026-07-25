@@ -8,7 +8,7 @@ export interface ToolCallInfo {
   toolUseId?: string;
   timestamp?: string;
   sourceTrace?: string;
-  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+  sourceKind?: 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
 }

@@ -125,6 +125,19 @@ omk sample --batch
 
 输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/samples.json`（标准）；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级兜底）；扁平 `.md` 的 `--batch` 兼容生成 `<skill-dir>/<name>.eval-samples.json`。
 
+### 观测真实使用
+
+```bash
+# ChatGPT desktop / Codex CLI rollout
+omk observe ~/.codex/sessions --last 7d
+omk observe ingest ~/.codex/sessions
+
+# Claude Code session
+omk observe ~/.claude/projects/<project> --last 7d
+```
+
+Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
+
 ### 体检 skill 写法
 
 ```bash

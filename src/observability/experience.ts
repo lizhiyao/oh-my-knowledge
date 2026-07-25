@@ -4022,6 +4022,7 @@ function timestampOf(record: unknown): string | undefined {
 
 function sourceKindForPath(path: string): ObservationSourceKind {
   if (path.includes('/openclaw') || path.includes('/.openclaw/')) return 'openclaw';
+  if (/[\\/]\.?codex[\\/]sessions[\\/]/i.test(path)) return 'codex';
   if (path.endsWith('.jsonl')) return 'claude';
   if (path.endsWith('.log')) return 'markdown_log';
   return 'unknown';
@@ -4034,6 +4035,7 @@ function inferEntrypointFromRecords(session: CcSession): string | undefined {
     if (typeof entrypoint === 'string' && entrypoint.trim()) return entrypoint;
   }
   if (session.entrypoint) return session.entrypoint;
+  if (session.sourceKind === 'codex') return 'codex-cli';
   if (session.sourceKind === 'openclaw') return 'openclaw';
   if (session.sourceKind === 'markdown_log') return 'markdown_log';
   if (session.sourcePath.endsWith('.log')) return 'markdown_log';

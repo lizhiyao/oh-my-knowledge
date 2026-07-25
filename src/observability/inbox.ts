@@ -79,6 +79,7 @@ export function normalizeObservationKeyInput(value: unknown): string {
 
 export function inferObservationSourceKind(sourceTrace: string): ObservationSourceKind {
   if (sourceTrace.includes('/openclaw') || sourceTrace.includes('/.openclaw/')) return 'openclaw';
+  if (/[\\/]\.?codex[\\/]sessions[\\/]/i.test(sourceTrace)) return 'codex';
   if (sourceTrace.endsWith('.jsonl')) return 'claude';
   if (sourceTrace.endsWith('.log')) return 'markdown_log';
   return 'unknown';
@@ -578,8 +579,8 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
           const sourceKind = (item as { sourceKind?: string }).sourceKind;
           return {
             ...item,
-            sourceKind: sourceKind === 'openclaw'
-              ? 'openclaw'
+            sourceKind: sourceKind === 'openclaw' || sourceKind === 'codex'
+              ? sourceKind
               : (item.sourceKind ?? inferObservationSourceKind(item.sourceTrace)),
             severityReasonCode: item.severityReasonCode ?? severityReasonCodeFor(item),
             severityReason: undefined,

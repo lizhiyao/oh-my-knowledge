@@ -1,14 +1,18 @@
 # 观测生产 trace
 
-`omk observe` 把**真实 Claude Code session trace** 转成洞察：你的知识到底在哪儿被用上了、在哪儿撞上了缺口、执行有多稳。和 [`omk eval`](../reference/cli)（受控离线实验）不同，observe 是只读的生产观测——**它不评分**，它暴露信号。
+`omk observe` 把**真实 Codex rollout 与 Claude Code session trace** 转成洞察：你的知识到底在哪儿被用上了、在哪儿撞上了缺口、执行有多稳。和 [`omk eval`](../reference/cli)（受控离线实验）不同，observe 是只读的生产观测——**它不评分**，它暴露信号。
 
 它有两条工作流。每个 flag 见 [CLI 参考](../reference/cli)。
 
 ## A. skill 健康度报告（默认）
 
-指向一个 Claude Code 项目的 trace 目录：
+指向 Codex 或 Claude Code 的 trace 目录：
 
 ```bash
+# ChatGPT desktop / Codex CLI
+omk observe ~/.codex/sessions --last 7d
+
+# Claude Code
 omk observe ~/.claude/projects/-Users-you-Documents-my-project
 omk observe ~/.claude/projects/my-project --last 7d
 omk observe ~/.claude/projects/my-project --skills audit,polish
@@ -25,6 +29,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分
 
 ```bash
 # 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe-inbox/
+omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 
 # 2. 看 inbox（默认 top 20，按 severity / confidence / lastSeen 排序）
@@ -40,7 +45,7 @@ omk observe show <inbox_id>
 
 每条 observation 带它的可信度（`confidence` + `attributionConfidence`，并排显示，让你区分"强信号"和"摇摆的 skill 归因"）、一个稳定的 `severityReasonCode`、以及一个 `messageWindow`（触发前 3 条 / 触发 / 后 3 条，外加 agent 是否恢复），都锚回原始 JSONL。
 
-支持的 trace 格式：Claude Code session JSONL、OpenClaw session JSONL、markdown 对话日志（`.log`）。
+支持的 trace 格式：Codex rollout JSONL、Claude Code session JSONL、OpenClaw session JSONL、markdown 对话日志（`.log`）。Codex 记录会保留模型、父子任务分组、tool call、token 使用和 `sourceKind=codex`；skill 归因依据实际读取的 `skills/<name>/SKILL.md`。
 
 ## 把 observation 变成用例
 

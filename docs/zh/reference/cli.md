@@ -286,6 +286,10 @@ omk observe 提供两条工作流：默认的 skill 健康度报告，以及 obs
 ### A. skill 健康度报告（默认）
 
 ```bash
+# ChatGPT desktop / Codex CLI
+omk observe ~/.codex/sessions --last 7d
+
+# Claude Code
 omk observe ~/.claude/projects/-Users-you-Documents-my-project
 omk observe ~/.claude/projects/my-project --last 7d
 omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
@@ -313,14 +317,15 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 <!-- omk:cli:observe:flags:end -->
 
-把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+把真实 Codex rollout 与 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
 ### B. observe inbox：reviewer 闭环
 
-把真实 session trace 解析、聚合、降噪，输出可逐条 review 的 observation 列表。整条链路纯本地、零 LLM。
+把真实 session trace 解析、聚合、降噪，输出可逐条 review 的 observation 列表。基础链路纯本地、零 LLM；`--llm-enhanced-review` 是显式开启的可选模型调用。
 
 ```bash
 # 1. 把 trace 解析、聚合、落盘到 .omk/observe-inbox/
+omk observe ingest ~/.codex/sessions
 omk observe ingest ~/.claude/projects/my-project
 omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
 
@@ -345,7 +350,7 @@ omk observe show <inbox_id>
 + `messageWindow`：前 3 条 / 触发点 / 后 3 条 message 上下文 + `resolutionAfter`（后续是否解决）
 + `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
 
-支持 trace 格式：Claude Code session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
 
 ## `omk evolve`
 

@@ -26,7 +26,7 @@ export interface SkillSegment {
   sessionId: string;
   traceSessionId?: string;
   sourceTrace?: string;
-  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+  sourceKind?: 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
   segmentIndex: number;
@@ -311,7 +311,8 @@ function updateSegmentTimestamp(seg: SkillSegment, timestamp?: string): void {
 function shouldCutOnReadSkill(session: CcSession, currentSegment: SkillSegment): boolean {
   return currentSegment.skillName === 'general'
     || currentSegment.attribution?.source === 'read-skill-md'
-    || session.sourceKind === 'openclaw';
+    || session.sourceKind === 'openclaw'
+    || session.sourceKind === 'codex';
 }
 
 function extractUserText(record: CcUserRecord): string {

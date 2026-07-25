@@ -1,7 +1,8 @@
-/** Trace source loading and parsing for Claude JSONL / OpenClaw JSONL / generic markdown logs. */
+/** Trace source loading and parsing for Claude / Codex / OpenClaw JSONL and generic markdown logs. */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
+import { isCodexJsonl, parseCodexSessionFile } from './codex-trace-adapter.js';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
 import { isToolResultFailureText } from './text-signals.js';
 import type { TraceSourceMetadata } from '../types/index.js';
@@ -88,7 +89,7 @@ export interface CcSession {
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
   sourcePath: string;
-  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+  sourceKind?: 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
   // records 用 unknown[] 是有意为之: cc JSONL 里 permission-mode / file-history-snapshot /
   // 未来可能新增的 record type 都会共存, 严格 union 会拒绝合法输入。
   // segmentBySkill 内部按 type 字段做 structural type guard, 比静态类型约束更 robust。
@@ -146,8 +147,8 @@ function parseTraceFile(filePath: string): CcSession[] {
 function withStandaloneTraceMetadata(session: CcSession): CcSession {
   return {
     ...session,
-    sessionGroupId: session.sessionId,
-    sessionGroupPath: dirname(session.sourcePath),
+    sessionGroupId: session.sessionGroupId ?? session.sessionId,
+    sessionGroupPath: session.sessionGroupPath ?? dirname(session.sourcePath),
     traceId: traceIdFor(session),
     traceRole: session.traceRole ?? 'standalone',
     traceLabel: session.traceLabel ?? basename(session.sourcePath),
@@ -228,6 +229,7 @@ function parseJsonlSessionFile(filePath: string): CcSession {
       // malformed line → skip. cc 有罕见的截断 record, 不让单行 fail 整个 session
     }
   }
+  if (isCodexJsonl(records)) return parseCodexSessionFile(filePath, records);
   return isOpenClawJsonl(records) ? parseOpenClawSessionFile(filePath, records) : parseCcSessionFile(filePath, records);
 }
 

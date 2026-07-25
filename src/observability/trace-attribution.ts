@@ -154,14 +154,16 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
   return record.attributionSkill ? parseSkillRef(record.attributionSkill) : null;
 }
 
-// OpenClaw traces may point at either workspace root; both layouts store skills under <workspace>/skills.
-const SKILL_READ_FILE_RE = /(?:\.claude\/skills|\.openclaw\/workspace(?:-main)?\/skills)\/([^/]+)\/SKILL\.md$/;
+// Agent runtimes may install skills under user or project roots. Match the nearest
+// `skills/<name>/SKILL.md` path segment so Codex `.agents/skills` and plugin-cache
+// paths use the same attribution rule as Claude Code and OpenClaw.
+const SKILL_READ_FILE_RE = /(?:^|[/\s"'`])(?:[^\s"'`]*\/)?skills\/([^/\s"'`]+)\/SKILL\.md\b/;
 const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`(\[{:,])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
 
 /**
- * 从 assistant message 的 Read tool_use 里提取 skill 名字(信号 3, fallback)。
- * 匹配 file_path 形如 ".claude/skills/<name>/SKILL.md"
- * 或 ".openclaw/workspace/skills/<name>/SKILL.md" 的模式。
+ * 从 assistant message 的 Read / Bash tool_use 里提取 skill 名字(信号 3, fallback)。
+ * Codex 通常用 shell 读取 `.agents/skills/<name>/SKILL.md`，Claude Code 与
+ * OpenClaw 则更常用结构化 Read tool；两种形式统一识别。
  * 返回 null 表示没命中。
  */
 export function extractSkillReadFile(record: CcAssistantRecord): string | null {
@@ -175,6 +177,13 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
       const filePath = part.input?.file_path;
       if (typeof filePath === 'string') {
         const m = SKILL_READ_FILE_RE.exec(filePath);
+        if (m) return parseSkillRef(m[1]);
+      }
+    }
+    if (part.type === 'tool_use' && part.name === 'Bash') {
+      const command = part.input?.command;
+      if (typeof command === 'string') {
+        const m = SKILL_READ_FILE_RE.exec(command);
         if (m) return parseSkillRef(m[1]);
       }
     }

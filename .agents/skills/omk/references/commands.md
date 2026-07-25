@@ -396,7 +396,7 @@ omk list --json
 
 ## omk observe
 
-分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。
+分析 sessions 目录中的 Claude Code / Codex skill 调用健康度（默认行为）。子命令：ingest / inbox / show。
 
 **用法:**
 
@@ -406,7 +406,7 @@ omk observe [sessionsDir] [flags]
 
 **参数:**
 
-- `sessionsDir`(可选):sessions 目录路径（如 ~/.claude/sessions）
+- `sessionsDir`(可选):sessions 目录路径（如 ~/.codex/sessions 或 ~/.claude/projects/<project>）
 
 **Flags:**
 
@@ -422,10 +422,10 @@ omk observe [sessionsDir] [flags]
 
 **示例:**
 
-> 分析最近 7 天
+> 分析最近 7 天的 Codex rollout
 
 ```bash
-omk observe ~/.claude/sessions --last 7d
+omk observe ~/.codex/sessions --last 7d
 ```
 
 ## omk observe inbox
