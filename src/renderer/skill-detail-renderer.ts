@@ -1049,6 +1049,89 @@ const SKILL_MAP_INIT_SCRIPT = `
       };
     }
 
+    function isVisibleNode(node){
+      return !!node && !node.hidden && node.style.display !== 'none';
+    }
+
+    function nodeLayoutPriority(node){
+      if (node.hasAttribute('data-sm-root')) return 0;
+      if (node.classList.contains('is-selected')) return 1;
+      if (node.classList.contains('sm-node--group')) return 2;
+      if (node.hasAttribute('data-sm-more-toggle')) return 3;
+      return 4;
+    }
+
+    function nodesOverlapAt(node, x, y, other){
+      if (!isVisibleNode(other) || node === other) return false;
+      var box = nodeBox(node, 154, 58);
+      var otherBox = nodeBox(other, 154, 58);
+      var otherCenter = nodeCenter(other, 0, 0);
+      var horizontalGap = 18;
+      var verticalGap = 14;
+      return Math.abs(x - otherCenter.x) < (box.width + otherBox.width) / 2 + horizontalGap
+        && Math.abs(y - otherCenter.y) < (box.height + otherBox.height) / 2 + verticalGap;
+    }
+
+    function positionHasCollision(node, x, y, candidates){
+      var others = candidates || Array.prototype.slice.call(graph.querySelectorAll('.sm-node'));
+      return others.some(function(other){ return nodesOverlapAt(node, x, y, other); });
+    }
+
+    function nearestOpenPosition(node, desiredX, desiredY, placed){
+      var box = nodeBox(node, 154, 58);
+      var minX = box.width / 2 + 24;
+      var minY = box.height / 2 + 24;
+      var startX = Math.max(minX, desiredX);
+      var startY = Math.max(minY, desiredY);
+      var rootNode = graph.querySelector('[data-sm-root]');
+      var rootCenter = nodeCenter(rootNode, rootX, rootY);
+      var outwardAngle = Math.atan2(startY - rootCenter.y, startX - rootCenter.x);
+      if (!Number.isFinite(outwardAngle)) outwardAngle = 0;
+
+      for (var radius = 0; radius <= 1800; radius += 18) {
+        var pointCount = radius === 0 ? 1 : Math.max(12, Math.ceil(Math.PI * 2 * radius / 28));
+        for (var index = 0; index < pointCount; index += 1) {
+          var offsetIndex = index === 0 ? 0 : Math.ceil(index / 2) * (index % 2 ? 1 : -1);
+          var angle = outwardAngle + offsetIndex * (Math.PI * 2 / pointCount);
+          var x = Math.max(minX, startX + Math.cos(angle) * radius);
+          var y = Math.max(minY, startY + Math.sin(angle) * radius);
+          if (!positionHasCollision(node, x, y, placed)) return { x: x, y: y };
+        }
+      }
+
+      var fallbackX = startX;
+      var fallbackY = Math.max(
+        minY,
+        placed.reduce(function(maxY, other){
+          var otherCenter = nodeCenter(other, 0, 0);
+          var otherBox = nodeBox(other, 154, 58);
+          return Math.max(maxY, otherCenter.y + otherBox.height / 2);
+        }, baseHeight) + box.height / 2 + 28
+      );
+      while (positionHasCollision(node, fallbackX, fallbackY, placed)) {
+        fallbackY += box.height + 28;
+      }
+      return { x: fallbackX, y: fallbackY };
+    }
+
+    function layoutVisibleNodes(resetToPreferred){
+      var nodes = Array.prototype.slice.call(graph.querySelectorAll('.sm-node'))
+        .filter(isVisibleNode)
+        .sort(function(a, b){
+          return nodeLayoutPriority(a) - nodeLayoutPriority(b);
+        });
+      var placed = [];
+      nodes.forEach(function(node){
+        var desired = resetToPreferred
+          ? nodeViewPosition(node, currentView)
+          : nodeCenter(node, rootX, rootY);
+        var open = nearestOpenPosition(node, desired.x, desired.y, placed);
+        setNodePosition(node, open.x, open.y);
+        placed.push(node);
+      });
+      refreshEdges();
+    }
+
     function hideFilteredNode(node){
       node.hidden = true;
       node.toggleAttribute('hidden', true);
@@ -1125,6 +1208,7 @@ const SKILL_MAP_INIT_SCRIPT = `
       updateEvidenceFocus();
       if (refit) {
         requestAnimationFrame(function(){
+          layoutVisibleNodes(false);
           fitToViewport();
           centerRoot();
         });
@@ -1183,6 +1267,7 @@ const SKILL_MAP_INIT_SCRIPT = `
 
     function resetNodePositions(){
       applyViewPositions(currentView);
+      layoutVisibleNodes(false);
     }
 
     function applyViewPositions(view){
@@ -1333,6 +1418,7 @@ const SKILL_MAP_INIT_SCRIPT = `
           if (fromNode && fromId !== selectedNodeId) fromNode.classList.add('is-related');
         }
       });
+      layoutVisibleNodes(false);
     }
 
     function updateVisibility(){
@@ -1482,8 +1568,12 @@ const SKILL_MAP_INIT_SCRIPT = `
         var deltaX = ev.clientX - dragState.startClientX;
         var deltaY = ev.clientY - dragState.startClientY;
         if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > 3) dragState.moved = true;
-        var nextX = clamp(dragState.startX + deltaX / zoom, 52, baseWidth - 52);
-        var nextY = clamp(dragState.startY + deltaY / zoom, 36, baseHeight - 36);
+        var dragBox = nodeBox(node, 154, 58);
+        var horizontalMargin = dragBox.width / 2 + 24;
+        var verticalMargin = dragBox.height / 2 + 24;
+        var nextX = clamp(dragState.startX + deltaX / zoom, horizontalMargin, Math.max(baseWidth, activeWidth) - horizontalMargin);
+        var nextY = clamp(dragState.startY + deltaY / zoom, verticalMargin, Math.max(baseHeight, activeHeight) - verticalMargin);
+        if (positionHasCollision(node, nextX, nextY)) return;
         setNodePosition(node, nextX, nextY);
         updateEdgesForNode(dragState.nodeId, nextX, nextY);
         updateEdgesFromNode(dragState.nodeId, nextX, nextY);

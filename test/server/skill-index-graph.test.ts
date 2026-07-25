@@ -388,6 +388,10 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('<div class="sm-node-title">收起'));
     assert.ok(html.includes('updateEdgesFromNode'));
     assert.ok(html.includes('refreshEdges'));
+    assert.ok(html.includes('function nodesOverlapAt'));
+    assert.ok(html.includes('function nearestOpenPosition'));
+    assert.ok(html.includes('layoutVisibleNodes(false)'));
+    assert.ok(html.includes('if (positionHasCollision(node, nextX, nextY)) return'));
     assert.ok(html.includes('suppressMoreClickUntil'));
     assert.ok(html.includes('data-sm-origin-x="'));
     assert.ok(html.includes('data-sm-root-x="560"'));
