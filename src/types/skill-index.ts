@@ -61,6 +61,8 @@ export interface SkillGraphNodePreview {
   nodeKind: string;
   label: string;
   status?: string;
+  /** Studio evidence view 用于把 assertion / diagnostic 归到对应 sample。 */
+  parentSampleStableKey?: string;
   coverage?: 'declared' | 'undeclared';
   coveredBySamples?: string[];
 }

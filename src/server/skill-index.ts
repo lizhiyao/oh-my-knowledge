@@ -589,6 +589,7 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
   const projectedEdgeIds = new Set<string>();
   const sampleStatusByNodeId = new Map<string, string>();
   const assertionStatusByNodeId = new Map<string, string>();
+  const parentSampleStableKeyByNodeId = new Map<string, string>();
   if (skillNode) projectedNodeIds.add(skillNode.id);
 
   const addEdge = (edge: ArtifactGraphDocument['edges'][number]): void => {
@@ -609,12 +610,39 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
     .filter((edge) => edge.toNodeId === variantNode.id && edge.edgeKind === 'derived_from')
     .map((edge) => nodesById.get(edge.fromNodeId))
     .filter((node): node is ArtifactGraphNode => node?.nodeKind === 'eval_result');
+  const evalResultNodeIds = new Set(evalResultNodes.map((node) => node.id));
   for (const node of evalResultNodes) projectedNodeIds.add(node.id);
 
   for (const edge of graph.edges) {
-    if (!evalResultNodes.some((node) => node.id === edge.fromNodeId || node.id === edge.toNodeId)) continue;
+    if (!evalResultNodeIds.has(edge.fromNodeId) && !evalResultNodeIds.has(edge.toNodeId)) continue;
     if (edge.edgeKind === 'derived_from' || edge.edgeKind === 'evaluates' || edge.edgeKind === 'passes' || edge.edgeKind === 'fails' || edge.edgeKind === 'diagnoses') {
       addEdge(edge);
+    }
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.edgeKind !== 'contains') continue;
+    const from = nodesById.get(edge.fromNodeId);
+    const to = nodesById.get(edge.toNodeId);
+    if (from?.nodeKind !== 'sample' || to?.nodeKind !== 'assertion' || !projectedNodeIds.has(from.id)) continue;
+    addEdge(edge);
+    if (from.stableKey) parentSampleStableKeyByNodeId.set(to.id, from.stableKey);
+  }
+
+  const sampleStableKeyByEvalResultId = new Map<string, string>();
+  for (const edge of graph.edges) {
+    if (edge.edgeKind !== 'evaluates' || !evalResultNodeIds.has(edge.fromNodeId)) continue;
+    const sample = nodesById.get(edge.toNodeId);
+    if (sample?.nodeKind === 'sample' && sample.stableKey) {
+      sampleStableKeyByEvalResultId.set(edge.fromNodeId, sample.stableKey);
+    }
+  }
+  for (const edge of graph.edges) {
+    if (edge.edgeKind !== 'diagnoses') continue;
+    const diagnostic = nodesById.get(edge.fromNodeId);
+    const sampleStableKey = sampleStableKeyByEvalResultId.get(edge.toNodeId);
+    if (diagnostic?.nodeKind === 'diagnostic' && sampleStableKey) {
+      parentSampleStableKeyByNodeId.set(diagnostic.id, sampleStableKey);
     }
   }
 
@@ -678,7 +706,19 @@ function projectEvalStage(graph: ArtifactGraphDocument, path: string, entry: Ski
       : sourceNode.nodeKind === 'assertion'
         ? assertionStatusByNodeId.get(sourceNode.id)
         : undefined;
-    return status ? { ...node, status } : node;
+    const parentSampleStableKey = parentSampleStableKeyByNodeId.get(sourceNode.id)
+      ?? (sourceNode.nodeKind === 'assertion'
+        ? graph.nodes.find((candidate) =>
+          candidate.nodeKind === 'sample'
+          && candidate.stableKey
+          && sourceNode.stableKey?.startsWith(`${candidate.stableKey}:assertion:`),
+        )?.stableKey
+        : undefined);
+    return {
+      ...node,
+      ...(status ? { status } : {}),
+      ...(parentSampleStableKey ? { parentSampleStableKey } : {}),
+    };
   });
 
   return {
