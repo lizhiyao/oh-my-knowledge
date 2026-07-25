@@ -154,11 +154,28 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
   return record.attributionSkill ? parseSkillRef(record.attributionSkill) : null;
 }
 
-// Agent runtimes may install skills under user or project roots. Match the nearest
-// `skills/<name>/SKILL.md` path segment so Codex `.agents/skills` and plugin-cache
-// paths use the same attribution rule as Claude Code and OpenClaw.
-const SKILL_READ_FILE_RE = /(?:^|[/\s"'`])(?:[^\s"'`]*\/)?skills\/([^/\s"'`]+)\/SKILL\.md\b/;
+// Only installed runtime roots count as attribution evidence. Repository examples
+// such as `examples/foo/skills/bar/SKILL.md` are knowledge artifacts under review,
+// not proof that the `bar` skill was active in the session.
+const SKILL_READ_PATH_RE = /(?:^|[\s"'`(\[{:,])([^\s"'`]*\/skills\/([^/\s"'`]+)\/SKILL\.md)\b/g;
+const INSTALLED_SKILL_PATH_RES = [
+  /(?:^|\/)\.(?:agents|claude|codex)\/skills\/[^/]+\/SKILL\.md$/,
+  /(?:^|\/)\.codex\/plugins\/cache\/.+\/skills\/[^/]+\/SKILL\.md$/,
+  /(?:^|\/)\.openclaw\/workspace(?:-main)?\/skills\/[^/]+\/SKILL\.md$/,
+];
 const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`(\[{:,])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
+
+function extractInstalledSkillReadRef(text: string): SkillRef | null {
+  const normalized = text.replaceAll('\\', '/');
+  for (const match of normalized.matchAll(SKILL_READ_PATH_RE)) {
+    const path = match[1];
+    const skillName = match[2];
+    if (path && skillName && INSTALLED_SKILL_PATH_RES.some((pattern) => pattern.test(path))) {
+      return parseSkillRef(skillName);
+    }
+  }
+  return null;
+}
 
 function skipJsString(source: string, start: number): number {
   const quote = source[start];
@@ -310,8 +327,8 @@ function extractShellSkillReadRef(command: string): SkillRef | null {
   for (const segment of splitShellCommandSegments(command)) {
     const normalized = segment.trim();
     if (!SHELL_FILE_READER_RE.test(normalized)) continue;
-    const match = SKILL_READ_FILE_RE.exec(normalized);
-    if (match) return parseSkillRef(match[1]);
+    const skillRef = extractInstalledSkillReadRef(normalized);
+    if (skillRef) return skillRef;
   }
   return null;
 }
@@ -332,8 +349,8 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
     if (part.type === 'tool_use' && part.name === 'Read') {
       const filePath = part.input?.file_path;
       if (typeof filePath === 'string') {
-        const m = SKILL_READ_FILE_RE.exec(filePath);
-        if (m) return parseSkillRef(m[1]);
+        const skillRef = extractInstalledSkillReadRef(filePath);
+        if (skillRef) return skillRef;
       }
     }
     if (part.type === 'tool_use' && (part.name === 'Bash' || part.name?.toLowerCase() === 'exec')) {

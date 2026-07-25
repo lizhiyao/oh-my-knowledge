@@ -80,7 +80,8 @@ export type { TraceSourceMetadata } from '../types/index.js';
 export interface CcSession {
   sessionId: string;
   /**
-   * Logical parent session. For a directory shaped as:
+   * Logical root session used to aggregate a main trace and all descendants.
+   * For a directory shaped as:
    *   A/main.jsonl
    *   A/subagents/x1.jsonl
    *   A/subagents/x2.jsonl
@@ -116,10 +117,14 @@ export interface CcSession {
 export function loadCcSessions(path: string): CcSession[] {
   const stat = statSync(path);
   if (stat.isFile()) {
-    return parseTraceFile(path).map((session) => withStandaloneTraceMetadata(session));
+    return resolveCodexSessionGroups(
+      parseTraceFile(path).map((session) => withStandaloneTraceMetadata(session)),
+    );
   }
   const entries = collectTraceFiles(path);
-  return annotateSessionGroups(path, entries.flatMap(parseTraceFile));
+  return resolveCodexSessionGroups(
+    annotateSessionGroups(path, entries.flatMap(parseTraceFile)),
+  );
 }
 
 function collectTraceFiles(dir: string): string[] {
@@ -192,6 +197,40 @@ function annotateSessionGroups(rootPath: string, sessions: CcSession[]): CcSessi
       traceId: traceIdFor(session),
       traceRole: role,
       traceLabel: traceLabelFor(session.sourcePath, groupRoot, role),
+    };
+  });
+}
+
+function resolveCodexSessionGroups(sessions: CcSession[]): CcSession[] {
+  const codexSessionsById = new Map(
+    sessions
+      .filter((session) => session.sourceKind === 'codex')
+      .map((session) => [session.sessionId, session]),
+  );
+
+  return sessions.map((session) => {
+    if (session.sourceKind !== 'codex') return session;
+    const seen = new Set<string>([session.sessionId]);
+    let groupId = session.sessionGroupId ?? session.sessionId;
+    while (true) {
+      if (seen.has(groupId)) {
+        groupId = Array.from(seen).sort()[0] ?? session.sessionId;
+        break;
+      }
+      seen.add(groupId);
+      const parent = codexSessionsById.get(groupId);
+      if (!parent) break;
+      const parentGroupId = parent.sessionGroupId ?? parent.sessionId;
+      if (parentGroupId === parent.sessionId) {
+        groupId = parent.sessionId;
+        break;
+      }
+      groupId = parentGroupId;
+    }
+    return {
+      ...session,
+      sessionGroupId: groupId,
+      sessionGroupPath: `codex:${groupId}`,
     };
   });
 }

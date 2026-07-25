@@ -352,10 +352,96 @@ describe('loadCcSessions', () => {
     assert.match(String(audit.toolCalls[1].output), /No matches found/);
     assert.equal(audit.toolCalls[1].success, false);
     assert.equal(audit.metrics.numToolFailures, 1);
-    assert.equal(audit.metrics.inputTokens, 120);
+    assert.equal(audit.metrics.inputTokens, 78);
     assert.equal(audit.metrics.outputTokens, 15);
     assert.equal(audit.metrics.cacheReadTokens, 40);
     assert.equal(audit.metrics.cacheCreationTokens, 2);
+    assert.equal(
+      audit.metrics.inputTokens
+        + audit.metrics.outputTokens
+        + audit.metrics.cacheReadTokens
+        + audit.metrics.cacheCreationTokens,
+      135,
+    );
+  });
+
+  it('normalizes Codex turn_aborted as an interrupted session signal', () => {
+    const path = join(tmpDir, 'rollout-codex-aborted.jsonl');
+    writeFileSync(path, jsonl([
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-aborted',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: '审计配置。' }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-skill',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: 'cat .agents/skills/audit/SKILL.md' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'read-skill', output: '# Audit Skill' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'turn_aborted',
+          turn_id: 'turn-1',
+          reason: 'interrupted',
+          completed_at: '2026-07-25T00:00:04.000Z',
+          duration_ms: 3500,
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const interrupted = session.records.find((record) =>
+      (record as { type?: unknown }).type === 'turn_aborted') as
+      | { reason?: string; durationMs?: number }
+      | undefined;
+    assert.deepEqual(interrupted, {
+      type: 'turn_aborted',
+      sessionId: 'codex-aborted',
+      timestamp: '2026-07-25T00:00:04.000Z',
+      turnId: 'turn-1',
+      reason: 'interrupted',
+      completedAt: '2026-07-25T00:00:04.000Z',
+      durationMs: 3500,
+    });
+
+    const segments = segmentBySkill(session);
+    const experience = buildObservationExperienceReport({
+      sessions: [session],
+      segments,
+      items: [],
+      generatedAt: '2026-07-25T00:00:05.000Z',
+    });
+    assert.equal(experience.sessions[0].indicators.sessionInterruptedCount, 1);
+    assert.equal(
+      experience.sessions[0].ruleFindings.some((finding) => finding.code === 'session_interrupted_seen'),
+      true,
+    );
   });
 
   it('handles Codex desktop exec calls, duplicate token snapshots, and per-turn models', () => {
@@ -481,6 +567,23 @@ describe('loadCcSessions', () => {
         type: 'response_item',
         payload: { type: 'function_call_output', call_id: 'run-test', output: 'ok' },
       },
+      {
+        timestamp: '2026-07-25T00:00:12.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-example',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: "sed -n '1,200p' examples/agent-eval/skills/fixture/SKILL.md",
+          }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:13.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'read-example', output: '# Fixture under review' },
+      },
     ]));
 
     const [session] = loadCcSessions(path);
@@ -501,6 +604,7 @@ describe('loadCcSessions', () => {
     assert.equal(beta.sourceMetadata?.model, 'gpt-5.6-sol');
     assert.equal(segments.some((segment) => segment.skillName === 'phantom-skill'), false);
     assert.equal(segments.some((segment) => segment.skillName === 'phantom-bash'), false);
+    assert.equal(segments.some((segment) => segment.skillName === 'fixture'), false);
 
     const experience = buildObservationExperienceReport({
       sessions: [session],
@@ -649,7 +753,7 @@ describe('loadCcSessions', () => {
     assert.deepEqual(loadCcSessions(path), []);
   });
 
-  it('groups Codex main and child rollouts into one logical session', () => {
+  it('groups nested Codex subagents under the root logical session', () => {
     writeSession(tmpDir, 'rollout-main.jsonl', [{
       timestamp: '2026-07-25T00:00:00.000Z',
       type: 'session_meta',
@@ -674,10 +778,23 @@ describe('loadCcSessions', () => {
         model_provider: 'openai',
       },
     }]);
+    writeSession(tmpDir, 'rollout-grandchild.jsonl', [{
+      timestamp: '2026-07-25T00:00:02.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'codex-grandchild',
+        session_id: 'codex-parent',
+        parent_thread_id: 'codex-child',
+        cwd: '/repo-codex',
+        originator: 'Codex Desktop',
+        thread_source: 'subagent',
+        model_provider: 'openai',
+      },
+    }]);
 
     const sessions = loadCcSessions(tmpDir).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
-    assert.equal(sessions.length, 2);
-    assert.deepEqual(sessions.map((session) => session.traceRole), ['subagent', 'main']);
+    assert.equal(sessions.length, 3);
+    assert.deepEqual(sessions.map((session) => session.traceRole), ['subagent', 'subagent', 'main']);
     assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['codex-parent']));
     assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupPath)), new Set(['codex:codex-parent']));
   });
@@ -1035,6 +1152,40 @@ describe('segmentBySkill', () => {
     const segs = segmentBySkill(s);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'review');
+  });
+
+  it('recognizes Codex plugin-cache skills but ignores repository skill fixtures', () => {
+    const installed = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        asstRec('a1', [{
+          type: 'tool_use',
+          id: 'tu1',
+          name: 'Read',
+          input: {
+            file_path: '/home/user/.codex/plugins/cache/openai-bundled/browser/1.0.0/skills/control-browser/SKILL.md',
+          },
+        }]),
+      ],
+    };
+    const fixture = {
+      sessionId: 's2',
+      sourcePath: '/t',
+      records: [
+        asstRec('a2', [{
+          type: 'tool_use',
+          id: 'tu2',
+          name: 'Read',
+          input: {
+            file_path: '/repo/examples/agent-eval/skills/strict-reader/SKILL.md',
+          },
+        }], { sessionId: 's2' }),
+      ],
+    };
+
+    assert.equal(segmentBySkill(installed)[0].skillName, 'control-browser');
+    assert.equal(segmentBySkill(fixture)[0].skillName, 'general');
   });
 
   it('signal 1 (Skill tool_use) wins over signal 3 (Read SKILL.md) when both present', () => {

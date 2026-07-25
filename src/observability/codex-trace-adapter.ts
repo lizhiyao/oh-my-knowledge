@@ -271,12 +271,7 @@ function convertCodexRecords(
           role: 'assistant',
           model: activeModel,
           content: [],
-          usage: {
-            input_tokens: numberValue(usage.input_tokens),
-            output_tokens: numberValue(usage.output_tokens),
-            cache_read_input_tokens: numberValue(usage.cached_input_tokens),
-            cache_creation_input_tokens: numberValue(usage.cache_write_input_tokens),
-          },
+          usage: normalizeCodexTokenUsage(usage),
         },
       } as CcAssistantRecord);
       return;
@@ -298,6 +293,19 @@ function convertCodexRecords(
         sessionId,
         timestamp,
         turnId: stringValue(payload.turn_id),
+      } as CcRecord);
+      return;
+    }
+
+    if (record.type === 'event_msg' && payloadType === 'turn_aborted') {
+      records.push({
+        type: 'turn_aborted',
+        sessionId,
+        timestamp,
+        turnId: stringValue(payload.turn_id),
+        reason: stringValue(payload.reason),
+        completedAt: stringValue(payload.completed_at),
+        durationMs: numberValue(payload.duration_ms),
       } as CcRecord);
       return;
     }
@@ -558,6 +566,22 @@ function tokenUsageFingerprint(usage: Record<string, unknown> | undefined): stri
   const values = keys.map((key) => numberValue(usage[key]));
   if (values.every((value) => value === undefined)) return undefined;
   return values.map((value) => value ?? 0).join(':');
+}
+
+function normalizeCodexTokenUsage(
+  usage: Record<string, unknown>,
+): NonNullable<CcAssistantRecord['message']['usage']> {
+  const rawInput = numberValue(usage.input_tokens);
+  const cacheRead = numberValue(usage.cached_input_tokens);
+  const cacheCreation = numberValue(usage.cache_write_input_tokens);
+  return {
+    input_tokens: rawInput === undefined
+      ? undefined
+      : Math.max(0, rawInput - (cacheRead ?? 0) - (cacheCreation ?? 0)),
+    output_tokens: numberValue(usage.output_tokens),
+    cache_read_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheCreation,
+  };
 }
 
 function codexEntrypoint(metaPayload: Record<string, unknown>): string {

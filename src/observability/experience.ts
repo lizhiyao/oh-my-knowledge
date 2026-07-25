@@ -571,7 +571,11 @@ function sessionEventFromRecord(
 ): ExperienceTimelineEvent[] {
   const type = typeof record.type === 'string' ? record.type : '';
   const rawText = safeRecordText(record);
-  if (!isSessionBoundaryType(type) && !hasAssistantTurnFailedText(rawText)) return [];
+  if (
+    !isSessionBoundaryType(type)
+    && !isSessionInterruptedType(type)
+    && !hasAssistantTurnFailedText(rawText)
+  ) return [];
   return [timelineEvent({
     ...base,
     kind: 'runtime_context',
@@ -585,6 +589,10 @@ function sessionEventFromRecord(
 
 function isSessionBoundaryType(type: string): boolean {
   return /^session[._-](?:started|ended)$/i.test(type);
+}
+
+function isSessionInterruptedType(type: string): boolean {
+  return /^turn[._-](?:aborted|interrupted)$/i.test(type);
 }
 
 function safeRecordText(record: unknown): string {
@@ -960,7 +968,7 @@ function sessionInterruptedEvents(timeline: ExperienceTimelineEvent[]): Experien
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
     const text = `${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`;
-    if (hasAssistantTurnFailedText(text)) {
+    if (isSessionInterruptedType(event.label ?? '') || hasAssistantTurnFailedText(text)) {
       interrupted.push(event);
       continue;
     }
