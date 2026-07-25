@@ -2,18 +2,12 @@
 
 <!-- ===================== HERO ===================== -->
 <header class="hero">
-  <div class="hero-logo-wrap" aria-hidden="true">
-    <span class="hero-blob b1"></span>
-    <span class="hero-blob b2"></span>
-    <span class="hero-blob b3"></span>
-    <img class="hero-logo" src="/logo-hero.svg" alt="" />
-  </div>
   <div class="wrap">
-    <span class="tag"><span class="dot"></span> 覆盖 <code>skill · prompt · RAG · agent</code> 的全周期评测</span>
+    <span class="tag"><span class="dot"></span> 面向 <code>prompt · RAG · skill · agent</code> 的受控评测</span>
 
-    <h1>让每一次改动<br/>都有<span class="em">统计学证据</span></h1>
+    <h1>把知识改动<br/>变成<span class="em">发布证据</span>。</h1>
 
-    <p class="sub">管理、评测、改进、观测你的 skill、prompt、RAG 与 agent 上下文 —— <b>同一套统计严谨性贯穿全程</b>。Bootstrap 置信区间、长度去偏默认启用——不是可选的进阶项，而是测量可信度的底线。</p>
+    <p class="sub">omk 固定执行模型和评测用例，只改变知识载体，把每一次 prompt / RAG / skill / agent 改动转成发布证据。发布前用 <b>doctor → eval → studio</b> 做判断，发布后用 <b>observe → sample → evolve</b> 把真实缺口回流成评测资产。</p>
 
     <div class="cta">
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge', this)">复制 ⧉</span></span>
@@ -25,11 +19,21 @@
       <span><a href="https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml" target="_blank" rel="noopener"><b>CI</b> passing</a></span><span class="sep"></span>
       <span><b>MIT</b></span><span class="sep"></span>
       <span>Node ≥ 22</span><span class="sep"></span>
-      <span>相同模型 · 相同用例 · 只改知识载体</span>
+      <span>相同模型 · 相同评测用例 · 只改知识载体</span>
     </div>
 
+    <figure class="flow-hero">
+      <picture>
+        <source media="(prefers-reduced-motion: reduce) and (max-width: 820px)" srcset="/omk-knowledge-flow-mobile.svg" type="image/svg+xml" />
+        <source media="(prefers-reduced-motion: reduce)" srcset="/omk-knowledge-flow.png" type="image/png" />
+        <source media="(max-width: 820px)" srcset="/omk-knowledge-flow-mobile.svg" type="image/svg+xml" />
+        <img src="/omk-knowledge-flow-animated.gif" alt="omk 知识载体评测闭环：知识载体、受控评测、证据报告、发布或迭代、真实使用、观测沉淀、评测集升级" />
+      </picture>
+      <figcaption>一条受控发布链路，一条真实使用回流链路；版本之间不偷偷换模型。</figcaption>
+    </figure>
+
     <!-- interactive stage -->
-    <div class="stage">
+    <template id="legacy-stage">
       <div class="stage-head">
         <span class="dots"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
         <span class="title">omk — <b id="stTitle">eval</b> · 知识载体评测生命周期</span>
@@ -127,7 +131,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </header>
 
@@ -135,31 +139,31 @@
 <section class="band" id="caps">
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow">三类评测能力</span>
-      <h2>一条流水线，覆盖 skill 的一生</h2>
-      <p class="lead">doctor、eval、observe 不是三个工具，是同一套测量学贯穿 skill 生命周期的三个时点 —— 各自回答一个不同的问题。</p>
+      <span class="eyebrow">发布链路 + 回流链路</span>
+      <h2>先让知识载体可比较，再让真实缺口沉淀成评测集</h2>
+      <p class="lead">doctor、eval、studio、promote、observe、sample、evolve 不是孤立命令。它们把知识改动转成证据，也把线上缺口转成待复核草稿，复核后再进入下一轮固定评测集。</p>
     </div>
     <div class="cap-grid">
       <div class="cap d">
-        <div class="ic">🩺</div>
+        <div class="ic">D</div>
         <h3>doctor <span class="when">上线前</span></h3>
-        <p>这个 skill 本身写得健康吗？7 个内置维度由 LLM 审计独立打分 —— 重复采样 + k/n 共识归并，支持接口驱动的自定义维度。</p>
+        <p>这份知识载体是否清楚到值得评测？doctor 先拦住结构、依赖、安全性和可测性问题，避免 A/B 评测浪费 token。</p>
         <code class="cmd2">$ omk doctor my-skill --dimensions audit.yaml</code>
         <ul><li>触发边界 / 文档 / 指令 / 依赖 / 工具 / 安全 / 示例</li><li>--repeat：并行采样 + k/n 共识</li><li>endpoint 自定义维度：调接口做深度审查</li></ul>
       </div>
       <div class="cap e">
-        <div class="ic">📊</div>
+        <div class="ic">E</div>
         <h3>eval <span class="when">发布时</span></h3>
-        <p>v2 真的比 v1 好吗？控制变量 A/B —— 相同模型、相同用例，只改知识载体。六维独立评分，一行 verdict 给 ship 建议。</p>
+        <p>v2 是否真的优于 v1？eval 固定模型和评测用例，只改变知识载体，再输出带置信区间和失败样本的一行 verdict。</p>
         <code class="cmd2">$ omk eval --control v1 --treatment v2</code>
         <ul><li>Bootstrap CI / 长度去偏 / 饱和曲线默认开</li><li>Krippendorff α：给 gold 集自动算评委↔人工一致</li><li>盲测 A/B · 多评委 ensemble · 多轮方差</li></ul>
       </div>
       <div class="cap o">
-        <div class="ic">🔭</div>
-        <h3>observe <span class="when">上线后</span></h3>
-        <p>线上跑得怎么样？解析真实 session JSONL，测每个 skill 的失败率、耗时、token 成本，识别严重度加权的知识缺口信号。</p>
+        <div class="ic">O</div>
+        <h3>observe <span class="when">真实使用</span></h3>
+        <p>真实使用暴露了什么？observe 把 session 日志转成知识缺口信号；from-traces 先生成草稿，人工复核后再沉淀为固定评测样本。</p>
         <code class="cmd2">$ omk observe ~/.claude/sessions</code>
-        <ul><li>会话失败率 / 耗时 / 成本逐 skill 拆解</li><li>知识缺口识别：量化风险敞口</li><li>为 sample / evolve 迭代提供线上信号</li></ul>
+        <ul><li>失败率 / 耗时 / 成本按知识载体拆解</li><li>知识缺口进入待复核池</li><li><code>omk sample --from-traces</code> 生成待复核用例草稿</li></ul>
       </div>
     </div>
   </div>
@@ -252,7 +256,7 @@
         <div class="body">
           <div><span class="cm">$ omk install omk-agent-skill</span> <span class="gr"># 一次性安装</span></div>
           <div class="gr">  ✓ 已写入本机检测到的 Claude Code / Codex</div>
-          <div style="margin-top:10px"><span class="cm">/omk eval</span> <span class="gr"># 评测当前项目的 artifact</span></div>
+          <div style="margin-top:10px"><span class="cm">/omk eval</span> <span class="gr"># 评测当前项目的知识载体</span></div>
           <div><span class="cm">/omk evolve</span> <span class="gr"># 一键:体检→生成用例→自迭代</span></div>
           <div><span class="cm">/omk sample</span> <span class="gr"># 生成或补齐评测用例</span></div>
           <div style="margin-top:10px" class="gr">&gt; <span class="wh">帮我比较 v1 和 v2 的差异</span></div>
@@ -287,5 +291,3 @@
     </div>
   </div>
 </section>
-
-

@@ -1,0 +1,293 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
+  <defs>
+    <marker id="arrow-slate" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" overflow="visible">
+      <path d="M3 2.5L10 6L3 9.5" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" overflow="visible">
+      <path d="M3 2.5L10 6L3 9.5" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" overflow="visible">
+      <path d="M3 2.5L10 6L3 9.5" fill="none" stroke="#D97706" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" overflow="visible">
+      <path d="M3 2.5L10 6L3 9.5" fill="none" stroke="#0F9F8A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <filter id="card-shadow" x="-14%" y="-18%" width="128%" height="142%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <filter id="dark-shadow" x="-14%" y="-18%" width="128%" height="142%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#0F172A" flood-opacity="0.18"/>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" stroke="#E2E8F0" stroke-width="1" opacity="0.55"/>
+    </pattern>
+    <linearGradient id="panel-glow" x1="70" y1="318" x2="1530" y2="742" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="0.52" stop-color="#FFFFFF" stop-opacity="0.86"/>
+      <stop offset="1" stop-color="#F8FBFF" stop-opacity="0.94"/>
+    </linearGradient>
+    <style>
+      .font {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0, "calt" 0;
+      }
+      .mono {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0, "calt" 0;
+      }
+      .eyebrow {
+        fill: #2563EB;
+        font-size: 17px;
+        font-weight: 760;
+        letter-spacing: 0.08em;
+      }
+      .title {
+        fill: #0F172A;
+        font-size: 58px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .subtitle {
+        fill: #4B5563;
+        font-size: 21px;
+        font-weight: 440;
+        letter-spacing: 0;
+      }
+      .panel {
+        fill: url(#panel-glow);
+        stroke: #D8E1EC;
+        stroke-width: 1.2;
+      }
+      .card {
+        fill: #FFFFFF;
+        stroke: #DDE5EF;
+        stroke-width: 1.2;
+      }
+      .card-blue {
+        fill: #F5F8FF;
+        stroke: #91B3FF;
+        stroke-width: 1.5;
+      }
+      .card-dark {
+        fill: #0F172A;
+        stroke: #0F172A;
+        stroke-width: 1.2;
+      }
+      .card-amber {
+        fill: #FFFBEB;
+        stroke: #F2C766;
+        stroke-width: 1.3;
+      }
+      .card-teal {
+        fill: #F0FDFA;
+        stroke: #78D7C2;
+        stroke-width: 1.3;
+      }
+      .node-title {
+        fill: #0F172A;
+        font-size: 25px;
+        font-weight: 760;
+        letter-spacing: 0;
+      }
+      .node-title-light {
+        fill: #FFFFFF;
+        font-size: 25px;
+        font-weight: 760;
+        letter-spacing: 0;
+      }
+      .node-copy {
+        fill: #566173;
+        font-size: 16px;
+        font-weight: 440;
+        letter-spacing: 0;
+      }
+      .node-copy-light {
+        fill: #D8E5F6;
+        font-size: 16px;
+        font-weight: 440;
+        letter-spacing: 0;
+      }
+      .cmd {
+        fill: #111827;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      .cmd-light {
+        fill: #BFD7FF;
+        font-size: 13px;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+      .tag {
+        fill: #EEF2F7;
+        stroke: #D8E1EC;
+        stroke-width: 1;
+      }
+      .tag-text {
+        fill: #111827;
+        font-size: 13px;
+        font-weight: 680;
+        letter-spacing: 0;
+      }
+      .route {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2.2;
+      }
+      .route-return {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+        stroke-dasharray: 7 11;
+      }
+      .pulse {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2.8;
+        stroke-dasharray: 1 18;
+        animation: flow 2.8s linear infinite;
+      }
+      .proof-bar {
+        fill: rgba(255, 255, 255, 0.78);
+        stroke: #D8E1EC;
+        stroke-width: 1;
+      }
+      .proof-title {
+        fill: #0F172A;
+        font-size: 17px;
+        font-weight: 760;
+        letter-spacing: 0;
+        dominant-baseline: middle;
+      }
+      .proof-copy {
+        fill: #5B6678;
+        font-size: 14px;
+        font-weight: 450;
+        letter-spacing: 0;
+        dominant-baseline: middle;
+      }
+      @keyframes flow {
+        to { stroke-dashoffset: -114; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#F6F8FB"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+
+  <g class="font">
+    <text x="80" y="82" class="eyebrow">OMK · 知识载体评测</text>
+    <text x="80" y="154" class="title">别再凭感觉改知识输入。</text>
+    <text x="80" y="218" class="title">让版本差异可测量。</text>
+    <text x="82" y="266" class="subtitle">相同模型、相同评测用例，只改变知识载体；回答「v2 能不能发、好在哪里」。</text>
+  </g>
+
+  <rect class="panel" x="60" y="318" width="1480" height="430" rx="20"/>
+
+  <g>
+    <path class="route" d="M396 462H460" stroke="#94A3B8" marker-end="url(#arrow-slate)"/>
+    <path class="route" d="M786 462H850" stroke="#2563EB" marker-end="url(#arrow-blue)"/>
+    <path class="route" d="M1146 462H1210" stroke="#94A3B8" marker-end="url(#arrow-slate)"/>
+    <path class="route" d="M1360 546V600" stroke="#D97706" marker-end="url(#arrow-amber)"/>
+    <path class="route" d="M1214 663H1150" stroke="#D97706" marker-end="url(#arrow-amber)"/>
+    <path class="route" d="M854 663H790" stroke="#0F9F8A" marker-end="url(#arrow-teal)"/>
+    <path class="route" d="M625 610V556" stroke="#0F9F8A" marker-end="url(#arrow-teal)"/>
+    <path class="route-return" d="M1360 378V344H250V388" stroke="#2563EB" marker-end="url(#arrow-blue)"/>
+
+    <path class="pulse" d="M396 462H460" stroke="#2563EB" opacity="0.7"/>
+    <path class="pulse" d="M786 462H850" stroke="#2563EB" opacity="0.7"/>
+    <path class="pulse" d="M1146 462H1210" stroke="#2563EB" opacity="0.55"/>
+    <path class="pulse" d="M1360 546V600" stroke="#D97706" opacity="0.75"/>
+    <path class="pulse" d="M1214 663H1150" stroke="#D97706" opacity="0.75"/>
+    <path class="pulse" d="M854 663H790" stroke="#0F9F8A" opacity="0.75"/>
+    <path class="pulse" d="M625 610V556" stroke="#0F9F8A" opacity="0.75"/>
+  </g>
+
+  <g class="font" filter="url(#card-shadow)">
+    <rect class="card" x="110" y="398" width="280" height="128" rx="8"/>
+    <text x="250" y="439" text-anchor="middle" class="node-title">知识载体</text>
+    <text x="250" y="469" text-anchor="middle" class="node-copy">真正要改进的知识输入</text>
+    <g class="mono">
+      <rect class="tag" x="137" y="486" width="60" height="26" rx="6"/>
+      <text x="167" y="504" text-anchor="middle" class="tag-text">prompt</text>
+      <rect class="tag" x="206" y="486" width="45" height="26" rx="6"/>
+      <text x="228" y="504" text-anchor="middle" class="tag-text">RAG</text>
+      <rect class="tag" x="260" y="486" width="45" height="26" rx="6"/>
+      <text x="283" y="504" text-anchor="middle" class="tag-text">skill</text>
+      <rect class="tag" x="314" y="486" width="48" height="26" rx="6"/>
+      <text x="338" y="504" text-anchor="middle" class="tag-text">agent</text>
+    </g>
+
+    <rect class="card-blue" x="470" y="378" width="310" height="168" rx="8"/>
+    <text x="625" y="421" text-anchor="middle" class="node-title">受控评测</text>
+    <text x="625" y="453" text-anchor="middle" class="node-copy">固定模型 + 固定评测集</text>
+    <text x="625" y="481" text-anchor="middle" class="node-copy">doctor 通过后再进入 eval</text>
+    <g class="mono">
+      <text x="625" y="513" text-anchor="middle" class="cmd">omk doctor · omk eval</text>
+    </g>
+
+    <rect class="card" x="860" y="398" width="280" height="128" rx="8"/>
+    <text x="1000" y="439" text-anchor="middle" class="node-title">证据报告</text>
+    <text x="1000" y="470" text-anchor="middle" class="node-copy">结论、置信区间、失败样本</text>
+    <g class="mono">
+      <text x="1000" y="503" text-anchor="middle" class="cmd">omk studio</text>
+    </g>
+  </g>
+
+  <g class="font" filter="url(#dark-shadow)">
+    <rect class="card-dark" x="1220" y="378" width="280" height="168" rx="8"/>
+    <text x="1360" y="421" text-anchor="middle" class="node-title-light">发布 / 迭代</text>
+    <text x="1360" y="453" text-anchor="middle" class="node-copy-light">证据足够：接受版本</text>
+    <text x="1360" y="481" text-anchor="middle" class="node-copy-light">证据不足：生成候选版</text>
+    <g class="mono">
+      <text x="1360" y="513" text-anchor="middle" class="cmd-light">omk promote · omk evolve</text>
+    </g>
+  </g>
+
+  <g class="font" filter="url(#card-shadow)">
+    <rect class="card-amber" x="1220" y="610" width="280" height="106" rx="8"/>
+    <text x="1360" y="650" text-anchor="middle" class="node-title">真实使用</text>
+    <text x="1360" y="680" text-anchor="middle" class="node-copy">使用日志暴露未知</text>
+    <g class="mono">
+      <text x="1360" y="703" text-anchor="middle" class="cmd">omk observe</text>
+    </g>
+
+    <rect class="card-teal" x="860" y="610" width="280" height="106" rx="8"/>
+    <text x="1000" y="650" text-anchor="middle" class="node-title">观测沉淀</text>
+    <text x="1000" y="680" text-anchor="middle" class="node-copy">未知缺口进入待复核池</text>
+    <g class="mono">
+      <text x="1000" y="703" text-anchor="middle" class="cmd">omk observe inbox</text>
+    </g>
+
+    <rect class="card" x="470" y="610" width="310" height="106" rx="8"/>
+    <text x="625" y="650" text-anchor="middle" class="node-title">评测集升级</text>
+    <text x="625" y="680" text-anchor="middle" class="node-copy">复核后沉淀为固定样本</text>
+    <g class="mono">
+      <text x="625" y="703" text-anchor="middle" class="cmd">omk sample --from-traces</text>
+    </g>
+  </g>
+
+  <g class="font">
+    <rect class="proof-bar" x="80" y="798" width="1440" height="66" rx="14"/>
+
+    <circle cx="126" cy="831" r="5.5" fill="#2563EB"/>
+    <text x="146" y="831" class="proof-title">可比较</text>
+    <text x="222" y="831" class="proof-copy">固定模型，只比较知识载体</text>
+
+    <path d="M536 814V848" stroke="#D8E1EC"/>
+    <circle cx="592" cy="831" r="5.5" fill="#111827"/>
+    <text x="612" y="831" class="proof-title">有统计</text>
+    <text x="688" y="831" class="proof-copy">bootstrap CI + verdict 门禁</text>
+
+    <path d="M1030 814V848" stroke="#D8E1EC"/>
+    <circle cx="1086" cy="831" r="5.5" fill="#D97706"/>
+    <text x="1106" y="831" class="proof-title">可闭环</text>
+    <text x="1182" y="831" class="proof-copy">真实未知回流成评测用例</text>
+  </g>
+</svg>

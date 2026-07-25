@@ -2,18 +2,12 @@
 
 <!-- ===================== HERO ===================== -->
 <header class="hero">
-  <div class="hero-logo-wrap" aria-hidden="true">
-    <span class="hero-blob b1"></span>
-    <span class="hero-blob b2"></span>
-    <span class="hero-blob b3"></span>
-    <img class="hero-logo" src="/logo-hero.svg" alt="" />
-  </div>
   <div class="wrap">
-    <span class="tag"><span class="dot"></span> Full-lifecycle evaluation across <code>skill · prompt · RAG · agent</code></span>
+    <span class="tag"><span class="dot"></span> Controlled evaluation for <code>prompt · RAG · skill · agent</code></span>
 
-    <h1>Make every change<br/>backed by <span class="em">statistical evidence</span></h1>
+    <h1>Turn knowledge changes<br/>into <span class="em">release evidence</span>.</h1>
 
-    <p class="sub">Manage, evaluate, improve, and observe your skills, prompts, RAG, and agent context — <b>one rigorous statistical foundation across the whole journey</b>. Bootstrap confidence intervals and length-debiasing are on by default — not an advanced flag, but a safety net you can't ignore.</p>
+    <p class="sub">omk fixes the executor model and evaluation samples, changes only the knowledge artifact, and turns each prompt / RAG / skill / agent revision into release evidence. Use <b>doctor → eval → studio</b> before shipping, then close the loop with <b>observe → sample → evolve</b>.</p>
 
     <div class="cta">
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge', this)">Copy ⧉</span></span>
@@ -25,11 +19,21 @@
       <span><a href="https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml" target="_blank" rel="noopener"><b>CI</b> passing</a></span><span class="sep"></span>
       <span><b>MIT</b></span><span class="sep"></span>
       <span>Node ≥ 22</span><span class="sep"></span>
-      <span>Same model · same cases · only the knowledge changes</span>
+      <span>Same model · same samples · only the artifact changes</span>
     </div>
 
+    <figure class="flow-hero">
+      <picture>
+        <source media="(prefers-reduced-motion: reduce) and (max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
+        <source media="(prefers-reduced-motion: reduce)" srcset="/omk-knowledge-flow-en.png" type="image/png" />
+        <source media="(max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
+        <img src="/omk-knowledge-flow-en-animated.gif" alt="omk knowledge artifact evaluation loop: artifact, controlled eval, evidence report, release or iterate, production observation, observed gaps, sample upgrade" />
+      </picture>
+      <figcaption>One controlled release loop, one production-feedback loop, and no hidden model change between versions.</figcaption>
+    </figure>
+
     <!-- interactive stage -->
-    <div class="stage">
+    <template id="legacy-stage">
       <div class="stage-head">
         <span class="dots"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></span>
         <span class="title">omk — <b id="stTitle">eval</b> · knowledge-carrier evaluation lifecycle</span>
@@ -127,7 +131,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </header>
 
@@ -135,31 +139,31 @@
 <section class="band" id="caps">
   <div class="wrap">
     <div class="sec-head">
-      <span class="eyebrow">Three evaluation capabilities</span>
-      <h2>One pipeline across a skill's whole life</h2>
-      <p class="lead">doctor, eval, and observe aren't three tools — they're one measurement discipline at three points in a skill's lifecycle, each answering a different question.</p>
+      <span class="eyebrow">Release loop + feedback loop</span>
+      <h2>First make the artifact comparable, then let real gaps harden the sample set</h2>
+      <p class="lead">doctor, eval, studio, promote, observe, sample, and evolve are not isolated commands. Together they turn knowledge changes into evidence, and production gaps into reviewable drafts that can become the next fixed evaluation set.</p>
     </div>
     <div class="cap-grid">
       <div class="cap d">
-        <div class="ic">🩺</div>
+        <div class="ic">D</div>
         <h3>doctor <span class="when">pre-ship</span></h3>
-        <p>Is the skill itself written healthily? 7 built-in dimensions scored independently by an LLM audit — repeated sampling with k/n consensus, plus endpoint-driven custom dimensions.</p>
+        <p>Is the artifact coherent enough to evaluate? doctor catches structural, dependency, safety, and measurability problems before an A/B run wastes tokens.</p>
         <code class="cmd2">$ omk doctor my-skill --dimensions audit.yaml</code>
         <ul><li>Triggers / docs / instructions / deps / tools / safety / examples</li><li>--repeat: parallel sampling + k/n consensus</li><li>Custom endpoint dimensions: call an API for deep review</li></ul>
       </div>
       <div class="cap e">
-        <div class="ic">📊</div>
+        <div class="ic">E</div>
         <h3>eval <span class="when">on release</span></h3>
-        <p>Is v2 really better than v1? A controlled A/B — same model, same cases, only the knowledge changes. Six dimensions scored independently, one-line verdict with a ship recommendation.</p>
+        <p>Is v2 really better than v1? eval fixes the model and samples, changes only the artifact, then reports a verdict with confidence intervals and failed cases.</p>
         <code class="cmd2">$ omk eval --control v1 --treatment v2</code>
         <ul><li>Bootstrap CI / length-debias / saturation curves on by default</li><li>Krippendorff α: judge↔human agreement on a gold set</li><li>Blind A/B · judge ensemble · multi-run variance</li></ul>
       </div>
       <div class="cap o">
-        <div class="ic">🔭</div>
-        <h3>observe <span class="when">in prod</span></h3>
-        <p>How is it doing in production? Parse real session JSONL to measure each skill's failure rate, latency, and token cost, and surface severity-weighted knowledge-gap signals.</p>
+        <div class="ic">O</div>
+        <h3>observe <span class="when">in production</span></h3>
+        <p>What did real use expose? observe turns session logs into knowledge-gap signals; from-traces drafts samples first, and reviewed drafts can become fixed eval samples.</p>
         <code class="cmd2">$ omk observe ~/.claude/sessions</code>
-        <ul><li>Failure rate / latency / cost broken down per skill</li><li>Knowledge-gap detection: quantify risk exposure</li><li>Feeds production signal into sample / evolve iteration</li></ul>
+        <ul><li>Failure rate / latency / cost broken down per artifact</li><li>Knowledge-gap inbox for review and triage</li><li><code>omk sample --from-traces</code> drafts samples for review</li></ul>
       </div>
     </div>
   </div>
@@ -287,5 +291,3 @@
     </div>
   </div>
 </section>
-
-
