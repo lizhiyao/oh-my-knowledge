@@ -41,9 +41,9 @@ but the teaching sample size does not rewrite the command exit code.
 
 ## About the judge
 
-- `--judge-models <list>` picks the LLM judge(s). Format: `executor:model[,executor:model]`. Default: `${executor}:haiku` (or claude:haiku when no `--executor` set)
+- `--judge-models <list>` picks the LLM judge(s). Format: `executor:model[,executor:model]`. The default follows the selected executor: Codex reuses the evaluated model and Claude uses `haiku`
 - 1 entry = single judge; ≥ 2 entries = multi-judge ensemble + inter-judge agreement
-- If you don't have Claude, point `--judge-models` at whatever you have, e.g. `--judge-models openai-api:glm-4-plus`
+- For OpenAI-compatible API and similar executors, explicitly choose a judge model available on that endpoint, e.g. `--judge-models openai-api:glm-4-plus`
 - Add `--no-judge` to skip the LLM judge and rely on assertions alone
 
 See [Executors](../reference/executors) for the full executor list and [Artifact & variant layout](../reference/artifact-layout) for how to specify what gets evaluated.

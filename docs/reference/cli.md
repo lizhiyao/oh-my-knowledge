@@ -157,13 +157,13 @@ omk doctor --static-only                 # static checks only: no LLM, no sample
   --concurrency <value>  Concurrency across the repeated passes. Default = --repeat (full parallel; passes are independent, cuts wall-clock). Set 1 for serial. Cost unchanged; only raises peak concurrency (lower it if rate-limited).
   --dimensions <value>   Custom dimensions config file (YAML), appended after builtin 7. Each is either promptSection (LLM audit) or endpoint (POST skill snapshot to your service). Note: endpoint sends the full SKILL.md + sub-files to that URL — only enable for trusted configs/URLs.
   --effort <value>       LLM reasoning effort: low / medium / high / xhigh / max.
-  --executor <value>     Executor name, default claude. Pass a test fixture path to use in tests.
+  --executor <value>     Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference. A test fixture path is also accepted in tests.
   --fix                  Interactive fix: use LLM agent to fix skill issues reported by doctor.
   --gate                 Silent mode: only emit stderr summary on fail. Exit code carries the signal.
   --global               Write to global ~/.oh-my-knowledge/doctors instead of project .omk/doctors
   --json                 JSON output to stdout, for CI / external script consumption.
   --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>        LLM model name, default sonnet.
+  --model <value>        LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --output-dir <value>   Report output dir, default project-level .omk/doctors (--global for global).
   --repeat <value>       Health-check repeat count (self-consistency). Default 2: runs 2 passes in parallel, unions findings, merges same root cause via an LLM pass, tags k/N support. Set 1 for a single quick pass (no sampling/merge, cheapest).
   --static-only          Static checks only (no LLM, no samples.json): readability / frontmatter / existence of scripts·CLI·files·env referenced in the skill body. For CI without LLM creds / offline.
@@ -235,11 +235,11 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --control-cwd <value>           Runtime context dir for control
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
-  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
+  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --global                        Write report to global ~/.oh-my-knowledge/reports instead of project .omk/
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
-  --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai-api:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
+  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.
   --judge-repeat <value>          Judge each dim N times
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --layered-stats                 Emit layered stats
@@ -363,13 +363,13 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           Eval concurrency, default 1
   --edit-budget <value>           Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
-  --executor <value>              Executor name, default claude
+  --executor <value>              Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
-  --improve-model <value>         LLM that rewrites the skill, default sonnet
-  --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku
+  --improve-model <value>         LLM that rewrites the skill; defaults to the evaluated model
+  --judge-models <value>          Judge model (single judge required), executor:model format. Defaults to the selected executor; Codex reuses the evaluated model.
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>                 Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.
+  --model <value>                 Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.
   --no-diagnostic                 Disable diagnostic LLM call
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
@@ -413,12 +413,12 @@ omk sample --batch                  # generate for skills missing eval-samples
   --append                    Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces / --fix. Without it, an existing file errors out. Often paired with --focus.
   --batch                     Batch mode: scan --skill-dir, generate samples for any skill missing them.
   --count <value>             Number of samples to generate. Defaults to LLM auto-selection by skill type.
-  --executor <value>          Executor name, default claude (same as omk eval / doctor / evolve). When using another executor like codex, also pass a --model it recognizes.
+  --executor <value>          Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --fix                       Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
   --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>             Generation LLM model name, default sonnet.
+  --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --no-mock                   Skip mock generation; all tool calls execute for real during eval.
   --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
   --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.

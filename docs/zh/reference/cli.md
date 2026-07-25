@@ -157,13 +157,13 @@ omk doctor --static-only                 # 只跑静态检测：不调 LLM、不
   --concurrency <value>  多次采样的并发数。默认 = --repeat（全并行，各遍相互独立，压墙钟时间）。设 1 = 串行。成本不变，只抬高瞬时并发（rate-limit 敏感时调小）。
   --dimensions <value>   自定义维度配置文件（YAML），追加到内置 7 维度之后。每条维度二选一：promptSection（走 LLM 体检）或 endpoint（POST skill 快照给接口判定）。注意：endpoint 会把 SKILL.md 全文 + 子文件发到该地址，仅对可信配置/可信地址启用。
   --effort <value>       LLM 推理 effort：low / medium / high / xhigh / max。
-  --executor <value>     执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
+  --executor <value>     执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。指定为测试 fixture 路径可在测试里跑。
   --fix                  交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
   --gate                 静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
   --global               写全局 ~/.oh-my-knowledge/doctors，而非项目 .omk/doctors
   --json                 JSON 输出到 stdout，适合 CI / 外部脚本消费。
   --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>        LLM model 名，默认 sonnet。
+  --model <value>        LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --output-dir <value>   报告输出目录，默认项目级 .omk/doctors（--global 写全局）。
   --repeat <value>       健康度体检重复采样次数（self-consistency）。默认 2：并行跑 2 遍、finding 取并集并用 LLM 聚类归并同根因、标注支持度 k/N，压低单次采样方差。设 1 = 单次快速体检（不采样、不归并，最省）。
   --static-only          只跑静态检测（不调 LLM、不读 samples.json）：skill 可读性 / frontmatter 合法性 / 正文引用的脚本·CLI·文件·env 是否存在。CI 无 LLM 凭证或断网时用。
@@ -235,11 +235,11 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --control-cwd <value>           control 的 runtime context 目录
   --dry-run                       只 plan 不实跑
   --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
-  --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
+  --executor <value>              执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
   --global                        报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
   --gold-dir <value>              gold dataset 目录
   --holdout-ratio <value>         留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
-  --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai-api:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
+  --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。
   --judge-repeat <value>          每个 dim 评 N 次
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --layered-stats                 输出分层统计
@@ -363,13 +363,13 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           评测并发数，默认 1
   --edit-budget <value>           单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
-  --executor <value>              执行器名，默认 claude
+  --executor <value>              执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
   --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
   --improve-mode <agent|rewrite>  改写策略（默认：agent）
-  --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
-  --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku
+  --improve-model <value>         负责重写 skill 的 LLM，默认沿用被测模型
+  --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认跟随所选执行器；Codex 沿用被测模型。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>                 被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。
+  --model <value>                 被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。
   --no-diagnostic                 关 LLM diagnostic 调用
   --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
   --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
@@ -413,12 +413,12 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
-  --executor <value>          执行器名，默认 claude（同 omk eval / doctor / evolve）。指定 codex 等其它执行器时，记得连带传一个该执行器能识别的 --model。
+  --executor <value>          执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
   --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>             生成 LLM model 名，默认 sonnet。
+  --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --no-mock                   不生成 mocks，eval 时所有工具调用真实执行。
   --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
   --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。

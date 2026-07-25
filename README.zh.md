@@ -38,9 +38,16 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 开箱即跑：`omk init` 脚手架好两版 skill 和三条评测用例，不用先改任何文件；`--dry-run` 预览调用次数和成本；`omk eval` 跑控制变量 A/B，约 5 分钟出 HTML 报告 + 一行 verdict。跑通后再把 skill 和用例换成你自己的。
 
-前置：默认执行器与评委用 `claude` CLI，需先安装并登录（见[系统要求](#系统要求)）；想用别的模型或离线跑（无需 API key）见[执行器](docs/zh/reference/executors.md)。
+前置：准备一个已认证的模型 runtime（Codex CLI、Claude Code 或 API 执行器，见[系统要求](#系统要求)）。在 ChatGPT desktop 的 Codex 任务里，omk 会自动使用 `codex`，从 `~/.codex/config.toml` 读取模型，并默认用同一个 Codex 模型担任评委，不依赖 Claude。
 
-Codex 或 OpenAI 兼容 API 用户可以继续用同一条流程，只是加 runtime 参数，例如 `--executor codex --model <codex-model> --judge-models codex:<codex-model>`，或 `--executor openai-api --model <model> --judge-models openai-api:<model>`。
+普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
+
+```bash
+export OMK_EXECUTOR=codex
+# 可选：export OMK_MODEL="你的 Codex 模型"
+```
+
+不设置 `OMK_MODEL` 时，omk 会读取 `~/.codex/config.toml` 的模型。也可以继续逐次显式传 `--executor codex --model <codex-model>`。自定义评委时再传 `--judge-models` 或设置 `OMK_JUDGE_MODELS`。
 
 > 首跑只有 3 条用例，verdict 多半是「数据不足（UNDERPOWERED）」——这是正常起点而非出错；把用例加到约 20 条以上，再看「可发布」结论。
 
@@ -89,7 +96,7 @@ omk install omk-agent-skill
 
 ### 在 Codex 中使用
 
-Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。通常直接让 agent 执行 `omk` CLI，例如：
+Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。直接让 agent 执行 `omk` CLI 即可；在 Codex 任务里，omk 会自动选择 Codex runtime 和本机配置的模型：
 
 ```bash
 omk eval
@@ -98,6 +105,8 @@ omk sample skills/my-skill.md
 ```
 
 也可以直接用自然语言描述目标，例如「比较 v1 和 v2 的评测差异」、「为这个 skill 生成评测用例」。
+
+`eval`、`doctor`、`sample`、`evolve` 和 observe 的 LLM 增强复盘共用同一套 runtime 解析。Codex 被选中后，默认评委沿用被测 Codex 模型，不会回落到 `claude:haiku`。
 
 > `omk evolve` 是一键闭环：默认先跑 doctor 体检，目标 skill 没有评测用例时会自动生成一批，再进入多轮自迭代。全新 skill 直接 `omk evolve skills/foo.md` 即可。
 
@@ -168,14 +177,19 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 | 变量 | 说明 |
 |------|------|
+| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `claude` |
+| `OMK_MODEL` | 默认被测模型；Codex 未设置时读取本机 `config.toml` |
+| `OMK_JUDGE_MODELS` | 默认评委列表，格式 `executor:model[,...]` |
 | `CCV_PROXY_URL` | 通过 cc-viewer 代理请求，实时可视化评测流量 |
 | `OMK_REPORT_PORT` | 报告服务端口（默认 7799） |
 
 ## 系统要求
 
 - Node.js >= 22
-- `claude` CLI（默认执行器和 LLM 评委需要，参考 [Claude Code](https://claude.ai/code)）
-  - 如果使用其它执行器（openai-api / anthropic-api / gemini）+ `--no-judge` 则可不需要
+- 至少一个已认证的模型 runtime：
+  - Codex：安装并登录 Codex CLI（`npm i -g @openai/codex`）；ChatGPT desktop 的 Codex 任务会自动选择它
+  - Claude：安装并登录 [Claude Code](https://claude.ai/code)
+  - API / 其它执行器：按[执行器文档](docs/zh/reference/executors.md)配置
 
 ## 安全说明
 

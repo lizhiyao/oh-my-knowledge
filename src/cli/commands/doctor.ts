@@ -7,6 +7,7 @@ import { enumStringParser, integerStringParser, numberStringParser } from '../oc
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
+import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { doctorReportFileStem, isReportFileName, reportFilePath } from '../../eval-core/artifact-file-names.js';
@@ -80,14 +81,14 @@ export default class Doctor extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。',
-        en: 'Executor name, default claude. Pass a test fixture path to use in tests.',
+        zh: '执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。指定为测试 fixture 路径可在测试里跑。',
+        en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference. A test fixture path is also accepted in tests.',
       }),
     }),
     model: Flags.string({
       description: bilingual({
-        zh: 'LLM model 名，默认 sonnet。',
-        en: 'LLM model name, default sonnet.',
+        zh: 'LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。',
+        en: 'LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.',
       }),
     }),
     timeout: Flags.string({
@@ -157,8 +158,18 @@ export default class Doctor extends BaseCommand {
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const target: string | null = args.target ?? null;
-      const executorName = flags.executor ?? 'claude';
-      const model = flags.model ?? 'sonnet';
+      const staticOnly = flags['static-only'];
+      const runtime = staticOnly
+        ? {
+            executor: resolveCliExecutor(flags.executor),
+            model: flags.model ?? 'static-only',
+          }
+        : resolveRuntimeSelection(
+            { executor: flags.executor, model: flags.model },
+            { lang },
+          );
+      const executorName = runtime.executor;
+      const model = runtime.model;
       // omk doctor 默认 = 静态规则 + LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);
       // --static-only = 只跑静态检测(readable / metadata / 正文依赖,不调 LLM、不读 samples)。
       // samples_contract_aligned 仍只归 eval preflight(它要 samples.json,与离线解耦)。
@@ -197,7 +208,6 @@ export default class Doctor extends BaseCommand {
       // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
       // --static-only:只跑静态检测(纯静态内置 rule),但排除 samples_contract_aligned
       // (那条要 samples.json,与离线解耦) → 且不加载 samples,依赖检查只扫 skill 正文。
-      const staticOnly = flags['static-only'];
       const isOnline = (r: DoctorRuleLike): boolean =>
         isComposerRule(r) || (r as DoctorRule).external === true;
       const rulesOverride = staticOnly

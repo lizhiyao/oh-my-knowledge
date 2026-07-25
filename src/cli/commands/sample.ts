@@ -8,6 +8,7 @@ import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
+import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadSamples, parseYaml, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import {
@@ -726,15 +727,14 @@ export default class Sample extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: '生成 LLM model 名，默认 sonnet。',
-        en: 'Generation LLM model name, default sonnet.',
+        zh: '生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。',
+        en: 'Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.',
       }),
-      default: 'sonnet',
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器名，默认 claude（同 omk eval / doctor / evolve）。指定 codex 等其它执行器时，记得连带传一个该执行器能识别的 --model。',
-        en: 'Executor name, default claude (same as omk eval / doctor / evolve). When using another executor like codex, also pass a --model it recognizes.',
+        zh: '执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'skill-dir': Flags.string({
@@ -808,7 +808,16 @@ export default class Sample extends BaseCommand {
     const { args, flags } = await this.parse(Sample);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
-      await runSample(args, { ...flags, lang }, lang);
+      const runtime = resolveRuntimeSelection(
+        { executor: flags.executor, model: flags.model },
+        { lang },
+      );
+      await runSample(args, {
+        ...flags,
+        executor: runtime.executor,
+        model: runtime.model,
+        lang,
+      }, lang);
     });
   }
 }
