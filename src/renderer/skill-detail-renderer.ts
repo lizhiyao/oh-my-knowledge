@@ -12,6 +12,7 @@
  *   隐藏 modal:每条 insight 一个 + 3 个阶段全量明细各一个
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
+import { icon } from './icons.js';
 import type {
   Lang,
   EvaluationReport,
@@ -455,8 +456,10 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-evidence-v { font-size:12.5px;color:#182033;font-weight:700;line-height:1.35;word-break:break-word }
 .sm-toolbar { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 10px;border:1px solid #e4e8f1;border-radius:8px;background:#fff }
 .sm-tools,.sm-toggles { display:flex;align-items:center;gap:6px;flex-wrap:wrap }
-.sm-tool { min-width:30px;height:28px;padding:0 9px;border:1px solid #dbe2ee;border-radius:6px;background:#fff;color:#384255;font-size:13px;font-weight:700;cursor:pointer }
+.sm-tool { min-width:30px;height:28px;padding:0 9px;border:1px solid #dbe2ee;border-radius:6px;background:#fff;color:#384255;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px }
 .sm-tool:hover { background:#f7f8ff;border-color:#c7d2fe }
+.sm-tool svg { flex:none }
+.sm-tool--icon { width:30px;padding:0 }
 .sm-zoom-label { min-width:44px;text-align:center;font-size:11.5px;color:#637083;font-variant-numeric:tabular-nums }
 .sm-view-switch { display:inline-flex;align-items:center;gap:3px;padding:3px;border:1px solid #dbe2ee;border-radius:8px;background:#f8fafc }
 .sm-view { height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#637083;font-size:11.5px;font-weight:700;cursor:pointer }
@@ -476,7 +479,7 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
   linear-gradient(#fff,#fbfcff);background-size:auto,28px 28px,28px 28px,auto;background-position:0 0 }
 .sm-body[data-sm-view="boundary"] [data-sm-layer="measurement"],
 .sm-body[data-sm-view="boundary"] [data-sm-evidence-edge="1"] { display:none !important }
-.sm-graph-stage { position:relative;width:1100px;height:560px }
+.sm-graph-stage { position:relative;width:1100px;height:560px;margin:0 auto }
 .sm-graph { position:absolute;left:0;top:0;width:1100px;height:560px;transform-origin:0 0;transition:transform .12s ease }
 .sm-graph [hidden] { display:none !important }
 .sm-svg { position:absolute;inset:0;width:100%;height:100%;pointer-events:none }
@@ -485,9 +488,18 @@ details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
 .sm-edge--measurement { stroke:#bbc7ff }
 .sm-edge--coverage { stroke:#f59e0b;stroke-width:2;stroke-dasharray:5 5;opacity:.9 }
 .sm-edge--coverage-failed { stroke:#dc2626;stroke-width:2.2;opacity:.92 }
+.sm-body[data-sm-view="evidence"] .sm-node.is-muted { opacity:.2;filter:saturate(.45) }
+.sm-body[data-sm-view="evidence"] .sm-edge.is-muted { opacity:.12 }
+.sm-body[data-sm-view="evidence"] .sm-edge.is-related { opacity:1;stroke-width:2.15 }
 .sm-zone-label { position:absolute;top:16px;z-index:1;font-size:10.5px;font-weight:800;letter-spacing:0;text-transform:uppercase;color:#8792a4;font-family:"SF Mono",Menlo,monospace;background:rgba(255,255,255,.82);border:1px solid #e4e8f1;border-radius:12px;padding:4px 9px;pointer-events:none }
 .sm-zone-label--definition { left:36px;color:#2f7d68;border-color:rgba(47,125,104,.22);background:rgba(244,251,248,.86) }
 .sm-zone-label--measurement { right:36px;color:#4f46e5;border-color:rgba(79,70,229,.22);background:rgba(247,248,255,.86) }
+.sm-flow-label { position:absolute;top:18px;z-index:1;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.84);border:1px solid #e4e8f1;color:#7b8798;font-size:10px;font-weight:700;line-height:1;pointer-events:none }
+.sm-flow-label--samples { left:326px }
+.sm-flow-label--results { left:621px }
+.sm-flow-label--targets { left:886px;color:#2f7d68;border-color:rgba(47,125,104,.22) }
+.sm-body[data-sm-view="boundary"] [data-sm-evidence-only] { display:none !important }
+.sm-body[data-sm-view="evidence"] .sm-zone-label { display:none !important }
 .sm-node { position:absolute;z-index:1;box-sizing:border-box;transform:translate(-50%,-50%);width:148px;min-height:54px;padding:8px 10px;border:1px solid #d8deea;border-radius:7px;background:rgba(255,255,255,.96);box-shadow:0 8px 20px rgba(31,41,55,6%);display:flex;flex-direction:column;justify-content:center;gap:4px;text-align:center;backdrop-filter:blur(4px) }
 .sm-node[data-sm-draggable="1"] { cursor:grab;touch-action:none;user-select:none }
 .sm-node[data-sm-draggable="1"].is-dragging { cursor:grabbing;z-index:3;box-shadow:0 16px 34px rgba(31,41,55,14%) }
@@ -954,6 +966,8 @@ const SKILL_MAP_INIT_SCRIPT = `
     var rootX = Number(map.getAttribute('data-sm-root-x')) || 470;
     var rootY = Number(map.getAttribute('data-sm-root-y')) || 260;
     var zoom = 1;
+    var activeWidth = baseWidth;
+    var activeHeight = baseHeight;
     var dragState = null;
     var suppressMoreClickUntil = 0;
     var selectedNodeId = '';
@@ -999,6 +1013,24 @@ const SKILL_MAP_INIT_SCRIPT = `
       return 'M ' + sx + ' ' + sy + ' C ' + c1x + ' ' + sy + ', ' + c2x + ' ' + ty + ', ' + tx + ' ' + ty;
     }
 
+    function coveragePathData(fromX, fromY, toX, toY, fromBox, toBox){
+      var start = { x: fromX + fromBox.width / 2, y: fromY };
+      var end = { x: toX - toBox.width / 2, y: toY };
+      var routeY = fromY <= 285 ? Math.max(42, fromY - 92) : Math.min(baseHeight - 42, fromY + 92);
+      var leaveX = fromX + 112;
+      var approachX = Math.max(leaveX + 80, toX - 105);
+      return 'M ' + start.x + ' ' + start.y
+        + ' C ' + leaveX + ' ' + start.y + ', ' + leaveX + ' ' + routeY + ', ' + (leaveX + 48) + ' ' + routeY
+        + ' L ' + approachX + ' ' + routeY
+        + ' C ' + (toX - 70) + ' ' + routeY + ', ' + (toX - 70) + ' ' + end.y + ', ' + end.x + ' ' + end.y;
+    }
+
+    function edgePathData(edge, fromX, fromY, toX, toY, fromBox, toBox){
+      return edge.getAttribute('data-sm-evidence-edge') === '1'
+        ? coveragePathData(fromX, fromY, toX, toY, fromBox, toBox)
+        : pathData(fromX, fromY, toX, toY, fromBox, toBox);
+    }
+
     function setNodePosition(node, x, y){
       node.setAttribute('data-sm-x', String(Math.round(x * 10) / 10));
       node.setAttribute('data-sm-y', String(Math.round(y * 10) / 10));
@@ -1015,6 +1047,89 @@ const SKILL_MAP_INIT_SCRIPT = `
         x: Number(node.getAttribute('data-sm-origin-x')) || Number(node.getAttribute('data-sm-x')) || parseFloat(node.style.left) || 0,
         y: Number(node.getAttribute('data-sm-origin-y')) || Number(node.getAttribute('data-sm-y')) || parseFloat(node.style.top) || 0
       };
+    }
+
+    function isVisibleNode(node){
+      return !!node && !node.hidden && node.style.display !== 'none';
+    }
+
+    function nodeLayoutPriority(node){
+      if (node.hasAttribute('data-sm-root')) return 0;
+      if (node.classList.contains('is-selected')) return 1;
+      if (node.classList.contains('sm-node--group')) return 2;
+      if (node.hasAttribute('data-sm-more-toggle')) return 3;
+      return 4;
+    }
+
+    function nodesOverlapAt(node, x, y, other){
+      if (!isVisibleNode(other) || node === other) return false;
+      var box = nodeBox(node, 154, 58);
+      var otherBox = nodeBox(other, 154, 58);
+      var otherCenter = nodeCenter(other, 0, 0);
+      var horizontalGap = 18;
+      var verticalGap = 14;
+      return Math.abs(x - otherCenter.x) < (box.width + otherBox.width) / 2 + horizontalGap
+        && Math.abs(y - otherCenter.y) < (box.height + otherBox.height) / 2 + verticalGap;
+    }
+
+    function positionHasCollision(node, x, y, candidates){
+      var others = candidates || Array.prototype.slice.call(graph.querySelectorAll('.sm-node'));
+      return others.some(function(other){ return nodesOverlapAt(node, x, y, other); });
+    }
+
+    function nearestOpenPosition(node, desiredX, desiredY, placed){
+      var box = nodeBox(node, 154, 58);
+      var minX = box.width / 2 + 24;
+      var minY = box.height / 2 + 24;
+      var startX = Math.max(minX, desiredX);
+      var startY = Math.max(minY, desiredY);
+      var rootNode = graph.querySelector('[data-sm-root]');
+      var rootCenter = nodeCenter(rootNode, rootX, rootY);
+      var outwardAngle = Math.atan2(startY - rootCenter.y, startX - rootCenter.x);
+      if (!Number.isFinite(outwardAngle)) outwardAngle = 0;
+
+      for (var radius = 0; radius <= 1800; radius += 18) {
+        var pointCount = radius === 0 ? 1 : Math.max(12, Math.ceil(Math.PI * 2 * radius / 28));
+        for (var index = 0; index < pointCount; index += 1) {
+          var offsetIndex = index === 0 ? 0 : Math.ceil(index / 2) * (index % 2 ? 1 : -1);
+          var angle = outwardAngle + offsetIndex * (Math.PI * 2 / pointCount);
+          var x = Math.max(minX, startX + Math.cos(angle) * radius);
+          var y = Math.max(minY, startY + Math.sin(angle) * radius);
+          if (!positionHasCollision(node, x, y, placed)) return { x: x, y: y };
+        }
+      }
+
+      var fallbackX = startX;
+      var fallbackY = Math.max(
+        minY,
+        placed.reduce(function(maxY, other){
+          var otherCenter = nodeCenter(other, 0, 0);
+          var otherBox = nodeBox(other, 154, 58);
+          return Math.max(maxY, otherCenter.y + otherBox.height / 2);
+        }, baseHeight) + box.height / 2 + 28
+      );
+      while (positionHasCollision(node, fallbackX, fallbackY, placed)) {
+        fallbackY += box.height + 28;
+      }
+      return { x: fallbackX, y: fallbackY };
+    }
+
+    function layoutVisibleNodes(resetToPreferred){
+      var nodes = Array.prototype.slice.call(graph.querySelectorAll('.sm-node'))
+        .filter(isVisibleNode)
+        .sort(function(a, b){
+          return nodeLayoutPriority(a) - nodeLayoutPriority(b);
+        });
+      var placed = [];
+      nodes.forEach(function(node){
+        var desired = resetToPreferred
+          ? nodeViewPosition(node, currentView)
+          : nodeCenter(node, rootX, rootY);
+        var open = nearestOpenPosition(node, desired.x, desired.y, placed);
+        setNodePosition(node, open.x, open.y);
+        placed.push(node);
+      });
+      refreshEdges();
     }
 
     function hideFilteredNode(node){
@@ -1059,7 +1174,7 @@ const SKILL_MAP_INIT_SCRIPT = `
       return node.getAttribute(attr) || '';
     }
 
-    function setSelectedNode(node){
+    function setSelectedNode(node, refit){
       if (!node || node.hidden) return;
       var nodeId = node.getAttribute('data-sm-node-id') || '';
       selectedNodeId = nodeId;
@@ -1069,27 +1184,35 @@ const SKILL_MAP_INIT_SCRIPT = `
       });
       node.classList.add('is-selected');
       node.setAttribute('aria-pressed', 'true');
-      if (!detail) return;
-      var title = detailText(node, 'data-sm-detail-title', node.textContent || '');
-      var subtitle = detailText(node, 'data-sm-detail-subtitle', '');
-      var kind = detailText(node, 'data-sm-detail-kind', '');
-      var kindEl = detail.querySelector('[data-sm-detail-kind-label]');
-      var titleEl = detail.querySelector('[data-sm-detail-title]');
-      var subtitleEl = detail.querySelector('[data-sm-detail-subtitle]');
-      if (kindEl) kindEl.textContent = kind;
-      if (titleEl) titleEl.textContent = title;
-      if (subtitleEl) {
-        subtitleEl.textContent = subtitle;
-        subtitleEl.hidden = !subtitle;
-        subtitleEl.toggleAttribute('hidden', !subtitle);
+      if (detail) {
+        var title = detailText(node, 'data-sm-detail-title', node.textContent || '');
+        var subtitle = detailText(node, 'data-sm-detail-subtitle', '');
+        var kind = detailText(node, 'data-sm-detail-kind', '');
+        var kindEl = detail.querySelector('[data-sm-detail-kind-label]');
+        var titleEl = detail.querySelector('[data-sm-detail-title]');
+        var subtitleEl = detail.querySelector('[data-sm-detail-subtitle]');
+        if (kindEl) kindEl.textContent = kind;
+        if (titleEl) titleEl.textContent = title;
+        if (subtitleEl) {
+          subtitleEl.textContent = subtitle;
+          subtitleEl.hidden = !subtitle;
+          subtitleEl.toggleAttribute('hidden', !subtitle);
+        }
+        setDetailValue('scope', detailText(node, 'data-sm-detail-scope', ''), true);
+        setDetailValue('source', detailText(node, 'data-sm-detail-source', ''), false);
+        setDetailValue('coverage', detailText(node, 'data-sm-detail-coverage', ''), false);
+        setDetailValue('status', selectedMoreStatus(node) || detailText(node, 'data-sm-detail-status', ''), false);
+        setDetailValue('evidence', detailText(node, 'data-sm-detail-evidence', ''), false);
+        setDetailValue('action', detailText(node, 'data-sm-detail-action', ''), false);
       }
-      setDetailValue('scope', detailText(node, 'data-sm-detail-scope', ''), true);
-      setDetailValue('source', detailText(node, 'data-sm-detail-source', ''), false);
-      setDetailValue('coverage', detailText(node, 'data-sm-detail-coverage', ''), false);
-      setDetailValue('status', selectedMoreStatus(node) || detailText(node, 'data-sm-detail-status', ''), false);
-      setDetailValue('evidence', detailText(node, 'data-sm-detail-evidence', ''), false);
-      setDetailValue('action', detailText(node, 'data-sm-detail-action', ''), false);
       updateEvidenceFocus();
+      if (refit) {
+        requestAnimationFrame(function(){
+          layoutVisibleNodes(false);
+          fitToViewport();
+          centerRoot();
+        });
+      }
     }
 
     function updateEdgesForNode(nodeId, x, y){
@@ -1099,7 +1222,8 @@ const SKILL_MAP_INIT_SCRIPT = `
         var fromNode = fromNodeId ? graph.querySelector('[data-sm-node-id="' + fromNodeId + '"]') : graph.querySelector('[data-sm-root]');
         var toNode = graph.querySelector('[data-sm-node-id="' + nodeId + '"]');
         var fromCenter = nodeCenter(fromNode, rootX, rootY);
-        edge.setAttribute('d', pathData(
+        edge.setAttribute('d', edgePathData(
+          edge,
           fromCenter.x,
           fromCenter.y,
           x,
@@ -1119,7 +1243,8 @@ const SKILL_MAP_INIT_SCRIPT = `
         var toCenter = nodeCenter(toNode, 0, 0);
         edge.setAttribute('data-sm-edge-from-x', String(Math.round(x * 10) / 10));
         edge.setAttribute('data-sm-edge-from-y', String(Math.round(y * 10) / 10));
-        edge.setAttribute('d', pathData(
+        edge.setAttribute('d', edgePathData(
+          edge,
           x,
           y,
           toCenter.x,
@@ -1142,6 +1267,7 @@ const SKILL_MAP_INIT_SCRIPT = `
 
     function resetNodePositions(){
       applyViewPositions(currentView);
+      layoutVisibleNodes(false);
     }
 
     function applyViewPositions(view){
@@ -1155,8 +1281,12 @@ const SKILL_MAP_INIT_SCRIPT = `
     }
 
     function applyZoom(){
-      stage.style.width = Math.ceil(baseWidth * zoom) + 'px';
-      stage.style.height = Math.ceil(baseHeight * zoom) + 'px';
+      var svg = graph.querySelector('.sm-svg');
+      if (svg) svg.setAttribute('viewBox', '0 0 ' + activeWidth + ' ' + activeHeight);
+      graph.style.width = activeWidth + 'px';
+      graph.style.height = activeHeight + 'px';
+      stage.style.width = Math.ceil(activeWidth * zoom) + 'px';
+      stage.style.height = Math.ceil(activeHeight * zoom) + 'px';
       graph.style.transform = 'scale(' + zoom + ')';
       if (label) label.textContent = Math.round(zoom * 100) + '%';
     }
@@ -1171,6 +1301,29 @@ const SKILL_MAP_INIT_SCRIPT = `
       applyZoom();
       viewport.scrollLeft = Math.max(0, graphX * zoom - x);
       viewport.scrollTop = Math.max(0, graphY * zoom - y);
+    }
+
+    function fitToViewport(){
+      var maxX = 0;
+      var maxY = 0;
+      graph.querySelectorAll('.sm-node').forEach(function(node){
+        if (node.hidden || node.style.display === 'none') return;
+        var center = nodeCenter(node, 0, 0);
+        var box = nodeBox(node, 154, 58);
+        maxX = Math.max(maxX, center.x + box.width / 2 + 24);
+        maxY = Math.max(maxY, center.y + box.height / 2 + 24);
+      });
+      graph.querySelectorAll('[data-sm-evidence-only]').forEach(function(labelNode){
+        if (labelNode.hidden || labelNode.style.display === 'none') return;
+        maxX = Math.max(maxX, labelNode.offsetLeft + labelNode.offsetWidth + 24);
+        maxY = Math.max(maxY, labelNode.offsetTop + labelNode.offsetHeight + 24);
+      });
+      activeWidth = Math.max(560, maxX);
+      activeHeight = Math.max(420, maxY);
+      var availableWidth = Math.max(1, viewport.clientWidth - 24);
+      var availableHeight = Math.max(1, viewport.clientHeight - 24);
+      zoom = clamp(Math.min(availableWidth / activeWidth, availableHeight / activeHeight, 1), 0.65, 1);
+      applyZoom();
     }
 
     function centerRoot(){
@@ -1203,15 +1356,52 @@ const SKILL_MAP_INIT_SCRIPT = `
         node.removeAttribute('data-sm-evidence-revealed');
         if (node.getAttribute('data-sm-layer') === 'definition' && currentView === 'evidence') hideFilteredNode(node);
       });
-      graph.querySelectorAll('.sm-node.is-related').forEach(function(node){
+      graph.querySelectorAll('.sm-node.is-related,.sm-node.is-muted').forEach(function(node){
         node.classList.remove('is-related');
+        node.classList.remove('is-muted');
       });
+      map.querySelectorAll('.sm-edge.is-related,.sm-edge.is-muted').forEach(function(edge){
+        edge.classList.remove('is-related');
+        edge.classList.remove('is-muted');
+      });
+      var selectedNode = selectedNodeId
+        ? graph.querySelector('[data-sm-node-id="' + selectedNodeId + '"]')
+        : null;
+      var focusedChainId = selectedNode
+        ? (selectedNode.getAttribute('data-sm-chain') || selectedNode.getAttribute('data-sm-parent-sample') || '')
+        : '';
+      if (!focusedChainId && selectedNodeId && currentView === 'evidence') {
+        var selectedCoverageEdge = map.querySelector('[data-sm-evidence-edge="1"][data-sm-edge-to="' + selectedNodeId + '"]');
+        if (selectedCoverageEdge) focusedChainId = selectedCoverageEdge.getAttribute('data-sm-edge-from-node') || '';
+      }
+      var relatedLabel = graph.querySelector('[data-sm-related-label]');
+      if (relatedLabel) {
+        var showRelatedLabel = currentView === 'evidence' && !!focusedChainId;
+        relatedLabel.hidden = !showRelatedLabel;
+        relatedLabel.toggleAttribute('hidden', !showRelatedLabel);
+        relatedLabel.setAttribute('aria-hidden', showRelatedLabel ? 'false' : 'true');
+        relatedLabel.style.display = showRelatedLabel ? '' : 'none';
+      }
+      if (currentView === 'evidence' && focusedChainId) {
+        graph.querySelectorAll('[data-sm-layer="measurement"][data-sm-chain]').forEach(function(node){
+          var related = node.getAttribute('data-sm-chain') === focusedChainId;
+          node.classList.toggle('is-muted', !related);
+          if (related && node.getAttribute('data-sm-node-id') !== selectedNodeId) node.classList.add('is-related');
+        });
+        map.querySelectorAll('.sm-edge--measurement[data-sm-chain]').forEach(function(edge){
+          var related = edge.getAttribute('data-sm-chain') === focusedChainId;
+          edge.classList.toggle('is-muted', !related);
+          edge.classList.toggle('is-related', related);
+        });
+      }
       map.querySelectorAll('[data-sm-evidence-edge="1"]').forEach(function(edge){
         var toId = edge.getAttribute('data-sm-edge-to');
         var fromId = edge.getAttribute('data-sm-edge-from-node');
         var toNode = toId ? graph.querySelector('[data-sm-node-id="' + toId + '"]') : null;
         var fromNode = fromId ? graph.querySelector('[data-sm-node-id="' + fromId + '"]') : null;
-        var focused = currentView === 'evidence' && !!selectedNodeId && (toId === selectedNodeId || fromId === selectedNodeId);
+        var focused = currentView === 'evidence'
+          && !!selectedNodeId
+          && (toId === selectedNodeId || fromId === selectedNodeId || fromId === focusedChainId);
         if (focused) {
           if (toNode) revealNode(toNode, true);
           if (fromNode) revealNode(fromNode, true);
@@ -1223,10 +1413,12 @@ const SKILL_MAP_INIT_SCRIPT = `
         edge.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
         edge.style.display = shouldHide ? 'none' : '';
         if (!shouldHide) {
+          edge.classList.add('is-related');
           if (toNode && toId !== selectedNodeId) toNode.classList.add('is-related');
           if (fromNode && fromId !== selectedNodeId) fromNode.classList.add('is-related');
         }
       });
+      layoutVisibleNodes(false);
     }
 
     function updateVisibility(){
@@ -1278,6 +1470,7 @@ const SKILL_MAP_INIT_SCRIPT = `
       updateViewButtons();
       updateVisibility();
       refreshEdges();
+      fitToViewport();
       centerRoot();
     }
 
@@ -1291,6 +1484,8 @@ const SKILL_MAP_INIT_SCRIPT = `
       updateVisibility();
       refreshEdges();
       if (selectedNodeId && toggle.getAttribute('data-sm-node-id') === selectedNodeId) setSelectedNode(toggle);
+      fitToViewport();
+      centerRoot();
     }
 
     function collapseMoreGroups(){
@@ -1305,10 +1500,9 @@ const SKILL_MAP_INIT_SCRIPT = `
         if (action === 'zoom-in') setZoom(zoom + 0.15);
         if (action === 'zoom-out') setZoom(zoom - 0.15);
         if (action === 'reset') {
-          zoom = 1;
           collapseMoreGroups();
           resetNodePositions();
-          applyZoom();
+          fitToViewport();
           centerRoot();
         }
       });
@@ -1321,7 +1515,11 @@ const SKILL_MAP_INIT_SCRIPT = `
     });
 
     map.querySelectorAll('[data-sm-toggle-leaves]').forEach(function(input){
-      input.addEventListener('change', updateVisibility);
+      input.addEventListener('change', function(){
+        updateVisibility();
+        fitToViewport();
+        centerRoot();
+      });
     });
 
     graph.querySelectorAll('[data-sm-more-toggle]').forEach(function(toggle){
@@ -1370,8 +1568,12 @@ const SKILL_MAP_INIT_SCRIPT = `
         var deltaX = ev.clientX - dragState.startClientX;
         var deltaY = ev.clientY - dragState.startClientY;
         if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > 3) dragState.moved = true;
-        var nextX = clamp(dragState.startX + deltaX / zoom, 52, baseWidth - 52);
-        var nextY = clamp(dragState.startY + deltaY / zoom, 36, baseHeight - 36);
+        var dragBox = nodeBox(node, 154, 58);
+        var horizontalMargin = dragBox.width / 2 + 24;
+        var verticalMargin = dragBox.height / 2 + 24;
+        var nextX = clamp(dragState.startX + deltaX / zoom, horizontalMargin, Math.max(baseWidth, activeWidth) - horizontalMargin);
+        var nextY = clamp(dragState.startY + deltaY / zoom, verticalMargin, Math.max(baseHeight, activeHeight) - verticalMargin);
+        if (positionHasCollision(node, nextX, nextY)) return;
         setNodePosition(node, nextX, nextY);
         updateEdgesForNode(dragState.nodeId, nextX, nextY);
         updateEdgesFromNode(dragState.nodeId, nextX, nextY);
@@ -1401,13 +1603,13 @@ const SKILL_MAP_INIT_SCRIPT = `
     graph.querySelectorAll('[data-sm-node-id]').forEach(function(node){
       node.addEventListener('click', function(){
         if (node.hasAttribute('data-sm-more-toggle') && Date.now() < suppressMoreClickUntil) return;
-        setSelectedNode(node);
+        setSelectedNode(node, true);
       });
       node.addEventListener('keydown', function(ev){
         if (ev.key !== 'Enter' && ev.key !== ' ') return;
         if (node.hasAttribute('data-sm-more-toggle')) return;
         ev.preventDefault();
-        setSelectedNode(node);
+        setSelectedNode(node, true);
       });
     });
 
@@ -1420,12 +1622,12 @@ const SKILL_MAP_INIT_SCRIPT = `
     }, { passive: false });
 
     updateViewButtons();
-    applyZoom();
     updateVisibility();
     var initialRoot = graph.querySelector('[data-sm-root]');
     if (initialRoot) setSelectedNode(initialRoot);
     requestAnimationFrame(function(){
       refreshEdges();
+      fitToViewport();
       centerRoot();
     });
   }
@@ -1959,6 +2161,8 @@ interface SkillMapPositionedNode {
   evidencePosition?: { x: number; y: number };
   edgeFrom?: { x: number; y: number };
   edgeFromId?: string;
+  chainId?: string;
+  parentSampleId?: string;
   overflowGroup?: string;
   isLeaf?: boolean;
   presentation?: {
@@ -2004,7 +2208,7 @@ const SKILL_MAP_WIDTH = 1100;
 const SKILL_MAP_HEIGHT = 560;
 const SKILL_MAP_ROOT_ID = 'skill-root';
 const SKILL_MAP_BOUNDARY_ROOT = { x: 560, y: 285 };
-const SKILL_MAP_EVIDENCE_ROOT = { x: 470, y: 260 };
+const SKILL_MAP_EVIDENCE_ROOT_X = 125;
 const SKILL_MAP_ROOT_SIZE = { width: 172, height: 86 };
 const SKILL_MAP_NODE_SIZE = { width: 148, height: 54 };
 const SKILL_MAP_DEFINITION_GROUPS: readonly SkillMapDefinitionGroupSpec[] = [
@@ -2068,22 +2272,21 @@ const SKILL_MAP_BOUNDARY_ASSET_COORDS = [
   { x: 560, y: 510 },
 ];
 const SKILL_MAP_EVIDENCE_DEFINITION_COORDS = [
-  { x: 145, y: 145 },
-  { x: 145, y: 285 },
-  { x: 145, y: 425 },
-  { x: 955, y: 145 },
-  { x: 955, y: 285 },
-  { x: 955, y: 425 },
-  { x: 560, y: 485 },
+  { x: 900, y: 80 },
+  { x: 900, y: 180 },
+  { x: 900, y: 280 },
+  { x: 900, y: 380 },
+  { x: 900, y: 480 },
+  { x: 1065, y: 130 },
+  { x: 1065, y: 230 },
+  { x: 1065, y: 330 },
+  { x: 1065, y: 430 },
 ];
-const SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS = [
-  { x: 320, y: 140 },
-  { x: 560, y: 115 },
-  { x: 800, y: 150 },
-  { x: 345, y: 360 },
-  { x: 775, y: 365 },
-  { x: 560, y: 455 },
-];
+const SKILL_MAP_EVIDENCE_SAMPLE_X = 370;
+const SKILL_MAP_EVIDENCE_RESULT_X = 670;
+const SKILL_MAP_EVIDENCE_ROW_GAP = 140;
+const SKILL_MAP_EVIDENCE_CHILD_GAP = 66;
+const SKILL_MAP_EVIDENCE_START_Y = 100;
 const SKILL_MAP_NODE_MARGIN = { x: 92, y: 48 };
 const SKILL_MAP_STATUS_CLASSES = new Set(['ok', 'warning', 'failed', 'skipped', 'unknown', 'not_measured']);
 
@@ -2395,7 +2598,9 @@ function renderSkillMapNode(item: SkillMapPositionedNode, lang: Lang): string {
   const moreToggle = item.moreToggle
     ? ` data-sm-more-toggle="${item.moreToggle.group}" data-sm-collapsed-label="${e(item.moreToggle.collapsedLabel)}" data-sm-expanded-label="${e(item.moreToggle.expandedLabel)}" role="button" tabindex="0" aria-expanded="false"`
     : ' role="button" tabindex="0"';
-  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${renderSkillMapViewPositionAttrs(item)}${leaf}${draggable}${overflow}${moreToggle}${renderSkillMapDetailAttrs(item, lang)} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}" aria-label="${e(fullTitle)}">
+  const chain = item.chainId ? ` data-sm-chain="${e(item.chainId)}"` : '';
+  const parentSample = item.parentSampleId ? ` data-sm-parent-sample="${e(item.parentSampleId)}"` : '';
+  return `<div class="sm-node sm-node--${item.layer}${kindClass}${graphNodeStatusClass(item.node)}${graphNodeCoverageClass(item.node)}" data-sm-node-id="${e(item.id)}" data-sm-layer="${item.layer}" data-sm-x="${item.x}" data-sm-y="${item.y}" data-sm-origin-x="${item.x}" data-sm-origin-y="${item.y}"${renderSkillMapViewPositionAttrs(item)}${chain}${parentSample}${leaf}${draggable}${overflow}${moreToggle}${renderSkillMapDetailAttrs(item, lang)} style="${positionedNodeStyle(item)}" title="${e(fullTitle)}" aria-label="${e(fullTitle)}">
     ${toggleIcon}
     ${kindLabel ? `<div class="sm-node-kind">${e(kindLabel)}</div>` : ''}
     <div class="sm-node-title">${e(title)}</div>
@@ -2432,6 +2637,21 @@ function skillMapPath(
   return `M ${start.x} ${start.y} C ${c1x} ${start.y}, ${c2x} ${end.y}, ${end.x} ${end.y}`;
 }
 
+function skillMapCoveragePath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  graphHeight: number,
+): string {
+  const start = { x: from.x + SKILL_MAP_NODE_SIZE.width / 2, y: from.y };
+  const end = { x: to.x - SKILL_MAP_NODE_SIZE.width / 2, y: to.y };
+  const routeY = from.y <= SKILL_MAP_BOUNDARY_ROOT.y
+    ? Math.max(42, from.y - 92)
+    : Math.min(graphHeight - 42, from.y + 92);
+  const leaveX = from.x + 112;
+  const approachX = Math.max(leaveX + 80, to.x - 105);
+  return `M ${start.x} ${start.y} C ${leaveX} ${start.y}, ${leaveX} ${routeY}, ${leaveX + 48} ${routeY} L ${approachX} ${routeY} C ${to.x - 70} ${routeY}, ${to.x - 70} ${end.y}, ${end.x} ${end.y}`;
+}
+
 function renderSkillMapEdges(
   nodes: SkillMapPositionedNode[],
   dimensions: { width: number; height: number },
@@ -2444,11 +2664,12 @@ function renderSkillMapEdges(
       const overflow = node.overflowGroup ? ` data-sm-overflow-group="${node.overflowGroup}" hidden aria-hidden="true"` : '';
       const fromNodeId = node.edgeFromId ?? (node.overflowGroup ? `${node.overflowGroup}-more` : SKILL_MAP_ROOT_ID);
       const leaf = node.isLeaf === false ? '' : ' data-sm-leaf="1"';
-      return `<path class="sm-edge sm-edge--${node.layer}" data-sm-layer="${node.layer}"${leaf} data-sm-edge-to="${e(node.id)}" data-sm-edge-from-node="${e(fromNodeId)}" data-sm-edge-from-x="${from.x}" data-sm-edge-from-y="${from.y}"${overflow} d="${skillMapPath(from, node, fromBox, SKILL_MAP_NODE_SIZE)}"></path>`;
+      const chain = node.chainId ? ` data-sm-chain="${e(node.chainId)}"` : '';
+      return `<path class="sm-edge sm-edge--${node.layer}" data-sm-layer="${node.layer}"${chain}${leaf} data-sm-edge-to="${e(node.id)}" data-sm-edge-from-node="${e(fromNodeId)}" data-sm-edge-from-x="${from.x}" data-sm-edge-from-y="${from.y}"${overflow} d="${skillMapPath(from, node, fromBox, SKILL_MAP_NODE_SIZE)}"></path>`;
     })
     .join('');
   const evidenceEdges = evidenceLinks
-    .map((link, index) => `<path class="sm-edge sm-edge--coverage${link.failed ? ' sm-edge--coverage-failed' : ''}" data-sm-layer="measurement" data-sm-leaf="1" data-sm-evidence-edge="1" data-sm-edge-to="${e(link.toId)}" data-sm-edge-from-node="${e(link.fromId)}" data-sm-edge-from-x="${link.from.x}" data-sm-edge-from-y="${link.from.y}" d="${skillMapPath(link.from, link.to, SKILL_MAP_NODE_SIZE, SKILL_MAP_NODE_SIZE)}" data-sm-edge-index="${index}" hidden aria-hidden="true"></path>`)
+    .map((link, index) => `<path class="sm-edge sm-edge--coverage${link.failed ? ' sm-edge--coverage-failed' : ''}" data-sm-layer="measurement" data-sm-leaf="1" data-sm-evidence-edge="1" data-sm-edge-to="${e(link.toId)}" data-sm-edge-from-node="${e(link.fromId)}" data-sm-edge-from-x="${link.from.x}" data-sm-edge-from-y="${link.from.y}" d="${skillMapCoveragePath(link.from, link.to, dimensions.height)}" data-sm-edge-index="${index}" hidden aria-hidden="true"></path>`)
     .join('');
   return `<svg class="sm-svg" viewBox="0 0 ${dimensions.width} ${dimensions.height}" aria-hidden="true">${rootEdges}${evidenceEdges}</svg>`;
 }
@@ -2473,14 +2694,19 @@ function skillMapEvidenceLinks(
 ): SkillMapEvidenceLink[] {
   if (!evalGraph?.declaredCoverageEdges.length) return [];
   const targetByStableKey = new Map<string, SkillMapPositionedNode>();
+  const sampleByStableKey = new Map<string, SkillMapPositionedNode>();
   const sampleByLabel = new Map<string, SkillMapPositionedNode>();
   for (const node of nodes) {
     if (node.node.stableKey) targetByStableKey.set(node.node.stableKey, node);
-    if (node.node.nodeKind === 'sample') sampleByLabel.set(node.node.label, node);
+    if (node.node.nodeKind === 'sample') {
+      if (node.node.stableKey) sampleByStableKey.set(node.node.stableKey, node);
+      sampleByLabel.set(node.node.label, node);
+    }
   }
   return evalGraph.declaredCoverageEdges
     .map((edge): SkillMapEvidenceLink | null => {
-      const from = sampleByLabel.get(edge.sampleLabel);
+      const from = (edge.sampleStableKey ? sampleByStableKey.get(edge.sampleStableKey) : undefined)
+        ?? sampleByLabel.get(edge.sampleLabel);
       const to = targetByStableKey.get(edge.targetStableKey);
       if (!from || !to) return null;
       return {
@@ -2713,6 +2939,119 @@ function measurementStatusPriority(node: SkillGraphNodePreview): number {
   return 3;
 }
 
+interface SkillMapMeasurementLayout {
+  nodes: SkillMapPositionedNode[];
+  rootPosition: { x: number; y: number };
+}
+
+function buildMeasurementMapNodes(
+  candidates: SkillGraphNodePreview[],
+  lang: Lang,
+): SkillMapMeasurementLayout {
+  const samples = candidates.filter((node) => node.nodeKind === 'sample').slice(0, 5);
+  const sampleStableKeys = new Set(samples.map((node) => node.stableKey).filter((value): value is string => Boolean(value)));
+  const childrenBySample = new Map<string, SkillGraphNodePreview[]>();
+  const overflow: SkillGraphNodePreview[] = candidates.filter((node) => node.nodeKind === 'sample').slice(5);
+
+  for (const node of candidates.filter((candidate) => candidate.nodeKind !== 'sample')) {
+    const parent = node.parentSampleStableKey;
+    if (!parent || !sampleStableKeys.has(parent)) {
+      overflow.push(node);
+      continue;
+    }
+    const children = childrenBySample.get(parent) ?? [];
+    if (children.length < 3) children.push(node);
+    else overflow.push(node);
+    childrenBySample.set(parent, children);
+  }
+
+  const nodes: SkillMapPositionedNode[] = [];
+  let cursorY = SKILL_MAP_EVIDENCE_START_Y;
+  for (const [sampleIndex, sample] of samples.entries()) {
+    const sampleId = `measurement-sample-${sampleIndex}`;
+    const children = sample.stableKey ? childrenBySample.get(sample.stableKey) ?? [] : [];
+    const childSpan = Math.max(SKILL_MAP_EVIDENCE_ROW_GAP, (children.length - 1) * SKILL_MAP_EVIDENCE_CHILD_GAP + 84);
+    const sampleY = cursorY + childSpan / 2;
+    const samplePosition = { x: SKILL_MAP_EVIDENCE_SAMPLE_X, y: sampleY };
+    nodes.push({
+      id: sampleId,
+      node: sample,
+      layer: 'measurement',
+      x: samplePosition.x,
+      y: samplePosition.y,
+      boundaryPosition: samplePosition,
+      evidencePosition: samplePosition,
+      chainId: sampleId,
+    });
+    children.forEach((child, childIndex) => {
+      const childY = sampleY + (childIndex - (children.length - 1) / 2) * SKILL_MAP_EVIDENCE_CHILD_GAP;
+      const childPosition = { x: SKILL_MAP_EVIDENCE_RESULT_X, y: childY };
+      nodes.push({
+        id: `${sampleId}-evidence-${childIndex}`,
+        node: child,
+        layer: 'measurement',
+        x: childPosition.x,
+        y: childPosition.y,
+        boundaryPosition: childPosition,
+        evidencePosition: childPosition,
+        edgeFrom: samplePosition,
+        edgeFromId: sampleId,
+        chainId: sampleId,
+        parentSampleId: sampleId,
+      });
+    });
+    cursorY += childSpan;
+  }
+
+  const samplePositions = nodes.filter((node) => node.node.nodeKind === 'sample').map((node) => node.y);
+  const rootY = samplePositions.length > 0
+    ? ((samplePositions[0] ?? SKILL_MAP_BOUNDARY_ROOT.y) + (samplePositions[samplePositions.length - 1] ?? SKILL_MAP_BOUNDARY_ROOT.y)) / 2
+    : SKILL_MAP_BOUNDARY_ROOT.y;
+  const rootPosition = {
+    x: SKILL_MAP_EVIDENCE_ROOT_X,
+    y: Number.isFinite(rootY) ? rootY : SKILL_MAP_BOUNDARY_ROOT.y,
+  };
+
+  if (overflow.length > 0) {
+    const morePosition = {
+      x: SKILL_MAP_EVIDENCE_SAMPLE_X,
+      y: Math.max(cursorY + 18, rootPosition.y + SKILL_MAP_EVIDENCE_ROW_GAP),
+    };
+    nodes.push({
+      id: 'measurement-more',
+      node: moreNode(`+ ${overflow.length} ${lang === 'zh' ? '更多证据节点' : 'more evidence nodes'}`),
+      layer: 'measurement',
+      x: morePosition.x,
+      y: morePosition.y,
+      boundaryPosition: morePosition,
+      evidencePosition: morePosition,
+      isLeaf: false,
+      moreToggle: {
+        group: 'measurement',
+        collapsedLabel: `+ ${overflow.length} ${lang === 'zh' ? '更多证据节点' : 'more evidence nodes'}`,
+        expandedLabel: lang === 'zh' ? '收起证据节点' : 'collapse evidence nodes',
+      },
+    });
+    overflow.forEach((node, index) => {
+      const position = overflowNodePosition('measurement', index, 'evidence');
+      nodes.push({
+        id: `measurement-overflow-${index}`,
+        node,
+        layer: 'measurement',
+        x: position.x,
+        y: position.y,
+        boundaryPosition: position,
+        evidencePosition: position,
+        edgeFrom: morePosition,
+        edgeFromId: 'measurement-more',
+        overflowGroup: 'measurement',
+      });
+    });
+  }
+
+  return { nodes, rootPosition };
+}
+
 function applyDefinitionCoverageDeclarations(
   nodes: SkillGraphNodePreview[] | undefined,
   declaredStableKeys: string[] | undefined,
@@ -2854,44 +3193,9 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
     diagnostic: 2,
     assertion: 3,
   }).sort((a, b) => measurementStatusPriority(a) - measurementStatusPriority(b));
-  const measurementLimit = SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS.length - 1;
-  const measurementVisible = measurementCandidates.slice(0, measurementLimit);
-  const measurementOverflow = measurementCandidates.slice(measurementLimit);
-  const measurementMorePosition = SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS.length - 1];
   const definitionNodes = buildDefinitionMapNodes(definitionCandidates, lang);
-  const measurementNodes: SkillMapPositionedNode[] = [
-    ...measurementVisible.map((node, index) => ({
-      id: `measurement-${index}`,
-      node,
-      layer: 'measurement' as const,
-      ...SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
-      boundaryPosition: SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
-      evidencePosition: SKILL_MAP_EVIDENCE_MEASUREMENT_COORDS[index],
-    })),
-    ...(measurementOverflow.length > 0 ? [{
-      id: 'measurement-more',
-      node: moreNode(`+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`),
-      layer: 'measurement' as const,
-      boundaryPosition: measurementMorePosition,
-      evidencePosition: measurementMorePosition,
-      moreToggle: {
-        group: 'measurement' as const,
-        collapsedLabel: `+ ${measurementOverflow.length} ${zh ? '更多测量节点' : 'more measurement nodes'}`,
-        expandedLabel: zh ? '收起测量节点' : 'collapse measurement nodes',
-      },
-      ...measurementMorePosition,
-    }] : []),
-    ...measurementOverflow.map((node, index) => ({
-      id: `measurement-overflow-${index}`,
-      node,
-      layer: 'measurement' as const,
-      edgeFrom: measurementMorePosition,
-      overflowGroup: 'measurement' as const,
-      ...overflowNodePosition('measurement', index, 'evidence'),
-      boundaryPosition: overflowNodePosition('measurement', index, 'evidence'),
-      evidencePosition: overflowNodePosition('measurement', index, 'evidence'),
-    })),
-  ];
+  const measurementLayout = buildMeasurementMapNodes(measurementCandidates, lang);
+  const measurementNodes = measurementLayout.nodes;
   const mapNodes = [...definitionNodes, ...measurementNodes];
   const evidenceLinks = skillMapEvidenceLinks(mapNodes, evalGraph);
   const mapDimensions = skillMapDimensions(mapNodes);
@@ -2906,10 +3210,10 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
       ${renderSkillMapEvidenceStrip(entry, doctor, evalGraph, lang)}
       <div class="sm-toolbar" aria-label="${zh ? 'Skill Map 控制' : 'Skill Map controls'}">
         <div class="sm-tools">
-          <button class="sm-tool" type="button" data-sm-action="zoom-out" title="${zh ? '缩小' : 'Zoom out'}">−</button>
+          <button class="sm-tool sm-tool--icon" type="button" data-sm-action="zoom-out" title="${zh ? '缩小' : 'Zoom out'}" aria-label="${zh ? '缩小' : 'Zoom out'}">${icon('zoom-out', { size: 15 })}</button>
           <span class="sm-zoom-label" data-sm-zoom-label>100%</span>
-          <button class="sm-tool" type="button" data-sm-action="zoom-in" title="${zh ? '放大' : 'Zoom in'}">+</button>
-          <button class="sm-tool" type="button" data-sm-action="reset" title="${zh ? '重置视图' : 'Reset view'}">${zh ? '重置' : 'Reset'}</button>
+          <button class="sm-tool sm-tool--icon" type="button" data-sm-action="zoom-in" title="${zh ? '放大' : 'Zoom in'}" aria-label="${zh ? '放大' : 'Zoom in'}">${icon('zoom-in', { size: 15 })}</button>
+          <button class="sm-tool" type="button" data-sm-action="reset" title="${zh ? '适配画布并重置节点' : 'Fit canvas and reset nodes'}">${icon('maximize-2', { size: 14 })}${zh ? '适配' : 'Fit'}</button>
         </div>
         <div class="sm-toggles">
           <div class="sm-view-switch" role="group" aria-label="${zh ? '图谱视图' : 'Map view'}">
@@ -2924,8 +3228,11 @@ function renderSkillMapSection(entry: SkillIndexEntry, lang: Lang): string {
           <div class="sm-graph" data-sm-graph style="width:${mapDimensions.width}px;height:${mapDimensions.height}px">
             <div class="sm-zone-label sm-zone-label--definition" data-sm-layer="definition">${zh ? '知识边界' : 'Knowledge'}</div>
             <div class="sm-zone-label sm-zone-label--measurement" data-sm-layer="measurement">${zh ? '评测证据' : 'Evidence'}</div>
+            <div class="sm-flow-label sm-flow-label--samples" data-sm-layer="measurement" data-sm-evidence-only>${zh ? '评测用例' : 'Eval samples'}</div>
+            <div class="sm-flow-label sm-flow-label--results" data-sm-layer="measurement" data-sm-evidence-only>${zh ? '断言与诊断' : 'Checks & diagnostics'}</div>
+            <div class="sm-flow-label sm-flow-label--targets" data-sm-layer="measurement" data-sm-evidence-only data-sm-related-label hidden aria-hidden="true">${zh ? '关联知识' : 'Related knowledge'}</div>
             ${renderSkillMapEdges(mapNodes, mapDimensions, evidenceLinks)}
-            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-origin-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-origin-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-boundary-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-boundary-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-evidence-x="${SKILL_MAP_EVIDENCE_ROOT.x}" data-sm-evidence-y="${SKILL_MAP_EVIDENCE_ROOT.y}" data-sm-draggable="1"${renderSkillMapRootDetailAttrs(entry, coverageSummary, lang)} role="button" tabindex="0" aria-label="SKILL.md ${e(entry.skillName)}" style="${positionedNodeStyle(SKILL_MAP_BOUNDARY_ROOT)}">
+            <div class="sm-node sm-node--skill" data-sm-root data-sm-node-id="${SKILL_MAP_ROOT_ID}" data-sm-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-origin-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-origin-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-boundary-x="${SKILL_MAP_BOUNDARY_ROOT.x}" data-sm-boundary-y="${SKILL_MAP_BOUNDARY_ROOT.y}" data-sm-evidence-x="${measurementLayout.rootPosition.x}" data-sm-evidence-y="${measurementLayout.rootPosition.y}" data-sm-draggable="1"${renderSkillMapRootDetailAttrs(entry, coverageSummary, lang)} role="button" tabindex="0" aria-label="SKILL.md ${e(entry.skillName)}" style="${positionedNodeStyle(SKILL_MAP_BOUNDARY_ROOT)}">
               <div class="sm-node-title">SKILL.md</div>
               <div class="sm-node-meta">${e(entry.skillName)}</div>
             </div>

@@ -341,6 +341,14 @@ describe('SkillIndex graph projection', () => {
     ]);
     assert.equal(entry.graph?.eval?.measurementNodes.find((node) => node.label === 's002')?.status, 'failed');
     assert.equal(entry.graph?.eval?.measurementNodes.find((node) => node.label === 'assertion: contains_all')?.status, 'failed');
+    assert.equal(
+      entry.graph?.eval?.measurementNodes.find((node) => node.label === 'assertion: contains_all')?.parentSampleStableKey,
+      'v1:sample:sample-2',
+    );
+    assert.equal(
+      entry.graph?.eval?.measurementNodes.find((node) => node.nodeKind === 'diagnostic')?.parentSampleStableKey,
+      'v1:sample:sample-2',
+    );
 
     const html = renderSkillDetail(entry, report, 'zh');
     assert.match(html, /Skill Map/);
@@ -380,11 +388,23 @@ describe('SkillIndex graph projection', () => {
     assert.ok(!html.includes('<div class="sm-node-title">收起'));
     assert.ok(html.includes('updateEdgesFromNode'));
     assert.ok(html.includes('refreshEdges'));
+    assert.ok(html.includes('function nodesOverlapAt'));
+    assert.ok(html.includes('function nearestOpenPosition'));
+    assert.ok(html.includes('layoutVisibleNodes(false)'));
+    assert.ok(html.includes('if (positionHasCollision(node, nextX, nextY)) return'));
     assert.ok(html.includes('suppressMoreClickUntil'));
     assert.ok(html.includes('data-sm-origin-x="'));
     assert.ok(html.includes('data-sm-root-x="560"'));
     assert.ok(html.includes('data-sm-boundary-x="560"'));
-    assert.ok(html.includes('data-sm-evidence-x="470"'));
+    assert.ok(html.includes('data-sm-evidence-x="125"'));
+    assert.ok(html.includes('data-sm-chain="measurement-sample-0"'));
+    assert.ok(html.includes('data-sm-parent-sample="measurement-sample-0"'));
+    assert.ok(html.includes('data-sm-edge-from-node="measurement-sample-0"'));
+    assert.ok(html.includes('评测用例'));
+    assert.ok(html.includes('断言与诊断'));
+    assert.ok(html.includes('关联知识'));
+    assert.ok(html.includes('focusedChainId'));
+    assert.ok(html.includes('sm-node.is-muted'));
     assert.ok(html.includes('applyViewPositions'));
     assert.ok(!html.includes('class="sm-bind"'));
     assert.ok(html.includes('class="sm-detail" data-sm-detail'));
