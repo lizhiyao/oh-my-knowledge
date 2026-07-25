@@ -145,6 +145,15 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.items.length, 1);
     assert.equal(report.items[0].skillName, 'audit');
     assert.equal(report.items[0].sourceKind, 'codex');
+    assert.ok(report.items[0].messageWindow);
+    assert.equal(
+      report.items[0].messageWindow.event.some((message) =>
+        message.snippet.includes('tool_use Bash search-1')
+        || message.snippet.includes('tool_result search-1 No matches found')),
+      true,
+    );
+    assert.match(formatObservationShow(report.items[0]), /查找收入字段。/);
+    assert.match(formatObservationShow(report.items[0]), /tool_result search-1 No matches found/);
     assert.equal(inferObservationSourceKind('C:\\Users\\me\\.codex\\sessions\\rollout.jsonl'), 'codex');
   });
 

@@ -21,7 +21,12 @@ import type {
   ToolCallInfo,
 } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
-import { ccTracesToResultEntries, type CcSession, type SkillSegment } from './trace-adapter.js';
+import {
+  ccTracesToResultEntries,
+  loadCcSessions,
+  type CcSession,
+  type SkillSegment,
+} from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
@@ -710,7 +715,7 @@ export function buildObservationMessageWindow(item: Pick<ObservationInboxItem, '
     before,
     event,
     after,
-    resolutionAfter: inferResolutionAfter(messages.slice(index + 1), item.signalType),
+    resolutionAfter: inferResolutionAfter(messages.slice(position + 1), item.signalType),
   };
 }
 
@@ -738,27 +743,27 @@ export function formatObservationShow(item: ObservationInboxItem): string {
 }
 
 function readJsonlMessageRefs(path: string): ObservationMessageRef[] {
-  return readFileSync(path, 'utf-8')
-    .split('\n')
-    .map((line, index): ObservationMessageRef | null => {
-      const trimmed = line.trim();
-      if (!trimmed) return null;
-      try {
-        const record = JSON.parse(trimmed) as Record<string, unknown>;
-        const type = String(record.type ?? 'other');
-        if (type !== 'user' && type !== 'assistant') return null;
-        const message = record.message as { role?: string; content?: unknown } | undefined;
-        const role = message?.role === 'assistant' ? 'assistant' : message?.role === 'user' ? 'user' : type === 'assistant' ? 'assistant' : type === 'user' ? 'user' : 'other';
-        return {
-          role,
-          snippet: snippet(extractRecordText(record), 500) ?? '',
-          messageIndex: index,
-          uuid: typeof record.uuid === 'string' ? record.uuid : undefined,
-          timestamp: typeof record.timestamp === 'string' ? record.timestamp : undefined,
-        };
-      } catch {
-        return null;
-      }
+  let records: unknown[];
+  try {
+    records = loadCcSessions(path)[0]?.records ?? [];
+  } catch {
+    return [];
+  }
+  return records
+    .map((raw, index): ObservationMessageRef | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const record = raw as Record<string, unknown>;
+      const type = String(record.type ?? 'other');
+      if (type !== 'user' && type !== 'assistant') return null;
+      const message = record.message as { role?: string; content?: unknown } | undefined;
+      const role = message?.role === 'assistant' ? 'assistant' : message?.role === 'user' ? 'user' : type === 'assistant' ? 'assistant' : type === 'user' ? 'user' : 'other';
+      return {
+        role,
+        snippet: snippet(extractRecordText(record), 500) ?? '',
+        messageIndex: index,
+        uuid: typeof record.uuid === 'string' ? record.uuid : undefined,
+        timestamp: typeof record.timestamp === 'string' ? record.timestamp : undefined,
+      };
     })
     .filter((message): message is ObservationMessageRef => message !== null && message.snippet !== '');
 }

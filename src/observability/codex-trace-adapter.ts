@@ -70,6 +70,8 @@ function convertCodexRecords(
   const records: CcRecord[] = [];
   const hasResponseUser = hasResponseMessageRole(rawRecords, 'user');
   const hasResponseAssistant = hasResponseMessageRole(rawRecords, 'assistant');
+  let activeModel: string | undefined;
+  let previousTotalUsageFingerprint: string | undefined;
 
   rawRecords.forEach((raw, index) => {
     const record = raw as CodexRecord;
@@ -77,8 +79,13 @@ function convertCodexRecords(
     const payload = isObject(record.payload) ? record.payload : {};
     const payloadType = stringValue(payload.type);
 
+    if (record.type === 'turn_context') {
+      activeModel = stringValue(payload.model) ?? activeModel;
+      return;
+    }
+
     if (record.type === 'response_item' && payloadType === 'message') {
-      const converted = convertCodexMessage(payload, sessionId, timestamp, cwd, entrypoint, index);
+      const converted = convertCodexMessage(payload, sessionId, timestamp, cwd, entrypoint, index, activeModel);
       if (converted) records.push(converted);
       return;
     }
@@ -100,6 +107,7 @@ function convertCodexRecords(
         entrypoint,
         message: {
           role: 'assistant',
+          model: activeModel,
           content: [{
             type: 'tool_use',
             id: callId,
@@ -141,6 +149,13 @@ function convertCodexRecords(
       const info = isObject(payload.info) ? payload.info : {};
       const usage = isObject(info.last_token_usage) ? info.last_token_usage : undefined;
       if (!usage) return;
+      const totalUsage = isObject(info.total_token_usage) ? info.total_token_usage : undefined;
+      const totalUsageFingerprint = tokenUsageFingerprint(totalUsage);
+      if (
+        totalUsageFingerprint
+        && totalUsageFingerprint === previousTotalUsageFingerprint
+      ) return;
+      previousTotalUsageFingerprint = totalUsageFingerprint;
       records.push({
         type: 'assistant',
         uuid: `codex-usage-${index}`,
@@ -151,6 +166,7 @@ function convertCodexRecords(
         entrypoint,
         message: {
           role: 'assistant',
+          model: activeModel,
           content: [],
           usage: {
             input_tokens: numberValue(usage.input_tokens),
@@ -193,7 +209,7 @@ function convertCodexRecords(
     if (record.type === 'event_msg' && payloadType === 'agent_message' && !hasResponseAssistant) {
       const message = stringValue(payload.message);
       if (!message) return;
-      records.push(codexAssistantRecord(message, sessionId, timestamp, cwd, entrypoint, index));
+      records.push(codexAssistantRecord(message, sessionId, timestamp, cwd, entrypoint, index, undefined, activeModel));
     }
   });
 
@@ -207,12 +223,13 @@ function convertCodexMessage(
   cwd: string | undefined,
   entrypoint: string,
   index: number,
+  model?: string,
 ): CcRecord | null {
   const role = stringValue(payload.role);
   const text = codexContentText(payload.content);
   if (role === 'user') return codexUserRecord(text, sessionId, timestamp, entrypoint, index);
   if (role === 'assistant') {
-    return codexAssistantRecord(text, sessionId, timestamp, cwd, entrypoint, index, stringValue(payload.id));
+    return codexAssistantRecord(text, sessionId, timestamp, cwd, entrypoint, index, stringValue(payload.id), model);
   }
   return null;
 }
@@ -243,6 +260,7 @@ function codexAssistantRecord(
   entrypoint: string,
   index: number,
   id?: string,
+  model?: string,
 ): CcAssistantRecord {
   const content: CcAssistantContent[] = text ? [{ type: 'text', text }] : [];
   return {
@@ -253,7 +271,7 @@ function codexAssistantRecord(
     timestamp,
     cwd,
     entrypoint,
-    message: { role: 'assistant', content },
+    message: { role: 'assistant', model, content },
   };
 }
 
@@ -319,13 +337,33 @@ function codexSourceMetadata(
   records: CcRecord[],
   metaPayload: Record<string, unknown>,
 ): TraceSourceMetadata {
-  const turnContext = [...records].reverse().find((record) => record.type === 'turn_context') as CodexRecord | undefined;
-  const turnPayload = isObject(turnContext?.payload) ? turnContext.payload : {};
+  const models = Array.from(new Set(records.flatMap((record) => {
+    if (record.type !== 'turn_context') return [];
+    const raw = record as CodexRecord;
+    const payload = isObject(raw.payload) ? raw.payload : {};
+    const model = stringValue(payload.model);
+    return model ? [model] : [];
+  })));
   return {
     provider: stringValue(metaPayload.model_provider) ?? 'openai',
-    model: stringValue(turnPayload.model),
+    model: models.length > 0 ? models.join(', ') : undefined,
     modelApi: 'codex',
   };
+}
+
+function tokenUsageFingerprint(usage: Record<string, unknown> | undefined): string | undefined {
+  if (!usage) return undefined;
+  const keys = [
+    'input_tokens',
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+    'output_tokens',
+    'reasoning_output_tokens',
+    'total_tokens',
+  ];
+  const values = keys.map((key) => numberValue(usage[key]));
+  if (values.every((value) => value === undefined)) return undefined;
+  return values.map((value) => value ?? 0).join(':');
 }
 
 function codexEntrypoint(metaPayload: Record<string, unknown>): string {

@@ -9,6 +9,7 @@ import {
   segmentsToResultEntries,
   ccTracesToResultEntries,
 } from '../../src/observability/trace-adapter.js';
+import { buildObservationExperienceReport } from '../../src/observability/experience.js';
 
 // ---------- Helpers ----------
 
@@ -355,6 +356,128 @@ describe('loadCcSessions', () => {
     assert.equal(audit.metrics.outputTokens, 15);
     assert.equal(audit.metrics.cacheReadTokens, 40);
     assert.equal(audit.metrics.cacheCreationTokens, 2);
+  });
+
+  it('handles Codex desktop exec calls, duplicate token snapshots, and per-turn models', () => {
+    const path = join(tmpDir, 'rollout-codex-desktop.jsonl');
+    writeFileSync(path, jsonl([
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-desktop',
+          session_id: 'codex-desktop',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:00.100Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-1', model: 'gpt-5.5' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'read-alpha',
+          name: 'exec',
+          input: 'const result = await tools.exec_command({cmd: "sed -n \'1,200p\' .agents/skills/alpha/SKILL.md"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'read-alpha', output: '# Alpha Skill' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            last_token_usage: { input_tokens: 100, output_tokens: 10 },
+            total_token_usage: { input_tokens: 100, output_tokens: 10 },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.100Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            last_token_usage: { input_tokens: 100, output_tokens: 10 },
+            total_token_usage: { input_tokens: 100, output_tokens: 10 },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-2', model: 'gpt-5.6-sol' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'read-beta',
+          name: 'exec',
+          input: 'const result = await tools.exec_command({cmd: "cat .agents/skills/beta/SKILL.md"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'read-beta', output: '# Beta Skill' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:07.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            last_token_usage: { input_tokens: 80, output_tokens: 8 },
+            total_token_usage: { input_tokens: 180, output_tokens: 18 },
+          },
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    assert.equal(session.sourceMetadata?.model, 'gpt-5.5, gpt-5.6-sol');
+
+    const segments = segmentBySkill(session);
+    const alpha = segments.find((segment) => segment.skillName === 'alpha');
+    const beta = segments.find((segment) => segment.skillName === 'beta');
+    assert.ok(alpha);
+    assert.ok(beta);
+    assert.equal(alpha.attribution?.source, 'read-skill-md');
+    assert.equal(alpha.toolCalls[0].tool, 'exec');
+    assert.equal(alpha.metrics.inputTokens, 100);
+    assert.equal(alpha.metrics.outputTokens, 10);
+    assert.equal(alpha.sourceMetadata?.model, 'gpt-5.5');
+    assert.equal(beta.metrics.inputTokens, 80);
+    assert.equal(beta.metrics.outputTokens, 8);
+    assert.equal(beta.sourceMetadata?.model, 'gpt-5.6-sol');
+
+    const experience = buildObservationExperienceReport({
+      sessions: [session],
+      segments,
+      items: [],
+      generatedAt: '2026-07-25T00:00:08.000Z',
+    });
+    assert.equal(
+      experience.invocations.find((invocation) => invocation.skillName === 'alpha')?.sourceMetadata?.model,
+      'gpt-5.5',
+    );
+    assert.equal(
+      experience.invocations.find((invocation) => invocation.skillName === 'beta')?.sourceMetadata?.model,
+      'gpt-5.6-sol',
+    );
   });
 
   it('groups Codex main and child rollouts into one logical session', () => {

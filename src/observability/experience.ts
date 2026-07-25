@@ -287,7 +287,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       sourceTrace,
       sourceKind: segment.sourceKind ?? sourceKindForPath(sourceTrace),
       entrypoint: session ? session.entrypoint ?? inferEntrypointFromRecords(session) : undefined,
-      sourceMetadata: session?.sourceMetadata,
+      sourceMetadata: segment.sourceMetadata ?? session?.sourceMetadata,
       cwd: segment.cwd,
       segmentIndex: segment.segmentIndex,
       goalSliceId,

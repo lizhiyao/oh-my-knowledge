@@ -1,6 +1,6 @@
 /** Skill segmentation and ResultEntry projection for loaded traces. */
 
-import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
+import type { ResultEntry, ToolCallInfo, TraceSourceMetadata, TurnInfo, VariantResult } from '../types/index.js';
 import type { CcAssistantRecord, CcSession, CcUserRecord } from './trace-source.js';
 import { isToolResultFailureText } from './text-signals.js';
 import {
@@ -29,6 +29,7 @@ export interface SkillSegment {
   sourceKind?: 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
+  sourceMetadata?: TraceSourceMetadata;
   segmentIndex: number;
   startRecordIndex?: number;
   endRecordIndex?: number;
@@ -208,6 +209,7 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           }
         }
       }
+      updateSegmentSourceModel(currentSegment, session.sourceMetadata, a.message.model);
       // 提取 tool_use → ToolCallInfo(success 先标 true, 等 tool_result 回填)
       const toolCalls: ToolCallInfo[] = [];
       let assistantText = '';
@@ -263,6 +265,25 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
   flushCurrent(session.records.length - 1);
   // 孤儿 tool_use(没对应 tool_result 的)保持 success=true, 但标记为未闭合
   return segments;
+}
+
+function updateSegmentSourceModel(
+  segment: SkillSegment,
+  sessionMetadata: TraceSourceMetadata | undefined,
+  model: string | undefined,
+): void {
+  if (segment.sourceKind !== 'codex' || !model) return;
+  const baseMetadata = { ...sessionMetadata };
+  delete baseMetadata.model;
+  const models = new Set(
+    segment.sourceMetadata?.model?.split(', ').filter(Boolean) ?? [],
+  );
+  models.add(model);
+  segment.sourceMetadata = {
+    ...baseMetadata,
+    ...segment.sourceMetadata,
+    model: Array.from(models).join(', '),
+  };
 }
 
 function createEmptySegment(session: CcSession, skillName: string, index: number, recordIndex: number, timestamp?: string, attribution?: SkillSegment['attribution']): SkillSegment {

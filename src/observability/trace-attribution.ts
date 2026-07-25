@@ -180,8 +180,10 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
         if (m) return parseSkillRef(m[1]);
       }
     }
-    if (part.type === 'tool_use' && part.name === 'Bash') {
-      const command = part.input?.command;
+    if (part.type === 'tool_use' && (part.name === 'Bash' || part.name?.toLowerCase() === 'exec')) {
+      const command = part.name === 'Bash'
+        ? part.input?.command
+        : part.input?.input ?? part.input?.command;
       if (typeof command === 'string') {
         const m = SKILL_READ_FILE_RE.exec(command);
         if (m) return parseSkillRef(m[1]);
@@ -207,7 +209,9 @@ export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantR
       if (part.type === 'text' && typeof part.text === 'string') {
         texts.push(part.text);
       } else if (part.type === 'tool_use') {
-        const command = part.input?.command;
+        const command = part.name?.toLowerCase() === 'exec'
+          ? part.input?.input ?? part.input?.command
+          : part.input?.command;
         if (typeof command === 'string') texts.push(command);
       }
     }
