@@ -62,6 +62,25 @@ flowchart TD
 - **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). The composite is the mean of whichever scoring layers (fact / behavior / judge) are actually present.
 - **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
 
+## Observation pipeline: source-neutral Trace IR
+
+`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. A source adapter maps each format into the same Trace IR before attribution, segmentation, and measurement:
+
+```mermaid
+flowchart LR
+    C["Claude adapter"] --> IR["Trace IR"]
+    X["Codex adapter"] --> IR
+    O["OpenClaw adapter"] --> IR
+    M["Markdown adapter"] --> IR
+    IR --> A["lifecycle correlation and skill attribution"]
+    A --> S["segment"]
+    S --> R["health / inbox / experience"]
+```
+
+The IR distinguishes `message`, `tool_call`, `tool_result`, `usage`, `lifecycle`, and `unknown` events. User messages carry a `human`, `runtime`, `skill-context`, or `synthetic` origin, so injected `AGENTS.md`, environment context, and tool results cannot inflate human-turn metrics. Tool calls retain provider namespaces, while tool outcomes prefer authoritative runtime status and fall back to output-text inference only when the source exposes no status.
+
+Identifiers have separate jobs: `rootRunId` groups a task tree, `runId` identifies a concrete thread, `traceId` identifies an evidence stream, and each segment gets an independent sample ID. Aggregation keys therefore never double as sample primary keys.
+
 ## Six-dim evaluation
 
 Reports display results across six independent dimensions. The three scoring layers — Fact / Behavior / LLM-judge — are shown separately so you see **which layer regressed** instead of a single composite number:

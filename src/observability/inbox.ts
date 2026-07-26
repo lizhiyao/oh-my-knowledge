@@ -22,11 +22,12 @@ import type {
 } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
-  ccTracesToResultEntries,
-  loadCcSessions,
-  type CcSession,
+  loadTraceSessions,
+  tracesToResultEntries,
+  type TraceSession,
   type SkillSegment,
 } from './trace-adapter.js';
+import type { TraceEvent } from './trace-ir.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
@@ -233,14 +234,14 @@ function severityFor(signalType: ObservationSignalType, subtype: ObservationSign
   return 'low';
 }
 
-function buildSessionTimeRanges(sessions: CcSession[]): ObservationSessionTimeRange[] {
+function buildSessionTimeRanges(sessions: TraceSession[]): ObservationSessionTimeRange[] {
   return sessions.map((session): ObservationSessionTimeRange => ({
-    sessionId: session.sessionId,
-    sessionGroupId: session.sessionGroupId,
+    sessionId: session.runId,
+    sessionGroupId: session.rootRunId,
     sourceTrace: session.sourcePath,
     sourceKind: session.sourceKind ?? inferObservationSourceKind(session.sourcePath),
-    traceRole: session.traceRole,
-    traceLabel: session.traceLabel,
+    traceRole: session.role,
+    traceLabel: session.label,
     cwd: session.cwd,
     startTimestamp: session.startTimestamp,
     endTimestamp: session.endTimestamp,
@@ -413,7 +414,7 @@ function skillSessionCountKey(segment: SkillSegment): string {
  * `buildObserveDiagnosticsFromReport(report)` 写入 `report.diagnostics`。
  */
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
-  const { sessions, segments } = ccTracesToResultEntries(tracePath);
+  const { sessions, segments } = tracesToResultEntries(tracePath);
   const generatedAt = new Date().toISOString();
   const sessionTimeRanges = buildSessionTimeRanges(sessions);
   const sessionTimeRange = buildOverallSessionTimeRange(sessionTimeRanges);
@@ -449,7 +450,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     }
     const session = sessionsBySourceTrace.get(sourceTrace);
     if (!session) return undefined;
-    const messages = messageRefsFromRecords(session.records);
+    const messages = messageRefsFromEvents(session.events);
     messageRefsBySourceTrace.set(sourceTrace, messages);
     return messages;
   };
@@ -769,51 +770,36 @@ export function formatObservationShow(item: ObservationInboxItem): string {
 }
 
 function readJsonlMessageRefs(path: string): ObservationMessageRef[] {
-  let records: unknown[];
+  let events: TraceEvent[];
   try {
-    records = loadCcSessions(path)[0]?.records ?? [];
+    events = loadTraceSessions(path)[0]?.events ?? [];
   } catch {
     return [];
   }
-  return messageRefsFromRecords(records);
+  return messageRefsFromEvents(events);
 }
 
-function messageRefsFromRecords(records: unknown[]): ObservationMessageRef[] {
-  return records
-    .map((raw, index): ObservationMessageRef | null => {
-      if (!raw || typeof raw !== 'object') return null;
-      const record = raw as Record<string, unknown>;
-      const type = String(record.type ?? 'other');
-      if (type !== 'user' && type !== 'assistant') return null;
-      const message = record.message as { role?: string; content?: unknown } | undefined;
-      const role = message?.role === 'assistant' ? 'assistant' : message?.role === 'user' ? 'user' : type === 'assistant' ? 'assistant' : type === 'user' ? 'user' : 'other';
-      return {
-        role,
-        snippet: snippet(extractRecordText(record), 500) ?? '',
-        messageIndex: index,
-        uuid: typeof record.uuid === 'string' ? record.uuid : undefined,
-        timestamp: typeof record.timestamp === 'string' ? record.timestamp : undefined,
-      };
-    })
-    .filter((message): message is ObservationMessageRef => message !== null && message.snippet !== '');
-}
-
-function extractRecordText(record: Record<string, unknown>): string {
-  const message = record.message as { content?: unknown } | undefined;
-  const content = message?.content;
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content.map((part) => {
-      if (!part || typeof part !== 'object') return '';
-      const obj = part as Record<string, unknown>;
-      if (obj.type === 'text') return String(obj.text ?? '');
-      if (obj.type === 'tool_use') return `tool_use ${String(obj.name ?? '')} ${String(obj.id ?? '')} ${JSON.stringify(obj.input ?? {})}`;
-      if (obj.type === 'tool_result') return `tool_result ${String(obj.tool_use_id ?? '')} ${String(obj.content ?? '')}`;
-      if (obj.type === 'thinking') return '';
-      return JSON.stringify(obj);
-    }).filter(Boolean).join('\n');
-  }
-  return JSON.stringify(record);
+function messageRefsFromEvents(events: TraceEvent[]): ObservationMessageRef[] {
+  return events.flatMap((event): ObservationMessageRef[] => {
+    const common = {
+      messageIndex: event.sourceIndex,
+      uuid: event.sourceEventId ?? event.eventId,
+      timestamp: event.timestamp,
+    };
+    if (event.eventKind === 'message') {
+      const text = snippet(event.text, 500);
+      return text ? [{ ...common, role: event.role === 'assistant' ? 'assistant' : 'user', snippet: text }] : [];
+    }
+    if (event.eventKind === 'tool_call') {
+      const text = snippet(`tool_use ${event.tool.displayName ?? event.tool.name} ${event.callId} ${JSON.stringify(event.input)}`, 500);
+      return text ? [{ ...common, role: 'assistant', snippet: text }] : [];
+    }
+    if (event.eventKind === 'tool_result') {
+      const text = snippet(`tool_result ${event.callId} ${event.output}`, 500);
+      return text ? [{ ...common, role: 'user', snippet: text }] : [];
+    }
+    return [];
+  });
 }
 
 function inferResolutionAfter(messages: ObservationMessageRef[], signalType: ObservationSignalType): ObservationMessageWindow['resolutionAfter'] {

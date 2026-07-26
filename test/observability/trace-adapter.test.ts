@@ -78,7 +78,7 @@ describe('loadCcSessions', () => {
     writeFileSync(path, 'not-json-line\n' + jsonl([{ type: 'permission-mode', sessionId: 's1' }]));
     const sessions = loadCcSessions(path);
     assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].sessionId, 's1');
+    assert.equal(sessions[0].runId, 's1');
   });
 
   it('loads multiple JSONL from directory', () => {
@@ -86,7 +86,7 @@ describe('loadCcSessions', () => {
     writeSession(tmpDir, 'b.jsonl', [{ type: 'permission-mode', sessionId: 'sb' }]);
     const sessions = loadCcSessions(tmpDir);
     assert.equal(sessions.length, 2);
-    const ids = sessions.map((s) => s.sessionId).sort();
+    const ids = sessions.map((s) => s.runId).sort();
     assert.deepEqual(ids, ['sa', 'sb']);
   });
 
@@ -105,8 +105,8 @@ describe('loadCcSessions', () => {
 
     const sessions = loadCcSessions(sessionDir).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
     assert.equal(sessions.length, 2);
-    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['sessionA']));
-    assert.deepEqual(sessions.map((session) => session.traceRole).sort(), ['main', 'subagent']);
+    assert.deepEqual(new Set(sessions.map((session) => session.rootRunId)), new Set(['sessionA']));
+    assert.deepEqual(sessions.map((session) => session.role).sort(), ['main', 'subagent']);
 
     const { segments } = ccTracesToResultEntries(sessionDir);
     const child = segments.find((segment) => segment.skillName === 'child-skill');
@@ -133,7 +133,7 @@ describe('loadCcSessions', () => {
 `);
     const sessions = loadCcSessions(path);
     assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].runId, 'oc-1');
     assert.equal(sessions[0].cwd, '/tmp/agent');
     const segs = segmentBySkill(sessions[0]);
     assert.equal(segs.length, 1);
@@ -187,7 +187,7 @@ describe('loadCcSessions', () => {
 
     const sessions = loadCcSessions(path);
     assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].runId, 'oc-1');
     assert.equal(sessions[0].sourceKind, 'openclaw');
     assert.equal(sessions[0].entrypoint, 'openclaw');
     assert.equal(sessions[0].cwd, '/tmp/example/.openclaw/workspace');
@@ -328,9 +328,9 @@ describe('loadCcSessions', () => {
     ]));
 
     const [session] = loadCcSessions(path);
-    assert.equal(session.sessionId, 'codex-child');
-    assert.equal(session.sessionGroupId, 'codex-parent');
-    assert.equal(session.traceRole, 'subagent');
+    assert.equal(session.runId, 'codex-child');
+    assert.equal(session.rootRunId, 'codex-parent');
+    assert.equal(session.role, 'subagent');
     assert.equal(session.sourceKind, 'codex');
     assert.equal(session.entrypoint, 'codex-desktop');
     assert.equal(session.cwd, '/repo-codex');
@@ -416,19 +416,16 @@ describe('loadCcSessions', () => {
     ]));
 
     const [session] = loadCcSessions(path);
-    const interrupted = session.records.find((record) =>
-      (record as { type?: unknown }).type === 'turn_aborted') as
-      | { reason?: string; durationMs?: number }
+    const interrupted = session.events.find((event) =>
+      event.eventKind === 'lifecycle' && event.phase === 'turn_aborted') as
+      | { eventKind: string; phase: string; reason?: string; durationMs?: number; timestamp?: string; turnId?: string }
       | undefined;
-    assert.deepEqual(interrupted, {
-      type: 'turn_aborted',
-      sessionId: 'codex-aborted',
-      timestamp: '2026-07-25T00:00:04.000Z',
-      turnId: 'turn-1',
-      reason: 'interrupted',
-      completedAt: '2026-07-25T00:00:04.000Z',
-      durationMs: 3500,
-    });
+    assert.equal(interrupted?.eventKind, 'lifecycle');
+    assert.equal(interrupted?.phase, 'turn_aborted');
+    assert.equal(interrupted?.timestamp, '2026-07-25T00:00:04.000Z');
+    assert.equal(interrupted?.turnId, 'turn-1');
+    assert.equal(interrupted?.reason, 'interrupted');
+    assert.equal(interrupted?.durationMs, 3500);
 
     const segments = segmentBySkill(session);
     const experience = buildObservationExperienceReport({
@@ -792,11 +789,11 @@ describe('loadCcSessions', () => {
       },
     }]);
 
-    const sessions = loadCcSessions(tmpDir).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    const sessions = loadCcSessions(tmpDir).sort((a, b) => a.runId.localeCompare(b.runId));
     assert.equal(sessions.length, 3);
-    assert.deepEqual(sessions.map((session) => session.traceRole), ['subagent', 'subagent', 'main']);
-    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['codex-parent']));
-    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupPath)), new Set(['codex:codex-parent']));
+    assert.deepEqual(sessions.map((session) => session.role), ['subagent', 'subagent', 'main']);
+    assert.deepEqual(new Set(sessions.map((session) => session.rootRunId)), new Set(['codex-parent']));
+    assert.deepEqual(new Set(sessions.map((session) => session.groupPath)), new Set(['codex:codex-parent']));
   });
 
   it('keeps OpenClaw business action labels and splits by SKILL.md reads', () => {
@@ -1017,11 +1014,11 @@ describe('loadCcSessions', () => {
 ### AI 回复
 润色完成。
 `);
-    const sessions = loadCcSessions(path).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    const sessions = loadCcSessions(path).sort((a, b) => a.runId.localeCompare(b.runId));
     assert.equal(sessions.length, 2);
-    assert.equal(sessions[0].sessionId, 's-a');
+    assert.equal(sessions[0].runId, 's-a');
     assert.equal(sessions[0].cwd, '/repo-a');
-    assert.equal(sessions[1].sessionId, 's-b');
+    assert.equal(sessions[1].runId, 's-b');
     assert.equal(sessions[1].cwd, '/repo-b');
 
     const segs = sessions.flatMap(segmentBySkill).sort((a, b) => a.skillName.localeCompare(b.skillName));
@@ -1029,6 +1026,226 @@ describe('loadCcSessions', () => {
       ['audit', 's-a', '/repo-a'],
       ['polish', 's-b', '/repo-b'],
     ]);
+  });
+});
+
+// ---------- Source-neutral Trace IR ----------
+
+describe('source-neutral Trace IR', () => {
+  it('preserves MCP identity and uses authoritative runtime failure status', () => {
+    const path = writeSession(tmpDir, 'codex-mcp.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-mcp', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'mcp-call-1',
+          name: 'mcp__codex_apps__github',
+          arguments: JSON.stringify({ owner: 'openai', repo: 'codex' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'mcp-call-1',
+          output: 'request completed',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'mcp-call-1',
+          isError: true,
+          invocation: { server: 'github', tool: 'fetch_file' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'mcp-call-2',
+          name: 'mcp__codex_apps__github',
+          arguments: JSON.stringify({ query: 'issues' }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'mcp_tool_call_end',
+          call_id: 'mcp-call-2',
+          isError: false,
+          invocation: { server: 'github', tool: 'search_issues' },
+          output: '2 issues',
+        },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    const call = session.events.find((event) => event.eventKind === 'tool_call' && event.callId === 'mcp-call-1');
+    const result = session.events.find((event) => event.eventKind === 'tool_result' && event.callId === 'mcp-call-1');
+    assert.ok(call?.eventKind === 'tool_call');
+    assert.equal(call.tool.name, 'github.fetch_file');
+    assert.equal(call.tool.namespace, 'mcp__codex_apps');
+    assert.ok(result?.eventKind === 'tool_result');
+    assert.equal(result.status, 'failure');
+    assert.equal(result.statusSource, 'runtime');
+    const synthesized = session.events.find((event) =>
+      event.eventKind === 'tool_result' && event.callId === 'mcp-call-2',
+    );
+    assert.ok(synthesized?.eventKind === 'tool_result');
+    assert.equal(synthesized.status, 'success');
+    assert.equal(synthesized.output, '2 issues');
+
+    const [segment] = segmentBySkill(session);
+    const failedCall = segment.toolCalls.find((toolCall) => toolCall.toolUseId === 'mcp-call-1');
+    assert.equal(failedCall?.tool, 'github.fetch_file');
+    assert.equal(failedCall?.success, false);
+    assert.equal(segment.metrics.numToolFailures, 1);
+  });
+
+  it('classifies Codex instructions as runtime context instead of human turns', () => {
+    const path = writeSession(tmpDir, 'codex-runtime-context.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-runtime-context', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: '# AGENTS.md instructions for /repo\n<INSTRUCTIONS>...</INSTRUCTIONS>' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: '<environment_context><cwd>/repo</cwd></environment_context>' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: '请检查这个实现。' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'assistant', content: '检查完成。' },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    const userOrigins = session.events.flatMap((event) =>
+      event.eventKind === 'message' && event.role === 'user' ? [event.origin] : [],
+    );
+    assert.deepEqual(userOrigins, ['runtime', 'runtime', 'human']);
+    const [segment] = segmentBySkill(session);
+    assert.equal(segment.metrics.numTurns, 2);
+  });
+
+  it('recognizes Codex system skills from the installed .system layout', () => {
+    const path = writeSession(tmpDir, 'codex-system-skill.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-system-skill', cwd: '/repo', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-system-skill',
+          name: 'exec_command',
+          arguments: JSON.stringify({
+            cmd: 'sed -n \'1,220p\' /home/user/.codex/skills/.system/skill-creator/SKILL.md',
+          }),
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'function_call_output', call_id: 'read-system-skill', output: '# Skill Creator' },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    assert.equal(segmentBySkill(session)[0].skillName, 'skill-creator');
+  });
+
+  it('keeps sample ids unique across a root run and child run', () => {
+    const main = {
+      sessionId: 'root',
+      sessionGroupId: 'root',
+      sourcePath: '/trace/main.jsonl',
+      records: [asstRec('a-main', [{ type: 'text', text: 'main' }], { sessionId: 'root' })],
+    };
+    const child = {
+      sessionId: 'child',
+      sessionGroupId: 'root',
+      sourcePath: '/trace/subagents/child.jsonl',
+      records: [asstRec('a-child', [{ type: 'text', text: 'child' }], { sessionId: 'child' })],
+    };
+    const entries = segmentsToResultEntries([
+      ...segmentBySkill(main),
+      ...segmentBySkill(child),
+    ]);
+    assert.equal(new Set(entries.map((entry) => entry.sample_id)).size, 2);
+  });
+
+  it('uses the full invocation timeline for metrics beyond the 240-event preview', () => {
+    const records: unknown[] = [{
+      timestamp: '2026-07-25T00:00:00.000Z',
+      type: 'session_meta',
+      payload: { id: 'codex-long', cwd: '/repo', model_provider: 'openai' },
+    }, {
+      timestamp: '2026-07-25T00:00:01.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: '<command-name>/audit</command-name>\n<command-message>audit</command-message>\n请检查实现。',
+      },
+    }];
+    for (let index = 0; index < 250; index += 1) {
+      records.push({
+        timestamp: `2026-07-25T00:${String(Math.floor((index + 2) / 60)).padStart(2, '0')}:${String((index + 2) % 60).padStart(2, '0')}.000Z`,
+        type: 'response_item',
+        payload: { type: 'message', role: 'assistant', content: `进度 ${index}` },
+      });
+    }
+    records.push({
+      timestamp: '2026-07-25T00:05:00.000Z',
+      type: 'response_item',
+      payload: { type: 'message', role: 'user', content: '不对，请重新检查最后的结论。' },
+    });
+    records.push({
+      timestamp: '2026-07-25T00:05:01.000Z',
+      type: 'response_item',
+      payload: { type: 'message', role: 'assistant', content: '已修正并交付。' },
+    });
+    const path = writeSession(tmpDir, 'codex-long.jsonl', records);
+    const [session] = loadCcSessions(path);
+    const segments = segmentBySkill(session);
+    const experience = buildObservationExperienceReport({
+      sessions: [session],
+      segments,
+      items: [],
+      generatedAt: '2026-07-25T00:06:00.000Z',
+    });
+    const invocation = experience.invocations[0];
+    assert.ok(invocation.timeline.length > 240);
+    assert.equal(invocation.indicators.userMessageCount, 2);
+    assert.ok(invocation.indicators.userCorrectionCount >= 1);
   });
 });
 
@@ -1356,7 +1573,7 @@ describe('segmentsToResultEntries', () => {
     const segs = segmentBySkill(s);
     const entries = segmentsToResultEntries(segs);
     assert.equal(entries.length, 1);
-    assert.equal(entries[0].sample_id, 's1:0');
+    assert.match(entries[0].sample_id, /^trace:[a-f0-9]{16}:0$/);
     assert.ok('audit' in entries[0].variants);
     assert.equal(entries[0].variants.audit.toolCalls?.length, 1);
     assert.equal(entries[0].variants.audit.numToolCalls, 1);

@@ -1,14 +1,14 @@
-/** Codex rollout JSONL -> omk's normalized Claude-shaped trace records. */
+/** Codex rollout JSONL -> source-neutral Trace IR. */
 
 import { basename } from 'node:path';
 import { isToolResultFailureText } from './text-signals.js';
 import type {
-  CcAssistantContent,
-  CcAssistantRecord,
-  CcRecord,
-  CcSession,
-  CcUserRecord,
-} from './trace-source.js';
+  TraceEvent,
+  TraceMessageOrigin,
+  TraceSession,
+  TraceToolRef,
+  TraceToolStatus,
+} from './trace-ir.js';
 import type { TraceSourceMetadata } from '../types/index.js';
 
 interface CodexRecord {
@@ -17,17 +17,28 @@ interface CodexRecord {
   payload?: unknown;
 }
 
-export function isCodexJsonl(records: CcRecord[]): boolean {
-  return records.some((record) =>
-    record.type === 'session_meta'
-    && isObject((record as CodexRecord).payload),
-  );
+interface McpCallEnd {
+  callId: string;
+  sourceIndex: number;
+  timestamp?: string;
+  isError?: boolean;
+  status?: string;
+  tool?: string;
+  server?: string;
+  output?: string;
 }
 
-export function isCodexGuardianRollout(records: CcRecord[]): boolean {
+export function isCodexJsonl(records: unknown[]): boolean {
   return records.some((record) => {
-    if (record.type !== 'session_meta') return false;
-    const raw = record as CodexRecord;
+    const raw = asCodexRecord(record);
+    return raw?.type === 'session_meta' && isObject(raw.payload);
+  });
+}
+
+export function isCodexGuardianRollout(records: unknown[]): boolean {
+  return records.some((record) => {
+    const raw = asCodexRecord(record);
+    if (raw?.type !== 'session_meta') return false;
     const payload = isObject(raw.payload) ? raw.payload : {};
     const source = isObject(payload.source) ? payload.source : {};
     const subagent = source.subagent;
@@ -36,160 +47,131 @@ export function isCodexGuardianRollout(records: CcRecord[]): boolean {
   });
 }
 
-export function parseCodexSessionFile(filePath: string, rawRecords: CcRecord[]): CcSession {
-  const meta = rawRecords.find((record) => record.type === 'session_meta') as CodexRecord | undefined;
+export function parseCodexSessionFile(filePath: string, rawRecords: unknown[]): TraceSession {
+  const meta = rawRecords.map(asCodexRecord).find((record) => record?.type === 'session_meta');
   const metaPayload = isObject(meta?.payload) ? meta.payload : {};
-  const sessionId = stringValue(metaPayload.id)
+  const runId = stringValue(metaPayload.id)
     ?? stringValue(metaPayload.session_id)
     ?? basename(filePath).replace(/\.jsonl$/, '');
-  const parentThreadId = stringValue(metaPayload.parent_thread_id);
-  const sessionGroupId = parentThreadId ?? sessionId;
+  const parentRunId = stringValue(metaPayload.parent_thread_id);
   const cwd = stringValue(metaPayload.cwd);
   const entrypoint = codexEntrypoint(metaPayload);
-  const traceRole = parentThreadId || metaPayload.thread_source === 'subagent'
-    ? 'subagent'
-    : 'main';
-  const sourceMetadata = codexSourceMetadata(rawRecords, metaPayload);
-  const records = convertCodexRecords(rawRecords, sessionId, cwd, entrypoint);
-  const timestamps = records
-    .map((record) => stringValue((record as { timestamp?: unknown }).timestamp))
-    .filter((value): value is string => Boolean(value));
+  const role = parentRunId || metaPayload.thread_source === 'subagent' ? 'subagent' : 'main';
+  const events = convertCodexRecords(rawRecords, runId);
+  const timestamps = events.map((event) => event.timestamp).filter((value): value is string => Boolean(value));
 
   return {
-    sessionId,
-    sessionGroupId,
-    sessionGroupPath: `codex:${sessionGroupId}`,
-    traceRole,
-    traceLabel: traceRole === 'subagent' ? `subagent/${sessionId}` : `main/${basename(filePath)}`,
+    runId,
+    rootRunId: parentRunId ?? runId,
+    parentRunId,
+    traceId: `${runId}\u0000${filePath}`,
+    groupPath: `codex:${parentRunId ?? runId}`,
+    role,
+    label: role === 'subagent' ? `subagent/${runId}` : `main/${basename(filePath)}`,
     sourcePath: filePath,
     sourceKind: 'codex',
-    records,
+    events,
     cwd,
     gitBranch: isObject(metaPayload.git) ? stringValue(metaPayload.git.branch) : undefined,
     entrypoint,
-    sourceMetadata,
+    sourceMetadata: codexSourceMetadata(rawRecords, metaPayload),
     startTimestamp: timestamps[0] ?? stringValue(meta?.timestamp) ?? stringValue(metaPayload.timestamp),
     endTimestamp: timestamps.at(-1),
   };
 }
 
-function convertCodexRecords(
-  rawRecords: CcRecord[],
-  sessionId: string,
-  cwd: string | undefined,
-  entrypoint: string,
-): CcRecord[] {
-  const records: CcRecord[] = [];
+function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[] {
+  const events: TraceEvent[] = [];
+  const mcpEnds = indexMcpCallEnds(rawRecords);
+  const resultCallIds = new Set<string>();
   const hasResponseUser = hasResponseMessageRole(rawRecords, 'user');
   const hasResponseAssistant = hasResponseMessageRole(rawRecords, 'assistant');
   let activeModel: string | undefined;
+  let activeTurnId: string | undefined;
   let previousTotalUsageFingerprint: string | undefined;
 
-  rawRecords.forEach((raw, index) => {
-    const record = raw as CodexRecord;
-    const timestamp = stringValue(record.timestamp) ?? new Date().toISOString();
+  rawRecords.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    if (!record) return;
+    const timestamp = stringValue(record.timestamp);
     const payload = isObject(record.payload) ? record.payload : {};
     const payloadType = stringValue(payload.type);
+    const eventId = (suffix: string): string => `${runId}:${sourceIndex}:${suffix}`;
+    const base = { sourceIndex, sourceType: `${String(record.type ?? 'unknown')}:${payloadType ?? ''}`, timestamp, turnId: activeTurnId };
 
     if (record.type === 'turn_context') {
       activeModel = stringValue(payload.model) ?? activeModel;
+      activeTurnId = stringValue(payload.turn_id) ?? activeTurnId;
       return;
     }
 
     if (record.type === 'response_item' && payloadType === 'message') {
-      const converted = convertCodexMessage(payload, sessionId, timestamp, cwd, entrypoint, index, activeModel);
-      if (converted) records.push(converted);
+      const role = stringValue(payload.role);
+      const text = codexContentText(payload.content);
+      if ((role === 'user' || role === 'assistant') && text) {
+        events.push({
+          ...base,
+          eventKind: 'message',
+          eventId: eventId('message'),
+          role,
+          origin: role === 'user' ? codexUserMessageOrigin(text) : 'synthetic',
+          text,
+          model: role === 'assistant' ? activeModel : undefined,
+        });
+      }
       return;
     }
 
     if (record.type === 'response_item' && payloadType === 'tool_search_call') {
-      const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `codex-tool-search-${index}`;
-      records.push(codexToolUseRecord({
-        callId,
-        id: stringValue(payload.id),
-        name: 'tool_search',
-        input: parseToolInput(payload.arguments),
-        sessionId,
-        timestamp,
-        cwd,
-        entrypoint,
-        model: activeModel,
-      }));
+      const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `codex-tool-search-${sourceIndex}`;
+      events.push(toolCallEvent(eventId('tool-call'), base, callId, { name: 'tool_search' }, parseToolInput(payload.arguments), activeModel));
       return;
     }
 
     if (record.type === 'response_item' && payloadType === 'tool_search_output') {
-      const callId = stringValue(payload.call_id) ?? `codex-tool-search-${index}`;
+      const callId = stringValue(payload.call_id) ?? `codex-tool-search-${sourceIndex}`;
       const output = JSON.stringify({
         status: stringValue(payload.status),
         execution: stringValue(payload.execution),
         tools: summarizeDiscoveredTools(payload.tools),
       });
-      records.push(codexToolResultRecord({
-        callId,
-        output,
-        failed: codexStatusFailed(payload.status),
-        sessionId,
-        timestamp,
-        entrypoint,
-        index,
-      }));
+      events.push(toolResultEvent(eventId('tool-result'), base, callId, output, statusFromCodex(payload.status), 'runtime'));
       return;
     }
 
     if (record.type === 'response_item' && payloadType === 'web_search_call') {
-      const callId = stringValue(payload.id) ?? `codex-web-search-${index}`;
-      records.push(codexToolUseRecord({
+      const callId = stringValue(payload.id) ?? `codex-web-search-${sourceIndex}`;
+      events.push(toolCallEvent(eventId('tool-call'), base, callId, { name: 'web_search' }, isObject(payload.action) ? payload.action : {}, activeModel));
+      events.push(toolResultEvent(
+        eventId('tool-result'),
+        base,
         callId,
-        id: stringValue(payload.id),
-        name: 'web_search',
-        input: isObject(payload.action) ? payload.action : {},
-        sessionId,
-        timestamp,
-        cwd,
-        entrypoint,
-        model: activeModel,
-      }));
-      records.push(codexToolResultRecord({
-        callId,
-        output: JSON.stringify({ status: stringValue(payload.status) }),
-        failed: codexStatusFailed(payload.status),
-        sessionId,
-        timestamp,
-        entrypoint,
-        index,
-      }));
+        JSON.stringify({ status: stringValue(payload.status) }),
+        statusFromCodex(payload.status),
+        'runtime',
+      ));
       return;
     }
 
     if (record.type === 'response_item' && payloadType === 'image_generation_call') {
-      const callId = stringValue(payload.id) ?? `codex-image-generation-${index}`;
+      const callId = stringValue(payload.id) ?? `codex-image-generation-${sourceIndex}`;
       const result = typeof payload.result === 'string' ? payload.result : '';
-      records.push(codexToolUseRecord({
+      events.push(toolCallEvent(
+        eventId('tool-call'),
+        base,
         callId,
-        id: stringValue(payload.id),
-        name: 'image_generation',
-        input: {
-          prompt: stringValue(payload.revised_prompt),
-        },
-        sessionId,
-        timestamp,
-        cwd,
-        entrypoint,
-        model: activeModel,
-      }));
-      records.push(codexToolResultRecord({
+        { name: 'image_generation' },
+        { prompt: stringValue(payload.revised_prompt) },
+        activeModel,
+      ));
+      events.push(toolResultEvent(
+        eventId('tool-result'),
+        base,
         callId,
-        output: JSON.stringify({
-          status: stringValue(payload.status),
-          resultBytes: result.length,
-        }),
-        failed: codexStatusFailed(payload.status),
-        sessionId,
-        timestamp,
-        entrypoint,
-        index,
-      }));
+        JSON.stringify({ status: stringValue(payload.status), resultBytes: result.length }),
+        statusFromCodex(payload.status),
+        'runtime',
+      ));
       return;
     }
 
@@ -197,28 +179,10 @@ function convertCodexRecords(
       record.type === 'response_item'
       && (payloadType === 'function_call' || payloadType === 'custom_tool_call')
     ) {
-      const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `codex-call-${index}`;
-      const name = stringValue(payload.name) ?? 'unknown';
-      const normalized = normalizeCodexTool(name, payload.arguments ?? payload.input);
-      records.push({
-        type: 'assistant',
-        uuid: stringValue(payload.id) ?? callId,
-        parentUuid: null,
-        sessionId,
-        timestamp,
-        cwd,
-        entrypoint,
-        message: {
-          role: 'assistant',
-          model: activeModel,
-          content: [{
-            type: 'tool_use',
-            id: callId,
-            name: normalized.name,
-            input: normalized.input,
-          }],
-        },
-      } as CcAssistantRecord);
+      const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `codex-call-${sourceIndex}`;
+      const sourceName = stringValue(payload.name) ?? 'unknown';
+      const normalized = normalizeCodexTool(sourceName, payload.arguments ?? payload.input, mcpEnds.get(callId));
+      events.push(toolCallEvent(eventId('tool-call'), base, callId, normalized.tool, normalized.input, activeModel));
       return;
     }
 
@@ -226,25 +190,20 @@ function convertCodexRecords(
       record.type === 'response_item'
       && (payloadType === 'function_call_output' || payloadType === 'custom_tool_call_output')
     ) {
-      const callId = stringValue(payload.call_id) ?? `codex-call-${index}`;
-      const output = codexContentText(payload.output);
-      records.push({
-        type: 'user',
-        uuid: `codex-output-${callId}-${index}`,
-        parentUuid: null,
-        sessionId,
-        timestamp,
-        entrypoint,
-        message: {
-          role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: callId,
-            content: output,
-            is_error: isToolResultFailureText(output) || codexToolOutputFailed(output),
-          }],
-        },
-      } as CcUserRecord);
+      const callId = stringValue(payload.call_id) ?? `codex-call-${sourceIndex}`;
+      const mcpEnd = mcpEnds.get(callId);
+      const output = codexContentText(payload.output) || mcpEnd?.output || '';
+      const explicitStatus = mcpEndStatus(mcpEnd) ?? statusFromCodex(payload.status);
+      const inferredFailure = isToolResultFailureText(output) || codexToolOutputFailed(output);
+      events.push(toolResultEvent(
+        eventId('tool-result'),
+        base,
+        callId,
+        output,
+        explicitStatus === 'unknown' ? (inferredFailure ? 'failure' : 'success') : explicitStatus,
+        explicitStatus === 'unknown' ? 'inferred' : 'runtime',
+      ));
+      resultCallIds.add(callId);
       return;
     }
 
@@ -253,149 +212,232 @@ function convertCodexRecords(
       const usage = isObject(info.last_token_usage) ? info.last_token_usage : undefined;
       if (!usage) return;
       const totalUsage = isObject(info.total_token_usage) ? info.total_token_usage : undefined;
-      const totalUsageFingerprint = tokenUsageFingerprint(totalUsage);
-      if (
-        totalUsageFingerprint
-        && totalUsageFingerprint === previousTotalUsageFingerprint
-      ) return;
-      previousTotalUsageFingerprint = totalUsageFingerprint;
-      records.push({
-        type: 'assistant',
-        uuid: `codex-usage-${index}`,
-        parentUuid: null,
-        sessionId,
-        timestamp,
-        cwd,
-        entrypoint,
-        message: {
-          role: 'assistant',
-          model: activeModel,
-          content: [],
-          usage: normalizeCodexTokenUsage(usage),
-        },
-      } as CcAssistantRecord);
+      const fingerprint = tokenUsageFingerprint(totalUsage);
+      if (fingerprint && fingerprint === previousTotalUsageFingerprint) return;
+      previousTotalUsageFingerprint = fingerprint;
+      const normalized = normalizeCodexTokenUsage(usage);
+      events.push({
+        ...base,
+        eventKind: 'usage',
+        eventId: eventId('usage'),
+        model: activeModel,
+        ...normalized,
+      });
       return;
     }
 
     if (record.type === 'event_msg' && payloadType === 'task_started') {
-      records.push({
-        type: 'turn_started',
-        sessionId,
-        timestamp,
-        turnId: stringValue(payload.turn_id),
-      } as CcRecord);
+      activeTurnId = stringValue(payload.turn_id) ?? activeTurnId;
+      events.push({
+        ...base,
+        turnId: activeTurnId,
+        eventKind: 'lifecycle',
+        eventId: eventId('lifecycle'),
+        phase: 'turn_started',
+      });
       return;
     }
 
     if (record.type === 'event_msg' && payloadType === 'task_complete') {
-      records.push({
-        type: 'turn_ended',
-        sessionId,
-        timestamp,
-        turnId: stringValue(payload.turn_id),
-      } as CcRecord);
+      events.push({
+        ...base,
+        eventKind: 'lifecycle',
+        eventId: eventId('lifecycle'),
+        phase: 'turn_completed',
+      });
+      activeTurnId = undefined;
       return;
     }
 
     if (record.type === 'event_msg' && payloadType === 'turn_aborted') {
-      records.push({
-        type: 'turn_aborted',
-        sessionId,
-        timestamp,
-        turnId: stringValue(payload.turn_id),
+      events.push({
+        ...base,
+        turnId: stringValue(payload.turn_id) ?? activeTurnId,
+        eventKind: 'lifecycle',
+        eventId: eventId('lifecycle'),
+        phase: 'turn_aborted',
         reason: stringValue(payload.reason),
-        completedAt: stringValue(payload.completed_at),
         durationMs: numberValue(payload.duration_ms),
-      } as CcRecord);
+      });
+      activeTurnId = undefined;
       return;
     }
 
     if (record.type === 'event_msg' && payloadType === 'user_message' && !hasResponseUser) {
-      const message = stringValue(payload.message);
-      if (!message) return;
-      records.push(codexUserRecord(message, sessionId, timestamp, entrypoint, index));
+      const text = stringValue(payload.message);
+      if (text) {
+        events.push({
+          ...base,
+          eventKind: 'message',
+          eventId: eventId('message'),
+          role: 'user',
+          origin: codexUserMessageOrigin(text),
+          text,
+        });
+      }
       return;
     }
 
     if (record.type === 'event_msg' && payloadType === 'agent_message' && !hasResponseAssistant) {
-      const message = stringValue(payload.message);
-      if (!message) return;
-      records.push(codexAssistantRecord(message, sessionId, timestamp, cwd, entrypoint, index, undefined, activeModel));
+      const text = stringValue(payload.message);
+      if (text) {
+        events.push({
+          ...base,
+          eventKind: 'message',
+          eventId: eventId('message'),
+          role: 'assistant',
+          origin: 'synthetic',
+          text,
+          model: activeModel,
+        });
+      }
+      return;
     }
+
+    if (payloadType === 'mcp_tool_call_end') return;
+    events.push({
+      ...base,
+      eventKind: 'unknown',
+      eventId: eventId('unknown'),
+      raw: value,
+    });
   });
 
-  return records;
+  for (const end of mcpEnds.values()) {
+    if (resultCallIds.has(end.callId)) continue;
+    const status = mcpEndStatus(end) ?? 'unknown';
+    events.push({
+      eventKind: 'tool_result',
+      eventId: `${runId}:${end.sourceIndex}:mcp-tool-result`,
+      sourceIndex: end.sourceIndex,
+      sourceType: 'event_msg:mcp_tool_call_end',
+      timestamp: end.timestamp,
+      callId: end.callId,
+      output: end.output ?? '',
+      status,
+      statusSource: status === 'unknown' ? 'unknown' : 'runtime',
+    });
+  }
+
+  events.sort((a, b) => a.sourceIndex - b.sourceIndex);
+  return events;
 }
 
-interface CodexToolUseRecordInput {
-  callId: string;
-  id?: string;
-  name: string;
-  input: Record<string, unknown>;
-  sessionId: string;
-  timestamp: string;
-  cwd?: string;
-  entrypoint: string;
-  model?: string;
+function toolCallEvent(
+  eventId: string,
+  base: Omit<TraceEventBase, 'eventId'>,
+  callId: string,
+  tool: TraceToolRef,
+  input: Record<string, unknown>,
+  model?: string,
+): TraceEvent {
+  return { ...base, eventKind: 'tool_call', eventId, callId, tool, input, model };
 }
 
-function codexToolUseRecord(input: CodexToolUseRecordInput): CcAssistantRecord {
+function toolResultEvent(
+  eventId: string,
+  base: Omit<TraceEventBase, 'eventId'>,
+  callId: string,
+  output: string,
+  status: TraceToolStatus,
+  statusSource: 'runtime' | 'inferred',
+): TraceEvent {
+  return { ...base, eventKind: 'tool_result', eventId, callId, output, status, statusSource };
+}
+
+interface TraceEventBase {
+  sourceIndex: number;
+  sourceType: string;
+  timestamp?: string;
+  turnId?: string;
+  eventId: string;
+}
+
+function indexMcpCallEnds(records: unknown[]): Map<string, McpCallEnd> {
+  const ends = new Map<string, McpCallEnd>();
+  records.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    const payload = isObject(record?.payload) ? record.payload : {};
+    if (payload.type !== 'mcp_tool_call_end') return;
+    const callId = stringValue(payload.call_id) ?? stringValue(payload.id);
+    if (!callId) return;
+    const invocation = isObject(payload.invocation) ? payload.invocation : {};
+    const result = isObject(payload.result) ? payload.result : {};
+    ends.set(callId, {
+      callId,
+      sourceIndex,
+      timestamp: stringValue(record?.timestamp),
+      isError: booleanValue(payload.isError) ?? booleanValue(payload.is_error) ?? booleanValue(result.isError) ?? booleanValue(result.is_error),
+      status: stringValue(payload.status) ?? stringValue(result.status),
+      tool: stringValue(invocation.tool) ?? stringValue(payload.tool),
+      server: stringValue(invocation.server) ?? stringValue(invocation.provider) ?? stringValue(payload.server),
+      output: codexContentText(payload.output ?? result.output ?? result.content),
+    });
+  });
+  return ends;
+}
+
+function mcpEndStatus(end: McpCallEnd | undefined): TraceToolStatus | undefined {
+  if (!end) return undefined;
+  if (end.isError === true) return 'failure';
+  if (end.isError === false) return 'success';
+  return statusFromCodex(end.status);
+}
+
+function normalizeCodexTool(
+  sourceName: string,
+  rawInput: unknown,
+  mcpEnd?: McpCallEnd,
+): { tool: TraceToolRef; input: Record<string, unknown> } {
+  const input = parseToolInput(rawInput);
+  const lower = sourceName.toLowerCase();
+  if (lower === 'exec_command') {
+    return {
+      tool: { name: 'Bash', sourceName },
+      input: { ...input, command: stringValue(input.command) ?? stringValue(input.cmd) ?? '' },
+    };
+  }
+  if (lower === 'apply_patch') return { tool: { name: 'Edit', sourceName }, input };
+  if (lower === 'view_image') {
+    return {
+      tool: { name: 'ViewImage', sourceName },
+      input: { ...input, file_path: stringValue(input.file_path) ?? stringValue(input.path) },
+    };
+  }
+  if (lower === 'write_stdin') return { tool: { name: 'WriteStdin', sourceName }, input };
+
+  const mcp = parseMcpToolName(sourceName, mcpEnd);
+  if (mcp) return { tool: mcp, input };
+  return { tool: { name: sourceName }, input };
+}
+
+function parseMcpToolName(sourceName: string, end?: McpCallEnd): TraceToolRef | null {
+  if (!sourceName.startsWith('mcp__') && !end?.tool) return null;
+  const parts = sourceName.split('__').filter(Boolean);
+  const sourceLeaf = parts.at(-1) ?? sourceName;
+  const namespace = parts.length > 1 ? parts.slice(0, -1).join('__') : undefined;
+  const authoritative = end?.tool;
+  const provider = end?.server;
+  const displayName = authoritative
+    ? authoritative.includes('.') || !provider ? authoritative : `${provider}.${authoritative}`
+    : provider ? `${provider}.${sourceLeaf}` : sourceLeaf;
   return {
-    type: 'assistant',
-    uuid: input.id ?? input.callId,
-    parentUuid: null,
-    sessionId: input.sessionId,
-    timestamp: input.timestamp,
-    cwd: input.cwd,
-    entrypoint: input.entrypoint,
-    message: {
-      role: 'assistant',
-      model: input.model,
-      content: [{
-        type: 'tool_use',
-        id: input.callId,
-        name: input.name,
-        input: input.input,
-      }],
-    },
+    name: displayName,
+    sourceName,
+    namespace,
+    provider,
+    displayName,
   };
 }
 
-interface CodexToolResultRecordInput {
-  callId: string;
-  output: string;
-  failed: boolean;
-  sessionId: string;
-  timestamp: string;
-  entrypoint: string;
-  index: number;
+function codexUserMessageOrigin(text: string): TraceMessageOrigin {
+  const trimmed = text.trimStart();
+  if (/^# AGENTS\.md instructions\b/i.test(trimmed)) return 'runtime';
+  if (/^<(?:app-context|environment_context|permissions instructions|collaboration_mode|apps_instructions|plugins_instructions|skills_instructions|recommended_plugins)>/i.test(trimmed)) return 'runtime';
+  return 'human';
 }
 
-function codexToolResultRecord(input: CodexToolResultRecordInput): CcUserRecord {
-  return {
-    type: 'user',
-    uuid: `codex-output-${input.callId}-${input.index}`,
-    parentUuid: null,
-    sessionId: input.sessionId,
-    timestamp: input.timestamp,
-    entrypoint: input.entrypoint,
-    message: {
-      role: 'user',
-      content: [{
-        type: 'tool_result',
-        tool_use_id: input.callId,
-        content: input.output,
-        is_error: input.failed,
-      }],
-    },
-  };
-}
-
-function summarizeDiscoveredTools(value: unknown): Array<{
-  type?: string;
-  name?: string;
-  tools?: string[];
-}> {
+function summarizeDiscoveredTools(value: unknown): Array<{ type?: string; name?: string; tools?: string[] }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
     if (!isObject(entry)) return [];
@@ -410,100 +452,12 @@ function summarizeDiscoveredTools(value: unknown): Array<{
   });
 }
 
-function codexStatusFailed(value: unknown): boolean {
+function statusFromCodex(value: unknown): TraceToolStatus {
   const status = stringValue(value)?.toLowerCase();
-  return status === 'failed'
-    || status === 'error'
-    || status === 'cancelled'
-    || status === 'canceled';
-}
-
-function convertCodexMessage(
-  payload: Record<string, unknown>,
-  sessionId: string,
-  timestamp: string,
-  cwd: string | undefined,
-  entrypoint: string,
-  index: number,
-  model?: string,
-): CcRecord | null {
-  const role = stringValue(payload.role);
-  const text = codexContentText(payload.content);
-  if (role === 'user') return codexUserRecord(text, sessionId, timestamp, entrypoint, index);
-  if (role === 'assistant') {
-    return codexAssistantRecord(text, sessionId, timestamp, cwd, entrypoint, index, stringValue(payload.id), model);
-  }
-  return null;
-}
-
-function codexUserRecord(
-  text: string,
-  sessionId: string,
-  timestamp: string,
-  entrypoint: string,
-  index: number,
-): CcUserRecord {
-  return {
-    type: 'user',
-    uuid: `codex-user-${index}`,
-    parentUuid: null,
-    sessionId,
-    timestamp,
-    entrypoint,
-    message: { role: 'user', content: text },
-  };
-}
-
-function codexAssistantRecord(
-  text: string,
-  sessionId: string,
-  timestamp: string,
-  cwd: string | undefined,
-  entrypoint: string,
-  index: number,
-  id?: string,
-  model?: string,
-): CcAssistantRecord {
-  const content: CcAssistantContent[] = text ? [{ type: 'text', text }] : [];
-  return {
-    type: 'assistant',
-    uuid: id ?? `codex-assistant-${index}`,
-    parentUuid: null,
-    sessionId,
-    timestamp,
-    cwd,
-    entrypoint,
-    message: { role: 'assistant', model, content },
-  };
-}
-
-function normalizeCodexTool(name: string, rawInput: unknown): {
-  name: string;
-  input: Record<string, unknown>;
-} {
-  const input = parseToolInput(rawInput);
-  const lower = name.toLowerCase();
-  if (lower === 'exec_command') {
-    return {
-      name: 'Bash',
-      input: {
-        ...input,
-        command: stringValue(input.command) ?? stringValue(input.cmd) ?? '',
-      },
-    };
-  }
-  if (lower === 'apply_patch') return { name: 'Edit', input };
-  if (lower === 'view_image') {
-    return {
-      name: 'ViewImage',
-      input: {
-        ...input,
-        file_path: stringValue(input.file_path) ?? stringValue(input.path),
-      },
-    };
-  }
-  if (lower === 'write_stdin') return { name: 'WriteStdin', input };
-  return { name, input };
+  if (status === 'failed' || status === 'error') return 'failure';
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  if (status === 'success' || status === 'succeeded' || status === 'completed' || status === 'complete') return 'success';
+  return 'unknown';
 }
 
 function parseToolInput(value: unknown): Record<string, unknown> {
@@ -523,7 +477,7 @@ function codexContentText(value: unknown): string {
   return value.map((part) => {
     if (typeof part === 'string') return part;
     if (!isObject(part)) return '';
-    const text = stringValue(part.text);
+    const text = stringValue(part.text) ?? stringValue(part.output_text);
     if (text) return text;
     return part.type === 'input_image' ? '[image]' : '';
   }).filter(Boolean).join('\n');
@@ -535,14 +489,11 @@ function codexToolOutputFailed(output: string): boolean {
     || /\bapply_patch verification failed\b/i.test(output);
 }
 
-function codexSourceMetadata(
-  records: CcRecord[],
-  metaPayload: Record<string, unknown>,
-): TraceSourceMetadata {
-  const models = Array.from(new Set(records.flatMap((record) => {
-    if (record.type !== 'turn_context') return [];
-    const raw = record as CodexRecord;
-    const payload = isObject(raw.payload) ? raw.payload : {};
+function codexSourceMetadata(records: unknown[], metaPayload: Record<string, unknown>): TraceSourceMetadata {
+  const models = Array.from(new Set(records.flatMap((value) => {
+    const record = asCodexRecord(value);
+    if (record?.type !== 'turn_context') return [];
+    const payload = isObject(record.payload) ? record.payload : {};
     const model = stringValue(payload.model);
     return model ? [model] : [];
   })));
@@ -568,19 +519,22 @@ function tokenUsageFingerprint(usage: Record<string, unknown> | undefined): stri
   return values.map((value) => value ?? 0).join(':');
 }
 
-function normalizeCodexTokenUsage(
-  usage: Record<string, unknown>,
-): NonNullable<CcAssistantRecord['message']['usage']> {
+function normalizeCodexTokenUsage(usage: Record<string, unknown>): {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  reasoningTokens?: number;
+} {
   const rawInput = numberValue(usage.input_tokens);
-  const cacheRead = numberValue(usage.cached_input_tokens);
-  const cacheCreation = numberValue(usage.cache_write_input_tokens);
+  const cacheRead = numberValue(usage.cached_input_tokens) ?? 0;
+  const cacheCreation = numberValue(usage.cache_write_input_tokens) ?? 0;
   return {
-    input_tokens: rawInput === undefined
-      ? undefined
-      : Math.max(0, rawInput - (cacheRead ?? 0) - (cacheCreation ?? 0)),
-    output_tokens: numberValue(usage.output_tokens),
-    cache_read_input_tokens: cacheRead,
-    cache_creation_input_tokens: cacheCreation,
+    inputTokens: rawInput === undefined ? 0 : Math.max(0, rawInput - cacheRead - cacheCreation),
+    outputTokens: numberValue(usage.output_tokens) ?? 0,
+    cacheReadTokens: cacheRead,
+    cacheCreationTokens: cacheCreation,
+    reasoningTokens: numberValue(usage.reasoning_output_tokens),
   };
 }
 
@@ -589,13 +543,17 @@ function codexEntrypoint(metaPayload: Record<string, unknown>): string {
   return originator.includes('desktop') ? 'codex-desktop' : 'codex-cli';
 }
 
-function hasResponseMessageRole(records: CcRecord[], role: string): boolean {
-  return records.some((record) => {
-    if (record.type !== 'response_item') return false;
-    const raw = record as CodexRecord;
-    const payload = isObject(raw.payload) ? raw.payload : {};
+function hasResponseMessageRole(records: unknown[], role: string): boolean {
+  return records.some((value) => {
+    const record = asCodexRecord(value);
+    if (record?.type !== 'response_item') return false;
+    const payload = isObject(record.payload) ? record.payload : {};
     return payload.type === 'message' && payload.role === role;
   });
+}
+
+function asCodexRecord(value: unknown): CodexRecord | undefined {
+  return isObject(value) ? value as CodexRecord : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -604,6 +562,10 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

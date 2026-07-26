@@ -6,7 +6,7 @@
  * 定位是"真实使用 trace 的 skill 维度观察",不是通用 APM / 生产监控。
  *
  * 分析流水线:
- *   1. ccTracesToResultEntries(path) → segments + ResultEntry[]
+ *   1. tracesToResultEntries(path) → segments + ResultEntry[]
  *   2. 时间窗 / skill 白名单过滤
  *   3. 按 skill name (variant key) 分别 computeCoverage + computeGapReport
  *   4. 聚合 overall 指标 + 健康度色带
@@ -16,9 +16,10 @@ import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../an
 import { computeGapReport } from '../analysis/gap-analyzer.js';
 import type { GapReport, ResultEntry } from '../types/index.js';
 import {
-  ccTracesToResultEntries,
   segmentsToResultEntries,
+  tracesToResultEntries,
   type CcSession,
+  type TraceSession,
   type SkillSegment,
 } from './trace-adapter.js';
 
@@ -177,7 +178,9 @@ function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
-function inferKbRoot(sessions: CcSession[]): string | null {
+type HealthSession = TraceSession | CcSession;
+
+function inferKbRoot(sessions: HealthSession[]): string | null {
   const cwds = new Set<string>();
   for (const s of sessions) {
     if (s.cwd) cwds.add(s.cwd);
@@ -193,7 +196,7 @@ function inferKbRoot(sessions: CcSession[]): string | null {
  * 主入口:从 cc trace 目录生成 SkillHealthReport。
  */
 export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions = {}): SkillHealthReport {
-  const { sessions, segments } = ccTracesToResultEntries(tracePath);
+  const { sessions, segments } = tracesToResultEntries(tracePath);
 
   // 时间窗 + skill 白名单过滤
   let filtered = segments.filter((s) => withinTimeWindow(s, opts.from, opts.to));
@@ -260,7 +263,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
       kbPath: kbRoot,
       sessionCount: sessions.length,
       segmentCount: totalSegments,
-      messageCount: sessions.reduce((a, s) => a + s.records.length, 0),
+      messageCount: sessions.reduce((a, s) => a + sessionEventCount(s), 0),
       toolCallCount: totalToolCalls,
       toolFailureRate: totalToolCalls > 0 ? Number((totalFailures / totalToolCalls).toFixed(4)) : 0,
       timeRange,
@@ -277,7 +280,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
  */
 export function computeSkillHealthFromSegments(
   segments: SkillSegment[],
-  sessions: CcSession[],
+  sessions: HealthSession[],
   tracePath: string,
   opts: AnalyzeOptions = {},
 ): SkillHealthReport {
@@ -292,7 +295,7 @@ export function computeSkillHealthFromSegments(
 function buildReport(
   segments: SkillSegment[],
   entries: ResultEntry[],
-  sessions: CcSession[],
+  sessions: HealthSession[],
   tracePath: string,
   opts: AnalyzeOptions,
 ): SkillHealthReport {
@@ -347,7 +350,7 @@ function buildReport(
       kbPath: kbRoot,
       sessionCount: sessions.length,
       segmentCount: totalSegments,
-      messageCount: sessions.reduce((a, s) => a + s.records.length, 0),
+      messageCount: sessions.reduce((a, s) => a + sessionEventCount(s), 0),
       toolCallCount: totalToolCalls,
       toolFailureRate: totalToolCalls > 0 ? Number((totalFailures / totalToolCalls).toFixed(4)) : 0,
       timeRange,
@@ -356,4 +359,8 @@ function buildReport(
     bySkill,
     overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate), confidence: confidenceOf(totalSegments) },
   };
+}
+
+function sessionEventCount(session: HealthSession): number {
+  return 'events' in session ? session.events.length : session.records.length;
 }

@@ -62,6 +62,25 @@ flowchart TD
 - **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性）。综合分取事实 / 行为 / 评委三层里实际存在那几层的均值。
 - **知识缺口信号**不是评分的一部分，而是一个独立追踪项：它告诉你「这次评测覆盖了多少风险敞口」，用于追踪收敛，而非断言知识「完备」。
 
+## 观测链路：source-neutral Trace IR
+
+`omk observe` 不把 Codex、Claude Code 或 OpenClaw 的日志互相伪装成对方格式。每个来源先由独立 adapter 转换为同一套 Trace IR，再进入归因、分段和指标计算：
+
+```mermaid
+flowchart LR
+    C["Claude adapter"] --> IR["Trace IR"]
+    X["Codex adapter"] --> IR
+    O["OpenClaw adapter"] --> IR
+    M["Markdown adapter"] --> IR
+    IR --> A["生命周期关联与 skill 归因"]
+    A --> S["segment"]
+    S --> R["health / inbox / experience"]
+```
+
+Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 和 `unknown` 事件。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入的 `AGENTS.md`、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，调用结果优先采用 runtime 的权威状态；只有来源没有状态时，才从输出文本推断成功或失败。
+
+标识符也分层使用：`rootRunId` 聚合主任务及子任务，`runId` 标识具体线程，`traceId` 标识证据流，segment 再生成独立 sample ID。聚合标识不再兼任样本主键，因此主任务和子任务不会互相覆盖。
+
 ## 六维评估指标
 
 评测报告从六个维度独立展示结果。其中评分三层（事实 / 行为 / LLM 评价）分开展示，让你看到**是哪一层拉胯**，而不是只看到一个合成分：

@@ -1,6 +1,7 @@
 /** Skill attribution rules for trace records. */
 
 import type { CcAssistantRecord, CcUserRecord } from './trace-source.js';
+import type { TraceMessageEvent, TraceToolCallEvent } from './trace-ir.js';
 
 // ---------- Skill signal detection ----------
 
@@ -157,11 +158,12 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
 // Only installed runtime roots count as attribution evidence. Repository examples
 // such as `examples/foo/skills/bar/SKILL.md` are knowledge artifacts under review,
 // not proof that the `bar` skill was active in the session.
-const SKILL_READ_PATH_RE = /(?:^|[\s"'`(\[{:,])([^\s"'`]*\/skills\/([^/\s"'`]+)\/SKILL\.md)\b/g;
-const INSTALLED_SKILL_PATH_RES = [
-  /(?:^|\/)\.(?:agents|claude|codex)\/skills\/[^/]+\/SKILL\.md$/,
-  /(?:^|\/)\.codex\/plugins\/cache\/.+\/skills\/[^/]+\/SKILL\.md$/,
-  /(?:^|\/)\.openclaw\/workspace(?:-main)?\/skills\/[^/]+\/SKILL\.md$/,
+const SKILL_READ_PATH_RE = /(?:^|[\s"'`(\[{:,])([^\s"'`]*\/skills\/(?:\.system\/)?[^/\s"'`]+\/SKILL\.md)\b/g;
+const INSTALLED_SKILL_PATH_RES: RegExp[] = [
+  /(?:^|\/)\.(?:agents|claude|codex)\/skills\/([^/]+)\/SKILL\.md$/,
+  /(?:^|\/)\.codex\/skills\/\.system\/([^/]+)\/SKILL\.md$/,
+  /(?:^|\/)\.codex\/plugins\/cache\/.+\/skills\/([^/]+)\/SKILL\.md$/,
+  /(?:^|\/)\.openclaw\/workspace(?:-main)?\/skills\/([^/]+)\/SKILL\.md$/,
 ];
 const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`(\[{:,])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
 
@@ -169,9 +171,10 @@ function extractInstalledSkillReadRef(text: string): SkillRef | null {
   const normalized = text.replaceAll('\\', '/');
   for (const match of normalized.matchAll(SKILL_READ_PATH_RE)) {
     const path = match[1];
-    const skillName = match[2];
-    if (path && skillName && INSTALLED_SKILL_PATH_RES.some((pattern) => pattern.test(path))) {
-      return parseSkillRef(skillName);
+    if (!path) continue;
+    for (const pattern of INSTALLED_SKILL_PATH_RES) {
+      const installed = path.match(pattern);
+      if (installed?.[1]) return parseSkillRef(installed[1]);
     }
   }
   return null;
@@ -398,6 +401,62 @@ export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantR
       }
     }
   }
+  for (const text of texts) {
+    const match = SKILL_SCRIPT_PATH_RE.exec(text);
+    if (match?.[1]) return parseSkillRef(match[1]);
+  }
+  return null;
+}
+
+export function extractCommandSkillRefFromEvent(event: TraceMessageEvent): SkillRef | null {
+  const match = COMMAND_NAME_RE.exec(event.text);
+  return match?.[1] ? parseSkillRef(match[1]) : null;
+}
+
+export function extractBusinessActionSkillRefFromEvent(event: TraceMessageEvent): SkillRef | null {
+  const match = BUSINESS_ACTION_CMD_RE.exec(event.text);
+  const raw = match?.[1];
+  return raw && isStableSkillSlug(raw) ? parseSkillRef(raw) : null;
+}
+
+export function extractAttributionSkillRefFromEvent(event: TraceMessageEvent): SkillRef | null {
+  return event.attributionSkill ? parseSkillRef(event.attributionSkill) : null;
+}
+
+export function extractSkillToolUseRefFromEvent(event: TraceToolCallEvent): SkillRef | null {
+  if (event.tool.name !== 'Skill') return null;
+  const skill = event.input.skill;
+  return typeof skill === 'string' ? parseSkillRef(skill) : null;
+}
+
+export function extractSkillReadFileRefFromEvent(event: TraceToolCallEvent): SkillRef | null {
+  if (event.tool.name === 'Read') {
+    const filePath = event.input.file_path;
+    return typeof filePath === 'string' ? extractInstalledSkillReadRef(filePath) : null;
+  }
+  if (
+    event.tool.name !== 'Bash'
+    && event.tool.name.toLowerCase() !== 'exec'
+    && event.tool.sourceName?.toLowerCase() !== 'exec'
+  ) return null;
+  const rawCommand = event.input.command ?? event.input.input;
+  if (typeof rawCommand !== 'string') return null;
+  const commands = event.tool.name === 'Bash' ? [rawCommand] : extractExecCommandLiterals(rawCommand);
+  for (const command of commands) {
+    const skillRef = extractShellSkillReadRef(command);
+    if (skillRef) return skillRef;
+  }
+  return null;
+}
+
+export function extractSkillScriptCommandRefFromEvent(
+  event: TraceMessageEvent | TraceToolCallEvent,
+): SkillRef | null {
+  const texts = event.eventKind === 'message'
+    ? [event.text]
+    : typeof (event.input.command ?? event.input.input) === 'string'
+      ? [String(event.input.command ?? event.input.input)]
+      : [];
   for (const text of texts) {
     const match = SKILL_SCRIPT_PATH_RE.exec(text);
     if (match?.[1]) return parseSkillRef(match[1]);

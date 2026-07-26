@@ -1,15 +1,17 @@
 /** Skill segmentation and ResultEntry projection for loaded traces. */
 
+import { createHash } from 'node:crypto';
 import type { ResultEntry, ToolCallInfo, TraceSourceMetadata, TurnInfo, VariantResult } from '../types/index.js';
-import type { CcAssistantRecord, CcSession, CcUserRecord } from './trace-source.js';
-import { isToolResultFailureText } from './text-signals.js';
+import { legacyCcSessionToTraceSession, type CcSession } from './trace-source.js';
+import type { TraceSession } from './trace-ir.js';
+import { traceToolDisplayName } from './trace-ir.js';
 import {
-  extractAttributionSkillRef,
-  extractBusinessActionSkillRef,
-  extractCommandSkillRef,
-  extractSkillReadFileRef,
-  extractSkillScriptCommandRef,
-  extractSkillToolUseRef,
+  extractAttributionSkillRefFromEvent,
+  extractBusinessActionSkillRefFromEvent,
+  extractCommandSkillRefFromEvent,
+  extractSkillReadFileRefFromEvent,
+  extractSkillScriptCommandRefFromEvent,
+  extractSkillToolUseRefFromEvent,
   stripCommandEnvelopeText,
   type SkillRef,
 } from './trace-attribution.js';
@@ -25,6 +27,7 @@ export interface SkillSegment {
   };
   sessionId: string;
   traceSessionId?: string;
+  traceId?: string;
   sourceTrace?: string;
   sourceKind?: 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
   traceRole?: 'standalone' | 'main' | 'subagent';
@@ -53,18 +56,19 @@ export interface SkillSegment {
 // ---------- Segment by skill ----------
 
 /**
- * 扫描 session records, 按 skill 信号把 tool calls 切成多段。
+ * 扫描 Trace IR events, 按 skill 信号把 tool calls 切成多段。
  * 一个 session 可能产生 1-N 个 SkillSegment。
  */
-export function segmentBySkill(session: CcSession): SkillSegment[] {
+export function segmentTraceBySkill(session: TraceSession): SkillSegment[] {
   const segments: SkillSegment[] = [];
   let currentSkill = 'general';
   let currentSkillSource: string | undefined;
   let currentSegment = createEmptySegment(session, currentSkill, 0, 0);
   let segmentIndex = 0;
+  const lastSourceIndex = session.events.at(-1)?.sourceIndex ?? 0;
 
-  // 用 tool_use_id → ToolCallInfo 的映射, 收到 tool_result 时回填 output / success
   const pendingToolUses = new Map<string, { toolCall: ToolCallInfo; segmentRef: SkillSegment }>();
+  const assistantTurnsBySourceIndex = new Map<number, TurnInfo>();
 
   const markCurrentRecord = (recordIndex: number): void => {
     currentSegment.endRecordIndex = Math.max(
@@ -77,7 +81,7 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     if (currentSegment.turns.length > 0 || currentSegment.toolCalls.length > 0) {
       if (typeof endRecordIndex === 'number') {
         const start = currentSegment.startRecordIndex ?? 0;
-        currentSegment.endRecordIndex = Math.max(start, Math.min(session.records.length - 1, endRecordIndex));
+        currentSegment.endRecordIndex = Math.max(start, Math.min(lastSourceIndex, endRecordIndex));
       }
       segments.push(currentSegment);
       return true;
@@ -97,16 +101,12 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     currentSkillSource = ref.pluginName;
   };
 
-  for (const [recordIndex, raw] of session.records.entries()) {
-    // records 是 unknown[], 按 type 字段做 structural type guard
-    if (!raw || typeof raw !== 'object' || !('type' in raw)) continue;
-    const rec = raw as { type: string };
-    if (rec.type === 'user') {
-      const u = rec as CcUserRecord;
-      // 检测 skill 信号 2 (slash command)
-      const cmdSkill = extractCommandSkillRef(u);
+  for (const event of session.events) {
+    const recordIndex = event.sourceIndex;
+    if (event.eventKind === 'message' && event.role === 'user') {
+      const cmdSkill = event.origin === 'human' ? extractCommandSkillRefFromEvent(event) : null;
       if (cmdSkill && !isCurrentSkillRef(cmdSkill)) {
-        startNewSegment(cmdSkill, recordIndex, u.timestamp, {
+        startNewSegment(cmdSkill, recordIndex, event.timestamp, {
           source: 'command-name',
           confidence: 0.85,
           rawSkillRef: cmdSkill.rawSkillRef,
@@ -114,9 +114,11 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           commandName: `/${cmdSkill.rawSkillRef}`,
         });
       } else if (!cmdSkill) {
-        const businessActionSkill = extractBusinessActionSkillRef(u);
+        const businessActionSkill = event.origin === 'human'
+          ? extractBusinessActionSkillRefFromEvent(event)
+          : null;
         if (businessActionSkill && !isCurrentSkillRef(businessActionSkill)) {
-          startNewSegment(businessActionSkill, recordIndex, u.timestamp, {
+          startNewSegment(businessActionSkill, recordIndex, event.timestamp, {
             source: 'business-action',
             confidence: 0.85,
             rawSkillRef: businessActionSkill.rawSkillRef,
@@ -124,9 +126,11 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
             commandName: businessActionSkill.rawSkillRef,
           });
         } else {
-          const scriptSkill = extractSkillScriptCommandRef(u);
+          const scriptSkill = event.origin === 'human'
+            ? extractSkillScriptCommandRefFromEvent(event)
+            : null;
           if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
-            startNewSegment(scriptSkill, recordIndex, u.timestamp, {
+            startNewSegment(scriptSkill, recordIndex, event.timestamp, {
               source: 'skill-script',
               confidence: 0.75,
               rawSkillRef: scriptSkill.rawSkillRef,
@@ -136,135 +140,147 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           }
         }
       }
-      // 处理 tool_result(回填之前的 tool_use)
-      if (typeof u.message.content !== 'string') {
-        for (const part of u.message.content) {
-          if (part.type === 'tool_result') {
-            const pending = pendingToolUses.get(part.tool_use_id);
-            if (pending) {
-              const failed = part.is_error === true || isToolResultFailureText(part.content);
-              pending.toolCall.output = part.content;
-              pending.toolCall.success = !failed;
-              if (failed) {
-                pending.segmentRef.metrics.numToolFailures += 1;
-              }
-              pendingToolUses.delete(part.tool_use_id);
-            }
-          }
+      if (event.origin === 'human') {
+        const textContent = stripCommandEnvelopeText(event.text);
+        if (textContent) {
+          currentSegment.turns.push({ role: 'tool', content: textContent });
+          currentSegment.metrics.numTurns += 1;
         }
       }
-      // user text 合并到 tool turn(简化处理, 不强区分角色)
-      const textContent = extractUserText(u);
-      if (textContent) {
-        currentSegment.turns.push({ role: 'tool', content: textContent });
-        currentSegment.metrics.numTurns += 1;
-      }
-      updateSegmentTimestamp(currentSegment, u.timestamp);
+      updateSegmentTimestamp(currentSegment, event.timestamp);
       markCurrentRecord(recordIndex);
       continue;
     }
-    if (rec.type === 'assistant') {
-      const a = rec as CcAssistantRecord;
-      // 检测 skill 信号 1 (Skill tool_use); 信号 3 (Read SKILL.md) 作 fallback。
-      // OpenClaw 场景里一条用户消息可能包含多个业务动作,
-      // 后续读取不同 SKILL.md 才是实际运行到哪个 skill 的稳定边界。
-      const skillTool = extractSkillToolUseRef(a);
+
+    if (event.eventKind === 'message' && event.role === 'assistant') {
+      const attrSkill = extractAttributionSkillRefFromEvent(event);
+      if (attrSkill && !isCurrentSkillRef(attrSkill)) {
+        startNewSegment(attrSkill, recordIndex, event.timestamp, {
+          source: 'command-name',
+          confidence: 0.85,
+          rawSkillRef: attrSkill.rawSkillRef,
+          pluginName: attrSkill.pluginName,
+          commandName: `/${attrSkill.rawSkillRef}`,
+        });
+      } else {
+        const scriptSkill = extractSkillScriptCommandRefFromEvent(event);
+        if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
+          startNewSegment(scriptSkill, recordIndex, event.timestamp, {
+            source: 'skill-script',
+            confidence: 0.7,
+            rawSkillRef: scriptSkill.rawSkillRef,
+            pluginName: scriptSkill.pluginName,
+            commandName: scriptSkill.rawSkillRef,
+          });
+        }
+      }
+      updateSegmentSourceModel(currentSegment, session.sourceMetadata, event.model);
+      if (event.text) {
+        const turn: TurnInfo = { role: 'assistant', content: event.text };
+        currentSegment.turns.push(turn);
+        assistantTurnsBySourceIndex.set(recordIndex, turn);
+        currentSegment.metrics.numTurns += 1;
+      }
+      updateSegmentTimestamp(currentSegment, event.timestamp);
+      markCurrentRecord(recordIndex);
+      continue;
+    }
+
+    if (event.eventKind === 'tool_call') {
+      const skillTool = extractSkillToolUseRefFromEvent(event);
       if (skillTool && !isCurrentSkillRef(skillTool)) {
-        startNewSegment(skillTool, recordIndex, a.timestamp, {
+        startNewSegment(skillTool, recordIndex, event.timestamp, {
           source: 'skill-tool',
           confidence: 0.95,
           rawSkillRef: skillTool.rawSkillRef,
           pluginName: skillTool.pluginName,
         });
       } else if (!skillTool) {
-        const attrSkill = extractAttributionSkillRef(a);
-        if (attrSkill && !isCurrentSkillRef(attrSkill)) {
-          startNewSegment(attrSkill, recordIndex, a.timestamp, {
-            source: 'command-name',
-            confidence: 0.85,
-            rawSkillRef: attrSkill.rawSkillRef,
-            pluginName: attrSkill.pluginName,
-            commandName: `/${attrSkill.rawSkillRef}`,
+        const scriptSkill = extractSkillScriptCommandRefFromEvent(event);
+        if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
+          startNewSegment(scriptSkill, recordIndex, event.timestamp, {
+            source: 'skill-script',
+            confidence: 0.7,
+            rawSkillRef: scriptSkill.rawSkillRef,
+            pluginName: scriptSkill.pluginName,
+            commandName: scriptSkill.rawSkillRef,
           });
         } else {
-          const scriptSkill = extractSkillScriptCommandRef(a);
-          if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
-            startNewSegment(scriptSkill, recordIndex, a.timestamp, {
-              source: 'skill-script',
-              confidence: 0.7,
-              rawSkillRef: scriptSkill.rawSkillRef,
-              pluginName: scriptSkill.pluginName,
-              commandName: scriptSkill.rawSkillRef,
+          const readSkill = extractSkillReadFileRefFromEvent(event);
+          if (readSkill && !isCurrentSkillRef(readSkill) && shouldCutOnReadSkill(session, currentSegment)) {
+            startNewSegment(readSkill, recordIndex, event.timestamp, {
+              source: 'read-skill-md',
+              confidence: 0.5,
+              rawSkillRef: readSkill.rawSkillRef,
+              pluginName: readSkill.pluginName,
             });
-          } else {
-            const readSkill = extractSkillReadFileRef(a);
-            if (readSkill && !isCurrentSkillRef(readSkill) && shouldCutOnReadSkill(session, currentSegment)) {
-              startNewSegment(readSkill, recordIndex, a.timestamp, {
-                source: 'read-skill-md',
-                confidence: 0.5,
-                rawSkillRef: readSkill.rawSkillRef,
-                pluginName: readSkill.pluginName,
-              });
-            }
           }
         }
       }
-      updateSegmentSourceModel(currentSegment, session.sourceMetadata, a.message.model);
-      // 提取 tool_use → ToolCallInfo(success 先标 true, 等 tool_result 回填)
-      const toolCalls: ToolCallInfo[] = [];
-      let assistantText = '';
-      const assistantContent = Array.isArray(a.message.content) ? a.message.content : [];
-      for (const part of assistantContent) {
-        if (part.type === 'text' && part.text) assistantText += part.text;
-        if (part.type === 'tool_use' && part.id && part.name) {
-          const tc: ToolCallInfo = {
-            tool: part.name,
-            input: part.input ?? {},
-            output: '',
-            success: true,
-            messageIndex: recordIndex,
-            messageUuid: a.uuid,
-            toolUseId: part.id,
-            timestamp: a.timestamp,
-            sourceTrace: session.sourcePath,
-            sourceKind: session.sourceKind,
-            traceRole: session.traceRole,
-            traceLabel: session.traceLabel,
-          };
-          toolCalls.push(tc);
-          pendingToolUses.set(part.id, { toolCall: tc, segmentRef: currentSegment });
-        }
-      }
-      if (toolCalls.length > 0 || assistantText) {
-        currentSegment.turns.push({
-          role: 'assistant',
-          content: assistantText,
-          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        });
+      updateSegmentSourceModel(currentSegment, session.sourceMetadata, event.model);
+      const toolCall: ToolCallInfo = {
+        tool: traceToolDisplayName(event.tool),
+        input: event.input,
+        output: '',
+        success: true,
+        messageIndex: recordIndex,
+        messageUuid: event.sourceEventId ?? event.eventId,
+        toolUseId: event.callId,
+        timestamp: event.timestamp,
+        sourceTrace: session.sourcePath,
+        sourceKind: session.sourceKind,
+        traceRole: session.role,
+        traceLabel: session.label,
+      };
+      currentSegment.toolCalls.push(toolCall);
+      currentSegment.metrics.numToolCalls += 1;
+      pendingToolUses.set(event.callId, { toolCall, segmentRef: currentSegment });
+
+      let turn = assistantTurnsBySourceIndex.get(recordIndex);
+      if (!turn || !currentSegment.turns.includes(turn)) {
+        turn = { role: 'assistant', content: '' };
+        currentSegment.turns.push(turn);
+        assistantTurnsBySourceIndex.set(recordIndex, turn);
         currentSegment.metrics.numTurns += 1;
-        currentSegment.toolCalls.push(...toolCalls);
-        currentSegment.metrics.numToolCalls += toolCalls.length;
       }
-      // 累加 token usage
-      const usage = a.message.usage;
-      if (usage) {
-        currentSegment.metrics.inputTokens += usage.input_tokens ?? 0;
-        currentSegment.metrics.outputTokens += usage.output_tokens ?? 0;
-        currentSegment.metrics.cacheReadTokens += usage.cache_read_input_tokens ?? 0;
-        currentSegment.metrics.cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
-      }
-      updateSegmentTimestamp(currentSegment, a.timestamp);
+      turn.toolCalls = [...(turn.toolCalls ?? []), toolCall];
+      updateSegmentTimestamp(currentSegment, event.timestamp);
       markCurrentRecord(recordIndex);
       continue;
     }
-    // 其他 type(permission-mode / file-history-snapshot) 不产出事件,但仍属于当前
-    // skill 生命周期窗口,用于保持下一次 skill 边界前的连续上下文。
+
+    if (event.eventKind === 'tool_result') {
+      const pending = pendingToolUses.get(event.callId);
+      if (pending) {
+        const failed = event.status === 'failure' || event.status === 'cancelled';
+        pending.toolCall.output = event.output;
+        pending.toolCall.success = !failed;
+        if (failed) pending.segmentRef.metrics.numToolFailures += 1;
+        pendingToolUses.delete(event.callId);
+      }
+      updateSegmentTimestamp(currentSegment, event.timestamp);
+      markCurrentRecord(recordIndex);
+      continue;
+    }
+
+    if (event.eventKind === 'usage') {
+      currentSegment.metrics.inputTokens += event.inputTokens;
+      currentSegment.metrics.outputTokens += event.outputTokens;
+      currentSegment.metrics.cacheReadTokens += event.cacheReadTokens;
+      currentSegment.metrics.cacheCreationTokens += event.cacheCreationTokens;
+      updateSegmentSourceModel(currentSegment, session.sourceMetadata, event.model);
+      updateSegmentTimestamp(currentSegment, event.timestamp);
+    }
     markCurrentRecord(recordIndex);
   }
 
-  flushCurrent(session.records.length - 1);
-  // 孤儿 tool_use(没对应 tool_result 的)保持 success=true, 但标记为未闭合
+  flushCurrent(lastSourceIndex);
   return segments;
+}
+
+/** @deprecated Compatibility entry point for Claude-shaped fixtures. */
+export function segmentBySkill(session: TraceSession | CcSession): SkillSegment[] {
+  return segmentTraceBySkill('events' in session ? session : legacyCcSessionToTraceSession(session));
 }
 
 function updateSegmentSourceModel(
@@ -286,17 +302,18 @@ function updateSegmentSourceModel(
   };
 }
 
-function createEmptySegment(session: CcSession, skillName: string, index: number, recordIndex: number, timestamp?: string, attribution?: SkillSegment['attribution']): SkillSegment {
+function createEmptySegment(session: TraceSession, skillName: string, index: number, recordIndex: number, timestamp?: string, attribution?: SkillSegment['attribution']): SkillSegment {
   const ts = timestamp ?? session.startTimestamp ?? new Date().toISOString();
   return {
     skillName,
     attribution: attribution ?? { source: 'general', confidence: 0.3 },
-    sessionId: session.sessionGroupId ?? session.sessionId,
-    traceSessionId: session.sessionId,
+    sessionId: session.rootRunId,
+    traceSessionId: session.runId,
+    traceId: session.traceId,
     sourceTrace: session.sourcePath,
     sourceKind: session.sourceKind,
-    traceRole: session.traceRole,
-    traceLabel: session.traceLabel,
+    traceRole: session.role,
+    traceLabel: session.label,
     segmentIndex: index,
     startRecordIndex: recordIndex,
     endRecordIndex: recordIndex,
@@ -329,22 +346,11 @@ function updateSegmentTimestamp(seg: SkillSegment, timestamp?: string): void {
   } catch { /* skip */ }
 }
 
-function shouldCutOnReadSkill(session: CcSession, currentSegment: SkillSegment): boolean {
+function shouldCutOnReadSkill(session: TraceSession, currentSegment: SkillSegment): boolean {
   return currentSegment.skillName === 'general'
     || currentSegment.attribution?.source === 'read-skill-md'
     || session.sourceKind === 'openclaw'
     || session.sourceKind === 'codex';
-}
-
-function extractUserText(record: CcUserRecord): string {
-  const content = record.message.content;
-  if (typeof content === 'string') return stripCommandEnvelopeText(content);
-  const parts: string[] = [];
-  for (const p of content) {
-    if (p.type === 'text') parts.push(stripCommandEnvelopeText(p.text));
-    if (p.type === 'tool_result' && typeof p.content === 'string') parts.push(p.content);
-  }
-  return parts.join('\n');
 }
 
 // ---------- Segment → ResultEntry ----------
@@ -354,12 +360,15 @@ function extractUserText(record: CcUserRecord): string {
  *
  * 映射规则(详见 docs/skill-health-spec.md):
  *   - 每 segment 一个 ResultEntry
- *   - sample_id = `${sessionId}:${segmentIndex}`
+ *   - sample_id = `${traceId}:${segmentIndex}`
  *   - variant key = skill 名(复用 omk 的 variant 维度作为 skill 分组维度)
  */
 export function segmentsToResultEntries(segments: SkillSegment[]): ResultEntry[] {
   return segments.map((seg): ResultEntry => ({
-    sample_id: `${seg.sessionId}:${seg.segmentIndex}`,
+    sample_id: `trace:${createHash('sha256')
+      .update(seg.traceId ?? seg.traceSessionId ?? seg.sessionId)
+      .digest('hex')
+      .slice(0, 16)}:${seg.segmentIndex}`,
     variants: {
       [seg.skillName]: buildVariantResult(seg),
     },

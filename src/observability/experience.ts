@@ -75,10 +75,10 @@ import {
   mergeExperienceProblemPatterns,
 } from './problem-patterns.js';
 import { observationMetricAnnotationVerdict, observationReviewStateKey } from './review-state.js';
-import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord } from './trace-source.js';
+import type { TraceEvent, TraceMessageEvent, TraceSession } from './trace-ir.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
-import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
+import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
   loadExpectedToolsForSkill,
@@ -199,7 +199,7 @@ const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|
 const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
 interface BuildExperienceInput {
-  sessions: CcSession[];
+  sessions: TraceSession[];
   segments: SkillSegment[];
   items: ObservationInboxItem[];
   generatedAt: string;
@@ -369,20 +369,20 @@ function relatedObservationItems(segment: SkillSegment, items: ObservationInboxI
     && timestampsOverlap(item.firstSeen, item.lastSeen, segment.startTimestamp, segment.endTimestamp));
 }
 
-function logicalSessionId(session: CcSession): string {
-  return session.sessionGroupId ?? session.sessionId;
+function logicalSessionId(session: TraceSession): string {
+  return session.rootRunId;
 }
 
-function experienceSessionGroupKey(session: CcSession): string {
+function experienceSessionGroupKey(session: TraceSession): string {
   const logicalId = logicalSessionId(session);
-  if (session.traceRole && session.traceRole !== 'standalone' && session.sessionGroupPath) {
-    return `group:${session.sessionGroupPath}\u0000${logicalId}`;
+  if (session.role !== 'standalone' && session.groupPath) {
+    return `group:${session.groupPath}\u0000${logicalId}`;
   }
   return `trace:${session.sourcePath}`;
 }
 
-function groupSessionsByLogicalId(sessions: CcSession[]): Map<string, CcSession[]> {
-  const groups = new Map<string, CcSession[]>();
+function groupSessionsByLogicalId(sessions: TraceSession[]): Map<string, TraceSession[]> {
+  const groups = new Map<string, TraceSession[]>();
   for (const session of sessions) {
     const key = logicalSessionId(session);
     const group = groups.get(key) ?? [];
@@ -395,8 +395,8 @@ function groupSessionsByLogicalId(sessions: CcSession[]): Map<string, CcSession[
   return groups;
 }
 
-function groupSessionsByExperienceKey(sessions: CcSession[]): Map<string, CcSession[]> {
-  const groups = new Map<string, CcSession[]>();
+function groupSessionsByExperienceKey(sessions: TraceSession[]): Map<string, TraceSession[]> {
+  const groups = new Map<string, TraceSession[]>();
   for (const session of sessions) {
     const key = experienceSessionGroupKey(session);
     const group = groups.get(key) ?? [];
@@ -409,8 +409,8 @@ function groupSessionsByExperienceKey(sessions: CcSession[]): Map<string, CcSess
   return groups;
 }
 
-function compareSessionsForTimeline(a: CcSession, b: CcSession): number {
-  const roleRank = (session: CcSession): number => session.traceRole === 'main' ? 0 : session.traceRole === 'standalone' ? 1 : 2;
+function compareSessionsForTimeline(a: TraceSession, b: TraceSession): number {
+  const roleRank = (session: TraceSession): number => session.role === 'main' ? 0 : session.role === 'standalone' ? 1 : 2;
   const rank = roleRank(a) - roleRank(b);
   if (rank !== 0) return rank;
   const time = (a.startTimestamp ?? '').localeCompare(b.startTimestamp ?? '');
@@ -423,47 +423,68 @@ function timestampsOverlap(aStart: string, aEnd: string, bStart: string, bEnd: s
   return aStart <= bEnd && bStart <= aEnd;
 }
 
-function segmentRecordBounds(session: CcSession, segment: SkillSegment): { start: number; end: number } {
+function segmentRecordBounds(session: TraceSession, segment: SkillSegment): { start: number; end: number } {
   if (typeof segment.startRecordIndex === 'number' && typeof segment.endRecordIndex === 'number') {
-    const rawStart = clampRecordIndex(session, segment.startRecordIndex);
-    const rawEnd = clampRecordIndex(session, Math.max(segment.startRecordIndex, segment.endRecordIndex));
+    const rawStart = eventIndexForSourceIndex(session, segment.startRecordIndex, 'first');
+    const rawEnd = eventIndexForSourceIndex(
+      session,
+      Math.max(segment.startRecordIndex, segment.endRecordIndex),
+      'last',
+    );
     const humanStart = Math.min(rawStart, previousHumanUserRecordIndex(session, rawStart) ?? rawStart);
     return {
       start: includeLeadingRuntimeContext(session, humanStart),
-      end: includeTrailingDeliveryContext(session, Math.min(session.records.length, rawEnd + 1)),
+      end: includeTrailingDeliveryContext(session, Math.min(session.events.length, rawEnd + 1)),
     };
   }
   const indexes = segment.toolCalls
     .map((toolCall) => toolCall.messageIndex)
     .filter((index): index is number => typeof index === 'number' && index >= 0);
   if (indexes.length > 0) {
-    const start = Math.max(0, Math.min(...indexes) - 3);
+    const firstEventIndex = eventIndexForSourceIndex(session, Math.min(...indexes), 'first');
+    const lastEventIndex = eventIndexForSourceIndex(session, Math.max(...indexes), 'last');
+    const start = Math.max(0, firstEventIndex - 3);
     return {
       start: Math.min(start, previousHumanUserRecordIndex(session, start) ?? start),
-      end: includeTrailingDeliveryContext(session, Math.min(session.records.length, Math.max(...indexes) + 5)),
+      end: includeTrailingDeliveryContext(session, Math.min(session.events.length, lastEventIndex + 5)),
     };
   }
   const timestampIndexes: number[] = [];
-  session.records.forEach((record, index) => {
-    const ts = timestampOf(record);
+  session.events.forEach((event, index) => {
+    const ts = event.timestamp;
     if (ts && ts >= segment.startTimestamp && ts <= segment.endTimestamp) timestampIndexes.push(index);
   });
-  if (timestampIndexes.length === 0) return { start: 0, end: Math.min(session.records.length, 12) };
+  if (timestampIndexes.length === 0) return { start: 0, end: Math.min(session.events.length, 12) };
   const start = Math.max(0, Math.min(...timestampIndexes) - 2);
   return {
     start: Math.min(start, previousHumanUserRecordIndex(session, start) ?? start),
-    end: includeTrailingDeliveryContext(session, Math.min(session.records.length, Math.max(...timestampIndexes) + 3)),
+    end: includeTrailingDeliveryContext(session, Math.min(session.events.length, Math.max(...timestampIndexes) + 3)),
   };
 }
 
-function clampRecordIndex(session: CcSession, index: number): number {
-  return Math.max(0, Math.min(session.records.length - 1, index));
+function clampRecordIndex(session: TraceSession, index: number): number {
+  return Math.max(0, Math.min(session.events.length - 1, index));
 }
 
-function includeLeadingRuntimeContext(session: CcSession, start: number): number {
+function eventIndexForSourceIndex(
+  session: TraceSession,
+  sourceIndex: number,
+  edge: 'first' | 'last',
+): number {
+  if (edge === 'first') {
+    const index = session.events.findIndex((event) => event.sourceIndex >= sourceIndex);
+    return index < 0 ? clampRecordIndex(session, sourceIndex) : index;
+  }
+  for (let index = session.events.length - 1; index >= 0; index -= 1) {
+    if (session.events[index].sourceIndex <= sourceIndex) return index;
+  }
+  return 0;
+}
+
+function includeLeadingRuntimeContext(session: TraceSession, start: number): number {
   let nextStart = start;
   for (let index = start - 1; index >= 0; index -= 1) {
-    const events = timelineEventsFromRecord(session, session.records[index], index);
+    const events = timelineEventsFromTraceEvent(session, session.events[index], index);
     if (events.length === 0) continue;
     if (events.some((event) => event.kind === 'runtime_context')) {
       nextStart = index;
@@ -474,20 +495,20 @@ function includeLeadingRuntimeContext(session: CcSession, start: number): number
   return nextStart;
 }
 
-function includeTrailingDeliveryContext(session: CcSession, end: number): number {
-  const safeEnd = Math.min(session.records.length, Math.max(0, end));
-  const lookaheadEnd = Math.min(session.records.length, safeEnd + 8);
+function includeTrailingDeliveryContext(session: TraceSession, end: number): number {
+  const safeEnd = Math.min(session.events.length, Math.max(0, end));
+  const lookaheadEnd = Math.min(session.events.length, safeEnd + 8);
   for (let index = safeEnd; index < lookaheadEnd; index += 1) {
-    const events = timelineEventsFromRecord(session, session.records[index], index);
+    const events = timelineEventsFromTraceEvent(session, session.events[index], index);
     if (events.some((event) => event.kind === 'user_message')) break;
     if (events.some(isAssistantDeliveryEvent)) return index + 1;
   }
   return safeEnd;
 }
 
-function previousHumanUserRecordIndex(session: CcSession, start: number): number | undefined {
-  for (let index = Math.min(start, session.records.length - 1); index >= 0; index -= 1) {
-    const events = timelineEventsFromRecord(session, session.records[index], index);
+function previousHumanUserRecordIndex(session: TraceSession, start: number): number | undefined {
+  for (let index = Math.min(start, session.events.length - 1); index >= 0; index -= 1) {
+    const events = timelineEventsFromTraceEvent(session, session.events[index], index);
     if (events.some((event) => event.kind === 'user_message')) return index;
   }
   return undefined;
@@ -523,76 +544,145 @@ function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
   return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
 }
 
-function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
-  return buildTimelineWindow(session, start, end).slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
+function buildTimeline(session: TraceSession, start: number, end: number): ExperienceTimelineEvent[] {
+  return buildTimelineWindow(session, start, end);
 }
 
-function buildTimelineWindow(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
+function buildTimelineWindow(session: TraceSession, start: number, end: number): ExperienceTimelineEvent[] {
   const events: ExperienceTimelineEvent[] = [];
-  const safeEnd = Math.min(session.records.length, Math.max(start, end));
+  const safeEnd = Math.min(session.events.length, Math.max(start, end));
   for (let index = start; index < safeEnd; index += 1) {
-    events.push(...timelineEventsFromRecord(session, session.records[index], index));
+    events.push(...timelineEventsFromTraceEvent(session, session.events[index], index));
   }
-  return events
-    .sort((a, b) => a.order - b.order);
+  return events.sort((a, b) => a.order - b.order);
 }
 
-function timelineEventsFromRecord(session: CcSession, record: unknown, messageIndex: number): ExperienceTimelineEvent[] {
-  if (!record || typeof record !== 'object') return [];
-  const rec = record as CcRecord;
-  const uuid = typeof (rec as { uuid?: unknown }).uuid === 'string' ? (rec as { uuid: string }).uuid : undefined;
-  const timestamp = timestampOf(record);
+function timelineEventsFromTraceEvent(
+  session: TraceSession,
+  event: TraceEvent,
+  eventIndex: number,
+): ExperienceTimelineEvent[] {
+  const messageIndex = event.sourceIndex;
   const base = {
     sourceTrace: session.sourcePath,
     sessionId: logicalSessionId(session),
-    traceRole: session.traceRole,
-    traceLabel: session.traceLabel,
+    traceRole: session.role,
+    traceLabel: session.label,
     messageIndex,
     logicalMessageIndex: messageIndex,
     sourceLineIndex: messageIndex,
-    messageUuid: uuid,
-    timestamp,
+    messageUuid: event.sourceEventId ?? event.eventId,
+    timestamp: event.timestamp,
   };
-  if (rec.type === 'user') {
-    const user = rec as CcUserRecord;
-    return userEvents(user, base, messageIndex);
+  const order = eventIndex * 10;
+
+  if (event.eventKind === 'message' && event.role === 'user') {
+    return userTimelineEvents(event, base, order);
   }
-  if (rec.type === 'assistant') {
-    const assistant = rec as CcAssistantRecord;
-    return assistantEvents(assistant, base, messageIndex);
+  if (event.eventKind === 'message' && event.role === 'assistant') {
+    const protocolReply = isAssistantProtocolReplyText(event.text);
+    return [timelineEvent({
+      ...base,
+      kind: protocolReply ? 'runtime_context' : 'assistant_message',
+      role: 'assistant',
+      order,
+      snippet: snippet(event.text, 700),
+      fullText: fullText(event.text),
+      label: protocolReply ? 'assistant protocol reply' : 'assistant message',
+    })];
   }
-  return sessionEventFromRecord(rec, base, messageIndex);
+  if (event.eventKind === 'tool_call') {
+    const inputText = JSON.stringify(event.input);
+    return [timelineEvent({
+      ...base,
+      kind: 'tool_use',
+      role: 'assistant',
+      order,
+      toolUseId: event.callId,
+      toolName: event.tool.displayName ?? event.tool.name,
+      snippet: snippet(inputText, 900),
+      fullText: fullText(inputText),
+      label: `tool_use ${event.tool.displayName ?? event.tool.name}`,
+    })];
+  }
+  if (event.eventKind === 'tool_result') {
+    const failed = event.status === 'failure' || event.status === 'cancelled';
+    return [timelineEvent({
+      ...base,
+      kind: 'tool_result',
+      role: 'tool',
+      order,
+      toolUseId: event.callId,
+      isError: failed,
+      snippet: snippet(event.output, 900),
+      fullText: fullText(event.output),
+      label: failed ? 'tool result error' : 'tool result',
+    })];
+  }
+  if (event.eventKind === 'lifecycle') {
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'other',
+      order,
+      snippet: snippet(`${event.phase}${event.reason ? `: ${event.reason}` : ''}`, 700),
+      fullText: fullText(JSON.stringify(event)),
+      label: event.phase,
+    })];
+  }
+  if (event.eventKind === 'unknown') {
+    const rawText = safeRecordText(event.raw);
+    if (!hasAssistantTurnFailedText(rawText)) return [];
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'other',
+      order,
+      snippet: snippet(rawText, 700),
+      fullText: fullText(rawText),
+      label: event.sourceType,
+    })];
+  }
+  return [];
 }
 
-function sessionEventFromRecord(
-  record: CcRecord,
+function userTimelineEvents(
+  event: TraceMessageEvent,
   base: Omit<ExperienceTimelineEvent, 'id' | 'kind' | 'order'>,
-  messageIndex: number,
+  order: number,
 ): ExperienceTimelineEvent[] {
-  const type = typeof record.type === 'string' ? record.type : '';
-  const rawText = safeRecordText(record);
-  if (
-    !isSessionBoundaryType(type)
-    && !isSessionInterruptedType(type)
-    && !hasAssistantTurnFailedText(rawText)
-  ) return [];
-  return [timelineEvent({
+  const events: ExperienceTimelineEvent[] = [];
+  const commandEnvelope = extractCommandEnvelopeText(event.text);
+  if (commandEnvelope) {
+    events.push(timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'tool',
+      order,
+      snippet: snippet(commandEnvelope, 700),
+      fullText: fullText(commandEnvelope),
+      label: 'command envelope',
+    }));
+  }
+  const text = commandEnvelope ? stripCommandEnvelopeText(event.text) : event.text;
+  if (!text.trim()) return events;
+  const kind = event.origin === 'human'
+    ? 'user_message'
+    : event.origin === 'skill-context'
+      ? 'skill_context'
+      : event.origin === 'synthetic'
+        ? 'synthetic_user_event'
+        : 'runtime_context';
+  events.push(timelineEvent({
     ...base,
-    kind: 'runtime_context',
-    role: 'other',
-    order: messageIndex * 10,
-    snippet: snippet(rawText || type, 700),
-    fullText: fullText(rawText || type),
-    label: type || 'session event',
-  })];
-}
-
-function isSessionBoundaryType(type: string): boolean {
-  return /^session[._-](?:started|ended)$/i.test(type);
-}
-
-function isSessionInterruptedType(type: string): boolean {
-  return /^turn[._-](?:aborted|interrupted)$/i.test(type);
+    kind,
+    role: kind === 'user_message' ? 'user' : kind === 'synthetic_user_event' ? 'other' : 'tool',
+    order: order + (commandEnvelope ? 1 : 0),
+    snippet: snippet(text, 700),
+    fullText: fullText(text),
+    label: userTextEventLabel(kind),
+  }));
+  return events;
 }
 
 function safeRecordText(record: unknown): string {
@@ -607,138 +697,11 @@ function hasAssistantTurnFailedText(value: string): boolean {
   return /\[assistant turn failed\]|assistant turn failed|assistant_turn_failed|turn failed/i.test(value);
 }
 
-function userEvents(
-  record: CcUserRecord,
-  base: Omit<ExperienceTimelineEvent, 'id' | 'kind' | 'order'>,
-  messageIndex: number,
-): ExperienceTimelineEvent[] {
-  const content = record.message.content;
-  const events: ExperienceTimelineEvent[] = [];
-  if (typeof content === 'string') {
-    events.push(...userTextEventsFromText(record, content, base, messageIndex, 0));
-    return events;
-  }
-  let textIndex = 0;
-  let resultIndex = 0;
-  for (const part of content) {
-    if (part.type === 'text') {
-      const nextEvents = userTextEventsFromText(record, part.text, base, messageIndex, textIndex);
-      events.push(...nextEvents);
-      if (nextEvents.length > 0) textIndex += nextEvents.length;
-    } else if (part.type === 'tool_result') {
-      const full = fullText(part.content);
-      const text = snippet(part.content, 900);
-      const failed = part.is_error === true || isToolResultFailureText(part.content);
-      events.push(timelineEvent({
-        ...base,
-        kind: 'tool_result',
-        role: 'tool',
-        order: messageIndex * 10 + 5 + resultIndex,
-        toolUseId: part.tool_use_id,
-        isError: failed,
-        snippet: text,
-        fullText: full,
-        label: failed ? 'tool result error' : 'tool result',
-      }));
-      resultIndex += 1;
-    }
-  }
-  return events;
-}
-
-function userTextEventsFromText(
-  record: CcUserRecord,
-  rawText: string,
-  base: Omit<ExperienceTimelineEvent, 'id' | 'kind' | 'order'>,
-  messageIndex: number,
-  offset: number,
-): ExperienceTimelineEvent[] {
-  const events: ExperienceTimelineEvent[] = [];
-  const commandEnvelope = extractCommandEnvelopeText(rawText);
-  if (commandEnvelope) {
-    events.push(timelineEvent({
-      ...base,
-      kind: 'runtime_context',
-      role: 'tool',
-      order: messageIndex * 10 + offset,
-      snippet: snippet(commandEnvelope, 700),
-      fullText: fullText(commandEnvelope),
-      label: 'command envelope',
-    }));
-  }
-  const humanText = commandEnvelope ? stripCommandEnvelopeText(rawText) : rawText;
-  const full = fullText(humanText);
-  const text = snippet(humanText, 700);
-  if (text) {
-    const kind = userTextEventKind(record, text);
-    events.push(timelineEvent({
-      ...base,
-      kind,
-      role: kind === 'user_message' ? 'user' : kind === 'synthetic_user_event' ? 'other' : 'tool',
-      order: messageIndex * 10 + offset + (commandEnvelope ? 1 : 0),
-      snippet: text,
-      fullText: full,
-      label: userTextEventLabel(kind),
-    }));
-  }
-  return events;
-}
-
-function assistantEvents(
-  record: CcAssistantRecord,
-  base: Omit<ExperienceTimelineEvent, 'id' | 'kind' | 'order'>,
-  messageIndex: number,
-): ExperienceTimelineEvent[] {
-  const events: ExperienceTimelineEvent[] = [];
-  const textParts: string[] = [];
-  let index = 0;
-  for (const part of record.message.content) {
-    if (part.type === 'text' && part.text) textParts.push(part.text);
-    if (part.type === 'tool_use' && part.id && part.name) {
-      const inputText = JSON.stringify(part.input ?? {});
-      events.push(timelineEvent({
-        ...base,
-        kind: 'tool_use',
-        role: 'assistant',
-        order: messageIndex * 10 + 5 + index,
-        toolUseId: part.id,
-        toolName: part.name,
-        snippet: snippet(inputText, 900),
-        fullText: fullText(inputText),
-        label: `tool_use ${part.name}`,
-      }));
-      index += 1;
-    }
-  }
-  const rawText = textParts.join('\n');
-  const text = snippet(rawText, 700);
-  if (text) {
-    const protocolReply = isAssistantProtocolReplyText(rawText);
-    events.unshift(timelineEvent({
-      ...base,
-      kind: protocolReply ? 'runtime_context' : 'assistant_message',
-      role: 'assistant',
-      order: messageIndex * 10,
-      snippet: text,
-      fullText: fullText(rawText),
-      label: protocolReply ? 'assistant protocol reply' : 'assistant message',
-    }));
-  }
-  return events;
-}
-
 function timelineEvent(input: Omit<ExperienceTimelineEvent, 'id'>): ExperienceTimelineEvent {
   return {
     ...input,
     id: hashParts(input.sourceTrace, input.sessionId, String(input.messageIndex ?? ''), input.kind, input.toolUseId ?? '', input.snippet ?? ''),
   };
-}
-
-function userTextEventKind(record: CcUserRecord, text: string): 'user_message' | 'synthetic_user_event' | 'skill_context' | 'runtime_context' {
-  if (isSkillContextRecord(record, text)) return 'skill_context';
-  if (isRuntimeContextRecord(record, text)) return 'runtime_context';
-  if (isSyntheticUserMessageText(text)) return 'synthetic_user_event';
-  return 'user_message';
 }
 
 function userTextEventLabel(kind: 'user_message' | 'synthetic_user_event' | 'skill_context' | 'runtime_context'): string {
@@ -962,6 +925,10 @@ function isToolFailureEvent(event: ExperienceTimelineEvent): boolean {
   return event.kind === 'tool_result' && (event.isError === true || isToolResultFailureText(event.fullText ?? event.snippet ?? ''));
 }
 
+function isSessionInterruptedType(type: string): boolean {
+  return /^turn[._-](?:aborted|interrupted)$/i.test(type);
+}
+
 function sessionInterruptedEvents(timeline: ExperienceTimelineEvent[]): ExperienceTimelineEvent[] {
   const events = uniqueTimelineEvents(timeline).sort(compareTimelineEvents);
   const interrupted: ExperienceTimelineEvent[] = [];
@@ -1008,7 +975,7 @@ function metricCount(
 
 function summarizeExperienceSessions(
   invocations: ExperienceInvocation[],
-  sessionGroupsByKey: Map<string, CcSession[]>,
+  sessionGroupsByKey: Map<string, TraceSession[]>,
   generatedAt: string,
   reviewState?: ObservationReviewState,
 ): ExperienceSessionSummary[] {
@@ -1051,7 +1018,7 @@ function summarizeExperienceSessions(
       .map((event) => event.messageIndex)
       .filter((index): index is number => typeof index === 'number');
     const sessionStartRecordIndex = minDefined(fullSessionIndexes) ?? 0;
-    const sessionEndRecordIndex = maxDefined(fullSessionIndexes) ?? Math.max(0, (sessionGroup[0]?.records.length ?? 1) - 1);
+    const sessionEndRecordIndex = maxDefined(fullSessionIndexes) ?? Math.max(0, (sessionGroup[0]?.events.length ?? 1) - 1);
     const omittedBeforeCount = previewStartRecordIndex === undefined
       ? 0
       : fullSessionTimeline.filter((event) => typeof event.messageIndex === 'number' && event.messageIndex < previewStartRecordIndex).length;
@@ -3929,20 +3896,20 @@ function compareTimelineEvents(a: ExperienceTimelineEvent, b: ExperienceTimeline
   return a.sourceTrace.localeCompare(b.sourceTrace);
 }
 
-function buildSessionTimelineTree(sessionId: string, sessions: CcSession[]): ExperienceTimelineTree {
-  const mainSession = sessions.find((session) => session.traceRole === 'main')
-    ?? sessions.find((session) => session.traceRole === 'standalone');
-  const main = mainSession ? buildTimelineWindow(mainSession, 0, mainSession.records.length) : [];
+function buildSessionTimelineTree(sessionId: string, sessions: TraceSession[]): ExperienceTimelineTree {
+  const mainSession = sessions.find((session) => session.role === 'main')
+    ?? sessions.find((session) => session.role === 'standalone');
+  const main = mainSession ? buildTimelineWindow(mainSession, 0, mainSession.events.length) : [];
   const branches = sessions
     .filter((session) => !mainSession || session !== mainSession)
     .map((session): ExperienceTimelineBranch => {
-      const events = buildTimelineWindow(session, 0, session.records.length);
+      const events = buildTimelineWindow(session, 0, session.events.length);
       const attachTo = inferSubagentAttachment(main, session);
       return {
         id: hashParts('timeline-branch', session.sourcePath),
-        label: session.traceLabel ?? session.sourcePath.split('/').pop() ?? 'subagent',
+        label: session.label ?? session.sourcePath.split('/').pop() ?? 'subagent',
         sourceTrace: session.sourcePath,
-        traceRole: session.traceRole ?? 'subagent',
+        traceRole: session.role,
         attachTo,
         events,
       };
@@ -3956,7 +3923,7 @@ function buildSessionTimelineTree(sessionId: string, sessions: CcSession[]): Exp
 
 function inferSubagentAttachment(
   mainEvents: ExperienceTimelineEvent[],
-  branchSession: CcSession,
+  branchSession: TraceSession,
 ): ExperienceTimelineBranch['attachTo'] | undefined {
   const startedAt = branchSession.startTimestamp;
   const taskUses = mainEvents.filter((event) => event.kind === 'tool_use' && /^(Task|Agent|Skill)$/i.test(event.toolName ?? ''));
@@ -4006,28 +3973,6 @@ function inferUserGoal(userRefs: ExperienceTimelineEvent[]): string | undefined 
   return snippet(first?.snippet, 180);
 }
 
-function isSkillContextRecord(record: CcUserRecord, text: string): boolean {
-  const meta = record as CcUserRecord & { isMeta?: unknown; sourceToolUseID?: unknown };
-  if (meta.isMeta === true && typeof meta.sourceToolUseID === 'string') return true;
-  return /^Base directory for this skill:\s+.+(?:\n| )#\s+[a-z0-9][\w.-]*/i.test(text);
-}
-
-function isRuntimeContextRecord(record: CcUserRecord, text: string): boolean {
-  const meta = record as CcUserRecord & { entrypoint?: unknown; promptId?: unknown; parentUuid?: unknown };
-  if (isRuntimeProtocolPromptText(text)) return true;
-  if (/^Conversation info \(untrusted metadata\):\s*```json/i.test(text)) return true;
-  if (meta.entrypoint !== 'sdk-ts' || typeof meta.promptId !== 'string') return false;
-  return /^进入.+流程。当前页面已经完成本地工作区恢复/.test(text)
-    || /gui-workflow route/.test(text)
-    || /当前页面已经完成本地工作区恢复/.test(text);
-}
-
-function timestampOf(record: unknown): string | undefined {
-  if (!record || typeof record !== 'object') return undefined;
-  const value = (record as { timestamp?: unknown }).timestamp;
-  return typeof value === 'string' ? value : undefined;
-}
-
 function sourceKindForPath(path: string): ObservationSourceKind {
   if (path.includes('/openclaw') || path.includes('/.openclaw/')) return 'openclaw';
   if (/[\\/]\.?codex[\\/]sessions[\\/]/i.test(path)) return 'codex';
@@ -4036,12 +3981,7 @@ function sourceKindForPath(path: string): ObservationSourceKind {
   return 'unknown';
 }
 
-function inferEntrypointFromRecords(session: CcSession): string | undefined {
-  for (const record of session.records) {
-    if (!record || typeof record !== 'object') continue;
-    const entrypoint = (record as { entrypoint?: unknown }).entrypoint;
-    if (typeof entrypoint === 'string' && entrypoint.trim()) return entrypoint;
-  }
+function inferEntrypointFromRecords(session: TraceSession): string | undefined {
   if (session.entrypoint) return session.entrypoint;
   if (session.sourceKind === 'codex') return 'codex-cli';
   if (session.sourceKind === 'openclaw') return 'openclaw';

@@ -8,10 +8,21 @@ import {
   parseCodexSessionFile,
 } from './codex-trace-adapter.js';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
-import { isToolResultFailureText } from './text-signals.js';
+import {
+  isRuntimeProtocolPromptText,
+  isSyntheticUserMessageText,
+  isToolResultFailureText,
+} from './text-signals.js';
 import type { TraceSourceMetadata } from '../types/index.js';
+import type {
+  TraceEvent,
+  TraceLifecycleEvent,
+  TraceMessageOrigin,
+  TraceSession,
+  TraceUsageEvent,
+} from './trace-ir.js';
 
-// ---------- cc session JSONL raw schema (v0.18 subset) ----------
+// ---------- Claude Code JSONL compatibility schema (v0.18 subset) ----------
 
 export interface CcAssistantContent {
   type: 'thinking' | 'text' | 'tool_use';
@@ -75,8 +86,9 @@ export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: st
 
 export type { TraceSourceMetadata } from '../types/index.js';
 
-// ---------- Session-level structure ----------
+// ---------- Legacy session compatibility ----------
 
+/** @deprecated Compatibility shape for callers that still construct Claude-style fixtures. */
 export interface CcSession {
   sessionId: string;
   /**
@@ -107,6 +119,8 @@ export interface CcSession {
   endTimestamp?: string;
 }
 
+export type { TraceEvent, TraceSession } from './trace-ir.js';
+
 // ---------- Load ----------
 
 /**
@@ -114,7 +128,7 @@ export interface CcSession {
  * 递归扫描目录,覆盖 Claude Code 主 session 旁边的 subagents/*.jsonl,
  * 也支持 agent workspace/logs/*.log 里的 Markdown 对话记录。
  */
-export function loadCcSessions(path: string): CcSession[] {
+export function loadTraceSessions(path: string): TraceSession[] {
   const stat = statSync(path);
   if (stat.isFile()) {
     return resolveCodexSessionGroups(
@@ -126,6 +140,9 @@ export function loadCcSessions(path: string): CcSession[] {
     annotateSessionGroups(path, entries.flatMap(parseTraceFile)),
   );
 }
+
+/** @deprecated Use `loadTraceSessions`. */
+export const loadCcSessions = loadTraceSessions;
 
 function collectTraceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -147,7 +164,7 @@ function collectTraceFiles(dir: string): string[] {
   return files.sort();
 }
 
-function parseTraceFile(filePath: string): CcSession[] {
+function parseTraceFile(filePath: string): TraceSession[] {
   if (filePath.endsWith('.jsonl')) {
     const session = parseJsonlSessionFile(filePath);
     return session ? [session] : [];
@@ -156,18 +173,18 @@ function parseTraceFile(filePath: string): CcSession[] {
   return [];
 }
 
-function withStandaloneTraceMetadata(session: CcSession): CcSession {
+function withStandaloneTraceMetadata(session: TraceSession): TraceSession {
   return {
     ...session,
-    sessionGroupId: session.sessionGroupId ?? session.sessionId,
-    sessionGroupPath: session.sessionGroupPath ?? dirname(session.sourcePath),
-    traceId: traceIdFor(session),
-    traceRole: session.traceRole ?? 'standalone',
-    traceLabel: session.traceLabel ?? basename(session.sourcePath),
+    rootRunId: session.rootRunId || session.runId,
+    groupPath: session.groupPath || dirname(session.sourcePath),
+    traceId: session.traceId || traceIdFor(session),
+    role: session.role ?? 'standalone',
+    label: session.label || basename(session.sourcePath),
   };
 }
 
-function annotateSessionGroups(rootPath: string, sessions: CcSession[]): CcSession[] {
+function annotateSessionGroups(rootPath: string, sessions: TraceSession[]): TraceSession[] {
   const groupRoots = new Set<string>();
   for (const session of sessions) {
     const subagentRoot = subagentGroupRoot(session.sourcePath);
@@ -183,7 +200,7 @@ function annotateSessionGroups(rootPath: string, sessions: CcSession[]): CcSessi
     const mainSession = sessions
       .filter((session) => groupRootForPath(session.sourcePath, groupRoots) === root && !isSubagentTrace(session.sourcePath))
       .sort((a, b) => a.sourcePath.localeCompare(b.sourcePath))[0];
-    groupIdByRoot.set(root, mainSession?.sessionId || basename(root) || relative(dirname(rootPath), root) || root);
+    groupIdByRoot.set(root, mainSession?.runId || basename(root) || relative(dirname(rootPath), root) || root);
   }
 
   return sessions.map((session) => {
@@ -192,51 +209,51 @@ function annotateSessionGroups(rootPath: string, sessions: CcSession[]): CcSessi
     const role = isSubagentTrace(session.sourcePath) ? 'subagent' : 'main';
     return {
       ...session,
-      sessionGroupId: groupIdByRoot.get(groupRoot) ?? session.sessionId,
-      sessionGroupPath: groupRoot,
+      rootRunId: groupIdByRoot.get(groupRoot) ?? session.runId,
+      groupPath: groupRoot,
       traceId: traceIdFor(session),
-      traceRole: role,
-      traceLabel: traceLabelFor(session.sourcePath, groupRoot, role),
+      role,
+      label: traceLabelFor(session.sourcePath, groupRoot, role),
     };
   });
 }
 
-function resolveCodexSessionGroups(sessions: CcSession[]): CcSession[] {
+function resolveCodexSessionGroups(sessions: TraceSession[]): TraceSession[] {
   const codexSessionsById = new Map(
     sessions
       .filter((session) => session.sourceKind === 'codex')
-      .map((session) => [session.sessionId, session]),
+      .map((session) => [session.runId, session]),
   );
 
   return sessions.map((session) => {
     if (session.sourceKind !== 'codex') return session;
-    const seen = new Set<string>([session.sessionId]);
-    let groupId = session.sessionGroupId ?? session.sessionId;
+    const seen = new Set<string>([session.runId]);
+    let groupId = session.rootRunId || session.runId;
     while (true) {
       if (seen.has(groupId)) {
-        groupId = Array.from(seen).sort()[0] ?? session.sessionId;
+        groupId = Array.from(seen).sort()[0] ?? session.runId;
         break;
       }
       seen.add(groupId);
       const parent = codexSessionsById.get(groupId);
       if (!parent) break;
-      const parentGroupId = parent.sessionGroupId ?? parent.sessionId;
-      if (parentGroupId === parent.sessionId) {
-        groupId = parent.sessionId;
+      const parentGroupId = parent.rootRunId || parent.runId;
+      if (parentGroupId === parent.runId) {
+        groupId = parent.runId;
         break;
       }
       groupId = parentGroupId;
     }
     return {
       ...session,
-      sessionGroupId: groupId,
-      sessionGroupPath: `codex:${groupId}`,
+      rootRunId: groupId,
+      groupPath: `codex:${groupId}`,
     };
   });
 }
 
-function traceIdFor(session: CcSession): string {
-  return `${session.sessionId}\u0000${session.sourcePath}`;
+function traceIdFor(session: Pick<TraceSession, 'runId' | 'sourcePath'>): string {
+  return `${session.runId}\u0000${session.sourcePath}`;
 }
 
 function isSubagentTrace(filePath: string): boolean {
@@ -263,7 +280,7 @@ function traceLabelFor(filePath: string, groupRoot: string, role: 'main' | 'suba
   return role === 'subagent' ? rel : `main/${basename(filePath)}`;
 }
 
-function parseJsonlSessionFile(filePath: string): CcSession | null {
+function parseJsonlSessionFile(filePath: string): TraceSession | null {
   const content = readFileSync(filePath, 'utf-8');
   const records: CcRecord[] = [];
   for (const line of content.split('\n')) {
@@ -279,21 +296,30 @@ function parseJsonlSessionFile(filePath: string): CcSession | null {
     if (isCodexGuardianRollout(records)) return null;
     return parseCodexSessionFile(filePath, records);
   }
-  return isOpenClawJsonl(records) ? parseOpenClawSessionFile(filePath, records) : parseCcSessionFile(filePath, records);
+  return isOpenClawJsonl(records)
+    ? parseOpenClawSessionFile(filePath, records)
+    : parseClaudeSessionFile(filePath, records);
 }
 
-function parseCcSessionFile(filePath: string, records: CcRecord[]): CcSession {
+function parseClaudeSessionFile(filePath: string, records: CcRecord[]): TraceSession {
   const first = records.find((r) => 'sessionId' in r && typeof r.sessionId === 'string') as
     | (CcRecord & { sessionId: string; cwd?: string; gitBranch?: string; entrypoint?: string; timestamp?: string })
     | undefined;
   const last = [...records].reverse().find((r) => 'timestamp' in r && typeof r.timestamp === 'string') as
     | (CcRecord & { timestamp?: string })
     | undefined;
+  const runId = first?.sessionId ?? filePath.split('/').pop()!.replace('.jsonl', '');
+  const events = records.flatMap((record, sourceIndex) => legacyRecordToTraceEvents(record, runId, sourceIndex));
   return {
-    sessionId: first?.sessionId ?? filePath.split('/').pop()!.replace('.jsonl', ''),
+    runId,
+    rootRunId: runId,
+    traceId: `${runId}\u0000${filePath}`,
+    groupPath: dirname(filePath),
+    role: 'standalone',
+    label: basename(filePath),
     sourcePath: filePath,
     sourceKind: 'claude',
-    records,
+    events,
     cwd: first?.cwd,
     gitBranch: first?.gitBranch,
     entrypoint: first?.entrypoint,
@@ -302,12 +328,240 @@ function parseCcSessionFile(filePath: string, records: CcRecord[]): CcSession {
   };
 }
 
+export function legacyCcSessionToTraceSession(session: CcSession): TraceSession {
+  const runId = session.sessionId;
+  const rootRunId = session.sessionGroupId ?? runId;
+  const traceId = session.traceId ?? `${runId}\u0000${session.sourcePath}`;
+  const sourceKind = session.sourceKind ?? 'unknown';
+  const events = session.records.flatMap((record, sourceIndex) =>
+    legacyRecordToTraceEvents(record, runId, sourceIndex),
+  );
+  const timestamps = events
+    .map((event) => event.timestamp)
+    .filter((value): value is string => Boolean(value));
+  return {
+    runId,
+    rootRunId,
+    traceId,
+    groupPath: session.sessionGroupPath ?? dirname(session.sourcePath),
+    role: session.traceRole ?? 'standalone',
+    label: session.traceLabel ?? basename(session.sourcePath),
+    sourcePath: session.sourcePath,
+    sourceKind,
+    events,
+    cwd: session.cwd,
+    gitBranch: session.gitBranch,
+    entrypoint: session.entrypoint,
+    sourceMetadata: session.sourceMetadata,
+    startTimestamp: session.startTimestamp ?? timestamps[0],
+    endTimestamp: session.endTimestamp ?? timestamps.at(-1),
+  };
+}
+
+function legacyRecordToTraceEvents(raw: unknown, runId: string, sourceIndex: number): TraceEvent[] {
+  if (!isRecordObject(raw)) return [];
+  const sourceType = typeof raw.type === 'string' ? raw.type : 'unknown';
+  const timestamp = typeof raw.timestamp === 'string' ? raw.timestamp : undefined;
+  const sourceEventId = typeof raw.uuid === 'string'
+    ? raw.uuid
+    : typeof raw.id === 'string'
+      ? raw.id
+      : undefined;
+  const eventId = (suffix: string): string => `${runId}:${sourceIndex}:${suffix}`;
+
+  if (sourceType === 'user' && isRecordObject(raw.message)) {
+    const content = raw.message.content;
+    const events: TraceEvent[] = [];
+    const parts = typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
+    let partIndex = 0;
+    for (const part of parts) {
+      if (!isRecordObject(part)) continue;
+      if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+        events.push({
+          eventKind: 'message',
+          eventId: eventId(`message-${partIndex}`),
+          sourceEventId,
+          sourceIndex,
+          sourceType,
+          timestamp,
+          role: 'user',
+          origin: classifyUserMessageOrigin(raw, part.text),
+          text: part.text,
+        });
+      } else if (
+        part.type === 'tool_result'
+        && typeof part.tool_use_id === 'string'
+      ) {
+        const output = typeof part.content === 'string' ? part.content : JSON.stringify(part.content ?? '');
+        const explicit = typeof part.is_error === 'boolean';
+        const failed = part.is_error === true || (!explicit && isToolResultFailureText(output));
+        events.push({
+          eventKind: 'tool_result',
+          eventId: eventId(`tool-result-${partIndex}`),
+          sourceEventId,
+          sourceIndex,
+          sourceType,
+          timestamp,
+          callId: part.tool_use_id,
+          output,
+          status: failed ? 'failure' : 'success',
+          statusSource: explicit ? 'runtime' : 'inferred',
+        });
+      }
+      partIndex += 1;
+    }
+    return events;
+  }
+
+  if (sourceType === 'assistant' && isRecordObject(raw.message)) {
+    const events: TraceEvent[] = [];
+    const content = Array.isArray(raw.message.content) ? raw.message.content : [];
+    const model = typeof raw.message.model === 'string' ? raw.message.model : undefined;
+    const text = content.flatMap((part) =>
+      isRecordObject(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : [],
+    ).join('\n');
+    if (text) {
+      events.push({
+        eventKind: 'message',
+        eventId: eventId('message'),
+        sourceEventId,
+        sourceIndex,
+        sourceType,
+        timestamp,
+        role: 'assistant',
+        origin: 'synthetic',
+        text,
+        model,
+        attributionSkill: typeof raw.attributionSkill === 'string' ? raw.attributionSkill : undefined,
+      });
+    }
+    content.forEach((part, partIndex) => {
+      if (
+        isRecordObject(part)
+        && part.type === 'tool_use'
+        && typeof part.id === 'string'
+        && typeof part.name === 'string'
+      ) {
+        events.push({
+          eventKind: 'tool_call',
+          eventId: eventId(`tool-call-${partIndex}`),
+          sourceEventId,
+          sourceIndex,
+          sourceType,
+          timestamp,
+          callId: part.id,
+          tool: { name: part.name },
+          input: isRecordObject(part.input) ? part.input : {},
+          model,
+        });
+      }
+    });
+    if (isRecordObject(raw.message.usage)) {
+      events.push(usageEventFromLegacy(raw.message.usage, eventId('usage'), sourceIndex, sourceType, timestamp, model));
+    }
+    return events;
+  }
+
+  const lifecycle = lifecycleEventFromLegacy(raw, runId, sourceIndex, sourceType, timestamp);
+  if (lifecycle) return [lifecycle];
+  return [{
+    eventKind: 'unknown',
+    eventId: eventId('unknown'),
+    sourceEventId,
+    sourceIndex,
+    sourceType,
+    timestamp,
+    raw,
+  }];
+}
+
+function usageEventFromLegacy(
+  usage: Record<string, unknown>,
+  eventId: string,
+  sourceIndex: number,
+  sourceType: string,
+  timestamp?: string,
+  model?: string,
+): TraceUsageEvent {
+  return {
+    eventKind: 'usage',
+    eventId,
+    sourceIndex,
+    sourceType,
+    timestamp,
+    model,
+    inputTokens: numberValue(usage.input_tokens) ?? 0,
+    outputTokens: numberValue(usage.output_tokens) ?? 0,
+    cacheReadTokens: numberValue(usage.cache_read_input_tokens) ?? 0,
+    cacheCreationTokens: numberValue(usage.cache_creation_input_tokens) ?? 0,
+  };
+}
+
+function lifecycleEventFromLegacy(
+  raw: Record<string, unknown>,
+  runId: string,
+  sourceIndex: number,
+  sourceType: string,
+  timestamp?: string,
+): TraceLifecycleEvent | null {
+  const phase = /^session[._-]started$/i.test(sourceType)
+    ? 'session_started'
+    : /^session[._-]ended$/i.test(sourceType)
+      ? 'session_ended'
+      : /^turn[._-]started$/i.test(sourceType)
+        ? 'turn_started'
+        : /^turn[._-](?:ended|completed)$/i.test(sourceType)
+          ? 'turn_completed'
+          : /^turn[._-]aborted$/i.test(sourceType)
+            ? 'turn_aborted'
+            : /^turn[._-]interrupted$/i.test(sourceType)
+              ? 'turn_interrupted'
+              : null;
+  if (!phase) return null;
+  return {
+    eventKind: 'lifecycle',
+    eventId: `${runId}:${sourceIndex}:lifecycle`,
+    sourceIndex,
+    sourceType,
+    timestamp,
+    turnId: typeof raw.turnId === 'string' ? raw.turnId : undefined,
+    phase,
+    reason: typeof raw.reason === 'string' ? raw.reason : undefined,
+    durationMs: numberValue(raw.durationMs),
+  };
+}
+
+function classifyUserMessageOrigin(record: Record<string, unknown>, text: string): TraceMessageOrigin {
+  if (record.isMeta === true && typeof record.sourceToolUseID === 'string') return 'skill-context';
+  if (/^Base directory for this skill:\s+.+(?:\n| )#\s+[a-z0-9][\w.-]*/i.test(text)) return 'skill-context';
+  if (isRuntimeInjectedMessage(text)) return 'runtime';
+  if (
+    record.entrypoint === 'sdk-ts'
+    && typeof record.promptId === 'string'
+    && (
+      /^进入.+流程。当前页面已经完成本地工作区恢复/.test(text)
+      || /gui-workflow route/.test(text)
+      || /当前页面已经完成本地工作区恢复/.test(text)
+    )
+  ) return 'runtime';
+  if (isSyntheticUserMessageText(text)) return 'synthetic';
+  return 'human';
+}
+
+function isRuntimeInjectedMessage(text: string): boolean {
+  const trimmed = text.trimStart();
+  return /^Conversation info \(untrusted metadata\):\s*```json/i.test(trimmed)
+    || isRuntimeProtocolPromptText(trimmed)
+    || /^# AGENTS\.md instructions\b/i.test(trimmed)
+    || /^<(?:app-context|environment_context|permissions instructions|collaboration_mode|apps_instructions|plugins_instructions|skills_instructions|recommended_plugins)>/i.test(trimmed);
+}
+
 function isOpenClawJsonl(records: CcRecord[]): boolean {
   return records.some((record) => record.type === 'session' && typeof (record as { id?: unknown }).id === 'string')
     && records.some((record) => record.type === 'message' && isRecordObject((record as { message?: unknown }).message));
 }
 
-function parseOpenClawSessionFile(filePath: string, rawRecords: CcRecord[]): CcSession {
+function parseOpenClawSessionFile(filePath: string, rawRecords: CcRecord[]): TraceSession {
   const sessionRecord = rawRecords.find((record) => record.type === 'session') as
     | { id?: unknown; cwd?: unknown; timestamp?: unknown }
     | undefined;
@@ -316,34 +570,33 @@ function parseOpenClawSessionFile(filePath: string, rawRecords: CcRecord[]): CcS
     : filePath.split('/').pop()!.replace(/\.jsonl$/, '');
   const cwd = typeof sessionRecord?.cwd === 'string' ? sessionRecord.cwd : undefined;
   const sourceMetadata = extractOpenClawSourceMetadata(rawRecords);
-  const records: CcRecord[] = [];
+  const events: TraceEvent[] = [];
 
-  for (const raw of rawRecords) {
+  rawRecords.forEach((raw, sourceIndex) => {
     const converted = convertOpenClawRecord(raw, sessionId, cwd);
     if (converted) {
-      records.push(converted);
+      events.push(...legacyRecordToTraceEvents(converted, sessionId, sourceIndex));
     } else if (isSessionBoundaryRawRecord(raw)) {
-      records.push({ ...raw, sessionId } as CcRecord);
+      events.push(...legacyRecordToTraceEvents({ ...raw, sessionId }, sessionId, sourceIndex));
     }
-  }
-
-  const first = records.find((record) => typeof (record as { timestamp?: unknown }).timestamp === 'string') as
-    | { timestamp?: string }
-    | undefined;
-  const last = [...records].reverse().find((record) => typeof (record as { timestamp?: unknown }).timestamp === 'string') as
-    | { timestamp?: string }
-    | undefined;
+  });
+  const timestamps = events.map((event) => event.timestamp).filter((value): value is string => Boolean(value));
 
   return {
-    sessionId,
+    runId: sessionId,
+    rootRunId: sessionId,
+    traceId: `${sessionId}\u0000${filePath}`,
+    groupPath: dirname(filePath),
+    role: 'standalone',
+    label: basename(filePath),
     sourcePath: filePath,
     sourceKind: 'openclaw',
-    records,
+    events,
     cwd,
     entrypoint: 'openclaw',
     sourceMetadata,
-    startTimestamp: first?.timestamp ?? (typeof sessionRecord?.timestamp === 'string' ? sessionRecord.timestamp : undefined),
-    endTimestamp: last?.timestamp,
+    startTimestamp: timestamps[0] ?? (typeof sessionRecord?.timestamp === 'string' ? sessionRecord.timestamp : undefined),
+    endTimestamp: timestamps.at(-1),
   };
 }
 
@@ -600,11 +853,11 @@ function isRecordObject(value: unknown): value is Record<string, unknown> {
 
 const MARKDOWN_LOG_BLOCK_RE = /(?:^|\n)---\s*\n## \[([^\]]+)\] 对话记录[^\n]*\n([\s\S]*?)(?=\n---\s*\n## \[|$)/g;
 
-function parseMarkdownLogFile(filePath: string): CcSession[] {
+function parseMarkdownLogFile(filePath: string): TraceSession[] {
   const content = readFileSync(filePath, 'utf-8');
   if (!content.includes('### 用户输入') || !content.includes('### AI 回复')) return [];
 
-  const sessions: CcSession[] = [];
+  const sessions: TraceSession[] = [];
   let index = 0;
 
   for (const match of content.matchAll(MARKDOWN_LOG_BLOCK_RE)) {
@@ -621,32 +874,42 @@ function parseMarkdownLogFile(filePath: string): CcSession[] {
     const cwd = blockCwd;
     const skill = extractMarkdownLogSkill(`${userText}\n${assistantText}`);
     const userContent = skill ? `<command-name>/${skill}</command-name>\n${userText}` : userText;
-    const records: CcRecord[] = [{
-      type: 'user',
-      uuid: `markdown-log-${requestId}-user-${index}`,
-      parentUuid: null,
-      sessionId,
-      timestamp,
-      message: { role: 'user', content: userContent },
-    } as CcUserRecord, {
-      type: 'assistant',
-      uuid: `markdown-log-${requestId}-assistant-${index}`,
-      parentUuid: `markdown-log-${requestId}-user-${index}`,
-      sessionId,
-      timestamp,
-      cwd,
-      attributionSkill: skill,
-      message: {
+    const events: TraceEvent[] = [];
+    if (userContent) {
+      events.push({
+        eventKind: 'message',
+        eventId: `markdown-log-${requestId}-user-${index}`,
+        sourceIndex: 0,
+        sourceType: 'markdown:user',
+        timestamp,
+        role: 'user',
+        origin: 'human',
+        text: userContent,
+      });
+    }
+    if (assistantText) {
+      events.push({
+        eventKind: 'message',
+        eventId: `markdown-log-${requestId}-assistant-${index}`,
+        sourceIndex: 1,
+        sourceType: 'markdown:assistant',
+        timestamp,
         role: 'assistant',
-        content: assistantText ? [{ type: 'text', text: assistantText }] : [],
-        stop_reason: 'end_turn',
-      },
-    } as CcAssistantRecord];
+        origin: 'synthetic',
+        text: assistantText,
+        attributionSkill: skill ?? undefined,
+      });
+    }
     sessions.push({
-      sessionId,
+      runId: sessionId,
+      rootRunId: sessionId,
+      traceId: `${sessionId}\u0000${filePath}\u0000${requestId}`,
+      groupPath: dirname(filePath),
+      role: 'standalone',
+      label: `${basename(filePath)}#${requestId}`,
       sourcePath: filePath,
       sourceKind: 'markdown_log',
-      records,
+      events,
       cwd,
       entrypoint: 'markdown_log',
       startTimestamp: timestamp,
