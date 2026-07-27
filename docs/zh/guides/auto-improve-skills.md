@@ -13,6 +13,8 @@ omk evolve skills/my-skill.md --rounds 10 --target 4.5
 
 每一轮：评测当前 skill、让诊断 LLM 说哪儿在挂、改写 skill、评测候选、**只在确实更好时才接受**。命中 `--target`（综合分）或跑满 `--rounds`（默认 5）时停。原始版本存在 `skills/evolve/*.r0.md`。耗时按 `轮数 × 用例 × 变体` 累加——通常几分钟到几十分钟。
 
+所有保留轮次必须维持相同的用例指纹、模型、执行器、评委配置、运行时指纹、执行策略和 skill 隔离状态；任一项漂移，omk 都会拒绝把这些轮次合并为「只改变知识载体」的改进。合并报告会把评测成本(`meta.totalCostUSD`)与端到端 evolve 过程总成本(`meta.evolve.processCostUSD`)分开记录。
+
 ## 它为什么不会把分数"刷"成胡来
 
 三个默认机制挡住自动迭代的经典翻车模式：

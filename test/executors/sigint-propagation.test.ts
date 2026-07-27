@@ -1,8 +1,9 @@
-import { describe, it, beforeEach } from 'vitest';
+import { describe, it, beforeEach, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   spawnWithSigintPropagation,
   __resetSigintRegistryForTest,
+  registerSigintSubscriber,
   type SpawnHelperError,
 } from '../../src/executors/shared.js';
 
@@ -67,6 +68,28 @@ describe('spawnWithSigintPropagation', () => {
     assert.ok(after - before <= 1, `listener leaked: before=${before}, after=${after}`);
   });
 
+  it('SDK subscriber 与 child 共用唯一 coordinator，重发 SIGINT 前先统一 abort', async () => {
+    const existing = new Set(process.listeners('SIGINT'));
+    let abortCount = 0;
+    const unregisterA = registerSigintSubscriber(() => { abortCount += 1; });
+    const unregisterB = registerSigintSubscriber(() => { abortCount += 1; });
+    const installed = process.listeners('SIGINT').filter((listener) => !existing.has(listener));
+    assert.equal(installed.length, 1);
+
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      installed[0]('SIGINT');
+      assert.equal(abortCount, 2);
+      assert.equal(kill.mock.calls.some(([pid, signal]) => pid === process.pid && signal === 'SIGINT'), true);
+      assert.equal(process.listeners('SIGINT').includes(installed[0]), false);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } finally {
+      unregisterA();
+      unregisterB();
+      kill.mockRestore();
+    }
+  });
+
   it('child 自然退出:registry 立即清空,grace timer 不误升级 SIGKILL', async () => {
     const { child, done } = spawnWithSigintPropagation('node', ['-e', 'process.exit(0)']);
     await done;
@@ -92,6 +115,23 @@ describe('spawnWithSigintPropagation', () => {
     });
   });
 
+  it('already-aborted signal cancels the child immediately', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const start = Date.now();
+    const { done } = spawnWithSigintPropagation(
+      'node',
+      ['-e', 'setInterval(()=>{}, 1000)'],
+      { abortSignal: ac.signal, timeoutMs: 5000 },
+    );
+    await assert.rejects(done, (err: SpawnHelperError) => {
+      assert.equal(err.killedByTimeout, false);
+      assert.equal(err.killedBySignal, 'SIGTERM');
+      assert.ok(Date.now() - start < 1500);
+      return true;
+    });
+  });
+
   it('maxBuffer:stdout 超限时 reject + kill', async () => {
     // 写 200KB 到 stdout,maxBuffer 设 10KB
     const { done } = spawnWithSigintPropagation(
@@ -100,7 +140,19 @@ describe('spawnWithSigintPropagation', () => {
       { maxBuffer: 10 * 1024 },
     );
     await assert.rejects(done, (err: SpawnHelperError) => {
-      assert.match(err.message, /maxBuffer/);
+      assert.match(err.message, /stdout maxBuffer/);
+      return true;
+    });
+  });
+
+  it('maxBuffer:stderr 超限时也 reject + kill', async () => {
+    const { done } = spawnWithSigintPropagation(
+      'node',
+      ['-e', 'process.stderr.write("x".repeat(200000))'],
+      { maxBuffer: 10 * 1024 },
+    );
+    await assert.rejects(done, (err: SpawnHelperError) => {
+      assert.match(err.message, /stderr maxBuffer/);
       return true;
     });
   });
@@ -129,9 +181,7 @@ describe('spawnWithSigintPropagation', () => {
     });
   });
 
-  // UltraReview Item 6:timeout 发了 SIGTERM 但 child trap 后 graceful exit 0,
-  // stdout 应该当成成功完成 — 旧实现会 reject "timed out" 误导 caller。
-  it('timeout 发 SIGTERM 后 child trap 并 exit 0:resolve 而不是 reject(数据是完整的)', async () => {
+  it('timeout remains authoritative when child traps SIGTERM and exits 0', async () => {
     const { done } = spawnWithSigintPropagation(
       'node',
       [
@@ -141,10 +191,13 @@ describe('spawnWithSigintPropagation', () => {
       ],
       { timeoutMs: 100 },
     );
-    const r = await done;
-    assert.equal(r.code, 0);
-    assert.equal(r.stdout, 'done');
-    assert.equal(r.killedByTimeout, true); // flag 仍 true(我们确实发了 SIGTERM)
+    await assert.rejects(done, (err: SpawnHelperError) => {
+      assert.equal(err.code, 0);
+      assert.equal(err.stdout, 'done');
+      assert.equal(err.killedByTimeout, true);
+      assert.match(err.message, /timed out/);
+      return true;
+    });
   });
 
   // UltraReview Item 7:bufferOverflow 路径要走 graceTimer,不能裸 SIGTERM。

@@ -8,7 +8,6 @@ import { codexSdkExecutor } from './codex-sdk.js';
 import { geminiExecutor } from './gemini.js';
 import { openAiApiExecutor } from './openai-api.js';
 import { createScriptExecutor } from './script.js';
-import { DEFAULT_MODEL, JUDGE_MODEL } from './shared.js';
 
 // 命名一致性:provider HTTP 路径统一用 `<vendor>-api`(`anthropic-api` / `openai-api`),
 // vendor coding agent CLI 用 vendor 名(`claude` / `codex`)。`openai` 这个不带 -api 后缀的
@@ -23,8 +22,11 @@ const EXECUTOR_REGISTRY: Record<string, ExecutorFn> = {
   'openai-api': openAiApiExecutor,
 };
 
-export { DEFAULT_MODEL, JUDGE_MODEL, extractAgentTrace, createScriptExecutor };
+export { extractAgentTrace, createScriptExecutor };
 
-export function createExecutor(name: string = 'claude'): ExecutorFn {
+export function createExecutor(name: string): ExecutorFn {
+  if (name.trim().length === 0) {
+    throw new Error('executor name or script command is required');
+  }
   return EXECUTOR_REGISTRY[name] || createScriptExecutor(name);
 }

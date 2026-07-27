@@ -11,6 +11,7 @@ import {
   toPersistedAgreement,
 } from '../../src/grading/gold-cli.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { buildVariantSummary } from '../../src/eval-core/schema.js';
 import { loadGoldDataset } from '../../src/grading/gold-dataset.js';
 import type { Report } from '../../src/types/index.js';
 
@@ -34,24 +35,8 @@ const buildReport = (
   variant: string,
   scoresById: Record<string, number>,
   judgeModel = 'claude-sonnet-4-6',
-): Report => ({
-  kind: 'evaluation',
-  id: 'r1',
-  meta: {
-    variants: [variant],
-    model: 'claude-sonnet-4-6',
-    judgeModels: [{ executor: 'claude', model: judgeModel }],
-    executor: 'claude',
-    sampleCount: Object.keys(scoresById).length,
-    taskCount: Object.keys(scoresById).length,
-    totalCostUSD: 0,
-    timestamp: '2026-04-25T00:00:00Z',
-    cliVersion: 'test',
-    nodeVersion: 'test',
-    artifactHashes: { [variant]: 'abc' },
-  },
-  summary: {},
-  results: Object.entries(scoresById).map(([sample_id, llmScore]) => ({
+): Report => {
+  const results: Report['results'] = Object.entries(scoresById).map(([sample_id, llmScore]) => ({
     sample_id,
     variants: {
       [variant]: {
@@ -62,8 +47,29 @@ const buildReport = (
         outputPreview: null,
       },
     },
-  })),
-});
+  }));
+  return {
+    kind: 'evaluation',
+    id: 'r1',
+    meta: {
+      variants: [variant],
+      model: 'claude-sonnet-4-6',
+      judgeModels: [{ executor: 'claude', model: judgeModel }],
+      executor: 'claude',
+      sampleCount: results.length,
+      taskCount: results.length,
+      totalCostUSD: 0,
+      timestamp: '2026-04-25T00:00:00Z',
+      cliVersion: 'test',
+      nodeVersion: 'test',
+      artifactHashes: { [variant]: 'abc' },
+    },
+    summary: {
+      [variant]: buildVariantSummary(results.map((entry) => entry.variants[variant])),
+    },
+    results,
+  };
+};
 
 describe('compareGoldToReport', () => {
   it('returns α=1 when judge matches gold exactly across multiple samples', () => {

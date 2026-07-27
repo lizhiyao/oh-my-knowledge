@@ -21,6 +21,7 @@ import { reportShell, healthColor, type SkillReportContext } from './report-shel
 import { icon } from './icons.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
 import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
+import { incrementRecordCount } from '../shared/record-count.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -36,7 +37,10 @@ function levelDot(level: VerdictLevel): string {
   }
 }
 
-type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeModels' | 'noJudge'>;
+type RuntimeMeta = Pick<
+  EvaluationReport['meta'],
+  'executorRuntime' | 'executorRuntimes' | 'judgeModels' | 'noJudge' | 'diagnostic'
+>;
 
 function isEvaluationReport(document: ReportDocument): document is EvaluationReport {
   return document.kind === 'evaluation';
@@ -76,7 +80,7 @@ function pluralizeEn(count: number, singular: string, plural = `${singular}s`): 
 }
 
 interface RuntimeScope {
-  role: 'executor' | 'judge';
+  role: 'executor' | 'judge' | 'diagnostic';
   scope: string;
   runtime: ExecutorRuntimeFingerprint;
 }
@@ -100,6 +104,13 @@ function gatherRuntimeScopes(meta: RuntimeMeta): RuntimeScope[] {
         if (entry.runtime) scopes.push({ role: 'judge', scope: `${entry.executor}:${entry.model}`, runtime: entry.runtime });
       });
   }
+  if (meta.diagnostic?.enabled && meta.diagnostic.runtime) {
+    scopes.push({
+      role: 'diagnostic',
+      scope: `${meta.diagnostic.executor}:${meta.diagnostic.model}`,
+      runtime: meta.diagnostic.runtime,
+    });
+  }
   return scopes;
 }
 
@@ -119,6 +130,9 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
     `cost=${runtime.capabilities.costUSD}`,
     `trace=${runtime.capabilities.trace}`,
     `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ...(runtime.binary?.contentHash
+      ? [`contentHash=${runtime.binary.contentHash}`]
+      : []),
   ].join('; ');
 }
 
@@ -130,17 +144,30 @@ function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
   const scopes = gatherRuntimeScopes(meta);
   if (scopes.length === 0) return '';
 
-  const groups = new Map<string, { runtime: ExecutorRuntimeFingerprint; versionText: string; executors: string[]; judges: string[] }>();
+  const groups = new Map<string, {
+    runtime: ExecutorRuntimeFingerprint;
+    versionText: string;
+    executors: string[];
+    judges: string[];
+    diagnostics: string[];
+  }>();
   for (const s of scopes) {
     const versionText = runtimeVersionText(s.runtime, lang);
     const key = `${s.runtime.fingerprint}|${versionText}`;
     let g = groups.get(key);
     if (!g) {
-      g = { runtime: s.runtime, versionText, executors: [], judges: [] };
+      g = {
+        runtime: s.runtime,
+        versionText,
+        executors: [],
+        judges: [],
+        diagnostics: [],
+      };
       groups.set(key, g);
     }
     if (s.role === 'executor') g.executors.push(s.scope || (lang === 'zh' ? '默认' : 'default'));
-    else g.judges.push(s.scope);
+    else if (s.role === 'judge') g.judges.push(s.scope);
+    else g.diagnostics.push(s.scope);
   }
 
   const groupLabel = lang === 'zh' ? '执行环境指纹' : 'Runtime fingerprint';
@@ -148,6 +175,7 @@ function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
     const scopeBits: string[] = [];
     if (g.executors.length > 0) scopeBits.push(`${lang === 'zh' ? '执行器' : 'executor'} ${g.executors.join(', ')}`);
     if (g.judges.length > 0) scopeBits.push(`${lang === 'zh' ? '评委' : 'judge'} ${g.judges.join(', ')}`);
+    if (g.diagnostics.length > 0) scopeBits.push(`${lang === 'zh' ? '诊断' : 'diagnostic'} ${g.diagnostics.join(', ')}`);
     const scopeText = scopeBits.length > 0 ? ` · ${lang === 'zh' ? '适用' : 'used by'} ${e(scopeBits.join('; '))}` : '';
     return `<span class="meta-tag" title="${e(runtimeTooltip(g.runtime))}">${e(groupLabel)}: <code>${e(g.runtime.fingerprint)}</code>${g.versionText}${scopeText}</span>`;
   }).join('');
@@ -262,7 +290,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   for (const run of evaluationRuns) {
     for (const v of (run.meta?.variants || [])) {
       if (v === 'baseline') continue;
-      variantCounts[v] = (variantCounts[v] || 0) + 1;
+      incrementRecordCount(variantCounts, v);
     }
   }
   const trendLinks = Object.entries(variantCounts)
@@ -385,6 +413,17 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   const execCostReported = Object.values(summary).every((v) => v.execCostReported !== false);
   const totalCostReported = m.totalCostReported !== false && Object.values(summary).every((v) =>
     v.execCostReported !== false && v.judgeCostReported !== false);
+  const totalCostLabel = m.evolve
+    ? (lang === 'zh' ? '评测成本' : 'Measurement cost')
+    : t('totalCost', lang);
+  const processCostTag = m.evolve?.processCostUSD === undefined
+    ? ''
+    : `<span class="meta-tag"${m.evolve.processCostReported === false
+      ? ` title="${e(costCompletenessTooltip(lang))}"`
+      : ''}>${lang === 'zh' ? '迭代总成本' : 'Total evolve cost'}: ${fmtKnownCost(
+      m.evolve.processCostUSD,
+      m.evolve.processCostReported !== false,
+    )}</span>`;
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
   const sourceLabels: Record<string, Record<string, string>> = {
     zh: { 'variant-name': '本地文件', 'file-path': '本地文件', git: 'Git 版本', inline: '内联', baseline: '无', custom: '自定义' },
@@ -480,10 +519,11 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
     })()}
     ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
-    <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
+    <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'unknown')}</span>
     ${m.effort ? `<span class="meta-tag" title="${e(lang === 'zh' ? 'executor LLM 的扩展思考预算(--effort)。跨 effort 报告不可严格比较' : 'reasoning effort for executor LLM (--effort); reports across different efforts are not strictly comparable')}">effort: ${e(m.effort)}</span>` : ''}
     <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
-    <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
+    <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${totalCostLabel}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>${processCostTag ? `
+    ${processCostTag}` : ''}
     <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
     ${m.gitInfo ? `<span class="meta-tag">${lang === 'zh' ? '提交' : 'commit'}: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
     ${m.sampleHashes ? `<span class="meta-tag" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
@@ -494,6 +534,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   const auditFingerprints = (() => {
     const auditTags = [
       m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : '',
+      m.diagnostic?.promptHash ? `<span class="meta-tag" title="${e(lang === 'zh' ? '失败诊断 system prompt 的 SHA256 前 12 位' : 'SHA256-12 of the failure-diagnostic system prompt')}">${lang === 'zh' ? '诊断提示词指纹' : 'Diagnostic prompt fingerprint'}: <code>${e(m.diagnostic.promptHash)}</code></span>` : '',
       renderRuntimeFingerprintTags(m, lang),
     ].join('');
     if (!auditTags) return '';
@@ -651,7 +692,7 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
         if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
         return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
       })()}
-      <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
+      <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'unknown')}</span>
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
     </div>
     ${(() => {

@@ -68,3 +68,28 @@ describe('underpowered observe — Studio 详情口径', () => {
     assert.match(html, /样本不足/);
   });
 });
+
+describe('unknown tool outcomes — Studio 详情口径', () => {
+  it('不把不可测失败率渲染成 0% 或生产观测健康', () => {
+    const entry = underpoweredEntry();
+    entry.skillName = 'unknown-outcomes';
+    entry.observe = {
+      analysisId: 'a2',
+      generatedAt: '2026-05-09T10:00:00Z',
+      healthBand: 'yellow',
+      failureRate: 0,
+      segmentCount: 20,
+      gapRate: 0,
+      stability: 'unknown',
+      confidence: 'high',
+    };
+    entry.observeHistory = [entry.observe];
+    entry.band = 'yellow';
+
+    const html = renderSkillDetail(entry, null, 'zh');
+    assert.match(html, /工具结果状态未知/);
+    assert.match(html, /工具失败率不可测/);
+    assert.doesNotMatch(html, /工具失败率 0\.0%/);
+    assert.doesNotMatch(html, /生产观测健康/);
+  });
+});

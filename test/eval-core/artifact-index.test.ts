@@ -8,17 +8,66 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  indexReportWrite, listReportCards, cardToReportDocument, removeReportCard, shouldIndexReport, artifactIndexDir,
+  indexReportWrite, listReportCards, removeReportCard, shouldIndexReport, artifactIndexDir,
 } from '../../src/eval-core/artifact-index.js';
+import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { globalReportsDir } from '../../src/eval-core/measurement-dirs.js';
+import type { ReportDocument } from '../../src/types/index.js';
 
 function makeEvalReport(id: string, variant = 'v1', hash = 'h1'): Record<string, unknown> {
   return {
     kind: 'evaluation',
     id,
-    meta: { timestamp: '2026-06-14T00:00:00Z', variants: [variant], artifactHashes: { [variant]: hash } },
-    summary: { [variant]: { totalSamples: 3, successCount: 2, errorCount: 1 } },
-    results: [{ sample_id: 's1', variants: {} }],
+    meta: {
+      timestamp: '2026-06-14T00:00:00Z',
+      variants: [variant],
+      artifactHashes: { [variant]: hash },
+      model: 'test-model',
+      executor: 'script',
+      sampleCount: 1,
+      taskCount: 1,
+      totalCostUSD: 0,
+      cliVersion: 'test',
+      nodeVersion: process.version,
+      judgeModels: [{ executor: 'script', model: 'test-judge' }],
+    },
+    summary: {
+      [variant]: {
+        totalSamples: 1,
+        successCount: 1,
+        errorCount: 0,
+        errorRate: 0,
+        avgDurationMs: 0,
+        avgInputTokens: 0,
+        avgOutputTokens: 0,
+        avgTotalTokens: 0,
+        totalCostUSD: 0,
+        totalExecCostUSD: 0,
+        totalJudgeCostUSD: 0,
+        avgCostPerSample: 0,
+        avgNumTurns: 1,
+      },
+    },
+    results: [{
+      sample_id: 's1',
+      variants: {
+        [variant]: {
+          ok: true,
+          durationMs: 0,
+          durationApiMs: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          execCostUSD: 0,
+          judgeCostUSD: 0,
+          costUSD: 0,
+          numTurns: 1,
+          outputPreview: 'ok',
+        },
+      },
+    }],
   };
 }
 
@@ -42,7 +91,7 @@ describe('artifact-index 写侧(report 域)', () => {
   });
 
   it('项目写 → 落卡片(无 results),含 id/path/kind/meta/summary', () => {
-    const filePath = join(projDir, 'r1.json');
+    const filePath = join(projDir, reportFileName('r1'));
     indexReportWrite(makeEvalReport('r1') as never, filePath, projDir);
     const cards = listReportCards();
     assert.equal(cards.length, 1);
@@ -56,31 +105,35 @@ describe('artifact-index 写侧(report 域)', () => {
 
   it('全局写 → 不落卡片(shouldIndexReport false,全局靠 live-scan 覆盖)', () => {
     assert.equal(shouldIndexReport(globalReportsDir()), false);
-    indexReportWrite(makeEvalReport('rg') as never, join(globalReportsDir(), 'rg.json'), globalReportsDir());
+    indexReportWrite(makeEvalReport('rg') as never, join(globalReportsDir(), reportFileName('rg')), globalReportsDir());
     assert.equal(listReportCards().length, 0);
   });
 
-  it('cardToReportDocument:卡片 → results:[] 文档(供 list/trend 消费)', () => {
-    indexReportWrite(makeEvalReport('r2') as never, join(projDir, 'r2.json'), projDir);
-    const doc = cardToReportDocument(listReportCards()[0]);
-    assert.equal(doc.kind, 'evaluation');
-    assert.deepEqual(doc.kind === 'evaluation' ? doc.results : null, []);
+  it('卡片只保存发现信息，不伪装成完整 ReportDocument', () => {
+    indexReportWrite(makeEvalReport('r2') as never, join(projDir, reportFileName('r2')), projDir);
+    const card = listReportCards()[0];
+    assert.equal(card.kind, 'evaluation');
+    assert.ok(!('results' in card));
   });
 
   it('removeReportCard:删卡片幂等', () => {
-    indexReportWrite(makeEvalReport('r3') as never, join(projDir, 'r3.json'), projDir);
+    indexReportWrite(makeEvalReport('r3') as never, join(projDir, reportFileName('r3')), projDir);
     assert.equal(removeReportCard('r3'), true);
     assert.equal(listReportCards().length, 0);
     assert.equal(removeReportCard('r3'), false, '再删返回 false(幂等)');
   });
 
   it('非完整报告(无 canonical kind)防御式跳过,不落卡片', () => {
-    indexReportWrite({ id: 'bare' }, join(projDir, 'bare.json'), projDir);
+    indexReportWrite(
+      { id: 'bare' } as unknown as ReportDocument,
+      join(projDir, reportFileName('bare')),
+      projDir,
+    );
     assert.equal(listReportCards().length, 0);
   });
 
   it('坏 kind 卡片(拼错 / doctor)读侧跳过,不污染机器级 list', () => {
-    indexReportWrite(makeEvalReport('good') as never, join(projDir, 'good.json'), projDir);
+    indexReportWrite(makeEvalReport('good') as never, join(projDir, reportFileName('good')), projDir);
     // 直接写一张 kind 不在白名单的卡片(绕过写侧 guard,模拟脏文件 / 别域误落本目录)
     const dir = artifactIndexDir('report');
     mkdirSync(dir, { recursive: true });

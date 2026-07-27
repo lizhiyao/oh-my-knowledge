@@ -26,6 +26,7 @@
 
 import { existsSync, readFileSync, readdirSync, lstatSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
+import { setOwnRecordValue } from '../shared/record-count.js';
 import type {
   DoctorRule,
   DoctorRuleCheckOutcome,
@@ -137,7 +138,7 @@ function collectFiles(
         const over = buf.length > cap;
         const slice = over ? buf.subarray(0, cap) : buf;
         const text = slice.toString('utf-8') + (over ? '\n…[truncated]' : '');
-        files[relPath] = text;
+        setOwnRecordValue(files, relPath, text);
         total += Buffer.byteLength(text, 'utf-8');
       }
     }

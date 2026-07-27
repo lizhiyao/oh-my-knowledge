@@ -5,6 +5,7 @@ import {
   toolCallSignature,
   indexToolCallsByTurn,
   findAssertionTurn,
+  renderTurnContent,
   sampleVerdict,
 } from '../../src/renderer/test-view.js';
 import type { Assertion } from '../../src/types/eval.js';
@@ -41,6 +42,19 @@ describe('indexToolCallsByTurn', () => {
 
   it('returns empty map for undefined turns', () => {
     assert.equal(indexToolCallsByTurn(undefined).size, 0);
+  });
+});
+
+describe('renderTurnContent', () => {
+  it('renders and escapes source-neutral user and tool turns', () => {
+    assert.match(
+      renderTurnContent({ role: 'user', content: '<goal>' }, 'en'),
+      /User input[\s\S]*&lt;goal&gt;/,
+    );
+    assert.match(
+      renderTurnContent({ role: 'tool', content: '<result>' }, 'zh'),
+      /工具结果[\s\S]*&lt;result&gt;/,
+    );
   });
 });
 

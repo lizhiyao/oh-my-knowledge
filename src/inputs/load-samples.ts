@@ -1,8 +1,12 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
-import type { Sample } from '../types/index.js';
-import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
+import type { DependencyRequirements, Sample } from '../types/index.js';
+import {
+  dependencyRequirementsValidationError,
+  sampleContractValidationError,
+} from '../shared/sample-contract.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
 
 interface YamlErrorLike {
   mark?: { line: number };
@@ -105,7 +109,7 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
         );
       }
       seenIds.set(s.sample_id, f);
-      sampleSourceById[s.sample_id] = path;
+      setOwnRecordValue(sampleSourceById, s.sample_id, path);
     }
     allSamples.push(...single.samples);
     mergedRequires = mergeRequires(mergedRequires, single.requires);
@@ -153,11 +157,23 @@ export function validateSamples(samples: Sample[]): void {
     'workflow',
     'workflow_node',
   ]);
+  const firstIndexBySampleId = new Map<string, number>();
 
   for (const [i, sample] of samples.entries()) {
+    if (!sample || typeof sample !== 'object' || Array.isArray(sample)) {
+      throw new Error(`samples[${i}] invalid sample contract: sample must be an object`);
+    }
     if (!sample.sample_id || typeof sample.sample_id !== 'string') {
       throw new Error(`samples[${i}] missing or invalid required field: sample_id (must be a non-empty string)`);
     }
+    const firstIndex = firstIndexBySampleId.get(sample.sample_id);
+    if (firstIndex !== undefined) {
+      throw new Error(
+        `duplicate sample_id "${sample.sample_id}" at samples[${i}] `
+        + `(first defined at samples[${firstIndex}])`,
+      );
+    }
+    firstIndexBySampleId.set(sample.sample_id, i);
     if (!sample.prompt || typeof sample.prompt !== 'string') {
       throw new Error(`samples[${i}] (${sample.sample_id}) missing or invalid required field: prompt (must be a non-empty string)`);
     }
@@ -304,6 +320,13 @@ export function validateSamples(samples: Sample[]): void {
         emitViolation(`${label}: regex pattern 含 CJK 字符 — 同样的语义匹配应走 rubric → judge,而不是字面正则: ${JSON.stringify(a.pattern)}`);
       }
     }
+
+    const contractError = sampleContractValidationError(sample);
+    if (contractError) {
+      throw new Error(
+        `samples[${i}] (${sample.sample_id}) invalid sample contract: ${contractError}`,
+      );
+    }
   }
 }
 
@@ -323,6 +346,12 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
     const wrapper = parsed as { samples: Sample[]; requires?: DependencyRequirements };
     samples = wrapper.samples;
     requires = wrapper.requires;
+    if (requires !== undefined) {
+      const requiresError = dependencyRequirementsValidationError(requires);
+      if (requiresError) {
+        throw new Error(`invalid samples file: ${samplesPath}: ${requiresError}`);
+      }
+    }
   } else {
     throw new Error(`invalid samples file shape: ${samplesPath} (expected an array or an object with a 'samples' field)`);
   }

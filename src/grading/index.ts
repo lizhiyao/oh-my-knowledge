@@ -4,8 +4,11 @@
 
 import type { GradeResult, ExecutorFn, JudgeConfig, Sample, ToolCallInfo, TurnInfo } from '../types/index.js';
 import { ASYNC_ASSERTION_TYPES, ratioToScore, runAssertions, runAsyncAssertions } from './assertions.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
 import { buildTraceSummary, llmJudgeEnsemble, llmJudgeRepeat } from './judge.js';
 import { computeLayeredScores } from './layered-scores.js';
+import { ownRecordValue } from '../shared/record-count.js';
+import { sampleContractValidationError } from '../shared/sample-contract.js';
 
 interface GradeOptions {
   output: string;
@@ -51,6 +54,8 @@ interface GradeOptions {
  * Grade a model output against a sample's criteria.
  */
 export async function grade({ output, sample, judgeModels, judgeExecutors, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, lengthDebias = true }: GradeOptions): Promise<GradeResult> {
+  const sampleError = sampleContractValidationError(sample);
+  if (sampleError) throw new TypeError(`grade(): invalid sample contract: ${sampleError}`);
   if (!judgeModels || judgeModels.length === 0) {
     throw new Error('grade(): judgeModels must be non-empty');
   }
@@ -64,14 +69,14 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
   // code path that needs the executor. Sync-only samples never invoke these
   // helpers, so they can pass `judgeExecutors: {}` (or omit it entirely).
   const requirePrimaryExecutor = (): ExecutorFn => {
-    const exec = judgeExecutorMap[primaryJudge.executor];
+    const exec = ownRecordValue(judgeExecutorMap, primaryJudge.executor);
     if (!exec) {
       throw new Error(`grade(): judgeExecutors missing entry for primary judge "${primaryJudge.executor}"`);
     }
     return exec;
   };
   const executorByName = (name: string): ExecutorFn => {
-    const exec = judgeExecutorMap[name];
+    const exec = ownRecordValue(judgeExecutorMap, name);
     if (!exec) {
       throw new Error(`No executor registered for "${name}"; pipeline must populate judgeExecutors for every judge`);
     }
@@ -132,9 +137,9 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
       const dimOptions = { output, rubric, prompt: sample.prompt, executor: requirePrimaryExecutor(), model: judgeModel, traceSummary, lengthDebias };
-      results.dimensions[dim] = useEnsemble
+      setOwnRecordValue(results.dimensions, dim, useEnsemble
         ? await llmJudgeEnsemble(dimOptions, judgeModels, executorByName, judgeRepeat)
-        : await llmJudgeRepeat(dimOptions, judgeRepeat);
+        : await llmJudgeRepeat(dimOptions, judgeRepeat));
     }
     const dimValues = Object.values(results.dimensions);
     const dimScores = dimValues.map((d) => d.score).filter((s) => s > 0);

@@ -19,6 +19,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Mock, MockReturn } from '../types/eval.js';
+import { incrementRecordCount, setOwnRecordValue } from '../shared/record-count.js';
 
 // ─── Match logic ────────────────────────────────────────────────────────────
 
@@ -233,7 +234,7 @@ export function buildSdkHookCallback(
         hitCounters.set(i, c + 1);
         stats.hits++;
         const key = keyOfMock[i];
-        stats.perMock[key] = (stats.perMock[key] || 0) + 1;
+        incrementRecordCount(stats.perMock, key);
         // 关键 UX:LLM 看到 permissionDecision='deny' 容易误判"被拒绝/失败"。
         // 给 reason 加一行最小前缀,告诉它把内容当成真实成功输出。措辞越短越好 ——
         // 长措辞会显著拉慢多步 sample(每个工具调用都要读这段),实测 6 步流程从 60s 拖到 120s+。
@@ -341,11 +342,11 @@ export function materializeForCliConfigDir(
     writeFileSync(mcpServerScript, fakeMcpServerSource(), 'utf8');
     const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {};
     for (const serverName of fakeMcpServers.keys()) {
-      mcpServers[serverName] = {
+      setOwnRecordValue(mcpServers, serverName, {
         command: 'node',
         args: [mcpServerScript, serverName],
         env: { OMK_MOCKS_FILE: mocksFile },
-      };
+      });
     }
     writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers }, null, 2));
   }
@@ -412,6 +413,20 @@ const mocksFile = process.env.OMK_MOCKS_FILE;
 const rl = readline.createInterface({ input: process.stdin });
 
 function send(obj) { process.stdout.write(JSON.stringify(obj) + '\\n'); }
+function recordCount(record, key) {
+  const value = Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+function incrementRecordCount(record, key, amount = 1) {
+  const next = recordCount(record, key) + amount;
+  Object.defineProperty(record, key, {
+    value: next,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return next;
+}
 function globMatch(pattern, value) {
   const escaped = pattern.replace(/[.+?^\${}()|[\\]\\\\]/g, '\\\\$&');
   return new RegExp('^' + escaped.replace(/\\*/g, '.*') + '$', 's').test(value);
@@ -498,7 +513,12 @@ function schemaForTool(name, mocks) {
     const input = m.match && m.match.input;
     if (typeof input !== 'object' || input === null || Array.isArray(input)) continue;
     for (const k of Object.keys(input)) {
-      properties[k] = inferJsonSchema(input[k]);
+      Object.defineProperty(properties, k, {
+        value: inferJsonSchema(input[k]),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
       if (!required.includes(k)) required.push(k);
     }
   }
@@ -529,9 +549,10 @@ function recordHit(mockKey) {
   const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
   let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
   try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
-  if (!stats.perMock) stats.perMock = {};
-  stats.perMock[mockKey] = (stats.perMock[mockKey] || 0) + 1;
-  stats.hits_total = (stats.hits_total || 0) + 1;
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) stats = {};
+  if (!stats.perMock || typeof stats.perMock !== 'object' || Array.isArray(stats.perMock)) stats.perMock = {};
+  incrementRecordCount(stats.perMock, mockKey);
+  stats.hits_total = recordCount(stats, 'hits_total') + 1;
   fs.writeFileSync(statsFile, JSON.stringify(stats));
 }
 function recordMiss() {
@@ -539,7 +560,8 @@ function recordMiss() {
   const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
   let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
   try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
-  stats.misses_total = (stats.misses_total || 0) + 1;
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) stats = {};
+  stats.misses_total = recordCount(stats, 'misses_total') + 1;
   fs.writeFileSync(statsFile, JSON.stringify(stats));
 }
 const hitCounters = new Map();

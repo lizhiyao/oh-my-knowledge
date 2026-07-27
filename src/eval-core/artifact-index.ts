@@ -9,13 +9,17 @@
  * 三域共用 `artifactIndexDir(domain)` + tmp-rename 原子写 + 指纹缓存读 的同一套机制,各域只差「投影成卡片」
  * 与「卡片还原成 snapshot」两段域特定逻辑。
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, unlinkSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { DEFAULT_ARTIFACT_INDEX_DIR } from './default-dirs.js';
 import { globalReportsDir, globalDoctorsDir, globalObserveHealthDir } from './measurement-dirs.js';
-import type { BatchEvaluationReport, EvaluationReport, ReportDocument, ReportIndexCard } from '../types/index.js';
-import type { SkillDoctorSnapshot } from '../types/skill-index.js';
+import type { ReportDocument, ReportIndexCard } from '../types/index.js';
 import type { DoctorSkillStatus } from '../types/doctor.js';
+import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { isRfc3339Timestamp } from '../shared/timestamp.js';
+import { reportFilePath, safeArtifactFileStem } from './artifact-file-names.js';
+import { parseReportDocument, parseReportIndexCard } from './report-document.js';
 
 export type ArtifactDomain = 'report' | 'doctor' | 'observe-health';
 
@@ -43,38 +47,53 @@ export function shouldIndexReport(outputDir: string): boolean {
 }
 
 function safeFileName(id: string): string {
-  return id.replaceAll(/[/\\:*?"<>|]/g, '_');
+  return safeArtifactFileStem(id);
+}
+
+function isCanonicalCardId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && safeFileName(value) === value;
+}
+
+function isCanonicalCardPath(path: unknown, id: string): path is string {
+  return typeof path === 'string'
+    && resolve(path) === path
+    && reportFilePath(dirname(path), id) === path;
 }
 
 // 卡片读侧小 guard:索引是可重生 scratch,坏卡片(脏文件 / 别域误落 / 字段缺失)读侧从严跳过,
 // 不让 undefined / 非法枚举 / NaN 当可信输入污染 studio。
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isNonNegativeInteger = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+const isRate = (v: unknown): v is number => isFiniteNumber(v) && v >= 0 && v <= 1;
 const isDoctorStatus = (v: unknown): v is DoctorSkillStatus => v === 'pass' || v === 'warn' || v === 'fail';
 const isHealthBand = (v: unknown): v is 'green' | 'yellow' | 'red' => v === 'green' || v === 'yellow' || v === 'red';
 const isConfidence = (v: unknown): boolean => v === undefined || v === 'high' || v === 'low' || v === 'underpowered';
 
 /** 原子写一张卡片(tmp+rename,防半截 JSON 被 reader 读到)。 */
 function writeCard(domain: ArtifactDomain, id: string, card: object): void {
-  const indexDir = artifactIndexDir(domain);
-  mkdirSync(indexDir, { recursive: true });
-  const target = join(indexDir, `${safeFileName(id)}.json`);
-  const tmp = `${target}.tmp.${process.pid}.${Math.random().toString(36).slice(2)}`;
-  writeFileSync(tmp, JSON.stringify(card, null, 2));
-  renameSync(tmp, target);
+  if (!isCanonicalCardId(id)) throw new Error('invalid artifact index id');
+  writeJsonFileAtomic(join(artifactIndexDir(domain), `${id}.json`), card);
 }
 
 /** 读某域全部卡片,逐条用 `valid` 谓词过滤坏文件 / 缺字段(索引是 scratch,读侧从严)。 */
-function readArtifactCards<T>(domain: ArtifactDomain, valid: (c: unknown) => c is T): T[] {
+function readArtifactCards<T>(
+  domain: ArtifactDomain,
+  valid: (c: unknown) => c is T,
+): T[] {
   const dir = artifactIndexDir(domain);
   if (!existsSync(dir)) return [];
   let files: string[];
   try { files = readdirSync(dir); } catch { return []; }
   const out: T[] = [];
-  for (const f of files) {
+  for (const f of files.sort()) {
     if (!f.endsWith('.json') || f.includes('.json.tmp.')) continue;
     try {
       const c: unknown = JSON.parse(readFileSync(join(dir, f), 'utf-8'));
-      if (valid(c)) out.push(c);
+      if (
+        valid(c)
+        && isCanonicalCardId((c as { id?: unknown }).id)
+        && f === `${(c as { id: string }).id}.json`
+      ) out.push(c);
     } catch { /* skip corrupt card */ }
   }
   return out;
@@ -82,8 +101,9 @@ function readArtifactCards<T>(domain: ArtifactDomain, valid: (c: unknown) => c i
 
 /** 删某域某 id 的卡片。幂等、best-effort。返回卡片是否曾存在。 */
 function removeArtifactCard(domain: ArtifactDomain, id: string): boolean {
+  if (!isCanonicalCardId(id)) return false;
   try {
-    const p = join(artifactIndexDir(domain), `${safeFileName(id)}.json`);
+    const p = join(artifactIndexDir(domain), `${id}.json`);
     if (!existsSync(p)) return false;
     unlinkSync(p);
     return true;
@@ -109,19 +129,19 @@ function liveCards<T extends { path: string }>(cards: T[]): T[] {
  * 缓存失效 → live 过滤生效。读卡片只为拿 path,字段宽松。
  */
 export function cardTargetSentinel(domain: ArtifactDomain): string {
-  const dir = artifactIndexDir(domain);
-  if (!existsSync(dir)) return '';
-  let files: string[];
-  try { files = readdirSync(dir); } catch { return ''; }
+  const cards = domain === 'report'
+    ? listReportCards()
+    : domain === 'doctor'
+      ? listDoctorCards()
+      : listObserveCards();
   const parts: string[] = [];
-  for (const f of files) {
-    if (!f.endsWith('.json') || f.includes('.json.tmp.')) continue;
+  for (const card of cards) {
     try {
-      const c = JSON.parse(readFileSync(join(dir, f), 'utf-8')) as { path?: unknown };
-      if (typeof c.path !== 'string') continue;
-      try { const s = statSync(c.path); parts.push(`${f}=${s.mtimeMs}:${s.size}`); }
-      catch { parts.push(`${f}=gone`); }
-    } catch { /* skip corrupt */ }
+      const stat = statSync(card.path);
+      parts.push(`${card.id}.json=${stat.mtimeMs}:${stat.size}`);
+    } catch {
+      parts.push(`${card.id}.json=gone`);
+    }
   }
   return parts.sort().join(',');
 }
@@ -131,20 +151,20 @@ export function cardTargetSentinel(domain: ArtifactDomain): string {
 /** 报告投影成卡片(剥掉 results 重体)。 */
 function reportCard(report: ReportDocument, sourcePath: string): ReportIndexCard {
   return report.kind === 'evaluation'
-    ? { domain: 'report', id: report.id, path: sourcePath, kind: 'evaluation', meta: report.meta, summary: report.summary }
-    : { domain: 'report', id: report.id, path: sourcePath, kind: 'batch-evaluation', meta: report.meta, items: report.items };
+    ? { domain: 'report', id: report.id, path: resolve(sourcePath), kind: 'evaluation', meta: report.meta, summary: report.summary }
+    : { domain: 'report', id: report.id, path: resolve(sourcePath), kind: 'batch-evaluation', meta: report.meta, items: report.items };
 }
 
 /**
  * persistReport 的索引钩子:报告落盘后 best-effort 追加卡片。永不抛、永不阻断报告落盘。
  * 入参故意收 `{id}` 宽松(同 persistReport 的 PersistableReport):非完整报告(无 canonical kind)防御式跳过。
  */
-export function indexReportWrite(report: { id: string }, sourcePath: string, outputDir: string): void {
+export function indexReportWrite(report: ReportDocument, sourcePath: string, outputDir: string): void {
   try {
     if (!shouldIndexReport(outputDir)) return;
-    const doc = report as Partial<ReportDocument>;
-    if (doc.kind !== 'evaluation' && doc.kind !== 'batch-evaluation') return;
-    writeCard('report', report.id, reportCard(doc as ReportDocument, sourcePath));
+    const parsed = parseReportDocument(report, report.id, report.id);
+    if (!parsed) return;
+    writeCard('report', report.id, reportCard(parsed, sourcePath));
   } catch {
     // 索引可重建,失败静默(可选 stderr warn);正文已落盘不受影响。
   }
@@ -152,25 +172,15 @@ export function indexReportWrite(report: { id: string }, sourcePath: string, out
 
 /** 读 report 域全部卡片(跳过坏文件 / 缺字段 / 坏 kind)。 */
 export function listReportCards(): ReportIndexCard[] {
-  return readArtifactCards('report', (c): c is ReportIndexCard => {
-    const card = c as Partial<ReportIndexCard>;
-    // kind 白名单:cardToReportDocument 对任何非 evaluation 一律按 batch 投影,坏 kind(拼错 / 'doctor')
-    // 会污染机器级 list 成空 batch 报告。索引是可重生 scratch,读侧从严跳过坏卡片。
-    const kindOk = card?.kind === 'evaluation' || card?.kind === 'batch-evaluation';
-    return !!card && card.domain === 'report' && kindOk && typeof card.id === 'string' && typeof card.path === 'string' && !!card.meta;
-  });
+  return readArtifactCards(
+    'report',
+    (value): value is ReportIndexCard => parseReportIndexCard(value) !== null,
+  );
 }
 
 /** report 卡片(过滤悬空真身):供 studio 机器级 list / findBy 展示。 */
 export function listLiveReportCards(): ReportIndexCard[] {
   return liveCards(listReportCards());
-}
-
-/** 卡片 → ReportDocument(results:[]):供 studio list / buildSkillIndex / trend 消费(它们不读 results)。 */
-export function cardToReportDocument(card: ReportIndexCard): ReportDocument {
-  return card.kind === 'evaluation'
-    ? { kind: 'evaluation', id: card.id, meta: card.meta as EvaluationReport['meta'], summary: card.summary ?? {}, results: [] }
-    : { kind: 'batch-evaluation', id: card.id, mode: 'skill', meta: card.meta as BatchEvaluationReport['meta'], items: card.items ?? [] };
 }
 
 /** 删 report 域某 id 的卡片(DELETE 报告时连卡片一起删,使其从机器级 list 消失)。幂等、best-effort。 */
@@ -200,7 +210,11 @@ export interface DoctorIndexCard {
 export function indexDoctorWrite(card: Omit<DoctorIndexCard, 'domain'>, outputDir: string): void {
   try {
     if (!shouldIndexDir(outputDir, globalDoctorsDir())) return;
-    writeCard('doctor', card.id, { domain: 'doctor', ...card } satisfies DoctorIndexCard);
+    writeCard('doctor', card.id, {
+      domain: 'doctor',
+      ...card,
+      path: resolve(card.path),
+    } satisfies DoctorIndexCard);
   } catch { /* 索引可重建,失败静默 */ }
 }
 
@@ -208,27 +222,29 @@ export function indexDoctorWrite(card: Omit<DoctorIndexCard, 'domain'>, outputDi
 export function listDoctorCards(): DoctorIndexCard[] {
   return readArtifactCards('doctor', (c): c is DoctorIndexCard => {
     const card = c as Partial<DoctorIndexCard>;
-    return !!card && card.domain === 'doctor' && typeof card.id === 'string' && typeof card.path === 'string'
-      && typeof card.skillName === 'string' && typeof card.reportId === 'string' && typeof card.timestamp === 'string'
+    return !!card && card.domain === 'doctor' && isCanonicalCardId(card.id)
+      && isCanonicalCardPath(card.path, card.id)
+      && typeof card.skillName === 'string' && card.skillName.length > 0
+      && typeof card.reportId === 'string' && card.reportId.length > 0
+      && isRfc3339Timestamp(card.timestamp)
       && isDoctorStatus(card.status)
-      && isFiniteNumber(card.passCount) && isFiniteNumber(card.warnCount) && isFiniteNumber(card.failCount);
+      && isNonNegativeInteger(card.passCount)
+      && isNonNegativeInteger(card.warnCount)
+      && isNonNegativeInteger(card.failCount)
+      && (() => {
+        try {
+          sumRecordCounts(card.passCount, card.warnCount, card.failCount);
+          return true;
+        } catch {
+          return false;
+        }
+      })();
   });
 }
 
 /** doctor 卡片(过滤悬空真身):供 buildSkillIndex 机器级合并。 */
 export function listLiveDoctorCards(): DoctorIndexCard[] {
   return liveCards(listDoctorCards());
-}
-
-/** doctor 卡片 → (skillName, SkillDoctorSnapshot)。results:[](逐规则详情需回源项目看)。 */
-export function cardToDoctorSnapshot(card: DoctorIndexCard): { skillName: string; snap: SkillDoctorSnapshot } {
-  return {
-    skillName: card.skillName,
-    snap: {
-      reportId: card.reportId, timestamp: card.timestamp, status: card.status,
-      passCount: card.passCount, warnCount: card.warnCount, failCount: card.failCount, results: [],
-    },
-  };
 }
 
 /** 删 doctor 域某 id(文件 stem)的卡片。doctor 历史按 50/skill prune,删正文时必须连卡片一起删,
@@ -242,9 +258,15 @@ export function removeDoctorCard(id: string): boolean {
 /** observe 报告投影到卡片所需的结构子集(不 import observability/SkillHealthReport,保持 eval-core 解耦)。 */
 interface ObserveCardSkill {
   toolFailureRate: number;
+  toolFailureCount?: number;
+  toolCallCount?: number;
+  toolResolvedCount?: number;
+  toolCancelledCount?: number;
+  toolUnknownCount?: number;
   segmentCount: number;
   gap?: { weightedGapRate?: number };
   confidence?: 'high' | 'low' | 'underpowered';
+  stability?: 'stable' | 'unstable' | 'very-unstable' | 'unknown';
 }
 interface ObserveSource {
   meta: { generatedAt: string; sessionCount: number; segmentCount: number };
@@ -269,13 +291,21 @@ export function indexObserveWrite(report: ObserveSource, sourcePath: string, out
     if (!shouldIndexDir(outputDir, globalObserveHealthDir())) return;
     const bySkill: Record<string, ObserveCardSkill> = {};
     for (const [name, h] of Object.entries(report.bySkill || {})) {
-      bySkill[name] = {
-        toolFailureRate: h.toolFailureRate, segmentCount: h.segmentCount,
-        gap: { weightedGapRate: h.gap?.weightedGapRate ?? 0 }, confidence: h.confidence,
-      };
+      setOwnRecordValue(bySkill, name, {
+        toolFailureRate: h.toolFailureRate,
+        toolFailureCount: h.toolFailureCount,
+        toolCallCount: h.toolCallCount,
+        toolResolvedCount: h.toolResolvedCount,
+        toolCancelledCount: h.toolCancelledCount,
+        toolUnknownCount: h.toolUnknownCount,
+        segmentCount: h.segmentCount,
+        gap: { weightedGapRate: h.gap?.weightedGapRate ?? 0 },
+        confidence: h.confidence,
+        stability: h.stability,
+      });
     }
     const card: ObserveIndexCard = {
-      domain: 'observe-health', id, path: sourcePath,
+      domain: 'observe-health', id, path: resolve(sourcePath),
       meta: { generatedAt: report.meta.generatedAt, sessionCount: report.meta.sessionCount, segmentCount: report.meta.segmentCount },
       overall: { healthBand: report.overall.healthBand, confidence: report.overall.confidence },
       bySkill,
@@ -288,18 +318,79 @@ export function indexObserveWrite(report: ObserveSource, sourcePath: string, out
 export function listObserveCards(): ObserveIndexCard[] {
   return readArtifactCards('observe-health', (c): c is ObserveIndexCard => {
     const card = c as Partial<ObserveIndexCard>;
-    if (!card || card.domain !== 'observe-health' || typeof card.id !== 'string' || typeof card.path !== 'string') return false;
+    if (
+      !card
+      || card.domain !== 'observe-health'
+      || !isCanonicalCardId(card.id)
+      || !isCanonicalCardPath(card.path, card.id)
+    ) return false;
     const meta = card.meta; const overall = card.overall; const bySkill = card.bySkill;
-    if (!meta || !isFiniteNumber(meta.sessionCount) || !isFiniteNumber(meta.segmentCount) || typeof meta.generatedAt !== 'string') return false;
+    if (
+      !meta
+      || !isNonNegativeInteger(meta.sessionCount)
+      || !isNonNegativeInteger(meta.segmentCount)
+      || !isRfc3339Timestamp(meta.generatedAt)
+    ) return false;
     if (!overall || !isHealthBand(overall.healthBand) || !isConfidence(overall.confidence)) return false;
-    if (!bySkill || typeof bySkill !== 'object') return false;
+    if (!bySkill || typeof bySkill !== 'object' || Array.isArray(bySkill)) return false;
     // 每个 skill 的标量也校验:坏 toolFailureRate / segmentCount / gap.weightedGapRate 会让 bandFromObserveHealth /
     // 趋势 / 健康快照出 NaN(buildSkillIndex 直接取 h.gap?.weightedGapRate ?? 0 进 gapRate、参与阈值判断)。
-    for (const h of Object.values(bySkill)) {
-      if (!h || !isFiniteNumber(h.toolFailureRate) || !isFiniteNumber(h.segmentCount) || !isConfidence(h.confidence)) return false;
-      if (h.gap !== undefined && h.gap.weightedGapRate !== undefined && !isFiniteNumber(h.gap.weightedGapRate)) return false;
+    const segmentCounts: number[] = [];
+    for (const [skillName, h] of Object.entries(bySkill)) {
+      if (skillName.length === 0) return false;
+      if (!h || !isRate(h.toolFailureRate) || !isNonNegativeInteger(h.segmentCount) || !isConfidence(h.confidence)) return false;
+      segmentCounts.push(h.segmentCount);
+      if (h.toolFailureCount !== undefined && !isNonNegativeInteger(h.toolFailureCount)) return false;
+      if (h.toolCallCount !== undefined && !isNonNegativeInteger(h.toolCallCount)) return false;
+      if (h.toolResolvedCount !== undefined && !isNonNegativeInteger(h.toolResolvedCount)) return false;
+      if (h.toolCancelledCount !== undefined && !isNonNegativeInteger(h.toolCancelledCount)) return false;
+      if (h.toolUnknownCount !== undefined && !isNonNegativeInteger(h.toolUnknownCount)) return false;
+      if (
+        h.toolCallCount === undefined
+        && (
+          h.toolResolvedCount !== undefined
+          || h.toolCancelledCount !== undefined
+          || h.toolUnknownCount !== undefined
+        )
+      ) return false;
+      if (
+        h.toolCallCount !== undefined
+        && (
+          (h.toolResolvedCount ?? 0) > h.toolCallCount
+          || (h.toolCancelledCount ?? 0) > (h.toolResolvedCount ?? h.toolCallCount)
+          || (h.toolUnknownCount ?? 0) > h.toolCallCount
+          || (
+            h.toolResolvedCount !== undefined
+            && h.toolUnknownCount !== undefined
+            && h.toolResolvedCount + h.toolUnknownCount !== h.toolCallCount
+          )
+        )
+      ) return false;
+      if (
+        h.toolFailureCount !== undefined
+        && h.toolCallCount !== undefined
+      ) {
+        const resolved = h.toolResolvedCount ?? h.toolCallCount;
+        const comparable = resolved - (h.toolCancelledCount ?? 0);
+        const expectedFailureRate = comparable > 0
+          ? Number((h.toolFailureCount / comparable).toFixed(4))
+          : 0;
+        if (
+          h.toolFailureCount > comparable
+          || Math.abs(h.toolFailureRate - expectedFailureRate) > 0.0001
+        ) return false;
+      }
+      if (
+        h.stability !== undefined
+        && !['stable', 'unstable', 'very-unstable', 'unknown'].includes(h.stability)
+      ) return false;
+      if (h.gap !== undefined && h.gap.weightedGapRate !== undefined && !isRate(h.gap.weightedGapRate)) return false;
     }
-    return true;
+    try {
+      return sumRecordCounts(...segmentCounts) === meta.segmentCount;
+    } catch {
+      return false;
+    }
   });
 }
 

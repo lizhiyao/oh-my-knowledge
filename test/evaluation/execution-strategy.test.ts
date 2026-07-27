@@ -81,6 +81,15 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.allowedSkills, undefined);
   });
 
+  it('programmatic callers cannot bypass the non-empty allowedSkills rejection', () => {
+    const task = mockTask('skill', 'my skill');
+    task.artifact.allowedSkills = ['hidden-skill'];
+    assert.throws(
+      () => resolveExecutionStrategy(task, 'sonnet'),
+      /allowedSkills=.*hidden-skill.*不再支持/,
+    );
+  });
+
   // strict-baseline cwd 沙箱:baseline 跑在 isolated empty dir,避免
   // 通过 Glob/Read 工具走 cwd 路径绕过 SDK skill isolation 直接读 skills/symlink。
   it('strict baseline (kind=baseline + allowedSkills=[]) + 没显式 cwd → effectiveCwd 是 isolated dir', () => {

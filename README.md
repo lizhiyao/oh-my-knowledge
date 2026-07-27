@@ -38,9 +38,16 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 Runs out of the box — no edits needed first. `omk init` scaffolds two skill variants and three sample cases; `--dry-run` previews calls and cost; `omk eval` runs the controlled A/B and opens an HTML report with a one-line verdict in about five minutes. Once it runs, swap in your own skills and cases.
 
-Prerequisite: the default executor and judge use the `claude` CLI — install and log in first (see [Requirements](#requirements)); to use another model or run offline (no API key) see [executors](docs/reference/executors.md).
+Prerequisite: configure one authenticated model runtime (Codex CLI, Claude Code, or an API executor; see [Requirements](#requirements)). Inside a Codex task in the ChatGPT desktop app, omk automatically selects `codex`, reads the model from `~/.codex/config.toml`, and uses the same Codex model as the default judge. Claude is not required.
 
-Codex or OpenAI-compatible API users can keep the same flow and add runtime flags, for example `--executor codex --model <codex-model> --judge-models codex:<codex-model>` or `--executor openai-api --model <model> --judge-models openai-api:<model>`.
+To make Codex the default in regular terminals, add the preference to your shell profile (for example `~/.zshrc`):
+
+```bash
+export OMK_EXECUTOR=codex
+# Optional: export OMK_MODEL="your-codex-model"
+```
+
+Without `OMK_MODEL`, omk reads the model from `~/.codex/config.toml`. You can still pass `--executor codex --model <codex-model>` per command. Pass `--judge-models` or set `OMK_JUDGE_MODELS` only when you want a different judge.
 
 > The first run has only 3 cases, so the verdict will usually be `UNDERPOWERED` (insufficient data) — that's a normal starting point, not an error; grow to ~20+ cases before trusting a ship/no-ship call.
 
@@ -89,7 +96,7 @@ These slash commands are natural-language entry points — the agent reads the c
 
 ### Use inside Codex
 
-Codex does not support Claude Code style `/omk ...` slash commands. Ask the agent to run the `omk` CLI directly:
+Codex does not support Claude Code style `/omk ...` slash commands. Ask the agent to run the `omk` CLI directly. Inside a Codex task, omk automatically selects the Codex runtime and locally configured model:
 
 ```bash
 omk eval
@@ -98,6 +105,8 @@ omk sample skills/my-skill.md
 ```
 
 You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
+
+`eval`, `doctor`, `sample`, `evolve`, and the LLM-enhanced observe review share the same runtime resolution. Once Codex is selected, the default judge reuses the evaluated Codex model instead of falling back to `claude:haiku`.
 
 > `omk evolve` is a one-shot loop: it runs the doctor gate first, auto-generates eval samples when the target skill has none, then self-iterates. For a brand-new skill, just run `omk evolve skills/foo.md`.
 
@@ -135,7 +144,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; repeats the audit (`--repeat`) and merges findings by k/n consensus |
-| **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
+| **Production observability** | normalize Codex, Claude Code, OpenClaw, and markdown logs into source-neutral Trace IR; measure per-skill outcomes / latency / token use / knowledge-gap signals |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
 | **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
@@ -168,14 +177,19 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 
 | Variable | Description |
 |---|---|
+| `OMK_EXECUTOR` | default executor preference, e.g. `codex` / `codex-sdk` / `claude` |
+| `OMK_MODEL` | default evaluated model; Codex reads local `config.toml` when unset |
+| `OMK_JUDGE_MODELS` | default judge list in `executor:model[,...]` format |
 | `CCV_PROXY_URL` | proxy requests through cc-viewer for live eval-traffic visualization |
 | `OMK_REPORT_PORT` | report server port (default: 7799) |
 
 ## Requirements
 
 - Node.js >= 22
-- `claude` CLI (for the default executor and LLM judge; see [Claude Code](https://claude.ai/code))
-  - not needed if you use other executors (openai-api / anthropic-api / gemini) with `--no-judge`
+- At least one authenticated model runtime:
+  - Codex: install and authenticate the Codex CLI (`npm i -g @openai/codex`); Codex tasks in the ChatGPT desktop app select it automatically
+  - Claude: install and authenticate [Claude Code](https://claude.ai/code)
+  - API / other executors: configure them as described in [Executors](docs/reference/executors.md)
 
 ## Security notice
 

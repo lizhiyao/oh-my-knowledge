@@ -31,8 +31,36 @@ function writeReport(dir: string, opts: MiniReportOpts): void {
   const doc = {
     kind: 'evaluation',
     id: opts.id,
-    meta: { timestamp: opts.timestamp, variants: [opts.variant], artifactHashes: { [opts.variant]: opts.hash } },
-    summary: { [opts.variant]: {} },
+    meta: {
+      timestamp: opts.timestamp,
+      variants: [opts.variant],
+      artifactHashes: { [opts.variant]: opts.hash },
+      model: 'test-model',
+      executor: 'script',
+      sampleCount: 0,
+      taskCount: 0,
+      totalCostUSD: 0,
+      cliVersion: 'test',
+      nodeVersion: process.version,
+      judgeModels: [{ executor: 'script', model: 'test-judge' }],
+    },
+    summary: {
+      [opts.variant]: {
+        totalSamples: 0,
+        successCount: 0,
+        errorCount: 0,
+        errorRate: 0,
+        avgDurationMs: 0,
+        avgInputTokens: 0,
+        avgOutputTokens: 0,
+        avgTotalTokens: 0,
+        totalCostUSD: 0,
+        totalExecCostUSD: 0,
+        totalJudgeCostUSD: 0,
+        avgCostPerSample: 0,
+        avgNumTurns: 0,
+      },
+    },
     results: [],
   };
   writeFileSync(join(dir, reportFileName(opts.id)), JSON.stringify(doc));
@@ -138,6 +166,29 @@ describe('createOverlayReportStore 项目盖全局', () => {
       assert.equal(await store.get('rg'), null, '删后取不到');
       assert.equal(await store.remove('rp'), true, '删项目那份');
       assert.equal(await store.remove('missing'), false, '两处都无 → false');
+    } finally {
+      rmSync(proj, { recursive: true, force: true });
+      rmSync(glob, { recursive: true, force: true });
+    }
+  });
+
+  it('remove:同一 id 在项目与全局都有副本时两处都删，避免回退复活', async () => {
+    const proj = mkTmp('rm-dup-p');
+    const glob = mkTmp('rm-dup-g');
+    try {
+      const opts = {
+        id: 'duplicate',
+        variant: 'v',
+        hash: 'hash',
+        timestamp: '2026-02-02T00:00:00Z',
+      };
+      writeReport(proj, opts);
+      writeReport(glob, opts);
+      const store = createOverlayReportStore(proj, glob);
+
+      assert.equal(await store.remove('duplicate'), true);
+      assert.equal(await store.get('duplicate'), null);
+      assert.equal(await store.exists('duplicate'), false);
     } finally {
       rmSync(proj, { recursive: true, force: true });
       rmSync(glob, { recursive: true, force: true });

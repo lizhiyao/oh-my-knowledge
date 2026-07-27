@@ -40,9 +40,9 @@ omk eval --control baseline --treatment echo-assistant \
 
 ## 关于评委
 
-- `--judge-models <list>` 指定评委，格式 `executor:model[,executor:model]`。默认 `${executor}:haiku`（没设 `--executor` 时为 `claude:haiku`）
+- `--judge-models <list>` 指定评委，格式 `executor:model[,executor:model]`。默认跟随所选执行器；Codex 沿用被测模型，Claude 使用 `haiku`
 - 1 条 = 单评委；≥ 2 条 = 多评委 ensemble + inter-judge agreement
-- 没有 Claude 时把 `--judge-models` 指向你可用的模型，例如 `--judge-models openai-api:glm-4-plus`
+- OpenAI 兼容 API 等执行器应显式指定端点可用的评委模型，例如 `--judge-models openai-api:glm-4-plus`
 - 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
 
 执行器全表见 [执行器](../reference/executors)，指定被评测对象的方式见 [Artifact 与 variant 布局](../reference/artifact-layout)。

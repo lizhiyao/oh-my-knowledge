@@ -1,30 +1,26 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, symlink } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Codex, CodexOptions, ThreadEvent } from '@openai/codex-sdk';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { extractCodexTrace, isCodexResultEvent } from './codex-cli-trace.js';
 import type { CodexEvent } from './shared.js';
+import { buildCodexResult } from './codex-protocol.js';
 import {
   asErrorLike,
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
+  interruptedExecResult,
+  normalizeCodexProtocolEvent,
+  registerSigintSubscriber,
   timeoutExecResult,
 } from './shared.js';
-import {
-  extractCodexFinalOutput,
-  extractCodexStopReason,
-  extractCodexUsage,
-  isolateCodexCwd,
-  sumCodexElapsed,
-} from './codex-cli.js';
+import { isolateCodexCwd } from './codex-cli.js';
 
 type CodexSdkModule = typeof import('@openai/codex-sdk');
 
 let CodexCtor: CodexSdkModule['Codex'] | null = null;
-let codexHomePromise: Promise<string> | null = null;
 let hasWarnedSystem = false;
 let hasWarnedCost = false;
 
@@ -44,37 +40,31 @@ async function getCodexCtor(): Promise<CodexSdkModule['Codex']> {
 // instructions, tool config)into the eval and pollute `~/.codex/sessions/`
 // across runs.
 //
-// Mitigation: redirect $CODEX_HOME to a per-process tmp dir for codex-sdk only.
-// auth.json is symlinked from the real CODEX_HOME so the SDK can still
-// authenticate; config.toml + sessions/ stay isolated. Tmp dir stays alive for
-// the OS to rotate(no explicit cleanup, matches DEFAULT_TIMEOUT_MS scope).
+// Mitigation: redirect $CODEX_HOME to a fresh tmp dir for every codex-sdk run.
+// auth.json is copied from the real CODEX_HOME so token refreshes cannot mutate
+// the user's credential file through a symlink; config.toml + sessions/ stay
+// isolated and the tmp dir is removed after the SDK child exits.
 //
-// Best-effort on Windows where symlink may need elevated privileges; on
-// failure, the codex-sdk executor still runs but lands in the user's real
-// CODEX_HOME with a stderr warning.
+// The SDK still does not expose codex CLI's `--ignore-rules`. Project
+// execpolicy is therefore part of codex-sdk's runtime context; use codex-cli
+// when that final isolation boundary matters.
 export async function getIsolatedCodexHome(): Promise<string> {
-  if (!codexHomePromise) {
-    codexHomePromise = (async () => {
-      const tmpHome = await mkdtemp(join(tmpdir(), 'omk-codex-sdk-'));
-      const realHome = process.env.CODEX_HOME || join(homedir(), '.codex');
-      const realAuth = join(realHome, 'auth.json');
-      if (existsSync(realAuth)) {
-        try {
-          await symlink(realAuth, join(tmpHome, 'auth.json'));
-        } catch (err) {
-          process.stderr.write(`[codex-sdk] CODEX_HOME isolation: auth.json symlink failed (${(err as Error).message}); SDK will use bare tmp home and may fail to authenticate\n`);
-        }
-      }
-      return tmpHome;
-    })();
+  const tmpHome = await mkdtemp(join(tmpdir(), 'omk-codex-sdk-'));
+  const realHome = process.env.CODEX_HOME || join(homedir(), '.codex');
+  const realAuth = join(realHome, 'auth.json');
+  if (existsSync(realAuth)) {
+    try {
+      await copyFile(realAuth, join(tmpHome, 'auth.json'));
+    } catch (err) {
+      process.stderr.write(`[codex-sdk] CODEX_HOME isolation: auth.json copy failed (${(err as Error).message}); SDK will use bare tmp home and may fail to authenticate\n`);
+    }
   }
-  return codexHomePromise;
+  return tmpHome;
 }
 
 // exported for test isolation
 export function __resetCodexSdkStateForTest(): void {
   CodexCtor = null;
-  codexHomePromise = null;
   hasWarnedSystem = false;
   hasWarnedCost = false;
 }
@@ -109,7 +99,7 @@ export async function createCodexSdkClient(env: NodeJS.ProcessEnv): Promise<Code
 }
 
 function normalizeSdkEvent(event: ThreadEvent): CodexEvent {
-  return event as CodexEvent;
+  return normalizeCodexProtocolEvent(event) ?? {};
 }
 
 export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose }: ExecutorInput): Promise<ExecResult> {
@@ -129,7 +119,15 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
 
   const start = Date.now();
   const abortController = new AbortController();
-  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+  let abortReason: 'timeout' | 'interrupted' | undefined;
+  const abort = (reason: NonNullable<typeof abortReason>): void => {
+    if (abortReason) return;
+    abortReason = reason;
+    abortController.abort();
+  };
+  const timer = setTimeout(() => {
+    abort('timeout');
+  }, timeoutMs);
 
   // SIGINT propagation: PR #33 helper only tracks child process refs registered
   // via spawnWithSigintPropagation; @openai/codex-sdk does its own spawn()
@@ -138,13 +136,14 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
   // abortSignal pipeline (SDK passes `signal: args.signal` to spawn). Without
   // this, Ctrl+C in a nested host orphans the codex SDK child until DEFAULT
   // timeout elapses, regressing PR #33's nested-host fix.
-  const sigintListener = (): void => abortController.abort();
-  process.on('SIGINT', sigintListener);
+  const unregisterSigint = registerSigintSubscriber(() => abort('interrupted'));
 
   const events: CodexEvent[] = [];
+  let isolatedCodexHome: string | undefined;
 
   try {
-    env.CODEX_HOME = await getIsolatedCodexHome();
+    isolatedCodexHome = await getIsolatedCodexHome();
+    env.CODEX_HOME = isolatedCodexHome;
     const codex = await createCodexSdkClient(env);
     const thread = codex.startThread(buildCodexSdkThreadOptions({ model, cwd }));
     const streamed = await thread.runStreamed(finalPrompt, { signal: abortController.signal });
@@ -153,101 +152,45 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
       events.push(normalizeSdkEvent(event));
     }
 
-    const durationMs = Date.now() - start;
-    const resultEvents = events.filter(isCodexResultEvent);
-    if (resultEvents.length === 0) {
-      return {
-        ok: false,
-        error: 'no turn.completed/turn.failed event in codex-sdk output',
-        durationMs,
-        durationApiMs: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        costUSD: 0,
-        costReportedByExecutor: false,
-        output: null,
-        stopReason: 'error',
-        numTurns: 0,
-      };
-    }
-
-    const last = resultEvents[resultEvents.length - 1];
-    const usage = extractCodexUsage(events);
-    const trace = extractCodexTrace(events);
-    const stopReason = extractCodexStopReason(events);
-    const finalOutput = extractCodexFinalOutput(events);
-    const ok = last.type !== 'turn.failed' && !last.error;
-
-    return {
-      ok,
-      durationMs: sumCodexElapsed(resultEvents, durationMs),
-      durationApiMs: 0,
-      inputTokens: usage.input,
-      outputTokens: usage.output,
-      cacheReadTokens: usage.cached,
-      cacheCreationTokens: 0,
-      costUSD: 0,
-      costReportedByExecutor: false,
-      output: finalOutput,
-      stopReason,
-      ...(!ok && { error: last.error?.message || 'codex-sdk turn.failed' }),
-      numTurns: resultEvents.length,
-      fullNumTurns: trace.fullNumTurns,
-      numSubAgents: trace.numSubAgents,
-      ...(trace.turns.length > 0 && { turns: trace.turns }),
-      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-    };
+    return buildCodexResult({
+      events,
+      wallClockDurationMs: Date.now() - start,
+      source: 'codex-sdk',
+    });
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = asErrorLike(err);
-    const isAbort = details.name === 'AbortError' || abortController.signal.aborted;
-    if (isAbort) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
-
-    const resultEvents = events.filter(isCodexResultEvent);
-    if (resultEvents.length > 0) {
-      const last = resultEvents[resultEvents.length - 1];
-      const usage = extractCodexUsage(events);
-      const trace = extractCodexTrace(events);
-      return {
-        ok: false,
-        error: last.error?.message || errorMessage(err),
-        durationMs: sumCodexElapsed(resultEvents, durationMs),
-        durationApiMs: 0,
-        inputTokens: usage.input,
-        outputTokens: usage.output,
-        cacheReadTokens: usage.cached,
-        cacheCreationTokens: 0,
-        costUSD: 0,
-        costReportedByExecutor: false,
-        output: extractCodexFinalOutput(events) || null,
-        stopReason: 'error',
-        numTurns: resultEvents.length,
-        fullNumTurns: trace.fullNumTurns,
-        numSubAgents: trace.numSubAgents,
-        ...(trace.turns.length > 0 && { turns: trace.turns }),
-        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-      };
+    if (abortReason === 'interrupted') {
+      return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
+    }
+    if (abortReason === 'timeout') {
+      return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
     }
 
-    return {
-      ok: false,
-      error: errorMessage(err),
-      durationMs,
-      durationApiMs: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      costUSD: 0,
-      costReportedByExecutor: false,
-      output: null,
-      stopReason: 'error',
-      numTurns: 0,
-    };
+    return buildCodexResult({
+      events,
+      wallClockDurationMs: durationMs,
+      source: 'codex-sdk',
+      forcedError: details.name === 'AbortError'
+        ? 'codex-sdk execution aborted'
+        : errorMessage(err),
+    });
   } finally {
     clearTimeout(timer);
-    process.removeListener('SIGINT', sigintListener);
+    unregisterSigint();
+    if (isolatedCodexHome) {
+      try {
+        await rm(isolatedCodexHome, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 50,
+        });
+      } catch (err) {
+        process.stderr.write(
+          `[codex-sdk] unable to remove isolated CODEX_HOME ${isolatedCodexHome}: ${errorMessage(err)}\n`,
+        );
+      }
+    }
   }
 }

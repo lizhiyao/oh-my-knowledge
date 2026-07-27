@@ -4,25 +4,27 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
+import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
 import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
 import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
+import { ownRecordValue } from '../../../shared/record-count.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 function pickSkillString(value: Record<string, string> | undefined, skillName: string): Record<string, string> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 function pickSkillToolCounts(value: Record<string, Record<string, number>> | undefined, skillName: string): Record<string, Record<string, number>> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 // runObserveInbox export:test/cli/observe.test.ts in-process import 验证 by-skill 聚合行为。
@@ -38,28 +40,36 @@ export async function runObserveInbox(
     : (flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_OBSERVATIONS_DIR);
   if (flags['llm-enhanced-review']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
-    const { extractSkillSoftStandards, DEFAULT_LLM_ENHANCED_REVIEW_MODEL } = await import('../../../observability/soft-standards/index.js');
+    const { extractSkillSoftStandards } = await import('../../../observability/soft-standards/index.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
     const candidates = Object.values(view.skillChains)
       .map((chain) => ({ chain, runtimeEvidence: buildLlmEnhancedRuntimeEvidence(view, chain.skillName) }))
       .filter(({ runtimeEvidence }) => hasLlmEnhancedRuntimeEvidence(runtimeEvidence));
+    if (candidates.length === 0) {
+      if (flags.json) {
+        console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records: [] }, null, 2));
+      } else {
+        console.log(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
+      }
+      return;
+    }
+    const runtime = resolveRuntimeSelection(
+      { executor: flags.executor, model: flags.model },
+      { lang },
+    );
     const records = [];
     for (const { chain, runtimeEvidence } of candidates) {
       records.push(await extractSkillSoftStandards({
         observationsDir: dir,
         skillChain: chain,
         runtimeEvidence,
-        model: flags.model || DEFAULT_LLM_ENHANCED_REVIEW_MODEL,
-        executorName: flags.executor,
+        model: runtime.model,
+        executorName: runtime.executor,
         refresh: flags.refresh,
       }));
     }
     if (flags.json) {
       console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records }, null, 2));
-      return;
-    }
-    if (records.length === 0) {
-      console.log(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
       return;
     }
     console.log(lang === 'zh' ? 'LLM 增强复盘已生成:' : 'LLM enhanced review generated:');
@@ -129,8 +139,10 @@ export async function runObserveInbox(
   for (const item of items) {
     const evidence = item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || '';
     const artifactVersion = item.artifactVersion === 'unknown' ? '⚠ unknown' : item.artifactVersion;
+    const timestampedOccurrences = item.timestampedOccurrences
+      ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences);
     console.log(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
-    console.log(`  lastSeen=${item.lastSeen} version=${artifactVersion}`);
+    console.log(`  lastSeen=${timestampedOccurrences > 0 ? item.lastSeen : 'unknown'} version=${artifactVersion}`);
     console.log(`  reason=${item.severityReasonCode ?? 'unknown'}`);
     if (evidence) console.log(`  evidence=${evidence.slice(0, 180)}`);
   }
@@ -277,14 +289,14 @@ export default class ObserveInbox extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: 'LLM 增强复盘使用的模型，默认 sonnet',
-        en: 'Model for LLM enhanced review, default sonnet',
+        zh: 'LLM 增强复盘使用的模型。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。',
+        en: 'Model for LLM enhanced review. Codex reads the local configured model; OMK_MODEL sets an environment preference.',
       }),
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: 'LLM 增强复盘使用的执行器',
-        en: 'Executor for LLM enhanced review',
+        zh: 'LLM 增强复盘使用的执行器。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor for LLM enhanced review. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     json: Flags.boolean({

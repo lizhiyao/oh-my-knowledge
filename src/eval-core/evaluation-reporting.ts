@@ -1,15 +1,20 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { indexReportWrite } from './artifact-index.js';
+import { parseReportDocument } from './report-document.js';
 import { randomRunToken, reportFilePath, runTimestamp } from './artifact-file-names.js';
 import { persistEvalGraphSidecar } from '../artifact-graph/eval.js';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
+import {
+  getDiagnosticPromptHash,
+  resolveDiagnosticTarget,
+} from '../grading/diagnostic.js';
 import {
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
@@ -17,6 +22,12 @@ import {
   DEFAULT_BOOTSTRAP_SAMPLES,
 } from './bootstrap.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../shared/record-count.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { hashSample } from './sample-fingerprint.js';
 import type {
   Artifact,
   Report,
@@ -30,6 +41,7 @@ import type {
   EvaluationJob,
   EvaluationRequest,
   EvaluationRun,
+  ReportDocument,
 } from '../types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,40 +60,13 @@ const PKG: { version: string } = JSON.parse(readFileSync(findPackageJson(__dirna
 
 // 写报告的默认目录 = reports 单一来源(default-dirs)。保留 DEFAULT_OUTPUT_DIR 名给既有 16 处 import,值统一,杜绝写/读两端漂移。
 export const DEFAULT_OUTPUT_DIR: string = DEFAULT_REPORTS_DIR;
-export const EVALUATION_REPORT_SCHEMA_VERSION = 4;
+export const EVALUATION_REPORT_SCHEMA_VERSION = 5;
 
 export function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 12);
 }
 
-/**
- * Canonical (key-sorted, recursive) JSON serialization. Required for cross-run hash
- * stability — JS object key iteration order is implementation-defined for objects
- * built by spread / Object.assign / yaml.parse, so naive JSON.stringify can produce
- * different bytes for the "same" sample on different runs.
- */
-function canonicalStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return '[' + value.map(canonicalStringify).join(',') + ']';
-  const entries = Object.keys(value as Record<string, unknown>).sort();
-  return '{' + entries.map((k) => JSON.stringify(k) + ':' + canonicalStringify((value as Record<string, unknown>)[k])).join(',') + '}';
-}
-
-/**
- * Stable content hash of a sample. Hashes the prompt + assertions + dimensions/rubric
- * (the parts that determine what's being measured). Two samples with the same hash
- * across runs measure the same thing; mismatched hashes mean the sample changed.
- */
-export function hashSample(sample: Sample): string {
-  const stableForm = canonicalStringify({
-    prompt: sample.prompt,
-    rubric: sample.rubric ?? null,
-    dimensions: sample.dimensions ?? null,
-    assertions: sample.assertions ?? null,
-    schema: sample.schema ?? null,
-  });
-  return hashString(stableForm);
-}
+export { hashSample } from './sample-fingerprint.js';
 
 export function getCliVersion(): string {
   return PKG.version;
@@ -113,7 +98,7 @@ function representativeRuntime(runtimes: Record<string, ReturnType<typeof getExe
   return Object.values(runtimes)[0];
 }
 
-function buildExecutorRuntimesByVariant({
+export function buildExecutorRuntimesByVariant({
   variants,
   model,
   executorName,
@@ -126,19 +111,19 @@ function buildExecutorRuntimesByVariant({
   executorName: string;
   tasks: Task[];
   artifacts: Artifact[];
-  request?: EvaluationRequest;
+  request?: Pick<EvaluationRequest, 'skillDir' | 'timeoutMs'>;
 }): Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> {
   const runtimes: Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> = {};
   for (const task of tasks) {
-    if (runtimes[task.variant]) continue;
+    if (ownRecordValue(runtimes, task.variant)) continue;
     const executionPlan = resolveExecutionStrategy(task, model, request?.timeoutMs, false);
-    runtimes[task.variant] = getExecutorRuntimeFingerprint(executorName, model, {
+    setOwnRecordValue(runtimes, task.variant, getExecutorRuntimeFingerprint(executorName, model, {
       skillDir: executionPlan.input.skillDir,
-    });
+    }));
   }
 
   for (const variant of variants) {
-    if (runtimes[variant]) continue;
+    if (ownRecordValue(runtimes, variant)) continue;
     const artifact = artifacts.find((a) => a.name === variant);
     // 与主路径 extractSkillDir 一致:dir-skill 优先隔离副本 execRoot(副本无 node_modules、PATH 不污染);
     // 否则 baseline / git 文件-skill 取 null,本地文件-skill 取 .md 所在目录。
@@ -148,9 +133,9 @@ function buildExecutorRuntimesByVariant({
         : artifact?.locator
           ? dirname(artifact.locator)
           : request?.skillDir);
-    runtimes[variant] = getExecutorRuntimeFingerprint(executorName, model, {
+    setOwnRecordValue(runtimes, variant, getExecutorRuntimeFingerprint(executorName, model, {
       skillDir: fallbackSkillDir,
-    });
+    }));
   }
 
   return runtimes;
@@ -164,6 +149,7 @@ interface AggregateReportOptions {
   noJudge: boolean;
   executorName: string;
   samples: Sample[];
+  samplesBaseDir?: string;
   tasks: Task[];
   results: Record<string, Record<string, VariantResult>>;
   totalCostUSD: number;
@@ -182,6 +168,7 @@ export function aggregateReport({
   noJudge,
   executorName,
   samples,
+  samplesBaseDir,
   tasks,
   results,
   totalCostUSD,
@@ -193,8 +180,10 @@ export function aggregateReport({
 }: AggregateReportOptions): Report {
   const summary: Record<string, VariantSummary> = {};
   for (const variant of variants) {
-    const entries = Object.values(results).map((result) => result[variant]).filter(Boolean);
-    summary[variant] = buildVariantSummary(entries);
+    const entries = Object.values(results)
+      .map((result) => ownRecordValue(result, variant))
+      .filter((entry): entry is VariantResult => Boolean(entry));
+    setOwnRecordValue(summary, variant, buildVariantSummary(entries));
   }
 
   // Bootstrap CI (per-variant mean) when --bootstrap requested. Adds bootstrapCI to
@@ -207,7 +196,9 @@ export function aggregateReport({
     // 当且仅当该样本**无任何可测层**(真·缺测,如纯评委样本且评委失败)。故 `> 0` 过滤精确剔除非测量、
     // 绝不丢"低分内容"(评委失败已在上游当缺测,不会以 0 进 composite)。下同(control / treatment)。
     for (const variant of variants) {
-      const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
+      const entries = Object.values(results)
+        .map((r) => ownRecordValue(r, variant))
+        .filter((entry): entry is VariantResult => Boolean(entry));
       const compositeScores = entries
         .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
         .map((e) => e.compositeScore!);
@@ -232,8 +223,8 @@ export function aggregateReport({
         const treatmentName = variants[i];
         const pairs: Array<{ a: number; b: number }> = [];
         for (const r of sampleRecords) {
-          const c = r[controlName];
-          const t = r[treatmentName];
+          const c = ownRecordValue(r, controlName);
+          const t = ownRecordValue(r, treatmentName);
           const a = c && typeof c.compositeScore === 'number' && c.compositeScore > 0 ? c.compositeScore : undefined;
           const b = t && typeof t.compositeScore === 'number' && t.compositeScore > 0 ? t.compositeScore : undefined;
           if (a !== undefined && b !== undefined) pairs.push({ a, b });
@@ -267,7 +258,9 @@ export function aggregateReport({
     artifacts.map((artifact) => [artifact.name, artifact.contentHash ?? 'no-skill']),
   );
 
-  const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
+  const sampleHashes = Object.fromEntries(
+    samples.map((sample) => [sample.sample_id, hashSample(sample, samplesBaseDir)]),
+  );
   const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
   const runtimeOptions = { skillDir: request?.skillDir };
   const executorRuntimes = buildExecutorRuntimesByVariant({ variants, model, executorName, tasks, artifacts, request });
@@ -283,6 +276,24 @@ export function aggregateReport({
     model: jc.model,
     ...(noJudge ? {} : { runtime: getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions) }),
   }));
+  const diagnosticEnabled = request?.noDiagnostic !== true;
+  const diagnosticTarget = resolveDiagnosticTarget(
+    requestJudges,
+    executorName,
+    model,
+  );
+  const diagnostic = diagnosticEnabled
+    ? {
+      enabled: true as const,
+      executor: diagnosticTarget.executor,
+      model: diagnosticTarget.model,
+      runtime: getExecutorRuntimeFingerprint(
+        diagnosticTarget.executor,
+        diagnosticTarget.model,
+      ),
+      promptHash: getDiagnosticPromptHash(),
+    }
+    : { enabled: false as const };
   // length-debias is on by default; the request only sets it
   // false when the user passed --no-debias-length. The judgePromptHash differs between
   // the length-debias-on and -off prompt variants so readers can detect the divergence.
@@ -315,6 +326,7 @@ export function aggregateReport({
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
+      diagnostic,
       executorRuntime,
       executorRuntimes,
       judgeModels: judgeModelsMeta,
@@ -341,16 +353,22 @@ export function aggregateReport({
       sample_id,
       variants: variantData,
     })),
-    // 用例设计快照,供单测视角渲染。只挑渲染需要的字段,跳过 cwd / allowedTools /
-    // expectedTools / dimensions / environment(对单测视图无附加价值)。Sample 字段
-    // 全选会让 report 体积接近翻倍,选子集 size 增长 ~10-20%。
+    // 用例设计快照,供单测视角与证据审计使用。执行/评分语义字段必须保留:
+    // cwd / environment / mocksStrict / allowedTools 等会改变真实构造，不能只留一个
+    // 不可解释的 sampleHash。纯扩展字段仍不盲目全选，控制报告体积。
     sampleSnapshots: Object.fromEntries(samples.map((s) => [s.sample_id, {
       sample_id: s.sample_id,
       prompt: s.prompt,
+      ...(s.cwd ? { cwd: s.cwd } : {}),
       ...(s.rubric ? { rubric: s.rubric } : {}),
       ...(s.context ? { context: s.context } : {}),
+      ...(s.dimensions && Object.keys(s.dimensions).length > 0 ? { dimensions: s.dimensions } : {}),
       ...(s.assertions && s.assertions.length > 0 ? { assertions: s.assertions } : {}),
       ...(s.mocks && s.mocks.length > 0 ? { mocks: s.mocks } : {}),
+      ...(s.mocksStrict !== undefined ? { mocksStrict: s.mocksStrict } : {}),
+      ...(s.environment ? { environment: s.environment } : {}),
+      ...(s.allowedTools && s.allowedTools.length > 0 ? { allowedTools: s.allowedTools } : {}),
+      ...(s.expectedTools && s.expectedTools.length > 0 ? { expectedTools: s.expectedTools } : {}),
       ...(s.capability && s.capability.length > 0 ? { capability: s.capability } : {}),
       ...(s.difficulty ? { difficulty: s.difficulty } : {}),
       ...(s.construct ? { construct: s.construct } : {}),
@@ -361,12 +379,10 @@ export function aggregateReport({
   };
 }
 
-export interface PersistableReport {
-  id: string;
-}
+export type PersistableReport = ReportDocument;
 
 function isEvaluationReport(report: PersistableReport): report is EvaluationReport {
-  return (report as unknown as Record<string, unknown>)['kind'] === 'evaluation';
+  return report.kind === 'evaluation';
 }
 
 function persistEvalGraphSidecarSafely(report: PersistableReport, outputDir: string, sourcePath: string): void {
@@ -383,11 +399,13 @@ export function persistReport(report: PersistableReport, outputDir: string | nul
   if (!outputDir) return null;
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const filePath = reportFilePath(outputDir, report.id);
-  writeFileSync(filePath, JSON.stringify(report, null, 2));
-  persistEvalGraphSidecarSafely(report, outputDir, filePath);
+  const parsed = parseReportDocument(report, report.id, report.id);
+  if (!parsed) throw new Error('invalid report');
+  writeJsonFileAtomic(filePath, parsed);
+  persistEvalGraphSidecarSafely(parsed, outputDir, filePath);
   // 产物发现索引:报告落项目本地后,best-effort 追加全局轻卡片,让 omk studio 跨项目聚合成机器级总览。
   // 永不抛、永不阻断报告落盘(正文是 source of truth)。
-  indexReportWrite(report, filePath, outputDir);
+  indexReportWrite(parsed, filePath, outputDir);
   return filePath;
 }
 

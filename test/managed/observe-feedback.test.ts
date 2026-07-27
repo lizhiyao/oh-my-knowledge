@@ -64,7 +64,14 @@ describe('managed observe-feedback — recordObserveHealth', () => {
 
   it('red 但 underpowered → 非 gap(数据不足不算确诊盲区)', () => {
     seed('review');
-    const written = run([skillView({ skillName: 'review', healthBand: 'red', weightedGapRate: 0.5, confidence: 'underpowered', segmentCount: 2 })]);
+    const written = run([skillView({
+      skillName: 'review',
+      healthBand: 'red',
+      gapRate: 0.5,
+      weightedGapRate: 0.5,
+      confidence: 'underpowered',
+      segmentCount: 2,
+    })]);
     assert.equal(written[0].isProductionGap, false);
   });
 
@@ -85,7 +92,7 @@ describe('managed observe-feedback — recordObserveHealth', () => {
 
   it('kind 过滤:同名 prompt 不接 observe 信号(observe 测的是 skill)', () => {
     seed('review', 'prompt');
-    const written = run([skillView({ skillName: 'review', healthBand: 'red', weightedGapRate: 0.4 })]);
+    const written = run([skillView({ skillName: 'review', healthBand: 'red', gapRate: 0.4, weightedGapRate: 0.4 })]);
     assert.deepEqual(written, [], 'prompt 记录不匹配');
     assert.equal(loadManagedRecord(dir, managedRecordId('prompt', 'review'))!.observations, undefined);
   });
@@ -93,7 +100,7 @@ describe('managed observe-feedback — recordObserveHealth', () => {
   it('同名一 skill 一 prompt → 只写 skill', () => {
     seed('review', 'skill');
     seed('review', 'prompt');
-    const written = run([skillView({ skillName: 'review', healthBand: 'red', weightedGapRate: 0.4 })]);
+    const written = run([skillView({ skillName: 'review', healthBand: 'red', gapRate: 0.4, weightedGapRate: 0.4 })]);
     assert.equal(written.length, 1);
     assert.equal(written[0].recordId, managedRecordId('skill', 'review'));
     assert.equal(loadManagedRecord(dir, managedRecordId('skill', 'review'))!.observations?.length, 1);

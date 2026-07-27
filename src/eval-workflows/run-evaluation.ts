@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
-import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
+import { createExecutor } from '../executors/index.js';
 import { discoverBatchSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeBatchEvaluationRuns, buildBatchVariantSpecs } from './batch-evaluation-workflow.js';
@@ -9,6 +9,7 @@ import {
   prepareEvaluationRun,
 } from './evaluation-preparation.js';
 import { executeEvaluationPipeline } from './evaluation-pipeline.js';
+import { checkResumeCompatibility } from '../eval-core/resume-compatibility.js';
 
 import type {
   Artifact,
@@ -27,9 +28,11 @@ import type {
   VariantSpec,
   VariantSummary,
   VariantVariance,
+  VariantResult,
 } from '../types/index.js';
 import { findSaturationPoint } from '../analysis/saturation.js';
 import { bootstrapMeanCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 
 export interface SkillProgressInfo {
   phase: string;
@@ -39,7 +42,8 @@ export interface SkillProgressInfo {
 }
 
 interface CommonEvaluationOptions {
-  model?: string;
+  /** Core API is runtime-neutral: callers must select the measured model explicitly. */
+  model: string;
   outputDir?: string | null;
   project?: string;
   owner?: string;
@@ -47,11 +51,12 @@ interface CommonEvaluationOptions {
   noJudge?: boolean;
   concurrency?: number;
   timeoutMs?: number;
-  executorName?: string;
+  /** Core API is runtime-neutral: CLI/default resolution happens before this boundary. */
+  executorName: string;
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
-  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
+  /** 跳过 LLM 模型连通性检测。仅当 --resume 报告通过完整契约校验时自动 true。 */
   skipConnectivity?: boolean;
   /** 跳过 doctor 健康检查门禁(escape hatch, 默认 false)。
    *  开启后 doctor 整段不跑,失败也不阻断 eval — 评测环境用 mock/stub 提供
@@ -78,8 +83,8 @@ interface CommonEvaluationOptions {
    *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
   judgeRepeat?: number;
   /** Unified judge config. 1 entry = single judge, ≥ 2 = ensemble + inter-judge agreement.
-   *  Optional at the API surface; runEvaluation defaults to `[{executor, model: 'haiku'}]`
-   *  when omitted. RunConfig (parseRunConfig 出口) 保证非空。 */
+   *  Programmatic callers that omit it reuse the measured executor/model. The CLI
+   *  resolves provider-specific economical defaults before crossing this boundary. */
   judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
   bootstrap?: boolean;
@@ -92,8 +97,8 @@ interface CommonEvaluationOptions {
   budget?: import('../types/index.js').EvalBudget;
   noCache?: boolean;
   /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort。
-   *  默认 undefined → executor 内部走 claude CLI / SDK 自身默认(high);
-   *  CLI parseRunConfig 兜底 'low' 后这里就拿到 'low'。 */
+   *  undefined means the selected executor's own default;
+   *  CLI parseRunConfig currently resolves an explicit provider-aware value. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** 关闭 diagnostic LLM call。Default false。跟 noJudge 完全独立。 */
   noDiagnostic?: boolean;
@@ -164,7 +169,7 @@ export async function runEvaluation({
   samplesPath,
   skillDir,
   variantSpecs = [],
-  model = DEFAULT_MODEL,
+  model,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -174,7 +179,7 @@ export async function runEvaluation({
   concurrency = 1,
   timeoutMs,
   noCache = false,
-  executorName = 'claude',
+  executorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
@@ -204,7 +209,7 @@ export async function runEvaluation({
   // (which still operate on string `judgeModel` + `judgeExecutorName` fields per call).
   const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
-    : [{ executor: executorName, model: JUDGE_MODEL }];
+    : [{ executor: executorName, model }];
   const judgeModel = effectiveJudgeModels[0].model;
   const judgeExecutorName = effectiveJudgeModels[0].executor;
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires, samplesBaseDir, samplesSourceFiles } = await prepareEvaluationRun({
@@ -260,9 +265,6 @@ export async function runEvaluation({
     }
   }
 
-  // --resume 时自动跳过 LLM 连通性检测(原 run 已经验过, 重跑是浪费 LLM 调用)
-  const effectiveSkipConnectivity = resume ? true : skipConnectivity;
-
   if (dryRun) {
     // Emit power warnings during dry-run too — this is exactly when users
     // preview the run, the right moment to flag "you might be wasting it".
@@ -270,7 +272,10 @@ export async function runEvaluation({
     for (const w of buildPowerWarnings(samples.length, repeat ?? 1, lang)) {
       process.stderr.write(`${w}\n`);
     }
-    for (const w of buildIsolationWarnings(resolvedArtifacts, strictBaseline)) {
+    for (const w of buildIsolationWarnings(resolvedArtifacts, strictBaseline, {
+      executorName,
+      lang,
+    })) {
       process.stderr.write(`${w}\n`);
     }
     return {
@@ -288,7 +293,7 @@ export async function runEvaluation({
   }
 
   // --resume: load existing report results to skip completed tasks
-  let existingResults: Record<string, Record<string, import('../types/index.js').VariantResult>> | undefined;
+  let existingResults: Record<string, Record<string, VariantResult>> | undefined;
   if (resume) {
     // 读侧走 overlay(本次 outputDir 优先 → 全局兜底):写默认翻项目后,--resume 一个存量 / 全局报告(升级前
     // 全部落全局)仍能 get 命中,不致整轮重跑。写仍是另起新报告到 outputDir,与读位置解耦,无 read/write 分叉。
@@ -297,29 +302,54 @@ export async function runEvaluation({
     const store = createOverlayReportStore(resolve(outputDir || DEFAULT_OUTPUT_DIR), globalReportsDir());
     const existing = await store.get(resume);
     if (existing?.kind === 'evaluation') {
-      existingResults = {};
-      for (const entry of existing.results || []) {
-        existingResults[entry.sample_id] = entry.variants;
-      }
-      if (onProgress) {
-        const count = Object.values(existingResults).reduce((sum, v) => sum + Object.values(v).filter((r) => r.ok).length, 0);
-        process.stderr.write(`\n📂 resumed ${count} completed results from report ${resume}\n`);
-      }
-      // Skill isolation 一致性校验:resumed report 的 meta.skillIsolation
-      // 跟当前 strict-baseline 状态不一致时 stderr warn 不阻塞,让用户判断
-      // 是否要 --no-cache 强制重跑(避免混合污染 / 干净 entries)。
-      const reportIsolation = existing.meta?.skillIsolation;
-      const expectedIsolated = strictBaseline !== false; // default true
-      if (!reportIsolation && expectedIsolated) {
-        process.stderr.write(
-          `\n⚠️  resumed report ${resume} 无 meta.skillIsolation 字段,baseline 可能被 ~/.claude/skills/ 污染。\n`
-          + `   当前 --strict-baseline 默认开启,新 entries 会被隔离 → 与现有 entries 不可比。\n`
-          + `   建议:加 --no-cache 强制重跑,或显式 --no-strict-baseline 接受混合数据(慎用)。\n`,
+      const compatibility = checkResumeCompatibility(existing, {
+        variants: variantNames,
+        model,
+        executorName,
+        effort,
+        noJudge,
+        judgeModels: effectiveJudgeModels,
+        judgeRepeat,
+        lengthDebias,
+        budget,
+        timeoutMs,
+        retry,
+        noDiagnostic,
+        skillDir,
+        samples,
+        samplesBaseDir,
+        tasks,
+        artifacts: resolvedArtifacts,
+      });
+      if (compatibility.compatible) {
+        const sourceBySample = new Map(
+          existing.results.map((entry) => [entry.sample_id, entry.variants]),
         );
-      } else if (reportIsolation && !expectedIsolated) {
+        const resumedResults: Record<string, Record<string, VariantResult>> =
+          Object.create(null);
+        for (const task of tasks) {
+          const result = sourceBySample.get(task.sample_id)?.[task.variant];
+          if (!result?.ok) continue;
+          const variants = ownRecordValue(resumedResults, task.sample_id)
+            ?? setOwnRecordValue(resumedResults, task.sample_id, {});
+          setOwnRecordValue(variants, task.variant, result);
+        }
+        existingResults = resumedResults;
+        const count = Object.values(resumedResults).reduce(
+          (sum, variants) => sum + Object.keys(variants).length,
+          0,
+        );
         process.stderr.write(
-          `\n⚠️  resumed report ${resume} 已 strict-isolated(meta.skillIsolation 存在),但本次 --no-strict-baseline。\n`
-          + `   新 entries 不隔离 → 与现有 entries 不可比。建议恢复默认 strict-baseline。\n`,
+          lang === 'zh'
+            ? `\n已从报告 ${resume} 恢复 ${count} 条兼容的成功结果。\n`
+            : `\nResumed ${count} compatible successful result(s) from report ${resume}.\n`,
+        );
+      } else {
+        const fields = compatibility.mismatches.join(', ');
+        process.stderr.write(
+          lang === 'zh'
+            ? `\n报告 ${resume} 与当前评测契约不兼容，将从头运行。差异字段：${fields}。\n`
+            : `\nReport ${resume} is incompatible with the current evaluation contract; starting from scratch. Mismatched fields: ${fields}.\n`,
         );
       }
     } else if (existing?.kind === 'batch-evaluation') {
@@ -328,6 +358,10 @@ export async function runEvaluation({
       process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
     }
   }
+  // 只有通过完整契约校验、真正接受恢复结果时，才能沿用原 run 的连通性结论。
+  const effectiveSkipConnectivity = existingResults !== undefined
+    ? true
+    : skipConnectivity;
 
   const executor: ExecutorFn = createExecutor(executorName);
   const judgeExecutor: ExecutorFn = createExecutor(judgeExecutorName || executorName);
@@ -416,7 +450,7 @@ const LAYER_EXTRACTORS: Record<VarianceLayerKey, (s: VariantSummary | undefined)
 
 function buildMetricStats(runs: Report[], variant: string, extractor: (s: VariantSummary | undefined) => number | undefined): VarianceMetric | null {
   const scores = runs
-    .map((run) => extractor(run.summary?.[variant]))
+    .map((run) => extractor(ownRecordValue(run.summary, variant)))
     .filter((x): x is number => typeof x === 'number');
   if (scores.length === 0) return null;
   return { scores, ...confidenceInterval(scores) };
@@ -455,8 +489,8 @@ function buildSaturationData(
   if (variants.length === 0) return undefined;
 
   // Per-variant: cumulative composite scores after each repeat.
-  const cumulativeByVariant: Record<string, number[][]> = {};
-  const tracesByVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>> = {};
+  const cumulativeByVariant: Record<string, number[][]> = Object.create(null);
+  const tracesByVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>> = Object.create(null);
 
   const checkpointSampleCounts: number[] = [];
   const acc: Record<string, number[]> = Object.fromEntries(variants.map((v) => [v, []]));
@@ -466,24 +500,31 @@ function buildSaturationData(
     for (const variant of variants) {
       const newScores: number[] = [];
       for (const entry of run.results ?? []) {
-        const v = entry.variants?.[variant];
+        const v = ownRecordValue(entry.variants, variant);
         if (!v || typeof v.compositeScore !== 'number' || v.compositeScore <= 0) continue;
         newScores.push(v.compositeScore);
       }
-      acc[variant] = acc[variant].concat(newScores);
+      setOwnRecordValue(
+        acc,
+        variant,
+        (ownRecordValue(acc, variant) ?? []).concat(newScores),
+      );
     }
     // Snapshot cumulative state for this checkpoint.
-    const checkpointN = acc[variants[0]]?.length ?? 0;
+    const checkpointN = ownRecordValue(acc, variants[0])?.length ?? 0;
     checkpointSampleCounts.push(checkpointN);
     for (const variant of variants) {
-      if (!cumulativeByVariant[variant]) cumulativeByVariant[variant] = [];
-      cumulativeByVariant[variant].push([...acc[variant]]);
+      const cumulative = ownRecordValue(cumulativeByVariant, variant)
+        ?? setOwnRecordValue(cumulativeByVariant, variant, []);
+      cumulative.push([...(ownRecordValue(acc, variant) ?? [])]);
 
       // Per-checkpoint trace: bootstrap CI on cumulative scores.
-      const ci = bootstrapMeanCI(acc[variant], DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples, seed);
-      if (!tracesByVariant[variant]) tracesByVariant[variant] = [];
-      tracesByVariant[variant].push({
-        n: acc[variant].length,
+      const scores = ownRecordValue(acc, variant) ?? [];
+      const ci = bootstrapMeanCI(scores, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples, seed);
+      const traces = ownRecordValue(tracesByVariant, variant)
+        ?? setOwnRecordValue(tracesByVariant, variant, []);
+      traces.push({
+        n: scores.length,
         mean: ci.estimate,
         ciLow: ci.low,
         ciHigh: ci.high,
@@ -491,20 +532,20 @@ function buildSaturationData(
     }
   }
 
-  const verdicts: SaturationData['verdicts'] = {};
+  const verdicts: NonNullable<SaturationData['verdicts']> = Object.create(null);
   if (runs.length >= 5) {
     for (const variant of variants) {
-      const cumulative = cumulativeByVariant[variant];
+      const cumulative = ownRecordValue(cumulativeByVariant, variant);
       if (!cumulative) continue;
       const r = findSaturationPoint(cumulative, 'bootstrap-ci-width', undefined, undefined, bootstrapSamples, seed);
-      verdicts[variant] = {
+      setOwnRecordValue(verdicts, variant, {
         saturated: r.saturated,
         atN: r.atN,
         confidence: r.confidence,
         method: r.method,
         threshold: r.threshold,
         reason: r.reason,
-      };
+      });
     }
   }
 
@@ -525,7 +566,7 @@ export function buildVarianceData(
   }
 
   const variants = runs[0].meta.variants || [];
-  const perVariant: Record<string, VariantVariance> = {};
+  const perVariant: Record<string, VariantVariance> = Object.create(null);
   for (const variant of variants) {
     // Composite lives on the legacy flat fields.
     const composite = buildMetricStats(runs, variant, COMPOSITE_EXTRACTOR);
@@ -544,18 +585,18 @@ export function buildVarianceData(
       if (layerStats) byLayer[key] = layerStats;
     }
 
-    perVariant[variant] = {
+    setOwnRecordValue(perVariant, variant, {
       ...composite,
       ...(Object.keys(byMetric).length > 0 ? { byMetric } : {}),
       ...(Object.keys(byLayer).length > 0 ? { byLayer } : {}),
-    };
+    });
   }
 
   const comparisons: VarianceComparison[] = [];
   for (let i = 0; i < variants.length; i++) {
     for (let j = i + 1; j < variants.length; j++) {
-      const vA = perVariant[variants[i]];
-      const vB = perVariant[variants[j]];
+      const vA = ownRecordValue(perVariant, variants[i]);
+      const vB = ownRecordValue(perVariant, variants[j]);
       if (!vA || !vB) continue;
 
       const compositeComp = buildComparisonMetric(vA.scores, vB.scores, vA.mean, vB.mean);
@@ -600,7 +641,7 @@ export function buildVarianceData(
 
 export async function runBatchEvaluation({
   skillDir,
-  model = DEFAULT_MODEL,
+  model,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -609,7 +650,7 @@ export async function runBatchEvaluation({
   dryRun = false,
   concurrency = 1,
   timeoutMs,
-  executorName = 'claude',
+  executorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
@@ -635,7 +676,7 @@ export async function runBatchEvaluation({
   // still uses single judgeModel + judgeExecutorName per call).
   const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
-    : [{ executor: executorName, model: JUDGE_MODEL }];
+    : [{ executor: executorName, model }];
   const judgeModel = effectiveJudgeModels[0].model;
   const judgeExecutorName = effectiveJudgeModels[0].executor;
   const skillEntries = discoverBatchSkills(resolve(skillDir));

@@ -3972,6 +3972,7 @@ __metadata:
     "@types/node": "npm:^25.5.0"
     ajv: "npm:^8.18.0"
     chart.js: "npm:^4.5.1"
+    es-module-lexer: "npm:^2.0.0"
     eslint: "npm:^10.1.0"
     husky: "npm:^9.1.7"
     js-yaml: "npm:^4.1.1"

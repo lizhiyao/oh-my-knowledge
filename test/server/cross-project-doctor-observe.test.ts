@@ -8,10 +8,188 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildSkillIndex, _resetSkillIndexCache } from '../../src/server/skill-index.js';
-import { indexDoctorWrite, indexObserveWrite, listDoctorCards } from '../../src/eval-core/artifact-index.js';
+import {
+  indexDoctorWrite as writeDoctorIndex,
+  indexObserveWrite as writeObserveIndex,
+  listDoctorCards,
+} from '../../src/eval-core/artifact-index.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
 import type { DoctorReport } from '../../src/types/index.js';
+
+type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
+type ObserveSource = Parameters<typeof writeObserveIndex>[0];
+
+function indexDoctorWrite(card: DoctorCardInput, outputDir: string): void {
+  const results = [
+    ...Array.from({ length: card.passCount }, (_, index) => ({
+      ruleId: `pass-${index}`,
+      severity: 'warn' as const,
+      labelKey: 'test',
+      status: 'pass' as const,
+      message: 'ok',
+      durationMs: 1,
+    })),
+    ...Array.from({ length: card.warnCount }, (_, index) => ({
+      ruleId: `warn-${index}`,
+      severity: 'warn' as const,
+      labelKey: 'test',
+      status: 'warn' as const,
+      message: 'warning',
+      durationMs: 1,
+    })),
+    ...Array.from({ length: card.failCount }, (_, index) => ({
+      ruleId: `fail-${index}`,
+      severity: card.status === 'fail' ? 'fatal' as const : 'warn' as const,
+      labelKey: 'test',
+      status: 'fail' as const,
+      message: 'failure',
+      durationMs: 1,
+    })),
+  ];
+  const report: DoctorReport = {
+    kind: 'doctor',
+    schemaVersion: '3.0.0',
+    id: card.reportId,
+    timestamp: card.timestamp,
+    cliVersion: 'test',
+    cwd: outputDir,
+    executorName: 'script',
+    model: 'test-model',
+    outcome: card.status === 'fail' ? 'failed' : card.status === 'warn' ? 'warnings_only' : 'passed',
+    skills: [{
+      skillName: card.skillName,
+      skillPath: join(outputDir, card.skillName),
+      status: card.status,
+      results,
+    }],
+    totals: {
+      pass: card.status === 'pass' ? 1 : 0,
+      warn: card.status === 'warn' ? 1 : 0,
+      fail: card.status === 'fail' ? 1 : 0,
+    },
+    ruleStats: {
+      pass: card.passCount,
+      warn: card.warnCount,
+      fail: card.failCount,
+      skipped: 0,
+      total: card.passCount + card.warnCount + card.failCount,
+    },
+  };
+  writeFileSync(card.path, JSON.stringify(report));
+  writeDoctorIndex(card, outputDir);
+}
+
+function indexObserveWrite(
+  source: ObserveSource,
+  sourcePath: string,
+  outputDir: string,
+  id: string,
+): void {
+  const bySkill = Object.fromEntries(Object.entries(source.bySkill).map(([skillName, health]) => {
+    const toolCallCount = health.toolCallCount ?? 0;
+    const toolUnknownCount = health.toolUnknownCount ?? 0;
+    const toolResolvedCount = health.toolResolvedCount ?? toolCallCount - toolUnknownCount;
+    const toolCancelledCount = health.toolCancelledCount ?? 0;
+    const comparable = toolResolvedCount - toolCancelledCount;
+    const toolFailureCount = health.toolFailureCount
+      ?? Math.round(health.toolFailureRate * comparable);
+    const weightedGapRate = health.gap?.weightedGapRate ?? 0;
+    const softSignalCount = Math.round(weightedGapRate * health.segmentCount / 0.5);
+    const signals = Array.from({ length: softSignalCount }, (_, index) => ({
+      sampleId: `${skillName}-${index}`,
+      type: 'explicit_marker' as const,
+      context: 'test',
+      weight: 0.5,
+    }));
+    return [skillName, {
+      skillName,
+      segmentCount: health.segmentCount,
+      toolCallCount,
+      toolResolvedCount,
+      toolCancelledCount,
+      toolUnknownCount,
+      toolFailureCount,
+      toolFailureRate: comparable > 0
+        ? Number((toolFailureCount / comparable).toFixed(4))
+        : 0,
+      stability: health.stability ?? 'stable',
+      confidence: health.confidence ?? 'high',
+      gap: {
+        variant: skillName,
+        sampleCount: health.segmentCount,
+        samplesWithGap: signals.length,
+        gapRate: health.segmentCount > 0
+          ? Number((signals.length / health.segmentCount).toFixed(4))
+          : 0,
+        weightedGapRate: health.segmentCount > 0
+          ? Number((signals.length * 0.5 / health.segmentCount).toFixed(4))
+          : 0,
+        signals,
+        byType: {
+          failed_search: 0,
+          explicit_marker: signals.length,
+          hedging: 0,
+          repeated_failure: 0,
+        },
+      },
+    }];
+  }));
+  const skills = Object.values(bySkill);
+  const segmentCount = skills.reduce((sum, health) => sum + health.segmentCount, 0);
+  const toolCallCount = skills.reduce((sum, health) => sum + health.toolCallCount, 0);
+  const toolResolvedCount = skills.reduce((sum, health) => sum + health.toolResolvedCount, 0);
+  const toolCancelledCount = skills.reduce((sum, health) => sum + health.toolCancelledCount, 0);
+  const toolUnknownCount = skills.reduce((sum, health) => sum + health.toolUnknownCount, 0);
+  const toolFailureCount = skills.reduce((sum, health) => sum + health.toolFailureCount, 0);
+  const comparable = toolResolvedCount - toolCancelledCount;
+  const samplesWithGap = skills.reduce((sum, health) => sum + health.gap.samplesWithGap, 0);
+  const weightedGapTotal = skills.reduce(
+    (sum, health) => sum + health.gap.weightedGapRate * health.segmentCount,
+    0,
+  );
+  const report = {
+    kind: 'observe-health' as const,
+    meta: {
+      tracePath: '/test/trace.jsonl',
+      kbPath: null,
+      sessionCount: source.meta.sessionCount,
+      segmentCount,
+      messageCount: segmentCount,
+      timestampedSegmentCount: segmentCount,
+      timestampCoverage: segmentCount > 0 ? 1 : 1,
+      excludedUntimestampedSegmentCount: 0,
+      toolCallCount,
+      toolResolvedCount,
+      toolCancelledCount,
+      toolUnknownCount,
+      toolOutcomeCoverage: toolCallCount > 0
+        ? Number((toolResolvedCount / toolCallCount).toFixed(4))
+        : 1,
+      toolFailureRate: comparable > 0
+        ? Number((toolFailureCount / comparable).toFixed(4))
+        : 0,
+      timeRange: {
+        from: segmentCount > 0 ? source.meta.generatedAt : '',
+        to: segmentCount > 0 ? source.meta.generatedAt : '',
+      },
+      generatedAt: source.meta.generatedAt,
+    },
+    bySkill,
+    overall: {
+      gapRate: segmentCount > 0
+        ? Number((samplesWithGap / segmentCount).toFixed(4))
+        : 0,
+      weightedGapRate: segmentCount > 0
+        ? Number((weightedGapTotal / segmentCount).toFixed(4))
+        : 0,
+      healthBand: source.overall.healthBand,
+      confidence: source.overall.confidence ?? 'high',
+    },
+  };
+  writeFileSync(sourcePath, JSON.stringify(report));
+  writeObserveIndex(report, sourcePath, outputDir, id);
+}
 
 describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
   let indexRoot: string; let proj: string; let emptyAnalyses: string; let emptyDoctors: string; let emptyObs: string;
@@ -58,11 +236,134 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
     assert.equal(bar.observe?.analysisId, 'o-20260614-aa11');
   });
 
+  it('observe 卡片保留未知工具结果状态，但不把不可测当成健康告警', () => {
+    const path = join(proj, reportFileName('o-unknown'));
+    writeFileSync(path, '{}');
+    indexObserveWrite({
+      meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 3, segmentCount: 30 },
+      overall: { healthBand: 'yellow', confidence: 'high' },
+      bySkill: {
+        uncertain: {
+          toolFailureRate: 0,
+          toolCallCount: 5,
+          toolResolvedCount: 0,
+          toolUnknownCount: 5,
+          segmentCount: 30,
+          confidence: 'high',
+          stability: 'unknown',
+          gap: { weightedGapRate: 0 },
+        },
+      },
+    }, path, proj, 'o-unknown');
+
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, {
+      includeObserveCards: true,
+      includeDoctorCards: false,
+    });
+    const uncertain = idx.entries.find((entry) => entry.skillName === 'uncertain')!;
+    assert.equal(uncertain.observe?.stability, 'unknown');
+    assert.equal(uncertain.observe?.toolCallCount, 5);
+    assert.equal(uncertain.observe?.toolResolvedCount, 0);
+    assert.equal(uncertain.observe?.toolUnknownCount, 5);
+    assert.equal(uncertain.observe?.healthBand, 'green');
+    assert.equal(uncertain.band, 'gray', '工具结果全未知时不能把不可测误判成健康或告警');
+    assert.equal(idx.summary.yellow, 0);
+    assert.equal(idx.summary.gray, 1);
+  });
+
+  it('可判定工具结果不足时把 observe 总览保留为未充分测量', () => {
+    const path = join(proj, reportFileName('o-partial-outcomes'));
+    writeFileSync(path, '{}');
+    indexObserveWrite({
+      meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 3, segmentCount: 30 },
+      overall: { healthBand: 'green', confidence: 'high' },
+      bySkill: {
+        partial: {
+          toolFailureRate: 0,
+          toolCallCount: 5,
+          toolResolvedCount: 4,
+          toolUnknownCount: 1,
+          segmentCount: 30,
+          confidence: 'high',
+          stability: 'stable',
+          gap: { weightedGapRate: 0 },
+        },
+      },
+    }, path, proj, 'o-partial-outcomes');
+
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, {
+      includeObserveCards: true,
+      includeDoctorCards: false,
+    });
+    const partial = idx.entries.find((entry) => entry.skillName === 'partial')!;
+    assert.equal(partial.observe?.healthBand, 'green');
+    assert.equal(partial.band, 'gray');
+  });
+
+  it('少量可判定结果不足以把高失败率标成红色或黄色', () => {
+    const path = join(proj, reportFileName('o-underpowered-failures'));
+    writeFileSync(path, '{}');
+    indexObserveWrite({
+      meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 20, segmentCount: 20 },
+      overall: { healthBand: 'yellow', confidence: 'high' },
+      bySkill: {
+        sparse: {
+          toolFailureRate: 1,
+          toolCallCount: 100,
+          toolResolvedCount: 1,
+          toolUnknownCount: 99,
+          segmentCount: 20,
+          confidence: 'high',
+          stability: 'very-unstable',
+          gap: { weightedGapRate: 0 },
+        },
+      },
+    }, path, proj, 'o-underpowered-failures');
+
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, {
+      includeObserveCards: true,
+      includeDoctorCards: false,
+    });
+    const sparse = idx.entries.find((entry) => entry.skillName === 'sparse')!;
+    assert.equal(sparse.observe?.healthBand, 'green');
+    assert.equal(sparse.observe?.stability, 'unstable');
+    assert.equal(sparse.band, 'gray');
+  });
+
+  it('极少未知结果不污染高覆盖率 observe 的健康色带', () => {
+    const path = join(proj, reportFileName('o-high-outcome-coverage'));
+    writeFileSync(path, '{}');
+    indexObserveWrite({
+      meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 30, segmentCount: 30 },
+      overall: { healthBand: 'green', confidence: 'high' },
+      bySkill: {
+        covered: {
+          toolFailureRate: 0,
+          toolCallCount: 1_000,
+          toolResolvedCount: 999,
+          toolUnknownCount: 1,
+          segmentCount: 30,
+          confidence: 'high',
+          stability: 'stable',
+          gap: { weightedGapRate: 0 },
+        },
+      },
+    }, path, proj, 'o-high-outcome-coverage');
+
+    const idx = buildSkillIndex([], emptyAnalyses, emptyDoctors, emptyObs, {
+      includeObserveCards: true,
+      includeDoctorCards: false,
+    });
+    const covered = idx.entries.find((entry) => entry.skillName === 'covered')!;
+    assert.equal(covered.observe?.healthBand, 'green');
+    assert.equal(covered.band, 'green');
+  });
+
   it('悬空卡片(真身从未存在)不进 buildSkillIndex:include=true 也不展示', () => {
     // 卡片在、真身不在(项目被移走/手动 rm)→ 机器级合并不应展示。
-    indexDoctorWrite({ id: 'gone-1-zz', path: join(proj, reportFileName('gone')), skillName: 'gone-skill', reportId: 'doctor-1-zz',
+    writeDoctorIndex({ id: 'gone-1-zz', path: join(proj, reportFileName('gone-1-zz')), skillName: 'gone-skill', reportId: 'doctor-1-zz',
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
-    indexObserveWrite({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
+    writeObserveIndex({ meta: { generatedAt: '2026-06-14T01:00:00Z', sessionCount: 1, segmentCount: 10 },
       overall: { healthBand: 'green', confidence: 'high' },
       bySkill: { 'gone-obs': { toolFailureRate: 0, segmentCount: 10, confidence: 'high', gap: { weightedGapRate: 0 } } },
     }, join(proj, reportFileName('gone-observe')), proj, 'gone-observe'); // 真身均不写
@@ -122,7 +423,7 @@ describe('机器级 doctor/observe 卡片合并进 buildSkillIndex', () => {
       meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5, toolCallCount: 3,
         toolFailureRate: 0, timeRange: { from: 'a', to: 'b' }, generatedAt: '2026-06-14T00:00:00Z' },
       bySkill: { o: { skillName: 'o', segmentCount: 10, toolCallCount: 3, toolFailureCount: 0, toolFailureRate: 0,
-        stability: 1, confidence: 'high' as const, gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
+        stability: 'stable' as const, confidence: 'high' as const, gap: { gapRate: 0, weightedGapRate: 0, signals: [{ h: 1 }] } } },
       overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green' as const, confidence: 'high' as const },
     };
     writeFileSync(join(emptyAnalyses, reportFileName(oid)), JSON.stringify(liveObs));

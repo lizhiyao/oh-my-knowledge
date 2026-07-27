@@ -13,6 +13,8 @@ omk evolve skills/my-skill.md --rounds 10 --target 4.5
 
 Each round: evaluate the current skill, ask a diagnostic LLM what's failing, rewrite the skill, evaluate the candidate, and **accept it only if it's actually better**. Stops when it hits `--target` (a composite score) or exhausts `--rounds` (default 5). The original is versioned at `skills/evolve/*.r0.md`. Cost scales with `rounds × samples × variants` — typically minutes to tens of minutes.
 
+Every retained round must keep the same sample hashes, model, executor, judge configuration, runtime fingerprint, execution strategy, and skill-isolation state. If any of these drift, omk refuses to merge the rounds as a knowledge-only improvement. The merged report separates measurement cost (`meta.totalCostUSD`) from the end-to-end evolve process cost (`meta.evolve.processCostUSD`).
+
 ## Why it won't just "improve" the score to nonsense
 
 Three defaults guard against the classic failure modes of auto-iteration:

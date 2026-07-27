@@ -441,7 +441,10 @@ async function runEval(
   flags: EvalFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { values, config, evalConfig } = parseRunConfig({ ...flags } as Record<string, unknown>);
+  const { values, config, evalConfig } = parseRunConfig(
+    { ...flags } as Record<string, unknown>,
+    { lang },
+  );
 
   if (!values.batch && !hasUsableSamplesPath(config.samplesPath)) {
     const treatmentRaw = typeof values.treatment === 'string' ? values.treatment : '';
@@ -691,14 +694,14 @@ export default class Eval extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。',
-        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).',
+        zh: '执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai-api:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。',
-        en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai-api:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。',
+        en: 'Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.',
       }),
     }),
     'output-dir': Flags.string({
@@ -757,7 +760,10 @@ export default class Eval extends BaseCommand {
       parse: integerStringParser('--retry', { min: 0 }),
     }),
     resume: Flags.string({
-      description: bilingual({ zh: '从某次失败 run 续跑', en: 'Resume a previous failed run' }),
+      description: bilingual({
+        zh: '从契约兼容的报告恢复成功项；不兼容则从头运行',
+        en: 'Reuse successful entries from a contract-compatible report; otherwise start over',
+      }),
     }),
     'layered-stats': Flags.boolean({
       description: bilingual({ zh: '输出分层统计', en: 'Emit layered stats' }),

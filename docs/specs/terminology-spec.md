@@ -352,20 +352,18 @@ Two caveats:
 
 ### 1. Problem background
 
-When omk runs baseline-vs-skill evaluations, the baseline variant by default reaches every skill under `~/.claude/skills/` through **three channels**, so the baseline is not actually a "bare model" — a **construct invalidity**:
+When omk runs baseline-vs-skill evaluations through a native coding-agent runtime, the baseline may discover local knowledge that was never declared as measured input. That makes the baseline something other than a "bare model" — a **construct invalidity**.
 
-1. **SDK skill auto-discovery**: the Claude Agent SDK scans `~/.claude/skills/` by default and injects the skill list into the main session's system prompt.
-2. **subagent Skill tool**: even if the main session has no skills, the SDK's built-in task subagent can still load skill content on demand by calling `Skill(...)`.
-3. **cwd file-system access**: the baseline's default cwd is the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment; the baseline can follow that symlink with plain `Glob` / `Read` tools and read `SKILL.md` directly.
+Claude runtimes expose three relevant channels: SDK / CLI skill discovery, the subagent `Skill` tool, and ordinary cwd file access. Codex discovers `AGENTS.md`, `.agents/skills/`, project rules, and related context from its workspace and local profile. Both families can also read a `skills/<name>/` path under cwd with ordinary tools.
 
-Only once all three channels are blocked is the baseline truly "bare". If any one is left open, the baseline routes around the others to reach skill content, and the verdict / Δ reflects a contaminated baseline vs. treatment rather than the real "no knowledge vs. knowledge".
+The strict baseline therefore combines a clean per-attempt cwd with executor-specific controls. If any discovery channel remains open, verdict / Δ reflects a contaminated baseline vs. treatment rather than the intended "no knowledge vs. knowledge".
 
 ### 2. Terminology
 
 - **`allowedSkills`** (per-variant field, added to `Artifact` / `VariantConfig` / `EvalConfigVariant`):
-  - `undefined` → default SDK behavior (full discovery of `~/.claude/skills/`)
-  - `[]` → **full isolation**: `options.skills = []` + `options.disallowedTools = ['Skill']`; the main session discovers no skills, and the subagent can't call the Skill tool either
-  - `[name1, ...]` (non-empty) → **rejected**: a skill whitelist can't be fully isolated (the subagent Skill tool and cwd filesystem channels leak), so a non-empty `allowedSkills` is no longer supported — use `[]` for full isolation or omit for no isolation. All three executors throw.
+  - `undefined` → executor-default runtime discovery; no isolation is requested
+  - `[]` → **strict isolation requested**: omk supplies an empty per-attempt cwd and applies every isolation control supported by the selected executor
+  - `[name1, ...]` (non-empty) → **rejected at the shared execution-plan boundary**: a portable whitelist cannot be enforced across native agent, API, and custom executors; use `[]` for strict isolation or omit for none
 - **`--strict-baseline` flag** (default true): automatically sets `allowedSkills = []` for every `kind === 'baseline'` artifact; `--no-strict-baseline` turns it off (explicit opt-out).
 - **`meta.skillIsolation`** (new report-meta field): a variantName → allowedSkills snapshot, used to validate comparability when comparing verdict / Δ across reports.
 
@@ -377,18 +375,19 @@ eval.yaml variant.allowedSkills (explicit)
   > default (strictBaseline = true)
 ```
 
-baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (full SDK discovery).
+baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (executor-default context).
 
 ### 4. Isolation coverage
 
-| Channel | Covered? | Mechanism |
+| Runtime / channel | Covered? | Mechanism |
 |---|---|---|
-| Main session skills | ✅ | `options.skills = []` |
-| SDK built-in task subagent calling the Skill tool | ✅ (when allowedSkills=[]) | `options.disallowedTools = ['Skill']` |
-| **cwd file system (baseline → cwd → skills/ symlink → SKILL.md)** | ✅ (strict + user gave no explicit cwd) | baseline cwd switched to the empty dir `~/.oh-my-knowledge/state/isolated-cwd/` |
-| MCP servers | ✅ (blocked by default) | SDK `settingSources` defaults to `[]`, omk passes no `mcpServers` |
-| `AgentDefinition.skills` whitelist fine-grained control | ❌ (known hole, not in v1) | follow-up: omk adds an `agents` option |
-| script executor | ❌ | stderr warn; user-custom, doesn't participate in isolation |
+| Common cwd file access | yes, for implicit baseline cwd | fresh empty per-attempt cwd under `~/.oh-my-knowledge/state/isolated-cwd/` |
+| Codex CLI profile, sessions, and rules | yes | `--ephemeral --ignore-user-config --ignore-rules` plus isolated `-C` |
+| Codex SDK profile and sessions | yes | fresh `CODEX_HOME` with copied credentials plus isolated working directory |
+| Codex SDK project execpolicy | SDK limitation | SDK does not expose `--ignore-rules`; use the `codex` executor when this final boundary matters |
+| Claude SDK skill discovery / subagent Skill tool | yes | `skills: []` plus `disallowedTools: ['Skill']` |
+| Claude CLI skill commands | yes | `--disable-slash-commands --disallowedTools Skill` |
+| Custom script executor | not enforceable | one-time warning; omk cannot prove what the user command loads |
 
 **Why the cwd channel is listed separately**: after blocking only the two SDK channels (`skills:[]` + `disallowedTools:['Skill']`), the baseline's `Skill` tool calls do drop to 0, but the baseline can still use plain `Glob` / `Read` to follow the `skills/<name>/` symlink under cwd and read `SKILL.md`, completely bypassing the SDK isolation. Root cause: omk defaults to `baseline.cwd === null` → the SDK falls back to `process.cwd()` = the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment. The fix is to switch the baseline's default cwd to `~/.oh-my-knowledge/state/isolated-cwd/` (an empty dir). **When the user explicitly sets a cwd for the baseline, this is left untouched** (explicit cwd = the user is responsible for keeping that dir clean).
 
@@ -396,17 +395,22 @@ Note: isolated-cwd is not a sandbox — the baseline can still Read any absolute
 
 ### 5. Cache key version
 
-The cache key currently carries a `v4:` prefix, with allowedSkills, the executor name, and the executor runtime fingerprint folded into the key — switching strict / non-strict, crossing executors, or a binary / SDK version change will not falsely hit stale output.
+The cache key currently carries a `v9:` prefix. It binds model, prompts, cwd, isolation declaration, executor, runtime fingerprint, mocks, strict-mock mode, effort, artifact content hash, and the content of external mock fixtures referenced by `return_file`. Cached results also retain full turns / tool calls and pass the same source-neutral result validator and tool-identity normalization as cold executions. Switching any construct-validity input therefore cannot silently reuse an incompatible result.
+
+The sample hash used by report and resume comparability also fingerprints each custom assertion module and its statically resolvable ESM import graph. Non-literal dynamic imports are recorded as unresolved markers, and unreadable or unparseable modules receive explicit markers instead of being treated as unchanged. Dependency display paths stay relative to the sample bundle when possible, so moving an identical checkout does not change the measurement identity.
 
 ### 6. Executor compatibility
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
+| `codex` | executor-default cwd | isolated cwd + ignored user config / rules | **throw at shared planner** |
+| `codex-sdk` | project cwd; isolated `CODEX_HOME` | isolated cwd + isolated `CODEX_HOME` | **throw at shared planner** |
 | `claude-sdk` | full discovery (default) | skills:[] + disallowedTools:[Skill] | **throw** |
 | `claude-cli` | default | `--disable-slash-commands --disallowedTools Skill` | **throw** |
-| `script` | default | stderr warn, non-blocking (no effect) | stderr warn, non-blocking (no effect) |
+| API executors | no implicit local skill discovery | no additional effect | **throw at shared planner** |
+| custom script | command-defined | stderr warning; cannot guarantee isolation | **throw at shared planner** |
 
-A non-empty skill whitelist `[name]` is **no longer supported by any executor**: it could never be fully isolated (the subagent Skill tool and cwd filesystem channels leak), so all executors throw on a non-empty `allowedSkills`. Use `[]` for full isolation or omit for none. The `script` executor is user-custom and can't be guaranteed to honor isolation, so it only warns.
+A non-empty skill whitelist `[name]` is rejected before executor dispatch, including programmatic callers that bypass eval.yaml validation. Use `[]` for strict isolation or omit the field for executor-default context. A custom script cannot prove strict isolation even with `[]`, so omk warns and records the isolation declaration for audit rather than silently claiming it was enforced.
 
 ## 8. Decision criteria
 

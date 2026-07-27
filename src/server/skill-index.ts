@@ -23,7 +23,6 @@ import type {
   ReportDocument,
   EvaluationReport,
   AssertionDetail,
-  DoctorReport,
   Diagnosis,
   SkillDoctorSnapshot,
   SkillEvalSnapshot,
@@ -36,14 +35,18 @@ import type {
   Insight,
   ArtifactGraphDocument,
   ArtifactGraphNode,
+  DoctorReport,
 } from '../types/index.js';
-import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
-import { confidenceOf } from '../observability/skill-health-analyzer.js';
+import { parseSkillHealthReport } from '../observability/skill-health-report.js';
+import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
-import { artifactIndexDir, listLiveDoctorCards, cardToDoctorSnapshot, listLiveObserveCards, listLiveReportCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listLiveDoctorCards, listLiveObserveCards, listLiveReportCards, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
+import { parseDoctorReport } from '../shared/doctor-report.js';
+import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
+import { ownRecordValue } from '../shared/record-count.js';
 
 // Re-export DTO 类型,保持既有 import 路径 backward-compat。新代码请直接从 ../types/index.js 导入。
 export type {
@@ -318,19 +321,69 @@ const PER_SKILL_BAND_RED_FAILURE_RATE = 0.4;       // 工具失败率 ≥ 40% �
 const PER_SKILL_BAND_YELLOW_FAILURE_RATE = 0.2;    // ≥ 20% → yellow
 const PER_SKILL_BAND_YELLOW_GAP_RATE = 0.3;        // 加权 gap ≥ 30% → yellow
 
-function bandFromObserveHealth(h: { gap?: { weightedGapRate?: number }; toolFailureRate: number }): 'green' | 'yellow' | 'red' {
-  if (h.toolFailureRate >= PER_SKILL_BAND_RED_FAILURE_RATE) return 'red';
+function bandFromObserveHealth(h: {
+  gap?: { weightedGapRate?: number };
+  toolFailureRate: number;
+  toolCallCount?: number;
+  toolResolvedCount?: number;
+  toolCancelledCount?: number;
+  toolUnknownCount?: number;
+  stability?: 'stable' | 'unstable' | 'very-unstable' | 'unknown';
+}): 'green' | 'yellow' | 'red' {
+  const resolvedOutcomeCount = h.toolResolvedCount ?? h.toolCallCount;
+  const comparableOutcomeCount = resolvedOutcomeCount === undefined
+    ? undefined
+    : Math.max(0, resolvedOutcomeCount - (h.toolCancelledCount ?? 0));
+  const failureRateMeasured = comparableOutcomeCount === undefined || comparableOutcomeCount >= 5;
+  if (
+    h.toolFailureRate >= PER_SKILL_BAND_RED_FAILURE_RATE
+    && failureRateMeasured
+  ) return 'red';
   const gap = h.gap?.weightedGapRate ?? 0;
-  if (gap >= PER_SKILL_BAND_YELLOW_GAP_RATE || h.toolFailureRate >= PER_SKILL_BAND_YELLOW_FAILURE_RATE) return 'yellow';
+  if (
+    gap >= PER_SKILL_BAND_YELLOW_GAP_RATE
+    || (
+      h.toolFailureRate >= PER_SKILL_BAND_YELLOW_FAILURE_RATE
+      && failureRateMeasured
+    )
+  ) return 'yellow';
   return 'green';
+}
+
+function normalizedObserveStability(h: {
+  toolFailureRate: number;
+  toolCallCount?: number;
+  toolResolvedCount?: number;
+  toolCancelledCount?: number;
+  stability?: 'stable' | 'unstable' | 'very-unstable' | 'unknown';
+}): SkillObserveSnapshot['stability'] {
+  if (h.toolCallCount === undefined) return h.stability;
+  const resolved = h.toolResolvedCount ?? h.toolCallCount;
+  const comparable = Math.max(0, resolved - (h.toolCancelledCount ?? 0));
+  return toolStabilityOf(h.toolFailureRate, comparable, h.toolCallCount);
+}
+
+function effectiveObserveSnapshotBand(
+  observe: SkillObserveSnapshot | null,
+): 'green' | 'yellow' | 'red' | 'gray' {
+  if (!observe || observe.confidence === 'underpowered') return 'gray';
+  if (
+    observe.healthBand === 'green'
+    && (observe.toolCallCount ?? 0) > 0
+    && Math.max(
+      0,
+      (observe.toolResolvedCount ?? observe.toolCallCount ?? 0)
+        - (observe.toolCancelledCount ?? 0),
+    ) < 5
+  ) return 'gray';
+  return observe.healthBand;
 }
 
 function combineBand(
   doctor: SkillDoctorSnapshot | null,
   evalSnap: SkillEvalSnapshot | null,
-  _observe: SkillObserveSnapshot | null,
+  observe: SkillObserveSnapshot | null,
 ): 'green' | 'yellow' | 'red' | 'gray' {
-  if (!doctor && !evalSnap) return 'gray';
   // doctor band: status fail → red, warn → yellow, pass → green
   const doctorBand: 'green' | 'yellow' | 'red' | 'gray' = !doctor
     ? 'gray'
@@ -344,9 +397,11 @@ function combineBand(
     : evalScore < 2.5 ? 'red'
     : evalScore < 3.5 ? 'yellow'
     : 'green';
-  if (doctorBand === 'red' || evalBand === 'red') return 'red';
-  if (doctorBand === 'yellow' || evalBand === 'yellow') return 'yellow';
-  if (doctorBand === 'green' || evalBand === 'green') return 'green';
+  // underpowered observe 的色带仅供参考，不参与聚合硬结论。
+  const observeBand = effectiveObserveSnapshotBand(observe);
+  if (doctorBand === 'red' || evalBand === 'red' || observeBand === 'red') return 'red';
+  if (doctorBand === 'yellow' || evalBand === 'yellow' || observeBand === 'yellow') return 'yellow';
+  if (doctorBand === 'green' || evalBand === 'green' || observeBand === 'green') return 'green';
   return 'gray';
 }
 
@@ -372,23 +427,11 @@ interface LoadedArtifactGraph {
   path: string;
 }
 
-function isArtifactGraphDocument(value: unknown): value is ArtifactGraphDocument {
-  if (!value || typeof value !== 'object') return false;
-  const graph = value as Partial<ArtifactGraphDocument>;
-  return graph.documentKind === 'artifact-graph'
-    && graph.schemaVersion === 1
-    && typeof graph.graphId === 'string'
-    && !!graph.source
-    && (graph.source.sourceKind === 'doctor' || graph.source.sourceKind === 'eval' || graph.source.sourceKind === 'observe')
-    && Array.isArray(graph.nodes)
-    && Array.isArray(graph.edges);
-}
-
 function readArtifactGraph(path: string): LoadedArtifactGraph | null {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8'));
-    if (!isArtifactGraphDocument(parsed)) return null;
-    return { graph: parsed, path };
+    const graph = parseArtifactGraphDocument(parsed);
+    return graph ? { graph, path } : null;
   } catch {
     return null;
   }
@@ -794,24 +837,17 @@ function graphSnapshotForEntry(entry: SkillIndexEntry, graphs: LoadedArtifactGra
 /** 扫 doctorsDir/*.report.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
  *  renderer 用最后一项做"当前",前面项画 sparkline。 */
 function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
-  const out: Record<string, SkillDoctorSnapshot[]> = {};
+  const out: Record<string, SkillDoctorSnapshot[]> = Object.create(null);
   migrateLegacyReportFiles(dir, 'doctor');
   if (!existsSync(dir)) return out;
   for (const file of readdirSync(dir)) {
     if (!isReportFileName(file)) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-      const kind = data?.kind === 'doctor' ? data.kind : null;
-      if (!kind || !Array.isArray(data.skills)) continue;
-      const ts = data.timestamp;
+      const data = parseDoctorReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+      if (!data) continue;
       for (const sr of data.skills) {
-        const passN = sr.results.filter((r) => r.status === 'pass').length;
-        const warnN = sr.results.filter((r) => r.status === 'warn').length;
-        const failN = sr.results.filter((r) => r.status === 'fail').length;
-        const snap: SkillDoctorSnapshot = {
-          reportId: data.id, timestamp: ts, status: sr.status,
-          passCount: passN, warnCount: warnN, failCount: failN, results: sr.results,
-        };
+        const snap = doctorSnapshot(data, sr.skillName);
+        if (!snap) continue;
         if (!out[sr.skillName]) out[sr.skillName] = [];
         out[sr.skillName].push(snap);
       }
@@ -819,6 +855,23 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
   }
   for (const list of Object.values(out)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   return out;
+}
+
+function doctorSnapshot(
+  report: DoctorReport,
+  skillName: string,
+): SkillDoctorSnapshot | null {
+  const skill = report.skills.find((entry) => entry.skillName === skillName);
+  if (!skill) return null;
+  return {
+    reportId: report.id,
+    timestamp: report.timestamp,
+    status: skill.status,
+    passCount: skill.results.filter((result) => result.status === 'pass').length,
+    warnCount: skill.results.filter((result) => result.status === 'warn').length,
+    failCount: skill.results.filter((result) => result.status === 'fail').length,
+    results: skill.results,
+  };
 }
 
 /**
@@ -863,7 +916,7 @@ export function buildSkillIndex(
   }
 
   // ── eval 聚合(历史 list)─────────────────────────────────
-  const evalBy: Record<string, SkillEvalSnapshot[]> = {};
+  const evalBy: Record<string, SkillEvalSnapshot[]> = Object.create(null);
   for (const r of reports) {
     if (r.kind !== 'evaluation') continue;
     const variants = r.meta.variants || [];
@@ -879,23 +932,30 @@ export function buildSkillIndex(
   for (const list of Object.values(evalBy)) list.sort((a, b) => evalSnapshotSortKey(a).localeCompare(evalSnapshotSortKey(b)));
 
   // ── observe 聚合(历史 list)──────────────────────────────
-  const observeBy: Record<string, SkillObserveSnapshot[]> = {};
+  const observeBy: Record<string, SkillObserveSnapshot[]> = Object.create(null);
   migrateLegacyReportFiles(analysesDir, 'observe-health');
   if (existsSync(analysesDir)) {
     for (const file of readdirSync(analysesDir)) {
       const id = reportFileStem(file);
       if (!id) continue;
       try {
-        const data = JSON.parse(readFileSync(join(analysesDir, file), 'utf-8')) as SkillHealthReport;
-        if (!data?.bySkill || !data.meta) continue;
+        const data = parseSkillHealthReport(
+          JSON.parse(readFileSync(join(analysesDir, file), 'utf-8')),
+        );
+        if (!data) continue;
         const generatedAt = data.meta.generatedAt;
         for (const [skill, h] of Object.entries(data.bySkill)) {
           const snap: SkillObserveSnapshot = {
             analysisId: id, generatedAt,
             healthBand: bandFromObserveHealth(h),
             failureRate: h.toolFailureRate,
+            toolCallCount: h.toolCallCount,
+            toolResolvedCount: h.toolResolvedCount,
+            toolCancelledCount: h.toolCancelledCount,
+            toolUnknownCount: h.toolUnknownCount,
             segmentCount: h.segmentCount,
             gapRate: h.gap?.weightedGapRate ?? 0,
+            stability: normalizedObserveStability(h),
             // Legacy reports (pre-confidence) fall back to deriving from segmentCount.
             confidence: h.confidence ?? confidenceOf(h.segmentCount),
           };
@@ -909,13 +969,24 @@ export function buildSkillIndex(
   // 仅机器级模式合并;固定 --analyses-dir / --global 时 includeObserveCards=false,只看该目录(逃生舱语义)。
   if (includeObserveCards) {
     for (const card of listLiveObserveCards()) {
-      for (const [skill, h] of Object.entries(card.bySkill)) {
+      let report: SkillHealthReport | null = null;
+      try {
+        report = parseSkillHealthReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+      } catch {
+        // Scratch cards only discover canonical reports.
+      }
+      if (!report) continue;
+      for (const [skill, h] of Object.entries(report.bySkill)) {
         const list = (observeBy[skill] ??= []);
         if (list.some((s) => s.analysisId === card.id)) continue;
         list.push({
-          analysisId: card.id, generatedAt: card.meta.generatedAt,
-          healthBand: bandFromObserveHealth(h), failureRate: h.toolFailureRate, segmentCount: h.segmentCount,
-          gapRate: h.gap?.weightedGapRate ?? 0, confidence: h.confidence ?? confidenceOf(h.segmentCount),
+          analysisId: card.id, generatedAt: report.meta.generatedAt,
+          healthBand: bandFromObserveHealth(h), failureRate: h.toolFailureRate,
+          toolCallCount: h.toolCallCount, toolResolvedCount: h.toolResolvedCount,
+          toolCancelledCount: h.toolCancelledCount,
+          toolUnknownCount: h.toolUnknownCount, segmentCount: h.segmentCount,
+          gapRate: h.gap?.weightedGapRate ?? 0, stability: normalizedObserveStability(h),
+          confidence: confidenceOf(h.segmentCount),
         });
       }
     }
@@ -928,8 +999,16 @@ export function buildSkillIndex(
   // 仅机器级模式合并;固定 --doctors-dir / --global 时 includeDoctorCards=false,只看该目录(逃生舱语义)。
   if (includeDoctorCards) {
     for (const card of listLiveDoctorCards()) {
-      const { skillName, snap } = cardToDoctorSnapshot(card);
-      const list = (doctorBy[skillName] ??= []);
+      let report: DoctorReport | null = null;
+      try {
+        report = parseDoctorReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+      } catch {
+        // Scratch cards only discover canonical reports.
+      }
+      if (!report || report.id !== card.reportId) continue;
+      const snap = doctorSnapshot(report, card.skillName);
+      if (!snap) continue;
+      const list = (doctorBy[card.skillName] ??= []);
       if (!list.some((s) => s.reportId === snap.reportId)) list.push(snap);
     }
   }
@@ -978,7 +1057,7 @@ export function buildSkillIndex(
   for (const ent of entries) {
     const evalReport = ent.eval ? reports.find((r) => r.id === ent.eval!.reportId && r.kind === 'evaluation') as EvaluationReport | undefined : undefined;
     insightsBySkill.set(ent.skillName, detectInsights(ent, evalReport ?? null, {
-      diagnostics: diagnosisBundle.bySkill[ent.skillName] ?? [],
+      diagnostics: ownRecordValue(diagnosisBundle.bySkill, ent.skillName) ?? [],
     }));
   }
 

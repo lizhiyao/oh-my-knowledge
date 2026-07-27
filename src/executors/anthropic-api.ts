@@ -1,5 +1,13 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { AnthropicResponse, asErrorLike, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
+import {
+  AnthropicResponse,
+  asErrorLike,
+  DEFAULT_TIMEOUT_MS,
+  errorMessage,
+  readJsonResponse,
+  responseBodyPreview,
+} from './shared.js';
+import { optionalTokenCount } from '../shared/token-usage.js';
 
 export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -26,25 +34,82 @@ export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = 
       body: JSON.stringify(reqBody),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const data = await res.json() as AnthropicResponse;
+    const { data, rawBody } = await readJsonResponse<AnthropicResponse>(res);
     const durationMs = Date.now() - start;
 
     if (!res.ok) {
-      return { ok: false, error: data.error?.message || `API error ${res.status}`, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, output: null, stopReason: 'error', numTurns: 0 };
+      const bodyPreview = responseBodyPreview(rawBody);
+      return { ok: false, error: data?.error?.message || `API error ${res.status}${bodyPreview ? `: ${bodyPreview}` : ''}`, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason: 'error', numTurns: 0 };
+    }
+    if (!data) {
+      return { ok: false, error: 'Anthropic API returned an empty or non-JSON response', durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason: 'error', numTurns: 0 };
     }
 
-    const usage = data.usage || {};
+    const usage = data.usage;
+    const inputTokens = optionalTokenCount(usage?.input_tokens);
+    const outputTokens = optionalTokenCount(usage?.output_tokens);
+    const cacheReadTokens = usage?.cache_read_input_tokens === undefined
+      ? 0
+      : optionalTokenCount(usage.cache_read_input_tokens);
+    const cacheCreationTokens = usage?.cache_creation_input_tokens === undefined
+      ? 0
+      : optionalTokenCount(usage.cache_creation_input_tokens);
+    if (
+      inputTokens === undefined
+      || outputTokens === undefined
+      || cacheReadTokens === undefined
+      || cacheCreationTokens === undefined
+    ) {
+      return {
+        ok: false,
+        error: 'Anthropic response contained missing or invalid token usage',
+        durationMs,
+        durationApiMs: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        tokenUsageReportedByExecutor: false,
+        costUSD: 0,
+        costReportedByExecutor: false,
+        output: null,
+        stopReason: 'error',
+        numTurns: 1,
+      };
+    }
+    const output = data.content
+      ?.filter((block) => block.type === undefined || block.type === 'text')
+      .map((block) => block.text || '')
+      .join('') ?? '';
+    if (!output.trim()) {
+      return {
+        ok: false,
+        error: 'Anthropic response did not contain assistant text',
+        durationMs,
+        durationApiMs: 0,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        costUSD: 0,
+        costReportedByExecutor: false,
+        output: null,
+        stopReason: 'error',
+        numTurns: 1,
+      };
+    }
     return {
-      ok: true, output: data.content?.map((c) => c.text || '').join('') || '', durationMs, durationApiMs: 0,
-      inputTokens: usage.input_tokens || 0, outputTokens: usage.output_tokens || 0,
-      cacheReadTokens: usage.cache_read_input_tokens || 0, cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-      costUSD: 0, stopReason: data.stop_reason || 'end_turn', numTurns: 1,
+      ok: true, output, durationMs, durationApiMs: 0,
+      inputTokens, outputTokens,
+      cacheReadTokens, cacheCreationTokens,
+      costUSD: 0, costReportedByExecutor: false,
+      stopReason: data.stop_reason || 'end_turn', numTurns: 1,
     };
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = asErrorLike(err);
     const stopReason = details.name === 'TimeoutError' ? 'timeout' : 'error';
     const error = details.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : errorMessage(err);
-    return { ok: false, error, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, output: null, stopReason, numTurns: 0 };
+    return { ok: false, error, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason, numTurns: 0 };
   }
 }

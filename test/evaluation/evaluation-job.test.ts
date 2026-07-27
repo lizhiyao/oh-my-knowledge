@@ -64,6 +64,23 @@ describe('buildEvaluationRequest', () => {
     assert.equal(req.batch, true);
   });
 
+  it('把 strictBaseline 写入审计请求', () => {
+    const req = buildEvaluationRequest({
+      samplesPath: '/a.json',
+      skillDir: '/skills',
+      artifacts: [],
+      model: 'sonnet',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      executor: 'claude',
+      noJudge: false,
+      concurrency: 1,
+      noCache: false,
+      dryRun: false,
+      strictBaseline: false,
+    });
+    assert.equal(req.strictBaseline, false);
+  });
+
   it('未传 repeat / batch 时字段为 undefined (不是 0 或 false)', () => {
     const req = buildEvaluationRequest({
       samplesPath: '/a.json',
@@ -112,6 +129,25 @@ describe('buildEvaluationRequest', () => {
       dryRun: false,
     });
     assert.equal(req.judgeRepeat, undefined);
+  });
+
+  it('把 retry 与 noDiagnostic 写入审计请求', () => {
+    const req = buildEvaluationRequest({
+      samplesPath: '/a.json',
+      skillDir: '/skills',
+      artifacts: [],
+      model: 'sonnet',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      executor: 'claude',
+      noJudge: false,
+      concurrency: 1,
+      noCache: false,
+      dryRun: false,
+      retry: 2,
+      noDiagnostic: true,
+    });
+    assert.equal(req.retry, 2);
+    assert.equal(req.noDiagnostic, true);
   });
 });
 

@@ -153,17 +153,22 @@ describe('assert-set combinator', () => {
       },
       expected: true,
     },
-    {
-      name: 'empty children array fails',
-      output: 'x',
-      assertion: { type: 'assert-set', mode: 'all', children: [] },
-      expected: false,
-    },
   ];
 
   it.each(cases)('$name', ({ output, assertion, expected }) => {
     const r = runAssertions(output, [assertion]);
     assert.equal(r.details[0].passed, expected);
+  });
+
+  it('rejects an empty children array as invalid configuration', () => {
+    assert.throws(
+      () => runAssertions('x', [{
+        type: 'assert-set',
+        mode: 'all',
+        children: [],
+      }]),
+      /assert-set.*requires non-empty.*children/,
+    );
   });
 });
 

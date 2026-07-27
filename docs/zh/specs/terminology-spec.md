@@ -352,20 +352,18 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 ### 1. 问题背景
 
-omk 跑 baseline-vs-skill 评测时,baseline variant 默认通过**三条 channel** 拿到 `~/.claude/skills/` 里的所有 skill,导致 baseline 实际不是"裸模型"——**construct invalidity**:
+omk 通过原生 coding-agent runtime 跑 baseline-vs-skill 评测时，baseline 可能发现从未被声明为测量输入的本地知识，导致它不再是「裸模型」，形成 **construct invalidity**。
 
-1. **SDK skill auto-discovery**:Claude Agent SDK 默认扫 `~/.claude/skills/` 把 skill 列表注入 main session system prompt
-2. **subagent Skill 工具**:即便 main session 没 skill,SDK 内置 task subagent 调 `Skill(...)` 仍会按需加载 skill 内容
-3. **cwd 文件系统访问**:baseline 默认 cwd 是用户评测工作目录，该目录通常有 `skills/<name>/` symlink 给 treatment 用,baseline 用 plain `Glob` / `Read` 工具就能顺 symlink 直接读 `SKILL.md`
+Claude runtime 有三条相关通道：SDK / CLI 的 skill 发现、子代理 `Skill` 工具，以及普通 cwd 文件访问。Codex 会从 workspace 与本地 profile 发现 `AGENTS.md`、`.agents/skills/`、项目规则等上下文。两类 runtime 也都可能通过普通工具读取 cwd 下的 `skills/<name>/`。
 
-三条 channel 都堵掉之后,baseline 才真的"裸"。任何一条没堵,baseline 都会绕过其他堵点拿到 skill 内容,verdict / Δ 反映的是污染基线 vs treatment,而不是真实"无知识 vs 有知识"。
+因此严格 baseline 必须同时使用干净的逐次运行 cwd 与执行器特定的隔离控制。任一发现通道仍然开放，verdict / Δ 反映的都会是污染基线 vs treatment，而非预期的「无知识 vs 有知识」。
 
 ### 2. 术语
 
 - **`allowedSkills`**(per-variant 字段，新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
-  - `undefined` → SDK 默认行为(全发现 `~/.claude/skills/`)
-  - `[]` → **完全隔离**:`options.skills = []` + `options.disallowedTools = ['Skill']`,main session 不发现任何 skill,subagent 也无法调 Skill 工具
-  - `[name1, ...]`(非空)→ **拒绝**:skill 白名单无法真正隔离(子代理 Skill 工具与 cwd 文件系统两条 channel 会漏),非空 `allowedSkills` 不再支持 —— 用 `[]` 完全隔离或省略(不隔离)。三个执行器一致 throw
+  - `undefined` → 使用执行器默认 runtime context，不请求隔离
+  - `[]` → **请求严格隔离**：omk 提供空的逐次运行 cwd，并应用当前执行器支持的全部隔离控制
+  - `[name1, ...]`（非空）→ **在统一 execution-plan 边界拒绝**：原生 agent、API 与自定义执行器之间不存在可移植且可证明的白名单机制；严格隔离请用 `[]`，不隔离则省略
 - **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
 - **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照，跨报告对比 verdict / Δ 时校验
 
@@ -377,36 +375,42 @@ eval.yaml variant.allowedSkills (显式)
   > default (strictBaseline = true)
 ```
 
-baseline-kind 默认 `[]`(strict),其他 kind 默认 `undefined`(SDK 全发现)。
+baseline-kind 默认 `[]`（strict），其他 kind 默认 `undefined`（执行器默认上下文）。
 
 ### 4. 隔离覆盖范围
 
-| Channel | 覆盖? | 机制 |
+| Runtime / 通道 | 覆盖？ | 机制 |
 |---|---|---|
-| Main session skills | ✅ | `options.skills = []` |
-| SDK 内置 task subagent 调 Skill 工具 | ✅(allowedSkills=[] 时) | `options.disallowedTools = ['Skill']` |
-| **cwd 文件系统(baseline 走 cwd → skills/ symlink → SKILL.md)** | ✅(strict + 用户没显式 cwd 时) | baseline cwd 切到 `~/.oh-my-knowledge/state/isolated-cwd/` 空目录 |
-| MCP servers | ✅(已默认堵) | SDK `settingSources` 默认 `[]`,omk 不传 `mcpServers` |
-| `AgentDefinition.skills` 白名单精确控制 | ❌(known hole, v1 不做) | follow-up:omk 加 `agents` option |
-| script executor | ❌ | stderr warn,用户自定义不参与 isolation |
+| 通用 cwd 文件访问 | 是，针对隐式 baseline cwd | `~/.oh-my-knowledge/state/isolated-cwd/` 下的全新逐次运行空目录 |
+| Codex CLI profile、session 与规则 | 是 | `--ephemeral --ignore-user-config --ignore-rules` + 隔离 `-C` |
+| Codex SDK profile 与 session | 是 | 临时 `CODEX_HOME`（只复制凭证）+ 隔离 working directory |
+| Codex SDK 项目 execpolicy | SDK 限制 | SDK 不暴露 `--ignore-rules`；要求这一层隔离时使用 `codex` 执行器 |
+| Claude SDK skill 发现 / 子代理 Skill 工具 | 是 | `skills: []` + `disallowedTools: ['Skill']` |
+| Claude CLI skill 命令 | 是 | `--disable-slash-commands --disallowedTools Skill` |
+| 自定义 script 执行器 | 无法强制 | 一次性告警；omk 无法证明用户命令加载了什么 |
 
-**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/state/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
+**为什么 cwd 单独列出**：provider 特定的 flag 无法阻止 agent 用普通文件工具读取评测 workspace 下的 `skills/<name>/`。因此严格 baseline 在没有显式 cwd 时，每次执行都使用一个全新的空目录。**用户显式指定 baseline cwd 时，omk 不会替换它**，因为该目录属于用户有意纳入测量的 runtime context。
 
 注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径，需要再加层 sandbox 保护(out-of-scope)。
 
 ### 5. cache key 版本
 
-cache key 当前为 `v4:` prefix,含 allowedSkills、executor 名和 executor runtime 指纹入键 — 切换 strict / non-strict、跨 executor 或 binary / SDK 版本变化都不会误命中旧输出。
+cache key 当前使用 `v9:` prefix，绑定模型、prompt、cwd、隔离声明、执行器、runtime 指纹、mocks、strict-mock 模式、effort、artifact 内容指纹，以及 `return_file` 引用的外部 mock fixture 内容。缓存结果保留完整 turns / toolCalls，并与冷执行一样经过 source-neutral 返回值校验和工具身份归一化；任一 construct-validity 输入变化都不会静默复用不兼容结果。
+
+报告和 resume 可比性使用的样本 hash 还会纳入每个自定义 assertion 模块及其可静态解析的 ESM import 图。非字面量 dynamic import 会记录为未解析标记，无法读取或解析的模块也会写入显式标记，不会被当作“依赖未变化”。依赖展示路径会尽量相对评测用例 bundle 保存，因此相同 checkout 仅移动目录不会改变测量身份。
 
 ### 6. executor 兼容
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
+| `codex` | 执行器默认 cwd | 隔离 cwd + 忽略用户配置 / rules | **统一 planner 抛错** |
+| `codex-sdk` | 项目 cwd；隔离 `CODEX_HOME` | 隔离 cwd + 隔离 `CODEX_HOME` | **统一 planner 抛错** |
 | `claude-sdk` | 默认全发现 | skills:[] + disallowedTools:[Skill] | **throw** |
 | `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw** |
-| `script` | 默认 | stderr warn,不阻塞(无效) | stderr warn,不阻塞(无效) |
+| API 执行器 | 不隐式发现本地 skill | 无额外效果 | **统一 planner 抛错** |
+| 自定义 script | 由命令决定 | stderr 告警，无法保证隔离 | **统一 planner 抛错** |
 
-非空 skill 白名单 `[name]` **所有 executor 都不再支持**:它从不能真正隔离(子代理 Skill 工具与 cwd 文件系统两条 channel 会漏),故非空 `allowedSkills` 一律 throw。用 `[]` 完全隔离、省略则不隔离。`script` executor 用户自定义，无法保证遵循 isolation,只 warn。
+非空 skill 白名单 `[name]` 会在执行器分发前被拒绝，programmatic caller 即使绕过 eval.yaml 校验也一样。严格隔离使用 `[]`，执行器默认上下文则省略。自定义 script 即使收到 `[]` 也无法证明严格隔离，因此 omk 会告警并记录隔离声明用于审计，不会静默声称已经兑现。
 
 ## 八、落地判断标准
 

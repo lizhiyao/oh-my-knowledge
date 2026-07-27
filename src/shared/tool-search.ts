@@ -1,10 +1,18 @@
 import type { ToolCallInfo } from '../types/index.js';
+import { isToolCallCancelled, isToolCallFailure, isToolCallSuccess } from './tool-call-status.js';
 
 export function toolCallQuery(tc: ToolCallInfo): { query?: string; path?: string } {
   const input = (tc.input && typeof tc.input === 'object') ? tc.input as Record<string, unknown> : {};
+  const legacyInput = typeof tc.input === 'string' ? tc.input : undefined;
   if (tc.tool === 'Grep') return { query: String(input.pattern ?? ''), path: String(input.path ?? '') };
-  if (tc.tool === 'Read') return { path: String(input.file_path ?? '') };
-  if (tc.tool === 'Bash') return bashStructuredQuery(String(input.command ?? ''));
+  if (tc.tool === 'Read') return { path: String(input.file_path ?? legacyInput ?? '') };
+  if (tc.tool === 'Bash') return bashStructuredQuery(String(input.command ?? legacyInput ?? ''));
+  if (isWebSearchTool(tc.tool)) {
+    return {
+      query: typeof input.query === 'string' ? input.query : legacyInput,
+      path: typeof input.url === 'string' ? input.url : undefined,
+    };
+  }
   return {};
 }
 
@@ -53,13 +61,46 @@ function bashStructuredQuery(command: string): { query?: string; path?: string }
   // find: 支持 -name / -iname / -path / -wholename
   const findName = /\bfind\b[^|;&]*?-(?:i?name|path|wholename)\s+['"]?([^'"\s]+)/.exec(command);
   if (findName) return { query: findName[1] };
-  // ls / cat / test / head / tail / wc / file / stat / du / tree → path-only。
-  // 路径首字符限制 [\w./~]:
-  //   - 排除 flag (`-` 开头) 防 `npm run test --watch` 把 `--watch` 当 path
-  //   - 允许字母/数字/`.`/`/`/`~` 开头的 path token (foo / ./foo / /foo / ~/foo)
-  const pathOnly = /\b(?:ls|cat|test|head|tail|wc|file|stat|du|tree)\b\s+(?:-\w+\s+)*([\w./~][^\s|;&]*)/.exec(command);
-  if (pathOnly) return { path: pathOnly[1] };
+  const path = shellReaderPath(command);
+  if (path) return { path };
   return {};
+}
+
+function shellReaderPath(command: string): string | undefined {
+  const match = /\b(ls|cat|test|head|tail|wc|file|stat|du|tree|sed|awk|less|more|bat)\b\s+([^|;&]+)/.exec(command);
+  if (!match) return undefined;
+  const tool = match[1];
+  const tokens = shellWords(match[2]);
+  const positional: string[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token.startsWith('-') || token === '-') {
+      positional.push(token);
+      continue;
+    }
+    if (
+      (tool === 'head' || tool === 'tail')
+      && (token === '-n' || token === '-c')
+      && index + 1 < tokens.length
+    ) {
+      index += 1;
+      continue;
+    }
+    if (tool === 'sed' && (token === '-e' || token === '-f') && index + 1 < tokens.length) {
+      index += 1;
+    }
+  }
+  const candidate = tool === 'sed' || tool === 'awk'
+    ? positional.at(-1)
+    : positional[0];
+  if (!candidate || /^\d+$/.test(candidate)) return undefined;
+  return /^[\w./~]/.test(candidate) ? candidate : undefined;
+}
+
+function shellWords(value: string): string[] {
+  return [...value.matchAll(/"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^\s]+)/g)]
+    .map((match) => match[1] ?? match[2] ?? match[3])
+    .filter((token): token is string => Boolean(token));
 }
 
 export function bashSearchOrProbeCommand(command: string): boolean {
@@ -70,29 +111,47 @@ export function bashSearchOrProbeCommand(command: string): boolean {
 
 export function isSearchToolCall(tc: ToolCallInfo): boolean {
   if (tc.tool === 'Read' || tc.tool === 'Grep') return true;
+  if (isWebSearchTool(tc.tool)) return true;
   if (tc.tool !== 'Bash') return false;
   const input = (tc.input && typeof tc.input === 'object') ? tc.input as Record<string, unknown> : {};
-  return bashSearchOrProbeCommand(String(input.command ?? ''));
+  const command = input.command ?? (typeof tc.input === 'string' ? tc.input : '');
+  return bashSearchOrProbeCommand(String(command));
 }
 
 export function isFailedSearchToolCall(tc: ToolCallInfo): boolean {
   const output = typeof tc.output === 'string' ? tc.output : String(tc.output ?? '');
-  const emptyOutput = output.trim() === '' || /No matches found/i.test(output);
+  // Runtime cancellation is authoritative. Some runtimes retain partial or
+  // stale output text on cancellation; it must not become knowledge-gap evidence.
+  if (isToolCallCancelled(tc)) return false;
+  const explicitlyEmpty = /No matches found/i.test(output);
+  // An unresolved call also has an empty output. That is missing evidence,
+  // not evidence that a search completed with zero matches.
+  const completedEmpty = output.trim() === '' && isToolCallSuccess(tc);
 
   if (tc.tool === 'Read') {
-    return tc.success === false;
+    return isToolCallFailure(tc);
   }
 
   if (tc.tool === 'Grep') {
-    if (tc.success === false) return true;
-    return emptyOutput;
+    if (isToolCallFailure(tc)) return true;
+    return explicitlyEmpty || completedEmpty;
+  }
+
+  if (isWebSearchTool(tc.tool)) {
+    return isToolCallFailure(tc);
   }
 
   if (tc.tool === 'Bash') {
     if (!isSearchToolCall(tc)) return false;
-    if (tc.success === false) return true;
-    return emptyOutput;
+    if (isToolCallFailure(tc)) return true;
+    return explicitlyEmpty || completedEmpty;
   }
 
   return false;
+}
+
+function isWebSearchTool(tool: string): boolean {
+  // `WebSearch` is the Trace IR canonical identity. Keep the old persisted spelling
+  // readable because report schemas before v5 could contain runtime-native names.
+  return tool === 'WebSearch' || tool === 'web_search';
 }

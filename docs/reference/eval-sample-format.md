@@ -59,6 +59,8 @@ Compatibility note: flat-skill sidecars such as `skills/<name>.eval-samples.json
 | `assertions[].n` | `number` | no | n-gram order for `rouge_n_min` (default 1) |
 | `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
 
+The loader validates this contract before any model call. Unsupported assertion types, missing type-specific fields, invalid regular expressions, non-positive weights, and malformed sandbox fields fail as configuration errors; they are never counted as model failures.
+
 ## Metadata & sandbox fields
 
 A sample can also carry **metadata** (documentation / diagnostics only — these never enter grading / judge / verdict) and **sandbox** fields (for evals decoupled from the real environment). Full guidance lives in [sample design](../specs/sample-design-spec); here is the field index:
@@ -221,7 +223,7 @@ Any assertion takes `not: true` to invert (replaces paired `not_contains` / `not
     - { type: regex, pattern: "bind\\(.*\\?" }
 ```
 
-Children can independently use `not: true`; nested `assert-set`s can express any boolean shape.
+Children can independently use `not: true`; nested `assert-set`s can express any boolean shape over **deterministic assertions**. Async judge-backed assertions (`semantic_similarity`, `faithfulness`, `answer_relevancy`, `context_recall`, and `custom`) must remain top-level because an `assert-set` is evaluated synchronously; nesting one is rejected before execution.
 
 > **Layered scoring note.** An `assert-set` is attributed to the fact/behavior layered score only when its leaf children are *homogeneous* — all fact-type or all behavior-type. A **mixed-layer** `assert-set` (e.g. one `contains` + one `max_length`) has no single honest layer, so it is left out of the layered composite (it still counts toward the flat assertion pass/fail). If you want a sample's signal to land in the layered composite, prefer leaf assertions, or keep each `assert-set` within one layer.
 

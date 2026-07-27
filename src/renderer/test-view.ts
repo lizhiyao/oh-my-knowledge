@@ -20,6 +20,7 @@ import type { ToolCallInfo, TurnInfo } from '../types/executor.js';
 import type { AssertionDetail } from '../types/judge.js';
 import { e, t } from './layout.js';
 import { icon } from './icons.js';
+import { isToolCallFailure, toolCallStatus } from '../shared/tool-call-status.js';
 
 // ──────────────────────────────────────────────────────────────────
 // Assertion → Turn 绑定:扫执行轨迹找断言匹配的 turn 编号
@@ -193,11 +194,31 @@ function renderDesignSection(snapshot: SampleSnapshot | undefined, lang: Lang): 
        <div class="tv-mocks">${snapshot.mocks.map((m, i) => renderMock(m, i + 1)).join('')}</div>
        </details>`
     : '';
+  const executionContract = snapshot.cwd
+    || snapshot.environment
+    || snapshot.mocksStrict !== undefined
+    || (snapshot.allowedTools && snapshot.allowedTools.length > 0)
+    || (snapshot.expectedTools && snapshot.expectedTools.length > 0)
+    ? `<details class="tv-collapsible"><summary>${lang === 'zh' ? '执行契约' : 'Execution contract'}</summary>
+       <pre class="tv-pre">${e(JSON.stringify({
+         ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
+         ...(snapshot.environment ? { environment: snapshot.environment } : {}),
+         ...(snapshot.mocksStrict !== undefined ? { mocksStrict: snapshot.mocksStrict } : {}),
+         ...(snapshot.allowedTools ? { allowedTools: snapshot.allowedTools } : {}),
+         ...(snapshot.expectedTools ? { expectedTools: snapshot.expectedTools } : {}),
+       }, null, 2))}</pre>
+       </details>`
+    : '';
+  const dimensionsBlock = snapshot.dimensions && Object.keys(snapshot.dimensions).length > 0
+    ? `<details class="tv-collapsible"><summary>${lang === 'zh' ? '评分维度' : 'Scoring dimensions'}</summary><pre class="tv-pre">${e(JSON.stringify(snapshot.dimensions, null, 2))}</pre></details>`
+    : '';
 
   return `<div class="tv-section--design-body">
     <div class="tv-prompt"><strong>${lang === 'zh' ? '提示词(Prompt):' : 'Prompt:'}</strong> <span>${e(snapshot.prompt)}</span></div>
     ${snapshot.rubric ? `<div class="tv-rubric"><strong>${lang === 'zh' ? '评分标准(Rubric):' : 'Rubric:'}</strong> <span>${e(snapshot.rubric)}</span></div>` : ''}
     ${snapshot.context ? `<details class="tv-collapsible"><summary>${lang === 'zh' ? '上下文(Context)' : 'Context'}</summary><pre class="tv-pre">${e(snapshot.context)}</pre></details>` : ''}
+    ${executionContract}
+    ${dimensionsBlock}
     ${meta.length > 0 ? `<div class="tv-meta-pills">${meta.join(' ')}</div>` : ''}
     ${expectedAssertions ? `<div class="tv-expected">
       <div class="tv-expected-h">${lang === 'zh' ? '期望（assertions）：' : 'Expected (assertions):'}</div>
@@ -287,17 +308,16 @@ function renderExecutionTrace(
   }
   const stepsHtml = turns.map((turn, i) => {
     const turnNum = i + 1;
-    const isAssistant = turn.role === 'assistant';
-    const thinkingBlock = isAssistant && turn.content
-      ? `<details class="tv-thinking"><summary>${lang === 'zh' ? '展开 thinking' : 'show thinking'} (${turn.content.length} ${lang === 'zh' ? '字' : 'chars'})</summary><div class="tv-thinking-body">${e(turn.content)}</div></details>`
-      : '';
-    const calls = (turn.toolCalls ?? []).map((tc) => renderToolCall(tc, turnNum, matchedMockNumbersByTurn.get(turnNum) ?? [])).join('');
+    const contentBlock = renderTurnContent(turn, lang);
+    const calls = (turn.toolCalls ?? []).map((tc) =>
+      renderToolCall(tc, turnNum, matchedMockNumbersByTurn.get(turnNum) ?? [], lang)
+    ).join('');
     const assertsForTurn = (detailsByTurn.get(turnNum) ?? []);
     const turnAssertsHtml = assertsForTurn.map((d) => `<div class="tv-trace-assert ${d.passed ? 'tv-assert--pass' : 'tv-assert--fail'}">${d.passed ? '✅' : '❌'} <code>${e(d.type)}</code> <code class="tv-assert-value">${e(typeof d.value === 'object' ? JSON.stringify(d.value) : String(d.value))}</code></div>`).join('');
     const durationTag = turn.durationMs ? `<span class="tv-turn-dur">${(turn.durationMs / 1000).toFixed(1)}s</span>` : '';
     return `<div class="tv-turn">
       <div class="tv-turn-h">Turn ${turnNum} · <code>${e(turn.role)}</code> ${durationTag}</div>
-      ${thinkingBlock}
+      ${contentBlock}
       ${calls}
       ${turnAssertsHtml}
     </div>`;
@@ -312,14 +332,36 @@ function renderExecutionTrace(
   </div>`;
 }
 
-function renderToolCall(tc: ToolCallInfo, _turnNum: number, mockHitsHere: number[]): string {
+export function renderTurnContent(turn: TurnInfo, lang: Lang): string {
+  if (!turn.content) return '';
+  if (turn.role === 'assistant') {
+    return `<details class="tv-thinking"><summary>${lang === 'zh' ? '展开 thinking' : 'show thinking'} (${turn.content.length} ${lang === 'zh' ? '字' : 'chars'})</summary><div class="tv-thinking-body">${e(turn.content)}</div></details>`;
+  }
+  const label = turn.role === 'user'
+    ? lang === 'zh' ? '用户输入' : 'User input'
+    : lang === 'zh' ? '工具结果' : 'Tool result';
+  return `<div class="tv-turn-content"><div class="tv-turn-content-h">${label}</div><pre class="tv-pre">${e(turn.content)}</pre></div>`;
+}
+
+function renderToolCall(
+  tc: ToolCallInfo,
+  _turnNum: number,
+  mockHitsHere: number[],
+  lang: Lang,
+): string {
   const inputRepr = typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input ?? '');
   const outputRepr = typeof tc.output === 'string' ? tc.output : JSON.stringify(tc.output ?? '');
   const mockBadge = mockHitsHere.length > 0
     ? `<span class="tv-mock-badge" title="matched mock #${mockHitsHere.join(',#')}">✓ mock#${mockHitsHere.join(',#')}</span>`
     : '';
-  return `<div class="tv-call ${tc.success ? '' : 'tv-call--err'}">
-    <div class="tv-call-h">🔧 <code>${e(tc.tool)}</code> ${mockBadge}</div>
+  const status = toolCallStatus(tc);
+  const statusLabel = status === 'unknown'
+    ? `<span class="tv-status">${e(lang === 'zh' ? '状态未知' : 'unknown status')}</span>`
+    : status === 'cancelled'
+      ? `<span class="tv-status">${e(lang === 'zh' ? '已取消' : 'cancelled')}</span>`
+      : '';
+  return `<div class="tv-call ${isToolCallFailure(tc) ? 'tv-call--err' : ''}">
+    <div class="tv-call-h">🔧 <code>${e(tc.tool)}</code> ${statusLabel} ${mockBadge}</div>
     <details><summary>input</summary><pre class="tv-pre">${e(inputRepr.length > 1000 ? inputRepr.slice(0, 1000) + '…' : inputRepr)}</pre></details>
     <details><summary>output</summary><pre class="tv-pre">${e(outputRepr.length > 1000 ? outputRepr.slice(0, 1000) + '…' : outputRepr)}</pre></details>
   </div>`;

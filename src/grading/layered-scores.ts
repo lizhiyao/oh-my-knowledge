@@ -10,9 +10,8 @@ import type { AssertionDetail, LayeredScores } from '../types/index.js';
  * 从 fact 与 behavior 同时漏掉 —— 既不报错也不进 composite,静默丢分(曾漏掉七类:mock_hit / rouge_n_min /
  * bleu_min / levenshtein_max + RAG 三件套 faithfulness / answer_relevancy / context_recall)。叶子断言在此静态
  * 分类;组合器 `assert-set` 没有静态层,由 `assertions.ts` 的 resolveAssertSetLayer 在 grading 期按其叶子 children
- * 解析(同层→归层、混层→不计),结果落 detail.layer。`test/grading/layered-scores-exhaustiveness.test.ts` 扫
- * runner 源(evalAssertion 的 case ∪ `assertion.type ===` 组合器 ∪ ASYNC_ASSERTION_TYPES)守住:新增类型既不在本
- * 映射、又不是已知组合器,即 CI 失败。
+ * 解析(同层→归层、混层→不计),结果落 detail.layer。共享注册表 `shared/assertion-types.ts` 是支持类型的真源；
+ * `test/grading/layered-scores-exhaustiveness.test.ts` 守住新增类型必须在本映射或组合器集合中显式处理。
  */
 export const ASSERTION_LAYER: Record<string, 'fact' | 'behavior'> = {
   contains: 'fact',

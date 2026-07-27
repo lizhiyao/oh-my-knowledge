@@ -10,7 +10,7 @@ flowchart TD
     end
 
     subgraph Prep["② Preprocess (resolve & fetch)"]
-        V["variant resolution<br/>variant → artifact + runtime context<br/>(cwd / project CLAUDE.md / local skills)"]
+        V["variant resolution<br/>variant → artifact + runtime context<br/>(cwd / AGENTS.md or CLAUDE.md / local skills)"]
         U["URL fetching<br/>URLs in prompt / context<br/>MCP Server(private docs) → HTTP"]
     end
 
@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph Exec["④ Executor (fixed model)"]
         E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / custom"]
-        T["claude-sdk / codex extract<br/>turns / toolCalls trace"]
+        T["executor adapters normalize<br/>turns / toolCalls trace"]
         E -.-> T
     end
 
@@ -61,6 +61,29 @@ flowchart TD
 - **variant = artifact + runtime context**: the `cwd` (declared via `--control-cwd`/`--treatment-cwd` or eval.yaml's `cwd:` field, separate from the artifact expression) lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
 - **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). The composite is the mean of whichever scoring layers (fact / behavior / judge) are actually present.
 - **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
+
+## Observation pipeline: source-neutral Trace IR
+
+`omk observe` does not disguise Codex, Claude Code, or OpenClaw logs as one another. A source adapter maps each format into the same Trace IR before attribution, segmentation, and measurement:
+
+```mermaid
+flowchart LR
+    C["Claude adapter"] --> IR["Trace IR"]
+    X["Codex adapter"] --> IR
+    O["OpenClaw adapter"] --> IR
+    M["Markdown adapter"] --> IR
+    IR --> A["lifecycle correlation and skill attribution"]
+    A --> S["segment"]
+    S --> R["health / inbox / experience"]
+```
+
+The IR distinguishes `message`, `tool_call`, `tool_result`, `usage`, `lifecycle`, and `unknown` events. User messages carry a `human`, `runtime`, `skill-context`, or `synthetic` origin, so injected `AGENTS.md`, environment context, and tool results cannot inflate human-turn metrics. Tool calls retain provider namespaces. Outcomes use four states: `success`, `failure`, `cancelled`, and `unknown`. Runtime status is authoritative; when it is absent, an adapter may infer `success` or `failure` only from source-specific, explicit terminal evidence such as an exit code. Ambiguous outcomes remain `unknown`. Failure rates use comparable outcomes (`success + failure`) as the denominator. Outcome coverage reports all resolved states (`success + failure + cancelled`) separately.
+
+Identifiers have separate jobs: `rootRunId` groups a task tree, `runId` identifies a concrete thread, `traceId` identifies an evidence stream, and each segment gets an independent sample ID. Aggregation keys therefore never double as sample primary keys.
+
+Every load also produces an ingestion summary: source records, parsed object records, malformed records, ignored non-object values, unrecognized IR events, and intentionally filtered runtime sessions. Health and inbox reports persist this summary and surface incomplete inputs instead of silently presenting a partial trace as complete.
+
+Timeline event IDs provide the canonical order across a grouped task tree. A `messageIndex` remains local provenance inside one physical trace, so session scope stores record ranges separately for each `traceId`; it never compares record indexes from main and subagent files as if they shared a global coordinate system.
 
 ## Six-dim evaluation
 

@@ -9,7 +9,7 @@ npm i oh-my-knowledge -g
 omk --version    # 能输出版本号即装好
 ```
 
-默认 runtime 使用 `claude` CLI 作为执行器和评委，所以需要先安装并登录 Claude Code。如果你在 Codex 或 OpenAI 兼容 API 环境里，也可以继续往下看，首跑命令里会标出 runtime 参数怎么替换。
+准备一个已认证的 runtime：Codex CLI、Claude Code 或 OpenAI 兼容 API。在 ChatGPT desktop 的 Codex 任务里，omk 会自动选择 `codex`，读取 `~/.codex/config.toml` 的模型，并默认让同一个 Codex 模型担任评委；不需要 Claude 账号。
 
 如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk Agent Skill 装到你的 agent 工具里：
 
@@ -32,13 +32,18 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 `omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览任务计划和预估调用次数；真跑后会打开 HTML 报告。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
 
-如果默认 Claude runtime 不可用，同一套 demo 可以加 runtime 参数：
+在 Codex 任务里，上面的最短命令无需添加 runtime 参数。普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
 
 ```bash
-# Codex CLI 路径
+export OMK_EXECUTOR=codex
+# 可选：export OMK_MODEL="你的 Codex 模型"
+```
+
+不设置 `OMK_MODEL` 时，omk 会读取 `~/.codex/config.toml` 的模型。也可以逐次显式指定；Codex 被选中后，默认评委自动沿用被测模型，不用重复写 `--judge-models`：
+
+```bash
 omk eval --control code-review-v1 --treatment code-review-v2 \
-  --executor codex --model <codex-model> \
-  --judge-models codex:<codex-model>
+  --executor codex --model <codex-model>
 
 # OpenAI 兼容 API 路径
 export OPENAI_API_KEY="..."
@@ -48,7 +53,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
   --judge-models openai-api:<model>
 ```
 
-Codex 的 `<codex-model>` 要换成本机 Codex 可用模型；可查看 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里的 `model`。OpenAI 兼容 API 则要确认模型名和 `OPENAI_BASE_URL` 指向的端点匹配。
+Codex 的 `<codex-model>` 要换成本机 Codex 可用模型；omk 默认读取 `~/.codex/config.toml` 或 `$CODEX_HOME/config.toml` 里的顶层 `model`。OpenAI 兼容 API 则要确认模型名和 `OPENAI_BASE_URL` 指向的端点匹配。
 
 ## 准备 skill（1 分钟）
 

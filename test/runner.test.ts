@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { runEvaluation, runBatchEvaluation } from '../src/eval-workflows/run-evaluation.js';
+import {
+  runEvaluation as runEvaluationCore,
+  runBatchEvaluation as runBatchEvaluationCore,
+} from '../src/eval-workflows/run-evaluation.js';
 import { executeBatchEvaluationRuns } from '../src/eval-workflows/batch-evaluation-workflow.js';
 import { buildTasks } from '../src/eval-core/task-planner.js';
 import { discoverVariants, discoverBatchSkills, loadSkills, variantExprToSkillName } from '../src/inputs/skill-loader.js';
@@ -12,6 +15,66 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { captureStderr, type CapturedStderr } from './helpers/stderr.js';
 import type { Report, VariantSpec } from '../src/types/index.js';
+
+const TEST_RUNTIME = {
+  model: 'sonnet',
+  executorName: 'claude',
+} as const;
+
+type RunEvaluationInput = Parameters<typeof runEvaluationCore>[0];
+type RunBatchEvaluationInput = Parameters<typeof runBatchEvaluationCore>[0];
+
+function runEvaluation(
+  options: Omit<RunEvaluationInput, keyof typeof TEST_RUNTIME>
+    & Partial<Pick<RunEvaluationInput, keyof typeof TEST_RUNTIME>>,
+) {
+  return runEvaluationCore({ ...TEST_RUNTIME, ...options });
+}
+
+function runBatchEvaluation(
+  options: Omit<RunBatchEvaluationInput, keyof typeof TEST_RUNTIME>
+    & Partial<Pick<RunBatchEvaluationInput, keyof typeof TEST_RUNTIME>>,
+) {
+  return runBatchEvaluationCore({ ...TEST_RUNTIME, ...options });
+}
+
+function successfulVariantResult(compositeScore = 4): Report['results'][number]['variants'][string] {
+  return {
+    ok: true,
+    durationMs: 100,
+    durationApiMs: 100,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    execCostUSD: 0,
+    judgeCostUSD: 0,
+    costUSD: 0,
+    numTurns: 1,
+    outputPreview: 'ok',
+    compositeScore,
+  };
+}
+
+function successfulSummary(totalSamples: number, compositeScore = 4): Report['summary'][string] {
+  return {
+    totalSamples,
+    successCount: totalSamples,
+    errorCount: 0,
+    errorRate: 0,
+    avgDurationMs: 100,
+    avgInputTokens: 0,
+    avgOutputTokens: 0,
+    avgTotalTokens: 0,
+    totalCostUSD: 0,
+    totalExecCostUSD: 0,
+    totalJudgeCostUSD: 0,
+    avgCostPerSample: 0,
+    avgNumTurns: 1,
+    avgCompositeScore: compositeScore,
+  };
+}
 
 // Test helper: convert a list of variant names into VariantSpec[].
 // First name becomes `control`, the rest become `treatment`—mirrors the
@@ -214,6 +277,20 @@ describe('runEvaluation', () => {
       { executor: 'claude', model: 'sonnet' },
       { executor: 'codex', model: 'gpt-5.5' },
     ]);
+  });
+
+  it('dry-run: programmatic judge fallback stays on the selected runtime', async () => {
+    const result = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variantSpecs: asSpecs(['v1', 'v2']),
+      executorName: 'codex',
+      model: 'gpt-5.5',
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+
+    assert.deepEqual(report.judgeModels, [{ executor: 'codex', model: 'gpt-5.5' }]);
   });
 
   it('throws on missing samples file', async () => {
@@ -637,23 +714,6 @@ describe('runBatchEvaluation', () => {
       writeFileSync(skillPath, 'skill content');
       writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'p' }, { sample_id: 's2', prompt: 'p' }]));
 
-      const summary = (score: number): Report['summary'][string] => ({
-        totalSamples: 2,
-        successCount: 2,
-        errorCount: 0,
-        errorRate: 0,
-        avgDurationMs: 100,
-        avgInputTokens: 0,
-        avgOutputTokens: 0,
-        avgTotalTokens: 0,
-        totalCostUSD: 0,
-        totalExecCostUSD: 0,
-        totalJudgeCostUSD: 0,
-        avgCostPerSample: 0,
-        avgNumTurns: 1,
-        avgCompositeScore: score,
-      });
-
       let capturedSpecs: import('../src/types/index.js').VariantSpec[] = [];
       const result = await executeBatchEvaluationRuns({
         skillDir: tmpDir,
@@ -683,7 +743,7 @@ describe('runBatchEvaluation', () => {
               executor: options.executorName,
               sampleCount: 2,
               taskCount: 4,
-              totalCostUSD: 0.01,
+              totalCostUSD: 0,
               timestamp: '2026-05-01T00:00:00.000Z',
               cliVersion: 'test',
               nodeVersion: 'test',
@@ -691,7 +751,21 @@ describe('runBatchEvaluation', () => {
               request: {
                 samplesPath: options.samplesPath,
                 skillDir: options.skillDir,
-                artifacts: [],
+                artifacts: [
+                  {
+                    name: 'baseline',
+                    kind: 'baseline',
+                    source: 'baseline',
+                    content: null,
+                  },
+                  {
+                    name: treatment,
+                    kind: 'skill',
+                    source: 'file-path',
+                    content: 'skill content',
+                    locator: skillPath,
+                  },
+                ],
                 model: options.model,
                 judgeModels: [{ executor: options.judgeExecutorName || options.executorName, model: 'haiku' }],
                 executor: options.executorName,
@@ -703,8 +777,14 @@ describe('runBatchEvaluation', () => {
                 batch: true,
               },
             },
-            summary: { baseline: summary(3), [treatment]: summary(4) },
-            results: [],
+            summary: { baseline: successfulSummary(2, 3), [treatment]: successfulSummary(2, 4) },
+            results: ['s1', 's2'].map((sample_id) => ({
+              sample_id,
+              variants: {
+                baseline: successfulVariantResult(3),
+                [treatment]: successfulVariantResult(4),
+              },
+            })),
           };
           return { report, filePath: persistReport(report, options.outputDir) };
         },
@@ -786,8 +866,17 @@ describe('runBatchEvaluation', () => {
               nodeVersion: 'test',
               artifactHashes: { baseline: 'no-skill', greeter: 'h' },
             },
-            summary: {},
-            results: [],
+            summary: {
+              baseline: successfulSummary(1),
+              greeter: successfulSummary(1),
+            },
+            results: [{
+              sample_id: 's1',
+              variants: {
+                baseline: successfulVariantResult(),
+                greeter: successfulVariantResult(),
+              },
+            }],
           };
           return { report, filePath: null };
         },
@@ -848,8 +937,17 @@ describe('runBatchEvaluation', () => {
               nodeVersion: 'test',
               artifactHashes: { baseline: 'no-skill', greeter: 'h' },
             },
-            summary: {},
-            results: [],
+            summary: {
+              baseline: successfulSummary(1),
+              greeter: successfulSummary(1),
+            },
+            results: [{
+              sample_id: 's1',
+              variants: {
+                baseline: successfulVariantResult(),
+                greeter: successfulVariantResult(),
+              },
+            }],
           };
           return { report, filePath: null };
         },

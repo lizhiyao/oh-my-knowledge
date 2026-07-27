@@ -136,6 +136,8 @@ export interface DiagnosticResult {
   };
   /** Diagnostic 自身花费(USD)。 */
   costUSD?: number;
+  /** False 表示底层 executor 没有报告 diagnostic 的真实 USD 成本。 */
+  costReportedByExecutor?: boolean;
   /** Diagnostic 是否成功(LLM JSON parse 失败时为 false,fallback 显示原始文本)。 */
   ok: boolean;
   /** Diagnostic 失败时的错误信息(ok=false 时使用)。 */

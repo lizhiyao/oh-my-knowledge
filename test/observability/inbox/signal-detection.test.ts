@@ -50,6 +50,14 @@ describe('observe inbox - signal detection', () => {
     assert.equal(hasUserCorrectionSignal(text), false);
   });
 
+  it('detects source-neutral capability-reference goal shifts', () => {
+    const text = '参考 data-review skill 的做法，启动独立任务';
+    assert.deepEqual(
+      findUserGoalShiftMatches(text).map((range) => text.slice(range.start, range.end)),
+      ['参考 data-review skill 的做法，启动'],
+    );
+  });
+
   it('detects negative and positive emotional feedback signals', () => {
     const negative = '这个做错了，没用，太垃圾了。';
     assert.equal(hasNegativeFeedbackSignal(negative), true);

@@ -13,6 +13,22 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+function recordCount(record, key) {
+  const value = Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function incrementRecordCount(record, key, amount = 1) {
+  const next = recordCount(record, key) + amount;
+  Object.defineProperty(record, key, {
+    value: next,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return next;
+}
+
 function expandHome(p) {
   if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2));
   if (p === '~') return os.homedir();
@@ -151,12 +167,13 @@ process.stdin.on('end', () => {
   // 统计文件:perMock(每条 mock 的命中次数,用于状态机 + 报告)+ hits_total + misses_total
   // 同一 spawn 内多次 hook 调用共享。
   const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
-  const stats = fs.existsSync(statsFile)
+  let stats = fs.existsSync(statsFile)
     ? JSON.parse(fs.readFileSync(statsFile, 'utf8'))
     : { perMock: {}, hits_total: 0, misses_total: 0 };
-  if (!stats.perMock) stats.perMock = {};
-  if (!stats.hits_total) stats.hits_total = 0;
-  if (!stats.misses_total) stats.misses_total = 0;
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) stats = {};
+  if (!stats.perMock || typeof stats.perMock !== 'object' || Array.isArray(stats.perMock)) stats.perMock = {};
+  stats.hits_total = recordCount(stats, 'hits_total');
+  stats.misses_total = recordCount(stats, 'misses_total');
 
   const writeStats = () => {
     try { fs.writeFileSync(statsFile, JSON.stringify(stats)); } catch { /* best effort */ }
@@ -176,9 +193,9 @@ process.stdin.on('end', () => {
   for (let i = 0; i < mocks.length; i++) {
     if (isMockHit(mocks[i], toolName, toolInput)) {
       const key = keyOfMock[i];
-      const c = stats.perMock[key] || 0;
+      const c = recordCount(stats.perMock, key);
       const result = resolveMockReturn(mocks[i], c, baseDir);
-      stats.perMock[key] = c + 1;
+      incrementRecordCount(stats.perMock, key);
       stats.hits_total += 1;
       writeStats();
       // 与 SDK 路径(mocks-runtime.ts)对齐:最小化前缀,避免拖慢多步 sample。

@@ -1,20 +1,38 @@
+import type { TraceSourceKind } from './trace.js';
+
+export type ToolCallStatus = 'success' | 'failure' | 'cancelled' | 'unknown';
+export type ToolCallStatusSource = 'runtime' | 'tool-output' | 'inferred' | 'unknown';
+
 export interface ToolCallInfo {
+  /** Source-neutral tool identity used by assertions and aggregate reports. */
   tool: string;
+  /** Runtime-native identity retained when `tool` was normalized. */
+  sourceTool?: string;
+  toolNamespace?: string;
+  toolProvider?: string;
   input: unknown;
   output: unknown;
+  /**
+   * Source-neutral completion state. Older reports only have `success`; readers
+   * must fall back to that boolean when this field is absent.
+   */
+  status?: ToolCallStatus;
+  statusSource?: ToolCallStatusSource;
   success: boolean;
   messageIndex?: number;
   messageUuid?: string;
+  /** Source-neutral identity for one concrete call occurrence. */
+  callInstanceId?: string;
   toolUseId?: string;
   timestamp?: string;
   sourceTrace?: string;
-  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+  sourceKind?: TraceSourceKind;
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
 }
 
 export interface TurnInfo {
-  role: 'assistant' | 'tool';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   toolCalls?: ToolCallInfo[];
   durationMs?: number;
@@ -29,14 +47,23 @@ export interface ExecResult {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /**
+   * Whether the token counters came from the underlying runtime.
+   * `false` means the numeric fields are compatibility placeholders and must
+   * not be treated as measured zero. Missing/true preserves legacy executors.
+   */
+  tokenUsageReportedByExecutor?: boolean;
   costUSD: number;
   /** Whether the underlying executor binary/SDK reported a USD cost figure.
-   *  - undefined / true : `costUSD` is authoritative (default — Anthropic SDK / OpenAI API / etc 都报)
-   *  - false            : executor 不报 cost,`costUSD` 是占位 0,renderer 应显示「未报告」/「—」。
-   *  目前只有 codex-cli executor 设 false (codex 0.125 binary 不输出 cost)。 */
+   *  - undefined / true : `costUSD` is authoritative
+   *  - false            : executor 不报 cost，`costUSD` 是占位 0，renderer 应显示「未报告」/「—」。 */
   costReportedByExecutor?: boolean;
   stopReason: string;
   numTurns: number;
+  /** Number of executor attempts represented by this result. Missing means one.
+   *  Output, token counters, and trace come from the final attempt; costUSD
+   *  includes every attempt because all of them may have incurred spend. */
+  attemptCount?: number;
   fullNumTurns?: number;
   numSubAgents?: number;
   error?: string;
@@ -164,6 +191,8 @@ export interface ExecutorRuntimeBinary {
   source: 'path' | 'bundled' | 'none' | 'unknown';
   version?: string;
   path?: string;
+  /** Content identity for local script/custom executor inputs. */
+  contentHash?: string;
   package?: ExecutorRuntimePackage;
   error?: string;
 }

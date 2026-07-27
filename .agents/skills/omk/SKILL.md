@@ -21,6 +21,12 @@ npm i oh-my-knowledge -g
 
 omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
+### 在 Codex / ChatGPT desktop 中
+
+Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `doctor` / `sample` / `evolve`，以及 `omk observe inbox --llm-enhanced-review`，会自动选择 `codex`，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 读取顶层 `model`，默认评委沿用同一个 Codex 模型；不要额外回落到 Claude。
+
+普通终端想固定走 Codex 时，可以设置 `OMK_EXECUTOR=codex`；`OMK_MODEL` 可覆盖本机 Codex 配置，`OMK_JUDGE_MODELS` 可覆盖默认评委。逐次覆盖仍可使用 `--executor` / `--model` / `--judge-models`。Codex 不需要 Claude Code 风格的 `/omk` slash command，直接执行 CLI。
+
 ## 第二步：理解用户意图
 
 根据用户的描述，匹配对应的操作：
@@ -79,9 +85,10 @@ omk eval --config eval.yaml
 
 常用选项：
 
-- `--model <name>` 任务执行模型（默认 opus；省钱用 sonnet / haiku）
+- `--executor <name>` 显式覆盖执行器；Codex 任务中通常不用传
+- `--model <name>` 显式覆盖任务执行模型；Codex 默认读取本机配置
 - `--effort <low|medium|high|xhigh|max>` 执行模型扩展思考预算（默认 low；跨 effort 报告不严格可比）
-- `--judge-models <executor:model[,...]>` 评委配置（默认 claude:haiku，≥ 2 条 = ensemble）
+- `--judge-models <executor:model[,...]>` 显式覆盖评委配置（Codex 默认沿用被测模型，≥ 2 条 = ensemble）
 - `--concurrency <n>` 并发数
 - `--skip-doctor` 跳过 doctor preflight 门禁（默认 doctor 会先跑一次卡掉 skill 写法大问题）
 - `--no-diagnostic` 关掉 diagnostic 诊断 LLM 调用（默认开启，给 failed sample 出「哪错了 + 怎么改」建议）
@@ -117,6 +124,19 @@ omk sample --batch
 ```
 
 输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/samples.json`（标准）；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级兜底）；扁平 `.md` 的 `--batch` 兼容生成 `<skill-dir>/<name>.eval-samples.json`。
+
+### 观测真实使用
+
+```bash
+# ChatGPT desktop / Codex CLI rollout
+omk observe ~/.codex/sessions --last 7d
+omk observe ingest ~/.codex/sessions
+
+# Claude Code session
+omk observe ~/.claude/projects/<project> --last 7d
+```
+
+Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
 
 ### 体检 skill 写法
 
@@ -189,11 +209,11 @@ v2 比 v1 更好（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
       values: ["auth.ts", "login.tsx"]
 ```
 
-`cwd` 会作为 executor 的工作目录，`claude -p` 将在该目录下运行，能自动读取仓库代码。适用于「给一个任务 query，断言应该修改哪些文件」的 A/B 评测场景。
+`cwd` 会作为 executor 的工作目录，Codex / Claude 等 agent runtime 会在该目录下运行并读取仓库代码。适用于「给一个任务 query，断言应该修改哪些文件」的 A/B 评测场景。
 
 ## 注意事项
 
-- 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05 美元 / 次）
+- 评测需要调用 LLM，会产生费用。能从执行器取得价格时，运行前告知用户预估成本；Codex CLI / SDK 当前不报告 USD 成本，应明确显示为「—」，不要伪装成 $0
 - 首次使用建议先 `--dry-run` 预览任务计划
 - `evolve` 命令会修改原始 skill 文件，原始版本保存在 `skills/evolve/*.r0.md`
 - 详细命令参考见 [commands.md](references/commands.md)

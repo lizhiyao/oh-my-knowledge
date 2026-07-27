@@ -6,7 +6,7 @@
  * 定位是"真实使用 trace 的 skill 维度观察",不是通用 APM / 生产监控。
  *
  * 分析流水线:
- *   1. ccTracesToResultEntries(path) → segments + ResultEntry[]
+ *   1. tracesToResultEntries(path) → segments + ResultEntry[]
  *   2. 时间窗 / skill 白名单过滤
  *   3. 按 skill name (variant key) 分别 computeCoverage + computeGapReport
  *   4. 聚合 overall 指标 + 健康度色带
@@ -14,28 +14,39 @@
 
 import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
 import { computeGapReport } from '../analysis/gap-analyzer.js';
-import type { GapReport, ResultEntry } from '../types/index.js';
+import type { GapReport, ResultEntry, TraceIngestionSummary } from '../types/index.js';
 import {
-  ccTracesToResultEntries,
   segmentsToResultEntries,
+  skillSegmentTimestampObserved,
+  tracesToResultEntries,
   type CcSession,
+  type TraceSession,
   type SkillSegment,
 } from './trace-adapter.js';
+import { legacyCcSessionToTraceSession } from './trace-source.js';
+import { createTraceSessionIndex } from './trace-session-index.js';
+import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
+import { checkedSumTokenCounts } from '../shared/token-usage.js';
 
 export interface SkillHealth {
   skillName: string;
   segmentCount: number;
   toolCallCount: number;
   toolFailureCount: number;
-  /** 失败率 = toolFailureCount / toolCallCount; toolCallCount=0 时为 0 */
+  toolCancelledCount?: number;
+  toolUnknownCount?: number;
+  toolResolvedCount?: number;
+  toolOutcomeCoverage?: number;
+  /** 失败率 = toolFailureCount / 可比较结果数；取消与未知状态不进入分母。 */
   toolFailureRate: number;
   /**
    * 执行稳定性标签。阈值:
    *  - very-unstable: failureRate >= 0.4 (gap 信号极可能是环境问题,不是真知识缺口)
    *  - unstable:      failureRate >= 0.2 (建议排查环境后再看 gap)
+   *  - unknown:       有工具调用,但没有可比较的成功 / 失败结果
    *  - stable:        否则
    */
-  stability: 'stable' | 'unstable' | 'very-unstable';
+  stability: 'stable' | 'unstable' | 'very-unstable' | 'unknown';
   /**
    * 统计可信度(按 segment 数)。守护「1 段 + 一次失败就判 red」的过度自信:
    *  - underpowered: segmentCount < 5  (样本太少,色带 / gap rate 不可信)
@@ -51,6 +62,8 @@ export interface SkillHealth {
     cacheReadTokens: number;
     cacheCreationTokens: number;
     totalTokens: number;
+    tokenObservedSegmentCount: number;
+    tokenCoverage: number;
     durationMs: number;
     numTurns: number;
     avgTokensPerSegment: number;
@@ -70,10 +83,18 @@ export interface SkillHealthReport {
     sessionCount: number;
     segmentCount: number;
     messageCount: number;
+    timestampedSegmentCount?: number;
+    timestampCoverage?: number;
+    excludedUntimestampedSegmentCount?: number;
     toolCallCount: number;
+    toolCancelledCount?: number;
+    toolUnknownCount?: number;
+    toolResolvedCount?: number;
+    toolOutcomeCoverage?: number;
     toolFailureRate: number;
     timeRange: { from: string; to: string };
     generatedAt: string;
+    ingestion?: TraceIngestionSummary;
   };
   bySkill: Record<string, SkillHealth>;
   overall: {
@@ -92,18 +113,41 @@ export interface AnalyzeOptions {
   skills?: string[];
 }
 
-/**
- * 从时间戳字符串比较。ISO8601 字典序即时序,直接用字符串比较。
- */
 function timestampLt(a: string, b: string): boolean {
-  return a < b;
+  const left = Date.parse(a);
+  const right = Date.parse(b);
+  return Number.isFinite(left) && Number.isFinite(right) ? left < right : a < b;
+}
+
+function sumCounts<T>(items: T[], select: (item: T) => number): number {
+  let total = 0;
+  for (const item of items) {
+    total = sumRecordCounts(total, select(item));
+  }
+  return total;
+}
+
+function sumNonNegativeFinite<T>(items: T[], select: (item: T) => number): number {
+  let total = 0;
+  for (const item of items) {
+    const value = select(item);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new TypeError(`Health metric must be a non-negative finite number, got ${String(value)}`);
+    }
+    total += value;
+    if (!Number.isFinite(total)) {
+      throw new RangeError('Health metric sum exceeds the finite number range');
+    }
+  }
+  return total;
 }
 
 /**
  * 判断 segment 是否落在时间窗内(闭区间)。
  */
 function withinTimeWindow(seg: SkillSegment, from?: string, to?: string): boolean {
-  if (from && timestampLt(seg.startTimestamp, from)) return false;
+  if ((from || to) && !skillSegmentTimestampObserved(seg)) return false;
+  if (from && timestampLt(seg.endTimestamp, from)) return false;
   if (to && timestampLt(to, seg.startTimestamp)) return false;
   return true;
 }
@@ -121,8 +165,13 @@ export function healthBandOf(weightedGapRate: number): 'green' | 'yellow' | 'red
 /**
  * 按 per-skill 失败率判定执行稳定性。阈值见 SkillHealth.stability。
  */
-function stabilityOf(toolFailureRate: number): SkillHealth['stability'] {
-  if (toolFailureRate >= 0.4) return 'very-unstable';
+export function toolStabilityOf(
+  toolFailureRate: number,
+  comparableToolCalls: number,
+  totalToolCalls: number,
+): SkillHealth['stability'] {
+  if (totalToolCalls > 0 && comparableToolCalls === 0) return 'unknown';
+  if (toolFailureRate >= 0.4 && comparableToolCalls >= 5) return 'very-unstable';
   if (toolFailureRate >= 0.2) return 'unstable';
   return 'stable';
 }
@@ -144,31 +193,42 @@ export function confidenceOf(segmentCount: number): SkillHealth['confidence'] {
  * 聚合一组 segment 的 tokens / duration / turns. 平均值按 segment 数(非 toolCall 数)算。
  */
 function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheReadTokens = 0;
-  let cacheCreationTokens = 0;
-  let durationMs = 0;
-  let numTurns = 0;
-  for (const s of skillSegs) {
-    inputTokens += s.metrics.inputTokens ?? 0;
-    outputTokens += s.metrics.outputTokens ?? 0;
-    cacheReadTokens += s.metrics.cacheReadTokens ?? 0;
-    cacheCreationTokens += s.metrics.cacheCreationTokens ?? 0;
-    durationMs += s.metrics.durationMs ?? 0;
-    numTurns += s.metrics.numTurns ?? 0;
-  }
-  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens;
-  const n = skillSegs.length || 1;
-  return {
+  const observed = skillSegs.filter((segment) => segment.metrics.tokenUsageObserved);
+  const inputTokens = checkedSumTokenCounts(...observed.map((s) => s.metrics.inputTokens));
+  const outputTokens = checkedSumTokenCounts(...observed.map((s) => s.metrics.outputTokens));
+  const cacheReadTokens = checkedSumTokenCounts(...observed.map((s) => s.metrics.cacheReadTokens));
+  const cacheCreationTokens = checkedSumTokenCounts(...observed.map((s) => s.metrics.cacheCreationTokens));
+  const totalTokens = checkedSumTokenCounts(
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+  );
+  const tokenAggregateValid = [
     inputTokens,
     outputTokens,
     cacheReadTokens,
     cacheCreationTokens,
     totalTokens,
+  ].every((value) => value !== undefined);
+  const tokenObservedSegmentCount = tokenAggregateValid ? observed.length : 0;
+  const durationMs = sumNonNegativeFinite(skillSegs, (segment) => segment.metrics.durationMs);
+  const numTurns = sumCounts(skillSegs, (segment) => segment.metrics.numTurns);
+  const n = skillSegs.length || 1;
+  const tokenDivisor = tokenObservedSegmentCount || 1;
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    cacheReadTokens: cacheReadTokens ?? 0,
+    cacheCreationTokens: cacheCreationTokens ?? 0,
+    totalTokens: totalTokens ?? 0,
+    tokenObservedSegmentCount,
+    tokenCoverage: skillSegs.length > 0
+      ? Number((tokenObservedSegmentCount / skillSegs.length).toFixed(4))
+      : 1,
     durationMs,
     numTurns,
-    avgTokensPerSegment: Math.round(totalTokens / n),
+    avgTokensPerSegment: Math.round((totalTokens ?? 0) / tokenDivisor),
     avgDurationMsPerSegment: Math.round(durationMs / n),
   };
 }
@@ -177,7 +237,9 @@ function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
-function inferKbRoot(sessions: CcSession[]): string | null {
+type HealthSession = TraceSession | CcSession;
+
+function inferKbRoot(sessions: HealthSession[]): string | null {
   const cwds = new Set<string>();
   for (const s of sessions) {
     if (s.cwd) cwds.add(s.cwd);
@@ -190,85 +252,11 @@ function inferKbRoot(sessions: CcSession[]): string | null {
 }
 
 /**
- * 主入口:从 cc trace 目录生成 SkillHealthReport。
+ * 主入口：从受支持的 trace 输入生成 SkillHealthReport。
  */
 export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions = {}): SkillHealthReport {
-  const { sessions, segments } = ccTracesToResultEntries(tracePath);
-
-  // 时间窗 + skill 白名单过滤
-  let filtered = segments.filter((s) => withinTimeWindow(s, opts.from, opts.to));
-  if (opts.skills?.length) {
-    const allow = new Set(opts.skills);
-    filtered = filtered.filter((s) => allow.has(s.skillName));
-  }
-  const filteredEntries = segmentsToResultEntries(filtered);
-
-  // 推断 KB root
-  const kbRoot = opts.kbRoot ?? inferKbRoot(sessions);
-  const index = kbRoot ? buildKnowledgeIndex(kbRoot) : null;
-
-  // 按 skill 分组聚合
-  const skillNames = [...new Set(filtered.map((s) => s.skillName))];
-  const bySkill: Record<string, SkillHealth> = {};
-  for (const skill of skillNames) {
-    const skillSegs = filtered.filter((s) => s.skillName === skill);
-    const coverage = index ? computeCoverage(filteredEntries, skill, index, kbRoot) : null;
-    const gap = computeGapReport(filteredEntries, skill);
-    // 挂 trace 源作水印(spec §六)
-    gap.testSetPath = tracePath;
-    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
-    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
-    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
-    bySkill[skill] = {
-      skillName: skill,
-      segmentCount: skillSegs.length,
-      toolCallCount: skillToolCalls,
-      toolFailureCount: skillFailures,
-      toolFailureRate,
-      stability: stabilityOf(toolFailureRate),
-      confidence: confidenceOf(skillSegs.length),
-      usage: aggregateUsage(skillSegs),
-      coverage,
-      gap,
-    };
-  }
-
-  // Overall 聚合(加权平均,权重 = 每个 skill 的 segment 数)
-  const totalSegments = filtered.length;
-  const totalGap = Object.values(bySkill).reduce((a, h) => a + h.gap.samplesWithGap, 0);
-  const totalWeighted = Object.values(bySkill).reduce(
-    (a, h) => a + h.gap.weightedGapRate * h.gap.sampleCount,
-    0,
-  );
-  const gapRate = totalSegments > 0 ? Number((totalGap / totalSegments).toFixed(4)) : 0;
-  const weightedGapRate = totalSegments > 0 ? Number((totalWeighted / totalSegments).toFixed(4)) : 0;
-
-  // meta
-  const totalToolCalls = filtered.reduce((a, s) => a + s.metrics.numToolCalls, 0);
-  const totalFailures = filtered.reduce((a, s) => a + s.metrics.numToolFailures, 0);
-  const timeRange = filtered.length > 0
-    ? {
-        from: filtered.reduce((m, s) => (timestampLt(s.startTimestamp, m) ? s.startTimestamp : m), filtered[0].startTimestamp),
-        to: filtered.reduce((m, s) => (timestampLt(m, s.endTimestamp) ? s.endTimestamp : m), filtered[0].endTimestamp),
-      }
-    : { from: '', to: '' };
-
-  return {
-    kind: 'observe-health',
-    meta: {
-      tracePath,
-      kbPath: kbRoot,
-      sessionCount: sessions.length,
-      segmentCount: totalSegments,
-      messageCount: sessions.reduce((a, s) => a + s.records.length, 0),
-      toolCallCount: totalToolCalls,
-      toolFailureRate: totalToolCalls > 0 ? Number((totalFailures / totalToolCalls).toFixed(4)) : 0,
-      timeRange,
-      generatedAt: new Date().toISOString(),
-    },
-    bySkill,
-    overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate), confidence: confidenceOf(totalSegments) },
-  };
+  const { sessions, segments, ingestion } = tracesToResultEntries(tracePath);
+  return computeSkillHealthFromSegments(segments, sessions, tracePath, opts, ingestion);
 }
 
 /**
@@ -277,24 +265,59 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
  */
 export function computeSkillHealthFromSegments(
   segments: SkillSegment[],
-  sessions: CcSession[],
+  sessions: HealthSession[],
   tracePath: string,
   opts: AnalyzeOptions = {},
+  ingestion?: TraceIngestionSummary,
 ): SkillHealthReport {
-  const filteredSegs = segments.filter((s) => withinTimeWindow(s, opts.from, opts.to));
-  const finalSegs = opts.skills?.length
-    ? filteredSegs.filter((s) => opts.skills!.includes(s.skillName))
-    : filteredSegs;
+  const candidateSegs = segments.filter((segment) => segment.skillName !== 'general');
+  const scopedCandidateSegs = opts.skills?.length
+    ? candidateSegs.filter((segment) => opts.skills!.includes(segment.skillName))
+    : candidateSegs;
+  const excludedUntimestampedSegmentCount = opts.from || opts.to
+    ? scopedCandidateSegs.filter((segment) => !skillSegmentTimestampObserved(segment)).length
+    : 0;
+  const finalSegs = scopedCandidateSegs.filter(
+    (segment) => withinTimeWindow(segment, opts.from, opts.to),
+  );
   const finalEntries = segmentsToResultEntries(finalSegs);
-  return buildReport(finalSegs, finalEntries, sessions, tracePath, opts);
+  return buildReport(
+    finalSegs,
+    finalEntries,
+    sessionsForSegments(sessions, finalSegs),
+    tracePath,
+    opts,
+    ingestion,
+    excludedUntimestampedSegmentCount,
+  );
+}
+
+function sessionsForSegments(
+  sessions: HealthSession[],
+  segments: SkillSegment[],
+): HealthSession[] {
+  if (segments.length === 0) return [];
+  const traceSessions = sessions.map((session) =>
+    'events' in session ? session : legacyCcSessionToTraceSession(session)
+  );
+  const index = createTraceSessionIndex(traceSessions);
+  const selectedTraceIds = new Set(
+    segments.flatMap((segment) => {
+      const session = index.resolve(segment);
+      return session ? [session.traceId] : [];
+    }),
+  );
+  return sessions.filter((_, position) => selectedTraceIds.has(traceSessions[position].traceId));
 }
 
 function buildReport(
   segments: SkillSegment[],
   entries: ResultEntry[],
-  sessions: CcSession[],
+  sessions: HealthSession[],
   tracePath: string,
   opts: AnalyzeOptions,
+  ingestion?: TraceIngestionSummary,
+  excludedUntimestampedSegmentCount = 0,
 ): SkillHealthReport {
   const kbRoot = opts.kbRoot ?? inferKbRoot(sessions);
   const index = kbRoot ? buildKnowledgeIndex(kbRoot) : null;
@@ -306,37 +329,77 @@ function buildReport(
     const coverage = index ? computeCoverage(entries, skill, index, kbRoot) : null;
     const gap = computeGapReport(entries, skill);
     gap.testSetPath = tracePath;
-    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
-    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
-    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
-    bySkill[skill] = {
+    const skillToolCalls = sumCounts(skillSegs, (segment) => segment.metrics.numToolCalls);
+    const skillFailures = sumCounts(skillSegs, (segment) => segment.metrics.numToolFailures);
+    const skillCancelled = sumCounts(
+      skillSegs,
+      (segment) => segment.metrics.numToolCancelled ?? 0,
+    );
+    const skillUnknown = sumCounts(
+      skillSegs,
+      (segment) => segment.metrics.numToolUnknown ?? 0,
+    );
+    const skillResolved = Math.max(0, skillToolCalls - skillUnknown);
+    const skillComparable = Math.max(0, skillResolved - skillCancelled);
+    const toolFailureRate = skillComparable > 0 ? Number((skillFailures / skillComparable).toFixed(4)) : 0;
+    setOwnRecordValue(bySkill, skill, {
       skillName: skill,
       segmentCount: skillSegs.length,
       toolCallCount: skillToolCalls,
       toolFailureCount: skillFailures,
+      toolCancelledCount: skillCancelled,
+      toolUnknownCount: skillUnknown,
+      toolResolvedCount: skillResolved,
+      toolOutcomeCoverage: skillToolCalls > 0
+        ? Number((skillResolved / skillToolCalls).toFixed(4))
+        : 1,
       toolFailureRate,
-      stability: stabilityOf(toolFailureRate),
+      stability: toolStabilityOf(toolFailureRate, skillComparable, skillToolCalls),
       confidence: confidenceOf(skillSegs.length),
       usage: aggregateUsage(skillSegs),
       coverage,
       gap,
-    };
+    });
   }
 
   const totalSegments = segments.length;
-  const totalGap = Object.values(bySkill).reduce((a, h) => a + h.gap.samplesWithGap, 0);
-  const totalWeighted = Object.values(bySkill).reduce(
-    (a, h) => a + h.gap.weightedGapRate * h.gap.sampleCount,
-    0,
+  const healthRows = Object.values(bySkill);
+  const totalGap = sumCounts(healthRows, (health) => health.gap.samplesWithGap);
+  const totalWeighted = sumNonNegativeFinite(
+    healthRows,
+    (health) => health.gap.weightedGapRate * health.gap.sampleCount,
   );
   const gapRate = totalSegments > 0 ? Number((totalGap / totalSegments).toFixed(4)) : 0;
   const weightedGapRate = totalSegments > 0 ? Number((totalWeighted / totalSegments).toFixed(4)) : 0;
-  const totalToolCalls = segments.reduce((a, s) => a + s.metrics.numToolCalls, 0);
-  const totalFailures = segments.reduce((a, s) => a + s.metrics.numToolFailures, 0);
-  const timeRange = segments.length > 0
+  const totalToolCalls = sumCounts(segments, (segment) => segment.metrics.numToolCalls);
+  const totalFailures = sumCounts(segments, (segment) => segment.metrics.numToolFailures);
+  const totalCancelled = sumCounts(
+    segments,
+    (segment) => segment.metrics.numToolCancelled ?? 0,
+  );
+  const totalUnknown = sumCounts(
+    segments,
+    (segment) => segment.metrics.numToolUnknown ?? 0,
+  );
+  const totalResolved = Math.max(0, totalToolCalls - totalUnknown);
+  const totalComparable = Math.max(0, totalResolved - totalCancelled);
+  const timestampedSegments = segments.filter(skillSegmentTimestampObserved);
+  const timeRange = timestampedSegments.length > 0
     ? {
-        from: segments.reduce((m, s) => (timestampLt(s.startTimestamp, m) ? s.startTimestamp : m), segments[0].startTimestamp),
-        to: segments.reduce((m, s) => (timestampLt(m, s.endTimestamp) ? s.endTimestamp : m), segments[0].endTimestamp),
+        from: timestampedSegments.reduce(
+          (minimum, segment) =>
+            timestampLt(segment.startTimestamp, minimum)
+              ? segment.startTimestamp
+              : minimum,
+          timestampedSegments[0].startTimestamp,
+        ),
+        to: timestampedSegments.reduce(
+          (maximum, segment) =>
+            timestampLt(maximum, segment.endTimestamp)
+              ? segment.endTimestamp
+              : maximum,
+          timestampedSegments[0].endTimestamp,
+        ),
       }
     : { from: '', to: '' };
 
@@ -347,13 +410,100 @@ function buildReport(
       kbPath: kbRoot,
       sessionCount: sessions.length,
       segmentCount: totalSegments,
-      messageCount: sessions.reduce((a, s) => a + s.records.length, 0),
+      messageCount: scopedSessionMessageCount(sessions, segments),
+      timestampedSegmentCount: timestampedSegments.length,
+      timestampCoverage: totalSegments > 0
+        ? Number((timestampedSegments.length / totalSegments).toFixed(4))
+        : 1,
+      excludedUntimestampedSegmentCount,
       toolCallCount: totalToolCalls,
-      toolFailureRate: totalToolCalls > 0 ? Number((totalFailures / totalToolCalls).toFixed(4)) : 0,
+      toolCancelledCount: totalCancelled,
+      toolUnknownCount: totalUnknown,
+      toolResolvedCount: totalResolved,
+      toolOutcomeCoverage: totalToolCalls > 0
+        ? Number((totalResolved / totalToolCalls).toFixed(4))
+        : 1,
+      toolFailureRate: totalComparable > 0 ? Number((totalFailures / totalComparable).toFixed(4)) : 0,
       timeRange,
       generatedAt: new Date().toISOString(),
+      ...(ingestion ? { ingestion } : {}),
     },
     bySkill,
     overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate), confidence: confidenceOf(totalSegments) },
   };
+}
+
+function scopedSessionMessageCount(
+  sessions: HealthSession[],
+  segments: SkillSegment[],
+): number {
+  const traceSessions = sessions.map((session) =>
+    'events' in session ? session : legacyCcSessionToTraceSession(session)
+  );
+  const index = createTraceSessionIndex(traceSessions);
+  const rangesByTraceId = new Map<string, Array<{ start: number; end: number }>>();
+  const unboundedTraceIds = new Set<string>();
+  for (const segment of segments) {
+    const session = index.resolve(segment);
+    if (!session) continue;
+    if (
+      segment.startRecordIndex === undefined
+      || segment.endRecordIndex === undefined
+    ) {
+      unboundedTraceIds.add(session.traceId);
+      continue;
+    }
+    const ranges = rangesByTraceId.get(session.traceId) ?? [];
+    ranges.push({
+      start: segment.startRecordIndex,
+      end: segment.endRecordIndex,
+    });
+    rangesByTraceId.set(session.traceId, ranges);
+  }
+
+  let total = 0;
+  for (const [position, session] of sessions.entries()) {
+    if (!('events' in session)) {
+      total = sumRecordCounts(total, sessionMessageCount(session));
+      continue;
+    }
+    const traceId = traceSessions[position].traceId;
+    const ranges = unboundedTraceIds.has(traceId)
+      ? undefined
+      : rangesByTraceId.get(traceId);
+    const count = !ranges
+      ? sessionMessageCount(session)
+      : session.events.filter((event) =>
+      event.eventKind === 'message'
+      && ranges.some((range) =>
+        event.sourceIndex >= range.start && event.sourceIndex <= range.end
+      )
+    ).length;
+    total = sumRecordCounts(total, count);
+  }
+  return total;
+}
+
+function sessionMessageCount(session: HealthSession): number {
+  if ('events' in session) {
+    return session.events.filter((event) => event.eventKind === 'message').length;
+  }
+  return session.records.filter((record) => {
+    if (!record || typeof record !== 'object') return false;
+    const typed = record as {
+      type?: unknown;
+      message?: { content?: unknown };
+    };
+    if (typed.type !== 'user' && typed.type !== 'assistant') return false;
+    const content = typed.message?.content;
+    if (typeof content === 'string') return content.trim().length > 0;
+    if (!Array.isArray(content)) return false;
+    return content.some((part) =>
+      part
+      && typeof part === 'object'
+      && (part as { type?: unknown }).type === 'text'
+      && typeof (part as { text?: unknown }).text === 'string'
+      && Boolean((part as { text: string }).text.trim())
+    );
+  }).length;
 }

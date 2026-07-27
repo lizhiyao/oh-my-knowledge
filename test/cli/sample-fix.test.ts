@@ -1,9 +1,17 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSamples } from '../../src/inputs/load-samples.js';
+import { parseYaml } from '../../src/inputs/load-samples.js';
 import { hashSample } from '../../src/eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 import { assertFixReportMatchesCurrentInputs, collectSampleDesignFailureIds, writeFixedSamplesToSources } from '../../src/cli/commands/sample.js';
@@ -95,6 +103,65 @@ describe('sample --fix source writes', () => {
     assert.equal(workflow.samples[0].rubric, 'new rubric');
     const platform = JSON.parse(readFileSync(platformPath, 'utf-8')) as Sample[];
     assert.equal(platform[0].prompt, 'old two');
+  });
+
+  it('preserves YAML wrappers and writes only the owning source file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-sample-fix-yaml-'));
+    const firstPath = join(dir, 'first.yaml');
+    const secondPath = join(dir, 'second.json');
+    writeFileSync(firstPath, [
+      'requires:',
+      '  tools:',
+      '    - git',
+      'samples:',
+      '  - sample_id: s1',
+      '    prompt: one',
+      '',
+    ].join('\n'));
+    writeFileSync(secondPath, JSON.stringify([
+      { sample_id: 's2', prompt: 'two' },
+    ], null, 2));
+
+    const loaded = loadSamples(dir);
+    const fixed = loaded.samples.map((sample) => (
+      sample.sample_id === 's1'
+        ? { ...sample, assertions: [{ type: 'contains', value: 'TOKEN' as string }] }
+        : sample
+    ));
+    const written = writeFixedSamplesToSources(loaded, fixed, new Set(['s1']));
+
+    assert.deepEqual(written, [firstPath]);
+    const yamlDocument = parseYaml(readFileSync(firstPath, 'utf-8')) as {
+      requires: { tools: string[] };
+      samples: Sample[];
+    };
+    assert.deepEqual(yamlDocument.requires, { tools: ['git'] });
+    assert.equal(yamlDocument.samples[0].assertions?.[0].type, 'contains');
+    assert.equal(
+      (JSON.parse(readFileSync(secondPath, 'utf-8')) as Sample[])[0].prompt,
+      'two',
+    );
+  });
+
+  it('updates a symlink target without replacing the symlink', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-sample-fix-link-'));
+    const targetPath = join(dir, 'target.json');
+    const linkPath = join(dir, 'samples.json');
+    writeFileSync(targetPath, JSON.stringify([
+      { sample_id: 's1', prompt: 'one' },
+    ], null, 2));
+    symlinkSync(targetPath, linkPath);
+
+    const loaded = loadSamples(linkPath);
+    const fixed = loaded.samples.map((sample) => ({
+      ...sample,
+      rubric: 'updated',
+    }));
+    writeFixedSamplesToSources(loaded, fixed, new Set(['s1']));
+
+    assert.equal(lstatSync(linkPath).isSymbolicLink(), true);
+    const target = JSON.parse(readFileSync(targetPath, 'utf-8')) as Sample[];
+    assert.equal(target[0].rubric, 'updated');
   });
 });
 

@@ -65,7 +65,9 @@ export function finalizeEvaluationReport({
   const holdoutRatio = report.meta?.request?.holdoutRatio ?? 0;
   const gapReports = computeReportGapRates(report.results, variantNames);
   const needsWatermark = Object.keys(gapReports).length > 0 || holdoutRatio > 0;
-  const testSetHash = needsWatermark ? computeTestSetHash(samplesPath, samplesSourceFiles) : null;
+  const testSetHash = needsWatermark
+    ? computeTestSetHash(samplesPath, samplesSourceFiles, report.meta.sampleHashes)
+    : null;
   if (Object.keys(gapReports).length > 0) {
     for (const variant of variantNames) {
       const gr = gapReports[variant];

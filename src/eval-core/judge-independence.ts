@@ -4,8 +4,8 @@ import { executorVendor, type ExecutorVendor } from '../executors/shared.js';
 /**
  * 评委独立性分析(单一来源,verdict caveat 与 analysis 诊断共用)。
  *
- * LLM 评委有自我偏好偏置:偏爱与自己同模型家族产出的输出。omk 默认评委(claude:haiku)与默认
- * 执行器(claude:*)同属一家,敞口默认就开着。本 helper 只算客观事实(评委/输出各属哪家、有没有
+ * LLM 评委有自我偏好偏置:偏爱与自己同模型家族产出的输出。CLI 默认评委跟随所选 runtime
+ * (Claude 用 haiku,Codex 沿用被测模型),故敞口默认就开着。本 helper 只算客观事实(评委/输出各属哪家、有没有
  * 跨厂商评委、是不是单厂商 ensemble、有没有挂 gold 校准),严重度与文案交给消费方(report-diagnostics
  * / verdict)决定。
  *

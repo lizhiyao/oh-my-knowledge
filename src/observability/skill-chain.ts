@@ -8,6 +8,7 @@ import {
   type SkillHardRule,
   type SkillWorkflow,
 } from '../shared/hard-rules.js';
+import { incrementRecordCount } from '../shared/record-count.js';
 import type {
   ExperienceInvocation,
   ExperienceTimelineEvent,
@@ -256,7 +257,8 @@ interface RuntimeEvidence {
   toolCallCount: number;
   toolFailureCount: number;
   events: ExperienceTimelineEvent[];
-  assistantToolUseIds: Set<string>;
+  assistantCallInstanceIds: Set<string>;
+  legacyAssistantToolUseIds: Set<string>;
 }
 
 function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
@@ -264,7 +266,7 @@ function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
   const events = invocations.flatMap((invocation) => invocation.timeline ?? []);
   for (const invocation of invocations) {
     for (const [tool, count] of Object.entries(invocation.toolCounts ?? {})) {
-      toolCounts[tool] = (toolCounts[tool] ?? 0) + count;
+      incrementRecordCount(toolCounts, tool, count);
     }
   }
   return {
@@ -272,8 +274,18 @@ function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
     toolCallCount: invocations.reduce((sum, invocation) => sum + invocation.indicators.toolCallCount, 0),
     toolFailureCount: invocations.reduce((sum, invocation) => sum + invocation.indicators.toolFailureCount, 0),
     events,
-    assistantToolUseIds: new Set(events
-      .filter((event) => event.kind === 'tool_use' && event.role === 'assistant' && event.toolUseId)
+    assistantCallInstanceIds: new Set(events
+      .filter((event) =>
+        event.kind === 'tool_use' && event.role === 'assistant' && event.callInstanceId
+      )
+      .map((event) => event.callInstanceId as string)),
+    legacyAssistantToolUseIds: new Set(events
+      .filter((event) =>
+        event.kind === 'tool_use'
+        && event.role === 'assistant'
+        && !event.callInstanceId
+        && event.toolUseId
+      )
       .map((event) => event.toolUseId as string)),
   };
 }
@@ -407,6 +419,7 @@ function eventToEvidencePackRef(event: ExperienceTimelineEvent): SkillRuntimeEvi
     messageIndex: event.messageIndex,
     logicalMessageIndex: event.logicalMessageIndex,
     sourceLineIndex: event.sourceLineIndex,
+    callInstanceId: event.callInstanceId,
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,
     role: event.role,
@@ -433,7 +446,16 @@ function evidencePackSourceType(event: ExperienceTimelineEvent, snippet: string)
 function isAssistantAuthoredUploadEvent(event: ExperienceTimelineEvent, evidence: RuntimeEvidence, text: string): boolean {
   if (!/artifacts\/upload|preview_url|上传成功|\bupload\b/.test(text)) return false;
   if (event.kind === 'tool_use' && event.role === 'assistant') return true;
-  if (event.kind === 'tool_result' && event.role === 'tool' && event.toolUseId && evidence.assistantToolUseIds.has(event.toolUseId)) return true;
+  if (
+    event.kind === 'tool_result'
+    && event.role === 'tool'
+    && (
+      event.callInstanceId
+        ? evidence.assistantCallInstanceIds.has(event.callInstanceId)
+        : Boolean(event.toolUseId)
+          && evidence.legacyAssistantToolUseIds.has(event.toolUseId!)
+    )
+  ) return true;
   return false;
 }
 

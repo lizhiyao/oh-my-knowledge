@@ -232,8 +232,8 @@ export interface ExtractSkillSoftStandardsOptions {
   observationsDir: string;
   skillChain: ObservationSkillChain;
   runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence;
-  model?: string;
-  executorName?: string;
+  model: string;
+  executorName: string;
   refresh?: boolean;
   now?: string;
   executor?: ExecutorFn;

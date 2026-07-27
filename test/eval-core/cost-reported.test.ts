@@ -59,6 +59,41 @@ describe('costReportedByExecutor: ExecResult → VariantResult', () => {
   });
 });
 
+describe('token usage observability: ExecResult → VariantResult → VariantSummary', () => {
+  it('preserves an unreported token marker on the sample result', () => {
+    const result = buildVariantResult(mkExec({
+      inputTokens: 0,
+      outputTokens: 0,
+      tokenUsageReportedByExecutor: false,
+    }), null);
+    assert.equal(result.tokenUsageReportedByExecutor, false);
+  });
+
+  it('averages only observed successful samples and reports all-sample coverage', () => {
+    const summary = buildVariantSummary([
+      mkVR({ inputTokens: 10, outputTokens: 20, totalTokens: 30 }),
+      mkVR({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        tokenUsageReportedByExecutor: false,
+      }),
+      mkVR({ inputTokens: 30, outputTokens: 50, totalTokens: 80 }),
+      mkVR({ ok: false, tokenUsageReportedByExecutor: false }),
+    ]);
+
+    assert.equal(summary.avgInputTokens, 20);
+    assert.equal(summary.avgOutputTokens, 35);
+    assert.equal(summary.avgTotalTokens, 55);
+    assert.equal(summary.tokenUsageCoverageRate, 0.5);
+  });
+
+  it('keeps legacy fully observed reports compact', () => {
+    const summary = buildVariantSummary([mkVR(), mkVR()]);
+    assert.equal(summary.tokenUsageCoverageRate, undefined);
+  });
+});
+
 describe('judgeCostReportedByExecutor: GradeResult → VariantResult', () => {
   it('grade.judgeCostReportedByExecutor=false 透传到 VariantResult', () => {
     const exec = mkExec();

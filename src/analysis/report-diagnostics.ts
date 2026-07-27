@@ -5,6 +5,8 @@
 import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Representativeness, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
 import { analyzeJudgeIndependence } from '../eval-core/judge-independence.js';
+import { isToolCallFailure } from '../shared/tool-call-status.js';
+import { incrementRecordCount, setOwnRecordValue } from '../shared/record-count.js';
 
 /** opts for `analyzeResults`. Optional because most older callers don't have
  *  samples in scope; new callers (evaluation-pipeline / evolver) pass them in to
@@ -137,7 +139,7 @@ export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAgg
         const cap = normalizeCapability(rawCap);
         if (seen.has(cap)) continue; // 同 sample 内同 capability 重复声明只计 1
         seen.add(cap);
-        capabilityCoverage[cap] = (capabilityCoverage[cap] || 0) + 1;
+        incrementRecordCount(capabilityCoverage, cap);
       }
     }
 
@@ -152,17 +154,17 @@ export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAgg
     // construct (free-form)
     if (sample.construct) {
       withConstruct++;
-      constructDistribution[sample.construct] = (constructDistribution[sample.construct] || 0) + 1;
+      incrementRecordCount(constructDistribution, sample.construct);
     } else {
-      constructDistribution.unspecified = (constructDistribution.unspecified || 0) + 1;
+      incrementRecordCount(constructDistribution, 'unspecified');
     }
 
     // provenance
     if (sample.provenance) {
       withProvenance++;
-      provenanceBreakdown[sample.provenance] = (provenanceBreakdown[sample.provenance] || 0) + 1;
+      incrementRecordCount(provenanceBreakdown, sample.provenance);
     } else {
-      provenanceBreakdown.unspecified = (provenanceBreakdown.unspecified || 0) + 1;
+      incrementRecordCount(provenanceBreakdown, 'unspecified');
     }
 
     // rubric length(only counted if present, NaN-safe)
@@ -220,7 +222,7 @@ export function buildRepresentativeness(aggregate: SampleQualityAggregate): Repr
 
   const declaredConstruct: Record<string, number> = {};
   for (const [k, v] of Object.entries(aggregate.constructDistribution)) {
-    if (k !== 'unspecified') declaredConstruct[k] = v;
+    if (k !== 'unspecified') setOwnRecordValue(declaredConstruct, k, v);
   }
   const consTotal = Object.values(declaredConstruct).reduce((a, b) => a + b, 0);
   const [dominantConstruct, constructConcentration] = dominantShare(declaredConstruct, consTotal);
@@ -774,7 +776,7 @@ function detectToolPermissionIssues(results: ResultEntry[], variants: string[], 
     for (const variant of variants) {
       const calls = result.variants?.[variant]?.toolCalls || [];
       for (const call of calls) {
-        if (call.success) continue;
+        if (!isToolCallFailure(call)) continue;
         const output = String(call.output || '');
         if (/EACCES|permission denied/i.test(output)) {
           permissionErrors.push({

@@ -4,7 +4,7 @@
  * 三数据源合并、按 id dedup(live 盖卡片,优先级 项目 > 全局 > 卡片):
  *   - live(当前项目 `.omk/reports`) + live(全局 `~/.oh-my-knowledge/reports`):完整真身,永远新鲜(无需 backfill);
  *   - 索引卡片(state/artifact-index/report/):覆盖**别的项目**的报告(当前 studio 的 cwd live 扫不到),
- *     卡片只含 meta+summary(无 results),详情按 `card.path` 读真身。
+ *     卡片只用于发现 `card.path`;列表与详情都回源并严格解析真身。
  *
  * 与 createOverlayReportStore(项目盖全局、记录优先)的区别:这里是**机器级 merge**(看全本机),不是项目优先;
  * 可比性红线在比较层(verdict / findByVariant 锁同口径)而非视图层,故跨项目 merge 列表合法。
@@ -13,7 +13,7 @@
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createFileStore } from './report-store.js';
-import { artifactIndexDir, listReportCards, listLiveReportCards, cardToReportDocument, removeReportCard, cardTargetSentinel } from '../eval-core/artifact-index.js';
+import { artifactIndexDir, listReportCards, listLiveReportCards, removeReportCard, cardTargetSentinel } from '../eval-core/artifact-index.js';
 import type { ReportDocument, ReportStore, EvaluationReport } from '../types/index.js';
 
 function isEvaluation(r: ReportDocument): r is EvaluationReport {
@@ -50,24 +50,26 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
       return 'none';
     }
   }
-  function cardDocs(): ReportDocument[] {
+  async function cardDocs(): Promise<ReportDocument[]> {
     const fp = cardFingerprint();
-    if (fp === cachedFp && cachedCards) return cachedCards;
-    // 机器级 list 展示用 live 卡片:真身被带外删/移走的悬空卡片不进列表(把卡片当活指针)。
-    // get() 仍走 raw listReportCards 做 by-id best-effort(直链命中真身则给真身、悬空降级壳)。
-    const docs = listLiveReportCards().map(cardToReportDocument);
+    if (fp === cachedFp && cachedCards) return structuredClone(cachedCards);
+    // 卡片只是发现指针。机器级 list 也必须回源并走 createFileStore 的 canonical parser，
+    // 不能把索引里的 meta/summary 壳伪装成完整 ReportDocument。
+    const loaded = await Promise.all(listLiveReportCards().map((card) =>
+      createFileStore(dirname(card.path)).get(card.id)));
+    const docs = loaded.filter((doc): doc is ReportDocument => doc !== null);
     cachedFp = fp;
     cachedCards = docs;
-    return docs;
+    return structuredClone(docs);
   }
 
   async function list(): Promise<ReportDocument[]> {
-    const [proj, glob] = await Promise.all([project.list(), global.list()]);
+    const [proj, glob, indexed] = await Promise.all([project.list(), global.list(), cardDocs()]);
     const seen = new Set<string>();
     const merged: ReportDocument[] = [];
     for (const r of proj) { if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); } }
     for (const r of glob) { if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); } }
-    for (const r of cardDocs()) { if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); } }
+    for (const r of indexed) { if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); } }
     merged.sort((a, b) => (b.meta?.timestamp || '').localeCompare(a.meta?.timestamp || ''));
     return merged;
   }
@@ -76,17 +78,14 @@ export function createIndexedReportStore({ projectDir, globalDir }: IndexedRepor
     // 先 live(当前项目→全局),命中即完整真身。
     const live = (await project.get(id)) ?? (await global.get(id));
     if (live) return live;
-    // 别项目:按卡片 path 读真身;悬空(项目被移动/删除)→ 返回卡片壳(results:[])不抛、不 500。
+    // 别项目:按卡片 path 读真身。悬空或损坏都 fail closed，不从 scratch 卡片伪造报告壳。
     const card = listReportCards().find((c) => c.id === id);
     if (!card) return null;
-    const fromFile = await createFileStore(dirname(card.path)).get(id);
-    return fromFile ?? cardToReportDocument(card);
+    return createFileStore(dirname(card.path)).get(id);
   }
 
   async function exists(id: string): Promise<boolean> {
-    if (await project.exists(id)) return true;
-    if (await global.exists(id)) return true;
-    return listReportCards().some((c) => c.id === id);
+    return (await get(id)) !== null;
   }
 
   async function save(id: string, report: ReportDocument): Promise<void> {

@@ -8,4 +8,3 @@ export const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
 export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-22.v7';
-export const DEFAULT_LLM_ENHANCED_REVIEW_MODEL = 'sonnet';

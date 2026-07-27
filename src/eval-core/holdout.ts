@@ -14,6 +14,7 @@
 
 import { buildVariantSummary } from './schema.js';
 import type { Report, VariantResult, HoldoutBreakdown } from '../types/index.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
 
 /** A train / holdout partition of a sample set. */
 export interface HoldoutSplit {
@@ -115,14 +116,14 @@ export function computeHoldoutBreakdown(
   }
   const perVariant: HoldoutBreakdown['perVariant'] = {};
   for (const v of variantNames) {
-    perVariant[v] = {
+    setOwnRecordValue(perVariant, v, {
       trainScore: Number(subsetCompositeScore(report, v, split.trainIds).toFixed(4)),
       holdoutScore: Number(subsetCompositeScore(report, v, split.holdoutIds).toFixed(4)),
       trainCount: split.trainIds.size,
       holdoutCount: split.holdoutIds.size,
       trainScorable: subsetScorableCount(report, v, split.trainIds),
       holdoutScorable: subsetScorableCount(report, v, split.holdoutIds),
-    };
+    });
   }
   return { ratio, perVariant };
 }

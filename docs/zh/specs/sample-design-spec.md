@@ -219,7 +219,7 @@ omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / sat
 **加任何新字段前的硬约束**
 
 - 不进 `buildJudgePrompt` signature（`test/grading/judge-prompt-isolation.test.ts` 防御回归）
-- 不进 `sampleHash` 计算（否则破 cache key 跨版本可比性）
+- 默认必须进入完整契约的 `sampleHash`。唯一排除项是作为 map key 的 `sample_id`；任何会改变执行或结果解释的字段，都必须让复用和跨报告可比性失效。
 - 不进 verdict / Δ 算法
 - 跟现有元数据字段 + `rubric` / `assertions` 语义不重叠
 

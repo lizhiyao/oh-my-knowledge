@@ -22,6 +22,7 @@ export interface DiagnosisScope {
   primary: 'skill' | 'definition' | 'session' | 'sample';
   refs: {
     skillName: string;
+    traceId?: string;
     sessionId?: string;
     invocationId?: string;
     sampleId?: string;
@@ -34,6 +35,7 @@ export interface DiagnosisScope {
 export interface DiagnosisEvidenceRef {
   id: string;
   kind: string;
+  traceId?: string;
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;

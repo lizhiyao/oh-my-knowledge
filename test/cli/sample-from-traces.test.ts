@@ -47,6 +47,7 @@ describe('sample --from-traces', () => {
         lang: 'zh',
         batch: false,
         model: 'sonnet',
+        executor: 'test-executor',
         'skill-dir': 'skills',
         append: false,
         'no-mock': false,

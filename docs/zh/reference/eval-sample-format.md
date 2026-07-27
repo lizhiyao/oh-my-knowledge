@@ -59,6 +59,8 @@
 | `assertions[].n` | `number` | 否 | `rouge_n_min` 的 n-gram 阶数（默认 1） |
 | `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
 
+loader 会在任何模型调用前校验完整契约。不支持的断言类型、缺失的类型专属字段、非法正则、非正权重和格式错误的沙箱字段都会作为配置错误失败，绝不会计入模型失败。
+
 ## 元数据与沙箱字段
 
 用例还能带**元数据**（纯文档 / 诊断用，不参与 grading / judge / verdict）和**沙箱**字段（用于脱离真实环境评测）。完整指引见[用例设计](../specs/sample-design-spec)，这里给字段索引：
@@ -221,7 +223,7 @@ Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节�
     - { type: regex, pattern: "bind\\(.*\\?" }
 ```
 
-子断言可独立带 `not: true`；嵌套 assert-set 可表达任意布尔逻辑。
+子断言可独立带 `not: true`；嵌套 `assert-set` 可在**确定性断言**上表达任意布尔逻辑。异步评委断言（`semantic_similarity`、`faithfulness`、`answer_relevancy`、`context_recall`、`custom`）必须保留在顶层，因为 `assert-set` 走同步求值；嵌套这类断言会在执行前被拒绝。
 
 > **分层评分提示。** `assert-set` 只在叶子子断言**同层**（全是事实层 / 全是行为层）时才计入 fact / behavior 分层 composite。**混层** `assert-set`（如一条 `contains` + 一条 `max_length`）没有单一可诚实归属的层，故不计入分层 composite（仍计入扁平的断言通过 / 失败）。若想让某条用例的信号落进分层 composite，优先用叶子断言，或让每个 `assert-set` 保持在同一层内。
 

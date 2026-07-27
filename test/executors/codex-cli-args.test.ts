@@ -1,6 +1,13 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildCodexArgs, extractCodexFinalOutput, sumCodexElapsed } from '../../src/executors/codex-cli.js';
+import {
+  buildCodexArgs,
+  extractCodexFinalOutput,
+  extractCodexProtocolError,
+  extractCodexUsage,
+  parseCodexJsonl,
+  sumCodexElapsed,
+} from '../../src/executors/codex-cli.js';
 import type { CodexEvent } from '../../src/executors/shared.js';
 
 // Args shape 回归测:codex CLI 0.125 起去掉 `--ask-for-approval` flag。
@@ -25,6 +32,7 @@ describe('buildCodexArgs flag schema', () => {
     assert.ok(args.includes('--json'));
     assert.ok(args.includes('--ephemeral'));
     assert.ok(args.includes('--ignore-user-config'));
+    assert.ok(args.includes('--ignore-rules'));
     assert.ok(args.includes('--skip-git-repo-check'));
     const sIdx = args.indexOf('--sandbox');
     assert.notEqual(sIdx, -1);
@@ -63,10 +71,51 @@ describe('buildCodexArgs flag schema', () => {
   });
 });
 
-// bug_001:同 turn 多 agent_message 时 final output 必须全部拼接,不能只取最后一条。
-// 否则 grader / assertion / LLM judge 看到的 output 跟 trace UI 看到的内容不一致。
-describe('extractCodexFinalOutput multi-message turn', () => {
-  it('multi agent_message in same turn → join all with \\n', () => {
+describe('parseCodexJsonl completeness', () => {
+  it('reports malformed protocol lines instead of silently dropping them', () => {
+    const parsed = parseCodexJsonl([
+      JSON.stringify({ type: 'turn.started' }),
+      'not-json',
+      'null',
+      '[]',
+      '{}',
+      JSON.stringify({ type: 'item.completed', item: { id: 'missing-type' } }),
+      JSON.stringify({ type: 'turn.completed' }),
+    ].join('\n'));
+    assert.deepEqual(parsed.events.map((event) => event.type), [
+      'turn.started',
+      'turn.completed',
+    ]);
+    assert.equal(parsed.malformedLineCount, 5);
+  });
+
+  it('qualifies external file-change kinds at the protocol boundary', () => {
+    const parsed = parseCodexJsonl(JSON.stringify({
+      type: 'item.completed',
+      item: {
+        id: 'patch',
+        type: 'file_change',
+        changes: [{ path: 'src/a.ts', kind: 'update' }],
+      },
+    }));
+
+    assert.deepEqual(parsed.events[0]?.item?.changes, [
+      { path: 'src/a.ts', changeKind: 'update' },
+    ]);
+  });
+
+  it('preserves top-level protocol errors as execution failures', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'error', message: 'stream disconnected' },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexProtocolError(events), 'stream disconnected');
+  });
+});
+
+describe('extractCodexFinalOutput', () => {
+  it('uses the latest completed agent message, matching the official SDK finalResponse', () => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
       { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 'first part' } },
@@ -74,7 +123,7 @@ describe('extractCodexFinalOutput multi-message turn', () => {
       { type: 'item.completed', item: { id: 'c', type: 'agent_message', text: 'final answer: yes' } },
       { type: 'turn.completed' },
     ];
-    assert.equal(extractCodexFinalOutput(events), 'first part\nsecond part\nfinal answer: yes');
+    assert.equal(extractCodexFinalOutput(events), 'final answer: yes');
   });
 
   it('skip agent_message with empty text', () => {
@@ -113,6 +162,41 @@ describe('extractCodexFinalOutput multi-message turn', () => {
       { type: 'turn.completed' },
     ];
     assert.equal(extractCodexFinalOutput(events), '');
+  });
+
+  it('does not fall back to an earlier answer when the final message is empty', () => {
+    const events: CodexEvent[] = [
+      { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 'stale answer' } },
+      { type: 'item.completed', item: { id: 'b', type: 'agent_message', text: '' } },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), '');
+  });
+});
+
+describe('extractCodexUsage token buckets', () => {
+  it('does not count cached input in both input and cache buckets', () => {
+    const usage = extractCodexUsage([
+      {
+        type: 'turn.completed',
+        usage: { input_tokens: 120, cached_input_tokens: 40, output_tokens: 15 },
+      },
+      {
+        type: 'turn.completed',
+        usage: { input_tokens: 80, cached_input_tokens: 20, output_tokens: 10 },
+      },
+    ]);
+    assert.deepEqual(usage, { input: 140, cached: 60, output: 25 });
+  });
+
+  it('does not let malformed counters create negative or inflated totals', () => {
+    const usage = extractCodexUsage([
+      {
+        type: 'turn.completed',
+        usage: { input_tokens: 10, cached_input_tokens: 40, output_tokens: -5 },
+      },
+    ]);
+    assert.deepEqual(usage, { input: 0, cached: 10, output: 0 });
   });
 });
 

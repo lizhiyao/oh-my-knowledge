@@ -1,5 +1,13 @@
 import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types/index.js';
 import { buildJudgePrompt, JUDGE_SYSTEM_PROMPT } from '../shared/llm-prompts/judge-prompts.js';
+import {
+  isToolCallCancelled,
+  isToolCallFailure,
+  isToolCallSuccess,
+  isToolCallUnknown,
+  toolCallStatus,
+} from '../shared/tool-call-status.js';
+import { incrementRecordCount } from '../shared/record-count.js';
 // 评分类 prompt 已收口到 shared/llm-prompts/judge-prompts.ts(单一来源 + prompt-registry 冻结)。
 // 这里 re-export 保对外 API 不破:既有消费方仍从 grading/judge.js import 这两个符号。
 export { buildJudgePrompt, getJudgePromptHash } from '../shared/llm-prompts/judge-prompts.js';
@@ -106,17 +114,21 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
 
   if (toolCalls && toolCalls.length > 0) {
     lines.push(`共调用 ${toolCalls.length} 个工具：`);
-    const successCount = toolCalls.filter((tc) => tc.success).length;
-    const failureCount = toolCalls.length - successCount;
+    const successCount = toolCalls.filter(isToolCallSuccess).length;
+    const failureCount = toolCalls.filter(isToolCallFailure).length;
+    const cancelledCount = toolCalls.filter(isToolCallCancelled).length;
+    const unknownCount = toolCalls.filter(isToolCallUnknown).length;
     lines.push(`  成功 ${successCount}/${toolCalls.length}`);
     if (failureCount > 0) lines.push(`  失败 ${failureCount}/${toolCalls.length}`);
+    if (cancelledCount > 0) lines.push(`  取消 ${cancelledCount}/${toolCalls.length}`);
+    if (unknownCount > 0) lines.push(`  状态未知 ${unknownCount}/${toolCalls.length}`);
 
     const dist: Record<string, number> = {};
     for (const tc of toolCalls) {
-      dist[tc.tool] = (dist[tc.tool] || 0) + 1;
+      incrementRecordCount(dist, tc.tool);
     }
     lines.push(`  工具分布：${Object.entries(dist).map(([k, v]) => `${k}(${v})`).join(', ')}`);
-    const failedTools = toolCalls.filter((tc) => !tc.success).map((tc) => tc.tool);
+    const failedTools = toolCalls.filter(isToolCallFailure).map((tc) => tc.tool);
     if (failedTools.length > 0) {
       lines.push(`  失败工具：${[...new Set(failedTools)].join(', ')}`);
     }
@@ -127,7 +139,11 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
     const detailCap = Math.min(toolCalls.length, TOOL_DETAIL_MAX_CALLS);
     for (let i = 0; i < detailCap; i++) {
       const tc = toolCalls[i];
-      const status = tc.success ? '' : ' [失败]';
+      const resultStatus = toolCallStatus(tc);
+      const status = resultStatus === 'failure'
+        ? ' [失败]'
+        : resultStatus === 'cancelled' ? ' [取消]'
+        : resultStatus === 'unknown' ? ' [状态未知]' : '';
       lines.push(`    [${i + 1}] ${tc.tool}${status} → ${previewToolInput(tc)}`);
     }
     if (toolCalls.length > TOOL_DETAIL_MAX_CALLS) {
@@ -138,9 +154,10 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
   if (turns && turns.length > 0) {
     lines.push('');
     lines.push('执行轨迹摘要：');
+    const userTurns = turns.filter((turn) => turn.role === 'user').length;
     const assistantTurns = turns.filter((turn) => turn.role === 'assistant').length;
     const toolTurns = turns.filter((turn) => turn.role === 'tool').length;
-    lines.push(`  共 ${turns.length} 步（assistant ${assistantTurns} / tool ${toolTurns}）`);
+    lines.push(`  共 ${turns.length} 步（user ${userTurns} / assistant ${assistantTurns} / tool ${toolTurns}）`);
     const maxTurns = Math.min(turns.length, 10);
     for (let i = 0; i < maxTurns; i++) {
       const t = turns[i];

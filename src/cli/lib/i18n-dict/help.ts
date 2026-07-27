@@ -144,9 +144,9 @@ omk evolve——多轮自动迭代改进 skill
 选项：
   --rounds <n>                        迭代轮数（默认：5）
   --target <score>                    目标分数
-  --model <name>                      任务执行模型，每轮跑 eval samples 的被测模型（默认：sonnet）
-  --improve-model <name>              skill 改写模型，每轮根据反馈改写 skill 的模型（默认：sonnet）
-  --judge-models <executor:model>     单评委配置（默认：claude:haiku）
+  --model <name>                      任务执行模型，默认跟随 runtime；Codex 读取本机配置
+  --improve-model <name>              skill 改写模型，默认沿用任务执行模型
+  --judge-models <executor:model>     单评委配置（默认跟随执行器；Codex 沿用被测模型）
 
 示例：
   omk evolve skills/code-review/SKILL.md
@@ -162,9 +162,9 @@ Usage:
 Options:
   --rounds <n>                        Iteration rounds (default: 5)
   --target <score>                    Target score
-  --model <name>                      Task executor model — runs eval samples each round (default: sonnet)
-  --improve-model <name>              Skill rewriter model — rewrites the skill each round (default: sonnet)
-  --judge-models <executor:model>     Single judge config (default: claude:haiku)
+  --model <name>                      Task executor model; follows runtime (Codex reads local config)
+  --improve-model <name>              Skill rewriter model; defaults to the task model
+  --judge-models <executor:model>     Single judge config (follows executor; Codex reuses task model)
 
 Examples:
   omk evolve skills/code-review/SKILL.md

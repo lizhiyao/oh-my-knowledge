@@ -28,9 +28,8 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('defaults to claude', () => {
-    const exec = createExecutor();
-    assert.equal(typeof exec, 'function');
+  it('requires an explicit executor identity', () => {
+    assert.throws(() => createExecutor(''), /required/);
   });
 
   it('falls back to script executor for unknown name', () => {
@@ -111,6 +110,160 @@ describe('createExecutor', () => {
     });
     assert.equal(result.ok, true);
     assert.equal(result.output, 'done');
+  });
+
+  it('honors explicit failure from the custom executor JSON protocol', async () => {
+    const executor = createExecutor('/bin/echo \'{"ok":false,"error":"provider failed","output":"partial","inputTokens":4}\'');
+    const result = await executor({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'provider failed');
+    assert.equal(result.output, 'partial');
+    assert.equal(result.inputTokens, 4);
+    assert.equal(result.tokenUsageReportedByExecutor, false);
+  });
+
+  it('keeps arbitrary JSON stdout as model text when it is not the custom protocol', async () => {
+    const executor = createExecutor('/bin/echo \'{"answer":"done"}\'');
+    const result = await executor({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.output, '{"answer":"done"}');
+    assert.equal(result.tokenUsageReportedByExecutor, false);
+  });
+
+  it('fails closed when stdout declares a malformed custom executor protocol', async () => {
+    const invalidOutput = createExecutor('/bin/echo \'{"ok":true,"output":123}\'');
+    const outputResult = await invalidOutput({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(outputResult.ok, false);
+    assert.match(outputResult.error || '', /"output" must be string/);
+
+    const invalidOk = createExecutor('/bin/echo \'{"ok":"false","output":"looks valid"}\'');
+    const okResult = await invalidOk({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(okResult.ok, false);
+    assert.match(okResult.error || '', /"ok" must be boolean/);
+
+    const invalidMetrics = createExecutor('/bin/echo \'{"output":"looks valid","inputTokens":-1}\'');
+    const metricsResult = await invalidMetrics({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(metricsResult.ok, false);
+    assert.match(metricsResult.error || '', /"inputTokens" must be a non-negative safe integer/);
+  });
+
+  it('accepts source-neutral Trace IR from the custom executor protocol', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-script-trace-'));
+    const script = join(dir, 'trace.mjs');
+    try {
+      await writeFile(script, [
+        'const result = {',
+        '  output: "done",',
+        '  numTurns: 1,',
+        '  fullNumTurns: 2,',
+        '  numSubAgents: 1,',
+        '  toolCalls: [{',
+        '    tool: "command_execution",',
+        '    input: { command: "pwd" },',
+        '    output: "/repo",',
+        '    success: true,',
+        '    status: "success",',
+        '    statusSource: "runtime",',
+        '    sourceKind: "unknown",',
+        '  }],',
+        '  turns: [{ role: "assistant", content: "done" }],',
+        '};',
+        'console.log(JSON.stringify(result));',
+      ].join('\n'));
+      const result = await createExecutor(`node ${script}`)({
+        model: 'test',
+        prompt: 'ignored',
+      });
+
+      assert.equal(result.ok, true);
+      assert.equal(result.fullNumTurns, 2);
+      assert.equal(result.numSubAgents, 1);
+      assert.equal(result.toolCalls?.[0].tool, 'Bash');
+      assert.equal(result.toolCalls?.[0].sourceTool, 'command_execution');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on malformed Trace IR from a custom executor', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-script-trace-invalid-'));
+    const script = join(dir, 'trace.mjs');
+    try {
+      await writeFile(script, [
+        'console.log(JSON.stringify({',
+        '  output: "looks successful",',
+        '  toolCalls: [{',
+        '    tool: "Read", input: {}, output: "cancelled",',
+        '    success: true, status: "cancelled",',
+        '  }],',
+        '}));',
+      ].join('\n'));
+      const result = await createExecutor(`node ${script}`)({
+        model: 'test',
+        prompt: 'ignored',
+      });
+
+      assert.equal(result.ok, false);
+      assert.match(result.error || '', /"toolCalls" contains an invalid trace entry/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat empty custom executor output as a successful sample', async () => {
+    const emptyProtocol = createExecutor('/bin/echo \'{"output":""}\'');
+    const protocolResult = await emptyProtocol({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(protocolResult.ok, false);
+    assert.equal(protocolResult.error, 'script executor completed without model output');
+
+    const emptyText = createExecutor('/bin/echo -n');
+    const textResult = await emptyText({
+      model: 'test',
+      system: '',
+      prompt: 'ignored',
+    });
+    assert.equal(textResult.ok, false);
+    assert.equal(textResult.error, 'script executor completed without model output');
+  });
+
+  it('distinguishes omitted script cost from an explicitly reported zero', async () => {
+    const unreported = await createExecutor('/bin/echo \'{"output":"done"}\'')({
+      model: 'test',
+      prompt: 'ignored',
+    });
+    const reported = await createExecutor('/bin/echo \'{"output":"done","costUSD":0}\'')({
+      model: 'test',
+      prompt: 'ignored',
+    });
+
+    assert.equal(unreported.costReportedByExecutor, false);
+    assert.equal(reported.costReportedByExecutor, undefined);
   });
 
   it('does not rewrite interpreter module names as local paths', async () => {

@@ -15,10 +15,10 @@ import type { SkillHealthReport } from '../../src/observability/skill-health-ana
 function mkReport(): SkillHealthReport {
   return {
     kind: 'observe-health',
-    meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5,
-      toolCallCount: 3, toolFailureRate: 0.0, timeRange: { from: 'a', to: 'b' }, generatedAt: '2026-06-14T00:00:00Z' },
+    meta: { tracePath: '/t', kbPath: null, sessionCount: 0, segmentCount: 0, messageCount: 0,
+      toolCallCount: 0, toolFailureRate: 0.0, timeRange: { from: '', to: '' }, generatedAt: '2026-06-14T00:00:00Z' },
     bySkill: {},
-    overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'high' },
+    overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'underpowered' },
   };
 }
 

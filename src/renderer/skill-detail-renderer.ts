@@ -65,7 +65,17 @@ export interface HealthAssessment {
  *  a neutral (gray) signal with a caveat rather than a hard health verdict. */
 function effectiveObserveBand(observe: SkillObserveSnapshot | null): 'green' | 'yellow' | 'red' | 'gray' {
   if (!observe) return 'gray';
-  return observe.confidence === 'underpowered' ? 'gray' : observe.healthBand;
+  if (observe.confidence === 'underpowered') return 'gray';
+  if (
+    observe.healthBand === 'green'
+    && (observe.toolCallCount ?? 0) > 0
+    && Math.max(
+      0,
+      (observe.toolResolvedCount ?? observe.toolCallCount ?? 0)
+        - (observe.toolCancelledCount ?? 0),
+    ) < 5
+  ) return 'gray';
+  return observe.healthBand;
 }
 
 export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
@@ -1968,6 +1978,25 @@ function renderObserveSection(
   }
   const gapPct = (snap.gapRate * 100).toFixed(0);
   const failPct = (snap.failureRate * 100).toFixed(1);
+  const hasToolCallCount = snap.toolCallCount !== undefined;
+  const toolCallCount = snap.toolCallCount ?? 0;
+  const noToolCalls = hasToolCallCount && toolCallCount === 0;
+  const toolResolvedCount = snap.toolResolvedCount
+    ?? (hasToolCallCount ? toolCallCount : undefined);
+  const toolCancelledCount = snap.toolCancelledCount ?? 0;
+  const toolComparableCount = toolResolvedCount === undefined
+    ? undefined
+    : Math.max(0, toolResolvedCount - toolCancelledCount);
+  const toolOutcomeUnknown = snap.stability === 'unknown'
+    || (toolComparableCount === 0 && toolCallCount > 0);
+  const toolOutcomeUnderpowered = toolComparableCount !== undefined
+    && toolComparableCount > 0
+    && toolComparableCount < 5;
+  const toolOutcomeEvidence = hasToolCallCount && toolCallCount > 0
+    ? (lang === 'zh'
+      ? `${toolComparableCount}/${toolCallCount} 个结果可比较${toolCancelledCount > 0 ? `，${toolCancelledCount} 个取消` : ''}`
+      : `${toolComparableCount}/${toolCallCount} outcomes comparable${toolCancelledCount > 0 ? `, ${toolCancelledCount} cancelled` : ''}`)
+    : '';
 
   const alerts: string[] = [];
   if (snap.gapRate >= 0.2) {
@@ -1979,12 +2008,26 @@ function renderObserveSection(
       </div>
     </div>`);
   }
-  if (snap.failureRate >= 0.2) {
+  if (toolOutcomeUnknown) {
+    alerts.push(`<div class="si-rule si-rule--warn">
+      <div class="si-rule-head">
+        <span class="si-rule-icon">⚠</span>
+        <code class="si-rule-id">${toolCancelledCount > 0
+          ? (lang === 'zh' ? '工具调用取消' : 'tool calls cancelled')
+          : (lang === 'zh' ? '工具结果状态未知' : 'tool outcomes unavailable')}</code>
+        <span class="si-rule-msg">${toolCancelledCount > 0
+          ? (lang === 'zh' ? '工具调用被取消，没有可比较的成功 / 失败结果' : 'tool calls were cancelled, leaving no comparable success/failure outcomes')
+          : (lang === 'zh' ? '运行时未提供可判定的工具结果，失败率不可测' : 'runtime did not expose resolvable tool outcomes, so failure rate is unavailable')}</span>
+      </div>
+    </div>`);
+  } else if (snap.failureRate >= 0.2) {
     alerts.push(`<div class="si-rule si-rule--warn">
       <div class="si-rule-head">
         <span class="si-rule-icon">⚠</span>
         <code class="si-rule-id">${lang === 'zh' ? '工具失败率' : 'tool fail rate'}</code>
-        <span class="si-rule-msg">${failPct}% ${lang === 'zh' ? '工具调用失败 — 可能环境问题或 skill 让 LLM 走错路径' : 'tool calls failing'}</span>
+        <span class="si-rule-msg">${failPct}% ${lang === 'zh' ? '工具调用失败，可能是环境问题或 skill 让 LLM 走错路径' : 'tool calls failing'}${toolOutcomeUnderpowered
+          ? (lang === 'zh' ? `；仅 ${toolOutcomeEvidence}，结论置信度低` : `; only ${toolOutcomeEvidence}, low confidence`)
+          : ''}</span>
       </div>
     </div>`);
   }
@@ -1993,13 +2036,23 @@ function renderObserveSection(
     ? alerts.join('')
     : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '生产观测健康' : 'production observation healthy'}</div>`;
 
-  const obsCaveat = snap.confidence === 'underpowered'
-    ? (lang === 'zh' ? ' · ⚠ 样本不足，色带仅供参考' : ' · ⚠ low N, band indicative')
-    : '';
+  const obsCaveat = [
+    snap.confidence === 'underpowered'
+      ? (lang === 'zh' ? '样本不足，色带仅供参考' : 'low N, band indicative')
+      : '',
+    toolOutcomeUnderpowered
+      ? (lang === 'zh' ? `${toolOutcomeEvidence}，工具失败率置信度低` : `${toolOutcomeEvidence}, low-confidence failure rate`)
+      : '',
+  ].filter(Boolean).map((value) => ` · ⚠ ${value}`).join('');
+  const toolFailureMeta = toolOutcomeUnknown
+    ? (lang === 'zh' ? '工具失败率不可测' : 'tool fail unavailable')
+    : noToolCalls
+      ? (lang === 'zh' ? '无工具调用' : 'no tool calls')
+    : `${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}%${toolOutcomeEvidence ? `（${toolOutcomeEvidence}）` : ''}`;
   return `<section id="section-observe" class="si-sect si-sect--${effectiveObserveBand(snap)}">
     <div class="si-sect-h">
       <span class="si-sect-title">👁 ${lang === 'zh' ? '线上观测 (observe)' : 'Live stability (observe)'}</span>
-      <span class="si-sect-meta">${snap.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${gapPct}% · ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}% · ${relTime(snap.generatedAt, lang)}${obsCaveat}</span>
+      <span class="si-sect-meta">${snap.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${gapPct}% · ${toolFailureMeta} · ${relTime(snap.generatedAt, lang)}${obsCaveat}</span>
     </div>
     <div class="si-sect-body">
       ${body}
@@ -2009,9 +2062,14 @@ function renderObserveSection(
 }
 
 function skillMapBand(entry: SkillIndexEntry): 'green' | 'yellow' | 'red' | 'gray' {
-  if (entry.doctor?.failCount || entry.eval?.failCount) return 'red';
-  if (entry.doctor?.warnCount || (entry.eval?.compositeScore != null && entry.eval.compositeScore < 3.5)) return 'yellow';
-  if (entry.doctor || entry.eval || entry.observe) return 'green';
+  const observeBand = effectiveObserveBand(entry.observe);
+  if (entry.doctor?.failCount || entry.eval?.failCount || observeBand === 'red') return 'red';
+  if (
+    entry.doctor?.warnCount
+    || (entry.eval?.compositeScore != null && entry.eval.compositeScore < 3.5)
+    || observeBand === 'yellow'
+  ) return 'yellow';
+  if (entry.doctor || entry.eval || observeBand === 'green') return 'green';
   return 'gray';
 }
 
@@ -2882,7 +2940,8 @@ function skillMapDimensions(nodes: SkillMapPositionedNode[]): { width: number; h
 function renderSkillStageRail(entry: SkillIndexEntry, lang: Lang): string {
   const doctorStatus = entry.doctor?.failCount ? 'failed' : entry.doctor?.warnCount ? 'warning' : entry.doctor ? 'ok' : 'pending';
   const evalStatus = entry.eval?.failCount ? 'failed' : entry.eval ? 'ok' : 'pending';
-  const observeStatus = entry.observe ? (entry.observe.healthBand === 'red' ? 'failed' : entry.observe.healthBand === 'yellow' ? 'warning' : 'ok') : 'pending';
+  const observeBand = effectiveObserveBand(entry.observe);
+  const observeStatus = observeBand === 'red' ? 'failed' : observeBand === 'yellow' ? 'warning' : observeBand === 'green' ? 'ok' : 'pending';
   const card = (key: string, value: string, status: string): string => `<div class="sm-stage-card sm-stage-card--${status}">
     <div class="sm-stage-k">${e(key)}</div>
     <div class="sm-stage-v">${e(value)}</div>

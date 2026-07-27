@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { doctorReportFileStem, isReportFileName, reportFilePath, stripDomainPrefix } from './artifact-file-names.js';
 
 export type LegacyReportDomain = 'report' | 'doctor' | 'observe-health' | 'observe-inbox';
@@ -68,8 +69,10 @@ export function migrateLegacyReportFiles(dir: string, domain: LegacyReportDomain
     if (!legacyJsonStem(file)) continue;
     const sourcePath = join(dir, file);
     let targetStem: string | null = null;
+    let sourceData: unknown;
     try {
-      targetStem = targetStemForLegacyReport(domain, file, JSON.parse(readFileSync(sourcePath, 'utf-8')));
+      sourceData = JSON.parse(readFileSync(sourcePath, 'utf-8'));
+      targetStem = targetStemForLegacyReport(domain, file, sourceData);
     } catch {
       continue;
     }
@@ -78,7 +81,8 @@ export function migrateLegacyReportFiles(dir: string, domain: LegacyReportDomain
     const targetPath = reportFilePath(dir, targetStem);
     try {
       if (existsSync(targetPath)) {
-        unlinkSync(sourcePath);
+        const targetData: unknown = JSON.parse(readFileSync(targetPath, 'utf-8'));
+        if (isDeepStrictEqual(sourceData, targetData)) unlinkSync(sourcePath);
       } else {
         renameSync(sourcePath, targetPath);
       }

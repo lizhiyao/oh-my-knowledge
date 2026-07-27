@@ -81,6 +81,24 @@ describe('computeTestSetHash', () => {
     assert.notEqual(h1, h2);
   });
 
+  it('sample 契约指纹变化会 invalidate 测试集水印', () => {
+    const d = mkDir();
+    const f = join(d, 'samples.json');
+    writeFileSync(f, '[{"sample_id":"s1","prompt":"same"}]');
+    const h1 = computeTestSetHash(f, [f], { s1: 'contract-v1' });
+    const h2 = computeTestSetHash(f, [f], { s1: 'contract-v2' });
+    assert.notEqual(h1, h2);
+  });
+
+  it('sample 指纹映射顺序不影响测试集水印', () => {
+    const d = mkDir();
+    const f = join(d, 'samples.json');
+    writeFileSync(f, '[]');
+    const h1 = computeTestSetHash(f, [f], { s1: 'a', s2: 'b' });
+    const h2 = computeTestSetHash(f, [f], { s2: 'b', s1: 'a' });
+    assert.equal(h1, h2);
+  });
+
   it('samplesPath 文件不存在且 sourceFiles 空 → null', () => {
     assert.equal(computeTestSetHash('/nonexistent.json', []), null);
     assert.equal(computeTestSetHash('/nonexistent.json'), null);

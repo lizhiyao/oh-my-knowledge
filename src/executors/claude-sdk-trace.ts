@@ -1,6 +1,8 @@
 import type { ToolCallInfo, TurnInfo } from '../types/index.js';
 import type { ClaudeSdkBaseMessage } from './shared.js';
 import { safeSliceForJson } from '../util/safe-slice.js';
+import { isToolResultFailureText } from '../observability/text-signals.js';
+import { normalizeToolIdentity } from '../shared/tool-identity.js';
 
 export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean {
   return message.type === 'result';
@@ -9,7 +11,7 @@ export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean
 export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[]; fullNumTurns: number; numSubAgents: number } {
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
-  const pendingToolUse = new Map<string, { tool: string; input: unknown }>();
+  const pendingToolUse = new Map<string, ToolCallInfo[]>();
   let lastTurnTs = timestamps?.[0] || 0;
   let fullNumTurns = 0;
   let numSubAgents = 0;
@@ -27,15 +29,35 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
       const turnToolCalls: ToolCallInfo[] = [];
       let hasNonThinking = false;
 
-      for (const block of content) {
+      for (let blockIndex = 0; blockIndex < content.length; blockIndex += 1) {
+        const block = content[blockIndex];
         if (block.type === 'text' && block.text) {
           textParts.push(block.text);
           hasNonThinking = true;
         } else if (block.type === 'tool_use' && block.name) {
-          pendingToolUse.set(block.id || '', { tool: block.name, input: block.input });
-          turnToolCalls.push({ tool: block.name, input: block.input, output: null, success: true });
+          const toolIdentity = normalizeToolIdentity({ sourceName: block.name });
+          const toolCall: ToolCallInfo = {
+            tool: toolIdentity.name,
+            ...(toolIdentity.sourceName ? { sourceTool: toolIdentity.sourceName } : {}),
+            ...(toolIdentity.namespace ? { toolNamespace: toolIdentity.namespace } : {}),
+            ...(toolIdentity.provider ? { toolProvider: toolIdentity.provider } : {}),
+            input: block.input,
+            output: null,
+            status: 'unknown',
+            statusSource: 'unknown',
+            success: false,
+            callInstanceId: `claude-sdk:${msgIdx}:${blockIndex}`,
+            toolUseId: block.id,
+          };
+          if (block.id) {
+            const pending = pendingToolUse.get(block.id) ?? [];
+            pending.push(toolCall);
+            pendingToolUse.set(block.id, pending);
+          }
+          turnToolCalls.push(toolCall);
+          toolCalls.push(toolCall);
           hasNonThinking = true;
-          if (block.name === 'Agent') numSubAgents++;
+          if (toolIdentity.name === 'Agent') numSubAgents++;
         } else if (block.type !== 'thinking') {
           hasNonThinking = true;
         }
@@ -55,11 +77,15 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
     }
 
     if (msg.type === 'user') {
-      for (const block of content) {
+      for (let blockIndex = 0; blockIndex < content.length; blockIndex += 1) {
+        const block = content[blockIndex];
         if (block.type !== 'tool_result') continue;
         const toolUseId = (block as unknown as { tool_use_id?: string }).tool_use_id || '';
-        const pending = pendingToolUse.get(toolUseId);
-        const isError = (block as unknown as { is_error?: boolean }).is_error || false;
+        const pendingQueue = pendingToolUse.get(toolUseId);
+        const pending = pendingQueue?.shift();
+        if (pendingQueue?.length === 0) pendingToolUse.delete(toolUseId);
+        const runtimeError = (block as unknown as { is_error?: boolean }).is_error;
+        const hasRuntimeStatus = typeof runtimeError === 'boolean';
         const resultContent = (block as unknown as { content?: string | Array<{ type: string; text?: string }> }).content;
         const outputText = typeof resultContent === 'string'
           ? resultContent
@@ -71,29 +97,29 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
         // is_error 因此为 true,但语义上是"mock 成功返回"。识别前缀 → 覆盖 success=true。
         // 见 src/eval-core/mocks-runtime.ts 的 wrappedReason 前缀。
         const isMockHit = outputText.startsWith('[mock] simulated tool output');
-        const effectiveSuccess = isMockHit ? true : !isError;
+        const inferredFailure = !hasRuntimeStatus && isToolResultFailureText(outputText);
 
-        const tc: ToolCallInfo = {
-          tool: pending?.tool || 'unknown',
-          input: pending?.input || null,
-          output: safeSliceForJson(outputText, 500, ''),
-          success: effectiveSuccess,
-        };
-        toolCalls.push(tc);
-
-        if (pending) {
-          for (let i = turns.length - 1; i >= 0; i--) {
-            const turn = turns[i];
-            if (turn.role === 'assistant' && turn.toolCalls) {
-              const placeholder = turn.toolCalls.find((t) => t.tool === pending.tool && t.output === null);
-              if (placeholder) {
-                placeholder.output = tc.output;
-                placeholder.success = effectiveSuccess;
-                break;
-              }
-            }
-          }
-        }
+        const tc = pending ?? {
+          tool: 'unknown',
+          input: null,
+          output: null,
+          status: 'unknown',
+          statusSource: 'unknown',
+          success: false,
+          callInstanceId: `claude-sdk:orphan-result:${msgIdx}:${blockIndex}`,
+          toolUseId,
+        } satisfies ToolCallInfo;
+        tc.output = safeSliceForJson(outputText, 500, '');
+        tc.status = isMockHit
+          ? 'success'
+          : hasRuntimeStatus
+            ? runtimeError ? 'failure' : 'success'
+            : inferredFailure ? 'failure' : 'unknown';
+        tc.statusSource = isMockHit
+          ? 'tool-output'
+          : hasRuntimeStatus ? 'runtime' : inferredFailure ? 'inferred' : 'unknown';
+        tc.success = tc.status === 'success';
+        if (!pending) toolCalls.push(tc);
 
         const toolDur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
         turns.push({
@@ -102,7 +128,6 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
           ...(toolDur != null && toolDur > 0 && { durationMs: toolDur }),
         });
         if (msgTs) lastTurnTs = msgTs;
-        pendingToolUse.delete(toolUseId);
       }
     }
   }

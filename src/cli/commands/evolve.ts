@@ -10,6 +10,7 @@ import { makeOnProgress } from '../lib/progress.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type { EvolveOutcomeInput, EvolveOutcomeResult } from '../lib/record-evolve-outcome.js';
+import { envJudgeModels, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import type { ProgressCallback } from '../../types/index.js';
 
 /** 受管联动旁路:evolve 写回 source 后记证据 + re-baseline。任何异常都不该让 evolve 失败,
@@ -399,24 +400,21 @@ export default class Evolve extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: '被评测的 LLM，默认 sonnet。无用例时也用作自动生成用例的出题模型。',
-        en: 'Evaluated LLM, default sonnet. Also used as the sample-generation model when no samples exist.',
+        zh: '被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。',
+        en: 'Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.',
       }),
-      default: 'sonnet',
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委 model（单评委约束），格式 executor:model。默认 claude:haiku',
-        en: 'Judge model (single judge required), executor:model format. Default claude:haiku',
+        zh: '评委 model（单评委约束），格式 executor:model。默认跟随所选执行器；Codex 沿用被测模型。',
+        en: 'Judge model (single judge required), executor:model format. Defaults to the selected executor; Codex reuses the evaluated model.',
       }),
-      default: 'claude:haiku',
     }),
     'improve-model': Flags.string({
       description: bilingual({
-        zh: '负责重写 skill 的 LLM，默认 sonnet',
-        en: 'LLM that rewrites the skill, default sonnet',
+        zh: '负责重写 skill 的 LLM，默认沿用被测模型',
+        en: 'LLM that rewrites the skill; defaults to the evaluated model',
       }),
-      default: 'sonnet',
     }),
     concurrency: Flags.string({
       description: bilingual({ zh: '评测并发数，默认 1', en: 'Eval concurrency, default 1' }),
@@ -429,8 +427,10 @@ export default class Evolve extends BaseCommand {
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     executor: Flags.string({
-      description: bilingual({ zh: '执行器名，默认 claude', en: 'Executor name, default claude' }),
-      default: 'claude',
+      description: bilingual({
+        zh: '执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
+      }),
     }),
     'skip-connectivity': Flags.boolean({
       description: bilingual({
@@ -563,7 +563,20 @@ export default class Evolve extends BaseCommand {
     const { args, flags } = await this.parse(Evolve);
     const lang = this.lang;
     await this.runWithCliExit(async () => {
-      await runEvolve(args, { ...flags, lang }, lang);
+      const runtime = resolveRuntimeSelection(
+        { executor: flags.executor, model: flags.model },
+        { lang },
+      );
+      await runEvolve(args, {
+        ...flags,
+        executor: runtime.executor,
+        model: runtime.model,
+        'judge-models': flags['judge-models']
+          ?? envJudgeModels()
+          ?? `${runtime.executor}:${runtime.judgeModel}`,
+        'improve-model': flags['improve-model'] ?? runtime.model,
+        lang,
+      }, lang);
     });
   }
 }

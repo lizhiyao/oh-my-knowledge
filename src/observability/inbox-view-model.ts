@@ -18,6 +18,11 @@ import {
   type SkillDerivedStandards,
 } from './soft-standards/index.js';
 import { durationMsBetween } from '../shared/time.js';
+import {
+  incrementRecordCount,
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../shared/record-count.js';
 
 export interface ObservationInboxViewModel {
   observationsDir?: string;
@@ -57,29 +62,30 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
   const experienceReports = reports.flatMap((report) => report.experience ? [report.experience] : []);
   const skillInvocationCounts = reports.reduce((acc, report) => {
     for (const [skill, count] of Object.entries(report.meta.skillInvocationCounts ?? {})) {
-      acc[skill] = (acc[skill] ?? 0) + count;
+      incrementRecordCount(acc, skill, count);
     }
     return acc;
   }, {} as Record<string, number>);
   const skillSessionCounts = reports.reduce((acc, report) => {
     for (const [skill, count] of Object.entries(report.meta.skillSessionCounts ?? {})) {
-      acc[skill] = (acc[skill] ?? 0) + count;
+      incrementRecordCount(acc, skill, count);
     }
     return acc;
   }, {} as Record<string, number>);
   const skillInvocationLastSeen = reports.reduce((acc, report) => {
     for (const [skill, timestamp] of Object.entries(report.meta.skillInvocationLastSeen ?? {})) {
-      if (!acc[skill] || timestamp > acc[skill]) acc[skill] = timestamp;
+      const previous = ownRecordValue(acc, skill);
+      if (!previous || timestamp > previous) setOwnRecordValue(acc, skill, timestamp);
     }
     return acc;
   }, {} as Record<string, string>);
   const skillToolCallCounts = reports.reduce((acc, report) => {
     for (const [skill, counts] of Object.entries(report.meta.skillToolCallCounts ?? {})) {
-      const target = acc[skill] ?? {};
+      const target = ownRecordValue(acc, skill) ?? {};
       for (const [tool, count] of Object.entries(counts)) {
-        target[tool] = (target[tool] ?? 0) + count;
+        incrementRecordCount(target, tool, count);
       }
-      acc[skill] = target;
+      setOwnRecordValue(acc, skill, target);
     }
     return acc;
   }, {} as Record<string, Record<string, number>>);
@@ -99,25 +105,30 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     ...experienceReports.flatMap((report) => report.skills.map((skill) => skill.skillName)),
   ]));
   const skillChains = buildObservationSkillChains(skillNames, process.cwd(), experienceReports);
-  const skillDerivedStandards = loadSkillDerivedStandards(observationsDir);
+  const reviewState = loadObservationReviewState(observationsDir);
+  const skillDerivedStandards = loadSkillDerivedStandards(observationsDir, reviewState);
   const skillResolvedStandards = Object.fromEntries(skillNames.map((skillName) => [skillName, resolveSkillStandards(skillName, {
     observationsDir,
     skillChain: skillChains[skillName],
     derivedStandards: skillDerivedStandards,
   })]));
-  const latestSeen = allItems.reduce((latest, item) => item.lastSeen > latest ? item.lastSeen : latest, '');
+  const latestSeen = allItems
+    .filter((item) => (
+      item.timestampedOccurrences
+      ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences)
+    ) > 0)
+    .reduce((latest, item) => item.lastSeen > latest ? item.lastSeen : latest, '');
   const reportCount = reports.length;
   const latestSeenLabel = latestSeen ? latestSeen.slice(0, 19).replace('T', ' ') : '—';
-  const reviewState = loadObservationReviewState(observationsDir);
   const resolvedReviewSessions: Record<string, ResolvedObservationReviewSession> = {};
   for (const experience of experienceReports) {
     for (const session of experience.sessions) {
-      const enhancedReview = skillDerivedStandards[session.skillName]?.enhancedReview;
-      resolvedReviewSessions[session.id] = resolveObservationReviewSession({
+      const enhancedReview = ownRecordValue(skillDerivedStandards, session.skillName)?.enhancedReview;
+      setOwnRecordValue(resolvedReviewSessions, session.id, resolveObservationReviewSession({
         session,
         enhancedReview,
         reviewState,
-      });
+      }));
     }
   }
 
@@ -225,7 +236,10 @@ function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['ses
 // ============================================================================
 
 export { severityReasonFor } from './inbox.js';
-export { observationMetricAnnotationTargetId } from './review-state.js';
+export {
+  observationMetricAnnotationEntry,
+  observationMetricAnnotationTargetId,
+} from './review-state.js';
 export { resolveObservationReviewSession } from './resolved-review.js';
 export { getSkillChainAdvisory, resolveAdvisoryCommand } from './skill-chain-advisories.js';
 export {

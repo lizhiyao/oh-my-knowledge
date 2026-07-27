@@ -1,6 +1,7 @@
 /**
  * createIndexedReportStore 机器级总览验收:当前项目 + 全局 live ∪ 别项目索引卡片,按 id dedup;
- * get live 命中真身 / 别项目按卡片 path 读真身 / 悬空降级壳;findByVariant/Hash 跨项目;remove 删真身+卡片。
+ * get live 命中真身 / 别项目按卡片 path 读真身 / 悬空或损坏 fail closed;
+ * findByVariant/Hash 跨项目;remove 删真身+卡片。
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
@@ -17,9 +18,56 @@ function evalDoc(id: string, variant = 'v1', hash = 'h1', ts = '2026-06-14T00:00
   return {
     kind: 'evaluation',
     id,
-    meta: { timestamp: ts, variants: [variant], artifactHashes: { [variant]: hash } },
-    summary: { [variant]: {} },
-    results: [{ sample_id: 's1', variants: {} }],
+    meta: {
+      timestamp: ts,
+      variants: [variant],
+      artifactHashes: { [variant]: hash },
+      model: 'test-model',
+      executor: 'script',
+      sampleCount: 1,
+      taskCount: 1,
+      totalCostUSD: 0,
+      cliVersion: 'test',
+      nodeVersion: process.version,
+      judgeModels: [{ executor: 'script', model: 'test-judge' }],
+    },
+    summary: {
+      [variant]: {
+        totalSamples: 1,
+        successCount: 1,
+        errorCount: 0,
+        errorRate: 0,
+        avgDurationMs: 0,
+        avgInputTokens: 0,
+        avgOutputTokens: 0,
+        avgTotalTokens: 0,
+        totalCostUSD: 0,
+        totalExecCostUSD: 0,
+        totalJudgeCostUSD: 0,
+        avgCostPerSample: 0,
+        avgNumTurns: 1,
+      },
+    },
+    results: [{
+      sample_id: 's1',
+      variants: {
+        [variant]: {
+          ok: true,
+          durationMs: 0,
+          durationApiMs: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          execCostUSD: 0,
+          judgeCostUSD: 0,
+          costUSD: 0,
+          numTurns: 1,
+          outputPreview: 'ok',
+        },
+      },
+    }],
   };
 }
 
@@ -86,12 +134,21 @@ describe('createIndexedReportStore 机器级总览', () => {
     assert.equal(viaCard?.kind === 'evaluation' ? viaCard.results.length : -1, 1, '别项目按 path 读到完整真身');
   });
 
-  it('get 悬空:卡片在但真身没了 → 卡片壳(results:[]) 不抛、非 null', async () => {
-    writeCard('ro', join(other, reportFileName('gone')), evalDoc('ro')); // 真身文件不存在
+  it('get 悬空:卡片在但真身没了 → null，不从 scratch 卡片伪造报告壳', async () => {
+    writeCard('ro', join(other, reportFileName('ro')), evalDoc('ro')); // 真身文件不存在
     const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
-    const got = await store.get('ro');
-    assert.equal(got?.id, 'ro');
-    assert.deepEqual(got?.kind === 'evaluation' ? got.results : null, [], '悬空降级为壳');
+    assert.equal(await store.get('ro'), null);
+    assert.equal(await store.exists('ro'), false);
+  });
+
+  it('list/get 跳过正文损坏的卡片目标', async () => {
+    const ro = evalDoc('ro');
+    writeReportFile(other, ro);
+    writeCard('ro', join(other, reportFileName('ro')), ro);
+    writeFileSync(join(other, reportFileName('ro')), '{broken');
+    const store = createIndexedReportStore({ projectDir: proj, globalDir: glob });
+    assert.deepEqual(await store.list(), []);
+    assert.equal(await store.get('ro'), null);
   });
 
   it('findByVariant / findByArtifactHash 跨项目(含别项目卡片)', async () => {

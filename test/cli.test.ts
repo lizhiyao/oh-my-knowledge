@@ -6,8 +6,9 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import type { Report, VariantResult, VariantSummary } from '../src/types/index.js';
+import type { Artifact, Sample, Task, VariantResult } from '../src/types/index.js';
 import { reportFileName } from '../src/eval-core/artifact-file-names.js';
+import { aggregateReport } from '../src/eval-core/evaluation-reporting.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,94 +42,59 @@ const variantResult = (score: number): VariantResult => ({
   outputPreview: null,
 });
 
-const variantSummary = (score: number): VariantSummary => ({
-  totalSamples: 30,
-  successCount: 30,
-  errorCount: 0,
-  errorRate: 0,
-  avgDurationMs: 0,
-  avgInputTokens: 0,
-  avgOutputTokens: 0,
-  avgTotalTokens: 0,
-  totalCostUSD: 0,
-  totalExecCostUSD: 0,
-  totalJudgeCostUSD: 0,
-  avgCostPerSample: 0,
-  avgNumTurns: 1,
-  avgFactScore: score,
-  avgBehaviorScore: score,
-  avgJudgeScore: score,
-  avgCompositeScore: score,
-});
-
-const buildProductTreeReport = (): Report => ({
-  kind: 'evaluation',
-  id: 'cli-tree-report',
-  meta: {
+const buildProductTreeReport = () => {
+  const samples: Sample[] = [
+    { sample_id: 's1', prompt: 'task one' },
+    { sample_id: 's2', prompt: 'task two' },
+  ];
+  const artifacts: Artifact[] = [
+    {
+      name: 'baseline',
+      kind: 'baseline',
+      source: 'baseline',
+      content: null,
+      contentHash: 'baseline-hash',
+      experimentRole: 'control',
+      allowedSkills: [],
+    },
+    {
+      name: 'v1',
+      kind: 'skill',
+      source: 'inline',
+      content: 'skill content',
+      contentHash: 'v1-hash',
+      experimentRole: 'treatment',
+    },
+  ];
+  const tasks: Task[] = samples.flatMap((sample) => artifacts.map((artifact) => ({
+    sample_id: sample.sample_id,
+    variant: artifact.name,
+    artifact,
+    prompt: sample.prompt,
+    rubric: null,
+    assertions: null,
+    dimensions: null,
+    artifactContent: artifact.content,
+    cwd: null,
+    _sample: sample,
+  })));
+  return aggregateReport({
+    runId: 'cli-tree-report',
     variants: ['baseline', 'v1'],
-    model: 'sonnet',
-    judgeModels: [{ executor: 'claude', model: 'haiku' }],
-    executor: 'claude',
-    sampleCount: 30,
-    taskCount: 60,
+    model: 'test-model',
+    judgeModel: 'test-model',
+    noJudge: true,
+    executorName: 'openai-api',
+    samples,
+    tasks,
+    results: {
+      s1: { baseline: variantResult(3), v1: variantResult(4) },
+      s2: { baseline: variantResult(4), v1: variantResult(5) },
+    },
     totalCostUSD: 0,
-    timestamp: '2026-05-05T00:00:00.000Z',
-    cliVersion: 'test',
-    nodeVersion: process.version,
-    artifactHashes: { baseline: 'baseline-hash', v1: 'v1-hash' },
-    evaluationFramework: 'bootstrap',
-    pairComparisons: [{
-      control: 'baseline',
-      treatment: 'v1',
-      diffBootstrapCI: { estimate: 0.4, low: 0.2, high: 0.6, samples: 1000, significant: true },
-    }],
-  },
-  summary: {
-    baseline: variantSummary(3.8),
-    v1: variantSummary(4.2),
-  },
-  results: [
-    {
-      sample_id: 's1',
-      variants: { baseline: variantResult(3), v1: variantResult(4) },
-    },
-    {
-      sample_id: 's2',
-      variants: { baseline: variantResult(4), v1: variantResult(5) },
-    },
-  ],
-  variance: {
-    runs: 2,
-    perVariant: {
-      baseline: { scores: [3.7, 3.9], mean: 3.8, lower: 3.7, upper: 3.9, stddev: 0.1 },
-      v1: { scores: [4.1, 4.3], mean: 4.2, lower: 4.1, upper: 4.3, stddev: 0.1 },
-    },
-    comparisons: [],
-    saturation: {
-      checkpointSampleCounts: [30, 60],
-      perVariant: {
-        baseline: [
-          { n: 30, mean: 3.8, ciLow: 3.7, ciHigh: 3.9 },
-          { n: 60, mean: 3.8, ciLow: 3.75, ciHigh: 3.85 },
-        ],
-        v1: [
-          { n: 30, mean: 4.2, ciLow: 4.1, ciHigh: 4.3 },
-          { n: 60, mean: 4.2, ciLow: 4.15, ciHigh: 4.25 },
-        ],
-      },
-      verdicts: {
-        v1: {
-          saturated: true,
-          atN: 60,
-          confidence: 'medium',
-          method: 'bootstrap-ci-width',
-          threshold: 0.05,
-          reason: 'test fixture',
-        },
-      },
-    },
-  },
-});
+    artifacts,
+  });
+};
 
 async function writeProductTreeReport(reportsDir: string): Promise<string> {
   const report = buildProductTreeReport();

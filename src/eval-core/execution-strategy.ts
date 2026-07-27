@@ -1,5 +1,4 @@
 import { dirname } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
 import { DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
 import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from '../types/index.js';
 
@@ -10,20 +9,19 @@ import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Ta
  * leak the skill content into baseline via plain file-system access, even when
  * Skill auto-discovery is blocked).
  *
- * Stable path (not per-task tmpdir) so cache keys remain consistent.
+ * This is a stable logical path for cache identity. executeTasks replaces it
+ * with a fresh physical directory for every executor attempt, then removes it.
  */
 function getIsolatedCwd(): string {
-  const dir = DEFAULT_ISOLATED_CWD_DIR;
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  return dir;
+  return DEFAULT_ISOLATED_CWD_DIR;
 }
 
 export interface ExecutionPlan {
   strategy: ExecutionStrategyKind;
   cacheSystem: string;
   input: ExecutorInput;
+  /** Replace the logical cwd with a fresh empty directory for each attempt. */
+  isolatedCwd?: boolean;
 }
 
 function combineUserPrompt(prefix: string | null, prompt: string): string {
@@ -95,6 +93,15 @@ function extractSkillDir(artifact: Artifact): string | null {
 }
 
 export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean, effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max', samplesBaseDir?: string): ExecutionPlan {
+  if (
+    Array.isArray(task.artifact.allowedSkills)
+    && task.artifact.allowedSkills.length > 0
+  ) {
+    throw new Error(
+      `skill 白名单(allowedSkills=${JSON.stringify(task.artifact.allowedSkills)})不再支持：`
+      + '非空白名单无法在所有执行器上保证隔离。请使用 [](完全隔离)或省略该字段。',
+    );
+  }
   const skillDir = extractSkillDir(task.artifact);
   // strict-baseline cwd 沙箱:baseline + allowedSkills===[] + 用户没显式
   // cwd 时,改用 isolated empty dir。否则 baseline 的 Glob/Read 会走进用户工作目录
@@ -114,8 +121,8 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     ...(effort && { effort }),
     // pass skill-isolation declaration to executors. undefined keeps
     // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']).
-    // non-empty allowedSkills is rejected upstream (validateEvalConfig) and by every
-    // executor — a skill whitelist could not be fully isolated, so it was removed.
+    // Non-empty allowedSkills is rejected at this common planning boundary, including
+    // programmatic callers that bypass eval.yaml validation.
     ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
     // Sample.mocks 透传到 executor。executor(claude-sdk / claude-cli)
     // 自决定怎么落地(in-process hook vs 临时 CLAUDE_CONFIG_DIR + on-disk hook)。
@@ -134,6 +141,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
       return {
         strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: '',
+        ...(isStrictBaseline && !task.cwd && { isolatedCwd: true }),
         input: {
           ...baseInput,
           system: null,

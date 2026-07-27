@@ -102,12 +102,13 @@ describe('runAssertions', () => {
     assert.ok(result.score > 4 && result.score < 4.5);
   });
 
-  it('unknown assertion type: treated as failed', () => {
-    const result = runAssertions('Hello', [
-      { type: 'unknown_type', value: 'test', weight: 1 },
-    ]);
-    assert.equal(result.passed, 0);
-    assert.equal(result.details[0].passed, false);
+  it('unknown assertion type: fails closed as configuration error', () => {
+    assert.throws(
+      () => runAssertions('Hello', [
+        { type: 'unknown_type', value: 'test', weight: 1 },
+      ]),
+      /unsupported assertion type.*unknown_type/,
+    );
   });
 
   it('default weight is 1', () => {
@@ -521,6 +522,34 @@ describe('grade', () => {
     assert.equal(result.dimensions!.actionability.score, 3);
     assert.equal(result.llmScore, 4); // (5+3)/2
     assert.equal(result.compositeScore, 4);
+  });
+
+  it('dimensions preserves prototype-shaped names as own results', async () => {
+    const mockExecutor = async (): Promise<ExecResult> => ({
+      ok: true,
+      output: '{"score": 4, "reason": "Good"}',
+      costUSD: 0,
+      durationMs: 0,
+      durationApiMs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      stopReason: 'end_turn',
+      numTurns: 1,
+    });
+    const dimensions = JSON.parse('{"__proto__":"Judge this dimension"}') as Record<string, string>;
+
+    const result = await grade({
+      output: 'answer',
+      sample: { sample_id: 'prototype-dimension', prompt: 'p', dimensions },
+      judgeModels: [{ executor: 'script', model: 'judge' }],
+      judgeExecutors: { script: mockExecutor },
+    });
+
+    assert.ok(result.dimensions);
+    assert.equal(Object.hasOwn(result.dimensions, '__proto__'), true);
+    assert.equal(result.dimensions.__proto__.score, 4);
   });
 
   it('no criteria: score is 0', async () => {

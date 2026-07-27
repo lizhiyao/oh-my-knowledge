@@ -9,6 +9,12 @@ import type {
   DiagnosisSeverity,
   DiagnosisType,
 } from './types.js';
+import { maxDiagnosisLifecycle } from './types.js';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+  sumRecordCounts,
+} from '../shared/record-count.js';
 
 const OBSERVE_ONLY_COVERAGE = { observe: true, doctor: false, eval: false } as const;
 
@@ -104,8 +110,9 @@ export function buildObserveDiagnostics(input: ObserveDiagnosisInput): Diagnosis
 
   const bySkill: Record<string, Diagnosis[]> = {};
   for (const diagnosis of byStableKey.values()) {
-    bySkill[diagnosis.skillName] ??= [];
-    bySkill[diagnosis.skillName].push(diagnosis);
+    const group = ownRecordValue(bySkill, diagnosis.skillName) ?? [];
+    group.push(diagnosis);
+    setOwnRecordValue(bySkill, diagnosis.skillName, group);
   }
   for (const diagnoses of Object.values(bySkill)) {
     diagnoses.sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.signal.localeCompare(b.signal));
@@ -271,7 +278,13 @@ function makeDiagnosis(
     `target:${input.target}`,
   ].join('|');
   const occurrence: DiagnosisOccurrence = {
-    id: hashParts('occurrence', stableKey, input.sourceKind, input.sourceId),
+    id: hashParts(
+      'occurrence',
+      stableKey,
+      input.sourceKind,
+      input.sourceId,
+      input.timestamp ?? generatedAt,
+    ),
     diagnosisStableKey: stableKey,
     source: 'observe',
     sourceId: input.sourceId,
@@ -312,10 +325,16 @@ function upsertDiagnosis(byStableKey: Map<string, Diagnosis>, next: Diagnosis): 
     byStableKey.set(next.stableKey, next);
     return;
   }
-  existing.occurrences.push(...next.occurrences);
-  existing.occurrenceCount = existing.occurrences.length;
+  const existingOccurrenceIds = new Set(existing.occurrences.map((occurrence) => occurrence.id));
+  const hasOverlap = next.occurrences.some((occurrence) => existingOccurrenceIds.has(occurrence.id));
+  existing.occurrences.push(
+    ...next.occurrences.filter((occurrence) => !existingOccurrenceIds.has(occurrence.id)),
+  );
+  existing.occurrenceCount = hasOverlap
+    ? Math.max(existing.occurrenceCount, next.occurrenceCount)
+    : sumRecordCounts(existing.occurrenceCount, next.occurrenceCount);
   existing.severity = maxSeverity(existing.severity, next.severity);
-  existing.lifecycle = maxLifecycle(existing.lifecycle, next.lifecycle);
+  existing.lifecycle = maxDiagnosisLifecycle(existing.lifecycle, next.lifecycle);
 }
 
 function typeForPattern(bucket: string, signal: string): DiagnosisType {
@@ -362,15 +381,7 @@ export function maxLifecycle(a: DiagnosisLifecycle, b: DiagnosisLifecycle): Diag
   // 自动 detected 信号,应保留 resolved 而不是把 confirmation 擦掉。
   // 「resolved 后新 occurrence 进来 reopen 到 detected」属于跨时间的 lifecycle 状态机,
   // 由上层 review-state store 决定,不在此处处理。
-  const rank: Record<DiagnosisLifecycle, number> = {
-    resolved: 6,
-    rejected: 5,
-    detected: 4,
-    candidate: 3,
-    confirmed: 2,
-    stale: 1,
-  };
-  return rank[a] >= rank[b] ? a : b;
+  return maxDiagnosisLifecycle(a, b);
 }
 
 function severityRank(severity: DiagnosisSeverity): number {

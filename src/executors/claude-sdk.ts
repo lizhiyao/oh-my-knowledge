@@ -2,10 +2,20 @@ import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
-import type { ClaudeSdkBaseMessage, ClaudeSdkModule, ClaudeSdkResultMessage } from './shared.js';
-import { asErrorLike, buildExecEnv, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
+import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './shared.js';
+import {
+  asErrorLike,
+  buildExecEnv,
+  DEFAULT_TIMEOUT_MS,
+  errorMessage,
+  interruptedExecResult,
+  registerSigintSubscriber,
+  timeoutExecResult,
+} from './shared.js';
 import { buildSdkHookCallback } from '../eval-core/mocks-runtime.js';
+import { buildClaudeResult } from './claude-protocol.js';
+
+export { normalizeClaudeSdkMeasurements } from './claude-protocol.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
@@ -50,7 +60,14 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
   const isolationOpts = lean ? { skills: [] as string[], disallowedTools: ['*'] } : baseIsolationOpts;
   const start = Date.now();
   const abortController = new AbortController();
-  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+  let abortReason: 'timeout' | 'interrupted' | undefined;
+  const abort = (reason: NonNullable<typeof abortReason>): void => {
+    if (abortReason) return;
+    abortReason = reason;
+    abortController.abort();
+  };
+  const timer = setTimeout(() => abort('timeout'), timeoutMs);
+  const unregisterSigint = registerSigintSubscriber(() => abort('interrupted'));
 
   const env = buildExecEnv(skillDir);
 
@@ -88,14 +105,10 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
       },
     });
 
-    const resultMsgs: ClaudeSdkResultMessage[] = [];
     for await (const msg of stream) {
       messages.push(msg);
       messageTimestamps.push(Date.now());
-      if (isClaudeSdkResultMessage(msg)) resultMsgs.push(msg as ClaudeSdkResultMessage);
     }
-
-    clearTimeout(timer);
 
     if (verbose) {
       try {
@@ -107,113 +120,49 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
       } catch { }
     }
 
-    if (resultMsgs.length === 0) {
-      const durationMs = Date.now() - start;
-      process.stderr.write(`[omk] claude-sdk executor: no result message received (${messages.length} messages)\n`);
-      return {
-        ok: false, error: 'no result message received',
-        durationMs, durationApiMs: 0,
-        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-        costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
-        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
-      };
-    }
-
-    let output = '';
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheReadTokens = 0;
-    let totalCacheCreationTokens = 0;
-    let totalCostUSD = 0;
-    let totalDurationApiMs = 0;
-    let totalNumTurns = 0;
-    let lastSubtype = 'success';
-
-    for (const r of resultMsgs) {
-      output += r.result || '';
-      // Prefer modelUsage (includes subAgent tokens) over usage (main process only)
-      const modelUsage = (r as unknown as Record<string, unknown>).modelUsage as Record<string, { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> | undefined;
-      if (modelUsage) {
-        for (const mu of Object.values(modelUsage)) {
-          totalInputTokens += mu.inputTokens || 0;
-          totalOutputTokens += mu.outputTokens || 0;
-          totalCacheReadTokens += mu.cacheReadInputTokens || 0;
-          totalCacheCreationTokens += mu.cacheCreationInputTokens || 0;
-        }
-      } else {
-        totalInputTokens += r.usage?.input_tokens || 0;
-        totalOutputTokens += r.usage?.output_tokens || 0;
-        totalCacheReadTokens += r.usage?.cache_read_input_tokens || 0;
-        totalCacheCreationTokens += r.usage?.cache_creation_input_tokens || 0;
-      }
-      totalCostUSD += r.total_cost_usd || 0;
-      totalDurationApiMs += r.duration_api_ms || 0;
-      totalNumTurns += r.num_turns || 0;
-      lastSubtype = r.subtype || lastSubtype;
-    }
-
-    const durationMs = resultMsgs[resultMsgs.length - 1].duration_ms || (Date.now() - start);
-    const trace = extractAgentTrace(messages, messageTimestamps);
-
-    if (lastSubtype !== 'success') {
-      const lastErr = resultMsgs[resultMsgs.length - 1];
-      const errMsg = lastErr.errors?.join('; ') || lastErr.subtype;
-      process.stderr.write(`[omk] claude-sdk executor: ${lastErr.subtype}: ${errMsg}\n`);
-      return {
-        ok: false, error: errMsg,
-        durationMs,
-        durationApiMs: totalDurationApiMs,
-        inputTokens: totalInputTokens,
-        outputTokens: totalOutputTokens,
-        cacheReadTokens: totalCacheReadTokens,
-        cacheCreationTokens: totalCacheCreationTokens,
-        costUSD: totalCostUSD,
-        output: null, stopReason: 'error', numTurns: totalNumTurns,
-        fullNumTurns: trace.fullNumTurns,
-        numSubAgents: trace.numSubAgents,
-        ...(trace.turns.length > 0 && { turns: trace.turns }),
-        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
-      };
-    }
-
     return {
-      ok: true,
-      durationMs,
-      durationApiMs: totalDurationApiMs,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      cacheReadTokens: totalCacheReadTokens,
-      cacheCreationTokens: totalCacheCreationTokens,
-      costUSD: totalCostUSD,
-      output,
-      stopReason: 'end',
-      numTurns: totalNumTurns,
-      fullNumTurns: trace.fullNumTurns,
-      numSubAgents: trace.numSubAgents,
-      ...(trace.turns.length > 0 && { turns: trace.turns }),
-      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+      ...buildClaudeResult({
+        messages,
+        messageTimestamps,
+        wallClockDurationMs: Date.now() - start,
+        source: 'claude-sdk',
+      }),
       ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
     };
   } catch (err: unknown) {
-    clearTimeout(timer);
     const durationMs = Date.now() - start;
     const details = asErrorLike(err);
     const isAbort = details.name === 'AbortError';
+    if (abortReason === 'interrupted') {
+      return {
+        ...interruptedExecResult(durationMs),
+        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
+      };
+    }
+    if (abortReason === 'timeout') {
+      return {
+        ...timeoutExecResult(timeoutMs, durationMs),
+        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
+      };
+    }
     if (isAbort) {
-      process.stderr.write(`[omk] claude-sdk executor: timed out after ${timeoutMs / 1000}s\n`);
+      process.stderr.write('[omk] claude-sdk executor: execution aborted\n');
     } else {
       process.stderr.write(`[omk] claude-sdk executor error: ${errorMessage(err)}\n`);
     }
     return {
       ok: false,
-      error: isAbort ? `execution timed out after ${timeoutMs / 1000}s` : errorMessage(err),
+      error: isAbort ? 'claude-sdk execution aborted' : errorMessage(err),
       durationMs, durationApiMs: 0,
       inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-      costUSD: 0, output: null,
-      stopReason: isAbort ? 'timeout' : 'error',
+      tokenUsageReportedByExecutor: false,
+      costUSD: 0, costReportedByExecutor: false, output: null,
+      stopReason: 'error',
       numTurns: 0,
       ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
     };
+  } finally {
+    clearTimeout(timer);
+    unregisterSigint();
   }
 }

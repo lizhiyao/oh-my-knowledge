@@ -8,6 +8,8 @@ import {
 import { withCapturedStderr } from '../helpers/stderr.js';
 import type { ExecResult, ExecutorFn } from '../../src/types/index.js';
 
+const TEST_MODEL = 'test-classifier-model';
+
 function execOk(output: string, costUSD = 0.001): ExecResult {
   return {
     ok: true,
@@ -41,15 +43,21 @@ function execErr(error: string): ExecResult {
   };
 }
 
-function makeExecutor(responses: ExecResult[]): { exec: ExecutorFn; calls: number } {
+function makeExecutor(responses: ExecResult[]): { exec: ExecutorFn; calls: number; models: string[] } {
   let i = 0;
   const calls = { n: 0 };
-  const exec: ExecutorFn = async () => {
+  const models: string[] = [];
+  const exec: ExecutorFn = async (request) => {
     calls.n += 1;
+    models.push(request.model);
     if (i >= responses.length) throw new Error('no more mock responses');
     return responses[i++];
   };
-  return { exec, get calls() { return calls.n; } } as { exec: ExecutorFn; calls: number };
+  return {
+    exec,
+    models,
+    get calls() { return calls.n; },
+  } as { exec: ExecutorFn; calls: number; models: string[] };
 }
 
 function cand(sampleId: string, sentence: string, context = ''): HedgingCandidate {
@@ -68,6 +76,7 @@ describe('classifyHedgingCandidates', () => {
     const { verdicts, costUSD } = await classifyHedgingCandidates(
       [cand('s1', '我不确定数据库 schema'), cand('s2', '可能是性能问题或网络问题')],
       m.exec,
+      { model: TEST_MODEL },
     );
     assert.equal(verdicts.length, 2);
     assert.equal(verdicts[0].isUncertainty, true);
@@ -75,6 +84,7 @@ describe('classifyHedgingCandidates', () => {
     assert.equal(verdicts[0].confidence, 0.9);
     assert.ok(costUSD > 0);
     assert.equal(m.calls, 1);
+    assert.deepEqual(m.models, [TEST_MODEL]);
   });
 
   it('cache hit: same sentence does not re-call executor', async () => {
@@ -84,8 +94,8 @@ describe('classifyHedgingCandidates', () => {
     const m = makeExecutor([execOk(response)]);
     const sentence = '需要查证';
 
-    const r1 = await classifyHedgingCandidates([cand('s1', sentence)], m.exec);
-    const r2 = await classifyHedgingCandidates([cand('s2', sentence)], m.exec);
+    const r1 = await classifyHedgingCandidates([cand('s1', sentence)], m.exec, { model: TEST_MODEL });
+    const r2 = await classifyHedgingCandidates([cand('s2', sentence)], m.exec, { model: TEST_MODEL });
 
     assert.equal(m.calls, 1);
     assert.deepEqual(r1.verdicts[0], r2.verdicts[0]);
@@ -101,7 +111,7 @@ describe('classifyHedgingCandidates', () => {
     const { result, stderr } = await withCapturedStderr(() => classifyHedgingCandidates(
       [cand('s1', 'A'), cand('s2', 'B'), cand('s3', 'C')],
       m.exec,
-      { maxCandidates: 2, batchSize: 5 },
+      { model: TEST_MODEL, maxCandidates: 2, batchSize: 5 },
     ));
     const { verdicts, truncated } = result;
     assert.match(stderr, /exceeds maxCandidates=2/);
@@ -119,6 +129,7 @@ describe('classifyHedgingCandidates', () => {
     const { verdicts } = await classifyHedgingCandidates(
       [cand('s1', 'A'), cand('s2', 'B')],
       m.exec,
+      { model: TEST_MODEL },
     );
     assert.equal(verdicts.length, 2);
     assert.equal(verdicts[0].isUncertainty, true);
@@ -128,7 +139,11 @@ describe('classifyHedgingCandidates', () => {
 
   it('parse failure: non-JSON output also degrades', async () => {
     const m = makeExecutor([execOk('Sorry, I could not classify this.')]);
-    const { verdicts } = await classifyHedgingCandidates([cand('s1', 'A')], m.exec);
+    const { verdicts } = await classifyHedgingCandidates(
+      [cand('s1', 'A')],
+      m.exec,
+      { model: TEST_MODEL },
+    );
     assert.equal(verdicts[0].isUncertainty, true);
     assert.match(verdicts[0].reason, /classifier failed/);
   });
@@ -140,7 +155,7 @@ describe('classifyHedgingCandidates', () => {
     const result = await classifyHedgingCandidates(
       [cand('s1', 'A'), cand('s2', 'B'), cand('s3', 'C')],
       m.exec,
-      { batchSize: 2 },
+      { model: TEST_MODEL, batchSize: 2 },
     );
     assert.equal(m.calls, 2);
     assert.equal(result.verdicts.length, 3);
@@ -149,7 +164,7 @@ describe('classifyHedgingCandidates', () => {
 
   it('empty candidates: no call, returns empty result', async () => {
     const m = makeExecutor([]);
-    const result = await classifyHedgingCandidates([], m.exec);
+    const result = await classifyHedgingCandidates([], m.exec, { model: TEST_MODEL });
     assert.equal(m.calls, 0);
     assert.equal(result.verdicts.length, 0);
     assert.equal(result.costUSD, 0);

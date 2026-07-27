@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createFileStore, queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
-import type { Report, ReportStore, VariantSummary } from '../../src/types/index.js';
+import type {
+  BatchEvaluationReport,
+  Report,
+  ReportStore,
+  VariantSummary,
+} from '../../src/types/index.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
   const summary: Record<string, VariantSummary> = {
@@ -43,7 +48,107 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
       artifactHashes: { [variant]: 'abc123' },
     },
     summary,
-    results: [],
+    results: ['s1', 's2'].map((sample_id) => ({
+      sample_id,
+      variants: {
+        [variant]: {
+          ok: true,
+          durationMs: 1000,
+          durationApiMs: 1000,
+          inputTokens: 100,
+          outputTokens: 200,
+          totalTokens: 300,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          execCostUSD: 0.04,
+          judgeCostUSD: 0.01,
+          costUSD: 0.05,
+          numTurns: 1,
+          outputPreview: 'ok',
+          compositeScore: avgScore,
+        },
+      },
+    })),
+  };
+}
+
+function makeBatchReport(id: string): BatchEvaluationReport {
+  const baseline = makeReport('child-baseline', 'baseline', '2024-01-01T00:00:00Z', 0.7)
+    .summary.baseline;
+  const review = makeReport('child-review', 'review', '2024-01-01T00:00:00Z', 0.8)
+    .summary.review;
+  return {
+    kind: 'batch-evaluation',
+    id,
+    mode: 'skill',
+    meta: {
+      mode: 'skill',
+      schemaVersion: 4,
+      model: 'sonnet',
+      executor: 'claude',
+      skillDir: '/workspace/skills',
+      sampleCount: 2,
+      taskCount: 4,
+      totalArtifacts: 1,
+      totalCostUSD: 0.2,
+      timestamp: '2024-01-01T00:00:00Z',
+      cliVersion: '0.8.1',
+      nodeVersion: '20.0.0',
+      executorRuntime: {
+        executor: 'claude',
+        model: 'sonnet',
+        runtimeKind: 'agent-cli',
+        fingerprint: 'claude:sonnet',
+        capabilities: {
+          systemPrompt: 'native',
+          costUSD: 'reported',
+          trace: 'native',
+          skillIsolation: 'full',
+        },
+      },
+      executorRuntimes: {
+        review: {
+          executor: 'claude',
+          model: 'sonnet',
+          runtimeKind: 'agent-cli',
+          fingerprint: 'claude:sonnet',
+          capabilities: {
+            systemPrompt: 'native',
+            costUSD: 'reported',
+            trace: 'native',
+            skillIsolation: 'full',
+          },
+        },
+      },
+      judgeModels: [{
+        executor: 'claude',
+        model: 'haiku',
+        runtime: {
+          executor: 'claude',
+          model: 'haiku',
+          runtimeKind: 'agent-cli',
+          fingerprint: 'claude:haiku',
+          capabilities: {
+            systemPrompt: 'native',
+            costUSD: 'reported',
+            trace: 'native',
+            skillIsolation: 'full',
+          },
+        },
+      }],
+    },
+    items: [{
+      name: 'review',
+      skillPath: '/workspace/skills/review',
+      samplesPath: '/workspace/skills/review/.omk/samples.json',
+      reportId: 'child-review',
+      reportPath: '/workspace/.omk/reports/child-review.report.json',
+      status: 'completed',
+      sampleCount: 2,
+      totalCostUSD: 0.2,
+      artifactHash: 'abc123',
+      summary: { baseline, review },
+    }],
   };
 }
 
@@ -117,6 +222,162 @@ describe('createFileStore kind-only report loading（无旧格式读兼容）', 
 
       const raw = JSON.parse(readFileSync(join(dir, reportFileName('new-run')), 'utf-8')) as Record<string, unknown>;
       assert.equal(raw.kind, 'evaluation');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('拒绝文件名、写入键和报告 id 互相错配', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-report-id-mismatch-'));
+    try {
+      const store = createFileStore(dir);
+      writeFileSync(
+        join(dir, reportFileName('expected')),
+        JSON.stringify(makeReport('other', 'v1', '2024-01-01T00:00:00Z', 0.8)),
+      );
+
+      assert.equal(await store.get('expected'), null);
+      assert.deepEqual(await store.list(), []);
+      await assert.rejects(
+        store.save('expected', makeReport('other', 'v1', '2024-01-01T00:00:00Z', 0.8)),
+        /invalid report/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('非法 id 不得通过文件名清洗别名读取或删除合法报告', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-report-id-alias-'));
+    try {
+      const store = createFileStore(dir);
+      await store.save(
+        'victim_report',
+        makeReport('victim_report', 'v1', '2024-01-01T00:00:00Z', 0.8),
+      );
+
+      assert.equal(await store.get('victim/report'), null);
+      assert.equal(await store.remove('victim/report'), false);
+      assert.equal((await store.get('victim_report'))?.id, 'victim_report');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('拒绝损坏的核心测量字段，而不是把占位值送进 Studio', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-report-schema-'));
+    try {
+      const invalidSummary = makeReport(
+        'invalid-summary',
+        'v1',
+        '2024-01-01T00:00:00Z',
+        0.8,
+      ) as unknown as Record<string, unknown>;
+      const summary = invalidSummary.summary as Record<string, Record<string, unknown>>;
+      summary.v1.successCount = 3;
+      writeFileSync(
+        join(dir, reportFileName('invalid-summary')),
+        JSON.stringify(invalidSummary),
+      );
+
+      const invalidTimestamp = makeReport(
+        'invalid-timestamp',
+        'v1',
+        'not-a-time',
+        0.8,
+      );
+      writeFileSync(
+        join(dir, reportFileName('invalid-timestamp')),
+        JSON.stringify(invalidTimestamp),
+      );
+
+      const invalidCost = makeReport(
+        'invalid-cost',
+        'v1',
+        '2024-01-01T00:00:00Z',
+        0.8,
+      );
+      invalidCost.summary.v1.avgCostPerSample = 99;
+      writeFileSync(
+        join(dir, reportFileName('invalid-cost')),
+        JSON.stringify(invalidCost),
+      );
+
+      const invalidTiming = makeReport(
+        'invalid-timing',
+        'v1',
+        '2024-01-01T00:00:00Z',
+        0.8,
+      );
+      invalidTiming.results[0].variants.v1.timing = {
+        execMs: 100,
+        gradeMs: 50,
+        totalMs: 999,
+      };
+      writeFileSync(
+        join(dir, reportFileName('invalid-timing')),
+        JSON.stringify(invalidTiming),
+      );
+
+      const store = createFileStore(dir);
+      assert.equal(await store.get('invalid-summary'), null);
+      assert.equal(await store.get('invalid-timestamp'), null);
+      assert.equal(await store.get('invalid-cost'), null);
+      assert.equal(await store.get('invalid-timing'), null);
+      assert.deepEqual(await store.list(), []);
+      await assert.rejects(
+        store.save('invalid-summary', invalidSummary as unknown as Report),
+        /invalid report/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('批量报告的 meta 必须能由 items 重算，且 item 只能包含 baseline 与自身 skill', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-batch-report-schema-'));
+    try {
+      const store = createFileStore(dir);
+      const valid = makeBatchReport('batch-valid');
+      await store.save(valid.id, valid);
+      assert.equal((await store.get(valid.id))?.id, valid.id);
+
+      const wrongTaskCount = makeBatchReport('batch-wrong-task-count');
+      wrongTaskCount.meta.taskCount += 1;
+      await assert.rejects(
+        store.save(wrongTaskCount.id, wrongTaskCount),
+        /invalid report/,
+      );
+
+      const wrongSummaryIdentity = makeBatchReport('batch-wrong-summary');
+      wrongSummaryIdentity.items[0].summary = {
+        baseline: wrongSummaryIdentity.items[0].summary.baseline,
+        other: wrongSummaryIdentity.items[0].summary.review,
+      };
+      await assert.rejects(
+        store.save(wrongSummaryIdentity.id, wrongSummaryIdentity),
+        /invalid report/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('list 缓存不向调用方暴露可变内部对象，并在写入后立即失效', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-report-cache-isolation-'));
+    try {
+      const store = createFileStore(dir);
+      await store.save('r1', makeReport('r1', 'v1', '2024-01-01T00:00:00Z', 0.8));
+
+      const first = await store.list();
+      first[0].id = 'mutated';
+      first[0].meta.timestamp = '2099-01-01T00:00:00Z';
+      const second = await store.list();
+      assert.equal(second[0].id, 'r1');
+      assert.equal(second[0].meta.timestamp, '2024-01-01T00:00:00Z');
+
+      await store.save('r2', makeReport('r2', 'v1', '2024-01-02T00:00:00Z', 0.9));
+      assert.deepEqual((await store.list()).map((report) => report.id), ['r2', 'r1']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

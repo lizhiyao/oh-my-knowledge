@@ -40,6 +40,7 @@
  */
 
 import type { ExecutorFn, Report, ResultEntry, VariantResult } from '../types/index.js';
+import { isToolCallFailure } from '../shared/tool-call-status.js';
 
 export interface FailureClusterRequest {
   report: Report;
@@ -233,7 +234,7 @@ function describeFailure(entry: ResultEntry, variant: string, r: VariantResult):
   // Judge reasoning snippet.
   if (r.llmReason) parts.push(`judge_reason="${truncate(r.llmReason, 200)}"`);
   // Tool failures (agent traces).
-  const toolFailures = (r.toolCalls ?? []).filter((tc) => !tc.success).slice(0, 3);
+  const toolFailures = (r.toolCalls ?? []).filter(isToolCallFailure).slice(0, 3);
   if (toolFailures.length > 0) {
     parts.push(`failed_tools=[${toolFailures.map((tc) => `${tc.tool}: ${truncate(String(tc.output ?? ''), 80)}`).join('; ')}]`);
   }

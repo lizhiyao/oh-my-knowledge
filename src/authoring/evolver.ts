@@ -1,17 +1,53 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve, join, dirname, basename } from 'node:path';
 import { runEvaluation } from '../eval-workflows/run-evaluation.js';
-import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { persistReport, DEFAULT_OUTPUT_DIR, runIdSuffix, hashString } from '../eval-core/evaluation-reporting.js';
+import { createExecutor } from '../executors/index.js';
+import {
+  persistReport,
+  DEFAULT_OUTPUT_DIR,
+  EVALUATION_REPORT_SCHEMA_VERSION,
+  getCliVersion,
+  hashSample,
+  runIdSuffix,
+  hashString,
+} from '../eval-core/evaluation-reporting.js';
 import { createOverlayReportStore } from '../server/report-store.js';
 import { projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
+import { writeFixedSamplesToSources } from '../inputs/sample-document.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
 import { MIN_HOLDOUT_SUBSET, pickByStride, splitHoldout, subsetCompositeScore } from '../eval-core/holdout.js';
 import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
-import { fixSamples } from './sample-fixer.js';
-import type { JudgeConfig, ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
+import { fixSamples, sampleFixWithinScope, stampFixMetadata } from './sample-fixer.js';
+import { toolCallStatus } from '../shared/tool-call-status.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
+import { getJudgePromptHash } from '../grading/judge.js';
+import {
+  getDiagnosticPromptHash,
+  resolveDiagnosticTarget,
+} from '../grading/diagnostic.js';
+import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { parseReportDocument } from '../eval-core/report-document.js';
+import type {
+  JudgeConfig,
+  ProgressCallback,
+  Report,
+  ResultEntry,
+  Sample,
+  ToolCallInfo,
+  VariantResult,
+} from '../types/index.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -66,52 +102,136 @@ function canonicalStringify(value: unknown): string {
   return '{' + entries.map((k) => JSON.stringify(k) + ':' + canonicalStringify((value as Record<string, unknown>)[k])).join(',') + '}';
 }
 
-function hashSampleForReuse(sample: Sample): string {
-  return hashString(canonicalStringify({
-    prompt: sample.prompt,
-    rubric: sample.rubric ?? null,
-    dimensions: sample.dimensions ?? null,
-    assertions: sample.assertions ?? null,
-    schema: sample.schema ?? null,
-  }));
-}
-
 function sameJudgeModels(report: Report, judges: JudgeConfig[]): boolean {
   const metaJudges = report.meta.judgeModels ?? [];
   if (metaJudges.length !== judges.length) return false;
   return metaJudges.every((j, i) => j.executor === judges[i].executor && j.model === judges[i].model);
 }
 
-function sampleHashesMatch(report: Report, samples: Sample[]): boolean {
+function sampleHashesMatch(report: Report, samples: Sample[], samplesBaseDir?: string): boolean {
   const hashes = report.meta.sampleHashes;
-  if (!hashes) return false;
-  return samples.every((s) => hashes[s.sample_id] === hashSampleForReuse(s));
+  if (
+    !hashes
+    || report.meta.sampleCount !== samples.length
+    || Object.keys(hashes).length !== samples.length
+  ) return false;
+  return samples.every(
+    (s) => ownRecordValue(hashes, s.sample_id) === hashSample(s, samplesBaseDir),
+  );
 }
 
-function singleVariantReport(report: Report, variantKey: string): Report {
-  const summary = report.summary[variantKey];
+function omitKeys<T extends object, K extends keyof T>(
+  value: T,
+  keys: readonly K[],
+): Omit<T, K> {
+  const copy = { ...value };
+  for (const key of keys) Reflect.deleteProperty(copy, key);
+  return copy;
+}
+
+export function singleVariantReport(report: Report, variantKey: string): Report {
+  const summary = ownRecordValue(report.summary, variantKey);
+  if (!summary) {
+    throw new Error(`report is missing summary for variant "${variantKey}"`);
+  }
+  const artifactHash = report.meta.artifactHashes
+    ? ownRecordValue(report.meta.artifactHashes, variantKey)
+    : undefined;
+  const isolation = report.meta.skillIsolation
+    ? ownRecordValue(report.meta.skillIsolation, variantKey)
+    : undefined;
+  const results = report.results.map((entry) => {
+    const variant = ownRecordValue(entry.variants, variantKey);
+    if (!variant) {
+      throw new Error(
+        `report is missing variant "${variantKey}" for sample "${entry.sample_id}"`,
+      );
+    }
+    return {
+      sample_id: entry.sample_id,
+      variants: { [variantKey]: variant },
+    };
+  });
+  const totalCostUSD = Number(results.reduce(
+    (total, entry) => total + entry.variants[variantKey].costUSD,
+    0,
+  ).toFixed(6));
+  const executorRuntime = report.meta.executorRuntimes
+    ? ownRecordValue(report.meta.executorRuntimes, variantKey)
+    : report.meta.executorRuntime;
+  const request = report.meta.request
+    ? {
+      ...report.meta.request,
+      artifacts: report.meta.request.artifacts.filter(
+        (artifact) => artifact.name === variantKey,
+      ),
+    }
+    : undefined;
+  if (report.meta.request && request?.artifacts.length !== 1) {
+    throw new Error(`report request is missing artifact "${variantKey}"`);
+  }
+  const sourceHumanAgreement = report.meta.humanAgreement;
+  const sourceJob = report.meta.job;
+  const sharedMeta = omitKeys(report.meta, [
+    'variants',
+    'taskCount',
+    'totalCostUSD',
+    'totalCostReported',
+    'artifactHashes',
+    'executorRuntime',
+    'executorRuntimes',
+    'pairComparisons',
+    'humanAgreement',
+    'variantConfigs',
+    'skillIsolation',
+    'request',
+    'job',
+    'evolve',
+  ]);
+  const sharedReport = omitKeys(report, ['analysis', 'variance']);
   return {
-    ...report,
+    ...sharedReport,
     meta: {
-      ...report.meta,
+      ...sharedMeta,
       variants: [variantKey],
-      artifactHashes: report.meta.artifactHashes?.[variantKey]
-        ? { [variantKey]: report.meta.artifactHashes[variantKey] }
+      taskCount: report.meta.sampleCount,
+      totalCostUSD,
+      ...(summary.execCostReported === false || summary.judgeCostReported === false
+        ? { totalCostReported: false }
+        : {}),
+      artifactHashes: artifactHash
+        ? { [variantKey]: artifactHash }
         : {},
+      ...(executorRuntime
+        ? {
+          executorRuntime,
+          executorRuntimes: { [variantKey]: executorRuntime },
+        }
+        : {}),
       ...(report.meta.variantConfigs ? { variantConfigs: report.meta.variantConfigs.filter((cfg) => cfg.variant === variantKey) } : {}),
-      ...(report.meta.skillIsolation ? { skillIsolation: { [variantKey]: report.meta.skillIsolation[variantKey] ?? null } } : {}),
+      ...(report.meta.skillIsolation ? { skillIsolation: { [variantKey]: isolation ?? null } } : {}),
+      ...(sourceHumanAgreement?.variant === variantKey
+        ? { humanAgreement: sourceHumanAgreement }
+        : {}),
+      ...(request ? { request } : {}),
+      ...(sourceJob && request
+        ? {
+          job: {
+            ...sourceJob,
+            request: structuredClone(request),
+          },
+        }
+        : {}),
     },
     summary: { [variantKey]: summary },
-    results: report.results.map((entry) => ({
-      sample_id: entry.sample_id,
-      variants: entry.variants[variantKey] ? { [variantKey]: entry.variants[variantKey] } : {},
-    })),
+    results,
   };
 }
 
 async function findReusableBaselineReport(opts: {
   artifactHash: string;
   samplesPath: string;
+  skillDir: string;
   model: string;
   executorName: string;
   judgeModels: JudgeConfig[];
@@ -121,22 +241,112 @@ async function findReusableBaselineReport(opts: {
   // baseline 复用读 overlay(项目 .omk/reports ∪ 全局):eval 写默认翻项目后,复用既能命中 eval 新写的项目
   // baseline,又继续覆盖全局(含 evolve 自身写到全局的合并报告),复用命中率与报告数字不降。
   const store = createOverlayReportStore(projectReportsDir(), globalReportsDir());
-  const { samples } = loadSamples(opts.samplesPath);
+  const { samples, baseDir: samplesBaseDir } = loadSamples(opts.samplesPath);
   const artifactHash = opts.artifactHash;
   const reports = await store.findByArtifactHash(artifactHash);
+  const expectedExecutorRuntime = getExecutorRuntimeFingerprint(
+    opts.executorName,
+    opts.model,
+  );
+  const expectedJudgeRuntimes = opts.judgeModels.map((judge) =>
+    getExecutorRuntimeFingerprint(judge.executor, judge.model, {
+      skillDir: opts.skillDir,
+    })
+  );
+  const expectedJudgePromptHash = getJudgePromptHash(true);
+  const expectedDiagnosticTarget = resolveDiagnosticTarget(
+    opts.judgeModels,
+    opts.executorName,
+    opts.model,
+  );
+  const expectedDiagnostic = opts.noDiagnostic
+    ? { enabled: false }
+    : {
+      enabled: true,
+      executor: expectedDiagnosticTarget.executor,
+      model: expectedDiagnosticTarget.model,
+      runtime: getExecutorRuntimeFingerprint(
+        expectedDiagnosticTarget.executor,
+        expectedDiagnosticTarget.model,
+      ).fingerprint,
+      promptHash: getDiagnosticPromptHash(),
+    };
   for (const report of reports) {
-    // schemaVersion < 2 的报告 artifactHashes 是旧文本哈,与当前树哈不同空间:即便值偶合也不该复用
-    // (口径不同会让 lineage 串错身份)。直接跳过,让旧 baseline 重跑出树哈报告。
-    if ((report.meta.schemaVersion ?? 0) < 2) continue;
+    // Reuse is a measurement-contract decision, not just a content-hash lookup.
+    // Old schema / CLI / prompt/runtime evidence can produce numerically similar
+    // scores under a different construct, so fail closed and rerun.
+    if (report.meta.schemaVersion !== EVALUATION_REPORT_SCHEMA_VERSION) continue;
+    if (report.meta.cliVersion !== getCliVersion()) continue;
     if (report.meta.model !== opts.model || report.meta.executor !== opts.executorName) continue;
     if ((report.meta.effort ?? undefined) !== (opts.effort ?? undefined)) continue;
     if (report.meta.noJudge) continue;
     if (report.meta.budgetExhausted) continue;
+    if (
+      (report.meta.request?.noDiagnostic === true)
+      !== (opts.noDiagnostic === true)
+    ) continue;
+    const actualDiagnostic = report.meta.diagnostic
+      ? {
+        enabled: report.meta.diagnostic.enabled,
+        ...(report.meta.diagnostic.executor
+          ? { executor: report.meta.diagnostic.executor }
+          : {}),
+        ...(report.meta.diagnostic.model
+          ? { model: report.meta.diagnostic.model }
+          : {}),
+        ...(report.meta.diagnostic.runtime
+          ? { runtime: report.meta.diagnostic.runtime.fingerprint }
+          : {}),
+        ...(report.meta.diagnostic.promptHash
+          ? { promptHash: report.meta.diagnostic.promptHash }
+          : {}),
+      }
+      : undefined;
+    if (canonicalStringify(actualDiagnostic) !== canonicalStringify(expectedDiagnostic)) continue;
     if (!sameJudgeModels(report, opts.judgeModels)) continue;
-    if (!sampleHashesMatch(report, samples)) continue;
+    if (report.meta.judgePromptHash !== expectedJudgePromptHash) continue;
+    if (
+      report.meta.judgeModels.some(
+        (judge, index) =>
+          !judge.runtime
+          || judge.runtime.fingerprint !== expectedJudgeRuntimes[index]?.fingerprint,
+      )
+    ) continue;
+    if (!sampleHashesMatch(report, samples, samplesBaseDir)) continue;
 
-    const variantKey = report.meta.variants.find((name) => report.meta.artifactHashes?.[name] === artifactHash);
-    if (!variantKey || !report.summary[variantKey]) continue;
+    const variantKey = report.meta.variants.find(
+      (name) => report.meta.artifactHashes
+        && ownRecordValue(report.meta.artifactHashes, name) === artifactHash,
+    );
+    if (!variantKey || !ownRecordValue(report.summary, variantKey)) continue;
+    const executorRuntime = report.meta.executorRuntimes
+      ? ownRecordValue(report.meta.executorRuntimes, variantKey)
+      : report.meta.executorRuntime;
+    if (executorRuntime?.fingerprint !== expectedExecutorRuntime.fingerprint) continue;
+    const config = report.meta.variantConfigs?.find(
+      (candidate) => candidate.variant === variantKey,
+    );
+    if (
+      !config
+      || config.artifactKind !== 'skill'
+      || config.executionStrategy !== 'system-prompt'
+      || config.experimentType !== 'artifact-injection'
+      || config.hasArtifactContent !== true
+      || config.allowedSkills !== undefined
+    ) continue;
+    if (
+      !report.meta.skillIsolation
+      || !Object.hasOwn(report.meta.skillIsolation, variantKey)
+      || ownRecordValue(report.meta.skillIsolation, variantKey) !== null
+    ) continue;
+    if (opts.noDiagnostic !== true) {
+      const missingDiagnostic = report.results.some((entry) => {
+        const variant = ownRecordValue(entry.variants, variantKey);
+        return variant?.assertions?.details.some((detail) => !detail.passed) === true
+          && variant.diagnostic === undefined;
+      });
+      if (missingDiagnostic) continue;
+    }
     return singleVariantReport(report, variantKey);
   }
   return null;
@@ -333,8 +543,23 @@ function createSampleFixExecutor(executorName: string) {
       lean: opts.lean,
       ...(opts.cwd && { cwd: opts.cwd }),
     });
-    return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
+    return {
+      ok: result.ok,
+      text: result.output ?? '',
+      costUSD: result.costUSD,
+      costReported: result.costReportedByExecutor !== false,
+    };
   };
+}
+
+interface AutoFixSamplesResult {
+  fixedCount: number;
+  costUSD: number;
+  costReported: boolean;
+}
+
+export function agentSampleEditWithinScope(previous: Sample, next: Sample): boolean {
+  return sampleFixWithinScope(previous, next);
 }
 
 async function autoFixSamplesAgent(opts: {
@@ -345,8 +570,9 @@ async function autoFixSamplesAgent(opts: {
   executorName: string;
   model: string;
   maxAttemptsPerSample: number;
-}): Promise<{ fixedCount: number; costUSD: number }> {
-  const { samples } = loadSamples(opts.samplesPath);
+}): Promise<AutoFixSamplesResult> {
+  const loaded = loadSamples(opts.samplesPath);
+  const { samples } = loaded;
   const sampleMap = new Map(samples.map((s) => [s.sample_id, s]));
   const fixContexts: Array<{ sampleId: string; diag: string; failedAssertions: string }> = [];
 
@@ -365,10 +591,10 @@ async function autoFixSamplesAgent(opts: {
       if (typeof attempts === 'number' && attempts >= opts.maxAttemptsPerSample) continue;
     }
     const diag = variantObj.diagnostic as Record<string, unknown> | undefined;
-    const toolCalls = (variantObj.toolCalls ?? []) as Array<{ tool: string; input: unknown; success: boolean }>;
+    const toolCalls = (variantObj.toolCalls ?? []) as ToolCallInfo[];
     const failedList = assertionDetails.filter((a) => !a.passed).map((a) => `${a.type}: ${a.value}`).join('\n');
     const toolSummary = toolCalls.length > 0
-      ? toolCalls.map((tc, i) => `[${i}] ${tc.tool} success=${tc.success}`).join('\n')
+      ? toolCalls.map((tc, i) => `[${i}] ${tc.tool} status=${toolCallStatus(tc)}`).join('\n')
       : '(无工具调用)';
     fixContexts.push({
       sampleId: sid,
@@ -377,7 +603,9 @@ async function autoFixSamplesAgent(opts: {
     });
   }
 
-  if (fixContexts.length === 0) return { fixedCount: 0, costUSD: 0 };
+  if (fixContexts.length === 0) {
+    return { fixedCount: 0, costUSD: 0, costReported: true };
+  }
 
   const skillPreview = opts.skillContent.length > 4000
     ? opts.skillContent.slice(0, 4000) + '\n\n... (truncated)'
@@ -387,7 +615,23 @@ async function autoFixSamplesAgent(opts: {
     `### ${ctx.sampleId}\n\n${ctx.diag}\n\n${ctx.failedAssertions}`
   ).join('\n\n---\n\n');
 
-  const prompt = `以下有 ${fixContexts.length} 条失败的评测用例需要分析修复。
+  const tempRoot = mkdtempSync(join(tmpdir(), 'omk-sample-fix-'));
+  const sourceIsDirectory = statSync(opts.samplesPath).isDirectory();
+  const tempSamplesPath = sourceIsDirectory
+    ? join(tempRoot, 'samples')
+    : join(tempRoot, basename(opts.samplesPath));
+  if (sourceIsDirectory) mkdirSync(tempSamplesPath);
+  for (const sourceFile of loaded.sourceFiles) {
+    const targetFile = sourceIsDirectory
+      ? join(tempSamplesPath, basename(sourceFile))
+      : tempSamplesPath;
+    copyFileSync(sourceFile, targetFile);
+  }
+
+  try {
+    const tempLoaded = loadSamples(tempSamplesPath);
+    const editableFiles = tempLoaded.sourceFiles.map((file) => `- ${file}`).join('\n');
+    const prompt = `以下有 ${fixContexts.length} 条失败的评测用例需要分析修复。
 
 ## Skill 原文（参考，不可修改）
 
@@ -397,22 +641,73 @@ ${skillPreview}
 
 ${sampleSections}
 
-请使用 Edit 工具修改文件 ${opts.samplesPath}，只改有问题的 sample 的 assertions / mocks / environment 字段。如果判断是 LLM 行为问题（低分合理），不要改该 sample。`;
+请只使用 Edit 工具修改以下临时副本：
+${editableFiles}
 
-  const executor = createExecutor(opts.executorName);
-  const beforeContent = readFileSync(opts.samplesPath, 'utf-8');
-  const result = await executor({
-    model: opts.model,
-    system: FIX_AGENT_SYSTEM_PROMPT,
-    prompt,
-    cwd: dirname(opts.samplesPath),
-    timeoutMs: 300_000,
-  });
+只改有问题 sample 的 assertions / mocks / mocksStrict / environment 字段。如果判断是 LLM 行为问题（低分合理），不要改该 sample。`;
 
-  const afterContent = readFileSync(opts.samplesPath, 'utf-8');
-  const changed = afterContent !== beforeContent;
-  const fixedCount = changed ? fixContexts.length : 0;
-  return { fixedCount, costUSD: result.costUSD };
+    const executor = createExecutor(opts.executorName);
+    const result = await executor({
+      model: opts.model,
+      system: FIX_AGENT_SYSTEM_PROMPT,
+      prompt,
+      cwd: tempRoot,
+      timeoutMs: 300_000,
+    });
+    const costReported = result.costReportedByExecutor !== false;
+    if (!result.ok) {
+      return { fixedCount: 0, costUSD: result.costUSD, costReported };
+    }
+
+    let edited: Sample[];
+    try {
+      edited = loadSamples(tempSamplesPath).samples;
+    } catch (error) {
+      process.stderr.write(
+        `[omk] auto-fix-samples 已拒绝非法评测用例修改：`
+        + `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      return { fixedCount: 0, costUSD: result.costUSD, costReported };
+    }
+
+    const originalById = new Map(samples.map((sample) => [sample.sample_id, sample]));
+    const editedById = new Map(edited.map((sample) => [sample.sample_id, sample]));
+    if (
+      editedById.size !== originalById.size
+      || [...originalById.keys()].some((sampleId) => !editedById.has(sampleId))
+    ) {
+      process.stderr.write('[omk] auto-fix-samples 已拒绝新增、删除或改名评测用例。\n');
+      return { fixedCount: 0, costUSD: result.costUSD, costReported };
+    }
+
+    const fixableIds = new Set(fixContexts.map((context) => context.sampleId));
+    const changedIds = new Set<string>();
+    for (const [sampleId, nextSample] of editedById.entries()) {
+      const previousSample = originalById.get(sampleId)!;
+      if (canonicalStringify(nextSample) === canonicalStringify(previousSample)) continue;
+      if (
+        !fixableIds.has(sampleId)
+        || !agentSampleEditWithinScope(previousSample, nextSample)
+      ) {
+        process.stderr.write(
+          `[omk] auto-fix-samples 已拒绝越界修改 sample「${sampleId}」；`
+          + '只允许修改待修复用例的 assertions / mocks / mocksStrict / environment。\n',
+        );
+        return { fixedCount: 0, costUSD: result.costUSD, costReported };
+      }
+      stampFixMetadata(nextSample, opts.report.id);
+      changedIds.add(sampleId);
+    }
+
+    writeFixedSamplesToSources(loaded, edited, changedIds);
+    return {
+      fixedCount: changedIds.size,
+      costUSD: result.costUSD,
+      costReported,
+    };
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 async function autoFixSamplesAfterSkillRound(opts: {
@@ -424,8 +719,9 @@ async function autoFixSamplesAfterSkillRound(opts: {
   model: string;
   maxAttemptsPerSample: number;
   improveMode?: 'agent' | 'rewrite';
-}): Promise<{ fixedCount: number; costUSD: number }> {
-  const { samples } = loadSamples(opts.samplesPath);
+}): Promise<AutoFixSamplesResult> {
+  const loaded = loadSamples(opts.samplesPath);
+  const { samples } = loaded;
 
   if (opts.improveMode === 'agent') {
     return autoFixSamplesAgent(opts);
@@ -441,9 +737,16 @@ async function autoFixSamplesAfterSkillRound(opts: {
     maxAttemptsPerSample: opts.maxAttemptsPerSample,
   });
   if (result.fixedCount > 0) {
-    writeFileSync(opts.samplesPath, JSON.stringify(result.samples, null, 2));
+    const changedIds = new Set(
+      result.fixes.filter((fix) => fix.changed).map((fix) => fix.sampleId),
+    );
+    writeFixedSamplesToSources(loaded, result.samples as Sample[], changedIds);
   }
-  return { fixedCount: result.fixedCount, costUSD: result.costUSD };
+  return {
+    fixedCount: result.fixedCount,
+    costUSD: result.costUSD,
+    costReported: result.costReported,
+  };
 }
 
 /** Number of skill lines below which the edit budget never trips — so a tiny skill
@@ -559,7 +862,7 @@ export interface EvolveRoundProgressInfo {
   significant?: boolean;
 }
 
-interface EvolveOptions {
+export interface EvolveOptions {
   skillPath: string;
   samplesPath: string;
   rounds?: number;
@@ -568,15 +871,17 @@ interface EvolveOptions {
   autoFixSamples?: boolean;
   sampleFixMaxAttempts?: number;
   reuseLatestEval?: boolean;
-  model?: string;
+  /** Explicit measured runtime. Provider defaults belong to the CLI boundary. */
+  model: string;
   /** Single-judge config. evolve 不支持 ensemble — CLI 在 length>=2 时 exit 2,
-   *  programmatic API 在 evolveSkill 入口同样 throw,二者一致。Default
-   *  `[{ executor: <executorName>, model: 'haiku' }]`. */
+   *  programmatic API 在 evolveSkill 入口同样 throw,二者一致。缺省时复用
+   *  被测 executor/model；CLI 会在调用前解析 provider-specific 默认值。 */
   judgeModels?: JudgeConfig[];
   improveModel?: string;
   /** 改写策略。'agent' 用 agent 工具增量 Edit；'rewrite' 用单次 LLM 输出全文。默认 'agent'。 */
   improveMode?: 'agent' | 'rewrite';
-  executorName?: string;
+  /** Explicit measured executor. Provider defaults belong to the CLI boundary. */
+  executorName: string;
   concurrency?: number;
   timeoutMs?: number;
   skipConnectivity?: boolean;
@@ -681,14 +986,148 @@ export interface RoundReport {
   report: Report;
 }
 
+function sourceVariantForRound({ round, report }: RoundReport): string {
+  if (report.meta.variants.length !== 1) {
+    throw new Error(`evolve 第 ${round} 轮报告必须且只能包含一个 variant。`);
+  }
+  const variant = report.meta.variants[0];
+  if (
+    !ownRecordValue(report.summary, variant)
+    || report.results.some((entry) => !ownRecordValue(entry.variants, variant))
+  ) {
+    throw new Error(`evolve 第 ${round} 轮报告缺少 variant「${variant}」的完整结果。`);
+  }
+  return variant;
+}
+
+function assertComparableEvolveRounds(
+  roundReports: RoundReport[],
+  sourceVariants: string[],
+): void {
+  const first = roundReports[0].report;
+  const firstSampleIds = first.results.map((entry) => entry.sample_id);
+  const firstSampleSet = new Set(firstSampleIds);
+  if (firstSampleSet.size !== firstSampleIds.length) {
+    throw new Error('evolve 首轮报告包含重复 sample_id。');
+  }
+
+  const comparableMeta = (report: Report, variant: string) => {
+    const config = report.meta.variantConfigs?.find(
+      (candidate) => candidate.variant === variant,
+    );
+    const runtime = report.meta.executorRuntimes
+      ? ownRecordValue(report.meta.executorRuntimes, variant)
+      : report.meta.executorRuntime;
+    const hasIsolation = Boolean(
+      report.meta.skillIsolation
+      && Object.hasOwn(report.meta.skillIsolation, variant),
+    );
+    return {
+    model: report.meta.model,
+    executor: report.meta.executor,
+    effort: report.meta.effort,
+    schemaVersion: report.meta.schemaVersion,
+    cliVersion: report.meta.cliVersion,
+    nodeVersion: report.meta.nodeVersion,
+    judgeRepeat: report.meta.judgeRepeat,
+    noJudge: report.meta.noJudge,
+    judgePromptHash: report.meta.judgePromptHash,
+    diagnostic: report.meta.diagnostic
+      ? {
+        enabled: report.meta.diagnostic.enabled,
+        executor: report.meta.diagnostic.executor,
+        model: report.meta.diagnostic.model,
+        runtime: report.meta.diagnostic.runtime?.fingerprint,
+        promptHash: report.meta.diagnostic.promptHash,
+      }
+      : undefined,
+    evaluationFramework: report.meta.evaluationFramework,
+    debiasMode: report.meta.debiasMode,
+    judgeModels: report.meta.judgeModels,
+    sampleHashes: report.meta.sampleHashes,
+    requestProtocol: report.meta.request
+      ? {
+        timeoutMs: report.meta.request.timeoutMs,
+        retry: report.meta.request.retry ?? 0,
+        budget: report.meta.request.budget,
+        noDiagnostic: report.meta.request.noDiagnostic === true,
+      }
+      : undefined,
+    executorRuntime: runtime
+      ? {
+        fingerprint: runtime.fingerprint,
+        capabilities: runtime.capabilities,
+      }
+      : null,
+    execution: config
+      ? {
+        artifactKind: config.artifactKind,
+        executionStrategy: config.executionStrategy,
+        experimentType: config.experimentType,
+        hasArtifactContent: config.hasArtifactContent,
+        cwd: config.cwd,
+        allowedSkills: config.allowedSkills,
+      }
+      : null,
+    skillIsolation: {
+      present: hasIsolation,
+      value: hasIsolation
+        ? ownRecordValue(report.meta.skillIsolation!, variant)
+        : undefined,
+    },
+  };
+  };
+  const expectedMeta = canonicalStringify(comparableMeta(first, sourceVariants[0]));
+
+  for (let index = 0; index < roundReports.length; index++) {
+    const { round, report } = roundReports[index];
+    if (!Number.isSafeInteger(round) || round < 0) {
+      throw new Error(`evolve 轮次必须是非负安全整数，收到「${String(round)}」。`);
+    }
+    if (index > 0 && round <= roundReports[index - 1].round) {
+      throw new Error('evolve 轮次必须严格递增且不能重复。');
+    }
+    if (!parseReportDocument(report, report.id, report.id)) {
+      throw new Error(`evolve 第 ${round} 轮报告不符合持久化契约。`);
+    }
+    if (report.meta.budgetExhausted === true) {
+      throw new Error(`evolve 第 ${round} 轮报告因预算耗尽而不完整。`);
+    }
+    if (
+      report.meta.sampleCount !== first.meta.sampleCount
+      || report.results.length !== first.results.length
+      || canonicalStringify(comparableMeta(report, sourceVariants[index])) !== expectedMeta
+    ) {
+      throw new Error(`evolve 第 ${round} 轮与首轮的测量配置或用例集合不可比。`);
+    }
+
+    const sampleIds = new Set(report.results.map((entry) => entry.sample_id));
+    if (
+      sampleIds.size !== firstSampleSet.size
+      || firstSampleIds.some((sampleId) => !sampleIds.has(sampleId))
+    ) {
+      throw new Error(`evolve 第 ${round} 轮的 sample_id 集合与首轮不一致。`);
+    }
+    if (!ownRecordValue(report.meta.artifactHashes, sourceVariants[index])) {
+      throw new Error(`evolve 第 ${round} 轮缺少知识载体内容指纹。`);
+    }
+  }
+}
+
 export function mergeEvolveReports(
   roundReports: RoundReport[],
   skillName: string,
-  totalCostUSD: number,
+  processCostUSD: number,
   samples?: Sample[],
   skillPath?: string,
+  processCostReported = true,
 ): Report {
+  if (roundReports.length === 0) {
+    throw new Error('evolve 合并报告至少需要一轮评测结果。');
+  }
   const firstReport = roundReports[0].report;
+  const sourceVariants = roundReports.map(sourceVariantForRound);
+  assertComparableEvolveRounds(roundReports, sourceVariants);
 
   // Build variant labels: "round-0", "round-1", "round-2", ...
   const variantLabels = roundReports.map(({ round }) => `round-${round}`);
@@ -697,8 +1136,11 @@ export function mergeEvolveReports(
   const summary: Record<string, Report['summary'][string]> = {};
   for (let i = 0; i < roundReports.length; i++) {
     const { report } = roundReports[i];
-    const originalKey = Object.keys(report.summary)[0];
-    summary[variantLabels[i]] = report.summary[originalKey];
+    setOwnRecordValue(
+      summary,
+      variantLabels[i],
+      ownRecordValue(report.summary, sourceVariants[i])!,
+    );
   }
 
   // Build results: merge per-sample variant data across rounds
@@ -707,46 +1149,146 @@ export function mergeEvolveReports(
     const variants: Record<string, VariantResult> = {};
     for (let i = 0; i < roundReports.length; i++) {
       const entry = roundReports[i].report.results.find((r) => r.sample_id === sampleId);
-      if (entry) {
-        const originalKey = Object.keys(entry.variants)[0];
-        variants[variantLabels[i]] = entry.variants[originalKey];
-      }
+      setOwnRecordValue(
+        variants,
+        variantLabels[i],
+        ownRecordValue(entry!.variants, sourceVariants[i])!,
+      );
     }
     return { sample_id: sampleId, variants };
   });
 
-  // Build variantConfigs: collect from each round, relabel variant name; mark round-0 as baseline
-  const variantConfigs = roundReports.flatMap(({ round, report }, i) =>
-    (report.meta.variantConfigs || []).map((cfg) => ({
+  // round-0 是当前知识载体版本的 control，不是「无知识载体」的 baseline kind。
+  // 保留每轮真实 artifact / execution 语义，只重标实验角色。
+  const variantConfigs = roundReports.map(({ report }, i) => {
+    const cfg = report.meta.variantConfigs?.find(
+      (candidate) => candidate.variant === sourceVariants[i],
+    );
+    return cfg ? {
       ...cfg,
       variant: variantLabels[i],
-      ...(round === 0 ? { experimentType: 'baseline' as const, artifactKind: 'baseline' as const, executionStrategy: 'baseline' as const } : {}),
-    })),
-  );
+      experimentRole: i === 0 ? 'control' as const : 'treatment' as const,
+    } : undefined;
+  });
 
   // Build artifactHashes: collect from each round, relabel key
   const artifactHashes: Record<string, string> = {};
   for (let i = 0; i < roundReports.length; i++) {
-    const hashes = roundReports[i].report.meta.artifactHashes || {};
-    const originalKey = Object.keys(hashes)[0];
-    if (originalKey) artifactHashes[variantLabels[i]] = hashes[originalKey];
+    setOwnRecordValue(
+      artifactHashes,
+      variantLabels[i],
+      ownRecordValue(
+        roundReports[i].report.meta.artifactHashes,
+        sourceVariants[i],
+      )!,
+    );
   }
 
+  const executorRuntimes: NonNullable<Report['meta']['executorRuntimes']> = {};
+  let hasCompleteExecutorRuntimes = true;
+  const sourceExecutorRuntimes = roundReports.map(({ report }, index) => {
+    const runtime = report.meta.executorRuntimes
+      ? ownRecordValue(report.meta.executorRuntimes, sourceVariants[index])
+      : report.meta.executorRuntime;
+    if (!runtime) {
+      hasCompleteExecutorRuntimes = false;
+      return undefined;
+    }
+    setOwnRecordValue(executorRuntimes, variantLabels[index], runtime);
+    return runtime;
+  });
+  const commonExecutorRuntime = sourceExecutorRuntimes[0]
+    && sourceExecutorRuntimes.every(
+      (runtime) =>
+        runtime !== undefined
+        && canonicalStringify(runtime) === canonicalStringify(sourceExecutorRuntimes[0]),
+    )
+    ? sourceExecutorRuntimes[0]
+    : undefined;
+
+  const skillIsolation: NonNullable<Report['meta']['skillIsolation']> = {};
+  let hasCompleteSkillIsolation = true;
+  for (let index = 0; index < roundReports.length; index++) {
+    const source = roundReports[index].report.meta.skillIsolation;
+    if (!source || !Object.hasOwn(source, sourceVariants[index])) {
+      hasCompleteSkillIsolation = false;
+      break;
+    }
+    setOwnRecordValue(
+      skillIsolation,
+      variantLabels[index],
+      ownRecordValue(source, sourceVariants[index]) ?? null,
+    );
+  }
+
+  // request / run / job 描述的是某一次源评测，不能伪装成 aggregate 的生命周期。
+  // pairComparisons / humanAgreement / budget 也绑定源报告的 variant 或单轮预算，
+  // 合并后必须重新计算才有意义，因此不从首轮继承。
+  const sharedMeta = omitKeys(firstReport.meta, [
+    'variants',
+    'taskCount',
+    'totalCostUSD',
+    'totalCostReported',
+    'timestamp',
+    'artifactHashes',
+    'executorRuntime',
+    'executorRuntimes',
+    'pairComparisons',
+    'humanAgreement',
+    'budget',
+    'budgetExhausted',
+    'variantConfigs',
+    'skillIsolation',
+    'request',
+    'run',
+    'job',
+    'evolve',
+  ]);
   const runId = `evolve-${skillName}-${runIdSuffix()}`;
+  const measurementCostUSD = Number(results.reduce(
+    (total, entry) => total + variantLabels.reduce(
+      (sampleTotal, variant) =>
+        sampleTotal + (ownRecordValue(entry.variants, variant)?.costUSD ?? 0),
+      0,
+    ),
+    0,
+  ).toFixed(6));
+  const measurementCostReported = roundReports.every(({ report: source }) =>
+    Object.values(source.summary).every(
+      (variant) =>
+        variant.execCostReported !== false
+        && variant.judgeCostReported !== false,
+    )
+  );
 
   const report: Report = {
     kind: 'evaluation',
     id: runId,
     meta: {
-      ...firstReport.meta,
+      ...sharedMeta,
       variants: variantLabels,
-      variantConfigs,
+      taskCount: firstReport.meta.sampleCount * variantLabels.length,
+      ...(variantConfigs.every((config) => config !== undefined)
+        ? { variantConfigs: variantConfigs as NonNullable<Report['meta']['variantConfigs']> }
+        : {}),
       artifactHashes,
-      totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      ...(hasCompleteExecutorRuntimes ? { executorRuntimes } : {}),
+      ...(commonExecutorRuntime ? { executorRuntime: commonExecutorRuntime } : {}),
+      ...(hasCompleteSkillIsolation ? { skillIsolation } : {}),
+      totalCostUSD: measurementCostUSD,
+      ...(measurementCostReported ? {} : { totalCostReported: false }),
       timestamp: new Date().toISOString(),
       evolve: {
         skillName,
         ...(skillPath ? { skillPath } : {}),
+        processCostUSD: Number(processCostUSD.toFixed(6)),
+        ...(processCostReported ? {} : { processCostReported: false }),
+        sourceReports: roundReports.map(({ round, accepted, report: source }, index) => ({
+          round,
+          accepted,
+          reportId: source.id,
+          variant: sourceVariants[index],
+        })),
       },
     },
     summary,
@@ -771,11 +1313,11 @@ export async function evolveSkill({
   autoFixSamples = false,
   sampleFixMaxAttempts = 2,
   reuseLatestEval = false,
-  model = DEFAULT_MODEL,
+  model,
   judgeModels,
-  improveModel = DEFAULT_MODEL,
+  improveModel = model,
   improveMode = 'agent',
-  executorName = 'claude',
+  executorName,
   concurrency = 1,
   timeoutMs,
   skipConnectivity = false,
@@ -796,12 +1338,12 @@ export async function evolveSkill({
     throw new Error(
       'evolveSkill does not support multi-judge ensemble (received '
       + `${judgeModels.length} judges). Pass a single-judge array, e.g. `
-      + `[{ executor: 'claude', model: 'haiku' }]`,
+      + `[{ executor: executorName, model }]`,
     );
   }
   const effectiveJudgeModels: JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
-    : [{ executor: executorName, model: JUDGE_MODEL }];
+    : [{ executor: executorName, model }];
   const absSkillPath = resolve(skillPath);
   const absSamplesPath = resolve(samplesPath);
   const skillDir = dirname(absSkillPath);
@@ -914,6 +1456,7 @@ export async function evolveSkill({
     ? await findReusableBaselineReport({
       artifactHash: baselineArtifactHash,
       samplesPath: absSamplesPath,
+      skillDir,
       model,
       executorName,
       judgeModels: effectiveJudgeModels,
@@ -944,7 +1487,14 @@ export async function evolveSkill({
     stopReason = 'assertions-pass';
     if (writeBackToSource) writeFileSync(absSkillPath, currentBest);
     const { samples } = loadSamples(absSamplesPath);
-    const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD, samples, absSkillPath);
+    const mergedReport = mergeEvolveReports(
+      roundReports,
+      skillName,
+      totalCostUSD,
+      samples,
+      absSkillPath,
+      totalCostReported,
+    );
     persistReport(mergedReport, DEFAULT_OUTPUT_DIR);
     return {
       startScore: bestScore,
@@ -1046,6 +1596,7 @@ export async function evolveSkill({
     }
 
     let preEvalSampleFixCost = 0;
+    let preEvalSampleFixCostReported = true;
     if (autoFixSamples) {
       const sampleFix = await autoFixSamplesAfterSkillRound({
         samplesPath: absSamplesPath,
@@ -1063,7 +1614,9 @@ export async function evolveSkill({
         sampleFixes.push({ round, fixedCount: sampleFix.fixedCount, costUSD: sampleFix.costUSD });
       }
       preEvalSampleFixCost = sampleFix.costUSD;
+      preEvalSampleFixCostReported = sampleFix.costReported;
       totalCostUSD += sampleFix.costUSD;
+      if (!sampleFix.costReported) totalCostReported = false;
     }
 
     // Evaluate candidate with any sample fixes already applied.
@@ -1073,7 +1626,10 @@ export async function evolveSkill({
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
     const candidateScore = decisionScore(candidateReport, candidateVariantKey);
     const roundCost = improveCostUSD + preEvalSampleFixCost + candidateReport.meta.totalCostUSD;
-    const roundCostReported = improveCostReported && !reportHasUnreportedCost(candidateReport);
+    const roundCostReported =
+      improveCostReported
+      && preEvalSampleFixCostReported
+      && !reportHasUnreportedCost(candidateReport);
     if (!roundCostReported) totalCostReported = false;
     totalCostUSD += improveCostUSD + candidateReport.meta.totalCostUSD;
 
@@ -1139,7 +1695,14 @@ export async function evolveSkill({
   if (roundReports.length > 0) {
     // load samples once to enable analysis.sampleQuality on the merged report.
     const { samples } = loadSamples(absSamplesPath);
-    const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD, samples, absSkillPath);
+    const mergedReport = mergeEvolveReports(
+      roundReports,
+      skillName,
+      totalCostUSD,
+      samples,
+      absSkillPath,
+      totalCostReported,
+    );
     persistReport(mergedReport, DEFAULT_OUTPUT_DIR);
     reportId = mergedReport.id;
   }

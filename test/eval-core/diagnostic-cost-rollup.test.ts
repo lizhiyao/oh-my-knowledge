@@ -66,6 +66,9 @@ function mkDiagnostic(costUSD: number): DiagnosticResult {
  *  不依赖 runner 的动态 import 链(同等等价于 evaluation-execution.ts 里的
  *  "if (typeof diagnostic.costUSD === 'number' && diagnostic.costUSD > 0)" 块)。 */
 function applyDiagnosticCost(entry: VariantResult, diag: DiagnosticResult): void {
+  if (diag.costReportedByExecutor === false) {
+    entry.judgeCostReportedByExecutor = false;
+  }
   if (typeof diag.costUSD === 'number' && diag.costUSD > 0) {
     entry.diagnosticCostUSD = diag.costUSD;
     entry.costUSD = (entry.costUSD || 0) + diag.costUSD;
@@ -171,6 +174,16 @@ describe('diagnostic 成本三层对齐: summary 聚合', () => {
     const s = buildVariantSummary(entries);
     assert.equal('totalDiagnosticCostUSD' in s, false,
       'totalDiagnosticCostUSD 应在无任何 entry 携带 diagnostic 成本时缺位,而不是 0');
+  });
+
+  it('diagnostic executor 不报告成本时 summary 标记成本轴不完整', () => {
+    const entry = entryWithDiag(0.01, 0, 0);
+    applyDiagnosticCost(entry, {
+      ...mkDiagnostic(0),
+      costReportedByExecutor: false,
+    });
+    const summary = buildVariantSummary([entry]);
+    assert.equal(summary.judgeCostReported, false);
   });
 
   it('per-sample budget 的 cap 检查路径会拿三段合计的 entry.costUSD 比上限(契约文档,不动 runner 的运行行为)', () => {

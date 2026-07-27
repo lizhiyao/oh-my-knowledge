@@ -36,3 +36,19 @@ const ACTIVE_DIAGNOSIS_LIFECYCLES: ReadonlySet<DiagnosisLifecycle> = new Set<Dia
 export function isActiveDiagnosisLifecycle(lifecycle: DiagnosisLifecycle): boolean {
   return ACTIVE_DIAGNOSIS_LIFECYCLES.has(lifecycle);
 }
+
+/** Merge lifecycle states without making the result depend on bundle order. */
+export function maxDiagnosisLifecycle(
+  a: DiagnosisLifecycle,
+  b: DiagnosisLifecycle,
+): DiagnosisLifecycle {
+  const rank: Record<DiagnosisLifecycle, number> = {
+    resolved: 6,
+    rejected: 5,
+    detected: 4,
+    candidate: 3,
+    confirmed: 2,
+    stale: 1,
+  };
+  return rank[a] >= rank[b] ? a : b;
+}

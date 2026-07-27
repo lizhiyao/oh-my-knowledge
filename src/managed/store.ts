@@ -1,7 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { join, normalize } from 'node:path';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+} from 'node:fs';
+import { isAbsolute, join, normalize } from 'node:path';
 import { hashString } from '../eval-core/evaluation-reporting.js';
 import { OMK_HOME } from '../eval-core/default-dirs.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { withFileLock } from '../shared/file-lock.js';
+import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import type {
   ArtifactKind,
   DeriveManagedStateInput,
@@ -34,6 +41,7 @@ export function globalManagedDir(): string {
 }
 
 export function recordPath(dir: string, id: string): string {
+  if (!isManagedRecordId(id)) throw new TypeError('invalid managed record id');
   return join(dir, `${id}.json`);
 }
 
@@ -48,6 +56,22 @@ export { hashArtifactSource, isDistributablePath, distributableCopyFilter } from
 
 function isStringField(v: unknown): v is string {
   return typeof v === 'string';
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0;
+}
+
+function isManagedRecordId(v: unknown): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{12}$/.test(v);
+}
+
+function isNonNegativeSafeInteger(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+}
+
+function isRate(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
 }
 
 /** 仅当字段缺省或是 string 才放行(可选 string 字段的脏值守卫,如 source.url / evidence.verdict)。 */
@@ -69,26 +93,43 @@ function isOptionalSha(v: unknown): boolean {
 
 // 受管记录可安装的 kind(managed 记录绝不是 baseline)。
 const MANAGED_KINDS = new Set(['skill', 'prompt', 'agent', 'workflow']);
+const MANAGED_DECISIONS = new Set(['promote', 'reject', 'rollback']);
+const VERDICTS = new Set([
+  'PROGRESS',
+  'CAUTIOUS',
+  'REGRESS',
+  'NOISE',
+  'UNDERPOWERED',
+  'SOLO',
+]);
+const OVERRIDE_VERDICTS = new Set([...VERDICTS, 'UNKNOWN']);
+const OVERRIDDEN_BLOCKS = new Set(['drifted', 'no_evidence', 'incomparable', 'verdict_blocked']);
 
 // 校验到**运行时实际收窄**的边界,不止「字段是 string」:记录文件是用户可手改、且可能随仓库分发(被
 // loadAllManagedRecords 无 opt-in 读到)的不可信输入。若只查 string,畸形记录(如 source.url 是对象、
 // sourceKind 是任意串)会绕过 validator,在下游(omk list 的 sourceLabel ?? → dispWidth(对象) 等)
 // 抛 TypeError 让命令崩溃。这里把 source / evidence 收窄到 list 等消费方实际解引用的类型,判脏即丢弃该文件。
-function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord {
+function isManagedArtifactRecord(
+  value: unknown,
+  expectedId?: string,
+): value is ManagedArtifactRecord {
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<ManagedArtifactRecord>;
   if (!(r.recordKind === 'managed-artifact'
     && r.schemaVersion === 2
-    && isStringField(r.id)
-    && isStringField(r.name)
+    && isManagedRecordId(r.id)
+    && (expectedId === undefined || r.id === expectedId)
+    && isNonEmptyString(r.name)
     && isStringField(r.kind) && MANAGED_KINDS.has(r.kind)
-    && isStringField(r.contentHash)
+    && r.id === managedRecordId(r.kind as ArtifactKind, r.name)
+    && isNonEmptyString(r.contentHash)
+    && isRfc3339Timestamp(r.installedAt)
     && r.source && typeof r.source === 'object'
     && Array.isArray(r.distribution)
     && Array.isArray(r.evidence)
     && Array.isArray(r.decisions))) return false;
   const src = r.source as unknown as Record<string, unknown>;
-  if (!(isStringField(src.locator)
+  if (!(isNonEmptyString(src.locator)
     && (src.sourceKind === 'file' || src.sourceKind === 'git')
     && typeof src.isDirectorySkill === 'boolean'
     && isOptionalString(src.url)
@@ -96,19 +137,50 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
   // url / ref 是 git-only 字段。file 源带 url 时,list 的 sourceLabel 会显示假 url、掩盖真实被 probe /
   // 读取的 locator(畸形但可通过上面 string 校验)→ 「读了什么」与「显示什么」不一致。判脏丢弃。
   if (src.sourceKind === 'file' && (src.url !== undefined || src.ref !== undefined)) return false;
-  const okDist = r.distribution.every((d) => d && typeof d === 'object'
-    && isStringField((d as { path?: unknown }).path) && isStringField((d as { contentHash?: unknown }).contentHash));
+  const distributionPaths = new Set<string>();
+  const okDist = r.distribution.every((d) => {
+    if (!d || typeof d !== 'object') return false;
+    const target = d as unknown as Record<string, unknown>;
+    if (
+      !isNonEmptyString(target.label)
+      || !isNonEmptyString(target.path)
+      || !isAbsolute(target.path)
+      || !isNonEmptyString(target.contentHash)
+      || !isRfc3339Timestamp(target.copiedAt)
+    ) return false;
+    const pathKey = normalize(target.path).replace(/[\\/]+$/, '') || target.path;
+    if (distributionPaths.has(pathKey)) return false;
+    distributionPaths.add(pathKey);
+    return true;
+  });
+  const evidenceKeys = new Set<string>();
   const okEv = r.evidence.every((e) => {
     if (!e || typeof e !== 'object') return false;
     const ev = e as unknown as Record<string, unknown>;
-    if (!(isStringField(ev.reportId) && isStringField(ev.contentHash) && isStringField(ev.recordedAt))) return false;
-    if (!isOptionalString(ev.verdict)) return false;
+    if (
+      !isNonEmptyString(ev.reportId)
+      || !isNonEmptyString(ev.contentHash)
+      || !isRfc3339Timestamp(ev.recordedAt)
+      || (ev.verdict !== undefined && !VERDICTS.has(String(ev.verdict)))
+    ) return false;
+    const evidenceKey = `${ev.reportId}\0${ev.contentHash}`;
+    if (evidenceKeys.has(evidenceKey)) return false;
+    evidenceKeys.add(evidenceKey);
+    if (ev.sampleCoverage !== undefined) {
+      const coverage = ev.sampleCoverage as Record<string, unknown>;
+      if (
+        !coverage
+        || typeof coverage !== 'object'
+        || !isNonNegativeSafeInteger(coverage.count)
+        || !isNonEmptyString(coverage.hash)
+      ) return false;
+    }
     // comparability 若存在:必须是带 string cliVersion 的对象(list / promote 会读它)。可选 marker
     // judgePromptHash / debiasMode 同样收窄到声明类型 —— 否则任意类型脏值会穿过 validator 原样进 `omk list
     // --json`(及未来 promote gate)消费方。
     if (ev.comparability !== undefined) {
       const c = ev.comparability as Record<string, unknown>;
-      if (!c || typeof c !== 'object' || !isStringField(c.cliVersion)) return false;
+      if (!c || typeof c !== 'object' || !isNonEmptyString(c.cliVersion)) return false;
       if (!isOptionalString(c.judgePromptHash)) return false;
       if (c.debiasMode !== undefined
         && !(Array.isArray(c.debiasMode) && c.debiasMode.every((m) => m === 'length' || m === 'position'))) return false;
@@ -122,43 +194,75 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
   const okDec = r.decisions.every((d) => {
     if (!d || typeof d !== 'object') return false;
     const dec = d as unknown as Record<string, unknown>;
-    if (!isStringField(dec.decisionKind)) return false;
+    if (
+      !MANAGED_DECISIONS.has(String(dec.decisionKind))
+      || !isNonEmptyString(dec.actor)
+      || !isRfc3339Timestamp(dec.decidedAt)
+    ) return false;
     // promote/reject/rollback 的证据指针(promote 写)同样收窄:任意类型脏值不得穿过 validator 进
     // deriveManagedState / promote 消费方。actor / decidedAt / reason 是 install 后才追加的可选展示字段,
     // 旧记录(install 时 decisions 恒空)无,按 optional 读。
-    if (!isOptionalString(dec.actor) || !isOptionalString(dec.decidedAt) || !isOptionalString(dec.reason)) return false;
-    if (!isOptionalString(dec.contentHash) || !isOptionalString(dec.reportId)) return false;
+    if (!isOptionalString(dec.reason)) return false;
+    if (
+      (dec.contentHash !== undefined && !isNonEmptyString(dec.contentHash))
+      || (dec.reportId !== undefined && !isNonEmptyString(dec.reportId))
+    ) return false;
+    if (
+      (dec.decisionKind === 'promote' || dec.decisionKind === 'rollback')
+      && !isNonEmptyString(dec.contentHash)
+    ) return false;
     if (dec.override !== undefined) {
       const o = dec.override as Record<string, unknown>;
-      if (!o || typeof o !== 'object' || !isStringField(o.verdict)) return false;
+      if (
+        dec.decisionKind !== 'promote'
+        || !o
+        || typeof o !== 'object'
+        || !OVERRIDE_VERDICTS.has(String(o.verdict))
+      ) return false;
       if (o.overriddenBlocks !== undefined
-        && !(Array.isArray(o.overriddenBlocks) && o.overriddenBlocks.every((b) => typeof b === 'string'))) return false;
+        && !(
+          Array.isArray(o.overriddenBlocks)
+          && o.overriddenBlocks.every((block) => OVERRIDDEN_BLOCKS.has(String(block)))
+        )) return false;
     }
     return true;
   });
   // observations(#235)缺省合法(旧记录无);present 必须是数组,每条窄到声明类型 —— healthBand / confidence
   // 驱动读时 marker(deriveProductionGap),畸形脏值会让 list / Studio 误判,故判脏丢整条记录(同 okEv / okDec)。
+  const observationIds = new Set<string>();
   const okObs = r.observations === undefined || (Array.isArray(r.observations) && r.observations.every((o) => {
     if (!o || typeof o !== 'object') return false;
     const obs = o as unknown as Record<string, unknown>;
     if (obs.observationKind !== 'production-health') return false;
-    if (!isStringField(obs.reportId) || !isStringField(obs.observedAt)) return false;
-    if (typeof obs.gapRate !== 'number' || typeof obs.weightedGapRate !== 'number' || typeof obs.segmentCount !== 'number') return false;
+    if (
+      !isNonEmptyString(obs.reportId)
+      || observationIds.has(obs.reportId)
+      || !isRfc3339Timestamp(obs.observedAt)
+    ) return false;
+    observationIds.add(obs.reportId);
+    if (
+      !isRate(obs.gapRate)
+      || !isRate(obs.weightedGapRate)
+      || obs.weightedGapRate > obs.gapRate
+      || !isNonNegativeSafeInteger(obs.segmentCount)
+    ) return false;
     if (obs.confidence !== 'high' && obs.confidence !== 'low' && obs.confidence !== 'underpowered') return false;
     if (obs.healthBand !== 'green' && obs.healthBand !== 'yellow' && obs.healthBand !== 'red') return false;
     const g = obs.gapByType as Record<string, unknown> | null;
     if (!g || typeof g !== 'object') return false;
-    return ['failed_search', 'explicit_marker', 'hedging', 'repeated_failure'].every((k) => typeof g[k] === 'number');
+    return ['failed_search', 'explicit_marker', 'hedging', 'repeated_failure']
+      .every((key) => isNonNegativeSafeInteger(g[key]));
   }));
   return okDist && okEv && okDec && okObs;
 }
 
 export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecord | null {
+  if (!isManagedRecordId(id)) return null;
   const path = recordPath(dir, id);
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
-    return isManagedArtifactRecord(parsed) ? parsed : null;
+    return isManagedArtifactRecord(parsed, id) ? parsed : null;
   } catch {
     return null;
   }
@@ -167,16 +271,33 @@ export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecor
 function readRecordsFromDir(dir: string): ManagedArtifactRecord[] {
   if (!existsSync(dir)) return [];
   const out: ManagedArtifactRecord[] = [];
-  for (const entry of readdirSync(dir)) {
-    if (!entry.endsWith('.json')) continue;
+  for (const entry of readdirSync(dir).sort()) {
+    const match = /^([0-9a-f]{12})\.json$/.exec(entry);
+    if (!match) continue;
     try {
       const parsed = JSON.parse(readFileSync(join(dir, entry), 'utf-8')) as unknown;
-      if (isManagedArtifactRecord(parsed)) out.push(parsed);
+      if (isManagedArtifactRecord(parsed, match[1])) out.push(parsed);
     } catch {
       // 跳过损坏文件
     }
   }
   return out;
+}
+
+function persistManagedRecord(dir: string, record: ManagedArtifactRecord): void {
+  if (!isManagedArtifactRecord(record, record.id)) {
+    throw new TypeError('invalid managed artifact record');
+  }
+  writeJsonFileAtomic(recordPath(dir, record.id), record);
+}
+
+function withManagedRecordLock<T>(dir: string, recordId: string, operation: () => T): T {
+  if (!isManagedRecordId(recordId)) throw new TypeError('invalid managed record id');
+  return withFileLock(
+    join(dir, `${recordId}.lock`),
+    operation,
+    { label: `managed record ${recordId}` },
+  );
 }
 
 /** 读全部记录。项目目录空 → 兜底全局(镜像 observe inbox 的 project→global)。 */
@@ -239,13 +360,14 @@ export function mergeManagedRecord(
 
 /** 读旧记录 → 合并 → 原子 tmp+rename 只写该 id 的文件。返回合并后记录。 */
 export function upsertManagedRecord(dir: string, record: ManagedArtifactRecord): ManagedArtifactRecord {
-  const merged = mergeManagedRecord(loadManagedRecord(dir, record.id), record);
-  mkdirSync(dir, { recursive: true });
-  const path = recordPath(dir, record.id);
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, JSON.stringify(merged, null, 2));
-  renameSync(tmp, path);
-  return merged;
+  if (!isManagedArtifactRecord(record, record.id)) {
+    throw new TypeError('invalid managed artifact record');
+  }
+  return withManagedRecordLock(dir, record.id, () => {
+    const merged = mergeManagedRecord(loadManagedRecord(dir, record.id), record);
+    persistManagedRecord(dir, merged);
+    return merged;
+  });
 }
 
 /**
@@ -260,22 +382,24 @@ export function appendManagedEvidence(
   recordId: string,
   evidence: ManagedEvidenceRef,
 ): ManagedArtifactRecord | null {
-  const prev = loadManagedRecord(dir, recordId);
-  if (!prev) return null;
-  const dup = prev.evidence.some(
-    (e) => e.reportId === evidence.reportId && e.contentHash === evidence.contentHash,
-  );
-  const merged: ManagedArtifactRecord = dup
-    ? prev
-    : { ...prev, evidence: [...prev.evidence, evidence] };
-  if (!dup) {
-    mkdirSync(dir, { recursive: true });
-    const path = recordPath(dir, recordId);
-    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, JSON.stringify(merged, null, 2));
-    renameSync(tmp, path);
-  }
-  return merged;
+  if (!isManagedRecordId(recordId)) return null;
+  return withManagedRecordLock(dir, recordId, () => {
+    const prev = loadManagedRecord(dir, recordId);
+    if (!prev) return null;
+    const duplicateIndex = prev.evidence.findIndex(
+      (entry) => entry.reportId === evidence.reportId && entry.contentHash === evidence.contentHash,
+    );
+    const candidateEvidence = duplicateIndex >= 0
+      ? prev.evidence.map((entry, index) => index === duplicateIndex ? evidence : entry)
+      : [...prev.evidence, evidence];
+    if (!isManagedArtifactRecord({ ...prev, evidence: candidateEvidence }, recordId)) {
+      throw new TypeError('invalid managed evidence');
+    }
+    if (duplicateIndex >= 0) return prev;
+    const merged: ManagedArtifactRecord = { ...prev, evidence: candidateEvidence };
+    persistManagedRecord(dir, merged);
+    return merged;
+  });
 }
 
 /**
@@ -289,20 +413,23 @@ export function appendManagedObservation(
   recordId: string,
   observation: ManagedObservation,
 ): ManagedArtifactRecord | null {
-  const prev = loadManagedRecord(dir, recordId);
-  if (!prev) return null;
-  const dup = (prev.observations ?? []).some((o) => o.reportId === observation.reportId);
-  const merged: ManagedArtifactRecord = dup
-    ? prev
-    : { ...prev, observations: [...(prev.observations ?? []), observation] };
-  if (!dup) {
-    mkdirSync(dir, { recursive: true });
-    const path = recordPath(dir, recordId);
-    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, JSON.stringify(merged, null, 2));
-    renameSync(tmp, path);
-  }
-  return merged;
+  if (!isManagedRecordId(recordId)) return null;
+  return withManagedRecordLock(dir, recordId, () => {
+    const prev = loadManagedRecord(dir, recordId);
+    if (!prev) return null;
+    const observations = prev.observations ?? [];
+    const duplicateIndex = observations.findIndex((entry) => entry.reportId === observation.reportId);
+    const candidateObservations = duplicateIndex >= 0
+      ? observations.map((entry, index) => index === duplicateIndex ? observation : entry)
+      : [...observations, observation];
+    if (!isManagedArtifactRecord({ ...prev, observations: candidateObservations }, recordId)) {
+      throw new TypeError('invalid managed observation');
+    }
+    if (duplicateIndex >= 0) return prev;
+    const merged: ManagedArtifactRecord = { ...prev, observations: candidateObservations };
+    persistManagedRecord(dir, merged);
+    return merged;
+  });
 }
 
 /**
@@ -319,16 +446,16 @@ export function rebaselineManagedContentHash(
   recordId: string,
   newHash: string,
 ): ManagedArtifactRecord | null {
-  const prev = loadManagedRecord(dir, recordId);
-  if (!prev) return null;
-  if (prev.contentHash === newHash) return prev;
-  const merged: ManagedArtifactRecord = { ...prev, contentHash: newHash };
-  mkdirSync(dir, { recursive: true });
-  const path = recordPath(dir, recordId);
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, JSON.stringify(merged, null, 2));
-  renameSync(tmp, path);
-  return merged;
+  if (!isNonEmptyString(newHash)) throw new TypeError('newHash must be a non-empty string');
+  if (!isManagedRecordId(recordId)) return null;
+  return withManagedRecordLock(dir, recordId, () => {
+    const prev = loadManagedRecord(dir, recordId);
+    if (!prev) return null;
+    if (prev.contentHash === newHash) return prev;
+    const merged: ManagedArtifactRecord = { ...prev, contentHash: newHash };
+    persistManagedRecord(dir, merged);
+    return merged;
+  });
 }
 
 /**
@@ -388,26 +515,25 @@ export function appendManagedDecision(
   recordId: string,
   decision: ManagedDecision,
 ): ManagedArtifactRecord | null {
-  const prev = loadManagedRecord(dir, recordId);
-  if (!prev) return null;
-  const isPromotion = decision.decisionKind === 'promote' || decision.decisionKind === 'rollback';
-  const onCurrent = decision.contentHash !== undefined && decision.contentHash === prev.contentHash;
-  const dup = isPromotion && onCurrent
-    // promote/rollback 当前内容:不改变 promoted 态 → no-op(promote 当已 promoted、rollback 当未 promoted)。
-    ? (decision.decisionKind === 'promote') === isCurrentlyPromoted(prev)
-    : decision.contentHash !== undefined
-      && prev.decisions.some((d) => d.decisionKind === decision.decisionKind && d.contentHash === decision.contentHash);
-  const merged: ManagedArtifactRecord = dup
-    ? prev
-    : { ...prev, decisions: [...prev.decisions, decision] };
-  if (!dup) {
-    mkdirSync(dir, { recursive: true });
-    const path = recordPath(dir, recordId);
-    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, JSON.stringify(merged, null, 2));
-    renameSync(tmp, path);
-  }
-  return merged;
+  if (!isManagedRecordId(recordId)) return null;
+  return withManagedRecordLock(dir, recordId, () => {
+    const prev = loadManagedRecord(dir, recordId);
+    if (!prev) return null;
+    if (!isManagedArtifactRecord({ ...prev, decisions: [...prev.decisions, decision] }, recordId)) {
+      throw new TypeError('invalid managed decision');
+    }
+    const isPromotion = decision.decisionKind === 'promote' || decision.decisionKind === 'rollback';
+    const onCurrent = decision.contentHash !== undefined && decision.contentHash === prev.contentHash;
+    const dup = isPromotion && onCurrent
+      // promote/rollback 当前内容:不改变 promoted 态 → no-op(promote 当已 promoted、rollback 当未 promoted)。
+      ? (decision.decisionKind === 'promote') === isCurrentlyPromoted(prev)
+      : decision.contentHash !== undefined
+        && prev.decisions.some((d) => d.decisionKind === decision.decisionKind && d.contentHash === decision.contentHash);
+    if (dup) return prev;
+    const merged: ManagedArtifactRecord = { ...prev, decisions: [...prev.decisions, decision] };
+    persistManagedRecord(dir, merged);
+    return merged;
+  });
 }
 
 /**
@@ -423,10 +549,14 @@ export function buildManagedArtifactRecord(input: {
   distribution: ManagedDistributionTarget[];
   id?: string;
 }): ManagedArtifactRecord {
+  const id = input.id ?? managedRecordId(input.kind, input.name);
+  if (id !== managedRecordId(input.kind, input.name)) {
+    throw new TypeError('managed record id must match kind and name');
+  }
   return {
     recordKind: 'managed-artifact',
     schemaVersion: 2,
-    id: input.id ?? managedRecordId(input.kind, input.name),
+    id,
     name: input.name,
     kind: input.kind,
     source: input.source,

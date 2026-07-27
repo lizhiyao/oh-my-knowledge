@@ -34,10 +34,10 @@ describe('卡片合并 include 开关(server 级)', () => {
       timestamp: '2026-06-14T00:00:00Z', status: 'pass', passCount: 1, warnCount: 0, failCount: 0 }, proj);
     const obsReport = { kind: 'observe-health',
       meta: { tracePath: '/t', kbPath: null, sessionCount: 1, segmentCount: 10, messageCount: 5, toolCallCount: 3,
-        toolFailureRate: 0, timeRange: { from: 'a', to: 'b' }, generatedAt: '2026-06-14T01:00:00Z' },
+        toolFailureRate: 0, timeRange: { from: '2026-06-14T00:00:00Z', to: '2026-06-14T01:00:00Z' }, generatedAt: '2026-06-14T01:00:00Z' },
       bySkill: { 'cg-skill': { skillName: 'cg-skill', segmentCount: 10, toolCallCount: 3, toolFailureCount: 0,
-        toolFailureRate: 0, stability: 1, confidence: 'high', gap: { gapRate: 0, weightedGapRate: 0, signals: [] } } },
-      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'high' } };
+        toolFailureRate: 0, stability: 'stable', confidence: 'low', gap: { gapRate: 0, weightedGapRate: 0, signals: [] } } },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'low' } };
     // 同时写「真身文件」(供 loadAnalysis 按 card.path 回源,如 skill-trend 详情)+ 卡片。
     writeFileSync(join(proj, reportFileName('cg-observe')), JSON.stringify(obsReport));
     indexObserveWrite(obsReport as never, join(proj, reportFileName('cg-observe')), proj, 'cg-observe');

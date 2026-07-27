@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitTrainValTest, restrictReportToSamples, decideAccept, computeEditDelta } from '../../src/authoring/evolver.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitTrainValTest, restrictReportToSamples, decideAccept, computeEditDelta, agentSampleEditWithinScope } from '../../src/authoring/evolver.js';
 import { fixSamples } from '../../src/authoring/sample-fixer.js';
 import type { Report, EvaluationReport } from '../../src/types/index.js';
 
@@ -138,6 +138,34 @@ describe('auto-fix-samples respects the holdout split', () => {
     });
     assert.match(capturedPrompt, /s_train/);
     assert.doesNotMatch(capturedPrompt, /s_hold/);
+  });
+});
+
+describe('agent sample-fix field boundary', () => {
+  const original = {
+    sample_id: 's1',
+    prompt: 'do the work',
+    assertions: [{ type: 'contains', value: 'done' }],
+    omkFix: { attempts: 1, lastReportId: 'r1' },
+  };
+
+  it('allows only the declared fixable fields', () => {
+    assert.equal(agentSampleEditWithinScope(original, {
+      ...original,
+      assertions: [{ type: 'contains', value: 'result' }],
+      environment: { notes: 'fixture is ready' },
+    }), true);
+    assert.equal(agentSampleEditWithinScope(original, {
+      ...original,
+      prompt: 'changed intent',
+    }), false);
+  });
+
+  it('rejects agent-authored omkFix metadata', () => {
+    assert.equal(agentSampleEditWithinScope(original, {
+      ...original,
+      omkFix: { attempts: 99, lastReportId: 'forged' },
+    }), false);
   });
 });
 

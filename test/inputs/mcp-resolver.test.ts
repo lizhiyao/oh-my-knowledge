@@ -98,6 +98,25 @@ describe('loadMcpConfig', () => {
     assert.ok(result);
     assert.deepEqual(Object.keys(result), ['req-tool']);
   });
+
+  it('preserves a prototype-shaped server name as an own entry', () => {
+    const configPath = join(tmpDir, '.mcp.json');
+    writeFileSync(configPath, JSON.stringify({
+      mcpServers: Object.fromEntries([[
+        '__proto__',
+        {
+          command: 'node',
+          urlPatterns: ['docs.example.com'],
+          fetchTool: { name: 'query', urlParam: 'url' },
+        },
+      ]]),
+    }));
+
+    const result = loadMcpConfig(configPath);
+    assert.ok(result);
+    assert.equal(Object.hasOwn(result, '__proto__'), true);
+    assert.equal(result.__proto__.command, 'node');
+  });
 });
 
 describe('resolveMcpUrls', () => {

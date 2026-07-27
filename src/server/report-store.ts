@@ -4,68 +4,33 @@
  * Can be replaced with database, S3, etc.
  */
 
-import { readdir, readFile, writeFile, unlink, access, mkdir, rename, stat } from 'node:fs/promises';
+import { readdir, readFile, unlink, access, mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
+import {
+  isReportFileName,
+  reportFileName,
+  reportFilePath,
+  reportFileStem,
+  safeArtifactFileStem,
+} from '../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
+import { parseReportDocument } from '../eval-core/report-document.js';
+import { writeJsonFileAtomicAsync } from '../shared/atomic-json.js';
+import { KeyedMutex } from '../shared/keyed-mutex.js';
 import type { EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportIndexCard, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
-
-// Per-id in-memory mutex for safe read-modify-write.
-// Uses a queue to avoid the race window between checking and acquiring the lock.
-const locks = new Map<string, Promise<void>>();
-
-async function withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  // Chain onto any existing lock for this id, so requests are serialized
-  const prev = locks.get(id) ?? Promise.resolve();
-  let releaseLock!: () => void;
-  const next = new Promise<void>((r) => { releaseLock = r; });
-  locks.set(id, next);
-  await prev;
-  try {
-    return await fn();
-  } finally {
-    locks.delete(id);
-    releaseLock();
-  }
-}
 
 /**
  * Create a file-system-based report store.
  */
 export function createFileStore(dir: string): ReportStore {
+  const mutations = new KeyedMutex();
+
   async function ensureDir(): Promise<void> {
     try {
       await access(dir);
     } catch {
       await mkdir(dir, { recursive: true });
     }
-  }
-
-  function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
-    if (!data || typeof data !== 'object') return null;
-    const record = data as Record<string, unknown>;
-    const kind = record.kind === 'evaluation' || record.kind === 'batch-evaluation'
-      ? record.kind
-      : undefined;
-    if (kind === 'evaluation') {
-      if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
-      return {
-        ...record,
-        kind,
-        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument;
-    }
-    if (kind === 'batch-evaluation') {
-      if (!record.meta || !Array.isArray(record.items)) return null;
-      return {
-        ...record,
-        kind,
-        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
-      } as unknown as ReportDocument;
-    }
-    // 只认 canonical 顶层 `kind`(evaluation / batch-evaluation)。不再为旧格式(顶层无该判别字段的
-    // 历史文件)做读兼容 —— 顶层 kind cutover 是硬切换,旧文件直接判脏丢弃。
-    return null;
   }
 
   function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
@@ -78,6 +43,15 @@ export function createFileStore(dir: string): ReportStore {
   // 完全跳过 readFile。
   let cachedFingerprint = '';
   let cachedRuns: ReportDocument[] | null = null;
+  function invalidateListCache(): void {
+    cachedFingerprint = '';
+    cachedRuns = null;
+  }
+
+  function cloneReports(reports: ReportDocument[]): ReportDocument[] {
+    return structuredClone(reports);
+  }
+
   async function computeListFingerprint(): Promise<string | null> {
     try {
       const dirStat = await stat(dir);
@@ -100,7 +74,7 @@ export function createFileStore(dir: string): ReportStore {
     }
     migrateLegacyReportFiles(dir, 'report');
     const fp = await computeListFingerprint();
-    if (fp != null && fp === cachedFingerprint && cachedRuns) return cachedRuns;
+    if (fp != null && fp === cachedFingerprint && cachedRuns) return cloneReports(cachedRuns);
 
     const files = (await readdir(dir))
       .filter(isReportFileName)
@@ -110,8 +84,8 @@ export function createFileStore(dir: string): ReportStore {
     for (const file of files) {
       try {
         const data = JSON.parse(await readFile(join(dir, file), 'utf-8'));
-        const report = normalizeReportDocument(data, reportFileStem(file) ?? file);
-        if (report) runs.push(report);
+        const report = parseReportDocument(data, reportFileStem(file) ?? file);
+        if (report && reportFileName(report.id) === file) runs.push(report);
       } catch { /* skip corrupt files */ }
     }
     runs.sort((a, b) => {
@@ -122,27 +96,39 @@ export function createFileStore(dir: string): ReportStore {
     if (fp != null) {
       cachedFingerprint = fp;
       cachedRuns = runs;
+      return cloneReports(runs);
     }
     return runs;
   }
 
   async function get(id: string): Promise<ReportDocument | null> {
+    if (!id || safeArtifactFileStem(id) !== id) return null;
     migrateLegacyReportFiles(dir, 'report');
     try {
       const data = JSON.parse(await readFile(reportFilePath(dir, id), 'utf-8'));
-      return normalizeReportDocument(data, id);
+      return parseReportDocument(data, id, id);
     } catch {
       return null;
     }
   }
 
-  async function save(id: string, report: ReportDocument): Promise<void> {
+  async function saveUnlocked(id: string, report: ReportDocument): Promise<void> {
+    if (
+      !id
+      || safeArtifactFileStem(id) !== id
+      || report.id !== id
+      || !parseReportDocument(report, id, id)
+    ) {
+      throw new Error('invalid report');
+    }
     await ensureDir();
     migrateLegacyReportFiles(dir, 'report');
-    const targetPath = reportFilePath(dir, id);
-    const tmpPath = `${targetPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
-    await writeFile(tmpPath, JSON.stringify(report, null, 2));
-    await rename(tmpPath, targetPath);
+    await writeJsonFileAtomicAsync(reportFilePath(dir, id), report);
+    invalidateListCache();
+  }
+
+  async function save(id: string, report: ReportDocument): Promise<void> {
+    await mutations.run(id, () => saveUnlocked(id, report));
   }
 
   /**
@@ -150,35 +136,33 @@ export function createFileStore(dir: string): ReportStore {
    * Prevents concurrent updates from overwriting each other.
    */
   async function update(id: string, mutator: (report: ReportDocument) => void): Promise<ReportDocument | null> {
-    return withLock(id, async () => {
+    return mutations.run(id, async () => {
       const report = await get(id);
       if (!report) return null;
       mutator(report);
-      await save(id, report);
+      await saveUnlocked(id, report);
       return report;
     });
   }
 
   async function remove(id: string): Promise<boolean> {
-    migrateLegacyReportFiles(dir, 'report');
-    try {
-      await unlink(reportFilePath(dir, id));
-      return true;
-    } catch (err: unknown) {
-      const fsError = err as NodeJS.ErrnoException;
-      if (fsError.code === 'ENOENT') return false;
-      throw err;
-    }
+    if (!id || safeArtifactFileStem(id) !== id) return false;
+    return mutations.run(id, async () => {
+      migrateLegacyReportFiles(dir, 'report');
+      try {
+        await unlink(reportFilePath(dir, id));
+        invalidateListCache();
+        return true;
+      } catch (err: unknown) {
+        const fsError = err as NodeJS.ErrnoException;
+        if (fsError.code === 'ENOENT') return false;
+        throw err;
+      }
+    });
   }
 
   async function exists(id: string): Promise<boolean> {
-    migrateLegacyReportFiles(dir, 'report');
-    try {
-      await access(reportFilePath(dir, id));
-      return true;
-    } catch {
-      return false;
-    }
+    return (await get(id)) !== null;
   }
 
   async function findByVariant(variantName: string): Promise<EvaluationReport[]> {
@@ -237,7 +221,12 @@ export function createOverlayReportStore(projectDir: string, globalDir: string):
   }
 
   async function remove(id: string): Promise<boolean> {
-    return (await project.remove(id)) || global.remove(id);
+    // Migration windows can leave the same id in both roots. Always attempt both:
+    // short-circuiting after the project copy would make get() fall back to the
+    // surviving global copy and appear to resurrect a successfully deleted report.
+    const projectRemoved = await project.remove(id);
+    const globalRemoved = await global.remove(id);
+    return projectRemoved || globalRemoved;
   }
 
   async function findByVariant(variantName: string): Promise<EvaluationReport[]> {

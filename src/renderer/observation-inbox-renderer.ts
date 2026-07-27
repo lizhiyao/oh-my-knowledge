@@ -2,6 +2,7 @@ import { DEFAULT_LANG, layout, e } from './layout.js';
 import type { Lang } from '../types/index.js';
 import {
   severityReasonFor,
+  observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
   getSkillChainAdvisory,
   resolveAdvisoryCommand,
@@ -30,6 +31,7 @@ import type {
 } from '../observability/inbox-view-model.js';
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/feedback-projection.js';
 import { durationMsBetween } from '../shared/time.js';
+import { incrementRecordCount } from '../shared/record-count.js';
 import { OBSERVATION_INBOX_STYLES } from './observation-inbox/styles.js';
 import {
   experienceSkillAnchor,
@@ -99,20 +101,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   for (const invocation of experience?.invocations ?? []) {
     const toolCounts = experienceToolCountsBySkill.get(invocation.skillName) ?? {};
     for (const [tool, count] of Object.entries(invocation.toolCounts ?? {})) {
-      toolCounts[tool] = (toolCounts[tool] ?? 0) + count;
+      incrementRecordCount(toolCounts, tool, count);
     }
     experienceToolCountsBySkill.set(invocation.skillName, toolCounts);
 
     const entrypoint = invocation.entrypoint ?? invocation.sourceKind ?? 'unknown';
     const entrypointCounts = experienceEntrypointCountsBySkill.get(invocation.skillName) ?? {};
-    entrypointCounts[entrypoint] = (entrypointCounts[entrypoint] ?? 0) + 1;
+    incrementRecordCount(entrypointCounts, entrypoint);
     experienceEntrypointCountsBySkill.set(invocation.skillName, entrypointCounts);
 
     const originLabel = invocation.attribution.pluginName
       ? `Skill 来源：插件 ${invocation.attribution.pluginName}`
       : 'Skill 来源：本地 skill';
     const originCounts = experienceSkillOriginCountsBySkill.get(invocation.skillName) ?? {};
-    originCounts[originLabel] = (originCounts[originLabel] ?? 0) + 1;
+    incrementRecordCount(originCounts, originLabel);
     experienceSkillOriginCountsBySkill.set(invocation.skillName, originCounts);
 
     const attributionMethod = invocation.attribution.source === 'command-name'
@@ -129,7 +131,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const attributionTarget = invocation.attribution.commandName ?? invocation.attribution.rawSkillRef ?? invocation.skillName;
     const attributionLabel = attributionTarget ? `${attributionMethod}：${attributionTarget}` : attributionMethod;
     const attributionCounts = experienceAttributionCountsBySkill.get(invocation.skillName) ?? {};
-    attributionCounts[attributionLabel] = (attributionCounts[attributionLabel] ?? 0) + 1;
+    incrementRecordCount(attributionCounts, attributionLabel);
     experienceAttributionCountsBySkill.set(invocation.skillName, attributionCounts);
   }
   const countSkillsBySeverity = (...severities: ObservationInboxItem['severity'][]): number =>
@@ -139,6 +141,31 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const latestInvocationLabel = lang === 'zh' ? '最近调用' : 'Latest invocation';
   const invocationWindowLabel = lang === 'zh' ? '调用窗口' : 'Invocation window';
   const formatTimeRange = (start?: string, end?: string, durationMs?: number): string => formatTimeRangeImpl(start, end, durationMs, lang);
+  const timestampedOccurrences = (item: ObservationInboxItem): number =>
+    item.timestampedOccurrences
+      ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences);
+  const observedItemTimestamp = (item: ObservationInboxItem, value: string): string =>
+    timestampedOccurrences(item) > 0
+      ? value.slice(0, 19).replace('T', ' ')
+      : (lang === 'zh' ? '未记录' : 'Not recorded');
+  const sessionTimestampedInvocationCount = (session: ExperienceSessionSummary): number =>
+    session.timestampedInvocationCount
+      ?? (session.startTimestamp === '1970-01-01T00:00:00.000Z' ? 0 : session.invocationIds.length);
+  const observedSessionRange = (session: ExperienceSessionSummary): string => {
+    const count = sessionTimestampedInvocationCount(session);
+    if (count === 0) return lang === 'zh' ? '未记录' : 'Not recorded';
+    const range = formatTimeRange(session.startTimestamp, session.endTimestamp);
+    return count < session.invocationIds.length
+      ? `${range}${lang === 'zh' ? '（部分调用无时间）' : ' (partial timestamps)'}`
+      : range;
+  };
+  const observedSessionTimestamp = (session: ExperienceSessionSummary, value: string): string =>
+    sessionTimestampedInvocationCount(session) > 0
+      ? value.slice(0, 19).replace('T', ' ')
+      : (lang === 'zh' ? '未记录' : 'Not recorded');
+  const skillTimestampedInvocationCount = (skill: NonNullable<typeof experience>['skills'][number]): number =>
+    skill.timestampedInvocationCount
+      ?? (skill.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : skill.invocationCount);
   const reviewSeverityMeta = (item: ObservationInboxItem): { label: string; decision: string; color: string; bg: string } => {
     if (item.severity === 'high') {
       return { label: '高风险/需关注', decision: '优先看，可能要补 SKILL.md 或改 skill 说明', color: 'var(--red)', bg: 'rgba(220,38,38,.08)' };
@@ -235,14 +262,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSourceBadge = (item: ObservationInboxItem): string => {
-    const label = item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
-    const color = item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
+    const label = item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'codex' ? 'Codex' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
+    const color = item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'codex' ? '#1677ff' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
     return `<span title="调用日志来源：${e(label)}" style="display:inline-flex;margin-top:4px;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:${color};font-size:11px;font-weight:650">${e(label)}</span>`;
   };
   const confidenceHeaderHelp = '判断把握：OMK 对“这条 过程发现 是否需要处理/是否高风险/需关注”的规则判断有多确定。归属把握：OMK 把这条 过程发现 归到当前 skill 名下有多确定，例如明确调用 skill 通常更高。';
   type IndicatorHelpKey =
     | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule' | 'selfCorrection' | 'repeatedExecution'
-    | 'toolCall' | 'toolFailure' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
+    | 'toolCall' | 'toolFailure' | 'toolCancelled' | 'toolUnknown' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
     | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit'
     | 'skillRoleRouter' | 'skillRoleExecutor' | 'skillRoleMixed' | 'skillRoleUnknown'
     | 'llmSkillTypeRouter' | 'llmSkillTypeDelegation' | 'llmSkillTypeExecutor' | 'llmSkillTypeAdvisory' | 'llmSkillTypeWorkflowOwner' | 'llmSkillTypeUnknown';
@@ -258,6 +285,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     repeatedExecution: '重复执行',
     toolCall: '工具调用',
     toolFailure: '工具执行失败',
+    toolCancelled: '工具调用取消',
+    toolUnknown: '工具状态未知',
     highObservation: '高优先级过程发现',
     mediumObservation: '低风险/抽样过程发现',
     hedging: '不确定表达',
@@ -291,6 +320,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     repeatedExecution: '统计同类步骤、工具或流程被重复执行的信号。高频出现通常对应绕路、工具策略不清晰或 workflow 缺少明确顺序。',
     toolCall: '统计该 skill 运行片段里的 tool_use 调用总数，包括 Bash、Read、Grep 等工具。',
     toolFailure: '统计该 skill 运行片段里失败的工具执行结果，例如 tool_result 标记 is_error=true。注意：工具执行失败不等于整个 skill 调用失败。',
+    toolCancelled: '统计 runtime 明确标记为 cancelled 的工具调用。取消与工具执行失败分开统计，也不作为知识缺口证据。',
+    toolUnknown: '统计 runtime 未提供可信终态的工具调用。状态未知不计入工具成功率或失败率分母。',
     highObservation: '统计 severity=high 的过程发现，通常表示可能需要优先复盘的执行问题。',
     mediumObservation: '统计 severity=medium/low 的过程发现，通常进入抽样复盘，不直接等同于必须改 skill。',
     hedging: '统计回答或过程发现里的“不确定 / 可能 / 需要确认”等低置信文本信号。',
@@ -319,6 +350,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       'claude-desktop': 'Claude Code App',
       cli: 'Claude CLI',
       'sdk-ts': 'Claude SDK',
+      'codex-desktop': 'ChatGPT 桌面端（Codex）',
+      'codex-cli': 'Codex CLI',
+      'codex-sdk': 'Codex SDK',
+      'codex-vscode': 'Codex VS Code',
+      claudian: 'Claudian',
       openclaw: 'OpenClaw',
       markdown_log: 'Markdown 日志',
     };
@@ -334,20 +370,30 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return value || '未记录';
   };
   const renderInvocationSummary = (
-    indicators: { userInterruptionCount: number; toolFailureCount: number; toolCallCount: number },
+    indicators: {
+      userInterruptionCount: number;
+      toolFailureCount: number;
+      toolCancelledCount?: number;
+      toolUnknownCount?: number;
+      toolCallCount: number;
+    },
     invocationCount: number,
   ): string => {
     const total = indicators.toolCallCount;
     const failed = Math.max(0, indicators.toolFailureCount);
+    const cancelled = Math.max(0, indicators.toolCancelledCount ?? 0);
+    const unknown = Math.max(0, indicators.toolUnknownCount ?? 0);
     const interrupted = Math.max(0, indicators.userInterruptionCount);
-    const success = Math.max(0, total - failed);
+    const success = Math.max(0, total - failed - cancelled - unknown);
     const pct = (value: number): string => total > 0 ? `${Math.round(value / total * 100)}%` : '—';
     return `<div class="invocation-summary" title="这是 trace 中可观测到的调用过程汇总。工具执行失败/人工中断是过程信号，不直接等同于整个 skill 失败或用户目标失败。">
       <div class="invocation-total">工具调用总次数 <strong>${total}</strong></div>
       <div class="invocation-breakdown">
         <span>工具执行成功 ${success} / ${pct(success)}</span>
         <span>工具执行失败 ${failed} / ${pct(failed)}</span>
-        <span>人工中断 ${interrupted} / ${pct(interrupted)}</span>
+        ${cancelled > 0 ? `<span>工具调用取消 ${cancelled} / ${pct(cancelled)}</span>` : ''}
+        ${unknown > 0 ? `<span>结果状态未知 ${unknown} / ${pct(unknown)}</span>` : ''}
+        <span>人工中断 ${interrupted} 次</span>
       </div>
       <div class="invocation-footnote">Skill 调用段 ${invocationCount}</div>
     </div>`;
@@ -415,7 +461,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const next: Record<string, number> = {};
     for (const [key, count] of Object.entries(counts ?? {})) {
       const display = label(key);
-      next[display] = (next[display] ?? 0) + count;
+      incrementRecordCount(next, display, count);
     }
     return next;
   };
@@ -482,7 +528,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const merged = { ...(counts.businessActions ?? {}) };
     if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
       for (const [key, value] of Object.entries(legacy as Record<string, unknown>)) {
-        if (typeof value === 'number') merged[key] = (merged[key] ?? 0) + value;
+        if (typeof value === 'number') incrementRecordCount(merged, key, value);
       }
     }
     return merged;
@@ -569,6 +615,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     repeatedExecutionCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
+    toolCancelledCount: 0,
+    toolUnknownCount: 0,
     highObservationCount: 0,
     mediumObservationCount: 0,
     hedgingCount: 0,
@@ -580,8 +628,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return pattern.test(value);
   };
   const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
-    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
-    const entry = reviewState.entries[`evidence_metric:${targetId}`];
+    const entry = observationMetricAnnotationEntry(
+      reviewState,
+      { ...event, metricScopeId },
+      metricKey,
+    );
     return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
   };
   const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
@@ -783,6 +834,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
+      toolCancelledCount: (current.toolCancelledCount ?? 0) + (next.toolCancelledCount ?? 0),
+      toolUnknownCount: (current.toolUnknownCount ?? 0) + (next.toolUnknownCount ?? 0),
       highObservationCount: current.highObservationCount + next.highObservationCount,
       mediumObservationCount: current.mediumObservationCount + next.mediumObservationCount,
       hedgingCount: current.hedgingCount + next.hedgingCount,
@@ -914,8 +967,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const displayToolCounts = mergeCountsByLabel(toolCounts, userFacingToolLabel);
     const total = indicators.toolCallCount;
     const failed = Math.max(0, indicators.toolFailureCount);
+    const cancelled = Math.max(0, indicators.toolCancelledCount ?? 0);
+    const unknown = Math.max(0, indicators.toolUnknownCount ?? 0);
     const interrupted = Math.max(0, indicators.userInterruptionCount);
-    const success = Math.max(0, total - failed);
+    const success = Math.max(0, total - failed - cancelled - unknown);
     const processMetrics = [
       renderDecisionMetricIfPositive('高优先级', indicators.highObservationCount, 'priority'),
       renderDecisionMetricIfPositive('抽样过程发现', indicators.mediumObservationCount, 'sample'),
@@ -926,9 +981,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       renderDecisionMetricIfPositive('显式缺口', indicators.explicitMarkerCount, 'sample'),
     ].filter(Boolean).join('');
     return `<div class="skill-evidence-summary">
-      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('有结果', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现明确完成态或结果反馈。')}${renderSoftMetric('有产物', indicators.deliverableArtifactSignalCount ?? 0, '助手回复里出现文档链接、Demo 地址、文件路径、代码块或上传产物。')}</div>
+      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${cancelled > 0 ? renderMetricShare('取消', cancelled, total) : ''}${unknown > 0 ? renderMetricShare('状态未知', unknown, total) : ''}${renderDecisionMetric('人工中断', interrupted, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('有结果', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现明确完成态或结果反馈。')}${renderSoftMetric('有产物', indicators.deliverableArtifactSignalCount ?? 0, '助手回复里出现文档链接、Demo 地址、文件路径、代码块或上传产物。')}</div>
       <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
-      <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
+      <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}${cancelled > 0 ? renderMetricShare('工具调用取消', cancelled, total) : ''}${unknown > 0 ? renderMetricShare('结果状态未知', unknown, total) : ''}</div>
       <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
       ${renderSkillProblemPatterns(skill.skillName, skill.problemPatterns)}
     </div>`;
@@ -1891,6 +1946,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
     const metrics = report.oneLookMetrics;
     const tokenUsage = metrics.tokenUsage;
+    const tokenCoverage = tokenUsage.coverage ?? 0;
+    const tokenUsageText = tokenCoverage > 0
+      ? `输入 ${tokenUsage.inputTokens} / 输出 ${tokenUsage.outputTokens} / 缓存读取 ${tokenUsage.cacheReadTokens} / 缓存写入 ${tokenUsage.cacheCreationTokens}${tokenCoverage < 1 ? `（覆盖 ${Math.round(tokenCoverage * 100)}% 调用）` : ''}`
+      : '—（trace 未提供可归因的 token 用量）';
     const traceLinks = report.traceLinks.slice(0, 8);
     const story = report.sessionStory ?? fallbackSessionStory(report);
     const storyEvidenceButtons = (refs: ExperienceEvidenceRef[]): string => refs.length > 0
@@ -2150,6 +2209,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             ${[
               ['工具调用', metrics.toolCallCount],
               ['工具失败', metrics.toolFailureCount],
+              ['工具取消', metrics.toolCancelledCount ?? 0],
+              ['状态未知', metrics.toolUnknownCount ?? 0],
               ['用户消息', metrics.userMessageCount],
               ['追问/补充', metrics.userFollowUpCount],
               ['有结果', metrics.assistantDeliverySignalCount],
@@ -2160,7 +2221,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             ].map(([label, value]) => `<div style="padding:7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface)"><div style="font-size:10px;color:var(--text-muted)">${e(String(label))}</div><strong style="font-size:13px;color:var(--text-primary)">${e(String(value))}</strong></div>`).join('')}
           </div>
           <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">
-            Token 使用量（按本次能力片段归因）：输入 ${tokenUsage.inputTokens} / 输出 ${tokenUsage.outputTokens} / 缓存读取 ${tokenUsage.cacheReadTokens} / 缓存写入 ${tokenUsage.cacheCreationTokens}
+            Token 使用量（按本次能力片段归因）：${tokenUsageText}
           </div>
           <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">证据定位</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
@@ -2274,9 +2335,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     includeDownstreamFeedback?: boolean;
     feedbackSignals?: ExperienceFeedbackSignal[];
     activeEventIds?: Set<string>;
-    activeSourceTrace?: string;
-    activeStartRecordIndex?: number;
-    activeEndRecordIndex?: number;
     showSkillWindowMarkers?: boolean;
     suppressMetricTagsOutsideSkillWindow?: boolean;
   }
@@ -2349,7 +2407,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (event.kind === 'assistant_message') return { icon: 'A', label: '助手回复', tone: 'assistant' };
 	    if (event.kind === 'tool_use') return { icon: 'TU', label: '工具调用', tone: 'tool-use' };
 	    if (event.kind === 'tool_result') {
-	      if (event.isError) return { icon: 'TR', label: '工具执行失败', tone: 'tool-error' };
+	      if (event.toolStatus === 'failure' || (event.toolStatus === undefined && event.isError)) return { icon: 'TR', label: '工具执行失败', tone: 'tool-error' };
+	      if (event.toolStatus === 'cancelled') return { icon: 'TR', label: '工具调用取消', tone: 'runtime' };
+	      if (event.toolStatus === 'unknown') return { icon: 'TR', label: '工具状态未知', tone: 'runtime' };
 	      return { icon: 'TR', label: isSkillLaunchResult(event) ? '工具调用成功' : '工具执行成功', tone: 'tool-result' };
 	    }
 	    if (event.kind === 'skill_context') return { icon: 'S', label: 'Skill 注入上下文', tone: 'skill' };
@@ -2385,8 +2445,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
 	  }
 	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
-	    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
-	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
+	    const entry = observationMetricAnnotationEntry(
+	      reviewState,
+	      { ...event, metricScopeId },
+	      metricKey,
+	    );
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
 	  const evidenceMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
@@ -2547,8 +2610,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
 	    if (event.kind === 'tool_result') {
 	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类工具结果或失败恢复路径被重复出现。高频出现时通常对应绕路或 workflow 不清晰。' });
-	      if (event.isError) {
+	      if (event.toolStatus === 'failure' || (event.toolStatus === undefined && event.isError)) {
 	        badges.push({ label: '工具执行失败', className: 'metric-tool-failure', title: 'tool_result 标记 is_error=true，表示这次工具执行失败。' });
+	      } else if (event.toolStatus === 'cancelled') {
+	        badges.push({ label: '工具调用取消', className: 'metric-neutral', title: 'runtime 明确标记这次工具调用已取消；它不计作工具执行失败。' });
+	      } else if (event.toolStatus === 'unknown') {
+	        badges.push({ label: '工具状态未知', className: 'metric-neutral', title: 'runtime 没有提供可确认的成功或失败状态；这次调用不计入工具成功率分母。' });
 	      } else if (isSkillLaunchResult(event)) {
 	        badges.push({ label: '工具调用成功', className: 'metric-tool-success', title: 'Launching skill 表示 Skill 工具调用已被 runtime 接受并启动；这不是 skill 执行结束。' });
 	      } else {
@@ -2624,13 +2691,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const metricAnnotationTarget = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string =>
     observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
 	  const metricAnnotationVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
-	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
-	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
+	    const entry = observationMetricAnnotationEntry(
+	      reviewState,
+	      { ...event, metricScopeId },
+	      metricKey,
+	    );
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
 	  const metricAnnotationReason = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string => {
-	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
-	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
+	    const entry = observationMetricAnnotationEntry(
+	      reviewState,
+	      { ...event, metricScopeId },
+	      metricKey,
+	    );
 	    return typeof entry?.reason === 'string' ? entry.reason : '';
 	  };
   const timelineManualMetricKeys = (): ObservationMetricKey[] => [
@@ -2666,10 +2739,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ? '已加入窗口'
         : '加入窗口';
     const source = {
+      traceId: event.traceId,
       sourceTrace: event.sourceTrace,
       sessionId: event.sessionId,
       messageIndex: event.messageIndex,
       messageUuid: event.messageUuid,
+      callInstanceId: event.callInstanceId,
       toolUseId: event.toolUseId,
       snippet: (event.snippet ?? '').slice(0, 240),
     };
@@ -2681,10 +2756,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       data-manual-mark-goal-action="${e(goalAction)}"
       data-manual-mark-metrics="${e(JSON.stringify(metrics))}"
       data-manual-mark-source="${e(JSON.stringify(source))}"
+      data-trace-id="${e(event.traceId ?? '')}"
       data-source-trace="${e(event.sourceTrace)}"
       data-session-id="${e(event.sessionId)}"
       data-message-index="${event.messageIndex ?? ''}"
       data-message-uuid="${e(event.messageUuid ?? '')}"
+      data-call-instance-id="${e(event.callInstanceId ?? '')}"
       data-tool-use-id="${e(event.toolUseId ?? '')}"
       data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
       onclick="openTimelineManualMark(this)"
@@ -2703,12 +2780,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const reviewSessionId = options.reviewSessionId ?? sessionId;
     const isInsideSkillWindow = (event: ExperienceTimelineEvent): boolean => {
       if (options.activeEventIds) return options.activeEventIds.has(event.id);
-      if (options.activeSourceTrace && event.sourceTrace !== options.activeSourceTrace) return false;
-      if (typeof event.messageIndex !== 'number') return true;
-      const start = options.activeStartRecordIndex;
-      const end = options.activeEndRecordIndex;
-      if (typeof start === 'number' && event.messageIndex < start) return false;
-      if (typeof end === 'number' && event.messageIndex > end) return false;
       return true;
     };
     const isAddedToSkillWindow = (event: ExperienceTimelineEvent): boolean =>
@@ -2841,16 +2912,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSessionTimelineTree = (session: ExperienceSessionSummary): string => {
-    const activeEventIds = new Set(session.timelinePreview.map((event) => event.id));
+    const sessionInvocationIds = new Set(session.invocationIds);
+    const invocationEventIds = (experience?.invocations ?? [])
+      .filter((invocation) => sessionInvocationIds.has(invocation.id))
+      .flatMap((invocation) => invocation.timelineEventIds ?? invocation.timeline.map((event) => event.id));
+    const activeEventIds = new Set(
+      invocationEventIds.length > 0
+        ? invocationEventIds
+        : session.timelinePreview.map((event) => event.id),
+    );
     const fullTimelineOptions: TimelineRenderOptions = {
       reviewSessionId: session.id,
       currentSkillName: session.skillName,
       includeDownstreamFeedback: shouldIncludeDownstreamFeedbackForDisplay(session),
       feedbackSignals: session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [],
       activeEventIds,
-      activeSourceTrace: session.sourceTrace,
-      activeStartRecordIndex: session.timelineScope?.segmentStartRecordIndex,
-      activeEndRecordIndex: session.timelineScope?.segmentEndRecordIndex,
       showSkillWindowMarkers: true,
       suppressMetricTagsOutsideSkillWindow: true,
     };
@@ -2887,8 +2963,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </section>
     </div>`;
   };
-  const rangeText = (start?: number, end?: number): string =>
-    start === undefined || end === undefined ? '未记录' : `#${start} - #${end}`;
+  const recordRangesText = (
+    ranges: ExperienceSessionSummary['timelineScope']['sessionRecordRanges'] | undefined,
+  ): string => {
+    if (!ranges || ranges.length === 0) return '无可定位 record';
+    return ranges.map((range) => {
+      const label = range.sourceTrace.split(/[\\/]/).pop() || range.traceId;
+      return `${label} #${range.startRecordIndex} - #${range.endRecordIndex}（${range.eventCount} 个事件）`;
+    }).join('；');
+  };
   const renderTimelineScopeNotice = (session: ExperienceSessionSummary): string => {
     const scope = session.timelineScope;
     if (!scope) {
@@ -2901,17 +2984,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <button type="button" disabled title="当前 report JSON 没有 fullSessionTimeline 字段，无法在前端还原完整 session。">需要重新生成报告</button>
       </div>`;
     }
-    const truncatedText = scope.truncated ? '当前 skill 窗口不是完整 session 链路' : '当前展示覆盖本次 skill 窗口';
-    const omittedText = `前面省略 ${scope.omittedBeforeCount} 个事件，后面省略 ${scope.omittedAfterCount} 个事件`;
+    const truncatedText = scope.truncated ? '当前 Skill 事件窗口不是完整 session 链路' : '当前展示覆盖本次 Skill 事件窗口';
+    const omittedText = `规范时间线中，窗口前有 ${scope.omittedBeforeCount} 个事件，窗口后有 ${scope.omittedAfterCount} 个事件`;
     const branchCount = session.timelineTree?.branches.length ?? 0;
     const chainText = branchCount > 0
-      ? `链路结构：主线 main + ${branchCount} 条 subagent 子链路；# 编号是各自 jsonl 文件内的 message index。`
-      : '链路结构：单 jsonl 时间线。';
+      ? `链路结构：主线 main + ${branchCount} 条 subagent 子链路；record 编号只在各自物理 trace 内有效。`
+      : '链路结构：单物理 trace 时间线。';
     return `<div class="timeline-scope-notice" data-timeline-scope-notice>
       <div>
         <strong>${e(truncatedText)}</strong>
-        <span>当前 skill 窗口事件：${scope.previewEventCount} 条 / 完整 session ${scope.fullSessionEventCount} 条事件</span>
-        <span>record 粗范围：${e(rangeText(scope.previewStartRecordIndex, scope.previewEndRecordIndex))} · skill 窗口：${e(rangeText(scope.segmentStartRecordIndex, scope.segmentEndRecordIndex))} · 完整 session：${e(rangeText(scope.sessionStartRecordIndex, scope.sessionEndRecordIndex))} · ${e(omittedText)}</span>
+        <span>当前预览：${scope.previewEventCount} 条 / Skill 事件窗口 ${scope.segmentEventCount ?? scope.previewEventCount} 条 / 完整 session ${scope.fullSessionEventCount} 条</span>
+        <span>${e(omittedText)}</span>
+        <span>Skill record 范围：${e(recordRangesText(scope.segmentRecordRanges))}</span>
+        <span>完整 session record 范围：${e(recordRangesText(scope.sessionRecordRanges))}</span>
         <span>${e(chainText)}</span>
       </div>
       <button type="button" data-full-session-toggle onclick="toggleFullSessionTimeline(this)">查看完整 session 时间线</button>
@@ -2978,7 +3063,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:8px 10px">${renderSignalLabel(item)}</td>
       <td class="num" style="padding:8px 10px;text-align:right">${renderOccurrences(item)}</td>
       <td class="num" style="padding:8px 10px;text-align:right">${item.confidence.toFixed(2)} / ${item.attributionConfidence.toFixed(2)}</td>
-      <td style="padding:8px 10px;color:var(--text-muted);font-size:12px">${item.lastSeen.slice(0, 19).replace('T', ' ')}</td>
+      <td style="padding:8px 10px;color:var(--text-muted);font-size:12px">${e(observedItemTimestamp(item, item.lastSeen))}</td>
       <td style="padding:8px 10px">${renderEvidenceCell(item)}</td>
       <td class="num" style="padding:8px 10px;text-align:right"><button type="button" onclick="toggleObservationDetail('${detailsId}', this)" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">${lang === 'zh' ? '展开' : 'Details'}</button></td>
     </tr>
@@ -2997,8 +3082,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             ${renderField('signalMeaning', `原始信号=${item.signalType}；OMK 判断出的失败原因=${item.signalSubtype}。例如 failed_search 表示工具搜索/读取失败，bash_probe/not_found/tool_limit 是 OMK 根据命令和输出内容进一步判断出来的原因。`)}
             ${renderField('occurrencesMeaning', `出现次数=${item.occurrences}；按 skill/cwd/signal/subtype/query/path 聚合去重后的同类事件数量。`)}
             ${renderField('reviewDecision', reviewSeverityMeta(item).decision)}
-            ${renderField('firstSeen', item.firstSeen)}
-            ${renderField('lastSeen', item.lastSeen)}
+            ${renderField('firstSeen', timestampedOccurrences(item) > 0 ? item.firstSeen : '未记录')}
+            ${renderField('lastSeen', timestampedOccurrences(item) > 0 ? item.lastSeen : '未记录')}
+            ${renderField('timestampCoverage', `${timestampedOccurrences(item)}/${item.occurrences}`)}
             ${renderField('recentSessionIds', item.recentSessionIds.join(', '))}
             <button type="button" onclick="openObservationTrace('${e(item.id)}', this)" style="margin-top:8px;font-size:12px;padding:5px 8px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer">Open in trace</button>
             <pre id="trace-${e(item.id)}" style="display:none;margin:8px 0 0;padding:9px;background:var(--bg-muted);border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.45;max-height:360px;overflow:auto;text-align:left"></pre>
@@ -3048,7 +3134,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       low: groupItems.filter((item) => item.severity === 'low').length,
       noise: groupItems.filter((item) => item.severity === 'noise').length,
     };
-    const latestObservation = groupItems.reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
+    const latestObservation = groupItems
+      .filter((item) => timestampedOccurrences(item) > 0)
+      .reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
     const latest = latestObservation || skillInvocationLastSeen[skillName] || '';
     const invocationCount = skillInvocationCounts[skillName] ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
     const sessionCount = skillSessionCounts[skillName] ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
@@ -3091,7 +3179,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <span style="font-family:ui-monospace,monospace;font-size:14px;font-weight:700">${e(skillName)}</span>
             <span title="这个 skill 在当前 trace 里被归因/触发的次数" style="padding:2px 7px;border-radius:999px;background:var(--info-bg);color:var(--accent);font-size:12px;font-weight:650">调用 ${invocationCount} 次</span>
           </div>
-          <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${groupItems.length} 过程发现 · ${sessionCount} sessions · source ${e(sourceKinds.join(', '))} · latest ${e(latest.slice(0, 19).replace('T', ' '))}</div>
+          <div style="color:var(--text-muted);font-size:12px;margin-top:3px">${groupItems.length} 过程发现 · ${sessionCount} sessions · source ${e(sourceKinds.join(', '))} · latest ${e(latest ? latest.slice(0, 19).replace('T', ' ') : '未记录')}</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <span title="高风险/需关注：优先看，可能需要补 SKILL.md 或改 skill 说明" style="padding:3px 7px;border-radius:999px;background:rgba(220,38,38,.08);color:var(--red);font-size:12px">高风险/需关注 ${counts.high}</span>
@@ -3123,7 +3211,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
     const invocationCount = skillInvocationCounts[skillName] ?? groupItems.reduce((sum, item) => sum + item.occurrences, 0);
     const sessionCount = skillSessionCounts[skillName] ?? new Set(groupItems.flatMap((item) => item.recentSessionIds)).size;
-    const lastProblemSeen = groupItems.reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
+    const lastProblemSeen = groupItems
+      .filter((item) => timestampedOccurrences(item) > 0)
+      .reduce((value, item) => item.lastSeen > value ? item.lastSeen : value, '');
     const lastUsed = skillInvocationLastSeen[skillName] || lastProblemSeen || '';
     const sources = Array.from(new Set(groupItems.map((item) => item.sourceKind))).sort();
     const observationCount = groupItems.length;
@@ -3450,7 +3540,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <div>触发判断：${e(attributionText)}</div>
         ${sourceMetadataHtml}
       </td>
-      <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(skill.lastSeen.slice(0, 19).replace('T', ' '))}</td>
+      <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(
+        skillTimestampedInvocationCount(skill) > 0
+          ? skill.lastSeen.slice(0, 19).replace('T', ' ')
+          : '未记录'
+      )}</td>
     </tr>
     <tr id="${e(chainId)}" data-context-chain-template style="display:none">
       <td colspan="8">${renderSkillChainTemplate(skill.skillName)}</td>
@@ -3493,11 +3587,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${metric('自我纠正', indicators.selfCorrectionCount ?? 0, 'selfCorrection')} ·
         ${metric('重复执行', indicators.repeatedExecutionCount ?? 0, 'repeatedExecution')} ·
         ${metric('工具执行失败', indicators.toolFailureCount, 'toolFailure')} ·
+        ${metric('工具调用取消', indicators.toolCancelledCount ?? 0, 'toolCancelled')} ·
+        ${metric('工具状态未知', indicators.toolUnknownCount ?? 0, 'toolUnknown')} ·
         ${metric('高优先级过程发现', indicators.highObservationCount, 'highObservation')}
       </td>
       <td class="session-time-cell" style="padding:9px 10px;color:var(--text-muted);font-size:12px;white-space:normal">
-        <div>${e(formatTimeRange(session.sourceSessionStartTimestamp ?? session.startTimestamp, session.sourceSessionEndTimestamp ?? session.endTimestamp, session.sourceSessionDurationMs))}</div>
-        <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
+        <div>${e(
+          session.sourceSessionStartTimestamp || session.sourceSessionEndTimestamp
+            ? formatTimeRange(session.sourceSessionStartTimestamp, session.sourceSessionEndTimestamp, session.sourceSessionDurationMs)
+            : observedSessionRange(session)
+        )}</div>
+        <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(observedSessionRange(session))}</div>
       </td>
       <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'evidence')" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">证据片段</button></td>
     </tr>
@@ -3524,7 +3624,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">这块只根据固定规则给“是否值得先看”的建议，例如优先复盘、抽样确认、上下文不足。它不是“符合预期/不符合预期”的最终结论。</div>
             ${renderAssistiveInference(shownInference)}
             <div style="font-size:12px;color:var(--text-secondary);line-height:1.55">
-              <div>调用摘要：调用段 ${session.invocationIds.length} · 工具调用 ${indicators.toolCallCount} · 工具执行失败 ${indicators.toolFailureCount} · 人工中断 ${indicators.userInterruptionCount}</div>
+              <div>调用摘要：调用段 ${session.invocationIds.length} · 工具调用 ${indicators.toolCallCount} · 工具执行失败 ${indicators.toolFailureCount}${(indicators.toolCancelledCount ?? 0) > 0 ? ` · 工具调用取消 ${indicators.toolCancelledCount ?? 0}` : ''} · 人工中断 ${indicators.userInterruptionCount}</div>
               <div>复盘分数：${session.reviewPriorityScore}</div>
               <div>关联 invocation：${session.invocationIds.length}</div>
               <div>关联过程发现：${session.relatedObservationIds.length}</div>
@@ -3558,22 +3658,32 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   }, new Map<string, ExperienceSessionSummary[]>()).entries())
     .sort((a, b) => (sessionSkillOrder.get(a[0]) ?? Number.MAX_SAFE_INTEGER) - (sessionSkillOrder.get(b[0]) ?? Number.MAX_SAFE_INTEGER));
   const experienceSessionGroupsHtml = experienceSessionGroups.map(([skillName, sessions], groupIndex) => {
-    const latest = sessions.reduce((max, session) => session.endTimestamp > max ? session.endTimestamp : max, sessions[0]?.endTimestamp ?? '');
+    const timestampedSessions = sessions.filter((session) => sessionTimestampedInvocationCount(session) > 0);
+    const latest = timestampedSessions.reduce(
+      (max, session) => session.endTimestamp > max ? session.endTimestamp : max,
+      '',
+    );
     const earliestSessionStart = sessions.reduce((min, session) => {
-      const value = session.sourceSessionStartTimestamp ?? session.startTimestamp;
+      const value = session.sourceSessionStartTimestamp
+        ?? (sessionTimestampedInvocationCount(session) > 0 ? session.startTimestamp : '');
       return value && value < min ? value : min;
-    }, sessions[0]?.sourceSessionStartTimestamp ?? sessions[0]?.startTimestamp ?? '');
+    }, '');
     const latestSessionEnd = sessions.reduce((max, session) => {
-      const value = session.sourceSessionEndTimestamp ?? session.endTimestamp;
+      const value = session.sourceSessionEndTimestamp
+        ?? (sessionTimestampedInvocationCount(session) > 0 ? session.endTimestamp : '');
       return value && value > max ? value : max;
-    }, sessions[0]?.sourceSessionEndTimestamp ?? sessions[0]?.endTimestamp ?? '');
+    }, '');
     const reviewFirst = sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length;
     const sampleReview = sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length;
     return `<details id="${e(experienceSkillAnchor(skillName))}" class="experience-session-group" open style="scroll-margin-top:16px">
       <summary>
         <div>
           <span class="experience-session-skill">${e(skillName)}</span>
-          <span class="experience-session-meta">${sessions.length} sessions · ${e(sessionTimeLabel)} ${e(formatTimeRange(earliestSessionStart, latestSessionEnd))} · ${e(latestInvocationLabel)} ${e(formatTimestamp(latest))}</span>
+          <span class="experience-session-meta">${sessions.length} sessions · ${e(sessionTimeLabel)} ${e(
+            earliestSessionStart || latestSessionEnd
+              ? formatTimeRange(earliestSessionStart, latestSessionEnd)
+              : (lang === 'zh' ? '未记录' : 'Not recorded')
+          )} · ${e(latestInvocationLabel)} ${e(latest ? formatTimestamp(latest) : (lang === 'zh' ? '未记录' : 'Not recorded'))}</span>
         </div>
         <div class="experience-session-tags">
           <span style="color:var(--red)">优先复盘 ${reviewFirst}</span>
@@ -3602,16 +3712,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </details>`;
   }).join('');
   void experienceSessionGroupsHtml;
-  const experienceIndicators = experience?.sessions.reduce((acc, session) => {
-    const indicators = displayIndicatorsForSession(session);
-    return {
-      toolCallCount: acc.toolCallCount + indicators.toolCallCount,
-      toolFailureCount: acc.toolFailureCount + indicators.toolFailureCount,
-      userInterruptionCount: acc.userInterruptionCount + indicators.userInterruptionCount,
-    };
-  }, { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 }) ?? { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 };
-  const experienceToolSuccessCount = Math.max(0, experienceIndicators.toolCallCount - experienceIndicators.toolFailureCount);
-  void experienceToolSuccessCount;
   const experienceReviewSkillCount = experience?.skills.filter((skill) => skill.reviewFirstSessionCount + skill.sampleReviewSessionCount > 0).length ?? 0;
   void experienceReviewSkillCount;
   const experienceReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) !== 'routine_sample').length ?? 0;
@@ -3666,7 +3766,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    inboxSiblingsMap.set(skill.sessionId, arr);
 	  }
 	  for (const arr of inboxSiblingsMap.values()) {
-	    arr.sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+	    arr.sort((a, b) =>
+        Number(sessionTimestampedInvocationCount(b) > 0) - Number(sessionTimestampedInvocationCount(a) > 0)
+        || a.startTimestamp.localeCompare(b.startTimestamp)
+      );
 	  }
 	  type InboxSkillCard = {
 	    skillName: string;
@@ -3682,13 +3785,18 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  }
 	  const inboxPriorityRank = (priority: ExperienceReviewPriority): number => priority === 'review_first' ? 0 : priority === 'sample_review' ? 1 : 2;
 	  const inboxSkillCards: InboxSkillCard[] = Array.from(inboxSkillsMap.entries()).map(([skillName, sessions]) => {
-	    sessions.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
+	    sessions.sort((a, b) =>
+        Number(sessionTimestampedInvocationCount(b) > 0) - Number(sessionTimestampedInvocationCount(a) > 0)
+        || b.endTimestamp.localeCompare(a.endTimestamp)
+      );
 	    const priority = sessions.find((s) => inboxResolvedPriority(s) === 'review_first')
 	      ? 'review_first'
 	      : sessions.find((s) => inboxResolvedPriority(s) === 'sample_review')
 	        ? 'sample_review'
 	        : 'routine_sample';
-	    const latestEnd = sessions.reduce((latest, s) => s.endTimestamp > latest ? s.endTimestamp : latest, '');
+	    const latestEnd = sessions
+        .filter((session) => sessionTimestampedInvocationCount(session) > 0)
+        .reduce((latest, s) => s.endTimestamp > latest ? s.endTimestamp : latest, '');
 	    return { skillName, sessions, priority, latestEnd };
 	  });
 	  inboxSkillCards.sort((a, b) => inboxPriorityRank(a.priority) - inboxPriorityRank(b.priority) || b.latestEnd.localeCompare(a.latestEnd) || a.skillName.localeCompare(b.skillName));
@@ -3825,7 +3933,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxEntrypointShort = (session: ExperienceSessionSummary): string => formatEntrypoint(session.entrypoint) || '未记录';
 	  const inboxFormatSessionLabel = (session: ExperienceSessionSummary): string => {
-	    const time = session.endTimestamp ? session.endTimestamp.slice(0, 16).replace('T', ' ') : '';
+	    const time = sessionTimestampedInvocationCount(session) > 0
+        ? observedSessionTimestamp(session, session.endTimestamp).slice(0, 16)
+        : '';
 	    const entrypoint = inboxEntrypointShort(session);
 	    const sessionShort = session.sessionId.length > 10 ? `${session.sessionId.slice(0, 8)}…` : session.sessionId;
 	    return [`Session ${sessionShort}`, entrypoint !== '未记录' ? entrypoint : '', time].filter(Boolean).join(' · ') || 'Session 调用记录';
@@ -3922,8 +4032,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
 	    const roleHelpKey = inboxSkillRoleHelpKey(link?.role ?? 'executor');
 	    const indicators = displayIndicatorsForSession(skill);
-	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
-	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
+	    const dur = observedSessionRange(skill);
+	    const startTime = sessionTimestampedInvocationCount(skill) > 0
+        ? skill.startTimestamp.slice(5, 16).replace('T', ' ')
+        : '未记录';
 	    const resolvedPriority = inboxResolvedPriority(skill);
 	    const priorityLabel = resolvedPriority === 'review_first' ? '要看一眼' : resolvedPriority === 'sample_review' ? '抽样' : '常规';
 	    const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
@@ -3944,6 +4056,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            <span>调用段 ${skill.invocationIds.length}</span>
 	            <span>工具 ${indicators.toolCallCount}</span>
 	            <span>失败 ${indicators.toolFailureCount}</span>
+	            ${(indicators.toolCancelledCount ?? 0) > 0 ? `<span>取消 ${indicators.toolCancelledCount ?? 0}</span>` : ''}
+	            ${(indicators.toolUnknownCount ?? 0) > 0 ? `<span>状态未知 ${indicators.toolUnknownCount ?? 0}</span>` : ''}
 	          </div>
 	          <div class="inbox-flow-range">${e(dur)}</div>
 	        </div>
@@ -4739,7 +4853,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  const inboxGetSessionToolCounts = (session: ExperienceSessionSummary): Record<string, number> => {
 	    const out: Record<string, number> = {};
 	    for (const inv of inboxGetSessionInvocations(session)) {
-	      for (const [k, v] of Object.entries(inv.toolCounts ?? {})) out[k] = (out[k] ?? 0) + v;
+	      for (const [k, v] of Object.entries(inv.toolCounts ?? {})) incrementRecordCount(out, k, v);
 	    }
 	    return out;
 	  };
@@ -4755,7 +4869,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    for (const inv of invocations) {
 	      for (const event of inv.timeline) {
 	        if (event.kind === 'tool_result' && event.isError && event.toolName) {
-	          failures[event.toolName] = (failures[event.toolName] ?? 0) + 1;
+	          incrementRecordCount(failures, event.toolName);
 	        }
 	      }
 	    }
@@ -4909,12 +5023,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      skill.sourceMetadata?.provider,
 	      skill.sourceMetadata?.model,
 	      skill.sourceMetadata?.modelApi,
-	    ].filter(Boolean).join(' / ') || '未记录模型';
-	    const tokenDetail: Array<{ name: string; count: number }> = metrics?.tokenUsage ? [
-	      { name: '输入 token', count: metrics.tokenUsage.inputTokens },
-	      { name: '输出 token', count: metrics.tokenUsage.outputTokens },
-	      { name: 'cache 读取', count: metrics.tokenUsage.cacheReadTokens },
-	      { name: 'cache 写入', count: metrics.tokenUsage.cacheCreationTokens },
+		    ].filter(Boolean).join(' / ') || '未记录模型';
+		    const tokenUsage = metrics?.tokenUsage;
+		    const tokenCoverage = tokenUsage?.coverage ?? 0;
+		    const tokenDetail: Array<{ name: string; count: number }> = tokenCoverage > 0 ? [
+		      { name: '输入 token', count: tokenUsage!.inputTokens },
+		      { name: '输出 token', count: tokenUsage!.outputTokens },
+		      { name: 'cache 读取', count: tokenUsage!.cacheReadTokens },
+		      { name: 'cache 写入', count: tokenUsage!.cacheCreationTokens },
 	    ] : [];
 	    type MetricCard = {
 	      key: string;
@@ -4927,6 +5043,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const cards: MetricCard[] = !metrics ? [] : [
 	      { key: 'toolCall', label: '工具调用', value: indicators.toolCallCount, detail: toolDetail, note: '本次能力调用段内触发的工具调用总数及各类工具的命中分布。', anomaly: false },
 	      { key: 'toolFailure', label: '工具失败', value: indicators.toolFailureCount, detail: toolFailureDetail, note: '工具执行返回失败的次数。命中失败可在版块 ④ 看具体上下文。', anomaly: indicators.toolFailureCount > 0 },
+	      { key: 'toolCancelled', label: '工具取消', value: indicators.toolCancelledCount ?? 0, detail: [], note: 'runtime 明确取消的工具调用次数。取消与执行失败分开统计。', anomaly: false },
+	      { key: 'toolUnknown', label: '状态未知', value: indicators.toolUnknownCount ?? 0, detail: [], note: 'runtime 没有提供可信终态的工具调用次数。这些调用不计入工具成功率或失败率分母。', anomaly: false },
 	      { key: 'userMessage', label: '用户消息', value: indicators.userMessageCount, detail: [], note: '本次能力调用段内的真实人工用户消息条数（已剔除 Skill 文档注入和运行时注入）。', anomaly: false },
 	      { key: 'userFollowUp', label: '追问', value: indicators.userFollowUpCount, detail: [], note: '按当前 skill 的归因结果统计用户追问 / 补充；点击版块 ④ 可用同名标签定位原文。', anomaly: indicators.userFollowUpCount > 0 },
 	      { key: 'userCorrection', label: '纠正', value: indicators.userCorrectionCount, detail: [], note: '用户明确纠正、否决前一轮交付的次数。出现即建议进版块 ④ 看上下文。', anomaly: indicators.userCorrectionCount > 0 },
@@ -4937,8 +5055,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
 	      { key: 'selfCorrection', label: '自我纠正', value: metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0, detail: [], note: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。', anomaly: (metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0) > 0 },
 	      { key: 'repeatedExecution', label: '重复执行', value: metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0, detail: [], note: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。', anomaly: (metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0) > 0 },
-	      { key: 'tokenInput', label: '输入 token', value: metrics.tokenUsage?.inputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
-	      { key: 'tokenOutput', label: '输出 token', value: metrics.tokenUsage?.outputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
+	      ...(tokenCoverage > 0 ? [
+	        { key: 'tokenInput', label: '输入 token', value: tokenUsage!.inputTokens, detail: tokenDetail, note: `仅累计 trace 已上报 token 的能力调用，覆盖率 ${Math.round(tokenCoverage * 100)}%。`, anomaly: false },
+	        { key: 'tokenOutput', label: '输出 token', value: tokenUsage!.outputTokens, detail: tokenDetail, note: `仅累计 trace 已上报 token 的能力调用，覆盖率 ${Math.round(tokenCoverage * 100)}%。`, anomaly: false },
+	      ] : []),
 	    ];
 	    const metricRow = cards.length === 0
 	      ? `<div id="inbox-sec-runtime-metrics-${e(skill.id)}"><p class="inbox-skill-empty">这条能力调用没有运行指标。</p></div>`
@@ -5000,11 +5120,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      if (!chainForSkill.healthCheck.workflows.declared) runtimeIssues.push('未标准化流程声明');
 	    }
 	    if (indicators.toolFailureCount > 0) runtimeIssues.push(`工具失败 ${indicators.toolFailureCount} 次`);
-	    const runtimeSummaryText = runtimeIssues.length > 0 ? runtimeIssues.join(' · ') : '运行指标无异常';
-	    const runtimeSummaryClass = runtimeIssues.length > 0 ? 'is-attention' : 'is-ok';
+	    const cancelledToolOutcomes = indicators.toolCancelledCount ?? 0;
+	    const unknownToolOutcomes = indicators.toolUnknownCount ?? 0;
+	    const runtimeSummaryText = runtimeIssues.length > 0
+	      ? runtimeIssues.join(' · ')
+	      : cancelledToolOutcomes > 0 || unknownToolOutcomes > 0
+	        ? [
+	            cancelledToolOutcomes > 0 ? `${cancelledToolOutcomes} 次工具调用取消` : '',
+	            unknownToolOutcomes > 0 ? `${unknownToolOutcomes} 次工具结果状态未知` : '',
+	          ].filter(Boolean).join(' · ')
+	        : '运行指标无异常';
+	    const runtimeSummaryClass = runtimeIssues.length > 0
+	      ? 'is-attention'
+	      : unknownToolOutcomes > 0 ? 'is-neutral' : 'is-ok';
 	    const flowSummaryText = siblings.length > 1 ? `${siblings.length} 个能力调用段` : '单一能力调用段';
 	    const flowTemplateId = `inbox-flow-template-${safeId}`;
-	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
+	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount}${cancelledToolOutcomes > 0 ? ` · 取消 ${cancelledToolOutcomes}` : ''}${unknownToolOutcomes > 0 ? ` · 状态未知 ${unknownToolOutcomes}` : ''} · 用户消息 ${indicators.userMessageCount}`;
 	    const navItems = [
 	      { id: `inbox-sec-completion-${safeId}`, label: '① 这次跑得怎么样' },
 	      { id: `inbox-sec-log-chain-${safeId}`, label: '② 日志上下游链路' },
@@ -5165,6 +5296,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <div style="color:var(--text-muted);font-size:12px">当前只展示最新一次 ingest 的结果</div>
         </div>
       </section>`;
+  const ingestionIssues = reports.reduce((totals, report) => {
+    const ingestion = report.meta.ingestion;
+    if (!ingestion) return totals;
+    totals.malformed += ingestion.malformedRecordCount;
+    totals.ignored += ingestion.ignoredValueCount;
+    totals.unknown += ingestion.unknownEventCount;
+    return totals;
+  }, { malformed: 0, ignored: 0, unknown: 0 });
+  const ingestionNotice = ingestionIssues.malformed > 0
+    || ingestionIssues.ignored > 0
+    || ingestionIssues.unknown > 0
+    ? `<div style="margin:12px 0;padding:10px 12px;border:1px solid var(--yellow);border-radius:8px;background:var(--yellow-bg);color:var(--text-secondary);font-size:13px">
+        <strong style="color:var(--yellow)">${lang === 'zh' ? '观测输入需要复核' : 'Observation input needs review'}</strong>
+        <span style="margin-left:8px">${lang === 'zh'
+          ? `${ingestionIssues.malformed} 条格式损坏记录，${ingestionIssues.ignored} 个非对象值，${ingestionIssues.unknown} 个未识别事件。`
+          : `${ingestionIssues.malformed} malformed records, ${ingestionIssues.ignored} non-object values, ${ingestionIssues.unknown} unrecognized events.`}</span>
+      </div>`
+    : '';
 	  return layout(pageTitle, `
 	    <main class="observe-report-root">
 	      <nav style="margin-bottom:12px"><a href="/observe-health" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
@@ -5175,6 +5324,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        </div>
 	        ${activeSkill ? `<a href="/observe-inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
 	      </div>
+      ${ingestionNotice}
       <style>${OBSERVATION_INBOX_STYLES}</style>
       <div id="signal-global-tooltip" role="tooltip"></div>
       <div id="timeline-fulltext-tooltip" role="dialog" aria-modal="true" aria-hidden="true" aria-label="时间线消息详情"></div>
@@ -6540,10 +6690,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                   targetId: targetId,
                   verdict: 'reviewed',
                   note: action,
+                  traceId: btn ? btn.getAttribute('data-trace-id') || undefined : undefined,
                   sourceTrace: btn ? btn.getAttribute('data-source-trace') || undefined : undefined,
                   sessionId: btn ? btn.getAttribute('data-session-id') || undefined : undefined,
                   messageIndex: btn && btn.getAttribute('data-message-index') ? Number(btn.getAttribute('data-message-index')) : undefined,
                   messageUuid: btn ? btn.getAttribute('data-message-uuid') || undefined : undefined,
+                  callInstanceId: btn ? btn.getAttribute('data-call-instance-id') || undefined : undefined,
                   toolUseId: btn ? btn.getAttribute('data-tool-use-id') || undefined : undefined,
                   snippet: btn ? btn.getAttribute('data-snippet') || undefined : undefined
                 })
@@ -6676,10 +6828,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 verdict: next,
                 metricKey: metric.metricKey,
                 metricScopeId: metric.metricScopeId || undefined,
+                traceId: source.traceId || undefined,
                 sourceTrace: source.sourceTrace || undefined,
                 sessionId: source.sessionId || undefined,
                 messageIndex: source.messageIndex === undefined ? undefined : Number(source.messageIndex),
                 messageUuid: source.messageUuid || undefined,
+                callInstanceId: source.callInstanceId || undefined,
                 toolUseId: source.toolUseId || undefined,
                 snippet: source.snippet || undefined
               })
@@ -6806,10 +6960,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 targetId: targetId,
                 verdict: next,
                 metricKey: metricKey,
+                traceId: btn.getAttribute('data-trace-id') || undefined,
                 sourceTrace: btn.getAttribute('data-source-trace') || undefined,
                 sessionId: btn.getAttribute('data-session-id') || undefined,
                 messageIndex: btn.getAttribute('data-message-index') ? Number(btn.getAttribute('data-message-index')) : undefined,
                 messageUuid: btn.getAttribute('data-message-uuid') || undefined,
+                callInstanceId: btn.getAttribute('data-call-instance-id') || undefined,
                 toolUseId: btn.getAttribute('data-tool-use-id') || undefined,
                 snippet: btn.getAttribute('data-snippet') || undefined,
                 reason: reason || undefined

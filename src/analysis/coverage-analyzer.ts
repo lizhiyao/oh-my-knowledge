@@ -3,12 +3,31 @@
  * Computes coverage rates by comparing consumed knowledge against the full index.
  */
 
-import { basename, join, resolve } from 'node:path';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  basename,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from 'node:path';
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import type { ToolCallInfo, ResultEntry, Report } from '../types/index.js';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../shared/record-count.js';
+import { toolCallQuery } from '../shared/tool-search.js';
+import { isToolCallSuccess } from '../shared/tool-call-status.js';
 
 export interface KnowledgeEntry {
   path: string;
+  aliases?: string[];
   type: 'principle' | 'semantic' | 'design' | 'script' | 'code' | 'other';
   lineCount?: number;
 }
@@ -37,18 +56,29 @@ function classifyEntry(path: string): KnowledgeEntry['type'] {
 export function extractReferencedPaths(artifactContent: string): string[] {
   const paths = new Set<string>();
   const pathPatterns = [
-    /\.claude\/[a-zA-Z0-9_/.-]+\.md/g,
-    /\.claude\/[a-zA-Z0-9_/.-]+\.sh/g,
+    /\.(?:agents|claude|codex|gemini)\/[a-zA-Z0-9_/.-]+\.(?:md|sh)/g,
     /repos\/[a-zA-Z0-9_/-]+/g,
+    /(?<![a-zA-Z0-9:/])((?:\.{1,2}\/)?(?:[a-zA-Z0-9_.-]+\/)+[a-zA-Z0-9_.-]+\.(?:md|sh))\b/g,
   ];
 
   for (const pattern of pathPatterns) {
     for (const match of artifactContent.matchAll(pattern)) {
-      paths.add(match[0]);
+      paths.add(match[1] ?? match[0]);
     }
   }
 
-  for (const match of artifactContent.matchAll(/\b([a-zA-Z0-9_-]+\.md)\b/g)) {
+  for (const match of artifactContent.matchAll(/\]\(([^)\s]+)\)/g)) {
+    const target = match[1].split('#', 1)[0];
+    if (
+      target
+      && !/^[a-z][a-z0-9+.-]*:/i.test(target)
+      && /\.(?:md|sh)$/i.test(target)
+    ) {
+      paths.add(target);
+    }
+  }
+
+  for (const match of artifactContent.matchAll(/(?<![/\\])\b([a-zA-Z0-9_-]+\.md)\b/g)) {
     const name = match[1];
     if (/^(README|CHANGELOG|LICENSE|package)\.md$/i.test(name)) continue;
     paths.add(name);
@@ -57,25 +87,56 @@ export function extractReferencedPaths(artifactContent: string): string[] {
   return [...paths];
 }
 
-function scanKnowledgeDir(dir: string, prefix: string = ''): KnowledgeEntry[] {
-  if (!existsSync(dir)) return [];
-  const entries: KnowledgeEntry[] = [];
+interface ScannedKnowledgeEntry extends KnowledgeEntry {
+  realPath: string;
+}
 
-  for (const name of readdirSync(dir)) {
+function scanKnowledgeDir(
+  dir: string,
+  prefix: string = '',
+  visitedDirectories = new Set<string>(),
+): ScannedKnowledgeEntry[] {
+  if (!existsSync(dir)) return [];
+  let realDir: string;
+  try {
+    realDir = realpathSync(dir);
+    if (!statSync(realDir).isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  if (visitedDirectories.has(realDir)) return [];
+  visitedDirectories.add(realDir);
+  const entries: ScannedKnowledgeEntry[] = [];
+
+  for (const name of readdirSync(dir).sort()) {
     if (name.startsWith('.')) continue;
     const fullPath = join(dir, name);
     const relativePath = prefix ? `${prefix}/${name}` : name;
-    const stat = statSync(fullPath);
+    let stat: ReturnType<typeof statSync>;
+    try {
+      stat = statSync(fullPath);
+    } catch {
+      continue;
+    }
 
     if (stat.isDirectory()) {
-      entries.push(...scanKnowledgeDir(fullPath, relativePath));
+      entries.push(...scanKnowledgeDir(
+        fullPath,
+        relativePath,
+        visitedDirectories,
+      ));
     } else if (/\.(md|sh)$/.test(name)) {
       let lineCount: number | undefined;
+      let realPath: string;
       try {
+        realPath = realpathSync(fullPath);
         lineCount = readFileSync(fullPath, 'utf-8').split('\n').length;
-      } catch { }
+      } catch {
+        continue;
+      }
       entries.push({
         path: relativePath,
+        realPath,
         type: classifyEntry(relativePath),
         lineCount,
       });
@@ -87,24 +148,42 @@ function scanKnowledgeDir(dir: string, prefix: string = ''): KnowledgeEntry[] {
 
 export function buildKnowledgeIndex(cwd: string): KnowledgeIndex {
   const knowledgeDirs = [
+    { dir: join(cwd, '.agents', 'skills'), prefix: '.agents/skills' },
     { dir: join(cwd, '.claude', 'knowledge'), prefix: '.claude/knowledge' },
     { dir: join(cwd, '.claude', 'skills'), prefix: '.claude/skills' },
+    { dir: join(cwd, '.codex', 'skills'), prefix: '.codex/skills' },
+    { dir: join(cwd, '.gemini', 'skills'), prefix: '.gemini/skills' },
   ];
 
-  const entries: KnowledgeEntry[] = [];
+  const entriesByRealPath = new Map<string, KnowledgeEntry>();
   for (const { dir, prefix } of knowledgeDirs) {
-    entries.push(...scanKnowledgeDir(dir, prefix));
+    for (const entry of scanKnowledgeDir(dir, prefix)) {
+      const existing = entriesByRealPath.get(entry.realPath);
+      if (existing) {
+        existing.aliases = [...new Set([...(existing.aliases ?? []), entry.path])];
+        continue;
+      }
+      const { realPath, ...knowledgeEntry } = entry;
+      void realPath;
+      entriesByRealPath.set(entry.realPath, knowledgeEntry);
+    }
   }
 
-  const claudeMd = join(cwd, 'CLAUDE.md');
-  if (existsSync(claudeMd)) {
+  for (const instructionFile of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']) {
+    const instructionPath = join(cwd, instructionFile);
+    if (!existsSync(instructionPath)) continue;
     let lineCount: number | undefined;
     try {
-      lineCount = readFileSync(claudeMd, 'utf-8').split('\n').length;
+      lineCount = readFileSync(instructionPath, 'utf-8').split('\n').length;
     } catch { }
-    entries.push({ path: 'CLAUDE.md', type: 'principle', lineCount });
+    entriesByRealPath.set(realpathSync(instructionPath), {
+      path: instructionFile,
+      type: 'principle',
+      lineCount,
+    });
   }
 
+  const entries = [...entriesByRealPath.values()];
   const totalLines = entries.reduce((sum, entry) => sum + (entry.lineCount || 0), 0);
   return {
     entries,
@@ -116,44 +195,37 @@ export function buildKnowledgeIndex(cwd: string): KnowledgeIndex {
 export function buildFullKnowledgeIndex(artifactContent: string | null, cwd: string | null): KnowledgeIndex {
   const entriesMap = new Map<string, KnowledgeEntry>();
 
-  if (artifactContent) {
-    if (cwd) {
-      const knowledgeDir = join(cwd, '.claude', 'knowledge');
-      for (const entry of scanKnowledgeDir(knowledgeDir, '.claude/knowledge')) {
-        entriesMap.set(entry.path, entry);
-      }
-      const claudeMd = join(cwd, 'CLAUDE.md');
-      if (existsSync(claudeMd)) {
-        let lineCount: number | undefined;
-        try {
-          lineCount = readFileSync(claudeMd, 'utf-8').split('\n').length;
-        } catch { }
-        entriesMap.set('CLAUDE.md', { path: 'CLAUDE.md', type: 'principle', lineCount });
-      }
+  if (cwd) {
+    const dirIndex = buildKnowledgeIndex(cwd);
+    for (const entry of dirIndex.entries) {
+      entriesMap.set(entry.path, entry);
     }
+  }
 
+  if (artifactContent) {
     const refPaths = extractReferencedPaths(artifactContent);
     for (const path of refPaths) {
       if (!entriesMap.has(path)) {
-        const existing = [...entriesMap.values()].find((entry) => entry.path.endsWith('/' + path) || entry.path === path);
+        const existing = [...entriesMap.values()].find((entry) =>
+          [entry.path, ...(entry.aliases ?? [])].some((candidate) =>
+            candidate.endsWith('/' + path) || candidate === path
+          )
+        );
         if (!existing) {
           let lineCount: number | undefined;
           if (cwd) {
-            const fullPath = resolve(cwd, path);
+            const fullPath = resolveInside(cwd, path);
             try {
-              if (existsSync(fullPath) && statSync(fullPath).isFile()) {
+              if (fullPath && existsSync(fullPath) && statSync(fullPath).isFile()) {
                 lineCount = readFileSync(fullPath, 'utf-8').split('\n').length;
               }
             } catch { }
           }
-          entriesMap.set(path, { path, type: classifyEntry(path), lineCount });
+          if (!cwd || resolveInside(cwd, path)) {
+            entriesMap.set(path, { path, type: classifyEntry(path), lineCount });
+          }
         }
       }
-    }
-  } else if (cwd) {
-    const dirIndex = buildKnowledgeIndex(cwd);
-    for (const entry of dirIndex.entries) {
-      entriesMap.set(entry.path, entry);
     }
   }
 
@@ -166,19 +238,31 @@ export function buildFullKnowledgeIndex(artifactContent: string | null, cwd: str
   };
 }
 
+function resolveInside(root: string, path: string): string | null {
+  const absoluteRoot = resolve(root);
+  const candidate = resolve(absoluteRoot, path);
+  const relativePath = relative(absoluteRoot, candidate);
+  return relativePath === ''
+    || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+    ? candidate
+    : null;
+}
+
 export function extractKnowledgeConsumption(toolCalls: ToolCallInfo[]): KnowledgeConsumption {
   const filesRead: string[] = [];
   const grepPatterns: Array<{ pattern: string; path?: string }> = [];
   const bashGrepPatterns: Array<{ pattern: string; path?: string }> = [];
 
   for (const toolCall of toolCalls) {
-    const input = toolCall.input as Record<string, unknown> | null;
-    if (!input) continue;
+    const input = toolCall.input && typeof toolCall.input === 'object'
+      ? toolCall.input as Record<string, unknown>
+      : {};
+    const legacyInput = typeof toolCall.input === 'string' ? toolCall.input : undefined;
 
     switch (toolCall.tool) {
       case 'Read': {
-        const filePath = input.file_path as string | undefined;
-        if (filePath) filesRead.push(filePath);
+        const filePath = typeof input.file_path === 'string' ? input.file_path : legacyInput;
+        if (filePath && isToolCallSuccess(toolCall)) filesRead.push(filePath);
         break;
       }
       case 'Grep': {
@@ -188,8 +272,10 @@ export function extractKnowledgeConsumption(toolCalls: ToolCallInfo[]): Knowledg
         break;
       }
       case 'Bash': {
-        const command = input.command as string | undefined;
+        const command = typeof input.command === 'string' ? input.command : legacyInput;
         if (!command) break;
+        const readPath = toolCallQuery(toolCall).path;
+        if (readPath && isToolCallSuccess(toolCall)) filesRead.push(readPath);
         const grepMatch = command.match(/(?:grep|rg)\s+(?:-[a-zA-Z]+\s+)*["']?([^"'\s|]+)["']?\s+([^\s|>]+)/);
         if (grepMatch) {
           bashGrepPatterns.push({ pattern: grepMatch[1], path: grepMatch[2] });
@@ -203,16 +289,28 @@ export function extractKnowledgeConsumption(toolCalls: ToolCallInfo[]): Knowledg
 }
 
 export function normalizeKnowledgePath(filePath: string, cwd?: string | null): string {
-  if (cwd && filePath.startsWith(cwd)) {
-    const relative = filePath.slice(cwd.endsWith('/') ? cwd.length : cwd.length + 1);
-    return relative;
+  if (cwd) {
+    const relativePath = relative(resolve(cwd), resolve(cwd, filePath));
+    if (
+      relativePath === ''
+      || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+    ) {
+      return relativePath.replaceAll('\\', '/');
+    }
   }
-  const patterns = ['.claude/knowledge/', '.claude/skills/'];
+  const normalized = filePath.replaceAll('\\', '/');
+  const patterns = [
+    '.agents/skills/',
+    '.claude/knowledge/',
+    '.claude/skills/',
+    '.codex/skills/',
+    '.gemini/skills/',
+  ];
   for (const pattern of patterns) {
-    const index = filePath.indexOf(pattern);
-    if (index !== -1) return filePath.slice(index);
+    const index = normalized.indexOf(pattern);
+    if (index !== -1) return normalized.slice(index);
   }
-  return basename(filePath);
+  return basename(normalized);
 }
 
 export interface CoverageEntry {
@@ -258,16 +356,16 @@ export function computeCoverage(
 
   // Match index entries against consumed files
   const entries: CoverageEntry[] = index.entries.map((entry) => {
-    // Check if this entry was accessed — match by exact path or by filename
-    const accessed = consumedNormalized.has(entry.path) ||
-      [...consumedNormalized].some((consumed) =>
-        consumed.endsWith('/' + entry.path) || consumed.endsWith(entry.path),
-      );
+    const paths = [entry.path, ...(entry.aliases ?? [])];
+    const accessed = paths.some((path) =>
+      consumedNormalized.has(path)
+      || [...consumedNormalized].some((consumed) => consumed.endsWith('/' + path))
+    );
 
     const accessCount = accessed
       ? consumption.filesRead.filter((f) => {
         const norm = normalizeKnowledgePath(f, cwd);
-        return norm === entry.path || norm.endsWith('/' + entry.path) || norm.endsWith(entry.path);
+        return paths.some((path) => norm === path || norm.endsWith('/' + path));
       }).length
       : 0;
 
@@ -313,14 +411,14 @@ export function computeReportCoverage(
   const coverageMap: Record<string, CoverageReport> = {};
 
   for (const variant of report.meta.variants) {
-    const content = artifactContents[variant] || null;
-    const cwd = cwds[variant] || null;
+    const content = ownRecordValue(artifactContents, variant) || null;
+    const cwd = ownRecordValue(cwds, variant) || null;
 
     // Build knowledge index for this variant
     const index = buildFullKnowledgeIndex(content, cwd);
     if (index.totalFiles === 0) continue;
 
-    coverageMap[variant] = computeCoverage(report.results, variant, index, cwd);
+    setOwnRecordValue(coverageMap, variant, computeCoverage(report.results, variant, index, cwd));
   }
 
   return coverageMap;

@@ -10,7 +10,7 @@ describe('generateSamples', () => {
 
   it('throws on invalid executor (script not found)', async () => {
     await assert.rejects(
-      () => generateSamples({ skillContent: 'test', count: 1, executorName: 'nonexistent' }),
+      () => generateSamples({ skillContent: 'test', count: 1, model: 'test-model', executorName: 'nonexistent' }),
       /ENOENT|failed/,
     );
   });
@@ -109,20 +109,21 @@ describe('generateSamplesFromTraces', () => {
     (async () => ({ ok: true, output, costUSD: 0.01 })) as unknown as NonNullable<Parameters<typeof generateSamplesFromTraces>[0]['executor']>;
 
   it('returns empty without invoking an executor when there are no signals', async () => {
-    const r = await generateSamplesFromTraces({ items: [] });
+    const r = await generateSamplesFromTraces({ items: [], model: 'test-model' });
     assert.deepEqual(r, { samples: [], costUSD: 0 });
   });
 
   it('treats an empty array from the model as a valid 0-result, not a failure', async () => {
     // The prompt tells the model to skip noise / unreproducible signals; `[]` is then a
     // legitimate conservative outcome and must not throw or retry-to-failure.
-    const r = await generateSamplesFromTraces({ items: oneItem, executor: mockExec('[]') });
+    const r = await generateSamplesFromTraces({ items: oneItem, model: 'test-model', executor: mockExec('[]') });
     assert.deepEqual(r.samples, []);
   });
 
   it('stamps production-trace provenance on generated samples', async () => {
     const r = await generateSamplesFromTraces({
       items: oneItem,
+      model: 'test-model',
       executor: mockExec(JSON.stringify([{ sample_id: 'trace-1', prompt: 'reproduce the failed search for x', rubric: 'should locate the file' }])),
     });
     assert.ok(r.samples.length >= 1);

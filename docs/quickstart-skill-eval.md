@@ -9,7 +9,7 @@ npm i oh-my-knowledge -g
 omk --version    # prints a version number once installed
 ```
 
-The default runtime uses the `claude` CLI for both the executor and the judge, so install and log in to Claude Code first. If you are working from Codex or an OpenAI-compatible API instead, keep reading — the first-run commands below show where to swap the runtime flags.
+Configure one authenticated runtime: Codex CLI, Claude Code, or an OpenAI-compatible API. Inside a Codex task in the ChatGPT desktop app, omk automatically selects `codex`, reads the model from `~/.codex/config.toml`, and uses the same Codex model as the default judge. No Claude account is required.
 
 If you want the **agent-driven workflow** (recommended), also install the omk Agent Skill into your coding agent:
 
@@ -32,13 +32,18 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 `omk init` creates two skill variants and three sample cases. `--dry-run` previews the task plan and estimated calls; the real run then opens the HTML report. With only three demo samples, the verdict is often `UNDERPOWERED` — that is a normal teaching result, not a failed run.
 
-If the default Claude runtime is unavailable, use the same demo with runtime flags:
+Inside a Codex task, the shortest commands above need no runtime flags. To make Codex the default in regular terminals, add the preference to your shell profile (for example `~/.zshrc`):
 
 ```bash
-# Codex CLI path
+export OMK_EXECUTOR=codex
+# Optional: export OMK_MODEL="your-codex-model"
+```
+
+Without `OMK_MODEL`, omk reads the model from `~/.codex/config.toml`. You can also select it per command. Once Codex is selected, the default judge reuses the evaluated model, so `--judge-models` is not repeated:
+
+```bash
 omk eval --control code-review-v1 --treatment code-review-v2 \
-  --executor codex --model <codex-model> \
-  --judge-models codex:<codex-model>
+  --executor codex --model <codex-model>
 
 # OpenAI-compatible API path
 export OPENAI_API_KEY="..."
@@ -48,7 +53,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
   --judge-models openai-api:<model>
 ```
 
-For Codex, `<codex-model>` should be a model your local Codex can run; check `~/.codex/config.toml` or `$CODEX_HOME/config.toml` for the configured `model`. For OpenAI-compatible APIs, make sure the model name matches the selected `OPENAI_BASE_URL`.
+For Codex, `<codex-model>` should be a model your local Codex can run. By default, omk reads the top-level `model` from `~/.codex/config.toml` or `$CODEX_HOME/config.toml`. For OpenAI-compatible APIs, make sure the model name matches the selected `OPENAI_BASE_URL`.
 
 ## Prepare your skill (1 minute)
 

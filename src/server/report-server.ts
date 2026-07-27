@@ -10,7 +10,7 @@ import type { SkillReportContext } from '../renderer/report-shell.js';
 import { assessHealth, renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
-import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
+import { DEFAULT_LANG, e, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows, buildVersionScores, type ReportScoreView } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
@@ -25,12 +25,24 @@ import { createFileJobStore } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import { createIndexedReportStore } from './indexed-report-store.js';
 import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
-import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import { parseDoctorReport } from '../shared/doctor-report.js';
+import {
+  confidenceOf,
+  toolStabilityOf,
+  type SkillHealth,
+  type SkillHealthReport,
+} from '../observability/skill-health-analyzer.js';
+import { parseSkillHealthReport } from '../observability/skill-health-report.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
-import { deleteObservationReviewState, loadObservationReviewState, updateObservationReviewState, type ObservationReviewStateUpdate } from '../observability/review-state.js';
-import { updateSkillDerivedStandardStatus, type SkillDerivedStandardStatus } from '../observability/soft-standards/index.js';
+import {
+  deleteObservationReviewState,
+  loadObservationReviewState,
+  ObservationReviewStateValidationError,
+  updateObservationReviewState,
+  type ObservationReviewStateUpdate,
+} from '../observability/review-state.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -101,8 +113,8 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
       const id = reportFileStem(file);
       if (!id) continue;
       try {
-        const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillHealthReport;
-        if (!data.meta || !data.overall) continue;
+        const data = parseSkillHealthReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+        if (!data) continue;
         items.push({
           id,
           generatedAt: data.meta.generatedAt,
@@ -122,11 +134,23 @@ function listAnalyses(dir: string, includeCards = false): AnalysisListItem[] {
     const seen = new Set(items.map((i) => i.id));
     for (const card of listLiveObserveCards()) {
       if (seen.has(card.id)) continue;
+      let report: SkillHealthReport | null = null;
+      try {
+        report = parseSkillHealthReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+      } catch {
+        // Scratch cards only discover the canonical report; corrupt targets stay invisible.
+      }
+      if (!report) continue;
       items.push({
-        id: card.id, generatedAt: card.meta.generatedAt, sessionCount: card.meta.sessionCount,
-        segmentCount: card.meta.segmentCount, skillCount: Object.keys(card.bySkill).length,
-        healthBand: card.overall.healthBand, confidence: card.overall.confidence ?? confidenceOf(card.meta.segmentCount),
+        id: card.id,
+        generatedAt: report.meta.generatedAt,
+        sessionCount: report.meta.sessionCount,
+        segmentCount: report.meta.segmentCount,
+        skillCount: Object.keys(report.bySkill).length,
+        healthBand: report.overall.healthBand,
+        confidence: report.overall.confidence ?? confidenceOf(report.meta.segmentCount),
       });
+      seen.add(card.id);
     }
   }
   // 最新在前
@@ -138,14 +162,19 @@ function loadAnalysis(dir: string, id: string, includeCards = false): SkillHealt
   migrateLegacyReportFiles(dir, 'observe-health');
   const path = reportFilePath(dir, id);
   if (existsSync(path)) {
-    try { return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport; } catch { /* fall through to card */ }
+    try {
+      const report = parseSkillHealthReport(JSON.parse(readFileSync(path, 'utf-8')));
+      if (report) return report;
+    } catch { /* fall through to card */ }
   }
   // 别项目:按 observe 卡片 path 读真身(含 signals 等完整详情)。悬空(项目被移走)→ null,详情页 404。
   // 仅机器级模式兜底;固定目录 / --global 不回源别项目卡片(逃生舱语义)。
   if (!includeCards) return null;
   const card = listObserveCards().find((c) => c.id === id);
   if (card && existsSync(card.path)) {
-    try { return JSON.parse(readFileSync(card.path, 'utf-8')) as SkillHealthReport; } catch { /* corrupt 真身 */ }
+    try {
+      return parseSkillHealthReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+    } catch { /* corrupt 真身 */ }
   }
   return null;
 }
@@ -160,8 +189,8 @@ function loadDoctorReport(dir: string, id: string, skillName?: string, includeCa
     for (const file of readdirSync(dir)) {
       if (!isReportFileName(file)) continue;
       try {
-        const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
-        if (data?.kind !== 'doctor' || data.id !== id) continue;
+        const data = parseDoctorReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+        if (!data || data.id !== id) continue;
         if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
         fallback ??= data;
       } catch { /* skip */ }
@@ -176,8 +205,8 @@ function loadDoctorReport(dir: string, id: string, skillName?: string, includeCa
     if (skillName && card.skillName !== skillName) continue;
     if (!existsSync(card.path)) continue;
     try {
-      const data = JSON.parse(readFileSync(card.path, 'utf-8')) as DoctorReport;
-      if (data?.kind === 'doctor' && data.id === id) {
+      const data = parseDoctorReport(JSON.parse(readFileSync(card.path, 'utf-8')));
+      if (data && data.id === id) {
         if (!skillName || data.skills?.some((s) => s.skillName === skillName)) return data;
         fallback ??= data;
       }
@@ -191,7 +220,12 @@ interface SkillTrendPoint {
   generatedAt: string;
   gapRate: number;
   weightedGapRate: number;
-  failureRate: number;
+  failureRate: number | null;
+  toolCallCount: number;
+  toolResolvedCount: number;
+  toolComparableCount: number;
+  toolCancelledCount: number;
+  toolOutcomeCoverage: number | null;
   coverageRate: number | null;
   /** input + output only, 计费主成本 */
   billableTokens: number;
@@ -199,9 +233,10 @@ interface SkillTrendPoint {
   cachedTokens: number;
   totalTokens: number;
   avgTokensPerSegment: number;
+  tokenCoverage: number;
   durationMs: number;
   segmentCount: number;
-  stability: 'stable' | 'unstable' | 'very-unstable';
+  stability: 'stable' | 'unstable' | 'very-unstable' | 'unknown';
 }
 
 interface SkillTrendResult {
@@ -224,25 +259,73 @@ function querySkillTrend(dir: string, skillName: string, includeCards = false): 
     const u = h.usage;
     const billable = (u?.inputTokens ?? 0) + (u?.outputTokens ?? 0);
     const cached = (u?.cacheReadTokens ?? 0) + (u?.cacheCreationTokens ?? 0);
+    const toolCallCount = h.toolCallCount ?? 0;
+    const toolResolvedCount = h.toolResolvedCount ?? toolCallCount;
+    const toolCancelledCount = h.toolCancelledCount ?? 0;
+    const toolComparableCount = Math.max(0, toolResolvedCount - toolCancelledCount);
     points.push({
       analysisId: it.id,
       generatedAt: report.meta.generatedAt,
       gapRate: h.gap?.gapRate ?? 0,
       weightedGapRate: h.gap?.weightedGapRate ?? 0,
-      failureRate: h.toolFailureRate ?? 0,
+      failureRate: measuredToolFailureRate(h),
+      toolCallCount,
+      toolResolvedCount,
+      toolComparableCount,
+      toolCancelledCount,
+      toolOutcomeCoverage: toolCallCount > 0
+        ? Number((toolResolvedCount / toolCallCount).toFixed(4))
+        : null,
       coverageRate: h.coverage?.fileCoverageRate ?? null,
       billableTokens: billable,
       cachedTokens: cached,
       totalTokens: u?.totalTokens ?? 0,
       avgTokensPerSegment: u?.avgTokensPerSegment ?? 0,
+      tokenCoverage: u?.tokenCoverage ?? 0,
       durationMs: u?.durationMs ?? 0,
       segmentCount: h.segmentCount ?? 0,
-      stability: h.stability ?? 'stable',
+      stability: observedToolStability(h),
     });
   }
   // 最旧在前,便于折线图从左到右展示时间序列
   points.sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
   return { skillName, points };
+}
+
+function measuredToolFailureRate(
+  health: Pick<
+    SkillHealth,
+    'stability' | 'toolCallCount' | 'toolResolvedCount' | 'toolCancelledCount' | 'toolFailureRate'
+  >,
+): number | null {
+  if (health.stability === 'unknown') return null;
+  if (health.toolResolvedCount !== undefined || health.toolCancelledCount !== undefined) {
+    const comparable = Math.max(
+      0,
+      (health.toolResolvedCount ?? health.toolCallCount) - (health.toolCancelledCount ?? 0),
+    );
+    return comparable > 0 ? health.toolFailureRate : null;
+  }
+  // Legacy reports predate toolResolvedCount but treated every recorded call as
+  // resolved. Preserve those measured rates when a non-zero denominator exists.
+  return health.toolCallCount > 0 ? health.toolFailureRate : null;
+}
+
+function observedToolStability(
+  health: Pick<
+    SkillHealth,
+    'stability' | 'toolCallCount' | 'toolResolvedCount' | 'toolCancelledCount' | 'toolFailureRate'
+  >,
+): SkillTrendPoint['stability'] {
+  if (health.stability === 'unknown') return 'unknown';
+  const failureRate = measuredToolFailureRate(health);
+  if (failureRate == null) return 'unknown';
+  const resolvedToolCalls = health.toolResolvedCount ?? health.toolCallCount;
+  const comparableToolCalls = Math.max(
+    0,
+    resolvedToolCalls - (health.toolCancelledCount ?? 0),
+  );
+  return toolStabilityOf(failureRate, comparableToolCalls, health.toolCallCount);
 }
 
 interface SkillDiffRow {
@@ -251,8 +334,8 @@ interface SkillDiffRow {
   fromGap?: number;
   toGap?: number;
   deltaGap?: number;
-  fromFailure?: number;
-  toFailure?: number;
+  fromFailure?: number | null;
+  toFailure?: number | null;
   deltaFailure?: number;
   fromCoverage?: number | null;
   toCoverage?: number | null;
@@ -284,15 +367,19 @@ function querySkillDiff(dir: string, fromId: string, toId: string, includeCards 
     const f = from.bySkill[skill];
     const t = to.bySkill[skill];
     if (f && t) {
+      const fromFailure = measuredToolFailureRate(f);
+      const toFailure = measuredToolFailureRate(t);
       rows.push({
         skillName: skill,
         presence: 'both',
         fromGap: f.gap.weightedGapRate,
         toGap: t.gap.weightedGapRate,
         deltaGap: t.gap.weightedGapRate - f.gap.weightedGapRate,
-        fromFailure: f.toolFailureRate,
-        toFailure: t.toolFailureRate,
-        deltaFailure: t.toolFailureRate - f.toolFailureRate,
+        fromFailure,
+        toFailure,
+        deltaFailure: fromFailure != null && toFailure != null
+          ? toFailure - fromFailure
+          : undefined,
         fromCoverage: f.coverage?.fileCoverageRate ?? null,
         toCoverage: t.coverage?.fileCoverageRate ?? null,
         deltaCoverage: (f.coverage?.fileCoverageRate != null && t.coverage?.fileCoverageRate != null)
@@ -303,9 +390,9 @@ function querySkillDiff(dir: string, fromId: string, toId: string, includeCards 
         deltaSegments: t.segmentCount - f.segmentCount,
       });
     } else if (f) {
-      rows.push({ skillName: skill, presence: 'only-from', fromGap: f.gap.weightedGapRate, fromFailure: f.toolFailureRate, fromCoverage: f.coverage?.fileCoverageRate ?? null, fromSegments: f.segmentCount });
+      rows.push({ skillName: skill, presence: 'only-from', fromGap: f.gap.weightedGapRate, fromFailure: measuredToolFailureRate(f), fromCoverage: f.coverage?.fileCoverageRate ?? null, fromSegments: f.segmentCount });
     } else if (t) {
-      rows.push({ skillName: skill, presence: 'only-to', toGap: t.gap.weightedGapRate, toFailure: t.toolFailureRate, toCoverage: t.coverage?.fileCoverageRate ?? null, toSegments: t.segmentCount });
+      rows.push({ skillName: skill, presence: 'only-to', toGap: t.gap.weightedGapRate, toFailure: measuredToolFailureRate(t), toCoverage: t.coverage?.fileCoverageRate ?? null, toSegments: t.segmentCount });
     }
   }
   // 按 deltaGap 绝对值倒序 (变化大的在前,缺失的放最后)
@@ -330,25 +417,78 @@ function fmtPct(v: number | null | undefined): string {
   return `${Math.round(v * 100)}%`;
 }
 
-function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
+class RequestBodyError extends Error {
+  override readonly name = 'RequestBodyError';
+
+  constructor(
+    message: string,
+    readonly statusCode: 400 | 403 | 413 | 415,
+  ) {
+    super(message);
+  }
+}
+
+function assertTrustedMutationRequest(req: IncomingMessage): void {
+  const fetchSite = req.headers['sec-fetch-site'];
+  if (fetchSite === 'cross-site') {
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+  }
+
+  const origin = req.headers.origin;
+  if (!origin) return;
+  if (Array.isArray(origin) || !req.headers.host) {
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+  }
+  try {
+    if (new URL(origin).host !== req.headers.host) {
+      throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+    }
+  } catch (error) {
+    if (error instanceof RequestBodyError) throw error;
+    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
+  }
+}
+
+function assertJsonContentType(req: IncomingMessage): void {
+  const contentType = req.headers['content-type'];
+  const mediaType = typeof contentType === 'string'
+    ? contentType.split(';', 1)[0].trim().toLowerCase()
+    : '';
+  if (mediaType === 'application/json' || mediaType.endsWith('+json')) return;
+  req.resume();
+  throw new RequestBodyError('content-type must be application/json', 415);
+}
+
+function readJsonObjectBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<Record<string, unknown>> {
+  assertJsonContentType(req);
   return new Promise((resolve, reject) => {
     let size = 0;
+    let tooLarge = false;
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
       if (size > maxBytes) {
-        reject(new Error('request body too large'));
-        req.destroy();
+        tooLarge = true;
+        chunks.length = 0;
         return;
       }
-      chunks.push(chunk);
+      if (!tooLarge) chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooLarge) {
+        reject(new RequestBodyError('request body too large', 413));
+        return;
+      }
       try {
         const raw = Buffer.concat(chunks).toString('utf-8').trim();
-        resolve(raw ? JSON.parse(raw) : {});
+        const parsed = raw ? JSON.parse(raw) as unknown : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          reject(new RequestBodyError('json body must be an object', 400));
+          return;
+        }
+        resolve(parsed as Record<string, unknown>);
       } catch {
-        reject(new Error('invalid json body'));
+        reject(new RequestBodyError('invalid json body', 400));
       }
     });
     req.on('error', reject);
@@ -384,8 +524,9 @@ function buildSkillContext(entry: SkillIndexEntry, currentDim: 'doctor' | 'eval'
     ? (ev.compositeScore >= 4 ? 'green' : ev.compositeScore >= 3 ? 'yellow' : 'red') : 'gray';
 
   const ob = entry.observe;
-  const obScore = ob ? Math.round((1 - ob.gapRate) * 100) : null;
-  const obBand: Band = ob ? ob.healthBand : 'gray';
+  const obTrustworthy = ob != null && ob.confidence !== 'underpowered';
+  const obScore = obTrustworthy ? Math.round((1 - ob.gapRate) * 100) : null;
+  const obBand: Band = obTrustworthy ? ob.healthBand : 'gray';
 
   // 历史:eval + doctor 历次 run,各自新→旧。点行跳到那次报告。
   // evalHistory 是「每轮一条」,但一份 evolve 报告(多轮)是同一个 reportId —— 按 reportId 去重,
@@ -446,7 +587,7 @@ function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): 
       : r.presence === 'only-to' ? `<span style="color:var(--accent);font-size:10px;padding:1px 6px;background:var(--info-bg);border-radius:3px" data-i18n="diffTagNew">${t('diffTagNew', lang)}</span>`
       : '';
     return `<tr>
-      <td style="padding:8px 10px;font-family:ui-monospace,monospace">${r.skillName} ${tag}</td>
+      <td style="padding:8px 10px;font-family:ui-monospace,monospace">${e(r.skillName)} ${tag}</td>
       <td style="padding:8px 10px;text-align:right">${r.fromSegments ?? '—'} → ${r.toSegments ?? '—'} ${r.presence === 'both' ? `(${fmtDelta(r.deltaSegments, false)})` : ''}</td>
       <td style="padding:8px 10px;text-align:right">${fmtPct(r.fromGap)} → ${fmtPct(r.toGap)} ${r.presence === 'both' ? fmtDelta(r.deltaGap) : ''}</td>
       <td style="padding:8px 10px;text-align:right">${fmtPct(r.fromFailure)} → ${fmtPct(r.toFailure)} ${r.presence === 'both' ? fmtDelta(r.deltaFailure) : ''}</td>
@@ -462,7 +603,7 @@ function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): 
       </nav>
       <h1 data-i18n="skillDiffHeading" style="font-size:20px;margin:8px 0">${t('skillDiffHeading', lang)}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
-        <span data-i18n="diffNavFrom">${t('diffNavFrom', lang)}</span> <code>${fromId}</code> (${fromAt.slice(0, 19).replace('T', ' ')}) → <span data-i18n="diffNavTo">${t('diffNavTo', lang)}</span> <code>${toId}</code> (${toAt.slice(0, 19).replace('T', ' ')})<br/>
+        <span data-i18n="diffNavFrom">${t('diffNavFrom', lang)}</span> <code>${e(fromId)}</code> (${e(fromAt.slice(0, 19).replace('T', ' '))}) → <span data-i18n="diffNavTo">${t('diffNavTo', lang)}</span> <code>${e(toId)}</code> (${e(toAt.slice(0, 19).replace('T', ' '))})<br/>
         <span data-i18n="diffSortHint">${t('diffSortHint', lang)}</span>
       </div>
       <table style="border-collapse:collapse;width:100%;font-size:13px">
@@ -486,7 +627,7 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
     const emptyBody = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
       <nav style="margin-bottom:12px"><a href="/observe-health${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
-      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
+      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${e(skillName)}</h1>
       <p style="color:var(--text-muted)" data-i18n="noTrendData">${t('noTrendData', lang)}</p>
     </main>`;
     return layout(`${t('skillTrendHeading', lang)} · ${skillName}`, emptyBody, lang);
@@ -498,9 +639,14 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
   const pathOf = (key: 'gapRate' | 'weightedGapRate' | 'failureRate' | 'coverageRate') => {
     const usable = points.map((p, i) => ({ x: toX(i), y: p[key] ?? null }));
     let d = '';
+    let drawing = false;
     for (const pt of usable) {
-      if (pt.y == null) continue;
-      d += d ? ` L ${pt.x} ${toY(pt.y as number)}` : `M ${pt.x} ${toY(pt.y as number)}`;
+      if (pt.y == null) {
+        drawing = false;
+        continue;
+      }
+      d += drawing ? ` L ${pt.x} ${toY(pt.y as number)}` : `M ${pt.x} ${toY(pt.y as number)}`;
+      drawing = true;
     }
     return d;
   };
@@ -521,21 +667,28 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
     <span style="color:#a78bfa">● <span data-i18n="trendLegendFailure">${t('trendLegendFailure', lang)}</span></span> ·
     <span style="color:#4ade80">● <span data-i18n="trendLegendCoverage">${t('trendLegendCoverage', lang)}</span></span>
   </div>`;
-  const rows = points.map((p) => `<tr>
-    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/observe-health/${encodeURIComponent(p.analysisId)}${langQ}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
+  const rows = points.map((p) => {
+    const failureCell = p.failureRate == null
+      ? '—'
+      : `${Math.round(p.failureRate * 100)}%${p.toolCallCount > 0
+        ? `<br><span style="color:var(--text-muted);font-size:11px">${p.toolComparableCount}/${p.toolCallCount} ${lang === 'zh' ? '结果可比较' : 'comparable'}${p.toolCancelledCount > 0 ? ` · ${p.toolCancelledCount} ${lang === 'zh' ? '取消' : 'cancelled'}` : ''}</span>`
+        : ''}`;
+    return `<tr>
+    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/observe-health/${encodeURIComponent(p.analysisId)}${langQ}" style="color:var(--accent);text-decoration:none">${e(p.generatedAt.slice(0, 19).replace('T', ' '))}</a></td>
     <td style="padding:6px 10px;text-align:right">${p.segmentCount}</td>
     <td style="padding:6px 10px;text-align:right;color:#f87171">${Math.round(p.gapRate * 100)}%</td>
     <td style="padding:6px 10px;text-align:right;color:#fbbf24">${Math.round(p.weightedGapRate * 100)}%</td>
-    <td style="padding:6px 10px;text-align:right;color:#a78bfa">${Math.round(p.failureRate * 100)}%</td>
+    <td style="padding:6px 10px;text-align:right;color:#a78bfa">${failureCell}</td>
     <td style="padding:6px 10px;text-align:right;color:#4ade80">${p.coverageRate == null ? '—' : Math.round(p.coverageRate * 100) + '%'}</td>
     <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px" title="input+output only; cache 分开计">${(p.billableTokens / 1000).toFixed(1)}k</td>
     <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px">${(p.durationMs / 1000).toFixed(1)}s</td>
-  </tr>`).join('');
-  const subtitle = `${points.length} <span data-i18n="trendNPoints">${t('trendNPoints', lang)}</span> · <span data-i18n="trendEarliest">${t('trendEarliest', lang)}</span> ${points[0].generatedAt.slice(0, 10)} · <span data-i18n="trendLatest">${t('trendLatest', lang)}</span> ${points[points.length - 1].generatedAt.slice(0, 10)}`;
+  </tr>`;
+  }).join('');
+  const subtitle = `${points.length} <span data-i18n="trendNPoints">${t('trendNPoints', lang)}</span> · <span data-i18n="trendEarliest">${t('trendEarliest', lang)}</span> ${e(points[0].generatedAt.slice(0, 10))} · <span data-i18n="trendLatest">${t('trendLatest', lang)}</span> ${e(points[points.length - 1].generatedAt.slice(0, 10))}`;
   const body = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
       <nav style="margin-bottom:8px"><a href="/observe-health${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
-      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
+      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${e(skillName)}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">${subtitle}</div>
       ${svg}
       ${legend}
@@ -722,6 +875,13 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
     try {
       const parsed = new URL(req.url || '/', 'http://127.0.0.1');
       const path = parsed.pathname;
+      try {
+        decodeURIComponent(path);
+      } catch {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not Found');
+        return;
+      }
       const langParam = parsed.searchParams.get('lang');
       const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
 
@@ -750,6 +910,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       }
 
       if (path === '/api/shutdown' && req.method === 'POST') {
+        assertTrustedMutationRequest(req);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
         // Graceful shutdown after response sent
@@ -896,39 +1057,36 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           return;
         }
         if (req.method === 'POST') {
-          const body = await readJsonBody(req) as Partial<ObservationReviewStateUpdate>;
+          assertTrustedMutationRequest(req);
+          const body = await readJsonObjectBody(req) as Partial<ObservationReviewStateUpdate>;
           const targetType = body.targetType as ObservationReviewStateUpdate['targetType'];
-          const targetId = String(body.targetId ?? '');
+          const targetId = body.targetId as string;
           const verdict = body.verdict as ObservationReviewStateUpdate['verdict'];
           const now = new Date().toISOString();
-          if (targetType === 'soft_standard') {
-            const parsedTarget = parseSoftStandardReviewTarget(targetId);
-            const status = skillDerivedStandardStatusFromVerdict(verdict);
-            if (parsedTarget && status) {
-              updateSkillDerivedStandardStatus(observationsDir, parsedTarget.skillName, parsedTarget.standardId, status, now);
-            }
-          }
           const state = updateObservationReviewState(observationsDir, {
             targetType,
             targetId,
             verdict,
-            note: typeof body.note === 'string' ? body.note : undefined,
-            reason: typeof body.reason === 'string' ? body.reason : undefined,
+            note: body.note,
+            reason: body.reason,
             metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
             metricScope: body.metricScope as ObservationReviewStateUpdate['metricScope'],
-            metricScopeId: typeof body.metricScopeId === 'string' ? body.metricScopeId : undefined,
-            sourceTrace: typeof body.sourceTrace === 'string' ? body.sourceTrace : undefined,
-            sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
-            messageIndex: typeof body.messageIndex === 'number' ? body.messageIndex : undefined,
-            messageUuid: typeof body.messageUuid === 'string' ? body.messageUuid : undefined,
-            toolUseId: typeof body.toolUseId === 'string' ? body.toolUseId : undefined,
-            snippet: typeof body.snippet === 'string' ? body.snippet : undefined,
+            metricScopeId: body.metricScopeId,
+            traceId: body.traceId,
+            sourceTrace: body.sourceTrace,
+            sessionId: body.sessionId,
+            messageIndex: body.messageIndex,
+            messageUuid: body.messageUuid,
+            callInstanceId: body.callInstanceId,
+            toolUseId: body.toolUseId,
+            snippet: body.snippet,
           }, now);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(state));
           return;
         }
         if (req.method === 'DELETE') {
+          assertTrustedMutationRequest(req);
           const targetType = parsed.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
           const targetId = parsed.searchParams.get('targetId') ?? '';
           const state = deleteObservationReviewState(observationsDir, targetType, targetId);
@@ -1079,6 +1237,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         const id = decodeURIComponent(reportApiMatch[1]);
 
         if (req.method === 'DELETE') {
+          assertTrustedMutationRequest(req);
           const removed = await reportStore.remove(id);
           if (!removed) {
             res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -1225,7 +1384,12 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         res.destroy(err instanceof Error ? err : new Error(getErrorMessage(err)));
         return;
       }
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      const statusCode = err instanceof RequestBodyError
+        ? err.statusCode
+        : err instanceof ObservationReviewStateValidationError
+          ? 400
+          : 500;
+      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: getErrorMessage(err) }));
     }
   }
@@ -1304,20 +1468,4 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
   }
 
   return { start, stop, getUrl };
-}
-
-function parseSoftStandardReviewTarget(targetId: string): { skillName: string; standardId: string } | null {
-  const separator = targetId.indexOf(':');
-  if (separator <= 0 || separator === targetId.length - 1) return null;
-  return {
-    skillName: targetId.slice(0, separator),
-    standardId: targetId.slice(separator + 1),
-  };
-}
-
-function skillDerivedStandardStatusFromVerdict(verdict: ObservationReviewStateUpdate['verdict']): SkillDerivedStandardStatus | null {
-  if (verdict === 'real_issue') return 'author_confirmed';
-  if (verdict === 'not_issue') return 'rejected';
-  if (verdict === 'needs_more_context' || verdict === 'reviewed') return 'pending_review';
-  return null;
 }

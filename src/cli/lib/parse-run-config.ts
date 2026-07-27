@@ -21,7 +21,7 @@
 import { resolve } from 'node:path';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
-import { DEFAULT_MODEL } from '../../executors/shared.js';
+import { setOwnRecordValue } from '../../shared/record-count.js';
 import type {
   EvalConfig,
   VariantSpec,
@@ -32,6 +32,11 @@ import type {
 import { parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 import { discoverSamplesPath } from './parse-run-config/samples-discovery.js';
 import { resolveVariantSpecs } from './parse-run-config/variant-resolution.js';
+import {
+  envJudgeModels,
+  resolveRuntimeSelection,
+  type RuntimeResolutionOptions,
+} from './runtime-defaults.js';
 
 export { parseJudgeModelsArg, parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 
@@ -39,15 +44,15 @@ export interface RunConfig {
   samplesPath: string;
   skillDir: string;
   variantSpecs: VariantSpec[];
-  model: string | undefined;
+  model: string;
   outputDir: string;
   noJudge: boolean | undefined;
   noCache: boolean | undefined;
   dryRun: boolean | undefined;
   concurrency: number;
   timeoutMs: number;
-  executorName: string | undefined;
-  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
+  executorName: string;
+  /** 跳过 LLM 模型连通性检测。仅当 --resume 报告通过完整契约校验时自动 true。 */
   skipConnectivity: boolean | undefined;
   /** 跳过 doctor 健康检查门禁(--skip-doctor)。escape hatch — 默认 false。
    *  开启后 doctor 整段不跑(节省静态检查时间);doctor 失败也不再阻断 eval。
@@ -67,7 +72,7 @@ export interface RunConfig {
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
   /** Unified judge config. Always non-empty; 1 entry = single judge, ≥ 2 = ensemble.
-   *  parseRunConfig guarantees at least `[{executor: <executor>, model: 'haiku'}]`. */
+   *  Defaults to the selected runtime's judge model. */
   judgeModels: JudgeConfig[];
   /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
   bootstrap?: boolean;
@@ -110,6 +115,7 @@ export interface ParseRunConfigResult {
  */
 export function parseRunConfig(
   values: Record<string, unknown>,
+  runtimeOptions: RuntimeResolutionOptions = {},
 ): ParseRunConfigResult {
   if (values.variants !== undefined) {
     throw new Error(
@@ -143,19 +149,25 @@ export function parseRunConfig(
   const variantSpecs = resolveVariantSpecs(values, evalConfig, skillDir);
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
-  const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  // model fallback 链:CLI > eval.yaml > DEFAULT_MODEL(opus 4.7)。
-  // 改 default 时同步 src/cli/commands/eval.ts 里 --model flag description 的默认值文案。
-  const model = (values.model as string | undefined) ?? evalConfig?.model ?? DEFAULT_MODEL;
+  const runtime = resolveRuntimeSelection({
+    executor: (values.executor as string | undefined) ?? evalConfig?.executor,
+    model: (values.model as string | undefined) ?? evalConfig?.model,
+  }, runtimeOptions);
+  const executorName = runtime.executor;
+  const model = runtime.model;
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
-  // 出口 RunConfig.judgeModels 保证非空 (default `[{executor, model: 'haiku'}]`)。
+  // 出口 RunConfig.judgeModels 保证非空。Codex 默认沿用任务模型，避免把 Claude 的
+  // `haiku` alias 误传给 Codex。
   const cliJudgesRaw = values['judge-models'] as string | undefined;
   const parsedJudges = cliJudgesRaw !== undefined ? parseJudgeModelsArgOrExit(cliJudgesRaw) : undefined;
+  const envJudgesRaw = envJudgeModels(runtimeOptions.env);
+  const parsedEnvJudges = envJudgesRaw !== undefined ? parseJudgeModelsArgOrExit(envJudgesRaw) : undefined;
   const judgeModels: JudgeConfig[] = parsedJudges
     ?? evalConfig?.judgeModels
-    ?? [{ executor: executorName, model: 'haiku' }];
+    ?? parsedEnvJudges
+    ?? [{ executor: executorName, model: runtime.judgeModel }];
   // 报告默认落项目 `.omk/reports`(绑用例集,construct validity);--global 写全局;--output-dir 最高优先。
   // 同 observe / doctor 写入侧口径。读取侧(studio / resume / gold-compare / 复用)走 overlay 项目→全局兜底。
   const outputDir = resolve(
@@ -201,7 +213,7 @@ export function parseRunConfig(
   if (evalConfig?.variants) {
     for (const v of evalConfig.variants) {
       if (v.allowedSkills !== undefined) {
-        variantAllowedSkills[v.name] = v.allowedSkills;
+        setOwnRecordValue(variantAllowedSkills, v.name, v.allowedSkills);
       }
     }
   }

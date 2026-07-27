@@ -1,5 +1,6 @@
 import type { EvaluationReport } from '../types/report.js';
-import type { Sample } from '../types/index.js';
+import type { Sample, ToolCallInfo } from '../types/index.js';
+import { toolCallStatus } from '../shared/tool-call-status.js';
 import { sanitizeGeneratedSamples } from './generator.js';
 
 export interface FixContext {
@@ -11,7 +12,7 @@ export interface FixContext {
   suggestionSample: string;
   rootCause: string[];
   failedAssertions: Array<{ type: string; value: string; passed: boolean }>;
-  toolCalls: Array<{ tool: string; input: unknown; success: boolean }>;
+  toolCalls: Array<Pick<ToolCallInfo, 'tool' | 'input' | 'success' | 'status'>>;
 }
 
 export interface FixSamplesOptions {
@@ -19,8 +20,19 @@ export interface FixSamplesOptions {
   samples: Record<string, unknown>[];
   report: EvaluationReport;
   treatmentKey: string;
-  executor: (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => Promise<{ ok: boolean; text: string; costUSD: number }>;
-  model?: string;
+  executor: (opts: {
+    model: string;
+    system: string;
+    prompt: string;
+    timeoutMs: number;
+    lean?: boolean;
+  }) => Promise<{
+    ok: boolean;
+    text: string;
+    costUSD: number;
+    costReported?: boolean;
+  }>;
+  model: string;
   maxAttemptsPerSample?: number;
 }
 
@@ -28,6 +40,8 @@ export interface FixSamplesResult {
   samples: Record<string, unknown>[];
   fixedCount: number;
   costUSD: number;
+  /** false 表示 costUSD 只是执行器已上报部分的下界。 */
+  costReported: boolean;
   fixes: Array<{ sampleId: string; changed: boolean; error?: string }>;
 }
 
@@ -36,7 +50,7 @@ const FIX_SYSTEM_PROMPT = `你是一个评测用例修复专家。根据诊断�
 修复原则：
 1. 先分析失败原因——是 sample 设计问题（mock 缺失 / 断言写错 / 工具名不匹配）还是 LLM 行为问题（LLM 真的做错了,低分合理）
 2. **如果是 LLM 行为问题（低分合理）,不要改 sample,原样返回**
-3. 如果是 sample 设计问题,修复 mocks / assertions / environment,必要时微调 rubric
+3. 如果是 sample 设计问题,只修复 mocks / mocksStrict / assertions / environment
 4. 保持 sample_id 不变,保持测试意图不变
 5. provenance 只能使用现有合法枚举: "human" / "llm-generated" / "production-trace"。不要发明 "llm-generated-fixed"、"fixed" 等新值；不确定时保留原值或用 "llm-generated"
 6. 断言修复只保留核心行为节点：必要输出位置、必须/禁止的关键副作用、关键安全约束。不要为了贴合某次执行轨迹而绑定具体工具、命令形态、文案、完整步骤顺序或临时实现细节
@@ -58,6 +72,37 @@ function sanitizeFixedSamples(samples: Record<string, unknown>[], skillContent: 
   return samples;
 }
 
+const FIXABLE_SAMPLE_FIELDS = new Set([
+  'assertions',
+  'mocks',
+  'mocksStrict',
+  'environment',
+]);
+
+function canonicalStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalStringify(record[key])}`)
+    .join(',')}}`;
+}
+
+function sampleOutsideFixScope(sample: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(sample).filter(([key]) => !FIXABLE_SAMPLE_FIELDS.has(key)),
+  );
+}
+
+export function sampleFixWithinScope(
+  previous: Record<string, unknown>,
+  next: Record<string, unknown>,
+): boolean {
+  return canonicalStringify(sampleOutsideFixScope(previous))
+    === canonicalStringify(sampleOutsideFixScope(next));
+}
+
 function fixAttempts(sample: Record<string, unknown>): number {
   const meta = sample.omkFix;
   if (!meta || typeof meta !== 'object') return 0;
@@ -65,7 +110,7 @@ function fixAttempts(sample: Record<string, unknown>): number {
   return typeof attempts === 'number' && Number.isFinite(attempts) ? attempts : 0;
 }
 
-function stampFixMetadata(sample: Record<string, unknown>, reportId: string): void {
+export function stampFixMetadata(sample: Record<string, unknown>, reportId: string): void {
   sample.omkFix = {
     ...(typeof sample.omkFix === 'object' && sample.omkFix !== null ? sample.omkFix as Record<string, unknown> : {}),
     attempts: fixAttempts(sample) + 1,
@@ -101,7 +146,7 @@ function parseFixedSamples(text: string): Record<string, unknown>[] | null {
 }
 
 export async function fixSamples(options: FixSamplesOptions): Promise<FixSamplesResult> {
-  const { skillContent, samples, report, treatmentKey, executor, model = 'opus', maxAttemptsPerSample = 2 } = options;
+  const { skillContent, samples, report, treatmentKey, executor, model, maxAttemptsPerSample = 2 } = options;
   const sampleMap = new Map(samples.map((s) => [s.sample_id as string, s]));
 
   // Collect all fixable samples into one batch
@@ -145,6 +190,7 @@ export async function fixSamples(options: FixSamplesOptions): Promise<FixSamples
       samples,
       fixedCount: 0,
       costUSD: 0,
+      costReported: true,
       fixes: skippedByAttempts.map((sampleId) => ({ sampleId, changed: false, error: `max attempts reached (${maxAttemptsPerSample})` })),
     };
   }
@@ -160,7 +206,7 @@ export async function fixSamples(options: FixSamplesOptions): Promise<FixSamples
       .map((a) => `  - ${a.type}: ${a.value}`)
       .join('\n');
     const toolCallsSummary = ctx.toolCalls.length > 0
-      ? ctx.toolCalls.map((tc, i) => `  [${i}] ${tc.tool} success=${tc.success} input=${JSON.stringify(tc.input).slice(0, 150)}`).join('\n')
+      ? ctx.toolCalls.map((tc, i) => `  [${i}] ${tc.tool} status=${toolCallStatus(tc)} input=${JSON.stringify(tc.input).slice(0, 150)}`).join('\n')
       : '  (无工具调用)';
     return `### ${ctx.sampleId}
 
@@ -191,14 +237,19 @@ ${sampleSections}
 
 请分析每条用例的失败原因，判断是 sample 设计问题还是 LLM 行为问题。若是 sample 设计问题，优先把断言收敛到核心行为节点，放松易随机的工具/命令/文案/完整步骤绑定；不要为了过用例而要求修改 SKILL.md，也不要把 skill 的完整流程细节塞进 sample。输出一个 JSON 数组，包含所有 ${fixContexts.length} 条 sample（修改过的和原样保留的都要包含）。`;
 
+  let incurredCostUSD = 0;
+  let incurredCostReported = false;
   try {
     const result = await executor({ model, system: FIX_SYSTEM_PROMPT, prompt, timeoutMs: 300_000 });
+    incurredCostUSD = result.costUSD;
+    incurredCostReported = result.costReported !== false;
 
     if (!result.ok) {
       return {
         samples,
         fixedCount: 0,
         costUSD: result.costUSD,
+        costReported: incurredCostReported,
         fixes: fixContexts.map((ctx) => ({ sampleId: ctx.sampleId, changed: false, error: 'executor failed' })),
       };
     }
@@ -209,11 +260,52 @@ ${sampleSections}
         samples,
         fixedCount: 0,
         costUSD: result.costUSD,
+        costReported: incurredCostReported,
         fixes: fixContexts.map((ctx) => ({ sampleId: ctx.sampleId, changed: false, error: 'failed to parse LLM response as JSON array' })),
       };
     }
 
+    const expectedIds = fixContexts.map((context) => context.sampleId);
+    const returnedIds = fixedArr.map((sample) => sample.sample_id);
+    const returnedIdSet = new Set(returnedIds);
+    if (
+      returnedIds.some((sampleId) => typeof sampleId !== 'string')
+      || returnedIdSet.size !== returnedIds.length
+      || returnedIdSet.size !== expectedIds.length
+      || expectedIds.some((sampleId) => !returnedIdSet.has(sampleId))
+    ) {
+      return {
+        samples,
+        fixedCount: 0,
+        costUSD: result.costUSD,
+        costReported: incurredCostReported,
+        fixes: fixContexts.map((ctx) => ({
+          sampleId: ctx.sampleId,
+          changed: false,
+          error: 'fixer must return every requested sample_id exactly once and no others',
+        })),
+      };
+    }
+
     const sanitizedFixedArr = sanitizeFixedSamples(fixedArr, skillContent);
+    const outOfScope = sanitizedFixedArr.find((fixed) => {
+      const sid = fixed.sample_id as string;
+      const original = sampleMap.get(sid);
+      return !original || !sampleFixWithinScope(original, fixed);
+    });
+    if (outOfScope) {
+      return {
+        samples,
+        fixedCount: 0,
+        costUSD: result.costUSD,
+        costReported: incurredCostReported,
+        fixes: fixContexts.map((ctx) => ({
+          sampleId: ctx.sampleId,
+          changed: false,
+          error: `fixer changed protected fields in sample ${String(outOfScope.sample_id)}`,
+        })),
+      };
+    }
 
     const fixes: FixSamplesResult['fixes'] = [];
     for (const fixed of sanitizedFixedArr) {
@@ -232,6 +324,7 @@ ${sampleSections}
       samples: samples.map((s) => sampleMap.get(s.sample_id as string) ?? s),
       fixedCount: fixes.filter((f) => f.changed).length,
       costUSD: result.costUSD,
+      costReported: incurredCostReported,
       fixes: [
         ...fixes,
         ...skippedByAttempts.map((sampleId) => ({ sampleId, changed: false, error: `max attempts reached (${maxAttemptsPerSample})` })),
@@ -241,7 +334,8 @@ ${sampleSections}
     return {
       samples,
       fixedCount: 0,
-      costUSD: 0,
+      costUSD: incurredCostUSD,
+      costReported: incurredCostReported,
       fixes: fixContexts.map((ctx) => ({ sampleId: ctx.sampleId, changed: false, error: String(err) })),
     };
   }

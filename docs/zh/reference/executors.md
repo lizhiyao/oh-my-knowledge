@@ -6,22 +6,44 @@
 
 | 执行器 | 适用场景 | 说明 |
 |--------|----------|------|
-| `claude` | 默认 —— 多数 skill 评测 | 通过 `claude -p` 调用 Claude CLI |
+| `claude` | Claude Code 环境下的 skill 评测 | 通过 `claude -p` 调用 Claude CLI |
 | `claude-sdk` | agent 评测（工具 / 轮次 trace）、结构化输出 | 通过 Claude Agent SDK 调用，抽取 turns / toolCalls trace，无 stdout 解析、避免 buffer 截断 |
-| `codex` | 跟 OpenAI agent A/B（CLI） | 通过 `codex exec --json` 调用，需本地装好登录的 codex（`@openai/codex`）；best-effort tool trace，**costUSD 不报**（codex 自身不输出 USD，需外部账单核算） |
-| `codex-sdk` | 跟 OpenAI agent A/B（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
+| `codex` | Codex / ChatGPT desktop 编程任务（CLI） | 通过 `codex exec --json` 调用，需本地装好登录的 codex（`@openai/codex`）；best-effort tool trace，**costUSD 不报**（codex 自身不输出 USD，需外部账单核算） |
+| `codex-sdk` | Codex agent 评测（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | CI / 没装 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
 | `openai-api` | CI / 没装 CLI；或接非 Claude 模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
-**怎么选：** 默认 `claude`；要工具调用 / 轮次断言或结构化输出（agent 评测）换 `claude-sdk`；要跟 OpenAI agent A/B 用 `codex` / `codex-sdk`；CI 上没 CLI 用 `*-api`；其它厂商把 `openai-api` 指向它的 base URL 或自己写执行器。接非 Claude 模型见[使用非 Claude 模型](../guides/non-claude-models)。
+## 默认 runtime 怎么选
+
+CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yaml` → `OMK_*` 环境偏好 → 自动检测。
+
+- ChatGPT desktop 的 Codex 任务内自动选择 `codex`。
+- 普通终端只有 Codex CLI 可用时选择 `codex`。
+- 普通终端同时装有 Claude 和 Codex 时保留 `claude` 默认，避免升级后无提示切换历史测量 runtime。
+- 显式选择 Codex 而没有传 `--model` 时，读取 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 的顶层 `model`。
+- 默认评委跟随所选执行器：Claude 使用 `claude:haiku`；Codex 使用与被测任务相同的模型，不会回落到 Claude。
+- `eval`、`doctor`、`sample`、`evolve` 和 `observe inbox --llm-enhanced-review` 共用这套解析逻辑。
+
+要在普通终端固定使用 Codex，把下面的偏好加入 shell 配置，例如 `~/.zshrc`：
+
+```bash
+export OMK_EXECUTOR=codex
+# 可选：export OMK_MODEL="你的 Codex 模型"
+# 可选：export OMK_JUDGE_MODELS="codex:你的评委模型"
+```
+
+不设置两个可选变量时，模型读取 Codex 配置，评委沿用被测模型。
+
+**怎么选：** 在 Codex 环境直接用 `codex`，它的测量隔离最完整；只有明确需要 SDK 事件流时再用 `codex-sdk`。Claude Code 环境用 `claude`；要工具调用 / 轮次断言或结构化输出可换 `claude-sdk`。CI 上没 CLI 用 `*-api`；其它厂商把 `openai-api` 指向它的 base URL 或自己写执行器。接非 Claude 模型见[使用非 Claude 模型](../guides/non-claude-models)。
 
 **Codex construct-validity 说明：**
 
 - **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。报告持久化 per-variant `meta.executorRuntimes` / `meta.executorRuntime` 和每个评委的 `meta.judgeModels[].runtime` 指纹（binary 或 SDK 版本 + 能力快照）；strict comparability checks 在指纹无法审计时告警。跨 variant 指纹不一致时，结果要当成 executor-runtime 对比，而不只是 prompt/template 行为。
-- **config 隔离**：两个执行器都隔离用户级 config —— `codex` 传 `--ephemeral` + `--ignore-user-config`，`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录（auth.json 通过 symlink 透传）。你的 `~/.codex/config.toml` 不会渗入任何一次 eval。
+- **配置与会话隔离**：omk 只在启动前读取 Codex 配置里的顶层 `model`，然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
+- **SDK execpolicy 限制**：当前 `@openai/codex-sdk` API 没有暴露 CLI 的 `--ignore-rules`。显式工作目录中的项目 execpolicy 仍可能影响 `codex-sdk`。需要隔离项目规则时优先使用 `codex`；否则必须固定执行器和 runtime context 后再比较结果。
 
 ## 自定义执行器
 
@@ -35,8 +57,13 @@ omk eval --executor "./my-executor.sh"
 **协议约定：**
 
 - **输入**（stdin）：JSON `{"model":"...","system":"...","prompt":"..."}`
-- **输出**（stdout）：JSON `{"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`
+- **输出**（stdout）：JSON `{"ok":true,"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`；为兼容旧脚本，可以省略 `ok`
+- 返回 `{"ok":false,"error":"失败原因"}` 可显式报告执行失败
 - stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
+- 要暴露 source-neutral agent 证据，可增加 `turns`、`toolCalls`、`fullNumTurns`、`numSubAgents`。每条 tool call 包含 `tool`、JSON `input` / `output`、`success`，并可带 `status`（`success` / `failure` / `cancelled` / `unknown`）及来源身份字段。trace 字段格式错误时整次执行失败，不会静默丢弃。
+- 只有四个 token 计数 `inputTokens`、`outputTokens`、`cacheReadTokens`、`cacheCreationTokens` 全部存在时，token 使用量才视为 runtime 实测；否则报告标记为未报告。
+- 命令引用的本地脚本或可执行文件字节会进入 runtime 指纹；即使命令字符串不变，文件内容变化也会让 cache 与 strict comparability 失效。
+- JSON 中的 `output` 为空，或纯文本只含空白，均视为失败
 - 非零退出码视为执行失败
 
 ## 前置要求
@@ -52,5 +79,5 @@ omk eval --executor "./my-executor.sh"
 ## 相关
 
 - [Artifact 与 variant 布局](./artifact-layout) —— variant 如何解析为 artifact + runtime context
-- [评测 agent](../guides/agent-eval) —— 用 `claude-sdk` 做 agent-aware 评测
+- [评测 agent](../guides/agent-eval) —— source-neutral agent 评测与显式项目上下文
 - [使用非 Claude 模型](../guides/non-claude-models) —— GLM / 通义 / DeepSeek / Moonshot / Ollama
