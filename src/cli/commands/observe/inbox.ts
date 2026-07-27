@@ -10,20 +10,21 @@ import type { ObservationInboxViewModel } from '../../../observability/inbox-vie
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
 import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
+import { ownRecordValue } from '../../../shared/record-count.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 function pickSkillString(value: Record<string, string> | undefined, skillName: string): Record<string, string> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 function pickSkillToolCounts(value: Record<string, Record<string, number>> | undefined, skillName: string): Record<string, Record<string, number>> | undefined {
-  if (!value || value[skillName] == null) return undefined;
-  return { [skillName]: value[skillName] };
+  const selected = value ? ownRecordValue(value, skillName) : undefined;
+  return selected == null ? undefined : { [skillName]: selected };
 }
 
 // runObserveInbox export:test/cli/observe.test.ts in-process import 验证 by-skill 聚合行为。
@@ -138,8 +139,10 @@ export async function runObserveInbox(
   for (const item of items) {
     const evidence = item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || '';
     const artifactVersion = item.artifactVersion === 'unknown' ? '⚠ unknown' : item.artifactVersion;
+    const timestampedOccurrences = item.timestampedOccurrences
+      ?? (item.firstSeen === '1970-01-01T00:00:00.000Z' ? 0 : item.occurrences);
     console.log(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
-    console.log(`  lastSeen=${item.lastSeen} version=${artifactVersion}`);
+    console.log(`  lastSeen=${timestampedOccurrences > 0 ? item.lastSeen : 'unknown'} version=${artifactVersion}`);
     console.log(`  reason=${item.severityReasonCode ?? 'unknown'}`);
     if (evidence) console.log(`  evidence=${evidence.slice(0, 180)}`);
   }

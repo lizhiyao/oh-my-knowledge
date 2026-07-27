@@ -7,6 +7,7 @@ import {
   buildDoctorArtifactGraph,
   doctorGraphDirForDoctorOutput,
   persistDoctorGraphSidecars,
+  removeDoctorGraphSidecars,
   renderDoctorEvidenceCard,
 } from '../../src/artifact-graph/doctor.js';
 import type { DoctorReport } from '../../src/types/index.js';
@@ -151,6 +152,43 @@ describe('doctor artifact graph', () => {
       const graph = JSON.parse(readFileSync(result.graphPath, 'utf-8')) as { documentKind: string };
       assert.equal(graph.documentKind, 'artifact-graph');
       assert.ok(readFileSync(result.evidenceCardPath, 'utf-8').includes('知识图谱摘要'));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-canonical sidecar identities instead of sanitizing aliases', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-doctor-graph-identity-'));
+    try {
+      const skillRoot = join(tmp, 'skill');
+      mkdirSync(skillRoot, { recursive: true });
+      const skillPath = join(skillRoot, 'SKILL.md');
+      writeFileSync(skillPath, '# Skill\n\n这个 skill 内容足够长，用于测试 graph sidecar。');
+      const report = makeReport(tmp, skillPath);
+      const outputDir = join(tmp, '.omk', 'doctors');
+      const canonical = persistDoctorGraphSidecars({
+        report,
+        skill: report.skills[0],
+        sourcePath: join(outputDir, 'review-skill-test.report.json'),
+        outputDir,
+        fileStem: 'a_b',
+        lang: 'zh',
+      });
+
+      assert.throws(
+        () => persistDoctorGraphSidecars({
+          report,
+          skill: report.skills[0],
+          sourcePath: join(outputDir, 'review-skill-test.report.json'),
+          outputDir,
+          fileStem: 'a/b',
+          lang: 'zh',
+        }),
+        /invalid doctor graph file stem/,
+      );
+      removeDoctorGraphSidecars(outputDir, 'a/b');
+      assert.equal(existsSync(canonical.graphPath), true);
+      assert.equal(existsSync(canonical.evidenceCardPath), true);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

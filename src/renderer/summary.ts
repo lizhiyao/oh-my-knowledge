@@ -5,6 +5,7 @@ import { pValueCategory } from '../eval-core/statistics.js';
 import { ciLevelLabel } from '../eval-core/bootstrap.js';
 import { computeVerdict, medianStabilityCV, STABILITY_UNSTABLE_CV, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
 import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
@@ -574,9 +575,13 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     // Cost — 只算 execution cost(judge cost 是工具开销,不算 skill 成本)。
     const execCost = s.totalExecCostUSD || 0;
     const costReported = s.execCostReported !== false;
-    const hasCost = execCost > 0 || (s.avgTotalTokens || 0) > 0;
+    const tokenCoverage = s.tokenUsageCoverageRate ?? 1;
+    const hasMeasuredTokens = tokenCoverage > 0;
+    const hasCost = (s.totalSamples || 0) > 0;
     const costPerSample = (s.totalSamples || 0) > 0 ? execCost / s.totalSamples : execCost;
-    const tokenDetail = `${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}`;
+    const tokenDetail = hasMeasuredTokens
+      ? `${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}${tokenCoverage < 1 ? ` · ${Math.round(tokenCoverage * 100)}% ${lang === 'zh' ? '覆盖' : 'coverage'}` : ''}`
+      : lang === 'zh' ? 'tokens 未观测' : 'tokens unobserved';
     const costDim: DimDisplay = hasCost
       ? { label: dimText('dimCost', lang), value: costReported ? fmtCost(execCost) : fmtCost(0, false), valueColor: costReported ? 'var(--text-primary)' : 'var(--text-muted)', primary: false, bg: '', detailLines: [tokenDetail], title: costReported ? undefined : costUnreportedTooltip, icon: 'cost' }
       : { label: dimText('dimCost', lang), value: 'N/A', valueColor: 'var(--text-muted)', primary: false, bg: '', detailLines: [], icon: 'cost' };
@@ -1857,8 +1862,22 @@ export function renderAgentOverview(variants: string[], summary: Record<string, 
     if (!stats) return '';
     const color = COLORS[i % COLORS.length];
     const avgTools = stats.avgToolCalls ?? 0;
-    const successRate = stats.toolSuccessRate != null ? `${(stats.toolSuccessRate * 100).toFixed(0)}%` : '—';
-    const successRateColor = (stats.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
+    const outcomeSuffix = [
+      stats.avgToolCancelled
+        ? lang === 'zh' ? `${stats.avgToolCancelled} 次取消` : `${stats.avgToolCancelled} cancelled`
+        : '',
+      stats.avgToolUnknown
+        ? lang === 'zh' ? `${stats.avgToolUnknown} 次状态未知` : `${stats.avgToolUnknown} unknown`
+        : '',
+    ].filter(Boolean).map((value) => ` · ${value}`).join('');
+    const successRate = stats.toolSuccessRate != null
+      ? `${(stats.toolSuccessRate * 100).toFixed(0)}% OK${outcomeSuffix}`
+      : stats.avgToolCancelled || stats.avgToolUnknown
+        ? outcomeSuffix.replace(/^ · /, '')
+        : lang === 'zh' ? '状态未知' : 'unknown';
+    const successRateColor = stats.toolSuccessRate == null
+      ? 'var(--text-muted)'
+      : stats.toolSuccessRate >= 0.8 ? 'var(--green)' : 'var(--red)';
     const turns = stats.avgFullNumTurns ?? stats.avgNumTurns ?? 0;
     const distributionEntries = Object.entries(stats.toolDistribution || {}).sort((a, b) => b[1] - a[1]);
     const distSummary = distributionEntries.length > 0
@@ -1873,7 +1892,7 @@ export function renderAgentOverview(variants: string[], summary: Record<string, 
         <span class="ctx-sep">·</span>
         <span>${avgTools} ${lang === 'zh' ? '工具/次' : 'tools/req'}</span>
         <span class="ctx-sep">·</span>
-        <span style="color:${successRateColor}">${successRate} OK</span>
+        <span style="color:${successRateColor}">${successRate}</span>
       </span>
     </div>`;
   }).join('');
@@ -1917,7 +1936,12 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     const uncoveredByType: Record<string, string[]> = {};
     for (const entry of knowledgeCoverage.entries.filter((item) => !item.accessed)) {
       const category = entry.path.startsWith('repos/') ? 'code' : entry.type;
-      (uncoveredByType[category] = uncoveredByType[category] || []).push(entry.path);
+      const files = ownRecordValue(uncoveredByType, category) ?? setOwnRecordValue(
+        uncoveredByType,
+        category,
+        [],
+      );
+      files.push(entry.path);
     }
     const hintLines: string[] = [];
     const typeLabels: Record<string, string> = lang === 'zh'
@@ -2053,7 +2077,12 @@ export function renderKnowledgeInteractionSection(
       const uncoveredByType: Record<string, string[]> = {};
       for (const entry of cov.entries.filter((item) => !item.accessed)) {
         const category = entry.path.startsWith('repos/') ? 'code' : entry.type;
-        (uncoveredByType[category] = uncoveredByType[category] || []).push(entry.path);
+        const files = ownRecordValue(uncoveredByType, category) ?? setOwnRecordValue(
+          uncoveredByType,
+          category,
+          [],
+        );
+        files.push(entry.path);
       }
       const typeLabels: Record<string, string> = lang === 'zh'
         ? { principle: '原则文件', semantic: '语义索引', design: '设计文档', code: '代码路径', script: '脚本工具', other: '其他知识' }

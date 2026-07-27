@@ -39,7 +39,7 @@ describe('extractAgentTrace', () => {
         message: {
           role: 'user',
           content: [
-            { type: 'tool_result', tool_use_id: 'tu-1', content: '{"name": "omk"}' },
+            { type: 'tool_result', tool_use_id: 'tu-1', content: '{"name": "omk"}', is_error: false },
           ],
         },
       },
@@ -60,6 +60,8 @@ describe('extractAgentTrace', () => {
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].tool, 'Read');
     assert.equal(toolCalls[0].success, true);
+    assert.equal(toolCalls[0].status, 'success');
+    assert.equal(toolCalls[0].statusSource, 'runtime');
     assert.ok(String(toolCalls[0].output).includes('omk'));
 
     // turns: assistant(tool_use) → tool(result) → assistant(text)
@@ -98,6 +100,76 @@ describe('extractAgentTrace', () => {
     assert.equal(toolCalls[1].tool, 'Read');
   });
 
+  it('normalizes Claude MCP tools into the same identity used by Codex', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'mcp-1',
+            name: 'mcp__github__fetch_file',
+            input: { path: 'README.md' },
+          }],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'mcp-1',
+            content: 'ok',
+            is_error: false,
+          }],
+        },
+      },
+    ];
+
+    const { toolCalls } = extractAgentTrace(messages as never[]);
+    assert.equal(toolCalls[0].tool, 'github.fetch_file');
+    assert.equal(toolCalls[0].sourceTool, 'mcp__github__fetch_file');
+    assert.equal(toolCalls[0].toolNamespace, 'mcp__github');
+    assert.equal(toolCalls[0].toolProvider, 'github');
+  });
+
+  it('pairs reused Claude tool_use ids in FIFO order', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'reused', name: 'Read', input: { file: 'first' } },
+            { type: 'tool_use', id: 'reused', name: 'Read', input: { file: 'second' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'reused', content: 'first output', is_error: false },
+            { type: 'tool_result', tool_use_id: 'reused', content: 'second output', is_error: true },
+          ],
+        },
+      },
+    ];
+
+    const { toolCalls } = extractAgentTrace(messages as never[]);
+    assert.deepEqual(
+      toolCalls.map((call) => [call.input, call.output, call.status]),
+      [
+        [{ file: 'first' }, 'first output', 'success'],
+        [{ file: 'second' }, 'second output', 'failure'],
+      ],
+    );
+    assert.equal(new Set(toolCalls.map((call) => call.callInstanceId)).size, 2);
+  });
+
   it('marks failed tool calls with is_error', () => {
     const messages = [
       {
@@ -114,6 +186,7 @@ describe('extractAgentTrace', () => {
     const { toolCalls } = extractAgentTrace(messages as never[]);
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].success, false);
+    assert.equal(toolCalls[0].status, 'failure');
   });
 
   it('returns empty for messages without tool usage', () => {
@@ -126,6 +199,57 @@ describe('extractAgentTrace', () => {
     const { turns, toolCalls } = extractAgentTrace(messages as never[]);
     assert.equal(toolCalls.length, 0);
     assert.equal(turns.length, 1); // one text turn
+  });
+
+  it('keeps an unmatched tool_use as an unknown outcome', () => {
+    const messages = [{
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'tu-pending', name: 'Read', input: { file: 'a.ts' } }],
+      },
+    }];
+
+    const { turns, toolCalls } = extractAgentTrace(messages as never[]);
+    assert.equal(toolCalls.length, 1);
+    assert.equal(toolCalls[0].status, 'unknown');
+    assert.equal(toolCalls[0].statusSource, 'unknown');
+    assert.equal(toolCalls[0].success, false);
+    assert.equal(turns[0].toolCalls?.[0], toolCalls[0]);
+  });
+
+  it('keeps an ambiguous tool_result unknown and infers only explicit failure text', () => {
+    const messages = [
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 'tu-unknown', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'tu-failure', name: 'Bash', input: {} },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tu-unknown', content: 'some payload' },
+            { type: 'tool_result', tool_use_id: 'tu-failure', content: 'Error: command failed' },
+          ],
+        },
+      },
+    ];
+
+    const { toolCalls } = extractAgentTrace(messages as never[]);
+    assert.deepEqual(
+      toolCalls.map((call) => [call.status, call.statusSource, call.success]),
+      [
+        ['unknown', 'unknown', false],
+        ['failure', 'inferred', false],
+      ],
+    );
   });
 
   it('skips thinking blocks', () => {
@@ -356,6 +480,44 @@ describe('buildTraceSummary', () => {
     assert.ok(result.includes('Read'));
     assert.ok(result.includes('tool:'));
   });
+
+  it('reports unknown tool outcomes separately from failures', () => {
+    const result = buildTraceSummary(undefined, [{
+      tool: 'Read',
+      input: {},
+      output: '',
+      success: false,
+      status: 'unknown',
+      statusSource: 'unknown',
+    }])!;
+    assert.ok(result.includes('状态未知 1/1'));
+    assert.ok(!result.includes('失败 1/1'));
+    assert.ok(result.includes('[状态未知]'));
+  });
+
+  it('reports cancelled tool calls separately from failures', () => {
+    const result = buildTraceSummary(undefined, [{
+      tool: 'Read',
+      input: {},
+      output: '',
+      success: false,
+      status: 'cancelled',
+      statusSource: 'runtime',
+    }])!;
+    assert.ok(result.includes('取消 1/1'));
+    assert.ok(!result.includes('失败 1/1'));
+    assert.ok(result.includes('[取消]'));
+  });
+
+  it('labels user context separately from tool results', () => {
+    const result = buildTraceSummary([
+      { role: 'user', content: 'Please inspect this.' },
+      { role: 'assistant', content: 'Done.' },
+    ])!;
+
+    assert.ok(result.includes('user 1 / assistant 1 / tool 0'));
+    assert.ok(result.includes('user: Please inspect this.'));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -383,11 +545,59 @@ describe('schema agent metrics', () => {
     assert.deepEqual(vr.toolNames, ['Read', 'Bash']);
   });
 
+  it('includes mutually exclusive cache buckets in totalTokens', () => {
+    const vr = buildVariantResult({
+      ...baseExecResult,
+      inputTokens: 100,
+      outputTokens: 200,
+      cacheReadTokens: 30,
+      cacheCreationTokens: 40,
+    }, null);
+
+    assert.equal(vr.totalTokens, 370);
+  });
+
   it('buildVariantResult omits agent metrics when no toolCalls', () => {
     const noTools: ExecResult = { ...baseExecResult, toolCalls: undefined };
     const vr = buildVariantResult(noTools, null);
     assert.equal(vr.numToolCalls, undefined);
     assert.equal(vr.toolSuccessRate, undefined);
+  });
+
+  it('excludes unknown outcomes and omits success rate without resolved calls', () => {
+    const vr = buildVariantResult({
+      ...baseExecResult,
+      toolCalls: [{
+        tool: 'Read',
+        input: {},
+        output: '',
+        success: false,
+        status: 'unknown',
+        statusSource: 'unknown',
+      }],
+    }, null);
+    assert.equal(vr.numToolFailures, 0);
+    assert.equal(vr.numToolUnknown, 1);
+    assert.equal(vr.toolSuccessRate, undefined);
+  });
+
+  it('separates cancelled calls from failures and the success-rate denominator', () => {
+    const vr = buildVariantResult({
+      ...baseExecResult,
+      toolCalls: [
+        { tool: 'Read', input: {}, output: 'ok', success: true, status: 'success' },
+        { tool: 'Read', input: {}, output: '', success: false, status: 'cancelled' },
+      ],
+    }, null);
+    assert.equal(vr.numToolFailures, 0);
+    assert.equal(vr.numToolCancelled, 1);
+    assert.equal(vr.numToolUnknown, 0);
+    assert.equal(vr.toolSuccessRate, 1);
+
+    const summary = buildVariantSummary([vr]);
+    assert.equal(summary.avgToolFailures, 0);
+    assert.equal(summary.avgToolCancelled, 1);
+    assert.equal(summary.toolSuccessRate, 1);
   });
 
   it('buildVariantSummary aggregates agent metrics', () => {
@@ -415,6 +625,30 @@ describe('schema agent metrics', () => {
     assert.ok(summary.traceCoverageRate! > 0);
     assert.ok(summary.toolDistribution!['Read'] > 0);
     assert.ok(summary.toolDistribution!['Glob'] > 0);
+  });
+
+  it('buildVariantSummary preserves legacy success rates without failure counts', () => {
+    const legacy = buildVariantResult(baseExecResult, null);
+    legacy.numToolCalls = 4;
+    legacy.toolSuccessRate = 0.25;
+    delete legacy.numToolFailures;
+    delete legacy.numToolUnknown;
+
+    const summary = buildVariantSummary([legacy]);
+    assert.equal(summary.toolSuccessRate, 0.25);
+  });
+
+  it('treats rows without outcome evidence as unknown instead of failed', () => {
+    const measured = buildVariantResult(baseExecResult, null);
+    const unmeasured = buildVariantResult(baseExecResult, null);
+    unmeasured.numToolCalls = 2;
+    delete unmeasured.numToolFailures;
+    delete unmeasured.numToolUnknown;
+    delete unmeasured.toolSuccessRate;
+
+    const summary = buildVariantSummary([measured, unmeasured]);
+    assert.equal(summary.avgToolUnknown, 1);
+    assert.equal(summary.toolSuccessRate, measured.toolSuccessRate);
   });
 
   it('buildVariantSummary omits agent metrics when no tool data', () => {

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
@@ -11,6 +11,7 @@ import { indexObserveWrite } from '../../../eval-core/artifact-index.js';
 import { reportFilePath, runFileSuffix } from '../../../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../../../eval-core/report-file-migration.js';
 import type { SkillHealthReport } from '../../../observability/skill-health-analyzer.js';
+import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 
 /**
  * observe-health 报告落盘:id / 文件名加 4 位随机段,根治「同秒两次 omk observe 直接覆盖、数据丢失」的 bug。
@@ -22,7 +23,7 @@ export function persistObserveHealthReport(report: SkillHealthReport, outDir: st
   migrateLegacyReportFiles(outDir, 'observe-health');
   const id = runFileSuffix();
   const jsonPath = reportFilePath(outDir, id);
-  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
+  writeJsonFileAtomic(jsonPath, report);
   indexObserveWrite(report, jsonPath, outDir, id);
   return { id, jsonPath };
 }
@@ -101,8 +102,8 @@ async function recordObserveFeedback(report: SkillHealthReport, reportId: string
 
 export default class Observe extends BaseCommand {
   static description = bilingual({
-    zh: '分析 sessions 目录中的 Claude Code / Codex skill 调用健康度（默认行为）。子命令：ingest / inbox / show。',
-    en: 'Analyze Claude Code or Codex skill invocation health from a sessions dir (default). Subcommands: ingest / inbox / show.',
+    zh: '把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。',
+    en: 'Normalize Codex, Claude Code, OpenClaw, or markdown traces into Trace IR and analyze skill invocation health (default). Subcommands: ingest / inbox / show.',
   });
 
   static examples = [
@@ -211,10 +212,26 @@ export default class Observe extends BaseCommand {
         ? resolve(flags['output-dir'])
         : (flags.global ? globalObserveHealthDir() : projectObserveHealthDir());
       const { id, jsonPath } = persistObserveHealthReport(report, outDir);
+      const { traceIngestionNotices } = await import('../../../observability/trace-ingestion.js');
+      for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
+        process.stderr.write(`${notice.text}\n`);
+      }
 
-      const { sessionCount, segmentCount, toolCallCount, toolFailureRate } = report.meta;
+      const {
+        sessionCount,
+        segmentCount,
+        toolCallCount,
+        toolFailureRate,
+        toolResolvedCount = toolCallCount,
+        toolCancelledCount = 0,
+        toolUnknownCount = 0,
+      } = report.meta;
+      const toolComparableCount = Math.max(0, toolResolvedCount - toolCancelledCount);
+      const failureSummary = toolCallCount > 0 && toolComparableCount === 0
+        ? `fail rate: unavailable${toolCancelledCount > 0 ? ` · cancelled: ${toolCancelledCount}` : ''}${toolUnknownCount > 0 ? ` · unknown outcomes: ${toolUnknownCount}` : ''}`
+        : `fail rate: ${(toolFailureRate * 100).toFixed(1)}% (${toolComparableCount} comparable${toolCancelledCount > 0 ? ` · ${toolCancelledCount} cancelled` : ''})`;
       console.log('');
-      console.log(`sessions: ${sessionCount} · segments: ${segmentCount} · tool calls: ${toolCallCount} · fail rate: ${(toolFailureRate * 100).toFixed(1)}%`);
+      console.log(`sessions: ${sessionCount} · segments: ${segmentCount} · tool calls: ${toolCallCount} · ${failureSummary}`);
       const overallConf = report.overall.confidence;
       const confSuffix = overallConf === 'high'
         ? ''

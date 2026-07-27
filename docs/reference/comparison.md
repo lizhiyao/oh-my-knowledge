@@ -16,7 +16,7 @@ If you need **agent sandbox isolation** for safety evaluations, choose inspect-a
 
 | Tool | Language | Position | License |
 |---|---|---|---|
-| [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | LLM eval with statistical rigor + Claude Code native | MIT |
+| [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | Statistical knowledge-artifact eval + Codex / Claude native workflows | MIT |
 | [promptfoo](https://github.com/promptfoo/promptfoo) | TS / Node | Local CLI, red-team focus, OpenAI acquired | MIT |
 | [DeepEval](https://github.com/confident-ai/deepeval) | Python | Pytest-style metrics, paid SaaS upsell | Apache 2.0 |
 | [RAGAS](https://github.com/explodinggradients/ragas) | Python | RAG-specific metrics, statement decomposition | Apache 2.0 |
@@ -54,7 +54,7 @@ omk is the only tool surveyed that ships all five rigour pieces. The closest com
 
 Three-layer isolation prevents single-axis regressions from being masked by composite averaging — a `fact 4.5 → 2.5` drop with `judge 3 → 5` boost looks fine in composite mean but is caught by all-pass gates.
 
-**Per-variant skill-discovery isolation** closes a subtle construct-validity hole: when comparing `baseline` vs a skill variant, three separate channels could silently let `baseline` see whatever skill the user had in `~/.claude/skills/` — including the very skill being tested. omk defaults to `--strict-baseline`, which closes all three: (1) SDK skill auto-discovery via `options.skills:[]`, (2) subagent Skill tool via `options.disallowedTools:['Skill']`, and (3) the cwd file-system path — baseline's default cwd is `process.cwd()`, which usually contains a `skills/<name>/` symlink prepared for the treatment variant; baseline could `Glob` + `Read` straight through it, completely bypassing SDK isolation. omk redirects baseline's cwd to `~/.oh-my-knowledge/state/isolated-cwd/` (empty dir) when no explicit cwd is given. `--no-strict-baseline` escape hatch and an explicit per-variant `allowedSkills: []` in eval.yaml are also supported. inspect-ai's per-sample solver pattern achieves a similar effect for arbitrary tools but requires explicit per-test wiring; promptfoo / DeepEval / OpenAI Evals don't address this dimension.
+**Per-variant skill-discovery isolation** closes a subtle construct-validity hole: a native coding-agent baseline can discover undeclared local knowledge through project files, skill registries, subagents, or ordinary cwd reads. omk defaults to `--strict-baseline`, gives every implicit baseline execution a fresh empty cwd, and adds provider controls: Codex CLI ignores user config and rules and runs ephemerally; Codex SDK gets an isolated `CODEX_HOME`; Claude blocks skill discovery and the subagent `Skill` tool. Runtime and isolation fingerprints are persisted so incompatible reports cannot masquerade as artifact-only comparisons. `--no-strict-baseline` remains an explicit escape hatch. inspect-ai can achieve comparable isolation through per-sample solver wiring; promptfoo / DeepEval / OpenAI Evals do not address this dimension directly.
 
 ## Judges
 
@@ -69,7 +69,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| RAG: faithfulness / answer_relevancy / context_recall | ✓ (length-debias always on) | partial | ✓ | ✓ (multi-step) | ✗ | partial | ✗ | ✗ |
+| RAG: faithfulness / answer_relevancy / context_recall | ✓ (length-debias default on; mode fingerprinted) | partial | ✓ | ✓ (multi-step) | ✗ | partial | ✗ | ✗ |
 | ROUGE-N / Levenshtein / BLEU | ✓ self-impl, zero dep | ✓ | partial | ✗ | ✓ | ✗ | ✓ | ✗ |
 | Semantic similarity (LLM-graded) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | Tool-call / agent assertions | ✓ 9 types | ✗ | partial | ✗ | ✗ | partial | ✗ | ✓ strong |
@@ -79,8 +79,8 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| Native Claude Code skill evaluation | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Production session JSONL parsing (omk observe) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
+| Native agent skill evaluation | ✓ Codex / Claude Code | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Production session trace parsing (omk observe) | ✓ Codex / Claude Code / OpenClaw / markdown | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
 | Auto self-iteration (`omk evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml (evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | partial | ✗ | partial | ✓ |
 | CI/CD `omk eval` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
@@ -105,7 +105,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 
 **Chinese-speaking AI engineering teams.** omk has the only complete Chinese documentation set among the surveyed tools — README, CLI help, HTML report, terminology spec, gap-signal spec, RAG-metrics spec, all native Chinese (not machine-translated).
 
-**Claude Code users.** omk has the most native workflow on Claude Code: it works as a Claude Code skill, and the underlying `omk` CLI can also be driven directly from Codex and other coding agents. promptfoo / DeepEval / others usually need a custom-executor shim to reach the same artifact-oriented workflow.
+**Codex and Claude Code users.** omk ships one agent-neutral skill and native executors for both families. Codex CLI is the strongest isolated measurement path; Codex SDK and Claude runtimes remain available when their project context or event streams are intentional inputs. promptfoo / DeepEval / others usually need a custom-executor shim to reach the same artifact-oriented workflow.
 
 ## When NOT to choose omk
 

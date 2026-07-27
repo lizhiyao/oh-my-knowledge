@@ -5,6 +5,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
 import {
+  compactObservationExperienceReport,
+  normalizeObservationExperienceReport,
+} from '../../../src/observability/experience.js';
+import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
 } from '../../../src/observability/review-state.js';
@@ -15,6 +19,273 @@ import {
 import { resolvedReviewSessionsForFixture } from './_helpers.js';
 
 describe('observe inbox - experience report', () => {
+  it('fails closed instead of throwing when persisted aggregates overflow', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-overflow-'));
+    for (const [index, sessionId] of ['overflow-a', 'overflow-b'].entries()) {
+      const records = [
+        {
+          type: 'user',
+          uuid: `u-${index}`,
+          parentUuid: null,
+          sessionId,
+          timestamp: `2026-05-0${index + 1}T00:00:00.000Z`,
+          cwd: '/repo-a',
+          message: {
+            role: 'user',
+            content: '<command-name>/audit</command-name>\nInspect it.',
+          },
+        },
+        {
+          type: 'assistant',
+          uuid: `a-${index}`,
+          parentUuid: `u-${index}`,
+          sessionId,
+          timestamp: `2026-05-0${index + 1}T00:00:01.000Z`,
+          cwd: '/repo-a',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Done.' }],
+          },
+        },
+      ];
+      writeFileSync(
+        join(dir, `${sessionId}.jsonl`),
+        records.map((record) => JSON.stringify(record)).join('\n'),
+      );
+    }
+
+    const experience = buildObservationInboxReport(dir).experience;
+    assert.ok(experience);
+    assert.equal(experience.invocations.length, 2);
+    assert.equal(experience.sessions.length, 2);
+    const compact = compactObservationExperienceReport(experience);
+    for (const invocation of compact.invocations) {
+      invocation.indicators.userMessageCount = Number.MAX_SAFE_INTEGER;
+    }
+    for (const session of compact.sessions) {
+      session.indicators.userMessageCount = Number.MAX_SAFE_INTEGER;
+      if (session.reviewerReport) {
+        session.reviewerReport.oneLookMetrics.userMessageCount = Number.MAX_SAFE_INTEGER;
+      }
+    }
+
+    assert.doesNotThrow(() => normalizeObservationExperienceReport(compact));
+    assert.equal(normalizeObservationExperienceReport(compact), null);
+  });
+
+  it('links a late tool result back to the originating invocation timeline', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-late-result-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u-audit',
+        parentUuid: null,
+        sessionId: 's-late',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nInspect it.' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-call',
+        parentUuid: 'u-audit',
+        sessionId: 's-late',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'late-call', name: 'Read', input: { file_path: '/repo-a/a.ts' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u-review',
+        parentUuid: 'a-call',
+        sessionId: 's-late',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/review</command-name>\nReview it.' },
+      },
+      {
+        type: 'user',
+        uuid: 'u-result',
+        parentUuid: 'u-review',
+        sessionId: 's-late',
+        timestamp: '2026-05-01T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'late-call', content: 'failed', is_error: true }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-review',
+        parentUuid: 'u-result',
+        sessionId: 's-late',
+        timestamp: '2026-05-01T00:00:04.000Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Review complete.' }] },
+      },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const experience = buildObservationInboxReport(file).experience;
+    assert.ok(experience);
+    const audit = experience.invocations.find((invocation) => invocation.skillName === 'audit');
+    const review = experience.invocations.find((invocation) => invocation.skillName === 'review');
+    assert.ok(audit);
+    assert.ok(review);
+    assert.equal(audit.metrics.numToolCalls, 1);
+    assert.equal(audit.metrics.numToolFailures, 1);
+    assert.equal(audit.metrics.numToolUnknown, 0);
+    assert.ok(audit.timeline.some((event) =>
+      event.kind === 'tool_result'
+      && event.toolUseId === 'late-call'
+      && event.toolStatus === 'failure'
+    ));
+    assert.ok(review.timeline.some((event) =>
+      event.kind === 'tool_result'
+      && event.toolUseId === 'late-call'
+    ));
+    assert.equal(audit.indicators.toolFailureCount, 1);
+    assert.equal(audit.evidenceChain.toolFailureResultCount, 1);
+    assert.equal(review.metrics.numToolCalls, 0);
+    assert.equal(review.indicators.toolFailureCount, 0);
+    assert.equal(review.evidenceChain.toolFailureResultCount, 0);
+
+    const hydrated = normalizeObservationExperienceReport(
+      compactObservationExperienceReport(experience),
+    );
+    assert.ok(hydrated);
+    assert.ok(hydrated.invocations.find((invocation) => invocation.skillName === 'audit')?.timeline.some(
+      (event) => event.kind === 'tool_result' && event.toolUseId === 'late-call',
+    ));
+  });
+
+  it('keeps cancelled tool results out of failure evidence', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-cancelled-result-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        timestamp: '2026-05-01T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 's-cancelled', cwd: '/repo-a', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-05-01T00:00:01.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: '<command-name>/audit</command-name>\nInspect it.' },
+      },
+      {
+        timestamp: '2026-05-01T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'cancelled-call',
+          name: 'exec_command',
+          arguments: '{"cmd":"rg needle"}',
+        },
+      },
+      {
+        timestamp: '2026-05-01T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'cancelled-call',
+          status: 'cancelled',
+          output: '',
+        },
+      },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const experience = buildObservationInboxReport(file).experience;
+    assert.ok(experience);
+    const audit = experience.invocations.find((invocation) => invocation.skillName === 'audit');
+    assert.ok(audit);
+    assert.equal(audit.metrics.numToolFailures, 0);
+    assert.equal(audit.metrics.numToolCancelled, 1);
+    assert.equal(audit.metrics.numToolUnknown, 0);
+    assert.equal(audit.indicators.toolFailureCount, 0);
+    assert.equal(audit.indicators.toolCancelledCount, 1);
+    assert.equal(audit.evidenceChain.toolFailureResultCount, 0);
+    assert.ok(audit.timeline.some((event) =>
+      event.kind === 'tool_result'
+      && event.toolUseId === 'cancelled-call'
+      && event.toolStatus === 'cancelled'
+      && event.isError === false
+    ));
+
+    const hydrated = normalizeObservationExperienceReport(
+      compactObservationExperienceReport(experience),
+    );
+    assert.ok(hydrated);
+    const hydratedAudit = hydrated.invocations.find((invocation) => invocation.skillName === 'audit');
+    assert.equal(hydratedAudit?.metrics.numToolCancelled, 1);
+    assert.equal(hydratedAudit?.indicators.toolCancelledCount, 1);
+  });
+
+  it('does not reinterpret an explicit unknown tool status from output text', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-unknown-result-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        timestamp: '2026-05-01T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 's-unknown', cwd: '/repo-a', model_provider: 'openai' },
+      },
+      {
+        timestamp: '2026-05-01T00:00:01.000Z',
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: '<command-name>/audit</command-name>\nInspect it.' },
+      },
+      {
+        timestamp: '2026-05-01T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'unknown-call',
+          name: 'exec_command',
+          arguments: '{"cmd":"rg needle"}',
+        },
+      },
+      {
+        timestamp: '2026-05-01T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'unknown-call',
+          status: 'unknown',
+          output: 'Error: terminal status was not reported',
+        },
+      },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const experience = buildObservationInboxReport(file).experience;
+    assert.ok(experience);
+    const audit = experience.invocations.find((invocation) => invocation.skillName === 'audit');
+    assert.ok(audit);
+    assert.equal(audit.metrics.numToolFailures, 0);
+    assert.equal(audit.metrics.numToolUnknown, 1);
+    assert.equal(audit.indicators.toolFailureCount, 0);
+    assert.equal(audit.indicators.toolUnknownCount, 1);
+    assert.equal(audit.evidenceChain.toolFailureResultCount, 0);
+
+    const compact = compactObservationExperienceReport(experience);
+    const hydrated = normalizeObservationExperienceReport(compact);
+    assert.ok(hydrated);
+    const contradictory = structuredClone(compact);
+    const unknownResult = contradictory.traceTimelines[0].tree.main.find(
+      (event) => event.kind === 'tool_result' && event.toolStatus === 'unknown',
+    );
+    assert.ok(unknownResult);
+    unknownResult.isError = true;
+    assert.equal(normalizeObservationExperienceReport(contradictory), null);
+  });
+
   it('builds evidence-only experience report for 2.0 skill review', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
@@ -54,6 +325,7 @@ describe('observe inbox - experience report', () => {
           role: 'assistant',
           content: [
             { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repo-a/schema.ts' } },
           ],
         },
       },
@@ -66,7 +338,10 @@ describe('observe inbox - experience report', () => {
         cwd: '/repo-a',
         message: {
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: 'opaque runtime response' },
+          ],
         },
       },
       {
@@ -116,7 +391,7 @@ describe('observe inbox - experience report', () => {
     assert.equal(experience.sessions[0].entrypoint, 'sdk-ts');
     assert.deepEqual(experience.skills[0].entrypoints, ['sdk-ts']);
     assert.deepEqual(experience.skills[0].entrypointCounts, { 'sdk-ts': 1 });
-    assert.deepEqual(experience.skills[0].toolCounts, { Grep: 1 });
+    assert.deepEqual(experience.skills[0].toolCounts, { Grep: 1, Read: 1 });
     assert.equal(experience.sessions[0].reviewPriority, 'review_first');
     assert.ok(experience.sessions[0].reviewBasisCodes.includes('has_high_observation'));
     assert.ok(experience.sessions[0].reviewBasisCodes.includes('user_correction'));
@@ -140,6 +415,9 @@ describe('observe inbox - experience report', () => {
     assert.equal(experience.invocations[0].indicators.negativeFeedbackCount, 1);
     assert.equal(experience.invocations[0].indicators.userCorrectionCount, 1);
     assert.equal(experience.invocations[0].indicators.userInterruptionCount, 1);
+    assert.equal(experience.invocations[0].indicators.toolCallCount, 2);
+    assert.equal(experience.invocations[0].indicators.toolFailureCount, 0);
+    assert.equal(experience.invocations[0].indicators.toolUnknownCount, 1);
     assert.ok(experience.invocations[0].problemPatterns.some((pattern) => pattern.bucket === 'missing_context'));
     assert.ok(experience.sessions[0].problemPatterns.some((pattern) => pattern.bucket === 'rule_violation'));
     assert.ok(experience.skills[0].problemPatterns.some((pattern) => pattern.bucket === 'workflow_mismatch'));
@@ -177,8 +455,15 @@ describe('observe inbox - experience report', () => {
     assert.ok(reviewerReport.findings.every((finding) => finding.source === 'deterministic_rule'));
     assert.equal(reviewerReport.oneLookMetrics.tokenUsage.attribution, 'skill_segment');
     assert.equal(reviewerReport.oneLookMetrics.tokenUsage.inputTokens, 0);
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.observedInvocationCount, 0);
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.coverage, 0);
     assert.equal(reviewerReport.oneLookMetrics.assistantProgressUpdateCount, 0);
     assert.equal(reviewerReport.oneLookMetrics.finalDeliverySignalCount, 0);
+    assert.equal(reviewerReport.oneLookMetrics.toolUnknownCount, 1);
+    assert.equal(
+      reviewerReport.chainSteps.find((step) => step.label === '执行流程')?.status,
+      'unknown',
+    );
     assert.ok(reviewerReport.traceLinks.some((ref) => ref.messageUuid === 'u3'));
     assert.ok(reviewerReport.authorSuggestions.length > 0);
     assert.equal('llmAnnotation' in reviewerReport, false);
@@ -233,8 +518,8 @@ describe('observe inbox - experience report', () => {
     assert.match(rendered, /function selectInboxCard/);
     assert.match(rendered, /function setInboxFilter/);
     assert.match(rendered, /Session 执行过程/);
-    assert.match(rendered, /当前 skill 窗口事件：/);
-    assert.match(rendered, /record 粗范围：/);
+    assert.match(rendered, /Skill 事件窗口/);
+    assert.match(rendered, /Skill record 范围：/);
     assert.match(rendered, /① 这次跑得怎么样/);
     assert.match(rendered, /这次跑得怎么样/);
     assert.match(rendered, /已完成 \/ 结果如下/);
@@ -259,6 +544,11 @@ describe('observe inbox - experience report', () => {
     assert.doesNotMatch(rendered, /原文回溯建议/);
     assert.match(rendered, /data-message-uuid="u3"/);
     assert.match(rendered, /function jumpToExperienceMessage/);
+    assert.match(rendered, /工具状态未知/);
+    assert.match(rendered, /1 次工具结果状态未知/);
+    assert.match(rendered, /状态未知 1/);
+    assert.doesNotMatch(rendered, /工具执行成功 2 \/ 100%/);
+    assert.doesNotMatch(rendered, /人工中断 1 \/ 50%/);
 
     const metricScopeId = experience.sessions[0]?.id;
     assert.ok(metricScopeId);
@@ -341,7 +631,7 @@ describe('observe inbox - experience report', () => {
         cwd: dir,
         message: {
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}', is_error: false }],
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}' }],
         },
       },
     ];
@@ -353,6 +643,58 @@ describe('observe inbox - experience report', () => {
     assert.equal(session.evidenceChain.toolFailureResultCount, 1);
     assert.ok(session.ruleFindings.some((finding) => finding.code === 'tool_failure_seen'));
     assert.ok(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'tool_error_recovery'));
+  });
+
+  it('does not override an explicit successful tool status from error-like payload text', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-explicit-tool-success-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'errors.json' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: dir,
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 't1',
+            content: '{"error":"synthetic failure"}',
+            is_error: false,
+          }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.indicators.toolFailureCount, 0);
+    assert.equal(session.evidenceChain.toolFailureResultCount, 0);
+    assert.equal(session.ruleFindings.some((finding) => finding.code === 'tool_failure_seen'), false);
   });
 
   it('emits session_interrupted finding for assistant turn failures', () => {
@@ -737,6 +1079,82 @@ expected_tools:
     assert.equal(applySession.reviewerReport?.chainSteps.find((step) => step.label === '结果 / 产物')?.status, 'unknown');
   });
 
+  it('attributes observations to the originating trace when main and subagent invoke the same skill', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-observation-trace-attribution-'));
+    const sessionDir = join(dir, 'sessionA');
+    const subagentsDir = join(sessionDir, 'subagents');
+    mkdirSync(subagentsDir, { recursive: true });
+    const mainFile = join(sessionDir, 'main.jsonl');
+    const childFile = join(subagentsDir, 'child.jsonl');
+    writeFileSync(mainFile, [
+      {
+        type: 'user',
+        uuid: 'u-main',
+        parentUuid: null,
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T03:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name> 主代理先检查。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main',
+        parentUuid: 'u-main',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T03:00:08.000Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: '主代理检查完成。' }] },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(childFile, [
+      {
+        type: 'user',
+        uuid: 'u-child',
+        parentUuid: null,
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T03:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name> 子代理并行检查。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-child',
+        parentUuid: 'u-child',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T03:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'grep-child', name: 'Grep', input: { pattern: 'audit_rule', path: '/repo-a' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'r-child',
+        parentUuid: 'a-child',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T03:00:05.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'grep-child', content: 'No files found', is_error: true }],
+        },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(sessionDir);
+    assert.equal(report.items.length, 1);
+    const invocations = report.experience?.invocations.filter((invocation) => invocation.skillName === 'audit') ?? [];
+    const mainInvocation = invocations.find((invocation) => invocation.sourceTrace === mainFile);
+    const childInvocation = invocations.find((invocation) => invocation.sourceTrace === childFile);
+    assert.ok(mainInvocation);
+    assert.ok(childInvocation);
+    assert.equal(mainInvocation.relatedObservationIds.length, 0);
+    assert.equal(mainInvocation.indicators.highObservationCount, 0);
+    assert.deepEqual(childInvocation.relatedObservationIds, [report.items[0].id]);
+    assert.ok(childInvocation.evidenceRefs.some((ref) => ref.sourceTrace === childFile));
+  });
+
   it('attributes feedback by target object instead of the current skill window', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-object-'));
     const file = join(dir, 'session.jsonl');
@@ -1020,6 +1438,21 @@ expected_tools:
     assert.ok(executorSession);
     assert.equal(routerSession.indicators.routerDownstreamCompleted, 0);
     assert.equal(routerSession.indicators.routerDownstreamFailed, 1);
+    const indicators = routerSession.indicators;
+    assert.equal(
+      routerSession.reviewPriorityScore,
+      indicators.highObservationCount * 3
+        + indicators.mediumObservationCount
+        + indicators.userCorrectionCount * 2
+        + indicators.userInterruptionCount * 2
+        + indicators.sessionInterruptedCount * 2
+        + indicators.negativeFeedbackCount * 2
+        + indicators.hardRuleTextHitCount
+        + indicators.toolFailureCount
+        + indicators.routerDownstreamFailed * 2
+        + indicators.hedgingCount
+        + indicators.explicitMarkerCount * 2,
+    );
     assert.equal(routerSession.reviewerReport?.oneLookMetrics.userFollowUpCount, 1);
     assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamCompleted, 0);
     assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamFailed, 1);

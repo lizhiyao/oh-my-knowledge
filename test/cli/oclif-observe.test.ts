@@ -26,7 +26,7 @@ interface ExecError extends Error {
 describe('oclif observe', () => {
   it('observe --help (默认 = health 分析)', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
-    assert.ok(stdout.includes('分析 sessions 目录'), `default observe --help missing zh:\n${stdout}`);
+    assert.ok(stdout.includes('统一为 Trace IR'), `default observe --help missing source-neutral description:\n${stdout}`);
     assert.ok(stdout.includes('SESSIONSDIR'), 'should list positional');
     assert.ok(stdout.includes('--kb'), 'should list --kb flag');
   });

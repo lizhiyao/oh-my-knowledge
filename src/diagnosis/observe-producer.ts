@@ -10,6 +10,7 @@ import type {
 import type { ExperienceProblemPattern } from '../observability/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
 import type { DiagnosisBundle, DiagnosisEvidenceRef } from './types.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
 
 export interface BuildObserveDiagnosticsFromReportOptions {
   cwd?: string;
@@ -55,7 +56,11 @@ function resolveSkillChains(
   for (const skillName of skillNames) {
     const cwd = cwdBySkill.get(skillName);
     if (cwd) {
-      chains[skillName] = buildObservationSkillChain(skillName, cwd, experienceReports);
+      setOwnRecordValue(
+        chains,
+        skillName,
+        buildObservationSkillChain(skillName, cwd, experienceReports),
+      );
     }
   }
   return chains;
@@ -222,6 +227,7 @@ function evidenceRef(ref: ExperienceEvidenceRef | ExperienceProblemPattern['evid
   return {
     id: ref.id,
     kind: ref.kind,
+    traceId: ref.traceId,
     sourceTrace: ref.sourceTrace,
     sessionId: ref.sessionId,
     messageIndex: ref.messageIndex,

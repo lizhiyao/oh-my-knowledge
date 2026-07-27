@@ -5,9 +5,20 @@ import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
-import { DEFAULT_CACHE_DIR } from './default-dirs.js';
+import { DEFAULT_CACHE_DIR, DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
-import { resolve, dirname } from 'node:path';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../shared/record-count.js';
+import {
+  executorResultValidationError,
+  normalizeExecResultToolIdentities,
+} from '../shared/executor-result.js';
+import { hashSampleExecutionDependencies } from './sample-fingerprint.js';
+import { resolveDiagnosticTarget } from '../grading/diagnostic.js';
+import { dirname, join, resolve } from 'node:path';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import type {
   ExecResult,
   ExecutorFn,
@@ -95,7 +106,9 @@ function makeErrorResult(error: unknown): ExecResult {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    tokenUsageReportedByExecutor: false,
     costUSD: 0,
+    costReportedByExecutor: false,
     stopReason: 'error',
     numTurns: 0,
     error: message,
@@ -104,6 +117,26 @@ function makeErrorResult(error: unknown): ExecResult {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function executeWithAttemptIsolation(
+  executor: ExecutorFn,
+  input: Parameters<ExecutorFn>[0],
+  isolatedCwd: boolean,
+): Promise<ExecResult> {
+  if (!isolatedCwd) return executor(input);
+  await mkdir(DEFAULT_ISOLATED_CWD_DIR, { recursive: true });
+  const runtimeCwd = await mkdtemp(join(DEFAULT_ISOLATED_CWD_DIR, 'attempt-'));
+  try {
+    return await executor({ ...input, cwd: runtimeCwd });
+  } finally {
+    try {
+      await rm(runtimeCwd, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`[omk] 无法清理 baseline 隔离目录 ${runtimeCwd}：${message}\n`);
+    }
+  }
 }
 
 export async function executeTasks({
@@ -135,11 +168,21 @@ export async function executeTasks({
   let skipped = 0;
   let totalCostUSD = 0;
   let budgetExhausted = false;
+  if (!executorName && !noCache) {
+    throw new Error(
+      'executeTasks requires executorName when cache is enabled; '
+      + 'an anonymous executor cannot have a safe cross-run cache identity',
+    );
+  }
+  const effectiveExecutorName = executorName ?? 'custom-executor';
 
   // Seed results from previous run (--resume)
   if (existingResults) {
     for (const [sampleId, variants] of Object.entries(existingResults)) {
-      results[sampleId] = { ...variants };
+      setOwnRecordValue(results, sampleId, { ...variants });
+      for (const result of Object.values(variants)) {
+        if (result.ok) totalCostUSD += result.costUSD;
+      }
     }
   }
 
@@ -148,7 +191,12 @@ export async function executeTasks({
 
   async function executeTask(task: Task): Promise<void> {
     // Skip if already have a successful result (--resume)
-    if (existingResults?.[task.sample_id]?.[task.variant]?.ok) {
+    if (
+      ownRecordValue(
+        ownRecordValue(existingResults ?? {}, task.sample_id) ?? {},
+        task.variant,
+      )?.ok
+    ) {
       skipped++;
       started++;
       completed++;
@@ -173,7 +221,6 @@ export async function executeTasks({
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort, samplesBaseDir);
-    const effectiveExecutorName = executorName || 'claude';
     const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
       skillDir: executionPlan.input.skillDir,
     });
@@ -197,6 +244,7 @@ export async function executeTasks({
       // artifact 内容指纹进 key:本地 dir-skill 改 references/ 资产只动 contentHash,system 不变,
       // 不进 key 会命中旧输出贴到新 artifactHashes(静默污染)。
       task.artifact.contentHash,
+      hashSampleExecutionDependencies(task._sample, samplesBaseDir),
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
@@ -205,22 +253,67 @@ export async function executeTasks({
     } else {
       // Execute with retry on failure
       const maxAttempts = 1 + Math.max(0, retry);
+      let attemptCostUSD = 0;
+      let attemptCostReported = true;
+      let attemptCount = 0;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          execResult = await executor(executionPlan.input);
+          execResult = await executeWithAttemptIsolation(
+            executor,
+            executionPlan.input,
+            executionPlan.isolatedCwd === true,
+          );
         } catch (err) {
           execResult = makeErrorResult(err);
         }
-        if (execResult!.ok || attempt === maxAttempts) break;
+        const validationError = executorResultValidationError(execResult);
+        if (validationError) {
+          execResult = makeErrorResult(`executor returned invalid result: ${validationError}`);
+        } else {
+          execResult = normalizeExecResultToolIdentities(execResult);
+        }
+        attemptCount += 1;
+        const nextAttemptCost = attemptCostUSD + execResult!.costUSD;
+        if (
+          Number.isFinite(nextAttemptCost)
+          && nextAttemptCost >= 0
+          && nextAttemptCost <= Number.MAX_SAFE_INTEGER
+        ) {
+          attemptCostUSD = nextAttemptCost;
+        } else {
+          // Never turn overflow into a free execution. Saturation keeps persisted
+          // numbers valid and remains a conservative lower bound; the completeness
+          // flag tells reports that the exact amount is unavailable.
+          attemptCostUSD = Number.MAX_SAFE_INTEGER;
+          attemptCostReported = false;
+        }
+        if (execResult!.costReportedByExecutor === false) attemptCostReported = false;
+        const retryWouldExceedBudget = (
+          budget?.perSampleUSD != null
+          && attemptCostUSD > budget.perSampleUSD
+        ) || (
+          budget?.totalUSD != null
+          && totalCostUSD + attemptCostUSD > budget.totalUSD
+        );
+        if (execResult!.ok || attempt === maxAttempts || retryWouldExceedBudget) break;
         // Exponential backoff before retry
         const backoffMs = Math.min(2 ** (attempt - 1) * 1000, 30000);
         onProgress?.({ phase: 'retry', completed: idx, total, sample_id: task.sample_id, variant: task.variant, attempt, maxAttempts });
         await sleep(backoffMs);
       }
+      execResult = {
+        ...execResult!,
+        costUSD: attemptCostUSD,
+        ...(attemptCostReported ? {} : { costReportedByExecutor: false }),
+        ...(attemptCount > 1 ? { attemptCount } : {}),
+      };
       if (cache && execResult!.ok) cache.set(key, execResult!);
     }
     const execMs = Date.now() - execStart;
-    totalCostUSD += execResult!.costUSD;
+    totalCostUSD = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      totalCostUSD + execResult!.costUSD,
+    );
 
     if (verbose && onProgress) {
       onProgress({
@@ -291,34 +384,33 @@ export async function executeTasks({
       factCheck = checkFacts(execResult!.output, resolve(task.cwd));
     }
 
-    if (!results[task.sample_id]) results[task.sample_id] = {};
+    const sampleResults = ownRecordValue(results, task.sample_id)
+      ?? setOwnRecordValue(results, task.sample_id, {});
     const variantResult = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
 
     // Diagnostic — 与 judge 完全独立的"哪错了 + skill 怎么改"诊断。
     // 触发条件:noDiagnostic=false + 至少 1 条 assertion fail + sample 跑成功(有 fullOutput)。
     //
-    // executor / model 选择:
-    //   - 优先用 judgeExecutors['claude'](已初始化好) + 'haiku' 模型 — 最便宜的标配。
-    //   - 用户没配 claude judge(只配了 openai / gemini 等)时,沿用第一个 judge 的
-    //     executor + 它对应的 model 名。硬写 'haiku' 会导致非 claude executor 拒绝
-    //     (model not found),诊断整段挂掉。
-    //   - 实在没有 judge executor 配置时回退主 executor(虽然不是 lean 也能跑)。
+    // executor / model 选择跟报告契约共用 resolveDiagnosticTarget:
+    // 跟随首位 judge；没有 judge 配置时才跟随主执行器。不得暗中偏爱某个 provider。
     const failedDetails = (gradeResult?.assertions?.details || []).filter((d) => !d.passed);
     const shouldDiagnose = !noDiagnostic && execResult!.ok && failedDetails.length > 0;
     if (shouldDiagnose) {
+      const diagnosticStart = Date.now();
       try {
         const { runDiagnostic } = await import('../grading/diagnostic.js');
-        // diagnostic 优先用 'claude' executor(claude 模型上跑 diagnostic 历史校准最好);
-        // 没有就用第一个可用的 judge executor 兜底。
-        const firstJudgeName = Object.keys(judgeExecutors)[0];
-        const diagExecutorName = ('claude' in judgeExecutors) ? 'claude' : firstJudgeName;
-        const diagExecutor = diagExecutorName ? judgeExecutors[diagExecutorName] : executor;
-        // 模型选择:claude executor 走 'haiku' 标配;非 claude executor 沿用它在
-        // judgeModels 里配的 model(用户已经验证可用)。
-        let diagModel = 'haiku';
-        if (diagExecutorName && diagExecutorName !== 'claude') {
-          const judgeEntry = judgeModels.find((j) => j.executor === diagExecutorName);
-          if (judgeEntry) diagModel = judgeEntry.model;
+        const diagnosticTarget = resolveDiagnosticTarget(
+          judgeModels,
+          effectiveExecutorName,
+          model,
+        );
+        const diagExecutor = diagnosticTarget.executor === effectiveExecutorName
+          ? executor
+          : ownRecordValue(judgeExecutors, diagnosticTarget.executor);
+        if (!diagExecutor) {
+          throw new Error(
+            `diagnostic executor "${diagnosticTarget.executor}" is not registered`,
+          );
         }
         const diagnostic = await runDiagnostic({
           sample: task._sample,
@@ -329,9 +421,12 @@ export async function executeTasks({
           fullOutput: execResult!.output || undefined,
           assertionDetails: gradeResult?.assertions?.details || [],
           executor: diagExecutor,
-          model: diagModel,
+          model: diagnosticTarget.model,
         });
         variantResult.diagnostic = diagnostic;
+        if (diagnostic.costReportedByExecutor === false) {
+          variantResult.judgeCostReportedByExecutor = false;
+        }
         // diagnostic 成本三层对齐(reviewer PR#95 CR 2026-05-11 P2):
         //   - meta.totalCostUSD 累加(下面 totalCostUSD += 这一行)
         //   - variant summary 的 totalCostUSD / totalDiagnosticCostUSD 由 buildVariantSummary
@@ -345,6 +440,7 @@ export async function executeTasks({
           totalCostUSD += diagnostic.costUSD;
         }
       } catch (err) {
+        variantResult.judgeCostReportedByExecutor = false;
         // diagnostic 失败不影响主评测,降级成 minimal 错误对象
         const msg = err instanceof Error ? err.message : String(err);
         variantResult.diagnostic = {
@@ -356,6 +452,14 @@ export async function executeTasks({
           rootCause: [],
           suggestion: { skill: '', sample: '', none: '' },
         };
+      } finally {
+        const diagnosticMs = Date.now() - diagnosticStart;
+        variantResult.timing = {
+          execMs,
+          gradeMs,
+          diagnosticMs,
+          totalMs: execMs + gradeMs + diagnosticMs,
+        };
       }
     }
 
@@ -366,11 +470,12 @@ export async function executeTasks({
       variantResult.ok = false;
       variantResult.error = `budget overrun: per-sample cost $${variantResult.costUSD.toFixed(4)} > cap $${budget.perSampleUSD.toFixed(4)}`;
     }
-    if (budget?.perSampleMs != null && (execMs + (gradeMs ?? 0)) > budget.perSampleMs) {
+    const sampleDurationMs = variantResult.timing?.totalMs ?? execMs + gradeMs;
+    if (budget?.perSampleMs != null && sampleDurationMs > budget.perSampleMs) {
       variantResult.ok = false;
-      variantResult.error = `budget overrun: per-sample latency ${execMs + (gradeMs ?? 0)}ms > cap ${budget.perSampleMs}ms`;
+      variantResult.error = `budget overrun: per-sample latency ${sampleDurationMs}ms > cap ${budget.perSampleMs}ms`;
     }
-    results[task.sample_id][task.variant] = variantResult;
+    setOwnRecordValue(sampleResults, task.variant, variantResult);
 
     completed++;
     onProgress?.({
@@ -446,7 +551,7 @@ export async function preflightAllJudges(
     const key = `${jc.executor}:${jc.model}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const exec = judgeExecutors[jc.executor];
+    const exec = ownRecordValue(judgeExecutors, jc.executor);
     if (!exec) {
       throw new Error(`preflight: no executor registered for "${jc.executor}" (judge "${key}"); pipeline must populate judgeExecutors before preflight`);
     }

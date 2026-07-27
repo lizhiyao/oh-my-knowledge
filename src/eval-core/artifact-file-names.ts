@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 export const REPORT_FILE_SUFFIX = '.report.json';
@@ -54,5 +55,21 @@ export function stripDomainPrefix(id: string, domain: string): string {
 }
 
 export function doctorReportFileStem(skillName: string, reportId: string): string {
-  return `${safeArtifactFileStem(skillName)}-${stripDomainPrefix(reportId, 'doctor')}`;
+  const reportSuffix = reportId.startsWith('doctor-')
+    ? reportId.slice('doctor-'.length)
+    : reportId;
+  return [
+    collisionResistantFileComponent(skillName),
+    collisionResistantFileComponent(reportSuffix),
+  ].join('-');
+}
+
+function collisionResistantFileComponent(value: string): string {
+  const safe = safeArtifactFileStem(value);
+  if (safe === value) return safe;
+  const fingerprint = createHash('sha256')
+    .update(value)
+    .digest('hex')
+    .slice(0, 12);
+  return `${safe}-${fingerprint}`;
 }

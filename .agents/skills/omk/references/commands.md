@@ -106,7 +106,7 @@ omk eval [flags]
 - `--output-dir` `option`:报告输出目录（默认项目级 .omk/reports）
 - `--repeat` `option`:每个 sample 重复跑 N 次
 - `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
-- `--resume` `option`:从某次失败 run 续跑
+- `--resume` `option`:从契约兼容的报告恢复成功项；不兼容则从头运行
 - `--retry` `option`:失败 sample 重试次数
 - `--samples` `option`:用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。
 - `--skill-dir` `option`:skill 目录，默认 skills
@@ -396,7 +396,7 @@ omk list --json
 
 ## omk observe
 
-分析 sessions 目录中的 Claude Code / Codex skill 调用健康度（默认行为）。子命令：ingest / inbox / show。
+把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。
 
 **用法:**
 

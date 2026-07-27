@@ -1,4 +1,5 @@
 import type { Lang, Report, ReportMeta, ExecutorRuntimeFingerprint, ExecutorRuntimePackage } from '../types/index.js';
+import { ownRecordValue } from '../shared/record-count.js';
 
 export interface ComparabilityWarning {
   code: string;
@@ -104,7 +105,7 @@ function runtimeMapKeys(meta: ReportMeta): string[] {
 function reportExecutorRuntimeWarnings(report: Report, warnings: ComparabilityWarning[]): void {
   const runtimes = report.meta.executorRuntimes;
   if (runtimes && Object.keys(runtimes).length > 0) {
-    const missing = report.meta.variants.filter((variant) => !runtimes[variant]);
+    const missing = report.meta.variants.filter((variant) => !ownRecordValue(runtimes, variant));
     if (missing.length > 0) {
       push(
         warnings,
@@ -149,12 +150,14 @@ function countSampleHashMismatches(a: Report, b: Report): { mismatched: number; 
   let common = 0;
   const ids = new Set([...Object.keys(ah), ...Object.keys(bh)]);
   for (const id of ids) {
-    if (ah[id] == null || bh[id] == null) {
+    const aHash = ownRecordValue(ah, id);
+    const bHash = ownRecordValue(bh, id);
+    if (aHash == null || bHash == null) {
       missing++;
       continue;
     }
     common++;
-    if (ah[id] !== bh[id]) mismatched++;
+    if (aHash !== bHash) mismatched++;
   }
   return { mismatched, missing, common };
 }
@@ -229,7 +232,9 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
   const hasExecutorRuntimeMap = bExecutorRuntimeKeys.length > 0 || aExecutorRuntimeKeys.length > 0;
   if (hasExecutorRuntimeMap) {
     const keys = sorted([...new Set([...b.variants, ...a.variants, ...bExecutorRuntimeKeys, ...aExecutorRuntimeKeys])]);
-    const missing = keys.filter((key) => !b.executorRuntimes?.[key] || !a.executorRuntimes?.[key]);
+    const missing = keys.filter((key) =>
+      !ownRecordValue(b.executorRuntimes ?? {}, key)
+      || !ownRecordValue(a.executorRuntimes ?? {}, key));
     if (missing.length > 0) {
       push(
         warnings,
@@ -239,8 +244,8 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
       );
     }
     for (const key of keys) {
-      const beforeRuntime = b.executorRuntimes?.[key];
-      const afterRuntime = a.executorRuntimes?.[key];
+      const beforeRuntime = ownRecordValue(b.executorRuntimes ?? {}, key);
+      const afterRuntime = ownRecordValue(a.executorRuntimes ?? {}, key);
       if (beforeRuntime?.fingerprint && afterRuntime?.fingerprint && beforeRuntime.fingerprint !== afterRuntime.fingerprint) {
         push(
           warnings,

@@ -46,7 +46,7 @@ export interface ClaudeCliResponse {
   usage?: TokenUsage;
   total_cost_usd?: number;
   result?: string;
-  stop_reason?: string;
+  stop_reason?: string | null;
   num_turns?: number;
 }
 
@@ -58,7 +58,7 @@ export interface OpenAiUsage {
 
 export interface OpenAiResponse {
   usage?: OpenAiUsage;
-  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+  choices?: Array<{ message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }>;
   error?: { message?: string };
 }
 
@@ -69,7 +69,7 @@ export interface GeminiResponse {
 
 export interface AnthropicResponse {
   usage?: TokenUsage;
-  content?: Array<{ text?: string }>;
+  content?: Array<{ type?: string; text?: string }>;
   stop_reason?: string;
   error?: { message?: string };
 }
@@ -114,6 +114,13 @@ export interface ClaudeSdkResultMessage extends ClaudeSdkBaseMessage {
   duration_api_ms?: number;
   duration_ms?: number;
   num_turns?: number;
+  stop_reason?: string | null;
+  modelUsage?: Record<string, {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }>;
   subtype?: string;
   errors?: string[];
 }
@@ -156,15 +163,49 @@ export interface CodexEvent {
     content?: string;
     query?: string;
     results?: unknown[];
-    changes?: Array<{ path?: string }>;
+    changes?: Array<{ path?: string; changeKind?: string }>;
     server?: string;
     tool?: string;
+    name?: string;
     arguments?: unknown;
     result?: unknown;
     message?: string;
+    error?: { message?: string };
   };
   error?: { message?: string };
+  message?: string;
   ts?: number;
+}
+
+/**
+ * Translate Codex's external event shape into omk's internal protocol model.
+ * Codex currently calls file-change discriminators `kind`; omk reserves bare
+ * `kind` for ArtifactKind, so the raw field is qualified at the boundary.
+ */
+export function normalizeCodexProtocolEvent(value: unknown): CodexEvent | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const event = value as Record<string, unknown>;
+  const rawItem = event.item;
+  if (typeof rawItem !== 'object' || rawItem === null || Array.isArray(rawItem)) {
+    return event as unknown as CodexEvent;
+  }
+
+  const item = rawItem as Record<string, unknown>;
+  const rawChanges = item.changes;
+  const normalizedItem = {
+    ...item,
+    ...(Array.isArray(rawChanges) && {
+      changes: rawChanges.flatMap((change) => {
+        if (typeof change !== 'object' || change === null || Array.isArray(change)) return [];
+        const rawChange = change as Record<string, unknown>;
+        return [{
+          ...(typeof rawChange.path === 'string' && { path: rawChange.path }),
+          ...(typeof rawChange.kind === 'string' && { changeKind: rawChange.kind }),
+        }];
+      }),
+    }),
+  };
+  return { ...event, item: normalizedItem } as unknown as CodexEvent;
 }
 
 export interface ExecutorErrorLike {
@@ -185,6 +226,29 @@ export function errorMessage(err: unknown, fallback: string = 'unknown error'): 
 
 export function parseJson<T>(content: string): T {
   return JSON.parse(content) as T;
+}
+
+export interface JsonResponseBody<T> {
+  data: T | null;
+  rawBody: string;
+}
+
+export async function readJsonResponse<T>(response: Response): Promise<JsonResponseBody<T>> {
+  const rawBody = await response.text();
+  if (!rawBody.trim()) return { data: null, rawBody };
+  try {
+    return { data: JSON.parse(rawBody) as T, rawBody };
+  } catch {
+    return { data: null, rawBody };
+  }
+}
+
+export function responseBodyPreview(rawBody: string, maxLength = 500): string {
+  const normalized = rawBody.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
 }
 
 export function buildExecEnv(skillDir?: string | null): NodeJS.ProcessEnv {
@@ -213,7 +277,9 @@ export function timeoutExecResult(timeoutMs: number, durationMs: number): ExecRe
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    tokenUsageReportedByExecutor: false,
     costUSD: 0,
+    costReportedByExecutor: false,
     output: null,
     stopReason: 'timeout',
     numTurns: 0,
@@ -233,7 +299,9 @@ export function interruptedExecResult(durationMs: number): ExecResult {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    tokenUsageReportedByExecutor: false,
     costUSD: 0,
+    costReportedByExecutor: false,
     output: null,
     stopReason: 'interrupted',
     numTurns: 0,
@@ -256,6 +324,7 @@ export function interruptedExecResult(durationMs: number): ExecResult {
 // - 同时支持 timeout 跟 abortSignal 两条 kill 路径,跟 SIGINT 共用 grace 逻辑
 
 const activeChildren = new Set<ChildProcess>();
+const sigintSubscribers = new Set<() => void>();
 let sigintListenerInstalled = false;
 let shuttingDown = false;
 const SIGTERM_GRACE_MS = 500;
@@ -263,6 +332,9 @@ const SIGTERM_GRACE_MS = 500;
 function broadcastShutdown(): void {
   if (shuttingDown) return;
   shuttingDown = true;
+  for (const subscriber of sigintSubscribers) {
+    try { subscriber(); } catch { /* cancellation handlers must not block shutdown */ }
+  }
   for (const child of activeChildren) {
     try { child.kill('SIGTERM'); } catch { /* already dead */ }
     setTimeout(() => {
@@ -271,7 +343,14 @@ function broadcastShutdown(): void {
   }
   // 卸载自己,re-raise SIGINT 让 host listener / default action(exit code 130)接管
   process.removeListener('SIGINT', sigintHandler);
+  sigintListenerInstalled = false;
   process.kill(process.pid, 'SIGINT');
+  // A host may intentionally intercept the re-raised signal. In that case the
+  // process remains usable and a later child/SDK registration must reinstall
+  // a functional coordinator instead of inheriting a permanently latched flag.
+  setImmediate(() => {
+    shuttingDown = false;
+  }).unref();
 }
 
 function sigintHandler(): void {
@@ -284,9 +363,22 @@ function ensureSigintListener(): void {
   process.on('SIGINT', sigintHandler);
 }
 
+/**
+ * Register an in-process runtime (for example an SDK-owned child) with the
+ * same SIGINT coordinator used by spawned executors.
+ */
+export function registerSigintSubscriber(subscriber: () => void): () => void {
+  ensureSigintListener();
+  sigintSubscribers.add(subscriber);
+  return () => {
+    sigintSubscribers.delete(subscriber);
+  };
+}
+
 // test-only:重置模块级状态,让 vitest 之间互不污染
 export function __resetSigintRegistryForTest(): void {
   activeChildren.clear();
+  sigintSubscribers.clear();
   if (sigintListenerInstalled) {
     process.removeListener('SIGINT', sigintHandler);
     sigintListenerInstalled = false;
@@ -317,7 +409,7 @@ export interface SpawnHelperOptions {
   env?: NodeJS.ProcessEnv;
   /** kill child after this many ms; reject with killedByTimeout=true */
   timeoutMs?: number;
-  /** stdout overflow threshold; reject when累计超限 */
+  /** per-stream stdout/stderr byte limit; reject when either stream exceeds it */
   maxBuffer?: number;
   /** external abort signal; abort() 走跟 SIGINT 同一 grace 路径 */
   abortSignal?: AbortSignal;
@@ -348,7 +440,9 @@ export function spawnWithSigintPropagation(
 
   let stdout = '';
   let stderr = '';
-  let bufferOverflow = false;
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  let bufferOverflowStream: 'stdout' | 'stderr' | null = null;
   let killedByTimeout = false;
   let killedBySignalReason: NodeJS.Signals | null = null;
   let graceTimer: NodeJS.Timeout | null = null;
@@ -376,17 +470,30 @@ export function spawnWithSigintPropagation(
   if (abortSignal) {
     abortListener = (): void => killWithGrace('abort');
     abortSignal.addEventListener('abort', abortListener, { once: true });
+    if (abortSignal.aborted) {
+      // Defer until `done` has installed the child close/error listeners below.
+      queueMicrotask(abortListener);
+    }
   }
 
   child.stdout?.on('data', (chunk: Buffer) => {
-    stdout += chunk.toString();
-    if (stdout.length > maxBuffer && !bufferOverflow) {
-      bufferOverflow = true;
-      // 走 killWithGrace 保证 SIGTERM trap child 也会被 500ms 后 SIGKILL 兜底
+    if (bufferOverflowStream) return;
+    stdoutBytes += chunk.byteLength;
+    if (stdoutBytes > maxBuffer) {
+      bufferOverflowStream = 'stdout';
       killWithGrace('buffer');
+      return;
     }
+    stdout += chunk.toString();
   });
   child.stderr?.on('data', (chunk: Buffer) => {
+    if (bufferOverflowStream) return;
+    stderrBytes += chunk.byteLength;
+    if (stderrBytes > maxBuffer) {
+      bufferOverflowStream = 'stderr';
+      killWithGrace('buffer');
+      return;
+    }
     stderr += chunk.toString();
   });
 
@@ -414,23 +521,27 @@ export function spawnWithSigintPropagation(
         killedByTimeout,
         killedBySignal: killedSig,
       };
-      // bufferOverflow 优先 — 数据已截断不可信,即使 child 后来 exit 0 也不能用
-      if (bufferOverflow) {
-        const e = Object.assign(new Error(`stdout maxBuffer (${maxBuffer}) exceeded`), result) as SpawnHelperError;
+      // Buffer overflow is authoritative: truncated output is not valid evidence,
+      // even if the child catches SIGTERM and later exits 0.
+      if (bufferOverflowStream) {
+        const e = Object.assign(
+          new Error(`${bufferOverflowStream} maxBuffer (${maxBuffer} bytes) exceeded`),
+          result,
+        ) as SpawnHelperError;
         reject(e);
         return;
       }
-      // **code === 0 时 child 是干净完成的**:即使我们前面发了 SIGTERM(timeout / abort),
-      // child 可能 trap 信号并 graceful exit 0 完成数据写入。这种情况 stdout 是完整的,
-      // 不应该当 timeout / signal 错误 reject。优先级:exit 0 > 任何 kill reason。
-      if (code === 0) {
-        resolve(result);
-        return;
-      }
+      // Deadline / cancellation are caller-side facts. A child may catch
+      // SIGTERM, flush partial output and exit 0, but that cannot retroactively
+      // turn an over-budget or cancelled evaluation into a successful sample.
       if (killedByTimeout) {
         const tSec = timeoutMs ? (timeoutMs / 1000).toFixed(0) : '?';
         const e = Object.assign(new Error(`execution timed out after ${tSec}s`), result) as SpawnHelperError;
         reject(e);
+        return;
+      }
+      if (code === 0) {
+        resolve(result);
         return;
       }
       if (killedSig) {

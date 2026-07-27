@@ -257,14 +257,40 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('$0.0200'));
   });
 
-  it('renders N/A for zero cost data', () => {
+  it('renders a measured zero cost as zero instead of missing data', () => {
     const zeroCostReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
     zeroCostReport.summary.v1.totalExecCostUSD = 0;
     zeroCostReport.summary.v1.avgTotalTokens = 0;
     zeroCostReport.summary.v2.totalExecCostUSD = 0;
     zeroCostReport.summary.v2.avgTotalTokens = 0;
     const html = renderRunDetail(zeroCostReport);
-    assert.ok(html.includes('N/A'));
+    assert.ok(html.includes('$0.0000'));
+  });
+
+  it('separates measurement cost from total process cost in evolve reports', () => {
+    const evolveReport = structuredClone(SAMPLE_REPORT);
+    evolveReport.meta.evolve = {
+      skillName: 'demo',
+      processCostUSD: 0.2,
+      processCostReported: false,
+    };
+
+    const zh = renderRunDetail(evolveReport, 'zh');
+    const en = renderRunDetail(evolveReport, 'en');
+    assert.ok(zh.includes('评测成本: $0.0500'));
+    assert.ok(zh.includes('迭代总成本: ≥$0.2000'));
+    assert.ok(en.includes('Measurement cost: $0.0500'));
+    assert.ok(en.includes('Total evolve cost: ≥$0.2000'));
+  });
+
+  it('renders an unreported executor cost as unavailable', () => {
+    const unreportedCost = JSON.parse(JSON.stringify(SAMPLE_REPORT));
+    unreportedCost.summary.v1.totalExecCostUSD = 0;
+    unreportedCost.summary.v1.execCostReported = false;
+    unreportedCost.summary.v2.totalExecCostUSD = 0;
+    unreportedCost.summary.v2.execCostReported = false;
+    const html = renderRunDetail(unreportedCost);
+    assert.ok(html.includes('executor 不报 USD 成本'));
   });
 
   it('renders success rate in stability', () => {
@@ -277,6 +303,26 @@ describe('renderRunDetail', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     assert.ok(html.includes('s001'));
     assert.ok(html.includes('badge-ok'));
+  });
+
+  it('renders the persisted sample execution contract', () => {
+    const report = structuredClone(SAMPLE_REPORT);
+    report.sampleSnapshots = {
+      s001: {
+        sample_id: 's001',
+        prompt: 'inspect the project',
+        cwd: '/fixture/project',
+        mocksStrict: true,
+        environment: {
+          cli_available: ['gh'],
+          notes: 'credentials are ready',
+        },
+      },
+    };
+    const html = renderRunDetail(report);
+    assert.ok(html.includes('执行契约'));
+    assert.ok(html.includes('/fixture/project'));
+    assert.ok(html.includes('credentials are ready'));
   });
 
   it('renders analysis section', () => {

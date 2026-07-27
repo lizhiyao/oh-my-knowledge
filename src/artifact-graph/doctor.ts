@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { cardFileName, graphFileName, safeArtifactFileStem } from '../eval-core/artifact-file-names.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
+import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {
   extractMarkdownStepWorkflows,
   extractSkillHardRules,
@@ -55,8 +57,8 @@ function shortHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
 }
 
-function safeFileName(id: string): string {
-  return safeArtifactFileStem(id);
+function isCanonicalFileStem(id: string): boolean {
+  return id.length > 0 && safeArtifactFileStem(id) === id;
 }
 
 export function doctorGraphDirForDoctorOutput(doctorOutputDir: string): string {
@@ -713,21 +715,25 @@ export function renderDoctorEvidenceCard(graph: ArtifactGraphDocument, skill: Do
 export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): PersistDoctorGraphResult {
   const dir = doctorGraphDirForDoctorOutput(options.outputDir);
   mkdirSync(dir, { recursive: true });
-  const graph = buildDoctorArtifactGraph(options);
-  const fileStem = safeFileName(options.fileStem);
+  if (!isCanonicalFileStem(options.fileStem)) {
+    throw new Error('invalid doctor graph file stem');
+  }
+  const graph = parseArtifactGraphDocument(buildDoctorArtifactGraph(options));
+  if (!graph) throw new Error('invalid doctor artifact graph');
+  const fileStem = options.fileStem;
   const graphPath = join(dir, graphFileName(fileStem));
   const evidenceCardPath = join(dir, cardFileName(fileStem));
-  writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf8');
+  writeJsonFileAtomic(graphPath, graph);
   writeFileSync(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang), 'utf8');
   return { graphPath, evidenceCardPath };
 }
 
 export function removeDoctorGraphSidecars(doctorOutputDir: string, fileStem: string): void {
+  if (!isCanonicalFileStem(fileStem)) return;
   const dir = doctorGraphDirForDoctorOutput(doctorOutputDir);
-  const safeStem = safeFileName(fileStem);
   for (const ext of ['graph.json', 'card.md']) {
     try {
-      unlinkSync(join(dir, `${safeStem}.${ext}`));
+      unlinkSync(join(dir, `${fileStem}.${ext}`));
     } catch {
       // best-effort cleanup only
     }

@@ -11,6 +11,7 @@ import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finali
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore } from '../server/job-store.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 import type {
   BatchEvaluationReport,
   BatchEvaluationItem,
@@ -83,8 +84,12 @@ export function buildBatchVariantSpecs(
   entry: { name: string; skillPath: string },
   variantAllowedSkills?: Record<string, string[]>,
 ): VariantSpec[] {
-  const baselineAllowed = variantAllowedSkills?.baseline;
-  const treatmentAllowed = variantAllowedSkills?.[entry.name];
+  const baselineAllowed = variantAllowedSkills
+    ? ownRecordValue(variantAllowedSkills, 'baseline')
+    : undefined;
+  const treatmentAllowed = variantAllowedSkills
+    ? ownRecordValue(variantAllowedSkills, entry.name)
+    : undefined;
   return [
     {
       name: 'baseline',
@@ -117,9 +122,16 @@ function safeRunIdPart(value: string): string {
 }
 
 function reportSummarySnapshot(report: EvaluationReport, treatmentVariant: string): Record<string, VariantSummary> {
+  const baseline = report.summary.baseline;
+  const treatment = report.summary[treatmentVariant];
+  if (!baseline || !treatment) {
+    throw new Error(
+      `Batch child report "${report.id}" is missing baseline or "${treatmentVariant}" summary`,
+    );
+  }
   return {
-    baseline: report.summary.baseline || ({} as VariantSummary),
-    [treatmentVariant]: report.summary[treatmentVariant] || ({} as VariantSummary),
+    baseline,
+    [treatmentVariant]: treatment,
   };
 }
 
@@ -150,14 +162,19 @@ function buildExecutorRuntimesBySkill({
   executorName: string;
   model: string;
 }): Record<string, ExecutorRuntimeFingerprint> {
-  const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = {};
+  const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = Object.create(null);
   for (const skill of skillResults) {
-    executorRuntimes[skill.name] =
-      skill.report.meta.executorRuntimes?.[skill.name]
+    setOwnRecordValue(
+      executorRuntimes,
+      skill.name,
+      (skill.report.meta.executorRuntimes
+        ? ownRecordValue(skill.report.meta.executorRuntimes, skill.name)
+        : undefined)
       ?? skill.report.meta.executorRuntime
       ?? getExecutorRuntimeFingerprint(executorName, model, {
         skillDir: skill.skillPath ? dirname(skill.skillPath) : skillDir,
-      });
+      }),
+    );
   }
   return executorRuntimes;
 }
@@ -185,6 +202,7 @@ export function buildBatchEvaluationReport({
   bootstrapSamples,
   lengthDebias,
   budget,
+  strictBaseline,
 }: {
   batchRunId: string;
   skillDir: string;
@@ -208,6 +226,7 @@ export function buildBatchEvaluationReport({
   bootstrapSamples?: number;
   lengthDebias?: boolean;
   budget?: import('../types/index.js').EvalBudget;
+  strictBaseline?: boolean;
 }): { report: BatchEvaluationReport; job: import('../types/index.js').EvaluationJob } {
   const effectiveBatchJudges = judgeModels && judgeModels.length > 0
     ? judgeModels
@@ -239,6 +258,7 @@ export function buildBatchEvaluationReport({
     bootstrapSamples,
     lengthDebias,
     budget,
+    strictBaseline,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(batchRunId, createdAt);
@@ -450,6 +470,7 @@ export async function executeBatchEvaluationRuns({
     bootstrapSamples,
     lengthDebias,
     budget,
+    strictBaseline,
   });
   const filePath = persistReport(batchReport, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;

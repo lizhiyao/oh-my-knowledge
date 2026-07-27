@@ -70,7 +70,10 @@ export async function initializeEvaluationRunState({
   bootstrapSamples,
   lengthDebias,
   budget,
+  strictBaseline,
   effort,
+  retry,
+  noDiagnostic,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -98,7 +101,10 @@ export async function initializeEvaluationRunState({
   bootstrapSamples?: number;
   lengthDebias?: boolean;
   budget?: import('../../types/index.js').EvalBudget;
+  strictBaseline?: boolean;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  retry?: number;
+  noDiagnostic?: boolean;
 }): Promise<EvaluationRunState> {
   const effectiveJudges: import('../../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
@@ -126,7 +132,10 @@ export async function initializeEvaluationRunState({
     bootstrapSamples,
     lengthDebias,
     budget,
+    strictBaseline,
     effort,
+    retry,
+    noDiagnostic,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);

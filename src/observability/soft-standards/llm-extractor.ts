@@ -1,23 +1,21 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { createExecutor } from '../../executors/index.js';
 import { readPromptDocument } from '../../shared/llm-prompts/index.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import type {
   ObservationSkillChain,
   SkillRuntimeEvidencePack,
   SkillRuntimeEvidencePackNode,
 } from '../skill-chain.js';
 import {
-  DEFAULT_LLM_ENHANCED_REVIEW_MODEL,
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
 } from './constants.js';
 import {
   hashText,
-  loadExisting,
+  loadSkillDerivedStandards,
   markStale,
   SKILL_DERIVED_STANDARDS_SCHEMA_VERSION,
-  skillDerivedStandardsDir,
   skillDerivedStandardsPath,
 } from './skill-standards-store.js';
 import { evaluateRuntimeStandardNodes } from './runtime-evaluator.js';
@@ -45,13 +43,13 @@ import type {
 
 export async function extractSkillSoftStandards(options: ExtractSkillSoftStandardsOptions): Promise<SkillDerivedStandards> {
   const { observationsDir, skillChain } = options;
-  const model = options.model || DEFAULT_LLM_ENHANCED_REVIEW_MODEL;
-  const executorName = options.executorName || 'claude';
+  const model = options.model;
+  const executorName = options.executorName;
   const generatedAt = options.now || new Date().toISOString();
   const path = skillDerivedStandardsPath(observationsDir, skillChain.skillName);
   const sourceHash = skillChain.definition.content ? hashText(skillChain.definition.content) : undefined;
   const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
-  const existing = loadExisting(path);
+  const existing = loadSkillDerivedStandards(observationsDir)[skillChain.skillName];
   const promptDocument = readPromptTemplate();
   const hasReviewedStandards = existing?.standards.some((item) =>
     item.status === 'author_confirmed' || item.status === 'rejected' || item.status === 'stale'
@@ -62,8 +60,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     && existing.promptHash === promptDocument.hash;
   if (existing && hasReviewedStandards && !options.refresh) {
     const stale = markStale(existing, generatedAt);
-    mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
-    writeFileSync(path, JSON.stringify(stale, null, 2));
+    writeJsonFileAtomic(path, stale);
     return stale;
   }
   if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
@@ -107,8 +104,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     enhancedReview,
     standards,
   };
-  mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
-  writeFileSync(path, JSON.stringify(record, null, 2));
+  writeJsonFileAtomic(path, record);
   return record;
 }
 

@@ -1,6 +1,5 @@
 import { resolve, join, basename, dirname, extname, relative, sep } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import yaml from 'js-yaml';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
@@ -10,7 +9,13 @@ import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
-import { loadSamples, parseYaml, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import { loadSamples, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import {
+  getSamplesArray,
+  parseSampleDocument,
+  stringifySampleDocument,
+  writeFixedSamplesToSources,
+} from '../../inputs/sample-document.js';
 import {
   defaultFlatSkillSamplesFile,
   defaultSkillLocalSamplesFile,
@@ -27,30 +32,6 @@ import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 interface GenerateSamplesResult {
   samples: unknown[];
   costUSD: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isYamlPath(filePath: string): boolean {
-  return /\.(ya?ml)$/i.test(filePath);
-}
-
-function parseSampleDocument(filePath: string): unknown {
-  const raw = readFileSync(filePath, 'utf-8');
-  return isYamlPath(filePath) ? parseYaml(raw) : JSON.parse(raw);
-}
-
-function getSamplesArray(document: unknown, filePath: string): SampleType[] {
-  if (Array.isArray(document)) return document as SampleType[];
-  if (isRecord(document) && Array.isArray(document.samples)) return document.samples as SampleType[];
-  throw new Error(`invalid samples file shape: ${filePath} (expected an array or an object with a 'samples' field)`);
-}
-
-function stringifySampleDocument(filePath: string, document: unknown): string {
-  if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
-  return JSON.stringify(document, null, 2);
 }
 
 function userFacingPath(filePath: string): string {
@@ -156,10 +137,18 @@ export function assertFixReportMatchesCurrentInputs(params: {
   treatmentName: string;
   currentContentHash: string;
   samples: SampleType[];
+  samplesBaseDir?: string;
   sampleIds: Set<string>;
   lang?: CliLang;
 }): void {
-  const { report, treatmentName, currentContentHash, samples, sampleIds } = params;
+  const {
+    report,
+    treatmentName,
+    currentContentHash,
+    samples,
+    samplesBaseDir,
+    sampleIds,
+  } = params;
   const lang = params.lang ?? 'zh';
   const issues: string[] = [];
 
@@ -204,7 +193,7 @@ export function assertFixReportMatchesCurrentInputs(params: {
         missingReportHashes.push(sampleId);
         continue;
       }
-      const currentSampleHash = hashSample(currentSample);
+      const currentSampleHash = hashSample(currentSample, samplesBaseDir);
       if (expectedSampleHash !== currentSampleHash) {
         mismatchedSamples.push(sampleId);
       }
@@ -237,38 +226,7 @@ export function assertFixReportMatchesCurrentInputs(params: {
   throw new Error([heading, ...issues, hint].join('\n'));
 }
 
-export function writeFixedSamplesToSources(
-  loaded: Pick<LoadSamplesResult, 'sourceFiles' | 'sampleSourceById'>,
-  samples: SampleType[],
-  changedIds: Set<string>,
-): string[] {
-  if (changedIds.size === 0) return [];
-
-  const fixedById = new Map(samples.map((sample) => [sample.sample_id, sample]));
-  const idsByFile = new Map<string, Set<string>>();
-  for (const sampleId of changedIds) {
-    const filePath = loaded.sampleSourceById[sampleId];
-    if (!filePath) throw new Error(`sample ${sampleId} source file not found`);
-    const ids = idsByFile.get(filePath) ?? new Set<string>();
-    ids.add(sampleId);
-    idsByFile.set(filePath, ids);
-  }
-
-  const written: string[] = [];
-  for (const [filePath, ids] of idsByFile.entries()) {
-    const document = parseSampleDocument(filePath);
-    const fileSamples = getSamplesArray(document, filePath);
-    const nextSamples = fileSamples.map((sample) => (
-      ids.has(sample.sample_id) ? (fixedById.get(sample.sample_id) ?? sample) : sample
-    ));
-    const nextDocument = Array.isArray(document)
-      ? nextSamples
-      : { ...(document as Record<string, unknown>), samples: nextSamples };
-    writeFileSync(filePath, stringifySampleDocument(filePath, nextDocument));
-    written.push(filePath);
-  }
-  return written;
-}
+export { writeFixedSamplesToSources };
 
 async function runSampleFix(
   args: SampleArgs,
@@ -279,6 +237,12 @@ async function runSampleFix(
   const { createFileStore, createOverlayReportStore } = await import('../../server/report-store.js');
 
   const model = flags.model;
+  const executorName = flags.executor;
+  if (!model || !executorName) {
+    throw new Error(
+      'internal error: sample fix requires runtime selection before execution',
+    );
+  }
 
   const skillPath = args.skillPath;
   if (!skillPath) {
@@ -358,6 +322,7 @@ async function runSampleFix(
       treatmentName,
       currentContentHash,
       samples,
+      samplesBaseDir: loadedSamples.baseDir,
       sampleIds: sampleDesignIds,
       lang,
     });
@@ -369,7 +334,7 @@ async function runSampleFix(
   process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
 
   const { createExecutor } = await import('../../executors/index.js');
-  const exec = createExecutor(flags.executor ?? 'claude');
+  const exec = createExecutor(executorName);
   const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
     const result = await exec({
       model: opts.model,
@@ -378,7 +343,12 @@ async function runSampleFix(
       timeoutMs: opts.timeoutMs,
       lean: opts.lean,
     });
-    return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
+    return {
+      ok: result.ok,
+      text: result.output ?? '',
+      costUSD: result.costUSD,
+      costReported: result.costReportedByExecutor !== false,
+    };
   };
 
   const result = await fixSamples({
@@ -404,7 +374,9 @@ async function runSampleFix(
     }
   }
 
-  const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
+  const cost = result.costReported
+    ? ` $${result.costUSD.toFixed(4)}`
+    : ` ${lang === 'zh' ? '成本未完整上报' : 'cost not fully reported'}`;
   const outputTarget = writtenFiles.length === 0
     ? samplesInput
     : writtenFiles.length === 1
@@ -421,6 +393,11 @@ export async function runSampleFromTraces(
 ): Promise<void> {
   const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
   const { generateSamplesFromTraces } = await import('../../authoring/generator.js');
+  const model = flags.model;
+  const executorName = flags.executor;
+  if (!model || !executorName) {
+    throw new Error('internal error: sample generation requires runtime selection before execution');
+  }
 
   const obsDir = resolve(flags['observations-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
   if (!existsSync(obsDir)) {
@@ -457,7 +434,7 @@ export async function runSampleFromTraces(
     : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
-    const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model: flags.model, executorName: flags.executor });
+    const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model, executorName });
     const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     if (samples.length === 0) {
       // The model conservatively skipped every signal (noise / unreproducible). That's a
@@ -510,6 +487,10 @@ async function runSample(
     ? Math.max(1, Number(flags.count) || 5)
     : undefined;
   const model: string = flags.model;
+  const executorName = flags.executor;
+  if (!executorName) {
+    throw new Error('internal error: sample generation requires runtime selection before execution');
+  }
   const focus: string | undefined = flags.focus || undefined;
 
   if (focus) {
@@ -564,7 +545,7 @@ async function runSample(
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
+          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
         mkdirSync(dirname(samplesPath), { recursive: true });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -632,7 +613,7 @@ async function runSample(
     }
     try {
       const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName: flags.executor });
+        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'], executorName });
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       if (existingFile && flags.append) {
         // 追加:读已有 → 合并(撞 id 去重)→ 保留原 json/yaml 格式与 wrapper 写回。

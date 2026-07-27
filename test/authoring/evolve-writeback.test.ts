@@ -10,6 +10,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { buildVariantResult, buildVariantSummary } from '../../src/eval-core/schema.js';
+import { parseReportDocument } from '../../src/eval-core/report-document.js';
+import type { ExecResult, GradeResult } from '../../src/types/index.js';
 
 const { writeSpy } = vi.hoisted(() => ({ writeSpy: vi.fn() }));
 
@@ -27,21 +30,34 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const VARIANT = 'V';
 function passingBaselineReport() {
-  const variant = {
-    sample_id: 's', ok: true, status: 'success', output: '', assertions: { details: [] },
-    compositeScore: 4, factScore: 4, behaviorScore: 4, judgeScore: 4,
-    durationMs: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUSD: 0, numTurns: 1,
+  const execution: ExecResult = {
+    ok: true,
+    output: 'done',
+    durationMs: 1,
+    durationApiMs: 1,
+    inputTokens: 1, outputTokens: 1,
+    cacheReadTokens: 0, cacheCreationTokens: 0,
+    costUSD: 0,
+    stopReason: 'end_turn',
+    numTurns: 1,
   };
-  const results = Array.from({ length: 3 }, (_, i) => ({ sample_id: `s${i}`, variants: { [VARIANT]: { ...variant, sample_id: `s${i}` } } }));
-  const summary = {
-    [VARIANT]: {
-      totalSamples: 3, successCount: 3, errorCount: 0, errorRate: 0, avgDurationMs: 1,
-      avgInputTokens: 1, avgOutputTokens: 1, avgTotalTokens: 2, totalCostUSD: 0, totalExecCostUSD: 0,
-      totalJudgeCostUSD: 0, avgCostPerSample: 0, avgNumTurns: 1,
-      avgFactScore: 4, avgBehaviorScore: 4, avgJudgeScore: 4, avgCompositeScore: 4,
+  const grade: GradeResult = {
+    compositeScore: 5,
+    layeredScores: { factScore: 5 },
+    assertions: {
+      passed: 1,
+      total: 1,
+      score: 5,
+      details: [{ type: 'contains', value: 'done', weight: 1, passed: true }],
     },
   };
-  return {
+  const variants = Array.from({ length: 3 }, () => buildVariantResult(execution, grade));
+  const results = variants.map((variant, index) => ({
+    sample_id: `s${index}`,
+    variants: { [VARIANT]: variant },
+  }));
+  const summary = { [VARIANT]: buildVariantSummary(variants) };
+  const report = {
     kind: 'evaluation', id: 'r', meta: {
       variants: [VARIANT], model: 'm', judgeModels: [{ executor: 'c', model: 'j' }], executor: 'c',
       sampleCount: 3, taskCount: 3, totalCostUSD: 0, timestamp: '2026-06-10T00:00:00Z',
@@ -49,6 +65,8 @@ function passingBaselineReport() {
     },
     summary, results,
   };
+  assert.ok(parseReportDocument(report, 'r', 'r'), 'baseline fixture 必须满足持久化报告契约');
+  return report;
 }
 
 vi.mock('../../src/eval-workflows/run-evaluation.js', () => ({
@@ -72,7 +90,13 @@ describe('evolveSkill writeBackToSource 守卫', () => {
     skillPath = join(proj, 'skill.md');
     writeFileSync(skillPath, ORIGINAL);
     samplesPath = join(proj, 'samples.json');
-    writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's0', prompt: 'do x', assertions: [] }]));
+    writeFileSync(samplesPath, JSON.stringify(
+      Array.from({ length: 3 }, (_, index) => ({
+        sample_id: `s${index}`,
+        prompt: `do x ${index}`,
+        assertions: [],
+      })),
+    ));
     savedHome = process.env.HOME; savedProfile = process.env.USERPROFILE;
     process.env.HOME = home; process.env.USERPROFILE = home; // persistReport 落到临时 HOME,不污染真实目录
     writeSpy.mockClear(); // 清掉上面 fixture 的写,只记 evolveSkill 内部的 writeFileSync

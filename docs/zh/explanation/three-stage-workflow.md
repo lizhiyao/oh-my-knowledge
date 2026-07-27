@@ -41,7 +41,7 @@ omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严
 
 ## observe —— 它在生产里站得住吗？
 
-`eval` 是在固定用例集上的受控实验，`observe` 是另一端：它摄入**真实 Codex rollout 或 Claude Code session trace**，转成 skill 健康度报告——知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 使用和耗时。它是**观测，不是评分**：它告诉你知识库在真实使用里在哪儿撞上了未知，好让你下一轮用例去打这些点。
+`eval` 是固定用例集上的受控实验，`observe` 是另一端：它把**真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志**统一转换为 source-neutral Trace IR，再生成 skill 健康度报告——知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 使用和耗时。它是**观测，不是评分**：它告诉你知识库在真实使用里在哪儿撞上了未知，好让下一轮用例去覆盖这些点。
 
 所以 `observe` 是发布后输入，不是现在最该打磨的第一入口。如果团队还没有稳定真实 trace 流，最值得投的通常不是更丰富的 production graph，而是更扎实的 doctor / eval 发布判断闭环。
 

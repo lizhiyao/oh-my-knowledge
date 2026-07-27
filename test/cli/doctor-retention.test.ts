@@ -5,21 +5,32 @@ import { join } from 'node:path';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 
+function doctorReport(skillName: string, id: string, timestamp: string) {
+  return {
+    kind: 'doctor',
+    schemaVersion: '3.0.0',
+    id,
+    timestamp,
+    cliVersion: 'test',
+    cwd: '/workspace',
+    executorName: 'codex',
+    model: 'test-model',
+    skills: [{ skillName, skillPath: `/workspace/${skillName}`, status: 'pass', results: [] }],
+    totals: { pass: 1, warn: 0, fail: 0 },
+    ruleStats: { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 },
+    outcome: 'passed',
+  };
+}
+
 // 制造 N 份 single-skill doctor report 文件，timestamp 严格递增，文件名按时间编号，
 // 方便断言保留集合是否最近的 K 份。
 function seedDoctorHistory(dir: string, skillName: string, count: number): string[] {
   const files: string[] = [];
   for (let i = 0; i < count; i++) {
     const timestamp = `2026-05-${String(10 + i).padStart(2, '0')}T00:00:00.000Z`;
-    const file = reportFileName(`${skillName}-r${String(i).padStart(3, '0')}`);
-    writeFileSync(join(dir, file), JSON.stringify({
-      kind: 'doctor',
-      id: `r${i}`,
-      timestamp,
-      skills: [{ skillName, status: 'pass', results: [] }],
-      totals: { pass: 1, warn: 0, fail: 0 },
-      outcome: 'passed',
-    }));
+    const id = `r${String(i).padStart(3, '0')}`;
+    const file = reportFileName(`${skillName}-${id}`);
+    writeFileSync(join(dir, file), JSON.stringify(doctorReport(skillName, id, timestamp)));
     files.push(file);
   }
   return files;
@@ -65,14 +76,10 @@ describe('pruneDoctorHistory', () => {
   });
 
   it('迁移旧 `{name}.json` doctor 文件后参与轮换', () => {
-    writeFileSync(join(dir, 'code-review.json'), JSON.stringify({
-      kind: 'doctor',
-      id: 'bare-json',
-      timestamp: '2025-01-01T00:00:00.000Z',
-      skills: [{ skillName: 'code-review', status: 'pass', results: [] }],
-      totals: { pass: 1, warn: 0, fail: 0 },
-      outcome: 'passed',
-    }));
+    writeFileSync(
+      join(dir, 'code-review.json'),
+      JSON.stringify(doctorReport('code-review', 'bare-json', '2025-01-01T00:00:00.000Z')),
+    );
     seedDoctorHistory(dir, 'code-review', 3);
     pruneDoctorHistory(dir, 'code-review', 2);
     const remaining = readdirSync(dir).sort();
@@ -98,5 +105,19 @@ describe('pruneDoctorHistory', () => {
     expect(remaining).toContain('multi-skill.json');
     expect(remaining).toContain('corrupt.json');
     expect(remaining.filter((f) => f.startsWith('code-review-'))).toHaveLength(2);
+  });
+
+  it('正文 id 与文件名不一致时不删除，避免误删被替换文件', () => {
+    seedDoctorHistory(dir, 'code-review', 3);
+    const forged = reportFileName('code-review-r999');
+    writeFileSync(
+      join(dir, forged),
+      JSON.stringify(doctorReport('code-review', 'different-id', '2020-01-01T00:00:00.000Z')),
+    );
+
+    pruneDoctorHistory(dir, 'code-review', 1);
+
+    expect(readdirSync(dir)).toContain(forged);
+    expect(readdirSync(dir).filter((file) => /^code-review-r00[0-2]\.report\.json$/.test(file))).toHaveLength(1);
   });
 });

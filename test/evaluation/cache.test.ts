@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cacheKey, createCache } from '../../src/eval-core/cache.js';
@@ -38,9 +38,9 @@ describe('cacheKey', () => {
     assert.equal(a, b);
   });
 
-  it('cache key 带 v6: 前缀(invalidates older cache entries — contentHash 加进 key)', () => {
+  it('cache key 带 v9: 前缀（mock fixture 内容指纹进入缓存契约）', () => {
     const key = cacheKey('sonnet', '', 'p', '/tmp/p');
-    assert.match(key, /^v6:/);
+    assert.match(key, /^v9:/);
   });
 
   // artifact contentHash 必须进 cache key:本地 dir-skill 改 references/ 资产时,system(SKILL.md 文本)
@@ -98,6 +98,18 @@ describe('cacheKey', () => {
     const b = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'runtime222222');
     assert.notEqual(a, b);
   });
+
+  it('sample 执行依赖指纹进 cache key：mock fixture 内容变化生成不同键', () => {
+    const before = cacheKey(
+      'sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1',
+      undefined, undefined, undefined, undefined, 'fixture-v1',
+    );
+    const after = cacheKey(
+      'sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1',
+      undefined, undefined, undefined, undefined, 'fixture-v2',
+    );
+    assert.notEqual(before, after);
+  });
 });
 
 describe('createCache:cache.set 保留 turns / toolCalls', () => {
@@ -129,6 +141,112 @@ describe('createCache:cache.set 保留 turns / toolCalls', () => {
       assert.equal(got!.toolCalls?.length, 1);
       assert.equal(got!.toolCalls?.[0].tool, 'Read');
       assert.equal(got!.turns?.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('set 时把 provider-native 工具名归一化后再缓存', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-tool-identity-'));
+    try {
+      const cache = createCache(dir);
+      const value: ExecResult = {
+        ok: true,
+        output: 'hello',
+        durationMs: 1,
+        durationApiMs: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUSD: 0,
+        stopReason: 'end_turn',
+        numTurns: 1,
+        toolCalls: [{
+          tool: 'file_read',
+          input: '/tmp/x',
+          output: 'ok',
+          success: true,
+        }],
+      };
+      cache.set('provider-native', value);
+      assert.equal(cache.get('provider-native')?.toolCalls?.[0].tool, 'Read');
+      assert.equal(
+        cache.get('provider-native')?.toolCalls?.[0].sourceTool,
+        'file_read',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('加载时跳过不满足 ExecResult 契约的历史条目', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-contract-'));
+    try {
+      writeFileSync(join(dir, 'executor-cache.json'), JSON.stringify({
+        valid: {
+          ok: true,
+          output: 'hello',
+          durationMs: 1,
+          durationApiMs: 0,
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          costUSD: 0,
+          stopReason: 'end_turn',
+          numTurns: 1,
+        },
+        overflow: {
+          ok: true,
+          output: 'bad',
+          durationMs: 1,
+          durationApiMs: 0,
+          inputTokens: Number.MAX_SAFE_INTEGER,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          costUSD: 0,
+          stopReason: 'end_turn',
+          numTurns: 1,
+        },
+      }));
+
+      const cache = createCache(dir);
+      assert.equal(cache.get('valid')?.output, 'hello');
+      assert.equal(cache.get('overflow'), null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('多个旧快照交错保存时合并新增条目而不是互相覆盖', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-concurrent-'));
+    const value: ExecResult = {
+      ok: true,
+      output: 'done',
+      durationMs: 1,
+      durationApiMs: 1,
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUSD: 0,
+      stopReason: 'end_turn',
+      numTurns: 1,
+    };
+    try {
+      const first = createCache(dir);
+      const second = createCache(dir);
+      first.set('first', { ...value, output: 'first' });
+      second.set('second', { ...value, output: 'second' });
+
+      first.save();
+      second.save();
+
+      const reloaded = createCache(dir);
+      assert.equal(reloaded.get('first')?.output, 'first');
+      assert.equal(reloaded.get('second')?.output, 'second');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

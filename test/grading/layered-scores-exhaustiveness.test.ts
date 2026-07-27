@@ -6,23 +6,16 @@
  * 报错、也不进 composite,静默丢分。曾因此漏掉七类:mock_hit / rouge_n_min / bleu_min / levenshtein_max +
  * RAG 三件套 faithfulness / answer_relevancy / context_recall。
  *
- * 机制:扫 runner 真源拿到"实际支持的全部类型" = evalAssertion 的 `case '<type>':` ∪ pre-switch 组合器
- * (`assertion.type === '<type>'`,如 assert-set)∪ ASYNC_ASSERTION_TYPES,断言每一个**要么在 ASSERTION_LAYER
- * 静态分类、要么是已知组合器**(运行时按 children 解析层,见 resolveAssertSetLayer)。新增类型两者都不沾 → 失败,
- * 挡在合并前。曾因只扫 `case` 漏掉 pre-switch 的 assert-set(复审 P2)。与 `doc-constants-drift.test.ts` 同属
- * "扫源防漂移"一类 gate。
+ * 机制:从共享注册表 `SUPPORTED_ASSERTION_TYPES` 读取支持的完整集合，断言每一个**要么在
+ * ASSERTION_LAYER 静态分类、要么是已知组合器**(运行时按 children 解析层,见 resolveAssertSetLayer)。
+ * 新增类型两者都不沾 → 失败,挡在合并前。支持列表不再靠正则扫描 runner 实现细节。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { ASSERTION_LAYER, computeLayeredScores } from '../../src/grading/layered-scores.js';
-import { ASYNC_ASSERTION_TYPES, runAssertions } from '../../src/grading/assertions.js';
+import { runAssertions } from '../../src/grading/assertions.js';
+import { SUPPORTED_ASSERTION_TYPES } from '../../src/shared/assertion-types.js';
 import type { Assertion } from '../../src/types/index.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSERTIONS_SRC = join(__dirname, '..', '..', 'src', 'grading', 'assertions.ts');
 
 /**
  * 组合器类型:无静态层,由 grading 期按 children 解析(resolveAssertSetLayer)。穷尽性 gate 认它们「已处理」,
@@ -30,30 +23,16 @@ const ASSERTIONS_SRC = join(__dirname, '..', '..', 'src', 'grading', 'assertions
  */
 const LAYER_COMBINATORS = new Set(['assert-set']);
 
-/**
- * runner 实际支持的全部 assertion 类型:case 字面量 ∪ pre-switch 组合器比较 ∪ 异步类型集(含连字符)。
- * 两条 idiom 锚得很死:`case '<type>':` 是 switch 分派,`assertion.type === '<type>'` 按定义就是「这条断言
- * 是不是 <type>」的类型分派 —— 字面量恒为真实类型,不会误捕(正则限定 `assertion.type` 标识符,不匹配别的
- * `xxx.type`)。两种 idiom 之外若再冒出第三种分派方式,caseTypes 数量守卫会先炸,逼这里同步。
- */
-function supportedAssertionTypes(): string[] {
-  const src = readFileSync(ASSERTIONS_SRC, 'utf8');
-  const caseTypes = [...src.matchAll(/case '([a-z_-]+)':/g)].map((m) => m[1]);
-  const eqTypes = [...src.matchAll(/assertion\.type === '([a-z_-]+)'/g)].map((m) => m[1]);
-  assert.ok(caseTypes.length >= 25, `evalAssertion 的 case 没扫到(实得 ${caseTypes.length}),正则或源结构可能变了`);
-  return [...new Set([...caseTypes, ...eqTypes, ...ASYNC_ASSERTION_TYPES])];
-}
-
 describe('assertion 类型分层穷尽性', () => {
   it('runner 支持的每个 assertion 类型都能归层(静态分类或已知组合器),无静默漏层', () => {
-    const unhandled = supportedAssertionTypes().filter(
+    const unhandled = [...SUPPORTED_ASSERTION_TYPES].filter(
       (t) => ASSERTION_LAYER[t] !== 'fact' && ASSERTION_LAYER[t] !== 'behavior' && !LAYER_COMBINATORS.has(t),
     );
     assert.deepEqual(unhandled, [], `这些 runner 支持的类型既未静态分层、又非已知组合器,会被静默丢分:${unhandled.join(', ')}`);
   });
 
-  it('扫描确实抓到了 pre-switch 组合器 assert-set(防回归:复审 P2 的盲区)', () => {
-    assert.ok(supportedAssertionTypes().includes('assert-set'), 'assert-set 必须进入待校验集,否则 gate 又有盲区');
+  it('共享注册表包含组合器 assert-set', () => {
+    assert.ok(SUPPORTED_ASSERTION_TYPES.has('assert-set'), 'assert-set 必须进入共享 assertion 类型注册表');
   });
 
   it('assert-set 同层 children → 聚合归该层进 composite;混层 → 不计入分层(无口径偏差)', () => {

@@ -19,6 +19,8 @@
 import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
+import { toolCallStatus } from '../shared/tool-call-status.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -114,7 +116,15 @@ export function extractFailedSearchSignals(toolCalls: ToolCallInfo[]): GapSignal
       sampleId: '',
       type: 'failed_search',
       context,
-      evidence: { tool: tc.tool, pattern, path, success: tc.success },
+      evidence: {
+        tool: tc.tool,
+        pattern,
+        path,
+        status: toolCallStatus(tc),
+        statusSource: tc.statusSource ?? 'unknown',
+        // Retained for readers of pre-four-state reports.
+        success: tc.success,
+      },
       weight: SIGNAL_WEIGHTS.failed_search,
     });
   }
@@ -392,7 +402,7 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
 export function computeReportGapRates(results: ResultEntry[], variants: string[]): Record<string, GapReport> {
   const out: Record<string, GapReport> = {};
   for (const v of variants) {
-    out[v] = computeGapReport(results, v);
+    setOwnRecordValue(out, v, computeGapReport(results, v));
   }
   return out;
 }
@@ -445,7 +455,7 @@ function recomputeAggregates(report: GapReport): GapReport {
 export async function applyHedgingClassifier(
   report: GapReport,
   executor: ExecutorFn,
-  opts?: ClassifyOptions,
+  opts: ClassifyOptions,
 ): Promise<{ report: GapReport; costUSD: number; truncated: boolean }> {
   const hedgingIndices: number[] = [];
   const candidates: HedgingCandidate[] = [];
@@ -494,13 +504,13 @@ export async function applyHedgingClassifier(
 export async function applyHedgingClassifierToReports(
   reports: Record<string, GapReport>,
   executor: ExecutorFn,
-  opts?: ClassifyOptions,
+  opts: ClassifyOptions,
 ): Promise<{ reports: Record<string, GapReport>; costUSD: number }> {
   const out: Record<string, GapReport> = {};
   let totalCost = 0;
   for (const [variant, report] of Object.entries(reports)) {
     const result = await applyHedgingClassifier(report, executor, opts);
-    out[variant] = result.report;
+    setOwnRecordValue(out, variant, result.report);
     totalCost += result.costUSD;
   }
   return { reports: out, costUSD: totalCost };

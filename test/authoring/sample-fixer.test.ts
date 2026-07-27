@@ -62,6 +62,7 @@ describe('fixSamples', () => {
       samples: [{ sample_id: 's001', prompt: 'p', omkFix: { attempts: 2 } }],
       report: reportWithFailedAssertion(),
       treatmentKey: 'skill',
+      model: 'test-model',
       maxAttemptsPerSample: 2,
       executor: async () => {
         called = true;
@@ -77,13 +78,19 @@ describe('fixSamples', () => {
   it('stamps fix attempt metadata when a sample changes', async () => {
     const result = await fixSamples({
       skillContent: 'Use Bash when needed.',
-      samples: [{ sample_id: 's001', prompt: 'p', provenance: 'llm-generated' }],
+      samples: [{ sample_id: 's001', prompt: 'p', assertions: [], provenance: 'llm-generated' }],
       report: reportWithFailedAssertion(),
       treatmentKey: 'skill',
+      model: 'test-model',
       executor: async () => ({
         ok: true,
         costUSD: 0,
-        text: JSON.stringify([{ sample_id: 's001', prompt: 'p2', provenance: 'llm-generated' }]),
+        text: JSON.stringify([{
+          sample_id: 's001',
+          prompt: 'p',
+          assertions: [{ type: 'contains', value: 'ok' }],
+          provenance: 'llm-generated',
+        }]),
       }),
     });
 
@@ -91,12 +98,13 @@ describe('fixSamples', () => {
     assert.equal((result.samples[0].omkFix as { attempts: number }).attempts, 1);
   });
 
-  it('normalizes invalid provenance emitted by the fixer LLM', async () => {
+  it('rejects protected-field changes emitted by the fixer LLM', async () => {
     const result = await fixSamples({
       skillContent: 'Use Bash when needed.',
       samples: [{ sample_id: 's001', prompt: 'p', provenance: 'llm-generated' }],
       report: reportWithFailedAssertion(),
       treatmentKey: 'skill',
+      model: 'test-model',
       executor: async () => ({
         ok: true,
         costUSD: 0,
@@ -106,7 +114,65 @@ describe('fixSamples', () => {
       }),
     });
 
-    assert.equal(result.fixedCount, 1);
+    assert.equal(result.fixedCount, 0);
     assert.equal(result.samples[0].provenance, 'llm-generated');
+    assert.match(result.fixes[0].error ?? '', /protected fields/);
+  });
+
+  it('rejects incomplete or extra fixer output atomically', async () => {
+    const report = reportWithFailedAssertion();
+    report.meta.sampleCount = 2;
+    report.meta.taskCount = 2;
+    report.results.push({
+      ...report.results[0],
+      sample_id: 's002',
+    });
+    const samples = [
+      { sample_id: 's001', prompt: 'p1', assertions: [] },
+      { sample_id: 's002', prompt: 'p2', assertions: [] },
+    ];
+    const result = await fixSamples({
+      skillContent: 'Use Bash when needed.',
+      samples,
+      report,
+      treatmentKey: 'skill',
+      model: 'test-model',
+      executor: async () => ({
+        ok: true,
+        costUSD: 0.1,
+        text: JSON.stringify([{
+          sample_id: 's001',
+          prompt: 'p1',
+          assertions: [{ type: 'contains', value: 'ok' }],
+        }]),
+      }),
+    });
+
+    assert.equal(result.fixedCount, 0);
+    assert.deepEqual(result.samples, samples);
+    assert.ok(result.fixes.every((fix) => /exactly once/.test(fix.error ?? '')));
+  });
+
+  it('preserves incurred cost and completeness when the returned sample is invalid', async () => {
+    const result = await fixSamples({
+      skillContent: 'Use Bash when needed.',
+      samples: [{ sample_id: 's001', prompt: 'p', provenance: 'llm-generated' }],
+      report: reportWithFailedAssertion(),
+      treatmentKey: 'skill',
+      model: 'test-model',
+      executor: async () => ({
+        ok: true,
+        costUSD: 0.25,
+        costReported: false,
+        text: JSON.stringify([
+          { sample_id: 's001', prompt: '', provenance: 'llm-generated' },
+        ]),
+      }),
+    });
+
+    assert.equal(result.fixedCount, 0);
+    assert.equal(result.costUSD, 0.25);
+    assert.equal(result.costReported, false);
+    assert.match(result.fixes[0].error ?? '', /missing or invalid required prompt/);
   });
 });

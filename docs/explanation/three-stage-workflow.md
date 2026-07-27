@@ -41,7 +41,7 @@ This is where omk's measurement rigor lives. Everything in [architecture](./arch
 
 ## observe — does it hold up in production?
 
-`eval` is a controlled lab experiment on a fixed sample set. `observe` is the opposite end: it ingests **real Codex rollouts or Claude Code session traces** and turns them into a skill-health report — knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, token use, and latency. It is **observation, not scoring**: it tells you where the knowledge base bumped into the unknown in real usage, so your next round of samples can target it.
+`eval` is a controlled lab experiment on a fixed sample set. `observe` is the opposite end: it normalizes **real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs** into source-neutral Trace IR and turns them into a skill-health report — knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, token use, and latency. It is **observation, not scoring**: it tells you where the knowledge base bumped into the unknown in real usage, so your next round of samples can target it.
 
 That makes `observe` a post-ship input, not the first thing to polish. If a team has no real trace flow yet, the best next investment is usually a stronger doctor / eval release loop, not a richer production graph.
 

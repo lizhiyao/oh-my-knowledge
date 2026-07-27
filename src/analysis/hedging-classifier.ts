@@ -21,8 +21,8 @@ export interface HedgingCandidate {
 }
 
 export interface ClassifyOptions {
+  model: string;
   maxCandidates?: number;
-  model?: string;
   batchSize?: number;
 }
 
@@ -34,7 +34,6 @@ export interface ClassifyResult {
 
 const DEFAULT_MAX_CANDIDATES = 50;
 const DEFAULT_BATCH_SIZE = 10;
-const DEFAULT_MODEL = 'claude-haiku-4-5';
 
 // in-memory cache,进程内复用。key = sha256(sentence)。
 const verdictCache = new Map<string, HedgingVerdict>();
@@ -111,11 +110,11 @@ function fallbackVerdict(reason: string): HedgingVerdict {
 export async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
   executor: ExecutorFn,
-  opts?: ClassifyOptions,
+  opts: ClassifyOptions,
 ): Promise<ClassifyResult> {
-  const max = opts?.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
-  const batchSize = opts?.batchSize ?? DEFAULT_BATCH_SIZE;
-  const model = opts?.model ?? DEFAULT_MODEL;
+  const max = opts.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
+  const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
+  const model = opts.model;
   const truncated = candidates.length > max;
   const work = candidates.slice(0, max);
   const verdicts: HedgingVerdict[] = new Array(candidates.length);

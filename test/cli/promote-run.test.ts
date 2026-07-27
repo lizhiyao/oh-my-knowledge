@@ -252,16 +252,13 @@ describe('omk promote 端到端', () => {
     assert.equal(parsed.alreadyPromoted.contentHash, curHash);
   });
 
-  it('不可信受管 JSON 的 verdict 含 ANSI/控制符 → 文本输出洗成 U+FFFD,不喷转义', async () => {
-    // verdict 写成带 ESC/OSC/CR 的串(validator 只卡「是字符串」),走 verdict_blocked 拦截分支打到 stderr。
+  it('不可信受管 JSON 的 verdict 含 ANSI/控制符 → 存储边界整条拒绝，不喷转义', async () => {
     writeRecord({ verdict: '\x1b[2J\x1b]0;PWNED\x07\rNOISE' });
     const r = await run(['promote', 'review']);
     assert.equal(r.code, 1);
     assert.ok(!r.stderr.includes('\x1b'), 'ESC 不得原样喷到终端');
     assert.ok(!r.stderr.includes('\x07'), 'BEL 不得原样喷出');
-    assert.ok(r.stderr.includes('�'), '控制符应映射为 U+FFFD');
-    // --json 路径保留原值(脚本消费要原始),仅文本路径洗。
-    const j = await run(['promote', 'review', '--json']);
-    assert.ok(JSON.parse(j.stdout).blocked.reasons[0].detail.verdict.includes('\x1b'), '--json 保留原值');
+    assert.ok(r.stderr.includes('No managed record'), '非法 verdict 使不可信记录在存储边界失败关闭');
+    assert.ok(!r.stderr.includes('PWNED'), '不可信 verdict 不进入任何文本输出');
   });
 });

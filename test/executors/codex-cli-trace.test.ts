@@ -55,10 +55,13 @@ describe('extractCodexTrace', () => {
     ];
     const r = extractCodexTrace(events);
     assert.equal(r.toolCalls.length, 1);
-    assert.equal(r.toolCalls[0].tool, 'command_execution');
-    assert.equal(r.toolCalls[0].input, 'ls /tmp');
+    assert.equal(r.toolCalls[0].tool, 'Bash');
+    assert.equal(r.toolCalls[0].sourceTool, 'command_execution');
+    assert.deepEqual(r.toolCalls[0].input, { command: 'ls /tmp' });
     assert.match(r.toolCalls[0].output as string, /file1/);
     assert.equal(r.toolCalls[0].success, true);
+    assert.equal(r.toolCalls[0].status, 'success');
+    assert.equal(r.toolCalls[0].statusSource, 'runtime');
     // turn 也应该挂上这个 tool call
     assert.equal(r.turns[0].toolCalls?.length, 1);
   });
@@ -82,10 +85,110 @@ describe('extractCodexTrace', () => {
     const r = extractCodexTrace(events);
     assert.equal(r.toolCalls.length, 1);
     assert.equal(r.toolCalls[0].success, false);
+    assert.equal(r.toolCalls[0].status, 'failure');
     assert.match(r.toolCalls[0].output as string, /No such file/);
   });
 
-  it('item.started 是 in_progress 占位,跳过避免 double-count', () => {
+  it('item.status failed/cancelled overrides item.completed lifecycle', () => {
+    const failed = extractCodexTrace([{
+      type: 'item.completed',
+      item: { id: 'failed', type: 'web_search', query: 'x', status: 'failed' },
+    }]);
+    assert.equal(failed.toolCalls[0].status, 'failure');
+    assert.equal(failed.toolCalls[0].success, false);
+
+    const cancelled = extractCodexTrace([{
+      type: 'item.completed',
+      item: { id: 'cancelled', type: 'web_search', query: 'x', status: 'cancelled' },
+    }]);
+    assert.equal(cancelled.toolCalls[0].status, 'cancelled');
+    assert.equal(cancelled.toolCalls[0].success, false);
+  });
+
+  it('does not fabricate success when a terminal event still has a non-terminal status', () => {
+    const trace = extractCodexTrace([{
+      type: 'item.completed',
+      item: {
+        id: 'still-running',
+        type: 'mcp_tool_call',
+        server: 'github',
+        tool: 'fetch_file',
+        status: 'in_progress',
+      },
+    }]);
+    assert.equal(trace.toolCalls[0].status, 'unknown');
+    assert.equal(trace.toolCalls[0].success, false);
+
+    const conflictingExitCode = extractCodexTrace([{
+      type: 'item.completed',
+      item: {
+        id: 'still-running-with-exit',
+        type: 'command_execution',
+        command: 'long task',
+        status: 'in_progress',
+        exit_code: 0,
+      },
+    }]);
+    assert.equal(conflictingExitCode.toolCalls[0].status, 'unknown');
+  });
+
+  it('does not count protocol-only items as tools and preserves MCP arguments and results', () => {
+    const errorTrace = extractCodexTrace([{
+      type: 'item.completed',
+      item: { id: 'error', type: 'error', message: 'permission denied' },
+    }]);
+    const protocolOnlyTrace = extractCodexTrace([
+      { type: 'item.completed', item: { id: 'reasoning', type: 'reasoning', text: 'thinking' } },
+      { type: 'item.completed', item: { id: 'todo', type: 'todo_list' } },
+    ]);
+    assert.equal(errorTrace.toolCalls.length, 0);
+    assert.equal(protocolOnlyTrace.toolCalls.length, 0);
+
+    const mcpTrace = extractCodexTrace([{
+      type: 'item.completed',
+      item: {
+        id: 'mcp',
+        type: 'mcp_tool_call',
+        server: 'github',
+        tool: 'fetch_file',
+        arguments: { path: 'README.md' },
+        result: { structured_content: { text: 'ok' } },
+        status: 'completed',
+      },
+    }]);
+    assert.deepEqual(mcpTrace.toolCalls[0].input, { path: 'README.md' });
+    assert.match(String(mcpTrace.toolCalls[0].output), /structured_content/);
+    assert.equal(mcpTrace.toolCalls[0].tool, 'github.fetch_file');
+    assert.equal(mcpTrace.toolCalls[0].sourceTool, 'mcp_tool_call');
+    assert.equal(mcpTrace.toolCalls[0].toolProvider, 'github');
+    assert.equal(mcpTrace.toolCalls[0].status, 'success');
+  });
+
+  it('preserves file_change paths and change kinds as source-neutral tool input', () => {
+    const trace = extractCodexTrace([{
+      type: 'item.completed',
+      item: {
+        id: 'patch',
+        type: 'file_change',
+        changes: [
+          { path: 'src/a.ts', changeKind: 'update' },
+          { path: 'src/b.ts', changeKind: 'add' },
+        ],
+        status: 'completed',
+      },
+    }]);
+
+    assert.deepEqual(trace.toolCalls[0].input, [
+      { path: 'src/a.ts', kind: 'update' },
+      { path: 'src/b.ts', kind: 'add' },
+    ]);
+    assert.equal(trace.toolCalls[0].tool, 'Edit');
+    assert.equal(trace.toolCalls[0].sourceTool, 'file_change');
+    assert.equal(trace.toolCalls[0].output, 'completed');
+    assert.equal(trace.toolCalls[0].status, 'success');
+  });
+
+  it('item.started is replaced by item.completed without double-counting', () => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
       {
@@ -100,6 +203,99 @@ describe('extractCodexTrace', () => {
     ];
     const r = extractCodexTrace(events);
     assert.equal(r.toolCalls.length, 1);
+    assert.equal(r.toolCalls[0].status, 'success');
+  });
+
+  it('merges sparse completed items with their started input', () => {
+    const r = extractCodexTrace([
+      {
+        type: 'item.started',
+        item: { id: 'sparse', type: 'command_execution', command: 'pwd', status: 'in_progress' },
+      },
+      {
+        type: 'item.completed',
+        item: { id: 'sparse', type: 'command_execution', aggregated_output: '/repo', exit_code: 0, status: 'completed' },
+      },
+    ]);
+    assert.deepEqual(r.toolCalls[0].input, { command: 'pwd' });
+    assert.equal(r.toolCalls[0].output, '/repo');
+    assert.equal(r.toolCalls[0].toolUseId, 'sparse');
+    assert.equal(r.toolCalls[0].status, 'success');
+  });
+
+  it('retains an updated-only item as unknown evidence when the stream is truncated', () => {
+    const trace = extractCodexTrace([{
+      type: 'item.updated',
+      item: {
+        id: 'updated-only',
+        type: 'command_execution',
+        command: 'long task',
+        aggregated_output: 'partial',
+        status: 'in_progress',
+      },
+    }]);
+    assert.equal(trace.toolCalls.length, 1);
+    assert.deepEqual(trace.toolCalls[0].input, { command: 'long task' });
+    assert.equal(trace.toolCalls[0].output, 'partial');
+    assert.equal(trace.toolCalls[0].status, 'unknown');
+  });
+
+  it('pairs reused item ids in FIFO order', () => {
+    const r = extractCodexTrace([
+      {
+        type: 'item.started',
+        item: { id: 'reused', type: 'command_execution', command: 'first', status: 'in_progress' },
+      },
+      {
+        type: 'item.started',
+        item: { id: 'reused', type: 'command_execution', command: 'second', status: 'in_progress' },
+      },
+      {
+        type: 'item.completed',
+        item: { id: 'reused', type: 'command_execution', aggregated_output: 'first output', exit_code: 0, status: 'completed' },
+      },
+      {
+        type: 'item.completed',
+        item: { id: 'reused', type: 'command_execution', aggregated_output: 'second output', exit_code: 1, status: 'failed' },
+      },
+    ]);
+    assert.deepEqual(
+      r.toolCalls.map((call) => [
+        (call.input as { command: string }).command,
+        call.output,
+        call.status,
+      ]),
+      [
+        ['first', 'first output', 'success'],
+        ['second', 'second output', 'failure'],
+      ],
+    );
+    assert.equal(new Set(r.toolCalls.map((call) => call.callInstanceId)).size, 2);
+  });
+
+  it('keeps started tools with no terminal item as unknown evidence', () => {
+    const failedTurn = extractCodexTrace([
+      { type: 'turn.started' },
+      {
+        type: 'item.started',
+        item: { id: 'pending-failed-turn', type: 'command_execution', command: 'long task', status: 'in_progress' },
+      },
+      { type: 'turn.failed', error: { message: 'connection lost' } },
+    ]);
+    assert.equal(failedTurn.toolCalls.length, 1);
+    assert.equal(failedTurn.toolCalls[0].status, 'unknown');
+    assert.equal(failedTurn.toolCalls[0].statusSource, 'unknown');
+    assert.equal(failedTurn.toolCalls[0].success, false);
+
+    const truncatedStream = extractCodexTrace([
+      { type: 'turn.started' },
+      {
+        type: 'item.started',
+        item: { id: 'pending-truncated', type: 'web_search', query: 'omk', status: 'in_progress' },
+      },
+    ]);
+    assert.equal(truncatedStream.toolCalls.length, 1);
+    assert.equal(truncatedStream.toolCalls[0].status, 'unknown');
   });
 
   it('混合 command_execution + agent_message 同 turn → tool 挂当前 turn,内容是文本', () => {
@@ -132,7 +328,7 @@ describe('extractCodexTrace', () => {
     assert.equal(r.fullNumTurns, 1);
   });
 
-  it('turn.failed 把最后一条 tool call 标 success=false', () => {
+  it('turn.failed does not overwrite a completed tool outcome', () => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
       { type: 'item.completed', item: { id: 'i1', type: 'agent_message', text: 'partial' } },
@@ -144,7 +340,8 @@ describe('extractCodexTrace', () => {
     ];
     const r = extractCodexTrace(events);
     assert.equal(r.turns.length, 1);
-    assert.equal(r.toolCalls[0].success, false);
+    assert.equal(r.toolCalls[0].success, true);
+    assert.equal(r.toolCalls[0].status, 'success');
     assert.equal(r.fullNumTurns, 1);
   });
 
@@ -185,14 +382,35 @@ describe('extractCodexTrace', () => {
     assert.equal(r.toolCalls.length, 0);
   });
 
-  it('numSubAgents 恒 0(codex 无 sub-agent 概念)', () => {
+  it('counts concrete agent spawn items without inferring from assistant prose', () => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
       { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 'spawning agent' } },
+      {
+        type: 'item.started',
+        item: {
+          id: 'spawn-1',
+          type: 'mcp_tool_call',
+          server: 'multi_agent_v1',
+          tool: 'spawn_agent',
+          status: 'in_progress',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'spawn-1',
+          type: 'mcp_tool_call',
+          server: 'multi_agent_v1',
+          tool: 'spawn_agent',
+          status: 'completed',
+        },
+      },
       { type: 'turn.completed' },
     ];
     const r = extractCodexTrace(events);
-    assert.equal(r.numSubAgents, 0);
+    assert.equal(r.numSubAgents, 1);
+    assert.equal(r.toolCalls.length, 1);
   });
 
   it('流末尾无 turn.completed 收尾也 flush(防 hang turn)', () => {
@@ -217,8 +435,9 @@ describe('extractCodexTrace', () => {
     ];
     const r = extractCodexTrace(events);
     assert.equal(r.toolCalls.length, 1);
-    assert.equal(r.toolCalls[0].tool, 'file_read');
-    assert.equal(r.toolCalls[0].input, '/etc/hosts');
+    assert.equal(r.toolCalls[0].tool, 'Read');
+    assert.equal(r.toolCalls[0].sourceTool, 'file_read');
+    assert.deepEqual(r.toolCalls[0].input, { file_path: '/etc/hosts' });
     assert.match(r.toolCalls[0].output as string, /localhost/);
   });
 
@@ -233,7 +452,7 @@ describe('extractCodexTrace', () => {
     ];
     const r = extractCodexTrace(events);
     assert.equal(r.toolCalls.length, 1);
-    assert.equal(r.toolCalls[0].input, 'what is omk');
+    assert.deepEqual(r.toolCalls[0].input, { query: 'what is omk' });
     assert.match(r.toolCalls[0].output as string, /t1/);
   });
 

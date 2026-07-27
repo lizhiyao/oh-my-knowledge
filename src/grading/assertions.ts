@@ -3,20 +3,19 @@ import _Ajv from 'ajv';
 import type { Assertion, AssertionDetail, AssertionResults, ExecutorFn, Sample, ToolCallInfo } from '../types/index.js';
 import { ASSERTION_LAYER } from './layered-scores.js';
 import { buildSemanticSimilarityPrompt, SEMANTIC_SIMILARITY_SYSTEM, buildRagJudgePrompt } from '../shared/llm-prompts/judge-prompts.js';
+import {
+  assertionContractValidationError,
+} from '../shared/sample-contract.js';
+import {
+  ASYNC_ASSERTION_TYPES,
+  SYNC_ASSERTION_TYPES,
+} from '../shared/assertion-types.js';
+
+export { ASYNC_ASSERTION_TYPES } from '../shared/assertion-types.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();
 const CUSTOM_ASSERTION_TIMEOUT_MS = 30_000;
-
-export const ASYNC_ASSERTION_TYPES = new Set([
-  'semantic_similarity',
-  'custom',
-  // RAG-specific judge metrics. All three go through the LLM-judge path
-  // and inherit the same length-debias instruction as the main rubric judge.
-  'faithfulness',
-  'answer_relevancy',
-  'context_recall',
-]);
 
 export interface AsyncAssertionContext {
   executor: ExecutorFn;
@@ -320,6 +319,13 @@ export function runAssertions(
   assertions: Assertion[],
   context: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; mockStats?: { hits: number; misses: number; perMock: Record<string, number> } } = {},
 ): AssertionResults {
+  assertions.forEach((assertion, index) => {
+    const error = assertionContractValidationError(assertion);
+    if (error) throw new TypeError(`assertions[${index}]: ${error}`);
+    if (!SYNC_ASSERTION_TYPES.has(assertion.type)) {
+      throw new TypeError(`assertions[${index}]: async assertion ${JSON.stringify(assertion.type)} requires runAsyncAssertions()`);
+    }
+  });
   const outputLower = output.toLowerCase();
   const toolCalls = context.toolCalls || [];
   const toolNames = toolCalls.map((tc) => tc.tool.toLowerCase());
@@ -355,6 +361,13 @@ export function runAssertions(
 }
 
 export async function runAsyncAssertions(output: string, assertions: Assertion[], { executor, judgeModel, sample, samplesDir }: AsyncAssertionContext): Promise<AssertionResults> {
+  assertions.forEach((assertion, index) => {
+    const error = assertionContractValidationError(assertion);
+    if (error) throw new TypeError(`assertions[${index}]: ${error}`);
+    if (!ASYNC_ASSERTION_TYPES.has(assertion.type)) {
+      throw new TypeError(`assertions[${index}]: sync assertion ${JSON.stringify(assertion.type)} requires runAssertions()`);
+    }
+  });
   const details: AssertionDetail[] = [];
   let asyncCostUSD = 0;
   let anyCostUnreported = false;

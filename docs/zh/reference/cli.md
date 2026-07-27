@@ -256,7 +256,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --output-dir <value>            报告输出目录（默认项目级 .omk/reports）
   --repeat <value>                每个 sample 重复跑 N 次
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
-  --resume <value>                从某次失败 run 续跑
+  --resume <value>                从契约兼容的报告恢复成功项；不兼容则从头运行
   --retry <value>                 失败 sample 重试次数
   --samples <value>               用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。
   --skill-dir <value>             skill 目录，默认 skills
@@ -317,7 +317,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 <!-- omk:cli:observe:flags:end -->
 
-把真实 Codex rollout 与 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+把真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志统一转换为 source-neutral Trace IR，再生成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
 ### B. observe inbox：reviewer 闭环
 
@@ -398,6 +398,8 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 <!-- omk:cli:evolve:flags:end -->
 
 让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 用例 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
+
+CLI 完成摘要展示整次 evolve 的过程总成本，包括改写、可选的用例修复，以及候选选择期间实际执行的全部评测。合并后的 evolve 报告中，`meta.totalCostUSD` 有意采用更窄口径，只表示保留轮次结果所承载的评测成本；端到端总额另存于 `meta.evolve.processCostUSD`。对应的 `*CostReported` 为 `false` 时，该数值只是已上报成本的下界。
 
 `omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
 

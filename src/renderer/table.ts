@@ -122,11 +122,28 @@ function renderVariantBlock(d: import('../types/index.js').VariantResult, varian
   const totalMs = d.timing?.totalMs || d.durationMs;
   const metaParts: string[] = [];
   if (d.numToolCalls != null && d.numToolCalls > 0) {
-    const srColor = (d.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
-    const srText = d.toolSuccessRate != null ? `${(d.toolSuccessRate * 100).toFixed(0)}%` : '—';
-    metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '工具调用' : 'Tools'}</span>${d.numToolCalls} <span style="color:${srColor}">(${srText} OK)</span></div>`);
+    const hasResolvedOutcome = d.toolSuccessRate != null;
+    const srColor = hasResolvedOutcome
+      ? d.toolSuccessRate! >= 0.8 ? 'var(--green)' : 'var(--red)'
+      : 'var(--text-muted)';
+    const outcomeSuffix = [
+      (d.numToolCancelled ?? 0) > 0
+        ? lang === 'zh' ? `${d.numToolCancelled} 次取消` : `${d.numToolCancelled} cancelled`
+        : '',
+      (d.numToolUnknown ?? 0) > 0
+        ? lang === 'zh' ? `${d.numToolUnknown} 次状态未知` : `${d.numToolUnknown} unknown`
+        : '',
+    ].filter(Boolean).map((value) => ` · ${value}`).join('');
+    const outcomeText = hasResolvedOutcome
+      ? `${(d.toolSuccessRate! * 100).toFixed(0)}% OK${outcomeSuffix}`
+      : outcomeSuffix
+        ? outcomeSuffix.replace(/^ · /, '')
+        : lang === 'zh'
+          ? `${d.numToolCalls} 次状态未知`
+          : `${d.numToolCalls} unknown`;
+    metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '工具调用' : 'Tools'}</span>${d.numToolCalls} <span style="color:${srColor}">(${outcomeText})</span></div>`);
   }
-  metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? 'Tokens' : 'Tokens'}</span>${fmtNum(d.totalTokens)}</div>`);
+  metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? 'Tokens' : 'Tokens'}</span>${d.tokenUsageReportedByExecutor === false ? '—' : fmtNum(d.totalTokens)}</div>`);
   metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '耗时' : 'Duration'}</span>${fmtDuration(totalMs)}</div>`);
 
   // Error message

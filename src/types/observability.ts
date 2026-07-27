@@ -12,9 +12,21 @@
  */
 
 import type { DiagnosisBundle } from './diagnosis.js';
+import type { ToolCallStatus } from './executor.js';
+import type { TraceSourceKind } from './trace.js';
 import type { SkillHardRule, SkillWorkflow } from '../shared/hard-rules.js';
 
 // ---------- trace-source ----------
+
+export interface TraceIngestionSummary {
+  fileCount: number;
+  sourceRecordCount: number;
+  parsedRecordCount: number;
+  malformedRecordCount: number;
+  ignoredValueCount: number;
+  unknownEventCount: number;
+  filteredSessionCount: number;
+}
 
 export interface TraceSourceMetadata {
   channel?: string;
@@ -71,10 +83,12 @@ export interface ObservationReviewStateEntry {
   metricKey?: ObservationMetricKey;
   metricScope?: ObservationMetricScope;
   metricScopeId?: string;
+  traceId?: string;
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;
   messageUuid?: string;
+  callInstanceId?: string;
   toolUseId?: string;
   snippet?: string;
 }
@@ -95,10 +109,12 @@ export interface ObservationReviewStateUpdate {
   metricKey?: ObservationMetricKey;
   metricScope?: ObservationMetricScope;
   metricScopeId?: string;
+  traceId?: string;
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;
   messageUuid?: string;
+  callInstanceId?: string;
   toolUseId?: string;
   snippet?: string;
 }
@@ -130,12 +146,14 @@ export type ExperienceProblemSignal =
 export interface ExperienceProblemEvidenceRef {
   id: string;
   kind: string;
+  traceId?: string;
   sourceTrace: string;
   sessionId: string;
   messageIndex?: number;
   logicalMessageIndex?: number;
   sourceLineIndex?: number;
   messageUuid?: string;
+  callInstanceId?: string;
   toolUseId?: string;
   timestamp?: string;
   role?: 'user' | 'assistant' | 'tool' | 'other';
@@ -158,12 +176,14 @@ export interface ExperienceProblemPattern {
 export interface ProblemTimelineEvent {
   id: string;
   kind: string;
+  traceId?: string;
   sourceTrace: string;
   sessionId: string;
   messageIndex?: number;
   logicalMessageIndex?: number;
   sourceLineIndex?: number;
   messageUuid?: string;
+  callInstanceId?: string;
   toolUseId?: string;
   timestamp?: string;
   role?: 'user' | 'assistant' | 'tool' | 'other';
@@ -192,7 +212,8 @@ export interface SkillChainAdvisory {
 // ---------- inbox ----------
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'codex' | 'openclaw' | 'markdown_log' | 'unknown';
+/** @deprecated Prefer TraceSourceKind for new source-neutral APIs. */
+export type ObservationSourceKind = TraceSourceKind;
 export type ObservationSeverityReasonCode =
   | 'knowledge_gap_suspected'
   | 'repeated_failure_suspected'
@@ -219,6 +240,10 @@ export type ObservationSignalSubtype =
   | 'marker';
 
 export interface ObservationEvidence {
+  traceId?: string;
+  sessionId?: string;
+  sourceTrace?: string;
+  sourceKind?: ObservationSourceKind;
   tool?: string;
   query?: string;
   path?: string;
@@ -227,6 +252,7 @@ export interface ObservationEvidence {
   markerToken?: string;
   messageIndex?: number;
   messageUuid?: string;
+  callInstanceId?: string;
   toolUseId?: string;
   segmentTimestamp?: string;
 }
@@ -253,6 +279,8 @@ export interface ObservationInboxItem {
   artifactHash?: string;
   cwd?: string;
   sessionId: string;
+  /** Physical evidence stream identity; unlike sessionId, unique across reused run ids. */
+  traceId?: string;
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
   signalType: ObservationSignalType;
@@ -267,12 +295,16 @@ export interface ObservationInboxItem {
   firstSeen: string;
   lastSeen: string;
   occurrences: number;
+  /** Occurrences backed by an observed source timestamp. */
+  timestampedOccurrences?: number;
   recentSessionIds: string[];
+  recentTraceIds?: string[];
   representativeEvidence: ObservationEvidence[];
 }
 
 export interface ObservationSessionTimeRange {
   sessionId: string;
+  traceId?: string;
   sessionGroupId?: string;
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
@@ -297,12 +329,15 @@ export interface ObservationInboxReport {
       durationMs?: number;
     };
     sessionTimeRanges?: ObservationSessionTimeRange[];
+    ingestion?: TraceIngestionSummary;
     segmentCount: number;
     itemCount: number;
     skillInvocationCounts?: Record<string, number>;
     skillSessionCounts?: Record<string, number>;
     skillInvocationLastSeen?: Record<string, string>;
     skillToolCallCounts?: Record<string, Record<string, number>>;
+    timestampedSegmentCount?: number;
+    timestampCoverage?: number;
   };
   items: ObservationInboxItem[];
   experience?: ObservationExperienceReport;
@@ -413,6 +448,7 @@ export type ExperienceRuleFindingCode =
 export interface ExperienceEvidenceRef {
   id: string;
   kind: ExperienceEvidenceKind;
+  traceId?: string;
   sourceTrace: string;
   sessionId: string;
   traceRole?: 'standalone' | 'main' | 'subagent';
@@ -421,6 +457,8 @@ export interface ExperienceEvidenceRef {
   logicalMessageIndex?: number;
   sourceLineIndex?: number;
   messageUuid?: string;
+  /** Source-neutral identity for one concrete tool-call occurrence. */
+  callInstanceId?: string;
   toolUseId?: string;
   timestamp?: string;
   role?: 'user' | 'assistant' | 'tool' | 'other';
@@ -431,6 +469,7 @@ export interface ExperienceEvidenceRef {
 export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
   order: number;
   toolName?: string;
+  toolStatus?: ToolCallStatus;
   isError?: boolean;
   fullText?: string;
 }
@@ -438,11 +477,15 @@ export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
 export interface ExperienceTimelineBranch {
   id: string;
   label: string;
+  sessionId: string;
+  traceId?: string;
   sourceTrace: string;
   traceRole: 'main' | 'subagent' | 'standalone';
   attachTo?: {
+    traceId?: string;
     sourceTrace: string;
     messageIndex?: number;
+    callInstanceId?: string;
     toolUseId?: string;
     label?: string;
   };
@@ -453,6 +496,22 @@ export interface ExperienceTimelineTree {
   sessionId: string;
   main: ExperienceTimelineEvent[];
   branches: ExperienceTimelineBranch[];
+}
+
+export interface ExperienceTraceTimeline {
+  id: string;
+  sessionGroupKey: string;
+  sessionId: string;
+  eventCount: number;
+  tree: ExperienceTimelineTree;
+}
+
+export interface ExperienceTraceRecordRange {
+  traceId: string;
+  sourceTrace: string;
+  startRecordIndex: number;
+  endRecordIndex: number;
+  eventCount: number;
 }
 
 export interface ExperienceEvidenceChain {
@@ -563,10 +622,13 @@ export interface ExperienceSessionStorySubagentDispatch {
   id: string;
   order: number;
   branchId: string;
+  childSessionId: string;
+  traceId: string;
   label: string;
   sourceTrace: string;
   attachTo?: {
     messageIndex?: number;
+    callInstanceId?: string;
     toolUseId?: string;
     label?: string;
   };
@@ -594,6 +656,7 @@ export interface ExperienceGoalEvidenceRef {
 export interface ExperienceMessageRange {
   startMessageIndex: number;
   endMessageIndex: number;
+  traceId?: string;
   sourceTrace?: string;
   sessionId?: string;
 }
@@ -706,6 +769,7 @@ export interface ExperienceSessionStoryGraphEdge {
 
 export interface ExperienceSessionStory {
   schemaVersion: 1;
+  contextRef?: string;
   summary: string;
   invocationCount: number;
   goalSliceCount: number;
@@ -725,6 +789,14 @@ export interface ExperienceSessionStory {
   answers: ExperienceSessionStoryAnswer[];
 }
 
+export interface ExperienceStoryContext {
+  id: string;
+  sessionGroupKey: string;
+  goalSlices: ExperienceSessionStoryGoalSlice[];
+  subagentDispatches: ExperienceSessionStorySubagentDispatch[];
+  episodes: ExperienceEpisode[];
+}
+
 export interface ExperienceReviewerReport {
   schemaVersion: 1;
   mode: 'deterministic_milestone_1' | 'deterministic_session_story';
@@ -740,6 +812,8 @@ export interface ExperienceReviewerReport {
   oneLookMetrics: {
     toolCallCount: number;
     toolFailureCount: number;
+    toolCancelledCount?: number;
+    toolUnknownCount?: number;
     userMessageCount: number;
     userFollowUpCount: number;
     assistantDeliverySignalCount: number;
@@ -756,10 +830,15 @@ export interface ExperienceReviewerReport {
       outputTokens: number;
       cacheReadTokens: number;
       cacheCreationTokens: number;
+      /** Missing on legacy reviewer reports; readers must treat that as unknown coverage. */
+      observedInvocationCount?: number;
+      invocationCount?: number;
+      coverage?: number;
       attribution: 'skill_segment';
     };
   };
   sessionStory: ExperienceSessionStory;
+  sessionStoryRef?: 'session';
   authorSuggestions: string[];
   traceLinks: ExperienceEvidenceRef[];
 }
@@ -768,10 +847,12 @@ export interface ExperienceGoalSlice {
   id: string;
   skillName: string;
   sessionId: string;
+  traceId?: string;
   sourceTrace: string;
   cwd?: string;
   startTimestamp: string;
   endTimestamp: string;
+  timestampObserved?: boolean;
   sliceReasonCode: ExperienceGoalSliceReasonCode;
   sliceConfidence: 'low' | 'medium' | 'high';
   inferredUserGoal?: string;
@@ -796,6 +877,9 @@ export interface ExperienceReviewIndicators {
   repeatedExecutionCount: number;
   toolCallCount: number;
   toolFailureCount: number;
+  toolCancelledCount?: number;
+  /** Runtime did not expose a trustworthy terminal outcome. */
+  toolUnknownCount?: number;
   highObservationCount: number;
   mediumObservationCount: number;
   hedgingCount: number;
@@ -808,9 +892,14 @@ export interface ExperienceInvocationMetrics {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** False means counters are placeholders because the trace exposed no valid usage event. */
+  tokenUsageObserved: boolean;
   numTurns: number;
   numToolCalls: number;
   numToolFailures: number;
+  numToolCancelled?: number;
+  /** Unresolved or source-unknown outcomes; excluded from failure-rate denominators. */
+  numToolUnknown?: number;
 }
 
 export interface ExperienceInvocation {
@@ -818,6 +907,7 @@ export interface ExperienceInvocation {
   skillName: string;
   sessionId: string;
   sessionGroupKey: string;
+  traceId?: string;
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
   entrypoint?: string;
@@ -827,6 +917,7 @@ export interface ExperienceInvocation {
   goalSliceId: string;
   startTimestamp: string;
   endTimestamp: string;
+  timestampObserved?: boolean;
   attribution: {
     source: string;
     confidence: number;
@@ -843,6 +934,8 @@ export interface ExperienceInvocation {
   problemPatterns: ExperienceProblemPattern[];
   relatedObservationIds: string[];
   evidenceRefs: ExperienceEvidenceRef[];
+  timelineRef?: string;
+  timelineEventIds?: string[];
   timeline: ExperienceTimelineEvent[];
 }
 
@@ -860,6 +953,8 @@ export interface ExperienceSessionSummary {
   sourceSessionDurationMs?: number;
   startTimestamp: string;
   endTimestamp: string;
+  timestampedInvocationCount?: number;
+  timestampCoverage?: number;
   invocationIds: string[];
   goalSliceIds: string[];
   reviewPriority: ExperienceReviewPriority;
@@ -871,22 +966,34 @@ export interface ExperienceSessionSummary {
   assistiveInference: ExperienceAssistiveInference;
   problemPatterns: ExperienceProblemPattern[];
   relatedObservationIds: string[];
+  timelineRef?: string;
+  timelinePreviewEventIds?: string[];
   timelinePreview: ExperienceTimelineEvent[];
   fullSessionTimeline: ExperienceTimelineEvent[];
   timelineTree?: ExperienceTimelineTree;
   timelineScope: {
     mode: 'skill_segment_window';
-    segmentStartRecordIndex?: number;
-    segmentEndRecordIndex?: number;
-    previewStartRecordIndex?: number;
-    previewEndRecordIndex?: number;
-    sessionStartRecordIndex: number;
-    sessionEndRecordIndex: number;
+    segmentEventCount: number;
     previewEventCount: number;
     fullSessionEventCount: number;
+    segmentRecordRanges: ExperienceTraceRecordRange[];
+    previewRecordRanges: ExperienceTraceRecordRange[];
+    sessionRecordRanges: ExperienceTraceRecordRange[];
     truncated: boolean;
     omittedBeforeCount: number;
     omittedAfterCount: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    segmentStartRecordIndex?: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    segmentEndRecordIndex?: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    previewStartRecordIndex?: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    previewEndRecordIndex?: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    sessionStartRecordIndex?: number;
+    /** @deprecated v2 only. Record indexes are local to one physical trace. */
+    sessionEndRecordIndex?: number;
   };
   attributionSources: string[];
   pluginNames: string[];
@@ -917,6 +1024,8 @@ export interface ExperienceSkillSummary {
   toolCounts: Record<string, number>;
   firstSeen: string;
   lastSeen: string;
+  timestampedInvocationCount?: number;
+  timestampCoverage?: number;
   reviewFirstSessionCount: number;
   sampleReviewSessionCount: number;
   indicators: ExperienceReviewIndicators;
@@ -929,7 +1038,7 @@ export interface ExperienceSkillSummary {
 
 export interface ObservationExperienceReport {
   kind: 'observe-experience';
-  schemaVersion: 2;
+  schemaVersion: 3;
   scope: 'evidence-only';
   generatedAt: string;
   meta: {
@@ -940,6 +1049,8 @@ export interface ObservationExperienceReport {
     noteCodes: Array<'no_llm_judge' | 'no_auto_verdict' | 'default_goal_slice_is_allowed' | 'deterministic_assistive_inference'>;
   };
   goalSlices: ExperienceGoalSlice[];
+  traceTimelines: ExperienceTraceTimeline[];
+  storyContexts: ExperienceStoryContext[];
   invocations: ExperienceInvocation[];
   sessions: ExperienceSessionSummary[];
   skills: ExperienceSkillSummary[];
@@ -971,7 +1082,7 @@ export type SkillRuntimeEvidencePackSourceType =
   | 'unknown';
 
 export interface SkillRuntimeEvidencePackRef extends Pick<ExperienceEvidenceRef,
-  'id' | 'kind' | 'sourceTrace' | 'sessionId' | 'messageUuid' | 'messageIndex' | 'logicalMessageIndex' | 'sourceLineIndex' | 'toolUseId' | 'timestamp' | 'role' | 'label' | 'snippet'
+  'id' | 'kind' | 'sourceTrace' | 'sessionId' | 'messageUuid' | 'messageIndex' | 'logicalMessageIndex' | 'sourceLineIndex' | 'callInstanceId' | 'toolUseId' | 'timestamp' | 'role' | 'label' | 'snippet'
 > {
   sourceType: SkillRuntimeEvidencePackSourceType;
   toolName?: string;

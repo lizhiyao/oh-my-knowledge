@@ -10,7 +10,7 @@ flowchart TD
     end
 
     subgraph Prep["② 预处理(解析与抓取)"]
-        V["变体解析<br/>variant → artifact + runtime context<br/>(cwd / 项目级 CLAUDE.md / 本地 skills)"]
+        V["变体解析<br/>variant → artifact + runtime context<br/>(cwd / AGENTS.md 或 CLAUDE.md / 本地 skills)"]
         U["URL 抓取<br/>prompt / context 中的 URL<br/>MCP Server(私有文档) → HTTP"]
     end
 
@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph Exec["④ 执行器(固定模型)"]
         E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / 自定义命令"]
-        T["claude-sdk 抽取<br/>turns / toolCalls trace"]
+        T["执行器 adapter 统一<br/>turns / toolCalls trace"]
         E -.-> T
     end
 
@@ -77,9 +77,13 @@ flowchart LR
     S --> R["health / inbox / experience"]
 ```
 
-Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 和 `unknown` 事件。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入的 `AGENTS.md`、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，调用结果优先采用 runtime 的权威状态；只有来源没有状态时，才从输出文本推断成功或失败。
+Trace IR 显式区分 `message`、`tool_call`、`tool_result`、`usage`、`lifecycle` 和 `unknown` 事件。用户消息还会标注 `human`、`runtime`、`skill-context` 或 `synthetic` 来源，避免把注入的 `AGENTS.md`、环境上下文和工具结果计入真人轮次。工具调用保留 provider namespace，调用结果统一为 `success`、`failure`、`cancelled`、`unknown` 四态。runtime 状态具有最高优先级；来源没有状态时，adapter 只能依据退出码等来源特有的明确终态证据推断 `success` 或 `failure`，无法确定的结果仍保持 `unknown`。失败率以可比较结果(`success + failure`)为分母；结果覆盖率则单独统计所有已解析状态(`success + failure + cancelled`)。
 
 标识符也分层使用：`rootRunId` 聚合主任务及子任务，`runId` 标识具体线程，`traceId` 标识证据流，segment 再生成独立 sample ID。聚合标识不再兼任样本主键，因此主任务和子任务不会互相覆盖。
+
+每次加载还会生成摄取摘要：源记录数、成功解析的对象记录数、格式损坏记录数、被忽略的非对象值、未识别 IR 事件数，以及按规则过滤的运行时会话数。健康报告和 inbox 会持久化这组数据；输入不完整时必须显式提示，不能把部分 trace 静默展示成完整观测。
+
+跨任务树的规范顺序由时间线事件 ID 表达。`messageIndex` 只是单个物理 trace 内的来源定位信息，因此 session scope 按 `traceId` 分别保存 record 范围，不会把 main 与 subagent 文件中的局部序号当成同一套全局坐标。
 
 ## 六维评估指标
 

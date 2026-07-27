@@ -7,11 +7,35 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildDiagnosticPrompt, runDiagnostic, salvagePartialJson } from '../../src/grading/diagnostic.js';
+import {
+  buildDiagnosticPrompt,
+  resolveDiagnosticTarget,
+  runDiagnostic,
+  salvagePartialJson,
+} from '../../src/grading/diagnostic.js';
 import type { Sample } from '../../src/types/eval.js';
 import type { ToolCallInfo } from '../../src/types/executor.js';
 import type { AssertionDetail } from '../../src/types/judge.js';
 import type { ExecutorFn } from '../../src/types/index.js';
+
+describe('resolveDiagnosticTarget', () => {
+  it('跟随首位 judge，不对 Claude 做隐藏优先级', () => {
+    assert.deepEqual(resolveDiagnosticTarget([
+      { executor: 'codex', model: 'gpt-5' },
+      { executor: 'claude', model: 'haiku' },
+    ], 'openai-api', 'gpt-main'), {
+      executor: 'codex',
+      model: 'gpt-5',
+    });
+  });
+
+  it('没有 judge 配置时跟随主执行器', () => {
+    assert.deepEqual(resolveDiagnosticTarget([], 'openai-api', 'gpt-main'), {
+      executor: 'openai-api',
+      model: 'gpt-main',
+    });
+  });
+});
 
 const baseSample = (overrides: Partial<Sample> = {}): Sample => ({
   sample_id: 's1',
@@ -115,13 +139,18 @@ describe('buildDiagnosticPrompt', () => {
 });
 
 describe('runDiagnostic — JSON parse + rootCause filter', () => {
-  const mkExecutor = (output: string, ok = true): ExecutorFn => () => Promise.resolve({
+  const mkExecutor = (
+    output: string,
+    ok = true,
+    costReportedByExecutor: boolean | undefined = undefined,
+  ): ExecutorFn => () => Promise.resolve({
     ok,
     output,
     durationMs: 10, durationApiMs: 10,
     inputTokens: 0, outputTokens: 0,
     cacheReadTokens: 0, cacheCreationTokens: 0,
     costUSD: 0.001, stopReason: 'end_turn', numTurns: 1,
+    ...(costReportedByExecutor === false ? { costReportedByExecutor: false } : {}),
   });
 
   it('parses valid JSON and returns structured result', async () => {
@@ -143,6 +172,28 @@ describe('runDiagnostic — JSON parse + rootCause filter', () => {
     assert.equal(r.summary, 'failed because LLM skipped step 1');
     assert.deepEqual(r.rootCause, ['skill_doc_unclear', 'llm_misread']);
     assert.equal(r.suggestion.skill, 'add a "must" before tag-list');
+  });
+
+  it('propagates unreported diagnostic cost from the executor', async () => {
+    const executor = mkExecutor(JSON.stringify({
+      summary: 's',
+      expected: 'e',
+      actual: 'a',
+      rootCause: [],
+      suggestion: { skill: '', sample: '', none: '' },
+    }), true, false);
+    const result = await runDiagnostic({
+      sample: baseSample(),
+      skillContent: null,
+      skillName: 'x',
+      toolCalls: [],
+      turns: undefined,
+      fullOutput: undefined,
+      assertionDetails: baseDetails,
+      executor,
+      model: 'gpt-test',
+    });
+    assert.equal(result.costReportedByExecutor, false);
   });
 
   it('strips invalid rootCause values', async () => {

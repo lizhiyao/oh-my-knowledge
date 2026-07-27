@@ -4,7 +4,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 export interface FactClaim {
   type: 'file-path';
@@ -24,10 +24,10 @@ export interface FactCheckResult {
 const PATH_PATTERNS = [
   // Explicit code paths: repos/xxx, src/xxx, lib/xxx, packages/xxx
   /(?:repos|src|lib|packages|dist|test|components)\/[a-zA-Z0-9_/.@-]+/g,
-  // .claude paths
-  /\.claude\/[a-zA-Z0-9_/.@-]+/g,
+  // Agent configuration and skill paths across supported trace sources.
+  /\.(?:agents|claude|codex|gemini)\/[a-zA-Z0-9_/.@-]+/g,
   // Paths with file extensions mentioned in text
-  /[a-zA-Z0-9_/-]+\.(?:ts|js|tsx|jsx|md|json|yaml|yml|sh)\b(?!\s*\()/g,
+  /(?<![a-zA-Z0-9_./-])[a-zA-Z0-9_/-]+\.(?:ts|js|tsx|jsx|md|json|yaml|yml|sh)\b(?!\s*\()/g,
 ];
 
 // Paths to ignore (too generic or always present)
@@ -69,15 +69,23 @@ export function extractPathClaims(output: string): string[] {
  */
 export function checkFacts(output: string, cwd: string): FactCheckResult {
   const pathClaims = extractPathClaims(output);
+  const root = resolve(cwd);
 
   const claims: FactClaim[] = pathClaims.map((path) => {
-    const fullPath = resolve(cwd, path);
-    const exists = existsSync(fullPath);
+    const fullPath = resolve(root, path);
+    const relativePath = relative(root, fullPath);
+    const insideCwd = relativePath === ''
+      || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+    const exists = insideCwd && existsSync(fullPath);
     return {
       type: 'file-path',
       value: path,
       verified: exists,
-      ...(!exists && { evidence: `${fullPath} not found` }),
+      ...(!exists && {
+        evidence: insideCwd
+          ? `${fullPath} not found`
+          : `${path} is outside the evaluation cwd`,
+      }),
     };
   });
 

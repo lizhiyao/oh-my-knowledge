@@ -9,12 +9,22 @@
  *
  * 触发条件:sample 至少有 1 条 failed assertion(全过的 sample 不需要诊断,省成本)。
  *
- * 默认走 haiku(便宜 + 够用),典型成本 ~$0.005/失败样本。
+ * 运行目标跟随首位 judge；没有 judge 配置时跟随被测 executor/model。
+ * provider-specific 的廉价默认值只在 CLI runtime resolution 中决定。
  */
 
-import type { ExecutorFn, ToolCallInfo, TurnInfo, Assertion, Sample } from '../types/index.js';
+import { createHash } from 'node:crypto';
+import type {
+  ExecutorFn,
+  ToolCallInfo,
+  TurnInfo,
+  Assertion,
+  JudgeConfig,
+  Sample,
+} from '../types/index.js';
 import type { AssertionDetail, DiagnosticResult, WorkflowCheck, FailureMode } from '../types/judge.js';
 import { FAILURE_MODES } from '../types/judge.js';
+import { toolCallStatus } from '../shared/tool-call-status.js';
 
 const SYSTEM_PROMPT = `你是 skill 评测诊断助手。基于失败用例的 expected/actual 差异,给 skill 作者具体可操作的改进建议。
 
@@ -70,6 +80,26 @@ ${FAILURE_MODES.map((m, i) => `  ${i + 1}. ${m}`).join('\n')}
 
 只返回 JSON,不要其他内容。`;
 
+export interface DiagnosticTarget {
+  executor: string;
+  model: string;
+}
+
+export function resolveDiagnosticTarget(
+  judgeModels: JudgeConfig[],
+  mainExecutor: string,
+  mainModel: string,
+): DiagnosticTarget {
+  const primaryJudge = judgeModels[0];
+  return primaryJudge
+    ? { executor: primaryJudge.executor, model: primaryJudge.model }
+    : { executor: mainExecutor, model: mainModel };
+}
+
+export function getDiagnosticPromptHash(): string {
+  return createHash('sha256').update(SYSTEM_PROMPT).digest('hex').slice(0, 12);
+}
+
 interface RunDiagnosticOptions {
   sample: Sample;
   skillContent: string | null;
@@ -100,7 +130,11 @@ function previewToolCall(tc: ToolCallInfo, idx: number): string {
   const truncated = inputRepr.length > TOOL_INPUT_PREVIEW_MAX
     ? inputRepr.slice(0, TOOL_INPUT_PREVIEW_MAX) + '…'
     : inputRepr;
-  const status = tc.success ? '' : ' [失败]';
+  const resultStatus = toolCallStatus(tc);
+  const status = resultStatus === 'failure'
+    ? ' [失败]'
+    : resultStatus === 'cancelled' ? ' [取消]'
+    : resultStatus === 'unknown' ? ' [状态未知]' : '';
   return `[${idx + 1}] ${tc.tool}${status} → ${truncated}`;
 }
 
@@ -358,6 +392,9 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
     timeoutMs: opts.timeoutMs ?? 180_000,
     lean: true,  // 诊断也是纯文本生成,不需要工具循环
   });
+  const costReporting = result.costReportedByExecutor === false
+    ? { costReportedByExecutor: false as const }
+    : {};
 
   if (!result.ok) {
     return {
@@ -369,6 +406,7 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
       rootCause: [],
       suggestion: { skill: '', sample: '', none: '' },
       costUSD: result.costUSD,
+      ...costReporting,
     };
   }
 
@@ -409,6 +447,7 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
         failureModes: salvaged.failureModes ?? [],
         suggestion: salvaged.suggestion ?? { skill: '', sample: '', none: '' },
         costUSD: result.costUSD,
+        ...costReporting,
       };
     }
     return {
@@ -420,6 +459,7 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
       rootCause: [],
       suggestion: { skill: '', sample: '', none: '' },
       costUSD: result.costUSD,
+      ...costReporting,
     };
   }
 
@@ -447,6 +487,7 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
       none: String(sug.none ?? ''),
     },
     costUSD: result.costUSD,
+    ...costReporting,
   };
 }
 

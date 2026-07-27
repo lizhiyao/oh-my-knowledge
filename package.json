@@ -76,6 +76,9 @@
     "skill-evaluation",
     "knowledge-engineering",
     "prompt-engineering",
+    "codex",
+    "codex-cli",
+    "openai",
     "claude-code",
     "claude",
     "llm",
@@ -100,6 +103,7 @@
     "@openai/codex-sdk": "0.144.6",
     "ajv": "^8.18.0",
     "chart.js": "^4.5.1",
+    "es-module-lexer": "^2.0.0",
     "js-yaml": "^4.1.1",
     "simple-statistics": "^7.8.9",
     "zod": "^4.4.3"

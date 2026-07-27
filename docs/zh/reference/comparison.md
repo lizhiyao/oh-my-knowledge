@@ -16,7 +16,7 @@ omk 的护城河是**[统计严谨性](../explanation/statistical-rigor)**：每
 
 | 工具 | 语言 | 定位 | License |
 |---|---|---|---|
-| [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | 统计严谨性 + Claude Code 原生的 LLM 评测 | MIT |
+| [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | 统计严谨的知识载体评测 + Codex / Claude 原生工作流 | MIT |
 | [promptfoo](https://github.com/promptfoo/promptfoo) | TS / Node | 本地 CLI、red-team 重点、被 OpenAI 收购 | MIT |
 | [DeepEval](https://github.com/confident-ai/deepeval) | Python | pytest 风格 metric 库，Confident AI 商业化引流 | Apache 2.0 |
 | [RAGAS](https://github.com/explodinggradients/ragas) | Python | RAG 专用 metric，statement-decomposition 实现 | Apache 2.0 |
@@ -54,7 +54,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 三层独立评分能挡住"复合分掩盖单层崩盘"：`fact 4.5→2.5 + judge 3→5` 在复合均值看着无伤，但三层 all-pass gate 能立刻抓出来。
 
-**用例隔离**是一个 construct validity 维度：跑 `baseline` vs skill variant 时，三条 channel 都可能让 `baseline` 静默拿到用户 `~/.claude/skills/` 里被测的那个 skill。omk 默认 `--strict-baseline` 把三条都堵掉：（1）SDK skill auto-discovery，通过 `options.skills:[]`；（2）subagent Skill 工具，通过 `options.disallowedTools:['Skill']`；（3）cwd 文件系统访问 — baseline 默认 cwd 是用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用，baseline 用 `Glob` + `Read` 顺 symlink 直读 `SKILL.md` 就完全绕过 SDK 隔离。omk 在用户没显式指定 cwd 时把 baseline cwd 切到 `~/.oh-my-knowledge/state/isolated-cwd/`（空目录）。`--no-strict-baseline` 是逃生口，eval.yaml 也支持对单个变体显式声明 `allowedSkills: []`（严格隔离）。inspect-ai 的 per-sample solver 模式能达到类似效果但需要显式逐题 wiring；promptfoo / DeepEval / OpenAI Evals 都不处理这维度。
+**用例隔离**是一个 construct validity 维度：原生 coding-agent baseline 可能通过项目文件、skill registry、子代理或普通 cwd 读取拿到未声明的本地知识。omk 默认启用 `--strict-baseline`，为每次隐式 baseline 执行创建全新的空 cwd，并叠加 provider 控制：Codex CLI 忽略用户配置与 rules、采用 ephemeral session；Codex SDK 使用隔离 `CODEX_HOME`；Claude 阻断 skill 发现和子代理 `Skill` 工具。报告会持久化 runtime 与隔离指纹，避免不兼容运行伪装成只改变知识载体的比较。`--no-strict-baseline` 仍是显式逃生口。inspect-ai 可通过 per-sample solver wiring 达到相近隔离；promptfoo / DeepEval / OpenAI Evals 不直接处理这一维度。
 
 ## 评委
 
@@ -69,7 +69,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| RAG: faithfulness / answer_relevancy / context_recall | ✓ length-debias 恒开 | 部分 | ✓ | ✓（多步分解） | ✗ | 部分 | ✗ | ✗ |
+| RAG: faithfulness / answer_relevancy / context_recall | ✓ length-debias 默认开启，模式进入指纹 | 部分 | ✓ | ✓（多步分解） | ✗ | 部分 | ✗ | ✗ |
 | ROUGE-N / Levenshtein / BLEU | ✓ 自实现零依赖 | ✓ | 部分 | ✗ | ✓ | ✗ | ✓ | ✗ |
 | 语义相似度（LLM 评分） | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
 | 工具调用 / agent 断言 | ✓ 9 种 | ✗ | 部分 | ✗ | ✗ | 部分 | ✗ | ✓ 强 |
@@ -79,8 +79,8 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
-| 原生 Claude Code skill 评测 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 生产 session JSONL 解析(omk observe) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ 仅 LangChain | ✗ | ✗ |
+| 原生 agent skill 评测 | ✓ Codex / Claude Code | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 生产 session trace 解析(omk observe) | ✓ Codex / Claude Code / OpenClaw / markdown | ✗ | ✗ | ✗ | ✗ | ✓ 仅 LangChain | ✗ | ✗ |
 | 自迭代(`omk evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml(evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | 部分 | ✗ | 部分 | ✓ |
 | CI/CD `omk eval` 退出码路由 | ✓ 三层 | ✓ 基础 | ✓ | ✗ | ✗ | 部分 | ✗ | ✓ |
@@ -105,7 +105,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 **中文 AI 工程团队**。omk 是参与对比工具中**唯一**有完整中文文档的——README、CLI help、HTML 报告、术语规范、缺口信号规范、RAG metric 规范全部原生中文（非机翻）。
 
-**Claude Code 用户**。omk 在 Claude Code 里的工作流最原生：既可以作为 Claude Code skill 使用，底层 `omk` CLI 也能被 Codex 等 coding agent 直接驱动。promptfoo / DeepEval 等通常需要 shim 一层自定义 executor，才能接近这种面向 artifact 的工作流。
+**Codex 与 Claude Code 用户**。omk 提供一份 agent-neutral skill，并为两类 runtime 提供原生执行器。Codex CLI 是隔离最完整的测量路径；当项目上下文或 SDK 事件流本身就是有意输入时，也可以使用 Codex SDK 或 Claude runtime。promptfoo / DeepEval 等通常需要 shim 一层自定义 executor，才能接近这种面向 artifact 的工作流。
 
 ## 什么场景**不**选 omk
 

@@ -301,6 +301,29 @@ describe('detectInsights — production-instability', () => {
     const insights = detectInsights(entry, null);
     assert.equal(insights.find((i) => i.id === 'production-instability'), undefined);
   });
+
+  it('caps severity by resolved tool outcomes instead of segment count alone', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1',
+        generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'yellow',
+        failureRate: 1,
+        toolCallCount: 100,
+        toolResolvedCount: 1,
+        toolUnknownCount: 99,
+        segmentCount: 20,
+        gapRate: 0,
+        confidence: 'high',
+      },
+    });
+    const insights = detectInsights(entry, null);
+    const instability = insights.find((insight) => insight.id === 'production-instability');
+    assert.ok(instability);
+    assert.equal(instability.severity, 'low');
+    assert.equal(instability.affectedCount, 1);
+    assert.ok(instability.evidence.some((evidence) => /仅 1 次工具结果可比较/.test(evidence.message)));
+  });
 });
 
 describe('detectInsights — Diagnosis projection', () => {

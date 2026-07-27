@@ -1,24 +1,33 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { extractCodexTrace, isCodexResultEvent } from './codex-cli-trace.js';
 import type { CodexEvent } from './shared.js';
+import { buildCodexResult } from './codex-protocol.js';
 import {
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
   MAX_BUFFER,
+  normalizeCodexProtocolEvent,
   spawnWithSigintPropagation,
   timeoutExecResult,
   type SpawnHelperError,
 } from './shared.js';
 
+export {
+  extractCodexFinalOutput,
+  extractCodexProtocolError,
+  extractCodexStopReason,
+  extractCodexUsage,
+  sumCodexElapsed,
+} from './codex-protocol.js';
+
 // codex CLI(0.125)隔离能力对比 claude-cli:
 //   Claude:三条 channel(SDK skills auto-discovery / subagent Skill 工具 /
 //          cwd 文件系统),`--disable-slash-commands` + `--disallowedTools Skill`
 //          堵前两条,cwd 切空目录堵第三条
-//   Codex:无 SDK 等价 channel(它就是 CLI 不是 SDK),无 subagent Skill 等价
-//          (没有 Agent 工具),只剩 cwd 文件系统这一条 channel(`-C/--cd`)
-//          → AGENTS.md / .agents/skills/ 自动加载只能靠 cwd 切到隔离空目录避免
+//   Codex:CLI / SDK 的项目指令、skills 与可能的子线程都以 cwd 工作区为
+//          发现边界；`-C/--cd` 是可验证的隔离控制面。因此把 cwd 切到
+//          隔离空目录，统一阻断 AGENTS.md / .agents/skills/ 自动加载。
 //
 //   undefined         → 不传 -C(原行为,看 cwd 里有什么 codex 自己决定)
 //   []                → 必须提供 cwd 非空(否则 throw),caller 应传一个
@@ -32,12 +41,11 @@ export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string
       + `  仅支持 [](强制 cwd 隔离,需提供 cwd 非空,全封死)或 undefined(不隔离)。`,
     );
   }
-  // allowedSkills === [] 时必须有 cwd(channel 3 cwd 隔离是 codex 唯一 channel)
+  // allowedSkills === [] 时必须有 cwd；工作区隔离是 Codex 的控制面。
   if (!cwd) {
     throw new Error(
-      `${executorName} executor allowedSkills=[] 需要提供 cwd 非空(channel 3 cwd 隔离)。\n`
-      + '  codex 没有 SDK skill 自动发现 / subagent Skill 工具这两条 channel,\n'
-      + '  cwd 文件系统隔离是它唯一能堵 AGENTS.md / .agents/skills/ 自动加载的途径。\n'
+      `${executorName} executor allowedSkills=[] 需要提供 cwd 非空（工作区隔离）。\n`
+      + '  主线程与可能的子线程都会继承工作区上下文；必须用隔离 cwd 阻断 AGENTS.md / .agents/skills/ 自动加载。\n'
       + '  caller 应传一个 isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)。',
     );
   }
@@ -49,63 +57,46 @@ export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string
 let hasWarnedSystem = false;
 let hasWarnedCost = false;
 
-function parseCodexJsonl(stdout: string): CodexEvent[] {
+export interface CodexJsonlParseResult {
+  events: CodexEvent[];
+  malformedLineCount: number;
+}
+
+export function parseCodexJsonl(stdout: string): CodexJsonlParseResult {
   const events: CodexEvent[] = [];
+  let malformedLineCount = 0;
   for (const line of stdout.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      events.push(JSON.parse(trimmed) as CodexEvent);
-    } catch { /* skip non-JSON lines */ }
+      const value: unknown = JSON.parse(trimmed);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        malformedLineCount += 1;
+        continue;
+      }
+      const event = normalizeCodexProtocolEvent(value);
+      if (
+        !event
+        || typeof event.type !== 'string'
+        || event.type.trim() === ''
+        || (
+          event.type.startsWith('item.')
+          && (
+            !event.item
+            || typeof event.item.type !== 'string'
+            || event.item.type.trim() === ''
+          )
+        )
+      ) {
+        malformedLineCount += 1;
+        continue;
+      }
+      events.push(event);
+    } catch {
+      malformedLineCount += 1;
+    }
   }
-  return events;
-}
-
-export function extractCodexUsage(events: CodexEvent[]): { input: number; cached: number; output: number } {
-  let input = 0;
-  let cached = 0;
-  let output = 0;
-  for (const e of events) {
-    if (!isCodexResultEvent(e) || !e.usage) continue;
-    input += e.usage.input_tokens || 0;
-    cached += e.usage.cached_input_tokens || 0;
-    output += e.usage.output_tokens || 0;
-  }
-  return { input, cached, output };
-}
-
-// exported for unit tests
-export function extractCodexFinalOutput(events: CodexEvent[]): string {
-  // 抓 item.completed + item.type='agent_message' 的 text 全部拼起来。
-  // codex 同 turn 内可能 emit 多条 agent_message(如 "step 1" / "step 2" / "final answer"),
-  // 取最后一条会让 grader / assertion / LLM judge 只看到最后片段,跟 extractCodexTrace
-  // 把多条拼到 turn.content 的语义不一致(test/executors/codex-cli-trace.test.ts:120-130 锁住)。
-  // 一致化:final output 也拼,跟 trace UI 看到的内容对齐。
-  const allTexts: string[] = [];
-  for (const e of events) {
-    if (e.type !== 'item.completed') continue;
-    if (e.item?.type !== 'agent_message') continue;
-    const txt = e.item.text;
-    if (txt) allTexts.push(txt);
-  }
-  return allTexts.join('\n');
-}
-
-export function extractCodexStopReason(events: CodexEvent[]): string {
-  const last = [...events].reverse().find((e) => isCodexResultEvent(e));
-  if (!last) return 'unknown';
-  if (last.type === 'turn.failed') return 'error';
-  return last.stop_reason || 'end_turn';
-}
-
-// codex 每个 turn.completed 携带本 turn 的 elapsed_ms(per-turn delta),
-// 跟 extractCodexUsage 把 token 累加多 turn 是同一语义假设(events 是 per-turn delta,
-// 不是 cumulative)。multi-turn 只取最后一条会漏算前面 turn 的耗时。fallback:
-// 累加为 0 / 全部缺失时退到 wall-clock,避免 elapsed_ms===0 单 turn 抹平 duration。
-// exported for unit tests
-export function sumCodexElapsed(resultEvents: CodexEvent[], wallClock: number): number {
-  const total = resultEvents.reduce((s, e) => s + (e.elapsed_ms ?? 0), 0);
-  return total > 0 ? total : wallClock;
+  return { events, malformedLineCount };
 }
 
 // exported for arg-shape regression tests
@@ -118,6 +109,7 @@ export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: st
     '--json',
     '--ephemeral',                      // 不持久化 session 文件
     '--ignore-user-config',             // 不读 $CODEX_HOME/config.toml
+    '--ignore-rules',                   // 不让用户 / 项目 execpolicy 改写工具行为
     '--skip-git-repo-check',            // 允许 isolated cwd 不是 git 仓库
     '--sandbox', 'read-only',           // 评测场景不需要写文件
     '-c', 'approval_policy="never"',    // non-interactive 必须;TOML 字符串需要 quote
@@ -172,104 +164,27 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       ...(cwd && { cwd }),
     });
     const durationMs = Date.now() - start;
-    const events = parseCodexJsonl(stdout);
-
-    const resultEvents = events.filter(isCodexResultEvent);
-    if (resultEvents.length === 0) {
-      return {
-        ok: false,
-        error: 'no turn.completed/turn.failed event in codex --json output',
-        durationMs,
-        durationApiMs: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        costUSD: 0,
-        costReportedByExecutor: false,
-        output: null,
-        stopReason: 'error',
-        numTurns: 0,
-      };
-    }
-
-    const last = resultEvents[resultEvents.length - 1];
-    const usage = extractCodexUsage(events);
-    const trace = extractCodexTrace(events);
-    const stopReason = extractCodexStopReason(events);
-    const finalOutput = extractCodexFinalOutput(events);
-    const ok = last.type !== 'turn.failed' && !last.error;
-
-    return {
-      ok,
-      // multi-turn 累加 elapsed_ms(per-turn delta);全 0 fallback wall-clock。详见 sumCodexElapsed
-      durationMs: sumCodexElapsed(resultEvents, durationMs),
-      durationApiMs: 0, // codex 不报 API duration
-      inputTokens: usage.input,
-      outputTokens: usage.output,
-      cacheReadTokens: usage.cached,
-      cacheCreationTokens: 0, // codex 不报 cache creation
-      costUSD: 0,                       // 占位:codex 0.125 binary 不输出 cost
-      costReportedByExecutor: false,    // renderer 据此显示「未报告」而非 $0.0000
-      output: finalOutput,
-      stopReason,
-      // success path:ok=false(turn.failed)时透传 last.error.message 给 caller 看到
-      // 失败原因。catch path 历史上已经透传(对称化)。
-      ...(!ok && { error: last.error?.message || 'codex turn.failed' }),
-      numTurns: resultEvents.length,
-      fullNumTurns: trace.fullNumTurns,
-      numSubAgents: trace.numSubAgents,
-      ...(trace.turns.length > 0 && { turns: trace.turns }),
-      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-    };
+    const parsed = parseCodexJsonl(stdout);
+    return buildCodexResult({
+      events: parsed.events,
+      wallClockDurationMs: durationMs,
+      source: 'codex --json',
+      malformedLineCount: parsed.malformedLineCount,
+    });
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = err as SpawnHelperError;
     if (details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
     if (details.killedBySignal) return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
 
-    // 尝试从 stdout parse 部分结果(同 claude-cli 防御性写法)
-    const events = parseCodexJsonl(details.stdout || '');
-    const resultEvents = events.filter(isCodexResultEvent);
-    if (resultEvents.length > 0) {
-      const last = resultEvents[resultEvents.length - 1];
-      const usage = extractCodexUsage(events);
-      const trace = extractCodexTrace(events);
-      return {
-        ok: false,
-        error: last.error?.message || errorMessage(err),
-        durationMs: sumCodexElapsed(resultEvents, durationMs),
-        durationApiMs: 0,
-        inputTokens: usage.input,
-        outputTokens: usage.output,
-        cacheReadTokens: usage.cached,
-        cacheCreationTokens: 0,
-        costUSD: 0,
-        costReportedByExecutor: false,
-        output: extractCodexFinalOutput(events) || null,
-        stopReason: 'error',
-        numTurns: resultEvents.length,
-        fullNumTurns: trace.fullNumTurns,
-        numSubAgents: trace.numSubAgents,
-        ...(trace.turns.length > 0 && { turns: trace.turns }),
-        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-      };
-    }
-
-    return {
-      ok: false,
-      error: errorMessage(err),
-      durationMs,
-      durationApiMs: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      costUSD: 0,
-      costReportedByExecutor: false,
-      output: null,
-      stopReason: 'error',
-      numTurns: 0,
-    };
+    // 失败路径仍保留已完成的事件、用量与 trace，但不能反转为成功。
+    const parsed = parseCodexJsonl(details.stdout || '');
+    return buildCodexResult({
+      events: parsed.events,
+      wallClockDurationMs: durationMs,
+      source: 'codex --json',
+      malformedLineCount: parsed.malformedLineCount,
+      forcedError: details.stderr?.trim() || errorMessage(err),
+    });
   }
 }

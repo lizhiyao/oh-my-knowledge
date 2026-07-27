@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildObservationSkillChain } from '../skill-chain.js';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../../shared/record-count.js';
+import {
+  loadObservationReviewState,
+  observationReviewStateKey,
+  type ObservationReviewState,
+} from '../review-state.js';
 import type {
   ResolveSkillStandardsOptions,
   ResolvedSkillStandard,
@@ -11,6 +20,8 @@ import type {
   SkillDerivedStandardStatus,
   SkillDerivedStandards,
 } from './types.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { isRfc3339Timestamp } from '../../shared/timestamp.js';
 
 export const SKILL_DERIVED_STANDARDS_SCHEMA_VERSION = 2;
 
@@ -22,7 +33,10 @@ export function skillDerivedStandardsPath(observationsDir: string, skillName: st
   return join(skillDerivedStandardsDir(observationsDir), `${safeSkillFileName(skillName)}.json`);
 }
 
-export function loadSkillDerivedStandards(observationsDir: string): Record<string, SkillDerivedStandards> {
+export function loadSkillDerivedStandards(
+  observationsDir: string,
+  reviewState: ObservationReviewState = loadObservationReviewState(observationsDir),
+): Record<string, SkillDerivedStandards> {
   const dir = skillDerivedStandardsDir(observationsDir);
   if (!existsSync(dir)) return {};
   const out: Record<string, SkillDerivedStandards> = {};
@@ -30,12 +44,36 @@ export function loadSkillDerivedStandards(observationsDir: string): Record<strin
     if (!file.endsWith('.json')) continue;
     try {
       const parsed = normalizeSkillDerivedStandards(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
-      if (parsed) out[parsed.skillName] = parsed;
+      if (parsed) {
+        setOwnRecordValue(out, parsed.skillName, applySoftStandardReviews(parsed, reviewState));
+      }
     } catch {
       // Ignore broken cache files; the extraction command can refresh them.
     }
   }
   return out;
+}
+
+function applySoftStandardReviews(
+  record: SkillDerivedStandards,
+  reviewState: ObservationReviewState,
+): SkillDerivedStandards {
+  const generatedAt = Date.parse(record.generatedAt);
+  return {
+    ...record,
+    standards: record.standards.map((standard) => {
+      if (standard.status === 'stale') return standard;
+      const targetId = `${record.skillName}:${standard.id}`;
+      const entry = reviewState.entries[observationReviewStateKey('soft_standard', targetId)];
+      if (!entry || Date.parse(entry.reviewedAt) < generatedAt) return standard;
+      if (entry.verdict === 'real_issue') return { ...standard, status: 'author_confirmed' };
+      if (entry.verdict === 'not_issue') return { ...standard, status: 'rejected' };
+      if (entry.verdict === 'needs_more_context' || entry.verdict === 'reviewed') {
+        return { ...standard, status: 'pending_review' };
+      }
+      return standard;
+    }),
+  };
 }
 
 export function updateSkillDerivedStandardStatus(
@@ -59,8 +97,7 @@ export function updateSkillDerivedStandardStatus(
     }),
   };
   if (!found) throw new Error(`skill derived standard not found: ${standardId}`);
-  mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(next, null, 2));
+  writeJsonFileAtomic(filePath, next);
   return next;
 }
 
@@ -68,11 +105,11 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
   const skillChain = options.skillChain ?? buildObservationSkillChain(skillName, options.cwd ?? process.cwd());
   const directDerived = normalizeSkillDerivedStandards(options.derivedStandards);
   const mappedDerived = options.derivedStandards && !isSkillDerivedStandards(options.derivedStandards)
-    ? normalizeSkillDerivedStandards(options.derivedStandards[skillName])
+    ? normalizeSkillDerivedStandards(ownRecordValue(options.derivedStandards, skillName))
     : undefined;
   const derived = directDerived
     ?? mappedDerived
-    ?? loadSkillDerivedStandards(options.observationsDir)[skillName];
+    ?? ownRecordValue(loadSkillDerivedStandards(options.observationsDir), skillName);
   const active: ResolvedSkillStandard[] = [];
   const candidates: ResolvedSkillStandard[] = [];
   const hasFrontmatterHardRules = skillChain.healthCheck.hardRules.declared && skillChain.healthCheck.hardRules.rules.length > 0;
@@ -152,18 +189,27 @@ export function isSkillDerivedStandards(value: unknown): value is SkillDerivedSt
 }
 
 function normalizeSkillDerivedStandards(value: unknown): SkillDerivedStandards | undefined {
-  if (!value || typeof value !== 'object') return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const item = value as Record<string, unknown>;
   const kind = item.kind === 'observe-skill-derived-standards' ? item.kind : null;
   if (!kind) return undefined;
   if (item.schemaVersion !== SKILL_DERIVED_STANDARDS_SCHEMA_VERSION) return undefined;
-  if (typeof item.skillName !== 'string' || typeof item.generatedAt !== 'string' || typeof item.model !== 'string' || typeof item.executor !== 'string') {
+  if (
+    !isNonEmptyString(item.skillName)
+    || !isTimestamp(item.generatedAt)
+    || !isNonEmptyString(item.model)
+    || !isNonEmptyString(item.executor)
+  ) {
     return undefined;
   }
-  if (typeof item.promptId !== 'string' || typeof item.promptVersion !== 'string' || !Array.isArray(item.standards)) return undefined;
-  const standards = item.standards
-    .map(normalizeSkillDerivedStandard)
-    .filter((record): record is SkillDerivedStandard => record !== null);
+  if (!isNonEmptyString(item.promptId) || !isNonEmptyString(item.promptVersion) || !Array.isArray(item.standards)) return undefined;
+  const standards = item.standards.map(normalizeSkillDerivedStandard);
+  if (standards.some((record) => record === null)) return undefined;
+  const validStandards = standards as SkillDerivedStandard[];
+  if (new Set(validStandards.map((record) => record.id)).size !== validStandards.length) return undefined;
+  if (item.enhancedReview !== undefined && (!item.enhancedReview || typeof item.enhancedReview !== 'object' || Array.isArray(item.enhancedReview))) {
+    return undefined;
+  }
   return {
     kind: 'observe-skill-derived-standards',
     schemaVersion: SKILL_DERIVED_STANDARDS_SCHEMA_VERSION,
@@ -177,13 +223,13 @@ function normalizeSkillDerivedStandards(value: unknown): SkillDerivedStandards |
     promptVersion: item.promptVersion as SkillDerivedStandards['promptVersion'],
     ...(typeof item.promptHash === 'string' ? { promptHash: item.promptHash } : {}),
     ...(typeof item.runtimeEvidenceHash === 'string' ? { runtimeEvidenceHash: item.runtimeEvidenceHash } : {}),
-    ...(item.enhancedReview && typeof item.enhancedReview === 'object' ? { enhancedReview: item.enhancedReview as SkillDerivedStandards['enhancedReview'] } : {}),
-    standards,
+    ...(item.enhancedReview ? { enhancedReview: item.enhancedReview as SkillDerivedStandards['enhancedReview'] } : {}),
+    standards: validStandards,
   };
 }
 
 function normalizeSkillDerivedStandard(value: unknown): SkillDerivedStandard | null {
-  if (!value || typeof value !== 'object') return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   const standardKind = item.standardKind === 'hard_rule_candidate' || item.standardKind === 'workflow_candidate'
     ? item.standardKind
@@ -191,7 +237,7 @@ function normalizeSkillDerivedStandard(value: unknown): SkillDerivedStandard | n
       ? item.kind
       : null;
   if (!standardKind) return null;
-  if (typeof item.id !== 'string' || typeof item.title !== 'string' || typeof item.body !== 'string') return null;
+  if (!isNonEmptyString(item.id) || !isNonEmptyString(item.title) || typeof item.body !== 'string') return null;
   if (item.status !== 'pending_review' && item.status !== 'author_confirmed' && item.status !== 'rejected' && item.status !== 'stale') {
     return null;
   }
@@ -208,6 +254,14 @@ function normalizeSkillDerivedStandard(value: unknown): SkillDerivedStandard | n
     confidence: item.confidence,
     evidence: item.evidence,
   };
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return isRfc3339Timestamp(value);
 }
 
 function candidateRank(status?: SkillDerivedStandardStatus): number {

@@ -26,6 +26,10 @@
 
 import type { Report, ResultEntry, Sample } from '../types/index.js';
 import { rougeN } from '../grading/assertions.js';
+import {
+  ownRecordValue,
+  setOwnRecordValue,
+} from '../shared/record-count.js';
 
 export type SampleIssueKind =
   | 'flat_scores'        // all variants within 0.5 score → no discrimination
@@ -254,9 +258,13 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
           const cap = normalizeCapability(rawCap);
           if (seenCaps.has(cap)) continue;
           seenCaps.add(cap);
-          if (!capabilityCount[cap]) capabilityCount[cap] = { count: 0, sampleIds: [] };
-          capabilityCount[cap].count++;
-          capabilityCount[cap].sampleIds.push(sample.sample_id);
+          const info = ownRecordValue(capabilityCount, cap) ?? setOwnRecordValue(
+            capabilityCount,
+            cap,
+            { count: 0, sampleIds: [] },
+          );
+          info.count++;
+          info.sampleIds.push(sample.sample_id);
         }
       }
       for (const [cap, info] of Object.entries(capabilityCount)) {
@@ -311,9 +319,9 @@ function emptyReport(samples: number): SampleDiagnosticReport {
 function scoresMap(entry: ResultEntry, variants: string[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const v of variants) {
-    const r = entry.variants?.[v];
+    const r = entry.variants ? ownRecordValue(entry.variants, v) : undefined;
     if (r && typeof r.compositeScore === 'number') {
-      out[v] = Number(r.compositeScore.toFixed(2));
+      setOwnRecordValue(out, v, Number(r.compositeScore.toFixed(2)));
     }
   }
   return out;

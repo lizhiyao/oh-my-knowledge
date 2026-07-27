@@ -100,6 +100,18 @@ describe('comparability warnings', () => {
     assert.ok(codes.includes('skill_isolation_mismatch'));
   });
 
+  it('treats prototype-shaped sample ids as ordinary own keys', () => {
+    const before = report({
+      sampleHashes: JSON.parse('{"s1":"same"}'),
+    });
+    const after = report({
+      sampleHashes: JSON.parse('{"s1":"same","constructor":"new"}'),
+    });
+
+    const codes = crossReportComparabilityWarnings(before, after).map((w) => w.code);
+    assert.ok(codes.includes('sample_hashes_mismatch'));
+  });
+
   it('cross-report audit checks per-variant executor runtime fingerprints', () => {
     const before = report({
       executorRuntimes: {

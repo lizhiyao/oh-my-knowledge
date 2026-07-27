@@ -88,6 +88,18 @@ describe('toolCallQuery — Bash structured parsing', () => {
     assert.equal(q.path, '/missing/path');
   });
 
+  it('skips numeric option values and extracts sed/awk source paths', () => {
+    assert.equal(toolCallQuery(bashTc('head -n 20 src/a.ts')).path, 'src/a.ts');
+    assert.equal(toolCallQuery(bashTc("sed -n '1,20p' src/b.ts")).path, 'src/b.ts');
+    assert.equal(toolCallQuery(bashTc("awk '{print $1}' src/c.ts")).path, 'src/c.ts');
+  });
+
+  it('keeps legacy scalar Codex inputs readable', () => {
+    const tc = bashTc('cat .agents/skills/review/SKILL.md');
+    tc.input = 'cat .agents/skills/review/SKILL.md';
+    assert.equal(toolCallQuery(tc).path, '.agents/skills/review/SKILL.md');
+  });
+
   // unknown / non-search commands
   it('returns empty for unknown command (no full-command leak)', () => {
     const q = toolCallQuery(bashTc('npm run test --watch'));
@@ -118,7 +130,7 @@ describe('toolCallQuery — Bash structured parsing', () => {
 
   it('treats Codex web search as a structured search signal', () => {
     const tc: ToolCallInfo = {
-      tool: 'web_search',
+      tool: 'WebSearch',
       input: { type: 'search', query: 'payment schema' },
       output: '{"status":"failed"}',
       success: false,

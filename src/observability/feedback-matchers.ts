@@ -65,10 +65,12 @@ const USER_GOAL_SHIFT_TERMS = [
   '新启动一个',
   '另开一个',
   '再开一个',
-  '参考apply-cc的能力新开',
   '拉下最新',
   '拉取最新',
   '切到最新',
+];
+const USER_GOAL_SHIFT_PATTERNS = [
+  /参考.{0,40}(?:能力|skill).{0,20}(?:新开|另开|启动)/gi,
 ];
 const NEGATIVE_FEEDBACK_TERMS = [
   '没有用',
@@ -177,6 +179,9 @@ export function findUserGoalShiftMatches(value: string): TextMatchRange[] {
   for (const term of USER_GOAL_SHIFT_TERMS) {
     pushTermMatches(value, term, ranges, false);
   }
+  for (const pattern of USER_GOAL_SHIFT_PATTERNS) {
+    pushPatternMatches(value, pattern, ranges);
+  }
   return ranges.sort((a, b) => a.start - b.start);
 }
 
@@ -242,6 +247,17 @@ function pushTermMatches(
       ranges.push({ start: index, end });
     }
     index = haystack.indexOf(needle, index + needle.length);
+  }
+}
+
+function pushPatternMatches(value: string, pattern: RegExp, ranges: TextMatchRange[]): void {
+  pattern.lastIndex = 0;
+  for (const match of value.matchAll(pattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (!ranges.some((range) => start < range.end && end > range.start)) {
+      ranges.push({ start, end });
+    }
   }
 }
 

@@ -23,6 +23,9 @@ import { buildEvidenceRef, recordEvalEvidence } from '../../src/managed/evidence
 import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 import type { EvaluationReport } from '../../src/types/index.js';
 
+const RECORDED_AT = '2026-06-10T00:00:00.000Z';
+const LATER_RECORDED_AT = '2026-06-11T00:00:00.000Z';
+
 /** 造一份只含 evidence 写入所需字段的 report;其余字段不影响本模块。 */
 function makeReport(over: {
   id?: string;
@@ -68,13 +71,13 @@ describe('managed evidence — buildEvidenceRef', () => {
 
   it('baseline / no-skill / 缺 hash 的变体 → null(不产证据)', () => {
     const report = makeReport();
-    assert.equal(buildEvidenceRef(report, 'baseline', 'SOLO', 'now'), null, 'no-skill 哨兵跳过');
-    assert.equal(buildEvidenceRef(report, 'nonexistent', 'SOLO', 'now'), null, '无 hash 跳过');
+    assert.equal(buildEvidenceRef(report, 'baseline', 'SOLO', RECORDED_AT), null, 'no-skill 哨兵跳过');
+    assert.equal(buildEvidenceRef(report, 'nonexistent', 'SOLO', RECORDED_AT), null, '无 hash 跳过');
   });
 
   it('sampleCoverage 与样本顺序无关(同一集合 ⇒ 同 hash)', () => {
-    const a = buildEvidenceRef(makeReport({ sampleHashes: { s1: 'h1', s2: 'h2' } }), 'review', 'PROGRESS', 'now');
-    const b = buildEvidenceRef(makeReport({ sampleHashes: { s2: 'h2', s1: 'h1' } }), 'review', 'PROGRESS', 'now');
+    const a = buildEvidenceRef(makeReport({ sampleHashes: { s1: 'h1', s2: 'h2' } }), 'review', 'PROGRESS', RECORDED_AT);
+    const b = buildEvidenceRef(makeReport({ sampleHashes: { s2: 'h2', s1: 'h1' } }), 'review', 'PROGRESS', RECORDED_AT);
     assert.equal(a!.sampleCoverage!.hash, b!.sampleCoverage!.hash);
   });
 });
@@ -88,17 +91,17 @@ describe('managed evidence — gitCommit 还原坐标(#234/#236)', () => {
       { variant: 'review', resolvedCommit: RESOLVED },
       { variant: 'other', resolvedCommit: 'ffffffffffffffffffffffffffffffffffffffff' },
     ] });
-    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, RESOLVED);
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', RECORDED_AT)!.gitCommit, RESOLVED);
   });
 
   it('variant 无 resolvedCommit(远端 / file / 旧报告)→ 不记(诚实留空)', () => {
-    assert.equal(buildEvidenceRef(makeReport({ variantConfigs: [{ variant: 'review' }] }), 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
-    assert.equal(buildEvidenceRef(makeReport(), 'review', 'PROGRESS', 'now')!.gitCommit, undefined, '无 variantConfigs → 不记');
+    assert.equal(buildEvidenceRef(makeReport({ variantConfigs: [{ variant: 'review' }] }), 'review', 'PROGRESS', RECORDED_AT)!.gitCommit, undefined);
+    assert.equal(buildEvidenceRef(makeReport(), 'review', 'PROGRESS', RECORDED_AT)!.gitCommit, undefined, '无 variantConfigs → 不记');
   });
 
   it('resolvedCommit 非 SHA 形态 → 不记(读时再过一道 isShaLike,脏报告不污染证据)', () => {
     const report = makeReport({ variantConfigs: [{ variant: 'review', resolvedCommit: 'not-a-sha' }] });
-    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', 'now')!.gitCommit, undefined);
+    assert.equal(buildEvidenceRef(report, 'review', 'PROGRESS', RECORDED_AT)!.gitCommit, undefined);
   });
 });
 
@@ -126,23 +129,41 @@ describe('managed evidence — appendManagedEvidence', () => {
 
   it('记录不存在 → 返回 null(eval 绝不为未纳管 skill 凭空建记录)', () => {
     const out = appendManagedEvidence(dir, managedRecordId('skill', 'ghost'), {
-      reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 'now',
+      reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: RECORDED_AT,
     });
     assert.equal(out, null);
   });
 
   it('append-only:写一条进 evidence[]', () => {
     const rec = seedRecord();
-    const out = appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 'now' });
+    const out = appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: RECORDED_AT });
     assert.equal(out!.evidence.length, 1);
     assert.equal(loadManagedRecord(dir, rec.id)!.evidence.length, 1, '落盘可读回');
   });
 
   it('按 (reportId, contentHash) 去重:同一份 eval 重跑不堆重复', () => {
     const rec = seedRecord();
-    appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 'now' });
-    appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 'later' });
+    appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: RECORDED_AT });
+    appendManagedEvidence(dir, rec.id, { reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: LATER_RECORDED_AT });
     assert.equal(loadManagedRecord(dir, rec.id)!.evidence.length, 1);
+  });
+
+  it('重复键也先校验 payload，幂等分支不能掩盖畸形证据', () => {
+    const rec = seedRecord();
+    appendManagedEvidence(dir, rec.id, {
+      reportId: 'r1',
+      contentHash: 'aaaaaaaaaaaa',
+      recordedAt: RECORDED_AT,
+    });
+    assert.throws(
+      () => appendManagedEvidence(dir, rec.id, {
+        reportId: 'r1',
+        contentHash: 'aaaaaaaaaaaa',
+        recordedAt: 'not-a-timestamp',
+      }),
+      /invalid managed evidence/,
+    );
+    assert.equal(loadManagedRecord(dir, rec.id)!.evidence[0].recordedAt, RECORDED_AT);
   });
 });
 
@@ -199,7 +220,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     install(installedHash);
     const report = makeReport({ variants: ['baseline', 'review'], artifactHashes: { baseline: 'no-skill', review: 'staleoldhash0' } });
 
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.equal(written[0].bound, false, '指纹不等 → 不绑当前版本');
     const rec = loadManagedRecord(managed, managedRecordId('skill', 'review'))!;
     assert.equal(rec.evidence.length, 1, '证据仍留存(供回滚 / 版本史)');
@@ -215,7 +236,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
       variants: ['baseline', 'git:HEAD:skills/review'],
       artifactHashes: { baseline: 'no-skill', 'git:HEAD:skills/review': realHash },
     });
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.equal(written.length, 1, '按 contentHash 连接,不靠 variant 名');
     assert.equal(written[0].name, 'review', 'CLI 提示用受管记录名而非 git 表达式');
     assert.equal(written[0].variant, 'git:HEAD:skills/review', '同时保留报告里的 treatment variant 供 CLI 对齐');
@@ -231,7 +252,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
       variants: ['baseline', 'candidate'],
       artifactHashes: { baseline: 'no-skill', candidate: realHash },
     });
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.equal(written.length, 1, '别名与记录名不同也能按指纹绑定');
     assert.equal(written[0].name, 'review');
     assert.equal(written[0].variant, 'candidate');
@@ -247,7 +268,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
       variants: ['control', 'candidate'],
       artifactHashes: { baseline: 'no-skill', review: realHash },
     });
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.equal(written.length, 1, '标签脱钩不影响 contentHash 连接');
     assert.equal(written[0].bound, true);
   });
@@ -268,7 +289,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     // report 只测 review。
     const report = makeReport({ variants: ['baseline', 'review'], artifactHashes: { baseline: 'no-skill', review: realHash } });
 
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '只有被测的 review 写入');
     const lintRec = loadManagedRecord(managed, managedRecordId('skill', 'lint'))!;
     assert.equal(lintRec.evidence.length, 0, '没测的 lint 不被写入');
@@ -294,7 +315,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
       { variant: 'candidate', artifactKind: 'skill', artifactSource: 'git', executionStrategy: 'skill-injection', experimentType: 'ab', experimentRole: 'treatment', hasArtifactContent: true, cwd: null, locator: 'git+https://x/r.git@sha1:review', ref: 'sha1' },
     ] as unknown as EvaluationReport['meta']['variantConfigs'];
 
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '结构化身份只绑 review,不波及同哈的 lint');
     assert.equal(written.find((w) => w.name === 'review')!.bound, true);
   });
@@ -319,7 +340,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
       { variant: 'git:HEAD:skills/review', artifactKind: 'skill', artifactSource: 'git', executionStrategy: 'skill-injection', experimentType: 'ab', experimentRole: 'treatment', hasArtifactContent: true, cwd: null, locator: 'skills/review', ref: 'HEAD' },
     ] as unknown as EvaluationReport['meta']['variantConfigs'];
 
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '归一化后只绑被测的 review,撞哈的 lint 不写');
     assert.equal(written.find((w) => w.name === 'review')!.bound, true);
     assert.equal(loadManagedRecord(managed, managedRecordId('skill', 'lint'))!.evidence.length, 0);
@@ -327,7 +348,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
 
   it('无任何受管记录 → 静默 no-op(非管理用户零副作用)', () => {
     const report = makeReport({ artifactHashes: { baseline: 'no-skill', review: 'aaaaaaaaaaaa' } });
-    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    const written = recordEvalEvidence(report, 'PROGRESS', RECORDED_AT, { dir: managed });
     assert.deepEqual(written, []);
   });
 });

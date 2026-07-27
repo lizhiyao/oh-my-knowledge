@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { basename } from 'node:path';
+import { isTraceSourceKind as isObservationSourceKind } from '../shared/trace-source-kind.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
@@ -60,14 +62,16 @@ import type {
   ExperienceSessionSummary,
   ExperienceSkillSegment,
   ExperienceSkillSummary,
+  ExperienceStoryContext,
   ExperienceTimelineBranch,
   ExperienceTimelineEvent,
+  ExperienceTraceRecordRange,
+  ExperienceTraceTimeline,
   ExperienceTimelineTree,
   ObservationExperienceReport,
   ObservationInboxItem,
   ObservationMetricKey,
   ObservationReviewState,
-  ObservationSourceKind,
   TraceSourceMetadata,
 } from '../types/index.js';
 import {
@@ -75,11 +79,28 @@ import {
   mergeExperienceProblemPatterns,
 } from './problem-patterns.js';
 import { observationMetricAnnotationVerdict, observationReviewStateKey } from './review-state.js';
-import type { TraceEvent, TraceMessageEvent, TraceSession } from './trace-ir.js';
-import type { SkillSegment } from './trace-segmenter.js';
+import {
+  correlateTraceToolEvents,
+  normalizeTraceTimestamp,
+  type TraceEvent,
+  type TraceMessageEvent,
+  type TraceSession,
+} from './trace-ir.js';
+import {
+  skillSegmentTimestampObserved,
+  UNOBSERVED_TRACE_TIMESTAMP,
+  type SkillSegment,
+} from './trace-segmenter.js';
+import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
+import {
+  incrementRecordCount,
+  ownRecordValue,
+  sumRecordCounts as sumSafeCounts,
+} from '../shared/record-count.js';
+import { checkedSumTokenCounts } from '../shared/token-usage.js';
 import {
   loadExpectedToolsForSkill,
   loadFrontmatterSkillType,
@@ -169,14 +190,63 @@ export type {
   ExperienceSessionSummary,
   ExperienceSkillSegment,
   ExperienceSkillSummary,
+  ExperienceStoryContext,
   ExperienceTimelineBranch,
   ExperienceTimelineEvent,
+  ExperienceTraceTimeline,
   ExperienceTimelineTree,
   ObservationExperienceReport,
   ObservationReviewState,
 };
 
-export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 2;
+export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 3;
+const LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 2;
+
+export type PersistedExperienceInvocation = Omit<
+  ExperienceInvocation,
+  'timeline' | 'timelineRef' | 'timelineEventIds'
+> & {
+  timelineRef: string;
+  timelineEventIds: string[];
+};
+
+export type PersistedExperienceSessionStory = Omit<
+  ExperienceSessionStory,
+  'contextRef' | 'goalSlices' | 'subagentDispatches' | 'episodes'
+> & {
+  contextRef: string;
+};
+
+export type PersistedExperienceReviewerReport = Omit<
+  ExperienceReviewerReport,
+  'sessionStory' | 'sessionStoryRef'
+> & {
+  sessionStoryRef: 'session';
+};
+
+export type PersistedExperienceSession = Omit<
+  ExperienceSessionSummary,
+  | 'timelineRef'
+  | 'timelinePreviewEventIds'
+  | 'timelinePreview'
+  | 'fullSessionTimeline'
+  | 'timelineTree'
+  | 'sessionStory'
+  | 'reviewerReport'
+> & {
+  timelineRef: string;
+  timelinePreviewEventIds: string[];
+  sessionStory?: PersistedExperienceSessionStory;
+  reviewerReport?: PersistedExperienceReviewerReport;
+};
+
+export type PersistedObservationExperienceReport = Omit<
+  ObservationExperienceReport,
+  'invocations' | 'sessions'
+> & {
+  invocations: PersistedExperienceInvocation[];
+  sessions: PersistedExperienceSession[];
+};
 
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
   if (statuses.includes('degraded')) return 'degraded';
@@ -190,6 +260,7 @@ export function aggregateExperienceChecklistItemStatus(statuses: ExperienceCheck
 interface ExperienceEpisodeRange {
   startMessageIndex: number;
   endMessageIndex: number;
+  traceId?: string;
   sourceTrace?: string;
   sessionId?: string;
   boundaryReason?: ExperienceEpisodeBoundaryReason;
@@ -224,6 +295,8 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   repeatedExecutionCount: 0,
   toolCallCount: 0,
   toolFailureCount: 0,
+  toolCancelledCount: 0,
+  toolUnknownCount: 0,
   highObservationCount: 0,
   mediumObservationCount: 0,
   hedgingCount: 0,
@@ -231,48 +304,56 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
 };
 
 export function buildObservationExperienceReport(input: BuildExperienceInput): ObservationExperienceReport {
-  const sessionsBySourceTrace = new Map(input.sessions.map((session) => [session.sourcePath, session]));
-  const sessionGroupsById = groupSessionsByLogicalId(input.sessions);
-  const sessionGroupsByKey = groupSessionsByExperienceKey(input.sessions);
+  const traceSessions = input.sessions.map((session) => ({
+    ...session,
+    events: correlateTraceToolEvents(session.events),
+  }));
+  const sessionIndex = createTraceSessionIndex(traceSessions);
+  const sessionGroupsByKey = groupSessionsByExperienceKey(traceSessions);
   const goalSlices: ExperienceGoalSlice[] = [];
   const invocations: ExperienceInvocation[] = [];
 
   for (const segment of input.segments) {
     if (segment.skillName === 'general') continue;
-    const session = sessionsBySourceTrace.get(segment.sourceTrace ?? '') ?? sessionGroupsById.get(segment.sessionId)?.[0];
+    const session = sessionIndex.resolve(segment);
     const sourceTrace = segment.sourceTrace ?? session?.sourcePath ?? '';
     const sessionGroupKey = session ? experienceSessionGroupKey(session) : `trace:${sourceTrace || segment.sessionId}`;
     const relatedItems = relatedObservationItems(segment, input.items);
     const bounds = session ? segmentRecordBounds(session, segment) : { start: 0, end: 0 };
-    const timeline = session ? buildTimeline(session, bounds.start, bounds.end) : [];
+    const timeline = session ? buildInvocationTimeline(session, bounds.start, bounds.end, segment) : [];
+    const metricTimeline = metricTimelineForSegment(timeline, segment);
     const metricScopeId = hashParts('session', segment.skillName, sessionGroupKey);
     const userRefs = timeline.filter((event) => event.kind === 'user_message');
-    const indicators = indicatorsForSegment(segment, relatedItems, timeline, metricScopeId, input.reviewState);
+    const indicators = indicatorsForSegment(segment, relatedItems, metricTimeline, metricScopeId, input.reviewState);
     const observationRefs = relatedItems.map(observationEvidenceRef);
-    const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
-    const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, metricScopeId, input.reviewState);
+    const evidenceChain = evidenceChainForTimeline(metricTimeline, observationRefs);
+    const ruleFindings = ruleFindingsForEvidence(indicators, metricTimeline, observationRefs, evidenceChain, metricScopeId, input.reviewState);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = buildExperienceProblemPatterns({
       skillName: segment.skillName,
-      sessionId: segment.sessionId,
-      timeline,
+      sessionId: sessionGroupKey,
+      timeline: metricTimeline,
       metricScopeId,
       reviewState: input.reviewState,
     });
     const hasGoalShift = userRefs.some((ref) => hasUserGoalShiftSignal(ref.snippet ?? ''));
-    // 包含 sourceTrace 防止 main + subagent 因 segmentIndex 各自从 0 计数而撞 hash
-    // （segmenter 给 segment.sessionId = sessionGroupId，main 和 subagent 共享）
-    const goalSliceId = hashParts('goal', segment.sessionId, sourceTrace, segment.skillName, String(segment.segmentIndex));
-    const invocationId = hashParts('invocation', segment.sessionId, sourceTrace, segment.skillName, String(segment.segmentIndex));
+    // traceId 是物理证据流身份。sourcePath 不是身份:一个 Markdown 文件可包含多个
+    // session，且不同 block 可能复用同一来源 sessionId。
+    const evidenceStreamId = traceSessionRefIdentity(segment);
+    const traceId = segment.traceId ?? session?.traceId ?? evidenceStreamId;
+    const goalSliceId = hashParts('goal', evidenceStreamId, segment.skillName, String(segment.segmentIndex));
+    const invocationId = hashParts('invocation', evidenceStreamId, segment.skillName, String(segment.segmentIndex));
 
     goalSlices.push({
       id: goalSliceId,
       skillName: segment.skillName,
       sessionId: segment.sessionId,
+      traceId,
       sourceTrace,
       cwd: segment.cwd,
       startTimestamp: segment.startTimestamp,
       endTimestamp: segment.endTimestamp,
+      timestampObserved: skillSegmentTimestampObserved(segment),
       sliceReasonCode: hasGoalShift ? 'explicit_user_goal_shift' : 'skill_segment_boundary',
       sliceConfidence: hasGoalShift ? 'medium' : 'high',
       inferredUserGoal: inferUserGoal(userRefs),
@@ -284,15 +365,17 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       skillName: segment.skillName,
       sessionId: segment.sessionId,
       sessionGroupKey,
+      traceId,
       sourceTrace,
-      sourceKind: segment.sourceKind ?? sourceKindForPath(sourceTrace),
-      entrypoint: session ? session.entrypoint ?? inferEntrypointFromRecords(session) : undefined,
+      sourceKind: segment.sourceKind ?? session?.sourceKind ?? 'unknown',
+      entrypoint: session?.entrypoint,
       sourceMetadata: segment.sourceMetadata ?? session?.sourceMetadata,
       cwd: segment.cwd,
       segmentIndex: segment.segmentIndex,
       goalSliceId,
       startTimestamp: segment.startTimestamp,
       endTimestamp: segment.endTimestamp,
+      timestampObserved: skillSegmentTimestampObserved(segment),
       attribution: {
         source: segment.attribution?.source ?? 'unknown',
         confidence: segment.attribution?.confidence ?? 0.3,
@@ -312,12 +395,16 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
         ...observationRefs,
         ...userRefs.slice(0, 5).map(evidenceRefFromTimeline),
       ],
+      timelineRef: timelineRefForSessionGroup(sessionGroupKey),
+      timelineEventIds: timeline.map((event) => event.id),
       timeline,
     });
   }
 
   const sessions = summarizeExperienceSessions(invocations, sessionGroupsByKey, input.generatedAt, input.reviewState);
   const skills = summarizeExperienceSkills(sessions, invocations);
+  const traceTimelines = traceTimelinesFromSessions(sessions, invocations);
+  const storyContexts = storyContextsFromSessions(sessions, invocations);
 
   return {
     kind: 'observe-experience',
@@ -332,6 +419,8 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       noteCodes: ['no_llm_judge', 'no_auto_verdict', 'default_goal_slice_is_allowed', 'deterministic_assistive_inference'],
     },
     goalSlices,
+    traceTimelines,
+    storyContexts,
     invocations,
     sessions,
     skills,
@@ -343,30 +432,2411 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
   const report = value as Record<string, unknown>;
   const kind = report.kind === 'observe-experience' ? report.kind : null;
   if (!kind) return null;
-  if (report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION) return null;
+  if (
+    report.schemaVersion !== OBSERVATION_EXPERIENCE_SCHEMA_VERSION
+    && report.schemaVersion !== LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION
+  ) return null;
+  const isLegacyReport = report.schemaVersion === LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION;
   if (report.scope !== 'evidence-only') return null;
-  if (typeof report.generatedAt !== 'string' || !report.meta || typeof report.meta !== 'object') return null;
+  if (
+    !isTimestamp(report.generatedAt)
+    || !report.meta
+    || typeof report.meta !== 'object'
+    || !isExperienceMeta(report.meta)
+  ) return null;
   if (!Array.isArray(report.goalSlices) || !Array.isArray(report.invocations) || !Array.isArray(report.sessions) || !Array.isArray(report.skills)) {
     return null;
   }
-  return {
+  const invocations = normalizeExperienceInvocationShells(report.invocations, !isLegacyReport);
+  const sessions = normalizeExperienceSessionShells(report.sessions, !isLegacyReport);
+  if (!invocations || !sessions) return null;
+  if (
+    !isLegacyReport
+    && (!Array.isArray(report.traceTimelines) || !Array.isArray(report.storyContexts))
+  ) return null;
+  const traceTimelines = Array.isArray(report.traceTimelines)
+    ? normalizeTraceTimelines(report.traceTimelines)
+    : traceTimelinesFromSessions(sessions, invocations);
+  const storyContexts = Array.isArray(report.storyContexts)
+    ? normalizeStoryContexts(report.storyContexts)
+    : storyContextsFromSessions(sessions, invocations);
+  if (!traceTimelines || !storyContexts) return null;
+  const normalized: ObservationExperienceReport = {
     kind: 'observe-experience',
     schemaVersion: OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
     scope: 'evidence-only',
     generatedAt: report.generatedAt,
     meta: report.meta as ObservationExperienceReport['meta'],
     goalSlices: report.goalSlices as ObservationExperienceReport['goalSlices'],
-    invocations: report.invocations as ObservationExperienceReport['invocations'],
-    sessions: report.sessions as ObservationExperienceReport['sessions'],
+    traceTimelines,
+    storyContexts,
+    invocations,
+    sessions,
     skills: report.skills as ObservationExperienceReport['skills'],
   };
+  try {
+    if (!validateExperienceReferences(normalized, !isLegacyReport)) return null;
+  } catch {
+    return null;
+  }
+  return hydrateExperienceTimelines(normalized);
+}
+
+function normalizeExperienceInvocationShells(
+  values: unknown[],
+  strict: boolean,
+): ExperienceInvocation[] | null {
+  const records = values.filter(isObjectRecord);
+  if (records.length !== values.length) return null;
+  if (records.some((value) =>
+    typeof value.id !== 'string'
+    || typeof value.skillName !== 'string'
+    || typeof value.sessionId !== 'string'
+    || typeof value.sessionGroupKey !== 'string'
+    || (strict ? typeof value.traceId !== 'string' : !isOptionalString(value.traceId))
+    || typeof value.sourceTrace !== 'string'
+    || !isObservationSourceKind(value.sourceKind)
+    || !isOptionalString(value.entrypoint)
+    || !isOptionalTraceSourceMetadata(value.sourceMetadata)
+    || !isOptionalString(value.cwd)
+    || !isNonNegativeInteger(value.segmentIndex)
+    || typeof value.goalSliceId !== 'string'
+    || !isTimestampRange(value.startTimestamp, value.endTimestamp)
+    || (value.timestampObserved !== undefined && typeof value.timestampObserved !== 'boolean')
+    || (strict && typeof value.timestampObserved !== 'boolean')
+    || !isExperienceAttribution(value.attribution)
+    || !isExperienceInvocationMetrics(value.metrics, strict)
+    || !isCountRecord(value.toolCounts)
+    || !isExperienceIndicators(value.indicators, strict)
+    || !isExperienceEvidenceChain(value.evidenceChain)
+    || !isExperienceRuleFindingArray(value.ruleFindings)
+    || !isExperienceAssistiveInference(value.assistiveInference)
+    || !isExperienceProblemPatternArray(value.problemPatterns)
+    || !isStringArray(value.relatedObservationIds)
+    || !isExperienceEvidenceRefArray(value.evidenceRefs)
+    || (
+      strict
+        ? typeof value.timelineRef !== 'string'
+          || !isStringArray(value.timelineEventIds)
+          || (value.timeline !== undefined && !isTimelineEventArray(value.timeline))
+        : !isOptionalString(value.timelineRef)
+          || (value.timelineEventIds !== undefined && !isStringArray(value.timelineEventIds))
+          || !isTimelineEventArray(value.timeline)
+    )
+  )) return null;
+  return records.map((value) => ({
+    ...value,
+    metrics: {
+      ...(value.metrics as Record<string, unknown>),
+      tokenUsageObserved: strict
+        ? (value.metrics as Record<string, unknown>).tokenUsageObserved
+        : false,
+    },
+    timeline: isTimelineEventArray(value.timeline)
+      ? value.timeline as ExperienceTimelineEvent[]
+      : [],
+  } as ExperienceInvocation));
+}
+
+function normalizeExperienceSessionShells(
+  values: unknown[],
+  strict: boolean,
+): ExperienceSessionSummary[] | null {
+  const records = values.filter(isObjectRecord);
+  if (records.length !== values.length) return null;
+  if (records.some((value) =>
+    typeof value.id !== 'string'
+    || typeof value.skillName !== 'string'
+    || typeof value.sessionId !== 'string'
+    || typeof value.sourceTrace !== 'string'
+    || !isObservationSourceKind(value.sourceKind)
+    || !isOptionalString(value.entrypoint)
+    || !isOptionalTraceSourceMetadata(value.sourceMetadata)
+    || !isOptionalString(value.cwd)
+    || !isConsistentSourceSessionTime(value)
+    || !isTimestampRange(value.startTimestamp, value.endTimestamp)
+    || !isStringArray(value.invocationIds)
+    || !isOptionalTimestampCoverage(
+      value.timestampedInvocationCount,
+      value.timestampCoverage,
+      Array.isArray(value.invocationIds) ? value.invocationIds.length : -1,
+    )
+    || (
+      strict
+      && (
+        !isNonNegativeInteger(value.timestampedInvocationCount)
+        || !isRate(value.timestampCoverage)
+      )
+    )
+    || !isStringArray(value.goalSliceIds)
+    || !isExperienceReviewPriority(value.reviewPriority)
+    || typeof value.reviewPriorityScore !== 'number'
+    || !Number.isFinite(value.reviewPriorityScore)
+    || value.reviewPriorityScore < 0
+    || !isEnumArray(value.reviewBasisCodes, [
+      'has_high_observation',
+      'has_medium_observation',
+      'user_correction',
+      'user_interruption',
+      'session_interrupted',
+      'negative_feedback',
+      'hard_rule_text_hit',
+      'tool_failure',
+      'hedging_signal',
+      'explicit_marker',
+    ])
+    || !isExperienceIndicators(value.indicators, strict)
+    || !isExperienceEvidenceChain(value.evidenceChain)
+    || !isExperienceRuleFindingArray(value.ruleFindings)
+    || !isExperienceAssistiveInference(value.assistiveInference)
+    || !isExperienceProblemPatternArray(value.problemPatterns)
+    || !isStringArray(value.relatedObservationIds)
+    || !(strict
+      ? isExperienceTimelineScope(value.timelineScope)
+      : isLegacyExperienceTimelineScope(value.timelineScope))
+    || !isStringArray(value.attributionSources)
+    || !isStringArray(value.pluginNames)
+    || !isStringArray(value.rawSkillRefs)
+    || !isStringArray(value.commandNames)
+    || (
+      strict
+        ? typeof value.timelineRef !== 'string'
+          || !isStringArray(value.timelinePreviewEventIds)
+          || (value.timelinePreview !== undefined && !isTimelineEventArray(value.timelinePreview))
+          || (value.fullSessionTimeline !== undefined && !isTimelineEventArray(value.fullSessionTimeline))
+        : !isOptionalString(value.timelineRef)
+          || (
+            value.timelinePreviewEventIds !== undefined
+            && !isStringArray(value.timelinePreviewEventIds)
+          )
+          || !isTimelineEventArray(value.timelinePreview)
+          || !isTimelineEventArray(value.fullSessionTimeline)
+    )
+    || (value.timelineTree !== undefined && !isTimelineTree(value.timelineTree))
+    || (
+      value.sessionStory !== undefined
+      && !isExperienceSessionStory(value.sessionStory, strict)
+    )
+    || (
+      value.reviewerReport !== undefined
+      && !isExperienceReviewerReport(value.reviewerReport, strict)
+    )
+  )) return null;
+  return records.map((value) => {
+    const sessionStory = isObjectRecord(value.sessionStory)
+      ? {
+          ...value.sessionStory,
+          goalSlices: Array.isArray(value.sessionStory.goalSlices) ? value.sessionStory.goalSlices : [],
+          subagentDispatches: Array.isArray(value.sessionStory.subagentDispatches)
+            ? value.sessionStory.subagentDispatches
+            : [],
+          episodes: Array.isArray(value.sessionStory.episodes) ? value.sessionStory.episodes : [],
+        }
+      : undefined;
+    return {
+      ...value,
+      invocationIds: Array.isArray(value.invocationIds) ? value.invocationIds : [],
+      timelinePreview: Array.isArray(value.timelinePreview) ? value.timelinePreview : [],
+      fullSessionTimeline: Array.isArray(value.fullSessionTimeline) ? value.fullSessionTimeline : [],
+      sessionStory,
+    } as ExperienceSessionSummary;
+  });
+}
+
+function normalizeTraceTimelines(values: unknown[]): ExperienceTraceTimeline[] | null {
+  if (values.some((value) => {
+    if (
+      !isObjectRecord(value)
+      || typeof value.id !== 'string'
+      || typeof value.sessionGroupKey !== 'string'
+      || typeof value.sessionId !== 'string'
+      || !isNonNegativeInteger(value.eventCount)
+    ) return true;
+    return !isTimelineTree(value.tree);
+  })) return null;
+  return values as ExperienceTraceTimeline[];
+}
+
+function normalizeStoryContexts(values: unknown[]): ExperienceStoryContext[] | null {
+  if (values.some((value) => !isExperienceStoryContext(value))) return null;
+  return values as ExperienceStoryContext[];
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isRate(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function isOptionalTimestampCoverage(
+  count: unknown,
+  coverage: unknown,
+  total: number,
+): boolean {
+  if (count === undefined && coverage === undefined) return true;
+  if (
+    total < 0
+    || !isNonNegativeInteger(count)
+    || count > total
+    || !isRate(coverage)
+  ) return false;
+  return coverage === (total > 0 ? count / total : 0);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && normalizeTraceTimestamp(value) !== undefined;
+}
+
+function isOptionalTimestamp(value: unknown): boolean {
+  return value === undefined || isTimestamp(value);
+}
+
+function isTimestampRange(start: unknown, end: unknown): boolean {
+  if (!isTimestamp(start) || !isTimestamp(end)) return false;
+  return Date.parse(start) <= Date.parse(end);
+}
+
+function invocationTimestampObserved(invocation: ExperienceInvocation): boolean {
+  return invocation.timestampObserved
+    ?? invocation.startTimestamp !== UNOBSERVED_TRACE_TIMESTAMP;
+}
+
+function sessionTimestampedInvocationCount(session: ExperienceSessionSummary): number {
+  return session.timestampedInvocationCount
+    ?? (session.startTimestamp === UNOBSERVED_TRACE_TIMESTAMP
+      ? 0
+      : session.invocationIds.length);
+}
+
+function isConsistentSourceSessionTime(value: Record<string, unknown>): boolean {
+  const start = value.sourceSessionStartTimestamp;
+  const end = value.sourceSessionEndTimestamp;
+  const duration = value.sourceSessionDurationMs;
+  if (!isOptionalTimestamp(start) || !isOptionalTimestamp(end)) return false;
+  if (duration !== undefined && !isNonNegativeInteger(duration)) return false;
+  if (start === undefined || end === undefined) return duration === undefined;
+  return typeof start === 'string'
+    && typeof end === 'string'
+    && isTimestampRange(start, end)
+    && duration === durationMsBetween(start, end);
+}
+
+function isOptionalNonNegativeInteger(value: unknown): boolean {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function isEnumValue(value: unknown, values: readonly string[]): boolean {
+  return typeof value === 'string' && values.includes(value);
+}
+
+function isEnumArray(value: unknown, values: readonly string[]): boolean {
+  return Array.isArray(value) && value.every((item) => isEnumValue(item, values));
+}
+
+function isExperienceMeta(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || !isNonNegativeInteger(value.sessionCount)
+    || !isNonNegativeInteger(value.skillCount)
+    || !isNonNegativeInteger(value.invocationCount)
+    || !isNonNegativeInteger(value.goalSliceCount)
+  ) return false;
+  return isEnumArray(value.noteCodes, [
+    'no_llm_judge',
+    'no_auto_verdict',
+    'default_goal_slice_is_allowed',
+    'deterministic_assistive_inference',
+  ]);
+}
+
+function isOptionalTraceSourceMetadata(value: unknown): boolean {
+  if (value === undefined) return true;
+  return isObjectRecord(value)
+    && isOptionalString(value.channel)
+    && isOptionalString(value.sender)
+    && isOptionalString(value.senderId)
+    && isOptionalString(value.provider)
+    && isOptionalString(value.model)
+    && isOptionalString(value.modelApi)
+    && (value.businessActions === undefined || isStringArray(value.businessActions));
+}
+
+function isExperienceReviewPriority(value: unknown): boolean {
+  return value === 'review_first' || value === 'sample_review' || value === 'routine_sample';
+}
+
+function isExperienceEvidenceKind(value: unknown): boolean {
+  return isEnumValue(value, [
+    'user_message',
+    'synthetic_user_event',
+    'assistant_message',
+    'tool_use',
+    'tool_result',
+    'skill_context',
+    'runtime_context',
+    'observation',
+  ]);
+}
+
+function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || !isExperienceEvidenceKind(value.kind)
+    || typeof value.sourceTrace !== 'string'
+    || typeof value.sessionId !== 'string'
+    || !isOptionalNonNegativeInteger(value.messageIndex)
+    || !isOptionalNonNegativeInteger(value.logicalMessageIndex)
+    || !isOptionalNonNegativeInteger(value.sourceLineIndex)
+  ) return false;
+  if (
+    value.traceRole !== undefined
+    && !isEnumValue(value.traceRole, ['standalone', 'main', 'subagent'])
+  ) return false;
+  if (
+    value.role !== undefined
+    && !isEnumValue(value.role, ['user', 'assistant', 'tool', 'other'])
+  ) return false;
+  return [
+    value.traceLabel,
+    value.traceId,
+    value.messageUuid,
+    value.callInstanceId,
+    value.toolUseId,
+    value.label,
+    value.snippet,
+  ].every(isOptionalString)
+    && isOptionalTimestamp(value.timestamp);
+}
+
+function isExperienceEvidenceRefArray(value: unknown): value is ExperienceEvidenceRef[] {
+  return Array.isArray(value) && value.every(isExperienceEvidenceRef);
+}
+
+function isExperienceGoalSlice(value: unknown): value is ExperienceGoalSlice {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.skillName === 'string'
+    && typeof value.sessionId === 'string'
+    && isOptionalString(value.traceId)
+    && typeof value.sourceTrace === 'string'
+    && isOptionalString(value.cwd)
+    && isTimestampRange(value.startTimestamp, value.endTimestamp)
+    && (value.timestampObserved === undefined || typeof value.timestampObserved === 'boolean')
+    && isEnumValue(value.sliceReasonCode, [
+      'skill_segment_boundary',
+      'explicit_user_goal_shift',
+      'default_session_slice',
+    ])
+    && isEnumValue(value.sliceConfidence, ['low', 'medium', 'high'])
+    && isOptionalString(value.inferredUserGoal)
+    && isExperienceEvidenceRefArray(value.userMessageRefs);
+}
+
+function isExperienceEvidenceChain(value: unknown): boolean {
+  if (!isObjectRecord(value)) return false;
+  const countKeys = [
+    'userMessageCount',
+    'runtimeContextCount',
+    'skillContextCount',
+    'assistantMessageCount',
+    'toolUseCount',
+    'toolResultCount',
+    'toolFailureResultCount',
+    'observationCount',
+  ];
+  if (!countKeys.every((key) => isNonNegativeInteger(value[key]))) return false;
+  const optionalRefs = [
+    value.firstUserMessage,
+    value.firstRuntimeContext,
+    value.firstSkillContext,
+    value.firstToolUse,
+    value.firstToolFailure,
+    value.lastAssistantMessage,
+  ];
+  return optionalRefs.every((ref) => ref === undefined || isExperienceEvidenceRef(ref));
+}
+
+function isExperienceRuleFinding(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isEnumValue(value.code, [
+      'high_observation_seen',
+      'medium_observation_seen',
+      'user_correction_seen',
+      'user_interruption_seen',
+      'session_interrupted_seen',
+      'negative_feedback_seen',
+      'positive_feedback_seen',
+      'user_goal_shift_seen',
+      'hard_rule_seen',
+      'tool_failure_seen',
+      'hedging_seen',
+      'explicit_marker_seen',
+      'runtime_context_excluded',
+      'skill_context_excluded',
+      'no_priority_signal',
+    ])
+    && isEnumValue(value.level, ['attention', 'sample', 'normal'])
+    && isNonNegativeInteger(value.count)
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceRuleFindingArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isExperienceRuleFinding);
+}
+
+function isExperienceAssistiveInference(value: unknown): boolean {
+  return isObjectRecord(value)
+    && value.mode === 'deterministic_rules_only'
+    && isEnumValue(value.code, [
+      'review_recommended',
+      'sample_recommended',
+      'positive_signal_observed',
+      'user_switched_topic_neutral',
+      'no_obvious_issue_from_rules',
+      'insufficient_human_context',
+    ])
+    && isEnumValue(value.confidence, ['low', 'medium', 'high'])
+    && isEnumArray(value.basisRuleCodes, [
+      'high_observation_seen',
+      'medium_observation_seen',
+      'user_correction_seen',
+      'user_interruption_seen',
+      'session_interrupted_seen',
+      'negative_feedback_seen',
+      'positive_feedback_seen',
+      'user_goal_shift_seen',
+      'hard_rule_seen',
+      'tool_failure_seen',
+      'hedging_seen',
+      'explicit_marker_seen',
+      'runtime_context_excluded',
+      'skill_context_excluded',
+      'no_priority_signal',
+    ])
+    && isEnumArray(value.cautionCodes, [
+      'no_llm_judge',
+      'rule_only',
+      'runtime_context_excluded',
+      'skill_context_excluded',
+      'no_human_user_message',
+      'limited_timeline_window',
+    ])
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceProblemEvidenceRef(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.kind !== 'string'
+    || typeof value.sourceTrace !== 'string'
+    || typeof value.sessionId !== 'string'
+    || !isOptionalNonNegativeInteger(value.messageIndex)
+    || !isOptionalNonNegativeInteger(value.logicalMessageIndex)
+    || !isOptionalNonNegativeInteger(value.sourceLineIndex)
+  ) return false;
+  if (
+    value.role !== undefined
+    && !isEnumValue(value.role, ['user', 'assistant', 'tool', 'other'])
+  ) return false;
+  return [
+    value.messageUuid,
+    value.traceId,
+    value.callInstanceId,
+    value.toolUseId,
+    value.label,
+    value.snippet,
+  ].every(isOptionalString)
+    && isOptionalTimestamp(value.timestamp);
+}
+
+function isExperienceProblemPattern(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isEnumValue(value.bucket, [
+      'output_format',
+      'content_accuracy',
+      'missing_context',
+      'rule_violation',
+      'workflow_mismatch',
+      'tool_runtime',
+      'goal_shift',
+      'unclear',
+    ])
+    && typeof value.patternKey === 'string'
+    && isNonNegativeInteger(value.count)
+    && isNonNegativeInteger(value.sessionCount)
+    && isStringArray(value.recentSessionIds)
+    && isEnumArray(value.signalTypes, [
+      'user_correction',
+      'negative_feedback',
+      'user_interruption',
+      'hard_rule',
+      'user_goal_shift',
+      'tool_failure',
+      'workflow_mismatch',
+      'artifact_missing',
+      'observer_lifecycle_failed',
+      'orchestration_boundary_violation',
+    ])
+    && Array.isArray(value.evidenceRefs)
+    && value.evidenceRefs.every(isExperienceProblemEvidenceRef)
+    && isOptionalTimestamp(value.lastSeen);
+}
+
+function isExperienceProblemPatternArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isExperienceProblemPattern);
+}
+
+function isExperienceAttribution(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.source === 'string'
+    && isRate(value.confidence)
+    && isOptionalString(value.rawSkillRef)
+    && isOptionalString(value.pluginName)
+    && isOptionalString(value.commandName);
+}
+
+function isExperienceInvocationMetrics(value: unknown, requireSourceNeutralOutcomes = false): boolean {
+  if (!isObjectRecord(value)) return false;
+  const fields = [
+    value.durationMs,
+    value.inputTokens,
+    value.outputTokens,
+    value.cacheReadTokens,
+    value.cacheCreationTokens,
+    value.numTurns,
+    value.numToolCalls,
+    value.numToolFailures,
+  ];
+  if (!fields.every(isNonNegativeInteger)) return false;
+  if (
+    requireSourceNeutralOutcomes
+    && (
+      typeof value.tokenUsageObserved !== 'boolean'
+      ||
+      !isNonNegativeInteger(value.numToolCancelled)
+      || !isNonNegativeInteger(value.numToolUnknown)
+    )
+  ) return false;
+  if (
+    value.tokenUsageObserved !== undefined
+    && typeof value.tokenUsageObserved !== 'boolean'
+  ) return false;
+  if (value.numToolCancelled !== undefined && !isNonNegativeInteger(value.numToolCancelled)) return false;
+  if (value.numToolUnknown !== undefined && !isNonNegativeInteger(value.numToolUnknown)) return false;
+  const cancelled = typeof value.numToolCancelled === 'number' ? value.numToolCancelled : 0;
+  const unknown = typeof value.numToolUnknown === 'number' ? value.numToolUnknown : 0;
+  return (value.numToolFailures as number) + cancelled + unknown <= (value.numToolCalls as number);
+}
+
+const EXPERIENCE_INDICATOR_KEYS = [
+  'userMessageCount',
+  'userFollowUpCount',
+  'userCorrectionCount',
+  'userInterruptionCount',
+  'sessionInterruptedCount',
+  'negativeFeedbackCount',
+  'positiveFeedbackCount',
+  'userGoalShiftCount',
+  'hardRuleTextHitCount',
+  'assistantDeliverySignalCount',
+  'deliverableArtifactSignalCount',
+  'routerDownstreamCompleted',
+  'routerDownstreamFailed',
+  'selfCorrectionCount',
+  'repeatedExecutionCount',
+  'toolCallCount',
+  'toolFailureCount',
+  'highObservationCount',
+  'mediumObservationCount',
+  'hedgingCount',
+  'explicitMarkerCount',
+] as const;
+
+function isExperienceIndicators(value: unknown, requireSourceNeutralOutcomes = false): boolean {
+  return isObjectRecord(value)
+    && EXPERIENCE_INDICATOR_KEYS.every((key) => isNonNegativeInteger(value[key]))
+    && (
+      !requireSourceNeutralOutcomes
+      || (
+        isNonNegativeInteger(value.toolCancelledCount)
+        && isNonNegativeInteger(value.toolUnknownCount)
+      )
+    )
+    && (value.toolCancelledCount === undefined || isNonNegativeInteger(value.toolCancelledCount))
+    && (value.toolUnknownCount === undefined || isNonNegativeInteger(value.toolUnknownCount))
+    && (value.toolFailureCount as number)
+      + (typeof value.toolCancelledCount === 'number' ? value.toolCancelledCount : 0)
+      + (typeof value.toolUnknownCount === 'number' ? value.toolUnknownCount : 0)
+      <= (value.toolCallCount as number);
+}
+
+function isCountRecord(value: unknown): boolean {
+  return isObjectRecord(value)
+    && Object.values(value).every(isNonNegativeInteger);
+}
+
+function isExperienceTimelineScope(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || value.mode !== 'skill_segment_window'
+    || !isNonNegativeInteger(value.segmentEventCount)
+    || !isNonNegativeInteger(value.previewEventCount)
+    || !isNonNegativeInteger(value.fullSessionEventCount)
+    || !isExperienceTraceRecordRangeArray(value.segmentRecordRanges)
+    || !isExperienceTraceRecordRangeArray(value.previewRecordRanges)
+    || !isExperienceTraceRecordRangeArray(value.sessionRecordRanges)
+    || typeof value.truncated !== 'boolean'
+    || !isNonNegativeInteger(value.omittedBeforeCount)
+    || !isNonNegativeInteger(value.omittedAfterCount)
+  ) return false;
+  return value.previewEventCount <= value.segmentEventCount
+    && value.segmentEventCount <= value.fullSessionEventCount
+    && value.omittedBeforeCount + value.omittedAfterCount <= value.fullSessionEventCount;
+}
+
+function isLegacyExperienceTimelineScope(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || value.mode !== 'skill_segment_window'
+    || !isOptionalNonNegativeInteger(value.segmentStartRecordIndex)
+    || !isOptionalNonNegativeInteger(value.segmentEndRecordIndex)
+    || !isOptionalNonNegativeInteger(value.previewStartRecordIndex)
+    || !isOptionalNonNegativeInteger(value.previewEndRecordIndex)
+    || !isNonNegativeInteger(value.sessionStartRecordIndex)
+    || !isNonNegativeInteger(value.sessionEndRecordIndex)
+    || !isNonNegativeInteger(value.previewEventCount)
+    || !isNonNegativeInteger(value.fullSessionEventCount)
+    || typeof value.truncated !== 'boolean'
+    || !isNonNegativeInteger(value.omittedBeforeCount)
+    || !isNonNegativeInteger(value.omittedAfterCount)
+  ) return false;
+  const optionalRanges: Array<[unknown, unknown]> = [
+    [value.segmentStartRecordIndex, value.segmentEndRecordIndex],
+    [value.previewStartRecordIndex, value.previewEndRecordIndex],
+  ];
+  if (optionalRanges.some(([start, end]) =>
+    (start === undefined) !== (end === undefined)
+    || (
+      typeof start === 'number'
+      && typeof end === 'number'
+      && start > end
+    )
+  )) return false;
+  return value.sessionStartRecordIndex <= value.sessionEndRecordIndex
+    && value.previewEventCount <= value.fullSessionEventCount
+    && value.omittedBeforeCount + value.omittedAfterCount <= value.fullSessionEventCount;
+}
+
+function isExperienceTraceRecordRangeArray(value: unknown): value is ExperienceTraceRecordRange[] {
+  if (!Array.isArray(value)) return false;
+  const identities = new Set<string>();
+  for (const range of value) {
+    if (
+      !isObjectRecord(range)
+      || typeof range.traceId !== 'string'
+      || typeof range.sourceTrace !== 'string'
+      || !isNonNegativeInteger(range.startRecordIndex)
+      || !isNonNegativeInteger(range.endRecordIndex)
+      || range.startRecordIndex > range.endRecordIndex
+      || !isNonNegativeInteger(range.eventCount)
+      || range.eventCount === 0
+      || identities.has(range.traceId)
+    ) return false;
+    identities.add(range.traceId);
+  }
+  return true;
+}
+
+function isExperienceSkillSummary(value: unknown, requireToolUnknown = false): boolean {
+  if (
+    !isObjectRecord(value)
+    || typeof value.skillName !== 'string'
+    || !isNonNegativeInteger(value.invocationCount)
+    || !isNonNegativeInteger(value.sessionCount)
+    || !Array.isArray(value.sourceKinds)
+    || !value.sourceKinds.every(isObservationSourceKind)
+    || !isStringArray(value.entrypoints)
+    || !isCountRecord(value.entrypointCounts)
+    || !isCountRecord(value.attributionCounts)
+    || !isStringArray(value.pluginNames)
+    || !isStringArray(value.rawSkillRefs)
+    || !isStringArray(value.commandNames)
+    || !isCountRecord(value.toolCounts)
+    || !isTimestampRange(value.firstSeen, value.lastSeen)
+    || !isOptionalTimestampCoverage(
+      value.timestampedInvocationCount,
+      value.timestampCoverage,
+      value.invocationCount,
+    )
+    || (
+      requireToolUnknown
+      && (
+        !isNonNegativeInteger(value.timestampedInvocationCount)
+        || !isRate(value.timestampCoverage)
+      )
+    )
+    || !isNonNegativeInteger(value.reviewFirstSessionCount)
+    || !isNonNegativeInteger(value.sampleReviewSessionCount)
+    || !isExperienceIndicators(value.indicators, requireToolUnknown)
+    || !isExperienceEvidenceChain(value.evidenceChain)
+    || !isExperienceRuleFindingArray(value.ruleFindings)
+    || !isExperienceAssistiveInference(value.assistiveInference)
+    || !isExperienceProblemPatternArray(value.problemPatterns)
+    || !isStringArray(value.relatedObservationIds)
+    || !isObjectRecord(value.sourceMetadataCounts)
+  ) return false;
+  const metadataCounts = value.sourceMetadataCounts;
+  return ['channels', 'senders', 'businessActions', 'providers', 'models']
+    .every((key) => isCountRecord(metadataCounts[key]));
+}
+
+function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || ![
+      'user_message',
+      'synthetic_user_event',
+      'assistant_message',
+      'tool_use',
+      'tool_result',
+      'skill_context',
+      'runtime_context',
+      'observation',
+    ].includes(String(value.kind))
+    || typeof value.sourceTrace !== 'string'
+    || typeof value.sessionId !== 'string'
+    || !isNonNegativeInteger(value.order)
+  ) return false;
+  const optionalIndexes = [
+    value.messageIndex,
+    value.logicalMessageIndex,
+    value.sourceLineIndex,
+  ];
+  if (!optionalIndexes.every((index) => index === undefined || isNonNegativeInteger(index))) return false;
+  if (
+    value.traceRole !== undefined
+    && value.traceRole !== 'standalone'
+    && value.traceRole !== 'main'
+    && value.traceRole !== 'subagent'
+  ) return false;
+  if (
+    value.role !== undefined
+    && value.role !== 'user'
+    && value.role !== 'assistant'
+    && value.role !== 'tool'
+    && value.role !== 'other'
+  ) return false;
+  if (
+    value.toolStatus !== undefined
+    && value.toolStatus !== 'success'
+    && value.toolStatus !== 'failure'
+    && value.toolStatus !== 'cancelled'
+    && value.toolStatus !== 'unknown'
+  ) return false;
+  const optionalStrings = [
+    value.traceId,
+    value.traceLabel,
+    value.messageUuid,
+    value.callInstanceId,
+    value.toolUseId,
+    value.label,
+    value.snippet,
+    value.toolName,
+    value.fullText,
+  ];
+  if (
+    !optionalStrings.every((field) => field === undefined || typeof field === 'string')
+    || !isOptionalTimestamp(value.timestamp)
+    || (value.isError !== undefined && typeof value.isError !== 'boolean')
+  ) return false;
+  return value.kind !== 'tool_result'
+    || value.toolStatus === undefined
+    || value.isError === undefined
+    || value.isError === (value.toolStatus === 'failure');
+}
+
+function isTimelineEventArray(value: unknown): value is ExperienceTimelineEvent[] {
+  return Array.isArray(value) && value.every(isTimelineEvent);
+}
+
+function isTimelineTree(value: unknown): value is ExperienceTimelineTree {
+  if (
+    !isObjectRecord(value)
+    || typeof value.sessionId !== 'string'
+    || !isTimelineEventArray(value.main)
+    || !Array.isArray(value.branches)
+  ) return false;
+  return value.branches.every((branch) => {
+    if (
+      !isObjectRecord(branch)
+      || typeof branch.id !== 'string'
+      || typeof branch.label !== 'string'
+      || typeof branch.sessionId !== 'string'
+      || !isOptionalString(branch.traceId)
+      || typeof branch.sourceTrace !== 'string'
+      || (
+        branch.traceRole !== 'main'
+        && branch.traceRole !== 'subagent'
+        && branch.traceRole !== 'standalone'
+      )
+      || !isTimelineEventArray(branch.events)
+    ) return false;
+    if (branch.attachTo === undefined) return true;
+    if (
+      !isObjectRecord(branch.attachTo)
+      || !isOptionalString(branch.attachTo.traceId)
+      || typeof branch.attachTo.sourceTrace !== 'string'
+    ) return false;
+    return (branch.attachTo.messageIndex === undefined || isNonNegativeInteger(branch.attachTo.messageIndex))
+      && (branch.attachTo.callInstanceId === undefined || typeof branch.attachTo.callInstanceId === 'string')
+      && (branch.attachTo.toolUseId === undefined || typeof branch.attachTo.toolUseId === 'string')
+      && (branch.attachTo.label === undefined || typeof branch.attachTo.label === 'string');
+  });
+}
+
+function isExperienceChecklistItem(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.key === 'string'
+    && typeof value.label === 'string'
+    && isEnumValue(value.status, [
+      'passed',
+      'failed',
+      'unknown',
+      'not_declared',
+      'not_applicable',
+      'degraded',
+    ])
+    && isEnumValue(value.contribution, [
+      'blocking',
+      'attention',
+      'informational',
+      'positive',
+      'neutral',
+    ])
+    && typeof value.reason === 'string'
+    && isExperienceEvidenceRefArray(value.evidenceRefs)
+    && isEnumValue(value.source, ['deterministic_rule', 'llm_soft', 'manual'])
+    && isOptionalString(value.suggestionKey);
+}
+
+function isExperienceSessionStoryGoalSlice(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isNonNegativeInteger(value.order)
+    && isStringArray(value.skillNames)
+    && isTimestampRange(value.startTimestamp, value.endTimestamp)
+    && isEnumValue(value.reasonCode, [
+      'skill_segment_boundary',
+      'explicit_user_goal_shift',
+      'default_session_slice',
+    ])
+    && isOptionalString(value.inferredUserGoal)
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceSessionStorySubagentDispatch(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || !isNonNegativeInteger(value.order)
+    || typeof value.branchId !== 'string'
+    || typeof value.childSessionId !== 'string'
+    || typeof value.traceId !== 'string'
+    || typeof value.label !== 'string'
+    || typeof value.sourceTrace !== 'string'
+    || !isNonNegativeInteger(value.eventCount)
+    || !isExperienceEvidenceRefArray(value.evidenceRefs)
+  ) return false;
+  if (value.attachTo === undefined) return true;
+  return isObjectRecord(value.attachTo)
+    && isOptionalNonNegativeInteger(value.attachTo.messageIndex)
+    && isOptionalString(value.attachTo.callInstanceId)
+    && isOptionalString(value.attachTo.toolUseId)
+    && isOptionalString(value.attachTo.label);
+}
+
+function isExperienceSessionStorySkillLink(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isNonNegativeInteger(value.order)
+    && typeof value.skillName === 'string'
+    && isEnumValue(value.role, ['router', 'executor', 'mixed', 'unknown'])
+    && isStringArray(value.invocationIds)
+    && isStringArray(value.goalSliceIds)
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceSessionStoryGraphNode(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.label === 'string'
+    && isEnumValue(value.kind, [
+      'user_goal',
+      'skill_invocation',
+      'subagent_branch',
+      'tool_execution',
+      'delivery',
+      'user_feedback',
+      'goal_shift',
+    ])
+    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && (value.role === undefined || isEnumValue(value.role, ['router', 'executor', 'mixed', 'unknown']))
+    && isOptionalString(value.detailNodeId);
+}
+
+function isExperienceSessionStoryGraphEdge(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.fromId === 'string'
+    && typeof value.toId === 'string'
+    && typeof value.label === 'string';
+}
+
+function isExperienceSessionStoryNode(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isNonNegativeInteger(value.order)
+    && isEnumValue(value.kind, [
+      'user_goal',
+      'skill_invocation',
+      'subagent_branch',
+      'tool_execution',
+      'delivery',
+      'user_feedback',
+      'goal_shift',
+    ])
+    && typeof value.label === 'string'
+    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && typeof value.text === 'string'
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceSessionStoryAnswer(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isEnumValue(value.key, ['goal_satisfaction', 'declared_behavior_fit', 'user_feeling'])
+    && typeof value.label === 'string'
+    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && isEnumValue(value.reason, [
+      'data_degraded',
+      'blocking_failed',
+      'attention_accumulated',
+      'unknown_dominant',
+      'all_passed',
+      'not_applicable',
+    ])
+    && isStringArray(value.sourceItemKeys)
+    && typeof value.text === 'string'
+    && isExperienceEvidenceRefArray(value.evidenceRefs)
+    && Array.isArray(value.checklistItems)
+    && value.checklistItems.every(isExperienceChecklistItem);
+}
+
+function isExperienceGoalEvidenceRef(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isEnumValue(value.kind, ['user_message', 'goal_slice', 'llm_goal'])
+    && isOptionalString(value.goalSliceId)
+    && (value.evidenceRef === undefined || isExperienceEvidenceRef(value.evidenceRef))
+    && isOptionalString(value.label);
+}
+
+function isExperienceSkillSegment(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || !isNonNegativeInteger(value.order)
+    || typeof value.skillName !== 'string'
+    || !isEnumValue(value.skillType, [
+      'router',
+      'delegation',
+      'executor',
+      'advisory',
+      'workflow_owner',
+      'unknown',
+    ])
+    || (
+      value.skillTypeSource !== undefined
+      && !isEnumValue(value.skillTypeSource, ['frontmatter', 'trace', 'unknown'])
+    )
+    || (
+      value.declaredSkillType !== undefined
+      && !isEnumValue(value.declaredSkillType, [
+        'router',
+        'delegation',
+        'executor',
+        'advisory',
+        'workflow_owner',
+        'unknown',
+      ])
+    )
+    || (
+      value.traceInferredSkillType !== undefined
+      && !isEnumValue(value.traceInferredSkillType, [
+        'router',
+        'delegation',
+        'executor',
+        'advisory',
+        'workflow_owner',
+        'unknown',
+      ])
+    )
+    || !isEnumValue(value.episodeRole, [
+      'main_executor',
+      'router',
+      'delegator',
+      'supporting',
+      'observer',
+    ])
+    || !isStringArray(value.skillInvocationIds)
+    || !isOptionalNonNegativeInteger(value.startMessageIndex)
+    || !isOptionalNonNegativeInteger(value.endMessageIndex)
+    || !isTimestampRange(value.startTimestamp, value.endTimestamp)
+    || !Array.isArray(value.typeSpecificChecklist)
+    || !value.typeSpecificChecklist.every(isExperienceChecklistItem)
+    || !isExperienceEvidenceRefArray(value.evidenceRefs)
+  ) return false;
+  if (
+    value.messageRanges !== undefined
+    && (
+      !Array.isArray(value.messageRanges)
+      || value.messageRanges.some((range) =>
+        !isObjectRecord(range)
+        || !isNonNegativeInteger(range.startMessageIndex)
+        || !isNonNegativeInteger(range.endMessageIndex)
+        || range.startMessageIndex > range.endMessageIndex
+        || !isOptionalString(range.traceId)
+        || !isOptionalString(range.sourceTrace)
+        || !isOptionalString(range.sessionId)
+      )
+    )
+  ) return false;
+  if (
+    typeof value.startMessageIndex === 'number'
+    && typeof value.endMessageIndex === 'number'
+    && value.startMessageIndex > value.endMessageIndex
+  ) return false;
+  if (value.runtimeAssessment === undefined) return true;
+  return isObjectRecord(value.runtimeAssessment)
+    && isOptionalString(value.runtimeAssessment.goalSatisfaction)
+    && isOptionalString(value.runtimeAssessment.declaredBehaviorFit)
+    && isOptionalString(value.runtimeAssessment.artifactGoalMatch)
+    && isOptionalString(value.runtimeAssessment.userFeeling);
+}
+
+function isExperienceOrchestrationEdge(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.episodeId === 'string'
+    && isEnumValue(value.edgeKind, ['internal_skill', 'external_child_session'])
+    && isOptionalString(value.parentSkillSegmentId)
+    && isOptionalString(value.executorSkillSegmentId)
+    && isOptionalString(value.childSessionId)
+    && (value.runnerStartedRef === undefined || isExperienceEvidenceRef(value.runnerStartedRef))
+    && (value.runnerCompletedRef === undefined || isExperienceEvidenceRef(value.runnerCompletedRef))
+    && (value.notificationRef === undefined || isExperienceEvidenceRef(value.notificationRef))
+    && isEnumValue(value.status, ['started', 'completed', 'failed', 'unknown'])
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceFeedbackAttribution(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isOptionalString(value.skillName)
+    && isOptionalString(value.skillSegmentId)
+    && isEnumValue(value.attributionRole, ['primary_fault', 'downstream_related', 'context_only'])
+    && isEnumValue(value.reasonCode, [
+      'object_match',
+      'promise_match',
+      'action_match',
+      'orchestration_edge',
+      'episode_context',
+    ])
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceFeedbackSignal(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isNonNegativeInteger(value.order)
+    && isEnumValue(value.type, [
+      'correction',
+      'follow_up',
+      'frustration',
+      'interruption',
+      'positive',
+      'unknown',
+    ])
+    && typeof value.text === 'string'
+    && isOptionalString(value.targetObject)
+    && isEnumValue(value.sourceWindow, [
+      'session',
+      'episode',
+      'skill_invocation',
+      'downstream_child',
+    ])
+    && isExperienceEvidenceRef(value.evidenceRef)
+    && (
+      value.canonicalAttributions === undefined
+      || (
+        Array.isArray(value.canonicalAttributions)
+        && value.canonicalAttributions.every(isExperienceFeedbackAttribution)
+      )
+    )
+    && Array.isArray(value.attributions)
+    && value.attributions.every(isExperienceFeedbackAttribution);
+}
+
+function isExperienceEpisodeArtifact(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isEnumValue(value.kind, [
+      'path',
+      'url',
+      'document',
+      'code',
+      'execution_window',
+      'unknown',
+    ])
+    && typeof value.label === 'string'
+    && isOptionalString(value.pathOrUrl)
+    && isEnumValue(value.artifactGoalMatch, ['passed', 'failed', 'unknown'])
+    && isExperienceEvidenceRef(value.evidenceRef);
+}
+
+function isExperienceEpisodeOutcome(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isEnumValue(value.closure, ['closed', 'unresolved', 'abandoned', 'unknown'])
+    && Array.isArray(value.artifacts)
+    && value.artifacts.every(isExperienceEpisodeArtifact)
+    && isExperienceReviewPriority(value.verdict)
+    && isOptionalString(value.acceptanceCriteria);
+}
+
+function isExperienceEpisode(value: unknown): boolean {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && isNonNegativeInteger(value.order)
+    && typeof value.sessionId === 'string'
+    && isOptionalString(value.primaryGoal)
+    && Array.isArray(value.goalEvidenceRefs)
+    && value.goalEvidenceRefs.every(isExperienceGoalEvidenceRef)
+    && isTimestampRange(value.startTimestamp, value.endTimestamp)
+    && (value.startRef === undefined || isExperienceEvidenceRef(value.startRef))
+    && (value.endRef === undefined || isExperienceEvidenceRef(value.endRef))
+    && isEnumValue(value.boundaryReason, [
+      'goal_shift',
+      'checkpoint_or_subagent',
+      'downstream_closed',
+      'session_end',
+    ])
+    && Array.isArray(value.skillSegments)
+    && value.skillSegments.every(isExperienceSkillSegment)
+    && Array.isArray(value.orchestrationEdges)
+    && value.orchestrationEdges.every(isExperienceOrchestrationEdge)
+    && Array.isArray(value.feedbackSignals)
+    && value.feedbackSignals.every(isExperienceFeedbackSignal)
+    && isExperienceEpisodeOutcome(value.outcome);
+}
+
+function isExperienceStoryContext(value: unknown): value is ExperienceStoryContext {
+  return isObjectRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.sessionGroupKey === 'string'
+    && Array.isArray(value.goalSlices)
+    && value.goalSlices.every(isExperienceSessionStoryGoalSlice)
+    && Array.isArray(value.subagentDispatches)
+    && value.subagentDispatches.every(isExperienceSessionStorySubagentDispatch)
+    && Array.isArray(value.episodes)
+    && value.episodes.every(isExperienceEpisode);
+}
+
+function isExperienceSessionStory(value: unknown, compact: boolean): boolean {
+  if (
+    !isObjectRecord(value)
+    || value.schemaVersion !== 1
+    || (compact ? typeof value.contextRef !== 'string' : !isOptionalString(value.contextRef))
+    || typeof value.summary !== 'string'
+    || !isNonNegativeInteger(value.invocationCount)
+    || !isNonNegativeInteger(value.goalSliceCount)
+    || !isNonNegativeInteger(value.branchCount)
+    || !isNonNegativeInteger(value.progressUpdateCount)
+    || !isNonNegativeInteger(value.finalDeliverySignalCount)
+    || !isStringArray(value.mainlineNodeIds)
+    || !Array.isArray(value.skillLinks)
+    || !value.skillLinks.every(isExperienceSessionStorySkillLink)
+    || !isObjectRecord(value.graph)
+    || !Array.isArray(value.graph.nodes)
+    || !value.graph.nodes.every(isExperienceSessionStoryGraphNode)
+    || !Array.isArray(value.graph.edges)
+    || !value.graph.edges.every(isExperienceSessionStoryGraphEdge)
+    || !Array.isArray(value.nodes)
+    || !value.nodes.every(isExperienceSessionStoryNode)
+    || !Array.isArray(value.answers)
+    || !value.answers.every(isExperienceSessionStoryAnswer)
+  ) return false;
+  if (compact) {
+    return value.goalSlices === undefined
+      && value.subagentDispatches === undefined
+      && value.episodes === undefined;
+  }
+  return Array.isArray(value.goalSlices)
+    && value.goalSlices.every(isExperienceSessionStoryGoalSlice)
+    && Array.isArray(value.subagentDispatches)
+    && value.subagentDispatches.every(isExperienceSessionStorySubagentDispatch)
+    && (
+      value.episodes === undefined
+      || (Array.isArray(value.episodes) && value.episodes.every(isExperienceEpisode))
+    );
+}
+
+function isExperienceReviewerReportStep(value: unknown): boolean {
+  return isObjectRecord(value)
+    && isNonNegativeInteger(value.order)
+    && typeof value.label === 'string'
+    && isEnumValue(value.status, ['ok', 'attention', 'unknown', 'degraded', 'not_applicable'])
+    && typeof value.text === 'string'
+    && isExperienceEvidenceRefArray(value.evidenceRefs);
+}
+
+function isExperienceReviewerReportFinding(value: unknown): boolean {
+  if (
+    !isObjectRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.judgmentId !== 'string'
+    || !isEnumValue(value.source, ['deterministic_rule', 'llm_soft', 'manual'])
+    || !isEnumValue(value.level, ['attention', 'possible_false_positive', 'note'])
+    || typeof value.title !== 'string'
+    || typeof value.body !== 'string'
+    || typeof value.ruleSource !== 'string'
+    || typeof value.ruleVersion !== 'string'
+    || !isExperienceEvidenceRefArray(value.evidenceRefs)
+    || !isObjectRecord(value.reviewStateRef)
+    || value.reviewStateRef.targetType !== 'reviewer_judgment'
+    || typeof value.reviewStateRef.targetId !== 'string'
+  ) return false;
+  return [
+    value.reviewStateRef.verdict,
+    value.reviewStateRef.reason,
+    value.reviewStateRef.note,
+  ].every(isOptionalString)
+    && isOptionalTimestamp(value.reviewStateRef.reviewedAt);
+}
+
+function isExperienceReviewerMetrics(value: unknown, requireSourceNeutralOutcomes: boolean): boolean {
+  if (!isObjectRecord(value)) return false;
+  const countKeys = [
+    'toolCallCount',
+    'toolFailureCount',
+    'userMessageCount',
+    'userFollowUpCount',
+    'assistantDeliverySignalCount',
+    'deliverableArtifactSignalCount',
+    'routerDownstreamCompleted',
+    'routerDownstreamFailed',
+    'assistantProgressUpdateCount',
+    'selfCorrectionCount',
+    'repeatedExecutionCount',
+    'finalDeliverySignalCount',
+    'traceEventCount',
+  ];
+  if (
+    !countKeys.every((key) => isNonNegativeInteger(value[key]))
+    || (
+      requireSourceNeutralOutcomes
+      && (
+        !isNonNegativeInteger(value.toolCancelledCount)
+        || !isNonNegativeInteger(value.toolUnknownCount)
+      )
+    )
+    || (
+      value.toolCancelledCount !== undefined
+      && !isNonNegativeInteger(value.toolCancelledCount)
+    )
+    || (
+      value.toolUnknownCount !== undefined
+      && !isNonNegativeInteger(value.toolUnknownCount)
+    )
+    || !isObjectRecord(value.tokenUsage)
+  ) return false;
+  const tokenKeys = [
+    'inputTokens',
+    'outputTokens',
+    'cacheReadTokens',
+    'cacheCreationTokens',
+  ];
+  const tokenUsage = value.tokenUsage as Record<string, unknown>;
+  const observedInvocationCount = tokenUsage.observedInvocationCount;
+  const invocationCount = tokenUsage.invocationCount;
+  const coverage = tokenUsage.coverage;
+  const hasCoverage = observedInvocationCount !== undefined
+    || invocationCount !== undefined
+    || coverage !== undefined;
+  return tokenKeys.every((key) => isNonNegativeInteger(tokenUsage[key]))
+    && tokenUsage.attribution === 'skill_segment'
+    && (
+      !hasCoverage
+      || (
+        isNonNegativeInteger(observedInvocationCount)
+        && isNonNegativeInteger(invocationCount)
+        && isRate(coverage)
+        && (observedInvocationCount as number) <= (invocationCount as number)
+        && Math.abs(
+          (coverage as number)
+          - (
+            (invocationCount as number) > 0
+              ? (observedInvocationCount as number) / (invocationCount as number)
+              : 1
+          ),
+        ) <= 0.0001
+      )
+    )
+    && (!requireSourceNeutralOutcomes || hasCoverage)
+    && (value.toolFailureCount as number)
+      + (typeof value.toolCancelledCount === 'number' ? value.toolCancelledCount : 0)
+      + (typeof value.toolUnknownCount === 'number' ? value.toolUnknownCount : 0)
+      <= (value.toolCallCount as number);
+}
+
+function isExperienceReviewerReport(value: unknown, compact: boolean): boolean {
+  if (
+    !isObjectRecord(value)
+    || value.schemaVersion !== 1
+    || !isEnumValue(value.mode, ['deterministic_milestone_1', 'deterministic_session_story'])
+    || !isTimestamp(value.generatedAt)
+    || typeof value.title !== 'string'
+    || typeof value.summary !== 'string'
+    || !isObjectRecord(value.scope)
+    || !isEnumValue(value.scope.kind, ['single_skill_single_goal', 'degraded_complex'])
+    || !isStringArray(value.scope.reasonCodes)
+    || !Array.isArray(value.chainSteps)
+    || !value.chainSteps.every(isExperienceReviewerReportStep)
+    || !Array.isArray(value.findings)
+    || !value.findings.every(isExperienceReviewerReportFinding)
+    || !isExperienceReviewerMetrics(value.oneLookMetrics, compact)
+    || !isStringArray(value.authorSuggestions)
+    || !isExperienceEvidenceRefArray(value.traceLinks)
+  ) return false;
+  if (compact) {
+    return value.sessionStory === undefined && value.sessionStoryRef === 'session';
+  }
+  return isExperienceSessionStory(value.sessionStory, false)
+    && (value.sessionStoryRef === undefined || value.sessionStoryRef === 'session');
+}
+
+/**
+ * Converts a hydrated report into the wire format used by inbox JSON.
+ * Timeline evidence is stored once per logical trace; consumers hydrate the
+ * invocation/session views through normalizeObservationExperienceReport().
+ */
+export function compactObservationExperienceReport(
+  report: ObservationExperienceReport,
+): PersistedObservationExperienceReport {
+  const hydrated = hydrateExperienceTimelines(report);
+  return {
+    ...hydrated,
+    invocations: hydrated.invocations.map((invocation) => {
+      const { timeline, ...persisted } = invocation;
+      return {
+        ...persisted,
+        timelineRef: invocation.timelineRef
+          ?? timelineRefForSessionGroup(invocation.sessionGroupKey),
+        timelineEventIds: invocation.timelineEventIds
+          ?? timeline.map((event) => event.id),
+      };
+    }),
+    sessions: hydrated.sessions.map((session) => {
+      const { timelinePreview, sessionStory, reviewerReport } = session;
+      const persisted = omitProperties(session, [
+        'timelinePreview',
+        'fullSessionTimeline',
+        'timelineTree',
+        'sessionStory',
+        'reviewerReport',
+      ]);
+      const contextRef = sessionStory?.contextRef;
+      return {
+        ...persisted,
+        timelineRef: session.timelineRef
+          ?? timelineRefForSessionGroup(session.sessionId),
+        timelinePreviewEventIds: session.timelinePreviewEventIds
+          ?? timelinePreview.map((event) => event.id),
+        sessionStory: sessionStory && contextRef
+          ? compactSessionStory(sessionStory, contextRef)
+          : undefined,
+        reviewerReport: reviewerReport && sessionStory && contextRef
+          ? {
+              ...omitSessionStory(reviewerReport),
+              sessionStoryRef: 'session',
+            }
+          : undefined,
+      };
+    }),
+  };
+}
+
+function hydrateExperienceTimelines(
+  report: ObservationExperienceReport,
+): ObservationExperienceReport {
+  const timelineById = new Map(report.traceTimelines.map((timeline) => [timeline.id, timeline]));
+  const storyContextById = new Map(report.storyContexts.map((context) => [context.id, context]));
+  const flattenedById = new Map<string, ExperienceTimelineEvent[]>();
+  const eventByTimelineId = new Map<string, Map<string, ExperienceTimelineEvent>>();
+  const flattenedTimeline = (ref: string): ExperienceTimelineEvent[] => {
+    const cached = flattenedById.get(ref);
+    if (cached) return cached;
+    const timeline = timelineById.get(ref);
+    if (!timeline) return [];
+    const flattened = flattenTimelineTree(timeline.tree);
+    flattenedById.set(ref, flattened);
+    eventByTimelineId.set(ref, new Map(flattened.map((event) => [event.id, event])));
+    return flattened;
+  };
+  const selectEvents = (
+    ref: string,
+    ids: string[] | undefined,
+    fallback: ExperienceTimelineEvent[],
+  ): ExperienceTimelineEvent[] => {
+    if (!timelineById.has(ref)) return fallback;
+    if (!ids) return fallback.length > 0 ? fallback : flattenedTimeline(ref);
+    const byId = eventByTimelineId.get(ref)
+      ?? new Map(flattenedTimeline(ref).map((event) => [event.id, event]));
+    return ids.flatMap((id) => {
+      const event = byId.get(id);
+      return event ? [event] : [];
+    });
+  };
+
+  const invocations = report.invocations.map((invocation): ExperienceInvocation => {
+    const timelineRef = invocation.timelineRef ?? timelineRefForSessionGroup(invocation.sessionGroupKey);
+    const timelineEventIds = invocation.timelineEventIds
+      ?? invocation.timeline.map((event) => event.id);
+    return {
+      ...invocation,
+      timelineRef,
+      timelineEventIds,
+      timeline: selectEvents(timelineRef, timelineEventIds, invocation.timeline),
+    };
+  });
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  const sessions = report.sessions.map((session): ExperienceSessionSummary => {
+    const firstInvocation = session.invocationIds
+      .map((id) => invocationById.get(id))
+      .find((invocation): invocation is ExperienceInvocation => Boolean(invocation));
+    const timelineRef = session.timelineRef
+      ?? firstInvocation?.timelineRef
+      ?? timelineRefForSessionGroup(firstInvocation?.sessionGroupKey ?? session.sessionId);
+    const storedTimeline = timelineById.get(timelineRef);
+    const fullSessionTimeline = storedTimeline
+      ? flattenedTimeline(timelineRef)
+      : session.fullSessionTimeline;
+    const timelinePreviewEventIds = session.timelinePreviewEventIds
+      ?? session.timelinePreview.map((event) => event.id);
+    const timelinePreview = timelinePreviewEventIds.length > 0
+      ? selectEvents(timelineRef, timelinePreviewEventIds, session.timelinePreview)
+      : fullSessionTimeline.slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
+    const contextRef = session.sessionStory?.contextRef
+      ?? storyContextRefForSessionGroup(firstInvocation?.sessionGroupKey ?? session.sessionId);
+    const storyContext = storyContextById.get(contextRef);
+    const sessionStory = session.sessionStory
+      ? {
+          ...session.sessionStory,
+          contextRef,
+          goalSlices: storyContext?.goalSlices ?? session.sessionStory.goalSlices,
+          subagentDispatches: storyContext?.subagentDispatches
+            ?? session.sessionStory.subagentDispatches,
+          episodes: storyContext?.episodes ?? session.sessionStory.episodes ?? [],
+        }
+      : undefined;
+    return {
+      ...session,
+      timelineRef,
+      timelinePreviewEventIds: timelinePreview.map((event) => event.id),
+      timelinePreview,
+      fullSessionTimeline,
+      timelineTree: storedTimeline?.tree ?? session.timelineTree,
+      sessionStory,
+      reviewerReport: session.reviewerReport && sessionStory
+        ? {
+            ...session.reviewerReport,
+            sessionStory: session.reviewerReport.sessionStoryRef === 'session'
+              ? sessionStory
+              : session.reviewerReport.sessionStory,
+          }
+        : session.reviewerReport,
+    };
+  });
+
+  return {
+    ...report,
+    schemaVersion: OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
+    invocations,
+    sessions,
+  };
+}
+
+function traceTimelinesFromSessions(
+  sessions: ExperienceSessionSummary[],
+  invocations: ExperienceInvocation[],
+): ExperienceTraceTimeline[] {
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  const timelines = new Map<string, ExperienceTraceTimeline>();
+  for (const session of sessions) {
+    const invocation = session.invocationIds
+      .map((id) => invocationById.get(id))
+      .find((value): value is ExperienceInvocation => Boolean(value));
+    const sessionGroupKey = invocation?.sessionGroupKey ?? session.sessionId;
+    const id = session.timelineRef
+      ?? invocation?.timelineRef
+      ?? timelineRefForSessionGroup(sessionGroupKey);
+    if (timelines.has(id)) continue;
+    const fallbackEvents = session.fullSessionTimeline.length > 0
+      ? session.fullSessionTimeline
+      : session.timelinePreview;
+    const tree = session.timelineTree ?? {
+      sessionId: session.sessionId,
+      main: fallbackEvents,
+      branches: [],
+    };
+    timelines.set(id, {
+      id,
+      sessionGroupKey,
+      sessionId: session.sessionId,
+      eventCount: flattenTimelineTree(tree).length,
+      tree,
+    });
+  }
+  return Array.from(timelines.values());
+}
+
+function validateExperienceReferences(
+  report: ObservationExperienceReport,
+  strict: boolean,
+): boolean {
+  if (
+    !isObjectRecord(report.meta)
+    || report.meta.sessionCount !== report.sessions.length
+    || report.meta.skillCount !== report.skills.length
+    || report.meta.invocationCount !== report.invocations.length
+    || report.meta.goalSliceCount !== report.goalSlices.length
+  ) return false;
+
+  const timelineEventsByRef = new Map<string, Set<string>>();
+  const timelineByRef = new Map<string, ExperienceTraceTimeline>();
+  const timelineSessionGroupKeys = new Set<string>();
+  for (const timeline of report.traceTimelines) {
+    if (
+      timelineEventsByRef.has(timeline.id)
+      || timelineSessionGroupKeys.has(timeline.sessionGroupKey)
+    ) return false;
+    if (
+      timeline.tree.sessionId !== timeline.sessionId
+      || (strict && !traceTimelineStructureIsConsistent(timeline))
+    ) return false;
+    const rawEvents = [
+      ...timeline.tree.main,
+      ...timeline.tree.branches.flatMap((branch) => branch.events),
+    ];
+    if (
+      strict
+      && (
+        rawEvents.some((event) => typeof event.traceId !== 'string')
+        || rawEvents.some((event) =>
+          (event.kind === 'tool_use' || event.kind === 'tool_result')
+          && typeof event.callInstanceId !== 'string'
+        )
+        || timeline.tree.branches.some((branch) =>
+          typeof branch.traceId !== 'string'
+          || (branch.attachTo !== undefined && typeof branch.attachTo.traceId !== 'string')
+        )
+      )
+    ) return false;
+    if (new Set(rawEvents.map((event) => event.id)).size !== rawEvents.length) return false;
+    const events = flattenTimelineTree(timeline.tree);
+    if (timeline.eventCount !== events.length) return false;
+    timelineEventsByRef.set(timeline.id, new Set(events.map((event) => event.id)));
+    timelineByRef.set(timeline.id, timeline);
+    timelineSessionGroupKeys.add(timeline.sessionGroupKey);
+  }
+
+  const goalSliceIds = new Set<string>();
+  const goalSliceById = new Map<string, ExperienceGoalSlice>();
+  for (const goalSlice of report.goalSlices) {
+    if (
+      !isExperienceGoalSlice(goalSlice)
+      || (
+        strict
+        && (
+          typeof goalSlice.traceId !== 'string'
+          || typeof goalSlice.timestampObserved !== 'boolean'
+        )
+      )
+      || goalSliceIds.has(goalSlice.id)
+    ) return false;
+    goalSliceIds.add(goalSlice.id);
+    goalSliceById.set(goalSlice.id, goalSlice as unknown as ExperienceGoalSlice);
+  }
+
+  const invocationById = new Map<string, ExperienceInvocation>();
+  const referencedGoalSliceIds = new Set<string>();
+  for (const invocation of report.invocations) {
+    if (invocationById.has(invocation.id)) return false;
+    invocationById.set(invocation.id, invocation);
+    if (
+      strict
+      && (
+        countRecordTotal(invocation.toolCounts) !== invocation.metrics.numToolCalls
+        || !toolOutcomeCountsMatch(
+          invocation.metrics,
+          invocation.indicators,
+        )
+      )
+    ) return false;
+    if (!goalSliceIds.has(invocation.goalSliceId)) return false;
+    const goalSlice = goalSliceById.get(invocation.goalSliceId);
+    if (
+      goalSlice
+      && (
+        goalSlice.skillName !== invocation.skillName
+        || goalSlice.sessionId !== invocation.sessionId
+        || goalSlice.sourceTrace !== invocation.sourceTrace
+        || goalSlice.startTimestamp !== invocation.startTimestamp
+        || goalSlice.endTimestamp !== invocation.endTimestamp
+        || (
+          strict
+          && (
+            goalSlice.traceId !== invocation.traceId
+            || goalSlice.timestampObserved !== invocation.timestampObserved
+          )
+        )
+      )
+    ) return false;
+    referencedGoalSliceIds.add(invocation.goalSliceId);
+    if (strict && (!invocation.timelineRef || !invocation.timelineEventIds)) return false;
+    if (!invocation.timelineRef) {
+      if (invocation.timeline.length === 0 && (invocation.timelineEventIds?.length ?? 0) > 0) return false;
+      continue;
+    }
+    const eventIds = timelineEventsByRef.get(invocation.timelineRef);
+    if (!eventIds) return false;
+    if (timelineByRef.get(invocation.timelineRef)?.sessionGroupKey !== invocation.sessionGroupKey) return false;
+    if (
+      invocation.timelineEventIds
+      && new Set(invocation.timelineEventIds).size !== invocation.timelineEventIds.length
+    ) return false;
+    if (invocation.timelineEventIds?.some((id) => !eventIds.has(id))) return false;
+  }
+  if (referencedGoalSliceIds.size !== goalSliceIds.size) return false;
+
+  const sessionIds = new Set<string>();
+  const invocationReferenceCounts = new Map(
+    report.invocations.map((invocation) => [invocation.id, 0]),
+  );
+  const referencedTimelineIds = new Set<string>();
+  const referencedStoryContextIds = new Set<string>();
+  for (const session of report.sessions) {
+    if (sessionIds.has(session.id)) return false;
+    sessionIds.add(session.id);
+    if (
+      session.invocationIds.length === 0
+      || new Set(session.invocationIds).size !== session.invocationIds.length
+      || session.invocationIds.some((id) => !invocationById.has(id))
+    ) return false;
+    if (session.goalSliceIds.some((id) => !goalSliceIds.has(id))) return false;
+    const sessionInvocations = session.invocationIds
+      .map((id) => invocationById.get(id))
+      .filter((value): value is ExperienceInvocation => Boolean(value));
+    const sessionGroupKeys = new Set(sessionInvocations.map((invocation) => invocation.sessionGroupKey));
+    const invocationGoalSliceIds = new Set(sessionInvocations.map((invocation) => invocation.goalSliceId));
+    if (
+      sessionInvocations.some((invocation) => invocation.skillName !== session.skillName)
+      || sessionGroupKeys.size !== 1
+      || session.goalSliceIds.length !== invocationGoalSliceIds.size
+      || session.goalSliceIds.some((id) => !invocationGoalSliceIds.has(id))
+    ) return false;
+    for (const invocation of sessionInvocations) {
+      invocationReferenceCounts.set(
+        invocation.id,
+        (invocationReferenceCounts.get(invocation.id) ?? 0) + 1,
+      );
+    }
+    if (strict) {
+      const timestampedInvocations = sessionInvocations.filter(invocationTimestampObserved);
+      const expectedStartTimestamp = minString(
+        timestampedInvocations.map((invocation) => invocation.startTimestamp),
+      ) ?? sessionInvocations[0]?.startTimestamp;
+      const expectedEndTimestamp = maxString(
+        timestampedInvocations.map((invocation) => invocation.endTimestamp),
+      ) ?? sessionInvocations[0]?.endTimestamp;
+      if (
+        sessionInvocations.some((invocation) => invocation.timelineRef !== session.timelineRef)
+      ) return false;
+      const invocationIndicators = sumIndicators(
+        sessionInvocations.map((invocation) => invocation.indicators),
+      );
+      const expectedIndicators = enrichRouterDownstreamIndicators({
+        ...session,
+        indicators: invocationIndicators,
+      });
+      const expectedReviewPriorityScore = scoreForIndicators(expectedIndicators);
+      const expectedReviewPriority = session.reviewerReport
+        ? priorityForReviewerFindings({
+            ...session,
+            indicators: expectedIndicators,
+            reviewPriorityScore: expectedReviewPriorityScore,
+          }, session.reviewerReport.findings)
+        : priorityForScore(expectedReviewPriorityScore);
+      if (
+        !indicatorRecordsEqual(session.indicators, expectedIndicators)
+        || session.reviewPriorityScore !== expectedReviewPriorityScore
+        || session.reviewPriority !== expectedReviewPriority
+        || !sameStringArray(
+          session.reviewBasisCodes,
+          basisCodesForIndicators(expectedIndicators),
+        )
+        || session.startTimestamp !== expectedStartTimestamp
+        || session.endTimestamp !== expectedEndTimestamp
+        || session.timestampedInvocationCount !== timestampedInvocations.length
+        || session.timestampCoverage !== timestampedInvocations.length / sessionInvocations.length
+      ) return false;
+      const sessionGroupKey = sessionInvocations[0]?.sessionGroupKey;
+      if (
+        sessionGroupKey
+        && timelineByRef.get(session.timelineRef ?? '')?.sessionGroupKey !== sessionGroupKey
+      ) return false;
+    }
+    if (strict && (!session.timelineRef || !session.timelinePreviewEventIds)) return false;
+    if (session.timelineRef) {
+      referencedTimelineIds.add(session.timelineRef);
+      const eventIds = timelineEventsByRef.get(session.timelineRef);
+      const timeline = timelineByRef.get(session.timelineRef);
+      if (!eventIds) return false;
+      if (
+        session.timelinePreviewEventIds
+        && new Set(session.timelinePreviewEventIds).size !== session.timelinePreviewEventIds.length
+      ) return false;
+      if (session.timelinePreviewEventIds?.some((id) => !eventIds.has(id))) return false;
+      if (
+        strict
+        && (
+          timeline?.sessionId !== session.sessionId
+          || !timelineScopeMatches(
+            session,
+            sessionInvocations,
+            timeline,
+          )
+        )
+      ) return false;
+    } else if (
+      session.fullSessionTimeline.length === 0
+      && session.timelinePreview.length === 0
+      && (session.timelinePreviewEventIds?.length ?? 0) > 0
+    ) {
+      return false;
+    }
+    if (session.sessionStory?.contextRef) {
+      referencedStoryContextIds.add(session.sessionStory.contextRef);
+    }
+    if (
+      strict
+      && session.reviewerReport
+      && !reviewerMetricsMatch(
+        session.reviewerReport,
+        session,
+        sessionInvocations,
+        timelineByRef.get(session.timelineRef ?? ''),
+      )
+    ) return false;
+  }
+  if (
+    Array.from(invocationReferenceCounts.values()).some((count) => count !== 1)
+    || (strict && referencedTimelineIds.size !== timelineEventsByRef.size)
+  ) return false;
+
+  const storyContextIds = new Set<string>();
+  const storyContextById = new Map<string, ExperienceStoryContext>();
+  const storyContextSessionGroupKeys = new Set<string>();
+  for (const context of report.storyContexts) {
+    if (
+      storyContextIds.has(context.id)
+      || storyContextSessionGroupKeys.has(context.sessionGroupKey)
+    ) return false;
+    storyContextIds.add(context.id);
+    storyContextById.set(context.id, context);
+    storyContextSessionGroupKeys.add(context.sessionGroupKey);
+  }
+  const skillNames = new Set<string>();
+  for (const skill of report.skills) {
+    if (
+      !isExperienceSkillSummary(skill, strict)
+      || skillNames.has(skill.skillName)
+    ) return false;
+    if (strict) {
+      const skillInvocations = report.invocations.filter(
+        (invocation) => invocation.skillName === skill.skillName,
+      );
+      const skillSessions = report.sessions.filter(
+        (session) => session.skillName === skill.skillName,
+      );
+      const timestampedInvocations = skillInvocations.filter(invocationTimestampObserved);
+      const expectedFirstSeen = minString(
+        timestampedInvocations.map((invocation) => invocation.startTimestamp),
+      ) ?? skillSessions[0]?.startTimestamp;
+      const expectedLastSeen = maxString(
+        timestampedInvocations.map((invocation) => invocation.endTimestamp),
+      ) ?? skillSessions[0]?.endTimestamp;
+      if (
+        skill.invocationCount !== skillInvocations.length
+        || skill.sessionCount !== skillSessions.length
+        || !indicatorRecordsEqual(
+          skill.indicators,
+          sumIndicators(skillSessions.map((session) => session.indicators)),
+        )
+        || !countRecordsEqual(
+          skill.toolCounts,
+          sumRecordCounts(skillInvocations.map((invocation) => invocation.toolCounts)),
+        )
+        || skill.firstSeen !== expectedFirstSeen
+        || skill.lastSeen !== expectedLastSeen
+        || skill.timestampedInvocationCount !== timestampedInvocations.length
+        || skill.timestampCoverage !== (
+          skillInvocations.length > 0
+            ? timestampedInvocations.length / skillInvocations.length
+            : 0
+        )
+        || skill.reviewFirstSessionCount !== skillSessions.filter(
+          (session) => session.reviewPriority === 'review_first',
+        ).length
+        || skill.sampleReviewSessionCount !== skillSessions.filter(
+          (session) => session.reviewPriority === 'sample_review',
+        ).length
+      ) return false;
+    }
+    skillNames.add(skill.skillName);
+  }
+  if (
+    report.sessions.some((session) => !skillNames.has(session.skillName))
+    || report.invocations.some((invocation) => !skillNames.has(invocation.skillName))
+    || (strict && referencedStoryContextIds.size !== storyContextIds.size)
+  ) return false;
+  return report.sessions.every((session) => {
+    const contextRef = session.sessionStory?.contextRef;
+    if (strict && session.sessionStory && !contextRef) return false;
+    if (contextRef && !storyContextIds.has(contextRef)) return false;
+    if (strict && contextRef) {
+      const firstInvocation = session.invocationIds
+        .map((id) => invocationById.get(id))
+        .find((value): value is ExperienceInvocation => Boolean(value));
+      const storyInvocations = firstInvocation
+        ? report.invocations.filter(
+            (invocation) => invocation.sessionGroupKey === firstInvocation.sessionGroupKey,
+          )
+        : [];
+      const context = storyContextById.get(contextRef);
+      const timeline = timelineByRef.get(session.timelineRef ?? '');
+      if (
+        firstInvocation
+        && context?.sessionGroupKey !== firstInvocation.sessionGroupKey
+      ) return false;
+      if (
+        session.sessionStory
+        && context
+        && timeline
+        && !sessionStoryStructureIsConsistent(
+          session.sessionStory,
+          context,
+          storyInvocations,
+          timeline,
+        )
+      ) return false;
+    }
+    if (
+      strict
+      && session.reviewerReport
+      && session.reviewerReport.sessionStoryRef !== 'session'
+      && !isObjectRecord((session.reviewerReport as unknown as Record<string, unknown>).sessionStory)
+    ) return false;
+    return session.reviewerReport?.sessionStoryRef !== 'session' || Boolean(session.sessionStory);
+  });
+}
+
+function sessionStoryStructureIsConsistent(
+  story: ExperienceSessionStory,
+  context: ExperienceStoryContext,
+  invocations: ExperienceInvocation[],
+  timeline: ExperienceTraceTimeline,
+): boolean {
+  const timelineEvents = flattenTimelineTree(timeline.tree);
+  const expectedGoalSliceIds = new Set(invocations.map((invocation) => invocation.goalSliceId));
+  const contextGoalSliceIds = context.goalSlices.map((goalSlice) => goalSlice.id);
+  if (
+    story.invocationCount !== invocations.length
+    || story.goalSliceCount !== expectedGoalSliceIds.size
+    || contextGoalSliceIds.length !== expectedGoalSliceIds.size
+    || new Set(contextGoalSliceIds).size !== contextGoalSliceIds.length
+    || contextGoalSliceIds.some((id) => !expectedGoalSliceIds.has(id))
+    || story.branchCount !== timeline.tree.branches.length
+    || story.progressUpdateCount !== timelineEvents.filter(isAssistantProgressUpdateEvent).length
+    || story.finalDeliverySignalCount !== timelineEvents.filter(isAssistantDeliveryEvent).length
+  ) return false;
+  if (!storyContextEpisodesAreConsistent(context, invocations, timeline.sessionId)) return false;
+
+  const branchById = new Map(timeline.tree.branches.map((branch) => [branch.id, branch]));
+  if (
+    context.subagentDispatches.length !== branchById.size
+    || new Set(context.subagentDispatches.map((dispatch) => dispatch.id)).size
+      !== context.subagentDispatches.length
+    || new Set(context.subagentDispatches.map((dispatch) => dispatch.branchId)).size
+      !== context.subagentDispatches.length
+    || context.subagentDispatches.some((dispatch) => {
+      const branch = branchById.get(dispatch.branchId);
+      return !branch
+        || dispatch.childSessionId !== branch.sessionId
+        || dispatch.traceId !== (branch.traceId ?? branch.sourceTrace)
+        || dispatch.sourceTrace !== branch.sourceTrace
+        || dispatch.eventCount !== branch.events.length;
+    })
+  ) return false;
+
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  const invocationReferenceCounts = new Map(
+    invocations.map((invocation) => [invocation.id, 0]),
+  );
+  const skillLinkIds = new Set<string>();
+  for (const link of story.skillLinks) {
+    if (
+      skillLinkIds.has(link.id)
+      || new Set(link.invocationIds).size !== link.invocationIds.length
+      || link.invocationIds.some((id) => !invocationById.has(id))
+    ) return false;
+    skillLinkIds.add(link.id);
+    const linkedInvocations = link.invocationIds
+      .map((id) => invocationById.get(id))
+      .filter((value): value is ExperienceInvocation => Boolean(value));
+    const linkedGoalSliceIds = new Set(
+      linkedInvocations.map((invocation) => invocation.goalSliceId),
+    );
+    if (
+      linkedInvocations.some((invocation) => invocation.skillName !== link.skillName)
+      || link.goalSliceIds.length !== linkedGoalSliceIds.size
+      || link.goalSliceIds.some((id) => !linkedGoalSliceIds.has(id))
+    ) return false;
+    for (const invocation of linkedInvocations) {
+      invocationReferenceCounts.set(
+        invocation.id,
+        (invocationReferenceCounts.get(invocation.id) ?? 0) + 1,
+      );
+    }
+  }
+  if ([...invocationReferenceCounts.values()].some((count) => count !== 1)) return false;
+
+  const nodeIds = story.nodes.map((node) => node.id);
+  const nodeIdSet = new Set(nodeIds);
+  const graphNodeIds = story.graph.nodes.map((node) => node.id);
+  const expectedGraphNodeIds = new Set([...nodeIds, ...skillLinkIds]);
+  if (
+    nodeIdSet.size !== nodeIds.length
+    || new Set(story.mainlineNodeIds).size !== story.mainlineNodeIds.length
+    || story.mainlineNodeIds.some((id) => !nodeIdSet.has(id))
+    || new Set(graphNodeIds).size !== graphNodeIds.length
+    || graphNodeIds.length !== expectedGraphNodeIds.size
+    || graphNodeIds.some((id) => !expectedGraphNodeIds.has(id))
+    || story.graph.nodes.some((node) =>
+      node.detailNodeId !== undefined && !nodeIdSet.has(node.detailNodeId)
+    )
+    || story.graph.edges.some((edge) =>
+      !expectedGraphNodeIds.has(edge.fromId) || !expectedGraphNodeIds.has(edge.toId)
+    )
+  ) return false;
+
+  return true;
+}
+
+function timelineScopeMatches(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  timeline: ExperienceTraceTimeline | undefined,
+): boolean {
+  if (!timeline) return false;
+  const events = flattenTimelineTree(timeline.tree);
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const invocationEventIds = new Set(
+    invocations.flatMap((invocation) => invocation.timelineEventIds ?? []),
+  );
+  const previewEventIds = session.timelinePreviewEventIds ?? [];
+  if (previewEventIds.some((id) => !invocationEventIds.has(id))) return false;
+  const invocationEvents = [...invocationEventIds]
+    .map((id) => eventById.get(id))
+    .filter((event): event is ExperienceTimelineEvent => Boolean(event));
+  if (invocationEvents.length !== invocationEventIds.size) return false;
+  const previewEvents = previewEventIds
+    .map((id) => eventById.get(id))
+    .filter((event): event is ExperienceTimelineEvent => Boolean(event));
+  const eventPositionById = new Map(events.map((event, index) => [event.id, index]));
+  const previewPositions = previewEventIds
+    .map((id) => eventPositionById.get(id))
+    .filter((index): index is number => typeof index === 'number');
+  const omittedBeforeCount = previewPositions.length > 0 ? Math.min(...previewPositions) : 0;
+  const omittedAfterCount = previewPositions.length > 0
+    ? events.length - 1 - Math.max(...previewPositions)
+    : 0;
+  const scope = session.timelineScope;
+  return scope.segmentEventCount === invocationEventIds.size
+    && scope.previewEventCount === previewEventIds.length
+    && scope.fullSessionEventCount === events.length
+    && traceRecordRangesEqual(scope.segmentRecordRanges, traceRecordRanges(invocationEvents))
+    && traceRecordRangesEqual(scope.previewRecordRanges, traceRecordRanges(previewEvents))
+    && traceRecordRangesEqual(scope.sessionRecordRanges, traceRecordRanges(events))
+    && scope.omittedBeforeCount === omittedBeforeCount
+    && scope.omittedAfterCount === omittedAfterCount
+    && scope.truncated === (
+      invocationEventIds.size > previewEventIds.length
+      || omittedBeforeCount > 0
+      || omittedAfterCount > 0
+    );
+}
+
+function traceRecordRangesEqual(
+  left: ExperienceTraceRecordRange[],
+  right: ExperienceTraceRecordRange[],
+): boolean {
+  return left.length === right.length
+    && left.every((range, index) =>
+      range.traceId === right[index].traceId
+      && range.sourceTrace === right[index].sourceTrace
+      && range.startRecordIndex === right[index].startRecordIndex
+      && range.endRecordIndex === right[index].endRecordIndex
+      && range.eventCount === right[index].eventCount
+    );
+}
+
+function storyContextEpisodesAreConsistent(
+  context: ExperienceStoryContext,
+  invocations: ExperienceInvocation[],
+  sessionId: string,
+): boolean {
+  const goalSliceIds = new Set(context.goalSlices.map((goalSlice) => goalSlice.id));
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  const episodeIds = new Set<string>();
+  for (const episode of context.episodes) {
+    if (episodeIds.has(episode.id) || episode.sessionId !== sessionId) return false;
+    episodeIds.add(episode.id);
+
+    const skillSegmentById = new Map<string, ExperienceSkillSegment>();
+    for (const segment of episode.skillSegments) {
+      if (
+        skillSegmentById.has(segment.id)
+        || new Set(segment.skillInvocationIds).size !== segment.skillInvocationIds.length
+        || segment.skillInvocationIds.some((id) => invocationById.get(id)?.skillName !== segment.skillName)
+        || Date.parse(segment.startTimestamp) < Date.parse(episode.startTimestamp)
+        || Date.parse(segment.endTimestamp) > Date.parse(episode.endTimestamp)
+      ) return false;
+      skillSegmentById.set(segment.id, segment);
+    }
+
+    const edgeIds = new Set<string>();
+    for (const edge of episode.orchestrationEdges) {
+      const parent = edge.parentSkillSegmentId
+        ? skillSegmentById.get(edge.parentSkillSegmentId)
+        : undefined;
+      const executor = edge.executorSkillSegmentId
+        ? skillSegmentById.get(edge.executorSkillSegmentId)
+        : undefined;
+      if (
+        edgeIds.has(edge.id)
+        || edge.episodeId !== episode.id
+        || (edge.parentSkillSegmentId !== undefined && !parent)
+        || (edge.executorSkillSegmentId !== undefined && !executor)
+        || (
+          edge.edgeKind === 'internal_skill'
+          && (!parent || !executor || parent.id === executor.id)
+        )
+      ) return false;
+      edgeIds.add(edge.id);
+    }
+
+    const signalIds = new Set<string>();
+    for (const signal of episode.feedbackSignals) {
+      if (signalIds.has(signal.id)) return false;
+      signalIds.add(signal.id);
+      const attributionGroups = [
+        signal.attributions,
+        signal.canonicalAttributions ?? [],
+      ];
+      for (const attribution of attributionGroups.flat()) {
+        if (!attribution.skillSegmentId) continue;
+        const segment = skillSegmentById.get(attribution.skillSegmentId);
+        if (!segment || (attribution.skillName && attribution.skillName !== segment.skillName)) {
+          return false;
+        }
+      }
+    }
+
+    if (episode.goalEvidenceRefs.some((ref) =>
+      ref.kind === 'goal_slice'
+        ? !ref.goalSliceId || !goalSliceIds.has(ref.goalSliceId)
+        : ref.goalSliceId !== undefined && !goalSliceIds.has(ref.goalSliceId)
+    )) return false;
+  }
+  return true;
+}
+
+function traceTimelineStructureIsConsistent(timeline: ExperienceTraceTimeline): boolean {
+  const branches = timeline.tree.branches;
+  if (new Set(branches.map((branch) => branch.id)).size !== branches.length) return false;
+  if (timeline.tree.main.some((event) => event.sessionId !== timeline.sessionId)) return false;
+  const mainTraceIds = new Set(
+    timeline.tree.main
+      .map((event) => event.traceId)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const mainSourceTraces = new Set(timeline.tree.main.map((event) => event.sourceTrace));
+  if (mainTraceIds.size > 1 || mainSourceTraces.size > 1) return false;
+
+  for (const branch of branches) {
+    if (branch.events.some((event) =>
+      event.sessionId !== timeline.sessionId
+      || (branch.traceId !== undefined && event.traceId !== branch.traceId)
+      || event.sourceTrace !== branch.sourceTrace
+      || event.traceRole !== branch.traceRole
+    )) return false;
+    if (
+      branch.attachTo
+      && !timeline.tree.main.some((event) =>
+        (
+          branch.attachTo?.traceId !== undefined
+            ? event.traceId === branch.attachTo.traceId
+            : event.sourceTrace === branch.attachTo?.sourceTrace
+        )
+        && event.sourceTrace === branch.attachTo?.sourceTrace
+        && (
+          branch.attachTo.messageIndex === undefined
+          || event.messageIndex === branch.attachTo.messageIndex
+        )
+        && (
+          branch.attachTo.callInstanceId === undefined
+          || event.callInstanceId === branch.attachTo.callInstanceId
+        )
+        && (
+          branch.attachTo.toolUseId === undefined
+          || event.toolUseId === branch.attachTo.toolUseId
+        )
+        && (
+          branch.attachTo.label === undefined
+          || event.label === branch.attachTo.label
+          || event.toolName === branch.attachTo.label
+        )
+      )
+    ) return false;
+  }
+  return true;
+}
+
+type ToolOutcomeSummary = Pick<
+  ExperienceReviewIndicators,
+  'toolCallCount' | 'toolFailureCount' | 'toolCancelledCount' | 'toolUnknownCount'
+>;
+
+type InvocationToolOutcomeSummary = Pick<
+  ExperienceInvocation['metrics'],
+  'numToolCalls' | 'numToolFailures' | 'numToolCancelled' | 'numToolUnknown'
+>;
+
+function toolOutcomeCountsMatch(
+  left: ToolOutcomeSummary | InvocationToolOutcomeSummary,
+  right: ToolOutcomeSummary,
+): boolean {
+  const normalized = 'numToolCalls' in left
+    ? {
+        toolCallCount: left.numToolCalls,
+        toolFailureCount: left.numToolFailures,
+        toolCancelledCount: left.numToolCancelled,
+        toolUnknownCount: left.numToolUnknown,
+      }
+    : left;
+  return normalized.toolCallCount === right.toolCallCount
+    && normalized.toolFailureCount === right.toolFailureCount
+    && (normalized.toolCancelledCount ?? 0) === (right.toolCancelledCount ?? 0)
+    && (normalized.toolUnknownCount ?? 0) === (right.toolUnknownCount ?? 0);
+}
+
+function indicatorRecordsEqual(
+  left: ExperienceReviewIndicators,
+  right: ExperienceReviewIndicators,
+): boolean {
+  const keys = [
+    ...EXPERIENCE_INDICATOR_KEYS,
+    'toolCancelledCount',
+    'toolUnknownCount',
+  ] as const;
+  return keys.every((key) => (left[key] ?? 0) === (right[key] ?? 0));
+}
+
+function reviewerMetricsMatch(
+  reviewer: ExperienceReviewerReport,
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  timeline: ExperienceTraceTimeline | undefined,
+): boolean {
+  const metrics = reviewer.oneLookMetrics;
+  const expectedUsage = sumTokenUsage(invocations);
+  const timelineEvents = timeline ? flattenTimelineTree(timeline.tree) : [];
+  const hydratedSession = {
+    ...session,
+    fullSessionTimeline: timelineEvents,
+    timelineTree: timeline?.tree,
+  };
+  return toolOutcomeCountsMatch(
+    metrics,
+    session.indicators,
+  )
+    && metrics.userMessageCount === session.indicators.userMessageCount
+    && metrics.assistantDeliverySignalCount === session.indicators.assistantDeliverySignalCount
+    && metrics.deliverableArtifactSignalCount === session.indicators.deliverableArtifactSignalCount
+    && metrics.routerDownstreamCompleted === session.indicators.routerDownstreamCompleted
+    && metrics.routerDownstreamFailed === session.indicators.routerDownstreamFailed
+    && metrics.assistantProgressUpdateCount === assistantProgressUpdateEvents(hydratedSession).length
+    && metrics.selfCorrectionCount === session.indicators.selfCorrectionCount
+    && metrics.repeatedExecutionCount === session.indicators.repeatedExecutionCount
+    && metrics.finalDeliverySignalCount === assistantFinalDeliveryEvents(hydratedSession).length
+    && metrics.traceEventCount === timelineEvents.length
+    && metrics.tokenUsage.inputTokens === expectedUsage.inputTokens
+    && metrics.tokenUsage.outputTokens === expectedUsage.outputTokens
+    && metrics.tokenUsage.cacheReadTokens === expectedUsage.cacheReadTokens
+    && metrics.tokenUsage.cacheCreationTokens === expectedUsage.cacheCreationTokens
+    && metrics.tokenUsage.observedInvocationCount === expectedUsage.observedInvocationCount
+    && metrics.tokenUsage.invocationCount === expectedUsage.invocationCount
+    && metrics.tokenUsage.coverage === expectedUsage.coverage;
+}
+
+function countRecordTotal(value: Record<string, number>): number {
+  return sumSafeCounts(...Object.values(value));
+}
+
+function countRecordsEqual(left: Record<string, number>, right: Record<string, number>): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every((key) => (left[key] ?? 0) === (right[key] ?? 0));
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function storyContextsFromSessions(
+  sessions: ExperienceSessionSummary[],
+  invocations: ExperienceInvocation[],
+): ExperienceStoryContext[] {
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  const contexts = new Map<string, ExperienceStoryContext>();
+  for (const session of sessions) {
+    const story = session.sessionStory;
+    if (!story) continue;
+    const invocation = session.invocationIds
+      .map((id) => invocationById.get(id))
+      .find((value): value is ExperienceInvocation => Boolean(value));
+    const sessionGroupKey = invocation?.sessionGroupKey ?? session.sessionId;
+    const id = story.contextRef ?? storyContextRefForSessionGroup(sessionGroupKey);
+    if (contexts.has(id)) continue;
+    contexts.set(id, {
+      id,
+      sessionGroupKey,
+      goalSlices: story.goalSlices,
+      subagentDispatches: story.subagentDispatches,
+      episodes: story.episodes ?? [],
+    });
+  }
+  return Array.from(contexts.values());
+}
+
+function timelineRefForSessionGroup(sessionGroupKey: string): string {
+  return hashParts('trace-timeline', sessionGroupKey);
+}
+
+function storyContextRefForSessionGroup(sessionGroupKey: string): string {
+  return hashParts('story-context', sessionGroupKey);
+}
+
+function flattenTimelineTree(tree: ExperienceTimelineTree): ExperienceTimelineEvent[] {
+  return uniqueTimelineEvents([
+    ...tree.main,
+    ...tree.branches.flatMap((branch) => branch.events),
+  ]).sort(compareTimelineEvents);
+}
+
+function compactSessionStory(
+  story: ExperienceSessionStory,
+  contextRef: string,
+): PersistedExperienceSessionStory {
+  const persisted = omitProperties(story, [
+    'goalSlices',
+    'subagentDispatches',
+    'episodes',
+  ]);
+  return { ...persisted, contextRef };
+}
+
+function omitSessionStory(
+  report: ExperienceReviewerReport,
+): Omit<ExperienceReviewerReport, 'sessionStory' | 'sessionStoryRef'> {
+  return omitProperties(report, ['sessionStory', 'sessionStoryRef']);
+}
+
+function omitProperties<T extends object, K extends keyof T>(
+  value: T,
+  keys: readonly K[],
+): Omit<T, K> {
+  const copy = { ...value };
+  for (const key of keys) delete copy[key];
+  return copy;
 }
 
 function relatedObservationItems(segment: SkillSegment, items: ObservationInboxItem[]): ObservationInboxItem[] {
   return items.filter((item) =>
     item.skillName === segment.skillName
+    && (
+      item.traceId && segment.traceId
+        ? item.traceId === segment.traceId
+        : true
+    )
+    // main/subagent 可以共享逻辑 sessionId，且调用同一个 skill。新数据都有
+    // sourceTrace，必须严格按物理 trace 归因；空字符串仅用于兼容旧聚合数据。
+    && (!item.sourceTrace || !segment.sourceTrace || item.sourceTrace === segment.sourceTrace)
     && (item.sessionId === segment.sessionId || item.recentSessionIds.includes(segment.sessionId))
     && timestampsOverlap(item.firstSeen, item.lastSeen, segment.startTimestamp, segment.endTimestamp));
+}
+
+function metricTimelineForSegment(
+  timeline: ExperienceTimelineEvent[],
+  segment: SkillSegment,
+): ExperienceTimelineEvent[] {
+  const callInstanceIds = new Set(
+    segment.toolCalls.flatMap((call) => call.callInstanceId ? [call.callInstanceId] : []),
+  );
+  const legacyToolUseIds = new Set(
+    segment.toolCalls.flatMap((call) =>
+      !call.callInstanceId && call.toolUseId ? [call.toolUseId] : []
+    ),
+  );
+  return timeline.filter((event) =>
+    (event.kind !== 'tool_use' && event.kind !== 'tool_result')
+    || (
+      event.callInstanceId
+        ? callInstanceIds.has(event.callInstanceId)
+        : Boolean(event.toolUseId) && legacyToolUseIds.has(event.toolUseId!)
+    ));
 }
 
 function logicalSessionId(session: TraceSession): string {
@@ -378,21 +2848,7 @@ function experienceSessionGroupKey(session: TraceSession): string {
   if (session.role !== 'standalone' && session.groupPath) {
     return `group:${session.groupPath}\u0000${logicalId}`;
   }
-  return `trace:${session.sourcePath}`;
-}
-
-function groupSessionsByLogicalId(sessions: TraceSession[]): Map<string, TraceSession[]> {
-  const groups = new Map<string, TraceSession[]>();
-  for (const session of sessions) {
-    const key = logicalSessionId(session);
-    const group = groups.get(key) ?? [];
-    group.push(session);
-    groups.set(key, group);
-  }
-  for (const [key, group] of groups.entries()) {
-    groups.set(key, group.sort(compareSessionsForTimeline));
-  }
-  return groups;
+  return `trace:${session.traceId}`;
 }
 
 function groupSessionsByExperienceKey(sessions: TraceSession[]): Map<string, TraceSession[]> {
@@ -415,7 +2871,8 @@ function compareSessionsForTimeline(a: TraceSession, b: TraceSession): number {
   if (rank !== 0) return rank;
   const time = (a.startTimestamp ?? '').localeCompare(b.startTimestamp ?? '');
   if (time !== 0) return time;
-  return a.sourcePath.localeCompare(b.sourcePath);
+  return a.sourcePath.localeCompare(b.sourcePath)
+    || a.traceId.localeCompare(b.traceId);
 }
 
 function timestampsOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
@@ -544,8 +3001,36 @@ function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
   return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
 }
 
-function buildTimeline(session: TraceSession, start: number, end: number): ExperienceTimelineEvent[] {
-  return buildTimelineWindow(session, start, end);
+function buildInvocationTimeline(
+  session: TraceSession,
+  start: number,
+  end: number,
+  segment: SkillSegment,
+): ExperienceTimelineEvent[] {
+  const window = buildTimelineWindow(session, start, end);
+  const callInstanceIds = new Set(
+    segment.toolCalls.flatMap((toolCall) =>
+      toolCall.callInstanceId ? [toolCall.callInstanceId] : []
+    ),
+  );
+  const legacyCallIds = new Set(
+    segment.toolCalls.flatMap((toolCall) =>
+      !toolCall.callInstanceId && toolCall.toolUseId ? [toolCall.toolUseId] : []
+    ),
+  );
+  if (callInstanceIds.size === 0 && legacyCallIds.size === 0) return window;
+  const linkedResults = session.events.flatMap((event, eventIndex) =>
+    event.eventKind === 'tool_result'
+    && (
+      event.callInstanceId
+        ? callInstanceIds.has(event.callInstanceId)
+        : legacyCallIds.has(event.callId)
+    )
+    && (eventIndex < start || eventIndex >= end)
+      ? timelineEventsFromTraceEvent(session, event, eventIndex)
+      : [],
+  );
+  return uniqueTimelineEvents([...window, ...linkedResults]).sort(compareTimelineEvents);
 }
 
 function buildTimelineWindow(session: TraceSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -564,6 +3049,7 @@ function timelineEventsFromTraceEvent(
 ): ExperienceTimelineEvent[] {
   const messageIndex = event.sourceIndex;
   const base = {
+    traceId: session.traceId,
     sourceTrace: session.sourcePath,
     sessionId: logicalSessionId(session),
     traceRole: session.role,
@@ -578,6 +3064,17 @@ function timelineEventsFromTraceEvent(
 
   if (event.eventKind === 'message' && event.role === 'user') {
     return userTimelineEvents(event, base, order);
+  }
+  if (event.eventKind === 'message' && event.role === 'system') {
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'tool',
+      order,
+      snippet: snippet(event.text, 700),
+      fullText: fullText(event.text),
+      label: 'system context',
+    })];
   }
   if (event.eventKind === 'message' && event.role === 'assistant') {
     const protocolReply = isAssistantProtocolReplyText(event.text);
@@ -598,6 +3095,7 @@ function timelineEventsFromTraceEvent(
       kind: 'tool_use',
       role: 'assistant',
       order,
+      callInstanceId: event.callInstanceId,
       toolUseId: event.callId,
       toolName: event.tool.displayName ?? event.tool.name,
       snippet: snippet(inputText, 900),
@@ -606,17 +3104,22 @@ function timelineEventsFromTraceEvent(
     })];
   }
   if (event.eventKind === 'tool_result') {
-    const failed = event.status === 'failure' || event.status === 'cancelled';
+    const failed = event.status === 'failure';
     return [timelineEvent({
       ...base,
       kind: 'tool_result',
       role: 'tool',
       order,
+      callInstanceId: event.callInstanceId,
       toolUseId: event.callId,
+      toolStatus: event.status,
       isError: failed,
       snippet: snippet(event.output, 900),
       fullText: fullText(event.output),
-      label: failed ? 'tool result error' : 'tool result',
+      label: failed
+        ? 'tool result error'
+        : event.status === 'cancelled' ? 'tool result cancelled'
+        : event.status === 'unknown' ? 'tool result status unknown' : 'tool result',
     })];
   }
   if (event.eventKind === 'lifecycle') {
@@ -700,7 +3203,17 @@ function hasAssistantTurnFailedText(value: string): boolean {
 function timelineEvent(input: Omit<ExperienceTimelineEvent, 'id'>): ExperienceTimelineEvent {
   return {
     ...input,
-    id: hashParts(input.sourceTrace, input.sessionId, String(input.messageIndex ?? ''), input.kind, input.toolUseId ?? '', input.snippet ?? ''),
+    id: hashParts(
+      input.traceId ?? '',
+      input.sourceTrace,
+      input.sessionId,
+      input.messageUuid ?? '',
+      String(input.messageIndex ?? ''),
+      input.kind,
+      input.callInstanceId ?? '',
+      input.toolUseId ?? '',
+      input.snippet ?? '',
+    ),
   };
 }
 
@@ -715,12 +3228,14 @@ function observationEvidenceRef(item: ObservationInboxItem): ExperienceEvidenceR
   return {
     id: hashParts('observation', item.id),
     kind: 'observation',
+    traceId: item.traceId ?? item.evidence.traceId,
     sourceTrace: item.sourceTrace,
     sessionId: item.sessionId,
     messageIndex: item.evidence.messageIndex,
     logicalMessageIndex: item.evidence.messageIndex,
     sourceLineIndex: item.evidence.messageIndex,
     messageUuid: item.evidence.messageUuid,
+    callInstanceId: item.evidence.callInstanceId,
     toolUseId: item.evidence.toolUseId,
     timestamp: item.evidence.segmentTimestamp,
     role: 'other',
@@ -733,6 +3248,7 @@ function evidenceRefFromTimeline(event: ExperienceTimelineEvent): ExperienceEvid
   return {
     id: event.id,
     kind: event.kind,
+    traceId: event.traceId,
     sourceTrace: event.sourceTrace,
     sessionId: event.sessionId,
     traceRole: event.traceRole,
@@ -741,6 +3257,7 @@ function evidenceRefFromTimeline(event: ExperienceTimelineEvent): ExperienceEvid
     logicalMessageIndex: event.logicalMessageIndex ?? event.messageIndex,
     sourceLineIndex: event.sourceLineIndex ?? event.messageIndex,
     messageUuid: event.messageUuid,
+    callInstanceId: event.callInstanceId,
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,
     role: event.role,
@@ -914,15 +3431,27 @@ function indicatorsForSegment(
     repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: Math.max(segment.metrics.numToolFailures, timeline.filter(isToolFailureEvent).length),
+    toolCancelledCount: segment.metrics.numToolCancelled,
+    toolUnknownCount: segment.metrics.numToolUnknown,
     highObservationCount: relatedItems.filter((item) => item.severity === 'high').length,
     mediumObservationCount: relatedItems.filter((item) => item.severity === 'medium').length,
-    hedgingCount: relatedItems.filter((item) => item.signalType === 'hedging').reduce((sum, item) => sum + item.occurrences, 0),
-    explicitMarkerCount: relatedItems.filter((item) => item.signalType === 'explicit_marker').reduce((sum, item) => sum + item.occurrences, 0),
+    hedgingCount: sumSafeCounts(
+      ...relatedItems
+        .filter((item) => item.signalType === 'hedging')
+        .map((item) => item.occurrences),
+    ),
+    explicitMarkerCount: sumSafeCounts(
+      ...relatedItems
+        .filter((item) => item.signalType === 'explicit_marker')
+        .map((item) => item.occurrences),
+    ),
   };
 }
 
 function isToolFailureEvent(event: ExperienceTimelineEvent): boolean {
-  return event.kind === 'tool_result' && (event.isError === true || isToolResultFailureText(event.fullText ?? event.snippet ?? ''));
+  if (event.kind !== 'tool_result') return false;
+  if (event.toolStatus !== undefined) return event.toolStatus === 'failure';
+  return event.isError === true || isToolResultFailureText(event.fullText ?? event.snippet ?? '');
 }
 
 function isSessionInterruptedType(type: string): boolean {
@@ -981,6 +3510,10 @@ function summarizeExperienceSessions(
 ): ExperienceSessionSummary[] {
   const byKey = new Map<string, ExperienceInvocation[]>();
   const canonicalEpisodesBySessionGroup = new Map<string, ExperienceEpisode[]>();
+  const timelineBySessionGroup = new Map<string, {
+    tree?: ExperienceTimelineTree;
+    flattened: ExperienceTimelineEvent[];
+  }>();
   for (const invocation of invocations) {
     const key = `${invocation.skillName}\u0000${invocation.sessionGroupKey}`;
     const group = byKey.get(key) ?? [];
@@ -998,40 +3531,50 @@ function summarizeExperienceSessions(
     const sessionGroup = sessionGroupsByKey.get(first.sessionGroupKey) ?? [];
     const sourceSessionStartTimestamp = minString(sessionGroup.map((session) => session.startTimestamp));
     const sourceSessionEndTimestamp = maxString(sessionGroup.map((session) => session.endTimestamp));
-    const timelineTree = sessionGroup.length > 0 ? buildSessionTimelineTree(first.sessionId, sessionGroup) : undefined;
-    const fullSessionTimeline = timelineTree
-      ? uniqueTimelineEvents([
-        ...timelineTree.main,
-        ...timelineTree.branches.flatMap((branch) => branch.events),
-      ]).sort(compareTimelineEvents)
-      : timeline;
+    const timestampedInvocations = group.filter(invocationTimestampObserved);
+    const timestampedInvocationCount = timestampedInvocations.length;
+    const invocationStartTimestamp = minString(
+      timestampedInvocations.map((invocation) => invocation.startTimestamp),
+    ) ?? first.startTimestamp;
+    const invocationEndTimestamp = maxString(
+      timestampedInvocations.map((invocation) => invocation.endTimestamp),
+    ) ?? first.endTimestamp;
+    let cachedTimeline = timelineBySessionGroup.get(first.sessionGroupKey);
+    if (!cachedTimeline) {
+      const tree = sessionGroup.length > 0
+        ? buildSessionTimelineTree(first.sessionId, sessionGroup)
+        : undefined;
+      cachedTimeline = {
+        tree,
+        flattened: tree ? flattenTimelineTree(tree) : timeline,
+      };
+      timelineBySessionGroup.set(first.sessionGroupKey, cachedTimeline);
+    }
+    const timelineTree = cachedTimeline.tree;
+    const fullSessionTimeline = cachedTimeline.flattened;
     const fullSessionEventCount = fullSessionTimeline.length;
     const previewEvents = timeline.slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
-    const previewIndexes = previewEvents
-      .map((event) => event.messageIndex)
+    const fullSessionPositionById = new Map(
+      fullSessionTimeline.map((event, index) => [event.id, index]),
+    );
+    const previewPositions = previewEvents
+      .map((event) => fullSessionPositionById.get(event.id))
       .filter((index): index is number => typeof index === 'number');
-    const groupStartRecordIndex = minDefined(group.map((invocation) => minDefined(invocation.timeline.map((event) => event.messageIndex))));
-    const groupEndRecordIndex = maxDefined(group.map((invocation) => maxDefined(invocation.timeline.map((event) => event.messageIndex))));
-    const previewStartRecordIndex = minDefined(previewIndexes);
-    const previewEndRecordIndex = maxDefined(previewIndexes);
-    const fullSessionIndexes = fullSessionTimeline
-      .map((event) => event.messageIndex)
-      .filter((index): index is number => typeof index === 'number');
-    const sessionStartRecordIndex = minDefined(fullSessionIndexes) ?? 0;
-    const sessionEndRecordIndex = maxDefined(fullSessionIndexes) ?? Math.max(0, (sessionGroup[0]?.events.length ?? 1) - 1);
-    const omittedBeforeCount = previewStartRecordIndex === undefined
-      ? 0
-      : fullSessionTimeline.filter((event) => typeof event.messageIndex === 'number' && event.messageIndex < previewStartRecordIndex).length;
-    const omittedAfterCount = previewEndRecordIndex === undefined
-      ? 0
-      : fullSessionTimeline.filter((event) => typeof event.messageIndex === 'number' && event.messageIndex > previewEndRecordIndex).length;
+    const omittedBeforeCount = previewPositions.length > 0
+      ? Math.min(...previewPositions)
+      : 0;
+    const omittedAfterCount = previewPositions.length > 0
+      ? fullSessionTimeline.length - 1 - Math.max(...previewPositions)
+      : 0;
     const observationRefs = uniqueEvidenceRefs(group.flatMap((invocation) => invocation.evidenceRefs.filter((ref) => ref.kind === 'observation')));
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
     const metricScopeId = hashParts('session', first.skillName, first.sessionGroupKey);
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, metricScopeId);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((invocation) => invocation.problemPatterns));
-    const storyInvocations = invocations.filter((invocation) => invocation.sessionGroupKey === first.sessionGroupKey);
+    const storyInvocations = invocations
+      .filter((invocation) => invocation.sessionGroupKey === first.sessionGroupKey)
+      .sort(compareStoryInvocations);
     const baseSession: Omit<ExperienceSessionSummary, 'sessionStory' | 'reviewerReport'> = {
       id: metricScopeId,
       skillName: first.skillName,
@@ -1044,8 +3587,10 @@ function summarizeExperienceSessions(
       sourceSessionStartTimestamp,
       sourceSessionEndTimestamp,
       sourceSessionDurationMs: durationMsBetween(sourceSessionStartTimestamp, sourceSessionEndTimestamp),
-      startTimestamp: group.reduce((min, invocation) => invocation.startTimestamp < min ? invocation.startTimestamp : min, first.startTimestamp),
-      endTimestamp: group.reduce((max, invocation) => invocation.endTimestamp > max ? invocation.endTimestamp : max, first.endTimestamp),
+      startTimestamp: invocationStartTimestamp,
+      endTimestamp: invocationEndTimestamp,
+      timestampedInvocationCount,
+      timestampCoverage: group.length > 0 ? timestampedInvocationCount / group.length : 0,
       invocationIds: group.map((invocation) => invocation.id),
       goalSliceIds: unique(group.map((invocation) => invocation.goalSliceId)),
       reviewPriority: priorityForScore(reviewPriorityScore),
@@ -1057,19 +3602,19 @@ function summarizeExperienceSessions(
       assistiveInference,
       problemPatterns,
       relatedObservationIds,
+      timelineRef: timelineRefForSessionGroup(first.sessionGroupKey),
+      timelinePreviewEventIds: previewEvents.map((event) => event.id),
       timelinePreview: previewEvents,
       fullSessionTimeline,
       timelineTree,
       timelineScope: {
         mode: 'skill_segment_window',
-        segmentStartRecordIndex: groupStartRecordIndex,
-        segmentEndRecordIndex: groupEndRecordIndex,
-        previewStartRecordIndex,
-        previewEndRecordIndex,
-        sessionStartRecordIndex,
-        sessionEndRecordIndex,
+        segmentEventCount: timeline.length,
         previewEventCount: previewEvents.length,
         fullSessionEventCount,
+        segmentRecordRanges: traceRecordRanges(timeline),
+        previewRecordRanges: traceRecordRanges(previewEvents),
+        sessionRecordRanges: traceRecordRanges(fullSessionTimeline),
         truncated: timeline.length > previewEvents.length || omittedBeforeCount > 0 || omittedAfterCount > 0,
         omittedBeforeCount,
         omittedAfterCount,
@@ -1079,17 +3624,38 @@ function summarizeExperienceSessions(
       rawSkillRefs: unique(group.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
       commandNames: unique(group.map((invocation) => invocation.attribution.commandName).filter((value): value is string => Boolean(value))).sort(),
     };
-    const sessionStory = buildSessionStory(baseSession, storyInvocations, canonicalEpisodesBySessionGroup.get(first.sessionGroupKey), reviewState);
-    if (!canonicalEpisodesBySessionGroup.has(first.sessionGroupKey)) {
-      canonicalEpisodesBySessionGroup.set(first.sessionGroupKey, sessionStory.episodes ?? []);
+    let canonicalEpisodes = canonicalEpisodesBySessionGroup.get(first.sessionGroupKey);
+    if (!canonicalEpisodes) {
+      const canonicalSession = canonicalStorySession(baseSession, storyInvocations);
+      canonicalEpisodes = buildSessionStory(
+        canonicalSession,
+        storyInvocations,
+        undefined,
+        reviewState,
+      ).episodes ?? [];
+      canonicalEpisodesBySessionGroup.set(first.sessionGroupKey, canonicalEpisodes);
     }
+    const sessionStory = {
+      ...buildSessionStory(
+        baseSession,
+        storyInvocations,
+        canonicalEpisodes,
+        reviewState,
+      ),
+      contextRef: storyContextRefForSessionGroup(first.sessionGroupKey),
+    };
     const sessionWithStoryBase: ExperienceSessionSummary = {
       ...baseSession,
       sessionStory,
     };
+    const enrichedIndicators = enrichRouterDownstreamIndicators(sessionWithStoryBase);
+    const enrichedReviewPriorityScore = scoreForIndicators(enrichedIndicators);
     const sessionWithStory: ExperienceSessionSummary = {
       ...sessionWithStoryBase,
-      indicators: enrichRouterDownstreamIndicators(sessionWithStoryBase),
+      indicators: enrichedIndicators,
+      reviewPriority: priorityForScore(enrichedReviewPriorityScore),
+      reviewPriorityScore: enrichedReviewPriorityScore,
+      reviewBasisCodes: basisCodesForIndicators(enrichedIndicators),
     };
     const reviewerReport = buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory);
     return {
@@ -1101,8 +3667,108 @@ function summarizeExperienceSessions(
     const priorityDiff = experiencePriorityRank(b.reviewPriority) - experiencePriorityRank(a.reviewPriority);
     if (priorityDiff !== 0) return priorityDiff;
     if (b.reviewPriorityScore !== a.reviewPriorityScore) return b.reviewPriorityScore - a.reviewPriorityScore;
+    const timestampCoverageDiff =
+      sessionTimestampedInvocationCount(b) - sessionTimestampedInvocationCount(a);
+    if (timestampCoverageDiff !== 0) return timestampCoverageDiff;
     return b.endTimestamp.localeCompare(a.endTimestamp);
   });
+}
+
+function compareStoryInvocations(
+  left: ExperienceInvocation,
+  right: ExperienceInvocation,
+): number {
+  return left.startTimestamp.localeCompare(right.startTimestamp)
+    || left.sourceTrace.localeCompare(right.sourceTrace)
+    || left.segmentIndex - right.segmentIndex
+    || left.skillName.localeCompare(right.skillName)
+    || left.id.localeCompare(right.id);
+}
+
+function canonicalStorySession(
+  base: Omit<ExperienceSessionSummary, 'sessionStory' | 'reviewerReport'>,
+  invocations: ExperienceInvocation[],
+): ExperienceSessionSummary {
+  const first = invocations[0];
+  const indicators = sumIndicators(invocations.map((invocation) => invocation.indicators));
+  const relatedObservationIds = unique(
+    invocations.flatMap((invocation) => invocation.relatedObservationIds),
+  );
+  const observationRefs = uniqueEvidenceRefs(
+    invocations.flatMap((invocation) =>
+      invocation.evidenceRefs.filter((ref) => ref.kind === 'observation')
+    ),
+  );
+  const evidenceChain = evidenceChainForTimeline(base.fullSessionTimeline, observationRefs);
+  const reviewPriorityScore = scoreForIndicators(indicators);
+  const id = hashParts('session-story', first?.sessionGroupKey ?? base.sessionId);
+  const timestampedInvocations = invocations.filter(invocationTimestampObserved);
+  const ruleFindings = ruleFindingsForEvidence(
+    indicators,
+    base.fullSessionTimeline,
+    observationRefs,
+    evidenceChain,
+    id,
+  );
+  return {
+    ...base,
+    id,
+    skillName: first?.skillName ?? base.skillName,
+    sourceTrace: base.fullSessionTimeline.find((event) =>
+      event.traceRole === 'main' || event.traceRole === 'standalone'
+    )?.sourceTrace ?? first?.sourceTrace ?? base.sourceTrace,
+    sourceKind: first?.sourceKind ?? base.sourceKind,
+    entrypoint: first?.entrypoint ?? base.entrypoint,
+    sourceMetadata: mergeSourceMetadata(
+      invocations.map((invocation) => invocation.sourceMetadata),
+    ),
+    cwd: first?.cwd ?? base.cwd,
+    startTimestamp: minString(
+      timestampedInvocations.map((invocation) => invocation.startTimestamp),
+    ) ?? base.startTimestamp,
+    endTimestamp: maxString(
+      timestampedInvocations.map((invocation) => invocation.endTimestamp),
+    ) ?? base.endTimestamp,
+    timestampedInvocationCount: timestampedInvocations.length,
+    timestampCoverage: invocations.length > 0
+      ? timestampedInvocations.length / invocations.length
+      : 0,
+    invocationIds: invocations.map((invocation) => invocation.id),
+    goalSliceIds: unique(invocations.map((invocation) => invocation.goalSliceId)),
+    reviewPriority: priorityForScore(reviewPriorityScore),
+    reviewPriorityScore,
+    reviewBasisCodes: basisCodesForIndicators(indicators),
+    indicators,
+    evidenceChain,
+    ruleFindings,
+    assistiveInference: assistiveInferenceForEvidence(
+      indicators,
+      evidenceChain,
+      ruleFindings,
+    ),
+    problemPatterns: mergeExperienceProblemPatterns(
+      invocations.flatMap((invocation) => invocation.problemPatterns),
+    ),
+    relatedObservationIds,
+    attributionSources: unique(
+      invocations.map((invocation) => invocation.attribution.source).filter(Boolean),
+    ).sort(),
+    pluginNames: unique(
+      invocations
+        .map((invocation) => invocation.attribution.pluginName)
+        .filter((value): value is string => Boolean(value)),
+    ).sort(),
+    rawSkillRefs: unique(
+      invocations
+        .map((invocation) => invocation.attribution.rawSkillRef)
+        .filter((value): value is string => Boolean(value)),
+    ).sort(),
+    commandNames: unique(
+      invocations
+        .map((invocation) => invocation.attribution.commandName)
+        .filter((value): value is string => Boolean(value)),
+    ).sort(),
+  };
 }
 
 function experiencePriorityRank(priority: ExperienceReviewPriority): number {
@@ -1160,6 +3826,8 @@ function buildReviewerReport(
       oneLookMetrics: {
       toolCallCount: indicators.toolCallCount,
       toolFailureCount: indicators.toolFailureCount,
+      toolCancelledCount: indicators.toolCancelledCount ?? 0,
+      toolUnknownCount: indicators.toolUnknownCount ?? 0,
       userMessageCount: indicators.userMessageCount,
       userFollowUpCount: feedbackCounts.userFollowUpCount,
       assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
@@ -1254,9 +3922,14 @@ function buildSessionStory(
   const executionNode = push(
     'tool_execution',
     '执行过程',
-    session.indicators.toolFailureCount > 0 ? 'attention' : session.indicators.toolCallCount > 0 ? 'ok' : 'unknown',
+    session.indicators.toolFailureCount > 0
+      ? 'attention'
+      : (session.indicators.toolCancelledCount ?? 0) > 0
+        || (session.indicators.toolUnknownCount ?? 0) > 0
+        ? 'unknown'
+        : session.indicators.toolCallCount > 0 ? 'ok' : 'unknown',
     session.indicators.toolCallCount > 0
-      ? `执行中看到 ${session.indicators.toolCallCount} 次工具调用${session.indicators.toolFailureCount > 0 ? `，其中失败 ${session.indicators.toolFailureCount} 次` : ''}。`
+      ? executionOutcomeText(session.indicators)
       : '没有看到明确工具调用；只能根据消息上下文复盘。',
     uniqueEvidenceRefs([
       session.evidenceChain.firstToolUse,
@@ -1324,7 +3997,7 @@ function buildSessionStory(
     schemaVersion: 1,
     summary,
     invocationCount: invocations.length,
-    goalSliceCount: session.goalSliceIds.length,
+    goalSliceCount: goalSlices.length,
     branchCount: subagentDispatches.length,
     progressUpdateCount: progressUpdates.length,
     finalDeliverySignalCount: finalDeliveries.length,
@@ -1486,18 +4159,38 @@ function sessionStoryEpisodeRanges(
   timeline: ExperienceTimelineEvent[],
 ): ExperienceEpisodeRange[] {
   const primarySourceTrace = primarySourceTraceForSession(session);
-  const rangeTimeline = timeline.filter((event) => !primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace);
+  const primaryTraceId = primaryTraceIdForSession(session, primarySourceTrace);
+  const rangeTimeline = timeline.filter((event) =>
+    primaryTraceId
+      ? !event.traceId || event.traceId === primaryTraceId
+      : !primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace
+  );
   const indexes = rangeTimeline
     .map((event) => event.messageIndex)
     .filter((value): value is number => typeof value === 'number');
-  const sessionStart = minDefined(indexes) ?? session.timelineScope.sessionStartRecordIndex ?? 0;
-  const sessionEnd = maxDefined(indexes) ?? session.timelineScope.sessionEndRecordIndex ?? sessionStart;
+  const persistedRange = session.timelineScope.sessionRecordRanges?.find((range) =>
+    primaryTraceId
+      ? range.traceId === primaryTraceId
+      : range.sourceTrace === primarySourceTrace
+  );
+  const sessionStart = minDefined(indexes)
+    ?? persistedRange?.startRecordIndex
+    ?? session.timelineScope.sessionStartRecordIndex
+    ?? 0;
+  const sessionEnd = maxDefined(indexes)
+    ?? persistedRange?.endRecordIndex
+    ?? session.timelineScope.sessionEndRecordIndex
+    ?? sessionStart;
   const goalShiftStarts = unique(timeline
     .filter((event) =>
       event.kind === 'user_message'
       && typeof event.messageIndex === 'number'
       && event.messageIndex > sessionStart
-      && (!primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace)
+      && (
+        primaryTraceId
+          ? !event.traceId || event.traceId === primaryTraceId
+          : !primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace
+      )
     )
     .filter((event) => hasUserGoalShiftSignal(event.snippet ?? event.fullText ?? ''))
     .map((event) => event.messageIndex as number))
@@ -1506,10 +4199,27 @@ function sessionStoryEpisodeRanges(
   return starts.map((start, index) => ({
     startMessageIndex: start,
     endMessageIndex: (starts[index + 1] ?? (sessionEnd + 1)) - 1,
+    traceId: primaryTraceId,
     sourceTrace: primarySourceTrace,
     sessionId: session.sessionId,
     boundaryReason: index < starts.length - 1 ? 'goal_shift' : undefined,
   }));
+}
+
+function primaryTraceIdForSession(
+  session: ExperienceSessionSummary,
+  primarySourceTrace = primarySourceTraceForSession(session),
+): string | undefined {
+  const timeline = session.fullSessionTimeline.length > 0
+    ? session.fullSessionTimeline
+    : session.timelinePreview;
+  return timeline.find((event) =>
+    event.traceRole === 'main'
+    && (!primarySourceTrace || event.sourceTrace === primarySourceTrace)
+  )?.traceId
+    ?? timeline.find((event) =>
+      !primarySourceTrace || event.sourceTrace === primarySourceTrace
+    )?.traceId;
 }
 
 function primarySourceTraceForSession(session: ExperienceSessionSummary): string | undefined {
@@ -1522,17 +4232,17 @@ function primarySourceTraceForSession(session: ExperienceSessionSummary): string
 
 function episodeRangeContainsRef(
   range: ExperienceEpisodeRange,
-  ref?: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+  ref?: Pick<ExperienceEvidenceRef, 'messageIndex' | 'traceId' | 'sourceTrace' | 'sessionId'>,
 ): boolean {
   if (!ref || typeof ref.messageIndex !== 'number') return false;
-  // New observations carry sourceTrace and are compared strictly. Older persisted
-  // observations may not, so they keep the historical messageIndex-only fallback.
+  if (range.traceId && ref.traceId && range.traceId !== ref.traceId) return false;
   if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
   if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
   return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
 }
 
 function messageRangeOverlapsEpisodeRange(messageRange: ExperienceMessageRange, range: ExperienceEpisodeRange): boolean {
+  if (range.traceId && messageRange.traceId && range.traceId !== messageRange.traceId) return false;
   if (range.sourceTrace && messageRange.sourceTrace && range.sourceTrace !== messageRange.sourceTrace) return false;
   if (range.sessionId && messageRange.sessionId && range.sessionId !== messageRange.sessionId) return false;
   return messageRange.endMessageIndex >= range.startMessageIndex
@@ -1574,10 +4284,11 @@ function sessionStorySkillSegments(
           .filter((value): value is number => typeof value === 'number');
         const startMessageIndex = minDefined(indexes);
         const endMessageIndex = maxDefined(indexes);
+        const traceId = invocation.traceId ?? timelineWithIndex[0]?.traceId;
         const sourceTrace = invocation.sourceTrace ?? timelineWithIndex[0]?.sourceTrace;
         const sessionId = invocation.sessionId ?? timelineWithIndex[0]?.sessionId;
         return typeof startMessageIndex === 'number' && typeof endMessageIndex === 'number'
-          ? { startMessageIndex, endMessageIndex, sourceTrace, sessionId }
+          ? { startMessageIndex, endMessageIndex, traceId, sourceTrace, sessionId }
           : undefined;
       })
       .filter((value): value is ExperienceMessageRange => Boolean(value));
@@ -1645,15 +4356,8 @@ function sessionStoryOrchestrationEdges(
   const mentionedUpstream = runnerOwner
     ? mentionedUpstreamSkillSegmentForRuntime(runnerOwner, runnerEvent, timeline, skillSegments)
     : undefined;
-  const runnerText = `${runnerEvent?.toolName ?? ''} ${runnerEvent?.snippet ?? ''} ${runnerEvent?.fullText ?? ''}`;
-  const runnerExecutor = runnerText
-    ? (mentionedUpstream && runnerOwner && runnerOwner.id !== mentionedUpstream.id
-      ? runnerOwner
-      : skillSegments.find((segment) => {
-      if (segment.id === runnerOwner?.id || segment.id === mentionedUpstream?.id) return false;
-      const name = segment.skillName.toLowerCase();
-      return name.includes('apply-cc') && /apply-cc|runner\.js|send-input\.js/i.test(runnerText);
-    }))
+  const runnerExecutor = mentionedUpstream && runnerOwner && runnerOwner.id !== mentionedUpstream.id
+    ? runnerOwner
     : undefined;
   const priorUpstreamCandidate = runnerOwner
     ? bestPriorUpstreamSkillSegmentForRuntime(runnerOwner, runnerEvent, timeline, skillSegments)
@@ -1671,42 +4375,66 @@ function sessionStoryOrchestrationEdges(
     && segment.episodeRole === 'main_executor'
   ) : undefined);
   if (parentSegment && (executor || runnerEvent) && parentSegment.id !== executor?.id) {
-    const edgeKind = executor && skillSegmentsShareSourceTrace(parentSegment, executor)
+    const edgeKind = executor && skillSegmentsSharePhysicalTrace(parentSegment, executor)
       ? 'internal_skill'
       : 'external_child_session';
-    edges.push({
-      id: hashParts('session-story-edge', episodeId, parentSegment.id, executor?.id ?? 'downstream', '0'),
-      episodeId,
-      edgeKind,
-      parentSkillSegmentId: parentSegment.id,
-      executorSkillSegmentId: executor?.id,
-      childSessionId: sessionStoryChildSessionId(runnerEvent),
-      runnerStartedRef: runnerRef,
-      status: runnerEvent || subagentDispatches.length > 0 ? 'started' : 'unknown',
-      evidenceRefs: uniqueEvidenceRefs([
-        ...parentSegment.evidenceRefs.slice(0, 2),
-        ...(executor?.evidenceRefs.slice(0, 2) ?? []),
-        ...(runnerRef ? [runnerRef] : []),
-        ...subagentDispatches.flatMap((dispatch) => dispatch.evidenceRefs.slice(0, 1)),
-      ]).slice(0, 6),
-    });
+    // A concrete branch below is the authoritative external-child edge.
+    // Keep this inferred edge only for an internal handoff or when no branch
+    // trace was captured, otherwise the same launch appears twice.
+    if (edgeKind === 'internal_skill' || subagentDispatches.length === 0) {
+      edges.push({
+        id: hashParts('session-story-edge', episodeId, parentSegment.id, executor?.id ?? 'downstream', '0'),
+        episodeId,
+        edgeKind,
+        parentSkillSegmentId: parentSegment.id,
+        executorSkillSegmentId: executor?.id,
+        childSessionId: sessionStoryChildSessionId(runnerEvent),
+        runnerStartedRef: runnerRef,
+        status: runnerEvent || subagentDispatches.length > 0 ? 'started' : 'unknown',
+        evidenceRefs: uniqueEvidenceRefs([
+          ...parentSegment.evidenceRefs.slice(0, 2),
+          ...(executor?.evidenceRefs.slice(0, 2) ?? []),
+          ...(runnerRef ? [runnerRef] : []),
+          ...subagentDispatches.flatMap((dispatch) => dispatch.evidenceRefs.slice(0, 1)),
+        ]).slice(0, 6),
+      });
+    }
   }
   if (edges.length === 0) {
     const fallbackEdge = fallbackOrchestrationEdgeFromRuntime(episodeId, skillSegments, invocations);
     if (fallbackEdge) edges.push(fallbackEdge);
   }
   for (const dispatch of subagentDispatches) {
-    const parentSegment = delegator ?? router;
-    const executor = skillSegments.find((segment) => segment.id !== parentSegment?.id && segment.episodeRole === 'main_executor');
+    const parentSegment = delegator ?? router ?? runnerOwner;
+    const executor = skillSegments.find((segment) =>
+      segment.id !== parentSegment?.id
+      && segment.evidenceRefs.some((ref) => ref.traceId === dispatch.traceId)
+    ) ?? skillSegments.find((segment) =>
+      segment.id !== parentSegment?.id && segment.episodeRole === 'main_executor'
+    );
+    const dispatchRunnerRef = runnerRef && (
+      !dispatch.attachTo?.callInstanceId
+        ? !dispatch.attachTo?.toolUseId
+          || dispatch.attachTo.toolUseId === runnerRef.toolUseId
+        : dispatch.attachTo.callInstanceId === runnerRef.callInstanceId
+    )
+      ? runnerRef
+      : undefined;
     edges.push({
       id: hashParts('session-story-edge', episodeId, dispatch.id),
       episodeId,
-      edgeKind: executor ? 'internal_skill' : 'external_child_session',
+      edgeKind: 'external_child_session',
       parentSkillSegmentId: parentSegment?.id,
       executorSkillSegmentId: executor?.id,
-      childSessionId: dispatch.branchId,
+      childSessionId: dispatch.childSessionId,
+      runnerStartedRef: dispatchRunnerRef,
       status: 'started',
-      evidenceRefs: dispatch.evidenceRefs,
+      evidenceRefs: uniqueEvidenceRefs([
+        ...(parentSegment?.evidenceRefs.slice(0, 2) ?? []),
+        ...(executor?.evidenceRefs.slice(0, 2) ?? []),
+        ...(dispatchRunnerRef ? [dispatchRunnerRef] : []),
+        ...dispatch.evidenceRefs,
+      ]).slice(0, 6),
     });
   }
   return edges;
@@ -1766,7 +4494,7 @@ function mentionedUpstreamSkillSegmentForRuntime(
       const explicitlyMentioned = mentionIndex >= 0;
       const compactMentioned = compactName.length >= 6 && compactText.includes(compactName);
       if (!explicitlyMentioned && !compactMentioned) return false;
-      return /skill|技能|流程|工作流|按|根据|启动|触发|\/consult|\/tech-solution|\/prd_start|runner\.js/i.test(localContext);
+      return /skill|技能|流程|工作流|按|根据|启动|触发|委派|分发|delegate|dispatch|route/i.test(localContext);
     })
     .sort((a, b) =>
       upstreamParentScore(b, runnerOwner, nearbyText) - upstreamParentScore(a, runnerOwner, nearbyText)
@@ -1781,8 +4509,6 @@ function upstreamParentScore(segment: ExperienceSkillSegment, runnerOwner: Exper
   if (segment.episodeRole === 'router' || segment.skillType === 'router') score += 80;
   if (segment.episodeRole === 'delegator' || segment.skillType === 'delegation') score += 70;
   if (segment.episodeRole === 'observer' || segment.skillType === 'advisory') score += 45;
-  if (/dev[-_\s]*lifecycle|aiprd[-_\s]*task[-_\s]*runner|omk[-_\s]*reviewer/i.test(lowerName)) score += 35;
-  if (/yuque|web[-_\s]*fetch|fetch|search/i.test(lowerName)) score -= 35;
   const nameIndex = lowerText.indexOf(lowerName);
   if (nameIndex >= 0) {
     const localContext = lowerText.slice(Math.max(0, nameIndex - 50), nameIndex + lowerName.length + 120);
@@ -1799,10 +4525,7 @@ function fallbackOrchestrationEdgeFromRuntime(
   invocations: ExperienceInvocation[],
 ): ExperienceOrchestrationEdge | undefined {
   const timeline = uniqueTimelineEvents(invocations.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
-  const runtimeEvent = timeline.find((event) => {
-    const text = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
-    return /skills\/[\w.-]+\/scripts\/|runner\.js|send-input\.js|check-session\.js|session:\s*claude-|ttydUrl/i.test(text);
-  });
+  const runtimeEvent = timeline.find(isOrchestrationRuntimeEvent);
   if (!runtimeEvent) return undefined;
   const runtimeRef = evidenceRefFromTimeline(runtimeEvent);
   const executor = skillSegmentForEvidenceRef(runtimeRef, skillSegments);
@@ -1811,7 +4534,7 @@ function fallbackOrchestrationEdgeFromRuntime(
     .filter((segment) => segment.id !== executor.id && segment.order < executor.order)
     .sort((a, b) => b.order - a.order)[0];
   if (!parent) return undefined;
-  const edgeKind = skillSegmentsShareSourceTrace(parent, executor) ? 'internal_skill' : 'external_child_session';
+  const edgeKind = skillSegmentsSharePhysicalTrace(parent, executor) ? 'internal_skill' : 'external_child_session';
   return {
     id: hashParts('session-story-edge', episodeId, parent.id, executor.id, 'fallback'),
     episodeId,
@@ -1832,22 +4555,30 @@ function fallbackOrchestrationEdgeFromRuntime(
 function isOrchestrationRuntimeEvent(event: ExperienceTimelineEvent): boolean {
   const text = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
   if (event.kind === 'tool_use') {
-    return /runner\.js|send-input\.js|check-session\.js/i.test(text);
+    return /^(?:Task|Agent)$/i.test(event.toolName ?? '')
+      || /runner\.js|send-input\.js|check-session\.js/i.test(text);
   }
   if (event.kind === 'tool_result') {
     const trimmed = text.trim();
     if (/^---\s*\n?\s*name:/i.test(trimmed) || /^---\s+name:/i.test(trimmed)) return false;
-    return /"event"\s*:\s*"started"|Command still running \(session|Process exited with code|Process exited with signal|session:\s*claude-|\bclaude-[a-z0-9_-]+\b/i.test(text);
+    return /"event"\s*:\s*"started"|Command still running \(session|Process exited with code|Process exited with signal/i.test(text)
+      || /["']?(?:child_?session_?id|agent_?id|thread_?id|session_?id)["']?\s*[:=]/i.test(text)
+      || /\b(?:session|thread|agent)(?:\s+id)?\s*[:=]\s*[a-z0-9][a-z0-9._-]*/i.test(text);
   }
   if (event.kind === 'assistant_message') {
-    return /子\s*Claude|ttyd|session:\s*claude-|已启动.*Claude|Claude\s*执行窗口/i.test(text);
+    return /ttyd|(?:已启动|启动了|spawned|started).*(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex))|(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex)).*(?:执行|运行|分析|started|running)/i.test(text)
+      || /\b(?:session|thread|agent)(?:\s+id)?\s*[:=]\s*[a-z0-9][a-z0-9._-]*/i.test(text);
   }
   return false;
 }
 
 function sessionStoryChildSessionId(event?: ExperienceTimelineEvent): string | undefined {
   const text = `${event?.snippet ?? ''} ${event?.fullText ?? ''}`;
-  return text.match(/\bclaude-[a-z0-9_-]+\b/i)?.[0];
+  return text.match(
+    /["']?(?:child_?session_?id|agent_?id|thread_?id|session_?id)["']?\s*[:=]\s*["']?([a-z0-9][a-z0-9._-]*)/i,
+  )?.[1]
+    ?? text.match(/\b(?:session|thread|agent)(?:\s+id)?\s*[:=]\s*([a-z0-9][a-z0-9._-]*)/i)?.[1]
+    ?? text.match(/\b(?:claude|codex|agent|subagent)-[a-z0-9_-]+\b/i)?.[0];
 }
 
 function sessionStoryFeedbackSignals(
@@ -1932,7 +4663,7 @@ function feedbackAttributionsForText(
       : targetOwner
         ? { segment: targetOwner, reason: 'object_match' as const }
       : actionOwner
-        ? { segment: actionOwner, reason: 'action_match' as const }
+        ? actionOwner
         : windowOwner
           ? { segment: windowOwner, reason: feedbackAttributionReasonForText(lower) }
           : undefined;
@@ -2008,7 +4739,6 @@ function upstreamPromiseOwnerScore(segment: ExperienceSkillSegment): number {
   let score = 0;
   if (segment.episodeRole === 'router' || segment.skillType === 'router') score += 80;
   if (segment.episodeRole === 'delegator' || segment.skillType === 'delegation') score += 70;
-  if (/aiprd[-_\s]*task[-_\s]*runner|dev[-_\s]*lifecycle|omk[-_\s]*reviewer/i.test(segment.skillName)) score += 30;
   return score;
 }
 
@@ -2095,24 +4825,21 @@ function targetObjectSkillOwner(text: string, skillSegments: ExperienceSkillSegm
   });
   if (explicitSkill) return explicitSkill;
 
-  const byName = (patterns: RegExp[]) => skillSegments.find((segment) =>
-    patterns.some((pattern) => pattern.test(segment.skillName.toLowerCase()))
-  );
-
-  if (/skill\s*extract|soft[-_\s]*standard|llm[-_\s]*enhanced|omk[-_\s]*reviewer|skill\.md|这个skill|执行流程|依赖.*脚本|删除.*脚本|review/.test(lower)) {
-    return byName([/omk[-_\s]*reviewer/, /reviewer/]);
+  if (/runner|child|subagent|sub-agent|子\s*(?:claude|codex|agent|代理|智能体)|(?:claude|codex|agent)\s*session|ttyd|执行窗口/.test(lower)) {
+    return skillSegments
+      .filter((segment) =>
+        segment.episodeRole === 'delegator'
+        || segment.episodeRole === 'router'
+        || segment.skillType === 'delegation'
+        || segment.skillType === 'router'
+        || segment.skillType === 'workflow_owner'
+      )
+      .sort((a, b) => upstreamPromiseOwnerScore(b) - upstreamPromiseOwnerScore(a) || a.order - b.order)[0];
   }
-  if (/preview|预览|可预览|端口|localhost|127\.0\.0\.1|链接发给我|url/.test(lower)) {
-    return byName([/ai[-_\s]*worker[-_\s]*webtools/, /webtools/, /preview/]);
-  }
-  if (/runner|child|子\s*claude|claude\s*session|ttyd|执行窗口/.test(lower)) {
-    return byName([/apply[-_\s]*cc/]);
-  }
-  if (/\bpr\b|pull request|merge|分支|拉下|拉取|代码|项目分枝|项目分支|master/.test(lower)) {
-    return byName([/dev[-_\s]*lifecycle/, /antcode/, /git/]);
-  }
-  if (/日报|每天早上|每天晚上|复盘报告/.test(lower)) {
-    return byName([/damai[-_\s]*daily/, /daily/]);
+  if (/skill\s*extract|soft[-_\s]*standard|llm[-_\s]*enhanced|skill\.md|这个skill|执行流程|依赖.*脚本|删除.*脚本|review/.test(lower)) {
+    return skillSegments
+      .filter((segment) => segment.episodeRole === 'observer' || segment.skillType === 'advisory')
+      .sort((a, b) => a.order - b.order)[0];
   }
   return undefined;
 }
@@ -2138,10 +4865,27 @@ function actionOwnerForFeedback(
   text: string,
   timeline: ExperienceTimelineEvent[],
   skillSegments: ExperienceSkillSegment[],
-): ExperienceSkillSegment | undefined {
+): { segment: ExperienceSkillSegment; reason: 'object_match' | 'action_match' } | undefined {
   const category = feedbackActionCategory(text);
   if (!category || typeof evidenceRef.messageIndex !== 'number') return undefined;
   const feedbackMessageIndex = evidenceRef.messageIndex;
+  const commandEnvelopeText = timeline
+    .filter((event) =>
+      event.kind === 'runtime_context'
+      && event.messageIndex === feedbackMessageIndex
+      && evidenceRefsShareTraceScope(event, evidenceRef)
+    )
+    .map((event) => `${event.snippet ?? ''} ${event.fullText ?? ''}`)
+    .join('\n')
+    .toLowerCase();
+  const commandOwner = skillSegments.find((segment) => {
+    const name = segment.skillName.toLowerCase();
+    const compactName = compactObjectText(name);
+    return commandEnvelopeText.includes(name)
+      || (compactName.length >= 4 && compactObjectText(commandEnvelopeText).includes(compactName));
+  });
+  if (commandOwner) return { segment: commandOwner, reason: 'object_match' };
+
   const nextRuntimeEvent = timeline.find((event) => {
     if (typeof event.messageIndex !== 'number') return false;
     if (!evidenceRefsShareTraceScope(event, evidenceRef)) return false;
@@ -2150,7 +4894,10 @@ function actionOwnerForFeedback(
     const eventText = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
     return actionCategoryMatchesRuntimeEvent(category, eventText);
   });
-  return nextRuntimeEvent ? skillSegmentForEvidenceRef(evidenceRefFromTimeline(nextRuntimeEvent), skillSegments) : undefined;
+  const runtimeOwner = nextRuntimeEvent
+    ? skillSegmentForEvidenceRef(evidenceRefFromTimeline(nextRuntimeEvent), skillSegments)
+    : undefined;
+  return runtimeOwner ? { segment: runtimeOwner, reason: 'action_match' } : undefined;
 }
 
 function feedbackActionCategory(text: string): 'delete' | 'pull' | 'preview' | 'review' | 'stop' | undefined {
@@ -2175,7 +4922,7 @@ function actionCategoryMatchesRuntimeEvent(category: ReturnType<typeof feedbackA
 
 function shouldUseWindowFeedbackOwner(segment: ExperienceSkillSegment, text: string): boolean {
   if (segment.skillType !== 'delegation' && segment.episodeRole !== 'delegator') return true;
-  return /子\s*claude|child|runner|ttyd|session|claude|有结论|进度|怎么样了|没返回|通知|同步|跑完|完成了吗/i.test(text);
+  return /子\s*(?:claude|codex|agent|代理|智能体)|subagent|sub-agent|child|runner|ttyd|session|thread|agent|有结论|进度|怎么样了|没返回|通知|同步|跑完|完成了吗/i.test(text);
 }
 
 function dedupeFeedbackAttributions(attributions: ExperienceFeedbackAttribution[]): ExperienceFeedbackAttribution[] {
@@ -2191,7 +4938,7 @@ function dedupeFeedbackAttributions(attributions: ExperienceFeedbackAttribution[
 }
 
 function feedbackAttributionReasonForText(lowerText: string): ExperienceFeedbackAttributionReason {
-  if (/pr|pull request|master|分支|组件|产物|文档|报告|demo|链接|地址|文件|项目|skill|agent|claude/.test(lowerText)) {
+  if (/pr|pull request|master|分支|组件|产物|文档|报告|demo|链接|地址|文件|项目|skill|agent|subagent|claude|codex/.test(lowerText)) {
     return 'object_match';
   }
   if (/有结论|进度|没返回|通知|返回|同步|发给|给我|怎么样了|还在线|完成了吗|跑完/.test(lowerText)) {
@@ -2241,9 +4988,10 @@ function skillSegmentForEvidenceRef(
 
 function messageRangeContainsEvidenceRef(
   range: ExperienceMessageRange,
-  ref: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+  ref: Pick<ExperienceEvidenceRef, 'messageIndex' | 'traceId' | 'sourceTrace' | 'sessionId'>,
 ): boolean {
   if (typeof ref.messageIndex !== 'number') return false;
+  if (range.traceId && ref.traceId && range.traceId !== ref.traceId) return false;
   if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
   if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
   return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
@@ -2251,30 +4999,37 @@ function messageRangeContainsEvidenceRef(
 
 function messageRangeTraceSpecificity(
   range: ExperienceMessageRange,
-  ref: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+  ref: Pick<ExperienceEvidenceRef, 'traceId' | 'sourceTrace' | 'sessionId'>,
 ): number {
-  return (range.sourceTrace && ref.sourceTrace && range.sourceTrace === ref.sourceTrace ? 2 : 0)
+  return (range.traceId && ref.traceId && range.traceId === ref.traceId ? 4 : 0)
+    + (range.sourceTrace && ref.sourceTrace && range.sourceTrace === ref.sourceTrace ? 2 : 0)
     + (range.sessionId && ref.sessionId && range.sessionId === ref.sessionId ? 1 : 0);
 }
 
 function evidenceRefsShareTraceScope(
-  a?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
-  b?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+  a?: Pick<ExperienceEvidenceRef, 'traceId' | 'sourceTrace' | 'sessionId'>,
+  b?: Pick<ExperienceEvidenceRef, 'traceId' | 'sourceTrace' | 'sessionId'>,
 ): boolean {
   if (!a || !b) return true;
+  if (a.traceId && b.traceId && a.traceId !== b.traceId) return false;
   if (a.sourceTrace && b.sourceTrace && a.sourceTrace !== b.sourceTrace) return false;
   if (a.sessionId && b.sessionId && a.sessionId !== b.sessionId) return false;
   return true;
 }
 
 function timelineEventSharesTraceScope(
-  event: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
-  anchor?: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
+  event: Pick<ExperienceTimelineEvent, 'traceId' | 'sourceTrace' | 'sessionId'>,
+  anchor?: Pick<ExperienceTimelineEvent, 'traceId' | 'sourceTrace' | 'sessionId'>,
 ): boolean {
   return evidenceRefsShareTraceScope(event, anchor);
 }
 
-function skillSegmentsShareSourceTrace(a: ExperienceSkillSegment, b: ExperienceSkillSegment): boolean {
+function skillSegmentsSharePhysicalTrace(a: ExperienceSkillSegment, b: ExperienceSkillSegment): boolean {
+  const aTraceIds = new Set((a.messageRanges ?? []).map((range) => range.traceId).filter((value): value is string => Boolean(value)));
+  const bTraceIds = new Set((b.messageRanges ?? []).map((range) => range.traceId).filter((value): value is string => Boolean(value)));
+  if (aTraceIds.size > 0 && bTraceIds.size > 0) {
+    return Array.from(aTraceIds).some((traceId) => bTraceIds.has(traceId));
+  }
   const aTraces = new Set((a.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
   const bTraces = new Set((b.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
   if (aTraces.size === 0 || bTraces.size === 0) return true;
@@ -2342,8 +5097,13 @@ function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: 
   return Array.from(byId.entries()).map(([id, group], index) => {
     const timeline = uniqueTimelineEvents(group.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
     const userEvents = timeline.filter((event) => event.kind === 'user_message');
-    const startTimestamp = minString(group.map((invocation) => invocation.startTimestamp)) ?? session.startTimestamp;
-    const endTimestamp = maxString(group.map((invocation) => invocation.endTimestamp)) ?? session.endTimestamp;
+    const timestampedInvocations = group.filter(invocationTimestampObserved);
+    const startTimestamp = minString(
+      timestampedInvocations.map((invocation) => invocation.startTimestamp),
+    ) ?? session.startTimestamp;
+    const endTimestamp = maxString(
+      timestampedInvocations.map((invocation) => invocation.endTimestamp),
+    ) ?? session.endTimestamp;
     const hasGoalShift = userEvents.some((event) => hasUserGoalShiftSignal(event.snippet ?? ''));
     const reasonCode: ExperienceGoalSliceReasonCode = hasGoalShift
       ? 'explicit_user_goal_shift'
@@ -2358,7 +5118,12 @@ function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: 
       inferredUserGoal: inferUserGoal(userEvents),
       evidenceRefs: userEvents.slice(0, 3).map(evidenceRefFromTimeline),
     };
-  }).sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+  }).sort((a, b) => {
+    const aObserved = a.startTimestamp !== UNOBSERVED_TRACE_TIMESTAMP;
+    const bObserved = b.startTimestamp !== UNOBSERVED_TRACE_TIMESTAMP;
+    return Number(bObserved) - Number(aObserved)
+      || a.startTimestamp.localeCompare(b.startTimestamp);
+  });
 }
 
 function sessionStorySubagentDispatches(session: ExperienceSessionSummary): ExperienceSessionStorySubagentDispatch[] {
@@ -2367,10 +5132,13 @@ function sessionStorySubagentDispatches(session: ExperienceSessionSummary): Expe
     id: hashParts('session-story-dispatch', session.id, branch.id),
     order: index + 1,
     branchId: branch.id,
+    childSessionId: branch.sessionId,
+    traceId: branch.traceId ?? branch.sourceTrace,
     label: branch.label,
     sourceTrace: branch.sourceTrace,
     attachTo: branch.attachTo ? {
       messageIndex: branch.attachTo.messageIndex,
+      callInstanceId: branch.attachTo.callInstanceId,
       toolUseId: branch.attachTo.toolUseId,
       label: branch.attachTo.label,
     } : undefined,
@@ -2407,10 +5175,17 @@ function sessionStorySkillLinks(session: ExperienceSessionSummary, invocations: 
 function inferSkillRole(group: ExperienceInvocation[], allInvocations: ExperienceInvocation[], session: ExperienceSessionSummary): ExperienceSessionStorySkillRole {
   const hasRoutingSignal = group.some((invocation) => routingEvidenceEvents(invocation).length > 0);
   const hasBranchDispatch = (session.timelineTree?.branches.length ?? 0) > 0 && group.some((invocation) =>
-    invocation.timeline.some((event) => event.kind === 'tool_use' && /^(Task|Agent|Skill)$/i.test(event.toolName ?? ''))
+    invocation.timeline.some((event) =>
+      isOrchestrationRuntimeEvent(event)
+      || isDifferentSkillInvocationEvent(event, invocation.skillName)
+    )
   );
   const hasExecutionSignal = group.some((invocation) =>
-    invocation.timeline.some((event) => event.kind === 'tool_use' && !/^(Task|Agent|Skill)$/i.test(event.toolName ?? ''))
+    invocation.timeline.some((event) =>
+      event.kind === 'tool_use'
+      && !isOrchestrationRuntimeEvent(event)
+      && !isDifferentSkillInvocationEvent(event, invocation.skillName)
+    )
   );
   if ((hasRoutingSignal || hasBranchDispatch) && allInvocations.length > group.length) return hasExecutionSignal ? 'mixed' : 'router';
   if (hasRoutingSignal || hasBranchDispatch) return 'router';
@@ -2421,9 +5196,38 @@ function inferSkillRole(group: ExperienceInvocation[], allInvocations: Experienc
 function routingEvidenceEvents(invocation: ExperienceInvocation): ExperienceTimelineEvent[] {
   return invocation.timeline.filter((event) => {
     if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
+    if (isOrchestrationRuntimeEvent(event)) return true;
+    if (isDifferentSkillInvocationEvent(event, invocation.skillName)) return true;
     const text = event.fullText ?? event.snippet ?? '';
-    return /子\s*Claude|subagent|子任务|分发|委派|调用.+skill|走\s*`?[\w-]+`?\s*skill|\/consult|task-runner/i.test(text);
+    return /subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex)|子任务|分发|委派|路由|delegate|dispatch|route|调用.+skill|走\s*`?[\w-]+`?\s*skill/i.test(text);
   }).slice(0, 3);
+}
+
+function isDifferentSkillInvocationEvent(
+  event: ExperienceTimelineEvent,
+  currentSkillName: string,
+): boolean {
+  if (event.kind !== 'tool_use' || !/^Skill$/i.test(event.toolName ?? '')) return false;
+  const text = event.fullText ?? event.snippet ?? '';
+  let targetSkill: string | undefined;
+  try {
+    const input: unknown = JSON.parse(text);
+    if (isObjectRecord(input)) {
+      targetSkill = typeof input.skill === 'string'
+        ? input.skill
+        : typeof input.name === 'string'
+          ? input.name
+          : undefined;
+    }
+  } catch {
+    targetSkill = text.match(
+      /["']?(?:skill|name)["']?\s*[:=]\s*["']?([a-z0-9][\w.-]*)/i,
+    )?.[1];
+  }
+  return Boolean(
+    targetSkill
+    && targetSkill.trim().toLowerCase() !== currentSkillName.trim().toLowerCase(),
+  );
 }
 
 function skillRoleLabel(role: ExperienceSessionStorySkillRole): string {
@@ -2688,7 +5492,7 @@ function declaredBehaviorChecklistItems(session: ExperienceSessionSummary, episo
       contribution: 'informational',
       reason: hasSkillRead
         ? `看到 ${session.evidenceChain.skillContextCount} 次 SKILL.md 加载事件，可作为能力归因证据。`
-        : `日志里没看到 LLM 主动 Read SKILL.md。这次 skill 归因来自：${attributionLabel}。OpenClaw 脚本 / Skill 工具 / slash command 触发时这是常态，不代表 skill 没用上。`,
+        : `日志里没看到 LLM 主动读取 SKILL.md。这次 skill 归因来自：${attributionLabel}。脚本、Skill 工具或命令触发时可能没有显式读取事件，不代表 skill 没用上。`,
       evidenceRefs: [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse],
     }),
     checklistItem({
@@ -3168,18 +5972,30 @@ interface ExpectedToolCheck {
 
 function executionStepStatus(session: ExperienceSessionSummary, expectedToolCheck: ExpectedToolCheck): ExperienceReviewerReportStepStatus {
   if (session.indicators.toolFailureCount > 0 || expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0) return 'attention';
+  if (
+    (session.indicators.toolCancelledCount ?? 0) > 0
+    || (session.indicators.toolUnknownCount ?? 0) > 0
+  ) return 'unknown';
   if (session.indicators.toolCallCount > 0) return 'ok';
   return 'unknown';
 }
 
 function executionStepText(session: ExperienceSessionSummary, expectedToolCheck: ExpectedToolCheck = expectedToolCheckForSession(session)): string {
-  const failures = session.indicators.toolFailureCount > 0 ? `，其中失败 ${session.indicators.toolFailureCount} 次` : '';
   const expected = expectedToolCheck.declared
     ? expectedToolCheck.matchedTools.length > 0
       ? `命中声明的核心工具：${expectedToolCheck.matchedTools.join('、')}。`
       : `但没有命中能力声明的核心工具：${expectedToolCheck.expectedTools.join('、')}。`
     : '';
-  return `执行中看到 ${session.indicators.toolCallCount} 次工具调用${failures}。${expected}`;
+  return `${executionOutcomeText(session.indicators)}${expected}`;
+}
+
+function executionOutcomeText(indicators: ExperienceReviewIndicators): string {
+  const details = [
+    indicators.toolFailureCount > 0 ? `失败 ${indicators.toolFailureCount} 次` : '',
+    (indicators.toolCancelledCount ?? 0) > 0 ? `取消 ${indicators.toolCancelledCount ?? 0} 次` : '',
+    (indicators.toolUnknownCount ?? 0) > 0 ? `状态未知 ${indicators.toolUnknownCount ?? 0} 次` : '',
+  ].filter(Boolean);
+  return `执行中看到 ${indicators.toolCallCount} 次工具调用${details.length > 0 ? `，其中${details.join('，')}` : ''}。`;
 }
 
 function deliveryStepText(session: ExperienceSessionSummary): string {
@@ -3597,17 +6413,35 @@ function suggestionTextForChecklistItem(key: string): string | undefined {
 }
 
 function sumTokenUsage(invocations: ExperienceInvocation[]): Omit<ExperienceReviewerReport['oneLookMetrics']['tokenUsage'], 'attribution'> {
-  return invocations.reduce((sum, invocation) => ({
-    inputTokens: sum.inputTokens + (invocation.metrics.inputTokens ?? 0),
-    outputTokens: sum.outputTokens + (invocation.metrics.outputTokens ?? 0),
-    cacheReadTokens: sum.cacheReadTokens + (invocation.metrics.cacheReadTokens ?? 0),
-    cacheCreationTokens: sum.cacheCreationTokens + (invocation.metrics.cacheCreationTokens ?? 0),
-  }), {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-  });
+  const observed = invocations.filter((invocation) => invocation.metrics.tokenUsageObserved);
+  const inputTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.inputTokens));
+  const outputTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.outputTokens));
+  const cacheReadTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.cacheReadTokens));
+  const cacheCreationTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.cacheCreationTokens));
+  const aggregateValid = [
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+  ].every((value) => value !== undefined)
+    && checkedSumTokenCounts(
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
+    ) !== undefined;
+  const observedInvocationCount = aggregateValid ? observed.length : 0;
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    cacheReadTokens: cacheReadTokens ?? 0,
+    cacheCreationTokens: cacheCreationTokens ?? 0,
+    observedInvocationCount,
+    invocationCount: invocations.length,
+    coverage: invocations.length > 0
+      ? Number((observedInvocationCount / invocations.length).toFixed(4))
+      : 1,
+  };
 }
 
 function summarizeExperienceSkills(
@@ -3621,7 +6455,7 @@ function summarizeExperienceSkills(
     bySkill.set(session.skillName, group);
   }
   const invocationCountBySkill = invocations.reduce((acc, invocation) => {
-    acc[invocation.skillName] = (acc[invocation.skillName] ?? 0) + 1;
+    incrementRecordCount(acc, invocation.skillName);
     return acc;
   }, {} as Record<string, number>);
   const invocationGroupBySkill = invocations.reduce((acc, invocation) => {
@@ -3638,9 +6472,15 @@ function summarizeExperienceSkills(
     const evidenceChain = sumEvidenceChains(group.map((session) => session.evidenceChain));
     const ruleFindings = mergeRuleFindings(group.flatMap((session) => session.ruleFindings));
     const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((session) => session.problemPatterns));
+    const timestampedInvocations = skillInvocations.filter(invocationTimestampObserved);
+    const timestampedInvocationCount = timestampedInvocations.length;
+    const firstSeen = minString(timestampedInvocations.map((invocation) => invocation.startTimestamp))
+      ?? first.startTimestamp;
+    const lastSeen = maxString(timestampedInvocations.map((invocation) => invocation.endTimestamp))
+      ?? first.endTimestamp;
     return {
       skillName,
-      invocationCount: invocationCountBySkill[skillName] ?? 0,
+      invocationCount: ownRecordValue(invocationCountBySkill, skillName) ?? 0,
       sessionCount: group.length,
       sourceKinds: unique(group.map((session) => session.sourceKind)).sort(),
       entrypoints: unique(group.map((session) => session.entrypoint).filter((value): value is string => Boolean(value))).sort(),
@@ -3651,8 +6491,12 @@ function summarizeExperienceSkills(
       rawSkillRefs: unique(skillInvocations.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
       commandNames: unique(skillInvocations.map((invocation) => invocation.attribution.commandName).filter((value): value is string => Boolean(value))).sort(),
       toolCounts: sumRecordCounts(skillInvocations.map((invocation) => invocation.toolCounts)),
-      firstSeen: group.reduce((min, session) => session.startTimestamp < min ? session.startTimestamp : min, first.startTimestamp),
-      lastSeen: group.reduce((max, session) => session.endTimestamp > max ? session.endTimestamp : max, first.endTimestamp),
+      firstSeen,
+      lastSeen,
+      timestampedInvocationCount,
+      timestampCoverage: skillInvocations.length > 0
+        ? timestampedInvocationCount / skillInvocations.length
+        : 0,
       reviewFirstSessionCount: group.filter((session) => session.reviewPriority === 'review_first').length,
       sampleReviewSessionCount: group.filter((session) => session.reviewPriority === 'sample_review').length,
       indicators,
@@ -3718,17 +6562,27 @@ function sourceSenderLabel(value?: TraceSourceMetadata): string | undefined {
 }
 
 function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
-  return indicators.highObservationCount * 3
-    + indicators.mediumObservationCount
-    + indicators.userCorrectionCount * 2
-    + indicators.userInterruptionCount * 2
-    + indicators.sessionInterruptedCount * 2
-    + indicators.negativeFeedbackCount * 2
-    + indicators.hardRuleTextHitCount
-    + indicators.toolFailureCount
-    + indicators.routerDownstreamFailed * 2
-    + indicators.hedgingCount
-    + indicators.explicitMarkerCount * 2;
+  return sumSafeCounts(
+    weightedCount(indicators.highObservationCount, 3),
+    indicators.mediumObservationCount,
+    weightedCount(indicators.userCorrectionCount, 2),
+    weightedCount(indicators.userInterruptionCount, 2),
+    weightedCount(indicators.sessionInterruptedCount, 2),
+    weightedCount(indicators.negativeFeedbackCount, 2),
+    indicators.hardRuleTextHitCount,
+    indicators.toolFailureCount,
+    weightedCount(indicators.routerDownstreamFailed, 2),
+    indicators.hedgingCount,
+    weightedCount(indicators.explicitMarkerCount, 2),
+  );
+}
+
+function weightedCount(count: number, weight: number): number {
+  const weighted = count * weight;
+  if (!Number.isSafeInteger(weighted) || weighted < 0) {
+    throw new RangeError('Weighted observation count exceeds Number.MAX_SAFE_INTEGER');
+  }
+  return weighted;
 }
 
 function priorityForScore(score: number): ExperienceReviewPriority {
@@ -3773,7 +6627,7 @@ function basisCodesForIndicators(indicators: ExperienceReviewIndicators): Experi
 function countTools(segment: SkillSegment): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const toolCall of segment.toolCalls) {
-    counts[toolCall.tool] = (counts[toolCall.tool] ?? 0) + 1;
+    incrementRecordCount(counts, toolCall.tool);
   }
   return counts;
 }
@@ -3781,7 +6635,7 @@ function countTools(segment: SkillSegment): Record<string, number> {
 function countBy(values: string[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const value of values) {
-    counts[value] = (counts[value] ?? 0) + 1;
+    incrementRecordCount(counts, value);
   }
   return counts;
 }
@@ -3790,7 +6644,7 @@ function sumRecordCounts(values: Array<Record<string, number>>): Record<string, 
   const counts: Record<string, number> = {};
   for (const value of values) {
     for (const [key, count] of Object.entries(value)) {
-      counts[key] = (counts[key] ?? 0) + count;
+      incrementRecordCount(counts, key, count);
     }
   }
   return counts;
@@ -3798,40 +6652,42 @@ function sumRecordCounts(values: Array<Record<string, number>>): Record<string, 
 
 function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIndicators {
   return values.reduce((acc, value) => ({
-    userMessageCount: acc.userMessageCount + value.userMessageCount,
-    userFollowUpCount: acc.userFollowUpCount + value.userFollowUpCount,
-    userCorrectionCount: acc.userCorrectionCount + value.userCorrectionCount,
-    userInterruptionCount: acc.userInterruptionCount + value.userInterruptionCount,
-    sessionInterruptedCount: acc.sessionInterruptedCount + (value.sessionInterruptedCount ?? 0),
-    negativeFeedbackCount: acc.negativeFeedbackCount + (value.negativeFeedbackCount ?? 0),
-    positiveFeedbackCount: acc.positiveFeedbackCount + (value.positiveFeedbackCount ?? 0),
-    userGoalShiftCount: acc.userGoalShiftCount + (value.userGoalShiftCount ?? 0),
-    hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
-    assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
-    deliverableArtifactSignalCount: acc.deliverableArtifactSignalCount + (value.deliverableArtifactSignalCount ?? 0),
-    routerDownstreamCompleted: acc.routerDownstreamCompleted + (value.routerDownstreamCompleted ?? 0),
-    routerDownstreamFailed: acc.routerDownstreamFailed + (value.routerDownstreamFailed ?? 0),
-    selfCorrectionCount: acc.selfCorrectionCount + (value.selfCorrectionCount ?? 0),
-    repeatedExecutionCount: acc.repeatedExecutionCount + (value.repeatedExecutionCount ?? 0),
-    toolCallCount: acc.toolCallCount + value.toolCallCount,
-    toolFailureCount: acc.toolFailureCount + value.toolFailureCount,
-    highObservationCount: acc.highObservationCount + value.highObservationCount,
-    mediumObservationCount: acc.mediumObservationCount + value.mediumObservationCount,
-    hedgingCount: acc.hedgingCount + value.hedgingCount,
-    explicitMarkerCount: acc.explicitMarkerCount + value.explicitMarkerCount,
+    userMessageCount: sumSafeCounts(acc.userMessageCount, value.userMessageCount),
+    userFollowUpCount: sumSafeCounts(acc.userFollowUpCount, value.userFollowUpCount),
+    userCorrectionCount: sumSafeCounts(acc.userCorrectionCount, value.userCorrectionCount),
+    userInterruptionCount: sumSafeCounts(acc.userInterruptionCount, value.userInterruptionCount),
+    sessionInterruptedCount: sumSafeCounts(acc.sessionInterruptedCount, value.sessionInterruptedCount ?? 0),
+    negativeFeedbackCount: sumSafeCounts(acc.negativeFeedbackCount, value.negativeFeedbackCount ?? 0),
+    positiveFeedbackCount: sumSafeCounts(acc.positiveFeedbackCount, value.positiveFeedbackCount ?? 0),
+    userGoalShiftCount: sumSafeCounts(acc.userGoalShiftCount, value.userGoalShiftCount ?? 0),
+    hardRuleTextHitCount: sumSafeCounts(acc.hardRuleTextHitCount, value.hardRuleTextHitCount),
+    assistantDeliverySignalCount: sumSafeCounts(acc.assistantDeliverySignalCount, value.assistantDeliverySignalCount ?? 0),
+    deliverableArtifactSignalCount: sumSafeCounts(acc.deliverableArtifactSignalCount, value.deliverableArtifactSignalCount ?? 0),
+    routerDownstreamCompleted: sumSafeCounts(acc.routerDownstreamCompleted, value.routerDownstreamCompleted ?? 0),
+    routerDownstreamFailed: sumSafeCounts(acc.routerDownstreamFailed, value.routerDownstreamFailed ?? 0),
+    selfCorrectionCount: sumSafeCounts(acc.selfCorrectionCount, value.selfCorrectionCount ?? 0),
+    repeatedExecutionCount: sumSafeCounts(acc.repeatedExecutionCount, value.repeatedExecutionCount ?? 0),
+    toolCallCount: sumSafeCounts(acc.toolCallCount, value.toolCallCount),
+    toolFailureCount: sumSafeCounts(acc.toolFailureCount, value.toolFailureCount),
+    toolCancelledCount: sumSafeCounts(acc.toolCancelledCount ?? 0, value.toolCancelledCount ?? 0),
+    toolUnknownCount: sumSafeCounts(acc.toolUnknownCount ?? 0, value.toolUnknownCount ?? 0),
+    highObservationCount: sumSafeCounts(acc.highObservationCount, value.highObservationCount),
+    mediumObservationCount: sumSafeCounts(acc.mediumObservationCount, value.mediumObservationCount),
+    hedgingCount: sumSafeCounts(acc.hedgingCount, value.hedgingCount),
+    explicitMarkerCount: sumSafeCounts(acc.explicitMarkerCount, value.explicitMarkerCount),
   }), { ...ZERO_INDICATORS });
 }
 
 function sumEvidenceChains(values: ExperienceEvidenceChain[]): ExperienceEvidenceChain {
   return values.reduce((acc, value) => ({
-    userMessageCount: acc.userMessageCount + (value?.userMessageCount ?? 0),
-    runtimeContextCount: acc.runtimeContextCount + (value?.runtimeContextCount ?? 0),
-    skillContextCount: acc.skillContextCount + (value?.skillContextCount ?? 0),
-    assistantMessageCount: acc.assistantMessageCount + (value?.assistantMessageCount ?? 0),
-    toolUseCount: acc.toolUseCount + (value?.toolUseCount ?? 0),
-    toolResultCount: acc.toolResultCount + (value?.toolResultCount ?? 0),
-    toolFailureResultCount: acc.toolFailureResultCount + (value?.toolFailureResultCount ?? 0),
-    observationCount: acc.observationCount + (value?.observationCount ?? 0),
+    userMessageCount: sumSafeCounts(acc.userMessageCount, value?.userMessageCount ?? 0),
+    runtimeContextCount: sumSafeCounts(acc.runtimeContextCount, value?.runtimeContextCount ?? 0),
+    skillContextCount: sumSafeCounts(acc.skillContextCount, value?.skillContextCount ?? 0),
+    assistantMessageCount: sumSafeCounts(acc.assistantMessageCount, value?.assistantMessageCount ?? 0),
+    toolUseCount: sumSafeCounts(acc.toolUseCount, value?.toolUseCount ?? 0),
+    toolResultCount: sumSafeCounts(acc.toolResultCount, value?.toolResultCount ?? 0),
+    toolFailureResultCount: sumSafeCounts(acc.toolFailureResultCount, value?.toolFailureResultCount ?? 0),
+    observationCount: sumSafeCounts(acc.observationCount, value?.observationCount ?? 0),
     firstUserMessage: acc.firstUserMessage ?? value?.firstUserMessage,
     firstRuntimeContext: acc.firstRuntimeContext ?? value?.firstRuntimeContext,
     firstSkillContext: acc.firstSkillContext ?? value?.firstSkillContext,
@@ -3855,7 +6711,7 @@ function mergeRuleFindings(values: ExperienceRuleFinding[]): ExperienceRuleFindi
   for (const value of values) {
     const existing = byCode.get(value.code);
     if (existing) {
-      existing.count += value.count;
+      existing.count = sumSafeCounts(existing.count, value.count);
       existing.evidenceRefs = uniqueEvidenceRefs([...existing.evidenceRefs, ...value.evidenceRefs]).slice(0, 5);
     } else {
       byCode.set(value.code, { ...value, evidenceRefs: uniqueEvidenceRefs(value.evidenceRefs).slice(0, 5) });
@@ -3883,8 +6739,11 @@ function compareTimelineEvents(a: ExperienceTimelineEvent, b: ExperienceTimeline
   if (ta && tb && ta !== tb) {
     return ta.localeCompare(tb);
   }
-  // 同一条 trace 内 → 按 messageIndex 派生的 order（跨 trace 比 order 没意义）
-  if (a.sourceTrace === b.sourceTrace) {
+  // 同一条物理 trace 内 → 按 messageIndex 派生的 order（跨 trace 比 order 没意义）。
+  const samePhysicalTrace = a.traceId && b.traceId
+    ? a.traceId === b.traceId
+    : a.sourceTrace === b.sourceTrace;
+  if (samePhysicalTrace) {
     return a.order - b.order;
   }
   // 跨 trace 且 timestamp 不可比 → 主线优先（避免缺 timestamp 时 subagent 顶到最前）
@@ -3892,8 +6751,33 @@ function compareTimelineEvents(a: ExperienceTimelineEvent, b: ExperienceTimeline
     event.traceRole === 'main' || event.traceRole === 'standalone' ? 0 : 1;
   const rankDiff = roleRank(a) - roleRank(b);
   if (rankDiff !== 0) return rankDiff;
-  // 同 traceRole 跨文件兜底：sourceTrace 字典序保证稳定
-  return a.sourceTrace.localeCompare(b.sourceTrace);
+  // 同 traceRole 且 timestamp 缺失时，用物理 trace 身份提供稳定顺序。
+  return (a.traceId ?? a.sourceTrace).localeCompare(b.traceId ?? b.sourceTrace)
+    || a.sourceTrace.localeCompare(b.sourceTrace)
+    || a.order - b.order;
+}
+
+function traceRecordRanges(events: ExperienceTimelineEvent[]): ExperienceTraceRecordRange[] {
+  const byTrace = new Map<string, ExperienceTimelineEvent[]>();
+  for (const event of events) {
+    if (typeof event.messageIndex !== 'number') continue;
+    const traceId = event.traceId ?? event.sourceTrace;
+    const group = byTrace.get(traceId) ?? [];
+    group.push(event);
+    byTrace.set(traceId, group);
+  }
+  return Array.from(byTrace.entries())
+    .map(([traceId, group]): ExperienceTraceRecordRange => {
+      const indexes = group.map((event) => event.messageIndex as number);
+      return {
+        traceId,
+        sourceTrace: group[0].sourceTrace,
+        startRecordIndex: Math.min(...indexes),
+        endRecordIndex: Math.max(...indexes),
+        eventCount: group.length,
+      };
+    })
+    .sort((a, b) => a.traceId.localeCompare(b.traceId));
 }
 
 function buildSessionTimelineTree(sessionId: string, sessions: TraceSession[]): ExperienceTimelineTree {
@@ -3906,8 +6790,10 @@ function buildSessionTimelineTree(sessionId: string, sessions: TraceSession[]): 
       const events = buildTimelineWindow(session, 0, session.events.length);
       const attachTo = inferSubagentAttachment(main, session);
       return {
-        id: hashParts('timeline-branch', session.sourcePath),
-        label: session.label ?? session.sourcePath.split('/').pop() ?? 'subagent',
+        id: hashParts('timeline-branch', session.traceId),
+        label: (session.label ?? basename(session.sourcePath)) || 'subagent',
+        sessionId: session.runId,
+        traceId: session.traceId,
         sourceTrace: session.sourcePath,
         traceRole: session.role,
         attachTo,
@@ -3933,8 +6819,10 @@ function inferSubagentAttachment(
   const event = candidates.at(-1) ?? taskUses.at(-1);
   if (!event) return undefined;
   return {
+    traceId: event.traceId,
     sourceTrace: event.sourceTrace,
     messageIndex: event.messageIndex,
+    callInstanceId: event.callInstanceId,
     toolUseId: event.toolUseId,
     label: event.toolName,
   };
@@ -3952,12 +6840,22 @@ function maxDefined(values: Array<number | undefined>): number | undefined {
 
 function minString(values: Array<string | undefined>): string | undefined {
   const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0 ? filtered.reduce((min, value) => value < min ? value : min, filtered[0]) : undefined;
+  return filtered.length > 0
+    ? filtered.reduce(
+        (min, value) => Date.parse(value) < Date.parse(min) ? value : min,
+        filtered[0],
+      )
+    : undefined;
 }
 
 function maxString(values: Array<string | undefined>): string | undefined {
   const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0 ? filtered.reduce((max, value) => value > max ? value : max, filtered[0]) : undefined;
+  return filtered.length > 0
+    ? filtered.reduce(
+        (max, value) => Date.parse(value) > Date.parse(max) ? value : max,
+        filtered[0],
+      )
+    : undefined;
 }
 
 function uniqueEvidenceRefs(refs: ExperienceEvidenceRef[]): ExperienceEvidenceRef[] {
@@ -3971,23 +6869,6 @@ function uniqueEvidenceRefs(refs: ExperienceEvidenceRef[]): ExperienceEvidenceRe
 function inferUserGoal(userRefs: ExperienceTimelineEvent[]): string | undefined {
   const first = userRefs.find((ref) => ref.snippet && !ref.snippet.includes('tool_result'));
   return snippet(first?.snippet, 180);
-}
-
-function sourceKindForPath(path: string): ObservationSourceKind {
-  if (path.includes('/openclaw') || path.includes('/.openclaw/')) return 'openclaw';
-  if (/[\\/]\.?codex[\\/]sessions[\\/]/i.test(path)) return 'codex';
-  if (path.endsWith('.jsonl')) return 'claude';
-  if (path.endsWith('.log')) return 'markdown_log';
-  return 'unknown';
-}
-
-function inferEntrypointFromRecords(session: TraceSession): string | undefined {
-  if (session.entrypoint) return session.entrypoint;
-  if (session.sourceKind === 'codex') return 'codex-cli';
-  if (session.sourceKind === 'openclaw') return 'openclaw';
-  if (session.sourceKind === 'markdown_log') return 'markdown_log';
-  if (session.sourcePath.endsWith('.log')) return 'markdown_log';
-  return undefined;
 }
 
 function snippet(value: unknown, max = 240): string | undefined {

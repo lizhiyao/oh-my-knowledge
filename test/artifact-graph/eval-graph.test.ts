@@ -8,6 +8,7 @@ import {
   evalGraphDirForReportOutput,
 } from '../../src/artifact-graph/eval.js';
 import { persistReport } from '../../src/eval-core/evaluation-reporting.js';
+import { buildVariantSummary } from '../../src/eval-core/schema.js';
 import type { EvaluationReport, VariantResult } from '../../src/types/index.js';
 
 function variantResult(overrides: Partial<VariantResult> = {}): VariantResult {
@@ -30,6 +31,45 @@ function variantResult(overrides: Partial<VariantResult> = {}): VariantResult {
 }
 
 function makeReport(): EvaluationReport {
+  const baselineResult = variantResult({
+    compositeScore: 4.5,
+    assertions: {
+      passed: 1,
+      total: 1,
+      score: 5,
+      details: [{ type: 'contains_all', value: '回滚,发布', weight: 1, passed: true }],
+    },
+  });
+  const serviceGuideResult = variantResult({
+    durationMs: 12,
+    durationApiMs: 10,
+    inputTokens: 120,
+    outputTokens: 30,
+    totalTokens: 150,
+    execCostUSD: 0.017,
+    judgeCostUSD: 0.002,
+    costUSD: 0.019,
+    compositeScore: 2.5,
+    assertions: {
+      passed: 0,
+      total: 1,
+      score: 1,
+      details: [{ type: 'contains_all', value: '回滚,发布', weight: 1, passed: false, message: '缺少回滚' }],
+    },
+    dimensions: {
+      workflow: { score: 2, reason: '漏掉回滚步骤' },
+    },
+    diagnostic: {
+      summary: '没有覆盖回滚策略。',
+      expected: '回答需要包含发布与回滚。',
+      actual: '只说明发布检查。',
+      rootCause: ['skill_doc_missing'],
+      failureModes: ['工作流跳步'],
+      suggestion: { skill: '补充回滚步骤。', sample: '', none: '' },
+      ok: true,
+    },
+  });
+
   return {
     kind: 'evaluation',
     id: 'service-guide-20260620T103000-abcd',
@@ -77,7 +117,24 @@ function makeReport(): EvaluationReport {
       request: {
         samplesPath: '/fixture/project/eval-samples.json',
         skillDir: '/fixture/project/skills',
-        artifacts: [],
+        artifacts: [
+          {
+            name: 'baseline',
+            kind: 'baseline',
+            source: 'baseline',
+            content: null,
+            experimentRole: 'control',
+          },
+          {
+            name: 'service-guide',
+            kind: 'skill',
+            source: 'file-path',
+            content: '# Service guide',
+            contentHash: 'skillhash1234',
+            locator: 'examples/customer-service/skills/service-guide/SKILL.md',
+            experimentRole: 'treatment',
+          },
+        ],
         model: 'fixture-model',
         executor: 'fixture',
         noJudge: false,
@@ -88,38 +145,8 @@ function makeReport(): EvaluationReport {
       },
     },
     summary: {
-      baseline: {
-        totalSamples: 1,
-        successCount: 1,
-        errorCount: 0,
-        errorRate: 0,
-        avgDurationMs: 10,
-        avgInputTokens: 100,
-        avgOutputTokens: 20,
-        avgTotalTokens: 120,
-        totalCostUSD: 0.011,
-        totalExecCostUSD: 0.01,
-        totalJudgeCostUSD: 0.001,
-        avgCostPerSample: 0.011,
-        avgNumTurns: 1,
-        avgCompositeScore: 4.5,
-      },
-      'service-guide': {
-        totalSamples: 1,
-        successCount: 1,
-        errorCount: 0,
-        errorRate: 0,
-        avgDurationMs: 12,
-        avgInputTokens: 120,
-        avgOutputTokens: 30,
-        avgTotalTokens: 150,
-        totalCostUSD: 0.019,
-        totalExecCostUSD: 0.017,
-        totalJudgeCostUSD: 0.002,
-        avgCostPerSample: 0.019,
-        avgNumTurns: 1,
-        avgCompositeScore: 2.5,
-      },
+      baseline: buildVariantSummary([baselineResult]),
+      'service-guide': buildVariantSummary([serviceGuideResult]),
     },
     sampleSnapshots: {
       s001: {
@@ -135,36 +162,8 @@ function makeReport(): EvaluationReport {
     results: [{
       sample_id: 's001',
       variants: {
-        baseline: variantResult({
-          compositeScore: 4.5,
-          assertions: {
-            passed: 1,
-            total: 1,
-            score: 5,
-            details: [{ type: 'contains_all', value: '回滚,发布', weight: 1, passed: true }],
-          },
-        }),
-        'service-guide': variantResult({
-          compositeScore: 2.5,
-          assertions: {
-            passed: 0,
-            total: 1,
-            score: 1,
-            details: [{ type: 'contains_all', value: '回滚,发布', weight: 1, passed: false, message: '缺少回滚' }],
-          },
-          dimensions: {
-            workflow: { score: 2, reason: '漏掉回滚步骤' },
-          },
-          diagnostic: {
-            summary: '没有覆盖回滚策略。',
-            expected: '回答需要包含发布与回滚。',
-            actual: '只说明发布检查。',
-            rootCause: ['skill_doc_missing'],
-            failureModes: ['工作流跳步'],
-            suggestion: { skill: '补充回滚步骤。', sample: '', none: '' },
-            ok: true,
-          },
-        }),
+        baseline: baselineResult,
+        'service-guide': serviceGuideResult,
       },
     }],
   };

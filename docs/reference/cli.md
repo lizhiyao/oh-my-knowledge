@@ -256,7 +256,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --output-dir <value>            Report output dir (default project .omk/reports)
   --repeat <value>                Repeat each sample N times
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
-  --resume <value>                Resume a previous failed run
+  --resume <value>                Reuse successful entries from a contract-compatible report; otherwise start over
   --retry <value>                 Per-sample retry count
   --samples <value>               Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.
   --skill-dir <value>             Skill dir, default skills
@@ -317,7 +317,7 @@ For full descriptions: `omk observe --help`.
 
 <!-- omk:cli:observe:flags:end -->
 
-Turns real Codex rollouts and Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
+Normalizes real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs into source-neutral Trace IR, then produces skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
 ### B. observe inbox: reviewer loop
 
@@ -398,6 +398,8 @@ For full descriptions: `omk evolve --help`.
 <!-- omk:cli:evolve:flags:end -->
 
 Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
+
+The CLI completion summary reports the whole evolve process cost: rewrites, optional sample fixes, and all evaluations performed during selection. In the merged evolve report, `meta.totalCostUSD` is deliberately narrower: it is the measurement cost represented by the retained round results. The end-to-end amount is persisted separately as `meta.evolve.processCostUSD`. Either value is a lower bound when its corresponding `*CostReported` flag is `false`.
 
 `omk evolve` is a one-shot loop: it runs the doctor gate before each round by default (`--skip-doctor` to bypass), and **if the target skill has no eval samples yet, it auto-generates a batch first** (equivalent to running `omk sample`) before evolving. So for a brand-new skill, `omk evolve skills/foo.md` alone walks the full "doctor → generate samples → self-iterate" path. Existing samples are used as-is, never regenerated.
 

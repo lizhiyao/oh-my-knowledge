@@ -1,10 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildExecEnv } from './shared.js';
+import {
+  isScriptFileInterpreter,
+  resolveScriptCommand,
+} from './script-command.js';
 import type {
   ExecutorRuntimeBinary,
   ExecutorRuntimeCapabilities,
@@ -103,7 +107,7 @@ function readPackageField<T = unknown>(packageName: string, field: string, from?
   }
 }
 
-function readCommand(command: string, args: string[], env: NodeJS.ProcessEnv, timeout = 1000): { output?: string; error?: string } {
+function readCommand(command: string, args: string[], env: NodeJS.ProcessEnv, timeout = 3000): { output?: string; error?: string } {
   try {
     const output = execFileSync(command, args, {
       encoding: 'utf-8',
@@ -148,12 +152,13 @@ function withFingerprint(input: Omit<ExecutorRuntimeFingerprint, 'fingerprint'>)
   const stablePayload = {
     executor: input.executor,
     model: input.model,
-    kind: input.runtimeKind,
+    runtimeKind: input.runtimeKind,
     binary: input.binary
       ? {
         name: input.binary.name,
         source: input.binary.source,
         version: input.binary.version,
+        contentHash: input.binary.contentHash,
         status: input.binary.version ? 'ok' : input.binary.error ? 'error' : 'missing',
         package: input.binary.package
           ? {
@@ -201,16 +206,100 @@ function runtimeEnv(options: ExecutorRuntimeFingerprintOptions | undefined): Nod
   return options?.env ?? buildExecEnv(options?.skillDir);
 }
 
+function hashRuntimeFiles(paths: string[]): {
+  contentHash?: string;
+  error?: string;
+} {
+  const files = [...new Set(paths)]
+    .filter((path) => {
+      try {
+        return statSync(path).isFile();
+      } catch {
+        return false;
+      }
+    })
+    .sort();
+  if (files.length === 0) return {};
+  const hash = createHash('sha256');
+  const errors: string[] = [];
+  for (const path of files) {
+    hash.update(path);
+    hash.update('\0');
+    try {
+      hash.update(readFileSync(path));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`${path}: ${message}`);
+      hash.update(`<unreadable:${message}>`);
+    }
+    hash.update('\0');
+  }
+  return {
+    contentHash: hash.digest('hex'),
+    ...(errors.length > 0 && { error: errors.join('; ') }),
+  };
+}
+
+function scriptRuntime(
+  executorName: string,
+  model: string,
+  env: NodeJS.ProcessEnv,
+): ExecutorRuntimeFingerprint {
+  const resolved = resolveScriptCommand(executorName);
+  const executablePath = resolvePathBinary(resolved.command, env);
+  const interpreter = isScriptFileInterpreter(resolved.command);
+  const executable: ExecutorRuntimeBinary = interpreter
+    ? readPathBinary(resolved.command, env)
+    : {
+      name: resolved.command,
+      source: executablePath ? 'path' as const : 'unknown' as const,
+      ...(executablePath && { path: executablePath }),
+      ...(!executablePath && { error: 'executable not found on PATH' }),
+    };
+  const fileIdentity = hashRuntimeFiles([
+    ...resolved.referencedFiles,
+    ...(!interpreter && executablePath ? [executablePath] : []),
+  ]);
+  const errors = [executable.error, fileIdentity.error].filter(Boolean).join('; ');
+  return runtime(executorName, model, 'script', {
+    ...UNKNOWN_CAPABILITIES,
+    trace: 'best-effort',
+    skillIsolation: 'none',
+  }, {
+    binary: {
+      ...executable,
+      ...(fileIdentity.contentHash && {
+        contentHash: fileIdentity.contentHash,
+      }),
+      ...(errors && { error: errors }),
+    },
+  });
+}
+
 export function getExecutorRuntimeFingerprint(
   executorName: string,
   model: string,
   options: ExecutorRuntimeFingerprintOptions = {},
 ): ExecutorRuntimeFingerprint {
   const env = runtimeEnv(options);
+  if (![
+    'claude',
+    'claude-sdk',
+    'codex',
+    'codex-sdk',
+    'gemini',
+    'anthropic-api',
+    'openai-api',
+  ].includes(executorName)) {
+    // Custom executors are local code. Re-read their referenced files so a
+    // long-running Studio process cannot reuse stale outputs after the script
+    // changes while the command line remains identical.
+    return scriptRuntime(executorName, model, env);
+  }
   const pathHash = hashString(env.PATH || '');
   const cacheKey = `${executorName}\0${model}\0${pathHash}`;
   const cached = RUNTIME_CACHE.get(cacheKey);
-  if (cached) return cached;
+  if (cached) return structuredClone(cached);
 
   let fp: ExecutorRuntimeFingerprint;
   switch (executorName) {
@@ -291,13 +380,10 @@ export function getExecutorRuntimeFingerprint(
       }, { binary: { name: executorName, source: 'none' } });
       break;
     }
-    default: {
-      fp = runtime(executorName, model, 'script', UNKNOWN_CAPABILITIES, {
-        binary: { name: executorName, source: 'unknown' },
-      });
-    }
+    default:
+      throw new Error(`unreachable executor runtime: ${executorName}`);
   }
 
-  RUNTIME_CACHE.set(cacheKey, fp);
-  return fp;
+  RUNTIME_CACHE.set(cacheKey, structuredClone(fp));
+  return structuredClone(fp);
 }

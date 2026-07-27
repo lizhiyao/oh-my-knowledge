@@ -8,6 +8,23 @@ import { loadSamples } from '../../src/inputs/load-samples.js';
 const tmp = (name: string) => join(tmpdir(), `omk-test-${Date.now()}-${name}`);
 
 describe('loadSamples', () => {
+  it.each(['json', 'yaml'])('rejects duplicate sample_id in a single %s file', (format) => {
+    const samples = [
+      { sample_id: 'shared', prompt: 'first' },
+      { sample_id: 'shared', prompt: 'second' },
+    ];
+    const file = writeSampleFile(
+      `duplicate.${format}`,
+      format === 'json'
+        ? JSON.stringify(samples)
+        : '- sample_id: shared\n  prompt: first\n- sample_id: shared\n  prompt: second\n',
+    );
+    assert.throws(
+      () => loadSamples(file),
+      /duplicate sample_id "shared" at samples\[1\] \(first defined at samples\[0\]\)/,
+    );
+  });
+
   const cleanups: string[] = [];
 
   function writeSampleFile(name: string, content: string): string {
@@ -58,6 +75,95 @@ describe('loadSamples', () => {
   it.each(invalidShapeCases)('rejects invalid sample file shape: $name', ({ file, value, error }) => {
     const p = writeJsonSamples(file, value);
     assert.throws(() => loadSamples(p), error);
+  });
+
+  describe('execution contract', () => {
+    const invalidContractCases = [
+      {
+        name: 'dimensions must contain non-empty rubric text',
+        sample: { dimensions: { quality: '' } },
+        error: /dimensions.*non-empty string rubrics/,
+      },
+      {
+        name: 'unknown assertion type',
+        sample: { assertions: [{ type: 'containz', value: 'token' }] },
+        error: /unsupported assertion type.*containz/,
+      },
+      {
+        name: 'zero-weight assertion',
+        sample: { assertions: [{ type: 'contains', value: 'token', weight: 0 }] },
+        error: /weight.*positive finite number/,
+      },
+      {
+        name: 'invalid regex is rejected before grading',
+        sample: { assertions: [{ type: 'regex', pattern: '[', flags: 'i' }] },
+        error: /regex.*invalid pattern or flags/,
+      },
+      {
+        name: 'async assertion nested in sync assert-set',
+        sample: {
+          assertions: [{
+            type: 'assert-set',
+            children: [{ type: 'semantic_similarity', reference: 'answer' }],
+          }],
+        },
+        error: /async assertion type.*semantic_similarity.*cannot be nested/,
+      },
+      {
+        name: 'mock match typo cannot broaden interception',
+        sample: {
+          mocks: [{
+            tool: 'Bash',
+            match: { command_globb: 'git *' },
+            return: 'ok',
+          }],
+        },
+        error: /match.*unsupported field/,
+      },
+      {
+        name: 'mock must define a return',
+        sample: { mocks: [{ tool: 'Bash' }] },
+        error: /mock requires.*return/,
+      },
+      {
+        name: 'environment rejects unknown fields',
+        sample: { environment: { cli_available: ['git'], typo: true } },
+        error: /environment.*invalid shape/,
+      },
+      {
+        name: 'allowedTools must be a string array',
+        sample: { allowedTools: ['Read', 1] },
+        error: /allowedTools.*array of non-empty strings/,
+      },
+      {
+        name: 'mocksStrict must be boolean',
+        sample: { mocksStrict: 'true' },
+        error: /mocksStrict.*boolean/,
+      },
+    ];
+
+    it.each(invalidContractCases)('rejects invalid execution contract: $name', ({ name, sample, error }) => {
+      const p = writeJsonSamples(`bad-contract-${name}.json`, [{
+        sample_id: 's1',
+        prompt: 'p',
+        ...sample,
+      }]);
+      assert.throws(() => loadSamples(p), error);
+    });
+
+    const invalidRequiresCases = [
+      { name: 'null', requires: null, error: /requires.*must be an object/ },
+      { name: 'unknown field', requires: { tool: ['git'] }, error: /requires.*unsupported field/ },
+      { name: 'non-string item', requires: { tools: ['git', 1] }, error: /requires\.tools.*non-empty strings/ },
+    ];
+
+    it.each(invalidRequiresCases)('rejects invalid requires: $name', ({ name, requires, error }) => {
+      const p = writeJsonSamples(`bad-requires-${name}.json`, {
+        requires,
+        samples: [{ sample_id: 's1', prompt: 'p' }],
+      });
+      assert.throws(() => loadSamples(p), error);
+    });
   });
 
   // sample design metadata fields validation
@@ -194,6 +300,26 @@ describe('loadSamples', () => {
       writeFileSync(join(d, 'a.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'one' }]));
       writeFileSync(join(d, 'b.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'two' }]));
       assert.throws(() => loadSamples(d), /duplicate sample_id "shared"/);
+    });
+
+    it('maps prototype-shaped sample ids to their own source files', () => {
+      const d = makeDir('prototype-ids');
+      const protoPath = join(d, 'a.json');
+      const constructorPath = join(d, 'b.json');
+      writeFileSync(
+        protoPath,
+        JSON.stringify([{ sample_id: '__proto__', prompt: 'one' }]),
+      );
+      writeFileSync(
+        constructorPath,
+        JSON.stringify([{ sample_id: 'constructor', prompt: 'two' }]),
+      );
+
+      const loaded = loadSamples(d);
+      assert.equal(Object.hasOwn(loaded.sampleSourceById, '__proto__'), true);
+      assert.equal(loaded.sampleSourceById.__proto__, protoPath);
+      assert.equal(Object.hasOwn(loaded.sampleSourceById, 'constructor'), true);
+      assert.equal(loaded.sampleSourceById.constructor, constructorPath);
     });
 
     it('errors when directory has no eligible sample files', () => {

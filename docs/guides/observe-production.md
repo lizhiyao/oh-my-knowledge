@@ -1,12 +1,12 @@
 # Observe production traces
 
-`omk observe` turns **real Codex rollouts and Claude Code session traces** into insight: where your knowledge actually got used, where it bumped into gaps, how stable execution was. Unlike [`omk eval`](../reference/cli) (a controlled offline experiment), observe is read-only production observation — **it does not score**, it surfaces signals.
+`omk observe` normalizes **real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs** into source-neutral Trace IR, then shows where knowledge was used, where it bumped into gaps, and how stable execution was. Unlike [`omk eval`](../reference/cli) (a controlled offline experiment), observe is read-only production observation — **it does not score**, it surfaces signals.
 
 It ships two workflows. For every flag see the [CLI reference](../reference/cli).
 
 ## A. Skill-health report (default)
 
-Point it at a Codex or Claude Code trace directory:
+Point it at a supported trace directory or log file:
 
 ```bash
 # ChatGPT desktop / Codex CLI
@@ -46,6 +46,8 @@ omk observe show <inbox_id>
 Each observation carries its credibility (`confidence` + `attributionConfidence`, shown side by side so you can tell a strong signal from a shaky skill-attribution), a stable `severityReasonCode`, and a `messageWindow` (3 messages before / trigger / 3 after, plus whether the agent recovered) anchored back to the original JSONL.
 
 Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenClaw session JSONL, and markdown conversation logs (`.log`). Codex records preserve the model, parent / child task grouping, tool calls, token usage, and `sourceKind=codex`; skill attribution follows actual `skills/<name>/SKILL.md` reads.
+
+Both workflows persist an ingestion summary. If the source contains malformed records, valid JSON values that are not records, or events the current adapter cannot recognize, the CLI and Studio show a completeness notice. Review that notice before treating absence of a signal as evidence that no problem occurred. Runtime guardian sessions are counted separately as intentional filters.
 
 ## Turning observations into samples
 

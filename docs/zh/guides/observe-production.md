@@ -1,12 +1,12 @@
 # 观测生产 trace
 
-`omk observe` 把**真实 Codex rollout 与 Claude Code session trace** 转成洞察：你的知识到底在哪儿被用上了、在哪儿撞上了缺口、执行有多稳。和 [`omk eval`](../reference/cli)（受控离线实验）不同，observe 是只读的生产观测——**它不评分**，它暴露信号。
+`omk observe` 把**真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志**统一转换为 source-neutral Trace IR，再呈现知识在哪儿被使用、在哪儿撞上缺口、执行有多稳定。和 [`omk eval`](../reference/cli)（受控离线实验）不同，observe 是只读的生产观测——**它不评分**，只暴露信号。
 
 它有两条工作流。每个 flag 见 [CLI 参考](../reference/cli)。
 
 ## A. skill 健康度报告（默认）
 
-指向 Codex 或 Claude Code 的 trace 目录：
+将它指向受支持的 trace 目录或日志文件：
 
 ```bash
 # ChatGPT desktop / Codex CLI
@@ -46,6 +46,8 @@ omk observe show <inbox_id>
 每条 observation 带它的可信度（`confidence` + `attributionConfidence`，并排显示，让你区分"强信号"和"摇摆的 skill 归因"）、一个稳定的 `severityReasonCode`、以及一个 `messageWindow`（触发前 3 条 / 触发 / 后 3 条，外加 agent 是否恢复），都锚回原始 JSONL。
 
 支持的 trace 格式：Codex rollout JSONL、Claude Code session JSONL、OpenClaw session JSONL、markdown 对话日志（`.log`）。Codex 记录会保留模型、父子任务分组、tool call、token 使用和 `sourceKind=codex`；skill 归因依据实际读取的 `skills/<name>/SKILL.md`。
+
+两条工作流都会持久化摄取摘要。源数据包含格式损坏记录、不是对象的合法 JSON 值，或当前 adapter 无法识别的事件时，CLI 与 Studio 会显示完整性提示。把「没有发现信号」解释成「没有问题」之前，应先复核这项提示。运行时守护会话属于有意过滤，会单独计数。
 
 ## 把 observation 变成用例
 

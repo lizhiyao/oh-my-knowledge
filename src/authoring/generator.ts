@@ -3,15 +3,6 @@ import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
 import type { Sample, SampleProvenance, ExecutorFn } from '../types/index.js';
 import type { ObservationInboxItem } from '../types/observability.js';
 
-/**
- * Generator 默认模型 'opus' (跟 eval 默认对齐)。
- * lean=true 路径会自动追加 `--effort low`,关掉 opus 默认的扩展思考,
- * 所以 opus + lean + effort-low 在 generator 场景下速度仍然可控(单 skill ~30-60s)。
- * 成本约 sonnet 的 5x,但 opus 在结构化指令遵循 / 长 prompt 一致性上更稳。
- * 用户想要省钱时显式 `--model sonnet` 即可。
- */
-const GENERATOR_DEFAULT_MODEL = 'sonnet';
-
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 
 样本结构决策（必须先做）：先扫一遍 skill 内容判断它属于哪一类，按对应配比和数量生成。
@@ -383,8 +374,8 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 interface GenerateSamplesOptions {
   skillContent: string;
   count?: number;
-  model?: string;
-  executorName?: string;
+  model: string;
+  executorName: string;
   /**
    * 自然语言描述用户希望重点覆盖的场景。会作为额外约束追加到 prompt 末尾，
    * 优先于"自由发挥"的多样性。空串 / undefined 表示不施加额外约束。
@@ -418,7 +409,7 @@ ${skillContent}
 ${countLine}直接输出 JSON 数组。${focusBlock}${noMockBlock}`;
 }
 
-export async function generateSamples({ skillContent, count, model = GENERATOR_DEFAULT_MODEL, executorName = 'claude', focus, noMock }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
+export async function generateSamples({ skillContent, count, model, executorName, focus, noMock }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   const executor = createExecutor(executorName);
 
   const prompt = buildSamplesPrompt({ skillContent, count, focus, noMock });
@@ -588,7 +579,7 @@ function traceSanitizeContext(items: TraceSignalItem[]): string {
 export interface GenerateSamplesFromTracesOptions {
   items: TraceSignalItem[];
   count?: number;
-  model?: string;
+  model: string;
   executorName?: string;
   /** Injectable executor (tests). Defaults to createExecutor(executorName). */
   executor?: ExecutorFn;
@@ -603,12 +594,15 @@ export interface GenerateSamplesFromTracesOptions {
 export async function generateSamplesFromTraces({
   items,
   count,
-  model = GENERATOR_DEFAULT_MODEL,
-  executorName = 'claude',
+  model,
+  executorName,
   executor: injectedExecutor,
 }: GenerateSamplesFromTracesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   if (items.length === 0) return { samples: [], costUSD: 0 };
-  const executor = injectedExecutor ?? createExecutor(executorName);
+  if (!injectedExecutor && !executorName) {
+    throw new Error('executorName is required when no executor is injected');
+  }
+  const executor = injectedExecutor ?? createExecutor(executorName!);
   const prompt = buildSamplesFromTracesPrompt(items, count);
   const sanitizeContext = traceSanitizeContext(items);
   const PROVENANCE: SampleProvenance = 'production-trace';

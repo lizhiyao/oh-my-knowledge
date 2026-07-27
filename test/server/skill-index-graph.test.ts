@@ -200,7 +200,7 @@ function doctorGraph(): ArtifactGraphDocument {
       { id: 'wfn', stableKey: 'v1:workflow-node:hash-service-guide:release.check', nodeKind: 'workflow_node', nodeRole: 'entity', layer: 'definition', label: '检查发布' },
       { id: 'rule', stableKey: 'v1:hard-rule:hash-service-guide:cite', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'cite' },
       { id: 'rule2', stableKey: 'v1:hard-rule:hash-service-guide:rollback', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'rollback' },
-      { id: 'rule3', stableKey: 'v1:hard-rule:hash-service-guide:handoff', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'handoff', status: 'ok" onclick="alert(1)' as ArtifactGraphDocument['nodes'][number]['status'] },
+      { id: 'rule3', stableKey: 'v1:hard-rule:hash-service-guide:handoff', nodeKind: 'hard_rule', nodeRole: 'entity', layer: 'definition', label: 'handoff', status: 'ok' },
     ],
     edges: [
       { id: 'e1', fromNodeId: 'skill', toNodeId: 'ref', edgeKind: 'references', layer: 'definition' },
@@ -539,6 +539,42 @@ describe('SkillIndex graph projection', () => {
     const html = renderSkillDetail(entry, report, 'zh');
     assert.ok(html.includes('omk doctor /repo/skills/service-guide/SKILL.md'));
     assert.ok(!html.includes('omk doctor /repo/.omk/samples.json'));
+  });
+
+  it('indexes prototype-shaped skill names as ordinary identities', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'omk-skill-index-prototype-'));
+    cleanup.push(tmp);
+    const doctorsDir = join(tmp, '.omk', 'doctors');
+    const analysesDir = join(tmp, '.omk', 'observe-health');
+    const observationsDir = join(tmp, '.omk', 'observe-inbox');
+    mkdirSync(doctorsDir, { recursive: true });
+
+    const doctor = makeDoctorReport();
+    const template = doctor.skills[0];
+    doctor.id = 'doctor-prototype-shaped-skills';
+    doctor.skills = ['__proto__', 'constructor'].map((skillName) => ({
+      ...structuredClone(template),
+      skillName,
+      skillPath: `/repo/skills/${skillName}/SKILL.md`,
+    }));
+    doctor.totals.pass = 2;
+    doctor.ruleStats.pass = 2;
+    doctor.ruleStats.total = 2;
+    writeFileSync(
+      join(doctorsDir, reportFileName('prototype-shaped-skills')),
+      JSON.stringify(doctor),
+    );
+
+    const index = buildSkillIndex(
+      [],
+      analysesDir,
+      doctorsDir,
+      observationsDir,
+    );
+    assert.deepEqual(
+      index.entries.map((entry) => entry.skillName).sort(),
+      ['__proto__', 'constructor'],
+    );
   });
 
   it('links the skill list to the skill hub instead of a stage-specific report', () => {

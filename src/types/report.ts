@@ -11,11 +11,14 @@ export interface VariantResult {
   totalTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** Mirrors `ExecResult.tokenUsageReportedByExecutor`.
+   *  False means token counters are placeholders for unavailable telemetry. */
+  tokenUsageReportedByExecutor?: boolean;
   execCostUSD: number;
   judgeCostUSD: number;
   /** Diagnostic 自身花费(USD)。仅在 failed-assertion 触发 diagnostic 且 executor 报告了 cost 时有值。
-   *  Diagnostic 一般跑在 judge executor 上(claude:haiku 标配),所以 cost-reported 语义随
-   *  `judgeCostReportedByExecutor`,不再单独引一个 flag。
+   *  Diagnostic 跟随首位 judge executor，所以 cost-reported 语义汇入
+   *  `judgeCostReportedByExecutor`，不再单独引一个 VariantResult flag。
    *  v0.30 新增,旧报告无此字段 — 老 costUSD 仍等于 execCostUSD + judgeCostUSD,新 costUSD
    *  含 diagnostic,跨版本汇总时按字段是否存在判断。 */
   diagnosticCostUSD?: number;
@@ -33,12 +36,18 @@ export interface VariantResult {
    *  report cost (currently codex). Default undefined ⇒ reported. */
   judgeCostReportedByExecutor?: boolean;
   numTurns: number;
+  /** Executor attempts used to obtain the final output. Missing means one. */
+  attemptCount?: number;
   fullNumTurns?: number;
   numSubAgents?: number;
   assistantTurns?: number;
   toolTurns?: number;
   numToolCalls?: number;
   numToolFailures?: number;
+  /** Calls explicitly cancelled by the runtime; distinct from execution failures. */
+  numToolCancelled?: number;
+  /** Calls without an authoritative completion state; excluded from success-rate denominator. */
+  numToolUnknown?: number;
   toolSuccessRate?: number;
   toolNames?: string[];
   /** per-sample tool call distribution (tool name → call count).
@@ -81,7 +90,14 @@ export interface VariantResult {
     misses: number;
     perMock: Record<string, number>;
   };
-  timing?: { execMs: number; gradeMs: number; totalMs: number };
+  timing?: {
+    execMs: number;
+    gradeMs: number;
+    /** Wall-clock time spent on the optional failure diagnostic call. */
+    diagnosticMs?: number;
+    /** execMs + gradeMs + (diagnosticMs ?? 0). */
+    totalMs: number;
+  };
 }
 
 export interface VariantSummary {
@@ -93,6 +109,12 @@ export interface VariantSummary {
   avgInputTokens: number;
   avgOutputTokens: number;
   avgTotalTokens: number;
+  /**
+   * Share of all sample results whose executor reported token usage.
+   * Missing means legacy reports where usage was assumed fully observed.
+   * Token averages use only successful results with observed usage.
+   */
+  tokenUsageCoverageRate?: number;
   /** sum(ok-sample 的 costUSD)。等于 totalExecCostUSD + totalJudgeCostUSD + totalDiagnosticCostUSD。
    *  注意:仅含执行成功且未被 per-sample budget 标 overrun 的 sample,跟 meta.totalCostUSD(全量
    *  累计,含失败 sample)语义不同 — 那是历史 ok-filter 行为,跟 v0.30 的 diagnostic 引入无关。 */
@@ -120,6 +142,8 @@ export interface VariantSummary {
   avgToolTurns?: number;
   avgToolCalls?: number;
   avgToolFailures?: number;
+  avgToolCancelled?: number;
+  avgToolUnknown?: number;
   toolSuccessRate?: number;
   toolDistribution?: Record<string, number>;
   traceCoverageRate?: number;
@@ -238,14 +262,28 @@ export interface ReportMeta {
    *  Value 2 marked the artifactHashes tree-hash era for local dir-skills (git dir-skills still
    *  SKILL.md-only). Value 3 extends whole-tree hashing to git dir-skills via isolated copies
    *  (all dir-skills bind). Value 4 keeps the v3 hash/binding semantics but marks the canonical
-   *  top-level discriminant era, so external consumers can version-gate the JSON shape. Drift /
-   *  lineage consumers gate on `>= 2` (tree-hash era); git-dir-skill binding additionally
-   *  requires `>= 3`. */
+   *  top-level discriminant era, so external consumers can version-gate the JSON shape. Value 5
+   *  changes `sampleHashes` to bind the complete Sample contract plus external mock fixtures and
+   *  the statically resolvable ESM custom-assertion import graph. Drift / lineage consumers gate on `>= 2`
+   *  (tree-hash era); git-dir-skill binding additionally requires `>= 3`; complete sample
+   *  fingerprints require `>= 5`. */
   schemaVersion?: number;
-  /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
+  /** SHA256-12 of every sample's measurement contract (sample_id → hash).
+   *  schemaVersion >= 5 binds all inline fields, mock return_file content, and the statically
+   *  resolvable ESM custom-assertion import graph. Earlier versions used a partial inline-field
+   *  hash. */
   sampleHashes?: Record<string, string>;
   /** SHA256-12 of the LLM judge prompt template. Different hash = judge changed semantics. */
   judgePromptHash?: string;
+  /** Failure-diagnostic execution contract. Diagnostic is independent from judge scoring,
+   *  so it remains configured under --no-judge unless --no-diagnostic is set. */
+  diagnostic?: {
+    enabled: boolean;
+    executor?: string;
+    model?: string;
+    runtime?: ExecutorRuntimeFingerprint;
+    promptHash?: string;
+  };
   /** Runtime fingerprint for the executor that produced tested outputs.
    *  Legacy/common field. Prefer executorRuntimes for variant-level audit; this
    *  field is the common runtime when all variants match, otherwise a representative
@@ -308,6 +346,17 @@ export interface ReportMeta {
   evolve?: {
     skillName: string;
     skillPath?: string;
+    /** 本次 evolve 实际发生的改写、修复与评测总成本；不同于报告内 result 的测量成本。 */
+    processCostUSD?: number;
+    /** false 表示 processCostUSD 只是可观测 provider 成本的下界。 */
+    processCostReported?: boolean;
+    /** 每个 round 的原始评测身份。合并报告是 aggregate，不复用任一源报告的 request / run / job。 */
+    sourceReports?: Array<{
+      round: number;
+      accepted: boolean;
+      reportId: string;
+      variant: string;
+    }>;
   };
 }
 
@@ -333,10 +382,17 @@ export interface ResultEntry {
 export interface SampleSnapshot {
   sample_id: string;
   prompt: string;
+  /** Runtime context that can change executor-visible project state. */
+  cwd?: string;
   rubric?: string;
   context?: string;
+  dimensions?: Record<string, string>;
   assertions?: import('./eval.js').Assertion[];
   mocks?: import('./eval.js').Mock[];
+  mocksStrict?: boolean;
+  environment?: import('./eval.js').SampleEnvironment;
+  allowedTools?: string[];
+  expectedTools?: string[];
   capability?: string[];
   difficulty?: import('./eval.js').SampleDifficulty;
   construct?: string;

@@ -21,6 +21,7 @@
 import { resolve } from 'node:path';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
+import { setOwnRecordValue } from '../../shared/record-count.js';
 import type {
   EvalConfig,
   VariantSpec,
@@ -43,15 +44,15 @@ export interface RunConfig {
   samplesPath: string;
   skillDir: string;
   variantSpecs: VariantSpec[];
-  model: string | undefined;
+  model: string;
   outputDir: string;
   noJudge: boolean | undefined;
   noCache: boolean | undefined;
   dryRun: boolean | undefined;
   concurrency: number;
   timeoutMs: number;
-  executorName: string | undefined;
-  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
+  executorName: string;
+  /** 跳过 LLM 模型连通性检测。仅当 --resume 报告通过完整契约校验时自动 true。 */
   skipConnectivity: boolean | undefined;
   /** 跳过 doctor 健康检查门禁(--skip-doctor)。escape hatch — 默认 false。
    *  开启后 doctor 整段不跑(节省静态检查时间);doctor 失败也不再阻断 eval。
@@ -212,7 +213,7 @@ export function parseRunConfig(
   if (evalConfig?.variants) {
     for (const v of evalConfig.variants) {
       if (v.allowedSkills !== undefined) {
-        variantAllowedSkills[v.name] = v.allowedSkills;
+        setOwnRecordValue(variantAllowedSkills, v.name, v.allowedSkills);
       }
     }
   }

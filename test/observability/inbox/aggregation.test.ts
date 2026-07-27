@@ -1,12 +1,13 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   aggregateInboxItems,
   buildObservationInboxReport,
   loadLatestObservationInboxReports,
+  loadObservationInboxReports,
   normalizeObservationKeyInput,
   queryObservationInbox,
   saveObservationInboxReport,
@@ -101,10 +102,84 @@ describe('observe inbox - aggregation', () => {
       },
       {
         sourceKind: 'openclaw',
-        startTimestamp: '2026-05-13T01:02:03.000Z',
+        startTimestamp: '2026-05-13T01:00:00.000Z',
         endTimestamp: '2026-05-13T01:05:06.000Z',
       },
     );
+  });
+
+  it('keeps missing source timestamps explicit through inbox and experience aggregation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-no-timestamps-'));
+    const trace = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/audit</command-name> 检查资料。',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'tool-1',
+            name: 'Read',
+            input: { file_path: '/repo-a/missing.md' },
+          }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'tool-1',
+            is_error: true,
+            content: 'No such file or directory',
+          }],
+        },
+      },
+    ];
+    writeFileSync(trace, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(trace);
+    const item = report.items[0];
+    const invocation = report.experience?.invocations[0];
+    const session = report.experience?.sessions[0];
+    const skill = report.experience?.skills[0];
+
+    assert.equal(report.meta.timestampedSegmentCount, 0);
+    assert.equal(report.meta.timestampCoverage, 0);
+    assert.deepEqual(report.meta.skillInvocationLastSeen, {});
+    assert.equal(item.timestampedOccurrences, 0);
+    assert.equal(invocation?.timestampObserved, false);
+    assert.equal(session?.timestampedInvocationCount, 0);
+    assert.equal(session?.timestampCoverage, 0);
+    assert.equal(skill?.timestampedInvocationCount, 0);
+    assert.equal(skill?.timestampCoverage, 0);
+
+    const path = saveObservationInboxReport(report, dir);
+    const persisted = loadObservationInboxReports(dir)
+      .find((candidate) => candidate.meta.tracePath === trace);
+    assert.ok(path.endsWith('.report.json'));
+    assert.equal(persisted?.items[0].timestampedOccurrences, 0);
+    assert.equal(persisted?.experience?.invocations[0].timestampObserved, false);
   });
 
   it('aggregates duplicate items by skill/cwd/signal/query', () => {
@@ -175,6 +250,162 @@ describe('observe inbox - aggregation', () => {
     assert.deepEqual(queryObservationInbox(dir).map((item) => item.skillName), ['latest_skill']);
   });
 
+  it('rejects malformed inbox shells while inferring legacy sourceKind', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-shell-'));
+    const report = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 2 as const,
+      meta: {
+        tracePath: '/tmp/s1.jsonl',
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+      },
+      items: [baseItem({ id: 'shell-item' })],
+    };
+    const path = saveObservationInboxReport(report, dir);
+    const persisted = JSON.parse(readFileSync(path, 'utf8'));
+
+    persisted.meta.generatedAt = 42;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.meta.generatedAt = report.meta.generatedAt;
+    persisted.items[0].sourceKind = 'unsupported-runtime';
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    delete persisted.items[0].sourceKind;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.equal(loadObservationInboxReports(dir)[0].items[0].sourceKind, 'unknown');
+
+    persisted.meta.itemCount = 2;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.meta.itemCount = 1;
+    persisted.meta.skillInvocationCounts = { audit: 2 };
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.meta.skillInvocationCounts = { audit: 1 };
+    persisted.meta.ingestion = {
+      fileCount: 1,
+      sourceRecordCount: 2,
+      parsedRecordCount: 2,
+      malformedRecordCount: 1,
+      ignoredValueCount: 0,
+      unknownEventCount: 0,
+      filteredSessionCount: 0,
+    };
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+  });
+
+  it('rejects aggregate count overflow instead of persisting imprecise occurrence totals', () => {
+    assert.throws(
+      () => aggregateInboxItems([
+        baseItem({ id: 'a', occurrences: Number.MAX_SAFE_INTEGER }),
+        baseItem({ id: 'b', occurrences: 1 }),
+      ]),
+      /exceeds Number\.MAX_SAFE_INTEGER/,
+    );
+  });
+
+  it('does not overwrite inbox reports generated in the same millisecond', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-same-ms-'));
+    const report = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 2 as const,
+      meta: {
+        tracePath: '/tmp/same-ms.jsonl',
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+      },
+      items: [baseItem({ id: 'same-ms' })],
+    };
+
+    const firstPath = saveObservationInboxReport(report, dir);
+    const secondPath = saveObservationInboxReport(report, dir);
+
+    assert.notEqual(firstPath, secondPath);
+    assert.equal(loadObservationInboxReports(dir).length, 2);
+  });
+
+  it('rejects inbox reports whose references or aggregates contradict experience', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-consistency-'));
+    const trace = join(dir, 'session.jsonl');
+    writeFileSync(trace, [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
+        },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+
+    const path = saveObservationInboxReport(buildObservationInboxReport(trace), dir);
+    const persisted = JSON.parse(readFileSync(path, 'utf8'));
+
+    persisted.items.push(structuredClone(persisted.items[0]));
+    persisted.meta.itemCount += 1;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+    persisted.items.pop();
+    persisted.meta.itemCount -= 1;
+
+    persisted.meta.sessionCount += 1;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+    persisted.meta.sessionCount -= 1;
+
+    persisted.meta.skillInvocationCounts.audit += 1;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+    persisted.meta.skillInvocationCounts.audit -= 1;
+
+    const relatedObservationIds = persisted.experience.invocations[0].relatedObservationIds;
+    persisted.experience.invocations[0].relatedObservationIds = ['missing-observation'];
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+    persisted.experience.invocations[0].relatedObservationIds = relatedObservationIds;
+
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.equal(loadObservationInboxReports(dir).length, 1);
+  });
+
   it('keeps streaming report aggregation equivalent to direct aggregation', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');
@@ -228,6 +459,79 @@ describe('observe inbox - aggregation', () => {
     assert.equal(report.items[0].severityReasonCode, 'knowledge_gap_suspected');
   });
 
+  it('persists compact experience evidence and hydrates it on load', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-wire-'));
+    const trace = join(dir, 'session.jsonl');
+    writeFileSync(trace, [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/audit</command-name>\nInspect the implementation.',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Inspection complete.' }],
+        },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(trace);
+    const originalTimelineIds = report.experience!.invocations[0].timeline.map((event) => event.id);
+    const path = saveObservationInboxReport(report, dir);
+    const persisted = JSON.parse(readFileSync(path, 'utf8'));
+    assert.equal(persisted.experience.schemaVersion, 3);
+    assert.equal(persisted.experience.traceTimelines.length, 1);
+    assert.equal('timeline' in persisted.experience.invocations[0], false);
+    assert.equal('fullSessionTimeline' in persisted.experience.sessions[0], false);
+
+    const loaded = loadObservationInboxReports(dir)[0];
+    assert.deepEqual(
+      loaded.experience!.invocations[0].timeline.map((event) => event.id),
+      originalTimelineIds,
+    );
+    assert.ok(loaded.experience!.sessions[0].fullSessionTimeline.length > 0);
+    assert.equal(
+      loaded.experience!.sessions[0].reviewerReport?.sessionStory,
+      loaded.experience!.sessions[0].sessionStory,
+    );
+
+    const storyContexts = persisted.experience.storyContexts;
+    delete persisted.experience.storyContexts;
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.experience.storyContexts = storyContexts;
+    const episodes = persisted.experience.storyContexts[0].episodes;
+    persisted.experience.storyContexts[0].episodes = [null];
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.experience.storyContexts[0].episodes = episodes;
+    const chainSteps = persisted.experience.sessions[0].reviewerReport.chainSteps;
+    persisted.experience.sessions[0].reviewerReport.chainSteps = [null];
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+
+    persisted.experience.sessions[0].reviewerReport.chainSteps = chainSteps;
+    persisted.experience.traceTimelines[0].tree.main[0].kind = 'not-a-timeline-kind';
+    writeFileSync(path, JSON.stringify(persisted));
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+  });
+
   it('aggregates bash_probe by skill/cwd/subtype without full command precision', () => {
     const items = aggregateInboxItems([
       baseItem({
@@ -250,6 +554,76 @@ describe('observe inbox - aggregation', () => {
     assert.equal(items.length, 1);
     assert.equal(items[0].occurrences, 2);
     assert.equal(items[0].representativeEvidence.length, 2);
+  });
+
+  it('keeps the strongest same-severity occurrence as primary evidence', () => {
+    const items = aggregateInboxItems([
+      baseItem({
+        id: 'weak',
+        signalSubtype: 'bash_probe',
+        severity: 'medium',
+        confidence: 0.4,
+        lastSeen: '2026-05-01T00:00:00.000Z',
+        evidence: { tool: 'Bash', query: 'weak evidence' },
+      }),
+      baseItem({
+        id: 'strong',
+        sessionId: 's2',
+        signalSubtype: 'bash_probe',
+        severity: 'medium',
+        confidence: 0.8,
+        lastSeen: '2026-05-02T00:00:00.000Z',
+        evidence: { tool: 'Bash', query: 'strong evidence' },
+      }),
+    ]);
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].confidence, 0.8);
+    assert.equal(items[0].evidence.query, 'strong evidence');
+  });
+
+  it('keeps aggregation output canonical across occurrence order', () => {
+    const occurrences = Array.from({ length: 4 }, (_, index) => baseItem({
+      id: `occurrence-${index}`,
+      sessionId: `session-${index}`,
+      signalSubtype: 'bash_probe',
+      severity: 'medium',
+      confidence: 0.5,
+      evidence: {
+        tool: 'Bash',
+        query: `probe-${index}`,
+        segmentTimestamp: '2026-05-01T00:00:00.000Z',
+      },
+    }));
+
+    assert.deepEqual(
+      aggregateInboxItems(occurrences),
+      aggregateInboxItems([...occurrences].reverse()),
+    );
+  });
+
+  it('retains replacement primary evidence when the representative set is capped', () => {
+    const occurrences = Array.from({ length: 60 }, (_, index) => baseItem({
+      id: `weak-${index}`,
+      sessionId: `session-${index}`,
+      signalSubtype: 'bash_probe',
+      severity: 'medium',
+      confidence: 0.4,
+      evidence: { tool: 'Bash', query: `weak-${index}` },
+    }));
+    occurrences.push(baseItem({
+      id: 'strong',
+      sessionId: 'strong-session',
+      signalSubtype: 'bash_probe',
+      severity: 'medium',
+      confidence: 0.9,
+      evidence: { tool: 'Bash', query: 'strong evidence' },
+    }));
+
+    const [item] = aggregateInboxItems(occurrences);
+    assert.equal(item.representativeEvidence.length, 50);
+    assert.equal(item.evidence.query, 'strong evidence');
+    assert.deepEqual(item.representativeEvidence[0], item.evidence);
   });
 
   it('samples explore items from medium/low and excludes noise unless requested', () => {

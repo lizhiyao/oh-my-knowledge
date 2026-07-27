@@ -1,6 +1,4 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
-import type { ClaudeSdkBaseMessage, ClaudeSdkResultMessage } from './shared.js';
 import {
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
@@ -12,6 +10,7 @@ import {
   type SpawnHelperError,
 } from './shared.js';
 import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
+import { buildClaudeResult, parseClaudeStreamJson } from './claude-protocol.js';
 
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
 // `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。非空 skill 白名单不再支持
@@ -32,18 +31,6 @@ function applySkillIsolationToCliArgs(args: string[], allowedSkills: string[] | 
   }
   // 完全隔离:双堵 main session skill 发现 + subagent Skill 工具
   args.push('--disable-slash-commands', '--disallowedTools', 'Skill');
-}
-
-function parseStreamJson(stdout: string): ClaudeSdkBaseMessage[] {
-  const messages: ClaudeSdkBaseMessage[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      messages.push(JSON.parse(trimmed) as ClaudeSdkBaseMessage);
-    } catch { /* skip non-JSON lines */ }
-  }
-  return messages;
 }
 
 export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
@@ -96,44 +83,15 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     child.stdin?.end();
     const { stdout } = await done;
     const durationMs = Date.now() - start;
-    const messages = parseStreamJson(stdout);
-
-    // 提取 result 消息
-    const resultMsgs = messages.filter(isClaudeSdkResultMessage) as ClaudeSdkResultMessage[];
-    if (resultMsgs.length === 0) {
-      const ms = captureMockStats();
-      return {
-        ok: false, error: 'no result message in stream-json output',
-        durationMs, durationApiMs: 0,
-        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-        costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
-        ...(ms && { mockStats: ms }),
-      };
-    }
-
-    const last = resultMsgs[resultMsgs.length - 1];
-    const usage = last.usage || {};
-
-    // 提取 trace
-    const trace = extractAgentTrace(messages);
-
+    const parsed = parseClaudeStreamJson(stdout);
     const ms = captureMockStats();
     return {
-      ok: !last.errors?.length && last.subtype !== 'error',
-      durationMs: last.duration_ms || durationMs,
-      durationApiMs: last.duration_api_ms || 0,
-      inputTokens: usage.input_tokens || 0,
-      outputTokens: usage.output_tokens || 0,
-      cacheReadTokens: usage.cache_read_input_tokens || 0,
-      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-      costUSD: last.total_cost_usd || 0,
-      output: last.result || '',
-      stopReason: last.subtype || 'unknown',
-      numTurns: last.num_turns || 1,
-      fullNumTurns: trace.fullNumTurns,
-      numSubAgents: trace.numSubAgents,
-      ...(trace.turns.length > 0 && { turns: trace.turns }),
-      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+      ...buildClaudeResult({
+        messages: parsed.messages,
+        malformedLineCount: parsed.malformedLineCount,
+        wallClockDurationMs: durationMs,
+        source: 'claude stream-json',
+      }),
       ...(ms && { mockStats: ms }),
     };
   } catch (err: unknown) {
@@ -148,42 +106,16 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
       return { ...interruptedExecResult(durationMs), ...(ms && { mockStats: ms }) };
     }
 
-    // 尝试从 stdout 解析 stream-json(即使进程退出码非 0 也可能有 result)
-    const messages = parseStreamJson(details.stdout || '');
-    const resultMsgs = messages.filter(isClaudeSdkResultMessage) as ClaudeSdkResultMessage[];
-    if (resultMsgs.length > 0) {
-      const last = resultMsgs[resultMsgs.length - 1];
-      const usage = last.usage || {};
-      const trace = extractAgentTrace(messages);
-      const ms = captureMockStats();
-      return {
-        ok: false,
-        error: last.errors?.join('; ') || last.result || errorMessage(err),
-        durationMs: last.duration_ms || durationMs,
-        durationApiMs: last.duration_api_ms || 0,
-        inputTokens: usage.input_tokens || 0,
-        outputTokens: usage.output_tokens || 0,
-        cacheReadTokens: usage.cache_read_input_tokens || 0,
-        cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-        costUSD: last.total_cost_usd || 0,
-        output: last.result || null,
-        stopReason: 'error',
-        numTurns: last.num_turns || 0,
-        fullNumTurns: trace.fullNumTurns,
-        numSubAgents: trace.numSubAgents,
-        ...(trace.turns.length > 0 && { turns: trace.turns }),
-        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
-        ...(ms && { mockStats: ms }),
-      };
-    }
-
+    const parsed = parseClaudeStreamJson(details.stdout || '');
     const ms = captureMockStats();
     return {
-      ok: false,
-      error: errorMessage(err),
-      durationMs, durationApiMs: 0,
-      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-      costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+      ...buildClaudeResult({
+        messages: parsed.messages,
+        malformedLineCount: parsed.malformedLineCount,
+        wallClockDurationMs: durationMs,
+        source: 'claude stream-json',
+        forcedError: details.stderr?.trim() || errorMessage(err),
+      }),
       ...(ms && { mockStats: ms }),
     };
   } finally {

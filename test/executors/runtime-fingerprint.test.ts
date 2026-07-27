@@ -43,4 +43,40 @@ describe('runtime fingerprint', () => {
       rmSync(dirB, { recursive: true, force: true });
     }
   });
+
+  it('binds a custom script runtime to referenced file contents', async () => {
+    vi.resetModules();
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-script-'));
+    const script = join(dir, 'executor.mjs');
+    try {
+      writeFileSync(script, 'console.log("v1");\n');
+      const first = getExecutorRuntimeFingerprint(`node ${script}`, 'test-model');
+
+      writeFileSync(script, 'console.log("v2");\n');
+      const second = getExecutorRuntimeFingerprint(`node ${script}`, 'test-model');
+
+      assert.equal(first.runtimeKind, 'script');
+      assert.equal(first.capabilities.trace, 'best-effort');
+      assert.match(first.binary?.contentHash || '', /^[a-f0-9]{64}$/);
+      assert.notEqual(first.binary?.contentHash, second.binary?.contentHash);
+      assert.notEqual(first.fingerprint, second.fingerprint);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not expose mutable references owned by the runtime cache', async () => {
+    vi.resetModules();
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const first = getExecutorRuntimeFingerprint('openai-api', 'gpt-test');
+    const expected = first.fingerprint;
+    first.fingerprint = 'caller-mutated';
+    if (first.binary) first.binary.name = 'caller-mutated';
+
+    const second = getExecutorRuntimeFingerprint('openai-api', 'gpt-test');
+    assert.equal(second.fingerprint, expected);
+    assert.equal(second.binary?.name, 'openai-api');
+    assert.notEqual(first, second);
+  });
 });

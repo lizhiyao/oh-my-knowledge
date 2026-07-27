@@ -372,6 +372,10 @@ export interface EvaluationRequest {
   strictBaseline?: boolean;
   /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort。 */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 每个执行任务失败后的最大重试次数。缺省 / 0 表示不重试。 */
+  retry?: number;
+  /** true 时关闭 assertion 失败后的诊断 LLM 调用。缺省等价于 false。 */
+  noDiagnostic?: boolean;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

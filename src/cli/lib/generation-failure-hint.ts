@@ -13,7 +13,8 @@ export function formatSampleGenerationFailureHint(
   lang: CliLang,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const executor = executorName ?? 'claude';
+  const executor = executorName?.trim();
+  if (!executor) return '';
   if (!looksLikeLlmSetupFailure(message)) return '';
 
   if (CLAUDE_SAMPLE_EXECUTORS.has(executor)) {

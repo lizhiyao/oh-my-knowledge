@@ -2,8 +2,23 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildObserveDiagnostics, maxLifecycle } from '../../src/diagnosis/observe-mapper.js';
 import { activeStudioDiagnostics, buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../src/diagnosis/studio-projection.js';
+import { parseDiagnosisBundle } from '../../src/shared/diagnosis-schema.js';
 
 describe('buildObserveDiagnostics', () => {
+  it('keeps prototype-shaped skill names as ordinary diagnosis groups', () => {
+    const bundle = buildObserveDiagnostics({
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      skillChainAdvisories: [{
+        skillName: '__proto__',
+        code: 'skill_md_not_found',
+      }],
+    });
+
+    assert.equal(Object.hasOwn(bundle.bySkill, '__proto__'), true);
+    assert.equal(bundle.bySkill.__proto__.length, 1);
+    assert.ok(parseDiagnosisBundle(bundle));
+  });
+
   it('maps observe source types into a shared diagnosis bundle', () => {
     const bundle = buildObserveDiagnostics({
       generatedAt: '2026-05-15T00:00:00.000Z',
@@ -190,6 +205,39 @@ describe('mergeDiagnosisBundles', () => {
     assert.ok(diag);
     assert.equal(diag.occurrenceCount, 7, '应累加 3 + 4,不是 occurrences.length=2');
     assert.equal(diag.occurrences.length, 2, '源 occurrence 条数确实是 2');
+    assert.ok(parseDiagnosisBundle(merged), 'merge 产物应满足自身持久化 schema');
+  });
+
+  it('deduplicates the same source occurrence and keeps lifecycle merge order-independent', () => {
+    const detected = buildObserveDiagnostics({
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      derivedStandards: [{
+        skillName: 'audit',
+        id: 'same-standard',
+        standardKind: 'hard_rule_candidate',
+        status: 'pending_review',
+        title: 'Declare the rule',
+      }],
+    });
+    const resolved = buildObserveDiagnostics({
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      derivedStandards: [{
+        skillName: 'audit',
+        id: 'same-standard',
+        standardKind: 'hard_rule_candidate',
+        status: 'author_confirmed',
+        title: 'Declare the rule',
+      }],
+    });
+
+    for (const bundles of [[detected, resolved], [resolved, detected]]) {
+      const merged = mergeDiagnosisBundles(bundles);
+      const diagnosis = merged.bySkill.audit[0];
+      assert.equal(diagnosis.lifecycle, 'resolved');
+      assert.equal(diagnosis.occurrences.length, 1);
+      assert.equal(diagnosis.occurrenceCount, 1);
+      assert.ok(parseDiagnosisBundle(merged));
+    }
   });
 
   it('sourceCoverage 用 OR 合并', () => {

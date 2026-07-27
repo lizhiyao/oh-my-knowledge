@@ -760,7 +760,10 @@ export default class Eval extends BaseCommand {
       parse: integerStringParser('--retry', { min: 0 }),
     }),
     resume: Flags.string({
-      description: bilingual({ zh: '从某次失败 run 续跑', en: 'Resume a previous failed run' }),
+      description: bilingual({
+        zh: '从契约兼容的报告恢复成功项；不兼容则从头运行',
+        en: 'Reuse successful entries from a contract-compatible report; otherwise start over',
+      }),
     }),
     'layered-stats': Flags.boolean({
       description: bilingual({ zh: '输出分层统计', en: 'Emit layered stats' }),

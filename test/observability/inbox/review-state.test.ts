@@ -1,12 +1,13 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
+  observationMetricAnnotationVerdict,
   observationMetricAnnotationTargetId,
   observationMetricScopeFor,
   observationReviewStateKey,
@@ -58,16 +59,189 @@ describe('observe inbox - review state', () => {
       verdict: 'confirmed',
       metricKey: 'user_correction',
       metricScopeId: 'skill-session-1',
+      traceId: 'trace-1',
       reason: '用户明确否定上一轮结果',
     }, '2026-05-01T00:01:30.000Z');
     const metricKey = observationReviewStateKey('evidence_metric', metricTargetId);
     assert.equal(metric.entries[metricKey].metricKey, 'user_correction');
     assert.equal(metric.entries[metricKey].metricScope, 'skill_segment');
     assert.equal(metric.entries[metricKey].metricScopeId, 'skill-session-1');
+    assert.equal(metric.entries[metricKey].traceId, 'trace-1');
     assert.equal(metric.entries[metricKey].reason, '用户明确否定上一轮结果');
+    assert.equal(loadObservationReviewState(dir).entries[metricKey].traceId, 'trace-1');
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
+  });
+
+  it('fails closed on corrupt reviewer state instead of overwriting human annotations', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-corrupt-'));
+    const path = join(dir, 'review-state.json');
+    const corrupt = JSON.stringify({
+      kind: 'observe-review-state',
+      schemaVersion: 2,
+      updatedAt: '2026-05-01T00:00:00.000Z',
+      entries: {
+        'skill:kept': {
+          targetType: 'skill',
+          targetId: 'different-key',
+          verdict: 'reviewed',
+          reviewedAt: '2026-05-01T00:00:00.000Z',
+        },
+      },
+    });
+    writeFileSync(path, corrupt);
+
+    assert.throws(
+      () => loadObservationReviewState(dir),
+      /观测复核状态格式无效/,
+    );
+    assert.throws(
+      () => updateObservationReviewState(dir, {
+        targetType: 'skill',
+        targetId: 'new',
+        verdict: 'reviewed',
+      }),
+      /观测复核状态格式无效/,
+    );
+    assert.equal(readFileSync(path, 'utf-8'), corrupt);
+  });
+
+  it('读取时执行与写入 API 相同的 metric 契约和时间顺序校验', () => {
+    const invalidStates = [
+      {
+        kind: 'observe-review-state',
+        schemaVersion: 2,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {
+          'evidence_metric:metric-1': {
+            targetType: 'evidence_metric',
+            targetId: 'metric-1',
+            verdict: 'reviewed',
+            metricKey: 'user_correction',
+            reviewedAt: '2026-05-01T00:00:00.000Z',
+          },
+        },
+      },
+      {
+        kind: 'observe-review-state',
+        schemaVersion: 2,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {
+          'skill:audit': {
+            targetType: 'skill',
+            targetId: 'audit',
+            verdict: 'reviewed',
+            metricKey: 'user_correction',
+            reviewedAt: '2026-05-01T00:00:00.000Z',
+          },
+        },
+      },
+      {
+        kind: 'observe-review-state',
+        schemaVersion: 2,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {
+          'skill:audit': {
+            targetType: 'skill',
+            targetId: 'audit',
+            verdict: 'reviewed',
+            reviewedAt: '2026-05-01T00:00:01.000Z',
+          },
+        },
+      },
+    ];
+
+    for (const [index, state] of invalidStates.entries()) {
+      const dir = mkdtempSync(join(tmpdir(), `omk-review-state-read-contract-${index}-`));
+      try {
+        writeFileSync(join(dir, 'review-state.json'), JSON.stringify(state));
+        assert.throws(() => loadObservationReviewState(dir), /观测复核状态格式无效/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('rejects runtime-invalid review updates before writing state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-invalid-update-'));
+    const invalidUpdates = [
+      {
+        targetType: 'evidence_metric',
+        targetId: 'metric:user_correction:abc',
+        verdict: 'reviewed',
+        metricKey: 'user_correction',
+      },
+      {
+        targetType: 'evidence_metric',
+        targetId: 'metric:user_correction:abc',
+        verdict: 'confirmed',
+        metricKey: 'user_correction',
+        metricScope: 'message',
+      },
+      {
+        targetType: 'skill',
+        targetId: 'audit',
+        verdict: 'reviewed',
+        metricKey: 'user_correction',
+      },
+      {
+        targetType: 'inbox_item',
+        targetId: 'obs-1',
+        verdict: 'real_issue',
+        messageIndex: -1,
+      },
+    ];
+
+    for (const update of invalidUpdates) {
+      assert.throws(
+        () => updateObservationReviewState(
+          dir,
+          update as Parameters<typeof updateObservationReviewState>[1],
+        ),
+      );
+    }
+    assert.equal(loadObservationReviewState(dir).entries['skill:audit'], undefined);
+  });
+
+  it('uses review state as the effective soft-standard status without mutating the cache', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standard-review-source-'));
+    const path = skillDerivedStandardsPath(dir, 'audit');
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(path, JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 2,
+      skillName: 'audit',
+      generatedAt: '2026-05-01T00:00:00.000Z',
+      model: 'test-model',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: '2026-05-22.v7',
+      standards: [{
+        id: 'soft-1',
+        kind: 'hard_rule_candidate',
+        status: 'pending_review',
+        title: '需要确认的规则',
+        body: '需要作者确认。',
+        source: 'llm_soft_standard',
+        confidence: 'medium',
+        evidence: [],
+      }],
+    }));
+    updateObservationReviewState(dir, {
+      targetType: 'soft_standard',
+      targetId: 'audit:soft-1',
+      verdict: 'real_issue',
+    }, '2026-05-01T00:01:00.000Z');
+
+    assert.equal(loadSkillDerivedStandards(dir).audit.standards[0].status, 'author_confirmed');
+    assert.equal(JSON.parse(readFileSync(path, 'utf-8')).standards[0].status, 'pending_review');
+
+    writeFileSync(path, JSON.stringify({
+      ...JSON.parse(readFileSync(path, 'utf-8')),
+      generatedAt: '2026-05-01T00:02:00.000Z',
+    }));
+    assert.equal(loadSkillDerivedStandards(dir).audit.standards[0].status, 'pending_review');
   });
 
   it('scopes relative metric annotations by skill segment while keeping message metrics shared', () => {
@@ -86,6 +260,59 @@ describe('observe inbox - review state', () => {
     assert.equal(observationMetricScopeFor('positive_feedback'), 'message');
     assert.notEqual(correctionA, correctionB);
     assert.equal(positiveA, positiveB);
+  });
+
+  it('separates physical traces and repeated tool-call occurrences while reading legacy annotations', () => {
+    const ref = {
+      sourceTrace: '/tmp/session.jsonl',
+      sessionId: 's1',
+      messageIndex: 3,
+      messageUuid: 'a3',
+      toolUseId: 'reused',
+    };
+    const traceA = observationMetricAnnotationTargetId(
+      { ...ref, traceId: 'trace-a', callInstanceId: 'call-instance-1' },
+      'repeated_execution',
+    );
+    const traceB = observationMetricAnnotationTargetId(
+      { ...ref, traceId: 'trace-b', callInstanceId: 'call-instance-1' },
+      'repeated_execution',
+    );
+    assert.notEqual(traceA, traceB);
+
+    const first = observationMetricAnnotationTargetId(
+      { ...ref, traceId: 'trace-a', callInstanceId: 'call-instance-1' },
+      'repeated_execution',
+    );
+    const second = observationMetricAnnotationTargetId(
+      { ...ref, traceId: 'trace-a', callInstanceId: 'call-instance-2' },
+      'repeated_execution',
+    );
+    assert.notEqual(first, second);
+
+    const legacyTargetId = observationMetricAnnotationTargetId(ref, 'repeated_execution');
+    const state = {
+      kind: 'observe-review-state' as const,
+      schemaVersion: 2 as const,
+      updatedAt: '2026-05-01T00:00:00.000Z',
+      entries: {
+        [observationReviewStateKey('evidence_metric', legacyTargetId)]: {
+          targetType: 'evidence_metric' as const,
+          targetId: legacyTargetId,
+          verdict: 'rejected' as const,
+          metricKey: 'repeated_execution' as const,
+          reviewedAt: '2026-05-01T00:00:00.000Z',
+        },
+      },
+    };
+    assert.equal(
+      observationMetricAnnotationVerdict(
+        state,
+        { ...ref, traceId: 'trace-a', callInstanceId: 'call-instance-1' },
+        'repeated_execution',
+      ),
+      'rejected',
+    );
   });
 
   it('excludes rejected feedback signals from canonical reviewer metrics', () => {
@@ -466,6 +693,45 @@ describe('observe inbox - review state', () => {
     assert.equal(record.standards[0].status, 'stale');
     assert.equal(record.standards[1].id, 'soft-rejected');
     assert.equal(record.standards[1].status, 'rejected');
+  });
+
+  it('rejects the whole persisted soft-standard cache when one entry is malformed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-invalid-'));
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(skillDerivedStandardsPath(dir, 'audit'), JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 2,
+      skillName: 'audit',
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      model: 'test-model',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: 'legacy-version',
+      standards: [
+        {
+          id: 'valid',
+          kind: 'hard_rule_candidate',
+          status: 'pending_review',
+          title: 'Valid standard',
+          body: 'Keep this.',
+          source: 'llm_soft_standard',
+          confidence: 'medium',
+          evidence: [],
+        },
+        {
+          id: 'invalid',
+          kind: 'unsupported_kind',
+          status: 'pending_review',
+          title: 'Invalid standard',
+          body: 'Do not silently drop this.',
+          source: 'llm_soft_standard',
+          confidence: 'medium',
+          evidence: [],
+        },
+      ],
+    }));
+
+    assert.deepEqual(loadSkillDerivedStandards(dir), {});
   });
 
   it('preserves stale soft standards across consecutive runs after prompt upgrade', async () => {

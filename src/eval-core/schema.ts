@@ -3,32 +3,23 @@
  * Single source of truth for object structures used across runner, renderer, and server.
  */
 
-import type { ExecResult, GradeResult, JudgeConfig, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
+import type { ExecResult, GradeResult, JudgeConfig, VariantResult, VariantSummary } from '../types/index.js';
 import { computeJudgeAgreement } from '../grading/judge.js';
+import {
+  isToolCallCancelled,
+  isToolCallFailure,
+  isToolCallSuccess,
+  isToolCallUnknown,
+} from '../shared/tool-call-status.js';
+import { incrementRecordCount } from '../shared/record-count.js';
+import {
+  truncateToolCallsForPersistence,
+  truncateTurnsForPersistence,
+} from '../shared/trace-projection.js';
 import { safeSliceForJson } from '../util/safe-slice.js';
 
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
-}
-
-const MAX_TURN_CONTENT = 2000;
-const MAX_TOOL_OUTPUT = 1000;
-
-function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
-  return turns.map((t) => ({
-    ...t,
-    content: safeSliceForJson(t.content, MAX_TURN_CONTENT),
-    ...(t.toolCalls && { toolCalls: truncateToolCalls(t.toolCalls) }),
-  }));
-}
-
-function truncateToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
-  return toolCalls.map((tc) => ({
-    ...tc,
-    output: typeof tc.output === 'string'
-      ? safeSliceForJson(tc.output, MAX_TOOL_OUTPUT)
-      : tc.output,
-  }));
 }
 
 /**
@@ -47,7 +38,15 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
   const gradeMs = options?.gradeMs || 0;
   const assistantTurns = execResult.turns?.filter((turn) => turn.role === 'assistant').length;
   const toolTurns = execResult.turns?.filter((turn) => turn.role === 'tool').length;
-  const numToolFailures = execResult.toolCalls?.filter((tc) => !tc.success).length;
+  const numToolFailures = execResult.toolCalls?.filter(isToolCallFailure).length;
+  const numToolCancelled = execResult.toolCalls?.filter(isToolCallCancelled).length;
+  const numToolUnknown = execResult.toolCalls?.filter(isToolCallUnknown).length;
+  const comparableToolCalls = Math.max(
+    0,
+    (execResult.toolCalls?.length ?? 0)
+      - (numToolCancelled ?? 0)
+      - (numToolUnknown ?? 0),
+  );
   const traceSignals = [
     execResult.turns && execResult.turns.length > 0,
     execResult.toolCalls && execResult.toolCalls.length > 0,
@@ -62,9 +61,16 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     durationApiMs: execResult.durationApiMs,
     inputTokens: execResult.inputTokens,
     outputTokens: execResult.outputTokens,
-    totalTokens: execResult.inputTokens + execResult.outputTokens,
+    totalTokens:
+      execResult.inputTokens
+      + execResult.outputTokens
+      + execResult.cacheReadTokens
+      + execResult.cacheCreationTokens,
     cacheReadTokens: execResult.cacheReadTokens,
     cacheCreationTokens: execResult.cacheCreationTokens,
+    ...(execResult.tokenUsageReportedByExecutor === false && {
+      tokenUsageReportedByExecutor: false,
+    }),
     execCostUSD,
     judgeCostUSD,
     // 初值 = exec + judge。diagnostic 在 evaluation-execution.ts 跑完后会把
@@ -78,6 +84,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     // judge 同理:任一 dim/single/async assertion 走了不报 cost 的 judge executor → grade 整体也不可信
     ...(gradeResult?.judgeCostReportedByExecutor === false && { judgeCostReportedByExecutor: false }),
     numTurns: execResult.numTurns,
+    ...(execResult.attemptCount != null && { attemptCount: execResult.attemptCount }),
     ...(execResult.fullNumTurns != null && { fullNumTurns: execResult.fullNumTurns }),
     ...(execResult.numSubAgents != null && { numSubAgents: execResult.numSubAgents }),
     ...(assistantTurns != null && { assistantTurns }),
@@ -85,10 +92,14 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && {
       numToolCalls: execResult.toolCalls.length,
       numToolFailures,
-      toolSuccessRate: Number((execResult.toolCalls.filter((tc) => tc.success).length / execResult.toolCalls.length).toFixed(2)),
+      numToolCancelled,
+      numToolUnknown,
+      ...(comparableToolCalls > 0 && {
+        toolSuccessRate: Number((execResult.toolCalls.filter(isToolCallSuccess).length / comparableToolCalls).toFixed(2)),
+      }),
       toolNames: [...new Set(execResult.toolCalls.map((tc) => tc.tool))],
       toolDistribution: execResult.toolCalls.reduce<Record<string, number>>((d, tc) => {
-        d[tc.tool] = (d[tc.tool] || 0) + 1;
+        incrementRecordCount(d, tc.tool);
         return d;
       }, {}),
     }),
@@ -130,8 +141,12 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     ...(options?.factCheck && options.factCheck.totalCount > 0 && { factCheck: options.factCheck }),
     outputPreview: execResult.output ? safeSliceForJson(execResult.output, 200, '') : null,
     ...(execResult.output && { fullOutput: execResult.output }),
-    ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
-    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: truncateToolCalls(execResult.toolCalls) }),
+    ...(execResult.turns && execResult.turns.length > 0 && {
+      turns: truncateTurnsForPersistence(execResult.turns),
+    }),
+    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && {
+      toolCalls: truncateToolCallsForPersistence(execResult.toolCalls),
+    }),
     ...(execResult.mockStats && { mockStats: execResult.mockStats }),
     timing: { execMs, gradeMs, totalMs: execMs + gradeMs },
   };
@@ -142,6 +157,13 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
  */
 export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
   const ok = entries.filter((e) => e.ok);
+  const observedTokenEntries = ok.filter((entry) => entry.tokenUsageReportedByExecutor !== false);
+  const tokenUsageCoverageRate = entries.length > 0
+    ? Number((
+        entries.filter((entry) => entry.tokenUsageReportedByExecutor !== false).length
+        / entries.length
+      ).toFixed(4))
+    : 1;
   const compositeScores = entries.filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0).map((e) => e.compositeScore!);
   const assertionScores = entries.filter((e) => e.assertions?.score != null && e.assertions.score > 0).map((e) => e.assertions!.score);
   const llmScores = entries.filter((e) => typeof e.llmScore === 'number' && e.llmScore! > 0).map((e) => e.llmScore!);
@@ -153,9 +175,16 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     errorCount,
     errorRate: entries.length > 0 ? Number((errorCount / entries.length * 100).toFixed(1)) : 0,
     avgDurationMs: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + (e.timing?.totalMs || e.durationMs), 0) / ok.length) : 0,
-    avgInputTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.inputTokens, 0) / ok.length) : 0,
-    avgOutputTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.outputTokens, 0) / ok.length) : 0,
-    avgTotalTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.totalTokens, 0) / ok.length) : 0,
+    avgInputTokens: observedTokenEntries.length > 0
+      ? Math.round(observedTokenEntries.reduce((s, e) => s + e.inputTokens, 0) / observedTokenEntries.length)
+      : 0,
+    avgOutputTokens: observedTokenEntries.length > 0
+      ? Math.round(observedTokenEntries.reduce((s, e) => s + e.outputTokens, 0) / observedTokenEntries.length)
+      : 0,
+    avgTotalTokens: observedTokenEntries.length > 0
+      ? Math.round(observedTokenEntries.reduce((s, e) => s + e.totalTokens, 0) / observedTokenEntries.length)
+      : 0,
+    ...(tokenUsageCoverageRate < 1 && { tokenUsageCoverageRate }),
     totalCostUSD: ok.reduce((s, e) => s + (e.costUSD || 0), 0),
     totalExecCostUSD: ok.reduce((s, e) => s + (e.execCostUSD || 0), 0),
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
@@ -199,7 +228,43 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       const withTools = ok.filter((e) => typeof e.numToolCalls === 'number' && e.numToolCalls! > 0);
       if (withTools.length === 0) return {};
       const totalToolCalls = withTools.reduce((s, e) => s + (e.numToolCalls || 0), 0);
-      const avgSuccessRate = withTools.reduce((s, e) => s + (e.toolSuccessRate || 0), 0) / withTools.length;
+      const outcomeTotals = withTools.reduce((totals, entry) => {
+        const calls = entry.numToolCalls ?? 0;
+        const explicitUnknown = Math.min(calls, Math.max(0, entry.numToolUnknown ?? 0));
+        const explicitCancelled = Math.min(
+          Math.max(0, calls - explicitUnknown),
+          Math.max(0, entry.numToolCancelled ?? 0),
+        );
+        const comparable = Math.max(0, calls - explicitUnknown - explicitCancelled);
+        if (typeof entry.numToolFailures === 'number') {
+          const failures = Math.min(comparable, Math.max(0, entry.numToolFailures));
+          totals.comparable += comparable;
+          totals.failures += failures;
+          totals.successes += comparable - failures;
+          totals.cancelled += explicitCancelled;
+          totals.unknown += explicitUnknown;
+          return totals;
+        }
+        if (typeof entry.toolSuccessRate === 'number') {
+          const rate = Math.max(0, Math.min(1, entry.toolSuccessRate));
+          totals.comparable += comparable;
+          totals.successes += rate * comparable;
+          totals.failures += (1 - rate) * comparable;
+          totals.cancelled += explicitCancelled;
+          totals.unknown += explicitUnknown;
+          return totals;
+        }
+        // A call count without failure/success evidence only says execution was
+        // attempted. Treat the whole row as unresolved instead of 0% success.
+        totals.unknown += calls;
+        return totals;
+      }, {
+        comparable: 0,
+        successes: 0,
+        failures: 0,
+        cancelled: 0,
+        unknown: 0,
+      });
       // sum per-sample toolDistribution(真实 call count),
       // 不再用 dedup 后的 toolNames 累加(那只统计"出现该 tool 的 sample 数",不是调用次数)。
       // 旧报告没 toolDistribution 字段时 fallback 到 toolNames 老语义,保兼容性。
@@ -207,18 +272,22 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       for (const e of withTools) {
         if (e.toolDistribution) {
           for (const [name, count] of Object.entries(e.toolDistribution)) {
-            dist[name] = (dist[name] || 0) + count;
+            incrementRecordCount(dist, name, count);
           }
         } else {
           for (const name of (e.toolNames || [])) {
-            dist[name] = (dist[name] || 0) + 1;
+            incrementRecordCount(dist, name);
           }
         }
       }
       return {
         avgToolCalls: Number((totalToolCalls / withTools.length).toFixed(1)),
-        avgToolFailures: Number((withTools.reduce((s, e) => s + (e.numToolFailures || 0), 0) / withTools.length).toFixed(1)),
-        toolSuccessRate: Number(avgSuccessRate.toFixed(2)),
+        avgToolFailures: Number((outcomeTotals.failures / withTools.length).toFixed(1)),
+        avgToolCancelled: Number((outcomeTotals.cancelled / withTools.length).toFixed(1)),
+        avgToolUnknown: Number((outcomeTotals.unknown / withTools.length).toFixed(1)),
+        ...(outcomeTotals.comparable > 0 && {
+          toolSuccessRate: Number((outcomeTotals.successes / outcomeTotals.comparable).toFixed(2)),
+        }),
         toolDistribution: dist,
       };
     })(),

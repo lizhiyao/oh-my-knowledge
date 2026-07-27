@@ -15,7 +15,7 @@ describe('observe CLI', () => {
       meta: {
         tracePath: '/tmp/trace',
         generatedAt: '2026-05-07T00:00:00.000Z',
-        segmentCount: 2,
+        segmentCount: 5,
         itemCount: 1,
         skillInvocationCounts: { audit: 2, wiki: 3 },
         skillSessionCounts: { audit: 1, wiki: 2 },

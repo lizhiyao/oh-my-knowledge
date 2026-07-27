@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -10,11 +10,13 @@ import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
-import { doctorReportFileStem, isReportFileName, reportFilePath } from '../../eval-core/artifact-file-names.js';
+import { doctorReportFileStem, isReportFileName, reportFilePath, reportFileStem } from '../../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../../eval-core/report-file-migration.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
 import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../types/index.js';
+import { parseDoctorReport } from '../../shared/doctor-report.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -327,7 +329,9 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
     };
     const cardId = doctorReportFileStem(skill.skillName, report.id);
     const filePath = reportFilePath(dir, cardId);
-    writeFileSync(filePath, JSON.stringify(perSkill, null, 2), 'utf8');
+    const parsed = parseDoctorReport(perSkill);
+    if (!parsed) throw new Error('invalid doctor report');
+    writeJsonFileAtomic(filePath, parsed);
     // 产物发现索引:per-skill 报告落项目本地后,best-effort 追加全局轻卡片,让 studio 跨项目聚合。
     indexDoctorWrite({
       id: cardId, path: filePath, skillName: skill.skillName, reportId: report.id, timestamp: report.timestamp,
@@ -357,16 +361,20 @@ function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh
 // 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
 // 看文件名,所以清理逻辑不依赖 readdir 顺序或 stem 推断 skill 名。
 export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
+  if (!Number.isSafeInteger(maxKeep) || maxKeep < 0) {
+    throw new TypeError('maxKeep must be a non-negative safe integer');
+  }
   migrateLegacyReportFiles(dir, 'doctor');
   const candidates: { file: string; graphStem: string; timestamp: string }[] = [];
   for (const file of readdirSync(dir)) {
     if (!isReportFileName(file)) continue;
     try {
-      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as import('../../types/doctor.js').DoctorReport;
-      const kind = data?.kind === 'doctor' ? data.kind : null;
-      if (!kind || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
+      const data = parseDoctorReport(JSON.parse(readFileSync(join(dir, file), 'utf-8')));
+      if (!data || data.skills.length !== 1) continue;
       if (data.skills[0].skillName !== skillName) continue;
-      candidates.push({ file, graphStem: doctorReportFileStem(skillName, data.id), timestamp: data.timestamp });
+      const expectedStem = doctorReportFileStem(skillName, data.id);
+      if (reportFileStem(file) !== expectedStem) continue;
+      candidates.push({ file, graphStem: expectedStem, timestamp: data.timestamp });
     } catch { /* skip corrupt / unrelated json */ }
   }
   if (candidates.length <= maxKeep) return;

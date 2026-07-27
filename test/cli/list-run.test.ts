@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { managedRecordId } from '../../src/managed/index.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,14 +23,15 @@ const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 
 interface Rec { name: string; locator: string; isDirectorySkill: boolean; contentHash: string; observations?: unknown[]; }
 function writeRecord(dir: string, r: Rec): void {
+  const id = managedRecordId('skill', r.name);
   const rec = {
-    recordKind: 'managed-artifact', schemaVersion: 2, id: `skill-${r.name}`, name: r.name, kind: 'skill',
+    recordKind: 'managed-artifact', schemaVersion: 2, id, name: r.name, kind: 'skill',
     source: { sourceKind: 'file', locator: r.locator, isDirectorySkill: r.isDirectorySkill },
     contentHash: r.contentHash, installedAt: '2026-06-06T00:00:00.000Z',
     distribution: [], evidence: [], decisions: [],
     ...(r.observations ? { observations: r.observations } : {}),
   };
-  writeFileSync(join(dir, `skill-${r.name}.json`), JSON.stringify(rec));
+  writeFileSync(join(dir, `${id}.json`), JSON.stringify(rec));
 }
 
 const redGapObs = {

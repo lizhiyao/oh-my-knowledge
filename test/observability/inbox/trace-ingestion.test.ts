@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -68,9 +68,80 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.meta.skillInvocationCounts?.audit, 1);
     assert.equal(report.meta.skillSessionCounts?.audit, 1);
     assert.equal(report.meta.skillToolCallCounts?.audit?.Grep, 1);
+    assert.deepEqual(report.meta.ingestion, {
+      fileCount: 1,
+      sourceRecordCount: 3,
+      parsedRecordCount: 3,
+      malformedRecordCount: 0,
+      ignoredValueCount: 0,
+      unknownEventCount: 0,
+      filteredSessionCount: 0,
+    });
     assert.equal(report.items[0].signalSubtype, 'hard_miss');
     assert.equal(report.items[0].confidence, 0.9);
     assert.equal(report.items[0].attributionConfidence, 0.85);
+  });
+
+  it('persists and reloads a report when an unattributed prefix precedes the skill', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-general-prefix-'));
+    const trace = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's-general-prefix',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: 'Please inspect the audit workflow.' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's-general-prefix',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'read-skill',
+            name: 'Read',
+            input: { file_path: '/repo-a/.agents/skills/audit/SKILL.md' },
+          }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's-general-prefix',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'read-skill',
+            content: '# Audit',
+            is_error: false,
+          }],
+        },
+      },
+    ];
+    writeFileSync(trace, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(trace);
+    assert.equal(report.meta.segmentCount, 1);
+    assert.equal(report.experience?.invocations.length, 1);
+    assert.equal(report.experience?.invocations[0].skillName, 'audit');
+
+    const reportsDir = join(dir, 'reports');
+    saveObservationInboxReport(report, reportsDir);
+    const [loaded] = loadObservationInboxReports(reportsDir);
+    assert.ok(loaded);
+    assert.equal(loaded.meta.segmentCount, 1);
   });
 
   it('builds Codex rollout observations without mislabeling them as Claude', () => {
@@ -152,9 +223,17 @@ describe('observe inbox - trace ingestion', () => {
         || message.snippet.includes('tool_result search-1 No matches found')),
       true,
     );
+    assert.equal(
+      report.items[0].messageWindow.event.find((message) =>
+        message.snippet.includes('tool_result search-1 No matches found'))?.role,
+      'other',
+    );
     assert.match(formatObservationShow(report.items[0]), /查找收入字段。/);
     assert.match(formatObservationShow(report.items[0]), /tool_result search-1 No matches found/);
     assert.equal(inferObservationSourceKind('C:\\Users\\me\\.codex\\sessions\\rollout.jsonl'), 'codex');
+    assert.equal(inferObservationSourceKind('C:\\Users\\me\\.OPENCLAW\\sessions\\trace.jsonl'), 'openclaw');
+    assert.equal(inferObservationSourceKind('/tmp/openclawx/sessions/trace.jsonl'), 'unknown');
+    assert.equal(inferObservationSourceKind('/tmp/session.LOG'), 'markdown_log');
   });
 
   it('preserves openclaw sourceKind through inbox and experience reports', () => {
@@ -280,6 +359,12 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(experience.sessions.filter((session) => session.skillName === 'audit').length, 2);
     assert.equal(experience.skills.find((skill) => skill.skillName === 'audit')?.sessionCount, 2);
     assert.equal(report.meta.skillSessionCounts?.audit, 2);
+    assert.equal(new Set(report.meta.sessionTimeRanges?.map((range) => range.traceId)).size, 2);
+    assert.equal(report.items.length, 1);
+    assert.equal(report.items[0].occurrences, 2);
+    assert.equal(report.items[0].recentTraceIds?.length, 2);
+    assert.equal(report.items[0].traceId, report.items[0].evidence.traceId);
+    assert.equal(report.items[0].sourceTrace, report.items[0].evidence.sourceTrace);
 
     const rendered = renderObservationInboxPage({
       allItems: report.items,
@@ -422,6 +507,18 @@ describe('observe inbox - trace ingestion', () => {
     assert.equal(report.items[0].evidence.messageUuid, 'a1');
     assert.equal(report.items[0].evidence.toolUseId, 't1');
     assert.ok(report.items[0].messageWindow);
+    assert.equal(
+      report.items[0].messageWindow.event.some((message) =>
+        message.snippet.includes('tool_use Bash t1'),
+      ),
+      true,
+    );
+    assert.equal(
+      report.items[0].messageWindow.event.some((message) =>
+        message.snippet.includes('tool_result t1 No matches found'),
+      ),
+      true,
+    );
   });
 
   it('classifies pure ls probes as bash_probe when they use explicit tolerant markers', () => {
@@ -732,6 +829,82 @@ describe('observe inbox - trace ingestion', () => {
     const tracePaths = new Set(reports.map((r) => r.meta.tracePath));
     assert.ok(tracePaths.has('/tmp/A'));
     assert.ok(tracePaths.has('/tmp/B'));
+  });
+
+  it('rejects persisted inbox timestamps and aggregates that contradict source facts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-strict-'));
+    const trace = join(dir, 'session.jsonl');
+    writeFileSync(trace, [
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-07T12:00:00.000Z',
+        message: {
+          role: 'user',
+          content: '<command-name>/audit</command-name>\nFind the schema.',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-07T12:00:01.000Z',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 't1',
+            name: 'Grep',
+            input: { pattern: 'schema' },
+          }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-07T12:00:02.000Z',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 't1',
+            content: 'No matches found',
+            is_error: false,
+          }],
+        },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+    const reportPath = saveObservationInboxReport(
+      buildObservationInboxReport(trace),
+      join(dir, 'reports'),
+    );
+    const baseline = JSON.parse(readFileSync(reportPath, 'utf-8'));
+    const expectRejected = (mutate: (value: typeof baseline) => void): void => {
+      const invalid = structuredClone(baseline);
+      mutate(invalid);
+      writeFileSync(reportPath, JSON.stringify(invalid));
+      assert.equal(loadObservationInboxReports(join(dir, 'reports')).length, 0);
+    };
+
+    expectRejected((value) => { value.meta.generatedAt = 'not-a-timestamp'; });
+    expectRejected((value) => { value.items[0].firstSeen = '2026-05-08T00:00:00.000Z'; });
+    expectRejected((value) => { value.meta.sessionTimeRanges[0].durationMs += 1; });
+    expectRejected((value) => { value.meta.segmentCount += 1; });
+    expectRejected((value) => { value.items[0].timestampedOccurrences = 0; });
+    expectRejected((value) => { value.items[0].representativeEvidence = []; });
+    expectRejected((value) => {
+      value.items[0].representativeEvidence = [
+        { ...value.items[0].evidence, query: 'different' },
+        value.items[0].evidence,
+      ];
+    });
+    expectRejected((value) => {
+      value.items[0].representativeEvidence.push(
+        structuredClone(value.items[0].representativeEvidence[0]),
+      );
+    });
   });
 
   it('uses a dedicated reason code for skill asset read failures', () => {

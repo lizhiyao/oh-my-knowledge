@@ -66,7 +66,13 @@ export default class ObserveIngest extends BaseCommand {
           : 'Error: --output-dir must not be an empty string.');
         throw new CliExit(2);
       }
-      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_PROJECT_OBSERVATIONS_DIR, DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
+      const {
+        buildObservationInboxReport,
+        compactObservationInboxReport,
+        saveObservationInboxReport,
+        DEFAULT_PROJECT_OBSERVATIONS_DIR,
+        DEFAULT_GLOBAL_OBSERVATIONS_DIR,
+      } = await import('../../../observability/inbox.js');
       // 显式 --output-dir 最高;否则 --global 写全局、默认写项目(读侧 loadObservationInboxReports 会从项目兜底到全局)。
       const defaultDir = flags.global ? DEFAULT_GLOBAL_OBSERVATIONS_DIR : DEFAULT_PROJECT_OBSERVATIONS_DIR;
       const outDir = resolve(outDirRaw ?? defaultDir);
@@ -75,7 +81,11 @@ export default class ObserveIngest extends BaseCommand {
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       report.diagnostics = buildObserveDiagnosticsFromReport(report);
       const path = saveObservationInboxReport(report, outDir);
-      console.log(JSON.stringify(report, null, 2));
+      console.log(JSON.stringify(compactObservationInboxReport(report), null, 2));
+      const { traceIngestionNotices } = await import('../../../observability/trace-ingestion.js');
+      for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
+        process.stderr.write(`${notice.text}\n`);
+      }
       const inboxCommand = `omk observe inbox --input-dir ${shellQuoteArg(outDir)}`;
       const sampleCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(outDir)}`;
       process.stderr.write(lang === 'zh'

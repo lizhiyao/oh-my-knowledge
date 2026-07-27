@@ -51,9 +51,63 @@ describe('isFailedSearchTool', () => {
     { name: 'failed Grep', call: tc('Grep', { pattern: 'foo' }, '', false), expected: true },
     { name: 'successful Grep with empty output', call: tc('Grep', { pattern: 'foo' }, '', true), expected: true },
     { name: 'Grep with "No matches found"', call: tc('Grep', { pattern: 'foo' }, 'No matches found', true), expected: true },
+    {
+      name: 'Grep with unknown runtime status but explicit no-match output',
+      call: {
+        ...tc('Grep', { pattern: 'foo' }, 'No matches found', false),
+        status: 'unknown',
+        statusSource: 'unknown',
+      },
+      expected: true,
+    },
+    {
+      name: 'unresolved Grep with no output is not a completed empty search',
+      call: {
+        ...tc('Grep', { pattern: 'foo' }, '', false),
+        status: 'unknown',
+        statusSource: 'unknown',
+      },
+      expected: false,
+    },
+    {
+      name: 'cancelled Grep with no output is not a failed search',
+      call: {
+        ...tc('Grep', { pattern: 'foo' }, '', false),
+        status: 'cancelled',
+        statusSource: 'runtime',
+      },
+      expected: false,
+    },
+    {
+      name: 'cancelled Grep with stale no-match output is not a failed search',
+      call: {
+        ...tc('Grep', { pattern: 'foo' }, 'No matches found', false),
+        status: 'cancelled',
+        statusSource: 'runtime',
+      },
+      expected: false,
+    },
     { name: 'successful Grep with actual matches', call: tc('Grep', { pattern: 'foo' }, 'src/foo.ts:10: foo', true), expected: false },
     { name: 'Bash grep with empty output', call: tc('Bash', { command: 'grep -r foo /src' }, '', true), expected: true },
     { name: 'Bash rg with failure', call: tc('Bash', { command: 'rg foo' }, '', false), expected: true },
+    {
+      name: 'unresolved Bash search with no output is not a failed search',
+      call: {
+        ...tc('Bash', { command: 'rg foo' }, '', false),
+        status: 'unknown',
+        statusSource: 'unknown',
+      },
+      expected: false,
+    },
+    {
+      name: 'cancelled Bash search with no output is not a failed search',
+      call: {
+        ...tc('Bash', { command: 'rg foo' }, '', false),
+        status: 'cancelled',
+        statusSource: 'runtime',
+      },
+      expected: false,
+    },
     { name: 'Bash ls probe with explicit stderr suppression', call: tc('Bash', { command: 'ls /missing/path 2>/dev/null' }, '', true), expected: true },
     { name: 'Bash test probe with tolerant fallback', call: tc('Bash', { command: 'test -f /missing/file || true' }, '', true), expected: true },
     { name: 'Bash without grep/rg/find', call: tc('Bash', { command: 'ls -la' }, '', false), expected: false },
@@ -78,6 +132,8 @@ describe('extractFailedSearchSignals', () => {
     assert.equal(signals.length, 2);
     assert.equal(signals[0].type, 'failed_search');
     assert.ok(signals[0].context.includes('foo'));
+    assert.equal(signals[0].evidence?.status, 'failure');
+    assert.equal(signals[0].evidence?.statusSource, 'unknown');
     assert.ok(signals[1].context.includes('bar'));
   });
 
@@ -524,7 +580,11 @@ describe('applyHedgingClassifier (v0.2)', () => {
       { id: 3, isUncertainty: true, confidence: 0.85, reason: 'needs to verify' },
       { id: 4, isUncertainty: false, confidence: 0.8, reason: 'multi-possibility' },
     ]);
-    const result = await applyHedgingClassifier(before, makeMockExec(verdictJson));
+    const result = await applyHedgingClassifier(
+      before,
+      makeMockExec(verdictJson),
+      { model: 'test-classifier-model' },
+    );
     assert.equal(result.report.byType.hedging, 2);
     assert.equal(result.report.samplesWithGap, 2);
     assert.equal(result.report.gapRate, 0.5);
@@ -558,7 +618,11 @@ describe('applyHedgingClassifier (v0.2)', () => {
       stopReason: 'error',
       numTurns: 0,
     });
-    const result = await applyHedgingClassifier(before, failExec);
+    const result = await applyHedgingClassifier(
+      before,
+      failExec,
+      { model: 'test-classifier-model' },
+    );
     assert.equal(result.report.byType.hedging, before.byType.hedging);
     assert.equal(result.report.weightedGapRate, before.weightedGapRate);
     // 但保留下的 signal 仍有 classifierVerdict, reason 标 failed (供调试)
@@ -589,7 +653,11 @@ describe('applyHedgingClassifier (v0.2)', () => {
     const verdictJson = JSON.stringify([
       { id: 1, isUncertainty: false, confidence: 0.8, reason: 'business' },
     ]);
-    const result = await applyHedgingClassifier(before, makeMockExec(verdictJson));
+    const result = await applyHedgingClassifier(
+      before,
+      makeMockExec(verdictJson),
+      { model: 'test-classifier-model' },
+    );
     // hedging 被剔, failed_search 还在; sample 仍有 gap (failed_search 撑起来)
     assert.equal(result.report.byType.hedging, 0);
     assert.equal(result.report.byType.failed_search, 1);
@@ -612,7 +680,11 @@ describe('applyHedgingClassifier (v0.2)', () => {
     assert.equal(before.byType.hedging, 0);
     let called = false;
     const exec: ExecutorFn = async () => { called = true; throw new Error('should not be called'); };
-    const result = await applyHedgingClassifier(before, exec);
+    const result = await applyHedgingClassifier(
+      before,
+      exec,
+      { model: 'test-classifier-model' },
+    );
     assert.equal(called, false);
     assert.equal(result.costUSD, 0);
     assert.deepEqual(result.report, before);

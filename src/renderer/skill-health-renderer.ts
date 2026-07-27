@@ -13,7 +13,7 @@
  */
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
-import { confidenceOf } from '../observability/skill-health-analyzer.js';
+import { confidenceOf, toolStabilityOf } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types/index.js';
 import { COLORS, e, t } from './layout.js';
 import { icon } from './icons.js';
@@ -88,11 +88,32 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
   // ─── 右栏: gap signals ────────────────────────
   const softShare = gapPct - weightedPct;
   const failureRatePct = Math.round(skill.toolFailureRate * 100);
-  const instabilityNote = skill.stability === 'very-unstable'
+  const resolvedToolCalls = skill.toolResolvedCount
+    ?? Math.max(0, skill.toolCallCount - (skill.toolUnknownCount ?? 0));
+  const cancelledToolCalls = skill.toolCancelledCount ?? 0;
+  const comparableToolCalls = Math.max(0, resolvedToolCalls - cancelledToolCalls);
+  const unknownToolCalls = skill.toolUnknownCount ?? Math.max(0, skill.toolCallCount - resolvedToolCalls);
+  const stability = toolStabilityOf(skill.toolFailureRate, comparableToolCalls, skill.toolCallCount);
+  const stabilityNote = stability === 'very-unstable'
     ? ` · <span style="color:var(--red)">${lang === 'zh' ? `失败率 ${failureRatePct}%,gap 可能是环境问题` : `failure rate ${failureRatePct}%, gap likely env issue`}</span>`
-    : skill.stability === 'unstable'
+    : stability === 'unstable'
       ? ` · <span style="color:var(--yellow)">${lang === 'zh' ? `失败率 ${failureRatePct}%,gap 可能含噪声` : `failure rate ${failureRatePct}%, gap may be noisy`}</span>`
-      : '';
+      : stability === 'unknown'
+        ? ` · <span style="color:var(--text-faint)">${cancelledToolCalls > 0
+          ? (lang === 'zh' ? '没有可比较结果，工具调用已取消' : 'no comparable outcomes; calls cancelled')
+          : (lang === 'zh' ? '工具结果状态不可测' : 'tool outcomes unavailable')}</span>`
+        : '';
+  const outcomeEvidenceNote = stability === 'unknown'
+    ? ''
+    : cancelledToolCalls > 0 || unknownToolCalls > 0
+      ? ` · <span style="color:var(--text-faint)">${lang === 'zh'
+        ? `${comparableToolCalls}/${skill.toolCallCount} 次结果可比较${cancelledToolCalls > 0 ? `，${cancelledToolCalls} 次取消` : ''}`
+        : `${comparableToolCalls}/${skill.toolCallCount} outcomes comparable${cancelledToolCalls > 0 ? `, ${cancelledToolCalls} cancelled` : ''}`}</span>`
+      : comparableToolCalls > 0 && comparableToolCalls < 5
+        ? ` · <span style="color:var(--text-faint)">${lang === 'zh'
+          ? `仅 ${comparableToolCalls} 次结果，结论置信度低`
+          : `only ${comparableToolCalls} outcomes, low confidence`}</span>`
+        : '';
   const weightedHintBase = softShare >= 10
     ? `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${softShare}% ${lang === 'zh' ? '为软信号(建议复核)' : 'soft signals (review)'}`
     : `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${lang === 'zh' ? '以硬证据为主' : 'mostly hard evidence'}`;
@@ -101,7 +122,7 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
       ? `${skill.segmentCount} 段，可信度${confidence === 'underpowered' ? '不足，仅供参考' : '偏低'}`
       : `N=${skill.segmentCount}, ${confidence} confidence`}</span>`
     : '';
-  const weightedHint = weightedHintBase + instabilityNote + confNote;
+  const weightedHint = weightedHintBase + stabilityNote + outcomeEvidenceNote + confNote;
   const signalBadges = (Object.entries(gap.byType) as Array<[string, number]>)
     .filter(([, n]) => n > 0)
     .map(([k, n]) => {
@@ -129,20 +150,26 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
   `;
 
   // 失败率 badge: 用 skill.stability 决定颜色
-  const stabilityColor = skill.stability === 'very-unstable'
+  const stabilityColor = stability === 'very-unstable'
     ? 'var(--red)'
-    : skill.stability === 'unstable'
+    : stability === 'unstable'
       ? 'var(--yellow)'
       : 'var(--text-muted)';
-  const failureLabel = skill.toolCallCount > 0
-    ? `${skill.toolFailureCount}/${skill.toolCallCount} ${lang === 'zh' ? '失败' : 'failed'} (${failureRatePct}%)`
+  const failureLabel = skill.toolCallCount > 0 && comparableToolCalls === 0
+    ? cancelledToolCalls > 0 && unknownToolCalls === 0
+      ? `${cancelledToolCalls} ${lang === 'zh' ? '次取消' : 'cancelled'}`
+      : cancelledToolCalls > 0
+        ? `${cancelledToolCalls} ${lang === 'zh' ? '次取消' : 'cancelled'} · ${unknownToolCalls} ${lang === 'zh' ? '次状态未知' : 'unknown'}`
+      : `${skill.toolCallCount} ${lang === 'zh' ? '次状态未知' : 'unknown outcomes'}`
+    : comparableToolCalls > 0
+      ? `${skill.toolFailureCount}/${comparableToolCalls} ${lang === 'zh' ? '失败' : 'failed'} (${failureRatePct}%)${cancelledToolCalls > 0 ? ` · ${cancelledToolCalls} ${lang === 'zh' ? '取消' : 'cancelled'}` : ''}`
     : `0 ${lang === 'zh' ? '次工具调用' : 'tool calls'}`;
 
   // ─── 成本/耗时行(第四轴,skill 维度聚合) ─────────
   // 旧 JSON (加 usage 字段前生成的) 缺此字段,降级为全 0
   const u = skill.usage ?? {
     inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-    totalTokens: 0, durationMs: 0, numTurns: 0,
+    totalTokens: 0, tokenObservedSegmentCount: 0, tokenCoverage: 0, durationMs: 0, numTurns: 0,
     avgTokensPerSegment: 0, avgDurationMsPerSegment: 0,
   };
   const billableTokens = (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
@@ -152,7 +179,11 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
   const durSec = (u.durationMs / 1000).toFixed(1);
   const avgDurSec = (u.avgDurationMsPerSegment / 1000).toFixed(1);
   const cachedSeg = cachedTokens > 0 ? ` + ${cachedK}k ${lang === 'zh' ? '缓存' : 'cached'}` : '';
-  const usageLine = `${billK}k tokens${cachedSeg} · ${durSec}s (${lang === 'zh' ? '均' : 'avg'} ${avgDurSec}s/${lang === 'zh' ? '段' : 'seg'}) · ${u.numTurns} ${lang === 'zh' ? '轮次' : 'turns'}`;
+  const tokenCoverage = u.tokenCoverage ?? 0;
+  const tokenText = tokenCoverage > 0
+    ? `${billK}k tokens${cachedSeg}${tokenCoverage < 1 ? ` (${Math.round(tokenCoverage * 100)}% ${lang === 'zh' ? '覆盖' : 'coverage'})` : ''}`
+    : lang === 'zh' ? 'tokens —（未观测）' : 'tokens — (unobserved)';
+  const usageLine = `${tokenText} · ${durSec}s (${lang === 'zh' ? '均' : 'avg'} ${avgDurSec}s/${lang === 'zh' ? '段' : 'seg'}) · ${u.numTurns} ${lang === 'zh' ? '轮次' : 'turns'}`;
 
   // ─── Card 结构 ───────────────────────────────
   return `
@@ -247,9 +278,37 @@ export function renderSkillHealthReport(report: SkillHealthReport, lang: Lang = 
     <div class="rs-stat rs-stat--total"><span class="rs-stat-num">${meta.toolCallCount}</span><span class="rs-stat-label">${zh ? '工具调用' : 'Tool calls'}</span></div>
     <div class="rs-stat ${overall.weightedGapRate >= 0.3 ? 'rs-stat--fail' : overall.weightedGapRate >= 0.1 ? 'rs-stat--warn' : 'rs-stat--pass'}"><span class="rs-stat-num">${Math.round(overall.weightedGapRate * 100)}%</span><span class="rs-stat-label">${zh ? '加权盲区' : 'Weighted gap'}</span></div>
   </div>`;
+  const ingestion = meta.ingestion;
+  const ingestionNotice = ingestion && (
+    ingestion.malformedRecordCount > 0
+    || ingestion.ignoredValueCount > 0
+    || ingestion.unknownEventCount > 0
+  )
+    ? `<div style="margin:12px 0;padding:10px 12px;border:1px solid var(--yellow);border-radius:8px;background:var(--yellow-bg);color:var(--text-secondary);font-size:13px">
+        <strong style="color:var(--yellow)">${zh ? '观测输入需要复核' : 'Observation input needs review'}</strong>
+        <span style="margin-left:8px">${zh
+          ? `${ingestion.malformedRecordCount} 条格式损坏记录，${ingestion.ignoredValueCount} 个非对象值，${ingestion.unknownEventCount} 个未识别事件。`
+          : `${ingestion.malformedRecordCount} malformed records, ${ingestion.ignoredValueCount} non-object values, ${ingestion.unknownEventCount} unrecognized events.`}</span>
+      </div>`
+    : '';
+  const timestampedSegmentCount = meta.timestampedSegmentCount
+    ?? (meta.timeRange.from && meta.timeRange.to ? meta.segmentCount : 0);
+  const timestampCoverage = meta.timestampCoverage
+    ?? (meta.segmentCount > 0 ? timestampedSegmentCount / meta.segmentCount : 1);
+  const excludedUntimestampedSegmentCount = meta.excludedUntimestampedSegmentCount ?? 0;
+  const timestampNotice = timestampCoverage < 1 || excludedUntimestampedSegmentCount > 0
+    ? `<div style="margin:12px 0;padding:10px 12px;border:1px solid var(--yellow);border-radius:8px;background:var(--yellow-bg);color:var(--text-secondary);font-size:13px">
+        <strong style="color:var(--yellow)">${zh ? '时间范围不完整' : 'Incomplete time coverage'}</strong>
+        <span style="margin-left:8px">${zh
+          ? `${meta.segmentCount} 个入选片段中，${timestampedSegmentCount} 个具有可观测时间；时间筛选另排除了 ${excludedUntimestampedSegmentCount} 个无时间戳片段。`
+          : `${timestampedSegmentCount} of ${meta.segmentCount} selected segments have observed timestamps; time filtering excluded ${excludedUntimestampedSegmentCount} additional untimestamped segments.`}</span>
+      </div>`
+    : '';
 
   const body = [
     statsBar,
+    ingestionNotice,
+    timestampNotice,
     renderWatermark(report, lang),
     `<div class="rs-panel">
       <div class="rs-panel-title">${zh ? '各 skill 健康度' : 'Per-skill health'} <small>${zh ? '按使用量降序' : 'sorted by usage'}</small></div>

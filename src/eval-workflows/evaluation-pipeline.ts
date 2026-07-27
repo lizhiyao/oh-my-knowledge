@@ -44,6 +44,7 @@ import {
 } from './evaluation-pipeline/run-state.js';
 import { finalizeEvaluationReport } from './evaluation-pipeline/report-finalize.js';
 import { emitIsolationWarnings, emitPowerWarnings } from './evaluation-pipeline/preflight-warnings.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 
 // 兼容 re-export:测试与 run-evaluation.ts 动态 import 仍打 evaluation-pipeline.js
 export { buildPowerWarnings, buildIsolationWarnings } from './evaluation-pipeline/preflight-warnings.js';
@@ -192,7 +193,10 @@ export async function executeEvaluationPipeline({
     bootstrapSamples,
     lengthDebias,
     budget,
+    strictBaseline,
     effort,
+    retry,
+    noDiagnostic,
   });
 
   try {
@@ -209,10 +213,14 @@ export async function executeEvaluationPipeline({
     let resolvedJudgeExecutors: Record<string, ExecutorFn>;
     if (judgeModels && judgeModels.length > 0) {
       const { createExecutor } = await import('../executors/index.js');
-      resolvedJudgeExecutors = {};
+      resolvedJudgeExecutors = Object.create(null);
       for (const jc of resolvedJudgeModels) {
-        if (!resolvedJudgeExecutors[jc.executor]) {
-          resolvedJudgeExecutors[jc.executor] = createExecutor(jc.executor);
+        if (!ownRecordValue(resolvedJudgeExecutors, jc.executor)) {
+          setOwnRecordValue(
+            resolvedJudgeExecutors,
+            jc.executor,
+            createExecutor(jc.executor),
+          );
         }
       }
     } else {
@@ -234,8 +242,8 @@ export async function executeEvaluationPipeline({
     // σ before the run); they're hard-floor + experience-based thresholds. Verdict
     // gate (computeVerdict) handles real power claims post-hoc.
     emitPowerWarnings(samples.length, repeat ?? 1, lang);
-    // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
-    emitIsolationWarnings(artifacts, strictBaseline);
+    // Isolation warning checks the selected runtime's discoverable skill roots.
+    emitIsolationWarnings(artifacts, strictBaseline, executorName, lang);
 
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
@@ -274,6 +282,7 @@ export async function executeEvaluationPipeline({
         noJudge,
         executorName,
         samples,
+        samplesBaseDir,
         tasks,
         results,
         totalCostUSD,

@@ -1,4 +1,17 @@
-import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisBundle, type DiagnosisSeverity, type StudioDiagnosisSummary } from './types.js';
+import {
+  isActiveDiagnosisLifecycle,
+  maxDiagnosisLifecycle,
+  type Diagnosis,
+  type DiagnosisBundle,
+  type DiagnosisSeverity,
+  type StudioDiagnosisSummary,
+} from './types.js';
+import {
+  incrementRecordCount,
+  ownRecordValue,
+  setOwnRecordValue,
+  sumRecordCounts,
+} from '../shared/record-count.js';
 
 export type { StudioDiagnosisSummary };
 
@@ -10,8 +23,8 @@ export function buildStudioDiagnosisSummary(bundle?: DiagnosisBundle): StudioDia
   const byAudience: Record<string, number> = {};
   for (const diagnosis of diagnostics) {
     bySeverity[diagnosis.severity] += 1;
-    bySkill[diagnosis.skillName] = (bySkill[diagnosis.skillName] ?? 0) + 1;
-    byAudience[diagnosis.audience] = (byAudience[diagnosis.audience] ?? 0) + 1;
+    incrementRecordCount(bySkill, diagnosis.skillName);
+    incrementRecordCount(byAudience, diagnosis.audience);
   }
   return {
     sourceCoverage,
@@ -44,21 +57,29 @@ export function mergeDiagnosisBundles(bundles: DiagnosisBundle[], generatedAt = 
         });
         continue;
       }
-      existing.occurrences.push(...diagnosis.occurrences);
+      const existingOccurrenceIds = new Set(existing.occurrences.map((occurrence) => occurrence.id));
+      const hasOverlap = diagnosis.occurrences.some((occurrence) => existingOccurrenceIds.has(occurrence.id));
+      existing.occurrences.push(
+        ...diagnosis.occurrences.filter((occurrence) => !existingOccurrenceIds.has(occurrence.id)),
+      );
       // 累加而不是用 occurrences.length 覆盖:聚合型 Diagnosis(如 problemPattern)的
       // occurrenceCount 是「N 次真实发生」的语义,不是「N 条 source occurrence 条数」。
       // 用 length 会把 `3 次 + 4 次` 真实发生压成 `2`(两条 source 条目),Studio 排序和
       // affectedCount 显示偏小。
-      existing.occurrenceCount = existing.occurrenceCount + diagnosis.occurrenceCount;
+      existing.occurrenceCount = hasOverlap
+        ? Math.max(existing.occurrenceCount, diagnosis.occurrenceCount)
+        : sumRecordCounts(existing.occurrenceCount, diagnosis.occurrenceCount);
       existing.severity = severityRank(existing.severity) >= severityRank(diagnosis.severity)
         ? existing.severity
         : diagnosis.severity;
+      existing.lifecycle = maxDiagnosisLifecycle(existing.lifecycle, diagnosis.lifecycle);
     }
   }
   const bySkill: DiagnosisBundle['bySkill'] = {};
   for (const diagnosis of byStableKey.values()) {
-    bySkill[diagnosis.skillName] ??= [];
-    bySkill[diagnosis.skillName].push(diagnosis);
+    const group = ownRecordValue(bySkill, diagnosis.skillName) ?? [];
+    group.push(diagnosis);
+    setOwnRecordValue(bySkill, diagnosis.skillName, group);
   }
   for (const values of Object.values(bySkill)) {
     values.sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.signal.localeCompare(b.signal));

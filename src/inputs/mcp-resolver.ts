@@ -37,6 +37,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { isPlaceholderUrl } from './url-fetcher.js';
 import type { Sample, McpServers, McpServerDef, McpFetchTool } from '../types/index.js';
+import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 
 // Reuse the same URL regex from url-fetcher.mjs
 const URL_REGEX = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/g;
@@ -107,7 +108,7 @@ export function loadMcpConfig(configPath?: string): McpServers | null {
 
   for (const [name, def] of Object.entries(serverDefs)) {
     if (isMcpServerDef(def) && def.urlPatterns.length > 0) {
-      eligible[name] = def;
+      setOwnRecordValue(eligible, name, def);
     }
   }
 
@@ -171,7 +172,8 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
 
   const fetchPromises: Promise<void>[] = [];
   for (const [serverName, urls] of serverUrlGroups) {
-    fetchPromises.push(fetchFromServer(serverName, mcpServers[serverName], urls, fetched));
+    const server = ownRecordValue(mcpServers, serverName);
+    if (server) fetchPromises.push(fetchFromServer(serverName, server, urls, fetched));
   }
   await Promise.allSettled(fetchPromises);
 
@@ -243,7 +245,11 @@ function buildToolArgs(fetchTool: McpFetchTool, url: string): Record<string, str
     if (!match) return null;
     const args: Record<string, string> = {};
     for (const [key, template] of Object.entries(params)) {
-      args[key] = template.replace(/\$(\d+)/g, (_: string, i: string) => match[Number(i)] || '');
+      setOwnRecordValue(
+        args,
+        key,
+        template.replace(/\$(\d+)/g, (_: string, i: string) => match[Number(i)] || ''),
+      );
     }
     return args;
   }

@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  indexDoctorWrite, listDoctorCards, cardToDoctorSnapshot, removeDoctorCard,
+  indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
 } from '../../src/eval-core/artifact-index.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
@@ -50,15 +50,6 @@ describe('artifact-index 写侧(doctor 域)', () => {
   it('全局写 → 不落卡片(shouldIndexDir false)', () => {
     indexDoctorWrite(doctorCard(), globalDoctorsDir());
     assert.equal(listDoctorCards().length, 0);
-  });
-
-  it('cardToDoctorSnapshot:卡片 → SkillDoctorSnapshot(results:[])', () => {
-    indexDoctorWrite(doctorCard(), projDir);
-    const { skillName, snap } = cardToDoctorSnapshot(listDoctorCards()[0]);
-    assert.equal(skillName, 'sk');
-    assert.equal(snap.reportId, 'doctor-20260614-1-ab12');
-    assert.equal(snap.passCount, 3);
-    assert.deepEqual(snap.results, []);
   });
 
   it('removeDoctorCard 幂等', () => {
@@ -114,7 +105,8 @@ describe('artifact-index 写侧(observe-health 域)', () => {
       meta: { generatedAt: '2026-06-14T00:00:00Z', sessionCount: 5, segmentCount: 40 },
       overall: { healthBand: 'green' as const, confidence: 'high' as const },
       bySkill: {
-        sk: { toolFailureRate: 0.1, segmentCount: 40, confidence: 'high' as const,
+        sk: { toolFailureRate: 0.1111, toolFailureCount: 1, toolCallCount: 10, toolResolvedCount: 9, toolUnknownCount: 1,
+          segmentCount: 40, confidence: 'high' as const, stability: 'stable' as const,
           gap: { weightedGapRate: 0.2, signals: new Array(100).fill({ heavy: true }) } },
       },
     };
@@ -125,7 +117,12 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     const cards = listObserveCards();
     assert.equal(cards.length, 1);
     assert.equal(cards[0].overall.healthBand, 'green');
-    assert.equal(cards[0].bySkill.sk.toolFailureRate, 0.1);
+    assert.equal(cards[0].bySkill.sk.toolFailureRate, 0.1111);
+    assert.equal(cards[0].bySkill.sk.toolFailureCount, 1);
+    assert.equal(cards[0].bySkill.sk.toolCallCount, 10);
+    assert.equal(cards[0].bySkill.sk.toolResolvedCount, 9);
+    assert.equal(cards[0].bySkill.sk.toolUnknownCount, 1);
+    assert.equal(cards[0].bySkill.sk.stability, 'stable');
     assert.equal(cards[0].bySkill.sk.gap?.weightedGapRate, 0.2);
     assert.ok(!('signals' in (cards[0].bySkill.sk.gap ?? {})), '卡片剥掉 gap.signals 重体');
   });
@@ -156,7 +153,26 @@ describe('artifact-index 写侧(observe-health 域)', () => {
     writeFileSync(join(dir, 'b3.json'), JSON.stringify({ domain: 'observe-health', id: 'b3', path: '/x',
       meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
       bySkill: { s: { toolFailureRate: 0, segmentCount: 1, gap: { weightedGapRate: 'nan' } } } }));
+    // 越界 rate / 负计数 / 结果分母不守恒都会制造伪统计，必须拒绝。
+    writeFileSync(join(dir, 'b4.json'), JSON.stringify({ domain: 'observe-health', id: 'b4', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 1.2, segmentCount: 1 } } }));
+    writeFileSync(join(dir, 'b5.json'), JSON.stringify({ domain: 'observe-health', id: 'b5', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, toolCallCount: -1, segmentCount: 1 } } }));
+    writeFileSync(join(dir, 'b6.json'), JSON.stringify({ domain: 'observe-health', id: 'b6', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, toolCallCount: 2, toolResolvedCount: 2, toolUnknownCount: 1, segmentCount: 1 } } }));
+    writeFileSync(join(dir, 'b7.json'), JSON.stringify({ domain: 'observe-health', id: 'b7', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, toolResolvedCount: 1, segmentCount: 1 } } }));
+    writeFileSync(join(dir, 'b8.json'), JSON.stringify({ domain: 'observe-health', id: 'b8', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 1 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, toolFailureCount: 1, toolCallCount: 2, toolResolvedCount: 2, segmentCount: 1 } } }));
+    writeFileSync(join(dir, 'b9.json'), JSON.stringify({ domain: 'observe-health', id: 'b9', path: '/x',
+      meta: { generatedAt: 't', sessionCount: 1, segmentCount: 2 }, overall: { healthBand: 'green' },
+      bySkill: { s: { toolFailureRate: 0, segmentCount: 1 } } }));
     indexObserveWrite(observeReport(), join(projDir, reportFileName('ok')), projDir, 'ok');
-    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok'], '只收 healthBand 合法 + 全标量(含 gap.weightedGapRate)为有限数的卡片');
+    assert.deepEqual(listObserveCards().map((c) => c.id), ['ok'], '只收枚举、计数、比率和结果分母均合法的卡片');
   });
 });

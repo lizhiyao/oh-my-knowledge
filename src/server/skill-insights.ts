@@ -46,6 +46,7 @@ import type {
   DetectInsightsOptions,
 } from '../types/index.js';
 import { isActiveDiagnosisLifecycle } from '../diagnosis/types.js';
+import { toolCallStatus } from '../shared/tool-call-status.js';
 
 // Re-export Insight* 类型,保持既有 import 路径 backward-compat。新代码请直接从 ../types/index.js 导入。
 export type {
@@ -95,7 +96,11 @@ function summarizeToolCall(tc: ToolCallInfo): string {
     else if (typeof inp.url === 'string') arg = inp.url;
     else if (typeof inp.query === 'string') arg = inp.query.slice(0, 50);
   }
-  const status = tc.success ? '' : ' [失败]';
+  const resultStatus = toolCallStatus(tc);
+  const status = resultStatus === 'failure'
+    ? ' [失败]'
+    : resultStatus === 'cancelled' ? ' [取消]'
+    : resultStatus === 'unknown' ? ' [状态未知]' : '';
   return arg ? `${tool}: ${arg}${status}` : `${tool}${status}`;
 }
 
@@ -158,6 +163,32 @@ function underpoweredCaveat(observe: SkillObserveSnapshot | null): InsightEviden
   return {
     perspective: 'observe', status: 'silent',
     message: `样本量仅 ${observe.segmentCount} 段(underpowered) — 以下为低置信参考信号,需累积更多真实使用 trace 才能下结论`,
+  };
+}
+
+function capByToolOutcomeConfidence(
+  severity: InsightSeverity,
+  observe: SkillObserveSnapshot,
+): InsightSeverity {
+  const resolved = observe.toolResolvedCount;
+  if (resolved === undefined) return severity;
+  const comparable = Math.max(0, resolved - (observe.toolCancelledCount ?? 0));
+  if (comparable < 5) return 'low';
+  if (comparable < 20 && severity === 'high') return 'medium';
+  return severity;
+}
+
+function toolOutcomeCaveat(observe: SkillObserveSnapshot): InsightEvidence | null {
+  const resolved = observe.toolResolvedCount;
+  if (resolved === undefined) return null;
+  const cancelled = observe.toolCancelledCount ?? 0;
+  const comparable = Math.max(0, resolved - cancelled);
+  if (comparable >= 20) return null;
+  const unknown = observe.toolUnknownCount ?? Math.max(0, (observe.toolCallCount ?? resolved) - resolved);
+  return {
+    perspective: 'observe',
+    status: 'silent',
+    message: `仅 ${comparable} 次工具结果可比较${cancelled > 0 ? `；另有 ${cancelled} 次取消` : ''}${unknown > 0 ? `；另有 ${unknown} 次状态未知` : ''}。失败率的结果覆盖度不足，需积累更多可比较调用`,
   };
 }
 
@@ -481,8 +512,22 @@ function detectProductionInstability(
   if (!observe || observe.failureRate < 0.4) return null;
   const depRule = doctor?.results.find((r) => r.ruleId === 'dependencies_present'
     && (r.status === 'warn' || r.status === 'fail'));
-  const severity = capByObserveConfidence('high', observe);
-  const caveat = underpoweredCaveat(observe);
+  const severity = capByToolOutcomeConfidence(
+    capByObserveConfidence('high', observe),
+    observe,
+  );
+  const caveats = [
+    underpoweredCaveat(observe),
+    toolOutcomeCaveat(observe),
+  ].filter((value): value is InsightEvidence => value !== null);
+  const resolvedOutcomeCount = observe.toolResolvedCount
+    ?? observe.toolCallCount
+    ?? observe.segmentCount;
+  const comparableOutcomeCount = Math.max(
+    0,
+    resolvedOutcomeCount - (observe.toolCancelledCount ?? 0),
+  );
+  const failureCount = Math.round(comparableOutcomeCount * observe.failureRate);
 
   return {
     id: 'production-instability',
@@ -491,7 +536,7 @@ function detectProductionInstability(
     title: `生产环境跑这个 skill 时,工具失败率 ${(observe.failureRate * 100).toFixed(0)}%`,
     description: '真实用户用这个 skill,LLM 调出去的工具经常报错。可能是凭证/网络/上游 SLA 问题,也可能是 skill 教错了用什么工具/参数。',
     severity,
-    affectedCount: Math.round(observe.segmentCount * observe.failureRate),
+    affectedCount: failureCount,
     stageRefs: {
       observeRefs: ['high-failure-rate'],
       ...(depRule ? { doctorRuleIds: ['dependencies_present'] } : {}),
@@ -513,7 +558,7 @@ function detectProductionInstability(
               ? 'doctor 没警告依赖,失败可能在 CLI/凭证/上游 API 层(skill 自身可能没错)'
               : '没跑 doctor,无法对照',
           },
-      ...(caveat ? [caveat] : []),
+      ...caveats,
     ],
     recommendations: [
       {

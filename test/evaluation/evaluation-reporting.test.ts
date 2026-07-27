@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
+import { parseReportDocument } from '../../src/eval-core/report-document.js';
 import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types/index.js';
 
 function makeArtifact(name: string, content: string): Artifact {
@@ -86,10 +87,130 @@ describe('aggregateReport — reproducibility metadata', () => {
     assert.equal(r1.meta.sampleHashes!.s2, r2.meta.sampleHashes!.s2);
   });
 
+  it('sampleHashes cover execution context, sandboxing, and diagnostic semantics', () => {
+    const base: Sample = { sample_id: 'base', prompt: 'same prompt' };
+    const variants: Sample[] = [
+      { ...base, sample_id: 'context', context: 'fixture context' },
+      { ...base, sample_id: 'cwd', cwd: '/fixture/project' },
+      {
+        ...base,
+        sample_id: 'mocks',
+        mocks: [{ tool: 'Read', return: 'fixture' }],
+        mocksStrict: true,
+      },
+      {
+        ...base,
+        sample_id: 'environment',
+        environment: { cli_available: ['gh'] },
+      },
+      { ...base, sample_id: 'tripwire', tripwire: true },
+      { ...base, sample_id: 'metadata', construct: 'necessity' },
+    ];
+    const hashes = aggregateReport({
+      ...baseOpts,
+      samples: [base, ...variants],
+      results: Object.fromEntries(
+        [base, ...variants].map((sample) => [
+          sample.sample_id,
+          { v1: makeVariantResult() },
+        ]),
+      ),
+    }).meta.sampleHashes!;
+
+    for (const sample of variants) {
+      assert.notEqual(hashes.base, hashes[sample.sample_id], sample.sample_id);
+    }
+  });
+
+  it('persists the execution contract needed to explain a sample hash', () => {
+    const sample: Sample = {
+      sample_id: 'contract',
+      prompt: 'run the workflow',
+      cwd: '/fixture/project',
+      dimensions: { correctness: 'must be correct' },
+      mocks: [{ tool: 'Read', return: 'fixture' }],
+      mocksStrict: true,
+      environment: {
+        cli_available: ['gh'],
+        files_available: ['README.md'],
+        notes: 'credentials are ready',
+      },
+      allowedTools: ['Read'],
+      expectedTools: ['Read'],
+    };
+    const artifact = makeArtifact('v1', 'skill content');
+    const report = aggregateReport({
+      ...baseOpts,
+      samples: [sample],
+      tasks: [makeTask('v1', artifact, sample)],
+      results: { contract: { v1: makeVariantResult() } },
+      totalCostUSD: 0.001,
+      artifacts: [artifact],
+    });
+
+    assert.deepEqual(report.sampleSnapshots?.contract, {
+      sample_id: 'contract',
+      prompt: 'run the workflow',
+      cwd: '/fixture/project',
+      dimensions: { correctness: 'must be correct' },
+      mocks: [{ tool: 'Read', return: 'fixture' }],
+      mocksStrict: true,
+      environment: {
+        cli_available: ['gh'],
+        files_available: ['README.md'],
+        notes: 'credentials are ready',
+      },
+      allowedTools: ['Read'],
+      expectedTools: ['Read'],
+    });
+    assert.ok(parseReportDocument(report, report.id, report.id));
+  });
+
+  it('aggregates prototype-shaped sample and variant names without inherited values', () => {
+    const sample = makeSample('constructor', 'task');
+    const artifact = makeArtifact('__proto__', 'skill content');
+    const report = aggregateReport({
+      ...baseOpts,
+      variants: ['__proto__'],
+      samples: [sample],
+      tasks: [makeTask('__proto__', artifact, sample)],
+      results: JSON.parse(JSON.stringify({
+        constructor: JSON.parse('{"__proto__":{"ok":true,"durationMs":1,"inputTokens":1,"outputTokens":1,"totalTokens":2,"cacheReadTokens":0,"cacheCreationTokens":0,"execCostUSD":0,"judgeCostUSD":0,"costUSD":0,"numTurns":1,"outputPreview":"ok"}}'),
+      })),
+      artifacts: [artifact],
+    });
+
+    assert.equal(Object.hasOwn(report.summary, '__proto__'), true);
+    assert.equal(report.summary.__proto__.totalSamples, 1);
+    assert.equal(Object.hasOwn(report.meta.sampleHashes!, 'constructor'), true);
+  });
+
   it('writes judgePromptHash when noJudge=false', () => {
     const report = aggregateReport(baseOpts);
     assert.ok(report.meta.judgePromptHash, 'judgePromptHash should be set');
     assert.match(report.meta.judgePromptHash!, /^[0-9a-f]{12}$/);
+  });
+
+  it('writes and validates the source-neutral diagnostic contract', () => {
+    const sample = makeSample('diagnostic', 'task', 'rubric');
+    const artifact = makeArtifact('v1', 'skill content');
+    const report = aggregateReport({
+      ...baseOpts,
+      samples: [sample],
+      tasks: [makeTask('v1', artifact, sample)],
+      results: { diagnostic: { v1: makeVariantResult() } },
+      totalCostUSD: 0.001,
+      artifacts: [artifact],
+    });
+    assert.equal(report.meta.diagnostic?.enabled, true);
+    assert.equal(report.meta.diagnostic?.executor, 'claude');
+    assert.equal(report.meta.diagnostic?.model, 'haiku');
+    assert.match(report.meta.diagnostic?.promptHash ?? '', /^[0-9a-f]{12}$/);
+    assert.ok(parseReportDocument(report, report.id, report.id));
+
+    const malformed = structuredClone(report);
+    malformed.meta.diagnostic!.runtime!.model = 'different-model';
+    assert.equal(parseReportDocument(malformed, malformed.id, malformed.id), null);
   });
 
   it('writes executor runtime fingerprint', () => {

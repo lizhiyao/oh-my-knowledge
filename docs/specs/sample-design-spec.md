@@ -219,7 +219,7 @@ The initial schema kept four measurement-validity fields (capability / difficult
 **Hard constraints before adding any new field**
 
 - Must not enter the `buildJudgePrompt` signature (`test/grading/judge-prompt-isolation.test.ts` guards the regression)
-- Must not enter the `sampleHash` computation (else it breaks cache-key cross-version comparability)
+- Must enter the complete-contract `sampleHash` by default. `sample_id` is the only excluded map key; any field that changes execution or interpretation must invalidate reuse and cross-report comparability.
 - Must not enter the verdict / Δ algorithm
 - Must not semantically overlap the existing metadata fields + `rubric` / `assertions`
 

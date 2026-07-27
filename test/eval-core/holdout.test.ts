@@ -108,4 +108,20 @@ describe('computeHoldoutBreakdown', () => {
     assert.equal(breakdown.disabled, true);
     assert.deepEqual(breakdown.perVariant, {});
   });
+
+  it('preserves a prototype-shaped variant identity', () => {
+    const variant = '__proto__';
+    const report = {
+      results: ids(10).map((sampleId) => ({
+        sample_id: sampleId,
+        variants: Object.fromEntries([
+          [variant, { ok: true, compositeScore: 4 }],
+        ]),
+      })),
+    } as unknown as Report;
+    const breakdown = computeHoldoutBreakdown(report, [variant], 0.3, ids(10));
+    assert.equal(Object.hasOwn(breakdown.perVariant, variant), true);
+    assert.equal(breakdown.perVariant[variant].trainScore, 4);
+    assert.equal(breakdown.perVariant[variant].holdoutScore, 4);
+  });
 });

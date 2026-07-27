@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import http from 'node:http';
 import { createReportServer } from '../../src/server/report-server.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { buildVariantSummary } from '../../src/eval-core/schema.js';
+import { managedRecordId } from '../../src/managed/store.js';
+import type { ArtifactKind, VariantResult } from '../../src/types/index.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
@@ -15,13 +18,104 @@ const OBSERVATIONS_DIR = join(tmpdir(), `omk-test-observations-${Date.now()}`);
 const ANALYSES_DIR = join(tmpdir(), `omk-test-analyses-${Date.now()}`);
 const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
 const MANAGED_DIR = join(tmpdir(), `omk-test-managed-${Date.now()}`);
+const REVIEW_RECORD_ID = managedRecordId('skill', 'review');
+const CURVE_RECORD_ID = managedRecordId('skill', 'curvy');
+
+function variantResult(compositeScore: number): VariantResult {
+  return {
+    ok: true,
+    durationMs: 100,
+    durationApiMs: 90,
+    inputTokens: 10,
+    outputTokens: 5,
+    totalTokens: 15,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    execCostUSD: 0,
+    judgeCostUSD: 0,
+    costUSD: 0,
+    numTurns: 1,
+    outputPreview: 'ok',
+    compositeScore,
+    timing: { execMs: 90, gradeMs: 10, totalMs: 100 },
+  };
+}
+
+function evaluationReport(
+  id: string,
+  scores: Record<string, number>,
+  artifactHashes: Record<string, string>,
+  sampleCount = 1,
+) {
+  const variants = Object.keys(scores);
+  const executorRuntime = {
+    executor: 'claude',
+    model: 'sonnet',
+    runtimeKind: 'agent-cli' as const,
+    fingerprint: 'claude:sonnet:test',
+    capabilities: {
+      systemPrompt: 'native' as const,
+      costUSD: 'reported' as const,
+      trace: 'native' as const,
+      skillIsolation: 'full' as const,
+    },
+  };
+  const judgeRuntime = {
+    executor: 'claude',
+    model: 'haiku',
+    runtimeKind: 'agent-cli' as const,
+    fingerprint: 'claude:haiku:test',
+    capabilities: {
+      systemPrompt: 'native' as const,
+      costUSD: 'reported' as const,
+      trace: 'native' as const,
+      skillIsolation: 'full' as const,
+    },
+  };
+  const results = Array.from({ length: sampleCount }, (_, index) => ({
+    sample_id: `s${String(index + 1).padStart(3, '0')}`,
+    variants: Object.fromEntries(
+      variants.map((variant) => [variant, variantResult(scores[variant])]),
+    ) as Record<string, VariantResult>,
+  }));
+  return {
+    kind: 'evaluation' as const,
+    id,
+    meta: {
+      variants,
+      model: 'sonnet',
+      executor: 'claude',
+      sampleCount,
+      taskCount: sampleCount * variants.length,
+      totalCostUSD: 0,
+      timestamp: '2026-03-25T10:00:00.000Z',
+      cliVersion: 'test',
+      nodeVersion: process.version,
+      schemaVersion: 4,
+      artifactHashes,
+      executorRuntime,
+      executorRuntimes: Object.fromEntries(
+        variants.map((variant) => [variant, executorRuntime]),
+      ),
+      judgeModels: [{ executor: 'claude', model: 'haiku', runtime: judgeRuntime }],
+    },
+    summary: Object.fromEntries(variants.map((variant) => [
+      variant,
+      {
+        ...buildVariantSummary(results.map((entry) => entry.variants[variant])),
+        avgCompositeScore: scores[variant],
+      },
+    ])),
+    results,
+  };
+}
 
 // 受管记录 fixture:git+url 源 → probeSourceState 直接 reachable + record.contentHash,零文件 IO、跨机稳定。
 // install + 两版本证据(NOISE→PROGRESS) + promote(当前内容)→ 行状态应为 promoted。
 const MANAGED_RECORD = {
   recordKind: 'managed-artifact',
   schemaVersion: 2,
-  id: 'skill-review-smoke',
+  id: REVIEW_RECORD_ID,
   name: 'review',
   kind: 'skill',
   source: { sourceKind: 'git', locator: 'git+https://example.com/r@abc123:review', url: 'https://example.com/r', ref: 'abc123', isDirectorySkill: true },
@@ -37,48 +131,28 @@ const MANAGED_RECORD = {
   ],
 };
 
-const SAMPLE_REPORT = {
-  kind: 'evaluation',
-  id: 'test-run-001',
-  meta: {
-    variants: ['v1', 'v2'],
-    model: 'sonnet',
-    judgeModel: 'haiku',
-    executor: 'claude',
-    sampleCount: 1,
-    taskCount: 2,
-    totalCostUSD: 0.01,
-    timestamp: '2026-03-25T10:00:00.000Z',
-  },
-  summary: {
-    v1: { totalSamples: 1, successCount: 1, errorCount: 0, avgCompositeScore: 4.0 },
-    v2: { totalSamples: 1, successCount: 1, errorCount: 0, avgCompositeScore: 4.5 },
-  },
-  results: [
-    {
-      sample_id: 's001',
-      variants: {
-        v1: { ok: true, compositeScore: 4.0 },
-        v2: { ok: true, compositeScore: 4.5 },
-      },
-    },
-  ],
-};
+const SAMPLE_REPORT = evaluationReport(
+  'test-run-001',
+  { v1: 4, v2: 4.5 },
+  { v1: 'hashV1smoke', v2: 'hashV2smoke' },
+);
 
 // 版本回归曲线集成 fixture:独立 record + 两版报告(都带 artifactHashes + composite/CI)→ GET /managed/<id>
 // 应真的读报告、算点、画出 SVG 曲线。与 SAMPLE_REPORT / MANAGED_RECORD 解耦,不扰动它们的既有断言。
 function curveReport(id: string, contentHash: string, composite: number, ci: [number, number]) {
-  return {
-    kind: 'evaluation', id,
-    meta: { variants: ['cand'], model: 'sonnet', judgeModel: 'haiku', executor: 'claude', sampleCount: 6, taskCount: 6, totalCostUSD: 0.01, timestamp: '2026-03-25T10:00:00.000Z', artifactHashes: { cand: contentHash } },
-    summary: { cand: { totalSamples: 6, successCount: 6, errorCount: 0, avgCompositeScore: composite, bootstrapCI: { low: ci[0], high: ci[1], estimate: composite, samples: 1000 } } },
-    results: [],
+  const report = evaluationReport(id, { cand: composite }, { cand: contentHash }, 6);
+  report.summary.cand.bootstrapCI = {
+    low: ci[0],
+    high: ci[1],
+    estimate: composite,
+    samples: 1000,
   };
+  return report;
 }
 
 // 两版同口径(同评委 JH / 同样本集 cs)→ 都可比;当前 = hashCurveV1。2 个可画点 → 曲线渲染。
 const CURVE_RECORD = {
-  recordKind: 'managed-artifact', schemaVersion: 2, id: 'skill-curve-smoke', name: 'curvy', kind: 'skill',
+  recordKind: 'managed-artifact', schemaVersion: 2, id: CURVE_RECORD_ID, name: 'curvy', kind: 'skill',
   source: { sourceKind: 'git', locator: 'git+https://example.com/c@abc:curvy', url: 'https://example.com/c', ref: 'abc', isDirectorySkill: true },
   contentHash: 'hashCurveV1', installedAt: '2026-03-01T00:00:00.000Z', distribution: [],
   evidence: [
@@ -106,6 +180,7 @@ const SAMPLE_JOB = {
     judgeModel: 'haiku',
     executor: 'claude',
     judgeExecutor: 'claude',
+    judgeModels: [{ executor: 'claude', model: 'haiku' }],
     noJudge: false,
     concurrency: 1,
     noCache: false,
@@ -133,6 +208,7 @@ const FAILED_JOB = {
     judgeModel: 'haiku',
     executor: 'claude',
     judgeExecutor: 'claude',
+    judgeModels: [{ executor: 'claude', model: 'haiku' }],
     noJudge: false,
     concurrency: 1,
     noCache: false,
@@ -186,7 +262,7 @@ describe('report-server', () => {
     mkdirSync(ANALYSES_DIR, { recursive: true });
     mkdirSync(DOCTORS_DIR, { recursive: true });
     mkdirSync(MANAGED_DIR, { recursive: true });
-    writeFileSync(join(MANAGED_DIR, 'skill-review-smoke.json'), JSON.stringify(MANAGED_RECORD, null, 2));
+    writeFileSync(join(MANAGED_DIR, `${REVIEW_RECORD_ID}.json`), JSON.stringify(MANAGED_RECORD, null, 2));
     writeFileSync(join(TEST_DIR, reportFileName('test-run-001')), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
@@ -297,7 +373,7 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'] as string, /text\/html/);
     assert.ok(res.body.includes('review'), 'should show skill name');
-    assert.ok(res.body.includes('/managed/skill-review-smoke'), 'should link to detail page by stable id');
+    assert.ok(res.body.includes(`/managed/${REVIEW_RECORD_ID}`), 'should link to detail page by stable id');
     assert.ok(res.body.includes('verdict-PROGRESS'), 'current verdict badge');
     assert.ok(res.body.includes('已采用'), 'localized lifecycle label from promote decision (raw token stays in /api/managed)');
     assert.ok(res.body.includes('mh-legend'), 'state/marker legend present for first-time viewers');
@@ -316,7 +392,7 @@ describe('report-server', () => {
   });
 
   it('GET /managed/<id> renders the decision timeline', async () => {
-    const res = await fetch(`${baseUrl}/managed/skill-review-smoke`);
+    const res = await fetch(`${baseUrl}/managed/${REVIEW_RECORD_ID}`);
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'] as string, /text\/html/);
     assert.ok(res.body.includes('mh-timeline'), 'timeline present');
@@ -332,13 +408,13 @@ describe('report-server', () => {
     const cManaged = join(tmpdir(), `omk-curve-managed-${Date.now()}`);
     mkdirSync(cReports, { recursive: true });
     mkdirSync(cManaged, { recursive: true });
-    writeFileSync(join(cManaged, 'skill-curve-smoke.json'), JSON.stringify(CURVE_RECORD, null, 2));
+    writeFileSync(join(cManaged, `${CURVE_RECORD_ID}.json`), JSON.stringify(CURVE_RECORD, null, 2));
     writeFileSync(join(cReports, reportFileName('curve-r0')), JSON.stringify(curveReport('curve-r0', 'hashCurveV0', 3.0, [2.7, 3.3]), null, 2));
     writeFileSync(join(cReports, reportFileName('curve-r1')), JSON.stringify(curveReport('curve-r1', 'hashCurveV1', 4.2, [3.9, 4.5]), null, 2));
     const cServer = createReportServer({ port: 0, reportsDir: cReports, managedDir: cManaged });
     const cUrl = await cServer.start();
     try {
-      const res = await fetch(`${cUrl}/managed/skill-curve-smoke`);
+      const res = await fetch(`${cUrl}/managed/${CURVE_RECORD_ID}`);
       assert.equal(res.status, 200);
       // 曲线出现 ⇒ 路由确实按 evidence.reportId 读到两版报告、取了 composite/CI 交给渲染器(端到端接线)。
       assert.ok(res.body.includes('mh-curve'), '曲线 section 渲染');
@@ -368,8 +444,8 @@ describe('report-server', () => {
 
   it('EN 页内跳转透传 lang=en —— 列表行 / 返回 / 报告链接都带 lang(P2)', async () => {
     const list = await fetch(`${baseUrl}/managed?lang=en`);
-    assert.ok(list.body.includes('/managed/skill-review-smoke?lang=en'), 'list row link carries lang');
-    const detail = await fetch(`${baseUrl}/managed/skill-review-smoke?lang=en`);
+    assert.ok(list.body.includes(`/managed/${REVIEW_RECORD_ID}?lang=en`), 'list row link carries lang');
+    const detail = await fetch(`${baseUrl}/managed/${REVIEW_RECORD_ID}?lang=en`);
     assert.ok(detail.body.includes('/managed?lang=en'), 'back-to-list link carries lang');
     assert.ok(detail.body.includes('/reports/test-run-001?lang=en'), 'evidence report link carries lang');
   });
@@ -377,20 +453,22 @@ describe('report-server', () => {
   it('同名跨 kind —— skill/review 与 prompt/review 各有独立 id,都可达(P1)', async () => {
     const dir = join(tmpdir(), `omk-test-managed-xkind-${Date.now()}`);
     mkdirSync(dir, { recursive: true });
-    const mk = (kind: string, id: string) => ({
-      recordKind: 'managed-artifact', schemaVersion: 2, id, name: 'review', kind,
+    const mk = (kind: ArtifactKind, name: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id: managedRecordId(kind, name), name, kind,
       source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: kind === 'skill' },
       contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
     });
-    writeFileSync(join(dir, 'a.json'), JSON.stringify(mk('skill', 'id-skill-review')));
-    writeFileSync(join(dir, 'b.json'), JSON.stringify(mk('prompt', 'id-prompt-review')));
+    const skillRecord = mk('skill', 'review');
+    const promptRecord = mk('prompt', 'review');
+    writeFileSync(join(dir, `${skillRecord.id}.json`), JSON.stringify(skillRecord));
+    writeFileSync(join(dir, `${promptRecord.id}.json`), JSON.stringify(promptRecord));
     const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: dir });
     const u = await s.start();
     try {
-      assert.equal((await fetch(`${u}/managed/id-skill-review`)).status, 200, 'skill/review reachable');
-      assert.equal((await fetch(`${u}/managed/id-prompt-review`)).status, 200, 'prompt/review reachable');
+      assert.equal((await fetch(`${u}/managed/${skillRecord.id}`)).status, 200, 'skill/review reachable');
+      assert.equal((await fetch(`${u}/managed/${promptRecord.id}`)).status, 200, 'prompt/review reachable');
       const listBody = (await fetch(`${u}/managed`)).body;
-      assert.ok(listBody.includes('/managed/id-skill-review') && listBody.includes('/managed/id-prompt-review'), 'both rows link to distinct ids');
+      assert.ok(listBody.includes(`/managed/${skillRecord.id}`) && listBody.includes(`/managed/${promptRecord.id}`), 'both rows link to distinct ids');
     } finally {
       await s.stop();
       rmSync(dir, { recursive: true, force: true });
@@ -405,12 +483,13 @@ describe('report-server', () => {
     const globalDir = join(tmpdir(), `omk-test-managed-glob-${Date.now()}`);
     mkdirSync(projDir, { recursive: true });
     mkdirSync(globalDir, { recursive: true });
-    const mk = (id: string, name: string) => ({
-      recordKind: 'managed-artifact', schemaVersion: 2, id, name, kind: 'skill',
+    const mk = (name: string) => ({
+      recordKind: 'managed-artifact', schemaVersion: 2, id: managedRecordId('skill', name), name, kind: 'skill',
       source: { sourceKind: 'git', locator: 'git+https://x@s:review', url: 'https://x', ref: 's', isDirectorySkill: true },
       contentHash: 'h', installedAt: '2026-03-01T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
     });
-    writeFileSync(join(globalDir, 'g.json'), JSON.stringify(mk('id-global-skill', 'global-skill')));
+    const globalRecord = mk('global-skill');
+    writeFileSync(join(globalDir, `${globalRecord.id}.json`), JSON.stringify(globalRecord));
     // local 非空才用 local,否则回退 global —— 即 resolveManagedDir 的口径。
     const resolver = (): string => (readdirSync(projDir).length > 0 ? projDir : globalDir);
     const s = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR, observationsDir: OBSERVATIONS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: resolver });
@@ -419,7 +498,8 @@ describe('report-server', () => {
       const before = JSON.parse((await fetch(`${u}/api/managed`)).body);
       assert.deepEqual(before.rows.map((r: { name: string }) => r.name), ['global-skill'], '启动时 local 空 → 解析到 global');
       // 会话中途:项目里首次 install,local 目录获得记录。
-      writeFileSync(join(projDir, 'p.json'), JSON.stringify(mk('id-project-skill', 'project-skill')));
+      const projectRecord = mk('project-skill');
+      writeFileSync(join(projDir, `${projectRecord.id}.json`), JSON.stringify(projectRecord));
       const after = JSON.parse((await fetch(`${u}/api/managed`)).body);
       assert.deepEqual(after.rows.map((r: { name: string }) => r.name), ['project-skill'], '中途 local 获记录 → 同一会话实时切回 project');
     } finally {
@@ -437,8 +517,8 @@ describe('report-server', () => {
     mkdirSync(projA, { recursive: true });
     mkdirSync(globA, { recursive: true });
     const healthReport = (gen: string): string => JSON.stringify({
-      meta: { generatedAt: gen, sessionCount: 1, segmentCount: 40, toolCallCount: 1, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: gen, to: gen } },
-      overall: { gapRate: 0.1, weightedGapRate: 0.1, healthBand: 'green', confidence: 'high' },
+      meta: { generatedAt: gen, sessionCount: 1, segmentCount: 0, toolCallCount: 0, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: '', to: '' } },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'underpowered' },
       bySkill: {},
     });
     writeFileSync(join(globA, reportFileName('global-h')), healthReport('2026-01-01T00:00:00Z'));
@@ -501,16 +581,31 @@ describe('report-server', () => {
 
   it('GET /observe-health 列表入口:underpowered 报告圆点改灰 + 样本不足,high-N red 仍硬红', async () => {
     // underpowered(segmentCount 2,缺 confidence 走 segmentCount 兜底)+ red 健康带。
-    const lowN = {
-      meta: { generatedAt: '2026-05-09T01:00:00Z', sessionCount: 1, segmentCount: 2, toolCallCount: 1, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: '2026-05-09T00:00:00Z', to: '2026-05-09T01:00:00Z' } },
-      overall: { gapRate: 0.5, weightedGapRate: 0.5, healthBand: 'red' },
-      bySkill: {},
+    const healthFixture = (segmentCount: number, generatedAt: string) => {
+      const signals = Array.from({ length: segmentCount / 2 }, (_, index) => ({
+        sampleId: `audit:${index}`,
+        type: 'failed_search',
+        context: 'No matches found',
+        weight: 1,
+      }));
+      return {
+        meta: { generatedAt, sessionCount: 1, segmentCount, toolCallCount: 0, toolFailureRate: 0, messageCount: 0, tracePath: '/t', kbPath: null, timeRange: { from: '2026-05-09T00:00:00Z', to: generatedAt } },
+        overall: { gapRate: 0.5, weightedGapRate: 0.5, healthBand: 'red' },
+        bySkill: {
+          audit: {
+            skillName: 'audit',
+            segmentCount,
+            toolCallCount: 0,
+            toolFailureCount: 0,
+            toolFailureRate: 0,
+            coverage: null,
+            gap: { gapRate: 0.5, weightedGapRate: 0.5, signals },
+          },
+        },
+      };
     };
-    const highN = {
-      ...lowN,
-      meta: { ...lowN.meta, segmentCount: 40 },
-      overall: { ...lowN.overall, confidence: 'high' },
-    };
+    const lowN = healthFixture(2, '2026-05-09T01:00:00Z');
+    const highN = healthFixture(40, '2026-05-09T02:00:00Z');
     writeFileSync(join(ANALYSES_DIR, reportFileName('an-lown')), JSON.stringify(lowN));
     writeFileSync(join(ANALYSES_DIR, reportFileName('an-highn')), JSON.stringify(highN));
     try {
@@ -524,6 +619,206 @@ describe('report-server', () => {
     } finally {
       rmSync(join(ANALYSES_DIR, reportFileName('an-lown')), { force: true });
       rmSync(join(ANALYSES_DIR, reportFileName('an-highn')), { force: true });
+    }
+  });
+
+  it('skill trend 对未知工具结果保留不可测，不伪造 0% 失败率', async () => {
+    const id = 'an-unknown-tool-outcomes';
+    const path = join(ANALYSES_DIR, reportFileName(id));
+    writeFileSync(path, JSON.stringify({
+      kind: 'observe-health',
+      meta: {
+        generatedAt: '2026-05-10T01:00:00Z',
+        sessionCount: 10,
+        segmentCount: 10,
+        messageCount: 10,
+        toolCallCount: 5,
+        toolResolvedCount: 0,
+        toolUnknownCount: 5,
+        toolOutcomeCoverage: 0,
+        toolFailureRate: 0,
+        tracePath: '/t',
+        kbPath: null,
+        timeRange: { from: '2026-05-10T00:00:00Z', to: '2026-05-10T01:00:00Z' },
+      },
+      overall: { gapRate: 0.1, weightedGapRate: 0.1, healthBand: 'yellow', confidence: 'low' },
+      bySkill: {
+        audit: {
+          skillName: 'audit',
+          segmentCount: 10,
+          toolCallCount: 5,
+          toolFailureCount: 0,
+          toolResolvedCount: 0,
+          toolUnknownCount: 5,
+          toolOutcomeCoverage: 0,
+          toolFailureRate: 0,
+          stability: 'unknown',
+          confidence: 'low',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            numTurns: 0,
+            avgTokensPerSegment: 0,
+            avgDurationMsPerSegment: 0,
+          },
+          coverage: null,
+          gap: {
+            gapRate: 0.1,
+            weightedGapRate: 0.1,
+            signals: [{
+              sampleId: 'audit:1',
+              type: 'failed_search',
+              context: 'No matches found',
+              weight: 1,
+            }],
+          },
+        },
+      },
+    }));
+    try {
+      const api = await fetch(`${baseUrl}/api/skill-trend/audit`);
+      assert.equal(api.status, 200);
+      const point = JSON.parse(api.body).points.find((value: { analysisId: string }) => value.analysisId === id);
+      assert.equal(point.failureRate, null);
+      assert.equal(point.stability, 'unknown');
+      assert.equal(point.toolResolvedCount, 0);
+      assert.equal(point.toolCallCount, 5);
+      assert.equal(point.toolOutcomeCoverage, 0);
+
+      const page = await fetch(`${baseUrl}/skill-trend/audit`);
+      assert.equal(page.status, 200);
+      assert.match(page.body, /color:#a78bfa">—<\/td>/);
+      assert.doesNotMatch(page.body, /<circle[^>]+fill="#a78bfa"/);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  it('skill trend 对全部取消的工具结果保留 100% 结果覆盖率，但失败率不可测', async () => {
+    const id = 'an-cancelled-tool-outcomes';
+    const path = join(ANALYSES_DIR, reportFileName(id));
+    writeFileSync(path, JSON.stringify({
+      kind: 'observe-health',
+      meta: {
+        generatedAt: '2026-05-10T03:00:00Z',
+        sessionCount: 10,
+        segmentCount: 10,
+        messageCount: 10,
+        toolCallCount: 5,
+        toolResolvedCount: 5,
+        toolCancelledCount: 5,
+        toolUnknownCount: 0,
+        toolOutcomeCoverage: 1,
+        toolFailureRate: 0,
+        tracePath: '/t',
+        kbPath: null,
+        timeRange: { from: '2026-05-10T02:00:00Z', to: '2026-05-10T03:00:00Z' },
+      },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'green', confidence: 'low' },
+      bySkill: {
+        audit: {
+          skillName: 'audit',
+          segmentCount: 10,
+          toolCallCount: 5,
+          toolFailureCount: 0,
+          toolResolvedCount: 5,
+          toolCancelledCount: 5,
+          toolUnknownCount: 0,
+          toolOutcomeCoverage: 1,
+          toolFailureRate: 0,
+          stability: 'unknown',
+          confidence: 'low',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            numTurns: 0,
+            avgTokensPerSegment: 0,
+            avgDurationMsPerSegment: 0,
+          },
+          coverage: null,
+          gap: { gapRate: 0, weightedGapRate: 0, signals: [] },
+        },
+      },
+    }));
+    try {
+      const api = await fetch(`${baseUrl}/api/skill-trend/audit`);
+      assert.equal(api.status, 200);
+      const point = JSON.parse(api.body).points.find((value: { analysisId: string }) => value.analysisId === id);
+      assert.equal(point.failureRate, null);
+      assert.equal(point.stability, 'unknown');
+      assert.equal(point.toolResolvedCount, 5);
+      assert.equal(point.toolComparableCount, 0);
+      assert.equal(point.toolCancelledCount, 5);
+      assert.equal(point.toolOutcomeCoverage, 1);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  it('skill trend 重算稀疏旧报告的稳定性，并转义技能名', async () => {
+    const id = 'an-sparse-legacy-tool-outcomes';
+    const path = join(ANALYSES_DIR, reportFileName(id));
+    const skillName = '<img src=x onerror=alert(1)>';
+    writeFileSync(path, JSON.stringify({
+      kind: 'observe-health',
+      meta: {
+        generatedAt: '2026-05-11T01:00:00Z',
+        sessionCount: 1,
+        segmentCount: 1,
+        messageCount: 1,
+        toolCallCount: 1,
+        toolFailureRate: 1,
+        tracePath: '/t',
+        kbPath: null,
+        timeRange: { from: '2026-05-11T00:00:00Z', to: '2026-05-11T01:00:00Z' },
+      },
+      overall: { gapRate: 0, weightedGapRate: 0, healthBand: 'yellow', confidence: 'underpowered' },
+      bySkill: {
+        [skillName]: {
+          skillName,
+          segmentCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 1,
+          toolFailureRate: 1,
+          stability: 'very-unstable',
+          confidence: 'underpowered',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            numTurns: 0,
+            avgTokensPerSegment: 0,
+            avgDurationMsPerSegment: 0,
+          },
+          coverage: null,
+          gap: { gapRate: 0, weightedGapRate: 0, signals: [] },
+        },
+      },
+    }));
+    try {
+      const api = await fetch(`${baseUrl}/api/skill-trend/${encodeURIComponent(skillName)}`);
+      assert.equal(api.status, 200);
+      const point = JSON.parse(api.body).points.find((value: { analysisId: string }) => value.analysisId === id);
+      assert.equal(point.failureRate, 1);
+      assert.equal(point.stability, 'unstable');
+
+      const page = await fetch(`${baseUrl}/skill-trend/${encodeURIComponent(skillName)}`);
+      assert.equal(page.status, 200);
+      assert.match(page.body, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      assert.doesNotMatch(page.body, /<img src=x onerror=alert\(1\)>/);
+    } finally {
+      rmSync(path, { force: true });
     }
   });
 
@@ -554,8 +849,138 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.length, 1);
-    assert.equal(data[0].id, 'obs-high');
+    assert.equal(data[0].skillName, 'audit');
     assert.equal(data[0].severity, 'high');
+  });
+
+  it('review-state API distinguishes invalid and oversized client payloads from server failures', async () => {
+    const invalidJson = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    });
+    assert.equal(invalidJson.status, 400);
+    assert.equal(JSON.parse(invalidJson.body).error, 'invalid json body');
+
+    const invalidShape = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '[]',
+    });
+    assert.equal(invalidShape.status, 400);
+    assert.equal(JSON.parse(invalidShape.body).error, 'json body must be an object');
+
+    const invalidDomain = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetType: 'inbox_item', targetId: '', verdict: 'real_issue' }),
+    });
+    assert.equal(invalidDomain.status, 400);
+    assert.equal(JSON.parse(invalidDomain.body).error, 'invalid review targetId');
+
+    const objectTargetId = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetType: 'inbox_item',
+        targetId: { id: 'must-not-coerce' },
+        verdict: 'real_issue',
+      }),
+    });
+    assert.equal(objectTargetId.status, 400);
+    assert.equal(JSON.parse(objectTargetId.body).error, 'invalid review targetId');
+
+    const invalidMetadata = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetType: 'inbox_item',
+        targetId: 'invalid-metadata',
+        verdict: 'real_issue',
+        note: { text: 'must-not-drop' },
+      }),
+    });
+    assert.equal(invalidMetadata.status, 400);
+    assert.equal(JSON.parse(invalidMetadata.body).error, 'invalid review metadata');
+
+    const oversized = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: 'x'.repeat(1024 * 1024 + 1) }),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal(JSON.parse(oversized.body).error, 'request body too large');
+  });
+
+  it('review-state and shutdown mutations reject cross-origin browser requests', async () => {
+    const crossOriginPost = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://attacker.example',
+      },
+      body: JSON.stringify({
+        targetType: 'inbox_item',
+        targetId: 'cross-origin-write',
+        verdict: 'real_issue',
+      }),
+    });
+    assert.equal(crossOriginPost.status, 403);
+    assert.equal(JSON.parse(crossOriginPost.body).error, 'cross-origin mutation is not allowed');
+
+    const crossOriginDelete = await fetch(
+      `${baseUrl}/api/observe-inbox/review-state?targetType=inbox_item&targetId=cross-origin-write`,
+      {
+        method: 'DELETE',
+        headers: { Origin: 'https://attacker.example' },
+      },
+    );
+    assert.equal(crossOriginDelete.status, 403);
+
+    const crossOriginShutdown = await fetch(`${baseUrl}/api/shutdown`, {
+      method: 'POST',
+      headers: { Origin: 'https://attacker.example' },
+    });
+    assert.equal(crossOriginShutdown.status, 403);
+
+    const health = await fetch(`${baseUrl}/health`);
+    assert.equal(health.status, 200);
+  });
+
+  it('report deletion rejects cross-origin browser requests', async () => {
+    const id = 'cross-origin-delete';
+    writeFileSync(
+      join(TEST_DIR, reportFileName(id)),
+      JSON.stringify({ ...SAMPLE_REPORT, id }),
+    );
+    try {
+      const rejected = await fetch(`${baseUrl}/api/reports/${id}`, {
+        method: 'DELETE',
+        headers: { Origin: 'https://attacker.example' },
+      });
+      assert.equal(rejected.status, 403);
+      assert.equal(
+        JSON.parse(rejected.body).error,
+        'cross-origin mutation is not allowed',
+      );
+      assert.equal((await fetch(`${baseUrl}/api/reports/${id}`)).status, 200);
+    } finally {
+      rmSync(join(TEST_DIR, reportFileName(id)), { force: true });
+    }
+  });
+
+  it('review-state POST only accepts JSON media types', async () => {
+    const plainText = await fetch(`${baseUrl}/api/observe-inbox/review-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        targetType: 'inbox_item',
+        targetId: 'plain-text-write',
+        verdict: 'real_issue',
+      }),
+    });
+    assert.equal(plainText.status, 415);
+    assert.equal(JSON.parse(plainText.body).error, 'content-type must be application/json');
   });
 
   it('GET /observe-inbox exposes the observe → sample draft next action', async () => {
@@ -684,6 +1109,23 @@ describe('report-server', () => {
     assert.equal(res.status, 404);
   });
 
+  it('DELETE /api/reports/:id rejects sanitized filename aliases', async () => {
+    const id = 'encoded_alias';
+    writeFileSync(
+      join(TEST_DIR, reportFileName(id)),
+      JSON.stringify({ ...SAMPLE_REPORT, id }),
+    );
+    try {
+      const alias = await fetch(`${baseUrl}/api/reports/encoded%2Falias`, {
+        method: 'DELETE',
+      });
+      assert.equal(alias.status, 404);
+      assert.equal((await fetch(`${baseUrl}/api/reports/${id}`)).status, 200);
+    } finally {
+      rmSync(join(TEST_DIR, reportFileName(id)), { force: true });
+    }
+  });
+
   it('GET /doctors/:id?skill= 批量 doctor 同 id 多文件时按 skill 选中对应 per-skill 文件', async () => {
     // persistDoctorReport 把批量 doctor 按 skill 拆成多份文件,每份 spread 同一个 report.id;
     // 修复前 loadDoctorReport 只按 id 命中 readdir 顺序的第一份,?skill= 第二个 skill 时
@@ -745,7 +1187,26 @@ describe('report-server', () => {
   it('GET /skills/:name with malformed encoding returns 404', async () => {
     const res = await fetch(`${baseUrl}/skills/%`);
     assert.equal(res.status, 404);
-    assert.ok(res.body.includes('未找到该 skill'));
+    assert.ok(res.body.includes('Not Found'));
+  });
+
+  it('all parameterized routes fail closed on malformed percent encoding', async () => {
+    const paths = [
+      '/doctors/%',
+      '/observe-health/%',
+      '/api/observe-health/%',
+      '/api/skill-trend/%',
+      '/skill-trend/%',
+      '/api/job/%',
+      '/api/reports/%',
+      '/api/trends/%',
+      '/trends/%',
+      '/reports/%',
+      '/api/skills/%/diagnostics',
+    ];
+    for (const path of paths) {
+      assert.equal((await fetch(`${baseUrl}${path}`)).status, 404, path);
+    }
   });
 
   it('GET unknown path returns 404', async () => {
