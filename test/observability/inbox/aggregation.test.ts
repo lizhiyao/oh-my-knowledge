@@ -335,6 +335,28 @@ describe('observe inbox - aggregation', () => {
     assert.equal(loadObservationInboxReports(dir).length, 2);
   });
 
+  it('refuses to persist a report that cannot be read back', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-invalid-write-'));
+    const report = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 2 as const,
+      meta: {
+        tracePath: '/tmp/invalid.jsonl',
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 2,
+      },
+      items: [baseItem({ id: 'invalid-write' })],
+    };
+
+    assert.throws(
+      () => saveObservationInboxReport(report, dir),
+      /拒绝写入无法回读的 observe inbox 报告/,
+    );
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+  });
+
   it('rejects inbox reports whose references or aggregates contradict experience', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-consistency-'));
     const trace = join(dir, 'session.jsonl');

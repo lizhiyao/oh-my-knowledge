@@ -1077,6 +1077,14 @@ expected_tools:
     assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
     assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
     assert.equal(applySession.reviewerReport?.chainSteps.find((step) => step.label === '结果 / 产物')?.status, 'unknown');
+    assert.equal(applySession.indicators.routerDownstreamCompleted, 1);
+    assert.ok(report.experience);
+    const compact = compactObservationExperienceReport(report.experience);
+    assert.equal(compact.storyContexts[0].episodes.length > 0, true);
+    assert.equal('episodes' in compact.sessions[0].sessionStory!, false);
+    const hydrated = normalizeObservationExperienceReport(compact);
+    assert.ok(hydrated);
+    assert.equal(hydrated.sessions[0].indicators.routerDownstreamCompleted, 1);
   });
 
   it('attributes observations to the originating trace when main and subagent invoke the same skill', () => {
