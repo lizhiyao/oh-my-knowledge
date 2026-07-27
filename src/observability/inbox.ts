@@ -758,13 +758,17 @@ function compareInboxItems(a: ObservationInboxItem, b: ObservationInboxItem): nu
 }
 
 export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string = DEFAULT_OBSERVATIONS_DIR): string {
+  const compact = compactObservationInboxReport(report);
+  if (!normalizeObservationInboxReport(compact)) {
+    throw new Error('拒绝写入无法回读的 observe inbox 报告。');
+  }
   mkdirSync(outDir, { recursive: true });
   migrateLegacyReportFiles(outDir, 'observe-inbox');
   // 保留毫秒并追加随机段；即使同一毫秒生成两份 report，也不能静默互相覆盖。
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
   const path = reportFilePath(outDir, `${stamp}-${randomRunToken()}`);
-  writeJsonFileAtomic(path, compactObservationInboxReport(report));
+  writeJsonFileAtomic(path, compact);
   return path;
 }
 

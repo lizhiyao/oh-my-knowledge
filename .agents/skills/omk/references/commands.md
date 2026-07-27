@@ -471,6 +471,7 @@ omk observe ingest <traceDir> [flags]
 **Flags:**
 
 - `--global` `boolean`:写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。
+- `--json` `boolean`:把完整 observation inbox 报告输出到 stdout；默认只输出摘要。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--output-dir` `option`:输出目录，默认 .omk/observe-inbox（项目级，相对于 cwd；--global 写全局）。
 

@@ -474,12 +474,13 @@ export function normalizeObservationExperienceReport(value: unknown): Observatio
     sessions,
     skills: report.skills as ObservationExperienceReport['skills'],
   };
+  const hydrated = hydrateExperienceTimelines(normalized);
   try {
-    if (!validateExperienceReferences(normalized, !isLegacyReport)) return null;
+    if (!validateExperienceReferences(hydrated, !isLegacyReport)) return null;
   } catch {
     return null;
   }
-  return hydrateExperienceTimelines(normalized);
+  return hydrated;
 }
 
 function normalizeExperienceInvocationShells(
@@ -4037,21 +4038,29 @@ function sessionStoryEpisodes(
   const ranges = sessionStoryEpisodeRanges(session, timeline);
   return ranges.map((range, index) => {
     const episodeId = hashParts('session-story-episode', session.id, String(index));
-    const episodeSkillSegments = skillSegments.filter((segment) =>
+    const rangedSkillSegments = skillSegments.filter((segment) =>
       (segment.messageRanges ?? []).some((messageRange) =>
         messageRangeOverlapsEpisodeRange(messageRange, range)
       )
     );
-    const segmentIds = new Set(episodeSkillSegments.map((segment) => segment.id));
+    const rangedSegmentIds = new Set(rangedSkillSegments.map((segment) => segment.id));
     const episodeEdges = orchestrationEdges
       .filter((edge) => {
         if (edge.edgeKind === 'internal_skill' && edge.parentSkillSegmentId && edge.executorSkillSegmentId) {
-          return segmentIds.has(edge.parentSkillSegmentId) && segmentIds.has(edge.executorSkillSegmentId);
+          return rangedSegmentIds.has(edge.parentSkillSegmentId) && rangedSegmentIds.has(edge.executorSkillSegmentId);
         }
-        return (edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId))
+        return (edge.parentSkillSegmentId && rangedSegmentIds.has(edge.parentSkillSegmentId))
           || edge.evidenceRefs.some((ref) => episodeRangeContainsRef(range, ref));
       })
       .map((edge) => ({ ...edge, episodeId }));
+    const linkedSegmentIds = new Set(episodeEdges.flatMap((edge) => [
+      edge.parentSkillSegmentId,
+      edge.executorSkillSegmentId,
+    ].filter((id): id is string => Boolean(id))));
+    const episodeSkillSegments = skillSegments.filter((segment) =>
+      rangedSegmentIds.has(segment.id) || linkedSegmentIds.has(segment.id)
+    );
+    const segmentIds = new Set(episodeSkillSegments.map((segment) => segment.id));
     const episodeFeedbackSignals = feedbackSignals
       .filter((signal) => episodeRangeContainsRef(range, signal.evidenceRef))
       .map((signal) => {
