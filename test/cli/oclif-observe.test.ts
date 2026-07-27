@@ -6,7 +6,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,43 @@ interface ExecError extends Error {
   stderr: string;
 }
 
+function makeIngestTrace(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  const records = [
+    {
+      type: 'user',
+      uuid: 'u1',
+      parentUuid: null,
+      sessionId: 's1',
+      timestamp: '2026-07-27T00:00:00.000Z',
+      cwd: '/repo-a',
+      message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+    },
+    {
+      type: 'assistant',
+      uuid: 'a1',
+      parentUuid: 'u1',
+      sessionId: 's1',
+      timestamp: '2026-07-27T00:00:01.000Z',
+      cwd: '/repo-a',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } }],
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'u2',
+      parentUuid: 'a1',
+      sessionId: 's1',
+      timestamp: '2026-07-27T00:00:02.000Z',
+      cwd: '/repo-a',
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }] },
+    },
+  ];
+  writeFileSync(join(dir, 'session.jsonl'), records.map((record) => JSON.stringify(record)).join('\n'));
+  return dir;
+}
 
 describe('oclif observe', () => {
   it('observe --help (默认 = health 分析)', async () => {
@@ -45,6 +82,35 @@ describe('oclif observe', () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', 'ingest', '--help']);
     assert.ok(stdout.includes('ingest 成 observation inbox'), `ingest --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('TRACEDIR'), 'should list TRACEDIR positional');
+    assert.ok(stdout.includes('--json'), 'should list explicit full JSON output flag');
+  });
+
+  it('observe ingest 默认只输出摘要，--json 才输出完整报告', async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), 'omk-ingest-output-'));
+    const traceDir = makeIngestTrace(join(tmpBase, 'trace'));
+    try {
+      const summaryDir = join(tmpBase, 'summary');
+      const summary = await execFileAsync(
+        'node',
+        [CLI, 'observe', 'ingest', traceDir, '--output-dir', summaryDir],
+        { cwd: tmpBase },
+      );
+      assert.match(summary.stdout, /^observe inbox：会话 \d+ · 片段 \d+ · 信号 \d+/);
+      assert.ok(summary.stdout.length < 300, `default stdout must stay concise, got ${summary.stdout.length} chars`);
+
+      const jsonDir = join(tmpBase, 'json');
+      const full = await execFileAsync(
+        'node',
+        [CLI, 'observe', 'ingest', traceDir, '--output-dir', jsonDir, '--json'],
+        { cwd: tmpBase },
+      );
+      const parsed = JSON.parse(full.stdout);
+      assert.equal(parsed.kind, 'observe-inbox');
+      assert.ok(Array.isArray(parsed.items));
+      assert.ok(parsed.items.length > 0);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
   });
 
   it('observe inbox --help', async () => {

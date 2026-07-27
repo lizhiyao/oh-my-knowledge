@@ -4,6 +4,23 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
+import type { ObservationInboxReport } from '../../../types/observability.js';
+
+export function formatIngestSummary(report: ObservationInboxReport, lang: 'zh' | 'en'): string {
+  const severityCounts = {
+    high: 0,
+    medium: 0,
+    low: 0,
+    noise: 0,
+  };
+  for (const item of report.items) severityCounts[item.severity]++;
+
+  const sessions = report.meta.sessionCount ?? 0;
+  if (lang === 'zh') {
+    return `observe inbox：会话 ${sessions} · 片段 ${report.meta.segmentCount} · 信号 ${report.meta.itemCount}（高 ${severityCounts.high} / 中 ${severityCounts.medium} / 低 ${severityCounts.low} / 噪声 ${severityCounts.noise}）`;
+  }
+  return `observe inbox: ${sessions} sessions · ${report.meta.segmentCount} segments · ${report.meta.itemCount} signals (high ${severityCounts.high} / medium ${severityCounts.medium} / low ${severityCounts.low} / noise ${severityCounts.noise})`;
+}
 
 export default class ObserveIngest extends BaseCommand {
   static description = bilingual({
@@ -33,6 +50,13 @@ export default class ObserveIngest extends BaseCommand {
       description: bilingual({
         zh: '写入全局 ~/.oh-my-knowledge/observe-inbox，而非项目 .omk/observe-inbox。',
         en: 'Write to global ~/.oh-my-knowledge/observe-inbox instead of project .omk/observe-inbox.',
+      }),
+      default: false,
+    }),
+    json: Flags.boolean({
+      description: bilingual({
+        zh: '把完整 observation inbox 报告输出到 stdout；默认只输出摘要。',
+        en: 'Print the full observation inbox report to stdout; defaults to a concise summary.',
       }),
       default: false,
     }),
@@ -81,7 +105,9 @@ export default class ObserveIngest extends BaseCommand {
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       report.diagnostics = buildObserveDiagnosticsFromReport(report);
       const path = saveObservationInboxReport(report, outDir);
-      console.log(JSON.stringify(compactObservationInboxReport(report), null, 2));
+      console.log(flags.json
+        ? JSON.stringify(compactObservationInboxReport(report), null, 2)
+        : formatIngestSummary(report, lang));
       const { traceIngestionNotices } = await import('../../../observability/trace-ingestion.js');
       for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
         process.stderr.write(`${notice.text}\n`);
