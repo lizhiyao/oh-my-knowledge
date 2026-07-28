@@ -4678,15 +4678,8 @@ function isOrchestrationRuntimeEvent(event: ExperienceTimelineEvent): boolean {
     return /^(?:Task|Agent)$/i.test(event.toolName ?? '')
       || /runner\.js|send-input\.js|check-session\.js/i.test(text);
   }
-  if (event.kind === 'tool_result') {
-    const trimmed = text.trim();
-    if (/^---\s*\n?\s*name:/i.test(trimmed) || /^---\s+name:/i.test(trimmed)) return false;
-    return /"event"\s*:\s*"started"|Command still running \(session|Process exited with code|Process exited with signal/i.test(text)
-      || /["']?(?:child_?session_?id|agent_?id|thread_?id|session_?id)["']?\s*[:=]/i.test(text)
-      || /\b(?:session|thread|agent)(?:\s+id)?\s*[:=]\s*[a-z0-9][a-z0-9._-]*/i.test(text);
-  }
   if (event.kind === 'assistant_message') {
-    return /ttyd|(?:已启动|启动了|spawned|started).*(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex))|(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex)).*(?:执行|运行|分析|started|running)/i.test(text)
+    return /ttyd|(?:已启动|启动了|spawned|started).{0,80}(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex))|(?:subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex)).{0,48}(?:已启动|启动中|正在(?:执行|运行|分析)|spawned|started|running)/i.test(text)
       || /\b(?:session|thread|agent)(?:\s+id)?\s*[:=]\s*[a-z0-9][a-z0-9._-]*/i.test(text);
   }
   return false;
@@ -5314,13 +5307,12 @@ function inferSkillRole(group: ExperienceInvocation[], allInvocations: Experienc
 }
 
 function routingEvidenceEvents(invocation: ExperienceInvocation): ExperienceTimelineEvent[] {
-  return invocation.timeline.filter((event) => {
-    if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
-    if (isOrchestrationRuntimeEvent(event)) return true;
-    if (isDifferentSkillInvocationEvent(event, invocation.skillName)) return true;
-    const text = event.fullText ?? event.snippet ?? '';
-    return /subagent|sub-agent|child agent|子\s*(?:agent|代理|智能体|Claude|Codex)|子任务|分发|委派|路由|delegate|dispatch|route|调用.+skill|走\s*`?[\w-]+`?\s*skill/i.test(text);
-  }).slice(0, 3);
+  return invocation.timeline
+    .filter((event) =>
+      isOrchestrationRuntimeEvent(event)
+      || isDifferentSkillInvocationEvent(event, invocation.skillName)
+    )
+    .slice(0, 3);
 }
 
 function isDifferentSkillInvocationEvent(
