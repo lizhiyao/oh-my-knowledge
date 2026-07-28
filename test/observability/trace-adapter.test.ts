@@ -3005,6 +3005,12 @@ describe('source-neutral Trace IR', () => {
       .filter((edge) => edge.childSessionId === 'child-run');
     assert.equal(childEdges?.length, 1);
     assert.equal(childEdges?.[0].edgeKind, 'external_child_session');
+    const auditSegment = report.sessions[0].sessionStory?.episodes
+      ?.flatMap((episode) => episode.skillSegments)
+      .find((segment) => segment.skillName === 'audit');
+    assert.ok(auditSegment);
+    assert.equal(childEdges?.[0].parentSkillSegmentId, auditSegment.id);
+    assert.equal(childEdges?.[0].executorSkillSegmentId, undefined);
     assert.ok(normalizeObservationExperienceReport(
       compactObservationExperienceReport(report),
     ));
