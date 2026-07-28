@@ -131,6 +131,93 @@ function writeCodexFixture(root: string, terminal: ChildTerminal): void {
   ]);
 }
 
+function writeCodexStandaloneFixture(root: string): void {
+  writeJsonl(join(root, 'standalone.jsonl'), [
+    {
+      timestamp: '2026-07-28T00:00:00.000Z',
+      type: 'session_meta',
+      payload: {
+        id: 'contract-standalone',
+        cwd: '/repo',
+        originator: 'Codex Desktop',
+        model_provider: 'openai',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:01.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: '<command-name>/research-skill</command-name>\nInspect the release metadata.',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:02.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'function_call',
+        call_id: 'inspect-version',
+        name: 'exec_command',
+        arguments: JSON.stringify({ cmd: 'rg version package.json' }),
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:03.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'function_call_output',
+        call_id: 'inspect-version',
+        output: 'Process exited with code 0\n"version": "0.50.0"',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:04.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: '<command-name>/release-skill</command-name>\nPublish the release.',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:05.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'function_call',
+        call_id: 'publish-pr',
+        name: 'exec_command',
+        arguments: JSON.stringify({
+          cmd: 'gh pr create --body "Document the subagent behavior."',
+        }),
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:06.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'function_call_output',
+        call_id: 'publish-pr',
+        output: 'Process exited with code 0\nPull request created\n{"session_id":"inspected-session"}',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:07.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'assistant',
+        content: '已确认 Guardian subagent 的 parent_thread_id；保留快照供后续分析。',
+      },
+    },
+    {
+      timestamp: '2026-07-28T00:00:08.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_complete', turn_id: 'standalone-turn' },
+    },
+  ]);
+}
+
 function writeClaudeFixture(root: string, terminal: ChildTerminal): void {
   const sessionDir = join(root, 'contract-parent');
   const childDir = join(sessionDir, 'subagents');
@@ -324,4 +411,33 @@ describe('source-neutral orchestration contract', () => {
       });
     }
   }
+
+  it('does not infer orchestration from ordinary process output or tool argument prose', () => {
+    writeCodexStandaloneFixture(root);
+    const sessions = loadCcSessions(root);
+    const report = buildObservationExperienceReport({
+      sessions,
+      segments: sessions.flatMap((session) => segmentBySkill(session)),
+      items: [],
+      generatedAt: '2026-07-28T00:00:09.000Z',
+    });
+
+    assert.equal(report.storyContexts.length, 1);
+    const story = report.storyContexts[0];
+    assert.equal(story.subagentDispatches.length, 0);
+    assert.equal(
+      story.episodes.flatMap((episode) => episode.orchestrationEdges).length,
+      0,
+    );
+    const skillSegments = story.episodes.flatMap((episode) => episode.skillSegments);
+    const releaseSegment = skillSegments.find((segment) => segment.skillName === 'release-skill');
+    assert.ok(releaseSegment);
+    assert.equal(releaseSegment.skillType, 'executor');
+    assert.equal(releaseSegment.episodeRole, 'main_executor');
+
+    const session = report.sessions.find((candidate) => candidate.skillName === 'release-skill');
+    assert.ok(session);
+    assert.equal(session.indicators.routerDownstreamCompleted, 0);
+    assert.equal(session.indicators.routerDownstreamFailed, 0);
+  });
 });
