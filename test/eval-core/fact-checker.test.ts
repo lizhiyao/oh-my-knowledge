@@ -111,7 +111,7 @@ describe('fact-checker path extraction', () => {
       assert.equal(result.verifiedCount, 1);
       assert.match(
         result.claims[0].evidence || '',
-        /^source=runtime-filesystem\(sample\.cwd\); .*\/app\.js exists$/,
+        /^source=runtime-filesystem; .*\/app\.js exists$/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

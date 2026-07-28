@@ -147,8 +147,8 @@ export function checkFacts(
         value: path,
         verified: exists,
         evidence: insideCwd
-          ? `source=runtime-filesystem(sample.cwd); ${fullPath} ${exists ? 'exists' : 'not found'}`
-          : `source=runtime-filesystem(sample.cwd); ${path} is outside the evaluation cwd`,
+          ? `source=runtime-filesystem; ${fullPath} ${exists ? 'exists' : 'not found'}`
+          : `source=runtime-filesystem; ${path} is outside the evaluation cwd`,
       }];
     }
 

@@ -381,13 +381,14 @@ export async function executeTasks({
 
     let factCheck: FactCheckResult | undefined;
     if (execResult!.ok && execResult!.output) {
-      const sampleRoot = samplesBaseDir ?? dirname(resolve(samplesPath));
       const sharedEvidence: FactCheckEvidence = {
         ...(task._sample.context && { context: task._sample.context }),
         ...(task._sample.environment?.files_available?.length && {
           declaredFiles: task._sample.environment.files_available,
         }),
-        ...(task._sample.cwd && { cwd: resolve(sampleRoot, task._sample.cwd) }),
+        // Resolve exactly like the executor's cwd. samplesBaseDir is for bundle
+        // assets such as mocks, not for changing Sample.cwd path semantics.
+        ...(task._sample.cwd && { cwd: resolve(task._sample.cwd) }),
       };
       factCheck = checkFacts(execResult!.output, sharedEvidence);
     }
