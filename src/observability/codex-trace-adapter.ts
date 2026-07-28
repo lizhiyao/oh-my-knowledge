@@ -23,6 +23,7 @@ import {
   tokenCount,
 } from '../shared/token-usage.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
+import { extractCodexExecCommands } from './codex-exec-command.js';
 
 interface CodexRecord {
   timestamp?: unknown;
@@ -379,8 +380,10 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       const explicitStatus = runtimeOutcome.present
         ? runtimeOutcome.status
         : statusFromCodex(payloadStatus);
-      const inferredFailure = isToolResultFailureText(output) || codexToolOutputFailed(output);
-      const inferredSuccess = !inferredFailure && codexToolOutputSucceeded(output);
+      const bridgeFailure = codexToolOutputFailed(output);
+      const bridgeSuccess = !bridgeFailure && codexToolOutputSucceeded(output);
+      const inferredFailure = bridgeFailure || (!bridgeSuccess && isToolResultFailureText(output));
+      const inferredSuccess = bridgeSuccess;
       const completedExternalCall = externalEnds.byOccurrence.has(
         mcpCallOccurrenceKey(callId, externalOccurrence),
       );
@@ -794,6 +797,10 @@ function normalizeCodexTool(
   sourceNamespace?: string,
 ): { tool: TraceToolRef; input: Record<string, unknown> } {
   const input = parseToolInput(rawInput);
+  const sourceInput = stringValue(input.input);
+  const execCommands = sourceName.toLowerCase() === 'exec' && sourceInput
+    ? extractCodexExecCommands(sourceInput)
+    : [];
   // Codex desktop's orchestration wrapper names its JavaScript command bridge
   // `exec`. This mapping is source-specific: a generic tool named `exec` must not
   // become shell execution outside the Codex adapter.
@@ -814,10 +821,13 @@ function normalizeCodexTool(
       tool,
       input: {
         ...input,
-        command: stringValue(input.command)
-          ?? stringValue(input.cmd)
-          ?? stringValue(input.input)
-          ?? '',
+        command: execCommands.length > 0
+          ? execCommands.join('\n')
+          : stringValue(input.command)
+            ?? stringValue(input.cmd)
+            ?? sourceInput
+            ?? '',
+        ...(execCommands.length > 0 ? { commands: execCommands } : {}),
       },
     };
   }

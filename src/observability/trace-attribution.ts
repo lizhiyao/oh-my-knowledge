@@ -2,6 +2,7 @@
 
 import type { CcAssistantRecord, CcUserRecord } from './trace-source.js';
 import type { TraceMessageEvent, TraceToolCallEvent } from './trace-ir.js';
+import { extractCodexExecCommands } from './codex-exec-command.js';
 
 // ---------- Skill signal detection ----------
 
@@ -210,112 +211,6 @@ function extractInstalledSkillReadRef(text: string): SkillRef | null {
   return null;
 }
 
-function skipJsString(source: string, start: number): number {
-  const quote = source[start];
-  let index = start + 1;
-  while (index < source.length) {
-    if (source[index] === '\\') {
-      index += 2;
-      continue;
-    }
-    if (source[index] === quote) return index + 1;
-    index += 1;
-  }
-  return source.length;
-}
-
-function skipJsTrivia(source: string, start: number): number {
-  let index = start;
-  while (index < source.length) {
-    if (/\s/.test(source[index])) {
-      index += 1;
-      continue;
-    }
-    if (source.startsWith('//', index)) {
-      const newline = source.indexOf('\n', index + 2);
-      return newline < 0 ? source.length : skipJsTrivia(source, newline + 1);
-    }
-    if (source.startsWith('/*', index)) {
-      const end = source.indexOf('*/', index + 2);
-      return end < 0 ? source.length : skipJsTrivia(source, end + 2);
-    }
-    break;
-  }
-  return index;
-}
-
-function extractExecCommandLiteral(source: string, callStart: number): string | null {
-  let index = skipJsTrivia(source, callStart + 'tools.exec_command'.length);
-  if (source[index] !== '(') return null;
-  index = skipJsTrivia(source, index + 1);
-  if (source[index] !== '{') return null;
-
-  let depth = 1;
-  index += 1;
-  while (index < source.length && depth > 0) {
-    index = skipJsTrivia(source, index);
-    const char = source[index];
-    if (char === '"' || char === "'" || char === '`') {
-      index = skipJsString(source, index);
-      continue;
-    }
-    if (char === '{') {
-      depth += 1;
-      index += 1;
-      continue;
-    }
-    if (char === '}') {
-      depth -= 1;
-      index += 1;
-      continue;
-    }
-    if (
-      depth === 1
-      && source.startsWith('cmd', index)
-      && !/[\w$]/.test(source[index - 1] ?? '')
-      && !/[\w$]/.test(source[index + 3] ?? '')
-    ) {
-      let valueStart = skipJsTrivia(source, index + 3);
-      if (source[valueStart] !== ':') {
-        index += 3;
-        continue;
-      }
-      valueStart = skipJsTrivia(source, valueStart + 1);
-      const quote = source[valueStart];
-      if (quote !== '"' && quote !== "'" && quote !== '`') return null;
-      const end = skipJsString(source, valueStart);
-      return source.slice(valueStart + 1, Math.max(valueStart + 1, end - 1));
-    }
-    index += 1;
-  }
-  return null;
-}
-
-function extractExecCommandLiterals(source: string): string[] {
-  const commands: string[] = [];
-  let index = 0;
-  while (index < source.length) {
-    index = skipJsTrivia(source, index);
-    const char = source[index];
-    if (char === '"' || char === "'" || char === '`') {
-      index = skipJsString(source, index);
-      continue;
-    }
-    if (
-      source.startsWith('tools.exec_command', index)
-      && !/[\w$.]/.test(source[index - 1] ?? '')
-      && !/[\w$]/.test(source[index + 'tools.exec_command'.length] ?? '')
-    ) {
-      const command = extractExecCommandLiteral(source, index);
-      if (command) commands.push(command);
-      index += 'tools.exec_command'.length;
-      continue;
-    }
-    index += 1;
-  }
-  return commands;
-}
-
 function splitShellCommandSegments(command: string): string[] {
   const segments: string[] = [];
   let start = 0;
@@ -401,7 +296,7 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
         ? []
         : part.name === 'Bash'
           ? [rawCommand]
-          : extractExecCommandLiterals(rawCommand);
+          : extractCodexExecCommands(rawCommand);
       for (const command of commands) {
         const skillRef = extractShellSkillReadRef(command);
         if (skillRef) return skillRef;
@@ -432,7 +327,7 @@ export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantR
           : part.input?.code ?? part.input?.command;
         if (typeof rawCommand === 'string') {
           texts.push(...(part.name?.toLowerCase() === 'exec'
-            ? extractExecCommandLiterals(rawCommand)
+            ? extractCodexExecCommands(rawCommand)
             : [rawCommand]));
         }
       }
@@ -493,9 +388,14 @@ export function extractSkillReadFileRefFromEvent(event: TraceToolCallEvent): Ski
     || sourceName === 'js'
     || event.tool.name === 'node_repl.js'
     || event.tool.name.toLowerCase() === 'js';
-  const commands = isOrchestrationWrapper
-    ? extractExecCommandLiterals(rawCommand)
-    : [rawCommand];
+  const normalizedCommands = Array.isArray(event.input.commands)
+    ? event.input.commands.filter((value): value is string => typeof value === 'string')
+    : [];
+  const commands = normalizedCommands.length > 0
+    ? normalizedCommands
+    : isOrchestrationWrapper
+      ? extractCodexExecCommands(rawCommand)
+      : [rawCommand];
   for (const command of commands) {
     const skillRef = extractShellSkillReadRef(command);
     if (skillRef) return skillRef;

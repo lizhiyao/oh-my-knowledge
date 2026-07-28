@@ -476,6 +476,42 @@ describe('loadCcSessions', () => {
     assert.equal(corpus.ingestion.unknownEventCount, 0);
   });
 
+  it('treats a completed Codex exec envelope as success despite failure-shaped source text', () => {
+    const path = writeSession(tmpDir, 'codex-exec-completed.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-exec-completed' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'exec-1',
+          name: 'exec',
+          input: 'const result = await tools.exec_command({"cmd":"rg status src"});',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call_output',
+          call_id: 'exec-1',
+          output: 'Script completed\nOutput:\nstatus: failure is a source field',
+        },
+      },
+    ]);
+
+    const corpus = loadTraceCorpus(path);
+    const result = corpus.sessions[0].events.find((event) => event.eventKind === 'tool_result');
+    assert.equal(result?.eventKind, 'tool_result');
+    if (result?.eventKind !== 'tool_result') assert.fail('expected tool result');
+    assert.equal(result.status, 'success');
+    assert.equal(result.statusSource, 'inferred');
+  });
+
   it('recovers a complete apply_patch pair from a truncated patch_apply_end', () => {
     const path = writeSession(tmpDir, 'codex-truncated-patch.jsonl', [
       {
@@ -1357,7 +1393,7 @@ describe('loadCcSessions', () => {
           type: 'custom_tool_call',
           call_id: 'read-alpha',
           name: 'exec',
-          input: 'const result = await tools.exec_command({cmd: "sed -n \'1,200p\' .agents/skills/alpha/SKILL.md"});',
+          input: 'const result = await tools.exec_command({"cmd": "sed -n \'1,200p\' .agents/skills/alpha/SKILL.md"});',
         },
       },
       {
@@ -1399,7 +1435,7 @@ describe('loadCcSessions', () => {
           type: 'custom_tool_call',
           call_id: 'read-beta',
           name: 'exec',
-          input: 'const result = await tools.exec_command({cmd: "cat .agents/skills/beta/SKILL.md"});',
+          input: "const result = await tools.exec_command({'cmd': 'cat .agents/skills/beta/SKILL.md'});",
         },
       },
       {
@@ -1484,6 +1520,11 @@ describe('loadCcSessions', () => {
     assert.equal(alpha.attribution?.source, 'read-skill-md');
     assert.equal(alpha.toolCalls[0].tool, 'Bash');
     assert.equal(alpha.toolCalls[0].sourceTool, 'exec');
+    assert.deepEqual(alpha.toolCalls[0].input, {
+      input: 'const result = await tools.exec_command({"cmd": "sed -n \'1,200p\' .agents/skills/alpha/SKILL.md"});',
+      command: "sed -n '1,200p' .agents/skills/alpha/SKILL.md",
+      commands: ["sed -n '1,200p' .agents/skills/alpha/SKILL.md"],
+    });
     assert.equal(alpha.metrics.inputTokens, 100);
     assert.equal(alpha.metrics.outputTokens, 10);
     assert.equal(alpha.sourceMetadata?.model, 'gpt-5.5');
