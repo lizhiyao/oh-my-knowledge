@@ -178,31 +178,31 @@ describe('observe inbox - trace ingestion', () => {
         timestamp: '2026-07-25T00:00:02.000Z',
         type: 'response_item',
         payload: {
-          type: 'function_call',
+          type: 'custom_tool_call',
           call_id: 'read-skill',
-          name: 'exec_command',
-          arguments: JSON.stringify({ cmd: "sed -n '1,200p' .agents/skills/audit/SKILL.md" }),
+          name: 'exec',
+          input: 'const result = await tools.exec_command({"cmd":"sed -n \'1,200p\' .agents/skills/audit/SKILL.md"});',
         },
       },
       {
         timestamp: '2026-07-25T00:00:03.000Z',
         type: 'response_item',
-        payload: { type: 'function_call_output', call_id: 'read-skill', output: '# Audit Skill' },
+        payload: { type: 'custom_tool_call_output', call_id: 'read-skill', output: '# Audit Skill' },
       },
       {
         timestamp: '2026-07-25T00:00:04.000Z',
         type: 'response_item',
         payload: {
-          type: 'function_call',
+          type: 'custom_tool_call',
           call_id: 'search-1',
-          name: 'exec_command',
-          arguments: JSON.stringify({ cmd: 'rg revenue_schema src' }),
+          name: 'exec',
+          input: 'const result = await tools.exec_command({"cmd":"rg revenue_schema src"});',
         },
       },
       {
         timestamp: '2026-07-25T00:00:05.000Z',
         type: 'response_item',
-        payload: { type: 'function_call_output', call_id: 'search-1', output: 'No matches found' },
+        payload: { type: 'custom_tool_call_output', call_id: 'search-1', output: 'No matches found' },
       },
     ];
     writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
