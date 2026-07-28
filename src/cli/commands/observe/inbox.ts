@@ -115,7 +115,7 @@ export async function runObserveInbox(
     }
     if (recyclableCount > 0) {
       console.log(lang === 'zh'
-        ? `提示：确认信号后生成回归用例草稿：${sampleCommand}`
+        ? `提示：确认信号后生成评测用例草稿：${sampleCommand}`
         : `Tip: after confirming signals, draft regression samples: ${sampleCommand}`);
     }
     return;
@@ -155,7 +155,7 @@ export async function runObserveInbox(
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
   if (recyclableCount > 0) {
     console.log(lang === 'zh'
-      ? `提示：确认高风险或抽样信号后生成回归用例草稿：${sampleCommand}`
+      ? `提示：确认高风险或抽样信号后生成评测用例草稿：${sampleCommand}`
       : `Tip: after confirming high-risk / sampled signals, draft regression samples: ${sampleCommand}`);
   }
 }
