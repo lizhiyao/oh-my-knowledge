@@ -115,7 +115,7 @@ export default class ObserveIngest extends BaseCommand {
       const inboxCommand = `omk observe inbox --input-dir ${shellQuoteArg(outDir)}`;
       const sampleCommand = `omk sample --from-traces --observations-dir ${shellQuoteArg(outDir)}`;
       process.stderr.write(lang === 'zh'
-        ? `observe inbox 已写入：${path}\n下一步：${inboxCommand}\n确认高风险或抽样信号后，可生成回归用例草稿：${sampleCommand}\n`
+        ? `observe inbox 已写入：${path}\n下一步：${inboxCommand}\n确认高风险或抽样信号后，可生成评测用例草稿：${sampleCommand}\n`
         : `observe inbox written to: ${path}\nNext: ${inboxCommand}\nAfter confirming high-risk / sampled signals, draft regression samples: ${sampleCommand}\n`);
     });
   }

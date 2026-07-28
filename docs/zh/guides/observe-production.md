@@ -25,7 +25,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分
 
 ## B. inbox：reviewer 闭环
 
-当你想逐条 triage observation，用 inbox。下面步骤 1-3 纯本地、零 LLM；生成回归用例草稿是单独的可选 authoring 步骤，会调用生成模型。
+当你想逐条 triage observation，用 inbox。下面步骤 1-3 纯本地、零 LLM；生成评测用例草稿是单独的可选 authoring 步骤，会调用生成模型。
 
 ```bash
 # 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe-inbox/
@@ -51,7 +51,7 @@ omk observe show <inbox_id>
 
 ## 把 observation 变成用例
 
-observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --from-traces` 能从这些信号草拟回归用例——把 observe → eval 的闭环合上。
+observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --from-traces` 能从这些信号草拟评测用例——把 observe → eval 的闭环合上。
 
 这个命令会通过你配置的 executor 和 model 调用 sample 生成器，因此 trace 派生证据会发送给该模型，也可能产生生成成本：
 
@@ -63,6 +63,7 @@ omk sample --from-traces
 
 ## 相关
 
+- [复现 Codex 父子任务观测](./codex-observe-case)——可执行的 Trace IR 与紧凑报告案例
 - [三阶段](../explanation/three-stage-workflow) —— observe 在闭环里的位置
 - [知识缺口信号规范](../specs/knowledge-gap-signal-spec) —— gap 信号是什么、怎么打分
 - [CLI 参考：`omk observe`](../reference/cli) —— 每个 flag 和子命令

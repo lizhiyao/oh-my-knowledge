@@ -63,6 +63,7 @@ It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review qu
 
 ## Related
 
+- [Reproduce Codex parent/subagent observation](./codex-observe-case) — executable Trace IR and compact-report case
 - [The three stages](../explanation/three-stage-workflow) — observe's place in the loop
 - [Knowledge-gap signal spec](../specs/knowledge-gap-signal-spec) — what a gap signal is and how it's scored
 - [CLI reference: `omk observe`](../reference/cli) — every flag and subcommand

@@ -430,7 +430,7 @@ export async function runSampleFromTraces(
 
   const count: number | undefined = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
   process.stderr.write(lang === 'zh'
-    ? `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成回归用例草稿...\n`
+    ? `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成评测用例草稿...\n`
     : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
@@ -673,7 +673,7 @@ export default class Sample extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '从 observe inbox 的失败信号回流生成回归用例草稿',
+        zh: '从 observe inbox 的失败信号回流生成评测用例草稿',
         en: 'Recycle observe-inbox failure signals into draft regression samples',
       }),
       command: '<%= config.bin %> sample --from-traces',
@@ -766,7 +766,7 @@ export default class Sample extends BaseCommand {
     }),
     'from-traces': Flags.boolean({
       description: bilingual({
-        zh: 'from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。',
+        zh: 'from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。',
         en: 'from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.',
       }),
       default: false,

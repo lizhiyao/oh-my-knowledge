@@ -128,7 +128,7 @@ describe('observe CLI', () => {
     }
 
     const output = logs.join('\n');
-    assert.match(output, /确认高风险或抽样信号后生成回归用例草稿/);
+    assert.match(output, /确认高风险或抽样信号后生成评测用例草稿/);
     assert.ok(output.includes(`omk sample --from-traces --observations-dir ${dir}`), output);
   });
 
