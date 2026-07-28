@@ -3,7 +3,7 @@ import { buildVariantResult } from './schema.js';
 import { safeSliceForJson } from '../util/safe-slice.js';
 import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
-import type { FactCheckResult } from './fact-checker.js';
+import type { FactCheckEvidence, FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
 import { DEFAULT_CACHE_DIR, DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
@@ -380,8 +380,17 @@ export async function executeTasks({
     }
 
     let factCheck: FactCheckResult | undefined;
-    if (execResult!.ok && execResult!.output && task.cwd) {
-      factCheck = checkFacts(execResult!.output, resolve(task.cwd));
+    if (execResult!.ok && execResult!.output) {
+      const sharedEvidence: FactCheckEvidence = {
+        ...(task._sample.context && { context: task._sample.context }),
+        ...(task._sample.environment?.files_available?.length && {
+          declaredFiles: task._sample.environment.files_available,
+        }),
+        // Resolve exactly like the executor's cwd. samplesBaseDir is for bundle
+        // assets such as mocks, not for changing Sample.cwd path semantics.
+        ...(task._sample.cwd && { cwd: resolve(task._sample.cwd) }),
+      };
+      factCheck = checkFacts(execResult!.output, sharedEvidence);
     }
 
     const sampleResults = ownRecordValue(results, task.sample_id)
