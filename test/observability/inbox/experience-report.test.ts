@@ -1064,11 +1064,14 @@ expected_tools:
     assert.ok(firstEpisode);
     const applySegment = firstEpisode.skillSegments.find((segment) => segment.skillName === 'apply-cc');
     assert.ok(applySegment);
-    assert.ok(firstEpisode.orchestrationEdges.some((edge) =>
+    const childEdge = firstEpisode.orchestrationEdges.find((edge) =>
       edge.parentSkillSegmentId === applySegment.id
       && edge.edgeKind === 'external_child_session'
       && edge.evidenceRefs.some((ref) => ref.sourceTrace === mainFile && ref.toolUseId === 'task1')
-    ));
+    );
+    assert.ok(childEdge);
+    assert.equal(childEdge.runnerStartedRef?.toolUseId, 'task1');
+    assert.equal(childEdge.status, 'started');
     assert.ok(story.nodes.some((node) => node.kind === 'subagent_branch'));
     assert.deepEqual(story.skillLinks.map((link) => [link.skillName, link.role]).sort(), [
       ['aiprd-task-runner', 'executor'],

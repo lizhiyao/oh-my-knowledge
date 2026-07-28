@@ -4141,21 +4141,23 @@ function skillSegmentsWithOrchestrationRoles(
   const parentIds = new Set(orchestrationEdges.map((edge) => edge.parentSkillSegmentId).filter((value): value is string => Boolean(value)));
   const executorIds = new Set(orchestrationEdges.map((edge) => edge.executorSkillSegmentId).filter((value): value is string => Boolean(value)));
   return skillSegments.map((segment) => {
-    if (parentIds.has(segment.id) && segment.skillType === 'unknown') {
+    if (parentIds.has(segment.id)) {
+      const inferredFromTrace = !segment.declaredSkillType;
       return {
         ...segment,
-        skillType: 'router',
-        skillTypeSource: 'trace',
-        traceInferredSkillType: 'router',
+        skillType: inferredFromTrace ? 'router' : segment.skillType,
+        skillTypeSource: inferredFromTrace ? 'trace' : segment.skillTypeSource,
+        traceInferredSkillType: inferredFromTrace ? 'router' : segment.traceInferredSkillType,
         episodeRole: 'router',
       };
     }
-    if (executorIds.has(segment.id) && segment.episodeRole === 'supporting') {
+    if (executorIds.has(segment.id)) {
+      const inferredFromTrace = !segment.declaredSkillType;
       return {
         ...segment,
-        skillType: segment.skillType === 'unknown' ? 'executor' : segment.skillType,
-        skillTypeSource: segment.skillType === 'unknown' ? 'trace' : segment.skillTypeSource,
-        traceInferredSkillType: segment.traceInferredSkillType ?? 'executor',
+        skillType: inferredFromTrace ? 'executor' : segment.skillType,
+        skillTypeSource: inferredFromTrace ? 'trace' : segment.skillTypeSource,
+        traceInferredSkillType: inferredFromTrace ? 'executor' : segment.traceInferredSkillType,
         episodeRole: 'main_executor',
       };
     }
@@ -4409,44 +4411,153 @@ function sessionStoryOrchestrationEdges(
       });
     }
   }
-  if (edges.length === 0) {
-    const fallbackEdge = fallbackOrchestrationEdgeFromRuntime(episodeId, skillSegments, invocations);
-    if (fallbackEdge) edges.push(fallbackEdge);
-  }
   for (const dispatch of subagentDispatches) {
-    const parentSegment = delegator ?? router ?? runnerOwner;
-    const executor = skillSegments.find((segment) =>
-      segment.id !== parentSegment?.id
-      && segment.evidenceRefs.some((ref) => ref.traceId === dispatch.traceId)
-    ) ?? skillSegments.find((segment) =>
-      segment.id !== parentSegment?.id && segment.episodeRole === 'main_executor'
+    const executor = skillSegmentForTrace(
+      skillSegments,
+      dispatch.traceId,
+      dispatch.sourceTrace,
     );
-    const dispatchRunnerRef = runnerRef && (
-      !dispatch.attachTo?.callInstanceId
-        ? !dispatch.attachTo?.toolUseId
-          || dispatch.attachTo.toolUseId === runnerRef.toolUseId
-        : dispatch.attachTo.callInstanceId === runnerRef.callInstanceId
-    )
-      ? runnerRef
-      : undefined;
+    const parentSegment = dispatchParentSkillSegment(
+      skillSegments,
+      executor,
+      session,
+      dispatch,
+      router,
+      delegator,
+      runnerOwner,
+    );
+    const distinctExecutor = executor?.id === parentSegment?.id ? undefined : executor;
+    const dispatchRunnerRef = dispatchAttachmentEvidenceRef(session, dispatch);
+    const terminal = dispatchTerminalLifecycle(session, dispatch);
     edges.push({
       id: hashParts('session-story-edge', episodeId, dispatch.id),
       episodeId,
       edgeKind: 'external_child_session',
       parentSkillSegmentId: parentSegment?.id,
-      executorSkillSegmentId: executor?.id,
+      executorSkillSegmentId: distinctExecutor?.id,
       childSessionId: dispatch.childSessionId,
       runnerStartedRef: dispatchRunnerRef,
-      status: 'started',
+      runnerCompletedRef: terminal?.status === 'completed' ? terminal.evidenceRef : undefined,
+      status: terminal?.status ?? 'started',
       evidenceRefs: uniqueEvidenceRefs([
         ...(parentSegment?.evidenceRefs.slice(0, 2) ?? []),
-        ...(executor?.evidenceRefs.slice(0, 2) ?? []),
+        ...(distinctExecutor?.evidenceRefs.slice(0, 2) ?? []),
         ...(dispatchRunnerRef ? [dispatchRunnerRef] : []),
+        ...(terminal ? [terminal.evidenceRef] : []),
         ...dispatch.evidenceRefs,
       ]).slice(0, 6),
     });
   }
+  if (edges.length === 0 && subagentDispatches.length === 0) {
+    const fallbackEdge = fallbackOrchestrationEdgeFromRuntime(episodeId, skillSegments, invocations);
+    if (fallbackEdge) edges.push(fallbackEdge);
+  }
   return edges;
+}
+
+function skillSegmentForTrace(
+  skillSegments: ExperienceSkillSegment[],
+  traceId: string,
+  sourceTrace: string,
+): ExperienceSkillSegment | undefined {
+  return skillSegments
+    .filter((segment) =>
+      (segment.messageRanges ?? []).some((range) =>
+        range.traceId === traceId || range.sourceTrace === sourceTrace
+      )
+      || segment.evidenceRefs.some((ref) =>
+        ref.traceId === traceId || ref.sourceTrace === sourceTrace
+      )
+    )
+    .sort((a, b) => a.order - b.order)[0];
+}
+
+function dispatchParentSkillSegment(
+  skillSegments: ExperienceSkillSegment[],
+  executor: ExperienceSkillSegment | undefined,
+  session: ExperienceSessionSummary,
+  dispatch: ExperienceSessionStorySubagentDispatch,
+  router: ExperienceSkillSegment | undefined,
+  delegator: ExperienceSkillSegment | undefined,
+  runnerOwner: ExperienceSkillSegment | undefined,
+): ExperienceSkillSegment | undefined {
+  const mainTraceIds = new Set(
+    (session.timelineTree?.main ?? [])
+      .map((event) => event.traceId)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const mainSourceTraces = new Set(
+    (session.timelineTree?.main ?? [])
+      .map((event) => event.sourceTrace)
+      .filter(Boolean),
+  );
+  const isMainline = (segment: ExperienceSkillSegment): boolean =>
+    (segment.messageRanges ?? []).some((range) =>
+      Boolean(range.traceId && mainTraceIds.has(range.traceId))
+      || Boolean(range.sourceTrace && mainSourceTraces.has(range.sourceTrace))
+    )
+    || segment.evidenceRefs.some((ref) =>
+      ref.traceRole === 'main'
+      || ref.traceRole === 'standalone'
+      || Boolean(ref.traceId && mainTraceIds.has(ref.traceId))
+      || mainSourceTraces.has(ref.sourceTrace)
+    );
+  const preferred = [router, delegator]
+    .filter((segment): segment is ExperienceSkillSegment => Boolean(segment))
+    .find((segment) => segment.id !== executor?.id && isMainline(segment));
+  if (preferred) return preferred;
+  const dispatchStart = minString(dispatch.evidenceRefs.map((ref) => ref.timestamp));
+  const mainline = skillSegments
+    .filter((segment) => segment.id !== executor?.id && isMainline(segment))
+    .filter((segment) => !dispatchStart || segment.startTimestamp <= dispatchStart)
+    .sort((a, b) =>
+      b.startTimestamp.localeCompare(a.startTimestamp)
+      || b.order - a.order
+    )[0];
+  if (mainline) return mainline;
+  if (runnerOwner?.id !== executor?.id && runnerOwner && isMainline(runnerOwner)) return runnerOwner;
+  return executor && isMainline(executor) ? executor : undefined;
+}
+
+function dispatchAttachmentEvidenceRef(
+  session: ExperienceSessionSummary,
+  dispatch: ExperienceSessionStorySubagentDispatch,
+): ExperienceEvidenceRef | undefined {
+  const attachTo = dispatch.attachTo;
+  if (!attachTo) return undefined;
+  if (!attachTo.callInstanceId && !attachTo.toolUseId && attachTo.messageIndex === undefined) {
+    return undefined;
+  }
+  const event = (session.timelineTree?.main ?? []).find((candidate) => {
+    if (candidate.kind !== 'tool_use') return false;
+    if (attachTo.callInstanceId) {
+      return candidate.callInstanceId === attachTo.callInstanceId;
+    }
+    if (attachTo.toolUseId && candidate.toolUseId !== attachTo.toolUseId) return false;
+    return attachTo.messageIndex === undefined
+      || candidate.messageIndex === attachTo.messageIndex;
+  });
+  return event ? evidenceRefFromTimeline(event) : undefined;
+}
+
+function dispatchTerminalLifecycle(
+  session: ExperienceSessionSummary,
+  dispatch: ExperienceSessionStorySubagentDispatch,
+): { status: 'completed' | 'failed'; evidenceRef: ExperienceEvidenceRef } | undefined {
+  const branch = session.timelineTree?.branches.find((candidate) =>
+    candidate.id === dispatch.branchId
+    || candidate.traceId === dispatch.traceId
+    || candidate.sourceTrace === dispatch.sourceTrace
+  );
+  const event = branch?.events.at(-1);
+  if (event?.kind !== 'runtime_context') return undefined;
+  if (event.label === 'turn_completed' || event.label === 'session_ended') {
+    return { status: 'completed', evidenceRef: evidenceRefFromTimeline(event) };
+  }
+  if (event.label === 'turn_aborted' || event.label === 'turn_interrupted') {
+    return { status: 'failed', evidenceRef: evidenceRefFromTimeline(event) };
+  }
+  return undefined;
 }
 
 function bestPriorUpstreamSkillSegmentForRuntime(
