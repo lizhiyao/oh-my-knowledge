@@ -46,7 +46,15 @@ const SYSTEM_ENV_VARS = new Set([
   'TMPDIR', 'EDITOR', 'VISUAL', 'HOSTNAME', 'LOGNAME', 'DISPLAY',
   'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME',
   'NODE_ENV', 'NODE_PATH', 'NODE_OPTIONS', 'NPM_CONFIG_PREFIX',
+  // Agent Skills resolves this placeholder to the active skill directory.
+  // It is not a user-provided environment prerequisite.
+  'SKILL_ROOT',
 ]);
+
+// A shell probe that explicitly tolerates failure is discovering the target
+// project shape. Candidate paths on that line are not hard dependencies of the
+// skill itself.
+const OPTIONAL_PROBE_LINE_REGEX = /(?:2>\s*\/dev\/null|\|\|\s*(?:true|:)(?:\s|$))/;
 
 function extractFromText(text: string): { tools: Set<string>; files: Set<string>; env: Set<string> } {
   const tools = new Set<string>();
@@ -67,21 +75,25 @@ function extractFromText(text: string): { tools: Set<string>; files: Set<string>
     }
   }
 
-  // File paths
-  for (const match of text.matchAll(FILE_PATH_REGEX)) {
-    const path = match[1];
-    // Skip paths that look like URLs, package names, or version strings
-    if (path.startsWith('http') || path.startsWith('node_modules') || /^\d/.test(path)) continue;
-    // Skip very short paths that are likely not real files
-    if (path.length < 5) continue;
-    // Skip extension-mention patterns(`.d.ts` / `.tsx` 这种以点开头的"扩展名讨论"
-    // 不是真路径,SKILL.md 里"查看 .d.ts 文件"会被误识别)
-    if (path.startsWith('.')) continue;
-    // Skip bare filenames without a directory segment(`index.ts` / `package.json`
-    // 这种通用文件名几乎都是示例性提及,真依赖会带路径段。要声明 bare 文件
-    // 走显式 requires)
-    if (!path.includes('/')) continue;
-    files.add(path);
+  // File paths. Keep line context so optional discovery commands do not turn
+  // every candidate project entry point into a fatal preflight requirement.
+  for (const line of text.split(/\r?\n/)) {
+    if (OPTIONAL_PROBE_LINE_REGEX.test(line)) continue;
+    for (const match of line.matchAll(FILE_PATH_REGEX)) {
+      const path = match[1];
+      // Skip paths that look like URLs, package names, or version strings
+      if (path.startsWith('http') || path.startsWith('node_modules') || /^\d/.test(path)) continue;
+      // Skip very short paths that are likely not real files
+      if (path.length < 5) continue;
+      // Skip extension-mention patterns(`.d.ts` / `.tsx` 这种以点开头的"扩展名讨论"
+      // 不是真路径,SKILL.md 里"查看 .d.ts 文件"会被误识别)
+      if (path.startsWith('.')) continue;
+      // Skip bare filenames without a directory segment(`index.ts` / `package.json`
+      // 这种通用文件名几乎都是示例性提及,真依赖会带路径段。要声明 bare 文件
+      // 走显式 requires)
+      if (!path.includes('/')) continue;
+      files.add(path);
+    }
   }
 
   // Environment variables
@@ -391,4 +403,3 @@ export async function preflightDependencies(
 
   return result;
 }
-

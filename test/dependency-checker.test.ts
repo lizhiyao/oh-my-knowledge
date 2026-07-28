@@ -49,6 +49,26 @@ describe('extractDependencies', () => {
     assert.equal(deps.env, undefined);
   });
 
+  it('排除 Agent Skills 运行时提供的 SKILL_ROOT 占位符', () => {
+    const skill = `读取 \${SKILL_ROOT}/references/tracing.md，上传时使用 $SENTRY_AUTH_TOKEN`;
+    const deps = extractDependencies([skill], []);
+    assert.ok(!deps.env?.includes('SKILL_ROOT'));
+    assert.ok(deps.env?.includes('SENTRY_AUTH_TOKEN'));
+  });
+
+  it('不把允许失败的项目探测命令中的候选路径视为硬依赖', () => {
+    const skill = [
+      'ls app.json src/app.js src/app.ts 2>/dev/null',
+      'cat src/optional/config.ts || true',
+      '请读取 references/tracing.md 后再配置。',
+    ].join('\n');
+    const deps = extractDependencies([skill], []);
+    assert.ok(!deps.files?.includes('src/app.js'));
+    assert.ok(!deps.files?.includes('src/app.ts'));
+    assert.ok(!deps.files?.includes('src/optional/config.ts'));
+    assert.ok(deps.files?.includes('references/tracing.md'));
+  });
+
   it('从 sample assertions 提取 CLI 工具', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
