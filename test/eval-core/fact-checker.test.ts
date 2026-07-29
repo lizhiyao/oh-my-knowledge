@@ -71,7 +71,7 @@ describe('fact-checker path extraction', () => {
     assert.equal(result.claims[0].evidence, 'source=context(sample.context)');
   });
 
-  it('labels declarative fixture evidence', () => {
+  it('labels declarative environment evidence as context, not a physical fixture', () => {
     const result = checkFacts(
       'Run scripts/verify.sh.',
       { declaredFiles: ['$SKILL_DIR/scripts/verify.sh'] },
@@ -80,7 +80,7 @@ describe('fact-checker path extraction', () => {
     assert.equal(result.verifiedCount, 1);
     assert.equal(
       result.claims[0].evidence,
-      'source=fixture(sample.environment.files_available)',
+      'source=context(sample.environment.files_available)',
     );
   });
 

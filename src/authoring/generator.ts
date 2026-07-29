@@ -1,6 +1,13 @@
 import { createExecutor } from '../executors/index.js';
+import { executorSupportsSampleMocks } from '../executors/capabilities.js';
 import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
-import type { Sample, SampleProvenance, ExecutorFn } from '../types/index.js';
+import { sampleMockReferenceKeys } from '../shared/sample-contract.js';
+import type {
+  Assertion,
+  ExecutorFn,
+  Sample,
+  SampleProvenance,
+} from '../types/index.js';
 import type { ObservationInboxItem } from '../types/observability.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
@@ -198,14 +205,14 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         tool_input_not_contains 或 tools_not_called。
   - { "type": "regex", "pattern": "...", "weight": 1 }
         ↑ 同 contains 限制:只用在固定格式字面量(如 SHA / UUID / 路径模板)。
-- environment: 可选,对象。**评测环境的"已就绪"声明**,LLM 看到后跳过环境探测直接进工作流。
+- environment: 可选,对象。**仅作 prompt 上下文的题设环境声明**,不会修改 PATH、创建文件或物化 fixture。
   字段:
     - cli_available: string[],已在 PATH 上的 CLI(如 ["node", "git", "code-host"])
     - files_available: string[],已存在的文件/脚本(如 ["~/.req-tool-api.json", "$SKILL_DIR/scripts/x.js"])
     - notes: string,自由文本兜底(如"DevAPI 凭证有效,工号 testuser001")
   原则:
-    凡是 skill 跑起来需要的环境(凭证文件 / 业务 CLI / 自带脚本 / API token 等),
-    都写到这里,而不是在 mock 里 mock 它们的探测命令。这让 mock 只关注业务调用本身。
+    只有用例明确把某项环境能力作为题设前提时才写。需要读取真实内容的文件不能放在
+    files_available 里冒充 fixture:应放进 sample.cwd 下的真实 fixture,或由 mock 返回内容。
 - mocksStrict: **必填且必须设为 true**(只要 sample 配了 mocks)。
   原因:mocksStrict=false 时,LLM 调到没匹配 mock 的命令会**透传到真 shell**,
   既可能真调外部接口产生副作用,也可能因二进制不存在(如 mcporter)报噪声错误污染评测信号。
@@ -226,8 +233,8 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
            - 对(✅):写一条宽 mock:\`{tool:"Bash", match:{command_glob:"ls *"},
              return:{stdout:"<模拟目录列表>", exit:0}}\` — \`command_glob\` 用 \`*\` 兜底各种
              ls 参数变体(\`ls\` / \`ls -la\` / \`ls -d\` / \`ls /xx\` 全命中)
-       (c) 单纯"已就绪"声明(凭证文件 / 业务 CLI 是否安装)还是走 \`environment\` 字段,
-           不需要 LLM 真调命令检查 — environment 字段就是告诉 LLM "这些不用检查"。
+       (c) 题设明确声明可用的凭证 / CLI 可写进 \`environment\`,让 LLM 不做可用性探测。
+           该字段只进 prompt,不会真的安装 CLI、创建凭证文件或改变 runtime。
        (d) **intent-level mock(文件搜索/读取类操作)** — LLM 搜代码时会自由选择 Bash grep、
            Grep 工具、Glob+Read 组合、甚至 Agent 子代理,逐个枚举工具写 mock 不可持续。
            正确做法:用 \`tool: "*"\` + \`input_contains: "关键词"\` 按意图匹配:
@@ -371,7 +378,48 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - 例：错 → \`"prompt": "查询"Daily"标签..."\`（内部 \`"\` 未转义，JSON 解析失败）
        对 → \`"prompt": "查询「Daily」标签..."\`（全角引号，无转义压力）`;
 
-interface GenerateSamplesOptions {
+const MOCKLESS_SYSTEM_OVERRIDE = `
+
+## 目标执行器能力约束（最高优先级）
+
+目标执行器不支持可靠的工具调用拦截。本节覆盖上文所有要求 mocks、mock_hit、
+files_available 或正向工具调用断言的规则：
+
+- 不要输出 mocks、mocksStrict、environment 字段。
+- 不要输出 mock_hit、tools_called、tools_count_min、tool_input_contains、tool_output_contains。
+- 可以保留 tools_not_called、tools_count_max、tool_input_not_contains 这类负向安全约束。
+- 把必要的输入事实直接写进 context，把可判分结果写进 rubric 或输出内容断言。
+- 不要假装某个文件、CLI 或工具调用已经由 fixture 物化。`;
+
+function generationSystemPrompt(mockless: boolean): string {
+  return mockless ? `${SYSTEM_PROMPT}${MOCKLESS_SYSTEM_OVERRIDE}` : SYSTEM_PROMPT;
+}
+
+const warnedAutoMocklessExecutors = new Set<string>();
+
+function warnAutoMockless(executorName: string | undefined, noMock: boolean | undefined): void {
+  if (
+    noMock
+    || !executorName
+    || executorSupportsSampleMocks(executorName)
+    || warnedAutoMocklessExecutors.has(executorName)
+  ) return;
+  warnedAutoMocklessExecutors.add(executorName);
+  process.stderr.write(
+    `[omk sample] 执行器「${executorName}」不支持工具调用拦截，`
+    + '已自动切换为无 mocks 用例。\n',
+  );
+}
+
+export function sampleGenerationUsesMocks(
+  executorName: string | undefined,
+  noMock = false,
+): boolean {
+  if (noMock) return false;
+  return executorName ? executorSupportsSampleMocks(executorName) : true;
+}
+
+export interface GenerateSamplesOptions {
   skillContent: string;
   count?: number;
   model: string;
@@ -383,6 +431,8 @@ interface GenerateSamplesOptions {
   focus?: string;
   /** 不生成 mocks/mocksStrict，eval 时真实执行所有工具调用。 */
   noMock?: boolean;
+  /** Injectable executor for tests. Defaults to createExecutor(executorName). */
+  executor?: ExecutorFn;
 }
 
 /**
@@ -409,10 +459,21 @@ ${skillContent}
 ${countLine}直接输出 JSON 数组。${focusBlock}${noMockBlock}`;
 }
 
-export async function generateSamples({ skillContent, count, model, executorName, focus, noMock }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
-  const executor = createExecutor(executorName);
+export async function generateSamples({
+  skillContent,
+  count,
+  model,
+  executorName,
+  focus,
+  noMock,
+  executor: injectedExecutor,
+}: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
+  const executor = injectedExecutor ?? createExecutor(executorName);
+  const mockless = !sampleGenerationUsesMocks(executorName, noMock);
+  warnAutoMockless(executorName, noMock);
 
-  const prompt = buildSamplesPrompt({ skillContent, count, focus, noMock });
+  const prompt = buildSamplesPrompt({ skillContent, count, focus, noMock: mockless });
+  const system = generationSystemPrompt(mockless);
 
   // 生成场景比单次 eval 调用更重(LLM 要思考结构 + 输出大段 JSON),
   // 默认 120s 对长 skill + count >= 8 经常不够,这里用 5 分钟兜底。
@@ -426,7 +487,7 @@ export async function generateSamples({ skillContent, count, model, executorName
     const attemptPrompt = attempt === 1
       ? prompt
       : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
-    const result = await executor({ model, system: SYSTEM_PROMPT, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
     totalCost += result.costUSD || 0;
     if (!result.ok) {
       lastErr = result.error || 'unknown error';
@@ -452,7 +513,10 @@ export async function generateSamples({ skillContent, count, model, executorName
       continue;
     }
     // 通过校验,跳出循环继续后续 sanitize
-    return await finalizeSamples(samples, totalCost, skillContent);
+    return await finalizeSamples(samples, totalCost, {
+      skillContent,
+      mockless,
+    });
   }
   // 不可达 (循环里所有出口都 throw 或 return),保留是为了 TS 类型推断
   throw new Error('unreachable');
@@ -461,7 +525,10 @@ export async function generateSamples({ skillContent, count, model, executorName
 async function finalizeSamples(
   samples: Sample[],
   costUSD: number,
-  skillContent: string,
+  options: {
+    skillContent: string;
+    mockless: boolean;
+  },
 ): Promise<{ samples: Sample[]; costUSD: number }> {
   // Validate required fields + sanitize metadata enums *at generator boundary*
   // (see sanitizeGeneratedSamples). skillContent is passed so the function can
@@ -470,7 +537,10 @@ async function finalizeSamples(
   // the data-security-review v1-v5 regen series (generator kept producing
   // tool_input_contains "WebFetch:语雀URL" even after 7 prompt iterations,
   // because LLM's "URL → fetch" training prior overrides instructional text).
-  const { stripped } = sanitizeGeneratedSamples(samples, { skillContent });
+  const { stripped } = sanitizeGeneratedSamples(samples, {
+    ...options,
+    migrateMocklessEnvironment: true,
+  });
   if (stripped.length > 0) {
     process.stderr.write(
       `[omk sample] LLM-output 含 ${stripped.length} 个非法元数据/断言字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
@@ -531,7 +601,11 @@ export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceS
  * production failures. The trace text feeds the *generator* only — never the
  * judge prompt — so judge-prompt isolation is unaffected.
  */
-export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: number): string {
+export function buildSamplesFromTracesPrompt(
+  items: TraceSignalItem[],
+  count?: number,
+  options: { noMock?: boolean } = {},
+): string {
   // 先按频次分层（合并重复 + 算占比 + 降序），让模型按「占比」分配配额，而非每信号一刀切。
   const stratified = stratifyTraceSignals(items);
   const sections = stratified.map((it, i) => {
@@ -555,6 +629,9 @@ export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: n
   const countLine = typeof count === 'number'
     ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
     : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
+  const mocklessBlock = options.noMock
+    ? '\n\n目标执行器不支持工具调用拦截：不要生成 mocks、mocksStrict、environment 或正向工具调用断言；把 trace 证据写入 context 和 rubric。'
+    : '';
 
   return `${TRACE_GEN_INSTRUCTIONS}
 
@@ -562,7 +639,7 @@ export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: n
 
 ${sections}
 
-${countLine}直接输出 JSON 数组。`;
+${countLine}直接输出 JSON 数组。${mocklessBlock}`;
 }
 
 /** Build a sanitize context string from trace evidence so finalizeSamples keeps
@@ -581,6 +658,8 @@ export interface GenerateSamplesFromTracesOptions {
   count?: number;
   model: string;
   executorName?: string;
+  /** 不生成 mocks。目标 executor 不支持时会自动启用。 */
+  noMock?: boolean;
   /** Injectable executor (tests). Defaults to createExecutor(executorName). */
   executor?: ExecutorFn;
 }
@@ -596,6 +675,7 @@ export async function generateSamplesFromTraces({
   count,
   model,
   executorName,
+  noMock,
   executor: injectedExecutor,
 }: GenerateSamplesFromTracesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   if (items.length === 0) return { samples: [], costUSD: 0 };
@@ -603,7 +683,10 @@ export async function generateSamplesFromTraces({
     throw new Error('executorName is required when no executor is injected');
   }
   const executor = injectedExecutor ?? createExecutor(executorName!);
-  const prompt = buildSamplesFromTracesPrompt(items, count);
+  const mockless = !sampleGenerationUsesMocks(executorName, noMock);
+  warnAutoMockless(executorName, noMock);
+  const prompt = buildSamplesFromTracesPrompt(items, count, { noMock: mockless });
+  const system = generationSystemPrompt(mockless);
   const sanitizeContext = traceSanitizeContext(items);
   const PROVENANCE: SampleProvenance = 'production-trace';
 
@@ -614,7 +697,7 @@ export async function generateSamplesFromTraces({
     const attemptPrompt = attempt === 1
       ? prompt
       : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
-    const result = await executor({ model, system: SYSTEM_PROMPT, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    const result = await executor({ model, system, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
     totalCost += result.costUSD || 0;
     if (!result.ok) {
       lastErr = result.error || 'unknown error';
@@ -644,7 +727,10 @@ export async function generateSamplesFromTraces({
     if (samples.length === 0) return { samples: [], costUSD: totalCost };
     // Stamp provenance before sanitize so it survives (it's a valid enum value).
     for (const s of samples) s.provenance = PROVENANCE;
-    return await finalizeSamples(samples, totalCost, sanitizeContext);
+    return await finalizeSamples(samples, totalCost, {
+      skillContent: sanitizeContext,
+      mockless,
+    });
   }
   throw new Error('unreachable');
 }
@@ -708,6 +794,105 @@ const TEXT_VALUE_TYPES = new Set([
 const TOOL_POSITIVE_TYPES = new Set([
   'tool_input_contains', 'tool_output_contains', 'mock_hit',
 ]);
+const MOCKLESS_POSITIVE_TOOL_TYPES = new Set([
+  'mock_hit',
+  'tools_called',
+  'tools_count_min',
+  'tool_input_contains',
+  'tool_output_contains',
+]);
+
+function stripMocklessPositiveToolAssertions(
+  assertions: Assertion[],
+  label: string,
+  stripped: string[],
+): Assertion[] {
+  const kept: Assertion[] = [];
+  for (const [index, assertion] of assertions.entries()) {
+    const assertionLabel = `${label}[${index}]`;
+    if (assertion?.type === 'assert-set' && Array.isArray(assertion.children)) {
+      const children = stripMocklessPositiveToolAssertions(
+        assertion.children,
+        `${assertionLabel}.children`,
+        stripped,
+      );
+      if (children.length === 0) {
+        stripped.push(`${assertionLabel}.assert-set（无 mock 模式下没有可执行子断言）`);
+        continue;
+      }
+      assertion.children = children;
+      kept.push(assertion);
+      continue;
+    }
+    if (MOCKLESS_POSITIVE_TOOL_TYPES.has(assertion?.type)) {
+      stripped.push(`${assertionLabel}.${assertion.type}（目标执行器不支持 mocks，正向工具证据不可复现）`);
+      continue;
+    }
+    kept.push(assertion);
+  }
+  return kept;
+}
+
+function stripInvalidMockHitAssertions(
+  assertions: Assertion[],
+  mockKeys: ReadonlySet<string>,
+  label: string,
+  stripped: string[],
+): Assertion[] {
+  const kept: Assertion[] = [];
+  for (const [index, assertion] of assertions.entries()) {
+    const assertionLabel = `${label}[${index}]`;
+    if (assertion?.type === 'assert-set' && Array.isArray(assertion.children)) {
+      const children = stripInvalidMockHitAssertions(
+        assertion.children,
+        mockKeys,
+        `${assertionLabel}.children`,
+        stripped,
+      );
+      if (children.length === 0) {
+        stripped.push(`${assertionLabel}.assert-set（没有可执行子断言）`);
+        continue;
+      }
+      assertion.children = children;
+      kept.push(assertion);
+      continue;
+    }
+    if (
+      assertion?.type === 'mock_hit'
+      && typeof assertion.value === 'string'
+      && !mockKeys.has(assertion.value)
+    ) {
+      stripped.push(`${assertionLabel}.mock_hit（未引用实际 mock：${assertion.value}）`);
+      continue;
+    }
+    kept.push(assertion);
+  }
+  return kept;
+}
+
+function environmentAsPromptContext(environment: unknown): string | null {
+  if (!environment || typeof environment !== 'object' || Array.isArray(environment)) {
+    return null;
+  }
+  const env = environment as Record<string, unknown>;
+  const lines = ['题设环境声明（仅作上下文，不会在 cwd 物化）：'];
+  if (
+    Array.isArray(env.cli_available)
+    && env.cli_available.every((item) => typeof item === 'string' && item.length > 0)
+  ) {
+    lines.push(`- 可用 CLI：${env.cli_available.join('、')}`);
+  }
+  if (
+    Array.isArray(env.files_available)
+    && env.files_available.every((item) => typeof item === 'string' && item.length > 0)
+  ) {
+    lines.push(`- 题设引用路径（未物化）：${env.files_available.join('、')}`);
+  }
+  if (typeof env.notes === 'string' && env.notes.trim()) {
+    lines.push(`- 说明：${env.notes.trim()}`);
+  }
+  return lines.length > 1 ? lines.join('\n') : null;
+}
 
 function isAsciiTokenLike(v: unknown): boolean {
   if (typeof v !== 'string') return false;
@@ -730,7 +915,12 @@ function toolNameAppearsInSkill(tool: string, skillContent: string): boolean {
 
 export function sanitizeGeneratedSamples(
   samples: Sample[],
-  opts: { skillContent?: string } = {},
+  opts: {
+    skillContent?: string;
+    mockless?: boolean;
+    migrateMocklessEnvironment?: boolean;
+    preserveMocklessEnvironment?: boolean;
+  } = {},
 ): { stripped: string[] } {
   const VALID_DIFFICULTY = new Set(['easy', 'medium', 'hard']);
   const VALID_PROVENANCE = new Set(['human', 'llm-generated', 'production-trace']);
@@ -772,6 +962,44 @@ export function sanitizeGeneratedSamples(
     if (s.tripwire !== undefined && typeof s.tripwire !== 'boolean') {
       stripped.push(`samples[${i}].tripwire (${typeof s.tripwire})`);
       delete (s as { tripwire?: unknown }).tripwire;
+    }
+
+    if (opts.mockless) {
+      if (Array.isArray(s.mocks) && s.mocks.length > 0) {
+        stripped.push(`samples[${i}].mocks（目标执行器不支持工具调用拦截）`);
+      }
+      delete (s as { mocks?: unknown }).mocks;
+      if (s.mocksStrict !== undefined) {
+        stripped.push(`samples[${i}].mocksStrict（无 mocks）`);
+      }
+      delete (s as { mocksStrict?: unknown }).mocksStrict;
+      if (s.environment !== undefined && !opts.preserveMocklessEnvironment) {
+        const environmentContext = opts.migrateMocklessEnvironment
+          ? environmentAsPromptContext(s.environment)
+          : null;
+        if (environmentContext) {
+          const existingContext = typeof s.context === 'string' ? s.context.trim() : '';
+          s.context = existingContext
+            ? `${existingContext}\n\n${environmentContext}`
+            : environmentContext;
+          stripped.push(`samples[${i}].environment（已迁移到题设 context，未物化）`);
+        } else {
+          stripped.push(`samples[${i}].environment（未物化的环境声明不能充当 fixture）`);
+        }
+      }
+      if (!opts.preserveMocklessEnvironment) {
+        delete (s as { environment?: unknown }).environment;
+      }
+      if (Array.isArray(s.assertions)) {
+        s.assertions = stripMocklessPositiveToolAssertions(
+          s.assertions,
+          `samples[${i}].assertions`,
+          stripped,
+        );
+        if (s.assertions.length === 0) {
+          delete (s as { assertions?: unknown }).assertions;
+        }
+      }
     }
 
     // assertions 校验:loader 会拒掉两类无效断言 — 在 generator boundary 提前 strip,
@@ -899,6 +1127,18 @@ export function sanitizeGeneratedSamples(
         }
         if (validMocks.length > 0) (s as Record<string, unknown>).mocks = validMocks;
         else delete (s as { mocks?: unknown }).mocks;
+      }
+    }
+
+    if (Array.isArray(s.assertions)) {
+      s.assertions = stripInvalidMockHitAssertions(
+        s.assertions,
+        sampleMockReferenceKeys(s.mocks),
+        `samples[${i}].assertions`,
+        stripped,
+      );
+      if (s.assertions.length === 0) {
+        delete (s as { assertions?: unknown }).assertions;
       }
     }
 

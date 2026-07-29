@@ -123,6 +123,8 @@ omk sample skills/my-skill/SKILL.md --focus "重点覆盖搜索失败 / 权限�
 omk sample --batch
 ```
 
+目标执行器不支持工具拦截时，`omk sample` 会自动生成无 mock 用例。当前 `codex` / `codex-sdk` 属于这种情况；不要手工补 `mocks` 或 `mock_hit`。已有 mocks 用例会被 `omk eval` 在模型调用前拒绝，避免把执行器能力缺口误判成模型失败。`environment.files_available` 只提供题设上下文，不会在 `cwd` 物化文件。
+
 输出位置：目录 skill（`<skill>/SKILL.md`）→ `<skill>/.omk/samples.json`（标准）；扁平 `.md` 单次生成 → 当前目录 `eval-samples.json`（项目级兜底）；扁平 `.md` 的 `--batch` 兼容生成 `<skill-dir>/<name>.eval-samples.json`。
 
 ### 观测真实使用

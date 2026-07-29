@@ -126,6 +126,30 @@ describe('loadSamples', () => {
         error: /mock requires.*return/,
       },
       {
+        name: 'mock_hit must reference an existing mock',
+        sample: { assertions: [{ type: 'mock_hit', value: 'Read:1' }] },
+        error: /mock_hit.*missing mock.*Read:1/,
+      },
+      {
+        name: 'mock_hit ordinal must exist for that tool',
+        sample: {
+          mocks: [{ tool: 'Read', return: 'one' }],
+          assertions: [{ type: 'mock_hit', value: 'Read:2' }],
+        },
+        error: /mock_hit.*missing mock.*Read:2.*Read:1/,
+      },
+      {
+        name: 'nested mock_hit must reference an existing mock',
+        sample: {
+          mocks: [{ tool: 'Read', return: 'one' }],
+          assertions: [{
+            type: 'assert-set',
+            children: [{ type: 'mock_hit', value: 'Bash:1' }],
+          }],
+        },
+        error: /mock_hit.*missing mock.*Bash:1.*Read:1/,
+      },
+      {
         name: 'environment rejects unknown fields',
         sample: { environment: { cli_available: ['git'], typo: true } },
         error: /environment.*invalid shape/,

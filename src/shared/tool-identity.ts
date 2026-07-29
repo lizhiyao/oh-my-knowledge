@@ -87,6 +87,22 @@ export function normalizeToolIdentity(input: ToolIdentityInput): NormalizedToolI
   };
 }
 
+/**
+ * Match a source-neutral tool identity against a runtime-native tool name.
+ *
+ * Exact matching remains first for legacy/custom tools. Normalization then lets
+ * one mock identity work across adapters such as `Bash` ↔ `exec_command` and
+ * `Edit` ↔ `apply_patch`.
+ */
+export function toolIdentityMatches(
+  expectedName: string,
+  runtimeName: string,
+): boolean {
+  if (expectedName === runtimeName) return true;
+  return normalizeToolIdentity({ sourceName: expectedName }).name
+    === normalizeToolIdentity({ sourceName: runtimeName }).name;
+}
+
 function inferredMcpNamespace(sourceName: string): string | undefined {
   const parts = sourceName.split('__').filter(Boolean);
   return parts[0] === 'mcp' && parts.length > 2

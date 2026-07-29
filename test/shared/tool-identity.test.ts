@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { normalizeToolIdentity } from '../../src/shared/tool-identity.js';
+import {
+  normalizeToolIdentity,
+  toolIdentityMatches,
+} from '../../src/shared/tool-identity.js';
 
 describe('source-neutral tool identity', () => {
   it('maps provider-specific shell and file events to canonical built-ins', () => {
@@ -85,5 +88,14 @@ describe('source-neutral tool identity', () => {
         displayName: 'github.fetch_file',
       },
     );
+  });
+
+  it('matches source-neutral mock identities against runtime-native aliases', () => {
+    assert.equal(toolIdentityMatches('Bash', 'exec_command'), true);
+    assert.equal(toolIdentityMatches('Edit', 'apply_patch'), true);
+    assert.equal(toolIdentityMatches('Read', 'file_read'), true);
+    assert.equal(toolIdentityMatches('github.fetch_file', 'mcp__github__fetch_file'), true);
+    assert.equal(toolIdentityMatches('Read', 'exec_command'), false);
+    assert.equal(toolIdentityMatches('custom.run', 'custom.run'), true);
   });
 });

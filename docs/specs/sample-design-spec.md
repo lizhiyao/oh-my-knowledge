@@ -69,7 +69,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
     - { type: mock_hit, value: "Bash:1", weight: 1 }
   mocksStrict: true              # default true (generator-enforced); an unmatched tool call is denied outright, never passed through to the real call
   tripwire: false                # whether this sample is a "trap sample" (deliberately lures the LLM into the wrong move; failing is expected); default false
-  environment:                   # pre-eval "already provisioned" declaration; the LLM sees it and skips environment probing
+  environment:                   # prompt-only task assumptions; no files or env vars are materialized
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
     notes: "log-cli is authenticated, token in env var"
@@ -94,9 +94,9 @@ To run evals decoupled from the real external environment (databases / APIs / fi
 
 - **mocksStrict** (`boolean`, default `true`): a tool call that matches no mock is denied outright (the LLM sees a failure result). **Default behavior**: the `omk sample` generator force-writes `true` and the SYSTEM_PROMPT makes it explicit; for hand-written samples, the loader does not force-inject it when absent — an old sample without the field falls back to non-strict (passes through to the real call). **Strongly prefer `true` for new samples**, to avoid a missing mock letting the eval hit a real production system.
 - **tripwire** (`boolean`, default `false`): this sample is a "trap sample" whose prompt deliberately plants a lure that violates the rubric/skill (e.g. "I already know it's X, just use it"), testing whether the LLM blindly follows the user's wrong instruction. The LLM **failing is the expected outcome**; diagnostics seeing `tripwire: true` won't suggest changing the skill, and the UI uses a purple verdict pill to distinguish it from a bug.
-- **environment** (`object`, optional): a "ready" precondition declaration for the eval environment — after reading it the LLM skips environment probing (`which X` / `test -f Y` / `echo $Z`) and goes straight into the workflow. Think of it as a unit test's fixture / setup. **It is only a prompt hint to the LLM; it does not actually create files or export variables.** The doctor health check scans it for physical-path checks (skippable with `--skip-doctor`).
+- **environment** (`object`, optional): prompt-only task assumptions. The LLM may skip availability probes (`which X` / `test -f Y` / `echo $Z`) and go straight into the workflow, but omk does not create files, export variables, or alter `PATH`. It is not a fixture mechanism. The doctor health check can still audit declared physical paths (skippable with `--skip-doctor`).
   - `cli_available: string[]` — assumed already on `PATH`
-  - `files_available: string[]` — assumed-existing files/scripts
+  - `files_available: string[]` — file/script paths referenced by the task statement; use `sample.cwd` or mocks for readable bytes
   - `notes: string` — free-text fallback, describing credential / env-var state, etc.
 - **mocks** (`object[]`, optional): the tool-call interception list. At runtime, mocks are matched in array order, and the first hit returns one of `return` / `return_file` / `return_seq[hitCount]` as the tool_result.
   - **the `tool` field**: tool name (e.g. `"Bash"` / `"Read"` / `"Grep"`). The special value `"*"` wildcards any tool name, paired with `input_contains` for intent-level mocking.
@@ -109,6 +109,8 @@ To run evals decoupled from the real external environment (databases / APIs / fi
     - `input_contains: string` — recursively scans all string values in tool_input; a hit if any contains the substring (case-insensitive). **Pair with `tool: "*"` for intent-level mocking**: when the LLM searches code it might use Bash grep / the Grep tool / Glob / Read / Agent / any tool; use `input_contains` to match intent by keyword instead of enumerating tools one by one. Example: `{tool: "*", match: {input_contains: "MyServiceName"}, return: "<service .../>"}` — any tool hits as long as its input mentions MyServiceName.
   - **`return` has three forms**: string / `{stdout, stderr, exit}` (simulates Bash) / `return_file` external file / `return_seq[]` state machine (the Nth hit on the same mock returns in order, falling back to `return` once exhausted).
 - **assertion-side mock_hit / tool_input_contains**: used together with mocks. `mock_hit: "Bash:2"` means "the 2nd Bash mock must be hit at least once", proving the LLM reached that step. `tool_input_contains: "Bash:logstore_query"` checks that the Bash command string contains `logstore_query`.
+  - Every `mock_hit` must reference a declared per-tool mock ordinal. The loader rejects missing or out-of-range references before execution.
+  - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, Gemini, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
 
 **Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. tripwire only affects the diagnostic's attribution suggestion (the `tripwire_intentional` rootCause); it does not affect the layered scores or the verdict.
 

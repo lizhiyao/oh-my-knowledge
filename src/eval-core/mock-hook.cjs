@@ -92,8 +92,47 @@ function anyStringContains(obj, needle) {
   return false;
 }
 
+const BUILTIN_TOOL_ALIASES = {
+  bash: 'Bash',
+  shell: 'Bash',
+  exec_command: 'Bash',
+  command_execution: 'Bash',
+  read: 'Read',
+  file_read: 'Read',
+  grep: 'Grep',
+  edit: 'Edit',
+  apply_patch: 'Edit',
+  file_change: 'Edit',
+  write: 'Write',
+  file_write: 'Write',
+  view_image: 'ViewImage',
+  viewimage: 'ViewImage',
+  write_stdin: 'WriteStdin',
+  writestdin: 'WriteStdin',
+  web_search: 'WebSearch',
+  websearch: 'WebSearch',
+};
+
+function canonicalToolName(name) {
+  const sourceName = String(name);
+  const builtin = BUILTIN_TOOL_ALIASES[sourceName.toLowerCase()];
+  if (builtin) return builtin;
+  const parts = sourceName.split('__').filter(Boolean);
+  if (parts[0] === 'mcp' && parts.length > 2) {
+    const providerParts = parts.slice(1, -1);
+    if (providerParts[0] === 'codex_apps' && providerParts.length > 1) providerParts.shift();
+    return providerParts.join('.') + '.' + parts[parts.length - 1];
+  }
+  return sourceName;
+}
+
+function toolIdentityMatches(expectedName, runtimeName) {
+  return expectedName === runtimeName
+    || canonicalToolName(expectedName) === canonicalToolName(runtimeName);
+}
+
 function isMockHit(mock, toolName, toolInput) {
-  if (mock.tool !== '*' && mock.tool !== toolName) return false;
+  if (mock.tool !== '*' && !toolIdentityMatches(mock.tool, toolName)) return false;
   const m = mock.match;
   if (!m) return true;
   const ti = toolInput || {};

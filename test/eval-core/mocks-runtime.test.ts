@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
   isMockHit,
@@ -16,6 +17,21 @@ describe('isMockHit', () => {
     const m: Mock = { tool: 'Read', return: 'x' };
     assert.equal(isMockHit(m, 'Read', { file_path: '/a' }), true);
     assert.equal(isMockHit(m, 'Bash', { command: 'ls' }), false);
+  });
+
+  it('maps runtime-native tool names to the source-neutral mock identity', () => {
+    assert.equal(
+      isMockHit({ tool: 'Bash', return: 'x' }, 'exec_command', { cmd: 'ls' }),
+      true,
+    );
+    assert.equal(
+      isMockHit({ tool: 'Edit', return: 'x' }, 'apply_patch', { patch: '...' }),
+      true,
+    );
+    assert.equal(
+      isMockHit({ tool: 'Read', return: 'x' }, 'file_read', { path: 'a.ts' }),
+      true,
+    );
   });
 
   it('matches file_path with ~ expansion', () => {
@@ -298,6 +314,47 @@ describe('materializeForCliConfigDir', () => {
     createdDirs = [];  // already removed
   });
 
+  it('materialized CLI hook maps runtime-native names to source-neutral mocks', () => {
+    const handle = materializeForCliConfigDir([
+      { tool: 'Bash', return: 'shell fixture' },
+      { tool: 'github.fetch_file', return: 'mcp fixture' },
+    ])!;
+    const dir = dirname(handle.settingsFile);
+    createdDirs.push(dir);
+    const hookScript = join(dir, 'mock-hook.cjs');
+    const invoke = (toolName: string) => spawnSync(
+      process.execPath,
+      [hookScript],
+      {
+        input: JSON.stringify({
+          hook_event_name: 'PreToolUse',
+          tool_name: toolName,
+          tool_input: {},
+        }),
+        encoding: 'utf8',
+        env: { ...process.env, ...handle.env },
+      },
+    );
+
+    const bash = invoke('exec_command');
+    assert.equal(bash.status, 0, bash.stderr);
+    assert.match(
+      JSON.parse(bash.stdout).hookSpecificOutput.permissionDecisionReason,
+      /shell fixture/,
+    );
+
+    const mcp = invoke('mcp__github__fetch_file');
+    assert.equal(mcp.status, 0, mcp.stderr);
+    assert.match(
+      JSON.parse(mcp.stdout).hookSpecificOutput.permissionDecisionReason,
+      /mcp fixture/,
+    );
+    assert.deepEqual(handle.readStats().perMock, {
+      'Bash:1': 1,
+      'github.fetch_file:1': 1,
+    });
+  });
+
   it('cleanup is idempotent (safe to call twice)', () => {
     const handle = materializeForCliConfigDir([{ tool: 'Read', return: 'x' }])!;
     createdDirs.push(dirname(handle.settingsFile));
@@ -358,10 +415,10 @@ describe('renderEnvironmentSection (task-planner)', () => {
   it('renders cli_available', async () => {
     const { renderEnvironmentSection } = await import('../../src/eval-core/task-planner.js');
     const out = renderEnvironmentSection({ cli_available: ['node', 'git'] });
-    assert.ok(out!.includes('已安装 CLI'));
+    assert.ok(out!.includes('题设声明可用的 CLI'));
     assert.ok(out!.includes('`node`'));
     assert.ok(out!.includes('`git`'));
-    assert.ok(out!.includes('不要做环境检查'));
+    assert.ok(out!.includes('不会自动创建文件或修改 runtime 环境'));
   });
 
   it('renders files_available + notes', async () => {
@@ -388,7 +445,7 @@ describe('buildTasksFromArtifacts — environment injection', () => {
       [{ name: 'baseline', kind: 'baseline', source: 'baseline', content: null }],
     );
     assert.equal(tasks.length, 1);
-    assert.ok(tasks[0].prompt.includes('评测环境前置'));
+    assert.ok(tasks[0].prompt.includes('题设环境声明'));
     assert.ok(tasks[0].prompt.includes('`node`'));
     assert.ok(tasks[0].prompt.endsWith('查询Daily标签的工作项'));
   });

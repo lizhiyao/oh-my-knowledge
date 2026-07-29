@@ -1,6 +1,9 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
-import { createExecutor } from '../executors/index.js';
+import {
+  assertSamplesCompatibleWithExecutor,
+  createExecutor,
+} from '../executors/index.js';
 import { discoverBatchSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeBatchEvaluationRuns, buildBatchVariantSpecs } from './batch-evaluation-workflow.js';
@@ -220,6 +223,7 @@ export async function runEvaluation({
     mcpConfig,
     strictBaseline,
   });
+  assertSamplesCompatibleWithExecutor(samples, executorName, lang);
 
   // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
   // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。

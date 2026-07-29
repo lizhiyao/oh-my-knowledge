@@ -16,6 +16,21 @@ An **executor** is the backend that runs an artifact against a model — it turn
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
+## Sample mock compatibility
+
+`Sample.mocks` requires the executor to intercept a tool call before the underlying tool runs. Tool traces alone are not enough: an executor that can report `Read` after execution cannot safely replace that call with a fixture.
+
+| Executor | `Sample.mocks` support |
+|---|---|
+| `claude` / `claude-sdk` | supported through native hooks |
+| `codex` / `codex-sdk` | unsupported; the current CLI and SDK expose traces but no tool-interception hook |
+| `gemini` / `anthropic-api` / `openai-api` | unsupported |
+| custom command | delegated through `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE`; the command must install or consume the supplied hook |
+
+When the selected executor does not support interception, `omk sample` automatically generates mockless samples and removes positive evidence that would require a simulated call (`mock_hit`, `tools_called`, `tools_count_min`, `tool_input_contains`, and `tool_output_contains`). If a model still emits `environment`, its facts are moved into explicitly non-materialized `context` rather than discarded or presented as fixtures. `omk eval`, including `--dry-run` and `--skip-doctor`, rejects existing samples with mocks before any model call instead of silently turning harness incompatibility into a model failure.
+
+`environment.files_available` is prompt context only. It tells the model what the task statement assumes; it does not create a file in `cwd`. Put a real fixture under the sample working directory when the task must read physical bytes.
+
 ## How the default runtime is selected
 
 Precedence is: explicit CLI flag → `eval.yaml` → `OMK_*` environment preference → automatic detection.

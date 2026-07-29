@@ -45,6 +45,7 @@ import {
 import { finalizeEvaluationReport } from './evaluation-pipeline/report-finalize.js';
 import { emitIsolationWarnings, emitPowerWarnings } from './evaluation-pipeline/preflight-warnings.js';
 import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
+import { assertSamplesCompatibleWithExecutor } from '../executors/capabilities.js';
 
 // 兼容 re-export:测试与 run-evaluation.ts 动态 import 仍打 evaluation-pipeline.js
 export { buildPowerWarnings, buildIsolationWarnings } from './evaluation-pipeline/preflight-warnings.js';
@@ -165,6 +166,7 @@ export async function executeEvaluationPipeline({
   effort,
   noDiagnostic,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
+  assertSamplesCompatibleWithExecutor(samples, executorName, lang);
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
     samplesPath,

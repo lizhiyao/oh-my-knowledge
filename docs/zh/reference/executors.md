@@ -16,6 +16,21 @@
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
+## Sample mock 兼容性
+
+`Sample.mocks` 要求执行器能在底层工具真正运行前拦截调用。仅能事后输出 tool trace 并不等于支持 mock：执行器即使能记录 `Read`，也未必能用 fixture 替换这次调用。
+
+| 执行器 | `Sample.mocks` 支持 |
+|--------|---------------------|
+| `claude` / `claude-sdk` | 支持，通过原生 hooks 拦截 |
+| `codex` / `codex-sdk` | 不支持；当前 CLI 和 SDK 能输出 trace，但没有工具拦截 hook |
+| `gemini` / `anthropic-api` / `openai-api` | 不支持 |
+| 自定义命令 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
+
+目标执行器不支持拦截时，`omk sample` 会自动生成无 mock 用例，并移除依赖模拟调用的正向证据（`mock_hit`、`tools_called`、`tools_count_min`、`tool_input_contains`、`tool_output_contains`）。模型若仍输出 `environment`，其中的事实会迁移到明确标注「未物化」的 `context`，不会被丢弃或冒充 fixture。`omk eval` 会在任何模型调用前拒绝已有的 mocks 用例；`--dry-run` 和 `--skip-doctor` 也不能绕过，避免把评测环境不兼容误算成模型失败。
+
+`environment.files_available` 仅是题设上下文，不会在 `cwd` 创建文件。任务必须读取真实字节时，应把 fixture 放进用例工作目录。
+
 ## 默认 runtime 怎么选
 
 CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yaml` → `OMK_*` 环境偏好 → 自动检测。

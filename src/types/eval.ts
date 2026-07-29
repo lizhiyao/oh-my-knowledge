@@ -49,12 +49,12 @@ export interface SampleCoverageTarget {
   ref: string;
 }
 
-/** Sample 评测环境前置:声明性"已就绪"清单,LLM 看到后跳过环境探测,直接进入工作流。
- *  类比 unit test 的 fixture / setup —— 评测是测 skill 工作流,不是测环境探测能力。 */
+/** Sample 题设环境声明。仅注入 prompt,不会修改 PATH、物化文件或改变 runtime。 */
 export interface SampleEnvironment {
-  /** 假定已在 PATH 上的 CLI,LLM 不再 which / find / type / command -v 探测。 */
+  /** 题设声明可用的 CLI,LLM 不再 which / find / type / command -v 探测。 */
   cli_available?: string[];
-  /** 假定存在的文件/脚本(支持 ~ / $SKILL_DIR / 绝对路径),LLM 不再 Glob / Read / test -f 探测。 */
+  /** 题设声明存在的文件/脚本(支持 ~ / $SKILL_DIR / 绝对路径),LLM 不再 Glob / Read / test -f 探测。
+   *  这是 prompt context,不会在 cwd 物化文件;需要真实读取时必须提供 sample.cwd 中的 fixture。 */
   files_available?: string[];
   /** 自由文本兜底,场景特殊说明(如"凭证已配""设备 SN xxx 已租"等)。 */
   notes?: string;
@@ -94,7 +94,8 @@ export type MockReturn =
 
 /** 单条 Mock 规则。runtime 拦到匹配的 tool 调用即返回 mocked 结果,不放出去。 */
 export interface Mock {
-  /** 拦截的工具名,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。
+  /** source-neutral 工具身份,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。
+   *  executor adapter 会把 runtime-native 名称（如 exec_command / apply_patch）映射后匹配。
    *  特殊值 `"*"`:通配,匹配任何工具名(配合 match.input_contains 做 intent-level mock)。 */
   tool: string;
   /** 命中规则。所有字段 AND,字段未填即不限制。 */
@@ -151,7 +152,7 @@ export interface Sample {
    *  - true:未命中即 deny(防意外真调外部接口/CLI/MCP/写状态)。
    *  全 mock 评测场景建议 true,部分 mock 探索场景留 false。 */
   mocksStrict?: boolean;
-  /** 环境前置:声明性"已就绪"清单,LLM 跳过探测直接干活。详见 SampleEnvironment。 */
+  /** 题设环境声明,仅作 prompt 上下文。详见 SampleEnvironment。 */
   environment?: SampleEnvironment;
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }

@@ -330,7 +330,7 @@ function detectSkillDocGap(
   const recs: InsightRecommendation[] = [];
   if (depRule) {
     recs.push({
-      action: `在 sample.environment.files_available 加上文件路径,告诉 LLM "这些文件已就绪,无需探测"`,
+      action: '把已知路径写进 sample.context；只有纯题设前提才放 environment.files_available，且不要把它当作已物化 fixture',
       priority: severity,
       patch: {
         target: 'sample-environment',

@@ -333,7 +333,10 @@ async function runSampleFix(
 
   process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
 
-  const { createExecutor } = await import('../../executors/index.js');
+  const {
+    createExecutor,
+    executorSupportsSampleMocks,
+  } = await import('../../executors/index.js');
   const exec = createExecutor(executorName);
   const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
     const result = await exec({
@@ -358,6 +361,7 @@ async function runSampleFix(
     treatmentKey: treatmentName,
     executor: executorFn,
     model,
+    mockless: !executorSupportsSampleMocks(executorName),
   });
 
   let writtenFiles: string[] = [];
@@ -434,7 +438,13 @@ export async function runSampleFromTraces(
     : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
-    const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model, executorName });
+    const { samples, costUSD } = await generateSamplesFromTraces({
+      items,
+      count,
+      model,
+      executorName,
+      noMock: flags['no-mock'],
+    });
     const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     if (samples.length === 0) {
       // The model conservatively skipped every signal (noise / unreproducible). That's a
@@ -740,8 +750,8 @@ export default class Sample extends BaseCommand {
     }),
     'no-mock': Flags.boolean({
       description: bilingual({
-        zh: '不生成 mocks，eval 时所有工具调用真实执行。',
-        en: 'Skip mock generation; all tool calls execute for real during eval.',
+        zh: '不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。',
+        en: 'Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.',
       }),
       default: false,
     }),

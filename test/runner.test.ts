@@ -198,6 +198,31 @@ describe('runEvaluation', () => {
     assert.equal(report.executor, 'claude');
   });
 
+  it('dry-run: rejects sample mocks unsupported by the selected executor', async () => {
+    const samplesPath = join(tmpdir(), `omk-codex-mocks-${Date.now()}.json`);
+    writeFileSync(samplesPath, JSON.stringify([{
+      sample_id: 'codex-impossible',
+      prompt: 'read the fixture',
+      mocks: [{ tool: 'Read', return: 'fixture' }],
+      mocksStrict: true,
+      assertions: [{ type: 'mock_hit', value: 'Read:1' }],
+    }]));
+    try {
+      await assert.rejects(
+        () => runEvaluation({
+          samplesPath,
+          skillDir: SKILL_DIR,
+          variantSpecs: asSpecs(['v1']),
+          executorName: 'codex',
+          dryRun: true,
+        }),
+        /不支持 Sample\.mocks.*伪证据.*codex-impossible/,
+      );
+    } finally {
+      rmSync(samplesPath, { force: true });
+    }
+  });
+
   it('dry-run: interleaved scheduling order', async () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
