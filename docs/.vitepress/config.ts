@@ -59,6 +59,7 @@ export default defineConfig({
           {
             text: 'Understand how it works',
             items: [
+              { text: 'How AI comes to understand', link: '/explanation/how-ai-knows' },
               { text: 'Who omk is for', link: '/explanation/who-omk-is-for' },
               { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
@@ -123,6 +124,7 @@ export default defineConfig({
           {
             text: '我想懂工作原理',
             items: [
+              { text: 'AI 是怎么「懂」的', link: '/zh/explanation/how-ai-knows' },
               { text: '为谁、解决什么', link: '/zh/explanation/who-omk-is-for' },
               { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },
