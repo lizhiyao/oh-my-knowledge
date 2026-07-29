@@ -1,20 +1,33 @@
 # Who omk is for (and what it solves)
 
-> This is omk's positioning note — before you read the architecture, the statistics, or the three stages, here's who omk is for and what it solves for them. Every design decision (defaults, storage attribution, command shape) should ultimately trace back to this page.
+> This is omk's positioning note. Before you read the architecture, the statistics, or the three stages, it defines who omk helps, which decisions it supports, and the scope in which those decisions hold. Every design decision (defaults, storage attribution, command shape) should ultimately trace back to this page.
 
 ## In one line
 
-**Observe. Measure. Know.** OMK makes every knowledge change in your AI application evidence-backed. It turns "is this knowledge input (prompt / skill / RAG / agent) any good, and can I ship it?" from a gut call into a **comparable, evidence-backed decision**: observe real-world performance, hold the model fixed while measuring version differences, then determine whether the change is effective and the version is ready to ship.
+**Observe. Measure. Know.** OMK makes knowledge changes in AI applications evidence-backed. It does not assign context-free quality scores. It helps the people who bear the consequences of a change decide whether that change created enough incremental value to ship, under an explicit target audience, task set, model, and acceptance standard.
 
-## The problem, in two layers
+## First principle: there is no context-free "good knowledge"
 
-"Any good?" is really two stacked questions.
+People naturally differ in how they understand knowledge and what they require from it. The same prompt / RAG / skill / agent / workflow can help a beginner while distracting an expert, improve one model while degrading another, or raise output quality at an unacceptable cost.
 
-**Lower layer — is this change a real improvement, or noise?** You revised a prompt / skill, the new version scores higher — but is that a genuine gain or just the random wobble of the eval itself? This is the question everyone asks and the easiest to grasp: "you changed your prompt — did it actually get better?" omk answers with a verdict that carries uncertainty (Bootstrap confidence intervals, length de-biasing, Krippendorff α when you supply a human gold), not two lonely scores.
+An evaluation result therefore needs an explicit **evaluation contract**:
 
-**Upper layer — is this knowledge worth having at all?** One level up: did the skill actually make the model stronger, or did the model already know this and the skill just reworded existing capability? A baseline-vs-skill comparison can measure *necessity* (the model lacked this knowledge) rather than *quality* (the skill is well written) — both produce impressive verdict numbers while answering different questions. This is a construct-validity question, and it decides whether a piece of knowledge is worth maintaining. (See the [sample design guide](../specs/sample-design-spec).)
+- the users and tasks being evaluated;
+- the model, runtime, and environment;
+- the samples, assertions, and human gold that express expectations;
+- the constraints on cost, latency, safety, and stability.
 
-The lower layer is what authors ask daily before shipping a change; the upper layer is what adopters / platforms ask when deciding what to use and keep. omk's two-layer ruler maps to two kinds of people.
+The contract does not have to be a standalone configuration file. It is formed by the project's sample set, runtime configuration, and release gates. Eval samples are not neutral truth. They are an executable expression of that contract. omk does not erase differences between people's standards; it makes the standard and its scope explicit, then makes versions comparable under the same contract. "Ready to ship" in a report means: **under this model, sample set, and acceptance standard, the available evidence supports shipping.**
+
+## The problem: two distinct decisions
+
+"Any good?" usually conflates two questions that require different evaluation designs.
+
+**Change efficacy — is this change a real improvement, or noise?** A new knowledge version scores higher, but is that a genuine gain or random eval variation? omk answers with a verdict that carries uncertainty: Bootstrap confidence intervals, length de-biasing, and Krippendorff α when human gold is available, rather than two isolated scores.
+
+**Incremental value — is this knowledge worth maintaining for the target task?** A baseline-vs-skill comparison may measure *necessity* (the model lacked this knowledge) or *implementation quality* (the skill expresses it effectively). If the model already has the capability, a beautifully written skill may add no value. If the samples do not represent the target task, even a significant gain does not generalize. This is a construct-validity question. (See the [sample design guide](../specs/sample-design-spec).)
+
+These decisions can share measurement infrastructure, but they cannot be collapsed into one universal ruler. Authors shipping a revision primarily care about change efficacy; adopters deciding whether to bring in external knowledge care more about incremental value.
 
 ## The first workflow
 
@@ -23,34 +36,49 @@ omk's first workflow is the pre-ship loop for a knowledge artifact:
 ```text
 change a skill / prompt / agent artifact
 → doctor: is it structured, runnable, and measurable enough?
-→ eval: did the change beat the baseline on the same samples?
-→ report / Studio: what concrete thing should I fix next?
+→ eval: under this evaluation contract, is the gain credible and are constraints preserved?
+→ report / Studio: where does the evidence apply, what failed, and what did it cost?
 → decide ship / don't ship
 ```
 
-That is the trunk. `observe` matters after real usage exists, but it is not required for omk's first value. A product direction that makes doctor and eval more trustworthy for this ship/no-ship moment should outrank one that only adds a new surface area.
+That is the trunk. `observe` matters after real usage exists, but it is not required for omk's first value. A product direction that makes doctor and eval more trustworthy at this context-specific ship/no-ship moment should outrank one that only adds a new surface area.
 
-## Who it's for
+## Current target users: two hypotheses to validate
 
-**Primary: authors / maintainers of knowledge inputs.** Iterating on a prompt / skill / RAG / agent, needing to answer "is my change a real improvement, and is it shippable?" omk's first promise is the doctor → eval release-prep loop: make the artifact measurable, compare it against a baseline, read the verdict, then fix or ship.
+**Primary target: authors and maintainers who repeatedly ship knowledge changes.** Not everyone who has written a prompt, but people whose knowledge artifacts are reused, shared, or versioned, and for whom a bad change creates regressions, additional cost, or operational risk. They need to answer: "is this a real improvement for the target task, and is it worth shipping?"
 
-**Second pillar: adopters / platform-governance teams.** Deciding "should our team use this third-party skill, and which knowledge inputs should we approve and keep?" They don't trust the author's bundled benchmark — they run it against *their own* sample set, and record "what we adopted, on what evidence" as a traceable decision log (see [evidence-gated management](../specs/evidence-gated-management)). This isn't an add-on — the governance gate cites the same kind of eval report (reportId) the author loop produces, only run on the adopter's own cases; it's the same measurement ruler extended to team scale.
+**Secondary target: teams and platform maintainers who bear the consequences of adoption.** They decide whether to introduce, retain, or upgrade external knowledge inputs. They cannot rely only on the author's bundled benchmark; they need to evaluate against their own tasks, constraints, and samples, then record what they adopted and on what evidence (see [evidence-gated management](../specs/evidence-gated-management)).
 
-**Explicitly NOT for: passive end-users.** Someone who installs a skill from a public source to *use* it won't evaluate it — no sample set, no measurement intent; evaluation is pure overhead for them. omk bends none of its design around that persona. The people who run evals and generate reports are always the two above (the author in their skill / benchmark repo, the adopter in their use-case repo). This settles one thing directly: eval artifacts default to the evaluator's project workspace, not anyone's install directory.
+**Explicitly not the target: passive end-users.** Someone who installs a public skill and uses it directly usually has neither a sample set nor measurement intent; evaluation is additional overhead. omk does not require that person to become an evaluator. Eval artifacts therefore default to the evaluator's project workspace, not a passive user's install directory.
+
+These are omk's **product hypotheses**, not established market facts. In particular, team governance becomes a second pillar only if real teams are willing to define their own evaluation contracts and use them repeatedly. A coherent argument in this document is not proof of demand.
+
+## What would validate the demand
+
+Agreeing that "knowledge changes should have evidence" is not the same as investing time in evaluation. Stronger product signals are:
+
+- a maintainer brings a live change rather than a demo artifact;
+- they create or review samples that represent their own requirements;
+- report evidence changes a ship, rollback, or sample-expansion decision;
+- they run omk again when the next change occurs.
+
+This page can only state **who omk expects to benefit**. Whether those people care enough to bear the evaluation cost must be demonstrated through repeated use. Product priorities should serve users who exhibit those behaviors before expanding for a persona that is logically plausible but not yet present.
 
 ## Which stage serves whom
 
 omk's three stages reach different audiences:
 
-- **doctor (check)** — the pre-ship health gate. Authors use it before trusting an eval; adopters run it right after install to see "is this skill broken?" Both.
-- **eval (evaluate)** — the release decision core. It needs a sample set and measurement intent, so it belongs to author iteration and adopter procurement. Passive users don't touch it.
-- **observe (observe)** — the post-ship feedback loop. It mines real session traces for gaps and should feed the next sample set, but it is not a replacement for controlled eval and should not be the first surface a new user needs.
+- **doctor (check)**: the pre-ship health gate. Authors use it before trusting an eval; adopters can use it to rule out structural, dependency, and measurability problems.
+- **eval (evaluate)**: the release decision core. It needs an evaluation contract and measurement intent, so it belongs to author iteration and adoption decisions. Passive users do not need to run it.
+- **observe (observe)**: the post-ship feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
 
 ## Boundaries: what omk doesn't do
 
-- **It doesn't independently adjudicate truth.** omk provides no independent source of truth and won't rule on whether a piece of knowledge is right on its own; it measures results against the cases, assertions, and gold *you* provide — factual correctness is testable, but you set the standard.
+- **It doesn't produce a universal knowledge-quality ranking.** Different users and tasks may produce different conclusions. omk compares versions under an explicit contract; it does not assign context-free value.
+- **It doesn't extrapolate beyond the evaluation contract.** A report cannot make promises about users, tasks, models, or constraints that its samples did not cover.
+- **It doesn't independently adjudicate truth.** omk provides no independent source of truth and does not rule on whether knowledge is correct on its own. It measures results against the cases, assertions, and gold you provide. Factual correctness is testable, but you supply the standard.
 - **It doesn't serve passive users.** See above.
-- **It doesn't mix the model into the variables.** Hold the model fixed, vary only the knowledge — that's how you attribute the difference to the knowledge itself. It's the precondition for "comparable," not a limitation.
+- **It doesn't mix the model into the variables.** Hold the model fixed and vary only the knowledge to attribute the difference to the knowledge itself. That is the precondition for "comparable," not a limitation.
 
 ## Read next
 
