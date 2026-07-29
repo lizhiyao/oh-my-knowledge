@@ -108,6 +108,7 @@
   html[lang="en"] .omk-landing h1 .em{letter-spacing:normal;padding-right:.02em}
   .omk-landing .sub{font-size:clamp(16px,1.7vw,18.5px);color:var(--body);max-width:min(760px,100%);margin:26px 0 0;font-weight:450}
   .omk-landing .sub b{color:var(--ink);font-weight:600}
+  .omk-landing .sub .hero-workflow{display:block;margin-top:8px}
   .omk-landing .cta{display:flex;flex-wrap:wrap;gap:14px 20px;margin-top:34px;align-items:center}
   .omk-landing .lnk{font-weight:600;font-size:14.5px;color:var(--body);display:inline-flex;align-items:center;gap:7px;transition:color .15s}
   .omk-landing .lnk:hover{color:var(--blue)}
