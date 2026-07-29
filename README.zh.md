@@ -1,4 +1,4 @@
-# oh-my-knowledge
+# OMK
 
 [![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
 [![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
@@ -8,14 +8,17 @@
 
 [English](./README.md) | **简体中文**
 
-**别再凭感觉改 LLM 知识输入。**
-`oh-my-knowledge`（omk）是一套面向 prompt、RAG、skill、agent、workflow 的测量工作流。它固定执行模型和评测用例，只改变知识载体，然后回答发布时真正要追问的问题：**v2 能不能发，好在哪里？**
+**Observe. Measure. Know.**
+
+OMK 是 AI 知识载体的证据层，面向 prompt、RAG、skill、agent 和 workflow。它观测真实使用，在固定执行模型和评测用例的前提下测量版本改动，并告诉你：**改了什么、v2 能不能发、依据是什么。**
+
+**相同模型，相同评测用例，只改变知识载体。**
 
 ![omk 知识载体评测流程：doctor / eval / observe / sample / evolve 闭环](./docs/public/omk-knowledge-flow-animated.gif)
 
 📖 **完整文档：[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)**（可搜索，可切换英文）
 
-## omk 让什么变得可测量
+## OMK 让你知道什么
 
 | 决策问题 | 命令 | 你会得到的证据 |
 |------|------|------|
@@ -57,9 +60,9 @@ export OMK_EXECUTOR=codex
 
 深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [知识载体布局](docs/zh/reference/artifact-layout.md)
 
-## omk 的闭环
+## OMK 的闭环
 
-omk 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。主流程刻意保持受控：
+OMK 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。主流程刻意保持受控：
 
 ```text
 改了一份 prompt / RAG / skill / agent 知识载体

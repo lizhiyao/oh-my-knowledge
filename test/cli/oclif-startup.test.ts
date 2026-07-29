@@ -167,7 +167,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // doctor 英文 help;PR #124 删后 oclif 拿 --lang 作 unknown command,
     // 走 root help fallback(oclif 默认行为)。锁住这条 BREAKING,防新人以为是 bug。
     const { stdout } = await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '--help']);
-    assert.ok(/Evaluation framework for LLM/.test(stdout), `expected root help fallback, got:\n${stdout.slice(0, 300)}`);
+    assert.ok(/OMK — Observe\. Measure\. Know\./.test(stdout), `expected root help fallback, got:\n${stdout.slice(0, 300)}`);
     // root help USAGE 是 `$ omk [COMMAND]`,doctor --help 的 USAGE 是 `$ omk doctor [TARGET]`;
     // root help 还有 COMMANDS section 列所有 cmd,doctor --help 没有。用 USAGE 特征区分。
     assert.ok(/\$ omk \[COMMAND\]/.test(stdout), `expected root USAGE \`$ omk [COMMAND]\`, got:\n${stdout.slice(0, 300)}`);

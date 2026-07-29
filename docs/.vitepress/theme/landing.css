@@ -94,7 +94,7 @@
   .dark .omk-landing .hero-logo{opacity:.16}
   @media(prefers-reduced-motion:reduce){.omk-landing .hero-blob{animation:none}}
   .omk-landing .tag{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--teal);background:var(--teal-l);border:1px solid var(--tint-teal-bd);padding:6px 13px;border-radius:999px}
-  .omk-landing .tag .dot{width:7px;height:7px;border-radius:50%;background:var(--teal-mid);box-shadow:0 0 0 3px rgba(20,184,166,.18)}
+  .omk-landing .tag .dot{width:7px;height:7px;flex:none;border-radius:50%;background:var(--teal-mid);box-shadow:0 0 0 3px rgba(20,184,166,.18)}
   .omk-landing .tag code{font-family:var(--mono);font-size:12px}
   .omk-landing h1{font-size:clamp(38px,5.2vw,60px);line-height:1.22;letter-spacing:-.01em;font-weight:800;margin:28px 0 0}
   .omk-landing h1 .em{white-space:nowrap;color:var(--blue);font-weight:900;letter-spacing:.045em;padding-right:.04em;
@@ -395,6 +395,7 @@
     .omk-landing .nav-links{display:none}
     .omk-landing .hero-logo-wrap{display:none}
     .omk-landing .hero{padding:48px 0 42px}
+    .omk-landing .tag{max-width:100%;line-height:1.45}
     .omk-landing .sub{max-width:100%;overflow-wrap:anywhere}
     .omk-landing .cta{width:100%}
     .omk-landing .cmd{width:100%;max-width:100%;min-width:0;gap:10px;justify-content:space-between;overflow:hidden;white-space:nowrap}

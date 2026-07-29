@@ -4,7 +4,7 @@
 
 ## In one line
 
-omk turns "is this knowledge input (prompt / skill / RAG / agent) any good, and can I ship it?" from a gut call into a **comparable, evidence-backed decision** — first check whether the artifact is measurable, then hold the model fixed, vary only the knowledge input, and measure the difference with statistical rigor.
+**Observe. Measure. Know.** OMK is the evidence layer for AI knowledge artifacts. It turns "is this knowledge input (prompt / skill / RAG / agent) any good, and can I ship it?" from a gut call into a **comparable, evidence-backed decision** — observe real use, hold the model fixed while measuring the change, then know what changed and whether it can ship.
 
 ## The problem, in two layers
 

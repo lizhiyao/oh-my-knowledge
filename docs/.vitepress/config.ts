@@ -8,8 +8,8 @@ const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 // 站点壳。内容源直接用既有 docs/（en 在根、zh 在 /zh/，正好对齐 VitePress i18n
 // 约定）。第一刀只加首页 + 导航 / 侧栏 / 本地搜索，不重写任何文档正文。
 export default defineConfig({
-  title: 'omk',
-  description: 'Controlled evaluation for LLM knowledge artifacts — same model, same samples, only the artifact changes.',
+  title: 'OMK',
+  description: 'OMK — Observe. Measure. Know. The evidence layer for AI knowledge artifacts.',
   cleanUrls: true,
   lastUpdated: true,
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
@@ -79,7 +79,7 @@ export default defineConfig({
         ],
         footer: {
           message: 'Learn more · <a href="/quickstart-skill-eval">Quickstart</a> · <a href="/reference/cli">CLI reference</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
-          copyright: 'MIT Licensed · © oh-my-knowledge',
+          copyright: 'MIT Licensed · © OMK',
         },
       },
     },
@@ -147,7 +147,7 @@ export default defineConfig({
         returnToTopLabel: '回到顶部',
         footer: {
           message: '了解更多 · <a href="/zh/quickstart-skill-eval">快速上手</a> · <a href="/zh/reference/cli">CLI 参考</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
-          copyright: 'MIT Licensed · © oh-my-knowledge',
+          copyright: 'MIT Licensed · © OMK',
         },
       },
     },
