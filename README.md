@@ -1,4 +1,4 @@
-# oh-my-knowledge
+# OMK
 
 [![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
 [![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
@@ -8,14 +8,17 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**Stop editing LLM knowledge inputs by gut feel.**
-`oh-my-knowledge` (omk) is a measurement workflow for prompts, RAG context, skills, agents, and workflows. It fixes the executor model and the evaluation samples, changes only the knowledge artifact, then answers the release question that matters: **can v2 ship, and where is it better?**
+**Observe. Measure. Know.**
+
+OMK is the evidence layer for AI knowledge artifacts: prompts, RAG context, skills, agents, and workflows. It observes real use, measures revisions with the executor model and evaluation samples held fixed, and tells you **what changed, whether v2 can ship, and why**.
+
+**Same model. Same evaluation samples. Only the knowledge artifact changes.**
 
 ![omk knowledge artifact evaluation flow: doctor / eval / observe / sample / evolve loop](./docs/public/omk-knowledge-flow-en-animated.gif)
 
 📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
 
-## What omk makes measurable
+## What OMK helps you know
 
 | Decision | Command | Evidence you get |
 |---|---|---|
@@ -57,9 +60,9 @@ Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recomme
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
-## The omk loop
+## The OMK loop
 
-omk is for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The main loop is deliberately controlled:
+OMK is for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The main loop is deliberately controlled:
 
 ```text
 change a prompt / RAG / skill / agent artifact
