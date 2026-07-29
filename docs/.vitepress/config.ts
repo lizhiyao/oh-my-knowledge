@@ -9,7 +9,7 @@ const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 // 约定）。第一刀只加首页 + 导航 / 侧栏 / 本地搜索，不重写任何文档正文。
 export default defineConfig({
   title: 'OMK',
-  description: 'OMK — Observe. Measure. Know. The evidence layer for AI knowledge artifacts.',
+  description: 'OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.',
   cleanUrls: true,
   lastUpdated: true,
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],

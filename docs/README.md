@@ -1,6 +1,6 @@
 # OMK Documentation
 
-**Observe. Measure. Know.** Evidence for every AI knowledge-artifact release decision.
+**Observe. Measure. Know.** Make every knowledge change in your AI application evidence-backed.
 
 Browse by audience or category. For Chinese docs see [简体中文 index](./zh/README.md).
 

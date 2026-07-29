@@ -10,7 +10,9 @@
 
 **Observe. Measure. Know.**
 
-OMK is the evidence layer for AI knowledge artifacts: prompts, RAG context, skills, agents, and workflows. It observes real use, measures revisions with the executor model and evaluation samples held fixed, and tells you **what changed, whether v2 can ship, and why**.
+**OMK makes every knowledge change in your AI application evidence-backed.**
+
+Observe real-world performance, measure version differences, and determine whether the change is effective and the version is ready to ship.
 
 **Same model. Same evaluation samples. Only the knowledge artifact changes.**
 

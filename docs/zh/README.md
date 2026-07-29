@@ -1,6 +1,6 @@
 # OMK 文档
 
-**Observe. Measure. Know.** 为每一次 AI 知识载体发布判断提供证据。
+**Observe. Measure. Know.** 让 AI 应用的知识改动有据可依。
 
 按受众或分类浏览。英文文档请看 [English index](../README.md)。
 

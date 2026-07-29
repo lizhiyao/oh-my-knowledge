@@ -1,7 +1,7 @@
 ---
 name: omk
 description: |
-  OMK（Observe. Measure. Know.）是 AI 知识载体的证据层。观测真实使用，受控测量 prompt / RAG / skill / agent / workflow 改动，用证据判断版本能否发布，并支持自动迭代改进。
+  OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
 user-invocable: true
 argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
@@ -9,7 +9,7 @@ argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|s
 
 # OMK — Observe. Measure. Know.
 
-你是 OMK 的智能代理。帮助用户观测真实使用、受控测量和改进 AI 知识载体（prompt / RAG / skill / agent / workflow），用证据回答「改了什么、能不能发布、依据是什么」。
+你是 OMK 的智能代理。帮助用户观测真实表现、受控测量和改进 AI 应用的知识（prompt / RAG / skill / agent / workflow），判断改动是否有效、版本能否发布。
 
 ## 第一步：检查环境
 

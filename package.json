@@ -2,7 +2,7 @@
   "name": "oh-my-knowledge",
   "version": "0.51.2",
   "packageManager": "yarn@4.16.0",
-  "description": "OMK — Observe. Measure. Know. The evidence layer for AI knowledge artifacts: prompts, RAG, skills, agents, and workflows.",
+  "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
   "bin": {
     "omk": "dist/cli/index.js"
