@@ -426,7 +426,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
-  --no-mock                   Skip mock generation; all tool calls execute for real during eval.
+  --no-mock                   Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.
   --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
   --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill <value>             Only draft from observe-inbox signals for the specified skill (from-traces mode only).

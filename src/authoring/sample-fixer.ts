@@ -34,6 +34,8 @@ export interface FixSamplesOptions {
   }>;
   model: string;
   maxAttemptsPerSample?: number;
+  /** Target executor cannot intercept tool calls; strip mocks and dependent positive evidence. */
+  mockless?: boolean;
 }
 
 export interface FixSamplesResult {
@@ -66,9 +68,22 @@ const FIX_SYSTEM_PROMPT = `你是一个评测用例修复专家。根据诊断�
 第一字符 \`[\`，最后 \`]\`，不要用 \`\`\`json\`\`\` 围栏，不要寒暄。
 如果判断某条是 LLM 行为问题不需要改,也原样放进数组。`;
 
+const MOCKLESS_FIX_OVERRIDE = `
 
-function sanitizeFixedSamples(samples: Record<string, unknown>[], skillContent: string): Record<string, unknown>[] {
-  sanitizeGeneratedSamples(samples as Sample[], { skillContent });
+目标执行器不支持工具调用拦截。不得新增或保留 mocks、mocksStrict、
+mock_hit、tools_called、tools_count_min、tool_input_contains、tool_output_contains。
+environment 仅表示题设上下文，不得当作已物化 fixture；负向安全断言可以保留。`;
+
+function sanitizeFixedSamples(
+  samples: Record<string, unknown>[],
+  skillContent: string,
+  mockless: boolean,
+): Record<string, unknown>[] {
+  sanitizeGeneratedSamples(samples as Sample[], {
+    skillContent,
+    mockless,
+    preserveMocklessEnvironment: true,
+  });
   return samples;
 }
 
@@ -146,7 +161,16 @@ function parseFixedSamples(text: string): Record<string, unknown>[] | null {
 }
 
 export async function fixSamples(options: FixSamplesOptions): Promise<FixSamplesResult> {
-  const { skillContent, samples, report, treatmentKey, executor, model, maxAttemptsPerSample = 2 } = options;
+  const {
+    skillContent,
+    samples,
+    report,
+    treatmentKey,
+    executor,
+    model,
+    maxAttemptsPerSample = 2,
+    mockless = false,
+  } = options;
   const sampleMap = new Map(samples.map((s) => [s.sample_id as string, s]));
 
   // Collect all fixable samples into one batch
@@ -240,7 +264,12 @@ ${sampleSections}
   let incurredCostUSD = 0;
   let incurredCostReported = false;
   try {
-    const result = await executor({ model, system: FIX_SYSTEM_PROMPT, prompt, timeoutMs: 300_000 });
+    const result = await executor({
+      model,
+      system: mockless ? `${FIX_SYSTEM_PROMPT}${MOCKLESS_FIX_OVERRIDE}` : FIX_SYSTEM_PROMPT,
+      prompt,
+      timeoutMs: 300_000,
+    });
     incurredCostUSD = result.costUSD;
     incurredCostReported = result.costReported !== false;
 
@@ -287,7 +316,7 @@ ${sampleSections}
       };
     }
 
-    const sanitizedFixedArr = sanitizeFixedSamples(fixedArr, skillContent);
+    const sanitizedFixedArr = sanitizeFixedSamples(fixedArr, skillContent, mockless);
     const outOfScope = sanitizedFixedArr.find((fixed) => {
       const sid = fixed.sample_id as string;
       const original = sampleMap.get(sid);

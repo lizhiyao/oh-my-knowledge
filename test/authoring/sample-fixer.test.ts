@@ -175,4 +175,51 @@ describe('fixSamples', () => {
     assert.equal(result.costReported, false);
     assert.match(result.fixes[0].error ?? '', /missing or invalid required prompt/);
   });
+
+  it('removes impossible mocks when fixing samples for a mockless executor', async () => {
+    let capturedSystem = '';
+    const result = await fixSamples({
+      skillContent: 'Do not call Write.',
+      samples: [{
+        sample_id: 's001',
+        prompt: 'p',
+        assertions: [],
+        provenance: 'llm-generated',
+      }],
+      report: reportWithFailedAssertion(),
+      treatmentKey: 'skill',
+      model: 'test-model',
+      mockless: true,
+      executor: async (input) => {
+        capturedSystem = input.system;
+        return {
+          ok: true,
+          costUSD: 0,
+          text: JSON.stringify([{
+            sample_id: 's001',
+            prompt: 'p',
+            provenance: 'llm-generated',
+            environment: { files_available: ['fixture.txt'] },
+            mocks: [{ tool: 'Read', return: 'fixture' }],
+            mocksStrict: true,
+            assertions: [
+              { type: 'mock_hit', value: 'Read:1' },
+              { type: 'tools_not_called', values: ['Write'] },
+            ],
+          }]),
+        };
+      },
+    });
+
+    assert.match(capturedSystem, /目标执行器不支持工具调用拦截/);
+    assert.equal(result.fixedCount, 1);
+    assert.equal(result.samples[0].mocks, undefined);
+    assert.equal(result.samples[0].mocksStrict, undefined);
+    assert.deepEqual(result.samples[0].environment, {
+      files_available: ['fixture.txt'],
+    });
+    assert.deepEqual(result.samples[0].assertions, [
+      { type: 'tools_not_called', values: ['Write'] },
+    ]);
+  });
 });

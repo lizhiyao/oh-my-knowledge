@@ -132,7 +132,7 @@ export function checkFacts(
         type: 'file-path',
         value: path,
         verified: true,
-        evidence: 'source=fixture(sample.environment.files_available)',
+        evidence: 'source=context(sample.environment.files_available)',
       }];
     }
 

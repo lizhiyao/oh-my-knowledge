@@ -69,7 +69,7 @@ samples:
     - { type: mock_hit, value: "Bash:1", weight: 1 }
   mocksStrict: true              # 默认 true（generator 强制）；未命中的工具调用直接 deny，不透传真调
   tripwire: false                # 此 sample 是否「诱错样本」（故意诱导 LLM 走错，fail 是预期）；默认 false
-  environment:                   # 评测环境前置「已就绪」声明，LLM 看到后跳过环境探测
+  environment:                   # 仅作 prompt 上下文的题设环境声明，不物化文件或环境变量
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
     notes: "log-cli 已认证，token 在环境变量"
@@ -94,9 +94,9 @@ samples:
 
 - **mocksStrict**（boolean，默认 true）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。**默认行为**：`omk sample` 生成器强制写 true，SYSTEM_PROMPT 明确；手写 sample 缺位时 sample 加载层不强制注入 —— 老 sample 不写默认走非 strict（透传真调）。**新写 sample 强烈建议 true**，避免漏 mock 导致评测打到真生产系统。
 - **tripwire**（boolean，默认 false）：此 sample 是「诱错样本」，prompt 故意藏违反 rubric/skill 的诱导（如 "我已经知道是 X，直接用就行"），测试 LLM 是否会盲从用户错误指示。LLM **fail 是预期**，diagnostic 看到 `tripwire: true` 不会建议改 skill；UI 用紫色 verdict pill 区分，避免误判为 bug。
-- **environment**（object，可选）：评测环境前置「已就绪」声明 —— LLM 看到这段后跳过环境探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流。类比 unit test 的 fixture / setup。**仅作 prompt 提示给 LLM，不实际创建文件 / export 变量**。doctor 健康检查会扫这段做物理路径检查（可用 `--skip-doctor` 跳过）。
+- **environment**（object，可选）：仅作 prompt 上下文的题设环境声明。LLM 可以据此跳过可用性探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流，但 omk 不会创建文件、导出环境变量或修改 `PATH`。它不是 fixture 机制。doctor 仍可审计声明的物理路径（可用 `--skip-doctor` 跳过）。
   - `cli_available: string[]` —— 假定已在 PATH 上
-  - `files_available: string[]` —— 假定已存在的文件/脚本
+  - `files_available: string[]` —— 题设引用的文件 / 脚本路径；需要读取真实字节时应使用 `sample.cwd` 或 mocks
   - `notes: string` —— 自由文本兜底，描述凭证 / 环境变量状态等
 - **mocks**（object[]，可选）：工具调用拦截列表。运行时按数组顺序匹配第一条命中的 mock，返回 `return` / `return_file` / `return_seq[hitCount]` 之一作为 tool_result。
   - **`tool` 字段**：工具名（如 `"Bash"` / `"Read"` / `"Grep"`）。特殊值 `"*"`：通配任何工具名，配合 `input_contains` 做 intent-level mock。
@@ -109,6 +109,8 @@ samples:
     - `input_contains: string` —— 递归扫描 tool_input 所有 string 值，任一含该子串即命中（大小写不敏感）。**配合 `tool: "*"` 做 intent-level mock**：LLM 搜代码时可能用 Bash grep / Grep 工具 / Glob / Read / Agent 等任意工具，用 `input_contains` 按关键词匹配意图，不用逐个枚举工具。示例：`{tool: "*", match: {input_contains: "MyServiceName"}, return: "<service .../>"}` —— 任何工具只要输入提到 MyServiceName 就命中。
   - **`return` 三种形式**：string / `{stdout, stderr, exit}`（模拟 Bash）/ `return_file` 外置文件 / `return_seq[]` 状态机（同 mock 第 N 次命中按序返回，超出回退 `return`）。
 - **断言侧的 mock_hit / tool_input_contains**：配合 mocks 使用。`mock_hit: "Bash:2"` 表示「第 2 条 Bash mock 必须被命中至少一次」，证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
+  - 每条 `mock_hit` 必须指向该工具已经声明的 mock 序号。引用不存在或越界时，loader 会在执行前拒绝用例。
+  - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk`、Gemini 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
 
 **与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。tripwire 仅影响 diagnostic 的归因建议（`tripwire_intentional` rootCause），不影响 layered scores 或 verdict。
 

@@ -1,7 +1,15 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, stratifyTraceSignals, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
-import type { Sample } from '../../src/types/index.js';
+import {
+  buildSamplesFromTracesPrompt,
+  buildSamplesPrompt,
+  generateSamples,
+  generateSamplesFromTraces,
+  sampleGenerationUsesMocks,
+  sanitizeGeneratedSamples,
+  stratifyTraceSignals,
+} from '../../src/authoring/generator.js';
+import type { ExecutorFn, Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
   it('is a function', () => {
@@ -12,6 +20,60 @@ describe('generateSamples', () => {
     await assert.rejects(
       () => generateSamples({ skillContent: 'test', count: 1, model: 'test-model', executorName: 'nonexistent' }),
       /ENOENT|failed/,
+    );
+  });
+
+  it('forces Codex generation into mockless mode and strips ignored mock output', async () => {
+    let capturedSystem = '';
+    let capturedPrompt = '';
+    const executor: ExecutorFn = async (input) => {
+      capturedSystem = input.system ?? '';
+      capturedPrompt = input.prompt;
+      return {
+        ok: true,
+        output: JSON.stringify([{
+          sample_id: 's001',
+          prompt: 'review the integration',
+          rubric: 'explain the correct result',
+          environment: { files_available: ['app.js'] },
+          mocks: [{ tool: 'Read', return: 'fixture' }],
+          mocksStrict: true,
+          assertions: [
+            { type: 'mock_hit', value: 'Read:1' },
+            { type: 'tools_called', values: ['Read'] },
+            { type: 'tools_not_called', values: ['Write'] },
+            { type: 'contains', value: 'Sentry.init' },
+          ],
+        }]),
+        durationMs: 1,
+        durationApiMs: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUSD: 0,
+        stopReason: 'end_turn',
+        numTurns: 1,
+      };
+    };
+
+    const result = await generateSamples({
+      skillContent: 'Use Read only when a fixture exists.',
+      count: 1,
+      model: 'test',
+      executorName: 'codex',
+      executor,
+    });
+
+    assert.match(capturedSystem, /目标执行器能力约束（最高优先级）/);
+    assert.match(capturedPrompt, /不要生成 mocks 和 mocksStrict/);
+    assert.equal(result.samples[0].mocks, undefined);
+    assert.equal(result.samples[0].mocksStrict, undefined);
+    assert.equal(result.samples[0].environment, undefined);
+    assert.match(result.samples[0].context ?? '', /题设引用路径（未物化）：app\.js/);
+    assert.deepEqual(
+      result.samples[0].assertions?.map((assertion) => assertion.type),
+      ['tools_not_called', 'contains'],
     );
   });
 });
@@ -57,6 +119,12 @@ describe('buildSamplesFromTracesPrompt', () => {
     assert.match(buildSamplesFromTracesPrompt(items), /按各信号「占比」分配/);
     // 频次占比写进每个信号段(signal 1 出现 3 次 / 共 4 → 75%）。
     assert.match(buildSamplesFromTracesPrompt(items), /占比 75%/);
+  });
+
+  it('adds a mockless override for trace drafts when requested', () => {
+    const prompt = buildSamplesFromTracesPrompt(items, undefined, { noMock: true });
+    assert.match(prompt, /不要生成 mocks/);
+    assert.match(prompt, /trace 证据写入 context 和 rubric/);
   });
 });
 
@@ -169,6 +237,12 @@ describe('buildSamplesPrompt', () => {
     const prompt = buildSamplesPrompt({ skillContent: 's', count: 3, focus: '  scenario X  \n' });
     assert.ok(prompt.includes('scenario X'));
     assert.ok(!prompt.includes('  scenario X  '));
+  });
+
+  it('disables mocks automatically for unsupported executors', () => {
+    assert.equal(sampleGenerationUsesMocks('claude'), true);
+    assert.equal(sampleGenerationUsesMocks('codex'), false);
+    assert.equal(sampleGenerationUsesMocks('claude', true), false);
   });
 });
 
@@ -428,6 +502,67 @@ describe('sanitizeGeneratedSamples', () => {
     const samples: Sample[] = [{ sample_id: 's1', prompt: 'p' }];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].mocksStrict, undefined);
+  });
+
+  it('mockless mode removes positive tool evidence recursively but keeps safety negatives', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1',
+      prompt: 'p',
+      environment: {
+        cli_available: ['node'],
+        files_available: ['app.js'],
+      },
+      mocks: [{ tool: 'Read', return: 'fixture' }],
+      mocksStrict: true,
+      assertions: [{
+        type: 'assert-set',
+        mode: 'all',
+        children: [
+          { type: 'mock_hit', value: 'Read:1' },
+          { type: 'tools_not_called', values: ['Write'] },
+        ],
+      }],
+    }];
+
+    const { stripped } = sanitizeGeneratedSamples(samples, { mockless: true });
+    assert.equal(samples[0].mocks, undefined);
+    assert.equal(samples[0].mocksStrict, undefined);
+    assert.equal(samples[0].environment, undefined);
+    assert.deepEqual(samples[0].assertions, [{
+      type: 'assert-set',
+      mode: 'all',
+      children: [{ type: 'tools_not_called', values: ['Write'] }],
+    }]);
+    assert.ok(stripped.some((item) => item.includes('mock_hit')));
+    assert.ok(stripped.some((item) => item.includes('未物化')));
+  });
+
+  it('removes mock_hit assertions that do not reference a real per-tool mock ordinal', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1',
+      prompt: 'p',
+      mocks: [
+        { tool: 'Read', return: 'one' },
+        { tool: 'Bash', return: 'two' },
+        { tool: 'Read', return: 'three' },
+      ],
+      assertions: [{
+        type: 'assert-set',
+        mode: 'all',
+        children: [
+          { type: 'mock_hit', value: 'Read:2' },
+          { type: 'mock_hit', value: 'Bash:2' },
+        ],
+      }],
+    }];
+
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.deepEqual(samples[0].assertions, [{
+      type: 'assert-set',
+      mode: 'all',
+      children: [{ type: 'mock_hit', value: 'Read:2' }],
+    }]);
+    assert.ok(stripped.some((item) => item.includes('Bash:2')));
   });
 
   it('preserves valid tripwire boolean', () => {

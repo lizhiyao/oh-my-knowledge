@@ -247,6 +247,40 @@ function mockValidationError(value: unknown): string | undefined {
   return undefined;
 }
 
+export function sampleMockReferenceKeys(value: unknown): ReadonlySet<string> {
+  const keys = new Set<string>();
+  if (!Array.isArray(value)) return keys;
+  const countByTool = new Map<string, number>();
+  for (const mock of value) {
+    if (!isRecord(mock) || !isNonEmptyString(mock.tool)) continue;
+    const ordinal = (countByTool.get(mock.tool) ?? 0) + 1;
+    countByTool.set(mock.tool, ordinal);
+    keys.add(`${mock.tool}:${ordinal}`);
+  }
+  return keys;
+}
+
+function mockHitReferenceValidationError(
+  assertions: unknown,
+  mockKeys: ReadonlySet<string>,
+): string | undefined {
+  if (!Array.isArray(assertions)) return undefined;
+  for (const assertion of assertions) {
+    if (!isRecord(assertion)) continue;
+    if (
+      assertion.type === 'mock_hit'
+      && typeof assertion.value === 'string'
+      && !mockKeys.has(assertion.value)
+    ) {
+      const available = mockKeys.size > 0 ? [...mockKeys].join(', ') : '(none)';
+      return `"mock_hit" references missing mock ${JSON.stringify(assertion.value)}; available mock keys: ${available}`;
+    }
+    const childError = mockHitReferenceValidationError(assertion.children, mockKeys);
+    if (childError) return childError;
+  }
+  return undefined;
+}
+
 export function dependencyRequirementsValidationError(value: unknown): string | undefined {
   if (!isRecord(value)) return '"requires" must be an object';
   if (!hasOnlyKeys(value, ['tools', 'files', 'env', 'preflight'])) {
@@ -307,6 +341,11 @@ export function sampleContractValidationError(
       if (error) return `"mocks[${index}]": ${error}`;
     }
   }
+  const mockHitError = mockHitReferenceValidationError(
+    value.assertions,
+    sampleMockReferenceKeys(value.mocks),
+  );
+  if (mockHitError) return mockHitError;
   if (value.mocksStrict !== undefined && typeof value.mocksStrict !== 'boolean') {
     return '"mocksStrict" must be boolean when present';
   }

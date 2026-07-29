@@ -426,7 +426,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
-  --no-mock                   不生成 mocks，eval 时所有工具调用真实执行。
+  --no-mock                   不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
   --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
   --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill <value>             仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。

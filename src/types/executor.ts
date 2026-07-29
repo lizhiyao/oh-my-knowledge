@@ -96,8 +96,9 @@ export interface ExecutorInput {
    *  - claude-sdk:转 in-process HookCallback 装到 SDK options.hooks.PreToolUse
    *  - claude-cli:物化为临时 settings.json + on-disk hook 脚本,跑完清理
    *  - script(自定义脚本):同样物化临时 settings,通过 env(OMK_MOCK_SETTINGS_FILE /
-   *    OMK_MOCK_MCP_CONFIG_FILE / OMK_MOCKS_FILE)暴露给脚本;脚本若包 Claude Code 兼容
-   *    CLI 可透传 --settings 复用同一 mock hook,否则忽略(不支持的 CLI 静默无 mock) */
+   *    OMK_MOCK_MCP_CONFIG_FILE / OMK_MOCKS_FILE)暴露给脚本;脚本负责消费该协议
+   *  - codex / codex-sdk / gemini / *-api:不支持,executor capability gate 会拒绝,
+   *    绝不静默忽略后把 mock_hit 记成模型失败 */
   mocks?: import('./eval.js').Mock[];
   /** 解析 mock.return_file 的相对路径锚点(默认 sample 文件所在目录)。 */
   mocksBaseDir?: string;

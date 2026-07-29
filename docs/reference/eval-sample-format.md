@@ -72,10 +72,14 @@ A sample can also carry **metadata** (documentation / diagnostics only — these
 | `construct` | `string` | what it measures: `necessity` / `quality` / `capability` (custom allowed) |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
 | `covers` | `{ targetKind, ref }[]` | optional declared skill-structure anchors for high-value samples; used by Skill Map only |
-| `mocks` | `object[]` | tool-call interception list — return fake data instead of really calling the tool |
+| `mocks` | `object[]` | tool-call interception list — requires an executor with mock-interception support |
 | `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `false`) |
 | `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
-| `environment` | `object` | declared "already provisioned" preconditions: `cli_available` / `files_available` / `notes` |
+| `environment` | `object` | prompt-only preconditions: `cli_available` / `files_available` / `notes`; does not materialize files or env vars |
+
+The loader also validates cross-field references. Every `mock_hit: "Tool:N"` must identify the Nth declared mock for that exact tool; a missing mock or out-of-range ordinal is a configuration error. Executor compatibility is checked separately before evaluation. See [executors](./executors#sample-mock-compatibility) for the support matrix.
+
+`mocks[].tool` uses the same source-neutral identity namespace as trace assertions (`Bash`, `Read`, `Edit`, and so on). Executor adapters normalize runtime-native names such as `exec_command`, `command_execution`, and `apply_patch` before matching. Exact native names remain accepted for backward compatibility and custom tools.
 
 `covers` is optional and intentionally explicit, not inferred from prompt text. Use it first on critical or high-signal samples, so Studio can draw declared structure edges without forcing every sample to become a maintenance task. Omitting `covers` means the structure edge is undeclared in Skill Map, not proven untested:
 

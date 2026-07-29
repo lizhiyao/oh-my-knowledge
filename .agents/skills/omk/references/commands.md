@@ -602,7 +602,7 @@ omk sample [skillPath] [flags]
 - `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
-- `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
+- `--no-mock` `boolean`:不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
 - `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill` `option`:仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
@@ -689,7 +689,7 @@ omk studio --port 8080 --no-open
 | `construct` | 否 | 测的是什么构念 |
 | `provenance` | 否 | 用例来源（`omk sample` 自动打） |
 | `mocks` | 否 | 工具调用 mock 返回（sandbox 评测） |
-| `environment` | 否 | 评测环境前置「已就绪」声明 |
+| `environment` | 否 | 题设环境声明（仅注入 prompt，不物化） |
 | `tripwire` | 否 | 标记为「故意诱错」样本，failed 时 diagnostic 不建议改 skill |
 
 完整 schema 见 [docs/specs/sample-design-spec.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/sample-design-spec.md)。

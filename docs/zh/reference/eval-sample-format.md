@@ -72,10 +72,14 @@ loader 会在任何模型调用前校验完整契约。不支持的断言类型�
 | `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
 | `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
 | `covers` | `{ targetKind, ref }[]` | 可选声明的 skill 结构锚点，建议先用于关键用例；仅用于 Skill Map |
-| `mocks` | `object[]` | 工具调用拦截列表 —— 返回假数据而非真调工具 |
+| `mocks` | `object[]` | 工具调用拦截列表 —— 要求执行器支持 mock 拦截 |
 | `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
 | `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
-| `environment` | `object` | 声明性「已就绪」前置：`cli_available` / `files_available` / `notes` |
+| `environment` | `object` | 仅作 prompt 上下文的前置：`cli_available` / `files_available` / `notes`；不会物化文件或环境变量 |
+
+loader 还会校验跨字段引用。每条 `mock_hit: "Tool:N"` 必须指向该工具声明的第 N 条 mock；mock 不存在或序号越界都属于配置错误。执行器兼容性会在评测前单独检查，支持矩阵见[执行器](./executors#sample-mock-兼容性)。
+
+`mocks[].tool` 与 trace 断言使用同一套 source-neutral 工具身份（如 `Bash`、`Read`、`Edit`）。executor adapter 会先把 `exec_command`、`command_execution`、`apply_patch` 等 runtime-native 名称归一化再匹配；为兼容旧用例和自定义工具，原生名称的精确匹配仍然保留。
 
 `covers` 是可选的显式声明字段，不从 prompt 文本里推断。建议先给关键用例、关键 reference / workflow / hard rule 声明它，让 Studio 能画出已声明的结构边，而不是要求每条用例都变成维护负担。不写只表示 Skill Map 暂无这条声明边，不代表该结构一定没被测到：
 

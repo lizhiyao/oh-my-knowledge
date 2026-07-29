@@ -2,8 +2,8 @@ import type { Artifact, Sample, SampleEnvironment, Task } from '../types/index.j
 
 /**
  * 把 sample.environment 渲染成自然语言段落,放在用户 prompt 前。
- * 让 LLM 读到"环境已就绪",跳过 Glob / find / which / Read 这些环境探测,
- * 直接进入 skill 描述的工作流 — 评测信号纯,mock 设计也简化(不用 mock 探测命令)。
+ * 这是题设上下文,不会修改 PATH、物化文件或改变 runtime;LLM 可据此跳过
+ * which / test -f 等可用性探测,直接进入 skill 描述的工作流。
  *
  * 输出 null 表示 sample 没声明 environment,prompt 不变。
  */
@@ -11,23 +11,23 @@ export function renderEnvironmentSection(env: SampleEnvironment | undefined): st
   if (!env) return null;
   const lines: string[] = [];
   if (env.cli_available && env.cli_available.length > 0) {
-    lines.push('- 已安装 CLI(已在 PATH,无需 `which` / `command -v` / `type` 探测):');
+    lines.push('- 题设声明可用的 CLI（仅作上下文，不修改 PATH）：');
     for (const c of env.cli_available) lines.push(`  - \`${c}\``);
   }
   if (env.files_available && env.files_available.length > 0) {
-    lines.push('- 已存在文件(无需 Glob / `Read` / `test -f` 探测):');
+    lines.push('- 题设引用的文件路径（仅作上下文，不会在 cwd 物化）：');
     for (const f of env.files_available) lines.push(`  - \`${f}\``);
   }
   if (env.notes && env.notes.trim()) {
-    lines.push(`- 备注:${env.notes.trim()}`);
+    lines.push(`- 备注：${env.notes.trim()}`);
   }
   if (lines.length === 0) return null;
   return [
-    '## 评测环境前置(已就绪,无需探测)',
+    '## 题设环境声明（仅作上下文）',
     '',
     ...lines,
     '',
-    '请直接进入 skill 描述的主流程,**不要做环境检查 / `Glob` / `find` / `which` / `test -f` 等探测**。',
+    '请按以上题设进入 skill 描述的主流程，**不要额外做 `find` / `which` / `test -f` 等可用性探测**。这些声明不会自动创建文件或修改 runtime 环境。',
   ].join('\n');
 }
 
