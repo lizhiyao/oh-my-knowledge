@@ -1,6 +1,6 @@
 # AGENTS.md - Agent 入场清单
 
-OMK（Observe. Measure. Know.）是 AI 知识载体的证据层，面向 prompt / RAG / skill / agent / workflow 观测真实使用、受控测量版本改动，并支持基于证据发布与迭代。它固定模型只变知识载体，三阶段 doctor / eval / observe 输出统计可比的诊断，配套 sample / evolve 做用例生成与自动迭代。所有改动都要优先保护测量可比性。
+OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它面向 prompt / RAG / skill / agent / workflow 观测真实表现、受控测量版本差异，并判断改动是否有效、版本能否发布。它固定模型只变知识载体，三阶段 doctor / eval / observe 输出统计可比的诊断，配套 sample / evolve 做用例生成与自动迭代。所有改动都要优先保护测量可比性。
 
 本文件是 [agents.md](https://agents.md) 开放标准约定的多 agent 入场清单，跨 Claude Code / Codex / Cursor / Aider / Gemini CLI 等工具通用。Claude Code 用户：本仓库的 `CLAUDE.md` 通过 `@AGENTS.md` import 同一份内容，无需重复维护。
 
