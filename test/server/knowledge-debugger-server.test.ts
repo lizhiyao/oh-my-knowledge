@@ -73,13 +73,22 @@ describe('Knowledge Debugger task replay server', () => {
     const replay = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}`);
     assert.equal(replay.status, 200);
     assert.match(replay.body, /任务重放/);
-    assert.match(replay.body, /用户最初要求/);
+    assert.match(replay.body, /事实摘要/);
+    assert.match(replay.body, /任务经过/);
+    assert.match(replay.body, /本次出现的 Knowledge/);
     assert.match(replay.body, /检查并发布当前版本/);
-    assert.match(replay.body, /AGENTS\.md 进入任务上下文/);
+    assert.match(replay.body, /AGENTS\.md/);
+    assert.match(replay.body, /进入任务上下文/);
+    assert.match(replay.body, /读取 Skill：release/);
+    assert.match(replay.body, /npm publish 返回失败/);
     assert.match(replay.body, /missing doctor\/eval evidence/);
     assert.match(replay.body, /版本已经可以发布/);
     assert.match(replay.body, /用户纠正/);
+    assert.match(replay.body, /data-replay-mode="reading"/);
+    assert.match(replay.body, /data-replay-mode="evidence"/);
     assert.match(replay.body, /不代表模型实际采用了它/);
+    assert.doesNotMatch(replay.body, /<strong>Bash<\/strong><span class="replay-access">/);
+    assert.doesNotMatch(replay.body, /AI (?:使用|采用)了/);
     assert.doesNotMatch(replay.body, /knowledge-gap-form|候选 knowledge|omk sample --from-traces/);
   });
 
@@ -87,6 +96,8 @@ describe('Knowledge Debugger task replay server', () => {
     const replay = await fetch(`${baseUrl}/observe-debugger/${encodeURIComponent(experienceSessionId)}?lang=en`);
     assert.equal(replay.status, 200);
     assert.match(replay.body, /Task Replay/);
+    assert.match(replay.body, /Factual summary/);
+    assert.match(replay.body, /Knowledge in this task/);
     assert.match(replay.body, /Observed result/);
     assert.match(replay.body, /User correction/);
     assert.doesNotMatch(replay.body, /hidden (thought|reasoning)|chain of thought/i);
