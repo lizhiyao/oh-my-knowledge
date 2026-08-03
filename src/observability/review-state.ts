@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import type {
   ObservationMetricKey,
   ObservationMetricScope,
-  KnowledgeGapKind,
   ObservationReviewState,
   ObservationReviewStateEntry,
   ObservationReviewStateUpdate,
@@ -19,7 +18,6 @@ import { withFileLock } from '../shared/file-lock.js';
 import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
 
 export type {
-  KnowledgeGapKind,
   ObservationMetricKey,
   ObservationMetricScope,
   ObservationReviewState,
@@ -126,8 +124,7 @@ export function observationReviewStatePath(observationsDir: string): string {
   return join(observationsDir, 'review-state.json');
 }
 
-const OBSERVATION_REVIEW_STATE_SCHEMA_VERSION = 3;
-const LEGACY_OBSERVATION_REVIEW_STATE_SCHEMA_VERSION = 2;
+const OBSERVATION_REVIEW_STATE_SCHEMA_VERSION = 2;
 
 export function emptyObservationReviewState(now = new Date().toISOString()): ObservationReviewState {
   const updatedAt = normalizedTimestamp(now);
@@ -194,10 +191,6 @@ export function updateObservationReviewState(
       ...(update.callInstanceId ? { callInstanceId: update.callInstanceId } : {}),
       ...(update.toolUseId ? { toolUseId: update.toolUseId } : {}),
       ...(update.snippet ? { snippet: update.snippet.slice(0, 500) } : {}),
-      ...(update.gapKind ? { gapKind: update.gapKind } : {}),
-      ...(update.knowledgeEvidenceId ? { knowledgeEvidenceId: update.knowledgeEvidenceId.slice(0, 200) } : {}),
-      ...(update.experienceSessionId ? { experienceSessionId: update.experienceSessionId.slice(0, 200) } : {}),
-      ...(update.candidateKnowledge ? { candidateKnowledge: update.candidateKnowledge.slice(0, 2000) } : {}),
     };
     state.updatedAt = reviewedAt;
     writeObservationReviewState(observationsDir, state);
@@ -210,10 +203,7 @@ function normalizeObservationReviewState(value: unknown): ObservationReviewState
   const parsed = value as Record<string, unknown>;
   const kind = parsed.kind === 'observe-review-state' ? parsed.kind : null;
   if (!kind) return null;
-  if (
-    parsed.schemaVersion !== OBSERVATION_REVIEW_STATE_SCHEMA_VERSION
-    && parsed.schemaVersion !== LEGACY_OBSERVATION_REVIEW_STATE_SCHEMA_VERSION
-  ) return null;
+  if (parsed.schemaVersion !== OBSERVATION_REVIEW_STATE_SCHEMA_VERSION) return null;
   if (!parsed.entries || typeof parsed.entries !== 'object' || Array.isArray(parsed.entries)) return null;
   const updatedAt = normalizedTimestamp(parsed.updatedAt);
   if (!updatedAt) return null;
@@ -276,9 +266,6 @@ function assertReviewStateUpdate(value: ObservationReviewStateUpdate): void {
     value.callInstanceId,
     value.toolUseId,
     value.snippet,
-    value.knowledgeEvidenceId,
-    value.experienceSessionId,
-    value.candidateKnowledge,
   ];
   if (!optionalStrings.every(optionalString)) throw new ObservationReviewStateValidationError('invalid review metadata');
   if (
@@ -294,33 +281,12 @@ function assertReviewStateUpdate(value: ObservationReviewStateUpdate): void {
     if (value.metricScope !== undefined && value.metricScope !== expectedScope) {
       throw new ObservationReviewStateValidationError('metricScope does not match metricKey');
     }
-  } else if (value.targetType === 'knowledge_gap') {
-    if (!isKnowledgeGapKind(value.gapKind)) {
-      throw new ObservationReviewStateValidationError('knowledge_gap requires gapKind');
-    }
-    if (typeof value.note !== 'string' || value.note.trim() === '') {
-      throw new ObservationReviewStateValidationError('knowledge_gap requires note');
-    }
-    if (value.verdict === 'confirmed' || value.verdict === 'rejected') {
-      throw new ObservationReviewStateValidationError('knowledge_gap does not accept metric verdicts');
-    }
-    if (value.metricKey !== undefined || value.metricScope !== undefined || value.metricScopeId !== undefined) {
-      throw new ObservationReviewStateValidationError('knowledge_gap does not accept metric metadata');
-    }
   } else {
     if (value.verdict === 'confirmed' || value.verdict === 'rejected') {
       throw new ObservationReviewStateValidationError('metric verdict requires evidence_metric targetType');
     }
     if (value.metricKey !== undefined || value.metricScope !== undefined || value.metricScopeId !== undefined) {
       throw new ObservationReviewStateValidationError('metric metadata requires evidence_metric targetType');
-    }
-    if (
-      value.gapKind !== undefined
-      || value.knowledgeEvidenceId !== undefined
-      || value.experienceSessionId !== undefined
-      || value.candidateKnowledge !== undefined
-    ) {
-      throw new ObservationReviewStateValidationError('knowledge gap metadata requires knowledge_gap targetType');
     }
   }
 }
@@ -345,9 +311,6 @@ function normalizeReviewStateEntry(value: unknown): ObservationReviewStateEntry 
     || !optionalString(entry.callInstanceId)
     || !optionalString(entry.toolUseId)
     || !optionalString(entry.snippet)
-    || !optionalString(entry.knowledgeEvidenceId)
-    || !optionalString(entry.experienceSessionId)
-    || !optionalString(entry.candidateKnowledge)
     || (
       entry.messageIndex !== undefined
       && (!Number.isSafeInteger(entry.messageIndex) || entry.messageIndex < 0)
@@ -360,27 +323,12 @@ function normalizeReviewStateEntry(value: unknown): ObservationReviewStateEntry 
       !isObservationMetricKey(entry.metricKey)
       || (entry.verdict !== 'confirmed' && entry.verdict !== 'rejected')
     ) return null;
-  } else if (entry.targetType === 'knowledge_gap') {
-    if (
-      !isKnowledgeGapKind(entry.gapKind)
-      || typeof entry.note !== 'string'
-      || entry.note.trim() === ''
-      || entry.verdict === 'confirmed'
-      || entry.verdict === 'rejected'
-      || entry.metricKey !== undefined
-      || entry.metricScope !== undefined
-      || entry.metricScopeId !== undefined
-    ) return null;
   } else if (
     entry.verdict === 'confirmed'
     || entry.verdict === 'rejected'
     || entry.metricKey !== undefined
     || entry.metricScope !== undefined
     || entry.metricScopeId !== undefined
-    || entry.gapKind !== undefined
-    || entry.knowledgeEvidenceId !== undefined
-    || entry.experienceSessionId !== undefined
-    || entry.candidateKnowledge !== undefined
   ) {
     return null;
   }
@@ -408,10 +356,6 @@ function normalizeReviewStateEntry(value: unknown): ObservationReviewStateEntry 
     ...(entry.callInstanceId !== undefined ? { callInstanceId: entry.callInstanceId } : {}),
     ...(entry.toolUseId !== undefined ? { toolUseId: entry.toolUseId } : {}),
     ...(entry.snippet !== undefined ? { snippet: entry.snippet } : {}),
-    ...(entry.gapKind !== undefined ? { gapKind: entry.gapKind } : {}),
-    ...(entry.knowledgeEvidenceId !== undefined ? { knowledgeEvidenceId: entry.knowledgeEvidenceId } : {}),
-    ...(entry.experienceSessionId !== undefined ? { experienceSessionId: entry.experienceSessionId } : {}),
-    ...(entry.candidateKnowledge !== undefined ? { candidateKnowledge: entry.candidateKnowledge } : {}),
   };
 }
 
@@ -435,7 +379,6 @@ function isReviewTargetType(value: unknown): value is ObservationReviewTargetTyp
   return value === 'experience_session'
     || value === 'inbox_item'
     || value === 'skill'
-    || value === 'knowledge_gap'
     || value === 'goal_slice_correction'
     || value === 'evidence_metric'
     || value === 'reviewer_judgment'
@@ -448,13 +391,6 @@ function isReviewTargetType(value: unknown): value is ObservationReviewTargetTyp
     || value === 'workflow_completion_correction'
     || value === 'hardrule_execution_correction'
     || value === 'main_tool_execution_correction';
-}
-
-function isKnowledgeGapKind(value: unknown): value is KnowledgeGapKind {
-  return value === 'missing'
-    || value === 'stale'
-    || value === 'conflicting'
-    || value === 'out_of_scope';
 }
 
 function isReviewVerdict(value: unknown): value is ObservationReviewVerdict {

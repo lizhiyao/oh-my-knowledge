@@ -28,18 +28,6 @@ export interface Assertion {
  *  跟 evolver 升级一起做。 */
 export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
 
-/** 生产 trace 回流用例的结构化来源引用。它记录生成输入的来源关系，
- *  不表示该来源已经被证明为失败根因。 */
-export interface SampleSourceRef {
-  sourceType: 'observation_signal' | 'knowledge_gap';
-  sourceId: string;
-  traceId?: string;
-  sourceTrace?: string;
-  experienceSessionId?: string;
-  knowledgeEvidenceId?: string;
-  candidateKnowledgeHash?: string;
-}
-
 /** sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
 export type SampleDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -148,8 +136,6 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
-  /** `omk sample --from-traces` 的生成输入来源。纯溯源元数据，不参与评分。 */
-  sourceRefs?: SampleSourceRef[];
   /** 该 sample 可选声明的 skill 结构锚点。纯文档 / 图谱诊断用，不进入评分、评委或 verdict。 */
   covers?: SampleCoverageTarget[];
   /** 诱错样本(tripwire)标记。true = 此 sample 故意设计成 LLM 应该 fail 的诱导陷阱

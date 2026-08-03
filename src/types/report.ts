@@ -374,7 +374,6 @@ export interface ResultEntry {
  *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
  *   - mocks: 工具调用模拟返回(LLM 调到匹配的 tool/参数时拿到这段假返回,而不是真去调外部系统)
  *   - capability / construct / difficulty: 元数据
- *   - provenance / sourceRefs: 用例来源与生产 trace / Knowledge Gap 溯源
  *   - covers: sample 可选声明的 skill 结构锚点
  *   - context: 附加上下文(代码片段等)
  *
@@ -398,7 +397,6 @@ export interface SampleSnapshot {
   difficulty?: import('./eval.js').SampleDifficulty;
   construct?: string;
   provenance?: import('./eval.js').SampleProvenance;
-  sourceRefs?: import('./eval.js').SampleSourceRef[];
   covers?: import('./eval.js').SampleCoverageTarget[];
   /** Diagnostic 用 — tripwire sample 不该建议改 skill。 */
   tripwire?: boolean;

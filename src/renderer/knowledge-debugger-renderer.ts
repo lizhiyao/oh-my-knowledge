@@ -2,284 +2,265 @@ import type { Lang } from '../types/index.js';
 import type {
   DebugKnowledgeAccessKind,
   DebugKnowledgeEvidence,
-  DebugKnowledgeKind,
   KnowledgeDebuggerViewModel,
+  TaskReplayIntegrityCode,
+  TaskReplayStep,
+  TaskReplayStepKind,
 } from '../types/index.js';
-import { shellQuoteArg } from '../shared/shell-quote.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';
 
-const KNOWLEDGE_KIND_LABELS: Record<DebugKnowledgeKind, Record<Lang, string>> = {
-  project_instruction: { zh: '项目指令', en: 'Project instructions' },
-  skill: { zh: 'Skill', en: 'Skill' },
-  runtime_evidence: { zh: '运行时证据', en: 'Runtime evidence' },
-};
-
-const ACCESS_KIND_LABELS: Record<DebugKnowledgeAccessKind, Record<Lang, string>> = {
-  injected: { zh: '进入上下文', en: 'Injected' },
+const ACCESS_LABELS: Record<DebugKnowledgeAccessKind, Record<Lang, string>> = {
+  injected: { zh: '进入上下文', en: 'Injected into context' },
   read: { zh: '被读取', en: 'Read' },
-  returned: { zh: '工具返回', en: 'Returned' },
+  returned: { zh: '工具返回', en: 'Returned by tool' },
 };
 
-const TIMELINE_LABELS: Record<string, Record<Lang, string>> = {
-  user_message: { zh: '用户', en: 'User' },
-  synthetic_user_event: { zh: '系统事件', en: 'System event' },
-  assistant_message: { zh: 'AI', en: 'AI' },
+const STEP_LABELS: Record<TaskReplayStepKind, Record<Lang, string>> = {
+  user_request: { zh: '用户请求', en: 'User request' },
+  user_message: { zh: '用户补充', en: 'User follow-up' },
+  user_correction: { zh: '用户纠正', en: 'User correction' },
   runtime_context: { zh: '运行时上下文', en: 'Runtime context' },
   skill_context: { zh: 'Skill 上下文', en: 'Skill context' },
-  tool_use: { zh: '工具调用', en: 'Tool call' },
-  tool_result: { zh: '工具结果', en: 'Tool result' },
-  observation: { zh: '观测', en: 'Observation' },
+  tool_exchange: { zh: '工具执行', en: 'Tool execution' },
+  unmatched_tool_result: { zh: '未配对工具结果', en: 'Unmatched tool result' },
+  assistant_message: { zh: 'AI 回答', en: 'AI response' },
+  observation: { zh: '观测事件', en: 'Observation' },
+  system_event: { zh: '系统事件', en: 'System event' },
 };
 
-const GAP_KIND_LABELS = {
-  missing: { zh: '缺失', en: 'Missing' },
-  stale: { zh: '过时', en: 'Stale' },
-  conflicting: { zh: '冲突', en: 'Conflicting' },
-  out_of_scope: { zh: '越界', en: 'Out of scope' },
-} as const;
+const INTEGRITY_LABELS: Record<TaskReplayIntegrityCode, (count: number, lang: Lang) => string> = {
+  timeline_truncated: (_count, lang) => lang === 'zh' ? '当前时间线被截断' : 'The timeline is truncated',
+  malformed_records: (count, lang) => lang === 'zh' ? `${count} 条格式损坏记录` : `${count} malformed record${count === 1 ? '' : 's'}`,
+  ignored_values: (count, lang) => lang === 'zh' ? `${count} 个非对象值被忽略` : `${count} non-object value${count === 1 ? '' : 's'} ignored`,
+  unknown_events: (count, lang) => lang === 'zh' ? `${count} 个事件无法识别` : `${count} unrecognized event${count === 1 ? '' : 's'}`,
+  unmatched_tool_calls: (count, lang) => lang === 'zh' ? `${count} 次工具调用缺少结果` : `${count} tool call${count === 1 ? '' : 's'} without results`,
+  unmatched_tool_results: (count, lang) => lang === 'zh' ? `${count} 条工具结果无法配对` : `${count} tool result${count === 1 ? '' : 's'} could not be paired`,
+  missing_timestamps: (count, lang) => lang === 'zh' ? `${count} 个事件缺少时间戳` : `${count} event${count === 1 ? '' : 's'} without timestamps`,
+};
 
 export function renderKnowledgeDebuggerPage(
   model: KnowledgeDebuggerViewModel,
   lang: Lang = DEFAULT_LANG,
 ): string {
   const zh = lang === 'zh';
-  const { session, knowledgeEvidence, knowledgeGaps, observationsDir } = model;
-  const timeline = [...session.fullSessionTimeline].sort((a, b) => a.order - b.order);
-  const evidenceByKind = new Map<DebugKnowledgeKind, DebugKnowledgeEvidence[]>();
-  for (const item of knowledgeEvidence) {
-    evidenceByKind.set(item.knowledgeKind, [...(evidenceByKind.get(item.knowledgeKind) ?? []), item]);
-  }
+  const { session, summary, steps, knowledgeEvidence, integrity } = model;
+  const evidenceById = new Map(knowledgeEvidence.map((item) => [item.id, item]));
 
-  return layout(zh ? 'Knowledge 调试' : 'Knowledge Debugger', `
+  return layout(zh ? '任务重放' : 'Task Replay', `
     <style>
-      .kd-shell{max-width:1440px;margin:0 auto;padding:4px 0 12px;letter-spacing:0}
-      .kd-breadcrumb{display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;color:var(--text-secondary)}
-      .kd-breadcrumb:hover{text-decoration:none}
-      .kd-header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:16px}
-      .kd-header h1{font-size:28px;margin:0 0 5px;letter-spacing:0}
-      .kd-header p{margin:0;color:var(--text-secondary);font-size:14px}
-      .kd-session-meta{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end;max-width:58%}
-      .kd-meta{border:1px solid var(--border);background:var(--bg-surface);border-radius:5px;padding:4px 9px;font-size:12px;color:var(--text-secondary);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .kd-caution{margin:0 0 18px;padding:10px 13px;border-left:3px solid var(--yellow);background:var(--yellow-bg);font-size:13px;color:var(--text-secondary)}
-      .kd-evidence-levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:-8px 0 18px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface);overflow:hidden}
-      .kd-level{min-width:0;padding:10px 12px;border-right:1px solid var(--border)}
-      .kd-level:last-child{border-right:0}
-      .kd-level strong{display:block;margin-bottom:2px;font-size:12px;color:var(--text-primary)}
-      .kd-level span{display:block;font-size:11px;line-height:1.45;color:var(--text-muted)}
-      .kd-level-current strong{color:var(--accent)}
-      .kd-grid{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(380px,.72fr);gap:18px;align-items:start}
-      .kd-panel{background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;min-width:0}
-      .kd-panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)}
-      .kd-panel-head h2{font-size:15px;margin:0;letter-spacing:0}
-      .kd-panel-count{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
-      .kd-timeline{padding:4px 16px 12px}
-      .kd-event{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;padding:12px 0;border-bottom:1px solid var(--border)}
-      .kd-event:last-child{border-bottom:0}
-      .kd-event-type{font-size:12px;font-weight:650;color:var(--text-secondary)}
-      .kd-event-time{display:block;margin-top:2px;font-size:11px;font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}
-      .kd-event-body{min-width:0}
-      .kd-event-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px}
-      .kd-event-text{font-size:13px;color:var(--text-secondary);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
-      .kd-event details{margin-top:7px}
-      .kd-event summary{cursor:pointer;color:var(--accent);font-size:12px}
-      .kd-event pre{max-height:340px;overflow:auto;margin:7px 0 0;padding:10px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:5px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
-      .kd-side{display:grid;gap:18px;min-width:0}
-      .kd-knowledge-groups{padding:4px 16px 14px}
-      .kd-group{padding:12px 0;border-bottom:1px solid var(--border)}
-      .kd-group:last-child{border-bottom:0}
-      .kd-group h3{font-size:12px;color:var(--text-muted);margin:0 0 8px;text-transform:none;letter-spacing:0}
-      .kd-knowledge{padding:10px 11px;margin-top:7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-soft)}
-      .kd-knowledge-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-      .kd-knowledge strong{font-size:13px;overflow-wrap:anywhere}
-      .kd-access{flex:none;border-radius:4px;padding:2px 6px;background:var(--info-bg);color:var(--accent);font-size:11px;font-weight:600}
-      .kd-knowledge-meta{margin-top:7px;display:grid;gap:3px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted);overflow-wrap:anywhere}
-      .kd-empty{padding:18px 16px;color:var(--text-muted);font-size:13px}
-      .kd-gap-body{padding:14px 16px 16px}
-      .kd-field{display:grid;gap:5px;margin-bottom:11px}
-      .kd-field label{font-size:12px;font-weight:600;color:var(--text-secondary)}
-      .kd-field select,.kd-field textarea{width:100%;border:1px solid var(--border-hover);border-radius:5px;background:var(--bg-surface);color:var(--text-primary);font:13px/1.5 inherit;padding:8px 9px;letter-spacing:0}
-      .kd-field textarea{min-height:82px;resize:vertical}
-      .kd-field select:focus,.kd-field textarea:focus{outline:2px solid rgba(79,70,229,.2);border-color:var(--accent)}
-      .kd-submit{border:0;border-radius:5px;background:var(--accent);color:#fff;padding:8px 12px;font-size:13px;font-weight:650;cursor:pointer}
-      .kd-submit:disabled{opacity:.55;cursor:wait}
-      .kd-form-status{min-height:20px;margin-top:7px;color:var(--text-secondary);font-size:12px}
-      .kd-gap-list{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
-      .kd-gap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;padding:9px 0;border-bottom:1px solid var(--border)}
-      .kd-gap:last-child{border-bottom:0}
-      .kd-gap-label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650}
-      .kd-gap-note{margin-top:3px;color:var(--text-secondary);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
-      .kd-gap-evidence{margin-top:3px;color:var(--text-muted);font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
-      .kd-gap-candidate{margin-top:7px;padding:7px 8px;border-left:2px solid var(--accent);background:var(--info-bg);color:var(--text-secondary);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
-      .kd-gap-command{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:center;margin-top:8px}
-      .kd-gap-command code{display:block;min-width:0;padding:7px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg-elevated);font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
-      .kd-copy{border:1px solid var(--border-hover);background:var(--bg-surface);color:var(--text-secondary);border-radius:5px;padding:6px 8px;font-size:12px;cursor:pointer;white-space:nowrap}
-      .kd-copy:hover{border-color:var(--accent);color:var(--accent)}
-      .kd-delete{align-self:start;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:5px;padding:4px 7px;font-size:12px;cursor:pointer}
-      .kd-delete:hover{border-color:var(--red);color:var(--red)}
-      .kd-evidence-links{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px;font-size:11px}
-      .kd-evidence-links a{color:var(--accent)}
-      @media(max-width:980px){.kd-grid{grid-template-columns:1fr}.kd-session-meta{max-width:none;justify-content:flex-start}.kd-header{align-items:flex-start;flex-direction:column;gap:10px}.kd-evidence-levels{grid-template-columns:repeat(2,minmax(0,1fr))}.kd-level:nth-child(2){border-right:0}.kd-level:nth-child(-n+2){border-bottom:1px solid var(--border)}}
-      @media(max-width:640px){.kd-shell{padding:0}.kd-event{grid-template-columns:1fr;gap:4px}.kd-header h1{font-size:23px}.kd-meta{max-width:100%}.kd-evidence-levels{grid-template-columns:1fr}.kd-level,.kd-level:nth-child(2){border-right:0;border-bottom:1px solid var(--border)}.kd-level:last-child{border-bottom:0}.kd-gap-command{grid-template-columns:1fr}.kd-copy{justify-self:start}}
+      .replay-shell{max-width:1120px;margin:0 auto;padding:4px 0 28px;letter-spacing:0}
+      .replay-back{display:inline-flex;align-items:center;margin-bottom:14px;color:var(--text-secondary);font-size:13px}
+      .replay-back:hover{text-decoration:none;color:var(--accent)}
+      .replay-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:18px}
+      .replay-eyebrow{margin-bottom:4px;color:var(--accent);font-size:12px;font-weight:700}
+      .replay-header h1{margin:0 0 6px;font-size:28px;letter-spacing:0}
+      .replay-header p{max-width:720px;margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6}
+      .replay-session{display:grid;gap:4px;justify-items:end;max-width:360px;color:var(--text-muted);font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere;text-align:right}
+      .replay-summary{margin-bottom:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);overflow:hidden}
+      .replay-summary-main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr);gap:0}
+      .replay-summary-copy{padding:18px 20px;border-right:1px solid var(--border)}
+      .replay-summary-copy h2{margin:0 0 7px;font-size:12px;color:var(--text-muted);font-weight:650}
+      .replay-goal{margin:0;color:var(--text-primary);font-size:17px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+      .replay-outcome{padding:18px 20px;display:grid;align-content:center;gap:7px}
+      .replay-outcome-line{display:flex;align-items:center;justify-content:space-between;gap:14px;color:var(--text-secondary);font-size:12px}
+      .replay-outcome-line strong{color:var(--text-primary);font-size:13px;font-variant-numeric:tabular-nums}
+      .replay-final{padding:13px 20px;border-top:1px solid var(--border);background:var(--bg-soft)}
+      .replay-final strong{display:block;margin-bottom:4px;color:var(--text-muted);font-size:11px}
+      .replay-final div{color:var(--text-secondary);font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+      .replay-integrity{display:flex;align-items:flex-start;gap:10px;margin-bottom:18px;padding:11px 13px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface);font-size:12px;color:var(--text-secondary)}
+      .replay-integrity.is-partial{border-color:var(--yellow);background:var(--yellow-bg)}
+      .replay-integrity-mark{flex:none;width:8px;height:8px;margin-top:5px;border-radius:50%;background:var(--green)}
+      .replay-integrity.is-partial .replay-integrity-mark{background:var(--yellow)}
+      .replay-integrity strong{color:var(--text-primary)}
+      .replay-integrity ul{display:flex;flex-wrap:wrap;gap:5px 16px;margin:4px 0 0;padding:0;list-style:none}
+      .replay-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 0 12px}
+      .replay-section-head h2{margin:0;font-size:16px;letter-spacing:0}
+      .replay-section-head span{color:var(--text-muted);font-size:12px}
+      .replay-list{position:relative;margin-left:17px;padding-left:34px}
+      .replay-list:before{content:"";position:absolute;left:0;top:17px;bottom:22px;width:1px;background:var(--border-hover)}
+      .replay-step{position:relative;margin-bottom:12px;border:1px solid var(--border);border-radius:7px;background:var(--bg-surface)}
+      .replay-step:before{content:attr(data-index);position:absolute;left:-51px;top:15px;display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border-hover);border-radius:50%;background:var(--bg-surface);color:var(--text-secondary);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
+      .replay-step.is-correction{border-color:var(--yellow)}
+      .replay-step.is-failure{border-color:var(--red)}
+      .replay-step-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:12px 14px;border-bottom:1px solid var(--border)}
+      .replay-step-heading{min-width:0}
+      .replay-step-label{margin-bottom:2px;color:var(--text-muted);font-size:11px;font-weight:650}
+      .replay-step-title{color:var(--text-primary);font-size:14px;font-weight:650;overflow-wrap:anywhere}
+      .replay-step-meta{flex:none;display:flex;align-items:center;gap:7px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
+      .replay-status{border-radius:4px;padding:2px 6px;background:var(--bg-soft);font-weight:650}
+      .replay-status.is-success{color:var(--green)}
+      .replay-status.is-failure{color:var(--red);background:var(--red-bg)}
+      .replay-status.is-unknown,.replay-status.is-cancelled{color:var(--text-secondary)}
+      .replay-step-body{padding:13px 14px}
+      .replay-message{color:var(--text-secondary);font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+      .replay-tool{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+      .replay-tool-part{min-width:0;padding:10px 11px;border:1px solid var(--border);border-radius:6px;background:var(--bg-soft)}
+      .replay-tool-part strong{display:block;margin-bottom:5px;color:var(--text-muted);font-size:11px}
+      .replay-tool-part pre{max-height:260px;margin:0;overflow:auto;color:var(--text-secondary);font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+      .replay-knowledge{display:grid;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
+      .replay-knowledge-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px;align-items:start}
+      .replay-access{border-radius:4px;padding:2px 6px;background:var(--info-bg);color:var(--accent);font-size:11px;font-weight:650;white-space:nowrap}
+      .replay-knowledge-copy{min-width:0;color:var(--text-secondary);font-size:12px;overflow-wrap:anywhere}
+      .replay-knowledge-copy strong{color:var(--text-primary)}
+      .replay-knowledge-meta{display:block;margin-top:2px;color:var(--text-muted);font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+      .replay-raw{margin-top:10px}
+      .replay-raw summary{cursor:pointer;color:var(--accent);font-size:11px}
+      .replay-raw-event{margin-top:8px;padding:9px 10px;border:1px solid var(--border);border-radius:5px;background:var(--bg-elevated)}
+      .replay-raw-event span{display:block;margin-bottom:4px;color:var(--text-muted);font:10px ui-monospace,SFMono-Regular,Menlo,monospace}
+      .replay-raw-event pre{max-height:320px;margin:0;overflow:auto;color:var(--text-secondary);font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+      .replay-boundary{margin:18px 0 0;padding:11px 13px;border-left:3px solid var(--border-hover);background:var(--bg-soft);color:var(--text-muted);font-size:12px;line-height:1.55}
+      @media(max-width:760px){.replay-header{display:grid;gap:10px}.replay-session{justify-items:start;text-align:left;max-width:none}.replay-summary-main{grid-template-columns:1fr}.replay-summary-copy{border-right:0;border-bottom:1px solid var(--border)}.replay-tool{grid-template-columns:1fr}.replay-list{margin-left:14px;padding-left:24px}.replay-step:before{left:-41px;width:26px;height:26px}.replay-step-head{display:grid;gap:7px}.replay-step-meta{justify-content:flex-start}.replay-header h1{font-size:24px}}
     </style>
-    <main class="kd-shell">
-      <a class="kd-breadcrumb" href="/observe-inbox${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}">${zh ? '← 返回观测收件箱' : '← Back to observation inbox'}</a>
-      <header class="kd-header">
+    <main class="replay-shell">
+      <a class="replay-back" href="/observe-inbox${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}">${zh ? '← 返回观测收件箱' : '← Back to observation inbox'}</a>
+      <header class="replay-header">
         <div>
-          <h1>${zh ? 'Knowledge 调试' : 'Knowledge Debugger'}</h1>
-          <p>${zh ? '沿一次真实执行，检查哪些 knowledge 进入了 AI 的工作上下文。' : 'Inspect which knowledge entered the AI working context during one real run.'}</p>
+          <div class="replay-eyebrow">Knowledge Debugger</div>
+          <h1>${zh ? '任务重放' : 'Task Replay'}</h1>
+          <p>${zh ? '根据 trace 还原这次任务中可核验的请求、上下文、行动、结果和用户纠正。' : 'A trace-backed replay of the request, context, actions, results, and user corrections observed in this task.'}</p>
         </div>
-        <div class="kd-session-meta">
-          <span class="kd-meta">${e(session.sourceKind)}</span>
-          <span class="kd-meta">${e(session.skillName)}</span>
-          ${session.cwd ? `<span class="kd-meta" title="${e(session.cwd)}">${e(session.cwd)}</span>` : ''}
-          <span class="kd-meta" title="${e(session.sessionId)}">${e(session.sessionId)}</span>
+        <div class="replay-session">
+          <span>${e(session.sourceKind)} · ${e(session.sessionId)}</span>
+          ${session.cwd ? `<span>${e(session.cwd)}</span>` : ''}
+          <span>${e(formatRange(summary.observedStartTimestamp, summary.observedEndTimestamp))}</span>
         </div>
       </header>
-      <div class="kd-caution">${zh
-        ? '证据只说明 knowledge 已进入上下文、被读取或由工具返回；它不代表模型一定采用了这些内容，也不能单独证明因果。'
-        : 'Evidence only shows that knowledge was injected, read, or returned by a tool. It does not prove that the model used it or establish causality.'}</div>
-      <div class="kd-evidence-levels" aria-label="${zh ? '证据层级' : 'Evidence levels'}">
-        <div class="kd-level kd-level-current"><strong>${zh ? '观测事实' : 'Observed fact'}</strong><span>${zh ? '时间线与 knowledge 来源' : 'Timeline and knowledge provenance'}</span></div>
-        <div class="kd-level kd-level-current"><strong>${zh ? '用户诊断' : 'User diagnosis'}</strong><span>${zh ? '人工确认的 Knowledge Gap' : 'Human-confirmed Knowledge Gap'}</span></div>
-        <div class="kd-level"><strong>${zh ? '系统推断' : 'System inference'}</strong><span>${zh ? 'MVP 不自动推断根因' : 'No automatic root-cause claim in MVP'}</span></div>
-        <div class="kd-level"><strong>${zh ? '受控证据' : 'Controlled evidence'}</strong><span>${zh ? '进入 doctor → eval 后获得' : 'Produced by doctor → eval'}</span></div>
-      </div>
-      <div class="kd-grid">
-        <section class="kd-panel">
-          <header class="kd-panel-head"><h2>${zh ? '执行时间线' : 'Execution timeline'}</h2><span class="kd-panel-count">${timeline.length} ${zh ? '条证据' : 'events'}</span></header>
-          ${timeline.length > 0 ? `<div class="kd-timeline">${timeline.map((event) => {
-            const label = TIMELINE_LABELS[event.kind]?.[lang] ?? event.kind;
-            const title = event.toolName ?? event.label ?? label;
-            const snippet = event.snippet ?? event.fullText ?? '';
-            const fullText = event.fullText && event.fullText !== snippet ? event.fullText : '';
-            return `<article class="kd-event" id="event-${e(event.id)}">
-              <div class="kd-event-type">${e(label)}${event.timestamp ? `<span class="kd-event-time">${e(formatTimestamp(event.timestamp))}</span>` : ''}</div>
-              <div class="kd-event-body">
-                <div class="kd-event-title">${e(title)}</div>
-                ${snippet ? `<div class="kd-event-text">${e(snippet)}</div>` : ''}
-                ${fullText ? `<details><summary>${zh ? '查看完整证据' : 'View full evidence'}</summary><pre>${e(fullText)}</pre></details>` : ''}
-              </div>
-            </article>`;
-          }).join('')}</div>` : `<div class="kd-empty">${zh ? '这次执行没有可展示的时间线。' : 'No timeline is available for this run.'}</div>`}
-        </section>
-        <aside class="kd-side">
-          <section class="kd-panel">
-            <header class="kd-panel-head"><h2>${zh ? 'Knowledge 证据' : 'Knowledge evidence'}</h2><span class="kd-panel-count">${knowledgeEvidence.length}</span></header>
-            ${knowledgeEvidence.length > 0 ? `<div class="kd-knowledge-groups">${([...evidenceByKind.entries()]).map(([knowledgeKind, items]) => `
-              <section class="kd-group">
-                <h3>${e(KNOWLEDGE_KIND_LABELS[knowledgeKind][lang])}</h3>
-                ${items.map((item) => renderKnowledgeEvidence(item, lang)).join('')}
-              </section>`).join('')}</div>` : `<div class="kd-empty">${zh ? '没有识别出可定位的 knowledge 证据。' : 'No locatable knowledge evidence was found.'}</div>`}
-          </section>
-          <section class="kd-panel">
-            <header class="kd-panel-head"><h2>${zh ? 'Knowledge 缺口' : 'Knowledge gaps'}</h2><span class="kd-panel-count">${knowledgeGaps.length}</span></header>
-            <div class="kd-gap-body">
-              <form id="knowledge-gap-form" data-experience-session-id="${e(session.id)}">
-                <div class="kd-field"><label for="gap-kind">${zh ? '类型' : 'Type'}</label><select id="gap-kind" name="gapKind" required>
-                  ${Object.entries(GAP_KIND_LABELS).map(([value, labels]) => `<option value="${value}">${e(labels[lang])}</option>`).join('')}
-                </select></div>
-                <div class="kd-field"><label for="gap-evidence">${zh ? '关联证据' : 'Related evidence'}</label><select id="gap-evidence" name="knowledgeEvidenceId">
-                  <option value="">${zh ? '不关联现有证据' : 'No existing evidence'}</option>
-                  ${knowledgeEvidence.map((item) => `<option value="${e(item.id)}">${e(item.label)} · ${e(ACCESS_KIND_LABELS[item.accessKind][lang])}</option>`).join('')}
-                </select></div>
-                <div class="kd-field"><label for="gap-note">${zh ? '缺口描述' : 'Gap description'}</label><textarea id="gap-note" name="note" maxlength="500" required placeholder="${zh ? '缺了什么、哪里过时，或哪些规则互相冲突？' : 'What is missing, stale, conflicting, or out of scope?'}"></textarea></div>
-                <div class="kd-field"><label for="candidate-knowledge">${zh ? '候选 knowledge（可选）' : 'Candidate knowledge (optional)'}</label><textarea id="candidate-knowledge" name="candidateKnowledge" maxlength="2000" placeholder="${zh ? '你认为 AI 下次应该获得什么明确规则或事实？' : 'What explicit rule or fact should the AI receive next time?'}"></textarea></div>
-                <button class="kd-submit" type="submit">${zh ? '记录缺口' : 'Record gap'}</button>
-                <div class="kd-form-status" id="knowledge-gap-status" role="status"></div>
-              </form>
-              ${knowledgeGaps.length > 0 ? `<div class="kd-gap-list">${knowledgeGaps.map((gap) => `<div class="kd-gap">
-                <div><div class="kd-gap-label">${e(gap.gapKind ? GAP_KIND_LABELS[gap.gapKind][lang] : '')}</div>
-                ${gap.note ? `<div class="kd-gap-note">${e(gap.note)}</div>` : ''}
-                ${gap.knowledgeEvidenceId ? `<div class="kd-gap-evidence">${e(gap.knowledgeEvidenceId)}</div>` : ''}
-                ${gap.candidateKnowledge ? `<div class="kd-gap-candidate"><strong>${zh ? '待复核候选：' : 'Candidate for review: '}</strong>${e(gap.candidateKnowledge)}</div>` : ''}
-                <div class="kd-gap-command"><code title="${e(sampleFromGapCommand(gap.targetId, observationsDir))}">${e(sampleFromGapDisplayCommand(gap.targetId))}</code><button type="button" class="kd-copy" data-copy-command="${e(sampleFromGapCommand(gap.targetId, observationsDir))}">${zh ? '复制命令' : 'Copy command'}</button></div></div>
-                <button type="button" class="kd-delete" data-gap-id="${e(gap.targetId)}" title="${zh ? '删除缺口' : 'Delete gap'}">${zh ? '删除' : 'Delete'}</button>
-              </div>`).join('')}</div>` : ''}
-            </div>
-          </section>
-        </aside>
-      </div>
+
+      <section class="replay-summary" aria-label="${zh ? '任务摘要' : 'Task summary'}">
+        <div class="replay-summary-main">
+          <div class="replay-summary-copy">
+            <h2>${zh ? '用户最初要求' : 'Original request'}</h2>
+            <p class="replay-goal">${e(summary.userGoal ?? (zh ? '当前 trace 中没有可识别的用户请求。' : 'No identifiable user request in this trace.'))}</p>
+          </div>
+          <div class="replay-outcome">
+            <div class="replay-outcome-line"><span>${zh ? '工具调用' : 'Tool calls'}</span><strong>${summary.toolCallCount}</strong></div>
+            <div class="replay-outcome-line"><span>${zh ? '工具失败' : 'Tool failures'}</span><strong>${summary.toolFailureCount}</strong></div>
+            <div class="replay-outcome-line"><span>${zh ? '用户纠正' : 'User correction'}</span><strong>${summary.hasUserCorrection ? (zh ? '有' : 'Observed') : (zh ? '未识别' : 'Not identified')}</strong></div>
+          </div>
+        </div>
+        ${summary.finalResponse ? `<div class="replay-final"><strong>${zh ? 'AI 最后一次回答' : 'Last AI response'}</strong><div>${e(summary.finalResponse)}</div></div>` : ''}
+      </section>
+
+      <section class="replay-integrity ${integrity.status === 'partial' ? 'is-partial' : ''}">
+        <span class="replay-integrity-mark" aria-hidden="true"></span>
+        <div><strong>${integrity.status === 'complete' ? (zh ? '当前未发现 trace 完整性问题' : 'No trace integrity issues detected') : (zh ? '这次重放可能不完整' : 'This replay may be incomplete')}</strong>
+        ${integrity.notices.length > 0 ? `<ul>${integrity.notices.map((notice) => `<li>${e(INTEGRITY_LABELS[notice.code](notice.count, lang))}</li>`).join('')}</ul>` : ''}</div>
+      </section>
+
+      <div class="replay-section-head"><h2>${zh ? '发生了什么' : 'What happened'}</h2><span>${steps.length} ${zh ? '个任务步骤' : steps.length === 1 ? 'task step' : 'task steps'}</span></div>
+      <section class="replay-list">
+        ${steps.map((step, index) => renderStep(step, index, evidenceById, lang)).join('')}
+      </section>
+
+      <div class="replay-boundary">${zh
+        ? '本页只陈述 trace 中可核验的事实。Knowledge 进入上下文、被读取或由工具返回，不代表模型实际采用了它，也不能单独证明成功或失败的原因。'
+        : 'This page only states facts observable in the trace. Knowledge being injected, read, or returned does not prove that the model used it or that it caused the outcome.'}</div>
     </main>
-    <script>
-      (function () {
-        var form = document.getElementById('knowledge-gap-form');
-        var status = document.getElementById('knowledge-gap-status');
-        if (form) form.addEventListener('submit', async function (event) {
-          event.preventDefault();
-          var submit = form.querySelector('button[type="submit"]');
-          submit.disabled = true;
-          status.textContent = ${JSON.stringify(zh ? '正在保存…' : 'Saving…')};
-          var data = new FormData(form);
-          try {
-            var response = await fetch('/api/observe-debugger/gaps', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                experienceSessionId: form.dataset.experienceSessionId,
-                gapKind: data.get('gapKind'),
-                knowledgeEvidenceId: data.get('knowledgeEvidenceId') || undefined,
-                note: data.get('note'),
-                candidateKnowledge: data.get('candidateKnowledge') || undefined
-              })
-            });
-            if (!response.ok) throw new Error(await response.text());
-            window.location.reload();
-          } catch (error) {
-            status.textContent = ${JSON.stringify(zh ? '保存失败，请重试。' : 'Save failed. Try again.')};
-            submit.disabled = false;
-          }
-        });
-        document.addEventListener('click', async function (event) {
-          var copyButton = event.target && event.target.closest ? event.target.closest('[data-copy-command]') : null;
-          if (copyButton) {
-            try {
-              await navigator.clipboard.writeText(copyButton.dataset.copyCommand);
-              copyButton.textContent = ${JSON.stringify(zh ? '已复制' : 'Copied')};
-            } catch (error) {
-              copyButton.textContent = ${JSON.stringify(zh ? '复制失败' : 'Copy failed')};
-            }
-            return;
-          }
-          var button = event.target && event.target.closest ? event.target.closest('[data-gap-id]') : null;
-          if (!button) return;
-          button.disabled = true;
-          try {
-            var response = await fetch('/api/observe-inbox/review-state?targetType=knowledge_gap&targetId=' + encodeURIComponent(button.dataset.gapId), { method: 'DELETE' });
-            if (!response.ok) throw new Error(await response.text());
-            window.location.reload();
-          } catch (error) {
-            button.disabled = false;
-          }
-        });
-      })();
-    </script>
   `, lang);
 }
 
-function renderKnowledgeEvidence(item: DebugKnowledgeEvidence, lang: Lang): string {
+function renderStep(
+  step: TaskReplayStep,
+  index: number,
+  evidenceById: Map<string, DebugKnowledgeEvidence>,
+  lang: Lang,
+): string {
   const zh = lang === 'zh';
-  return `<article class="kd-knowledge" id="${e(item.id)}">
-    <div class="kd-knowledge-top"><strong>${e(item.label)}</strong><span class="kd-access">${e(ACCESS_KIND_LABELS[item.accessKind][lang])}</span></div>
-    <div class="kd-knowledge-meta">
-      ${item.sourceLocator ? `<span>${e(item.sourceLocator)}</span>` : ''}
-      ${item.contentHash ? `<span>sha256:${e(item.contentHash.slice(0, 12))}</span>` : ''}
-      ${item.firstSeen ? `<span>${zh ? '首次：' : 'First: '}${e(formatTimestamp(item.firstSeen))}</span>` : ''}
-      ${item.lastSeen && item.lastSeen !== item.firstSeen ? `<span>${zh ? '最近：' : 'Latest: '}${e(formatTimestamp(item.lastSeen))}</span>` : ''}
-      <span>${item.accessCount} ${zh ? '次证据' : item.accessCount === 1 ? 'evidence event' : 'evidence events'}</span>
+  const evidence = step.knowledgeEvidenceIds
+    .map((id) => evidenceById.get(id))
+    .filter((item): item is DebugKnowledgeEvidence => Boolean(item));
+  const classes = [
+    step.stepKind === 'user_correction' ? 'is-correction' : '',
+    step.toolStatus === 'failure' ? 'is-failure' : '',
+  ].filter(Boolean).join(' ');
+  const title = stepTitle(step, lang, evidence);
+
+  return `<article class="replay-step ${classes}" data-index="${index + 1}">
+    <header class="replay-step-head">
+      <div class="replay-step-heading"><div class="replay-step-label">${e(STEP_LABELS[step.stepKind][lang])}</div><div class="replay-step-title">${e(title)}</div></div>
+      <div class="replay-step-meta">${step.toolStatus ? renderToolStatus(step.toolStatus, lang) : ''}${step.timestamp ? `<time>${e(formatTimestamp(step.timestamp))}</time>` : ''}</div>
+    </header>
+    <div class="replay-step-body">
+      ${step.stepKind === 'tool_exchange' ? renderToolExchange(step, lang) : `<div class="replay-message">${e(eventPreview(step.events[0], zh ? '没有可展示的事件内容。' : 'No event content available.'))}</div>`}
+      ${evidence.length > 0 ? `<div class="replay-knowledge">${evidence.map((item) => renderKnowledge(item, lang)).join('')}</div>` : ''}
+      <details class="replay-raw"><summary>${zh ? '查看原始 trace 证据' : 'View raw trace evidence'}</summary>${step.events.map((event) => `<div class="replay-raw-event" id="event-${e(event.id)}"><span>${e(event.kind)} · ${e(event.id)}${event.sourceLineIndex !== undefined ? ` · line ${event.sourceLineIndex}` : ''}</span><pre>${e(event.fullText ?? event.snippet ?? '')}</pre></div>`).join('')}</details>
     </div>
-    <div class="kd-evidence-links">${item.evidenceRefs.map((ref, index) => `<a href="#event-${e(ref.id)}">${zh ? `原始证据 ${index + 1}` : `Raw evidence ${index + 1}`}</a>`).join('')}</div>
   </article>`;
 }
 
-function sampleFromGapCommand(targetId: string, observationsDir?: string): string {
-  const dir = observationsDir ?? '.omk/observe-inbox';
-  return `omk sample --from-traces --observations-dir ${shellQuoteArg(dir)} --gap ${shellQuoteArg(targetId)}`;
+function renderToolExchange(step: TaskReplayStep, lang: Lang): string {
+  const zh = lang === 'zh';
+  const call = step.events[0];
+  const result = step.events[1];
+  return `<div class="replay-tool">
+    <div class="replay-tool-part"><strong>${zh ? '调用' : 'Call'}</strong><pre>${e(toolInputPreview(call))}</pre></div>
+    <div class="replay-tool-part"><strong>${zh ? '实际结果' : 'Observed result'}</strong><pre>${e(result ? eventPreview(result, zh ? '工具没有返回内容。' : 'The tool returned no content.') : (zh ? '当前 trace 中没有匹配到工具结果。' : 'No matching tool result in this trace.'))}</pre></div>
+  </div>`;
 }
 
-function sampleFromGapDisplayCommand(targetId: string): string {
-  return `omk sample --from-traces --gap ${shellQuoteArg(targetId)}`;
+function renderKnowledge(item: DebugKnowledgeEvidence, lang: Lang): string {
+  const source = item.sourceLocator ?? '';
+  const hash = item.contentHash ? `sha256:${item.contentHash.slice(0, 12)}` : '';
+  return `<div class="replay-knowledge-item">
+    <span class="replay-access">${e(ACCESS_LABELS[item.accessKind][lang])}</span>
+    <div class="replay-knowledge-copy"><strong>${e(item.label)}</strong>${source || hash ? `<span class="replay-knowledge-meta">${e([source, hash].filter(Boolean).join(' · '))}</span>` : ''}</div>
+  </div>`;
+}
+
+function renderToolStatus(status: NonNullable<TaskReplayStep['toolStatus']>, lang: Lang): string {
+  const labels = {
+    success: { zh: '成功', en: 'Success' },
+    failure: { zh: '失败', en: 'Failed' },
+    cancelled: { zh: '取消', en: 'Cancelled' },
+    unknown: { zh: '状态未知', en: 'Unknown' },
+  } as const;
+  return `<span class="replay-status is-${status}">${e(labels[status][lang])}</span>`;
+}
+
+function stepTitle(
+  step: TaskReplayStep,
+  lang: Lang,
+  evidence: DebugKnowledgeEvidence[],
+): string {
+  if (step.stepKind === 'runtime_context' && evidence.length > 0) {
+    return lang === 'zh' ? `${evidence.map((item) => item.label).join('、')} 进入任务上下文` : `${evidence.map((item) => item.label).join(', ')} entered task context`;
+  }
+  if (step.stepKind === 'skill_context' && evidence.length > 0) {
+    return lang === 'zh' ? `${evidence.map((item) => item.label).join('、')} 进入任务上下文` : `${evidence.map((item) => item.label).join(', ')} entered task context`;
+  }
+  if (step.stepKind === 'tool_exchange') return step.title;
+  return STEP_LABELS[step.stepKind][lang];
+}
+
+function toolInputPreview(event: TaskReplayStep['events'][number] | undefined): string {
+  if (!event) return '';
+  const text = event.fullText ?? event.snippet ?? '';
+  try {
+    const value = JSON.parse(text) as unknown;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const input = value as Record<string, unknown>;
+      for (const key of ['cmd', 'command', 'file_path', 'path', 'url', 'query']) {
+        if (typeof input[key] === 'string' && input[key]) return input[key];
+      }
+      return JSON.stringify(value, null, 2);
+    }
+  } catch {
+    // Keep the source text when the tool input is not JSON.
+  }
+  return text;
+}
+
+function eventPreview(event: TaskReplayStep['events'][number] | undefined, fallback: string): string {
+  return event?.fullText?.trim() || event?.snippet?.trim() || fallback;
 }
 
 function formatTimestamp(value: string): string {
   return value.slice(0, 19).replace('T', ' ');
+}
+
+function formatRange(start?: string, end?: string): string {
+  if (!start && !end) return '';
+  if (!start) return formatTimestamp(end ?? '');
+  if (!end) return formatTimestamp(start);
+  return `${formatTimestamp(start)} → ${formatTimestamp(end)}`;
 }

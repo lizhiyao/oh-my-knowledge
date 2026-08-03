@@ -183,7 +183,6 @@ export interface SampleFlags {
   'from-traces': boolean;
   'observations-dir'?: string;
   skill?: string;
-  gap?: string;
 }
 
 // ── eval gold(3 sub-sub) ─────────────────────────────────────────────────────

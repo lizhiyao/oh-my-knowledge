@@ -26,20 +26,7 @@ import { hashSample } from '../../eval-core/evaluation-reporting.js';
 import { hashArtifactSource } from '../../inputs/content-hash.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
-import type {
-  DebugKnowledgeEvidence,
-  ExperienceSessionSummary,
-  ExperienceTimelineEvent,
-  ObservationMessageRef,
-  ObservationMessageWindow,
-  ObservationReviewStateEntry,
-  Report,
-  Sample as SampleType,
-} from '../../types/index.js';
-import type {
-  GenerateSamplesFromTracesOptions,
-  TraceDraftSource,
-} from '../../authoring/generator.js';
+import type { Report, Sample as SampleType } from '../../types/index.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {
@@ -58,74 +45,6 @@ export function sampleNextEvalCommand(
 ): string {
   const treatmentPath = resolved.isDirectorySkill ? resolved.skillDir : resolved.skillPath;
   return `omk eval --control baseline --treatment ${shellQuoteArg(userFacingPath(treatmentPath))}`;
-}
-
-function knowledgeGapDraftSource(
-  gap: ObservationReviewStateEntry,
-  session: ExperienceSessionSummary,
-  linkedEvidence?: DebugKnowledgeEvidence,
-): TraceDraftSource {
-  const evidenceRef = linkedEvidence?.evidenceRefs[0];
-  const anchor = evidenceRef
-    ? session.fullSessionTimeline.find((event) => event.id === evidenceRef.id)
-    : undefined;
-  const messageWindow = knowledgeGapMessageWindow(session.fullSessionTimeline, anchor);
-  const lastAssistant = [...session.fullSessionTimeline]
-    .reverse()
-    .find((event) => event.kind === 'assistant_message');
-  return {
-    sourceType: 'knowledge_gap',
-    sourceId: gap.targetId,
-    skillName: session.skillName,
-    severity: 'high',
-    evidence: {
-      traceId: evidenceRef?.traceId,
-      sessionId: session.sessionId,
-      sourceTrace: evidenceRef?.sourceTrace ?? session.sourceTrace,
-      sourceKind: session.sourceKind,
-      path: linkedEvidence?.sourceLocator,
-      outputSnippet: evidenceRef?.snippet,
-      assistantSnippet: lastAssistant?.snippet,
-      messageIndex: evidenceRef?.messageIndex,
-      messageUuid: evidenceRef?.messageUuid,
-      callInstanceId: evidenceRef?.callInstanceId,
-      toolUseId: evidenceRef?.toolUseId,
-    },
-    messageWindow,
-    occurrences: 1,
-    gapKind: gap.gapKind,
-    diagnosisNote: gap.note,
-    candidateKnowledge: gap.candidateKnowledge,
-    experienceSessionId: session.id,
-    knowledgeEvidenceId: gap.knowledgeEvidenceId,
-    traceId: evidenceRef?.traceId,
-    sourceTrace: evidenceRef?.sourceTrace ?? session.sourceTrace,
-  };
-}
-
-function knowledgeGapMessageWindow(
-  timeline: ExperienceTimelineEvent[],
-  anchor?: ExperienceTimelineEvent,
-): ObservationMessageWindow | undefined {
-  const contextEvents = timeline.filter((event) => (
-    event.id === anchor?.id
-    || (event.kind !== 'runtime_context' && event.kind !== 'skill_context')
-  ) && Boolean(event.snippet ?? event.fullText));
-  if (contextEvents.length === 0) return undefined;
-  const anchorOrder = anchor?.order ?? contextEvents[contextEvents.length - 1].order;
-  const toMessageRef = (event: ExperienceTimelineEvent): ObservationMessageRef => ({
-    role: event.role === 'user' || event.role === 'assistant' ? event.role : 'other',
-    snippet: (event.snippet ?? event.fullText ?? '').slice(0, 500),
-    messageIndex: event.messageIndex ?? event.order,
-    uuid: event.messageUuid,
-    timestamp: event.timestamp,
-  });
-  const before = contextEvents.filter((event) => event.order < anchorOrder).slice(-3).map(toMessageRef);
-  const event = anchor
-    ? contextEvents.filter((candidate) => candidate.id === anchor.id).map(toMessageRef)
-    : contextEvents.filter((candidate) => candidate.order === anchorOrder).slice(-1).map(toMessageRef);
-  const after = contextEvents.filter((candidate) => candidate.order > anchorOrder).slice(0, 4).map(toMessageRef);
-  return { before, event, after, resolutionAfter: 'unknown' };
 }
 
 /** --append 合并:已有用例原样保留,新用例逐条接在后面;sample_id 撞已有(或本批已用)时
@@ -475,15 +394,9 @@ async function runSampleFix(
 export async function runSampleFromTraces(
   flags: SampleFlags,
   lang: CliLang,
-  dependencies: {
-    generateSamplesFromTraces?: (
-      options: GenerateSamplesFromTracesOptions,
-    ) => Promise<{ samples: SampleType[]; costUSD: number }>;
-  } = {},
 ): Promise<void> {
   const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
-  const generateSamplesFromTraces = dependencies.generateSamplesFromTraces
-    ?? (await import('../../authoring/generator.js')).generateSamplesFromTraces;
+  const { generateSamplesFromTraces } = await import('../../authoring/generator.js');
   const model = flags.model;
   const executorName = flags.executor;
   if (!model || !executorName) {
@@ -498,55 +411,11 @@ export async function runSampleFromTraces(
     throw new CliExit(1);
   }
 
-  let items: TraceDraftSource[];
-  if (flags.gap) {
-    const { buildObservationInboxViewModel } = await import('../../observability/inbox-view-model.js');
-    const { buildKnowledgeDebuggerViewModel } = await import('../../observability/knowledge-debugger.js');
-    const { loadObservationReviewState, observationReviewStateKey } = await import('../../observability/review-state.js');
-    const targetId = flags.gap.startsWith('knowledge_gap:')
-      ? flags.gap.slice('knowledge_gap:'.length)
-      : flags.gap;
-    const gap = loadObservationReviewState(obsDir).entries[observationReviewStateKey('knowledge_gap', targetId)];
-    if (!gap) {
-      console.error(lang === 'zh'
-        ? `Knowledge Gap 不存在：${flags.gap}`
-        : `Knowledge Gap not found: ${flags.gap}`);
-      throw new CliExit(1);
-    }
-    const inbox = buildObservationInboxViewModel(obsDir);
-    const session = inbox.experienceReports
-      .flatMap((report) => report.sessions)
-      .find((candidate) => candidate.id === gap.experienceSessionId);
-    if (!session) {
-      console.error(lang === 'zh'
-        ? `Knowledge Gap 关联的观测会话不存在：${gap.experienceSessionId ?? '—'}`
-        : `The observation session linked to the Knowledge Gap was not found: ${gap.experienceSessionId ?? '—'}`);
-      throw new CliExit(1);
-    }
-    if (flags.skill && flags.skill !== session.skillName) {
-      console.error(lang === 'zh'
-        ? `Knowledge Gap 属于 ${session.skillName}，与 --skill ${flags.skill} 不一致。`
-        : `The Knowledge Gap belongs to ${session.skillName}, not --skill ${flags.skill}.`);
-      throw new CliExit(1);
-    }
-    const debuggerModel = buildKnowledgeDebuggerViewModel(session, inbox.reviewState, obsDir);
-    const linkedEvidence = gap.knowledgeEvidenceId
-      ? debuggerModel.knowledgeEvidence.find((item) => item.id === gap.knowledgeEvidenceId)
-      : undefined;
-    items = [knowledgeGapDraftSource(gap, session, linkedEvidence)];
-  } else {
-    // Drop noise-tier signals up front: they're exactly what the generator is told to
-    // skip, so filtering here avoids feeding junk to the LLM and keeps the no-op path clean.
-    items = queryObservationInbox(obsDir)
-      .filter((item) => item.severity !== 'noise')
-      .filter((item) => !flags.skill || item.skillName === flags.skill)
-      .map((item) => ({
-        ...item,
-        sourceType: 'observation_signal',
-        sourceId: item.id,
-        traceId: item.traceId,
-        sourceTrace: item.sourceTrace,
-      }));
+  // Drop noise-tier signals up front: they're exactly what the generator is told to
+  // skip, so filtering here avoids feeding junk to the LLM and keeps the no-op path clean.
+  let items = queryObservationInbox(obsDir).filter((it) => it.severity !== 'noise');
+  if (flags.skill) {
+    items = items.filter((it) => it.skillName === flags.skill);
   }
   if (items.length === 0) {
     process.stderr.write(lang === 'zh'
@@ -565,12 +434,8 @@ export async function runSampleFromTraces(
 
   const count: number | undefined = flags.count !== undefined ? Math.max(1, Number(flags.count) || 5) : undefined;
   process.stderr.write(lang === 'zh'
-    ? flags.gap
-      ? `🔭 正在从 Knowledge Gap ${flags.gap} 生成关联评测用例草稿...\n`
-      : `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成评测用例草稿...\n`
-    : flags.gap
-      ? `🔭 Generating linked eval-sample drafts from Knowledge Gap ${flags.gap}...\n`
-      : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
+    ? `🔭 发现 ${items.length} 个${flags.skill ? ` ${flags.skill} 的` : ''}失败信号，正在生成评测用例草稿...\n`
+    : `🔭 Found ${items.length}${flags.skill ? ` ${flags.skill}` : ''} failure signal(s); generating regression-sample drafts...\n`);
 
   try {
     const { samples, costUSD } = await generateSamplesFromTraces({
@@ -592,12 +457,8 @@ export async function runSampleFromTraces(
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify(samples, null, 2));
     process.stderr.write(lang === 'zh'
-      ? flags.gap
-        ? `\n✅ 生成 ${samples.length} 条关联草稿 → ${outPath}（已保留 Gap / trace 来源）${cost}\n   ⚠️ 用户诊断不是受控结论。请人工 review 草稿，再通过 doctor → eval 验证候选 knowledge。\n`
-        : `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
-      : flags.gap
-        ? `\n✅ Generated ${samples.length} linked draft(s) → ${outPath} (Gap / trace provenance retained)${cost}\n   ⚠️ A user diagnosis is not controlled evidence. Review the drafts, then validate candidate knowledge through doctor → eval.\n`
-        : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
+      ? `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
+      : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
     const message = (err as Error).message;
@@ -614,10 +475,6 @@ async function runSample(
 ): Promise<void> {
   if (flags.skill && !flags['from-traces']) {
     console.error(lang === 'zh' ? '--skill 仅支持 --from-traces 模式。' : '--skill is only supported with --from-traces.');
-    throw new CliExit(2);
-  }
-  if (flags.gap && !flags['from-traces']) {
-    console.error(lang === 'zh' ? '--gap 仅支持 --from-traces 模式。' : '--gap is only supported with --from-traces.');
     throw new CliExit(2);
   }
   // --append 目前只在单 skill 生成路径实现;batch / from-traces / fix 不处理它,
@@ -831,13 +688,6 @@ export default class Sample extends BaseCommand {
       }),
       command: '<%= config.bin %> sample --from-traces',
     },
-    {
-      description: bilingual({
-        zh: '从一个人工确认的 Knowledge Gap 生成关联草稿',
-        en: 'Generate linked drafts from one human-confirmed Knowledge Gap',
-      }),
-      command: '<%= config.bin %> sample --from-traces --gap knowledge-gap:<id>',
-    },
   ];
 
   static args = {
@@ -926,8 +776,8 @@ export default class Sample extends BaseCommand {
     }),
     'from-traces': Flags.boolean({
       description: bilingual({
-        zh: 'from-traces 模式：从 observe inbox 的失败信号或人工确认的 Knowledge Gap 回流生成评测用例草稿，落草稿待人工 review。',
-        en: 'from-traces mode: recycle observe-inbox failure signals or a confirmed Knowledge Gap into linked eval-sample drafts for review.',
+        zh: 'from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。',
+        en: 'from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.',
       }),
       default: false,
     }),
@@ -941,12 +791,6 @@ export default class Sample extends BaseCommand {
       description: bilingual({
         zh: '仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。',
         en: 'Only draft from observe-inbox signals for the specified skill (from-traces mode only).',
-      }),
-    }),
-    gap: Flags.string({
-      description: bilingual({
-        zh: '仅从指定 Knowledge Gap 生成关联草稿（仅 from-traces 模式用）。',
-        en: 'Generate linked drafts from one Knowledge Gap (from-traces mode only).',
       }),
     }),
   };

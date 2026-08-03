@@ -44,7 +44,6 @@ export type ObservationReviewTargetType =
   | 'experience_session'
   | 'inbox_item'
   | 'skill'
-  | 'knowledge_gap'
   | 'goal_slice_correction'
   | 'evidence_metric'
   | 'reviewer_judgment'
@@ -58,7 +57,6 @@ export type ObservationReviewTargetType =
   | 'hardrule_execution_correction'
   | 'main_tool_execution_correction';
 export type ObservationReviewVerdict = 'reviewed' | 'real_issue' | 'not_issue' | 'needs_more_context' | 'confirmed' | 'rejected';
-export type KnowledgeGapKind = 'missing' | 'stale' | 'conflicting' | 'out_of_scope';
 export type ObservationMetricKey =
   | 'user_correction'
   | 'user_interruption'
@@ -93,15 +91,11 @@ export interface ObservationReviewStateEntry {
   callInstanceId?: string;
   toolUseId?: string;
   snippet?: string;
-  gapKind?: KnowledgeGapKind;
-  knowledgeEvidenceId?: string;
-  experienceSessionId?: string;
-  candidateKnowledge?: string;
 }
 
 export interface ObservationReviewState {
   kind: 'observe-review-state';
-  schemaVersion: 2 | 3;
+  schemaVersion: 2;
   updatedAt: string;
   entries: Record<string, ObservationReviewStateEntry>;
 }
@@ -123,10 +117,6 @@ export interface ObservationReviewStateUpdate {
   callInstanceId?: string;
   toolUseId?: string;
   snippet?: string;
-  gapKind?: KnowledgeGapKind;
-  knowledgeEvidenceId?: string;
-  experienceSessionId?: string;
-  candidateKnowledge?: string;
 }
 
 // ---------- problem-patterns ----------
@@ -482,6 +472,78 @@ export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
   toolStatus?: ToolCallStatus;
   isError?: boolean;
   fullText?: string;
+}
+
+// ---------- Knowledge Debugger task replay ----------
+
+export type DebugKnowledgeKind = 'project_instruction' | 'skill' | 'runtime_evidence';
+export type DebugKnowledgeAccessKind = 'injected' | 'read' | 'returned';
+export type TaskReplayStepKind =
+  | 'user_request'
+  | 'user_message'
+  | 'user_correction'
+  | 'runtime_context'
+  | 'skill_context'
+  | 'tool_exchange'
+  | 'unmatched_tool_result'
+  | 'assistant_message'
+  | 'observation'
+  | 'system_event';
+export type TaskReplayIntegrityCode =
+  | 'timeline_truncated'
+  | 'malformed_records'
+  | 'ignored_values'
+  | 'unknown_events'
+  | 'unmatched_tool_calls'
+  | 'unmatched_tool_results'
+  | 'missing_timestamps';
+
+export interface DebugKnowledgeEvidence {
+  id: string;
+  knowledgeKind: DebugKnowledgeKind;
+  accessKind: DebugKnowledgeAccessKind;
+  label: string;
+  sourceLocator?: string;
+  contentHash?: string;
+  firstSeen?: string;
+  lastSeen?: string;
+  accessCount: number;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface TaskReplayStep {
+  id: string;
+  order: number;
+  stepKind: TaskReplayStepKind;
+  timestamp?: string;
+  title: string;
+  events: ExperienceTimelineEvent[];
+  toolStatus?: ToolCallStatus;
+  knowledgeEvidenceIds: string[];
+}
+
+export interface TaskReplayIntegrityNotice {
+  code: TaskReplayIntegrityCode;
+  count: number;
+}
+
+export interface KnowledgeDebuggerViewModel {
+  session: ExperienceSessionSummary;
+  summary: {
+    userGoal?: string;
+    finalResponse?: string;
+    observedStartTimestamp?: string;
+    observedEndTimestamp?: string;
+    toolCallCount: number;
+    toolFailureCount: number;
+    hasUserCorrection: boolean;
+  };
+  steps: TaskReplayStep[];
+  knowledgeEvidence: DebugKnowledgeEvidence[];
+  integrity: {
+    status: 'complete' | 'partial';
+    notices: TaskReplayIntegrityNotice[];
+  };
 }
 
 export interface ExperienceTimelineBranch {
@@ -1011,38 +1073,6 @@ export interface ExperienceSessionSummary {
   commandNames: string[];
   sessionStory?: ExperienceSessionStory;
   reviewerReport?: ExperienceReviewerReport;
-}
-
-// ---------- knowledge debugger ----------
-
-export type DebugKnowledgeKind =
-  | 'project_instruction'
-  | 'skill'
-  | 'runtime_evidence';
-
-export type DebugKnowledgeAccessKind =
-  | 'injected'
-  | 'read'
-  | 'returned';
-
-export interface DebugKnowledgeEvidence {
-  id: string;
-  knowledgeKind: DebugKnowledgeKind;
-  accessKind: DebugKnowledgeAccessKind;
-  label: string;
-  sourceLocator?: string;
-  contentHash?: string;
-  firstSeen?: string;
-  lastSeen?: string;
-  accessCount: number;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface KnowledgeDebuggerViewModel {
-  session: ExperienceSessionSummary;
-  knowledgeEvidence: DebugKnowledgeEvidence[];
-  knowledgeGaps: ObservationReviewStateEntry[];
-  observationsDir?: string;
 }
 
 export interface ExperienceSkillSummary {

@@ -49,17 +49,21 @@ omk observe show <inbox_id>
 
 两条工作流都会持久化摄取摘要。源数据包含格式损坏记录、不是对象的合法 JSON 值，或当前 adapter 无法识别的事件时，CLI 与 Studio 会显示完整性提示。把「没有发现信号」解释成「没有问题」之前，应先复核这项提示。运行时守护会话属于有意过滤，会单独计数。
 
+## 重放一次任务
+
+完成 `omk observe ingest` 后，启动 `omk studio`，从观测收件箱的一次任务进入「任务重放」。页面基于 source-neutral Trace IR 依次呈现：
+
+- 用户最初要求；
+- 进入任务的运行时上下文和 Knowledge；
+- 配对后的工具调用与实际结果；
+- AI 回答与用户后续纠正；
+- trace 截断、损坏记录、未识别事件和工具结果失配等完整性提示。
+
+任务重放只陈述 trace 中可核验的事实。Knowledge 进入上下文、被读取或由工具返回，不代表模型实际采用了它，也不能单独证明任务结果的原因。
+
 ## 把 observation 变成用例
 
-在 Studio 的观测收件箱中打开一次任务的「调试 Knowledge」，可以沿时间线查看当时进入上下文、被读取或由工具返回的 knowledge，并人工记录缺失、过时、冲突或范围不适用。这个 Gap 是用户诊断，不是系统已经证明的根因。
-
-记录 Gap 后，页面会给出一条精确回流命令：
-
-```bash
-omk sample --from-traces --gap knowledge-gap:<id>
-```
-
-生成的草稿会保留 Gap、观测会话、knowledge 证据与原始 trace 的 `sourceRefs`。如果不指定 Gap，仍可从 observe inbox 的全部失败信号生成草稿：
+observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --from-traces` 能从这些信号草拟评测用例——把 observe → eval 的闭环合上。
 
 这个命令会通过你配置的 executor 和 model 调用 sample 生成器，因此 trace 派生证据会发送给该模型，也可能产生生成成本：
 
@@ -67,7 +71,7 @@ omk sample --from-traces --gap knowledge-gap:<id>
 omk sample --from-traces
 ```
 
-它会写 `.omk/observe-inbox/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件，最后通过 `doctor → eval` 判断候选 knowledge 是否真的改善结果。
+它会写 `.omk/observe-inbox/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件。
 
 ## 相关
 

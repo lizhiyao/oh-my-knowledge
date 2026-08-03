@@ -27,11 +27,6 @@ samples:
     difficulty: easy                    # 'easy' | 'medium' | 'hard' (strict enum, typo-proof)
     construct: necessity                # 'necessity' | 'quality' | 'capability' suggested, custom string allowed
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
-    sourceRefs:                         # structured from-traces provenance; never enters grading
-      - sourceType: knowledge_gap
-        sourceId: knowledge-gap:release-gate
-        experienceSessionId: experience:release-session
-        sourceTrace: /traces/codex.jsonl
     covers:                             # optional declared structure anchors for Skill Map
       - targetKind: reference
         ref: references/chart-api.md
@@ -49,7 +44,6 @@ samples:
   - `capability`: measures the difference along one concrete capability dimension.
   Custom strings are allowed (e.g. `regression-test` / `cost-efficiency`); the studio won't error on a custom value.
 - **provenance** (enum): data source. `human` (hand-curated) / `llm-generated` (auto-injected by `omk sample`) / `production-trace` (sampled from production traces, which you import yourself).
-- **sourceRefs** (`SampleSourceRef[]`): structured provenance written by `omk sample --from-traces`. `sourceType` distinguishes an observation signal from a user-confirmed Knowledge Gap and can retain the concrete source ID, observed session, knowledge evidence, and original trace. It answers only “where did this draft come from”; it does not prove causality and never enters grading.
 - **covers** (`{ targetKind, ref }[]`): optional declared skill-structure anchors this sample is intended to exercise. This is the structural sibling of `capability`: capability says which ability dimension is tested; covers says which concrete SKILL.md node, reference, script, hard rule, workflow, or workflow node the sample is meant to exercise. Studio uses it to show declared vs undeclared structure edges in Skill Map. It is not inferred from prompt text, and omitting it means "not declared yet", not "not tested".
 
 ### Never enters grading / judge / verdict
@@ -210,12 +204,11 @@ omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / 
 
 ### 6.3 v2 schema-extension candidates & rejection list
 
-The initial schema kept four measurement-validity fields (capability / difficulty / construct / provenance) that answer *does this sample measure what it claims to measure?* `covers` extends that same diagnostic-only philosophy to the structural axis: *which concrete skill nodes does the author declare this sample is intended to exercise?* Another common community ask sits on the **asset-governance** axis: tags / risk_level / expected_facts / owner — answering *who owns this sample, where it came from, how important it is.* The axes are orthogonal and don't conflict, but governance assumes measurement is already solid; v1 chose to solve measurement first. This section records the v2 candidates and the rejection list so future decisions don't re-litigate them.
-
-Concrete provenance has since shipped with Knowledge Debugger as structured `sourceRefs`, replacing the earlier flat `source_ids` idea. It preserves the Gap / observation, session, knowledge-evidence, and trace relationship while explicitly avoiding causal claims.
+The initial schema kept four measurement-validity fields (capability / difficulty / construct / provenance) that answer *does this sample measure what it claims to measure?* `covers` extends that same diagnostic-only philosophy to the structural axis: *which concrete skill nodes does the author declare this sample is intended to exercise?* Another common community ask sits on the **asset-governance** axis: tags / risk_level / expected_facts / source_ids / owner — answering *who owns this sample, where it came from, how important it is.* The axes are orthogonal and don't conflict, but governance assumes measurement is already solid; v1 chose to solve measurement first. This section records the v2 candidates and the rejection list so future decisions don't re-litigate them.
 
 **v2 candidates (high-value, low-risk; add when real user demand triggers it)**
 
+- **`source_ids?: string[]`**: concrete source identifiers (`issue-123` / `doc:react-charts.md#line-chart` / `slack-thread-...`). Fills the gap that the `provenance` enum is too coarse — provenance answers "machine / human / production", source_ids answers "which specific issue / doc section". High debug value (traceable sample origin), documentation-only, never enters grading. Cost: link rot is the user's to manage.
 - **`status?: 'active' | 'deprecated' | 'superseded'`**: a lifecycle field. As a sample set evolves, knowing whether a sample is "primary" or "being retired" matters for verdict interpretation — a `deprecated` sample still runs but its Δ shouldn't count toward the headline conclusion. More important than `owner`.
 
 **Rejected (with reasons, to avoid re-litigating)**

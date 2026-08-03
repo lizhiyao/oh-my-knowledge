@@ -1,21 +1,15 @@
 import { createHash } from 'node:crypto';
 import type {
-  DebugKnowledgeAccessKind,
   DebugKnowledgeEvidence,
-  DebugKnowledgeKind,
   ExperienceEvidenceRef,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
   KnowledgeDebuggerViewModel,
-  ObservationReviewState,
+  TaskReplayIntegrityNotice,
+  TaskReplayStep,
+  TaskReplayStepKind,
+  TraceIngestionSummary,
 } from '../types/index.js';
-
-export type {
-  DebugKnowledgeAccessKind,
-  DebugKnowledgeEvidence,
-  DebugKnowledgeKind,
-  KnowledgeDebuggerViewModel,
-};
 
 interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'accessCount' | 'evidenceRefs'> {
   evidenceRef: ExperienceEvidenceRef;
@@ -27,19 +21,95 @@ const MUTATING_TOOL_RE = /(?:^|[._-])(write|edit|delete|remove|move|rename|apply
 
 export function buildKnowledgeDebuggerViewModel(
   session: ExperienceSessionSummary,
-  reviewState?: ObservationReviewState,
-  observationsDir?: string,
+  ingestion?: TraceIngestionSummary,
 ): KnowledgeDebuggerViewModel {
+  const timeline = [...session.fullSessionTimeline].sort((a, b) => a.order - b.order);
+  const knowledgeEvidence = projectKnowledgeEvidence(timeline);
+  const steps = buildTaskReplaySteps(session, timeline, knowledgeEvidence);
+  const notices = buildIntegrityNotices(session, timeline, steps, ingestion);
+  const userEvents = timeline.filter((event) => event.kind === 'user_message');
+  const assistantEvents = timeline.filter((event) => event.kind === 'assistant_message');
+
   return {
     session,
-    observationsDir,
-    knowledgeEvidence: projectKnowledgeEvidence(session.fullSessionTimeline),
-    knowledgeGaps: reviewState
-      ? Object.values(reviewState.entries)
-        .filter((entry) => entry.targetType === 'knowledge_gap' && entry.experienceSessionId === session.id)
-        .sort((a, b) => b.reviewedAt.localeCompare(a.reviewedAt))
-      : [],
+    summary: {
+      userGoal: eventText(userEvents[0]),
+      finalResponse: eventText(assistantEvents.at(-1)),
+      observedStartTimestamp: timeline.find((event) => event.timestamp)?.timestamp,
+      observedEndTimestamp: [...timeline].reverse().find((event) => event.timestamp)?.timestamp,
+      toolCallCount: steps.filter((step) => step.stepKind === 'tool_exchange').length,
+      toolFailureCount: steps.filter((step) => step.stepKind === 'tool_exchange' && step.toolStatus === 'failure').length,
+      hasUserCorrection: steps.some((step) => step.stepKind === 'user_correction'),
+    },
+    steps,
+    knowledgeEvidence,
+    integrity: {
+      status: notices.length > 0 ? 'partial' : 'complete',
+      notices,
+    },
   };
+}
+
+export function buildTaskReplaySteps(
+  session: ExperienceSessionSummary,
+  timeline: ExperienceTimelineEvent[],
+  knowledgeEvidence: DebugKnowledgeEvidence[],
+): TaskReplayStep[] {
+  const sorted = [...timeline].sort((a, b) => a.order - b.order);
+  const resultsByCall = new Map<string, ExperienceTimelineEvent[]>();
+  const matchedResultIds = new Set<string>();
+  const knowledgeIdsByEvent = knowledgeEvidence.reduce((map, evidence) => {
+    for (const ref of evidence.evidenceRefs) {
+      map.set(ref.id, [...(map.get(ref.id) ?? []), evidence.id]);
+    }
+    return map;
+  }, new Map<string, string[]>());
+  const correctionIds = correctionEventIds(session, sorted);
+
+  for (const event of sorted) {
+    if (event.kind !== 'tool_result') continue;
+    const key = toolCorrelationKey(event);
+    resultsByCall.set(key, [...(resultsByCall.get(key) ?? []), event]);
+  }
+
+  const steps: TaskReplayStep[] = [];
+  let sawUserRequest = false;
+  for (const event of sorted) {
+    if (event.kind === 'tool_result' && matchedResultIds.has(event.id)) continue;
+
+    if (event.kind === 'tool_use') {
+      const result = resultsByCall.get(toolCorrelationKey(event))?.find((item) => !matchedResultIds.has(item.id));
+      if (result) matchedResultIds.add(result.id);
+      const events = result ? [event, result] : [event];
+      steps.push({
+        id: `step:${event.id}`,
+        order: event.order,
+        stepKind: 'tool_exchange',
+        timestamp: event.timestamp,
+        title: event.toolName ?? event.label ?? 'Tool call',
+        events,
+        toolStatus: result?.toolStatus ?? (result?.isError ? 'failure' : event.toolStatus ?? 'unknown'),
+        knowledgeEvidenceIds: knowledgeIdsForEvents(events, knowledgeIdsByEvent),
+      });
+      continue;
+    }
+
+    const stepKind = stepKindForEvent(event, sawUserRequest, correctionIds);
+    if (event.kind === 'user_message' && !sawUserRequest) sawUserRequest = true;
+    steps.push({
+      id: `step:${event.id}`,
+      order: event.order,
+      stepKind,
+      timestamp: event.timestamp,
+      title: event.toolName ?? event.label ?? event.kind,
+      events: [event],
+      ...(event.kind === 'tool_result'
+        ? { toolStatus: event.toolStatus ?? (event.isError ? 'failure' : 'unknown') }
+        : {}),
+      knowledgeEvidenceIds: knowledgeIdsForEvents([event], knowledgeIdsByEvent),
+    });
+  }
+  return steps;
 }
 
 export function projectKnowledgeEvidence(
@@ -129,6 +199,75 @@ export function projectKnowledgeEvidence(
   return aggregateCandidates(candidates);
 }
 
+function buildIntegrityNotices(
+  session: ExperienceSessionSummary,
+  timeline: ExperienceTimelineEvent[],
+  steps: TaskReplayStep[],
+  ingestion?: TraceIngestionSummary,
+): TaskReplayIntegrityNotice[] {
+  const notices: TaskReplayIntegrityNotice[] = [];
+  if (session.timelineScope.truncated) notices.push({ code: 'timeline_truncated', count: 1 });
+  if (ingestion?.malformedRecordCount) notices.push({ code: 'malformed_records', count: ingestion.malformedRecordCount });
+  if (ingestion?.ignoredValueCount) notices.push({ code: 'ignored_values', count: ingestion.ignoredValueCount });
+  if (ingestion?.unknownEventCount) notices.push({ code: 'unknown_events', count: ingestion.unknownEventCount });
+  const unmatchedCalls = steps.filter((step) => step.stepKind === 'tool_exchange' && step.events.length === 1).length;
+  if (unmatchedCalls > 0) notices.push({ code: 'unmatched_tool_calls', count: unmatchedCalls });
+  const unmatchedResults = steps.filter((step) => step.stepKind === 'unmatched_tool_result').length;
+  if (unmatchedResults > 0) notices.push({ code: 'unmatched_tool_results', count: unmatchedResults });
+  const missingTimestamps = timeline.filter((event) => !event.timestamp).length;
+  if (missingTimestamps > 0) notices.push({ code: 'missing_timestamps', count: missingTimestamps });
+  return notices;
+}
+
+function correctionEventIds(
+  session: ExperienceSessionSummary,
+  timeline: ExperienceTimelineEvent[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const episode of session.sessionStory?.episodes ?? []) {
+    for (const signal of episode.feedbackSignals) {
+      if (signal.type === 'correction' || signal.type === 'frustration' || signal.type === 'interruption') {
+        ids.add(signal.evidenceRef.id);
+      }
+    }
+  }
+  if (ids.size > 0 || session.indicators.userCorrectionCount === 0) return ids;
+
+  const lastAssistantOrder = Math.max(
+    -1,
+    ...timeline.filter((event) => event.kind === 'assistant_message').map((event) => event.order),
+  );
+  const correctionCandidates = timeline
+    .filter((event) => event.kind === 'user_message' && event.order > lastAssistantOrder)
+    .slice(-session.indicators.userCorrectionCount);
+  for (const event of correctionCandidates) ids.add(event.id);
+  return ids;
+}
+
+function stepKindForEvent(
+  event: ExperienceTimelineEvent,
+  sawUserRequest: boolean,
+  correctionIds: Set<string>,
+): TaskReplayStepKind {
+  if (event.kind === 'user_message') {
+    if (correctionIds.has(event.id)) return 'user_correction';
+    return sawUserRequest ? 'user_message' : 'user_request';
+  }
+  if (event.kind === 'assistant_message') return 'assistant_message';
+  if (event.kind === 'runtime_context') return 'runtime_context';
+  if (event.kind === 'skill_context') return 'skill_context';
+  if (event.kind === 'tool_result') return 'unmatched_tool_result';
+  if (event.kind === 'observation') return 'observation';
+  return 'system_event';
+}
+
+function knowledgeIdsForEvents(
+  events: ExperienceTimelineEvent[],
+  knowledgeIdsByEvent: Map<string, string[]>,
+): string[] {
+  return [...new Set(events.flatMap((event) => knowledgeIdsByEvent.get(event.id) ?? []))];
+}
+
 function aggregateCandidates(candidates: DebugKnowledgeCandidate[]): DebugKnowledgeEvidence[] {
   const aggregated = new Map<string, DebugKnowledgeEvidence>();
   for (const candidate of candidates) {
@@ -189,6 +328,11 @@ function sourceLocator(inputText: string): string | undefined {
     if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 500);
   }
   return undefined;
+}
+
+function eventText(event: ExperienceTimelineEvent | undefined): string | undefined {
+  const text = event?.fullText ?? event?.snippet;
+  return text?.trim() || undefined;
 }
 
 function contentHash(value: string): string {

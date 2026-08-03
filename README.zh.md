@@ -28,8 +28,8 @@
 | v2 是否真的优于 v1？ | `omk eval` | 一行 verdict、置信区间、失败样本、成本 |
 | 它为什么通过或失败？ | `omk studio` | 分数、诊断、样本证据的报告视图 |
 | 这个版本是否应成为接受版本？ | `omk promote` / `omk evolve` | 基于证据接受，或生成更好的候选版 |
-| 这次 AI 当时获得了什么、缺了什么？ | `omk observe` / `omk studio` | 任务时间线、knowledge 来源与人工确认的 Gap |
-| 这个 Gap 能否变成可验证用例？ | `omk sample --from-traces --gap <id>` | 保留 Gap / trace 来源的待复核评测草稿 |
+| 一次真实 AI 任务中发生了什么？ | `omk observe` / Studio 任务重放 | 请求、上下文、Knowledge、工具行为、回答与用户纠正的可核验时间线 |
+| 真实使用暴露了哪些知识缺口？ | `omk observe` / `omk sample --from-traces` | 将线上缺口生成待复核草稿，复核后再沉淀为评测样本 |
 
 ![omk 报告 — verdict pill「v2 明显优于 v1，可以发布」](./assets/screenshots/report-overview-zh.png)
 
@@ -73,10 +73,10 @@ OMK 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判�
 → 用相同模型、相同评测用例跑 omk eval
 → 看 report / Studio 里的证据
 → 证据足够则 promote，证据不足则 evolve 候选版
-→ observe 真实使用，用 Knowledge Debugger 定位 Gap，再生成待复核评测草稿
+→ observe 真实使用，把缺口生成待复核评测草稿
 ```
 
-第一价值是发布前的 `doctor → eval` 判断。长期价值是闭环：`observe` 记录真实使用，Knowledge Debugger 让人沿一次任务确认 Gap，`sample --from-traces --gap <id>` 再生成保留来源关系的评测草稿。复核后的草稿沉淀为固定评测样本，下一次 `eval` 就更难被偶然样本骗过。
+第一价值是发布前的 `doctor → eval` 判断。长期价值是闭环：`observe` 暴露真实使用里的知识缺口，`sample --from-traces` 先生成待人工复核的评测用例草稿，复核后的草稿再沉淀为固定评测样本，下一次 `eval` 就更难被偶然样本骗过。
 
 ## 在 AI Coding Agent 中使用
 

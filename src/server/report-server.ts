@@ -1,5 +1,4 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
-import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -1014,82 +1013,22 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         let experienceSessionId = '';
         try { experienceSessionId = decodeURIComponent(knowledgeDebuggerMatch[1]); } catch { /* invalid path */ }
         const inbox = buildObservationInboxViewModel(observationsDir);
-        const session = inbox.experienceReports
-          .flatMap((report) => report.sessions)
-          .find((candidate) => candidate.id === experienceSessionId);
+        const report = inbox.reports.find((candidate) =>
+          candidate.experience?.sessions.some((session) => session.id === experienceSessionId)
+        );
+        const session = report?.experience?.sessions.find((candidate) => candidate.id === experienceSessionId);
         if (!session) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
           return;
         }
+        const ingestion = report?.meta.ingestion;
         const html = renderKnowledgeDebuggerPage(
-          buildKnowledgeDebuggerViewModel(session, inbox.reviewState, observationsDir),
+          buildKnowledgeDebuggerViewModel(session, ingestion),
           lang,
         );
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
-        return;
-      }
-
-      if (path === '/api/observe-debugger/gaps' && req.method === 'POST') {
-        assertTrustedMutationRequest(req);
-        const body = await readJsonObjectBody(req);
-        const experienceSessionId = body.experienceSessionId;
-        const note = body.note;
-        const knowledgeEvidenceId = body.knowledgeEvidenceId;
-        const candidateKnowledge = body.candidateKnowledge;
-        if (typeof experienceSessionId !== 'string' || experienceSessionId.trim() === '') {
-          throw new ObservationReviewStateValidationError('invalid experienceSessionId');
-        }
-        if (typeof note !== 'string' || note.trim() === '') {
-          throw new ObservationReviewStateValidationError('knowledge_gap requires note');
-        }
-        if (knowledgeEvidenceId !== undefined && typeof knowledgeEvidenceId !== 'string') {
-          throw new ObservationReviewStateValidationError('invalid knowledgeEvidenceId');
-        }
-        if (candidateKnowledge !== undefined && typeof candidateKnowledge !== 'string') {
-          throw new ObservationReviewStateValidationError('invalid candidateKnowledge');
-        }
-        const inbox = buildObservationInboxViewModel(observationsDir);
-        const session = inbox.experienceReports
-          .flatMap((report) => report.sessions)
-          .find((candidate) => candidate.id === experienceSessionId);
-        if (!session) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'experience session not found' }));
-          return;
-        }
-        const debuggerModel = buildKnowledgeDebuggerViewModel(session, inbox.reviewState);
-        const linkedEvidence = knowledgeEvidenceId
-          ? debuggerModel.knowledgeEvidence.find((item) => item.id === knowledgeEvidenceId)
-          : undefined;
-        if (knowledgeEvidenceId && !linkedEvidence) {
-          throw new ObservationReviewStateValidationError('knowledge evidence does not belong to session');
-        }
-        const evidenceRef = linkedEvidence?.evidenceRefs[0];
-        const targetId = `knowledge-gap:${randomUUID()}`;
-        const state = updateObservationReviewState(observationsDir, {
-          targetType: 'knowledge_gap',
-          targetId,
-          verdict: 'real_issue',
-          gapKind: body.gapKind as ObservationReviewStateUpdate['gapKind'],
-          note: note.trim(),
-          candidateKnowledge: typeof candidateKnowledge === 'string'
-            ? candidateKnowledge.trim() || undefined
-            : undefined,
-          knowledgeEvidenceId,
-          experienceSessionId: session.id,
-          sessionId: session.sessionId,
-          traceId: evidenceRef?.traceId,
-          sourceTrace: evidenceRef?.sourceTrace ?? session.sourceTrace,
-          messageIndex: evidenceRef?.messageIndex,
-          messageUuid: evidenceRef?.messageUuid,
-          callInstanceId: evidenceRef?.callInstanceId,
-          toolUseId: evidenceRef?.toolUseId,
-          snippet: evidenceRef?.snippet,
-        });
-        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ entry: state.entries[`knowledge_gap:${targetId}`], state }));
         return;
       }
 
@@ -1167,10 +1106,6 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
             callInstanceId: body.callInstanceId,
             toolUseId: body.toolUseId,
             snippet: body.snippet,
-            gapKind: body.gapKind as ObservationReviewStateUpdate['gapKind'],
-            knowledgeEvidenceId: body.knowledgeEvidenceId,
-            experienceSessionId: body.experienceSessionId,
-            candidateKnowledge: body.candidateKnowledge,
           }, now);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(state));

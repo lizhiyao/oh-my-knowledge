@@ -388,29 +388,6 @@ export function sampleContractValidationError(
     && value.provenance !== 'llm-generated'
     && value.provenance !== 'production-trace'
   ) return '"provenance" has an unsupported value';
-  if (
-    value.sourceRefs !== undefined
-    && (
-      !Array.isArray(value.sourceRefs)
-      || value.sourceRefs.length === 0
-      || value.sourceRefs.some((sourceRef) => (
-        !isRecord(sourceRef)
-        || !hasOnlyKeys(sourceRef, [
-          'sourceType',
-          'sourceId',
-          'traceId',
-          'sourceTrace',
-          'experienceSessionId',
-          'knowledgeEvidenceId',
-          'candidateKnowledgeHash',
-        ])
-        || (sourceRef.sourceType !== 'observation_signal' && sourceRef.sourceType !== 'knowledge_gap')
-        || !isNonEmptyString(sourceRef.sourceId)
-        || ['traceId', 'sourceTrace', 'experienceSessionId', 'knowledgeEvidenceId', 'candidateKnowledgeHash']
-          .some((field) => sourceRef[field] !== undefined && !isNonEmptyString(sourceRef[field]))
-      ))
-    )
-  ) return '"sourceRefs" has an invalid shape';
   if (value.tripwire !== undefined && typeof value.tripwire !== 'boolean') {
     return '"tripwire" must be boolean when present';
   }

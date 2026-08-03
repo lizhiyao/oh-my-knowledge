@@ -49,17 +49,21 @@ Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenCla
 
 Both workflows persist an ingestion summary. If the source contains malformed records, valid JSON values that are not records, or events the current adapter cannot recognize, the CLI and Studio show a completeness notice. Review that notice before treating absence of a signal as evidence that no problem occurred. Runtime guardian sessions are counted separately as intentional filters.
 
+## Replay one task
+
+After `omk observe ingest`, start `omk studio` and open **Task Replay** from a task in the observation inbox. The page projects source-neutral Trace IR into an ordered account of:
+
+- the original user request;
+- runtime context and knowledge entering the task;
+- paired tool calls and observed results;
+- AI responses and later user corrections;
+- integrity notices for truncation, malformed records, unknown events, and unmatched tool results.
+
+Task Replay states only facts observable in the trace. Knowledge being injected, read, or returned does not prove that the model used it or that it caused the outcome.
+
 ## Turning observations into samples
 
-Open **Debug Knowledge** from a task in Studio's observation inbox to inspect the timeline and the knowledge that was injected, read, or returned by tools. You can then record missing, stale, conflicting, or out-of-scope knowledge. A recorded Gap is a user diagnosis, not a system-proven root cause.
-
-After recording a Gap, the page provides a precise recycling command:
-
-```bash
-omk sample --from-traces --gap knowledge-gap:<id>
-```
-
-The generated drafts retain structured `sourceRefs` to the Gap, observed session, knowledge evidence, and original trace. Omitting `--gap` still drafts from all eligible failure signals in the observation inbox:
+Confirmed gaps from observe are exactly the failures your eval set is missing. `omk sample --from-traces` can draft regression cases from those signals — closing the observe → eval loop.
 
 This command calls the sample generator through your configured executor and model, so trace-derived evidence is sent to that model and may incur generation cost:
 
@@ -67,7 +71,7 @@ This command calls the sample generator through your configured executor and mod
 omk sample --from-traces
 ```
 
-It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: keep only reproducible cases, merge accepted drafts into the real `eval-samples` file, then use `doctor → eval` to determine whether the candidate knowledge actually improves the result.
+It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: inspect the draft, keep only reproducible cases, then merge the accepted ones into your real `eval-samples` file.
 
 ## Related
 

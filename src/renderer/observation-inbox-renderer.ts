@@ -5152,7 +5152,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        <span>入口 ${e(inboxEntrypointShort(session))}</span>
 	        <span>调用段 ${session.invocationIds.length}</span>
 	        <span>工具调用 ${indicators.toolCallCount}</span>
-	        <a href="/observe-debugger/${encodeURIComponent(session.id)}${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}" onclick="event.stopPropagation()">${lang === 'zh' ? '调试 Knowledge' : 'Debug Knowledge'}</a>
+	        <a href="/observe-debugger/${encodeURIComponent(session.id)}${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}" onclick="event.stopPropagation()">${lang === 'zh' ? '任务重放' : 'Task Replay'}</a>
 	      </div>
 	      ${navHtml}
 	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>

@@ -33,7 +33,6 @@ describe('observe inbox - review state', () => {
       note: 'probe only',
     }, '2026-05-01T00:00:00.000Z');
     const key = observationReviewStateKey('experience_session', 'session-1');
-    assert.equal(state.schemaVersion, 3);
     assert.equal(state.entries[key].verdict, 'not_issue');
     assert.equal(state.entries[key].note, 'probe only');
 
@@ -73,67 +72,6 @@ describe('observe inbox - review state', () => {
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
-  });
-
-  it('loads schema v2 state and writes it back as schema v3', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-v2-migration-'));
-    const path = join(dir, 'review-state.json');
-    writeFileSync(path, JSON.stringify({
-      kind: 'observe-review-state',
-      schemaVersion: 2,
-      updatedAt: '2026-05-01T00:00:00.000Z',
-      entries: {
-        'skill:audit': {
-          targetType: 'skill',
-          targetId: 'audit',
-          verdict: 'reviewed',
-          reviewedAt: '2026-05-01T00:00:00.000Z',
-        },
-      },
-    }));
-
-    assert.equal(loadObservationReviewState(dir).schemaVersion, 3);
-    updateObservationReviewState(dir, {
-      targetType: 'skill',
-      targetId: 'audit',
-      verdict: 'not_issue',
-    }, '2026-05-01T00:01:00.000Z');
-    assert.equal(JSON.parse(readFileSync(path, 'utf-8')).schemaVersion, 3);
-  });
-
-  it('persists a structured knowledge gap with its evidence provenance', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-knowledge-gap-'));
-    const targetId = 'knowledge-gap:one';
-    const state = updateObservationReviewState(dir, {
-      targetType: 'knowledge_gap',
-      targetId,
-      verdict: 'real_issue',
-      gapKind: 'stale',
-      note: '项目指令仍然引用旧发布流程。',
-      candidateKnowledge: '发布前必须先通过 doctor 和 eval。',
-      knowledgeEvidenceId: 'knowledge:abc',
-      experienceSessionId: 'experience:session-1',
-      sessionId: 'session-1',
-      traceId: 'trace-1',
-      sourceTrace: '/traces/codex.jsonl',
-    }, '2026-05-01T00:00:00.000Z');
-    const key = observationReviewStateKey('knowledge_gap', targetId);
-
-    assert.deepEqual(state.entries[key], {
-      targetType: 'knowledge_gap',
-      targetId,
-      verdict: 'real_issue',
-      reviewedAt: '2026-05-01T00:00:00.000Z',
-      note: '项目指令仍然引用旧发布流程。',
-      traceId: 'trace-1',
-      sourceTrace: '/traces/codex.jsonl',
-      sessionId: 'session-1',
-      gapKind: 'stale',
-      knowledgeEvidenceId: 'knowledge:abc',
-      experienceSessionId: 'experience:session-1',
-      candidateKnowledge: '发布前必须先通过 doctor 和 eval。',
-    });
-    assert.deepEqual(loadObservationReviewState(dir).entries[key], state.entries[key]);
   });
 
   it('fails closed on corrupt reviewer state instead of overwriting human annotations', () => {
@@ -252,17 +190,6 @@ describe('observe inbox - review state', () => {
         targetId: 'obs-1',
         verdict: 'real_issue',
         messageIndex: -1,
-      },
-      {
-        targetType: 'knowledge_gap',
-        targetId: 'knowledge-gap:missing-kind',
-        verdict: 'real_issue',
-      },
-      {
-        targetType: 'skill',
-        targetId: 'audit',
-        verdict: 'reviewed',
-        gapKind: 'missing',
       },
     ];
 
