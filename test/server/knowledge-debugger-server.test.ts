@@ -80,14 +80,15 @@ describe('Knowledge Debugger task replay server', () => {
     assert.match(replay.body, /AGENTS\.md/);
     assert.match(replay.body, /进入任务上下文/);
     assert.match(replay.body, /读取 Skill：release/);
-    assert.match(replay.body, /npm publish 返回失败/);
+    assert.match(replay.body, /npm publish 返回失败后，AI 回答.*用户随后进行了纠正/);
     assert.match(replay.body, /missing doctor\/eval evidence/);
     assert.match(replay.body, /版本已经可以发布/);
     assert.match(replay.body, /用户纠正/);
     assert.match(replay.body, /data-replay-mode="reading"/);
     assert.match(replay.body, /data-replay-mode="evidence"/);
     assert.match(replay.body, /不代表模型实际采用了它/);
-    assert.doesNotMatch(replay.body, /<strong>Bash<\/strong><span class="replay-access">/);
+    assert.doesNotMatch(replay.body, /任务事实|Trace 完整性|条可核验记录|查看失败操作|OMK Studio · 任务重放/);
+    assert.doesNotMatch(replay.body, /replay-knowledge-link[^>]*><strong>Bash/);
     assert.doesNotMatch(replay.body, /AI (?:使用|采用)了/);
     assert.doesNotMatch(replay.body, /knowledge-gap-form|候选 knowledge|omk sample --from-traces/);
   });
