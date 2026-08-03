@@ -197,6 +197,69 @@ describe('generateSamplesFromTraces', () => {
     assert.ok(r.samples.length >= 1);
     assert.ok(r.samples.every((s) => s.provenance === 'production-trace'));
   });
+
+  it('keeps the structured Knowledge Gap provenance on every generated draft', async () => {
+    const r = await generateSamplesFromTraces({
+      items: [{
+        sourceType: 'knowledge_gap',
+        sourceId: 'knowledge-gap:one',
+        skillName: 'release',
+        severity: 'high',
+        occurrences: 1,
+        gapKind: 'missing',
+        diagnosisNote: '缺少发布前的评测门禁。',
+        candidateKnowledge: '发布前必须先运行 omk doctor 和 omk eval。',
+        experienceSessionId: 'experience:one',
+        knowledgeEvidenceId: 'knowledge:one',
+        traceId: 'trace:one',
+        sourceTrace: '/traces/codex.jsonl',
+        evidence: { path: '/repo/AGENTS.md' },
+      }],
+      model: 'test-model',
+      executor: mockExec(JSON.stringify([{
+        sample_id: 'trace-gap-1',
+        prompt: '发布当前版本。',
+        rubric: '发布前应检查评测证据。',
+        sourceRefs: [{ sourceType: 'knowledge_gap', sourceId: 'model-invented' }],
+      }])),
+    });
+
+    assert.match(buildSamplesFromTracesPrompt([{
+      sourceType: 'knowledge_gap',
+      sourceId: 'knowledge-gap:one',
+      skillName: 'release',
+      evidence: {},
+      gapKind: 'missing',
+      diagnosisNote: '缺少发布前的评测门禁。',
+      candidateKnowledge: '发布前必须先运行 omk doctor 和 omk eval。',
+    }]), /用户诊断，不是系统已经证明的根因/);
+    assert.deepEqual(r.samples[0].sourceRefs, [{
+      sourceType: 'knowledge_gap',
+      sourceId: 'knowledge-gap:one',
+      traceId: 'trace:one',
+      sourceTrace: '/traces/codex.jsonl',
+      experienceSessionId: 'experience:one',
+      knowledgeEvidenceId: 'knowledge:one',
+      candidateKnowledgeHash: 'b707dac7b5dda1bb077d6669d890ab63d7ab3e22d7b04474f37401171e45db0a',
+    }]);
+  });
+
+  it('does not over-attribute one draft to every source in a multi-signal batch', async () => {
+    const r = await generateSamplesFromTraces({
+      items: [
+        { ...oneItem[0], sourceType: 'observation_signal', sourceId: 'obs-1' },
+        { ...oneItem[0], sourceType: 'observation_signal', sourceId: 'obs-2' },
+      ],
+      model: 'test-model',
+      executor: mockExec(JSON.stringify([{
+        sample_id: 'trace-multi-1',
+        prompt: 'reproduce one failure',
+        sourceRefs: [{ sourceType: 'observation_signal', sourceId: 'model-invented' }],
+      }])),
+    });
+
+    assert.equal(r.samples[0].sourceRefs, undefined);
+  });
 });
 
 describe('buildSamplesPrompt', () => {

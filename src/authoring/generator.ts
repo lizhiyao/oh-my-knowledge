@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createExecutor } from '../executors/index.js';
 import { executorSupportsSampleMocks } from '../executors/capabilities.js';
 import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
@@ -7,8 +8,14 @@ import type {
   ExecutorFn,
   Sample,
   SampleProvenance,
+  SampleSourceRef,
 } from '../types/index.js';
-import type { ObservationInboxItem } from '../types/observability.js';
+import type {
+  KnowledgeGapKind,
+  ObservationEvidence,
+  ObservationInboxItem,
+  ObservationMessageWindow,
+} from '../types/observability.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 
@@ -550,20 +557,35 @@ async function finalizeSamples(
   return { samples, costUSD };
 }
 
-const TRACE_GEN_INSTRUCTIONS = `下面给出的不是 skill，而是从生产会话 trace 中观测到的失败 / 异常信号。请为这些信号生成评测用例（eval samples），使评测能复现并守住这些失败模式——把线上真实发生过的问题沉淀成回归用例。
+const TRACE_GEN_INSTRUCTIONS = `下面给出的不是 skill，而是从生产会话 trace 中观测到的失败 / 异常信号，或用户基于现场确认的 Knowledge Gap。请为这些输入生成评测用例（eval samples），使评测能复现并守住对应失败模式——把线上真实发生过的问题沉淀成回归用例。
 
 要求：
 - 按各信号标注的「占比」分配用例数：高频信号多生成、低频少生成，让用例集覆盖线上失败的真实频次分布（高占比信号 2-3 条，低占比 1 条即可）；信号若是噪声 / 证据不足 / 无法复现，跳过它，不要硬凑。
+- Knowledge Gap 是用户诊断，不是系统已经证明的根因。用例应复现现场并检验候选 knowledge 是否能改善结果，不要把诊断改写成确定性因果结论；没有候选 knowledge 时，不要替用户发明规则。
 - prompt 要还原触发该信号的场景（自然语言任务），不要直接复述证据文本。
 - 断言优先用 mock_hit / tools_called / tools_not_called / tool_input_contains 精确锚定失败步骤，再用 contains 兜底；按「原子型」配比处理（无需工作流编号步骤），除非证据明显是多步流程。
 - 不要在输出里说明判断过程，直接输出 JSON 数组。`;
 
-type TraceSignalItem = Pick<
-  ObservationInboxItem,
-  'skillName' | 'signalType' | 'signalSubtype' | 'severity' | 'evidence' | 'messageWindow' | 'occurrences'
->;
+export interface TraceDraftSource {
+  sourceType?: 'observation_signal' | 'knowledge_gap';
+  sourceId?: string;
+  skillName: string;
+  signalType?: ObservationInboxItem['signalType'];
+  signalSubtype?: ObservationInboxItem['signalSubtype'];
+  severity?: ObservationInboxItem['severity'];
+  evidence: ObservationEvidence;
+  messageWindow?: ObservationMessageWindow;
+  occurrences?: number;
+  gapKind?: KnowledgeGapKind;
+  diagnosisNote?: string;
+  candidateKnowledge?: string;
+  experienceSessionId?: string;
+  knowledgeEvidenceId?: string;
+  traceId?: string;
+  sourceTrace?: string;
+}
 
-export interface StratifiedTraceSignal extends TraceSignalItem {
+export interface StratifiedTraceSignal extends TraceDraftSource {
   /** Share of total occurrences across all signals (0-1) — drives proportional
    *  sample allocation in the prompt. */
   weight: number;
@@ -587,7 +609,7 @@ export interface StratifiedTraceSignal extends TraceSignalItem {
  * which is why the `omk sample --from-traces` draft warning still stands — this
  * only makes the within-failure distribution representative of frequency.
  */
-export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceSignal[] {
+export function stratifyTraceSignals(items: TraceDraftSource[]): StratifiedTraceSignal[] {
   const total = items.reduce((sum, it) => sum + (it.occurrences ?? 0), 0) || 1;
   return items
     .map((it) => ({ ...it, occurrences: it.occurrences ?? 0, weight: (it.occurrences ?? 0) / total }))
@@ -602,7 +624,7 @@ export function stratifyTraceSignals(items: TraceSignalItem[]): StratifiedTraceS
  * judge prompt — so judge-prompt isolation is unaffected.
  */
 export function buildSamplesFromTracesPrompt(
-  items: TraceSignalItem[],
+  items: TraceDraftSource[],
   count?: number,
   options: { noMock?: boolean } = {},
 ): string {
@@ -623,19 +645,30 @@ export function buildSamplesFromTracesPrompt(
         .map((m) => `  [${m.role}] ${m.snippet}`).join('\n')
       : '';
     const pct = (it.weight * 100).toFixed(0);
+    if (it.sourceType === 'knowledge_gap') {
+      const candidate = it.candidateKnowledge
+        ? `\n待复核候选 knowledge:\n${it.candidateKnowledge}`
+        : '\n待复核候选 knowledge: (尚未填写，评测用例只复现缺口现场，不替用户发明规则)';
+      return `### 用户确认的 Knowledge Gap ${i + 1}：${it.gapKind ?? 'missing'}（skill: ${it.skillName}）\n用户诊断: ${it.diagnosisNote ?? '(未提供)'}\n${evLines}${candidate}${win}`;
+    }
     return `### 信号 ${i + 1}：${it.signalType} / ${it.signalSubtype}（严重度 ${it.severity}，出现 ${it.occurrences} 次 · 占比 ${pct}%，skill: ${it.skillName}）\n${evLines}${win}`;
   }).join('\n\n---\n\n');
 
-  const countLine = typeof count === 'number'
-    ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
-    : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
+  const gapOnly = stratified.every((item) => item.sourceType === 'knowledge_gap');
+  const countLine = gapOnly
+    ? typeof count === 'number'
+      ? `围绕该用户诊断生成约 ${count} 条可复现的评测用例。`
+      : '围绕该用户诊断生成足够覆盖现场的少量评测用例。'
+    : typeof count === 'number'
+      ? `共生成约 ${count} 条评测用例，按各信号的「占比」分配配额（高频多、低频少），覆盖整体失败分布。`
+      : '按各信号「占比」分配：高频信号多生成、低频少生成，覆盖整体失败分布。';
   const mocklessBlock = options.noMock
     ? '\n\n目标执行器不支持工具调用拦截：不要生成 mocks、mocksStrict、environment 或正向工具调用断言；把 trace 证据写入 context 和 rubric。'
     : '';
 
   return `${TRACE_GEN_INSTRUCTIONS}
 
-## 观测到的失败信号（共 ${stratified.length} 个，已按出现频次降序）
+## ${gapOnly ? '用户确认的 Knowledge Gap' : '观测到的失败信号'}（共 ${stratified.length} 个${gapOnly ? '' : '，已按出现频次降序'}）
 
 ${sections}
 
@@ -645,16 +678,25 @@ ${countLine}直接输出 JSON 数组。${mocklessBlock}`;
 /** Build a sanitize context string from trace evidence so finalizeSamples keeps
  *  tool-name assertions that reference tools actually seen in the traces (an empty
  *  context would strip every tool-name fact assertion). */
-function traceSanitizeContext(items: TraceSignalItem[]): string {
+function traceSanitizeContext(items: TraceDraftSource[]): string {
   return items.map((it) => {
     const ev = it.evidence ?? {};
-    return [ev.tool, ev.query, ev.path, ev.outputSnippet, ev.assistantSnippet, ev.markerToken]
+    return [
+      ev.tool,
+      ev.query,
+      ev.path,
+      ev.outputSnippet,
+      ev.assistantSnippet,
+      ev.markerToken,
+      it.diagnosisNote,
+      it.candidateKnowledge,
+    ]
       .filter(Boolean).join(' ');
   }).join('\n');
 }
 
 export interface GenerateSamplesFromTracesOptions {
-  items: TraceSignalItem[];
+  items: TraceDraftSource[];
   count?: number;
   model: string;
   executorName?: string;
@@ -689,6 +731,7 @@ export async function generateSamplesFromTraces({
   const system = generationSystemPrompt(mockless);
   const sanitizeContext = traceSanitizeContext(items);
   const PROVENANCE: SampleProvenance = 'production-trace';
+  const sourceRefs = traceDraftSourceRefs(items);
 
   const MAX_ATTEMPTS = 3;
   let lastErr = '';
@@ -726,13 +769,42 @@ export async function generateSamplesFromTraces({
     // 0-result, not a failure — return it so the CLI can no-op instead of erroring.
     if (samples.length === 0) return { samples: [], costUSD: totalCost };
     // Stamp provenance before sanitize so it survives (it's a valid enum value).
-    for (const s of samples) s.provenance = PROVENANCE;
+    for (const s of samples) {
+      s.provenance = PROVENANCE;
+      if (sourceRefs.length > 0) s.sourceRefs = sourceRefs;
+      else delete s.sourceRefs;
+    }
     return await finalizeSamples(samples, totalCost, {
       skillContent: sanitizeContext,
       mockless,
     });
   }
   throw new Error('unreachable');
+}
+
+function traceDraftSourceRefs(items: TraceDraftSource[]): SampleSourceRef[] {
+  // A multi-signal generation batch does not tell us which output sample came
+  // from which input signal. Avoid attaching every source to every draft and
+  // overstating provenance; the exact relation is available for one-source
+  // generation (`--gap`, or a single observation signal).
+  if (items.length !== 1) return [];
+  const refs = new Map<string, SampleSourceRef>();
+  for (const item of items) {
+    if (!item.sourceId) continue;
+    const sourceRef: SampleSourceRef = {
+      sourceType: item.sourceType ?? 'observation_signal',
+      sourceId: item.sourceId,
+      ...(item.traceId ? { traceId: item.traceId } : {}),
+      ...(item.sourceTrace ? { sourceTrace: item.sourceTrace } : {}),
+      ...(item.experienceSessionId ? { experienceSessionId: item.experienceSessionId } : {}),
+      ...(item.knowledgeEvidenceId ? { knowledgeEvidenceId: item.knowledgeEvidenceId } : {}),
+      ...(item.candidateKnowledge ? {
+        candidateKnowledgeHash: createHash('sha256').update(item.candidateKnowledge).digest('hex'),
+      } : {}),
+    };
+    refs.set(`${sourceRef.sourceType}:${sourceRef.sourceId}`, sourceRef);
+  }
+  return [...refs.values()];
 }
 
 /**

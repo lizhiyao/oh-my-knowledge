@@ -51,7 +51,15 @@ omk observe show <inbox_id>
 
 ## 把 observation 变成用例
 
-observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --from-traces` 能从这些信号草拟评测用例——把 observe → eval 的闭环合上。
+在 Studio 的观测收件箱中打开一次任务的「调试 Knowledge」，可以沿时间线查看当时进入上下文、被读取或由工具返回的 knowledge，并人工记录缺失、过时、冲突或范围不适用。这个 Gap 是用户诊断，不是系统已经证明的根因。
+
+记录 Gap 后，页面会给出一条精确回流命令：
+
+```bash
+omk sample --from-traces --gap knowledge-gap:<id>
+```
+
+生成的草稿会保留 Gap、观测会话、knowledge 证据与原始 trace 的 `sourceRefs`。如果不指定 Gap，仍可从 observe inbox 的全部失败信号生成草稿：
 
 这个命令会通过你配置的 executor 和 model 调用 sample 生成器，因此 trace 派生证据会发送给该模型，也可能产生生成成本：
 
@@ -59,7 +67,7 @@ observe 确认的缺口，正是你 eval 集缺的那些失败。`omk sample --f
 omk sample --from-traces
 ```
 
-它会写 `.omk/observe-inbox/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件。
+它会写 `.omk/observe-inbox/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件，最后通过 `doctor → eval` 判断候选 knowledge 是否真的改善结果。
 
 ## 相关
 

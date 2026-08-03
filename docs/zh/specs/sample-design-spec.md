@@ -27,6 +27,11 @@ samples:
     difficulty: easy                    # 'easy' | 'medium' | 'hard'（强枚举，防错）
     construct: necessity                # 'necessity' | 'quality' | 'capability' suggested，允许自定义 string
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
+    sourceRefs:                         # from-traces 的结构化来源，不参与 grading
+      - sourceType: knowledge_gap
+        sourceId: knowledge-gap:release-gate
+        experienceSessionId: experience:release-session
+        sourceTrace: /traces/codex.jsonl
     covers:                             # Skill Map 使用的可选声明结构锚点
       - targetKind: reference
         ref: references/chart-api.md
@@ -44,6 +49,7 @@ samples:
   - `capability`（能力）：测某具体能力维度的差异。
   允许自定义 string（比如 `regression-test` / `cost-efficiency` 等），studio 看到自定义值不报错。
 - **provenance**（enum）：数据来源。`human`（人工 curated）/ `llm-generated`（`omk sample` 自动注入）/ `production-trace`（生产 trace 抽样，需用户自己导入）。
+- **sourceRefs**（`SampleSourceRef[]`）：`omk sample --from-traces` 的结构化来源引用。`sourceType` 区分 observation signal 与用户确认的 Knowledge Gap，并可保留具体来源 ID、观测会话、knowledge 证据和原始 trace。它只回答「草稿从哪里来」，不证明该来源是失败根因，也不参与 grading。
 - **covers**（`{ targetKind, ref }[]`）：这条 sample 可选声明的 skill 结构锚点。它是 `capability` 的结构侧补充：capability 说这条用例测哪个能力维度；covers 说作者希望声明这条用例具体测到哪个 SKILL.md 节点、reference、script、hard rule、workflow 或 workflow node。Studio 用它在 Skill Map 中标出已声明 / 未声明的结构边。它不会从 prompt 文本里自动推断；不写表示「尚未声明」，不代表「没有测到」。
 
 ### 不参与 grading / judge / verdict
@@ -204,11 +210,12 @@ omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / sat
 
 ### 6.3 v2 schema 扩展候选与拒绝清单
 
-初始 schema 只有 4 个测量效度字段（capability / difficulty / construct / provenance），回答**这条用例测的事是它声称要测的事吗**。`covers` 延续同一条「仅诊断、不进评分」原则，把能力维度之外的结构轴补上：**作者声明这条用例意图测到哪些 skill 节点**。社区另一类常见建议走的是「资产治理」（asset governance）轴：tags / risk_level / expected_facts / source_ids / owner——回答**这条用例归谁、来自哪里、有多重要**。这些轴正交不冲突，但治理假设测量学先稳固；v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单，供后续决策时不必重新讨论一遍。
+初始 schema 只有 4 个测量效度字段（capability / difficulty / construct / provenance），回答**这条用例测的事是它声称要测的事吗**。`covers` 延续同一条「仅诊断、不进评分」原则，把能力维度之外的结构轴补上：**作者声明这条用例意图测到哪些 skill 节点**。社区另一类常见建议走的是「资产治理」（asset governance）轴：tags / risk_level / expected_facts / owner——回答**这条用例归谁、来自哪里、有多重要**。这些轴正交不冲突，但治理假设测量学先稳固；v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单，供后续决策时不必重新讨论一遍。
+
+具体来源标识已经随 Knowledge Debugger 落地为结构化 `sourceRefs`，替代早期设想的扁平 `source_ids`。它保留 Gap / observation、会话、knowledge 证据和 trace 的关系，同时明确不表达因果。
 
 **v2 候选（高价值低风险，等真实用户需求触发再加）**
 
-- **`source_ids?: string[]`**：具体来源标识（`issue-123` / `doc:react-charts.md#line-chart` / `slack-thread-...`）。补足 `provenance` enum 太粗的问题——provenance 答「机器 / 人 / 线上」，source_ids 答「具体哪个 issue / doc 段落」。debug 价值高（可追溯 sample 出处），纯文档不进 grading。代价：链接腐烂需用户自己治理。
 - **`status?: 'active' | 'deprecated' | 'superseded'`**：lifecycle 字段。sample 集长期演化时，知道一条 sample 是「主力」还是「淘汰中」对 verdict 解读至关重要——`deprecated` sample 仍在跑但 Δ 不该计入主结论。比 `owner` 更要紧。
 
 **已拒绝（附理由，防止反复讨论）**

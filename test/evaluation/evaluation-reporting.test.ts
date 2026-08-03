@@ -137,6 +137,13 @@ describe('aggregateReport — reproducibility metadata', () => {
       },
       allowedTools: ['Read'],
       expectedTools: ['Read'],
+      provenance: 'production-trace',
+      sourceRefs: [{
+        sourceType: 'knowledge_gap',
+        sourceId: 'knowledge-gap:release',
+        experienceSessionId: 'experience:release',
+        sourceTrace: '/traces/codex.jsonl',
+      }],
     };
     const artifact = makeArtifact('v1', 'skill content');
     const report = aggregateReport({
@@ -162,6 +169,13 @@ describe('aggregateReport — reproducibility metadata', () => {
       },
       allowedTools: ['Read'],
       expectedTools: ['Read'],
+      provenance: 'production-trace',
+      sourceRefs: [{
+        sourceType: 'knowledge_gap',
+        sourceId: 'knowledge-gap:release',
+        experienceSessionId: 'experience:release',
+        sourceTrace: '/traces/codex.jsonl',
+      }],
     });
     assert.ok(parseReportDocument(report, report.id, report.id));
   });

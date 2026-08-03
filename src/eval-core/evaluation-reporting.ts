@@ -373,6 +373,7 @@ export function aggregateReport({
       ...(s.difficulty ? { difficulty: s.difficulty } : {}),
       ...(s.construct ? { construct: s.construct } : {}),
       ...(s.provenance ? { provenance: s.provenance } : {}),
+      ...(s.sourceRefs && s.sourceRefs.length > 0 ? { sourceRefs: s.sourceRefs } : {}),
       ...(s.covers && s.covers.length > 0 ? { covers: s.covers } : {}),
       ...(s.tripwire ? { tripwire: true } : {}),
     }])),

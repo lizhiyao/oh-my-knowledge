@@ -31,6 +31,7 @@ describe('oclif sample', () => {
     assert.ok(stdout.includes('--batch'), 'stdout missing --batch flag');
     assert.ok(stdout.includes('--fix'), 'stdout missing --fix flag');
     assert.ok(stdout.includes('--skill'), 'stdout missing --skill flag');
+    assert.ok(stdout.includes('--gap'), 'stdout missing --gap flag');
   });
 
   it('--help --lang en 切英文', async () => {
@@ -77,6 +78,20 @@ describe('oclif sample', () => {
       assert.ok(
         e.stderr.includes('--skill') && e.stderr.includes('--from-traces'),
         `stderr missing skill-from-traces-only hint:\n${e.stderr}`,
+      );
+    }
+  });
+
+  it('--gap 仅支持 --from-traces → exit 2 + 中文提示', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'sample', 'skills/demo/SKILL.md', '--gap', 'knowledge-gap:one']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.ok(
+        e.stderr.includes('--gap') && e.stderr.includes('--from-traces'),
+        `stderr missing gap-from-traces-only hint:\n${e.stderr}`,
       );
     }
   });

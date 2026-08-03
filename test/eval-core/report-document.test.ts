@@ -303,6 +303,16 @@ describe('persisted report trace contract', () => {
     };
     assert.equal(parseReportDocument(badSnapshots, 'trace-contract'), null);
 
+    const badSourceRefs = validReport();
+    badSourceRefs.sampleSnapshots = {
+      'sample-1': {
+        sample_id: 'sample-1',
+        prompt: 'x',
+        sourceRefs: [{ sourceType: 'knowledge_gap', sourceId: '' }],
+      },
+    };
+    assert.equal(parseReportDocument(badSourceRefs, 'trace-contract'), null);
+
     const badAnalysis = validReport();
     badAnalysis.analysis = {
       insights: [{ type: 'x', severity: 'critical', details: {} }],

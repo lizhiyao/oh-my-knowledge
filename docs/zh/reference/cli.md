@@ -423,7 +423,8 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --executor <value>          执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
   --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
-  --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
+  --from-traces               from-traces 模式：从 observe inbox 的失败信号或人工确认的 Knowledge Gap 回流生成评测用例草稿，落草稿待人工 review。
+  --gap <value>               仅从指定 Knowledge Gap 生成关联草稿（仅 from-traces 模式用）。
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --no-mock                   不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。

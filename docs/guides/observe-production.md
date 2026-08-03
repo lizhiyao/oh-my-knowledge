@@ -51,7 +51,15 @@ Both workflows persist an ingestion summary. If the source contains malformed re
 
 ## Turning observations into samples
 
-Confirmed gaps from observe are exactly the failures your eval set is missing. `omk sample --from-traces` can draft regression cases from those signals — closing the observe → eval loop.
+Open **Debug Knowledge** from a task in Studio's observation inbox to inspect the timeline and the knowledge that was injected, read, or returned by tools. You can then record missing, stale, conflicting, or out-of-scope knowledge. A recorded Gap is a user diagnosis, not a system-proven root cause.
+
+After recording a Gap, the page provides a precise recycling command:
+
+```bash
+omk sample --from-traces --gap knowledge-gap:<id>
+```
+
+The generated drafts retain structured `sourceRefs` to the Gap, observed session, knowledge evidence, and original trace. Omitting `--gap` still drafts from all eligible failure signals in the observation inbox:
 
 This command calls the sample generator through your configured executor and model, so trace-derived evidence is sent to that model and may incur generation cost:
 
@@ -59,7 +67,7 @@ This command calls the sample generator through your configured executor and mod
 omk sample --from-traces
 ```
 
-It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: inspect the draft, keep only reproducible cases, then merge the accepted ones into your real `eval-samples` file.
+It writes `.omk/observe-inbox/sample-drafts.json`. Treat the file as a review queue: keep only reproducible cases, merge accepted drafts into the real `eval-samples` file, then use `doctor → eval` to determine whether the candidate knowledge actually improves the result.
 
 ## Related
 

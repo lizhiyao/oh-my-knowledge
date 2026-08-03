@@ -423,7 +423,8 @@ omk sample --batch                  # generate for skills missing eval-samples
   --executor <value>          Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --fix                       Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
-  --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
+  --from-traces               from-traces mode: recycle observe-inbox failure signals or a confirmed Knowledge Gap into linked eval-sample drafts for review.
+  --gap <value>               Generate linked drafts from one Knowledge Gap (from-traces mode only).
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --no-mock                   Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.

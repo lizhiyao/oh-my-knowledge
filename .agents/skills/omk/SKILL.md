@@ -138,7 +138,13 @@ omk observe ingest ~/.codex/sessions
 omk observe ~/.claude/projects/<project> --last 7d
 ```
 
-Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
+Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；可在 Studio 的任务卡片进入「调试 Knowledge」，查看时间线与 knowledge 来源，并把人工确认的 Gap 精确回流为评测用例草稿：
+
+```bash
+omk sample --from-traces --gap knowledge-gap:<id>
+```
+
+Gap 是用户诊断，不是系统已证明的根因；草稿仍需人工复核，再通过 `doctor → eval` 验证候选 knowledge。
 
 ### 体检 skill 写法
 
