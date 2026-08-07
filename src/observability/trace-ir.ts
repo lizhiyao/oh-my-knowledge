@@ -17,6 +17,11 @@ export type TraceMessageRole = 'user' | 'assistant' | 'system';
 export type TraceMessageOrigin = 'human' | 'runtime' | 'skill-context' | 'synthetic';
 export type TraceToolStatus = ToolCallStatus;
 export type TraceToolStatusSource = ToolCallStatusSource;
+export type TraceModelActivityKind = 'reasoning';
+export type TraceModelActivityVisibility = 'plaintext' | 'opaque';
+export type TraceModelActivityContentSource = 'summary' | 'content' | 'text';
+export type TraceRuntimeContextKind = 'session_context' | 'execution_context' | 'settings' | 'goal';
+export type TraceAgentActivityKind = 'communication' | 'status';
 
 /** Source-neutral tool identity, including provider namespaces when present. */
 export type TraceToolRef = NormalizedToolIdentity;
@@ -36,6 +41,8 @@ export interface TraceMessageEvent extends TraceEventBase {
   role: TraceMessageRole;
   origin: TraceMessageOrigin;
   text: string;
+  /** Human-facing text after a source adapter removes transport/UI envelopes. */
+  displayText?: string;
   model?: string;
   attributionSkill?: string;
 }
@@ -68,11 +75,73 @@ export interface TraceUsageEvent extends TraceEventBase {
   reasoningTokens?: number;
 }
 
+export interface TraceModelActivityEvent extends TraceEventBase {
+  eventKind: 'model_activity';
+  activityKind: TraceModelActivityKind;
+  contentVisibility: TraceModelActivityVisibility;
+  text?: string;
+  contentSource?: TraceModelActivityContentSource;
+  model?: string;
+}
+
 export interface TraceLifecycleEvent extends TraceEventBase {
   eventKind: 'lifecycle';
   phase: 'session_started' | 'session_ended' | 'turn_started' | 'turn_completed' | 'turn_aborted' | 'turn_interrupted';
   reason?: string;
   durationMs?: number;
+}
+
+/** Source-neutral execution context visible to the agent for a turn or run. */
+export interface TraceRuntimeContextEvent extends TraceEventBase {
+  eventKind: 'runtime_context';
+  runtimeKind: TraceRuntimeContextKind;
+  runtimeName?: string;
+  runtimeVersion?: string;
+  cwd?: string;
+  workspaceRoots?: string[];
+  currentDate?: string;
+  timezone?: string;
+  model?: string;
+  modelProvider?: string;
+  serviceTier?: string;
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  personality?: string;
+  approvalPolicy?: string;
+  approvalReviewer?: string;
+  permissionProfile?: string;
+  sandboxMode?: string;
+  collaborationMode?: string;
+  realtimeActive?: boolean;
+  multiAgentMode?: string;
+  multiAgentVersion?: string;
+  memoryMode?: string;
+  historyMode?: string;
+  contextWindowId?: string;
+  availableTools?: string[];
+  instructions?: string;
+  goal?: string;
+  goalStatus?: string;
+  summary?: string;
+}
+
+/** A source-reported context-window compaction boundary. */
+export interface TraceContextCompactionEvent extends TraceEventBase {
+  eventKind: 'context_compaction';
+  summary?: string;
+  replacementItemCount?: number;
+}
+
+/** Observable communication or status emitted by a cooperating agent. */
+export interface TraceAgentActivityEvent extends TraceEventBase {
+  eventKind: 'agent_activity';
+  activityKind: TraceAgentActivityKind;
+  agentId?: string;
+  agentPath?: string;
+  activity?: string;
+  author?: string;
+  recipient?: string;
+  text?: string;
 }
 
 export interface TraceUnknownEvent extends TraceEventBase {
@@ -85,7 +154,11 @@ export type TraceEvent =
   | TraceToolCallEvent
   | TraceToolResultEvent
   | TraceUsageEvent
+  | TraceModelActivityEvent
   | TraceLifecycleEvent
+  | TraceRuntimeContextEvent
+  | TraceContextCompactionEvent
+  | TraceAgentActivityEvent
   | TraceUnknownEvent;
 
 export interface TraceSession {

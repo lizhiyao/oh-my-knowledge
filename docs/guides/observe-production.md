@@ -49,17 +49,30 @@ Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenCla
 
 Both workflows persist an ingestion summary. If the source contains malformed records, valid JSON values that are not records, or events the current adapter cannot recognize, the CLI and Studio show a completeness notice. Review that notice before treating absence of a signal as evidence that no problem occurred. Runtime guardian sessions are counted separately as intentional filters.
 
-## Replay one task
+## Inspect one task
 
-After `omk observe ingest`, start `omk studio` and open **Task Replay** from a task in the observation inbox. The page projects source-neutral Trace IR into an ordered account of:
+After `omk observe ingest`, start `omk studio` and open **Conversations** to browse observed logs as **Thread → Turn**, then select one turn to open **Task Trajectory**. The list currently covers conversations already present in observe reports; it is not an inventory of every local AI conversation.
 
-- the original user request;
-- runtime context and knowledge entering the task;
-- paired tool calls and observed results;
-- AI responses and later user corrections;
-- integrity notices for truncation, malformed records, unknown events, and unmatched tool results.
+Task boundaries prefer a source-native `turnId`, then lifecycle events such as `turn_started` / `turn_completed`. Only sources without native turn boundaries fall back to user-message segmentation. Skill attribution annotates knowledge related to the selected turn; it never defines the task boundary.
 
-Task Replay states only facts observable in the trace. Knowledge being injected, read, or returned does not prove that the model used it or that it caused the outcome.
+Task Trajectory projects source-neutral Trace IR into four observable lanes:
+
+- **Conversation**: the original request, AI responses, and later user corrections;
+- **Actions**: structured tool calls;
+- **Results**: paired tool returns and system events;
+- **Knowledge**: runtime context and knowledge entering the task.
+
+The page exposes three traceable layers with distinct responsibilities:
+
+- **Semantic trajectory** projects Trace IR into the four lanes for human understanding;
+- **Normalized events** list source-neutral Trace IR in source order so you can verify what the adapter extracted;
+- **Raw logs** show the redacted, bounded JSONL archive stored beside the report so you can inspect the adapter input. Old reports, missing sources, and archive limits are reported explicitly. Opaque `encrypted_content` is acknowledged but never decrypted or presented as model reasoning.
+
+Codex session metadata is normalized as `session_context`, including the observable runtime version, Memory / History modes, context-window identity, dynamic tool names, and base instructions. Per-turn workspace, model, approval, and sandbox settings are recorded as `execution_context` or `settings`. These fields describe task inputs; they do not prove that the model used or followed them.
+
+When needed, the page also surfaces integrity notices for truncation, malformed records, unknown events, and unmatched tool results. Unknown protocol records remain inspectable instead of being dropped silently.
+
+Task Trajectory states only facts observable in the trace. Knowledge being injected, read, or returned does not prove that the model used it or that it caused the outcome.
 
 ## Turning observations into samples
 

@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../src/observability/inbox.js';
 import {
   buildKnowledgeDebuggerViewModel,
   projectKnowledgeEvidence,
 } from '../../src/observability/knowledge-debugger.js';
+import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
 import type { ExperienceTimelineEvent } from '../../src/types/index.js';
 
 function event(
@@ -23,7 +26,7 @@ function event(
   };
 }
 
-describe('Knowledge Debugger task replay', () => {
+describe('Knowledge Debugger task trajectory', () => {
   it('reconstructs a failed Codex task into paired, readable steps', () => {
     const fixturePath = new URL('../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url);
     assert.ok(readFileSync(fixturePath, 'utf-8').includes('missing doctor/eval evidence'));
@@ -31,22 +34,32 @@ describe('Knowledge Debugger task replay', () => {
     const session = report.experience?.sessions[0];
     assert.ok(session);
 
-    const model = buildKnowledgeDebuggerViewModel(session, report.meta.ingestion);
+    const model = buildKnowledgeDebuggerViewModel(session, 'turn-release', report.meta.ingestion);
     assert.equal(model.summary.userGoal, '检查并发布当前版本。');
     assert.equal(model.summary.finalResponse, '版本已经可以发布。');
     assert.equal(model.summary.observedStartTimestamp, '2026-08-03T00:00:00.500Z');
-    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:07.000Z');
+    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:08.000Z');
     assert.equal(model.summary.toolCallCount, 2);
     assert.equal(model.summary.toolFailureCount, 1);
     assert.equal(model.summary.hasUserCorrection, true);
     assert.equal(model.integrity.status, 'complete');
+
+    const modelActivitySteps = model.steps.filter((step) => step.stepKind === 'model_activity');
+    assert.equal(modelActivitySteps.length, 2);
+    assert.equal(modelActivitySteps[0]?.events[0]?.contentVisibility, 'plaintext');
+    assert.equal(modelActivitySteps[0]?.events[0]?.fullText, '检查发布证据');
+    assert.equal(modelActivitySteps[1]?.events[0]?.contentVisibility, 'opaque');
+    assert.equal(modelActivitySteps[1]?.events[0]?.fullText, undefined);
 
     const toolSteps = model.steps.filter((step) => step.stepKind === 'tool_exchange');
     assert.equal(toolSteps.length, 2);
     assert.ok(toolSteps.every((step) => step.events.length === 2));
     assert.equal(toolSteps[1].toolStatus, 'failure');
     assert.match(toolSteps[1].events[1]?.fullText ?? '', /missing doctor\/eval evidence/);
-    assert.equal(model.steps.at(-1)?.stepKind, 'user_correction');
+    assert.equal(model.steps.at(-2)?.stepKind, 'user_correction');
+    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
+    assert.equal(model.taskScope.basis, 'turn_id');
+    assert.equal(model.taskScope.turnId, 'turn-release');
 
     const agents = model.knowledgeEvidence.find((item) => item.knowledgeKind === 'project_instruction');
     const release = model.knowledgeEvidence.find((item) => item.knowledgeKind === 'skill');
@@ -54,6 +67,110 @@ describe('Knowledge Debugger task replay', () => {
     assert.equal(release?.label, 'release');
     assert.equal(release?.accessKind, 'read');
     assert.ok(model.steps.some((step) => step.knowledgeEvidenceIds.includes(release?.id ?? '')));
+  });
+
+  it('preserves explicitly recorded models for task-level and event-level presentation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-model-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'modeled-task', session_id: 'modeled-task', cwd: '/repo', originator: 'Codex Desktop', model_provider: 'openai' } },
+      { timestamp: '2026-08-03T00:00:00.100Z', type: 'turn_context', payload: { turn_id: 'turn-1', cwd: '/repo', model: 'gpt-5.4' } },
+      { timestamp: '2026-08-03T00:00:01.000Z', type: 'response_item', payload: { type: 'message', id: 'user-1', role: 'user', content: [{ type: 'input_text', text: '检查当前任务。' }] } },
+      { timestamp: '2026-08-03T00:00:02.000Z', type: 'event_msg', payload: { type: 'agent_reasoning', text: '检查任务状态' } },
+      { timestamp: '2026-08-03T00:00:03.000Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'read-skill', name: 'exec_command', input: JSON.stringify({ cmd: "sed -n '1,120p' .agents/skills/check/SKILL.md" }) } },
+      { timestamp: '2026-08-03T00:00:04.000Z', type: 'response_item', payload: { type: 'custom_tool_call_output', call_id: 'read-skill', output: '# Check\nInspect the current task.' } },
+      { timestamp: '2026-08-03T00:00:05.000Z', type: 'response_item', payload: { type: 'message', id: 'assistant-1', role: 'assistant', content: [{ type: 'output_text', text: '检查完成。' }] } },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions[0];
+    assert.ok(session);
+    const model = buildKnowledgeDebuggerViewModel(session, 'turn-1', report.meta.ingestion);
+
+    assert.deepEqual(model.summary.observedModels, ['gpt-5.4']);
+    const modeledEvents = model.steps
+      .filter((step) => step.stepKind === 'assistant_message' || step.stepKind === 'model_activity')
+      .flatMap((step) => step.events);
+    assert.ok(modeledEvents.length >= 2);
+    assert.ok(modeledEvents.every((item) => item.model === 'gpt-5.4'));
+  });
+
+  it('keeps the task trajectory inside the attributed task window', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-task-window-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'task-window', session_id: 'task-window', cwd: '/repo', originator: 'Codex Desktop' } },
+      { timestamp: '2026-08-03T00:00:01.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-old' } },
+      { timestamp: '2026-08-03T00:00:02.000Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '这是同一 session 中更早的另一个任务。' }] } },
+      { timestamp: '2026-08-03T00:00:03.000Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '更早任务已完成。' }] } },
+      { timestamp: '2026-08-03T00:00:04.000Z', type: 'event_msg', payload: { type: 'task_complete' } },
+      { timestamp: '2026-08-03T00:00:05.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-current' } },
+      { timestamp: '2026-08-03T00:00:06.000Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '检查并发布当前版本。' }] } },
+      { timestamp: '2026-08-03T00:00:07.000Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'read-skill', name: 'exec_command', input: JSON.stringify({ cmd: "sed -n '1,120p' .agents/skills/release/SKILL.md" }) } },
+      { timestamp: '2026-08-03T00:00:08.000Z', type: 'response_item', payload: { type: 'custom_tool_call_output', call_id: 'read-skill', output: '# Release\nCheck evidence.' } },
+      { timestamp: '2026-08-03T00:00:09.000Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '当前版本已检查。' }] } },
+      { timestamp: '2026-08-03T00:00:10.000Z', type: 'event_msg', payload: { type: 'task_complete' } },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions[0];
+    assert.ok(session);
+    const model = buildKnowledgeDebuggerViewModel(session, 'turn-current');
+
+    assert.equal(model.summary.userGoal, '检查并发布当前版本。');
+    assert.equal(model.summary.finalResponse, '当前版本已检查。');
+    assert.equal(model.taskScope.basis, 'turn_id');
+    assert.equal(model.taskScope.turnId, 'turn-current');
+    assert.ok(model.normalizedEvents.every((item) => item.turnId !== 'turn-old'));
+    assert.ok(model.normalizedEvents.some((item) => item.label === 'turn_started'));
+    assert.ok(model.normalizedEvents.some((item) => item.label === 'turn_completed'));
+    assert.equal(model.integrity.status, 'complete');
+  });
+
+  it('keeps lifecycle events out of Knowledge and projects the current turn completion as a lifecycle step', () => {
+    const report = buildObservationInboxReport(
+      new URL('../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url).pathname,
+    );
+    const session = report.experience?.sessions[0];
+    assert.ok(session);
+    const model = buildKnowledgeDebuggerViewModel(session, 'turn-release');
+
+    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-1)?.events[0]?.label, 'turn_completed');
+    assert.ok(model.knowledgeEvidence.every((item) =>
+      item.evidenceRefs.every((ref) => ref.kind !== 'lifecycle')
+    ));
+  });
+
+  it('does not carry the previous Codex turn completion into the attributed task', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-turn-boundary-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'turn-boundary', session_id: 'turn-boundary', cwd: '/repo', originator: 'Codex Desktop', model_provider: 'openai' } },
+      { timestamp: '2026-08-03T00:00:01.000Z', type: 'event_msg', payload: { type: 'task_complete' } },
+      { timestamp: '2026-08-03T00:00:01.500Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-current' } },
+      { timestamp: '2026-08-03T00:00:02.000Z', type: 'response_item', payload: { type: 'message', id: 'user-current', role: 'user', content: [{ type: 'input_text', text: '完成本次发布。' }] } },
+      { timestamp: '2026-08-03T00:00:03.000Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'read-skill', name: 'exec_command', input: JSON.stringify({ cmd: "sed -n '1,120p' .agents/skills/release/SKILL.md" }) } },
+      { timestamp: '2026-08-03T00:00:04.000Z', type: 'response_item', payload: { type: 'custom_tool_call_output', call_id: 'read-skill', output: '# Release\nCheck evidence.' } },
+      { timestamp: '2026-08-03T00:00:05.000Z', type: 'response_item', payload: { type: 'message', id: 'assistant-current', role: 'assistant', content: [{ type: 'output_text', text: '本次发布已完成。' }] } },
+      { timestamp: '2026-08-03T00:00:06.000Z', type: 'event_msg', payload: { type: 'task_complete' } },
+    ];
+    writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions[0];
+    assert.ok(session);
+    const lifecycleEvents = session.timelinePreview.filter((item) => item.kind === 'lifecycle');
+    assert.deepEqual(lifecycleEvents.map((item) => item.timestamp), ['2026-08-03T00:00:06.000Z']);
+    assert.equal(session.timelinePreview.some((item) =>
+      item.kind === 'runtime_context' && item.label === 'turn_completed'
+    ), false);
+
+    const model = buildKnowledgeDebuggerViewModel(session, 'turn-current', report.meta.ingestion);
+    assert.equal(model.summary.userGoal, '完成本次发布。');
+    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-1)?.events[0]?.timestamp, '2026-08-03T00:00:06.000Z');
   });
 
   it('reports truncation, ingestion damage, and unpaired tool calls without inventing results', () => {
@@ -69,11 +186,33 @@ describe('Knowledge Debugger task replay', () => {
     );
     assert.ok(publishResult);
 
+    const terminal = session.fullSessionTimeline.find((item) => item.label === 'turn_completed');
+    assert.ok(terminal);
+    const filler = Array.from({ length: 245 }, (_, index) => event(`filler-${index + 1}`, 'model_activity', {
+      order: terminal.order - 300 + index,
+      turnId: 'turn-release',
+      timestamp: `2026-08-03T00:00:07.${String(index + 1).padStart(3, '0')}Z`,
+      modelActivityKind: 'reasoning',
+      contentVisibility: 'opaque',
+      label: 'model reasoning',
+    }));
+    const withoutResult = session.fullSessionTimeline.filter((item) => item.id !== publishResult.id);
+    const terminalIndex = withoutResult.findIndex((item) => item.id === terminal.id);
+    const expandedTimeline = [
+      ...withoutResult.slice(0, terminalIndex),
+      ...filler,
+      ...withoutResult.slice(terminalIndex),
+    ];
+
     const model = buildKnowledgeDebuggerViewModel({
       ...session,
-      fullSessionTimeline: session.fullSessionTimeline.filter((item) => item.id !== publishResult.id),
-      timelineScope: { ...session.timelineScope, truncated: true },
-    }, {
+      fullSessionTimeline: expandedTimeline,
+      turns: reconstructExperienceTurns(expandedTimeline),
+      attributedEventIds: [
+        ...session.attributedEventIds.filter((id) => id !== publishResult.id),
+        ...filler.map((item) => item.id),
+      ],
+    }, 'turn-release', {
       ...ingestion,
       malformedRecordCount: 2,
       unknownEventCount: 1,
@@ -151,6 +290,16 @@ describe('Knowledge evidence projection', () => {
       event('e4', 'tool_result', {
         callInstanceId: 'call-write',
         fullText: 'Done!',
+      }),
+      event('e5', 'tool_use', {
+        callInstanceId: 'call-publish',
+        toolName: 'Bash',
+        fullText: JSON.stringify({ cmd: 'npm publish' }),
+      }),
+      event('e6', 'tool_result', {
+        callInstanceId: 'call-publish',
+        fullText: 'Process exited with code 1',
+        isError: true,
       }),
     ]);
 

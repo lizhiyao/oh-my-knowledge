@@ -51,6 +51,7 @@ import { parseTraceIngestionSummary } from './trace-ingestion.js';
 import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
 import { isInstalledSkillAssetPath } from './trace-attribution.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { writeObservationSourceRecordArchives } from './source-record-archive.js';
 
 export type {
   BuildObservationInboxReportOptions,
@@ -768,7 +769,14 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
   const path = reportFilePath(outDir, `${stamp}-${randomRunToken()}`);
-  writeJsonFileAtomic(path, compact);
+  const sourceRecordArchives = writeObservationSourceRecordArchives(report, outDir, path);
+  const persisted = sourceRecordArchives.length > 0
+    ? { ...compact, meta: { ...compact.meta, sourceRecordArchives } }
+    : compact;
+  if (!normalizeObservationInboxReport(persisted)) {
+    throw new Error('拒绝写入原始日志引用无效的 observe inbox 报告。');
+  }
+  writeJsonFileAtomic(path, persisted);
   return path;
 }
 
@@ -863,6 +871,12 @@ function observationInboxReferencesAreConsistent(
   items: ObservationInboxItem[],
   experience?: ObservationExperienceReport,
 ): boolean {
+  const archiveRefs = meta.sourceRecordArchives ?? [];
+  const experienceSessionIds = new Set(experience?.sessions.map((session) => session.id) ?? []);
+  if (
+    new Set(archiveRefs.map((ref) => ref.experienceSessionId)).size !== archiveRefs.length
+    || archiveRefs.some((ref) => !experienceSessionIds.has(ref.experienceSessionId))
+  ) return false;
   const itemIds = new Set(items.map((item) => item.id));
   if (itemIds.size !== items.length) return false;
   if (
@@ -1040,6 +1054,13 @@ function isObservationInboxMeta(value: unknown): value is ObservationInboxReport
         || !Object.values(value.skillToolCallCounts).every(isInboxCountRecord)
       )
     )
+    || (
+      value.sourceRecordArchives !== undefined
+      && (
+        !Array.isArray(value.sourceRecordArchives)
+        || !value.sourceRecordArchives.every(isObservationSourceRecordArchiveRef)
+      )
+    )
   ) return false;
   if (
     value.sessionTimeRange !== undefined
@@ -1084,6 +1105,26 @@ function isObservationInboxMeta(value: unknown): value is ObservationInboxReport
       Array.isArray(value.sessionTimeRanges)
       && value.sessionTimeRanges.every(isObservationSessionTimeRange)
     );
+}
+
+function isObservationSourceRecordArchiveRef(value: unknown): boolean {
+  if (!isInboxRecord(value)
+    || typeof value.experienceSessionId !== 'string'
+    || !['available', 'partial', 'unavailable'].includes(String(value.status))
+    || (value.relativePath !== undefined && typeof value.relativePath !== 'string')
+    || !isInboxCount(value.recordCount)
+    || !isInboxCount(value.omittedRecordCount)
+    || !isInboxCount(value.byteCount)
+    || typeof value.truncated !== 'boolean') return false;
+  if (value.status === 'unavailable' && value.relativePath !== undefined) return false;
+  if (value.status !== 'unavailable' && typeof value.relativePath !== 'string') return false;
+  return value.reason === undefined || [
+    'no_record_ranges',
+    'source_missing',
+    'unsupported_source',
+    'read_failed',
+    'archive_limit',
+  ].includes(String(value.reason));
 }
 
 function isObservationSessionTimeRange(value: unknown): boolean {

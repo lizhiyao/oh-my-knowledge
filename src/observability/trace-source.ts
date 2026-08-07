@@ -495,7 +495,7 @@ function parseJsonlSessionFile(filePath: string): ParsedTraceFile {
   };
 }
 
-function forEachNonEmptyUtf8Line(
+export function forEachNonEmptyUtf8Line(
   filePath: string,
   visit: (trimmedLine: string) => void,
 ): void {

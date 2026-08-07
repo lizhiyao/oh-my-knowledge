@@ -334,6 +334,75 @@ describe('loadCcSessions', () => {
     );
   });
 
+  it('keeps Codex user-message provenance while removing attachment envelopes from display text', () => {
+    const rawText = [
+      '# Files mentioned by the user:',
+      '',
+      '## screenshot.png: /private/tmp/screenshot.png',
+      '',
+      '## My request for Codex:',
+      '为什么插件不可用？',
+      '',
+      '<image name=[Image #1] path="/private/tmp/screenshot.png">',
+      '[image]',
+      '</image>',
+    ].join('\n');
+    const path = writeSession(tmpDir, 'codex-attachment-envelope.jsonl', [{
+      timestamp: '2026-07-25T00:00:01.000Z',
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: rawText }],
+      },
+    }]);
+
+    const corpus = loadTraceCorpus(path);
+    const message = corpus.sessions[0].events.find((event) => event.eventKind === 'message');
+    assert.equal(message?.eventKind, 'message');
+    assert.equal(message?.eventKind === 'message' ? message.text : undefined, rawText);
+    assert.equal(
+      message?.eventKind === 'message' ? message.displayText : undefined,
+      '为什么插件不可用？',
+    );
+  });
+
+  it('keeps ambient browser state out of human-facing Codex task text', () => {
+    const ambientContext = '<in-app-browser-context source="ambient-ui-state">\nCurrent URL: http://127.0.0.1:7799/\n</in-app-browser-context>';
+    const humanText = '这个显示需要优化';
+    const path = writeSession(tmpDir, 'codex-ambient-browser-context.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: ambientContext }],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: `${ambientContext}\n\n${humanText}` }],
+        },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    const messages = session.events.filter((event) => event.eventKind === 'message');
+    assert.deepEqual(messages.map((event) => ({
+      origin: event.origin,
+      displayText: event.displayText,
+    })), [
+      { origin: 'runtime', displayText: undefined },
+      { origin: 'human', displayText: humanText },
+    ]);
+    assert.match(messages[1]?.eventKind === 'message' ? messages[1].text : '', /in-app-browser-context/);
+  });
+
   it('does not classify an arbitrary payload-bearing JSONL record as Codex', () => {
     const path = writeSession(tmpDir, 'not-codex.jsonl', [{
       timestamp: '2026-07-25T00:00:01.000Z',
@@ -367,7 +436,7 @@ describe('loadCcSessions', () => {
     assert.equal(corpus.ingestion.unknownEventCount, 2);
   });
 
-  it('treats known Codex protocol metadata as transparent rather than unrecognized evidence', () => {
+  it('projects Codex reasoning visibility while keeping other protocol metadata transparent', () => {
     const path = writeSession(tmpDir, 'known-codex-metadata.jsonl', [
       {
         timestamp: '2026-07-25T00:00:00.000Z',
@@ -377,7 +446,7 @@ describe('loadCcSessions', () => {
       {
         timestamp: '2026-07-25T00:00:01.000Z',
         type: 'response_item',
-        payload: { type: 'reasoning', summary: [], encrypted_content: 'opaque' },
+        payload: { type: 'reasoning', summary: [], encrypted_content: 'opaque-ciphertext-secret' },
       },
       {
         timestamp: '2026-07-25T00:00:02.000Z',
@@ -423,9 +492,223 @@ describe('loadCcSessions', () => {
 
     const corpus = loadTraceCorpus(path);
     assert.equal(corpus.sessions.length, 1);
-    assert.equal(corpus.sessions[0].events.length, 0);
+    assert.equal(corpus.sessions[0].events.length, 6);
+    assert.deepEqual(corpus.sessions[0].events.map((event) => event.eventKind), [
+      'model_activity',
+      'model_activity',
+      'runtime_context',
+      'context_compaction',
+      'context_compaction',
+      'runtime_context',
+    ]);
+    const [opaque, plaintext, settings, compacted, contextCompacted, goal] = corpus.sessions[0].events;
+    assert.equal(opaque?.eventKind === 'model_activity' ? opaque.contentVisibility : undefined, 'opaque');
+    assert.equal(opaque?.eventKind === 'model_activity' ? opaque.text : undefined, undefined);
+    assert.equal(plaintext?.eventKind === 'model_activity' ? plaintext.contentVisibility : undefined, 'plaintext');
+    assert.equal(plaintext?.eventKind === 'model_activity' ? plaintext.text : undefined, 'summary');
+    assert.equal(settings?.eventKind === 'runtime_context' ? settings.runtimeKind : undefined, 'settings');
+    assert.equal(compacted?.eventKind === 'context_compaction' ? compacted.replacementItemCount : undefined, 0);
+    assert.equal(contextCompacted?.eventKind, 'context_compaction');
+    assert.equal(goal?.eventKind === 'runtime_context' ? goal.runtimeKind : undefined, 'goal');
+    assert.doesNotMatch(JSON.stringify(corpus.sessions[0].events), /encrypted_content|opaque-ciphertext-secret/);
     assert.equal(corpus.ingestion.unknownEventCount, 0);
     assert.equal(corpus.ingestion.parsedRecordCount, 10);
+  });
+
+  it('normalizes nested Codex settings, goals, and cooperating-agent activity', () => {
+    const path = writeSession(tmpDir, 'codex-runtime-context.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-runtime-context',
+          originator: 'codex_desktop',
+          cli_version: '0.128.0',
+          model_provider: 'openai',
+          base_instructions: { text: 'Base runtime instructions' },
+          memory_mode: 'enabled',
+          history_mode: 'legacy',
+          context_window: { window_id: 'window-1' },
+          dynamic_tools: [
+            { namespace: 'codex_app', name: 'read_thread_terminal' },
+            { name: 'exec_command' },
+          ],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'turn_context',
+        payload: {
+          turn_id: 'turn-1',
+          cwd: '/repo',
+          workspace_roots: ['/repo', '/shared'],
+          model: 'gpt-5.4',
+          effort: 'high',
+          personality: 'pragmatic',
+          approval_policy: 'on-request',
+          approvals_reviewer: 'user',
+          permission_profile: { type: 'managed' },
+          collaboration_mode: { mode: 'default' },
+          realtime_active: false,
+          multi_agent_mode: 'enabled',
+          multi_agent_version: '2',
+          user_instructions: 'Project instructions',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'thread_settings_applied',
+          thread_settings: {
+            model: 'gpt-5.4-mini',
+            model_provider_id: 'openai',
+            service_tier: 'priority',
+            reasoning_effort: 'medium',
+            reasoning_summary: 'auto',
+            personality: 'concise',
+            cwd: '/repo/changed',
+            approval_policy: 'never',
+            approvals_reviewer: 'auto_review',
+            permission_profile: { type: 'managed' },
+            collaboration_mode: { mode: 'plan' },
+          },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'thread_goal_updated',
+          goal: { objective: 'Ship the debugger', status: 'in_progress' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'sub_agent_activity',
+          event_id: 'activity-1',
+          agent_thread_id: 'agent-1',
+          agent_path: 'reviewer',
+          kind: 'started',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:05.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'agent_message',
+          id: 'agent-message-1',
+          author: 'reviewer',
+          recipient: 'main',
+          content: [{ type: 'output_text', text: 'Review completed' }],
+          internal_chat_message_metadata_passthrough: { turn_id: 'turn-agent' },
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:06.000Z',
+        type: 'inter_agent_communication_metadata',
+        payload: { trigger_turn: true },
+      },
+    ]);
+
+    const corpus = loadTraceCorpus(path);
+    const sessionContext = corpus.sessions[0].events.find((event) =>
+      event.eventKind === 'runtime_context' && event.runtimeKind === 'session_context');
+    assert.ok(sessionContext?.eventKind === 'runtime_context');
+    assert.equal(sessionContext.runtimeName, 'codex_desktop');
+    assert.equal(sessionContext.runtimeVersion, '0.128.0');
+    assert.equal(sessionContext.memoryMode, 'enabled');
+    assert.equal(sessionContext.historyMode, 'legacy');
+    assert.equal(sessionContext.contextWindowId, 'window-1');
+    assert.equal(sessionContext.instructions, 'Base runtime instructions');
+    assert.deepEqual(sessionContext.availableTools, [
+      'codex_app.read_thread_terminal',
+      'exec_command',
+    ]);
+
+    const executionContext = corpus.sessions[0].events.find((event) =>
+      event.eventKind === 'runtime_context' && event.runtimeKind === 'execution_context');
+    assert.ok(executionContext?.eventKind === 'runtime_context');
+    assert.equal(executionContext.reasoningEffort, 'high');
+    assert.equal(executionContext.instructions, 'Project instructions');
+    assert.equal(executionContext.realtimeActive, false);
+    assert.equal(executionContext.permissionProfile, 'managed');
+
+    const settings = corpus.sessions[0].events.find((event) =>
+      event.eventKind === 'runtime_context' && event.runtimeKind === 'settings');
+    assert.ok(settings?.eventKind === 'runtime_context');
+    assert.equal(settings.model, 'gpt-5.4-mini');
+    assert.equal(settings.modelProvider, 'openai');
+    assert.equal(settings.serviceTier, 'priority');
+    assert.equal(settings.approvalPolicy, 'never');
+    assert.equal(settings.collaborationMode, 'plan');
+    assert.equal(settings.permissionProfile, 'managed');
+
+    const goal = corpus.sessions[0].events.find((event) =>
+      event.eventKind === 'runtime_context' && event.runtimeKind === 'goal');
+    assert.ok(goal?.eventKind === 'runtime_context');
+    assert.equal(goal.goal, 'Ship the debugger');
+    assert.equal(goal.goalStatus, 'in_progress');
+
+    const activities = corpus.sessions[0].events.filter((event) => event.eventKind === 'agent_activity');
+    assert.equal(activities.length, 2);
+    assert.deepEqual(activities.map((event) => event.eventKind === 'agent_activity'
+      ? [event.activityKind, event.activity, event.text, event.turnId]
+      : []), [
+      ['status', 'started', undefined, 'turn-1'],
+      ['communication', undefined, 'Review completed', 'turn-agent'],
+    ]);
+    assert.equal(corpus.ingestion.unknownEventCount, 0);
+  });
+
+  it('extracts every supported Codex reasoning plaintext shape and deduplicates mirrored summaries', () => {
+    const path = writeSession(tmpDir, 'codex-reasoning-plaintext.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-reasoning-plaintext' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: { type: 'agent_reasoning', text: 'First summary' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.004Z',
+        type: 'response_item',
+        payload: {
+          type: 'reasoning',
+          summary: [{ type: 'summary_text', text: 'First summary' }, 'Second summary'],
+          encrypted_content: 'ciphertext',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'response_item',
+        payload: { type: 'reasoning', summary: [], content: [{ type: 'text', text: 'Visible content' }] },
+      },
+      {
+        timestamp: '2026-07-25T00:00:03.000Z',
+        type: 'response_item',
+        payload: { type: 'reasoning', text: 'Visible text' },
+      },
+    ]);
+
+    const events = loadTraceCorpus(path).sessions[0].events;
+    assert.equal(events.length, 3);
+    assert.deepEqual(events.map((event) => event.eventKind === 'model_activity' ? event.contentSource : undefined), [
+      'summary',
+      'content',
+      'text',
+    ]);
+    assert.deepEqual(events.map((event) => event.eventKind === 'model_activity' ? event.text : undefined), [
+      'First summary\n\nSecond summary',
+      'Visible content',
+      'Visible text',
+    ]);
+    assert.doesNotMatch(JSON.stringify(events), /ciphertext/);
   });
 
   it('uses patch_apply_end as the authoritative apply_patch result', () => {
@@ -540,6 +823,32 @@ describe('loadCcSessions', () => {
     if (result?.eventKind !== 'tool_result') assert.fail('expected tool result');
     assert.equal(result.status, 'success');
     assert.equal(result.statusSource, 'runtime');
+    assert.equal(corpus.ingestion.unknownEventCount, 0);
+  });
+
+  it('recognizes Codex rate-limit-only token snapshots without inventing usage', () => {
+    const path = writeSession(tmpDir, 'codex-rate-limit-snapshot.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'codex-rate-limit-snapshot' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: null,
+          rate_limits: {
+            limit_id: 'codex',
+            primary: { used_percent: 8, window_minutes: 300 },
+          },
+        },
+      },
+    ]);
+
+    const corpus = loadTraceCorpus(path);
+    assert.equal(corpus.sessions[0].events.length, 0);
     assert.equal(corpus.ingestion.unknownEventCount, 0);
   });
 
@@ -1165,7 +1474,11 @@ describe('loadCcSessions', () => {
     ]);
 
     const [session] = loadCcSessions(path);
-    assert.equal(session.events.some((event) => event.sourceType.startsWith('session_meta:')), false);
+    assert.equal(session.events.some((event) => (
+      event.sourceType.startsWith('session_meta:')
+      && event.eventKind === 'runtime_context'
+      && event.runtimeKind === 'session_context'
+    )), true);
     const messages = session.events.filter((event) => event.eventKind === 'message');
     assert.deepEqual(
       messages.map((event) => [event.role, event.origin, event.text]),
@@ -3028,7 +3341,7 @@ describe('source-neutral Trace IR', () => {
     assert.deepEqual(
       scope.sessionRecordRanges.map((range) => [range.traceId, range.startRecordIndex, range.endRecordIndex]),
       sessions
-        .map((session) => [session.traceId, 1, 2] as const)
+        .map((session) => [session.traceId, 0, 2] as const)
         .sort((a, b) => a[0].localeCompare(b[0])),
     );
     assert.equal(

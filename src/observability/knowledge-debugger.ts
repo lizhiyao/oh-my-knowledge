@@ -2,14 +2,16 @@ import { createHash } from 'node:crypto';
 import type {
   DebugKnowledgeEvidence,
   ExperienceEvidenceRef,
-  ExperienceSessionSummary,
   ExperienceTimelineEvent,
   KnowledgeDebuggerViewModel,
+  ObservationSourceRecordArchiveView,
+  TaskTrajectorySession,
   TaskReplayIntegrityNotice,
   TaskReplayStep,
   TaskReplayStepKind,
   TraceIngestionSummary,
 } from '../types/index.js';
+import { resolveTaskWindow } from './task-window.js';
 
 interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'accessCount' | 'evidenceRefs'> {
   evidenceRef: ExperienceEvidenceRef;
@@ -18,30 +20,56 @@ interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'a
 const AGENTS_CONTEXT_RE = /^# AGENTS\.md instructions for ([^\n]+)\n/gim;
 const SKILL_PATH_RE = /((?:~|\.{0,2}|\/)?[^\s"'`]*\/skills\/(?:\.system\/)?([^/\s"'`]+)\/SKILL\.md)\b/i;
 const MUTATING_TOOL_RE = /(?:^|[._-])(write|edit|delete|remove|move|rename|apply[_-]?patch)(?:$|[._-])/i;
+const READ_ONLY_TOOL_RE = /(?:^|[._-])(read|search|query|fetch|get|list|find|glob|grep|view|open)(?:$|[._-])/i;
+const READ_ONLY_SHELL_RE = /^\s*(?:cat|head|tail|sed\s+-n|rg|grep|find|ls|pwd|wc|stat|which|git\s+(?:status|diff|show|log|branch|rev-parse)|gh\s+(?:issue|pr|run|release|repo)\s+(?:view|list|status|checks?))\b/i;
 
 export function buildKnowledgeDebuggerViewModel(
-  session: ExperienceSessionSummary,
+  session: TaskTrajectorySession,
+  targetTurnId: string,
   ingestion?: TraceIngestionSummary,
+  sourceRecords: ObservationSourceRecordArchiveView = {
+    status: 'unavailable',
+    recordCount: 0,
+    records: [],
+    omittedRecordCount: 0,
+    byteCount: 0,
+    truncated: false,
+    reason: 'no_record_ranges',
+  },
 ): KnowledgeDebuggerViewModel {
-  const timeline = [...session.fullSessionTimeline].sort((a, b) => a.order - b.order);
+  const taskWindow = resolveTaskWindow(session, targetTurnId);
+  const normalizedEvents = taskWindow.events;
+  const timeline = taskWindow.semanticEvents.filter((event) => event.runtimeKind !== 'usage');
   const knowledgeEvidence = projectKnowledgeEvidence(timeline);
   const steps = buildTaskReplaySteps(session, timeline, knowledgeEvidence);
-  const notices = buildIntegrityNotices(session, timeline, steps, ingestion);
+  const notices = buildIntegrityNotices(taskWindow.scope, timeline, steps, ingestion);
   const userEvents = timeline.filter((event) => event.kind === 'user_message');
   const assistantEvents = timeline.filter((event) => event.kind === 'assistant_message');
+  const observedModels = timeline.reduce<string[]>((models, event) => {
+    const eventModel = event.model?.trim();
+    if (eventModel && !models.includes(eventModel)) models.push(eventModel);
+    return models;
+  }, []);
 
   return {
     session,
+    taskScope: taskWindow.scope,
     summary: {
       userGoal: eventText(userEvents[0]),
       finalResponse: eventText(assistantEvents.at(-1)),
-      observedStartTimestamp: timeline.find((event) => event.timestamp)?.timestamp,
+      observedStartTimestamp: timeline.find((event) => (
+        event.timestamp && event.runtimeKind !== 'session_context'
+      ))?.timestamp
+        ?? timeline.find((event) => event.timestamp)?.timestamp,
       observedEndTimestamp: [...timeline].reverse().find((event) => event.timestamp)?.timestamp,
       toolCallCount: steps.filter((step) => step.stepKind === 'tool_exchange').length,
       toolFailureCount: steps.filter((step) => step.stepKind === 'tool_exchange' && step.toolStatus === 'failure').length,
       hasUserCorrection: steps.some((step) => step.stepKind === 'user_correction'),
+      observedModels,
     },
     steps,
+    normalizedEvents,
+    sourceRecords,
     knowledgeEvidence,
     integrity: {
       status: notices.length > 0 ? 'partial' : 'complete',
@@ -51,7 +79,7 @@ export function buildKnowledgeDebuggerViewModel(
 }
 
 export function buildTaskReplaySteps(
-  session: ExperienceSessionSummary,
+  session: TaskTrajectorySession,
   timeline: ExperienceTimelineEvent[],
   knowledgeEvidence: DebugKnowledgeEvidence[],
 ): TaskReplayStep[] {
@@ -183,7 +211,7 @@ export function projectKnowledgeEvidence(
     }
 
     const toolName = call.toolName ?? call.label ?? 'tool';
-    if (MUTATING_TOOL_RE.test(toolName)) continue;
+    if (!isKnowledgeReturningCall(toolName, callText)) continue;
     candidates.push({
       knowledgeKind: 'runtime_evidence',
       accessKind: 'returned',
@@ -199,14 +227,27 @@ export function projectKnowledgeEvidence(
   return aggregateCandidates(candidates);
 }
 
+function isKnowledgeReturningCall(toolName: string, callText: string): boolean {
+  if (MUTATING_TOOL_RE.test(toolName)) return false;
+  if (READ_ONLY_TOOL_RE.test(toolName)) return true;
+  const command = sourceLocator(callText);
+  return command ? READ_ONLY_SHELL_RE.test(command) : false;
+}
+
 function buildIntegrityNotices(
-  session: ExperienceSessionSummary,
+  taskScope: KnowledgeDebuggerViewModel['taskScope'],
   timeline: ExperienceTimelineEvent[],
   steps: TaskReplayStep[],
   ingestion?: TraceIngestionSummary,
 ): TaskReplayIntegrityNotice[] {
   const notices: TaskReplayIntegrityNotice[] = [];
-  if (session.timelineScope.truncated) notices.push({ code: 'timeline_truncated', count: 1 });
+  if (taskScope.basis === 'unresolved') {
+    notices.push({ code: 'task_boundary_unavailable', count: 1 });
+  }
+  const omittedSemanticEvents = taskScope.normalizedEventCount - taskScope.semanticEventCount;
+  if (omittedSemanticEvents > 0) {
+    notices.push({ code: 'timeline_truncated', count: omittedSemanticEvents });
+  }
   if (ingestion?.malformedRecordCount) notices.push({ code: 'malformed_records', count: ingestion.malformedRecordCount });
   if (ingestion?.ignoredValueCount) notices.push({ code: 'ignored_values', count: ingestion.ignoredValueCount });
   if (ingestion?.unknownEventCount) notices.push({ code: 'unknown_events', count: ingestion.unknownEventCount });
@@ -220,7 +261,7 @@ function buildIntegrityNotices(
 }
 
 function correctionEventIds(
-  session: ExperienceSessionSummary,
+  session: TaskTrajectorySession,
   timeline: ExperienceTimelineEvent[],
 ): Set<string> {
   const ids = new Set<string>();
@@ -231,7 +272,8 @@ function correctionEventIds(
       }
     }
   }
-  if (ids.size > 0 || session.indicators.userCorrectionCount === 0) return ids;
+  const userCorrectionCount = session.indicators?.userCorrectionCount ?? 0;
+  if (ids.size > 0 || userCorrectionCount === 0) return ids;
 
   const lastAssistantOrder = Math.max(
     -1,
@@ -239,7 +281,7 @@ function correctionEventIds(
   );
   const correctionCandidates = timeline
     .filter((event) => event.kind === 'user_message' && event.order > lastAssistantOrder)
-    .slice(-session.indicators.userCorrectionCount);
+    .slice(-userCorrectionCount);
   for (const event of correctionCandidates) ids.add(event.id);
   return ids;
 }
@@ -254,6 +296,8 @@ function stepKindForEvent(
     return sawUserRequest ? 'user_message' : 'user_request';
   }
   if (event.kind === 'assistant_message') return 'assistant_message';
+  if (event.kind === 'model_activity') return 'model_activity';
+  if (event.kind === 'lifecycle') return 'lifecycle';
   if (event.kind === 'runtime_context') return 'runtime_context';
   if (event.kind === 'skill_context') return 'skill_context';
   if (event.kind === 'tool_result') return 'unmatched_tool_result';
@@ -352,10 +396,12 @@ function evidenceRef(event: ExperienceTimelineEvent): ExperienceEvidenceRef {
     logicalMessageIndex: event.logicalMessageIndex,
     sourceLineIndex: event.sourceLineIndex,
     messageUuid: event.messageUuid,
+    sourceType: event.sourceType,
     callInstanceId: event.callInstanceId,
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,
     role: event.role,
+    runtimeKind: event.runtimeKind,
     label: event.label,
     snippet: event.snippet,
   };

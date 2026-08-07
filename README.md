@@ -28,7 +28,7 @@ Observe real-world performance, measure version differences, and determine wheth
 | Is v2 actually better than v1? | `omk eval` | one-line verdict, confidence interval, failed samples, cost |
 | Why did it pass or fail? | `omk studio` | report view with scores, diagnostics, and examples |
 | Should this version become the accepted one? | `omk promote` / `omk evolve` | evidence-gated accept or generate a better candidate |
-| What happened during one real AI task? | `omk observe` / Studio Task Replay | a trace-backed timeline of the request, context, knowledge, tool behavior, response, and user correction |
+| What happened during one real AI task? | `omk observe` / Studio Task Trajectory | a trace-backed view of the request, visible Knowledge, tool calls, results, response, and user correction |
 | What did real usage expose? | `omk observe` / `omk sample --from-traces` | production gaps drafted for review; reviewed drafts can become eval samples |
 
 ![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
