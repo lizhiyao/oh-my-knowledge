@@ -236,6 +236,12 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /data-source-records-loaded="false"/);
     assert.doesNotMatch(replay.body, /"sourceTrace":/);
     assert.match(replay.body, /const closeInspector = \(shouldScheduleLayout = true\) =>/);
+    assert.doesNotMatch(replay.body, /currentOperationId = id;\s*pauseLiveFollow\(\)/);
+    assert.doesNotMatch(replay.body, /isInteractionBlocking/);
+    assert.match(replay.body, /replacement\.dataset\.selectedOperationId = selectedOperationId/);
+    assert.match(replay.body, /replacement\.dataset\.inspectorScrollTop = String\(inspectorScrollTop\)/);
+    assert.match(replay.body, /replacement\.dataset\.expandedDetailSourceEventIds = JSON\.stringify/);
+    assert.match(replay.body, /selectOperation\(restoredOperationId\)/);
     assert.match(replay.body, /if \(shouldScheduleLayout\) scheduleOperationLinks\(\)/);
     assert.match(replay.body, /const setTrajectoryMode = \(mode\) =>/);
     assert.match(replay.body, /if \(mode !== 'semantic'\) closeInspector\(false\)/);

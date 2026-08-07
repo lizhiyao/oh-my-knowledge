@@ -480,6 +480,7 @@ export function renderKnowledgeDebuggerPage(
         const normalizedEmpty = document.querySelector('[data-trajectory-normalized-empty]');
         const sourceRecordList = document.querySelector('[data-source-records-endpoint]');
         const semanticPanels = Array.from(document.querySelectorAll('[data-trajectory-semantic-panel]'));
+        const semanticPanelContainer = document.querySelector('.trajectory-semantic-panels');
         const detailBlocks = Array.from(document.querySelectorAll('[data-field-detail-block]'));
         const operationType = document.querySelector('#trajectory-operation-type');
         const operationTitle = document.querySelector('#trajectory-operation-title');
@@ -497,7 +498,6 @@ export function renderKnowledgeDebuggerPage(
         let pendingLayoutFrame;
         let sourceRecordsPromise;
         const copyFeedbackTimers = new Set();
-        let applyPendingLiveUpdate = () => {};
         let pauseLiveFollow = () => {};
         const sourceRecordLabels = ${JSON.stringify({
           empty: zh ? '空记录' : 'Empty record',
@@ -869,7 +869,6 @@ export function renderKnowledgeDebuggerPage(
           if (operationSummary) operationSummary.textContent = panel.dataset.summary || '';
           if (evidenceCount) evidenceCount.textContent = panel.dataset.evidenceLabel || '';
           currentOperationId = id;
-          pauseLiveFollow();
           shell.dataset.inspectorOpen = 'true';
           if (inspector) inspector.hidden = false;
           setLinkActivity(id);
@@ -887,7 +886,6 @@ export function renderKnowledgeDebuggerPage(
           if (inspector) inspector.hidden = true;
           setLinkActivity();
           if (shouldScheduleLayout) scheduleOperationLinks();
-          applyPendingLiveUpdate();
         };
 
         cards.forEach((card) => {
@@ -1052,9 +1050,20 @@ export function renderKnowledgeDebuggerPage(
           const incomingShell = incomingDocument.querySelector('.trajectory-shell');
           if (!incomingShell) throw new Error('trajectory snapshot missing');
           const replacement = document.importNode(incomingShell, true);
+          const selectedOperationId = currentOperationId;
+          const inspectorScrollTop = semanticPanelContainer?.scrollTop ?? 0;
+          const expandedDetailSourceEventIds = detailBlocks
+            .filter((block) => block.dataset.expanded === 'true')
+            .map((block) => block.dataset.detailSourceEventId || '')
+            .filter(Boolean);
           replacement.querySelectorAll('[data-trajectory-operation]').forEach((card) => {
             if (eventPosition(card) > previousEnd + 1) card.classList.add('is-live-entering');
           });
+          if (selectedOperationId) {
+            replacement.dataset.selectedOperationId = selectedOperationId;
+            replacement.dataset.inspectorScrollTop = String(inspectorScrollTop);
+            replacement.dataset.expandedDetailSourceEventIds = JSON.stringify(expandedDetailSourceEventIds);
+          }
           window.__omkTrajectoryDispose?.();
           shell.replaceWith(replacement);
           if (incomingDocument.title) document.title = incomingDocument.title;
@@ -1086,13 +1095,22 @@ export function renderKnowledgeDebuggerPage(
           })},
           getMode: () => shell.dataset.mode || 'semantic',
           setMode: setTrajectoryMode,
-          isInteractionBlocking: () => Boolean(currentOperationId),
           refreshSnapshot: refreshTrajectorySnapshot,
           browserWindow: window,
           browserDocument: document,
         });
-        applyPendingLiveUpdate = liveController.applyPendingUpdate;
         pauseLiveFollow = liveController.pauseFollowing;
+        const restoredOperationId = shell.dataset.selectedOperationId || '';
+        const restoredInspectorScrollTop = Number(shell.dataset.inspectorScrollTop) || 0;
+        let restoredExpandedDetailSourceEventIds = [];
+        try {
+          restoredExpandedDetailSourceEventIds = JSON.parse(shell.dataset.expandedDetailSourceEventIds || '[]');
+        } catch {
+          restoredExpandedDetailSourceEventIds = [];
+        }
+        delete shell.dataset.selectedOperationId;
+        delete shell.dataset.inspectorScrollTop;
+        delete shell.dataset.expandedDetailSourceEventIds;
         window.__omkTrajectoryDispose = () => {
           pageLifecycle.abort();
           liveController.dispose();
@@ -1101,7 +1119,18 @@ export function renderKnowledgeDebuggerPage(
           copyFeedbackTimers.forEach((timer) => window.clearTimeout(timer));
           copyFeedbackTimers.clear();
         };
-        scheduleOperationLinks();
+        if (restoredOperationId && operationIds.includes(restoredOperationId)) {
+          selectOperation(restoredOperationId);
+          detailBlocks.forEach((block) => {
+            if (!restoredExpandedDetailSourceEventIds.includes(block.dataset.detailSourceEventId || '')) return;
+            block.querySelector('[data-field-detail-toggle]')?.click();
+          });
+          requestAnimationFrame(() => {
+            if (semanticPanelContainer) semanticPanelContainer.scrollTop = restoredInspectorScrollTop;
+          });
+        } else {
+          scheduleOperationLinks();
+        }
         };
         window.__omkInitializeTrajectory = initializeTrajectoryPage;
         initializeTrajectoryPage();

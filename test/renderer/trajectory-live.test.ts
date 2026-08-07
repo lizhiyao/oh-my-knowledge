@@ -87,7 +87,6 @@ describe('trajectory live client', () => {
       labels,
       getMode: () => 'semantic',
       setMode: () => undefined,
-      isInteractionBlocking: () => false,
       refreshSnapshot: async (state) => { refreshedState = state; },
       browserWindow,
       browserDocument,
@@ -150,7 +149,6 @@ describe('trajectory live client', () => {
       labels,
       getMode: () => 'semantic',
       setMode: () => undefined,
-      isInteractionBlocking: () => false,
       browserWindow,
       browserDocument: {
         hidden: false,
@@ -198,7 +196,6 @@ describe('trajectory live client', () => {
       labels,
       getMode: () => 'semantic',
       setMode: () => undefined,
-      isInteractionBlocking: () => false,
       browserWindow,
       browserDocument: {
         hidden: false,

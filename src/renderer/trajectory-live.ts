@@ -24,7 +24,6 @@ export interface TrajectoryLiveClientOptions {
   labels: TrajectoryLiveLabels;
   getMode: () => string;
   setMode: (mode: string) => void;
-  isInteractionBlocking: () => boolean;
   refreshSnapshot?: (state: TrajectoryLiveViewState) => Promise<void>;
   browserWindow: Window;
   browserDocument: Document;
@@ -38,7 +37,6 @@ export interface TrajectoryLiveViewState {
 }
 
 export interface TrajectoryLiveController {
-  applyPendingUpdate: () => void;
   pauseFollowing: () => void;
   dispose: () => void;
 }
@@ -189,7 +187,6 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     if (!pendingRevision
       || !followLatest
       || options.getMode() !== 'semantic'
-      || options.isInteractionBlocking()
       || browserDocument.hidden
       || refreshTimer !== undefined) return;
     setConnectionState('syncing', labels.syncing);
@@ -278,7 +275,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     }, { signal: lifecycle.signal });
   }
 
-  return { applyPendingUpdate, pauseFollowing, dispose };
+  return { pauseFollowing, dispose };
 }
 
 export function renderTrajectoryLiveClientSource(): string {
