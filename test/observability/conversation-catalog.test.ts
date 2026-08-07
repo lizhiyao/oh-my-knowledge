@@ -191,6 +191,54 @@ describe('Codex conversation catalog', () => {
     assert.equal(extended.tasks[0]?.endLine, 1);
   });
 
+  it('keeps task byte ranges stable when only the missing EOF delimiter is appended', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-delimiter-only.jsonl');
+    const started = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-a' },
+    });
+    writeFileSync(rolloutPath, started);
+
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    appendFileSync(rolloutPath, '\n');
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.tasks[0]?.endOffset, extended.sourceSize);
+  });
+
+  it('keeps a terminal EOF task adjacent to the next appended task', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-terminal-tail.jsonl');
+    const started = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-a' },
+    });
+    const completed = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.100Z',
+      type: 'event_msg',
+      payload: { type: 'task_complete', turn_id: 'turn-a' },
+    });
+    const nextStarted = JSON.stringify({
+      timestamp: '2026-08-06T00:00:01.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-b' },
+    });
+    writeFileSync(rolloutPath, `${started}\n${completed}`);
+
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    appendFileSync(rolloutPath, `\n${nextStarted}\n`);
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.tasks[0]?.endOffset, extended.tasks[1]?.startOffset);
+  });
+
   it('lists main conversations, groups child agents, and drills into native tasks', async () => {
     const root = temporaryRoot();
     const codexHome = join(root, '.codex');

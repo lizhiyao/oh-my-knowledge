@@ -4,7 +4,7 @@ import { codexUserDisplayText } from './codex-protocol.js';
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION = 8;
+const INDEX_SCHEMA_VERSION = 9;
 
 export interface CodexIndexedTask {
   turnId: string;
@@ -22,7 +22,7 @@ export interface CodexIndexedTask {
 }
 
 export interface CodexRolloutIndex {
-  schemaVersion: 8;
+  schemaVersion: 9;
   sourcePath: string;
   /** File size observed when the index was produced. */
   sourceSize: number;
@@ -94,23 +94,85 @@ export function extendCodexRolloutIndex(
   }
 
   const tasks = normalizedPrevious.tasks.map((task) => ({ ...task }));
+  const resume = resumeAppendCursor(sourcePath, normalizedPrevious, sourceStat.size);
+  if (!resume) return buildCodexRolloutIndex(sourcePath, sourceThreadId);
+  completeTailTaskDelimiter(tasks, normalizedPrevious.indexedSize, resume.indexedSize);
   const lastTask = tasks.at(-1);
   const active = lastTask?.status === 'open'
     ? mutableTask(tasks.pop()!)
     : undefined;
-  const state = scanCodexRolloutIndex(sourcePath, sourceThreadId, {
+  const state: CodexIndexScanState = {
     tasks,
     active,
     sessionMeta: normalizedPrevious.sessionMeta,
     sessionMetaLine: normalizedPrevious.sessionMetaLine,
     sourceRecordCount: normalizedPrevious.sourceRecordCount,
     malformedRecordCount: normalizedPrevious.malformedRecordCount,
-    indexedSize: normalizedPrevious.indexedSize,
+    indexedSize: resume.indexedSize,
     indexedLineCount: normalizedPrevious.indexedLineCount,
-    indexedEndsWithNewline: normalizedPrevious.indexedEndsWithNewline,
-  }, normalizedPrevious.indexedSize, sourceStat.size,
-  normalizedPrevious.indexedLineCount - (normalizedPrevious.indexedEndsWithNewline ? 0 : 1));
-  return indexFromState(sourcePath, sourceThreadId, sourceStat, state);
+    indexedEndsWithNewline: resume.indexedEndsWithNewline,
+  };
+  const extended = resume.indexedSize < sourceStat.size
+    ? scanCodexRolloutIndex(
+      sourcePath,
+      sourceThreadId,
+      state,
+      resume.indexedSize,
+      sourceStat.size,
+      normalizedPrevious.indexedLineCount,
+    )
+    : state;
+  return indexFromState(sourcePath, sourceThreadId, sourceStat, extended);
+}
+
+function resumeAppendCursor(
+  sourcePath: string,
+  previous: CodexRolloutIndex,
+  sourceSize: number,
+): { indexedSize: number; indexedEndsWithNewline: boolean } | undefined {
+  if (previous.indexedEndsWithNewline) {
+    return {
+      indexedSize: previous.indexedSize,
+      indexedEndsWithNewline: true,
+    };
+  }
+
+  const fd = openSync(sourcePath, 'r');
+  const buffer = Buffer.allocUnsafe(Math.min(4_096, Math.max(1, sourceSize - previous.indexedSize)));
+  let offset = previous.indexedSize;
+  try {
+    while (offset < sourceSize) {
+      const bytesRead = readSync(fd, buffer, 0, Math.min(buffer.length, sourceSize - offset), offset);
+      if (bytesRead === 0) break;
+      for (let index = 0; index < bytesRead; index += 1) {
+        const byte = buffer[index];
+        if (byte === 0x0a) {
+          return {
+            indexedSize: offset + index + 1,
+            indexedEndsWithNewline: true,
+          };
+        }
+        if (byte !== 0x09 && byte !== 0x0d && byte !== 0x20) return undefined;
+      }
+      offset += bytesRead;
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return {
+    indexedSize: sourceSize,
+    indexedEndsWithNewline: false,
+  };
+}
+
+function completeTailTaskDelimiter(
+  tasks: CodexIndexedTask[],
+  previousIndexedSize: number,
+  indexedSize: number,
+): void {
+  if (indexedSize <= previousIndexedSize) return;
+  const tailTask = tasks.at(-1);
+  if (tailTask?.endOffset === previousIndexedSize) tailTask.endOffset = indexedSize;
 }
 
 /**
