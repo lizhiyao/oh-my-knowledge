@@ -497,7 +497,7 @@ function parseJsonlSessionFile(filePath: string): ParsedTraceFile {
 
 export function forEachNonEmptyUtf8Line(
   filePath: string,
-  visit: (trimmedLine: string) => void,
+  visit: (trimmedLine: string) => boolean | void,
 ): void {
   let fd: number;
   try {
@@ -508,9 +508,10 @@ export function forEachNonEmptyUtf8Line(
   const decoder = new StringDecoder('utf8');
   const buffer = Buffer.allocUnsafe(TRACE_READ_CHUNK_BYTES);
   let pending = '';
+  let stopped = false;
   const consumeCompleteLines = (): void => {
     let newline = pending.indexOf('\n');
-    while (newline >= 0) {
+    while (newline >= 0 && !stopped) {
       if (newline > MAX_JSONL_RECORD_CHARS) {
         throw new Error(
           `trace JSONL 单条记录超过 ${MAX_JSONL_RECORD_CHARS} 字符上限：${filePath}`,
@@ -518,9 +519,13 @@ export function forEachNonEmptyUtf8Line(
       }
       const trimmed = pending.slice(0, newline).trim();
       pending = pending.slice(newline + 1);
-      if (trimmed) visit(trimmed);
+      if (trimmed && visit(trimmed) === false) {
+        stopped = true;
+        return;
+      }
       newline = pending.indexOf('\n');
     }
+    if (stopped) return;
     if (pending.length > MAX_JSONL_RECORD_CHARS) {
       throw new Error(
         `trace JSONL 单条记录超过 ${MAX_JSONL_RECORD_CHARS} 字符上限：${filePath}`,
@@ -529,12 +534,13 @@ export function forEachNonEmptyUtf8Line(
   };
 
   try {
-    while (true) {
+    while (!stopped) {
       const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
       if (bytesRead === 0) break;
       pending += decoder.write(buffer.subarray(0, bytesRead));
       consumeCompleteLines();
     }
+    if (stopped) return;
     pending += decoder.end();
     consumeCompleteLines();
     const trimmed = pending.trim();

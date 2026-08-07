@@ -25,6 +25,24 @@ interface MergedRecordRange {
   traceId: string;
 }
 
+interface SessionArchiveBuilder {
+  session: ExperienceSessionSummary;
+  groupedRanges: Map<string, MergedRecordRange[]>;
+  records: ObservationSourceRecord[];
+  omittedRecordCount: number;
+  byteCount: number;
+  truncated: boolean;
+  failure?: ObservationSourceRecordArchiveRef['reason'];
+}
+
+interface SourceArchiveTarget {
+  builder: SessionArchiveBuilder;
+  ranges: MergedRecordRange[];
+  expectedCount: number;
+  matchedCount: number;
+  rangeIndex: number;
+}
+
 /**
  * Persist bounded source records beside a report. Absolute source paths are
  * consumed only during trusted ingest; Studio later reads relative sidecars.
@@ -38,7 +56,37 @@ export function writeObservationSourceRecordArchives(
   if (sessions.length === 0) return [];
   const reportStem = basename(reportPath).replace(/\.report\.json$/u, '');
   const archiveDir = join(outDir, 'source-records', reportStem);
-  return sessions.map((session) => writeSessionArchive(session, archiveDir, outDir, report.meta.generatedAt));
+  const builders = sessions.map((session): SessionArchiveBuilder => ({
+    session,
+    groupedRanges: groupRecordRanges(session.timelineScope.sessionRecordRanges),
+    records: [],
+    omittedRecordCount: 0,
+    byteCount: 0,
+    truncated: false,
+  }));
+  const targetsBySource = new Map<string, SourceArchiveTarget[]>();
+  for (const builder of builders) {
+    for (const [sourceTrace, ranges] of builder.groupedRanges) {
+      const targets = targetsBySource.get(sourceTrace) ?? [];
+      targets.push({
+        builder,
+        ranges,
+        expectedCount: ranges.reduce((sum, range) => sum + range.end - range.start + 1, 0),
+        matchedCount: 0,
+        rangeIndex: 0,
+      });
+      targetsBySource.set(sourceTrace, targets);
+    }
+  }
+  for (const [sourceTrace, targets] of targetsBySource) {
+    collectSourceRecords(sourceTrace, targets);
+  }
+  return builders.map((builder) => persistSessionArchive(
+    builder,
+    archiveDir,
+    outDir,
+    report.meta.generatedAt,
+  ));
 }
 
 export function loadObservationSourceRecordArchive(
@@ -90,70 +138,89 @@ export function summarizeObservationSourceRecordArchive(
   };
 }
 
-function writeSessionArchive(
-  session: ExperienceSessionSummary,
+function collectSourceRecords(
+  sourceTrace: string,
+  targets: SourceArchiveTarget[],
+): void {
+  if (extname(sourceTrace).toLowerCase() !== '.jsonl') {
+    markSourceUnavailable(targets, 'unsupported_source');
+    return;
+  }
+  if (!existsSync(sourceTrace)) {
+    markSourceUnavailable(targets, 'source_missing');
+    return;
+  }
+
+  const maxEnd = targets.reduce(
+    (targetMax, target) => target.ranges.reduce(
+      (rangeMax, range) => Math.max(rangeMax, range.end),
+      targetMax,
+    ),
+    -1,
+  );
+  let sourceIndex = 0;
+  try {
+    forEachNonEmptyUtf8Line(sourceTrace, (line) => {
+      const currentIndex = sourceIndex;
+      sourceIndex += 1;
+      const recordsByTraceId = new Map<string, ObservationSourceRecord>();
+      for (const target of targets) {
+        while (target.ranges[target.rangeIndex]
+          && target.ranges[target.rangeIndex]!.end < currentIndex) {
+          target.rangeIndex += 1;
+        }
+        const range = target.ranges[target.rangeIndex];
+        if (!range || currentIndex < range.start || currentIndex > range.end) continue;
+        target.matchedCount += 1;
+        if (target.builder.byteCount >= MAX_ARCHIVE_SOURCE_BYTES) {
+          target.builder.omittedRecordCount += 1;
+          target.builder.truncated = true;
+          target.builder.failure = 'archive_limit';
+          continue;
+        }
+        let record = recordsByTraceId.get(range.traceId);
+        if (!record) {
+          record = observationSourceRecordFromLine(line, currentIndex, range.traceId, sourceTrace);
+          recordsByTraceId.set(range.traceId, record);
+        }
+        if (target.builder.byteCount + record.byteCount > MAX_ARCHIVE_SOURCE_BYTES) {
+          target.builder.omittedRecordCount += 1;
+          target.builder.truncated = true;
+          target.builder.failure = 'archive_limit';
+          continue;
+        }
+        target.builder.records.push(record);
+        target.builder.byteCount += record.byteCount;
+        target.builder.truncated ||= record.truncated;
+      }
+      return currentIndex < maxEnd;
+    });
+  } catch {
+    for (const target of targets) target.builder.failure ??= 'read_failed';
+  }
+  for (const target of targets) {
+    target.builder.omittedRecordCount += Math.max(0, target.expectedCount - target.matchedCount);
+  }
+}
+
+function markSourceUnavailable(
+  targets: SourceArchiveTarget[],
+  reason: NonNullable<ObservationSourceRecordArchiveRef['reason']>,
+): void {
+  for (const target of targets) {
+    target.builder.omittedRecordCount += target.expectedCount;
+    target.builder.failure ??= reason;
+  }
+}
+
+function persistSessionArchive(
+  builder: SessionArchiveBuilder,
   archiveDir: string,
   outDir: string,
   generatedAt: string,
 ): ObservationSourceRecordArchiveRef {
-  const ranges = session.timelineScope.sessionRecordRanges;
-  if (ranges.length === 0) return unavailableRef(session.id, 'no_record_ranges');
-
-  const grouped = groupRecordRanges(ranges);
-  const records: ObservationSourceRecord[] = [];
-  let omittedRecordCount = 0;
-  let byteCount = 0;
-  let truncated = false;
-  let failure: ObservationSourceRecordArchiveRef['reason'];
-
-  for (const [sourceTrace, sourceRanges] of grouped) {
-    const expectedCount = sourceRanges.reduce((sum, range) => sum + range.end - range.start + 1, 0);
-    if (extname(sourceTrace).toLowerCase() !== '.jsonl') {
-      omittedRecordCount += expectedCount;
-      failure ??= 'unsupported_source';
-      continue;
-    }
-    if (!existsSync(sourceTrace)) {
-      omittedRecordCount += expectedCount;
-      failure ??= 'source_missing';
-      continue;
-    }
-
-    let matchedCount = 0;
-    let sourceIndex = 0;
-    let rangeIndex = 0;
-    try {
-      forEachNonEmptyUtf8Line(sourceTrace, (line) => {
-        while (sourceRanges[rangeIndex] && sourceRanges[rangeIndex].end < sourceIndex) {
-          rangeIndex += 1;
-        }
-        const candidate = sourceRanges[rangeIndex];
-        const range = candidate && sourceIndex >= candidate.start && sourceIndex <= candidate.end
-          ? candidate
-          : undefined;
-        if (!range) {
-          sourceIndex += 1;
-          return;
-        }
-        matchedCount += 1;
-        const record = observationSourceRecordFromLine(line, sourceIndex, range.traceId, sourceTrace);
-        sourceIndex += 1;
-        if (byteCount + record.byteCount > MAX_ARCHIVE_SOURCE_BYTES) {
-          omittedRecordCount += 1;
-          truncated = true;
-          failure = 'archive_limit';
-          return;
-        }
-        records.push(record);
-        byteCount += record.byteCount;
-        truncated ||= record.truncated;
-      });
-    } catch {
-      failure ??= 'read_failed';
-    }
-    omittedRecordCount += Math.max(0, expectedCount - matchedCount);
-  }
-
+  const { session, records, omittedRecordCount, byteCount, failure } = builder;
+  if (builder.groupedRanges.size === 0) return unavailableRef(session.id, 'no_record_ranges');
   if (records.length === 0) return unavailableRef(session.id, failure ?? 'read_failed', omittedRecordCount);
   const archive: ObservationSourceRecordArchive = {
     archiveKind: 'observe-source-records',
@@ -163,7 +230,7 @@ function writeSessionArchive(
     records,
     omittedRecordCount,
     byteCount,
-    truncated: truncated || omittedRecordCount > 0,
+    truncated: builder.truncated || omittedRecordCount > 0,
   };
   const fileName = `${createHash('sha256').update(session.id).digest('hex').slice(0, 24)}.json`;
   const archivePath = join(archiveDir, fileName);

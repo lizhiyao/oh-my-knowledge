@@ -19,6 +19,7 @@ const EVENT_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'task_started',
   'task_complete',
   'turn_aborted',
+  'turn_interrupted',
   'user_message',
   'agent_message',
   'mcp_tool_call_end',

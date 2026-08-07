@@ -574,6 +574,20 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
 
+    if (record.type === 'event_msg' && payloadType === 'turn_interrupted') {
+      events.push({
+        ...base,
+        turnId: stringValue(payload.turn_id) ?? activeTurnId,
+        eventKind: 'lifecycle',
+        eventId: eventId('lifecycle'),
+        phase: 'turn_interrupted',
+        reason: stringValue(payload.reason),
+        durationMs: nonNegativeMetric(payload.duration_ms),
+      });
+      activeTurnId = undefined;
+      return;
+    }
+
     if (record.type === 'event_msg' && payloadType === 'user_message') {
       const text = stringValue(payload.message);
       if (text) {

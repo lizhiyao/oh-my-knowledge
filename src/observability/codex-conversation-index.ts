@@ -5,6 +5,7 @@ import { codexUserDisplayText } from './codex-protocol.js';
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
 const INDEX_SCHEMA_VERSION = 9;
+const MAX_CURRENT_INDEX_ATTEMPTS = 4;
 
 export interface CodexIndexedTask {
   turnId: string;
@@ -123,6 +124,28 @@ export function extendCodexRolloutIndex(
     )
     : state;
   return indexFromState(sourcePath, sourceThreadId, sourceStat, extended);
+}
+
+/**
+ * Catch an append-only rollout up to a snapshot that is still current after
+ * indexing. Returning a stale prefix here would violate current-read callers.
+ */
+export function synchronizeCurrentCodexRolloutIndex(
+  sourcePath: string,
+  sourceThreadId: string,
+  initial?: CodexRolloutIndex,
+): CodexRolloutIndex {
+  let index = initial
+    && initial.sourceThreadId === sourceThreadId
+    && isReusableCodexRolloutIndex(initial, sourcePath)
+    ? normalizeCodexRolloutIndex(initial)
+    : buildCodexRolloutIndex(sourcePath, sourceThreadId);
+  for (let attempt = 0; attempt < MAX_CURRENT_INDEX_ATTEMPTS; attempt += 1) {
+    if (isCurrentCodexRolloutIndex(index, sourcePath)) return index;
+    index = extendCodexRolloutIndex(sourcePath, sourceThreadId, index);
+  }
+  if (isCurrentCodexRolloutIndex(index, sourcePath)) return index;
+  throw new Error('Codex 对话日志持续写入，暂时无法形成当前索引快照');
 }
 
 function resumeAppendCursor(

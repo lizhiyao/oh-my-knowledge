@@ -11,6 +11,7 @@ import {
   isReusableCodexRolloutIndex,
   normalizeCodexRolloutIndex,
   readCodexTaskRecords,
+  synchronizeCurrentCodexRolloutIndex,
 } from '../../src/observability/codex-conversation-index.js';
 import { createCodexConversationCatalog } from '../../src/observability/conversation-catalog.js';
 
@@ -102,6 +103,39 @@ describe('Codex conversation catalog', () => {
 
     assert.equal(isCurrentCodexRolloutIndex(index, rolloutPath), false);
     assert.equal(isReusableCodexRolloutIndex(index, rolloutPath), true);
+  });
+
+  it('synchronizes a reusable prefix before serving a current index', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-current.jsonl');
+    writeFileSync(rolloutPath, rollout('main-thread'));
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    appendFileSync(rolloutPath, `${JSON.stringify({
+      timestamp: '2026-08-06T00:02:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-c' },
+    })}\n${JSON.stringify({
+      timestamp: '2026-08-06T00:02:00.100Z',
+      type: 'event_msg',
+      payload: { type: 'user_message', message: '后台扫描期间追加的任务' },
+    })}\n`);
+
+    const current = synchronizeCurrentCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    assert.equal(isCurrentCodexRolloutIndex(current, rolloutPath), true);
+    assert.equal(current.tasks.at(-1)?.turnId, 'turn-c');
+    assert.equal(current.tasks.at(-1)?.title, '后台扫描期间追加的任务');
+  });
+
+  it('rejects a current-looking prefix from another source thread', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-thread-boundary.jsonl');
+    writeFileSync(rolloutPath, rollout('main-thread'));
+    const foreign = buildCodexRolloutIndex(rolloutPath, 'foreign-thread');
+
+    const current = synchronizeCurrentCodexRolloutIndex(rolloutPath, 'main-thread', foreign);
+
+    assert.equal(current.sourceThreadId, 'main-thread');
   });
 
   it('extends a growing rollout from the cached byte boundary', () => {

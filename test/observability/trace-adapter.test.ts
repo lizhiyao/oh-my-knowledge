@@ -16,8 +16,10 @@ import {
   buildObservationExperienceReport,
   compactObservationExperienceReport,
   normalizeObservationExperienceReport,
+  projectTraceSessionTimeline,
 } from '../../src/observability/experience.js';
 import { isInstalledSkillAssetPath } from '../../src/observability/trace-attribution.js';
+import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
 
 // ---------- Helpers ----------
 
@@ -1678,6 +1680,54 @@ describe('loadCcSessions', () => {
       experience.sessions[0].ruleFindings.some((finding) => finding.code === 'session_interrupted_seen'),
       true,
     );
+  });
+
+  it('preserves Codex turn_interrupted as a terminal Trace IR event', () => {
+    const path = writeSession(tmpDir, 'rollout-codex-interrupted.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'codex-interrupted',
+          cwd: '/repo-codex',
+          originator: 'Codex Desktop',
+          model_provider: 'openai',
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'event_msg',
+        payload: { type: 'task_started', turn_id: 'turn-1' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:02.000Z',
+        type: 'event_msg',
+        payload: { type: 'user_message', message: '执行长任务。' },
+      },
+      {
+        timestamp: '2026-07-25T00:00:04.000Z',
+        type: 'event_msg',
+        payload: {
+          type: 'turn_interrupted',
+          turn_id: 'turn-1',
+          reason: 'user_cancelled',
+          duration_ms: 3000,
+        },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    const interrupted = session.events.find((event) =>
+      event.eventKind === 'lifecycle' && event.phase === 'turn_interrupted');
+    assert.ok(interrupted && interrupted.eventKind === 'lifecycle');
+    assert.equal(interrupted.turnId, 'turn-1');
+    assert.equal(interrupted.reason, 'user_cancelled');
+    assert.equal(interrupted.durationMs, 3000);
+    assert.equal(session.events.some((event) => event.eventKind === 'unknown'
+      && event.sourceType === 'event_msg:turn_interrupted'), false);
+
+    const turns = reconstructExperienceTurns(projectTraceSessionTimeline(session));
+    assert.equal(turns[0]?.status, 'interrupted');
   });
 
   it('handles Codex desktop exec calls, duplicate token snapshots, and per-turn models', () => {

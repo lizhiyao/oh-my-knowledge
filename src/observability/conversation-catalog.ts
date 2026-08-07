@@ -23,12 +23,11 @@ import { DEFAULT_CACHE_DIR } from '../eval-core/default-dirs.js';
 import { durationMsBetween } from '../shared/time.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {
-  buildCodexRolloutIndex,
-  extendCodexRolloutIndex,
   isCurrentCodexRolloutIndex,
   isReusableCodexRolloutIndex,
   normalizeCodexRolloutIndex,
   readCodexTaskRecords,
+  synchronizeCurrentCodexRolloutIndex,
   type CodexIndexedTask,
   type CodexRolloutIndex,
 } from './codex-conversation-index.js';
@@ -404,9 +403,7 @@ class CodexConversationCatalog implements ConversationCatalog {
     const cached = this.readCachedIndex(row);
     const pendingBytes = cached ? sourceSize - cached.indexedSize : sourceSize;
     if (!this.useBackgroundProcess || pendingBytes < this.backgroundProcessThresholdBytes) {
-      const index = cached
-        ? extendCodexRolloutIndex(row.rolloutPath, row.id, cached)
-        : buildCodexRolloutIndex(row.rolloutPath, row.id);
+      const index = synchronizeCurrentCodexRolloutIndex(row.rolloutPath, row.id, cached);
       writeJsonFileAtomic(cachePath, index);
       return Promise.resolve(index);
     }
@@ -433,9 +430,18 @@ class CodexConversationCatalog implements ConversationCatalog {
           reject(new Error(stderr.trim() || `Codex 对话索引进程异常退出：${code ?? 'unknown'}`));
           return;
         }
-        const index = this.readCachedIndex(row);
-        if (index) resolve(index);
-        else reject(new Error('Codex 对话索引进程未生成有效缓存'));
+        const cachedIndex = this.readCachedIndex(row);
+        if (!cachedIndex) {
+          reject(new Error('Codex 对话索引进程未生成有效缓存'));
+          return;
+        }
+        try {
+          const index = synchronizeCurrentCodexRolloutIndex(row.rolloutPath, row.id, cachedIndex);
+          writeJsonFileAtomic(cachePath, index);
+          resolve(index);
+        } catch (cause) {
+          reject(cause);
+        }
       });
     });
   }

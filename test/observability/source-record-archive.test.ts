@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
@@ -8,7 +8,11 @@ import {
   loadObservationInboxReports,
   saveObservationInboxReport,
 } from '../../src/observability/inbox.js';
-import { loadObservationSourceRecordArchive } from '../../src/observability/source-record-archive.js';
+import {
+  loadObservationSourceRecordArchive,
+  writeObservationSourceRecordArchives,
+} from '../../src/observability/source-record-archive.js';
+import { forEachNonEmptyUtf8Line } from '../../src/observability/trace-source.js';
 import type { ObservationSourceRecordArchiveRef } from '../../src/types/index.js';
 
 function jsonl(records: unknown[]): string {
@@ -173,6 +177,87 @@ describe('observation source-record archives', () => {
     assert.equal(view.records[2]?.raw, JSON.stringify('ignored scalar'));
     assert.equal(persisted.meta.ingestion?.malformedRecordCount, 1);
     assert.equal(persisted.meta.ingestion?.ignoredValueCount, 1);
+  });
+
+  it('stops scanning after the visitor reaches its source boundary', () => {
+    const tracePath = join(root, 'bounded-scan.jsonl');
+    writeFileSync(tracePath, 'first\nsecond\nthird\n');
+    const visited: string[] = [];
+
+    forEachNonEmptyUtf8Line(tracePath, (line) => {
+      visited.push(line);
+      return false;
+    });
+
+    assert.deepEqual(visited, ['first']);
+  });
+
+  it('archives multiple experience sessions from one growing source', () => {
+    const tracePath = join(root, 'shared-rollout.jsonl');
+    writeFileSync(tracePath, jsonl([
+      {
+        timestamp: '2026-08-05T00:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'shared-source-test', cwd: '/repo' },
+      },
+      {
+        timestamp: '2026-08-05T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Inspect the shared trace.' }],
+        },
+      },
+      {
+        timestamp: '2026-08-05T00:00:02.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'read-shared-skill',
+          name: 'exec_command',
+          arguments: JSON.stringify({ cmd: 'cat /repo/.agents/skills/shared/SKILL.md' }),
+        },
+      },
+      {
+        timestamp: '2026-08-05T00:00:03.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'read-shared-skill',
+          output: '# Shared Skill',
+        },
+      },
+      {
+        timestamp: '2026-08-05T00:00:04.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Done.' }],
+        },
+      },
+    ]));
+    const report = buildObservationInboxReport(tracePath);
+    const sourceSession = report.experience?.sessions[0];
+    assert.ok(sourceSession && report.experience);
+    report.experience.sessions.push({ ...sourceSession, id: `${sourceSession.id}:copy` });
+    appendFileSync(tracePath, '\n' + jsonl(Array.from({ length: 20 }, (_, index) => ({
+      timestamp: `2026-08-05T00:01:${String(index).padStart(2, '0')}.000Z`,
+      type: 'event_msg',
+      payload: { type: 'future_event', index },
+    }))));
+
+    const refs = writeObservationSourceRecordArchives(
+      report,
+      observationsDir,
+      join(observationsDir, 'shared.report.json'),
+    );
+    assert.equal(refs.length, 2);
+    assert.ok(refs.every((ref) => ref.status === 'available'));
+    assert.equal(refs[0]?.recordCount, refs[1]?.recordCount);
+    assert.equal(refs[0]?.omittedRecordCount, 0);
+    assert.equal(refs[1]?.omittedRecordCount, 0);
   });
 
   it('fails closed when a report points outside the observations directory', () => {
