@@ -3,8 +3,17 @@ import { describe, it } from 'vitest';
 import {
   createTrajectoryLiveController,
   renderTrajectoryLiveClientSource,
+  type TrajectoryLiveLabels,
   type TrajectoryLiveViewState,
 } from '../../src/renderer/trajectory-live.js';
+
+const labels: TrajectoryLiveLabels = {
+  connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
+  failed: '实时更新失败',
+  following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
+  aborted: '任务已中止', interrupted: '任务已中断', unknown: '状态未知',
+  pauseTitle: '暂停自动跟随',
+};
 
 describe('trajectory live client', () => {
   it('keeps the browser controller executable from the typed source of truth', () => {
@@ -75,12 +84,7 @@ describe('trajectory live client', () => {
       followButton,
       followLabel,
       liveEndpoint: '/live',
-      labels: {
-        connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
-        failed: '实时更新失败',
-        following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
-        pauseTitle: '暂停自动跟随',
-      },
+      labels,
       getMode: () => 'semantic',
       setMode: () => undefined,
       isInteractionBlocking: () => false,
@@ -143,12 +147,7 @@ describe('trajectory live client', () => {
       followButton: null,
       followLabel: null,
       liveEndpoint: '/live',
-      labels: {
-        connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
-        failed: '实时更新失败',
-        following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
-        pauseTitle: '暂停自动跟随',
-      },
+      labels,
       getMode: () => 'semantic',
       setMode: () => undefined,
       isInteractionBlocking: () => false,
@@ -164,6 +163,56 @@ describe('trajectory live client', () => {
     assert.equal(sourceClosed, true);
     assert.equal(liveState.dataset.state, 'failed');
     assert.equal(liveState.textContent, '实时更新失败');
+    controller.dispose();
+  });
+
+  it('keeps unknown evidence distinct when a live task is no longer observable', () => {
+    const sourceListeners = new Map<string, EventListener>();
+    let sourceClosed = false;
+    class FakeEventSource {
+      addEventListener(type: string, listener: EventListener): void {
+        sourceListeners.set(type, listener);
+      }
+      close(): void {
+        sourceClosed = true;
+      }
+    }
+    const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
+    const browserWindow = {
+      location: { pathname: '/conversations/thread/tasks/turn' },
+      sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
+      requestAnimationFrame: () => 1,
+      setTimeout: () => 1,
+      clearTimeout: () => undefined,
+      addEventListener: () => undefined,
+      matchMedia: () => ({ matches: false }),
+      EventSource: FakeEventSource,
+    } as unknown as Window;
+    const controller = createTrajectoryLiveController({
+      shell: { dataset: { liveRevision: 'revision-1' } } as unknown as HTMLElement,
+      timeline: null,
+      liveState,
+      followButton: null,
+      followLabel: null,
+      liveEndpoint: '/live',
+      labels,
+      getMode: () => 'semantic',
+      setMode: () => undefined,
+      isInteractionBlocking: () => false,
+      browserWindow,
+      browserDocument: {
+        hidden: false,
+        addEventListener: () => undefined,
+      } as unknown as Document,
+    });
+
+    sourceListeners.get('trajectory')?.({
+      data: JSON.stringify({ status: 'unknown', liveObservable: false }),
+    } as MessageEvent);
+
+    assert.equal(sourceClosed, true);
+    assert.equal(liveState.dataset.state, 'unknown');
+    assert.equal(liveState.textContent, '状态未知');
     controller.dispose();
   });
 });

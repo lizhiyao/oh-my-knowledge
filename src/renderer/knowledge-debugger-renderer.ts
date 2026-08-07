@@ -225,6 +225,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-live-follow:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
       .trajectory-live-follow[data-state="following"]{color:var(--accent)}
       .trajectory-live-follow[data-state="pending"],.trajectory-live-follow[data-state="completed"]{border-color:rgba(79,70,229,.2);background:rgba(79,70,229,.07);color:var(--accent)}
+      .trajectory-live-follow[data-state="aborted"],.trajectory-live-follow[data-state="interrupted"],.trajectory-live-follow[data-state="unknown"]{border-color:var(--border);background:var(--bg-elevated);color:var(--text-muted)}
       .trajectory-frame-space{flex:1}
       .trajectory-range{color:var(--text-secondary);font:400 10px/1 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-variant-numeric:tabular-nums}
       .trajectory-boundary-info{position:relative;margin-left:4px}
@@ -1013,6 +1014,9 @@ export function renderKnowledgeDebuggerPage(
             resume: zh ? '跟随最新' : 'Follow latest',
             pending: zh ? '查看更新' : 'View update',
             completed: zh ? '任务已结束' : 'Task completed',
+            aborted: zh ? '任务已中止' : 'Task aborted',
+            interrupted: zh ? '任务已中断' : 'Task interrupted',
+            unknown: zh ? '状态未知' : 'Status unknown',
             pauseTitle: zh ? '暂停自动跟随' : 'Pause automatic follow',
           })},
           getMode: () => shell.dataset.mode || 'semantic',

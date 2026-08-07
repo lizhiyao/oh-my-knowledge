@@ -8,6 +8,9 @@ export interface TrajectoryLiveLabels {
   resume: string;
   pending: string;
   completed: string;
+  aborted: string;
+  interrupted: string;
+  unknown: string;
   pauseTitle: string;
 }
 
@@ -56,7 +59,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   const lifecycle = new AbortController();
   let followLatest = Boolean(liveEndpoint);
   let pendingRevision = '';
-  let terminalUpdate = false;
+  let terminalState: 'completed' | 'aborted' | 'interrupted' | 'unknown' | undefined;
   let refreshTimer: number | undefined;
   let scrollReleaseTimer: number | undefined;
   let suppressScrollTracking = false;
@@ -92,19 +95,18 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   };
   const updateFollowControl = (): void => {
     if (!followButton || !followLabel) return;
-    const state = pendingRevision
-      ? (terminalUpdate ? 'completed' : 'pending')
-      : (followLatest ? 'following' : 'paused');
+    const state = terminalState ?? (pendingRevision
+      ? 'pending'
+      : (followLatest ? 'following' : 'paused'));
+    const terminalLabel = terminalState ? labels[terminalState] : undefined;
     followButton.dataset.state = state;
     followButton.dataset.following = String(followLatest);
     followButton.setAttribute('aria-pressed', String(followLatest));
-    followLabel.textContent = state === 'completed'
-      ? labels.completed
-      : state === 'pending'
+    followLabel.textContent = terminalLabel ?? (state === 'pending'
         ? labels.pending
         : state === 'following'
           ? labels.following
-          : labels.resume;
+          : labels.resume);
     followButton.title = state === 'following' ? labels.pauseTitle : followLabel.textContent;
   };
   const setFollowing = (next: boolean, shouldScroll = next): void => {
@@ -237,20 +239,25 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
           status?: string;
           liveObservable?: boolean;
         };
-        const terminal = update.liveObservable === false
-          || update.status === 'completed'
+        const explicitTerminal = update.status === 'completed'
           || update.status === 'aborted'
           || update.status === 'interrupted';
-        if (terminal) {
-          terminalUpdate = true;
+        const streamTerminal = update.liveObservable === false || explicitTerminal;
+        terminalState = explicitTerminal
+          ? update.status as 'completed' | 'aborted' | 'interrupted'
+          : update.liveObservable === false ? 'unknown' : undefined;
+        if (streamTerminal) {
           source.close();
           if (liveSource === source) liveSource = undefined;
         }
         if (!update.revision || update.revision === shell.dataset.liveRevision) {
           const quiet = update.status === 'unknown';
+          const connectionLabel = terminalState
+            ? labels[terminalState]
+            : quiet ? labels.reconnecting : labels.live;
           setConnectionState(
-            terminal ? 'completed' : quiet ? 'reconnecting' : 'live',
-            terminal ? labels.completed : quiet ? labels.reconnecting : labels.live,
+            terminalState ?? (quiet ? 'reconnecting' : 'live'),
+            connectionLabel,
           );
           updateFollowControl();
           return;

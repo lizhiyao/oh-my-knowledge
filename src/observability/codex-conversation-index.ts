@@ -9,7 +9,7 @@ import {
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION = 10;
+const INDEX_SCHEMA_VERSION = 11;
 const MAX_CURRENT_INDEX_ATTEMPTS = 4;
 
 export interface CodexIndexedTask {
@@ -28,7 +28,7 @@ export interface CodexIndexedTask {
 }
 
 export interface CodexRolloutIndex {
-  schemaVersion: 10;
+  schemaVersion: 11;
   sourcePath: string;
   /** File size observed when the index was produced. */
   sourceSize: number;
@@ -55,6 +55,7 @@ interface MutableTask extends CodexIndexedTask {
 }
 
 export interface CodexActiveToolOutcomeState {
+  callOccurrences: Array<[string, number]>;
   resultOccurrences: Array<[string, number]>;
   runtimeOccurrences: Array<[string, number]>;
   outcomes: Array<[string, IndexedToolOutcome]>;
@@ -66,6 +67,7 @@ interface IndexedToolOutcome {
 }
 
 interface ToolOutcomeTracker {
+  callOccurrences: Map<string, number>;
   resultOccurrences: Map<string, number>;
   runtimeOccurrences: Map<string, number>;
   outcomes: Map<string, IndexedToolOutcome>;
@@ -333,7 +335,7 @@ function scanCodexRolloutIndex(
 
     if (!state.active) return;
     if (recordType === 'response_item' && isToolCallPayload(payloadType)) {
-      state.active.toolCallCount += 1;
+      recordToolCall(state.active, record, payload);
     }
     recordToolOutcome(state.active, record, recordType, payloadType, payload);
 
@@ -593,6 +595,7 @@ function recordToolOutcome(
     || (payloadType !== 'mcp_tool_call_end' && payloadType !== 'patch_apply_end')) return;
   const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `runtime:${record.line}`;
   const occurrence = takeToolOccurrence(task.toolOutcomeTracker.runtimeOccurrences, callId);
+  ensureRepresentedToolCall(task, callId, occurrence);
   const outcome = codexRuntimeToolOutcomeFromPayload(payloadType, payload);
   if (!outcome.present) return;
   updateToolOutcome(
@@ -601,6 +604,29 @@ function recordToolOutcome(
     'runtimeStatus',
     outcome.status,
   );
+}
+
+function recordToolCall(
+  task: MutableTask,
+  record: CodexJsonlLine,
+  payload: Record<string, unknown>,
+): void {
+  const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `call:${record.line}`;
+  takeToolOccurrence(task.toolOutcomeTracker.callOccurrences, callId);
+  task.toolCallCount += 1;
+}
+
+/** Match Trace IR's contract: a standalone runtime end still represents one tool call. */
+function ensureRepresentedToolCall(
+  task: MutableTask,
+  callId: string,
+  occurrence: number,
+): void {
+  const representedCount = task.toolOutcomeTracker.callOccurrences.get(callId) ?? 0;
+  const requiredCount = occurrence + 1;
+  if (representedCount >= requiredCount) return;
+  task.toolOutcomeTracker.callOccurrences.set(callId, requiredCount);
+  task.toolCallCount += requiredCount - representedCount;
 }
 
 function updateToolOutcome(
@@ -635,6 +661,7 @@ function createToolOutcomeTracker(
   state?: CodexActiveToolOutcomeState,
 ): ToolOutcomeTracker {
   return {
+    callOccurrences: new Map(state?.callOccurrences ?? []),
     resultOccurrences: new Map(state?.resultOccurrences ?? []),
     runtimeOccurrences: new Map(state?.runtimeOccurrences ?? []),
     outcomes: new Map(state?.outcomes ?? []),
@@ -645,6 +672,7 @@ function serializeToolOutcomeTracker(
   tracker: ToolOutcomeTracker,
 ): CodexActiveToolOutcomeState {
   return {
+    callOccurrences: [...tracker.callOccurrences],
     resultOccurrences: [...tracker.resultOccurrences],
     runtimeOccurrences: [...tracker.runtimeOccurrences],
     outcomes: [...tracker.outcomes],

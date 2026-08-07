@@ -203,7 +203,35 @@ describe('Codex conversation catalog', () => {
     const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
     const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
     assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.tasks[0]?.toolCallCount, 1);
     assert.equal(extended.tasks[0]?.toolFailureCount, 0);
+  });
+
+  it('counts standalone runtime tool ends as source-neutral calls', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-standalone-runtime-ends.jsonl');
+    const initial = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'event_msg', payload: { type: 'user_message', message: '运行独立工具' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'event_msg', payload: { type: 'mcp_tool_call_end', call_id: 'mcp-a', result: { Ok: { isError: true } } } },
+    ];
+    writeFileSync(rolloutPath, `${initial.map((record) => JSON.stringify(record)).join('\n')}\n`);
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    assert.equal(prefix.tasks[0]?.toolCallCount, 1);
+    assert.equal(prefix.tasks[0]?.toolFailureCount, 1);
+
+    const appended = [
+      { timestamp: '2026-08-06T00:00:00.300Z', type: 'event_msg', payload: { type: 'patch_apply_end', call_id: 'patch-a', success: true, status: 'completed' } },
+      { timestamp: '2026-08-06T00:00:00.400Z', type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-a' } },
+    ];
+    appendFileSync(rolloutPath, `${appended.map((record) => JSON.stringify(record)).join('\n')}\n`);
+
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.tasks[0]?.toolCallCount, 2);
+    assert.equal(extended.tasks[0]?.toolFailureCount, 1);
   });
 
   it('does not commit an incomplete JSONL tail before the record is finished', () => {
