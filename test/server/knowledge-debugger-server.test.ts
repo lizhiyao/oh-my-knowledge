@@ -247,6 +247,8 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.doesNotMatch(replay.body, /currentOperationId = id;\s*pauseLiveFollow\(\)/);
     assert.doesNotMatch(replay.body, /isInteractionBlocking/);
     assert.match(replay.body, /replacement\.dataset\.selectedOperationId = selectedOperationId/);
+    assert.match(replay.body, /replacement\.dataset\.inspectorRestoring = 'true'/);
+    assert.match(replay.body, /data-inspector-restoring="true"/);
     assert.match(replay.body, /replacement\.dataset\.inspectorScrollTop = String\(inspectorScrollTop\)/);
     assert.match(replay.body, /replacement\.dataset\.expandedDetailSourceEventIds = JSON\.stringify/);
     assert.match(replay.body, /if \(shouldScheduleLayout\) scheduleOperationLinks\(\)/);

@@ -265,6 +265,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-frame-head .trajectory-mode{margin-left:8px}
       .trajectory-body{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 0;align-items:stretch;transition:grid-template-columns .18s cubic-bezier(.2,.8,.2,1)}
       .trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:minmax(0,1fr) clamp(320px,27vw,400px)}
+      .trajectory-shell[data-inspector-restoring="true"] .trajectory-body{transition:none}
       .trajectory-scroll{min-width:0;min-height:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;outline-offset:-2px;scrollbar-color:var(--border-hover) transparent;scrollbar-width:thin}
       .trajectory-scroll:focus-visible{outline:2px solid var(--accent)}
       .trajectory-canvas{--lane-label-width:108px;--event-width:clamp(166px,15vw,190px);width:max(100%,var(--timeline-detail-width));height:100%;min-width:var(--timeline-detail-width);display:grid;grid-template-rows:32px minmax(0,1fr)}
@@ -1120,6 +1121,7 @@ export function renderKnowledgeDebuggerPage(
             replacement.dataset.selectedOperationId = selectedOperationId;
             replacement.dataset.inspectorScrollTop = String(inspectorScrollTop);
             replacement.dataset.expandedDetailSourceEventIds = JSON.stringify(expandedDetailSourceEventIds);
+            replacement.dataset.inspectorRestoring = 'true';
           }
           window.__omkTrajectoryDispose?.();
           shell.replaceWith(replacement);
@@ -1190,8 +1192,10 @@ export function renderKnowledgeDebuggerPage(
           });
           requestAnimationFrame(() => {
             if (semanticPanelContainer) semanticPanelContainer.scrollTop = restoredInspectorScrollTop;
+            delete shell.dataset.inspectorRestoring;
           });
         } else {
+          delete shell.dataset.inspectorRestoring;
           scheduleOperationLinks();
         }
         };
