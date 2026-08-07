@@ -95,6 +95,8 @@ describe('trajectory live client', () => {
     const trajectoryListener = sourceListeners.get('trajectory');
     assert.ok(trajectoryListener);
     trajectoryListener({ data: JSON.stringify({ revision: 'revision-2', status: 'open' }) } as MessageEvent);
+    assert.equal(followLabel.textContent, '跟随中');
+    assert.equal(followButton.dataset.state, 'following');
     assert.equal(scheduled.length, 1);
     scheduled[0]?.();
     await Promise.resolve();

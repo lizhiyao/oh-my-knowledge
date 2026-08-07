@@ -94,7 +94,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   };
   const updateFollowControl = (): void => {
     if (!followButton || !followLabel) return;
-    const state = terminalState ?? (pendingRevision
+    const state = terminalState ?? (!followLatest && pendingRevision
       ? 'pending'
       : (followLatest ? 'following' : 'paused'));
     const terminalLabel = terminalState ? labels[terminalState] : undefined;
@@ -109,6 +109,11 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     followButton.title = state === 'following' ? labels.pauseTitle : followLabel.textContent;
   };
   const setFollowing = (next: boolean, shouldScroll = next): void => {
+    if (!next && refreshTimer !== undefined) {
+      browserWindow.clearTimeout(refreshTimer);
+      refreshTimer = undefined;
+      setConnectionState('live', labels.live);
+    }
     followLatest = next;
     updateFollowControl();
     if (shouldScroll) scrollToLatest(true);
@@ -215,7 +220,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     if (!isNearLatest()) pauseFollowing();
   }, { passive: true, signal: lifecycle.signal });
   followButton?.addEventListener('click', () => {
-    if (pendingRevision) {
+    if (pendingRevision && !followLatest) {
       setFollowing(true, false);
       void reloadNow();
       return;

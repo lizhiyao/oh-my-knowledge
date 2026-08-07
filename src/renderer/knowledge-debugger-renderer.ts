@@ -500,6 +500,7 @@ export function renderKnowledgeDebuggerPage(
         let currentOperationId = '';
         let pendingLayoutFrame;
         let layoutTransitionTimer;
+        let layoutScrollReleaseTimer;
         let sourceRecordsPromise;
         const copyFeedbackTimers = new Set();
         let pauseLiveFollow = () => {};
@@ -880,10 +881,16 @@ export function renderKnowledgeDebuggerPage(
           layoutTransitionTimer = undefined;
           revealSelectedOperation();
           scheduleOperationLinks();
-          requestAnimationFrame(() => { delete shell.dataset.layoutTransition; });
+          if (layoutScrollReleaseTimer !== undefined) window.clearTimeout(layoutScrollReleaseTimer);
+          layoutScrollReleaseTimer = window.setTimeout(() => {
+            delete shell.dataset.layoutTransition;
+            layoutScrollReleaseTimer = undefined;
+          }, 120);
         };
         const beginLayoutTransition = () => {
           if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
+          if (layoutScrollReleaseTimer !== undefined) window.clearTimeout(layoutScrollReleaseTimer);
+          layoutScrollReleaseTimer = undefined;
           shell.dataset.layoutTransition = 'true';
           layoutTransitionTimer = window.setTimeout(finishLayoutTransition, 240);
         };
@@ -1164,6 +1171,8 @@ export function renderKnowledgeDebuggerPage(
           pendingLayoutFrame = undefined;
           if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
           layoutTransitionTimer = undefined;
+          if (layoutScrollReleaseTimer !== undefined) window.clearTimeout(layoutScrollReleaseTimer);
+          layoutScrollReleaseTimer = undefined;
           copyFeedbackTimers.forEach((timer) => window.clearTimeout(timer));
           copyFeedbackTimers.clear();
         };

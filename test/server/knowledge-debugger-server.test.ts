@@ -241,6 +241,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /isScrollTrackingSuppressed: \(\) => shell\.dataset\.layoutTransition === 'true'/);
     assert.match(replay.body, /new ResizeObserver\(scheduleOperationLinks\)/);
     assert.match(replay.body, /revealSelectedOperation\(\)/);
+    assert.match(replay.body, /layoutScrollReleaseTimer = window\.setTimeout\(\(\) =>/);
     assert.match(replay.body, /selectOperation\(restoredOperationId, false\)/);
     assert.doesNotMatch(replay.body, /currentOperationId = id;\s*pauseLiveFollow\(\)/);
     assert.doesNotMatch(replay.body, /isInteractionBlocking/);
