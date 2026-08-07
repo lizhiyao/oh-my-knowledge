@@ -22,6 +22,36 @@ afterEach(() => {
 });
 
 describe('Codex conversation catalog', () => {
+  it('indexes a recent uncached conversation so an open task reaches the overview', async () => {
+    const root = temporaryRoot();
+    const codexHome = join(root, '.codex');
+    const sessionsDir = join(codexHome, 'sessions');
+    const cacheDir = join(root, 'cache');
+    mkdirSync(sessionsDir, { recursive: true });
+    const rolloutPath = join(sessionsDir, 'rollout-live-overview.jsonl');
+    const now = Date.now();
+    writeFileSync(rolloutPath, `${[
+      { timestamp: new Date(now - 1000).toISOString(), type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-live' } },
+      { timestamp: new Date(now - 900).toISOString(), type: 'event_msg', payload: { type: 'user_message', message: '刚开始的实时任务' } },
+    ].map((record) => JSON.stringify(record)).join('\n')}\n`);
+    utimesSync(rolloutPath, new Date(now), new Date(now));
+    createStateDatabase(codexHome, [
+      thread('live-overview', rolloutPath, 'user', '{"app":"codex"}', '实时对话', now),
+    ], []);
+
+    const catalog = createCodexConversationCatalog({
+      codexHome,
+      cacheDir,
+      useBackgroundProcess: false,
+      now: () => now,
+    });
+    const overview = await catalog.listConversations();
+
+    assert.equal(overview.conversations[0]?.turnCount, 1);
+    assert.equal(overview.conversations[0]?.tasks[0]?.status, 'open');
+    assert.equal(overview.conversations[0]?.tasks[0]?.title, '刚开始的实时任务');
+  });
+
   it('indexes adjacent native turns without leaking records across boundaries', () => {
     const root = temporaryRoot();
     const rolloutPath = join(root, 'rollout-main.jsonl');

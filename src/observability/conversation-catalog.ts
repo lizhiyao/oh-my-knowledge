@@ -352,13 +352,35 @@ class CodexConversationCatalog implements ConversationCatalog {
 
   private async conversationForOverview(row: CodexThreadRow): Promise<ConversationListItem> {
     const cached = this.readCachedIndex(row);
-    if (!cached || isCurrentCodexRolloutIndex(cached, row.rolloutPath)) {
+    if (!cached) {
+      if (!this.isRecentRollout(row)) return this.conversationSummary(row, undefined);
+      const sourceSize = statSync(row.rolloutPath).size;
+      if (this.useBackgroundProcess && sourceSize >= this.backgroundProcessThresholdBytes) {
+        this.refreshIndexInBackground(row);
+        return this.conversationSummary(row, undefined);
+      }
+      try {
+        return this.conversationFromIndex(row, await this.currentIndexFor(row));
+      } catch {
+        return this.conversationSummary(row, undefined);
+      }
+    }
+    if (isCurrentCodexRolloutIndex(cached, row.rolloutPath)) {
       return this.conversationSummary(row, cached);
     }
     try {
       return this.conversationFromIndex(row, await this.currentIndexFor(row));
     } catch {
       return this.conversationFromIndex(row, cached);
+    }
+  }
+
+  private isRecentRollout(row: CodexThreadRow): boolean {
+    if (!row.rolloutPath || !existsSync(row.rolloutPath)) return false;
+    try {
+      return this.isLiveSource(statSync(row.rolloutPath).mtimeMs);
+    } catch {
+      return false;
     }
   }
 

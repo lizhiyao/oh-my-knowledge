@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
@@ -9,6 +10,43 @@ import { DEFAULT_LANG, e, layout } from './layout.js';
 import { brandLogo, icon } from './icons.js';
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
 
+export interface ConversationActivitySnapshot {
+  schemaVersion: 1;
+  revision: string;
+  runningCount: number;
+}
+
+export function buildConversationActivitySnapshot(
+  model: ConversationIndexViewModel,
+): ConversationActivitySnapshot {
+  let runningCount = 0;
+  const state = model.conversations.map((conversation) => {
+    const openTask = latestOpenConversationTask(conversation);
+    if (openTask) runningCount += 1;
+    return [
+      conversation.threadId,
+      conversation.archived ? 1 : 0,
+      conversation.turnCount ?? null,
+      openTask?.turnId ?? null,
+    ];
+  });
+  return {
+    schemaVersion: 1,
+    revision: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 24),
+    runningCount,
+  };
+}
+
+function latestOpenConversationTask(
+  conversation: ConversationListItem,
+): ConversationTaskItem | undefined {
+  for (let index = conversation.tasks.length - 1; index >= 0; index -= 1) {
+    const task = conversation.tasks[index];
+    if (task?.status === 'open') return task;
+  }
+  return undefined;
+}
+
 export function renderConversationIndexPage(
   model: ConversationIndexViewModel,
   lang: Lang = DEFAULT_LANG,
@@ -17,9 +55,10 @@ export function renderConversationIndexPage(
   const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
   const activeCount = model.unarchivedConversationCount ?? model.conversations.filter((item) => !item.archived).length;
   const archivedCount = model.archivedConversationCount ?? model.conversations.filter((item) => item.archived).length;
-  const runningCount = model.conversations.filter((item) => latestOpenTask(item) !== undefined).length;
+  const activity = buildConversationActivitySnapshot(model);
+  const runningCount = activity.runningCount;
   const conversations = [...model.conversations].sort((left, right) => (
-    Number(latestOpenTask(right) !== undefined) - Number(latestOpenTask(left) !== undefined)
+    Number(latestOpenConversationTask(right) !== undefined) - Number(latestOpenConversationTask(left) !== undefined)
   ));
   const rows = conversations.map((conversation) => renderConversationRow(conversation, lang)).join('');
   const content = model.conversations.length > 0
@@ -27,7 +66,7 @@ export function renderConversationIndexPage(
     : `<div class="empty-state"><strong>${zh ? '还没有可浏览的 Codex 对话' : 'No Codex conversations yet'}</strong><span>${zh ? 'Studio 会直接读取 Codex 的本机会话索引，不需要先运行 observe。' : 'Studio reads the local Codex conversation index directly; observe is not required.'}</span></div>`;
 
   return layout(zh ? 'Codex 对话' : 'Codex conversations', `
-    <main class="conversation-page conversation-index-app">
+    <main class="conversation-page conversation-index-app" data-activity-revision="${e(activity.revision)}">
       <header class="conversation-app-head">
         <a class="conversation-app-brand" href="/${langQuery}">
           <span>${brandLogo(28)}</span><strong>OMK</strong><em>Studio</em>
@@ -117,7 +156,7 @@ function renderConversationRow(conversation: ConversationListItem, lang: Lang): 
   const updated = formatRelativeDate(conversation.endTimestamp, lang);
   const workspace = conversation.cwd ? compactPath(conversation.cwd) : (zh ? '未知工作目录' : 'Unknown workspace');
   const state = conversation.archived ? 'archived' : 'active';
-  const openTask = latestOpenTask(conversation);
+  const openTask = latestOpenConversationTask(conversation);
   const openTaskHref = openTask ? taskTrajectoryHref(openTask, lang) : undefined;
   const detailHref = `/conversations/${encodeURIComponent(conversation.threadId)}${langSuffix}`;
   const searchable = `${conversation.title} ${conversation.preview ?? ''} ${conversation.cwd ?? ''}`.toLocaleLowerCase();
@@ -147,14 +186,6 @@ function renderConversationRow(conversation: ConversationListItem, lang: Lang): 
     <div class="conversation-counts">${taskMetric}${liveTaskLink}</div>
     <span class="row-arrow" aria-hidden="true">${icon('chevron-right', { size: 17 })}</span>
   </div>`;
-}
-
-function latestOpenTask(conversation: ConversationListItem): ConversationTaskItem | undefined {
-  for (let index = conversation.tasks.length - 1; index >= 0; index -= 1) {
-    const task = conversation.tasks[index];
-    if (task?.status === 'open') return task;
-  }
-  return undefined;
 }
 
 function conversationTaskEntries(
@@ -261,6 +292,7 @@ function statusLabel(status: ExperienceTurnStatus, lang: Lang): string {
 
 function paginationScript(lang: Lang): string {
   const emptyText = lang === 'zh' ? '没有匹配的对话' : 'No matching conversations';
+  const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
   return `
 (() => {
   const root = document.querySelector('.conversation-index-app');
@@ -277,6 +309,9 @@ function paginationScript(lang: Lang): string {
   let page = 0;
   let pageSize = 1;
   let visibleRows = rows;
+  let activityTimer;
+  let activityRequest;
+  let activityStopped = false;
 
   const computePageSize = () => {
     pageSize = Math.max(1, Math.floor((viewport?.clientHeight || 68) / 68));
@@ -338,8 +373,48 @@ function paginationScript(lang: Lang): string {
     renderPage();
   });
   if (viewport) resizeObserver.observe(viewport);
+
+  const stopActivityPolling = () => {
+    activityStopped = true;
+    if (activityTimer) clearTimeout(activityTimer);
+    activityRequest?.abort();
+  };
+  const scheduleActivityPoll = (delay = 5000) => {
+    if (activityStopped) return;
+    if (activityTimer) clearTimeout(activityTimer);
+    activityTimer = setTimeout(pollActivity, delay);
+  };
+  const pollActivity = async () => {
+    if (activityStopped) return;
+    if (document.hidden) {
+      scheduleActivityPoll();
+      return;
+    }
+    activityRequest?.abort();
+    activityRequest = new AbortController();
+    try {
+      const response = await fetch('/api/conversations/activity${langQuery}', {
+        cache: 'no-store',
+        signal: activityRequest.signal,
+      });
+      if (!response.ok) throw new Error('conversation activity unavailable');
+      const snapshot = await response.json();
+      if (snapshot.revision && snapshot.revision !== root?.dataset.activityRevision) {
+        window.location.reload();
+        return;
+      }
+    } catch (cause) {
+      if (cause?.name === 'AbortError') return;
+    }
+    scheduleActivityPoll();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleActivityPoll(0);
+  });
+  window.addEventListener('pagehide', stopActivityPolling, { once: true });
   computePageSize();
   renderPage();
+  scheduleActivityPoll();
 })();`;
 }
 

@@ -12,6 +12,7 @@ import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../renderer/knowledge-debugger-renderer.js';
 import {
+  buildConversationActivitySnapshot,
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../renderer/conversation-renderer.js';
@@ -1037,6 +1038,18 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         const html = renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
+        return;
+      }
+
+      if (path === '/api/conversations/activity') {
+        const snapshot = buildConversationActivitySnapshot(
+          await resolvedConversationCatalog.listConversations(),
+        );
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(snapshot));
         return;
       }
 

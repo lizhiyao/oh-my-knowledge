@@ -56,6 +56,8 @@ describe('conversation overview renderer', () => {
     const html = renderConversationIndexPage(model, 'zh');
 
     assert.ok(html.includes('data-view-filter="running"'));
+    assert.match(html, /data-activity-revision="[a-f0-9]{24}"/u);
+    assert.ok(html.includes("fetch('/api/conversations/activity'"));
     assert.ok(html.includes('data-running="true"'));
     assert.ok(html.includes('查看实时轨迹'));
     assert.ok(html.includes('href="/conversations/running-thread/tasks/running-thread-turn"'));

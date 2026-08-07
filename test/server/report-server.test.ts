@@ -1101,6 +1101,16 @@ describe('report-server', () => {
     assert.ok(res.body.includes('data-page-next'));
   });
 
+  it('GET /api/conversations/activity returns a compact activity snapshot', async () => {
+    const res = await fetch(`${baseUrl}/api/conversations/activity`);
+
+    assert.equal(res.status, 200);
+    const snapshot = JSON.parse(res.body) as Record<string, unknown>;
+    assert.equal(snapshot.schemaVersion, 1);
+    assert.match(String(snapshot.revision), /^[a-f0-9]{24}$/u);
+    assert.equal(typeof snapshot.runningCount, 'number');
+  });
+
   it('GET /knowledge returns the skill list', async () => {
     const res = await fetch(`${baseUrl}/knowledge`);
     assert.equal(res.status, 200);
