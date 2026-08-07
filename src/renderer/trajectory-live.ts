@@ -24,6 +24,7 @@ export interface TrajectoryLiveClientOptions {
   labels: TrajectoryLiveLabels;
   getMode: () => string;
   setMode: (mode: string) => void;
+  isScrollTrackingSuppressed?: () => boolean;
   refreshSnapshot?: (state: TrajectoryLiveViewState) => Promise<void>;
   browserWindow: Window;
   browserDocument: Document;
@@ -207,7 +208,10 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
 
   restoreViewState();
   timeline?.addEventListener('scroll', () => {
-    if (suppressScrollTracking || !followLatest || options.getMode() !== 'semantic') return;
+    if (suppressScrollTracking
+      || options.isScrollTrackingSuppressed?.()
+      || !followLatest
+      || options.getMode() !== 'semantic') return;
     if (!isNearLatest()) pauseFollowing();
   }, { passive: true, signal: lifecycle.signal });
   followButton?.addEventListener('click', () => {

@@ -263,7 +263,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-focus-option[data-facet-group="tool"] .trajectory-focus-swatch{background:var(--yellow)}
       .trajectory-focus-option[data-facet-group="status"] .trajectory-focus-swatch{background:var(--red)}
       .trajectory-frame-head .trajectory-mode{margin-left:8px}
-      .trajectory-body{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}
+      .trajectory-body{min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 0;align-items:stretch;transition:grid-template-columns .18s cubic-bezier(.2,.8,.2,1)}
       .trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:minmax(0,1fr) clamp(320px,27vw,400px)}
       .trajectory-scroll{min-width:0;min-height:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;outline-offset:-2px;scrollbar-color:var(--border-hover) transparent;scrollbar-width:thin}
       .trajectory-scroll:focus-visible{outline:2px solid var(--accent)}
@@ -342,7 +342,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-event.is-facet-match{opacity:1!important}
       .trajectory-event.is-live-entering{animation:trajectory-live-card-in .42s cubic-bezier(.2,.8,.2,1) both}
       @keyframes trajectory-live-card-in{0%{opacity:.18;box-shadow:0 0 0 0 var(--event-ring,rgba(79,70,229,.2))}58%{opacity:1;box-shadow:0 0 0 4px var(--event-ring,rgba(79,70,229,.2))}100%{opacity:1}}
-      .trajectory-inspector{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);border-left:1px solid var(--border);background:var(--bg-surface)}
+      .trajectory-inspector{min-width:0;min-height:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr);border-left:1px solid var(--border);background:var(--bg-surface)}
       .trajectory-inspector[hidden]{display:none}
       .trajectory-operation-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:start;min-height:0;padding:12px 14px;border-bottom:1px solid var(--border)}
       .trajectory-operation-type{grid-column:1/-1;color:var(--accent);font:500 10px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space:normal}
@@ -404,6 +404,7 @@ export function renderKnowledgeDebuggerPage(
       @media(max-width:1080px){.trajectory-meta-time{display:none!important}}
       @media(max-width:860px){.app-main{padding-inline:10px}.trajectory-heading{grid-template-columns:1fr;gap:0}.trajectory-meta{display:none}.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:1fr;grid-template-rows:minmax(0,3fr) minmax(160px,2fr)}.trajectory-inspector{border-top:1px solid var(--border);border-left:0}.trajectory-operation-head{padding-block:9px}}
       @media(max-width:600px){.app-bar{padding-inline:10px}.app-brand-tag{display:none}.trajectory-heading h1{font-size:17px}.trajectory-range{display:none}.trajectory-frame-head .trajectory-mode{margin-left:auto}.trajectory-canvas{--lane-label-width:76px;--event-width:126px}.trajectory-lane-name{padding-inline:8px}.trajectory-lane-name span{display:none}.trajectory-event-time{display:none}.trajectory-raw-head,.trajectory-raw-row summary{grid-template-columns:66px 94px minmax(160px,1fr)}.trajectory-raw-id{display:none}.trajectory-raw-row pre{padding-left:14px}}
+      @media(prefers-reduced-motion:reduce){.trajectory-body{transition:none}}
     </style>
     <main class="trajectory-shell" data-mode="semantic"${options.live ? ` data-live-endpoint="${e(options.live.endpoint)}" data-live-revision="${e(options.live.revision)}"` : ''}>
       <header class="trajectory-heading">
@@ -494,8 +495,11 @@ export function renderKnowledgeDebuggerPage(
         const boundarySummary = boundaryInfo?.querySelector('summary');
         const inspector = document.querySelector('.trajectory-inspector');
         const inspectorClose = document.querySelector('[data-inspector-close]');
+        const trajectoryBody = document.querySelector('.trajectory-body');
+        const timeline = document.querySelector('.trajectory-scroll');
         let currentOperationId = '';
         let pendingLayoutFrame;
+        let layoutTransitionTimer;
         let sourceRecordsPromise;
         const copyFeedbackTimers = new Set();
         let pauseLiveFollow = () => {};
@@ -853,7 +857,38 @@ export function renderKnowledgeDebuggerPage(
           });
         };
 
-        const selectOperation = (id) => {
+        const revealSelectedOperation = () => {
+          if (!timeline || !currentOperationId) return;
+          const relatedCards = cardsByOperation.get(currentOperationId) || [];
+          const card = relatedCards.find((item) => item.dataset.primary === 'true') || relatedCards[0];
+          if (!card) return;
+          const viewportRect = timeline.getBoundingClientRect();
+          const cardRect = card.getBoundingClientRect();
+          const canvas = timeline.querySelector('.trajectory-canvas');
+          const laneLabelWidth = Number.parseFloat(canvas ? getComputedStyle(canvas).getPropertyValue('--lane-label-width') : '') || 0;
+          const visibleLeft = viewportRect.left + laneLabelWidth + 12;
+          const visibleRight = viewportRect.right - 12;
+          const delta = cardRect.left < visibleLeft
+            ? cardRect.left - visibleLeft
+            : cardRect.right > visibleRight
+              ? cardRect.right - visibleRight
+              : 0;
+          if (Math.abs(delta) > 1) timeline.scrollLeft = Math.max(0, timeline.scrollLeft + delta);
+        };
+        const finishLayoutTransition = () => {
+          if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
+          layoutTransitionTimer = undefined;
+          revealSelectedOperation();
+          scheduleOperationLinks();
+          requestAnimationFrame(() => { delete shell.dataset.layoutTransition; });
+        };
+        const beginLayoutTransition = () => {
+          if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
+          shell.dataset.layoutTransition = 'true';
+          layoutTransitionTimer = window.setTimeout(finishLayoutTransition, 240);
+        };
+
+        const selectOperation = (id, animateLayout = true) => {
           const panel = semanticPanels.find((item) => item.dataset.trajectorySemanticPanel === id);
           if (!panel) return;
           cards.forEach((card) => {
@@ -869,6 +904,7 @@ export function renderKnowledgeDebuggerPage(
           if (operationSummary) operationSummary.textContent = panel.dataset.summary || '';
           if (evidenceCount) evidenceCount.textContent = panel.dataset.evidenceLabel || '';
           currentOperationId = id;
+          if (animateLayout && shell.dataset.inspectorOpen !== 'true') beginLayoutTransition();
           shell.dataset.inspectorOpen = 'true';
           if (inspector) inspector.hidden = false;
           setLinkActivity(id);
@@ -876,12 +912,14 @@ export function renderKnowledgeDebuggerPage(
         };
 
         const closeInspector = (shouldScheduleLayout = true) => {
+          const inspectorWasOpen = shell.dataset.inspectorOpen === 'true';
           cards.forEach((card) => {
             card.classList.remove('is-related', 'is-dimmed', 'is-primary');
             card.setAttribute('aria-pressed', 'false');
           });
           semanticPanels.forEach((item) => { item.hidden = true; });
           currentOperationId = '';
+          if (inspectorWasOpen) beginLayoutTransition();
           delete shell.dataset.inspectorOpen;
           if (inspector) inspector.hidden = true;
           setLinkActivity();
@@ -1009,7 +1047,6 @@ export function renderKnowledgeDebuggerPage(
           }, { signal: pageLifecycle.signal });
         });
 
-        const timeline = document.querySelector('.trajectory-scroll');
         timeline?.addEventListener('keydown', (event) => {
           if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
           event.preventDefault();
@@ -1035,7 +1072,14 @@ export function renderKnowledgeDebuggerPage(
         document.addEventListener('pointerdown', (event) => {
           if (boundaryInfo?.open && !boundaryInfo.contains(event.target)) boundaryInfo.open = false;
         }, { signal: pageLifecycle.signal });
+        trajectoryBody?.addEventListener('transitionend', (event) => {
+          if (event.propertyName === 'grid-template-columns') finishLayoutTransition();
+        }, { signal: pageLifecycle.signal });
         window.addEventListener('resize', scheduleOperationLinks, { passive: true, signal: pageLifecycle.signal });
+        const layoutResizeObserver = typeof ResizeObserver === 'function' && timeline
+          ? new ResizeObserver(scheduleOperationLinks)
+          : undefined;
+        layoutResizeObserver?.observe(timeline);
         const refreshTrajectorySnapshot = async () => {
           const eventPosition = (card) => Number.parseFloat(card.style.getPropertyValue('--event-x')) || 0;
           const currentCards = Array.from(shell.querySelectorAll('[data-trajectory-operation]'));
@@ -1095,6 +1139,7 @@ export function renderKnowledgeDebuggerPage(
           })},
           getMode: () => shell.dataset.mode || 'semantic',
           setMode: setTrajectoryMode,
+          isScrollTrackingSuppressed: () => shell.dataset.layoutTransition === 'true',
           refreshSnapshot: refreshTrajectorySnapshot,
           browserWindow: window,
           browserDocument: document,
@@ -1113,14 +1158,17 @@ export function renderKnowledgeDebuggerPage(
         delete shell.dataset.expandedDetailSourceEventIds;
         window.__omkTrajectoryDispose = () => {
           pageLifecycle.abort();
+          layoutResizeObserver?.disconnect();
           liveController.dispose();
           if (pendingLayoutFrame !== undefined) cancelAnimationFrame(pendingLayoutFrame);
           pendingLayoutFrame = undefined;
+          if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
+          layoutTransitionTimer = undefined;
           copyFeedbackTimers.forEach((timer) => window.clearTimeout(timer));
           copyFeedbackTimers.clear();
         };
         if (restoredOperationId && operationIds.includes(restoredOperationId)) {
-          selectOperation(restoredOperationId);
+          selectOperation(restoredOperationId, false);
           detailBlocks.forEach((block) => {
             if (!restoredExpandedDetailSourceEventIds.includes(block.dataset.detailSourceEventId || '')) return;
             block.querySelector('[data-field-detail-toggle]')?.click();

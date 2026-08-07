@@ -164,6 +164,59 @@ describe('trajectory live client', () => {
     controller.dispose();
   });
 
+  it('does not pause live follow for layout-driven timeline scrolling', () => {
+    const timelineListeners = new Map<string, EventListener>();
+    let layoutChanging = true;
+    const attributes = new Map<string, string>();
+    const timeline = {
+      scrollWidth: 1800,
+      clientWidth: 800,
+      scrollLeft: 1000,
+      addEventListener: (type: string, listener: EventListener) => timelineListeners.set(type, listener),
+    } as unknown as HTMLElement;
+    const followButton = {
+      dataset: {},
+      setAttribute: (name: string, value: string) => attributes.set(name, value),
+      addEventListener: () => undefined,
+      title: '',
+    } as unknown as HTMLButtonElement;
+    const followLabel = { textContent: '' } as HTMLElement;
+    const browserWindow = {
+      location: { pathname: '/conversations/thread/tasks/turn' },
+      sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
+      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
+      setTimeout: () => 1,
+      clearTimeout: () => undefined,
+      addEventListener: () => undefined,
+      matchMedia: () => ({ matches: false }),
+    } as unknown as Window;
+    const controller = createTrajectoryLiveController({
+      shell: { dataset: {} } as unknown as HTMLElement,
+      timeline,
+      liveState: null,
+      followButton,
+      followLabel,
+      liveEndpoint: '/live',
+      labels,
+      getMode: () => 'semantic',
+      setMode: () => undefined,
+      isScrollTrackingSuppressed: () => layoutChanging,
+      browserWindow,
+      browserDocument: { hidden: false, addEventListener: () => undefined } as unknown as Document,
+    });
+
+    timeline.scrollLeft = 200;
+    timelineListeners.get('scroll')?.(new Event('scroll'));
+    assert.equal(followLabel.textContent, '跟随中');
+    assert.equal(attributes.get('aria-pressed'), 'true');
+
+    layoutChanging = false;
+    timelineListeners.get('scroll')?.(new Event('scroll'));
+    assert.equal(followLabel.textContent, '跟随最新');
+    assert.equal(attributes.get('aria-pressed'), 'false');
+    controller.dispose();
+  });
+
   it('keeps unknown evidence distinct when a live task is no longer observable', () => {
     const sourceListeners = new Map<string, EventListener>();
     let sourceClosed = false;
