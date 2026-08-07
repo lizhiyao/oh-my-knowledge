@@ -105,6 +105,9 @@ describe('trajectory live client', () => {
       animateToLatest: true,
     });
     sourceClosed = false;
+    trajectoryListener({ data: JSON.stringify({ status: 'unknown', liveObservable: true }) } as MessageEvent);
+    assert.equal(sourceClosed, false);
+    assert.equal(liveState.dataset.state, 'reconnecting');
     trajectoryListener({ data: JSON.stringify({ revision: 'revision-3', status: 'completed' }) } as MessageEvent);
     assert.equal(sourceClosed, true);
     controller.dispose();

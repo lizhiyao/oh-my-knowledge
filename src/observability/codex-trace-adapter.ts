@@ -1,7 +1,6 @@
 /** Codex rollout JSONL -> source-neutral Trace IR. */
 
 import { basename } from 'node:path';
-import { isToolResultFailureText } from './text-signals.js';
 import type {
   TraceEvent,
   TraceSession,
@@ -30,6 +29,11 @@ import {
   isCodexRecordConsumedWithoutDirectEvent,
   isCodexResponseItemType,
 } from './codex-protocol.js';
+import {
+  codexRuntimeToolOutcome,
+  codexToolOutputOutcome,
+  codexToolStatusFromValue,
+} from './codex-tool-status.js';
 
 interface CodexRecord {
   timestamp?: unknown;
@@ -366,7 +370,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         base,
         callId,
         output,
-        statusFromCodex(payload.status),
+        codexToolStatusFromValue(payload.status),
         stringValue(payload.status) ? 'runtime' : 'unknown',
       ));
       return;
@@ -380,7 +384,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         mcpCallOccurrenceKey(callId, resultOccurrence),
       );
       const payloadStatus = stringValue(payload.status);
-      const explicitStatus = statusFromCodex(payloadStatus);
+      const explicitStatus = codexToolStatusFromValue(payloadStatus);
       events.push(toolCallEvent(
         eventId('tool-call'),
         base,
@@ -409,7 +413,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         mcpCallOccurrenceKey(callId, resultOccurrence),
       );
       const payloadStatus = stringValue(payload.status);
-      const explicitStatus = statusFromCodex(payloadStatus);
+      const explicitStatus = codexToolStatusFromValue(payloadStatus);
       const inferredSuccess = result.length > 0 || completed;
       events.push(toolCallEvent(
         eventId('tool-call'),
@@ -468,16 +472,15 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       const patchEnd = patchEnds.byOccurrence.get(mcpEndKey);
       if (patchEnd) representedPatchResults.add(mcpEndKey);
       const output = codexContentText(payload.output) || mcpEnd?.output || patchEnd?.output || '';
-      const runtimeOutcome = runtimeToolEndOutcome(mcpEnd ?? patchEnd);
+      const runtimeOutcome = codexRuntimeToolOutcome(mcpEnd ?? patchEnd);
       const payloadStatus = stringValue(payload.status);
       const hasRuntimeStatus = runtimeOutcome.present || payloadStatus !== undefined;
       const explicitStatus = runtimeOutcome.present
         ? runtimeOutcome.status
-        : statusFromCodex(payloadStatus);
-      const bridgeFailure = codexToolOutputFailed(output);
-      const bridgeSuccess = !bridgeFailure && codexToolOutputSucceeded(output);
-      const inferredFailure = bridgeFailure || (!bridgeSuccess && isToolResultFailureText(output));
-      const inferredSuccess = bridgeSuccess;
+        : codexToolStatusFromValue(payloadStatus);
+      const outputOutcome = codexToolOutputOutcome(output);
+      const inferredFailure = outputOutcome.status === 'failure';
+      const inferredSuccess = outputOutcome.status === 'success';
       const completedExternalCall = externalEnds.byOccurrence.has(
         mcpCallOccurrenceKey(callId, externalOccurrence),
       );
@@ -737,7 +740,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   for (const end of mcpEnds.ordered) {
     const endKey = mcpCallOccurrenceKey(end.callId, end.occurrence);
-    const outcome = runtimeToolEndOutcome(end);
+    const outcome = codexRuntimeToolOutcome(end);
     if (!representedMcpCalls.has(endKey)) {
       events.push({
         eventKind: 'tool_call',
@@ -771,7 +774,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   for (const end of patchEnds.ordered) {
     const endKey = mcpCallOccurrenceKey(end.callId, end.occurrence);
-    const outcome = runtimeToolEndOutcome(end);
+    const outcome = codexRuntimeToolOutcome(end);
     if (!representedPatchCalls.has(endKey)) {
       events.push({
         eventKind: 'tool_call',
@@ -950,27 +953,6 @@ function mcpCallOccurrenceKey(callId: string, occurrence: number): string {
   return `${callId}\u0000${occurrence}`;
 }
 
-function runtimeToolEndOutcome(
-  end: Pick<McpCallEnd, 'status' | 'isError'> | undefined,
-): {
-  status: TraceToolStatus;
-  present: boolean;
-} {
-  if (!end) return { status: 'unknown', present: false };
-  if (end.status !== undefined) {
-    const status = statusFromCodex(end.status);
-    if (status === 'cancelled') return { status, present: true };
-    if (status === 'failure' || end.isError === true) {
-      return { status: 'failure', present: true };
-    }
-    if (status === 'success') return { status, present: true };
-    return { status: 'unknown', present: true };
-  }
-  if (end.isError === true) return { status: 'failure', present: true };
-  if (end.isError === false) return { status: 'success', present: true };
-  return { status: 'unknown', present: false };
-}
-
 function normalizeCodexTool(
   sourceName: string,
   rawInput: unknown,
@@ -1065,14 +1047,6 @@ function codexSessionContextSummary(input: {
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-function statusFromCodex(value: unknown): TraceToolStatus {
-  const status = stringValue(value)?.toLowerCase();
-  if (status === 'failed' || status === 'error') return 'failure';
-  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
-  if (status === 'success' || status === 'succeeded' || status === 'completed' || status === 'complete') return 'success';
-  return 'unknown';
-}
-
 function parseToolInput(value: unknown): Record<string, unknown> {
   if (isObject(value)) return value;
   if (typeof value !== 'string') return {};
@@ -1127,22 +1101,6 @@ function codexPlaintext(value: unknown, depth = 0): string {
   return codexPlaintext(value.content, depth + 1);
 }
 
-function codexToolOutputFailed(output: string): boolean {
-  return /\b(?:process|script)\s+(?:exited|failed)\s+with\s+(?:exit\s+)?code\s+[1-9]\d*\b/i.test(output)
-    || /\bexit[_\s-]?code\s*[:=]\s*[1-9]\d*\b/i.test(output)
-    || /\bapply_patch verification failed\b/i.test(output);
-}
-
-function codexToolOutputSucceeded(output: string): boolean {
-  const trimmed = output.trim();
-  return /\bprocess exited with code 0\b/i.test(trimmed)
-    || /\bexit code:\s*0\b/i.test(trimmed)
-    || /^script completed\b/i.test(trimmed)
-    || /^success\.\s+(?:updated|added|deleted|moved)\b/i.test(trimmed)
-    || /^plan updated\b/i.test(trimmed)
-    || /^workspace dependencies are available\b/i.test(trimmed)
-    || /^\[image\]$/i.test(trimmed);
-}
 
 function codexSourceMetadata(records: unknown[], metaPayload: Record<string, unknown>): TraceSourceMetadata {
   const models = Array.from(new Set(records.flatMap((value) => {

@@ -3646,6 +3646,21 @@ describe('source-neutral Trace IR', () => {
       .goalEvidenceRefs[0].goalSliceId = 'missing-goal-slice';
     assert.equal(normalizeObservationExperienceReport(danglingEpisodeGoal), null);
 
+    const additiveV3 = JSON.parse(serialized);
+    for (const session of additiveV3.sessions) {
+      delete session.threadId;
+      delete session.sourceThreadId;
+      delete session.turns;
+    }
+    const normalizedAdditiveV3 = normalizeObservationExperienceReport(additiveV3);
+    assert.ok(normalizedAdditiveV3);
+    assert.ok(normalizedAdditiveV3.sessions.every((session) => session.threadId.length > 0));
+    assert.ok(normalizedAdditiveV3.sessions.every((session) => session.sourceThreadId.length > 0));
+    assert.deepEqual(
+      normalizedAdditiveV3.sessions.map((session) => session.turns.length),
+      experience.sessions.map((session) => session.turns.length),
+    );
+
     const legacy = JSON.parse(JSON.stringify(experience));
     legacy.schemaVersion = 2;
     delete legacy.traceTimelines;
@@ -3686,6 +3701,9 @@ describe('source-neutral Trace IR', () => {
       };
       delete legacySession.timestampedInvocationCount;
       delete legacySession.timestampCoverage;
+      delete legacySession.threadId;
+      delete legacySession.sourceThreadId;
+      delete legacySession.turns;
       delete legacySession.timelineRef;
       delete legacySession.timelinePreviewEventIds;
       delete legacySession.indicators.toolCancelledCount;

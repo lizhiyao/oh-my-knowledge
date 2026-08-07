@@ -551,8 +551,8 @@ function normalizeExperienceSessionShells(
   if (records.some((value) =>
     typeof value.id !== 'string'
     || typeof value.skillName !== 'string'
-    || typeof value.threadId !== 'string'
-    || typeof value.sourceThreadId !== 'string'
+    || !isOptionalString(value.threadId)
+    || !isOptionalString(value.sourceThreadId)
     || typeof value.sessionId !== 'string'
     || typeof value.sourceTrace !== 'string'
     || !isObservationSourceKind(value.sourceKind)
@@ -597,7 +597,7 @@ function normalizeExperienceSessionShells(
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
     || !isStringArray(value.relatedObservationIds)
-    || !isExperienceTurnSummaryArray(value.turns)
+    || (value.turns !== undefined && !isExperienceTurnSummaryArray(value.turns))
     || !(strict
       ? isExperienceTimelineScope(value.timelineScope)
       : isLegacyExperienceTimelineScope(value.timelineScope))
@@ -630,6 +630,14 @@ function normalizeExperienceSessionShells(
     )
   )) return null;
   return records.map((value) => {
+    const sourceThreadId = typeof value.sourceThreadId === 'string'
+      ? value.sourceThreadId
+      : typeof value.threadId === 'string'
+        ? value.threadId
+        : value.sessionId as string;
+    const threadId = typeof value.threadId === 'string'
+      ? value.threadId
+      : hashParts('thread', sourceThreadId);
     const sessionStory = isObjectRecord(value.sessionStory)
       ? {
           ...value.sessionStory,
@@ -642,7 +650,10 @@ function normalizeExperienceSessionShells(
       : undefined;
     return {
       ...value,
+      threadId,
+      sourceThreadId,
       invocationIds: Array.isArray(value.invocationIds) ? value.invocationIds : [],
+      turns: isExperienceTurnSummaryArray(value.turns) ? value.turns : [],
       timelinePreview: Array.isArray(value.timelinePreview) ? value.timelinePreview : [],
       fullSessionTimeline: Array.isArray(value.fullSessionTimeline) ? value.fullSessionTimeline : [],
       sessionStory,
@@ -2026,6 +2037,9 @@ function hydrateExperienceTimelines(
     const fullSessionTimeline = storedTimeline
       ? flattenedTimeline(timelineRef)
       : session.fullSessionTimeline;
+    const turns = session.turns.length > 0
+      ? session.turns
+      : reconstructExperienceTurns(fullSessionTimeline);
     const timelinePreviewEventIds = session.timelinePreviewEventIds
       ?? session.timelinePreview.map((event) => event.id);
     const timelinePreview = timelinePreviewEventIds.length > 0
@@ -2055,6 +2069,7 @@ function hydrateExperienceTimelines(
       timelinePreviewEventIds: timelinePreview.map((event) => event.id),
       timelinePreview,
       fullSessionTimeline,
+      turns,
       timelineTree: storedTimeline?.tree ?? session.timelineTree,
       sessionStory,
       reviewerReport: session.reviewerReport && sessionStory

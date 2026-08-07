@@ -1,10 +1,15 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import type { ExperienceTurnStatus } from '../types/index.js';
-import { codexUserDisplayText } from './codex-protocol.js';
+import type { TraceToolStatus } from './trace-ir.js';
+import { codexUserDisplayText, codexUserMessageOrigin } from './codex-protocol.js';
+import {
+  codexRuntimeToolOutcomeFromPayload,
+  codexToolOutputOutcome,
+} from './codex-tool-status.js';
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION = 9;
+const INDEX_SCHEMA_VERSION = 10;
 const MAX_CURRENT_INDEX_ATTEMPTS = 4;
 
 export interface CodexIndexedTask {
@@ -23,7 +28,7 @@ export interface CodexIndexedTask {
 }
 
 export interface CodexRolloutIndex {
-  schemaVersion: 9;
+  schemaVersion: 10;
   sourcePath: string;
   /** File size observed when the index was produced. */
   sourceSize: number;
@@ -38,12 +43,32 @@ export interface CodexRolloutIndex {
   sessionMeta?: unknown;
   sessionMetaLine?: number;
   tasks: CodexIndexedTask[];
+  /** Incremental matcher state for the final unclosed task only. */
+  activeToolOutcomeState?: CodexActiveToolOutcomeState;
   sourceRecordCount: number;
   malformedRecordCount: number;
 }
 
 interface MutableTask extends CodexIndexedTask {
   titlePriority: number;
+  toolOutcomeTracker: ToolOutcomeTracker;
+}
+
+export interface CodexActiveToolOutcomeState {
+  resultOccurrences: Array<[string, number]>;
+  runtimeOccurrences: Array<[string, number]>;
+  outcomes: Array<[string, IndexedToolOutcome]>;
+}
+
+interface IndexedToolOutcome {
+  outputStatus?: TraceToolStatus;
+  runtimeStatus?: TraceToolStatus;
+}
+
+interface ToolOutcomeTracker {
+  resultOccurrences: Map<string, number>;
+  runtimeOccurrences: Map<string, number>;
+  outcomes: Map<string, IndexedToolOutcome>;
 }
 
 export interface CodexJsonlLine {
@@ -100,7 +125,7 @@ export function extendCodexRolloutIndex(
   completeTailTaskDelimiter(tasks, normalizedPrevious.indexedSize, resume.indexedSize);
   const lastTask = tasks.at(-1);
   const active = lastTask?.status === 'open'
-    ? mutableTask(tasks.pop()!)
+    ? mutableTask(tasks.pop()!, normalizedPrevious.activeToolOutcomeState)
     : undefined;
   const state: CodexIndexScanState = {
     tasks,
@@ -288,6 +313,11 @@ function scanCodexRolloutIndex(
     includeRecord(state.active, record);
 
     if (isUserPromptRecord(recordType, payloadType, payload)) {
+      const message = userPromptText(payload)?.trim();
+      const displayText = message && codexUserMessageOrigin(message) === 'human'
+        ? codexUserDisplayText(message)?.trim()
+        : undefined;
+      if (!displayText) return;
       state.active ??= newMutableTask(
         `turn:${sourceThreadId}:${record.line}`,
         record,
@@ -295,11 +325,8 @@ function scanCodexRolloutIndex(
       );
       const titlePriority = userPromptPriority(recordType, payloadType);
       if (titlePriority > state.active.titlePriority) {
-        const message = userPromptText(payload)?.trim();
-        if (message) {
-          state.active.title = compactTitle(message);
-          state.active.titlePriority = titlePriority;
-        }
+        state.active.title = compactTitle(displayText);
+        state.active.titlePriority = titlePriority;
       }
       return;
     }
@@ -308,9 +335,7 @@ function scanCodexRolloutIndex(
     if (recordType === 'response_item' && isToolCallPayload(payloadType)) {
       state.active.toolCallCount += 1;
     }
-    if (isFailedToolRecord(recordType, payloadType, payload)) {
-      state.active.toolFailureCount += 1;
-    }
+    recordToolOutcome(state.active, record, recordType, payloadType, payload);
 
     if (recordType === 'event_msg' && payloadType === 'task_complete') {
       state.active.status = 'completed';
@@ -357,6 +382,9 @@ function indexFromState(
     sessionMeta: state.sessionMeta,
     sessionMetaLine: state.sessionMetaLine,
     tasks,
+    activeToolOutcomeState: state.active
+      ? serializeToolOutcomeTracker(state.active.toolOutcomeTracker)
+      : undefined,
     sourceRecordCount: state.sourceRecordCount,
     malformedRecordCount: state.malformedRecordCount,
   };
@@ -380,13 +408,18 @@ function newMutableTask(
     endOffset: record.endOffset,
     startLine: record.line,
     endLine: record.line,
+    toolOutcomeTracker: createToolOutcomeTracker(),
   };
 }
 
-function mutableTask(task: CodexIndexedTask): MutableTask {
+function mutableTask(
+  task: CodexIndexedTask,
+  activeToolOutcomeState?: CodexActiveToolOutcomeState,
+): MutableTask {
   return {
     ...task,
     titlePriority: task.title === '未命名任务' ? 0 : 1,
+    toolOutcomeTracker: createToolOutcomeTracker(activeToolOutcomeState),
   };
 }
 
@@ -471,7 +504,11 @@ function finalizeSupersededTask(
   });
 }
 
-function stripMutable({ titlePriority: _titlePriority, ...task }: MutableTask): CodexIndexedTask {
+function stripMutable({
+  titlePriority: _titlePriority,
+  toolOutcomeTracker: _toolOutcomeTracker,
+  ...task
+}: MutableTask): CodexIndexedTask {
   return task;
 }
 
@@ -493,6 +530,8 @@ function isIndexRelevantLine(line: string): boolean {
     || line.includes('"type":"function_call"')
     || line.includes('"type":"custom_tool_call"')
     || line.includes('"type":"local_shell_call"')
+    || line.includes('"type":"function_call_output"')
+    || line.includes('"type":"custom_tool_call_output"')
     || line.includes('"type":"mcp_tool_call_end"')
     || line.includes('"type":"patch_apply_end"');
 }
@@ -531,17 +570,85 @@ function userPromptText(payload: Record<string, unknown>): string | undefined {
   return parts.length > 0 ? parts.join('\n') : undefined;
 }
 
-function isFailedToolRecord(
+function recordToolOutcome(
+  task: MutableTask,
+  record: CodexJsonlLine,
   recordType: string | undefined,
   payloadType: string | undefined,
   payload: Record<string, unknown>,
-): boolean {
-  if (recordType !== 'event_msg') return false;
-  if (payloadType === 'mcp_tool_call_end') {
-    const result = objectValue(payload.result);
-    return payload.success === false || result?.is_error === true;
+): void {
+  if (recordType === 'response_item'
+    && (payloadType === 'function_call_output' || payloadType === 'custom_tool_call_output')) {
+    const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `result:${record.line}`;
+    const occurrence = takeToolOccurrence(task.toolOutcomeTracker.resultOccurrences, callId);
+    updateToolOutcome(
+      task,
+      toolOccurrenceKey(callId, occurrence),
+      'outputStatus',
+      codexToolOutputOutcome(payload.output, payload.status).status,
+    );
+    return;
   }
-  return payloadType === 'patch_apply_end' && payload.success === false;
+  if (recordType !== 'event_msg'
+    || (payloadType !== 'mcp_tool_call_end' && payloadType !== 'patch_apply_end')) return;
+  const callId = stringValue(payload.call_id) ?? stringValue(payload.id) ?? `runtime:${record.line}`;
+  const occurrence = takeToolOccurrence(task.toolOutcomeTracker.runtimeOccurrences, callId);
+  const outcome = codexRuntimeToolOutcomeFromPayload(payloadType, payload);
+  if (!outcome.present) return;
+  updateToolOutcome(
+    task,
+    toolOccurrenceKey(callId, occurrence),
+    'runtimeStatus',
+    outcome.status,
+  );
+}
+
+function updateToolOutcome(
+  task: MutableTask,
+  key: string,
+  source: keyof IndexedToolOutcome,
+  status: TraceToolStatus,
+): void {
+  const previous = task.toolOutcomeTracker.outcomes.get(key) ?? {};
+  const wasFailure = resolvedToolStatus(previous) === 'failure';
+  const next = { ...previous, [source]: status };
+  task.toolOutcomeTracker.outcomes.set(key, next);
+  const isFailure = resolvedToolStatus(next) === 'failure';
+  if (wasFailure !== isFailure) task.toolFailureCount += isFailure ? 1 : -1;
+}
+
+function resolvedToolStatus(outcome: IndexedToolOutcome): TraceToolStatus {
+  return outcome.runtimeStatus ?? outcome.outputStatus ?? 'unknown';
+}
+
+function takeToolOccurrence(counts: Map<string, number>, callId: string): number {
+  const occurrence = counts.get(callId) ?? 0;
+  counts.set(callId, occurrence + 1);
+  return occurrence;
+}
+
+function toolOccurrenceKey(callId: string, occurrence: number): string {
+  return `${callId}\u0000${occurrence}`;
+}
+
+function createToolOutcomeTracker(
+  state?: CodexActiveToolOutcomeState,
+): ToolOutcomeTracker {
+  return {
+    resultOccurrences: new Map(state?.resultOccurrences ?? []),
+    runtimeOccurrences: new Map(state?.runtimeOccurrences ?? []),
+    outcomes: new Map(state?.outcomes ?? []),
+  };
+}
+
+function serializeToolOutcomeTracker(
+  tracker: ToolOutcomeTracker,
+): CodexActiveToolOutcomeState {
+  return {
+    resultOccurrences: [...tracker.resultOccurrences],
+    runtimeOccurrences: [...tracker.runtimeOccurrences],
+    outcomes: [...tracker.outcomes],
+  };
 }
 
 function compactTitle(value: string): string {

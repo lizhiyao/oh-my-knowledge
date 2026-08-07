@@ -1110,6 +1110,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
                 res.write(`data: ${JSON.stringify({
                   revision: trajectory.revision,
                   status: trajectory.status,
+                  liveObservable: trajectory.liveObservable,
                 })}\n\n`);
               },
               complete: close,
@@ -1163,7 +1164,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           lang,
           {
             sourceRecordsEndpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/source-records`,
-            ...(trajectory.status === 'open' && resolvedConversationCatalog.observeTaskTrajectory ? {
+            ...(trajectory.liveObservable && resolvedConversationCatalog.observeTaskTrajectory ? {
               live: {
                 endpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/live`,
                 revision: trajectory.revision,

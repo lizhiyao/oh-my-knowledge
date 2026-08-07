@@ -44,6 +44,7 @@ describe('Live task trajectory server', () => {
     trajectory = {
       revision: 'revision-1',
       status: 'open',
+      liveObservable: true,
       session,
       ingestion: report.meta.ingestion,
       sourceRecords: {
@@ -114,6 +115,7 @@ describe('Live task trajectory server', () => {
     assert.match(event, /event: trajectory/);
     assert.match(event, /"revision":"revision-1"/);
     assert.match(event, /"status":"open"/);
+    assert.match(event, /"liveObservable":true/);
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(unsubscribed, true);
   });

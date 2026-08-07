@@ -232,15 +232,26 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     source.addEventListener('open', () => setConnectionState('live', labels.live), { signal: lifecycle.signal });
     source.addEventListener('trajectory', (event) => {
       try {
-        const update = JSON.parse((event as MessageEvent<string>).data) as { revision?: string; status?: string };
-        const terminal = update.status !== 'open';
+        const update = JSON.parse((event as MessageEvent<string>).data) as {
+          revision?: string;
+          status?: string;
+          liveObservable?: boolean;
+        };
+        const terminal = update.liveObservable === false
+          || update.status === 'completed'
+          || update.status === 'aborted'
+          || update.status === 'interrupted';
         if (terminal) {
           terminalUpdate = true;
           source.close();
           if (liveSource === source) liveSource = undefined;
         }
         if (!update.revision || update.revision === shell.dataset.liveRevision) {
-          setConnectionState(terminal ? 'completed' : 'live', terminal ? labels.completed : labels.live);
+          const quiet = update.status === 'unknown';
+          setConnectionState(
+            terminal ? 'completed' : quiet ? 'reconnecting' : 'live',
+            terminal ? labels.completed : quiet ? labels.reconnecting : labels.live,
+          );
           updateFollowControl();
           return;
         }

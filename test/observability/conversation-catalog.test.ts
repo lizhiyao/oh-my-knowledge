@@ -62,6 +62,24 @@ describe('Codex conversation catalog', () => {
     assert.equal(index.tasks[0]?.title, '用户真正发送的任务');
   });
 
+  it('does not invent a task for runtime context before a native turn', () => {
+    const rolloutPath = new URL('../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url).pathname;
+
+    const index = buildCodexRolloutIndex(rolloutPath, 'codex-knowledge-debugger-failure');
+
+    assert.deepEqual(index.tasks.map((task) => ({
+      turnId: task.turnId,
+      title: task.title,
+      toolCallCount: task.toolCallCount,
+      toolFailureCount: task.toolFailureCount,
+    })), [{
+      turnId: 'turn-release',
+      title: '检查并发布当前版本。',
+      toolCallCount: 2,
+      toolFailureCount: 1,
+    }]);
+  });
+
   it('does not keep a superseded task running when its terminal event is missing', () => {
     const root = temporaryRoot();
     const rolloutPath = join(root, 'rollout-missing-terminal.jsonl');
@@ -162,6 +180,30 @@ describe('Codex conversation catalog', () => {
     assert.equal(extended.tasks[0]?.status, 'completed');
     assert.equal(extended.tasks[0]?.toolCallCount, 1);
     assert.equal(extended.tasks[1]?.status, 'open');
+  });
+
+  it('keeps incremental tool outcomes aligned with authoritative runtime ends', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-tool-outcomes.jsonl');
+    const initial = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'response_item', payload: { type: 'function_call', call_id: 'call-a', name: 'mcp__server__run', arguments: '{}' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'call-a', output: 'Process exited with code 1' } },
+    ];
+    writeFileSync(rolloutPath, `${initial.map((record) => JSON.stringify(record)).join('\n')}\n`);
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    assert.equal(prefix.tasks[0]?.toolFailureCount, 1);
+
+    const appended = [
+      { timestamp: '2026-08-06T00:00:00.300Z', type: 'event_msg', payload: { type: 'mcp_tool_call_end', call_id: 'call-a', result: { Ok: { isError: false } } } },
+      { timestamp: '2026-08-06T00:00:00.400Z', type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-a' } },
+    ];
+    appendFileSync(rolloutPath, `${appended.map((record) => JSON.stringify(record)).join('\n')}\n`);
+
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.tasks[0]?.toolFailureCount, 0);
   });
 
   it('does not commit an incomplete JSONL tail before the record is finished', () => {
@@ -385,7 +427,7 @@ describe('Codex conversation catalog', () => {
     unsubscribe();
   });
 
-  it('closes a live subscription when an unchanged rollout ages out', async () => {
+  it('keeps observing a quiet unclosed task until terminal evidence arrives', async () => {
     const root = temporaryRoot();
     const codexHome = join(root, '.codex');
     const sessionsDir = join(codexHome, 'sessions');
@@ -420,9 +462,17 @@ describe('Codex conversation catalog', () => {
     assert.deepEqual(statuses, ['open']);
 
     now += 101;
-    await waitFor(() => statuses.at(-1) === 'unknown' && completed === 1);
+    await waitFor(() => statuses.at(-1) === 'unknown');
+    assert.equal(completed, 0);
 
-    assert.deepEqual(statuses, ['open', 'unknown']);
+    appendFileSync(rolloutPath, `${JSON.stringify({
+      timestamp: '2026-08-06T00:10:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_complete', turn_id: 'turn-silent' },
+    })}\n`);
+    await waitFor(() => statuses.at(-1) === 'completed' && completed === 1);
+
+    assert.deepEqual(statuses, ['open', 'unknown', 'completed']);
     unsubscribe();
   });
 

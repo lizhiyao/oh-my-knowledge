@@ -47,6 +47,8 @@ const DEFAULT_LIVE_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 export interface ConversationTaskTrajectory {
   revision: string;
   status: ExperienceTurnStatus;
+  /** The source task is still the final unclosed turn and may append after a quiet period. */
+  liveObservable: boolean;
   session: TaskTrajectorySession;
   ingestion: TraceIngestionSummary;
   sourceRecords: ObservationSourceRecordArchiveView;
@@ -224,9 +226,12 @@ class CodexConversationCatalog implements ConversationCatalog {
       row.rolloutPath,
     );
     const status = this.taskStatus(index, indexedTask, taskTurn?.status);
+    const liveObservable = indexedTask.status === 'open'
+      && index.tasks.at(-1)?.turnId === indexedTask.turnId;
     return {
       revision: trajectoryRevision(index, status),
       status,
+      liveObservable,
       session: {
         id: `codex:${threadId}:${turnId}`,
         threadId,
@@ -276,7 +281,7 @@ class CodexConversationCatalog implements ConversationCatalog {
       };
       return {
         revision: value.revision,
-        terminal: true,
+        terminal: !value.liveObservable || isTerminalTaskStatus(status),
         value,
       };
     }
@@ -287,7 +292,7 @@ class CodexConversationCatalog implements ConversationCatalog {
     const value = this.trajectoryFromIndex(row, index, indexedTask);
     return {
       revision: value.revision,
-      terminal: value.status !== 'open',
+      terminal: !value.liveObservable || isTerminalTaskStatus(value.status),
       value,
     };
   }
@@ -644,6 +649,10 @@ function trajectoryRevisionFromStat(
   status: ExperienceTurnStatus,
 ): string {
   return `${sourceStat.size}:${sourceStat.mtimeMs}:${status}`;
+}
+
+function isTerminalTaskStatus(status: ExperienceTurnStatus): boolean {
+  return status === 'completed' || status === 'aborted' || status === 'interrupted';
 }
 
 function secondsToMs(value: unknown): number | undefined {
