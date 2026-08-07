@@ -1008,6 +1008,7 @@ export function renderKnowledgeDebuggerPage(
             live: zh ? '实时' : 'Live',
             syncing: zh ? '同步中' : 'Syncing',
             reconnecting: zh ? '重连中' : 'Reconnecting',
+            failed: zh ? '实时更新失败' : 'Live update failed',
             following: zh ? '跟随中' : 'Following',
             resume: zh ? '跟随最新' : 'Follow latest',
             pending: zh ? '查看更新' : 'View update',

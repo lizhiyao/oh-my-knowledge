@@ -85,6 +85,42 @@ describe('source-neutral task window', () => {
     ]);
   });
 
+  it('keeps interleaved traces out of each other task windows', () => {
+    const events = [
+      timelineEvent('a-start', 1, 'lifecycle', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a', label: 'turn_started',
+        timestamp: '2026-08-06T00:00:00.000Z',
+      }),
+      timelineEvent('b-start', 1, 'lifecycle', {
+        traceId: 'trace-b', sourceTrace: '/b.jsonl', turnId: 'turn-b', label: 'turn_started',
+        timestamp: '2026-08-06T00:00:00.050Z',
+      }),
+      timelineEvent('a-user', 2, 'user_message', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a', role: 'user',
+        timestamp: '2026-08-06T00:00:00.100Z',
+      }),
+      timelineEvent('b-user', 2, 'user_message', {
+        traceId: 'trace-b', sourceTrace: '/b.jsonl', turnId: 'turn-b', role: 'user',
+        timestamp: '2026-08-06T00:00:00.150Z',
+      }),
+      timelineEvent('a-end', 3, 'lifecycle', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a', label: 'turn_completed',
+        timestamp: '2026-08-06T00:00:00.200Z',
+      }),
+      timelineEvent('b-end', 3, 'lifecycle', {
+        traceId: 'trace-b', sourceTrace: '/b.jsonl', turnId: 'turn-b', label: 'turn_completed',
+        timestamp: '2026-08-06T00:00:00.250Z',
+      }),
+    ];
+
+    const turns = reconstructExperienceTurns(events);
+    const turnA = turns.find((turn) => turn.sourceTurnId === 'turn-a');
+    const turnB = turns.find((turn) => turn.sourceTurnId === 'turn-b');
+
+    assert.deepEqual(turnA?.eventIds, ['a-start', 'a-user', 'a-end']);
+    assert.deepEqual(turnB?.eventIds, ['b-start', 'b-user', 'b-end']);
+  });
+
   it('uses lifecycle boundaries when a source exposes turns without turn ids', () => {
     const events = [
       timelineEvent('old-start', 1, 'lifecycle', { label: 'turn_started' }),

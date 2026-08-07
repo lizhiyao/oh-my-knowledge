@@ -19,8 +19,8 @@ describe('PollingSubscriptionHub', () => {
     };
     const firstValues: number[] = [];
     const secondValues: number[] = [];
-    const unsubscribeFirst = await hub.subscribe('task', loader, ({ value }) => firstValues.push(value));
-    const unsubscribeSecond = await hub.subscribe('task', loader, ({ value }) => secondValues.push(value));
+    const unsubscribeFirst = await hub.subscribe('task', loader, { next: ({ value }) => firstValues.push(value) });
+    const unsubscribeSecond = await hub.subscribe('task', loader, { next: ({ value }) => secondValues.push(value) });
 
     await delay(30);
     assert.equal(maxActive, 1);
@@ -37,13 +37,35 @@ describe('PollingSubscriptionHub', () => {
     const hub = new PollingSubscriptionHub<number>(1);
     let calls = 0;
     const values: number[] = [];
+    let completed = false;
     await hub.subscribe('task', async () => {
       calls += 1;
       return { revision: 'complete', terminal: true, value: 1 };
-    }, ({ value }) => values.push(value));
+    }, {
+      next: ({ value }) => values.push(value),
+      complete: () => { completed = true; },
+    });
 
     await delay(15);
     assert.equal(calls, 1);
     assert.deepEqual(values, [1]);
+    assert.equal(completed, true);
+  });
+
+  it('reports a polling failure that happens after the initial snapshot', async () => {
+    const hub = new PollingSubscriptionHub<number>(1);
+    let calls = 0;
+    let failure: unknown;
+    await hub.subscribe('task', async () => {
+      calls += 1;
+      if (calls > 1) throw new Error('poll failed');
+      return { revision: 'initial', terminal: false, value: 1 };
+    }, {
+      next: () => undefined,
+      error: (cause) => { failure = cause; },
+    });
+
+    await delay(15);
+    assert.match(String(failure), /poll failed/u);
   });
 });

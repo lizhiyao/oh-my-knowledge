@@ -8,11 +8,15 @@ export type PollingSnapshotLoader<T> = (
   previous: PollingSnapshot<T> | undefined,
 ) => Promise<PollingSnapshot<T>>;
 
-export type PollingSnapshotListener<T> = (snapshot: PollingSnapshot<T>) => void;
+export interface PollingSnapshotObserver<T> {
+  next(snapshot: PollingSnapshot<T>): void;
+  complete?(): void;
+  error?(cause: unknown): void;
+}
 
 interface SubscriptionEntry<T> {
   active: boolean;
-  listeners: Set<PollingSnapshotListener<T>>;
+  observers: Set<PollingSnapshotObserver<T>>;
   loader: PollingSnapshotLoader<T>;
   latest?: PollingSnapshot<T>;
   timer?: ReturnType<typeof setTimeout>;
@@ -33,7 +37,7 @@ export class PollingSubscriptionHub<T> {
   async subscribe(
     key: string,
     loader: PollingSnapshotLoader<T>,
-    listener: PollingSnapshotListener<T>,
+    observer: PollingSnapshotObserver<T>,
   ): Promise<() => void> {
     let entry = this.entries.get(key);
     if (!entry) {
@@ -45,7 +49,7 @@ export class PollingSubscriptionHub<T> {
       });
       entry = {
         active: true,
-        listeners: new Set(),
+        observers: new Set(),
         loader,
         ready,
         resolveReady,
@@ -55,13 +59,13 @@ export class PollingSubscriptionHub<T> {
       void this.poll(key, entry, true);
     }
 
-    entry.listeners.add(listener);
-    if (entry.latest) notify(listener, entry.latest);
+    entry.observers.add(observer);
+    if (entry.latest) notifyNext(observer, entry.latest);
 
     try {
       await entry.ready;
     } catch (cause) {
-      entry.listeners.delete(listener);
+      entry.observers.delete(observer);
       throw cause;
     }
 
@@ -69,8 +73,8 @@ export class PollingSubscriptionHub<T> {
     return () => {
       if (!subscribed) return;
       subscribed = false;
-      entry?.listeners.delete(listener);
-      if (entry && entry.listeners.size === 0) this.dispose(key, entry);
+      entry?.observers.delete(observer);
+      if (entry && entry.observers.size === 0) this.dispose(key, entry);
     };
   }
 
@@ -89,10 +93,11 @@ export class PollingSubscriptionHub<T> {
       const changed = snapshot.revision !== entry.latest?.revision;
       entry.latest = snapshot;
       if (changed) {
-        for (const listener of entry.listeners) notify(listener, snapshot);
+        for (const observer of entry.observers) notifyNext(observer, snapshot);
       }
       if (initial) entry.resolveReady();
       if (snapshot.terminal) {
+        for (const observer of entry.observers) notifyComplete(observer);
         this.dispose(key, entry);
         return;
       }
@@ -104,6 +109,7 @@ export class PollingSubscriptionHub<T> {
     } catch (cause) {
       if (!entry.active) return;
       if (initial) entry.rejectReady(cause);
+      else for (const observer of entry.observers) notifyError(observer, cause);
       this.dispose(key, entry);
     }
   }
@@ -113,15 +119,31 @@ export class PollingSubscriptionHub<T> {
     entry.active = false;
     if (entry.timer) clearTimeout(entry.timer);
     entry.timer = undefined;
-    entry.listeners.clear();
+    entry.observers.clear();
     if (this.entries.get(key) === entry) this.entries.delete(key);
   }
 }
 
-function notify<T>(listener: PollingSnapshotListener<T>, snapshot: PollingSnapshot<T>): void {
+function notifyNext<T>(observer: PollingSnapshotObserver<T>, snapshot: PollingSnapshot<T>): void {
   try {
-    listener(snapshot);
+    observer.next(snapshot);
   } catch {
     // One consumer must not stop updates for other subscribers.
+  }
+}
+
+function notifyComplete<T>(observer: PollingSnapshotObserver<T>): void {
+  try {
+    observer.complete?.();
+  } catch {
+    // One consumer must not stop completion for other subscribers.
+  }
+}
+
+function notifyError<T>(observer: PollingSnapshotObserver<T>, cause: unknown): void {
+  try {
+    observer.error?.(cause);
+  } catch {
+    // One consumer must not stop error delivery for other subscribers.
   }
 }

@@ -77,6 +77,7 @@ describe('trajectory live client', () => {
       liveEndpoint: '/live',
       labels: {
         connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
+        failed: '实时更新失败',
         following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
         pauseTitle: '暂停自动跟随',
       },
@@ -103,7 +104,63 @@ describe('trajectory live client', () => {
       followLatest: true,
       animateToLatest: true,
     });
+    sourceClosed = false;
+    trajectoryListener({ data: JSON.stringify({ revision: 'revision-3', status: 'completed' }) } as MessageEvent);
+    assert.equal(sourceClosed, true);
     controller.dispose();
     assert.equal(sourceClosed, true);
+  });
+
+  it('closes the EventSource after a terminal live-update error', () => {
+    const sourceListeners = new Map<string, EventListener>();
+    let sourceClosed = false;
+    class FakeEventSource {
+      addEventListener(type: string, listener: EventListener): void {
+        sourceListeners.set(type, listener);
+      }
+      close(): void {
+        sourceClosed = true;
+      }
+    }
+    const liveState = { dataset: {}, textContent: '' } as unknown as HTMLElement;
+    const browserWindow = {
+      location: { pathname: '/conversations/thread/tasks/turn' },
+      sessionStorage: { getItem: () => null, removeItem: () => undefined, setItem: () => undefined },
+      requestAnimationFrame: () => 1,
+      setTimeout: () => 1,
+      clearTimeout: () => undefined,
+      addEventListener: () => undefined,
+      matchMedia: () => ({ matches: false }),
+      EventSource: FakeEventSource,
+    } as unknown as Window;
+    const controller = createTrajectoryLiveController({
+      shell: { dataset: { liveRevision: 'revision-1' } } as unknown as HTMLElement,
+      timeline: null,
+      liveState,
+      followButton: null,
+      followLabel: null,
+      liveEndpoint: '/live',
+      labels: {
+        connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
+        failed: '实时更新失败',
+        following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
+        pauseTitle: '暂停自动跟随',
+      },
+      getMode: () => 'semantic',
+      setMode: () => undefined,
+      isInteractionBlocking: () => false,
+      browserWindow,
+      browserDocument: {
+        hidden: false,
+        addEventListener: () => undefined,
+      } as unknown as Document,
+    });
+
+    sourceListeners.get('trajectory-error')?.(new Event('trajectory-error'));
+
+    assert.equal(sourceClosed, true);
+    assert.equal(liveState.dataset.state, 'failed');
+    assert.equal(liveState.textContent, '实时更新失败');
+    controller.dispose();
   });
 });

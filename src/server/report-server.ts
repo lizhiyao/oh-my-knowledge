@@ -1102,20 +1102,30 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           unsubscribe = await resolvedConversationCatalog.observeTaskTrajectory(
             threadId,
             turnId,
-            (trajectory) => {
-              if (closed || res.destroyed || res.writableEnded) return;
-              res.write(`id: ${trajectory.revision}\n`);
-              res.write('event: trajectory\n');
-              res.write(`data: ${JSON.stringify({
-                revision: trajectory.revision,
-                status: trajectory.status,
-              })}\n\n`);
+            {
+              next: (trajectory) => {
+                if (closed || res.destroyed || res.writableEnded) return;
+                res.write(`id: ${trajectory.revision}\n`);
+                res.write('event: trajectory\n');
+                res.write(`data: ${JSON.stringify({
+                  revision: trajectory.revision,
+                  status: trajectory.status,
+                })}\n\n`);
+              },
+              complete: close,
+              error: (cause) => {
+                if (!closed && !res.destroyed && !res.writableEnded) {
+                  res.write('event: trajectory-error\n');
+                  res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
+                }
+                close();
+              },
             },
           );
           if (closed) unsubscribe();
         } catch (cause) {
           if (!closed && !res.destroyed && !res.writableEnded) {
-            res.write('event: error\n');
+            res.write('event: trajectory-error\n');
             res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
           }
           close();

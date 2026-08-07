@@ -65,8 +65,12 @@ describe('Live task trajectory server', () => {
       async loadTaskTrajectory() {
         return trajectory;
       },
-      async observeTaskTrajectory(_threadId, _turnId, listener) {
-        listener(trajectory);
+      async observeTaskTrajectory(_threadId, turnId, observer) {
+        if (turnId === 'error') {
+          observer.error?.(new Error('实时轨迹读取失败'));
+          return () => { unsubscribed = true; };
+        }
+        observer.next(trajectory);
         return () => { unsubscribed = true; };
       },
     };
@@ -112,6 +116,14 @@ describe('Live task trajectory server', () => {
     assert.match(event, /"status":"open"/);
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(unsubscribed, true);
+  });
+
+  it('uses a terminal application event when live polling fails', async () => {
+    const event = await readFirstEvent(
+      `${baseUrl}/api/conversations/thread/tasks/error/live`,
+    );
+    assert.match(event, /event: trajectory-error/);
+    assert.match(event, /"error":"实时轨迹读取失败"/);
   });
 });
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -130,6 +130,67 @@ describe('Codex conversation catalog', () => {
     assert.equal(extended.tasks[1]?.status, 'open');
   });
 
+  it('does not commit an incomplete JSONL tail before the record is finished', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-partial-tail.jsonl');
+    const started = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-a' },
+    });
+    const user = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.100Z',
+      type: 'event_msg',
+      payload: { type: 'user_message', message: '增量标题' },
+    });
+    const splitAt = Math.floor(user.length / 2);
+    writeFileSync(rolloutPath, `${started}\n${user.slice(0, splitAt)}`);
+
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    assert.equal(prefix.sourceRecordCount, 1);
+    assert.equal(prefix.malformedRecordCount, 0);
+    assert.ok(prefix.indexedSize < prefix.sourceSize);
+
+    appendFileSync(rolloutPath, `${user.slice(splitAt)}\n`);
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.sourceRecordCount, 2);
+    assert.equal(extended.malformedRecordCount, 0);
+    assert.equal(extended.tasks[0]?.title, '增量标题');
+  });
+
+  it('keeps line positions stable when a complete EOF record later receives its delimiter', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-complete-tail.jsonl');
+    const started = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.000Z',
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-a' },
+    });
+    const user = JSON.stringify({
+      timestamp: '2026-08-06T00:00:00.100Z',
+      type: 'event_msg',
+      payload: { type: 'user_message', message: '追加后的标题' },
+    });
+    writeFileSync(rolloutPath, started);
+
+    const prefix = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    assert.equal(prefix.sourceRecordCount, 1);
+    assert.equal(prefix.indexedLineCount, 1);
+    assert.equal(prefix.indexedEndsWithNewline, false);
+
+    appendFileSync(rolloutPath, `\n${user}\n`);
+    const extended = extendCodexRolloutIndex(rolloutPath, 'main-thread', prefix);
+    const rebuilt = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.deepEqual(extended, rebuilt);
+    assert.equal(extended.indexedLineCount, 2);
+    assert.equal(extended.indexedEndsWithNewline, true);
+    assert.equal(extended.tasks[0]?.endLine, 1);
+  });
+
   it('lists main conversations, groups child agents, and drills into native tasks', async () => {
     const root = temporaryRoot();
     const codexHome = join(root, '.codex');
@@ -213,11 +274,13 @@ describe('Codex conversation catalog', () => {
     const unsubscribe = await catalog.observeTaskTrajectory(
       'live-thread',
       'turn-live',
-      (trajectory) => snapshots.push({
-        revision: trajectory.revision,
-        status: trajectory.status,
-        records: trajectory.ingestion.sourceRecordCount,
-      }),
+      {
+        next: (trajectory) => snapshots.push({
+          revision: trajectory.revision,
+          status: trajectory.status,
+          records: trajectory.ingestion.sourceRecordCount,
+        }),
+      },
     );
     assert.equal(snapshots[0]?.status, 'open');
 
@@ -238,6 +301,79 @@ describe('Codex conversation catalog', () => {
     await waitFor(() => snapshots.at(-1)?.status === 'completed');
     assert.notEqual(snapshots[0]?.revision, snapshots.at(-1)?.revision);
     unsubscribe();
+  });
+
+  it('closes a live subscription when an unchanged rollout ages out', async () => {
+    const root = temporaryRoot();
+    const codexHome = join(root, '.codex');
+    const sessionsDir = join(codexHome, 'sessions');
+    const cacheDir = join(root, 'cache');
+    mkdirSync(sessionsDir, { recursive: true });
+    const rolloutPath = join(sessionsDir, 'rollout-silent.jsonl');
+    const records = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'session_meta', payload: { id: 'silent-thread', cwd: '/repo' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-silent' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'event_msg', payload: { type: 'user_message', message: '静默中断的任务' } },
+    ];
+    writeFileSync(rolloutPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`);
+    createStateDatabase(codexHome, [
+      thread('silent-thread', rolloutPath, 'user', '{"app":"codex"}', '静默任务', 1_000),
+    ], []);
+    let now = statSync(rolloutPath).mtimeMs;
+    let completed = 0;
+    const statuses: string[] = [];
+    const catalog = createCodexConversationCatalog({
+      codexHome,
+      cacheDir,
+      useBackgroundProcess: false,
+      livePollIntervalMs: 10,
+      liveActivityWindowMs: 100,
+      now: () => now,
+    });
+    assert.ok(catalog.observeTaskTrajectory);
+    const unsubscribe = await catalog.observeTaskTrajectory('silent-thread', 'turn-silent', {
+      next: (trajectory) => statuses.push(trajectory.status),
+      complete: () => { completed += 1; },
+    });
+    assert.deepEqual(statuses, ['open']);
+
+    now += 101;
+    await waitFor(() => statuses.at(-1) === 'unknown' && completed === 1);
+
+    assert.deepEqual(statuses, ['open', 'unknown']);
+    unsubscribe();
+  });
+
+  it('reports a stale final task without terminal evidence as unknown', async () => {
+    const root = temporaryRoot();
+    const codexHome = join(root, '.codex');
+    const sessionsDir = join(codexHome, 'sessions');
+    const cacheDir = join(root, 'cache');
+    mkdirSync(sessionsDir, { recursive: true });
+    const rolloutPath = join(sessionsDir, 'rollout-stale.jsonl');
+    const records = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'session_meta', payload: { id: 'stale-thread', cwd: '/repo' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-stale' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'event_msg', payload: { type: 'user_message', message: '未记录结束状态' } },
+    ];
+    writeFileSync(rolloutPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`);
+    utimesSync(rolloutPath, new Date(1_000), new Date(1_000));
+    createStateDatabase(codexHome, [
+      thread('stale-thread', rolloutPath, 'user', '{"app":"codex"}', '历史对话', 1_000),
+    ], []);
+
+    const catalog = createCodexConversationCatalog({
+      codexHome,
+      cacheDir,
+      useBackgroundProcess: false,
+      liveActivityWindowMs: 1_000,
+      now: () => 10_000,
+    });
+    const conversation = await catalog.getConversation('stale-thread');
+    const trajectory = await catalog.loadTaskTrajectory('stale-thread', 'turn-stale');
+
+    assert.equal(conversation?.tasks[0]?.status, 'unknown');
+    assert.equal(trajectory?.status, 'unknown');
   });
 });
 

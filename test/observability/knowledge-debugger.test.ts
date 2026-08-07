@@ -191,6 +191,9 @@ describe('Knowledge Debugger task trajectory', () => {
     const filler = Array.from({ length: 245 }, (_, index) => event(`filler-${index + 1}`, 'model_activity', {
       order: terminal.order - 300 + index,
       turnId: 'turn-release',
+      traceId: terminal.traceId,
+      sourceTrace: terminal.sourceTrace,
+      sessionId: terminal.sessionId,
       timestamp: `2026-08-03T00:00:07.${String(index + 1).padStart(3, '0')}Z`,
       modelActivityKind: 'reasoning',
       contentVisibility: 'opaque',

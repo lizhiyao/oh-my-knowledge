@@ -53,7 +53,7 @@ function turnIdCandidates(events: ExperienceTimelineEvent[]): TurnCandidate[] {
     if (!first || !last || !first.event.turnId) return undefined;
     const start = expandTurnStart(events, first.position, traceKey(first.event));
     const end = expandTurnEnd(events, last.position, traceKey(last.event), first.event.turnId);
-    return candidate('turn_id', events, start, end, first.event.turnId);
+    return candidate('turn_id', events, start, end, traceKey(first.event), first.event.turnId);
   }).filter((item): item is TurnCandidate => Boolean(item));
 }
 
@@ -79,6 +79,7 @@ function lifecycleCandidates(events: ExperienceTimelineEvent[]): TurnCandidate[]
         events,
         start,
         last.position,
+        traceKey(opening.event),
         opening.event.turnId,
       ));
     }
@@ -108,6 +109,7 @@ function userMessageCandidates(events: ExperienceTimelineEvent[]): TurnCandidate
         events,
         expandUserTaskStart(events, user.position, traceKey(user.event)),
         end,
+        traceKey(user.event),
       ));
     });
   }
@@ -119,6 +121,7 @@ function candidate(
   events: ExperienceTimelineEvent[],
   start: number,
   end: number,
+  eventTraceKey: string,
   sourceTurnId?: string,
 ): TurnCandidate {
   const safeStart = Math.max(0, Math.min(start, events.length - 1));
@@ -128,7 +131,8 @@ function candidate(
     sourceTurnId,
     start: safeStart,
     end: safeEnd,
-    events: events.slice(safeStart, safeEnd + 1),
+    events: events.slice(safeStart, safeEnd + 1)
+      .filter((event) => traceKey(event) === eventTraceKey),
   };
 }
 

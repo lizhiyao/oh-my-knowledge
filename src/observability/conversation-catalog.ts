@@ -43,6 +43,7 @@ import {
 
 const BACKGROUND_INDEX_THRESHOLD_BYTES = 32 * 1024 * 1024;
 const MAX_SOURCE_RECORD_ARCHIVE_BYTES = 16 * 1024 * 1024;
+const DEFAULT_LIVE_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 
 export interface ConversationTaskTrajectory {
   revision: string;
@@ -52,9 +53,11 @@ export interface ConversationTaskTrajectory {
   sourceRecords: ObservationSourceRecordArchiveView;
 }
 
-export type ConversationTaskTrajectoryListener = (
-  trajectory: ConversationTaskTrajectory,
-) => void;
+export interface ConversationTaskTrajectoryObserver {
+  next(trajectory: ConversationTaskTrajectory): void;
+  complete?(): void;
+  error?(cause: unknown): void;
+}
 
 export interface ConversationCatalog {
   listConversations(): Promise<ConversationIndexViewModel>;
@@ -64,7 +67,7 @@ export interface ConversationCatalog {
   observeTaskTrajectory?(
     threadId: string,
     turnId: string,
-    listener: ConversationTaskTrajectoryListener,
+    observer: ConversationTaskTrajectoryObserver,
   ): Promise<() => void>;
 }
 
@@ -75,6 +78,9 @@ export interface CodexConversationCatalogOptions {
   useBackgroundProcess?: boolean;
   backgroundProcessThresholdBytes?: number;
   livePollIntervalMs?: number;
+  /** An unclosed final task is only live while its rollout is still recent. */
+  liveActivityWindowMs?: number;
+  now?: () => number;
 }
 
 interface CodexThreadRow {
@@ -105,6 +111,8 @@ class CodexConversationCatalog implements ConversationCatalog {
   private readonly cacheDir: string;
   private readonly useBackgroundProcess: boolean;
   private readonly backgroundProcessThresholdBytes: number;
+  private readonly liveActivityWindowMs: number;
+  private readonly now: () => number;
   private readonly indexPromises = new Map<string, Promise<CodexRolloutIndex>>();
   private readonly trajectoryPromises = new Map<string, Promise<ConversationTaskTrajectory | undefined>>();
   private readonly liveTrajectories: PollingSubscriptionHub<ConversationTaskTrajectory>;
@@ -115,6 +123,8 @@ class CodexConversationCatalog implements ConversationCatalog {
     this.useBackgroundProcess = options.useBackgroundProcess ?? true;
     this.backgroundProcessThresholdBytes = options.backgroundProcessThresholdBytes
       ?? BACKGROUND_INDEX_THRESHOLD_BYTES;
+    this.liveActivityWindowMs = options.liveActivityWindowMs ?? DEFAULT_LIVE_ACTIVITY_WINDOW_MS;
+    this.now = options.now ?? Date.now;
     this.liveTrajectories = new PollingSubscriptionHub(options.livePollIntervalMs);
   }
 
@@ -160,7 +170,7 @@ class CodexConversationCatalog implements ConversationCatalog {
   async observeTaskTrajectory(
     threadId: string,
     turnId: string,
-    listener: ConversationTaskTrajectoryListener,
+    observer: ConversationTaskTrajectoryObserver,
   ): Promise<() => void> {
     const row = this.findThreadRow(threadId);
     if (!row || !existsSync(row.rolloutPath)) {
@@ -170,7 +180,11 @@ class CodexConversationCatalog implements ConversationCatalog {
     return this.liveTrajectories.subscribe(
       key,
       async (previous) => this.loadLiveSnapshot(row, turnId, previous),
-      ({ value }) => listener(value),
+      {
+        next: ({ value }) => observer.next(value),
+        complete: () => observer.complete?.(),
+        error: (cause) => observer.error?.(cause),
+      },
     );
   }
 
@@ -210,9 +224,9 @@ class CodexConversationCatalog implements ConversationCatalog {
       traceSession.traceId,
       row.rolloutPath,
     );
-    const status = taskTurn?.status ?? indexedTask.status;
+    const status = this.taskStatus(index, indexedTask, taskTurn?.status);
     return {
-      revision: rolloutRevision(index),
+      revision: trajectoryRevision(index, status),
       status,
       session: {
         id: `codex:${threadId}:${turnId}`,
@@ -250,8 +264,23 @@ class CodexConversationCatalog implements ConversationCatalog {
     previous: PollingSnapshot<ConversationTaskTrajectory> | undefined,
   ): Promise<PollingSnapshot<ConversationTaskTrajectory>> {
     const sourceStat = statSync(row.rolloutPath);
-    const revision = `${sourceStat.size}:${sourceStat.mtimeMs}`;
-    if (previous?.revision === revision) return previous;
+    if (previous
+      && previous.revision === trajectoryRevisionFromStat(sourceStat, previous.value.status)) {
+      const status = previous.value.status === 'open' && !this.isLiveSource(sourceStat.mtimeMs)
+        ? 'unknown'
+        : previous.value.status;
+      if (status === previous.value.status) return previous;
+      const value = {
+        ...previous.value,
+        revision: trajectoryRevisionFromStat(sourceStat, status),
+        status,
+      };
+      return {
+        revision: value.revision,
+        terminal: true,
+        value,
+      };
+    }
 
     const index = await this.currentIndexFor(row);
     const indexedTask = index.tasks.find((task) => task.turnId === turnId);
@@ -268,7 +297,8 @@ class CodexConversationCatalog implements ConversationCatalog {
     row: CodexThreadRow,
     cached: CodexRolloutIndex | undefined,
   ): ConversationListItem {
-    const tasks = cached ? taskItems(row.id, cached.tasks) : [];
+    const liveTurnId = cached ? this.liveTurnId(cached) : undefined;
+    const tasks = cached ? taskItems(row.id, cached.tasks, liveTurnId) : [];
     return {
       threadId: row.id,
       sourceThreadId: row.id,
@@ -292,6 +322,28 @@ class CodexConversationCatalog implements ConversationCatalog {
       relatedSkillNames: [],
       tasks,
     };
+  }
+
+  private taskStatus(
+    index: CodexRolloutIndex,
+    task: CodexIndexedTask,
+    reconstructed: ExperienceTurnStatus | undefined,
+  ): ExperienceTurnStatus {
+    if (task.status === 'unknown') return 'unknown';
+    const observed = reconstructed ?? task.status;
+    if (observed !== 'open') return observed;
+    return this.liveTurnId(index) === task.turnId ? 'open' : 'unknown';
+  }
+
+  private liveTurnId(index: CodexRolloutIndex): string | undefined {
+    const lastTask = index.tasks.at(-1);
+    if (!lastTask || lastTask.status !== 'open') return undefined;
+    return this.isLiveSource(index.sourceMtimeMs) ? lastTask.turnId : undefined;
+  }
+
+  private isLiveSource(sourceMtimeMs: number): boolean {
+    const ageMs = Math.max(0, this.now() - sourceMtimeMs);
+    return ageMs <= this.liveActivityWindowMs;
   }
 
   private async conversationForOverview(row: CodexThreadRow): Promise<ConversationListItem> {
@@ -350,7 +402,7 @@ class CodexConversationCatalog implements ConversationCatalog {
     const sourceSize = statSync(row.rolloutPath).size;
     const cachePath = this.cachePath(row.id);
     const cached = this.readCachedIndex(row);
-    const pendingBytes = cached ? sourceSize - cached.sourceSize : sourceSize;
+    const pendingBytes = cached ? sourceSize - cached.indexedSize : sourceSize;
     if (!this.useBackgroundProcess || pendingBytes < this.backgroundProcessThresholdBytes) {
       const index = cached
         ? extendCodexRolloutIndex(row.rolloutPath, row.id, cached)
@@ -509,7 +561,11 @@ function childThreadCounts(database: DatabaseSync): Map<string, number> {
   return counts;
 }
 
-function taskItems(threadId: string, tasks: CodexIndexedTask[]): ConversationTaskItem[] {
+function taskItems(
+  threadId: string,
+  tasks: CodexIndexedTask[],
+  liveTurnId: string | undefined,
+): ConversationTaskItem[] {
   return tasks.map((task) => ({
     turnId: task.turnId,
     sourceTurnId: task.turnId,
@@ -518,7 +574,7 @@ function taskItems(threadId: string, tasks: CodexIndexedTask[]): ConversationTas
     startTimestamp: task.startTimestamp,
     endTimestamp: task.endTimestamp,
     durationMs: durationMsBetween(task.startTimestamp, task.endTimestamp),
-    status: task.status,
+    status: task.status === 'open' && task.turnId !== liveTurnId ? 'unknown' : task.status,
     eventCount: task.sourceRecordCount,
     toolCallCount: task.toolCallCount,
     toolFailureCount: task.toolFailureCount,
@@ -568,6 +624,20 @@ function timestampFromMs(value: number | undefined): string | undefined {
 
 function rolloutRevision(index: CodexRolloutIndex): string {
   return `${index.sourceSize}:${index.sourceMtimeMs}`;
+}
+
+function trajectoryRevision(
+  index: CodexRolloutIndex,
+  status: ExperienceTurnStatus,
+): string {
+  return `${rolloutRevision(index)}:${status}`;
+}
+
+function trajectoryRevisionFromStat(
+  sourceStat: { size: number; mtimeMs: number },
+  status: ExperienceTurnStatus,
+): string {
+  return `${sourceStat.size}:${sourceStat.mtimeMs}:${status}`;
 }
 
 function secondsToMs(value: unknown): number | undefined {

@@ -4,7 +4,7 @@ import { codexUserDisplayText } from './codex-protocol.js';
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION = 6;
+const INDEX_SCHEMA_VERSION = 8;
 
 export interface CodexIndexedTask {
   turnId: string;
@@ -22,10 +22,17 @@ export interface CodexIndexedTask {
 }
 
 export interface CodexRolloutIndex {
-  schemaVersion: 6;
+  schemaVersion: 8;
   sourcePath: string;
+  /** File size observed when the index was produced. */
   sourceSize: number;
   sourceMtimeMs: number;
+  /** Byte boundary after the last complete JSONL record. */
+  indexedSize: number;
+  /** Physical line number at indexedSize, including blank lines. */
+  indexedLineCount: number;
+  /** Whether indexedSize is immediately after a newline delimiter. */
+  indexedEndsWithNewline: boolean;
   sourceThreadId: string;
   sessionMeta?: unknown;
   sessionMetaLine?: number;
@@ -58,6 +65,9 @@ export function buildCodexRolloutIndex(
     tasks: [],
     sourceRecordCount: 0,
     malformedRecordCount: 0,
+    indexedSize: 0,
+    indexedLineCount: 0,
+    indexedEndsWithNewline: true,
   }, 0, sourceStat.size, 0);
   return indexFromState(sourcePath, sourceThreadId, sourceStat, state);
 }
@@ -95,7 +105,11 @@ export function extendCodexRolloutIndex(
     sessionMetaLine: normalizedPrevious.sessionMetaLine,
     sourceRecordCount: normalizedPrevious.sourceRecordCount,
     malformedRecordCount: normalizedPrevious.malformedRecordCount,
-  }, previous.sourceSize, sourceStat.size, previous.sourceRecordCount);
+    indexedSize: normalizedPrevious.indexedSize,
+    indexedLineCount: normalizedPrevious.indexedLineCount,
+    indexedEndsWithNewline: normalizedPrevious.indexedEndsWithNewline,
+  }, normalizedPrevious.indexedSize, sourceStat.size,
+  normalizedPrevious.indexedLineCount - (normalizedPrevious.indexedEndsWithNewline ? 0 : 1));
   return indexFromState(sourcePath, sourceThreadId, sourceStat, state);
 }
 
@@ -126,6 +140,9 @@ interface CodexIndexScanState {
   sessionMetaLine?: number;
   sourceRecordCount: number;
   malformedRecordCount: number;
+  indexedSize: number;
+  indexedLineCount: number;
+  indexedEndsWithNewline: boolean;
 }
 
 function scanCodexRolloutIndex(
@@ -136,7 +153,7 @@ function scanCodexRolloutIndex(
   endOffset: number,
   startLine: number,
 ): CodexIndexScanState {
-  forEachJsonlLine(sourcePath, (record) => {
+  const scanned = forEachJsonlLine(sourcePath, (record) => {
     state.sourceRecordCount += 1;
     const relevant = isIndexRelevantLine(record.text);
     if (!relevant) {
@@ -228,6 +245,9 @@ function scanCodexRolloutIndex(
       state.active = undefined;
     }
   }, startOffset, endOffset, startLine);
+  state.indexedSize = scanned.indexedSize;
+  state.indexedLineCount = scanned.indexedLineCount;
+  state.indexedEndsWithNewline = scanned.indexedEndsWithNewline;
   return state;
 }
 
@@ -245,6 +265,9 @@ function indexFromState(
     sourcePath,
     sourceSize: sourceStat.size,
     sourceMtimeMs: sourceStat.mtimeMs,
+    indexedSize: state.indexedSize,
+    indexedLineCount: state.indexedLineCount,
+    indexedEndsWithNewline: state.indexedEndsWithNewline,
     sourceThreadId,
     sessionMeta: state.sessionMeta,
     sessionMetaLine: state.sessionMetaLine,
@@ -285,11 +308,17 @@ function mutableTask(task: CodexIndexedTask): MutableTask {
 export function isCurrentCodexRolloutIndex(value: unknown, sourcePath: string): value is CodexRolloutIndex {
   const candidate = objectValue(value);
   if (!candidate || candidate.schemaVersion !== INDEX_SCHEMA_VERSION || candidate.sourcePath !== sourcePath) return false;
+  const sourceSize = numberValue(candidate.sourceSize);
+  const indexedSize = numberValue(candidate.indexedSize);
+  const indexedLineCount = numberValue(candidate.indexedLineCount);
+  if (sourceSize === undefined || indexedSize === undefined || indexedLineCount === undefined
+    || typeof candidate.indexedEndsWithNewline !== 'boolean') return false;
+  if (indexedSize > sourceSize || !Array.isArray(candidate.tasks)) return false;
   try {
     const current = statSync(sourcePath);
-    return candidate.sourceSize === current.size
+    return sourceSize === current.size
       && candidate.sourceMtimeMs === current.mtimeMs
-      && Array.isArray(candidate.tasks);
+      && indexedSize <= current.size;
   } catch {
     return false;
   }
@@ -307,7 +336,12 @@ export function isReusableCodexRolloutIndex(value: unknown, sourcePath: string):
     const current = statSync(sourcePath);
     const sourceSize = numberValue(candidate.sourceSize);
     const sourceMtimeMs = numberValue(candidate.sourceMtimeMs);
-    if (sourceSize === undefined || sourceMtimeMs === undefined) return false;
+    const indexedSize = numberValue(candidate.indexedSize);
+    const indexedLineCount = numberValue(candidate.indexedLineCount);
+    if (sourceSize === undefined || sourceMtimeMs === undefined
+      || indexedSize === undefined || indexedLineCount === undefined
+      || typeof candidate.indexedEndsWithNewline !== 'boolean') return false;
+    if (indexedSize > sourceSize || sourceSize > current.size) return false;
     if (current.size === sourceSize) return current.mtimeMs === sourceMtimeMs;
     return current.size > sourceSize && current.mtimeMs >= sourceMtimeMs;
   } catch {
@@ -449,12 +483,15 @@ function forEachJsonlLine(
   startOffset = 0,
   endOffset = Number.POSITIVE_INFINITY,
   startLine = 0,
-): void {
+): { indexedSize: number; indexedLineCount: number; indexedEndsWithNewline: boolean } {
   const fd = openSync(filePath, 'r');
   const buffer = Buffer.allocUnsafe(READ_CHUNK_BYTES);
   let absoluteOffset = startOffset;
   let lineStartOffset = startOffset;
   let lineNumber = startLine;
+  let indexedSize = startOffset;
+  let indexedLineCount = startLine;
+  let indexedEndsWithNewline = true;
   let fragments: Buffer[] = [];
   try {
     while (absoluteOffset < endOffset) {
@@ -470,6 +507,9 @@ function forEachJsonlLine(
           : tail;
         const nextOffset = absoluteOffset + index + 1;
         emitLine(lineBuffer, lineNumber, lineStartOffset, nextOffset, visit);
+        indexedSize = nextOffset;
+        indexedLineCount = lineNumber + 1;
+        indexedEndsWithNewline = true;
         fragments = [];
         cursor = index + 1;
         lineStartOffset = nextOffset;
@@ -482,10 +522,28 @@ function forEachJsonlLine(
       absoluteOffset += bytesRead;
     }
     if (fragments.length > 0) {
-      emitLine(Buffer.concat(fragments), lineNumber, lineStartOffset, absoluteOffset, visit);
+      const trailing = Buffer.concat(fragments);
+      if (isCompleteJsonRecord(trailing)) {
+        emitLine(trailing, lineNumber, lineStartOffset, absoluteOffset, visit);
+        indexedSize = absoluteOffset;
+        indexedLineCount = lineNumber + 1;
+        indexedEndsWithNewline = false;
+      }
     }
   } finally {
     closeSync(fd);
+  }
+  return { indexedSize, indexedLineCount, indexedEndsWithNewline };
+}
+
+function isCompleteJsonRecord(buffer: Buffer): boolean {
+  const text = buffer.toString('utf8').trim();
+  if (!text) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
   }
 }
 

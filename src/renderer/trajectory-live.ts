@@ -3,6 +3,7 @@ export interface TrajectoryLiveLabels {
   live: string;
   syncing: string;
   reconnecting: string;
+  failed: string;
   following: string;
   resume: string;
   pending: string;
@@ -232,16 +233,27 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     source.addEventListener('trajectory', (event) => {
       try {
         const update = JSON.parse((event as MessageEvent<string>).data) as { revision?: string; status?: string };
+        const terminal = update.status !== 'open';
+        if (terminal) {
+          terminalUpdate = true;
+          source.close();
+          if (liveSource === source) liveSource = undefined;
+        }
         if (!update.revision || update.revision === shell.dataset.liveRevision) {
-          setConnectionState('live', labels.live);
+          setConnectionState(terminal ? 'completed' : 'live', terminal ? labels.completed : labels.live);
+          updateFollowControl();
           return;
         }
         pendingRevision = update.revision;
-        terminalUpdate = update.status !== 'open';
         applyPendingUpdate();
       } catch {
         // Ignore malformed live events and wait for the next revision.
       }
+    }, { signal: lifecycle.signal });
+    source.addEventListener('trajectory-error', () => {
+      source.close();
+      if (liveSource === source) liveSource = undefined;
+      setConnectionState('failed', labels.failed);
     }, { signal: lifecycle.signal });
     source.addEventListener('error', () => {
       if (!pendingRevision) setConnectionState('reconnecting', labels.reconnecting);
