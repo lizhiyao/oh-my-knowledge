@@ -9,6 +9,7 @@ import type {
   TaskReplayStepKind,
 } from '../types/index.js';
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
+import { icon } from './icons.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';
 import { renderTrajectoryLiveClientSource } from './trajectory-live.js';
 import { renderTrajectoryRoutingClientSource } from './trajectory-routing.js';
@@ -105,6 +106,8 @@ interface ReplayField {
   value: string;
   detail: string;
   presentation?: 'default' | 'content';
+  detailSourceEventId?: string;
+  detailKind?: 'content' | 'result';
 }
 
 interface ReplayOperation {
@@ -367,6 +370,18 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-field-content a:hover{text-decoration:underline}
       .trajectory-field.is-content .trajectory-field-detail{max-height:none;margin-top:5px;overflow:visible}
       .trajectory-field-detail{display:block;max-height:132px;overflow:auto;color:var(--text-secondary);font:400 10px/1.45 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+      .trajectory-field-detail-block{min-width:0}
+      .trajectory-field-detail-block .trajectory-field-detail{overflow:hidden}
+      .trajectory-field-detail-block[data-expanded="true"] .trajectory-field-detail{max-height:min(320px,42vh);overflow:auto;color:var(--text-primary)}
+      .trajectory-field-detail-actions{display:flex;min-height:24px;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+      .trajectory-field-detail-status{color:var(--text-muted);font-size:9px;white-space:nowrap}
+      .trajectory-field-detail-controls{display:flex;align-items:center;gap:3px}
+      .trajectory-field-detail-toggle,.trajectory-field-detail-copy{border:0;background:transparent;color:var(--accent);cursor:pointer}
+      .trajectory-field-detail-toggle{padding:3px 5px;border-radius:3px;font-size:9px;font-weight:600}
+      .trajectory-field-detail-copy{display:grid;width:24px;height:24px;place-items:center;border-radius:4px;color:var(--text-secondary)}
+      .trajectory-field-detail-toggle:hover,.trajectory-field-detail-copy:hover{background:var(--bg-elevated);color:var(--text-primary)}
+      .trajectory-field-detail-toggle:focus-visible,.trajectory-field-detail-copy:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+      .trajectory-field-detail-copy.is-copied{color:var(--green)}
       .trajectory-raw-list{display:none;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;background:var(--bg-surface);scrollbar-color:var(--border-hover) transparent;scrollbar-width:thin}
       .trajectory-raw-head,.trajectory-raw-row summary{display:grid;grid-template-columns:76px 126px minmax(240px,1fr) 138px;gap:12px;align-items:center}
       .trajectory-raw-head{position:sticky;top:0;z-index:3;min-height:32px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);font-size:9px;font-weight:600}
@@ -446,7 +461,7 @@ export function renderKnowledgeDebuggerPage(
               <div class="trajectory-operation-copy"><h3 id="trajectory-operation-title"></h3><p id="trajectory-operation-summary"></p></div>
               <div class="trajectory-operation-actions"><div class="trajectory-evidence-count" id="trajectory-evidence-count"></div><button class="trajectory-inspector-close" type="button" data-inspector-close aria-label="${zh ? '关闭详情' : 'Close details'}" title="${zh ? '关闭详情' : 'Close details'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>
             </header>
-            <div class="trajectory-semantic-panels">${projection.operations.map((operation) => renderSemanticPanel(operation, false)).join('')}</div>
+            <div class="trajectory-semantic-panels">${projection.operations.map((operation) => renderSemanticPanel(operation, false, lang)).join('')}</div>
           </aside>
         </div>
       </section>
@@ -465,6 +480,7 @@ export function renderKnowledgeDebuggerPage(
         const normalizedEmpty = document.querySelector('[data-trajectory-normalized-empty]');
         const sourceRecordList = document.querySelector('[data-source-records-endpoint]');
         const semanticPanels = Array.from(document.querySelectorAll('[data-trajectory-semantic-panel]'));
+        const detailBlocks = Array.from(document.querySelectorAll('[data-field-detail-block]'));
         const operationType = document.querySelector('#trajectory-operation-type');
         const operationTitle = document.querySelector('#trajectory-operation-title');
         const operationSummary = document.querySelector('#trajectory-operation-summary');
@@ -480,6 +496,7 @@ export function renderKnowledgeDebuggerPage(
         let currentOperationId = '';
         let pendingLayoutFrame;
         let sourceRecordsPromise;
+        const copyFeedbackTimers = new Set();
         let applyPendingLiveUpdate = () => {};
         let pauseLiveFollow = () => {};
         const sourceRecordLabels = ${JSON.stringify({
@@ -496,6 +513,54 @@ export function renderKnowledgeDebuggerPage(
           const operationId = card.dataset.trajectoryOperation || '';
           const relatedCards = cardsByOperation.get(operationId);
           if (relatedCards) relatedCards.push(card);
+        });
+        const fullDetailText = (block) => {
+          if (typeof block.__omkFullDetail === 'string') return block.__omkFullDetail;
+          const sourceEventId = block.dataset.detailSourceEventId || '';
+          const sourceRow = normalizedRows.find((row) => row.dataset.trajectoryNormalizedEvent === sourceEventId);
+          const fullText = sourceRow?.querySelector('pre')?.textContent || block.querySelector('[data-field-detail]')?.textContent || '';
+          block.__omkFullDetail = fullText;
+          return fullText;
+        };
+        detailBlocks.forEach((block) => {
+          const detail = block.querySelector('[data-field-detail]');
+          const toggle = block.querySelector('[data-field-detail-toggle]');
+          const copy = block.querySelector('[data-field-detail-copy]');
+          const status = block.querySelector('[data-field-detail-status]');
+          const previewText = detail?.textContent || '';
+          toggle?.addEventListener('click', () => {
+            const expanded = block.dataset.expanded === 'true';
+            if (detail) detail.textContent = expanded ? previewText : fullDetailText(block);
+            block.dataset.expanded = String(!expanded);
+            toggle.textContent = expanded ? block.dataset.expandLabel : block.dataset.collapseLabel;
+            toggle.setAttribute('aria-expanded', String(!expanded));
+            if (status) status.textContent = expanded ? block.dataset.previewStatus : block.dataset.fullStatus;
+          }, { signal: pageLifecycle.signal });
+          copy?.addEventListener('click', async () => {
+            const text = fullDetailText(block);
+            try {
+              await navigator.clipboard.writeText(text);
+            } catch {
+              const textarea = document.createElement('textarea');
+              textarea.value = text;
+              textarea.style.position = 'fixed';
+              textarea.style.opacity = '0';
+              document.body.append(textarea);
+              textarea.select();
+              document.execCommand('copy');
+              textarea.remove();
+            }
+            copy.classList.add('is-copied');
+            copy.setAttribute('aria-label', block.dataset.copiedLabel);
+            copy.setAttribute('title', block.dataset.copiedLabel);
+            const copyFeedbackTimer = window.setTimeout(() => {
+              copyFeedbackTimers.delete(copyFeedbackTimer);
+              copy.classList.remove('is-copied');
+              copy.setAttribute('aria-label', block.dataset.copyLabel);
+              copy.setAttribute('title', block.dataset.copyLabel);
+            }, 1200);
+            copyFeedbackTimers.add(copyFeedbackTimer);
+          }, { signal: pageLifecycle.signal });
         });
         const operationEntries = operationIds.map((id, order) => {
           const relatedCards = cardsByOperation.get(id) || [];
@@ -1033,6 +1098,8 @@ export function renderKnowledgeDebuggerPage(
           liveController.dispose();
           if (pendingLayoutFrame !== undefined) cancelAnimationFrame(pendingLayoutFrame);
           pendingLayoutFrame = undefined;
+          copyFeedbackTimers.forEach((timer) => window.clearTimeout(timer));
+          copyFeedbackTimers.clear();
         };
         scheduleOperationLinks();
         };
@@ -1164,8 +1231,8 @@ function projectReplay(
             : (zh ? '已观测到工具调用，但当前 trace 中没有匹配到返回结果。' : 'A tool call was observed, but no matching result appears in the trace.'),
         evidenceLabel: zh ? `${step.events.length + evidence.length} 条关联证据` : `${step.events.length + evidence.length} related records`,
         fields: [
-          { label: zh ? '执行' : 'Action', value: `${call?.toolName ?? step.title} · ${inferToolActionLabel(evidence, lang)}`, detail: compactText(input || (zh ? '未记录输入' : 'Input not recorded'), 520) },
-          { label: zh ? '结果' : 'Result', value: `${toolStatusLabel(resultState, lang)}${duration ? ` · ${duration}` : ''}`, detail: result ? compactText(eventPreview(result, zh ? '工具没有返回内容。' : 'The tool returned no content.'), 520) : resultState === 'pending' ? (zh ? '正在等待工具结果写入 trace。' : 'Waiting for the tool result to appear in the trace.') : (zh ? '当前 trace 中没有匹配到工具结果。' : 'No matching tool result in this trace.') },
+          { label: zh ? '执行' : 'Action', value: `${call?.toolName ?? step.title} · ${inferToolActionLabel(evidence, lang)}`, detail: compactText(input || (zh ? '未记录输入' : 'Input not recorded'), 520), detailKind: 'content' },
+          { label: zh ? '结果' : 'Result', value: `${toolStatusLabel(resultState, lang)}${duration ? ` · ${duration}` : ''}`, detail: result ? eventPreview(result, zh ? '工具没有返回内容。' : 'The tool returned no content.') : resultState === 'pending' ? (zh ? '正在等待工具结果写入 trace。' : 'Waiting for the tool result to appear in the trace.') : (zh ? '当前 trace 中没有匹配到工具结果。' : 'No matching tool result in this trace.'), detailSourceEventId: result?.id, detailKind: 'result' },
           { label: 'Knowledge', value: evidence.length > 0 ? evidence.map((item) => `${knowledgeKindLabel(item, lang)} · ${item.label}`).join('、') : (zh ? '未关联' : 'Not associated'), detail: evidence.length > 0 ? evidence.map((item) => `${item.accessKind} · ${shortHash(item.contentHash)}`).join('\n') : (zh ? '未从本次工具交换投影出 Knowledge' : 'No Knowledge projected from this tool exchange') },
         ],
         events: step.events,
@@ -1599,13 +1666,53 @@ function renderFacetFocus(facets: ReplayFacet[], lang: Lang): string {
   return `<details class="trajectory-focus"><summary aria-label="${zh ? '类型筛选' : 'Filter by type'}" title="${zh ? '类型筛选' : 'Filter by type'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M7 12h10"></path><path d="M10 18h4"></path></svg></summary><div class="trajectory-focus-menu" role="group" aria-label="${zh ? '类型筛选' : 'Type filter'}"><span class="trajectory-focus-title">${zh ? '类型筛选' : 'Type filter'}</span><button class="trajectory-focus-option" type="button" data-trajectory-facet="" aria-pressed="true"><span class="trajectory-focus-swatch" aria-hidden="true"></span><span>${zh ? '全部类型' : 'All types'}</span><small>${zh ? '清除' : 'Clear'}</small></button>${options}</div></details>`;
 }
 
-function renderSemanticPanel(operation: ReplayOperation, selected: boolean): string {
+function renderSemanticPanel(operation: ReplayOperation, selected: boolean, lang: Lang): string {
   return `<div class="trajectory-operation-panel trajectory-fields" data-trajectory-semantic-panel="${e(operation.id)}" data-selection-label="${e(operation.selectionLabel)}" data-type-label="${e(operation.typeLabel)}" data-title="${e(operation.title)}" data-summary="${e(operation.summary)}" data-evidence-label="${e(operation.evidenceLabel)}"${selected ? '' : ' hidden'}>${operation.fields.map((field) => {
     const content = field.presentation === 'content'
       ? `<div class="trajectory-field-content">${renderSafeInlineMarkdown(field.value)}</div>`
       : `<strong class="trajectory-field-value">${e(field.value)}</strong>`;
-    return `<div class="trajectory-field${field.presentation === 'content' ? ' is-content' : ''}"><span class="trajectory-field-label">${e(field.label)}</span>${content}<code class="trajectory-field-detail">${e(field.detail)}</code></div>`;
+    return `<div class="trajectory-field${field.presentation === 'content' ? ' is-content' : ''}"><span class="trajectory-field-label">${e(field.label)}</span>${content}${renderFieldDetail(field, lang)}</div>`;
   }).join('')}</div>`;
+}
+
+function renderFieldDetail(field: ReplayField, lang: Lang): string {
+  const preview = fieldDetailPreview(field.detail);
+  if (!preview.truncated || !field.detailSourceEventId) {
+    return `<code class="trajectory-field-detail">${e(field.detail)}</code>`;
+  }
+  const zh = lang === 'zh';
+  const result = field.detailKind === 'result';
+  const previewStatus = preview.truncatedByLines
+    ? (zh ? `已显示 ${preview.visibleLineCount} / ${preview.totalLineCount} 行` : `Showing ${preview.visibleLineCount} of ${preview.totalLineCount} lines`)
+    : (zh ? `已显示部分内容 · 共 ${preview.totalLineCount} 行` : `Showing a preview · ${preview.totalLineCount} lines total`);
+  const fullStatus = zh ? `完整内容 · ${preview.totalLineCount} 行` : `Full content · ${preview.totalLineCount} lines`;
+  const expandLabel = zh ? (result ? '展开完整结果' : '展开完整内容') : (result ? 'Show full result' : 'Show full content');
+  const collapseLabel = zh ? (result ? '收起结果' : '收起内容') : (result ? 'Collapse result' : 'Collapse content');
+  const copyLabel = zh ? (result ? '复制结果' : '复制内容') : (result ? 'Copy result' : 'Copy content');
+  const copiedLabel = zh ? '已复制' : 'Copied';
+  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false" data-detail-source-event-id="${e(field.detailSourceEventId)}" data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(preview.text)}</code><div class="trajectory-field-detail-actions"><span class="trajectory-field-detail-status" data-field-detail-status>${e(previewStatus)}</span><span class="trajectory-field-detail-controls"><button class="trajectory-field-detail-toggle" type="button" data-field-detail-toggle aria-expanded="false">${e(expandLabel)}</button><button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
+}
+
+function fieldDetailPreview(detail: string): {
+  text: string;
+  totalLineCount: number;
+  visibleLineCount: number;
+  truncated: boolean;
+  truncatedByLines: boolean;
+} {
+  const lines = detail.replace(/\r\n/g, '\n').split('\n');
+  const visibleLines = lines.slice(0, 8);
+  const truncatedByLines = lines.length > visibleLines.length;
+  let text = visibleLines.join('\n');
+  const truncatedByLength = text.length > 720;
+  if (truncatedByLength) text = `${text.slice(0, 719).trimEnd()}…`;
+  return {
+    text,
+    totalLineCount: lines.length,
+    visibleLineCount: visibleLines.length,
+    truncated: truncatedByLines || truncatedByLength,
+    truncatedByLines,
+  };
 }
 
 function renderNormalizedEventList(

@@ -441,6 +441,36 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(html, /class="trajectory-field-detail">const patch =/);
   });
 
+  it('presents long tool results as an explicit expandable preview', () => {
+    const exchange = debuggerModel.steps.find((step) =>
+      step.stepKind === 'tool_exchange' && step.events.length > 1);
+    assert.ok(exchange);
+    const result = exchange.events[1];
+    assert.ok(result);
+    const output = Array.from({ length: 12 }, (_value, index) => `result line ${index + 1}`).join('\n');
+    const html = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      steps: debuggerModel.steps.map((step) => step.id === exchange.id
+        ? {
+            ...step,
+            events: step.events.map((event, index) => index === 1
+              ? { ...event, fullText: output, snippet: output }
+              : event),
+          }
+        : step),
+    });
+
+    assert.match(html, /data-detail-source-event-id="[^"]+"/);
+    assert.match(html, /data-preview-status="已显示 8 \/ 12 行"/);
+    assert.match(html, /data-full-status="完整内容 · 12 行"/);
+    assert.match(html, /data-expand-label="展开完整结果"/);
+    assert.match(html, /data-copy-label="复制结果"/);
+    const preview = html.match(/<code class="trajectory-field-detail" data-field-detail>([\s\S]*?)<\/code>/)?.[1] ?? '';
+    assert.match(preview, /result line 1/);
+    assert.match(preview, /result line 8/);
+    assert.doesNotMatch(preview, /result line 9/);
+  });
+
   it('derives compact operation summaries from observable tool input', () => {
     const exchange = debuggerModel.steps.find((step) =>
       step.stepKind === 'tool_exchange' && step.knowledgeEvidenceIds.length === 0);
