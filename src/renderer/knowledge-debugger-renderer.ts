@@ -497,6 +497,7 @@ export function renderKnowledgeDebuggerPage(
         const inspectorClose = document.querySelector('[data-inspector-close]');
         const trajectoryBody = document.querySelector('.trajectory-body');
         const timeline = document.querySelector('.trajectory-scroll');
+        const liveFollowButton = document.querySelector('[data-live-follow]');
         let currentOperationId = '';
         let pendingLayoutFrame;
         let layoutTransitionTimer;
@@ -876,10 +877,15 @@ export function renderKnowledgeDebuggerPage(
               : 0;
           if (Math.abs(delta) > 1) timeline.scrollLeft = Math.max(0, timeline.scrollLeft + delta);
         };
+        const alignFollowingViewport = () => {
+          if (!timeline || liveFollowButton?.dataset.following !== 'true') return false;
+          timeline.scrollLeft = Math.max(0, timeline.scrollWidth - timeline.clientWidth);
+          return true;
+        };
         const finishLayoutTransition = () => {
           if (layoutTransitionTimer !== undefined) window.clearTimeout(layoutTransitionTimer);
           layoutTransitionTimer = undefined;
-          revealSelectedOperation();
+          if (!alignFollowingViewport()) revealSelectedOperation();
           scheduleOperationLinks();
           if (layoutScrollReleaseTimer !== undefined) window.clearTimeout(layoutScrollReleaseTimer);
           layoutScrollReleaseTimer = window.setTimeout(() => {
@@ -1126,7 +1132,7 @@ export function renderKnowledgeDebuggerPage(
           shell,
           timeline,
           liveState,
-          followButton: document.querySelector('[data-live-follow]'),
+          followButton: liveFollowButton,
           followLabel: document.querySelector('[data-live-follow-label]'),
           liveEndpoint,
           labels: ${JSON.stringify({

@@ -171,7 +171,9 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     refreshTimer = undefined;
     scrollReleaseTimer = undefined;
     setConnectionState('syncing', labels.syncing);
-    const viewState = currentViewState(followLatest);
+    // Live snapshots can arrive faster than native smooth scrolling settles.
+    // Restore them at the latest edge immediately so following never lags behind.
+    const viewState = currentViewState();
     saveViewState(viewState);
     if (options.refreshSnapshot) {
       const revision = pendingRevision;

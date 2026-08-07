@@ -107,7 +107,6 @@ describe('trajectory live client', () => {
       mode: 'semantic',
       scrollLeft: 1000,
       followLatest: true,
-      animateToLatest: true,
     });
     sourceClosed = false;
     trajectoryListener({ data: JSON.stringify({ status: 'unknown', liveObservable: true }) } as MessageEvent);
