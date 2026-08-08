@@ -1158,7 +1158,8 @@ export function renderKnowledgeDebuggerPage(
           })},
           getMode: () => shell.dataset.mode || 'semantic',
           setMode: setTrajectoryMode,
-          isScrollTrackingSuppressed: () => shell.dataset.layoutTransition === 'true',
+          isScrollTrackingSuppressed: () => shell.dataset.layoutTransition === 'true'
+            || shell.dataset.inspectorRestoring === 'true',
           refreshSnapshot: refreshTrajectorySnapshot,
           browserWindow: window,
           browserDocument: document,

@@ -238,7 +238,10 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /const closeInspector = \(shouldScheduleLayout = true\) =>/);
     assert.match(replay.body, /grid-template-columns:minmax\(0,1fr\) 0;align-items:stretch;transition:grid-template-columns/);
     assert.match(replay.body, /shell\.dataset\.inspectorOpen !== 'true'\) beginLayoutTransition\(\)/);
-    assert.match(replay.body, /isScrollTrackingSuppressed: \(\) => shell\.dataset\.layoutTransition === 'true'/);
+    assert.match(
+      replay.body,
+      /isScrollTrackingSuppressed: \(\) => shell\.dataset\.layoutTransition === 'true'[\s\S]*shell\.dataset\.inspectorRestoring === 'true'/,
+    );
     assert.match(replay.body, /new ResizeObserver\(scheduleOperationLinks\)/);
     assert.match(replay.body, /revealSelectedOperation\(\)/);
     assert.match(replay.body, /if \(!alignFollowingViewport\(\)\) revealSelectedOperation\(\)/);
