@@ -10,6 +10,12 @@ import type { SkillReportContext } from '../renderer/report-shell.js';
 import { assessHealth, renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
+import { renderKnowledgeDebuggerPage } from '../renderer/knowledge-debugger-renderer.js';
+import {
+  buildConversationActivitySnapshot,
+  renderConversationDetailPage,
+  renderConversationIndexPage,
+} from '../renderer/conversation-renderer.js';
 import { DEFAULT_LANG, e, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows, buildVersionScores, type ReportScoreView } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
@@ -35,6 +41,15 @@ import {
 import { parseSkillHealthReport } from '../observability/skill-health-report.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
+import { buildKnowledgeDebuggerViewModel } from '../observability/knowledge-debugger.js';
+import {
+  createCodexConversationCatalog,
+  type ConversationCatalog,
+} from '../observability/conversation-catalog.js';
+import {
+  loadObservationSourceRecordArchive,
+  summarizeObservationSourceRecordArchive,
+} from '../observability/source-record-archive.js';
 import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
 import {
   deleteObservationReviewState,
@@ -68,6 +83,8 @@ interface ReportServerOptions {
   managedDir?: string | (() => string);
   store?: ReportStore;
   jobStore?: JobStore;
+  /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */
+  conversationCatalog?: ConversationCatalog;
   /** 是否把别项目的 observe-health 索引卡片合进列表 / 详情 / skill 首页(机器级总览)。
    *  默认 false(固定目录 / 测试 hermetic);studio 仅在「无 --analyses-dir 且无 --global」的默认机器级模式传 true。 */
   includeObserveCards?: boolean;
@@ -815,9 +832,23 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
+function findKnowledgeDebuggerContext(observationsDir: string, experienceSessionId: string) {
+  const inbox = buildObservationInboxViewModel(observationsDir);
+  const report = inbox.reports.find((candidate) =>
+    candidate.experience?.sessions.some((session) => session.id === experienceSessionId)
+  );
+  const session = report?.experience?.sessions.find((candidate) => candidate.id === experienceSessionId);
+  if (!report || !session) return undefined;
+  const sourceRecordRef = report.meta.sourceRecordArchives?.find((candidate) =>
+    candidate.experienceSessionId === experienceSessionId
+  );
+  return { report, session, sourceRecordRef };
+}
+
+export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, conversationCatalog, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
+  const liveStreamClosers = new Set<() => void>();
 
   // reports store:显式注入 store > 显式 reportsDir(eval serve 的本次 outputDir / 测试 / 覆盖,固定单目录)
   // > 缺省 indexed(机器级总览:当前项目 + 全局 live ∪ 别项目的索引卡片,按 id dedup)。indexed 在 store 层做
@@ -827,6 +858,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       ? createFileStore(reportsDir)
       : createIndexedReportStore({ projectDir: projectReportsDir(), globalDir: globalReportsDir() }));
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
+  const resolvedConversationCatalog = conversationCatalog ?? createCodexConversationCatalog();
   // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
   // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio
   // 仍盯着旧 global,页面与 CLI 不一致。cwd 在进程内不变,变的是目录里有没有记录,故每次请求重判。
@@ -914,7 +946,10 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
         // Graceful shutdown after response sent
-        setTimeout(() => { if (server) server.close(); }, 100);
+        setTimeout(() => {
+          for (const close of [...liveStreamClosers]) close();
+          if (server) server.close();
+        }, 100);
         return;
       }
 
@@ -1003,6 +1038,263 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         const html = renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
+        return;
+      }
+
+      if (path === '/api/conversations/activity') {
+        const snapshot = buildConversationActivitySnapshot(
+          await resolvedConversationCatalog.listConversations(),
+        );
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(snapshot));
+        return;
+      }
+
+      if (path === '/conversations') {
+        const html = renderConversationIndexPage(await resolvedConversationCatalog.listConversations(), lang);
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(html);
+        return;
+      }
+
+      const conversationTaskLiveMatch = path.match(/^\/api\/conversations\/([^/]+)\/tasks\/([^/]+)\/live$/);
+      if (conversationTaskLiveMatch) {
+        let threadId = '';
+        let turnId = '';
+        try {
+          threadId = decodeURIComponent(conversationTaskLiveMatch[1]);
+          turnId = decodeURIComponent(conversationTaskLiveMatch[2]);
+        } catch { /* invalid path */ }
+        const initial = threadId && turnId
+          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
+          : undefined;
+        if (!initial) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
+          return;
+        }
+        if (!resolvedConversationCatalog.observeTaskTrajectory) {
+          res.writeHead(501, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'live_task_trajectory_unavailable' }));
+          return;
+        }
+
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.flushHeaders();
+
+        let closed = false;
+        let unsubscribe: (() => void) | undefined;
+        const lifecycle = new AbortController();
+        const heartbeat = setInterval(() => {
+          if (!res.destroyed && !res.writableEnded) res.write(': keepalive\n\n');
+        }, 15_000);
+        heartbeat.unref?.();
+        const close = (): void => {
+          if (closed) return;
+          closed = true;
+          clearInterval(heartbeat);
+          lifecycle.abort();
+          unsubscribe?.();
+          liveStreamClosers.delete(close);
+          if (!res.destroyed && !res.writableEnded) res.end();
+        };
+        liveStreamClosers.add(close);
+        req.once('close', close);
+        res.once('close', close);
+
+        try {
+          unsubscribe = await resolvedConversationCatalog.observeTaskTrajectory(
+            threadId,
+            turnId,
+            {
+              next: (trajectory) => {
+                if (closed || res.destroyed || res.writableEnded) return;
+                res.write(`id: ${trajectory.revision}\n`);
+                res.write('event: trajectory\n');
+                res.write(`data: ${JSON.stringify({
+                  revision: trajectory.revision,
+                  status: trajectory.status,
+                  liveObservable: trajectory.liveObservable,
+                })}\n\n`);
+              },
+              complete: close,
+              error: (cause) => {
+                if (!closed && !res.destroyed && !res.writableEnded) {
+                  res.write('event: trajectory-error\n');
+                  res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
+                }
+                close();
+              },
+            },
+            { signal: lifecycle.signal },
+          );
+          if (closed) unsubscribe();
+        } catch (cause) {
+          if (!closed && !res.destroyed && !res.writableEnded) {
+            res.write('event: trajectory-error\n');
+            res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
+          }
+          close();
+        }
+        return;
+      }
+
+      const conversationTaskMatch = path.match(/^\/conversations\/([^/]+)\/tasks\/([^/]+)$/);
+      if (conversationTaskMatch) {
+        let threadId = '';
+        let turnId = '';
+        try {
+          threadId = decodeURIComponent(conversationTaskMatch[1]);
+          turnId = decodeURIComponent(conversationTaskMatch[2]);
+        } catch { /* invalid path */ }
+        const trajectory = threadId && turnId
+          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
+          : undefined;
+        if (!trajectory) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'task trajectory not found' : '任务轨迹不存在');
+          return;
+        }
+        const sourceRecords = {
+          ...trajectory.sourceRecords,
+          records: [],
+        };
+        const html = renderKnowledgeDebuggerPage(
+          buildKnowledgeDebuggerViewModel(
+            trajectory.session,
+            turnId,
+            trajectory.ingestion,
+            sourceRecords,
+          ),
+          lang,
+          {
+            sourceRecordsEndpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/source-records`,
+            ...(trajectory.liveObservable && resolvedConversationCatalog.observeTaskTrajectory ? {
+              live: {
+                endpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/live`,
+                revision: trajectory.revision,
+              },
+            } : {}),
+          },
+        );
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(html);
+        return;
+      }
+
+      const conversationTaskSourceMatch = path.match(/^\/api\/conversations\/([^/]+)\/tasks\/([^/]+)\/source-records$/);
+      if (conversationTaskSourceMatch) {
+        let threadId = '';
+        let turnId = '';
+        try {
+          threadId = decodeURIComponent(conversationTaskSourceMatch[1]);
+          turnId = decodeURIComponent(conversationTaskSourceMatch[2]);
+        } catch { /* invalid path */ }
+        const trajectory = threadId && turnId
+          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
+          : undefined;
+        if (!trajectory) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(trajectory.sourceRecords));
+        return;
+      }
+
+      const conversationDetailMatch = path.match(/^\/conversations\/([^/]+)$/);
+      if (conversationDetailMatch) {
+        let threadId = '';
+        try { threadId = decodeURIComponent(conversationDetailMatch[1]); } catch { /* invalid path */ }
+        const conversation = threadId ? await resolvedConversationCatalog.getConversation(threadId) : undefined;
+        if (!conversation) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'conversation not found' : '对话不存在');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderConversationDetailPage(conversation, lang));
+        return;
+      }
+
+      const knowledgeDebuggerMatch = path.match(/^\/observe-debugger\/(.+)$/);
+      if (knowledgeDebuggerMatch) {
+        let experienceSessionId = '';
+        try { experienceSessionId = decodeURIComponent(knowledgeDebuggerMatch[1]); } catch { /* invalid path */ }
+        const context = experienceSessionId
+          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
+          : undefined;
+        if (!context) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
+          return;
+        }
+        const targetTurnId = parsed.searchParams.get('turnId')?.trim();
+        if (!targetTurnId) {
+          const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
+          res.writeHead(302, {
+            Location: `/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
+          });
+          res.end();
+          return;
+        }
+        if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(lang === 'en' ? 'task turn not found' : '任务不存在');
+          return;
+        }
+        const html = renderKnowledgeDebuggerPage(
+          buildKnowledgeDebuggerViewModel(
+            context.session,
+            targetTurnId,
+            context.report.meta.ingestion,
+            summarizeObservationSourceRecordArchive(context.sourceRecordRef),
+          ),
+          lang,
+          {
+            sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
+          },
+        );
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
+      const knowledgeDebuggerSourceMatch = path.match(/^\/api\/observe-debugger\/(.+)\/source-records$/);
+      if (knowledgeDebuggerSourceMatch) {
+        let experienceSessionId = '';
+        try { experienceSessionId = decodeURIComponent(knowledgeDebuggerSourceMatch[1]); } catch { /* invalid path */ }
+        const context = experienceSessionId
+          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
+          : undefined;
+        if (!context) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'experience_session_not_found' }));
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir)));
         return;
       }
 
@@ -1305,10 +1597,18 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         return;
       }
 
-      // 根路径走 skill-centric 列表页 — studio 顶级实体是 skill。
-      // insightsBySkill 在 buildSkillIndex 里跟 SkillIndex 一起算好并享受同一份缓存,
-      // list renderer 直接消费,不再每请求 N×detectInsights 重算。
+      // Studio 先呈现机器上的 Codex 主对话，再从某次对话进入原生 turn 任务轨迹。
+      // /conversations 保留为同义入口，避免旧书签失效。
       if (path === '/') {
+        const html = renderConversationIndexPage(await resolvedConversationCatalog.listConversations(), lang);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
+      // 原 skill-centric 工作台迁到 /knowledge。insightsBySkill 在 buildSkillIndex 里
+      // 跟 SkillIndex 一起算好并享受同一份缓存，renderer 只负责呈现。
+      if (path === '/knowledge') {
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -1458,6 +1758,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
   async function stop(): Promise<void> {
     if (!server) return;
+    for (const close of [...liveStreamClosers]) close();
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = null;
     serverUrl = null;

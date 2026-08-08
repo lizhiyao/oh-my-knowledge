@@ -1,10 +1,8 @@
 /** Codex rollout JSONL -> source-neutral Trace IR. */
 
 import { basename } from 'node:path';
-import { isToolResultFailureText } from './text-signals.js';
 import type {
   TraceEvent,
-  TraceMessageOrigin,
   TraceSession,
   TraceToolRef,
   TraceToolStatus,
@@ -24,6 +22,18 @@ import {
 } from '../shared/token-usage.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
 import { extractCodexExecCommands } from './codex-exec-command.js';
+import {
+  codexUserDisplayText,
+  codexUserMessageOrigin,
+  isCodexEventMessageType,
+  isCodexRecordConsumedWithoutDirectEvent,
+  isCodexResponseItemType,
+} from './codex-protocol.js';
+import {
+  codexRuntimeToolOutcome,
+  codexToolOutputOutcome,
+  codexToolStatusFromValue,
+} from './codex-tool-status.js';
 
 interface CodexRecord {
   timestamp?: unknown;
@@ -77,36 +87,6 @@ interface ExternalToolEndIndex {
   byOccurrence: Set<string>;
 }
 
-const CODEX_RESPONSE_ITEM_TYPES = new Set([
-  'message',
-  'reasoning',
-  'tool_search_call',
-  'tool_search_output',
-  'web_search_call',
-  'image_generation_call',
-  'function_call',
-  'custom_tool_call',
-  'function_call_output',
-  'custom_tool_call_output',
-]);
-
-const CODEX_EVENT_MESSAGE_TYPES = new Set([
-  'token_count',
-  'task_started',
-  'task_complete',
-  'turn_aborted',
-  'user_message',
-  'agent_message',
-  'mcp_tool_call_end',
-  'patch_apply_end',
-  'agent_reasoning',
-  'thread_settings_applied',
-  'web_search_end',
-  'context_compacted',
-  'image_generation_end',
-  'thread_goal_updated',
-]);
-
 export function isCodexJsonl(records: unknown[]): boolean {
   return records.some((record) => {
     const raw = asCodexRecord(record);
@@ -121,11 +101,10 @@ export function isCodexJsonl(records: unknown[]): boolean {
         || stringValue(raw.payload.model) !== undefined;
     }
     if (raw.type === 'response_item') {
-      return payloadType !== undefined && CODEX_RESPONSE_ITEM_TYPES.has(payloadType);
+      return isCodexResponseItemType(payloadType);
     }
     return raw.type === 'event_msg'
-      && payloadType !== undefined
-      && CODEX_EVENT_MESSAGE_TYPES.has(payloadType);
+      && isCodexEventMessageType(payloadType);
   });
 }
 
@@ -194,8 +173,10 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
   const representedPatchCalls = new Set<string>();
   const representedPatchResults = new Set<string>();
   const duplicateEventMessageIndexes = indexDuplicateEventMessages(rawRecords);
+  const duplicateAgentReasoningIndexes = indexDuplicateAgentReasoningMessages(rawRecords);
   let activeModel: string | undefined;
   let activeTurnId: string | undefined;
+  let emittedSessionContext = false;
   let previousTotalUsageFingerprint: string | undefined;
 
   rawRecords.forEach((value, sourceIndex) => {
@@ -213,14 +194,111 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       turnId: activeTurnId,
     };
 
-    // Desktop may repeat session_meta during a long rollout. Metadata is read
-    // once above and is transparent to the event stream; retaining later copies
-    // as unknown events also breaks otherwise adjacent mirrored-message pairs.
-    if (record.type === 'session_meta') return;
+    if (record.type === 'session_meta') {
+      // Desktop may repeat session_meta during a long rollout. One normalized
+      // context event is enough; source records retain every native copy.
+      if (emittedSessionContext) return;
+      emittedSessionContext = true;
+      const runtimeName = stringValue(payload.originator);
+      const runtimeVersion = stringValue(payload.cli_version);
+      const availableTools = codexAvailableTools(payload.dynamic_tools);
+      const instructions = codexPlaintext(payload.base_instructions);
+      const memoryMode = stringValue(payload.memory_mode);
+      const historyMode = stringValue(payload.history_mode);
+      const contextWindowId = nestedString(payload.context_window, 'window_id');
+      const modelProvider = stringValue(payload.model_provider);
+      const multiAgentVersion = stringValue(payload.multi_agent_version);
+      if (
+        runtimeName
+        || runtimeVersion
+        || availableTools
+        || instructions
+        || memoryMode
+        || historyMode
+        || contextWindowId
+        || modelProvider
+        || multiAgentVersion
+      ) {
+        events.push({
+          ...base,
+          eventKind: 'runtime_context',
+          eventId: eventId('session-context'),
+          runtimeKind: 'session_context',
+          runtimeName,
+          runtimeVersion,
+          modelProvider,
+          multiAgentVersion,
+          memoryMode,
+          historyMode,
+          contextWindowId,
+          availableTools,
+          instructions: instructions || undefined,
+          summary: codexSessionContextSummary({
+            runtimeName,
+            runtimeVersion,
+            memoryMode,
+            historyMode,
+            availableTools,
+          }),
+        });
+      }
+      return;
+    }
 
     if (record.type === 'turn_context') {
       activeModel = stringValue(payload.model) ?? activeModel;
       activeTurnId = stringValue(payload.turn_id) ?? activeTurnId;
+      events.push({
+        ...base,
+        turnId: activeTurnId,
+        eventKind: 'runtime_context',
+        eventId: eventId('runtime-context'),
+        runtimeKind: 'execution_context',
+        cwd: stringValue(payload.cwd),
+        workspaceRoots: stringArray(payload.workspace_roots),
+        currentDate: stringValue(payload.current_date),
+        timezone: stringValue(payload.timezone),
+        model: activeModel,
+        reasoningEffort: stringValue(payload.effort),
+        personality: stringValue(payload.personality),
+        approvalPolicy: stringValue(payload.approval_policy),
+        approvalReviewer: stringValue(payload.approvals_reviewer),
+        permissionProfile: nestedString(payload.permission_profile, 'type'),
+        sandboxMode: nestedString(payload.sandbox_policy, 'type'),
+        collaborationMode: stringValue(payload.collaboration_mode)
+          ?? nestedString(payload.collaboration_mode, 'mode'),
+        realtimeActive: booleanValue(payload.realtime_active),
+        multiAgentMode: stringValue(payload.multi_agent_mode),
+        multiAgentVersion: stringValue(payload.multi_agent_version),
+        instructions: stringValue(payload.user_instructions),
+        summary: stringValue(payload.summary),
+      });
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'reasoning') {
+      const reasoning = codexReasoningPlaintext(payload);
+      if (reasoning) {
+        events.push({
+          ...base,
+          eventKind: 'model_activity',
+          eventId: eventId('model-activity'),
+          activityKind: 'reasoning',
+          contentVisibility: 'plaintext',
+          text: reasoning.text,
+          contentSource: reasoning.contentSource,
+          model: activeModel,
+        });
+      } else if (stringValue(payload.encrypted_content)) {
+        events.push({
+          ...base,
+          eventKind: 'model_activity',
+          eventId: eventId('model-activity'),
+          activityKind: 'reasoning',
+          contentVisibility: 'opaque',
+          model: activeModel,
+        });
+      }
       return;
     }
 
@@ -241,9 +319,29 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
             ? codexUserMessageOrigin(text)
             : normalizedRole === 'system' ? 'runtime' : 'synthetic',
           text,
+          displayText: normalizedRole === 'user' ? codexUserDisplayText(text) : undefined,
           model: normalizedRole === 'assistant' ? activeModel : undefined,
         });
       }
+      return;
+    }
+
+    if (record.type === 'response_item' && payloadType === 'agent_message') {
+      const text = codexContentText(payload.content);
+      const passthrough = isObject(payload.internal_chat_message_metadata_passthrough)
+        ? payload.internal_chat_message_metadata_passthrough
+        : {};
+      events.push({
+        ...base,
+        sourceEventId: stringValue(payload.id),
+        turnId: stringValue(passthrough.turn_id) ?? activeTurnId,
+        eventKind: 'agent_activity',
+        eventId: eventId('agent-communication'),
+        activityKind: 'communication',
+        author: stringValue(payload.author),
+        recipient: stringValue(payload.recipient),
+        text: text || undefined,
+      });
       return;
     }
 
@@ -272,7 +370,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         base,
         callId,
         output,
-        statusFromCodex(payload.status),
+        codexToolStatusFromValue(payload.status),
         stringValue(payload.status) ? 'runtime' : 'unknown',
       ));
       return;
@@ -286,7 +384,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         mcpCallOccurrenceKey(callId, resultOccurrence),
       );
       const payloadStatus = stringValue(payload.status);
-      const explicitStatus = statusFromCodex(payloadStatus);
+      const explicitStatus = codexToolStatusFromValue(payloadStatus);
       events.push(toolCallEvent(
         eventId('tool-call'),
         base,
@@ -315,7 +413,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
         mcpCallOccurrenceKey(callId, resultOccurrence),
       );
       const payloadStatus = stringValue(payload.status);
-      const explicitStatus = statusFromCodex(payloadStatus);
+      const explicitStatus = codexToolStatusFromValue(payloadStatus);
       const inferredSuccess = result.length > 0 || completed;
       events.push(toolCallEvent(
         eventId('tool-call'),
@@ -374,16 +472,15 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       const patchEnd = patchEnds.byOccurrence.get(mcpEndKey);
       if (patchEnd) representedPatchResults.add(mcpEndKey);
       const output = codexContentText(payload.output) || mcpEnd?.output || patchEnd?.output || '';
-      const runtimeOutcome = runtimeToolEndOutcome(mcpEnd ?? patchEnd);
+      const runtimeOutcome = codexRuntimeToolOutcome(mcpEnd ?? patchEnd);
       const payloadStatus = stringValue(payload.status);
       const hasRuntimeStatus = runtimeOutcome.present || payloadStatus !== undefined;
       const explicitStatus = runtimeOutcome.present
         ? runtimeOutcome.status
-        : statusFromCodex(payloadStatus);
-      const bridgeFailure = codexToolOutputFailed(output);
-      const bridgeSuccess = !bridgeFailure && codexToolOutputSucceeded(output);
-      const inferredFailure = bridgeFailure || (!bridgeSuccess && isToolResultFailureText(output));
-      const inferredSuccess = bridgeSuccess;
+        : codexToolStatusFromValue(payloadStatus);
+      const outputOutcome = codexToolOutputOutcome(output);
+      const inferredFailure = outputOutcome.status === 'failure';
+      const inferredSuccess = outputOutcome.status === 'success';
       const completedExternalCall = externalEnds.byOccurrence.has(
         mcpCallOccurrenceKey(callId, externalOccurrence),
       );
@@ -406,6 +503,11 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
     if (record.type === 'event_msg' && payloadType === 'token_count') {
       const info = isObject(payload.info) ? payload.info : {};
       const usage = isObject(info.last_token_usage) ? info.last_token_usage : undefined;
+      // Codex also emits rate-limit-only snapshots under the token_count
+      // protocol name. They describe account capacity, not task token usage.
+      // Keep the source record for provenance without manufacturing a usage
+      // event or reporting a known protocol shape as unknown.
+      if (!usage && payload.info == null && isObject(payload.rate_limits)) return;
       if (!isValidCodexTokenUsage(usage)) {
         events.push({
           ...base,
@@ -475,6 +577,20 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
 
+    if (record.type === 'event_msg' && payloadType === 'turn_interrupted') {
+      events.push({
+        ...base,
+        turnId: stringValue(payload.turn_id) ?? activeTurnId,
+        eventKind: 'lifecycle',
+        eventId: eventId('lifecycle'),
+        phase: 'turn_interrupted',
+        reason: stringValue(payload.reason),
+        durationMs: nonNegativeMetric(payload.duration_ms),
+      });
+      activeTurnId = undefined;
+      return;
+    }
+
     if (record.type === 'event_msg' && payloadType === 'user_message') {
       const text = stringValue(payload.message);
       if (text) {
@@ -486,6 +602,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
           role: 'user',
           origin: codexUserMessageOrigin(text),
           text,
+          displayText: codexUserDisplayText(text),
         });
       }
       return;
@@ -508,6 +625,94 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       return;
     }
 
+    if (record.type === 'event_msg' && payloadType === 'agent_reasoning') {
+      if (duplicateAgentReasoningIndexes.has(sourceIndex)) return;
+      const text = codexPlaintext(payload.text);
+      if (text) {
+        events.push({
+          ...base,
+          eventKind: 'model_activity',
+          eventId: eventId('model-activity'),
+          activityKind: 'reasoning',
+          contentVisibility: 'plaintext',
+          text,
+          contentSource: 'text',
+          model: activeModel,
+        });
+      }
+      return;
+    }
+
+    if (record.type === 'event_msg' && payloadType === 'thread_settings_applied') {
+      const settings = isObject(payload.thread_settings) ? payload.thread_settings : payload;
+      activeModel = stringValue(settings.model) ?? activeModel;
+      events.push({
+        ...base,
+        eventKind: 'runtime_context',
+        eventId: eventId('runtime-settings'),
+        runtimeKind: 'settings',
+        model: activeModel,
+        modelProvider: stringValue(settings.model_provider_id),
+        serviceTier: stringValue(settings.service_tier),
+        reasoningEffort: stringValue(settings.reasoning_effort),
+        reasoningSummary: stringValue(settings.reasoning_summary),
+        personality: stringValue(settings.personality),
+        cwd: stringValue(settings.cwd),
+        approvalPolicy: stringValue(settings.approval_policy),
+        approvalReviewer: stringValue(settings.approvals_reviewer),
+        permissionProfile: nestedString(settings.permission_profile, 'type'),
+        sandboxMode: nestedString(settings.sandbox_policy, 'type'),
+        collaborationMode: stringValue(settings.collaboration_mode)
+          ?? nestedString(settings.collaboration_mode, 'mode'),
+        summary: stringValue(settings.summary),
+      });
+      return;
+    }
+
+    if (record.type === 'event_msg' && payloadType === 'thread_goal_updated') {
+      const goal = isObject(payload.goal) ? payload.goal : {};
+      events.push({
+        ...base,
+        eventKind: 'runtime_context',
+        eventId: eventId('runtime-goal'),
+        runtimeKind: 'goal',
+        goal: stringValue(payload.goal)
+          ?? stringValue(goal.objective)
+          ?? stringValue(goal.text),
+        goalStatus: stringValue(goal.status),
+        summary: stringValue(payload.summary),
+      });
+      return;
+    }
+
+    if (record.type === 'compacted' || (record.type === 'event_msg' && payloadType === 'context_compacted')) {
+      const replacementHistory = Array.isArray(payload.replacement_history)
+        ? payload.replacement_history
+        : undefined;
+      events.push({
+        ...base,
+        eventKind: 'context_compaction',
+        eventId: eventId('context-compaction'),
+        summary: stringValue(payload.summary) ?? stringValue(payload.message),
+        replacementItemCount: replacementHistory?.length,
+      });
+      return;
+    }
+
+    if (record.type === 'event_msg' && payloadType === 'sub_agent_activity') {
+      events.push({
+        ...base,
+        sourceEventId: stringValue(payload.event_id),
+        eventKind: 'agent_activity',
+        eventId: eventId('agent-status'),
+        activityKind: 'status',
+        agentId: stringValue(payload.agent_thread_id),
+        agentPath: stringValue(payload.agent_path),
+        activity: stringValue(payload.kind),
+      });
+      return;
+    }
+
     if (payloadType === 'mcp_tool_call_end') {
       const end = mcpEnds.bySourceIndex.get(sourceIndex);
       if (end) {
@@ -524,7 +729,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
       }
       return;
     }
-    if (isKnownNonMeasurementCodexRecord(record.type, payloadType)) return;
+    if (isCodexRecordConsumedWithoutDirectEvent(record.type, payloadType)) return;
     events.push({
       ...base,
       eventKind: 'unknown',
@@ -535,7 +740,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   for (const end of mcpEnds.ordered) {
     const endKey = mcpCallOccurrenceKey(end.callId, end.occurrence);
-    const outcome = runtimeToolEndOutcome(end);
+    const outcome = codexRuntimeToolOutcome(end);
     if (!representedMcpCalls.has(endKey)) {
       events.push({
         eventKind: 'tool_call',
@@ -569,7 +774,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   for (const end of patchEnds.ordered) {
     const endKey = mcpCallOccurrenceKey(end.callId, end.occurrence);
-    const outcome = runtimeToolEndOutcome(end);
+    const outcome = codexRuntimeToolOutcome(end);
     if (!representedPatchCalls.has(endKey)) {
       events.push({
         eventKind: 'tool_call',
@@ -601,27 +806,6 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
 
   events.sort((a, b) => a.sourceIndex - b.sourceIndex);
   return events;
-}
-
-/**
- * Codex persists protocol and UI state alongside behavioral evidence. These
- * records are understood by this adapter but intentionally do not become Trace
- * IR events. Keeping them out of `unknown` means ingestion warnings remain a
- * forward-compatibility signal instead of firing on every normal rollout.
- */
-function isKnownNonMeasurementCodexRecord(
-  recordType: unknown,
-  payloadType: string | undefined,
-): boolean {
-  if (recordType === 'compacted' || recordType === 'world_state') return true;
-  if (recordType === 'response_item' && payloadType === 'reasoning') return true;
-  if (recordType !== 'event_msg') return false;
-  return payloadType === 'agent_reasoning'
-    || payloadType === 'thread_settings_applied'
-    || payloadType === 'web_search_end'
-    || payloadType === 'context_compacted'
-    || payloadType === 'image_generation_end'
-    || payloadType === 'thread_goal_updated';
 }
 
 function mcpToolRefFromEnd(end: McpCallEnd): TraceToolRef {
@@ -769,27 +953,6 @@ function mcpCallOccurrenceKey(callId: string, occurrence: number): string {
   return `${callId}\u0000${occurrence}`;
 }
 
-function runtimeToolEndOutcome(
-  end: Pick<McpCallEnd, 'status' | 'isError'> | undefined,
-): {
-  status: TraceToolStatus;
-  present: boolean;
-} {
-  if (!end) return { status: 'unknown', present: false };
-  if (end.status !== undefined) {
-    const status = statusFromCodex(end.status);
-    if (status === 'cancelled') return { status, present: true };
-    if (status === 'failure' || end.isError === true) {
-      return { status: 'failure', present: true };
-    }
-    if (status === 'success') return { status, present: true };
-    return { status: 'unknown', present: true };
-  }
-  if (end.isError === true) return { status: 'failure', present: true };
-  if (end.isError === false) return { status: 'success', present: true };
-  return { status: 'unknown', present: false };
-}
-
 function normalizeCodexTool(
   sourceName: string,
   rawInput: unknown,
@@ -840,13 +1003,6 @@ function normalizeCodexTool(
   return { tool, input };
 }
 
-function codexUserMessageOrigin(text: string): TraceMessageOrigin {
-  const trimmed = text.trimStart();
-  if (/^# AGENTS\.md instructions\b/i.test(trimmed)) return 'runtime';
-  if (/^<(?:app-context|environment_context|permissions instructions|collaboration_mode|apps_instructions|plugins_instructions|skills_instructions|recommended_plugins)>/i.test(trimmed)) return 'runtime';
-  return 'human';
-}
-
 function summarizeDiscoveredTools(value: unknown): Array<{ type?: string; name?: string; tools?: string[] }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -862,12 +1018,33 @@ function summarizeDiscoveredTools(value: unknown): Array<{ type?: string; name?:
   });
 }
 
-function statusFromCodex(value: unknown): TraceToolStatus {
-  const status = stringValue(value)?.toLowerCase();
-  if (status === 'failed' || status === 'error') return 'failure';
-  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
-  if (status === 'success' || status === 'succeeded' || status === 'completed' || status === 'complete') return 'success';
-  return 'unknown';
+function codexAvailableTools(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names = value.flatMap((entry) => {
+    if (!isObject(entry)) return [];
+    const name = stringValue(entry.name);
+    if (!name) return [];
+    const namespace = stringValue(entry.namespace);
+    return [namespace ? `${namespace}.${name}` : name];
+  });
+  return names.length > 0 ? Array.from(new Set(names)) : undefined;
+}
+
+function codexSessionContextSummary(input: {
+  runtimeName?: string;
+  runtimeVersion?: string;
+  memoryMode?: string;
+  historyMode?: string;
+  availableTools?: string[];
+}): string | undefined {
+  const runtime = [input.runtimeName, input.runtimeVersion].filter(Boolean).join(' ');
+  const parts = [
+    runtime,
+    input.memoryMode ? `memory ${input.memoryMode}` : '',
+    input.historyMode ? `history ${input.historyMode}` : '',
+    input.availableTools ? `${input.availableTools.length} tools` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
 function parseToolInput(value: unknown): Record<string, unknown> {
@@ -893,22 +1070,37 @@ function codexContentText(value: unknown): string {
   }).filter(Boolean).join('\n');
 }
 
-function codexToolOutputFailed(output: string): boolean {
-  return /\b(?:process|script)\s+(?:exited|failed)\s+with\s+(?:exit\s+)?code\s+[1-9]\d*\b/i.test(output)
-    || /\bexit[_\s-]?code\s*[:=]\s*[1-9]\d*\b/i.test(output)
-    || /\bapply_patch verification failed\b/i.test(output);
+function codexReasoningPlaintext(
+  payload: Record<string, unknown>,
+): { text: string; contentSource: 'summary' | 'content' | 'text' } | undefined {
+  const summary = codexPlaintext(payload.summary);
+  if (summary) return { text: summary, contentSource: 'summary' };
+  const content = codexPlaintext(payload.content);
+  if (content) return { text: content, contentSource: 'content' };
+  const text = codexPlaintext(
+    payload.text ?? payload.reasoning_text ?? payload.reasoningText,
+  );
+  return text ? { text, contentSource: 'text' } : undefined;
 }
 
-function codexToolOutputSucceeded(output: string): boolean {
-  const trimmed = output.trim();
-  return /\bprocess exited with code 0\b/i.test(trimmed)
-    || /\bexit code:\s*0\b/i.test(trimmed)
-    || /^script completed\b/i.test(trimmed)
-    || /^success\.\s+(?:updated|added|deleted|moved)\b/i.test(trimmed)
-    || /^plan updated\b/i.test(trimmed)
-    || /^workspace dependencies are available\b/i.test(trimmed)
-    || /^\[image\]$/i.test(trimmed);
+function codexPlaintext(value: unknown, depth = 0): string {
+  if (depth > 3) return '';
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => codexPlaintext(part, depth + 1))
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+  }
+  if (!isObject(value)) return '';
+  for (const key of ['text', 'input_text', 'output_text', 'summary_text']) {
+    const text = stringValue(value[key]);
+    if (text) return text;
+  }
+  return codexPlaintext(value.content, depth + 1);
 }
+
 
 function codexSourceMetadata(records: unknown[], metaPayload: Record<string, unknown>): TraceSourceMetadata {
   const models = Array.from(new Set(records.flatMap((value) => {
@@ -1030,6 +1222,44 @@ function indexDuplicateEventMessages(records: unknown[]): Set<number> {
   return duplicateIndexes;
 }
 
+function indexDuplicateAgentReasoningMessages(records: unknown[]): Set<number> {
+  const reasoningItems = records.flatMap((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    const payload = isObject(record?.payload) ? record.payload : {};
+    if (record?.type !== 'response_item' || payload.type !== 'reasoning') return [];
+    const reasoning = codexReasoningPlaintext(payload);
+    if (!reasoning) return [];
+    return [{
+      sourceIndex,
+      timestamp: normalizeTraceTimestamp(record.timestamp),
+      text: normalizeReasoningMirrorText(reasoning.text),
+    }];
+  });
+
+  const duplicateIndexes = new Set<number>();
+  records.forEach((value, sourceIndex) => {
+    const record = asCodexRecord(value);
+    const payload = isObject(record?.payload) ? record.payload : {};
+    if (record?.type !== 'event_msg' || payload.type !== 'agent_reasoning') return;
+    const text = normalizeReasoningMirrorText(codexPlaintext(payload.text));
+    if (!text) return;
+    const timestamp = normalizeTraceTimestamp(record.timestamp);
+    const mirrored = reasoningItems.some((item) => {
+      if (Math.abs(item.sourceIndex - sourceIndex) > 8) return false;
+      const timeDistance = timestamp && item.timestamp
+        ? Math.abs(Date.parse(timestamp) - Date.parse(item.timestamp))
+        : 0;
+      return timeDistance <= 1_000 && item.text.includes(text);
+    });
+    if (mirrored) duplicateIndexes.add(sourceIndex);
+  });
+  return duplicateIndexes;
+}
+
+function normalizeReasoningMirrorText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 function asCodexRecord(value: unknown): CodexRecord | undefined {
   return isObject(value) ? value as CodexRecord : undefined;
 }
@@ -1040,6 +1270,16 @@ function stringValue(value: unknown): string | undefined {
 
 function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const strings = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  return strings.length > 0 ? strings : undefined;
+}
+
+function nestedString(value: unknown, key: string): string | undefined {
+  return isObject(value) ? stringValue(value[key]) : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

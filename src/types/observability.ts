@@ -316,6 +316,65 @@ export interface ObservationSessionTimeRange {
   durationMs?: number;
 }
 
+export type ObservationSourceRecordArchiveStatus = 'available' | 'partial' | 'unavailable';
+export type ObservationSourceRecordArchiveReason =
+  | 'no_record_ranges'
+  | 'source_missing'
+  | 'unsupported_source'
+  | 'read_failed'
+  | 'archive_limit';
+
+/**
+ * A report only retains a relative pointer to its bounded source-record archive.
+ * The archive itself stays beside the report so Studio never follows an
+ * arbitrary absolute path supplied by report JSON.
+ */
+export interface ObservationSourceRecordArchiveRef {
+  experienceSessionId: string;
+  status: ObservationSourceRecordArchiveStatus;
+  relativePath?: string;
+  recordCount: number;
+  omittedRecordCount: number;
+  byteCount: number;
+  truncated: boolean;
+  reason?: ObservationSourceRecordArchiveReason;
+}
+
+export interface ObservationSourceRecord {
+  sourceIndex: number;
+  traceId: string;
+  sourceTrace: string;
+  sourceType: string;
+  sourceEventId?: string;
+  timestamp?: string;
+  raw: string;
+  byteCount: number;
+  truncated: boolean;
+  redacted: boolean;
+}
+
+export interface ObservationSourceRecordArchive {
+  archiveKind: 'observe-source-records';
+  schemaVersion: 1;
+  experienceSessionId: string;
+  generatedAt: string;
+  records: ObservationSourceRecord[];
+  omittedRecordCount: number;
+  byteCount: number;
+  truncated: boolean;
+}
+
+export interface ObservationSourceRecordArchiveView {
+  status: ObservationSourceRecordArchiveStatus;
+  /** Total retained records, even when `records` is intentionally lazy. */
+  recordCount: number;
+  records: ObservationSourceRecord[];
+  omittedRecordCount: number;
+  byteCount: number;
+  truncated: boolean;
+  reason?: ObservationSourceRecordArchiveReason | 'archive_invalid';
+}
+
 export interface ObservationInboxReport {
   kind: 'observe-inbox';
   schemaVersion: 2;
@@ -338,6 +397,7 @@ export interface ObservationInboxReport {
     skillToolCallCounts?: Record<string, Record<string, number>>;
     timestampedSegmentCount?: number;
     timestampCoverage?: number;
+    sourceRecordArchives?: ObservationSourceRecordArchiveRef[];
   };
   items: ObservationInboxItem[];
   experience?: ObservationExperienceReport;
@@ -364,7 +424,7 @@ export interface BuildObservationInboxReportOptions {
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
-export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'observation';
+export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'model_activity' | 'agent_activity' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'lifecycle' | 'observation';
 export type ExperienceAssistiveInferenceCode =
   | 'review_recommended'
   | 'sample_recommended'
@@ -457,21 +517,231 @@ export interface ExperienceEvidenceRef {
   logicalMessageIndex?: number;
   sourceLineIndex?: number;
   messageUuid?: string;
+  /** Source-native record classification retained after normalization. */
+  sourceType?: string;
+  /** Source-neutral identity for one agent turn, when the trace exposes it. */
+  turnId?: string;
   /** Source-neutral identity for one concrete tool-call occurrence. */
   callInstanceId?: string;
   toolUseId?: string;
   timestamp?: string;
   role?: 'user' | 'assistant' | 'tool' | 'other';
+  modelActivityKind?: 'reasoning';
+  contentVisibility?: 'plaintext' | 'opaque';
+  contentSource?: 'summary' | 'content' | 'text';
+  runtimeKind?: 'session_context' | 'execution_context' | 'settings' | 'goal' | 'context_compaction' | 'usage';
   label?: string;
   snippet?: string;
 }
 
 export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
   order: number;
+  /** Model explicitly associated with this normalized event by the source adapter. */
+  model?: string;
   toolName?: string;
   toolStatus?: ToolCallStatus;
   isError?: boolean;
   fullText?: string;
+}
+
+// ---------- Knowledge Debugger task trajectory ----------
+
+export type DebugKnowledgeKind = 'project_instruction' | 'skill' | 'runtime_evidence';
+export type DebugKnowledgeAccessKind = 'injected' | 'read' | 'returned';
+export type TaskReplayStepKind =
+  | 'user_request'
+  | 'user_message'
+  | 'user_correction'
+  | 'runtime_context'
+  | 'skill_context'
+  | 'tool_exchange'
+  | 'unmatched_tool_result'
+  | 'assistant_message'
+  | 'model_activity'
+  | 'lifecycle'
+  | 'observation'
+  | 'system_event';
+export type TaskReplayIntegrityCode =
+  | 'task_boundary_unavailable'
+  | 'timeline_truncated'
+  | 'malformed_records'
+  | 'ignored_values'
+  | 'unknown_events'
+  | 'unmatched_tool_calls'
+  | 'unmatched_tool_results'
+  | 'missing_timestamps';
+
+export type TaskWindowBasis =
+  | 'turn_id'
+  | 'turn_lifecycle'
+  | 'user_message'
+  | 'unresolved';
+
+export type ExperienceTurnStatus =
+  | 'completed'
+  | 'aborted'
+  | 'interrupted'
+  | 'open'
+  | 'unknown';
+
+/**
+ * One user-visible task inside a source thread. `turnId` is the stable,
+ * source-neutral identity used by Studio routes. `sourceTurnId` preserves the
+ * runtime-native identity when the source exposes one.
+ */
+export interface ExperienceTurnSummary {
+  turnId: string;
+  sourceTurnId?: string;
+  boundaryBasis: Exclude<TaskWindowBasis, 'unresolved'>;
+  traceId?: string;
+  sourceTrace: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  status: ExperienceTurnStatus;
+  title: string;
+  eventIds: string[];
+  userMessageCount: number;
+  assistantMessageCount: number;
+  toolCallCount: number;
+  toolFailureCount: number;
+}
+
+export interface ConversationTaskItem {
+  turnId: string;
+  sourceTurnId?: string;
+  /** Existing observe reports retain their report-scoped session route. */
+  experienceSessionId?: string;
+  /** Preferred source-neutral task trajectory route. */
+  trajectoryHref?: string;
+  title: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  durationMs?: number;
+  status: ExperienceTurnStatus;
+  eventCount: number;
+  toolCallCount: number;
+  toolFailureCount: number;
+  relatedSkillNames: string[];
+}
+
+export interface ConversationListItem {
+  threadId: string;
+  sourceThreadId: string;
+  sourceKind: ObservationSourceKind;
+  title: string;
+  preview?: string;
+  cwd?: string;
+  model?: string;
+  reasoningEffort?: string;
+  archived?: boolean;
+  tokensUsed?: number;
+  childThreadCount?: number;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  durationMs?: number;
+  /** Undefined until the selected rollout has been indexed. */
+  turnCount?: number;
+  toolCallCount?: number;
+  toolFailureCount?: number;
+  relatedSkillNames: string[];
+  tasks: ConversationTaskItem[];
+}
+
+export interface ConversationIndexViewModel {
+  conversations: ConversationListItem[];
+  totalTurnCount: number;
+  totalToolCallCount: number;
+  totalToolFailureCount: number;
+  indexedConversationCount?: number;
+  unarchivedConversationCount?: number;
+  archivedConversationCount?: number;
+  workspaceCount?: number;
+}
+
+/**
+ * Source-neutral task trajectory input. Observe reports carry more review and
+ * Skill-attribution fields, but the debugger only requires this trace slice.
+ */
+export interface TaskTrajectorySession {
+  id: string;
+  threadId: string;
+  sourceThreadId: string;
+  sessionId: string;
+  sourceTrace: string;
+  sourceKind: ObservationSourceKind;
+  entrypoint?: string;
+  sourceMetadata?: TraceSourceMetadata;
+  cwd?: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  attributedEventIds: string[];
+  turns: ExperienceTurnSummary[];
+  fullSessionTimeline: ExperienceTimelineEvent[];
+  indicators?: Pick<ExperienceReviewIndicators, 'userCorrectionCount'>;
+  sessionStory?: ExperienceSessionStory;
+}
+
+export interface TaskWindowScope {
+  basis: TaskWindowBasis;
+  turnId?: string;
+  normalizedEventCount: number;
+  semanticEventCount: number;
+  attributedEventCount: number;
+  matchedAttributedEventCount: number;
+  truncated: boolean;
+}
+
+export interface DebugKnowledgeEvidence {
+  id: string;
+  knowledgeKind: DebugKnowledgeKind;
+  accessKind: DebugKnowledgeAccessKind;
+  label: string;
+  sourceLocator?: string;
+  contentHash?: string;
+  firstSeen?: string;
+  lastSeen?: string;
+  accessCount: number;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface TaskReplayStep {
+  id: string;
+  order: number;
+  stepKind: TaskReplayStepKind;
+  timestamp?: string;
+  title: string;
+  events: ExperienceTimelineEvent[];
+  toolStatus?: ToolCallStatus;
+  knowledgeEvidenceIds: string[];
+}
+
+export interface TaskReplayIntegrityNotice {
+  code: TaskReplayIntegrityCode;
+  count: number;
+}
+
+export interface KnowledgeDebuggerViewModel {
+  session: TaskTrajectorySession;
+  taskScope: TaskWindowScope;
+  summary: {
+    userGoal?: string;
+    finalResponse?: string;
+    observedStartTimestamp?: string;
+    observedEndTimestamp?: string;
+    toolCallCount: number;
+    toolFailureCount: number;
+    hasUserCorrection: boolean;
+    /** Distinct models observed inside the attributed task window, in first-seen order. */
+    observedModels: string[];
+  };
+  steps: TaskReplayStep[];
+  normalizedEvents: ExperienceTimelineEvent[];
+  sourceRecords: ObservationSourceRecordArchiveView;
+  knowledgeEvidence: DebugKnowledgeEvidence[];
+  integrity: {
+    status: 'complete' | 'partial';
+    notices: TaskReplayIntegrityNotice[];
+  };
 }
 
 export interface ExperienceTimelineBranch {
@@ -942,6 +1212,10 @@ export interface ExperienceInvocation {
 export interface ExperienceSessionSummary {
   id: string;
   skillName: string;
+  /** Stable source-neutral identity for the root conversation/thread. */
+  threadId: string;
+  /** Runtime-native thread/run identity retained for inspection. */
+  sourceThreadId: string;
   sessionId: string;
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
@@ -968,6 +1242,10 @@ export interface ExperienceSessionSummary {
   relatedObservationIds: string[];
   timelineRef?: string;
   timelinePreviewEventIds?: string[];
+  /** Hydrated exact event relation derived from invocation timelineEventIds. */
+  attributedEventIds: string[];
+  /** All observable tasks in this thread, independent of Skill attribution. */
+  turns: ExperienceTurnSummary[];
   timelinePreview: ExperienceTimelineEvent[];
   fullSessionTimeline: ExperienceTimelineEvent[];
   timelineTree?: ExperienceTimelineTree;

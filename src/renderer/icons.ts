@@ -20,6 +20,7 @@ const PATHS: Record<string, string> = {
   'zoom-in': '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.4-4.4M11 8v6M8 11h6"/>',
   'zoom-out': '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.4-4.4M8 11h6"/>',
   'maximize-2': '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7a2 2 0 002 2h3"/>',
 
   // 报告类型（= 维度）
   doctor: '<path d="M3 12h4l2-6 4 14 2-8h6"/>',

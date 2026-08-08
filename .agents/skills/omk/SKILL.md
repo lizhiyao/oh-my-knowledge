@@ -138,7 +138,7 @@ omk observe ingest ~/.codex/sessions
 omk observe ~/.claude/projects/<project> --last 7d
 ```
 
-Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
+Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；在 Studio 的观测收件箱中打开「任务轨迹」，可按对话、执行、结果和知识查看结构化事实，并联动检查配对后的工具调用与结果、AI 回答和用户纠正。该页面只呈现 trace 中可观测的执行过程，不推断隐藏思维或失败根因。确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
 
 ### 体检 skill 写法
 

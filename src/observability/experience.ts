@@ -68,6 +68,7 @@ import type {
   ExperienceTraceRecordRange,
   ExperienceTraceTimeline,
   ExperienceTimelineTree,
+  ExperienceTurnSummary,
   ObservationExperienceReport,
   ObservationInboxItem,
   ObservationMetricKey,
@@ -92,6 +93,7 @@ import {
   type SkillSegment,
 } from './trace-segmenter.js';
 import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
+import { reconstructExperienceTurns } from './turn-index.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
@@ -228,6 +230,7 @@ export type PersistedExperienceSession = Omit<
   ExperienceSessionSummary,
   | 'timelineRef'
   | 'timelinePreviewEventIds'
+  | 'attributedEventIds'
   | 'timelinePreview'
   | 'fullSessionTimeline'
   | 'timelineTree'
@@ -548,6 +551,8 @@ function normalizeExperienceSessionShells(
   if (records.some((value) =>
     typeof value.id !== 'string'
     || typeof value.skillName !== 'string'
+    || !isOptionalString(value.threadId)
+    || !isOptionalString(value.sourceThreadId)
     || typeof value.sessionId !== 'string'
     || typeof value.sourceTrace !== 'string'
     || !isObservationSourceKind(value.sourceKind)
@@ -592,6 +597,7 @@ function normalizeExperienceSessionShells(
     || !isExperienceAssistiveInference(value.assistiveInference)
     || !isExperienceProblemPatternArray(value.problemPatterns)
     || !isStringArray(value.relatedObservationIds)
+    || (value.turns !== undefined && !isExperienceTurnSummaryArray(value.turns))
     || !(strict
       ? isExperienceTimelineScope(value.timelineScope)
       : isLegacyExperienceTimelineScope(value.timelineScope))
@@ -624,6 +630,14 @@ function normalizeExperienceSessionShells(
     )
   )) return null;
   return records.map((value) => {
+    const sourceThreadId = typeof value.sourceThreadId === 'string'
+      ? value.sourceThreadId
+      : typeof value.threadId === 'string'
+        ? value.threadId
+        : value.sessionId as string;
+    const threadId = typeof value.threadId === 'string'
+      ? value.threadId
+      : hashParts('thread', sourceThreadId);
     const sessionStory = isObjectRecord(value.sessionStory)
       ? {
           ...value.sessionStory,
@@ -636,7 +650,10 @@ function normalizeExperienceSessionShells(
       : undefined;
     return {
       ...value,
+      threadId,
+      sourceThreadId,
       invocationIds: Array.isArray(value.invocationIds) ? value.invocationIds : [],
+      turns: isExperienceTurnSummaryArray(value.turns) ? value.turns : [],
       timelinePreview: Array.isArray(value.timelinePreview) ? value.timelinePreview : [],
       fullSessionTimeline: Array.isArray(value.fullSessionTimeline) ? value.fullSessionTimeline : [],
       sessionStory,
@@ -785,10 +802,13 @@ function isExperienceEvidenceKind(value: unknown): boolean {
     'user_message',
     'synthetic_user_event',
     'assistant_message',
+    'model_activity',
+    'agent_activity',
     'tool_use',
     'tool_result',
     'skill_context',
     'runtime_context',
+    'lifecycle',
     'observation',
   ]);
 }
@@ -808,6 +828,19 @@ function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef
     value.traceRole !== undefined
     && !isEnumValue(value.traceRole, ['standalone', 'main', 'subagent'])
   ) return false;
+  if (value.modelActivityKind !== undefined && value.modelActivityKind !== 'reasoning') return false;
+  if (
+    value.contentVisibility !== undefined
+    && !isEnumValue(value.contentVisibility, ['plaintext', 'opaque'])
+  ) return false;
+  if (
+    value.contentSource !== undefined
+    && !isEnumValue(value.contentSource, ['summary', 'content', 'text'])
+  ) return false;
+  if (
+    value.runtimeKind !== undefined
+    && !isEnumValue(value.runtimeKind, ['session_context', 'execution_context', 'settings', 'goal', 'context_compaction', 'usage'])
+  ) return false;
   if (
     value.role !== undefined
     && !isEnumValue(value.role, ['user', 'assistant', 'tool', 'other'])
@@ -815,7 +848,9 @@ function isExperienceEvidenceRef(value: unknown): value is ExperienceEvidenceRef
   return [
     value.traceLabel,
     value.traceId,
+    value.turnId,
     value.messageUuid,
+    value.sourceType,
     value.callInstanceId,
     value.toolUseId,
     value.label,
@@ -1216,10 +1251,13 @@ function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
       'user_message',
       'synthetic_user_event',
       'assistant_message',
+      'model_activity',
+      'agent_activity',
       'tool_use',
       'tool_result',
       'skill_context',
       'runtime_context',
+      'lifecycle',
       'observation',
     ].includes(String(value.kind))
     || typeof value.sourceTrace !== 'string'
@@ -1252,10 +1290,34 @@ function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
     && value.toolStatus !== 'cancelled'
     && value.toolStatus !== 'unknown'
   ) return false;
+  if (value.modelActivityKind !== undefined && value.modelActivityKind !== 'reasoning') return false;
+  if (
+    value.contentVisibility !== undefined
+    && value.contentVisibility !== 'plaintext'
+    && value.contentVisibility !== 'opaque'
+  ) return false;
+  if (
+    value.contentSource !== undefined
+    && value.contentSource !== 'summary'
+    && value.contentSource !== 'content'
+    && value.contentSource !== 'text'
+  ) return false;
+  if (
+    value.runtimeKind !== undefined
+    && value.runtimeKind !== 'session_context'
+    && value.runtimeKind !== 'execution_context'
+    && value.runtimeKind !== 'settings'
+    && value.runtimeKind !== 'goal'
+    && value.runtimeKind !== 'context_compaction'
+    && value.runtimeKind !== 'usage'
+  ) return false;
   const optionalStrings = [
     value.traceId,
     value.traceLabel,
+    value.turnId,
     value.messageUuid,
+    value.sourceType,
+    value.model,
     value.callInstanceId,
     value.toolUseId,
     value.label,
@@ -1276,6 +1338,36 @@ function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
 
 function isTimelineEventArray(value: unknown): value is ExperienceTimelineEvent[] {
   return Array.isArray(value) && value.every(isTimelineEvent);
+}
+
+function isExperienceTurnSummaryArray(value: unknown): value is ExperienceTurnSummary[] {
+  return Array.isArray(value) && value.every((turn) => (
+    isObjectRecord(turn)
+    && typeof turn.turnId === 'string'
+    && isOptionalString(turn.sourceTurnId)
+    && (
+      turn.boundaryBasis === 'turn_id'
+      || turn.boundaryBasis === 'turn_lifecycle'
+      || turn.boundaryBasis === 'user_message'
+    )
+    && isOptionalString(turn.traceId)
+    && typeof turn.sourceTrace === 'string'
+    && isOptionalTimestamp(turn.startTimestamp)
+    && isOptionalTimestamp(turn.endTimestamp)
+    && (
+      turn.status === 'completed'
+      || turn.status === 'aborted'
+      || turn.status === 'interrupted'
+      || turn.status === 'open'
+      || turn.status === 'unknown'
+    )
+    && typeof turn.title === 'string'
+    && isStringArray(turn.eventIds)
+    && isNonNegativeInteger(turn.userMessageCount)
+    && isNonNegativeInteger(turn.assistantMessageCount)
+    && isNonNegativeInteger(turn.toolCallCount)
+    && isNonNegativeInteger(turn.toolFailureCount)
+  ));
 }
 
 function isTimelineTree(value: unknown): value is ExperienceTimelineTree {
@@ -1862,6 +1954,7 @@ export function compactObservationExperienceReport(
     sessions: hydrated.sessions.map((session) => {
       const { timelinePreview, sessionStory, reviewerReport } = session;
       const persisted = omitProperties(session, [
+        'attributedEventIds',
         'timelinePreview',
         'fullSessionTimeline',
         'timelineTree',
@@ -1944,11 +2037,18 @@ function hydrateExperienceTimelines(
     const fullSessionTimeline = storedTimeline
       ? flattenedTimeline(timelineRef)
       : session.fullSessionTimeline;
+    const turns = session.turns.length > 0
+      ? session.turns
+      : reconstructExperienceTurns(fullSessionTimeline);
     const timelinePreviewEventIds = session.timelinePreviewEventIds
       ?? session.timelinePreview.map((event) => event.id);
     const timelinePreview = timelinePreviewEventIds.length > 0
       ? selectEvents(timelineRef, timelinePreviewEventIds, session.timelinePreview)
       : fullSessionTimeline.slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
+    const attributedEventIds = unique(session.invocationIds.flatMap((id) => {
+      const invocation = invocationById.get(id);
+      return invocation?.timelineEventIds ?? invocation?.timeline.map((event) => event.id) ?? [];
+    }));
     const contextRef = session.sessionStory?.contextRef
       ?? storyContextRefForSessionGroup(firstInvocation?.sessionGroupKey ?? session.sessionId);
     const storyContext = storyContextById.get(contextRef);
@@ -1965,9 +2065,11 @@ function hydrateExperienceTimelines(
     return {
       ...session,
       timelineRef,
+      attributedEventIds,
       timelinePreviewEventIds: timelinePreview.map((event) => event.id),
       timelinePreview,
       fullSessionTimeline,
+      turns,
       timelineTree: storedTimeline?.tree ?? session.timelineTree,
       sessionStory,
       reviewerReport: session.reviewerReport && sessionStory
@@ -2495,7 +2597,8 @@ function timelineScopeMatches(
     ? events.length - 1 - Math.max(...previewPositions)
     : 0;
   const scope = session.timelineScope;
-  return scope.segmentEventCount === invocationEventIds.size
+  return sameStringSet(session.attributedEventIds, invocationEventIds)
+    && scope.segmentEventCount === invocationEventIds.size
     && scope.previewEventCount === previewEventIds.length
     && scope.fullSessionEventCount === events.length
     && traceRecordRangesEqual(scope.segmentRecordRanges, traceRecordRanges(invocationEvents))
@@ -2734,6 +2837,12 @@ function countRecordsEqual(left: Record<string, number>, right: Record<string, n
 
 function sameStringArray(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameStringSet(left: string[], right: Set<string>): boolean {
+  return left.length === right.size
+    && new Set(left).size === left.length
+    && left.every((value) => right.has(value));
 }
 
 function storyContextsFromSessions(
@@ -3043,6 +3152,11 @@ function buildTimelineWindow(session: TraceSession, start: number, end: number):
   return events.sort((a, b) => a.order - b.order);
 }
 
+/** Project one source-neutral Trace IR session into Studio's semantic timeline. */
+export function projectTraceSessionTimeline(session: TraceSession): ExperienceTimelineEvent[] {
+  return buildTimelineWindow(session, 0, session.events.length);
+}
+
 function timelineEventsFromTraceEvent(
   session: TraceSession,
   event: TraceEvent,
@@ -3059,6 +3173,8 @@ function timelineEventsFromTraceEvent(
     logicalMessageIndex: messageIndex,
     sourceLineIndex: messageIndex,
     messageUuid: event.sourceEventId ?? event.eventId,
+    sourceType: event.sourceType,
+    turnId: event.turnId,
     timestamp: event.timestamp,
   };
   const order = eventIndex * 10;
@@ -3084,9 +3200,25 @@ function timelineEventsFromTraceEvent(
       kind: protocolReply ? 'runtime_context' : 'assistant_message',
       role: 'assistant',
       order,
+      model: event.model,
       snippet: snippet(event.text, 700),
       fullText: fullText(event.text),
       label: protocolReply ? 'assistant protocol reply' : 'assistant message',
+    })];
+  }
+  if (event.eventKind === 'model_activity') {
+    return [timelineEvent({
+      ...base,
+      kind: 'model_activity',
+      role: 'assistant',
+      order,
+      model: event.model,
+      modelActivityKind: event.activityKind,
+      contentVisibility: event.contentVisibility,
+      contentSource: event.contentSource,
+      snippet: snippet(event.text, 700),
+      fullText: fullText(event.text),
+      label: 'model reasoning',
     })];
   }
   if (event.eventKind === 'tool_call') {
@@ -3126,12 +3258,117 @@ function timelineEventsFromTraceEvent(
   if (event.eventKind === 'lifecycle') {
     return [timelineEvent({
       ...base,
-      kind: 'runtime_context',
+      kind: 'lifecycle',
       role: 'other',
       order,
       snippet: snippet(`${event.phase}${event.reason ? `: ${event.reason}` : ''}`, 700),
       fullText: fullText(JSON.stringify(event)),
       label: event.phase,
+    })];
+  }
+  if (event.eventKind === 'runtime_context') {
+    const details = JSON.stringify({
+      runtimeName: event.runtimeName,
+      runtimeVersion: event.runtimeVersion,
+      cwd: event.cwd,
+      workspaceRoots: event.workspaceRoots,
+      currentDate: event.currentDate,
+      timezone: event.timezone,
+      model: event.model,
+      modelProvider: event.modelProvider,
+      serviceTier: event.serviceTier,
+      reasoningEffort: event.reasoningEffort,
+      reasoningSummary: event.reasoningSummary,
+      personality: event.personality,
+      approvalPolicy: event.approvalPolicy,
+      approvalReviewer: event.approvalReviewer,
+      permissionProfile: event.permissionProfile,
+      sandboxMode: event.sandboxMode,
+      collaborationMode: event.collaborationMode,
+      realtimeActive: event.realtimeActive,
+      multiAgentMode: event.multiAgentMode,
+      multiAgentVersion: event.multiAgentVersion,
+      memoryMode: event.memoryMode,
+      historyMode: event.historyMode,
+      contextWindowId: event.contextWindowId,
+      availableTools: event.availableTools,
+      instructions: event.instructions,
+      goal: event.goal,
+      goalStatus: event.goalStatus,
+      summary: event.summary,
+    });
+    const visible = event.summary
+      ?? event.goal
+      ?? event.instructions
+      ?? [event.runtimeName, event.runtimeVersion, event.cwd, event.model, event.reasoningEffort, event.collaborationMode]
+        .filter(Boolean)
+        .join(' · ');
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'other',
+      order,
+      model: event.model,
+      runtimeKind: event.runtimeKind,
+      snippet: snippet(visible, 700),
+      fullText: fullText(details),
+      label: event.runtimeKind,
+    })];
+  }
+  if (event.eventKind === 'context_compaction') {
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'other',
+      order,
+      runtimeKind: 'context_compaction',
+      snippet: snippet(event.summary ?? 'context compacted', 700),
+      fullText: fullText(JSON.stringify(event)),
+      label: 'context compacted',
+    })];
+  }
+  if (event.eventKind === 'agent_activity') {
+    const visible = event.text
+      ?? [event.activity, event.author, event.recipient, event.agentPath, event.agentId]
+        .filter(Boolean)
+        .join(' · ');
+    return [timelineEvent({
+      ...base,
+      kind: 'agent_activity',
+      role: 'other',
+      order,
+      snippet: snippet(visible, 700),
+      fullText: fullText(JSON.stringify({
+        activityKind: event.activityKind,
+        activity: event.activity,
+        author: event.author,
+        recipient: event.recipient,
+        agentId: event.agentId,
+        agentPath: event.agentPath,
+        text: event.text,
+      })),
+      label: event.activityKind === 'communication' ? 'agent communication' : 'agent status',
+    })];
+  }
+  if (event.eventKind === 'usage') {
+    const usageText = JSON.stringify({
+      model: event.model,
+      inputTokens: event.inputTokens,
+      outputTokens: event.outputTokens,
+      cacheReadTokens: event.cacheReadTokens,
+      cacheCreationTokens: event.cacheCreationTokens,
+      reasoningTokens: event.reasoningTokens,
+    });
+    return [timelineEvent({
+      ...base,
+      kind: 'runtime_context',
+      role: 'other',
+      order,
+      model: event.model,
+      runtimeKind: 'usage',
+      snippet: snippet(usageText, 700),
+      fullText: fullText(usageText),
+      label: 'token usage',
     })];
   }
   if (event.eventKind === 'unknown') {
@@ -3169,7 +3406,12 @@ function userTimelineEvents(
     }));
   }
   const text = commandEnvelope ? stripCommandEnvelopeText(event.text) : event.text;
-  if (!text.trim()) return events;
+  const displayedSourceText = event.displayText?.trim() || event.text;
+  const displayText = commandEnvelope
+    ? stripCommandEnvelopeText(displayedSourceText)
+    : displayedSourceText;
+  const semanticText = event.origin === 'human' ? displayText : text;
+  if (!semanticText.trim()) return events;
   const kind = event.origin === 'human'
     ? 'user_message'
     : event.origin === 'skill-context'
@@ -3182,8 +3424,8 @@ function userTimelineEvents(
     kind,
     role: kind === 'user_message' ? 'user' : kind === 'synthetic_user_event' ? 'other' : 'tool',
     order: order + (commandEnvelope ? 1 : 0),
-    snippet: snippet(text, 700),
-    fullText: fullText(text),
+    snippet: snippet(semanticText, 700),
+    fullText: fullText(semanticText),
     label: userTextEventLabel(kind),
   }));
   return events;
@@ -3262,6 +3504,11 @@ function evidenceRefFromTimeline(event: ExperienceTimelineEvent): ExperienceEvid
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,
     role: event.role,
+    modelActivityKind: event.modelActivityKind,
+    contentVisibility: event.contentVisibility,
+    contentSource: event.contentSource,
+    sourceType: event.sourceType,
+    runtimeKind: event.runtimeKind,
     label: event.label,
     snippet: event.snippet,
   };
@@ -3573,12 +3820,19 @@ function summarizeExperienceSessions(
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, metricScopeId);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((invocation) => invocation.problemPatterns));
+    const sourceThreadId = sessionGroup.find((session) => session.role === 'main')?.rootRunId
+      ?? sessionGroup[0]?.rootRunId
+      ?? first.sessionId;
+    const threadId = hashParts('thread', first.sessionGroupKey);
+    const turns = reconstructExperienceTurns(fullSessionTimeline);
     const storyInvocations = invocations
       .filter((invocation) => invocation.sessionGroupKey === first.sessionGroupKey)
       .sort(compareStoryInvocations);
     const baseSession: Omit<ExperienceSessionSummary, 'sessionStory' | 'reviewerReport'> = {
       id: metricScopeId,
       skillName: first.skillName,
+      threadId,
+      sourceThreadId,
       sessionId: first.sessionId,
       sourceTrace: first.sourceTrace,
       sourceKind: first.sourceKind,
@@ -3605,6 +3859,8 @@ function summarizeExperienceSessions(
       relatedObservationIds,
       timelineRef: timelineRefForSessionGroup(first.sessionGroupKey),
       timelinePreviewEventIds: previewEvents.map((event) => event.id),
+      attributedEventIds: timeline.map((event) => event.id),
+      turns,
       timelinePreview: previewEvents,
       fullSessionTimeline,
       timelineTree,
@@ -4550,7 +4806,7 @@ function dispatchTerminalLifecycle(
     || candidate.sourceTrace === dispatch.sourceTrace
   );
   const event = branch?.events.at(-1);
-  if (event?.kind !== 'runtime_context') return undefined;
+  if (event?.kind !== 'lifecycle' && event?.kind !== 'runtime_context') return undefined;
   if (event.label === 'turn_completed' || event.label === 'session_ended') {
     return { status: 'completed', evidenceRef: evidenceRefFromTimeline(event) };
   }
@@ -6239,7 +6495,7 @@ function userFeedbackStepText(session: ExperienceSessionSummary, reviewState?: O
     feedbackCounts.positiveFeedbackCount > 0 ? `正向反馈 ${feedbackCounts.positiveFeedbackCount} 次` : '',
     session.indicators.userGoalShiftCount > 0 ? `目标切换 ${session.indicators.userGoalShiftCount} 次` : '',
   ].filter(Boolean);
-  return parts.length > 0 ? `用户反馈信号：${parts.join('，')}。` : '原始记录里没有看到人工追问、纠正、负向反馈或目标切换。';
+  return parts.length > 0 ? `用户反馈信号：${parts.join('，')}。` : '原始日志里没有看到人工追问、纠正、负向反馈或目标切换。';
 }
 
 function userFeedbackStepStatus(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportStepStatus {

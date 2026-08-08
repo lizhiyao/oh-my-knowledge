@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
 import { createReportServer } from '../../src/server/report-server.js';
+import type { ConversationCatalog } from '../../src/observability/conversation-catalog.js';
 import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { buildVariantSummary } from '../../src/eval-core/schema.js';
 import { managedRecordId } from '../../src/managed/store.js';
@@ -20,6 +21,26 @@ const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
 const MANAGED_DIR = join(tmpdir(), `omk-test-managed-${Date.now()}`);
 const REVIEW_RECORD_ID = managedRecordId('skill', 'review');
 const CURVE_RECORD_ID = managedRecordId('skill', 'curvy');
+const EMPTY_CONVERSATION_CATALOG: ConversationCatalog = {
+  async listConversations() {
+    return {
+      conversations: [],
+      totalTurnCount: 0,
+      totalToolCallCount: 0,
+      totalToolFailureCount: 0,
+      indexedConversationCount: 0,
+      unarchivedConversationCount: 0,
+      archivedConversationCount: 0,
+      workspaceCount: 0,
+    };
+  },
+  async getConversation() {
+    return undefined;
+  },
+  async loadTaskTrajectory() {
+    return undefined;
+  },
+};
 
 function variantResult(compositeScore: number): VariantResult {
   return {
@@ -354,7 +375,16 @@ describe('report-server', () => {
         },
       },
     }, null, 2));
-    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR, managedDir: MANAGED_DIR });
+    server = createReportServer({
+      port: 0,
+      reportsDir: TEST_DIR,
+      observationsDir: OBSERVATIONS_DIR,
+      jobsDir: JOBS_DIR,
+      analysesDir: ANALYSES_DIR,
+      doctorsDir: DOCTORS_DIR,
+      managedDir: MANAGED_DIR,
+      conversationCatalog: EMPTY_CONVERSATION_CATALOG,
+    });
     baseUrl = await server.start();
   });
 
@@ -1060,13 +1090,31 @@ describe('report-server', () => {
     assert.equal(res.status, 404);
   });
 
-  it('GET / returns HTML skill list (variants become skill entries)', async () => {
+  it('GET / returns the Codex conversation overview', async () => {
     const res = await fetch(`${baseUrl}/`);
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
-    // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
-    // 点行先进入 skill hub,由 hub 展示 Skill Map / 三阶段状态 / 图谱摘要。
-    // 行跳转走 data-href + 事件委托(非内联 onclick,见 skill-list-renderer)。
+    assert.ok(res.body.includes('Codex 对话'));
+    assert.ok(res.body.includes('conversation-app-nav'));
+    assert.ok(res.body.includes('<h1>对话</h1>'));
+    assert.ok(res.body.includes('conversation-index-app'));
+    assert.ok(res.body.includes('data-page-next'));
+  });
+
+  it('GET /api/conversations/activity returns a compact activity snapshot', async () => {
+    const res = await fetch(`${baseUrl}/api/conversations/activity`);
+
+    assert.equal(res.status, 200);
+    const snapshot = JSON.parse(res.body) as Record<string, unknown>;
+    assert.equal(snapshot.schemaVersion, 1);
+    assert.match(String(snapshot.revision), /^[a-f0-9]{24}$/u);
+    assert.equal(typeof snapshot.runningCount, 'number');
+  });
+
+  it('GET /knowledge returns the skill list', async () => {
+    const res = await fetch(`${baseUrl}/knowledge`);
+    assert.equal(res.status, 200);
+    assert.ok(res.headers['content-type']!.includes('text/html'));
     assert.ok(res.body.includes('data-href="/skills/'));
   });
 
@@ -1078,7 +1126,7 @@ describe('report-server', () => {
   });
 
   it('passes ?lang=en through skill list and detail pages', async () => {
-    const list = await fetch(`${baseUrl}/?lang=en`);
+    const list = await fetch(`${baseUrl}/knowledge?lang=en`);
     assert.equal(list.status, 200);
     assert.ok(list.body.includes('data-lang="en"'));
     // 列表行链接到 skill hub 并保留 ?lang=en

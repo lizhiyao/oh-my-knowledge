@@ -1936,10 +1936,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         user_message: '用户消息',
         synthetic_user_event: '构造事件',
         assistant_message: '助手回复',
+        model_activity: '模型活动',
+        agent_activity: '协作代理活动',
         tool_use: '工具调用',
         tool_result: '工具结果',
         skill_context: '能力说明',
         runtime_context: '运行注入',
+        lifecycle: '运行状态',
         observation: '过程发现',
       };
       return labels[kind] ?? kind;
@@ -2414,6 +2417,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    }
 	    if (event.kind === 'skill_context') return { icon: 'S', label: 'Skill 注入上下文', tone: 'skill' };
 	    if (event.kind === 'runtime_context') return { icon: 'R', label: event.label === 'command envelope' ? '命令注入上下文' : '运行时注入上下文', tone: 'skill' };
+	    if (event.kind === 'lifecycle') return { icon: 'L', label: '运行状态', tone: 'runtime' };
 	    return { icon: 'O', label: '过程发现', tone: 'observation' };
 	  };
 	  const isSkillLaunchResult = (event: ExperienceTimelineEvent): boolean =>
@@ -2627,6 +2631,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
     if (event.kind === 'runtime_context') {
       badges.push({ label: '不计入用户交互', className: 'metric-skill-context', title: event.label === 'command envelope' ? '这是斜杠命令的系统包装内容，不是人工用户原话，不计入用户消息、追问、纠正、情绪反馈或用户硬性要求。' : '这是 SDK/工作台注入的运行时上下文，不是人工用户原话，不计入用户消息、追问、纠正、情绪反馈或用户硬性要求。' });
+    }
+    if (event.kind === 'lifecycle') {
+      badges.push({ label: '运行状态', className: 'metric-neutral', title: '这是 runtime 记录的生命周期状态，不是模型上下文，也不计入用户交互。' });
     }
     if (event.kind === 'observation') {
       badges.push({ label: '过程发现来源', className: 'metric-explicit', title: '这条事件来自 observation 信号，会进入过程发现类指标。' });
@@ -5152,6 +5159,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        <span>入口 ${e(inboxEntrypointShort(session))}</span>
 	        <span>调用段 ${session.invocationIds.length}</span>
 	        <span>工具调用 ${indicators.toolCallCount}</span>
+	        <a href="/conversations/${encodeURIComponent(session.threadId)}${lang === DEFAULT_LANG ? '' : `?lang=${lang}`}" onclick="event.stopPropagation()">${lang === 'zh' ? '查看对话任务' : 'Conversation tasks'}</a>
 	      </div>
 	      ${navHtml}
 	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>

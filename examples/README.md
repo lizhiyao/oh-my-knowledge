@@ -10,6 +10,7 @@
 | [agent-runtime](./agent-runtime) | 依赖项目目录的 agent 任务评测 | `cd examples/agent-runtime && omk eval --control baseline --treatment repo-navigator --dry-run` |
 | [custom-executor](./custom-executor) | 不依赖 Claude，用自定义 executor 跑通链路 | `cd examples/custom-executor && omk eval --control baseline --treatment echo-assistant --executor ./echo-executor.sh --no-judge --report-only` |
 | [codex-observe-router](./codex-observe-router/README.zh.md) | Codex 父子任务 Trace IR、知识缺口信号与紧凑报告回读 | `npm exec --yes --package=oh-my-knowledge@0.49.0 -- node examples/codex-observe-router/verify.mjs` |
+| [codex-task-trajectory](./codex-task-trajectory/README.zh.md) | 脱敏真实 Codex 任务、Skill/工具证据与一屏任务轨迹 | `node dist/cli/index.js observe ingest examples/codex-task-trajectory/trace --output-dir .omk/task-trajectory-demo` |
 
 ## 怎么选
 
@@ -19,6 +20,7 @@
 - 你的 artifact 负责基于检索上下文回答问题，用 `rag-eval`。
 - 你的 prompt 必须读取仓库或项目目录，用 `agent-runtime`。
 - 想验证真实 Codex 父子任务能否还原为 source-neutral Trace IR，用 `codex-observe-router`。
+- 想直接查看真实 Codex 任务在输入与回答之间发生了什么，用 `codex-task-trajectory`。
 
 生成的报告和图谱 sidecar 会进入 `.omk/`，该目录已被 git 忽略。
 

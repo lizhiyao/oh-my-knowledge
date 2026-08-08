@@ -28,6 +28,7 @@
 | v2 是否真的优于 v1？ | `omk eval` | 一行 verdict、置信区间、失败样本、成本 |
 | 它为什么通过或失败？ | `omk studio` | 分数、诊断、样本证据的报告视图 |
 | 这个版本是否应成为接受版本？ | `omk promote` / `omk evolve` | 基于证据接受，或生成更好的候选版 |
+| 一次真实 AI 任务中发生了什么？ | `omk observe` / Studio 任务轨迹 | 请求、可见知识、工具调用与结果、回答和用户纠正的可核验轨迹 |
 | 真实使用暴露了哪些知识缺口？ | `omk observe` / `omk sample --from-traces` | 将线上缺口生成待复核草稿，复核后再沉淀为评测样本 |
 
 ![omk 报告 — verdict pill「v2 明显优于 v1，可以发布」](./assets/screenshots/report-overview-zh.png)
