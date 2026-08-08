@@ -63,6 +63,20 @@ export OMK_EXECUTOR=codex
 
 深入：[为谁、解决什么](docs/zh/explanation/who-omk-is-for.md) · [CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [知识载体布局](docs/zh/reference/artifact-layout.md)
 
+## 先看清一次 Codex 任务
+
+只想知道一次 Codex 对话背后发生了什么，不需要先运行 `observe ingest`：
+
+```bash
+omk studio
+```
+
+Studio 默认在 `http://127.0.0.1:7799` 打开本机 Codex 对话总览。先选择一段对话，再选择其中一次任务，即可进入「任务轨迹」：按**对话、执行、结果、知识**四条泳道查看请求、AI 回答、工具调用、工具返回和可见上下文，并可下钻到规范化事件与原始日志。
+
+进行中的任务会优先显示并实时更新。保持「跟随中」时，轨迹会随新事件平滑前进；手动查看历史位置后，页面保留当前位置并提示「查看更新」。旧日志如果没有记录结束事件，会标记为「未记录结束状态」，不会一直冒充进行中。
+
+任务轨迹只还原日志中可观测的事实，不展示或推断隐藏思维。完整说明见[观测与任务轨迹](docs/zh/guides/observe-production.md#查看一次任务)。
+
 ## OMK 的闭环
 
 OMK 主要给 LLM 知识载体的作者 / 维护者用，帮他们做发布判断；它不是给被动安装 skill 的普通使用者用的。主流程刻意保持受控：
@@ -172,6 +186,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[执行器](docs/zh/reference/executors.md)** & **[知识载体布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）
+- **[观测与任务轨迹](docs/zh/guides/observe-production.md)** —— 浏览本机 Codex 对话，下钻一次任务，并实时跟随可观测执行过程
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程
 - **[示例画廊](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)** —— 仓库里一组可直接跑的示例，按由简到全排成上手路径
 - **[用例设计规范](docs/zh/specs/sample-design-spec.md)** —— capability / construct / provenance 元数据；行业 gap 映射

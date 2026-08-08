@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -472,6 +472,6 @@ omk studio --no-open
 
 <!-- omk:cli:studio:flags:end -->
 
-启动本地知识工作台浏览报告。verdict、用例回退、跨用例 diff、饱和曲线、单用例 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
+启动本地知识工作台。首页直接索引本机 Codex 对话，进行中的对话优先展示；选择对话和任务后，可在四条泳道中查看任务轨迹，并在语义轨迹、规范化事件与原始日志之间相互核对。进行中的任务支持实时跟随，旧的未闭合任务会显示为「未记录结束状态」。这条浏览路径不要求先运行 `omk observe ingest`。
 
-Studio 是 skill-centric 信息架构 — 列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势，详情页（`/skills/<name>`）左栏列关键问题清单（skill 优化 / 用例优化 / 工具反馈三档），右栏画 chart.js 健康趋势 + 三个紧凑阶段卡（doctor / eval / observe），细节走 modal。旧的 run 列表挪到 `/runs`。访问 `/observe-inbox` 查看 observe inbox 看板：按 skill 资产视图（rollup）+ reviewer 待办建议 + 当前可观测漏斗 + 单 observation 详情面板（含事件三元组）。
+顶部「知识载体」入口继续提供 doctor / eval / observe 报告浏览，包括 verdict、用例 diff、饱和曲线和单用例 drill-down。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 仍使用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），自动化读取使用 report JSON。

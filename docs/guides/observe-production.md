@@ -51,16 +51,33 @@ Both workflows persist an ingestion summary. If the source contains malformed re
 
 ## Inspect one task
 
-After `omk observe ingest`, start `omk studio` and open **Conversations** to browse observed logs as **Thread → Turn**, then select one turn to open **Task Trajectory**. The list currently covers conversations already present in observe reports; it is not an inventory of every local AI conversation.
+Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Thread → Turn**:
+
+```bash
+omk studio
+```
+
+Select a conversation from the overview, then choose one task to open **Task Trajectory**. The overview supports title and workspace search and separates running, unarchived, and archived conversations. The homepage currently indexes local Codex sessions directly; Claude Code, OpenClaw, and markdown traces still enter observation reports through `omk observe`.
 
 Task boundaries prefer a source-native `turnId`, then lifecycle events such as `turn_started` / `turn_completed`. Only sources without native turn boundaries fall back to user-message segmentation. Skill attribution annotates knowledge related to the selected turn; it never defines the task boundary.
 
 Task Trajectory projects source-neutral Trace IR into four observable lanes:
 
 - **Conversation**: the original request, AI responses, and later user corrections;
-- **Actions**: structured tool calls;
+- **Actions**: tool calls initiated by the AI;
 - **Results**: paired tool returns and system events;
 - **Knowledge**: runtime context and knowledge entering the task.
+
+### Follow a running task live
+
+Studio marks the most recent task as **Running** only while it is still active and has no terminal evidence, and brings it to the top. Opening that task starts a local event stream that updates the trajectory incrementally:
+
+- **Following** keeps inspector state and smoothly advances the visible trajectory as new events arrive;
+- **View updates** appears after you manually inspect an earlier position, so Studio does not steal the viewport;
+- **Task ended** stops live following after a completion, interruption, or terminal event;
+- **End status not recorded** replaces Running when an old unclosed log falls outside the activity window.
+
+Live updates only reread local logs and refresh the current view; they do not call a model. `omk studio` uses the fixed port `7799` by default; pass `--port` explicitly to change it.
 
 The page exposes three traceable layers with distinct responsibilities:
 

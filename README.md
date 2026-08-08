@@ -63,6 +63,20 @@ Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recomme
 
 Deeper: [who omk is for](docs/explanation/who-omk-is-for.md) · [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
+## Inspect one Codex task
+
+If you only want to see what happened behind one Codex conversation, you do not need to run `observe ingest` first:
+
+```bash
+omk studio
+```
+
+Studio opens the local Codex conversation overview at `http://127.0.0.1:7799` by default. Select a conversation, then a task, to open **Task Trajectory**. Its four lanes — **Conversation, Actions, Results, and Knowledge** — show the request, AI responses, tool calls, tool returns, and observable context, with drill-downs into normalized events and raw logs.
+
+Running tasks are prioritized and update live. While **Following**, the trajectory advances smoothly as events arrive; after you inspect an earlier point, Studio keeps your position and offers **View updates**. Old logs without a terminal event are marked **End status not recorded** instead of remaining live forever.
+
+Task Trajectory only reconstructs facts observable in the log. It does not reveal or infer hidden reasoning. See [Observe production traces](docs/guides/observe-production.md#inspect-one-task) for the full model.
+
 ## The OMK loop
 
 OMK is for authors and maintainers of LLM knowledge artifacts who need a release decision, not for passive end-users of a skill. The main loop is deliberately controlled:
@@ -172,6 +186,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
+- **[Observe & inspect task trajectories](docs/guides/observe-production.md)** — browse local Codex conversations, drill into one task, and follow its observable execution live
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
 - **[Example gallery](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples)** — a set of runnable examples in the repo, arranged simplest-to-richest
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping

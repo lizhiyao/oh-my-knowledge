@@ -37,7 +37,7 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 | 改进 / 优化 skill | → `omk evolve`（自动多轮迭代） |
 | 生成测试用例 | → `omk sample` |
 | 体检 skill 写法 | → `omk doctor` |
-| 查看 / 浏览报告 | → `omk studio`（启动本地报告浏览器） |
+| 浏览对话、任务轨迹与报告 | → `omk studio`（启动本地知识工作台） |
 | 看真实使用 trace | → `omk observe` |
 | 查看受管 skill 状态 | → `omk list` |
 | 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
@@ -138,7 +138,7 @@ omk observe ingest ~/.codex/sessions
 omk observe ~/.claude/projects/<project> --last 7d
 ```
 
-Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`observe ingest` 生成待复核 observation；在 Studio 的观测收件箱中打开「任务轨迹」，可按对话、执行、结果和知识查看结构化事实，并联动检查配对后的工具调用与结果、AI 回答和用户纠正。该页面只呈现 trace 中可观测的执行过程，不推断隐藏思维或失败根因。确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
+Codex rollout 会保留 `sourceKind=codex`、模型、父子任务、tool call 和 token 证据，并从实际读取的 `skills/<name>/SKILL.md` 归因 skill。`omk studio` 无需先 ingest，即可从本机 Codex 对话总览进入某次任务的实时轨迹；`observe ingest` 只在需要生成待复核 observation 时运行。任务轨迹按对话、执行、结果和知识呈现结构化事实，并联动检查配对后的工具调用与结果、AI 回答和用户纠正。该页面只呈现 trace 中可观测的执行过程，不推断隐藏思维或失败根因。确认真实知识缺口后，再用 `omk sample --from-traces` 草拟评测用例。
 
 ### 体检 skill 写法
 
@@ -155,16 +155,16 @@ omk doctor skills/my-skill.md
 
 `omk eval` 默认会先跑一次 doctor 当 preflight 门禁，所以一般不用单独跑；想在 eval 之前先把结构问题先扫一遍再跑评测，就单独跑 `omk doctor`。
 
-### 查看 / 浏览报告
+### 浏览对话、任务轨迹与报告
 
 ```bash
-omk studio                                # 启动本地 web 报告浏览器
+omk studio                                # 启动本地知识工作台（默认端口 7799）
 omk studio --port 8080                    # 改端口
 omk studio --host 0.0.0.0                 # 局域网访问（默认 127.0.0.1）
 omk studio --no-open                      # 不自动开浏览器
 ```
 
-Studio 是 skill-centric：列表页（`/`）按 skill 卡片展示健康等级 / 0-100 参考分 / 待优化数 / 趋势；详情页（`/skills/<name>`）左栏列关键问题清单，右栏画健康趋势 + 三档阶段卡（doctor / eval / observe）。访问 `/observe-inbox` 查看 observe inbox 看板。
+Studio 首页直接索引本机 Codex 对话。先选择对话，再选择任务查看四泳道任务轨迹；进行中的任务支持实时跟随。顶部「知识载体」入口用于浏览 doctor / eval / observe 报告，`/observe-inbox` 用于复核 observation。无需为了浏览本机 Codex 对话而先运行 `omk observe ingest`。
 
 ## 第五步：解读结果
 

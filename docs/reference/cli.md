@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -472,6 +472,6 @@ For full descriptions: `omk studio --help`.
 
 <!-- omk:cli:studio:flags:end -->
 
-Starts the local knowledge workbench for browsing reports and observation analyses. Verdict, sample diffs, regressions, saturation curves, and per-sample drill-downs all live in the studio UI — there is no CLI export / analysis subcommand. For CI gates, use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise) or `jq` over the report JSON.
+Starts the local knowledge workbench. The homepage indexes local Codex conversations directly and prioritizes running work. Select a conversation and task to inspect its four-lane Task Trajectory, then cross-check the semantic trajectory against normalized events and raw logs. Running tasks support live following; stale unclosed tasks are labeled **End status not recorded**. This browsing path does not require `omk observe ingest` first.
 
-Studio is skill-centric — the list page (`/`) shows skill cards with health band / 0-100 reference score / open-issue count / trend; the detail page (`/skills/<name>`) puts a prioritized issue checklist on the left (skill issues / sample issues / tool advisories), and a chart.js health trend plus three compact stage cards (doctor / eval / observe) on the right, with modals for deeper drill-down. The legacy run list moved to `/runs`. Visit `/observe-inbox` for the observe inbox dashboard: per-skill rollup view, reviewer action list, observability funnel, and a per-observation detail panel with the event triplet (surrounding messages).
+The top-level **Knowledge artifacts** entry continues to expose doctor, eval, and observe reports, including verdicts, sample diffs, saturation curves, and per-sample drill-downs. Visit `/observe-inbox` for the observation reviewer queue. CI gates still use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise), while automation should read the report JSON.
