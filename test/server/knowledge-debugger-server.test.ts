@@ -397,6 +397,48 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(html, /<div class="trajectory-field-content"><strong>Complete answer<\/strong>[\s\S]*DETAIL_END_MARKER<\/div>/);
   });
 
+  it('shows observable context content in the inspector and distinguishes missing source content', () => {
+    const contextStep = debuggerModel.steps.find((step) => step.stepKind === 'runtime_context');
+    assert.ok(contextStep);
+    const contextEvent = contextStep.events[0];
+    assert.ok(contextEvent);
+    const contextContent = Array.from({ length: 12 }, (_value, index) => `context line ${index + 1}`).join('\n');
+    const withContent = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      normalizedEvents: debuggerModel.normalizedEvents.map((event) => event.id === contextEvent.id
+        ? { ...event, fullText: contextContent, snippet: 'context summary' }
+        : event),
+      steps: debuggerModel.steps.map((step) => step.id === contextStep.id
+        ? {
+            ...step,
+            events: step.events.map((event, index) => index === 0
+              ? { ...event, fullText: contextContent, snippet: 'context summary' }
+              : event),
+          }
+        : step),
+    });
+
+    assert.match(withContent, /<span class="trajectory-field-label">上下文内容<\/span>/);
+    assert.match(withContent, /源日志已记录可见内容/);
+    assert.match(withContent, new RegExp(`data-detail-source-event-id="${contextEvent.id}"`));
+    assert.match(withContent, /data-preview-status="已显示 8 \/ 12 行"/);
+    assert.match(withContent, /data-expand-label="展开完整内容"/);
+
+    const withoutContent = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      steps: debuggerModel.steps.map((step) => step.id === contextStep.id
+        ? {
+            ...step,
+            events: step.events.map((event, index) => index === 0
+              ? { ...event, fullText: undefined, snippet: undefined }
+              : event),
+          }
+        : step),
+    });
+    assert.match(withoutContent, /源日志未记录上下文内容/);
+    assert.match(withoutContent, /当前规范化事件只保留了上下文类型与元数据。/);
+  });
+
   it('distinguishes historical missing results from live pending results', () => {
     const exchange = debuggerModel.steps.find((step) => step.stepKind === 'tool_exchange');
     assert.ok(exchange);

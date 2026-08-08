@@ -1338,6 +1338,8 @@ function projectReplay(
 
     if (step.stepKind === 'runtime_context' || step.stepKind === 'skill_context') {
       const first = evidence[0];
+      const contextEvent = step.events[0];
+      const contextContent = observableContextContent(contextEvent);
       const knowledgeTimestamp = evidenceTimestampForStep(evidence, step) ?? step.timestamp;
       const operationFacetIds = first
         ? [registerFacet('knowledge', first.knowledgeKind, knowledgeKindLabel(first, lang))]
@@ -1369,6 +1371,13 @@ function projectReplay(
         fields: [
           { label: 'Knowledge', value: evidence.map((item) => `${knowledgeKindLabel(item, lang)} · ${item.label}`).join('、') || step.title, detail: evidence.map((item) => item.sourceLocator ?? '').filter(Boolean).join('\n') || (zh ? '来源未记录' : 'Source not recorded') },
           { label: zh ? '访问方式' : 'Access', value: first ? ACCESS_LABELS[first.accessKind][lang] : STEP_LABELS[step.stepKind][lang], detail: formatDisplayTimestamp(first?.firstSeen ?? step.timestamp, lang) },
+          {
+            label: zh ? '上下文内容' : 'Context content',
+            value: contextContent ? (zh ? '源日志已记录可见内容' : 'Observable content recorded') : (zh ? '源日志未记录上下文内容' : 'Context content not recorded by the source log'),
+            detail: contextContent ?? (zh ? '当前规范化事件只保留了上下文类型与元数据。' : 'The normalized event only retains the context type and metadata.'),
+            detailSourceEventId: contextContent ? contextEvent?.id : undefined,
+            detailKind: 'content',
+          },
           { label: zh ? '内容身份' : 'Content identity', value: first?.contentHash ? `sha256:${shortHash(first.contentHash)}` : (zh ? '未记录哈希' : 'Hash not recorded'), detail: zh ? '只标识观测到的内容，不推断是否被模型采用' : 'Identifies observed content without inferring model use' },
         ],
         events: step.events,
@@ -2392,6 +2401,12 @@ function reasoningContentSourceLabel(
 
 function eventPreview(event: ExperienceTimelineEvent | undefined, fallback: string): string {
   return event?.fullText?.trim() || event?.snippet?.trim() || fallback;
+}
+
+function observableContextContent(event: ExperienceTimelineEvent | undefined): string | undefined {
+  const fullText = event?.fullText?.trim();
+  if (fullText && fullText !== '{}') return fullText;
+  return event?.snippet?.trim() || undefined;
 }
 
 function compactText(value: string, maxLength: number): string {
