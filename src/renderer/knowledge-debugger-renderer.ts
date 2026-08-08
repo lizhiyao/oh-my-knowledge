@@ -106,6 +106,7 @@ interface ReplayField {
   value: string;
   detail: string;
   presentation?: 'default' | 'content';
+  copyable?: boolean;
   detailSourceEventId?: string;
   detailKind?: 'content' | 'result';
 }
@@ -1375,6 +1376,7 @@ function projectReplay(
             label: zh ? '上下文内容' : 'Context content',
             value: contextContent ? (zh ? '源日志已记录可见内容' : 'Observable content recorded') : (zh ? '源日志未记录上下文内容' : 'Context content not recorded by the source log'),
             detail: contextContent ?? (zh ? '当前规范化事件只保留了上下文类型与元数据。' : 'The normalized event only retains the context type and metadata.'),
+            copyable: Boolean(contextContent),
             detailSourceEventId: contextContent ? contextEvent?.id : undefined,
             detailKind: 'content',
           },
@@ -1782,7 +1784,7 @@ function renderSemanticPanel(operation: ReplayOperation, selected: boolean, lang
 
 function renderFieldDetail(field: ReplayField, lang: Lang): string {
   const preview = fieldDetailPreview(field.detail);
-  if (!preview.truncated || !field.detailSourceEventId) {
+  if ((!preview.truncated || !field.detailSourceEventId) && !field.copyable) {
     return `<code class="trajectory-field-detail">${e(field.detail)}</code>`;
   }
   const zh = lang === 'zh';
@@ -1795,7 +1797,18 @@ function renderFieldDetail(field: ReplayField, lang: Lang): string {
   const collapseLabel = zh ? (result ? '收起结果' : '收起内容') : (result ? 'Collapse result' : 'Collapse content');
   const copyLabel = zh ? (result ? '复制结果' : '复制内容') : (result ? 'Copy result' : 'Copy content');
   const copiedLabel = zh ? '已复制' : 'Copied';
-  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false" data-detail-source-event-id="${e(field.detailSourceEventId)}" data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(preview.text)}</code><div class="trajectory-field-detail-actions"><span class="trajectory-field-detail-status" data-field-detail-status>${e(previewStatus)}</span><span class="trajectory-field-detail-controls"><button class="trajectory-field-detail-toggle" type="button" data-field-detail-toggle aria-expanded="false">${e(expandLabel)}</button><button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
+  const canExpand = preview.truncated && Boolean(field.detailSourceEventId);
+  const displayedDetail = canExpand ? preview.text : field.detail;
+  const sourceEventAttribute = field.detailSourceEventId
+    ? ` data-detail-source-event-id="${e(field.detailSourceEventId)}"`
+    : '';
+  const status = canExpand
+    ? `<span class="trajectory-field-detail-status" data-field-detail-status>${e(previewStatus)}</span>`
+    : '<span></span>';
+  const toggle = canExpand
+    ? `<button class="trajectory-field-detail-toggle" type="button" data-field-detail-toggle aria-expanded="false">${e(expandLabel)}</button>`
+    : '';
+  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false"${sourceEventAttribute} data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(displayedDetail)}</code><div class="trajectory-field-detail-actions">${status}<span class="trajectory-field-detail-controls">${toggle}<button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
 }
 
 function fieldDetailPreview(detail: string): {

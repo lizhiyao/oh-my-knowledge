@@ -424,6 +424,26 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(withContent, /data-preview-status="已显示 8 \/ 12 行"/);
     assert.match(withContent, /data-expand-label="展开完整内容"/);
 
+    const shortContent = '{"cwd":"/tmp/copyable-execution-context"}';
+    const withShortContent = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      normalizedEvents: debuggerModel.normalizedEvents.map((event) => event.id === contextEvent.id
+        ? { ...event, fullText: shortContent, snippet: shortContent, runtimeKind: 'execution_context' }
+        : event),
+      steps: debuggerModel.steps.map((step) => step.id === contextStep.id
+        ? {
+            ...step,
+            title: 'execution_context',
+            events: step.events.map((event, index) => index === 0
+              ? { ...event, fullText: shortContent, snippet: shortContent, runtimeKind: 'execution_context' }
+              : event),
+          }
+        : step),
+    });
+    assert.match(withShortContent, /copyable-execution-context/);
+    assert.match(withShortContent, /data-copy-label="复制内容"/);
+    assert.match(withShortContent, /data-field-detail-copy aria-label="复制内容"/);
+
     const withoutContent = renderKnowledgeDebuggerPage({
       ...debuggerModel,
       steps: debuggerModel.steps.map((step) => step.id === contextStep.id
@@ -522,7 +542,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(html, /data-full-status="完整内容 · 12 行"/);
     assert.match(html, /data-expand-label="展开完整结果"/);
     assert.match(html, /data-copy-label="复制结果"/);
-    const preview = html.match(/<code class="trajectory-field-detail" data-field-detail>([\s\S]*?)<\/code>/)?.[1] ?? '';
+    const preview = html.match(/data-copy-label="复制结果"[^>]*><code class="trajectory-field-detail" data-field-detail>([\s\S]*?)<\/code>/)?.[1] ?? '';
     assert.match(preview, /result line 1/);
     assert.match(preview, /result line 8/);
     assert.doesNotMatch(preview, /result line 9/);
