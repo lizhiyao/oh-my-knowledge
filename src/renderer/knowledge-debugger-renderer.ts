@@ -373,7 +373,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-field.is-content .trajectory-field-detail{max-height:none;margin-top:5px;overflow:visible}
       .trajectory-field-detail{display:block;max-height:132px;overflow:auto;color:var(--text-secondary);font:400 10px/1.45 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
       .trajectory-field-detail-block{min-width:0}
-      .trajectory-field-detail-block .trajectory-field-detail{overflow:hidden}
+      .trajectory-field-detail-block[data-expandable="true"]:not([data-expanded="true"]) .trajectory-field-detail{overflow:hidden}
       .trajectory-field-detail-block[data-expanded="true"] .trajectory-field-detail{max-height:min(320px,42vh);overflow:auto;color:var(--text-primary)}
       .trajectory-field-detail-actions{display:flex;min-height:24px;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
       .trajectory-field-detail-status{color:var(--text-muted);font-size:9px;white-space:nowrap}
@@ -1808,7 +1808,7 @@ function renderFieldDetail(field: ReplayField, lang: Lang): string {
   const toggle = canExpand
     ? `<button class="trajectory-field-detail-toggle" type="button" data-field-detail-toggle aria-expanded="false">${e(expandLabel)}</button>`
     : '';
-  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false"${sourceEventAttribute} data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(displayedDetail)}</code><div class="trajectory-field-detail-actions">${status}<span class="trajectory-field-detail-controls">${toggle}<button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
+  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false" data-expandable="${String(canExpand)}"${sourceEventAttribute} data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(displayedDetail)}</code><div class="trajectory-field-detail-actions">${status}<span class="trajectory-field-detail-controls">${toggle}<button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
 }
 
 function fieldDetailPreview(detail: string): {

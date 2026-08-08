@@ -441,6 +441,7 @@ describe('Knowledge Debugger task trajectory server', () => {
         : step),
     });
     assert.match(withShortContent, /copyable-execution-context/);
+    assert.match(withShortContent, /data-expandable="false"/);
     assert.match(withShortContent, /data-copy-label="复制内容"/);
     assert.match(withShortContent, /data-field-detail-copy aria-label="复制内容"/);
 
