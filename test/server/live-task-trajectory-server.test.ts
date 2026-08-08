@@ -18,6 +18,7 @@ describe('Live task trajectory server', () => {
   let baseUrl = '';
   let trajectory: ConversationTaskTrajectory;
   let unsubscribed = false;
+  let cancelledBeforeReady = false;
 
   beforeAll(async () => {
     mkdirSync(join(root, 'reports'), { recursive: true });
@@ -66,10 +67,22 @@ describe('Live task trajectory server', () => {
       async loadTaskTrajectory() {
         return trajectory;
       },
-      async observeTaskTrajectory(_threadId, turnId, observer) {
+      async observeTaskTrajectory(_threadId, turnId, observer, options) {
         if (turnId === 'error') {
           observer.error?.(new Error('实时轨迹读取失败'));
           return () => { unsubscribed = true; };
+        }
+        if (turnId === 'pending') {
+          return new Promise<() => void>((_resolve, reject) => {
+            const abort = () => {
+              cancelledBeforeReady = true;
+              const error = new Error('cancelled');
+              error.name = 'AbortError';
+              reject(error);
+            };
+            if (options?.signal?.aborted) abort();
+            else options?.signal?.addEventListener('abort', abort, { once: true });
+          });
         }
         observer.next(trajectory);
         return () => { unsubscribed = true; };
@@ -127,7 +140,31 @@ describe('Live task trajectory server', () => {
     assert.match(event, /event: trajectory-error/);
     assert.match(event, /"error":"实时轨迹读取失败"/);
   });
+
+  it('cancels live initialization when the client disconnects before the first snapshot', async () => {
+    await connectThenClose(
+      `${baseUrl}/api/conversations/thread/tasks/pending/live`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(cancelledBeforeReady, true);
+  });
 });
+
+function connectThenClose(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const request = http.get({
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: parsed.pathname,
+      headers: { Accept: 'text/event-stream' },
+    }, () => {
+      request.destroy();
+      resolve();
+    });
+    request.on('error', (cause) => reject(cause));
+  });
+}
 
 function readFirstEvent(url: string): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -60,6 +60,10 @@ export interface ConversationTaskTrajectoryObserver {
   error?(cause: unknown): void;
 }
 
+export interface ConversationTaskTrajectorySubscriptionOptions {
+  signal?: AbortSignal;
+}
+
 export interface ConversationCatalog {
   listConversations(): Promise<ConversationIndexViewModel>;
   getConversation(threadId: string): Promise<ConversationListItem | undefined>;
@@ -69,6 +73,7 @@ export interface ConversationCatalog {
     threadId: string,
     turnId: string,
     observer: ConversationTaskTrajectoryObserver,
+    options?: ConversationTaskTrajectorySubscriptionOptions,
   ): Promise<() => void>;
 }
 
@@ -172,6 +177,7 @@ class CodexConversationCatalog implements ConversationCatalog {
     threadId: string,
     turnId: string,
     observer: ConversationTaskTrajectoryObserver,
+    options: ConversationTaskTrajectorySubscriptionOptions = {},
   ): Promise<() => void> {
     const row = this.findThreadRow(threadId);
     if (!row || !existsSync(row.rolloutPath)) {
@@ -186,6 +192,7 @@ class CodexConversationCatalog implements ConversationCatalog {
         complete: () => observer.complete?.(),
         error: (cause) => observer.error?.(cause),
       },
+      options,
     );
   }
 

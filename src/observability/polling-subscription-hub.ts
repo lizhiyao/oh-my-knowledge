@@ -14,6 +14,10 @@ export interface PollingSnapshotObserver<T> {
   error?(cause: unknown): void;
 }
 
+export interface PollingSubscriptionOptions {
+  signal?: AbortSignal;
+}
+
 interface SubscriptionEntry<T> {
   active: boolean;
   observers: Set<PollingSnapshotObserver<T>>;
@@ -38,6 +42,7 @@ export class PollingSubscriptionHub<T> {
     key: string,
     loader: PollingSnapshotLoader<T>,
     observer: PollingSnapshotObserver<T>,
+    options: PollingSubscriptionOptions = {},
   ): Promise<() => void> {
     let entry = this.entries.get(key);
     if (!entry) {
@@ -62,20 +67,37 @@ export class PollingSubscriptionHub<T> {
     entry.observers.add(observer);
     if (entry.latest) notifyNext(observer, entry.latest);
 
-    try {
-      await entry.ready;
-    } catch (cause) {
-      entry.observers.delete(observer);
-      throw cause;
-    }
-
     let subscribed = true;
-    return () => {
+    let rejectAborted: ((cause: unknown) => void) | undefined;
+    const aborted = options.signal
+      ? new Promise<never>((_resolve, reject) => {
+        rejectAborted = reject;
+      })
+      : undefined;
+    const unsubscribe = (): void => {
       if (!subscribed) return;
       subscribed = false;
+      options.signal?.removeEventListener('abort', abort);
       entry?.observers.delete(observer);
       if (entry && entry.observers.size === 0) this.dispose(key, entry);
     };
+    const abort = (): void => {
+      unsubscribe();
+      rejectAborted?.(subscriptionAbortError());
+    };
+    if (options.signal) {
+      options.signal.addEventListener('abort', abort, { once: true });
+      if (options.signal.aborted) abort();
+    }
+
+    try {
+      await (aborted ? Promise.race([entry.ready, aborted]) : entry.ready);
+    } catch (cause) {
+      unsubscribe();
+      throw cause;
+    }
+
+    return unsubscribe;
   }
 
   close(): void {
@@ -117,11 +139,18 @@ export class PollingSubscriptionHub<T> {
   private dispose(key: string, entry: SubscriptionEntry<T>): void {
     if (!entry.active) return;
     entry.active = false;
+    entry.rejectReady(subscriptionAbortError());
     if (entry.timer) clearTimeout(entry.timer);
     entry.timer = undefined;
     entry.observers.clear();
     if (this.entries.get(key) === entry) this.entries.delete(key);
   }
+}
+
+function subscriptionAbortError(): Error {
+  const error = new Error('Polling subscription closed before the initial snapshot was ready');
+  error.name = 'AbortError';
+  return error;
 }
 
 function notifyNext<T>(observer: PollingSnapshotObserver<T>, snapshot: PollingSnapshot<T>): void {

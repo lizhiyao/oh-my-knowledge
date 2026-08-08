@@ -292,6 +292,8 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.doesNotMatch(replay.body, /class="trajectory-boundary"/);
     assert.match(replay.body, /aria-label="了解三类信息"/);
     assert.match(replay.body, /原始日志 → 规范化事件 → 语义轨迹/);
+    assert.match(replay.body, /经脱敏和有界归档后保留的来源日志原文/);
+    assert.doesNotMatch(replay.body, /Codex 写入、经脱敏和有界归档/);
     assert.match(replay.body, /不代表模型实际采用了它/);
     assert.match(replay.body, /boundaryInfo\.open = false/);
     assert.match(replay.body, /boundarySummary\?\.focus\(\)/);
@@ -489,6 +491,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /Tool returns and call status/);
     assert.match(replay.body, /Normalized events/);
     assert.match(replay.body, /Raw logs/);
+    assert.match(replay.body, /Source log records retained after redaction and bounded archiving/);
     assert.match(replay.body, /User correction/);
     assert.doesNotMatch(replay.body, /Back to observation inbox/);
     assert.doesNotMatch(replay.body, /hidden (thought|reasoning)|chain of thought/i);

@@ -1095,6 +1095,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
         let closed = false;
         let unsubscribe: (() => void) | undefined;
+        const lifecycle = new AbortController();
         const heartbeat = setInterval(() => {
           if (!res.destroyed && !res.writableEnded) res.write(': keepalive\n\n');
         }, 15_000);
@@ -1103,6 +1104,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           if (closed) return;
           closed = true;
           clearInterval(heartbeat);
+          lifecycle.abort();
           unsubscribe?.();
           liveStreamClosers.delete(close);
           if (!res.destroyed && !res.writableEnded) res.end();
@@ -1135,6 +1137,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
                 close();
               },
             },
+            { signal: lifecycle.signal },
           );
           if (closed) unsubscribe();
         } catch (cause) {

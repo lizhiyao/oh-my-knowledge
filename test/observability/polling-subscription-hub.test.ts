@@ -68,4 +68,42 @@ describe('PollingSubscriptionHub', () => {
     await delay(15);
     assert.match(String(failure), /poll failed/u);
   });
+
+  it('cancels a subscriber while the initial snapshot is still loading', async () => {
+    const hub = new PollingSubscriptionHub<number>(1);
+    const controller = new AbortController();
+    let releaseLoader!: () => void;
+    const loaderReady = new Promise<void>((resolve) => {
+      releaseLoader = resolve;
+    });
+    const values: number[] = [];
+    const subscription = hub.subscribe('task', async () => {
+      await loaderReady;
+      return { revision: 'late', terminal: false, value: 1 };
+    }, {
+      next: ({ value }) => values.push(value),
+    }, {
+      signal: controller.signal,
+    });
+
+    controller.abort();
+    await assert.rejects(subscription, (cause: unknown) => (
+      cause instanceof Error && cause.name === 'AbortError'
+    ));
+    releaseLoader();
+    await delay(5);
+    assert.deepEqual(values, []);
+  });
+
+  it('settles an initial subscriber when the hub closes', async () => {
+    const hub = new PollingSubscriptionHub<number>(1);
+    const subscription = hub.subscribe('task', async () => new Promise(() => undefined), {
+      next: () => undefined,
+    });
+
+    hub.close();
+    await assert.rejects(subscription, (cause: unknown) => (
+      cause instanceof Error && cause.name === 'AbortError'
+    ));
+  });
 });

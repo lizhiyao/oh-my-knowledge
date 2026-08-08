@@ -1868,7 +1868,7 @@ function renderTrajectoryViewExplanation(model: KnowledgeDebuggerViewModel, lang
     return `<h3>本页如何划定与呈现任务</h3>
       <p class="trajectory-boundary-flow">原始日志 → 规范化事件 → 语义轨迹</p>
       <dl class="trajectory-boundary-levels">
-        <div><dt>原始日志</dt><dd>Codex 写入、经脱敏和有界归档的 JSONL 日志原文。</dd></div>
+        <div><dt>原始日志</dt><dd>经脱敏和有界归档后保留的来源日志原文。</dd></div>
         <div><dt>规范化事件</dt><dd>OMK 将不同来源的私有格式转换成统一的 Trace IR。</dd></div>
         <div><dt>语义轨迹</dt><dd>面向人，把事件组织为对话、执行、结果和知识。</dd></div>
       </dl>
@@ -1877,7 +1877,7 @@ function renderTrajectoryViewExplanation(model: KnowledgeDebuggerViewModel, lang
   return `<h3>How the three views relate</h3>
     <p class="trajectory-boundary-flow">Raw logs → Normalized events → Semantic trajectory</p>
     <dl class="trajectory-boundary-levels">
-      <div><dt>Raw logs</dt><dd>Redacted, bounded JSONL entries archived from the Codex source.</dd></div>
+      <div><dt>Raw logs</dt><dd>Source log records retained after redaction and bounded archiving.</dd></div>
       <div><dt>Normalized events</dt><dd>Source-specific records converted by OMK into source-neutral Trace IR.</dd></div>
       <div><dt>Semantic trajectory</dt><dd>A human-readable projection across conversation, action, result, and knowledge lanes.</dd></div>
     </dl>
