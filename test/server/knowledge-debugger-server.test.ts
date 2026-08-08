@@ -759,6 +759,12 @@ describe('Knowledge Debugger task trajectory server', () => {
     const compactSequencePositions = [...compactSequenceHtml.matchAll(/<button class="trajectory-event[^"]*"[^>]*style="--event-x:(\d+)px/g)]
       .map((match) => Number(match[1]));
     assert.deepEqual(compactSequencePositions, [16, 154, 188]);
+    const compactTickPositions = [...compactSequenceHtml.matchAll(/class="trajectory-tick" style="left:(\d+)px"/g)]
+      .map((match) => Number(match[1]));
+    const compactGuidePositions = [...compactSequenceHtml.matchAll(/class="trajectory-guide" style="left:(\d+)px"/g)]
+      .map((match) => Number(match[1]));
+    assert.deepEqual(compactTickPositions, [16, 188]);
+    assert.deepEqual(compactGuidePositions, compactTickPositions);
     const startMs = Date.parse(debuggerModel.summary.observedStartTimestamp ?? '2026-08-03T00:00:00.000Z');
     const scaleTimestamp = (timestamp: string | undefined): string | undefined => {
       if (!timestamp) return undefined;

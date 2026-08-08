@@ -147,6 +147,9 @@ const OPERATION_LANE_GAP = 20;
 const OPERATION_FLOW_ADVANCE = 28;
 const COMPACT_FLOW_ADVANCE = 18;
 const TRACK_START_PADDING = 16;
+const AXIS_TICK_PADDING = 7;
+const AXIS_TICK_GLYPH_WIDTH = 5.5;
+const AXIS_TICK_CLEARANCE = 8;
 
 const LANE_LABELS: Record<ReplayLaneKind, Record<Lang, { title: string; detail: string; empty: string }>> = {
   conversation: {
@@ -1945,8 +1948,7 @@ function sourceRecordUnavailableLabel(
 }
 
 function renderAxis(projection: ReplayProjection, lang: Lang): string {
-  const ticks = projection.axisTicks
-    .filter((tick) => !projection.milestones.some((milestone) => Math.abs(milestone.position - tick.position) < 110))
+  const ticks = visibleAxisTicks(projection)
     .map((tick) => `<span class="trajectory-tick" style="left:${Math.round(tick.position)}px">${e(tick.label)}</span>`)
     .join('');
   const gaps = projection.gaps.map((gap) => {
@@ -1959,8 +1961,7 @@ function renderAxis(projection: ReplayProjection, lang: Lang): string {
 }
 
 function renderGuides(projection: ReplayProjection): string {
-  const ticks = projection.axisTicks
-    .filter((tick) => !projection.milestones.some((milestone) => Math.abs(milestone.position - tick.position) < 110))
+  const ticks = visibleAxisTicks(projection)
     .map((tick) => `<span class="trajectory-guide" style="left:${Math.round(tick.position)}px"></span>`)
     .join('');
   const gaps = projection.gaps
@@ -1971,6 +1972,22 @@ function renderGuides(projection: ReplayProjection): string {
     .map((milestone) => `<span class="trajectory-milestone-line is-${milestone.tone}" style="left:${Math.round(milestone.position)}px"></span>`)
     .join('');
   return `${ticks}${gaps}${milestones}`;
+}
+
+function visibleAxisTicks(projection: ReplayProjection): ReplayAxisTick[] {
+  const candidates = projection.axisTicks
+    .filter((tick) => !projection.milestones.some((milestone) => Math.abs(milestone.position - tick.position) < 110))
+    .sort((left, right) => left.position - right.position);
+  const selectedFromRight: ReplayAxisTick[] = [];
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const tick = candidates[index];
+    const rightNeighbor = selectedFromRight.at(-1);
+    const occupiedWidth = AXIS_TICK_PADDING + tick.label.length * AXIS_TICK_GLYPH_WIDTH + AXIS_TICK_CLEARANCE;
+    if (!rightNeighbor || rightNeighbor.position - tick.position >= occupiedWidth) {
+      selectedFromRight.push(tick);
+    }
+  }
+  return selectedFromRight.reverse();
 }
 
 function renderIntegrityWarning(model: KnowledgeDebuggerViewModel, lang: Lang): string {
