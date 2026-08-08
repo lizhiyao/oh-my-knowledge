@@ -356,6 +356,46 @@ describe('Knowledge Debugger task trajectory server', () => {
     });
   });
 
+  it('renders one accurate notice for a partial raw-log archive', () => {
+    const lazyHtml = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      sourceRecords: {
+        status: 'partial',
+        recordCount: 1,
+        records: [],
+        omittedRecordCount: 0,
+        byteCount: 128,
+        truncated: true,
+      },
+    }, 'zh', { sourceRecordsEndpoint: '/api/source-records' });
+    assert.doesNotMatch(lazyHtml, /<div class="trajectory-record-notice">/);
+    assert.match(lazyHtml, /部分原始日志内容已按归档上限截断/);
+
+    const eagerHtml = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      sourceRecords: {
+        status: 'partial',
+        recordCount: 1,
+        records: [{
+          sourceIndex: 0,
+          traceId: 'trace-partial',
+          sourceTrace: 'fixture.jsonl',
+          sourceType: 'response_item',
+          raw: '{"type":"response_item"}',
+          byteCount: 128,
+          truncated: true,
+          redacted: false,
+        }],
+        omittedRecordCount: 0,
+        byteCount: 128,
+        truncated: true,
+      },
+    });
+    assert.equal([...eagerHtml.matchAll(/<div class="trajectory-record-notice">/g)].length, 1);
+    assert.match(eagerHtml, /部分原始日志内容已按归档上限截断/);
+    assert.doesNotMatch(eagerHtml, /省略 0 条/);
+  });
+
   it('renders safe inline Markdown in trajectory cards', () => {
     const reasoningStep = debuggerModel.steps.find((step) =>
       step.stepKind === 'model_activity' && step.events[0]?.contentVisibility !== 'opaque');
@@ -771,6 +811,23 @@ describe('Knowledge Debugger task trajectory server', () => {
       .map((match) => Number(match[1]));
     assert.deepEqual(compactTickPositions, [16, 188]);
     assert.deepEqual(compactGuidePositions, compactTickPositions);
+    const sharedTimestamp = compactSequenceSteps[0].timestamp;
+    const simultaneousHtml = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      steps: compactSequenceSteps.map((step) => ({
+        ...step,
+        timestamp: sharedTimestamp,
+        events: step.events.map((event) => ({ ...event, timestamp: sharedTimestamp })),
+      })),
+      summary: {
+        ...debuggerModel.summary,
+        observedStartTimestamp: sharedTimestamp,
+        observedEndTimestamp: sharedTimestamp,
+      },
+    });
+    const simultaneousTickLabels = [...simultaneousHtml.matchAll(/class="trajectory-tick"[^>]*>([^<]+)<\/span>/g)]
+      .map((match) => match[1]);
+    assert.deepEqual(simultaneousTickLabels, ['00:00.0']);
     const startMs = Date.parse(debuggerModel.summary.observedStartTimestamp ?? '2026-08-03T00:00:00.000Z');
     const scaleTimestamp = (timestamp: string | undefined): string | undefined => {
       if (!timestamp) return undefined;
