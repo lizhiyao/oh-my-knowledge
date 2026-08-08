@@ -38,7 +38,7 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.equal(model.summary.userGoal, '检查并发布当前版本。');
     assert.equal(model.summary.finalResponse, '版本已经可以发布。');
     assert.equal(model.summary.observedStartTimestamp, '2026-08-03T00:00:00.500Z');
-    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:08.000Z');
+    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:07.000Z');
     assert.equal(model.summary.toolCallCount, 2);
     assert.equal(model.summary.toolFailureCount, 1);
     assert.equal(model.summary.hasUserCorrection, true);
@@ -56,8 +56,9 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.ok(toolSteps.every((step) => step.events.length === 2));
     assert.equal(toolSteps[1].toolStatus, 'failure');
     assert.match(toolSteps[1].events[1]?.fullText ?? '', /missing doctor\/eval evidence/);
-    assert.equal(model.steps.at(-2)?.stepKind, 'user_correction');
-    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-2)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-1)?.stepKind, 'user_correction');
+    assert.ok(model.normalizedEvents.every((item) => item.turnId !== 'turn-correction'));
     assert.equal(model.taskScope.basis, 'turn_id');
     assert.equal(model.taskScope.turnId, 'turn-release');
 
@@ -136,8 +137,8 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.ok(session);
     const model = buildKnowledgeDebuggerViewModel(session, 'turn-release');
 
-    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
-    assert.equal(model.steps.at(-1)?.events[0]?.label, 'turn_completed');
+    const completion = model.steps.find((step) => step.events[0]?.label === 'turn_completed');
+    assert.equal(completion?.stepKind, 'lifecycle');
     assert.ok(model.knowledgeEvidence.every((item) =>
       item.evidenceRefs.every((ref) => ref.kind !== 'lifecycle')
     ));

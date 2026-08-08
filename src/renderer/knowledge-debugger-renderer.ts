@@ -11,6 +11,11 @@ import type {
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';
 import { icon } from './icons.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';
+import {
+  primaryTrajectoryEvidenceRef,
+  trajectoryEvidenceRef,
+  type TrajectoryEvidenceRef,
+} from './trajectory-evidence.js';
 import { renderTrajectoryLiveClientSource } from './trajectory-live.js';
 import { renderTrajectoryRoutingClientSource } from './trajectory-routing.js';
 
@@ -107,7 +112,7 @@ interface ReplayField {
   detail: string;
   presentation?: 'default' | 'content';
   copyable?: boolean;
-  detailSourceEventId?: string;
+  evidence?: TrajectoryEvidenceRef;
   detailKind?: 'content' | 'result';
 }
 
@@ -215,8 +220,8 @@ export function renderKnowledgeDebuggerPage(
       .app-main{width:100%;height:100%;min-height:0;max-width:none;margin:0;padding:10px 18px 14px;overflow:hidden}
       .footer{display:none!important}
       .trajectory-shell{height:100%;min-height:0;display:flex;flex-direction:column;margin:0;padding:0;letter-spacing:0}
-      .trajectory-mode{display:inline-flex;padding:2px;border:1px solid var(--border);border-radius:7px;background:var(--bg-elevated)}
-      .trajectory-mode button{height:28px;padding:3px 11px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font:500 12px/1.4 inherit;letter-spacing:0;cursor:pointer}
+      .trajectory-mode{display:inline-flex;flex:none;padding:2px;border:1px solid var(--border);border-radius:7px;background:var(--bg-elevated)}
+      .trajectory-mode button{height:28px;padding:3px 11px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font:500 12px/1.4 inherit;letter-spacing:0;white-space:nowrap;cursor:pointer}
       .trajectory-mode button[aria-pressed="true"]{background:var(--text-primary);color:var(--bg-surface);box-shadow:0 1px 2px rgba(24,32,51,.14)}
       .trajectory-mode button:focus-visible,.trajectory-event:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       .trajectory-heading{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center;min-height:32px;margin:0 0 8px}
@@ -231,7 +236,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-warning strong{color:var(--text-primary)}
       .trajectory-frame{flex:1;min-height:0;overflow:hidden;display:grid;grid-template-rows:40px minmax(0,1fr);border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);box-shadow:var(--shadow-sm)}
       .trajectory-frame-head{display:flex;align-items:center;min-height:0;padding:0 10px 0 14px;border-bottom:1px solid var(--border)}
-      .trajectory-frame-head h2{margin:0;font-size:13px;font-weight:600;letter-spacing:0}
+      .trajectory-frame-head h2{flex:none;margin:0;font-size:13px;font-weight:600;letter-spacing:0;white-space:nowrap}
       .trajectory-live-controls{display:inline-flex;align-items:center;gap:3px;margin-left:8px}
       .trajectory-live-state{display:inline-flex;align-items:center;gap:5px;color:var(--text-muted);font-size:9px;white-space:nowrap}
       .trajectory-live-state:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(31,157,99,.1)}
@@ -367,6 +372,11 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-operation-copy p{display:-webkit-box;margin:0;overflow:hidden;color:var(--text-secondary);font-size:11px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}
       .trajectory-operation-actions{display:flex;align-items:center;gap:6px;padding-top:0}
       .trajectory-evidence-count{color:var(--text-secondary);font-size:10px;white-space:nowrap}
+      .trajectory-evidence-jump,.trajectory-field-evidence{border:0;border-radius:4px;background:transparent;color:var(--accent);font-size:9px;font-weight:600;white-space:nowrap;cursor:pointer}
+      .trajectory-evidence-jump{padding:4px 6px}
+      .trajectory-field-evidence{padding:3px 5px}
+      .trajectory-evidence-jump:hover,.trajectory-field-evidence:hover{background:var(--bg-elevated);color:var(--text-primary)}
+      .trajectory-evidence-jump:focus-visible,.trajectory-field-evidence:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
       .trajectory-inspector-close{display:grid;width:24px;height:24px;place-items:center;border:0;border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer}
       .trajectory-inspector-close:hover{background:var(--bg-elevated);color:var(--text-primary)}
       .trajectory-inspector-close:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -402,6 +412,7 @@ export function renderKnowledgeDebuggerPage(
       .trajectory-raw-head,.trajectory-raw-row summary{display:grid;grid-template-columns:76px 126px minmax(240px,1fr) 138px;gap:12px;align-items:center}
       .trajectory-raw-head{position:sticky;top:0;z-index:3;min-height:32px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);font-size:9px;font-weight:600}
       .trajectory-raw-row{border-bottom:1px solid var(--border)}
+      .trajectory-raw-row.is-evidence-target{background:rgba(79,70,229,.07);box-shadow:inset 3px 0 0 var(--accent)}
       .trajectory-raw-row[hidden]{display:none}
       .trajectory-raw-row summary{min-height:46px;padding:7px 14px;color:var(--text-primary);cursor:pointer;list-style:none}
       .trajectory-raw-row summary::-webkit-details-marker{display:none}
@@ -419,7 +430,7 @@ export function renderKnowledgeDebuggerPage(
       @media(max-width:1100px){.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:minmax(0,1fr) 320px}.trajectory-canvas{--lane-label-width:96px;--event-width:148px}.trajectory-lane-name{padding-inline:10px}.trajectory-lane-name span{font-size:9px}}
       @media(max-width:1080px){.trajectory-meta-time{display:none!important}}
       @media(max-width:860px){.app-main{padding-inline:10px}.trajectory-heading{grid-template-columns:1fr;gap:0}.trajectory-meta{display:none}.trajectory-shell[data-inspector-open="true"] .trajectory-body{grid-template-columns:1fr;grid-template-rows:minmax(0,3fr) minmax(160px,2fr)}.trajectory-inspector{border-top:1px solid var(--border);border-left:0}.trajectory-operation-head{padding-block:9px}}
-      @media(max-width:600px){.app-bar{padding-inline:10px}.app-brand-tag{display:none}.trajectory-heading h1{font-size:17px}.trajectory-range{display:none}.trajectory-frame-head .trajectory-mode{margin-left:auto}.trajectory-canvas{--lane-label-width:76px;--event-width:126px}.trajectory-lane-name{padding-inline:8px}.trajectory-lane-name span{display:none}.trajectory-event-time{display:none}.trajectory-raw-head,.trajectory-raw-row summary{grid-template-columns:66px 94px minmax(160px,1fr)}.trajectory-raw-id{display:none}.trajectory-raw-row pre{padding-left:14px}}
+      @media(max-width:600px){.app-bar{padding-inline:10px}.app-brand-tag{display:none}.trajectory-heading h1{font-size:17px}.trajectory-frame-head{gap:2px;padding-inline:8px}.trajectory-frame-space{min-width:0}.trajectory-range{display:none}.trajectory-live-controls{margin-left:3px}.trajectory-live-state{gap:0;font-size:0}.trajectory-live-follow{width:22px;padding:0;justify-content:center}.trajectory-live-follow span{display:none}.trajectory-boundary-info{margin-left:1px}.trajectory-focus{margin-left:2px}.trajectory-frame-head .trajectory-mode{margin-left:2px}.trajectory-mode button{min-width:37px;padding-inline:6px;font-size:0}.trajectory-mode button:after{content:attr(data-short-label);font-size:10px}.trajectory-canvas{--lane-label-width:76px;--event-width:126px}.trajectory-lane-name{padding-inline:8px}.trajectory-lane-name span{display:none}.trajectory-event-time{display:none}.trajectory-raw-head,.trajectory-raw-row summary{grid-template-columns:66px 94px minmax(160px,1fr)}.trajectory-raw-id{display:none}.trajectory-raw-row pre{padding-left:14px}}
       @media(prefers-reduced-motion:reduce){.trajectory-body{transition:none}}
     </style>
     <main class="trajectory-shell" data-mode="semantic"${options.live ? ` data-live-endpoint="${e(options.live.endpoint)}" data-live-revision="${e(options.live.revision)}"` : ''}>
@@ -451,9 +462,9 @@ export function renderKnowledgeDebuggerPage(
           <span class="trajectory-range">${e(formatRelativeTime(0))} — ${e(formatRelativeTime(projection.durationMs))}</span>
           ${projection.facets.length > 0 ? renderFacetFocus(projection.facets, lang) : ''}
           <div class="trajectory-mode" aria-label="${zh ? '查看模式' : 'View mode'}">
-            <button type="button" data-trajectory-mode="semantic" aria-pressed="true">${zh ? '语义轨迹' : 'Semantic trajectory'}</button>
-            <button type="button" data-trajectory-mode="normalized" aria-pressed="false">${zh ? '规范化事件' : 'Normalized events'}</button>
-            <button type="button" data-trajectory-mode="source" aria-pressed="false">${zh ? '原始日志' : 'Raw logs'}</button>
+            <button type="button" data-trajectory-mode="semantic" data-short-label="${zh ? '轨迹' : 'Track'}" aria-pressed="true">${zh ? '语义轨迹' : 'Semantic trajectory'}</button>
+            <button type="button" data-trajectory-mode="normalized" data-short-label="${zh ? '事件' : 'Events'}" aria-pressed="false">${zh ? '规范化事件' : 'Normalized events'}</button>
+            <button type="button" data-trajectory-mode="source" data-short-label="${zh ? '日志' : 'Logs'}" aria-pressed="false">${zh ? '原始日志' : 'Raw logs'}</button>
           </div>
         </header>
 
@@ -476,7 +487,7 @@ export function renderKnowledgeDebuggerPage(
             <header class="trajectory-operation-head">
               <div class="trajectory-operation-type" id="trajectory-operation-type"></div>
               <div class="trajectory-operation-copy"><h3 id="trajectory-operation-title"></h3><p id="trajectory-operation-summary"></p></div>
-              <div class="trajectory-operation-actions"><div class="trajectory-evidence-count" id="trajectory-evidence-count"></div><button class="trajectory-inspector-close" type="button" data-inspector-close aria-label="${zh ? '关闭详情' : 'Close details'}" title="${zh ? '关闭详情' : 'Close details'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>
+              <div class="trajectory-operation-actions"><div class="trajectory-evidence-count" id="trajectory-evidence-count"></div><button class="trajectory-evidence-jump" type="button" data-operation-evidence hidden></button><button class="trajectory-inspector-close" type="button" data-inspector-close aria-label="${zh ? '关闭详情' : 'Close details'}" title="${zh ? '关闭详情' : 'Close details'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button></div>
             </header>
             <div class="trajectory-semantic-panels">${projection.operations.map((operation) => renderSemanticPanel(operation, false, lang)).join('')}</div>
           </aside>
@@ -495,7 +506,7 @@ export function renderKnowledgeDebuggerPage(
         const cards = Array.from(document.querySelectorAll('[data-trajectory-operation]'));
         const normalizedRows = Array.from(document.querySelectorAll('[data-trajectory-normalized-event]'));
         const normalizedEmpty = document.querySelector('[data-trajectory-normalized-empty]');
-        const sourceRecordList = document.querySelector('[data-source-records-endpoint]');
+        const sourceRecordList = document.querySelector('[data-event-view="source"]');
         const semanticPanels = Array.from(document.querySelectorAll('[data-trajectory-semantic-panel]'));
         const semanticPanelContainer = document.querySelector('.trajectory-semantic-panels');
         const detailBlocks = Array.from(document.querySelectorAll('[data-field-detail-block]'));
@@ -503,6 +514,7 @@ export function renderKnowledgeDebuggerPage(
         const operationTitle = document.querySelector('#trajectory-operation-title');
         const operationSummary = document.querySelector('#trajectory-operation-summary');
         const evidenceCount = document.querySelector('#trajectory-evidence-count');
+        const operationEvidence = document.querySelector('[data-operation-evidence]');
         const lanes = document.querySelector('.trajectory-lanes');
         const operationLinks = document.querySelector('.trajectory-links');
         const facetFocus = document.querySelector('.trajectory-focus');
@@ -528,6 +540,8 @@ export function renderKnowledgeDebuggerPage(
           loadFailed: zh ? '原始日志读取失败。可以切换视图后重试。' : 'Raw logs could not be loaded. Switch views and retry.',
           partialRecords: SOURCE_RECORD_PARTIAL_LABELS[lang].records,
           partialContent: SOURCE_RECORD_PARTIAL_LABELS[lang].content,
+          viewSource: zh ? '查看原始日志' : 'View raw log',
+          viewNormalized: zh ? '查看规范化事件' : 'View normalized event',
         })};
         const cardLane = (card) => card.closest('.trajectory-lane')?.dataset.lane || '';
         const operationIds = semanticPanels.map((panel) => panel.dataset.trajectorySemanticPanel).filter(Boolean);
@@ -933,6 +947,16 @@ export function renderKnowledgeDebuggerPage(
           if (operationTitle) operationTitle.textContent = panel.dataset.title || '—';
           if (operationSummary) operationSummary.textContent = panel.dataset.summary || '';
           if (evidenceCount) evidenceCount.textContent = panel.dataset.evidenceLabel || '';
+          if (operationEvidence) {
+            const sourceEventId = panel.dataset.evidenceSourceEventId || '';
+            operationEvidence.hidden = !sourceEventId;
+            operationEvidence.dataset.evidenceSourceEventId = sourceEventId;
+            operationEvidence.dataset.evidenceSourceLineIndex = panel.dataset.evidenceSourceLineIndex || '';
+            operationEvidence.dataset.evidenceTraceId = panel.dataset.evidenceTraceId || '';
+            operationEvidence.textContent = panel.dataset.evidenceSourceLineIndex
+              ? sourceRecordLabels.viewSource
+              : sourceRecordLabels.viewNormalized;
+          }
           currentOperationId = id;
           if (animateLayout && shell.dataset.inspectorOpen !== 'true') beginLayoutTransition();
           shell.dataset.inspectorOpen = 'true';
@@ -949,6 +973,7 @@ export function renderKnowledgeDebuggerPage(
           });
           semanticPanels.forEach((item) => { item.hidden = true; });
           currentOperationId = '';
+          if (operationEvidence) operationEvidence.hidden = true;
           if (inspectorWasOpen) beginLayoutTransition();
           delete shell.dataset.inspectorOpen;
           if (inspector) inspector.hidden = true;
@@ -1014,6 +1039,8 @@ export function renderKnowledgeDebuggerPage(
           if (!sourceRecordList) return;
           const details = document.createElement('details');
           details.className = 'trajectory-raw-row';
+          details.dataset.sourceLineIndex = String(record.sourceIndex ?? '');
+          details.dataset.sourceTraceId = String(record.traceId || '');
           const summary = document.createElement('summary');
           const time = document.createElement('time');
           time.textContent = relativeSourceTime(record.timestamp);
@@ -1073,6 +1100,40 @@ export function renderKnowledgeDebuggerPage(
           if (mode === 'source') void loadSourceRecords();
           document.querySelectorAll('[data-trajectory-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.trajectoryMode === mode)));
         };
+        const clearEvidenceTarget = () => {
+          document.querySelectorAll('.trajectory-raw-row.is-evidence-target').forEach((row) => row.classList.remove('is-evidence-target'));
+        };
+        const revealEvidenceRow = (row) => {
+          if (!row) return false;
+          clearEvidenceTarget();
+          row.open = true;
+          row.classList.add('is-evidence-target');
+          requestAnimationFrame(() => row.scrollIntoView({
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            block: 'center',
+          }));
+          return true;
+        };
+        const matchingSourceRow = (lineIndex, traceId) => Array.from(sourceRecordList?.querySelectorAll('[data-source-line-index]') || [])
+          .find((row) => row.dataset.sourceLineIndex === lineIndex
+            && (!traceId || row.dataset.sourceTraceId === traceId));
+        const revealEvidence = async (target) => {
+          const sourceEventId = target.dataset.evidenceSourceEventId || target.dataset.detailSourceEventId || '';
+          const sourceLineIndex = target.dataset.evidenceSourceLineIndex || target.dataset.detailSourceLineIndex || '';
+          const traceId = target.dataset.evidenceTraceId || target.dataset.detailTraceId || '';
+          if (sourceLineIndex && sourceRecordList) {
+            setTrajectoryMode('source');
+            await loadSourceRecords();
+            if (revealEvidenceRow(matchingSourceRow(sourceLineIndex, traceId))) return;
+          }
+          if (!sourceEventId) return;
+          setTrajectoryMode('normalized');
+          revealEvidenceRow(normalizedRows.find((row) => row.dataset.trajectoryNormalizedEvent === sourceEventId));
+        };
+        operationEvidence?.addEventListener('click', () => void revealEvidence(operationEvidence), { signal: pageLifecycle.signal });
+        document.querySelectorAll('[data-view-evidence]').forEach((button) => {
+          button.addEventListener('click', () => void revealEvidence(button.closest('[data-field-detail-block]') || button), { signal: pageLifecycle.signal });
+        });
         document.querySelectorAll('[data-trajectory-mode]').forEach((button) => {
           button.addEventListener('click', () => {
             const mode = button.dataset.trajectoryMode || 'semantic';
@@ -1347,8 +1408,8 @@ function projectReplay(
             : (zh ? '已观测到工具调用，但当前 trace 中没有匹配到返回结果。' : 'A tool call was observed, but no matching result appears in the trace.'),
         evidenceLabel: zh ? `${step.events.length + evidence.length} 条关联证据` : `${step.events.length + evidence.length} related records`,
         fields: [
-          { label: zh ? '执行' : 'Action', value: `${call?.toolName ?? step.title} · ${inferToolActionLabel(evidence, lang)}`, detail: compactText(input || (zh ? '未记录输入' : 'Input not recorded'), 520), detailKind: 'content' },
-          { label: zh ? '结果' : 'Result', value: `${toolStatusLabel(resultState, lang)}${duration ? ` · ${duration}` : ''}`, detail: result ? eventPreview(result, zh ? '工具没有返回内容。' : 'The tool returned no content.') : resultState === 'pending' ? (zh ? '正在等待工具结果写入 trace。' : 'Waiting for the tool result to appear in the trace.') : (zh ? '当前 trace 中没有匹配到工具结果。' : 'No matching tool result in this trace.'), detailSourceEventId: result?.id, detailKind: 'result' },
+          { label: zh ? '执行' : 'Action', value: `${call?.toolName ?? step.title} · ${inferToolActionLabel(evidence, lang)}`, detail: compactText(input || (zh ? '未记录输入' : 'Input not recorded'), 520), evidence: trajectoryEvidenceRef(call), detailKind: 'content' },
+          { label: zh ? '结果' : 'Result', value: `${toolStatusLabel(resultState, lang)}${duration ? ` · ${duration}` : ''}`, detail: result ? eventPreview(result, zh ? '工具没有返回内容。' : 'The tool returned no content.') : resultState === 'pending' ? (zh ? '正在等待工具结果写入 trace。' : 'Waiting for the tool result to appear in the trace.') : (zh ? '当前 trace 中没有匹配到工具结果。' : 'No matching tool result in this trace.'), evidence: trajectoryEvidenceRef(result), detailKind: 'result' },
           { label: 'Knowledge', value: evidence.length > 0 ? evidence.map((item) => `${knowledgeKindLabel(item, lang)} · ${item.label}`).join('、') : (zh ? '未关联' : 'Not associated'), detail: evidence.length > 0 ? evidence.map((item) => `${item.accessKind} · ${shortHash(item.contentHash)}`).join('\n') : (zh ? '未从本次工具交换投影出 Knowledge' : 'No Knowledge projected from this tool exchange') },
         ],
         events: step.events,
@@ -1396,7 +1457,7 @@ function projectReplay(
             value: contextContent ? (zh ? '源日志已记录可见内容' : 'Observable content recorded') : (zh ? '源日志未记录上下文内容' : 'Context content not recorded by the source log'),
             detail: contextContent ?? (zh ? '当前规范化事件只保留了上下文类型与元数据。' : 'The normalized event only retains the context type and metadata.'),
             copyable: Boolean(contextContent),
-            detailSourceEventId: contextContent ? contextEvent?.id : undefined,
+            evidence: trajectoryEvidenceRef(contextEvent),
             detailKind: 'content',
           },
           { label: zh ? '内容身份' : 'Content identity', value: first?.contentHash ? `sha256:${shortHash(first.contentHash)}` : (zh ? '未记录哈希' : 'Hash not recorded'), detail: zh ? '只标识观测到的内容，不推断是否被模型采用' : 'Identifies observed content without inferring model use' },
@@ -1470,6 +1531,7 @@ function projectReplay(
             value: text,
             detail: reasoningContentSourceLabel(event?.contentSource, lang),
             presentation: 'content' as const,
+            evidence: trajectoryEvidenceRef(event),
           }]),
         ]
         : [
@@ -1481,6 +1543,7 @@ function projectReplay(
             value: text,
             detail: zh ? '未做隐藏意图或原因推断' : 'No hidden-intent or causal inference',
             presentation: 'content',
+            evidence: trajectoryEvidenceRef(event),
           },
         ],
       events: step.events,
@@ -1794,7 +1857,8 @@ function renderFacetFocus(facets: ReplayFacet[], lang: Lang): string {
 }
 
 function renderSemanticPanel(operation: ReplayOperation, selected: boolean, lang: Lang): string {
-  return `<div class="trajectory-operation-panel trajectory-fields" data-trajectory-semantic-panel="${e(operation.id)}" data-selection-label="${e(operation.selectionLabel)}" data-type-label="${e(operation.typeLabel)}" data-title="${e(operation.title)}" data-summary="${e(operation.summary)}" data-evidence-label="${e(operation.evidenceLabel)}"${selected ? '' : ' hidden'}>${operation.fields.map((field) => {
+  const evidence = primaryTrajectoryEvidenceRef(operation.events);
+  return `<div class="trajectory-operation-panel trajectory-fields" data-trajectory-semantic-panel="${e(operation.id)}" data-selection-label="${e(operation.selectionLabel)}" data-type-label="${e(operation.typeLabel)}" data-title="${e(operation.title)}" data-summary="${e(operation.summary)}" data-evidence-label="${e(operation.evidenceLabel)}"${renderEvidenceDataAttributes(evidence)}${selected ? '' : ' hidden'}>${operation.fields.map((field) => {
     const content = field.presentation === 'content'
       ? `<div class="trajectory-field-content">${renderSafeInlineMarkdown(field.value)}</div>`
       : `<strong class="trajectory-field-value">${e(field.value)}</strong>`;
@@ -1804,7 +1868,7 @@ function renderSemanticPanel(operation: ReplayOperation, selected: boolean, lang
 
 function renderFieldDetail(field: ReplayField, lang: Lang): string {
   const preview = fieldDetailPreview(field.detail);
-  if ((!preview.truncated || !field.detailSourceEventId) && !field.copyable) {
+  if ((!preview.truncated || !field.evidence?.normalizedEventId) && !field.copyable && !field.evidence) {
     return `<code class="trajectory-field-detail">${e(field.detail)}</code>`;
   }
   const zh = lang === 'zh';
@@ -1817,18 +1881,32 @@ function renderFieldDetail(field: ReplayField, lang: Lang): string {
   const collapseLabel = zh ? (result ? '收起结果' : '收起内容') : (result ? 'Collapse result' : 'Collapse content');
   const copyLabel = zh ? (result ? '复制结果' : '复制内容') : (result ? 'Copy result' : 'Copy content');
   const copiedLabel = zh ? '已复制' : 'Copied';
-  const canExpand = preview.truncated && Boolean(field.detailSourceEventId);
+  const canExpand = preview.truncated && Boolean(field.evidence?.normalizedEventId);
   const displayedDetail = canExpand ? preview.text : field.detail;
-  const sourceEventAttribute = field.detailSourceEventId
-    ? ` data-detail-source-event-id="${e(field.detailSourceEventId)}"`
-    : '';
+  const evidenceAttributes = renderEvidenceDataAttributes(field.evidence, 'detail');
   const status = canExpand
     ? `<span class="trajectory-field-detail-status" data-field-detail-status>${e(previewStatus)}</span>`
     : '<span></span>';
   const toggle = canExpand
     ? `<button class="trajectory-field-detail-toggle" type="button" data-field-detail-toggle aria-expanded="false">${e(expandLabel)}</button>`
     : '';
-  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false" data-expandable="${String(canExpand)}"${sourceEventAttribute} data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(displayedDetail)}</code><div class="trajectory-field-detail-actions">${status}<span class="trajectory-field-detail-controls">${toggle}<button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
+  const evidenceButton = field.evidence
+    ? `<button class="trajectory-field-evidence" type="button" data-view-evidence>${lang === 'zh' ? (field.evidence.sourceLineIndex !== undefined ? '查看原始日志' : '查看规范化事件') : (field.evidence.sourceLineIndex !== undefined ? 'View raw log' : 'View normalized event')}</button>`
+    : '';
+  return `<div class="trajectory-field-detail-block" data-field-detail-block data-expanded="false" data-expandable="${String(canExpand)}"${evidenceAttributes} data-preview-status="${e(previewStatus)}" data-full-status="${e(fullStatus)}" data-expand-label="${e(expandLabel)}" data-collapse-label="${e(collapseLabel)}" data-copy-label="${e(copyLabel)}" data-copied-label="${e(copiedLabel)}"><code class="trajectory-field-detail" data-field-detail>${e(displayedDetail)}</code><div class="trajectory-field-detail-actions">${status}<span class="trajectory-field-detail-controls">${evidenceButton}${toggle}<button class="trajectory-field-detail-copy" type="button" data-field-detail-copy aria-label="${e(copyLabel)}" title="${e(copyLabel)}">${icon('copy', { size: 13 })}</button></span></div></div>`;
+}
+
+function renderEvidenceDataAttributes(
+  evidence: TrajectoryEvidenceRef | undefined,
+  prefix: 'evidence' | 'detail' = 'evidence',
+): string {
+  if (!evidence) return '';
+  const attributes = [` data-${prefix}-source-event-id="${e(evidence.normalizedEventId)}"`];
+  if (evidence.sourceLineIndex !== undefined) {
+    attributes.push(` data-${prefix}-source-line-index="${evidence.sourceLineIndex}"`);
+  }
+  if (evidence.traceId) attributes.push(` data-${prefix}-trace-id="${e(evidence.traceId)}"`);
+  return attributes.join('');
 }
 
 function fieldDetailPreview(detail: string): {
@@ -1874,7 +1952,8 @@ function renderNormalizedEventList(
     const source = `${event.sourceLineIndex !== undefined ? `#${event.sourceLineIndex} · ` : ''}${shortHash(event.traceId ?? event.id)}`;
     const facetIds = [...(facetsByEventId.get(event.id) ?? [])];
     const kind = event.sourceType ? `${event.kind} · ${event.sourceType}` : event.kind;
-    return `<details class="trajectory-raw-row" data-trajectory-normalized-event="${e(event.id)}" data-trajectory-facets="${e(facetIds.join(' '))}"><summary><time>${e(formatRelativeTimestamp(event.timestamp, startTimestamp))}</time><span class="trajectory-raw-kind">${e(kind)}</span><strong>${e(preview)}</strong><code class="trajectory-raw-id">${e(source)}</code></summary><pre>${e(content || event.label || '')}</pre></details>`;
+    const sourceAttributes = `${event.sourceLineIndex !== undefined ? ` data-source-line-index="${event.sourceLineIndex}"` : ''}${event.traceId ? ` data-source-trace-id="${e(event.traceId)}"` : ''}`;
+    return `<details class="trajectory-raw-row" data-trajectory-normalized-event="${e(event.id)}"${sourceAttributes} data-trajectory-facets="${e(facetIds.join(' '))}"><summary><time>${e(formatRelativeTimestamp(event.timestamp, startTimestamp))}</time><span class="trajectory-raw-kind">${e(kind)}</span><strong>${e(preview)}</strong><code class="trajectory-raw-id">${e(source)}</code></summary><pre>${e(content || event.label || '')}</pre></details>`;
   }).join('');
   return `<section class="trajectory-raw-list" data-event-view="normalized" aria-label="${zh ? '按来源顺序排列的规范化事件' : 'Normalized events in source order'}"><header class="trajectory-raw-head"><span>${zh ? '时间' : 'Time'}</span><span>${zh ? '规范化 / 来源类型' : 'Normalized / source type'}</span><span>${zh ? '内容' : 'Content'}</span><span>${zh ? '来源位置' : 'Source position'}</span></header>${rows}<div class="trajectory-raw-empty" data-trajectory-normalized-empty hidden>${zh ? '没有符合当前类型筛选的规范化事件' : 'No normalized events match the current type filter'}</div></section>`;
 }
@@ -1934,7 +2013,7 @@ function renderSourceRecordList(
       record.redacted ? (zh ? '【不透明加密载荷已省略】' : '[Opaque encrypted payload omitted]') : '',
       record.truncated ? (zh ? '【该记录已按归档上限截断】' : '[Record truncated by archive limit]') : '',
     ].filter(Boolean).join('\n');
-    return `<details class="trajectory-raw-row"><summary><time>${e(formatRelativeTimestamp(record.timestamp, startTimestamp))}</time><span class="trajectory-raw-kind">${e(record.sourceType)}</span><strong>${e(preview)}</strong><code class="trajectory-raw-id">${e(locator)}</code></summary><pre>${e(record.raw)}${notices ? `\n\n${e(notices)}` : ''}</pre></details>`;
+    return `<details class="trajectory-raw-row" data-source-line-index="${record.sourceIndex}" data-source-trace-id="${e(record.traceId)}"><summary><time>${e(formatRelativeTimestamp(record.timestamp, startTimestamp))}</time><span class="trajectory-raw-kind">${e(record.sourceType)}</span><strong>${e(preview)}</strong><code class="trajectory-raw-id">${e(locator)}</code></summary><pre>${e(record.raw)}${notices ? `\n\n${e(notices)}` : ''}</pre></details>`;
   }).join('');
   const unavailable = source.status === 'unavailable'
     ? `<div class="trajectory-raw-empty">${e(sourceRecordUnavailableLabel(source.reason, lang))}</div>`

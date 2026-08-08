@@ -3,12 +3,15 @@ import type {
   TaskTrajectorySession,
   TaskWindowScope,
 } from '../types/index.js';
+import { hasUserCorrectionSignal } from './feedback-matchers.js';
+import { projectTaskSemanticEvents } from './task-semantic-projection.js';
 
 export const TASK_SEMANTIC_EVENT_LIMIT = 240;
 
 export interface ResolvedTaskWindow {
   events: ExperienceTimelineEvent[];
   semanticEvents: ExperienceTimelineEvent[];
+  relatedEvents: ExperienceTimelineEvent[];
   scope: TaskWindowScope;
 }
 
@@ -28,12 +31,18 @@ export function resolveTaskWindow(
         return event ? [event] : [];
       })
     : [];
-  const semanticEvents = semanticPreview(taskEvents, semanticLimit);
+  const semanticEvents = projectTaskSemanticEvents(taskEvents, semanticLimit, {
+    preservePendingToolCalls: selected?.status === 'open',
+  });
+  const relatedEvents = selected
+    ? relatedCorrectionEvents(session, selected.turnId, eventById)
+    : [];
   const matchedAttributedEventCount = taskEvents.filter((event) => attributedIds.has(event.id)).length;
 
   return {
     events: taskEvents,
     semanticEvents,
+    relatedEvents,
     scope: {
       basis: selected?.boundaryBasis ?? 'unresolved',
       turnId: selected?.turnId,
@@ -46,12 +55,18 @@ export function resolveTaskWindow(
   };
 }
 
-function semanticPreview(
-  events: ExperienceTimelineEvent[],
-  limit: number,
+function relatedCorrectionEvents(
+  session: TaskTrajectorySession,
+  selectedTurnId: string,
+  eventById: Map<string, ExperienceTimelineEvent>,
 ): ExperienceTimelineEvent[] {
-  if (events.length <= limit) return events;
-  const headCount = Math.ceil(limit * 0.6);
-  const tailCount = limit - headCount;
-  return [...events.slice(0, headCount), ...events.slice(-tailCount)];
+  const selectedIndex = session.turns.findIndex((turn) => turn.turnId === selectedTurnId);
+  const nextTurn = selectedIndex >= 0 ? session.turns[selectedIndex + 1] : undefined;
+  if (!nextTurn) return [];
+  const firstHumanMessage = nextTurn.eventIds
+    .map((id) => eventById.get(id))
+    .find((event) => event?.kind === 'user_message' && event.role === 'user');
+  if (!firstHumanMessage) return [];
+  const text = firstHumanMessage.fullText ?? firstHumanMessage.snippet ?? '';
+  return hasUserCorrectionSignal(text) ? [firstHumanMessage] : [];
 }

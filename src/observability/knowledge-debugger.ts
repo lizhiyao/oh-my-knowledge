@@ -11,6 +11,7 @@ import type {
   TaskReplayStepKind,
   TraceIngestionSummary,
 } from '../types/index.js';
+import { hasUserCorrectionSignal } from './feedback-matchers.js';
 import { resolveTaskWindow } from './task-window.js';
 
 interface DebugKnowledgeCandidate extends Omit<DebugKnowledgeEvidence, 'id' | 'accessCount' | 'evidenceRefs'> {
@@ -40,8 +41,10 @@ export function buildKnowledgeDebuggerViewModel(
   const taskWindow = resolveTaskWindow(session, targetTurnId);
   const normalizedEvents = taskWindow.events;
   const timeline = taskWindow.semanticEvents.filter((event) => event.runtimeKind !== 'usage');
+  const replayTimeline = [...timeline, ...taskWindow.relatedEvents]
+    .sort((left, right) => left.order - right.order);
   const knowledgeEvidence = projectKnowledgeEvidence(timeline);
-  const steps = buildTaskReplaySteps(session, timeline, knowledgeEvidence);
+  const steps = buildTaskReplaySteps(session, replayTimeline, knowledgeEvidence);
   const notices = buildIntegrityNotices(taskWindow.scope, timeline, steps, ingestion);
   const userEvents = timeline.filter((event) => event.kind === 'user_message');
   const assistantEvents = timeline.filter((event) => event.kind === 'assistant_message');
@@ -273,12 +276,19 @@ function correctionEventIds(
     }
   }
   const userCorrectionCount = session.indicators?.userCorrectionCount ?? 0;
-  if (ids.size > 0 || userCorrectionCount === 0) return ids;
-
   const lastAssistantOrder = Math.max(
     -1,
     ...timeline.filter((event) => event.kind === 'assistant_message').map((event) => event.order),
   );
+  const explicitCandidates = timeline
+    .filter((event) => (
+      event.kind === 'user_message'
+      && event.order > lastAssistantOrder
+      && hasUserCorrectionSignal(event.fullText ?? event.snippet ?? '')
+    ));
+  for (const event of explicitCandidates) ids.add(event.id);
+  if (ids.size > 0 || userCorrectionCount === 0) return ids;
+
   const correctionCandidates = timeline
     .filter((event) => event.kind === 'user_message' && event.order > lastAssistantOrder)
     .slice(-userCorrectionCount);

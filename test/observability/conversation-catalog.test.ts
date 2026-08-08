@@ -73,6 +73,14 @@ describe('Codex conversation catalog', () => {
     assert.equal(first.lines.length, 5);
     assert.ok(first.lines.some((line) => line.text.includes('turn-a')));
     assert.ok(first.lines.every((line) => !line.text.includes('turn-b')));
+
+    const withFollowUp = readCodexTaskRecords(index, index.tasks[0]!, {
+      includeNextHumanMessage: true,
+    });
+    assert.equal(withFollowUp.lines.length, 7);
+    assert.ok(withFollowUp.lines.some((line) => line.text.includes('turn-b')));
+    assert.ok(withFollowUp.lines.some((line) => line.text.includes('第二项任务')));
+    assert.ok(withFollowUp.lines.every((line) => !line.text.includes('完成第二项任务')));
   });
 
   it('prefers the native user message over injected user-role context', () => {
@@ -97,7 +105,7 @@ describe('Codex conversation catalog', () => {
 
     const index = buildCodexRolloutIndex(rolloutPath, 'codex-knowledge-debugger-failure');
 
-    assert.deepEqual(index.tasks.map((task) => ({
+    assert.deepEqual(index.tasks.slice(0, 1).map((task) => ({
       turnId: task.turnId,
       title: task.title,
       toolCallCount: task.toolCallCount,
@@ -108,6 +116,7 @@ describe('Codex conversation catalog', () => {
       toolCallCount: 2,
       toolFailureCount: 1,
     }]);
+    assert.equal(index.tasks[1]?.turnId, 'turn-correction');
   });
 
   it('does not keep a superseded task running when its terminal event is missing', () => {
@@ -425,7 +434,7 @@ describe('Codex conversation catalog', () => {
     assert.equal(trajectory?.session.threadId, 'main-thread');
     assert.ok(trajectory?.session.turns.some((turn) => turn.sourceTurnId === 'turn-a'));
     assert.ok(trajectory?.session.fullSessionTimeline.some((event) => event.kind === 'user_message'));
-    assert.equal(trajectory?.sourceRecords.recordCount, 5);
+    assert.equal(trajectory?.sourceRecords.recordCount, 7);
   });
 
   it('streams fresh snapshots while an indexed Codex task is still open', async () => {

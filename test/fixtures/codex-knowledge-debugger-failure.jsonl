@@ -10,5 +10,6 @@
 {"timestamp":"2026-08-03T00:00:04.000Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"publish","name":"exec_command","input":"{\"cmd\":\"npm publish\"}"}}
 {"timestamp":"2026-08-03T00:00:05.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"publish","output":"Process exited with code 1: missing doctor/eval evidence"}}
 {"timestamp":"2026-08-03T00:00:06.000Z","type":"response_item","payload":{"type":"message","id":"assistant-1","role":"assistant","content":[{"type":"output_text","text":"版本已经可以发布。"}]}}
-{"timestamp":"2026-08-03T00:00:07.000Z","type":"response_item","payload":{"type":"message","id":"user-2","role":"user","content":[{"type":"input_text","text":"不对，发布失败了，而且你没有先检查 doctor 和 eval 证据。"}]}}
-{"timestamp":"2026-08-03T00:00:08.000Z","type":"event_msg","payload":{"type":"task_complete"}}
+{"timestamp":"2026-08-03T00:00:07.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-release"}}
+{"timestamp":"2026-08-03T00:00:07.500Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-correction"}}
+{"timestamp":"2026-08-03T00:00:08.000Z","type":"response_item","payload":{"type":"message","id":"user-2","role":"user","content":[{"type":"input_text","text":"不对，发布失败了，而且你没有先检查 doctor 和 eval 证据。"}]}}

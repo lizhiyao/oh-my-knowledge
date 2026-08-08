@@ -80,6 +80,11 @@ export interface CodexJsonlLine {
   endOffset: number;
 }
 
+export interface CodexTaskRecordReadOptions {
+  /** Include only the next task prefix through its first human user message. */
+  includeNextHumanMessage?: boolean;
+}
+
 /**
  * Build a compact byte-range index without retaining the rollout. Only records
  * needed for turn boundaries and list metrics are parsed.
@@ -472,6 +477,7 @@ export function isReusableCodexRolloutIndex(value: unknown, sourcePath: string):
 export function readCodexTaskRecords(
   index: CodexRolloutIndex,
   task: CodexIndexedTask,
+  options: CodexTaskRecordReadOptions = {},
 ): { records: Array<unknown | undefined>; lines: CodexJsonlLine[]; malformedRecordCount: number } {
   const records: Array<unknown | undefined> = [];
   if (index.sessionMeta !== undefined && index.sessionMetaLine !== undefined) {
@@ -488,7 +494,39 @@ export function readCodexTaskRecords(
       malformedRecordCount += 1;
     }
   }, task.startOffset, task.endOffset, task.startLine);
+  if (options.includeNextHumanMessage) {
+    const taskIndex = index.tasks.findIndex((candidate) => candidate.turnId === task.turnId);
+    const nextTask = taskIndex >= 0 ? index.tasks[taskIndex + 1] : undefined;
+    if (nextTask) {
+      forEachJsonlLine(index.sourcePath, (record) => {
+        lines.push(record);
+        try {
+          const parsed = JSON.parse(record.text) as unknown;
+          records[record.line] = parsed;
+          return isHumanUserPrompt(parsed) ? false : undefined;
+        } catch {
+          malformedRecordCount += 1;
+          return undefined;
+        }
+      }, nextTask.startOffset, nextTask.endOffset, nextTask.startLine);
+    }
+  }
   return { records, lines, malformedRecordCount };
+}
+
+function isHumanUserPrompt(value: unknown): boolean {
+  const raw = objectValue(value);
+  if (!raw) return false;
+  const recordType = stringValue(raw.type);
+  const payload = objectValue(raw.payload) ?? {};
+  const payloadType = stringValue(payload.type);
+  if (!isUserPromptRecord(recordType, payloadType, payload)) return false;
+  const message = userPromptText(payload)?.trim();
+  return Boolean(
+    message
+    && codexUserMessageOrigin(message) === 'human'
+    && codexUserDisplayText(message)?.trim(),
+  );
 }
 
 function finalizeSupersededTask(
@@ -699,7 +737,7 @@ function numberValue(value: unknown): number | undefined {
 
 function forEachJsonlLine(
   filePath: string,
-  visit: (line: CodexJsonlLine) => void,
+  visit: (line: CodexJsonlLine) => void | boolean,
   startOffset = 0,
   endOffset = Number.POSITIVE_INFINITY,
   startLine = 0,
@@ -714,7 +752,7 @@ function forEachJsonlLine(
   let indexedEndsWithNewline = true;
   let fragments: Buffer[] = [];
   try {
-    while (absoluteOffset < endOffset) {
+    readLoop: while (absoluteOffset < endOffset) {
       const requestBytes = Math.min(buffer.length, endOffset - absoluteOffset);
       const bytesRead = readSync(fd, buffer, 0, requestBytes, absoluteOffset);
       if (bytesRead === 0) break;
@@ -726,7 +764,7 @@ function forEachJsonlLine(
           ? Buffer.concat([...fragments, tail])
           : tail;
         const nextOffset = absoluteOffset + index + 1;
-        emitLine(lineBuffer, lineNumber, lineStartOffset, nextOffset, visit);
+        const shouldContinue = emitLine(lineBuffer, lineNumber, lineStartOffset, nextOffset, visit);
         indexedSize = nextOffset;
         indexedLineCount = lineNumber + 1;
         indexedEndsWithNewline = true;
@@ -734,6 +772,7 @@ function forEachJsonlLine(
         cursor = index + 1;
         lineStartOffset = nextOffset;
         lineNumber += 1;
+        if (!shouldContinue) break readLoop;
       }
       if (cursor < bytesRead) fragments.push(Buffer.from(buffer.subarray(cursor, bytesRead)));
       if (fragments.reduce((sum, item) => sum + item.length, 0) > MAX_RECORD_BYTES) {
@@ -772,9 +811,9 @@ function emitLine(
   line: number,
   startOffset: number,
   endOffset: number,
-  visit: (line: CodexJsonlLine) => void,
-): void {
+  visit: (line: CodexJsonlLine) => void | boolean,
+): boolean {
   const text = buffer.toString('utf8').trim();
-  if (!text) return;
-  visit({ text, line, startOffset, endOffset });
+  if (!text) return true;
+  return visit({ text, line, startOffset, endOffset }) !== false;
 }

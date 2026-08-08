@@ -220,7 +220,9 @@ class CodexConversationCatalog implements ConversationCatalog {
   ): ConversationTaskTrajectory {
     const threadId = row.id;
     const turnId = indexedTask.turnId;
-    const selected = readCodexTaskRecords(index, indexedTask);
+    const selected = readCodexTaskRecords(index, indexedTask, {
+      includeNextHumanMessage: true,
+    });
     const traceSession = parseCodexSessionFile(row.rolloutPath, selected.records);
     const fullSessionTimeline = projectTraceSessionTimeline(traceSession);
     const turns = reconstructExperienceTurns(fullSessionTimeline);

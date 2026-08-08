@@ -81,9 +81,11 @@ Live updates only reread local logs and refresh the current view; they do not ca
 
 The page exposes three traceable layers with distinct responsibilities:
 
-- **Semantic trajectory** projects Trace IR into the four lanes for human understanding;
+- **Semantic trajectory** projects Trace IR into the four lanes for human understanding. When a long task exceeds the display bound, the projection keeps tool calls paired with their results, retains the request, final answer, task boundaries, and failures first, then samples the remaining nodes across time instead of blindly dropping the middle;
 - **Normalized events** list source-neutral Trace IR in source order so you can verify what the adapter extracted;
 - **Raw logs** show the redacted, bounded JSONL archive stored beside the report so you can inspect the adapter input. Old reports, missing sources, and archive limits are reported explicitly. Opaque `encrypted_content` is acknowledged but never decrypted or presented as model reasoning.
+
+**View raw log** in a semantic node detail first locates the corresponding source record, then falls back to the normalized event when raw logs are unavailable. This link uses source locators preserved by Trace IR; the renderer does not parse Codex-specific logs.
 
 Codex session metadata is normalized as `session_context`, including the observable runtime version, Memory / History modes, context-window identity, dynamic tool names, and base instructions. Per-turn workspace, model, approval, and sandbox settings are recorded as `execution_context` or `settings`. These fields describe task inputs; they do not prove that the model used or followed them.
 
