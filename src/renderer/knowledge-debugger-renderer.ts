@@ -170,6 +170,17 @@ const LANE_LABELS: Record<ReplayLaneKind, Record<Lang, { title: string; detail: 
   },
 };
 
+const SOURCE_RECORD_PARTIAL_LABELS: Record<Lang, { records: string; content: string }> = {
+  zh: {
+    records: '原始日志归档不完整：已保留 {retained} 条，省略 {omitted} 条。',
+    content: '部分原始日志内容已按归档上限截断。',
+  },
+  en: {
+    records: 'The raw-log archive is partial: {retained} retained, {omitted} omitted.',
+    content: 'Some raw-log content was truncated by the archive limit.',
+  },
+};
+
 export function renderKnowledgeDebuggerPage(
   model: KnowledgeDebuggerViewModel,
   lang: Lang = DEFAULT_LANG,
@@ -515,7 +526,8 @@ export function renderKnowledgeDebuggerPage(
           redacted: zh ? '【不透明加密载荷已省略】' : '[Opaque encrypted payload omitted]',
           truncated: zh ? '【该记录已按归档上限截断】' : '[Record truncated by archive limit]',
           loadFailed: zh ? '原始日志读取失败。可以切换视图后重试。' : 'Raw logs could not be loaded. Switch views and retry.',
-          partial: zh ? '原始日志归档不完整：已保留 {retained} 条，省略 {omitted} 条。' : 'The raw-log archive is partial: {retained} retained, {omitted} omitted.',
+          partialRecords: SOURCE_RECORD_PARTIAL_LABELS[lang].records,
+          partialContent: SOURCE_RECORD_PARTIAL_LABELS[lang].content,
         })};
         const cardLane = (card) => card.closest('.trajectory-lane')?.dataset.lane || '';
         const operationIds = semanticPanels.map((panel) => panel.dataset.trajectorySemanticPanel).filter(Boolean);
@@ -1036,9 +1048,12 @@ export function renderKnowledgeDebuggerPage(
             if (archive.status === 'partial') {
               const notice = document.createElement('div');
               notice.className = 'trajectory-record-notice';
-              notice.textContent = sourceRecordLabels.partial
-                .replace('{retained}', String(archive.recordCount ?? archive.records?.length ?? 0))
-                .replace('{omitted}', String(archive.omittedRecordCount ?? 0));
+              const omittedRecordCount = Number(archive.omittedRecordCount ?? 0);
+              notice.textContent = omittedRecordCount > 0
+                ? sourceRecordLabels.partialRecords
+                  .replace('{retained}', String(archive.recordCount ?? archive.records?.length ?? 0))
+                  .replace('{omitted}', String(omittedRecordCount))
+                : sourceRecordLabels.partialContent;
               sourceRecordList.append(notice);
             }
             (Array.isArray(archive.records) ? archive.records : []).forEach(appendSourceRecord);
@@ -1703,11 +1718,12 @@ function buildOperationLayout(
   });
 
   const tickStride = Math.max(1, Math.ceil(steps.length / 9));
-  const axisTicks = steps.flatMap((step, index): ReplayAxisTick[] => (
+  const axisTickCandidates = steps.flatMap((step, index): ReplayAxisTick[] => (
     index === 0 || index === steps.length - 1 || index % tickStride === 0
       ? [{ position: positions[index] ?? TRACK_START_PADDING, label: formatRelativeTimestamp(step.timestamp, startTimestamp) }]
       : []
   ));
+  const axisTicks = axisTickCandidates.filter((tick, index) => index === 0 || tick.label !== axisTickCandidates[index - 1]?.label);
   const lastPosition = positions.at(-1) ?? TRACK_START_PADDING;
   const lastWidth = steps.length > 0 ? replayCardWidth(steps[steps.length - 1], lang, pendingToolResults) : REPLAY_CARD_WIDTH;
   const occupiedRight = Math.max(lastPosition + lastWidth, ...rightEdgeByTrack.values());
@@ -1908,10 +1924,8 @@ function renderSourceRecordList(
   const zh = lang === 'zh';
   const source = model.sourceRecords;
   const lazy = Boolean(sourceRecordsEndpoint && source.status !== 'unavailable' && source.recordCount > 0 && source.records.length === 0);
-  const statusNotice = source.status === 'partial'
-    ? `<div class="trajectory-record-notice">${zh
-      ? `原始日志归档不完整：已保留 ${source.recordCount} 条，省略 ${source.omittedRecordCount} 条。`
-      : `The raw-log archive is partial: ${source.recordCount} retained, ${source.omittedRecordCount} omitted.`}</div>`
+  const statusNotice = !lazy && source.status === 'partial'
+    ? `<div class="trajectory-record-notice">${e(sourceRecordPartialNotice(source.recordCount, source.omittedRecordCount, lang))}</div>`
     : '';
   const rows = source.records.map((record) => {
     const preview = compactText(record.raw || (zh ? '空记录' : 'Empty record'), 180);
@@ -1931,6 +1945,13 @@ function renderSourceRecordList(
   const endpoint = lazy ? ` data-source-records-endpoint="${e(sourceRecordsEndpoint)}"` : '';
   const start = startTimestamp ? ` data-source-records-start="${e(startTimestamp)}"` : '';
   return `<section class="trajectory-raw-list" data-event-view="source"${endpoint}${start} data-source-records-loaded="${lazy ? 'false' : 'true'}" aria-label="${zh ? '按来源顺序排列的原始日志' : 'Raw logs in source order'}"><header class="trajectory-raw-head"><span>${zh ? '时间' : 'Time'}</span><span>${zh ? '来源类型' : 'Source type'}</span><span>${zh ? '原始 JSONL' : 'Raw JSONL'}</span><span>${zh ? '来源位置' : 'Source position'}</span></header>${statusNotice}${rows}${unavailable}${loading}</section>`;
+}
+
+function sourceRecordPartialNotice(recordCount: number, omittedRecordCount: number, lang: Lang): string {
+  if (omittedRecordCount === 0) return SOURCE_RECORD_PARTIAL_LABELS[lang].content;
+  return SOURCE_RECORD_PARTIAL_LABELS[lang].records
+    .replace('{retained}', String(recordCount))
+    .replace('{omitted}', String(omittedRecordCount));
 }
 
 function sourceRecordUnavailableLabel(
