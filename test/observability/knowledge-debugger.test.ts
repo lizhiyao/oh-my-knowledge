@@ -264,8 +264,12 @@ describe('Knowledge Debugger task trajectory', () => {
     ];
     const turns = reconstructExperienceTurns(events);
     const model = buildKnowledgeDebuggerViewModel({
+      id: 'session-1',
       threadId: 'thread-long',
       sourceThreadId: 'session-1',
+      sessionId: 'session-1',
+      sourceTrace: '/traces/codex.jsonl',
+      sourceKind: 'codex',
       turns,
       attributedEventIds: [],
       fullSessionTimeline: events,
