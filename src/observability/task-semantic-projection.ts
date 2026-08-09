@@ -6,6 +6,7 @@ interface SemanticUnit {
   order: number;
   priority: number;
   required: boolean;
+  retentionOrder: number;
 }
 
 export interface TaskSemanticProjectionOptions {
@@ -34,7 +35,7 @@ export function projectTaskSemanticEvents(
 
   const required = units
     .filter((unit) => unit.required)
-    .sort((left, right) => right.priority - left.priority || left.order - right.order);
+    .sort((left, right) => right.priority - left.priority || left.retentionOrder - right.retentionOrder);
   for (const unit of required) {
     if (unit.events.length > remaining) continue;
     selected.set(unit.id, unit);
@@ -54,22 +55,7 @@ export function projectTaskSemanticEvents(
       continue;
     }
 
-    while (remaining > 0) {
-      const fitting = candidates.filter((unit) => (
-        !selected.has(unit.id) && unit.events.length <= remaining
-      ));
-      if (fitting.length === 0) break;
-      const next = fitting.reduce((best, candidate) => {
-        const candidateDistance = distanceFromSelection(candidate, selected.values(), units);
-        const bestDistance = distanceFromSelection(best, selected.values(), units);
-        return candidateDistance > bestDistance
-          || (candidateDistance === bestDistance && candidate.order < best.order)
-          ? candidate
-          : best;
-      });
-      selected.set(next.id, next);
-      remaining -= next.events.length;
-    }
+    remaining = selectSpreadCandidates(candidates, selected, units, remaining);
   }
 
   return [...selected.values()]
@@ -107,8 +93,9 @@ function semanticUnits(
         id: `tool:${event.id}`,
         events: exchange,
         order: event.order,
-        priority: failed ? 100 : pending ? 135 : 70,
+        priority: failed ? 135 : pending ? 140 : 70,
         required: failed || pending,
+        retentionOrder: pending ? -event.order : event.order,
       });
       continue;
     }
@@ -133,6 +120,7 @@ function semanticUnits(
         isFailedResult,
       }),
       required,
+      retentionOrder: event.order,
     });
   }
   return units;
@@ -147,10 +135,11 @@ function requiredPriority(
     isFailedResult: boolean;
   },
 ): number {
-  if (flags.isFirstUser) return 140;
-  if (flags.isFinalAssistant) return 130;
-  if (flags.isBoundary) return 120;
-  if (flags.isFailedResult) return 100;
+  if (flags.isFirstUser) return 160;
+  if (flags.isFinalAssistant) return 150;
+  if (flags.isBoundary && event.label === 'turn_started') return 145;
+  if (flags.isFailedResult) return 135;
+  if (flags.isBoundary) return 130;
   return semanticPriority(event);
 }
 
@@ -170,18 +159,47 @@ function isBoundaryLifecycle(event: ExperienceTimelineEvent): boolean {
   return /(?:turn|task)[_-]?(?:start|complete|abort|interrupt|end)/.test(label);
 }
 
-function distanceFromSelection(
-  unit: SemanticUnit,
-  selected: Iterable<SemanticUnit>,
+function selectSpreadCandidates(
+  candidates: SemanticUnit[],
+  selected: Map<string, SemanticUnit>,
   allUnits: SemanticUnit[],
+  capacity: number,
 ): number {
-  const selectedOrders = [...selected].map((candidate) => candidate.order);
-  if (selectedOrders.length === 0) {
-    const first = allUnits[0]?.order ?? unit.order;
-    const last = allUnits.at(-1)?.order ?? unit.order;
-    return Math.min(Math.abs(unit.order - first), Math.abs(last - unit.order));
+  const selectedOrders = [...selected.values()].map((unit) => unit.order);
+  const firstOrder = allUnits[0]?.order ?? 0;
+  const lastOrder = allUnits.at(-1)?.order ?? firstOrder;
+  const distances = new Map(candidates.map((candidate) => [
+    candidate.id,
+    selectedOrders.length > 0
+      ? Math.min(...selectedOrders.map((order) => Math.abs(candidate.order - order)))
+      : Math.min(Math.abs(candidate.order - firstOrder), Math.abs(lastOrder - candidate.order)),
+  ]));
+  let remaining = capacity;
+
+  while (remaining > 0) {
+    const fitting = candidates.filter((unit) => (
+      !selected.has(unit.id) && unit.events.length <= remaining
+    ));
+    if (fitting.length === 0) break;
+    const next = fitting.reduce((best, candidate) => {
+      const candidateDistance = distances.get(candidate.id) ?? 0;
+      const bestDistance = distances.get(best.id) ?? 0;
+      return candidateDistance > bestDistance
+        || (candidateDistance === bestDistance && candidate.order < best.order)
+        ? candidate
+        : best;
+    });
+    selected.set(next.id, next);
+    remaining -= next.events.length;
+    for (const candidate of candidates) {
+      if (selected.has(candidate.id)) continue;
+      distances.set(candidate.id, Math.min(
+        distances.get(candidate.id) ?? Number.POSITIVE_INFINITY,
+        Math.abs(candidate.order - next.order),
+      ));
+    }
   }
-  return Math.min(...selectedOrders.map((order) => Math.abs(unit.order - order)));
+  return remaining;
 }
 
 function toolCorrelationKey(event: ExperienceTimelineEvent): string {

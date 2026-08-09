@@ -83,6 +83,31 @@ describe('Codex conversation catalog', () => {
     assert.ok(withFollowUp.lines.every((line) => !line.text.includes('完成第二项任务')));
   });
 
+  it('reads through injected context to the next human message and stops there', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-follow-up-context.jsonl');
+    const records = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'event_msg', payload: { type: 'user_message', message: '完成第一项任务。' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:01:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-b' } },
+      { timestamp: '2026-08-06T00:01:00.050Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<in-app-browser-context source="ambient-ui-state">\nCurrent URL: http://127.0.0.1:7799/\n</in-app-browser-context>' }] } },
+      { timestamp: '2026-08-06T00:01:00.100Z', type: 'event_msg', payload: { type: 'user_message', message: '不对，应该保留原来的交互。' } },
+      { timestamp: '2026-08-06T00:01:00.200Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'call-b', name: 'exec_command', input: '{}' } },
+    ];
+    writeFileSync(rolloutPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`);
+
+    const index = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    const selected = readCodexTaskRecords(index, index.tasks[0]!, {
+      includeNextHumanMessage: true,
+    });
+
+    assert.equal(selected.lines.length, 6);
+    assert.ok(selected.lines.some((line) => line.text.includes('ambient-ui-state')));
+    assert.ok(selected.lines.some((line) => line.text.includes('不对，应该保留原来的交互。')));
+    assert.ok(selected.lines.every((line) => !line.text.includes('call-b')));
+  });
+
   it('prefers the native user message over injected user-role context', () => {
     const root = temporaryRoot();
     const rolloutPath = join(root, 'rollout-injected-context.jsonl');

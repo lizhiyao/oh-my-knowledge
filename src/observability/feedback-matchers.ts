@@ -46,6 +46,14 @@ const PHRASE_USER_CORRECTION_TERMS = [
   '改成',
   '重来',
 ];
+const EXPLICIT_FOLLOW_UP_CORRECTION_PATTERNS = [
+  /(?:^|[\s,，;；.。!！?？:：])(?:不对|错了)(?:啊|呀|吧|呢)?(?=$|[\s,，;；.。!！?？:：])/iu,
+  /(?:这|这个|这样|你的|你.{0,8})(?:不对|错了)/iu,
+  /不是这个|不是我要的|不要这样|理解错|看错|你没懂|重来|重新来|重做|重新做/iu,
+  /\b(?:that(?:'s| is)|this is|you(?:'re| are)) wrong\b/iu,
+  /\b(?:this|that) is (?:incorrect|not right)\b/iu,
+  /\byou (?:misunderstood|misread)\b|\b(?:start|do)(?: it)? over\b/iu,
+];
 const USER_GOAL_SHIFT_TERMS = [
   '换个方向',
   '重新来',
@@ -172,6 +180,14 @@ export function findUserCorrectionMatches(value: string): TextMatchRange[] {
 
 export function hasUserCorrectionSignal(value: string): boolean {
   return findUserCorrectionMatches(value).length > 0;
+}
+
+/**
+ * 用严格纠正信号把下一轮用户消息关联回上一任务。统计反馈匹配仍保持更宽，
+ * 因为「改成」等表达可用于指标统计，但不足以单独证明任务连续性。
+ */
+export function hasExplicitFollowUpCorrectionSignal(value: string): boolean {
+  return EXPLICIT_FOLLOW_UP_CORRECTION_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 export function findUserGoalShiftMatches(value: string): TextMatchRange[] {

@@ -233,6 +233,51 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.equal(publish?.events.length, 1);
     assert.equal(publish?.toolStatus, 'unknown');
   });
+
+  it('computes task facts from the complete window instead of the bounded replay', () => {
+    const events = [
+      event('task-start', 'lifecycle', {
+        order: 0, turnId: 'turn-long', label: 'turn_started', timestamp: '2026-08-03T00:00:00.000Z',
+      }),
+      event('user', 'user_message', {
+        order: 1, turnId: 'turn-long', role: 'user', fullText: '检查长任务。', timestamp: '2026-08-03T00:00:01.000Z',
+      }),
+      ...Array.from({ length: 245 }, (_, index) => event(`context-${index}`, 'runtime_context', {
+        order: index + 2,
+        turnId: 'turn-long',
+        runtimeKind: 'execution_context',
+        timestamp: `2026-08-03T00:00:02.${String(index).padStart(3, '0')}Z`,
+      })),
+      event('unmatched-call', 'tool_use', {
+        order: 247,
+        turnId: 'turn-long',
+        callInstanceId: 'missing-result',
+        toolName: 'Bash',
+        timestamp: '2026-08-03T00:00:03.000Z',
+      }),
+      event('assistant', 'assistant_message', {
+        order: 248, turnId: 'turn-long', role: 'assistant', fullText: '检查结束。', timestamp: '2026-08-03T00:00:04.000Z',
+      }),
+      event('task-end', 'lifecycle', {
+        order: 249, turnId: 'turn-long', label: 'turn_completed', timestamp: '2026-08-03T00:00:05.000Z',
+      }),
+    ];
+    const turns = reconstructExperienceTurns(events);
+    const model = buildKnowledgeDebuggerViewModel({
+      threadId: 'thread-long',
+      sourceThreadId: 'session-1',
+      turns,
+      attributedEventIds: [],
+      fullSessionTimeline: events,
+    }, 'turn-long');
+
+    assert.equal(model.taskScope.truncated, true);
+    assert.equal(model.steps.some((step) => step.events[0]?.id === 'unmatched-call'), false);
+    assert.equal(model.summary.toolCallCount, 1);
+    assert.ok(model.integrity.notices.some((notice) => (
+      notice.code === 'unmatched_tool_calls' && notice.count === 1
+    )));
+  });
 });
 
 describe('Knowledge evidence projection', () => {

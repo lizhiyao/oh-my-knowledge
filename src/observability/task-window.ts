@@ -3,7 +3,7 @@ import type {
   TaskTrajectorySession,
   TaskWindowScope,
 } from '../types/index.js';
-import { hasUserCorrectionSignal } from './feedback-matchers.js';
+import { hasExplicitFollowUpCorrectionSignal } from './feedback-matchers.js';
 import { projectTaskSemanticEvents } from './task-semantic-projection.js';
 
 export const TASK_SEMANTIC_EVENT_LIMIT = 240;
@@ -61,12 +61,21 @@ function relatedCorrectionEvents(
   eventById: Map<string, ExperienceTimelineEvent>,
 ): ExperienceTimelineEvent[] {
   const selectedIndex = session.turns.findIndex((turn) => turn.turnId === selectedTurnId);
-  const nextTurn = selectedIndex >= 0 ? session.turns[selectedIndex + 1] : undefined;
+  const selectedTurn = selectedIndex >= 0 ? session.turns[selectedIndex] : undefined;
+  if (!selectedTurn) return [];
+  const selectedTraceKey = turnTraceKey(selectedTurn);
+  const nextTurn = session.turns.slice(selectedIndex + 1).find((turn) => (
+    turnTraceKey(turn) === selectedTraceKey
+  ));
   if (!nextTurn) return [];
   const firstHumanMessage = nextTurn.eventIds
     .map((id) => eventById.get(id))
     .find((event) => event?.kind === 'user_message' && event.role === 'user');
   if (!firstHumanMessage) return [];
   const text = firstHumanMessage.fullText ?? firstHumanMessage.snippet ?? '';
-  return hasUserCorrectionSignal(text) ? [firstHumanMessage] : [];
+  return hasExplicitFollowUpCorrectionSignal(text) ? [firstHumanMessage] : [];
+}
+
+function turnTraceKey(turn: TaskTrajectorySession['turns'][number]): string {
+  return turn.traceId?.trim() || turn.sourceTrace;
 }
