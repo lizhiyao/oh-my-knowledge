@@ -232,8 +232,23 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(replay.body, /data-trajectory-mode="semantic"/);
     assert.match(replay.body, /data-trajectory-mode="normalized"/);
     assert.match(replay.body, /data-trajectory-mode="source"/);
+    assert.match(replay.body, /data-short-label="轨迹"/);
+    assert.match(replay.body, /data-short-label="事件"/);
+    assert.match(replay.body, /data-short-label="日志"/);
+    assert.match(replay.body, /\.trajectory-mode button:after\{content:attr\(data-short-label\);font-size:10px\}/);
     assert.match(replay.body, new RegExp(`data-source-records-endpoint="/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records"`));
     assert.match(replay.body, /data-source-records-loaded="false"/);
+    assert.match(replay.body, /data-operation-evidence/);
+    assert.match(replay.body, /data-evidence-source-event-id="[^"]+"/);
+    assert.match(replay.body, /data-evidence-source-line-index="\d+"/);
+    assert.match(replay.body, /data-detail-source-line-index="\d+"/);
+    assert.match(replay.body, /data-view-evidence/);
+    assert.match(replay.body, /查看原始日志/);
+    assert.match(replay.body, /const revealEvidence = async \(target\) =>/);
+    assert.match(replay.body, /await loadSourceRecords\(\)/);
+    assert.match(replay.body, /matchingSourceRow\(sourceLineIndex, traceId\)/);
+    assert.match(replay.body, /row\.scrollIntoView/);
+    assert.match(replay.body, /is-evidence-target/);
     assert.doesNotMatch(replay.body, /"sourceTrace":/);
     assert.match(replay.body, /const closeInspector = \(shouldScheduleLayout = true\) =>/);
     assert.match(replay.body, /grid-template-columns:minmax\(0,1fr\) 0;align-items:stretch;transition:grid-template-columns/);
@@ -275,7 +290,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.doesNotMatch(replay.body, /<button class="trajectory-event[^"]*\bis-dimmed\b/);
     assert.match(replay.body, /\.trajectory-semantic-panels\{min-height:0;overflow:auto/);
     assert.match(replay.body, /class="trajectory-raw-list"/);
-    assert.match(replay.body, /data-trajectory-normalized-event="[^"]+" data-trajectory-facets="[^"]*tool:/);
+    assert.match(replay.body, /data-trajectory-normalized-event="[^"]+"[^>]*data-trajectory-facets="[^"]*tool:/);
     assert.match(replay.body, /normalizedRows\.forEach/);
     assert.match(replay.body, /row\.hidden = !matches/);
     assert.match(replay.body, /没有符合当前类型筛选的规范化事件/);
@@ -466,6 +481,7 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(withContent, /<span class="trajectory-field-label">上下文内容<\/span>/);
     assert.match(withContent, /源日志已记录可见内容/);
     assert.match(withContent, new RegExp(`data-detail-source-event-id="${contextEvent.id}"`));
+    assert.match(withContent, new RegExp(`data-detail-source-line-index="${contextEvent.sourceLineIndex}"`));
     assert.match(withContent, /data-preview-status="已显示 8 \/ 12 行"/);
     assert.match(withContent, /data-expand-label="展开完整内容"/);
 
@@ -562,7 +578,7 @@ describe('Knowledge Debugger task trajectory server', () => {
 
     assert.match(html, /data-title="新增文件：\/private\/tmp\/example-client\.mjs"/);
     assert.doesNotMatch(html, /data-title="const patch/);
-    assert.match(html, /class="trajectory-field-detail">const patch =/);
+    assert.match(html, /class="trajectory-field-detail"[^>]*>const patch =/);
   });
 
   it('presents long tool results as an explicit expandable preview', () => {
@@ -614,7 +630,7 @@ describe('Knowledge Debugger task trajectory server', () => {
 
     assert.match(html, /data-title="筛选可用工具"/);
     assert.doesNotMatch(html, /trajectory-event-title">const matches/);
-    assert.match(html, /class="trajectory-field-detail">const matches =/);
+    assert.match(html, /class="trajectory-field-detail"[^>]*>const matches =/);
   });
 
   it('derives source-neutral action and result summaries from structured CLI exchanges', () => {
@@ -691,11 +707,11 @@ describe('Knowledge Debugger task trajectory server', () => {
       assert.match(html, new RegExp(`data-title="${testCase.actionTitle}"`));
       assert.match(html, new RegExp(`trajectory-event-title">${testCase.resultTitle}<`));
       if (testCase.command.startsWith('node ')) {
-        assert.match(html, /class="trajectory-field-detail">node \/private\/tmp\/mcp_client\.mjs/);
+        assert.match(html, /class="trajectory-field-detail"[^>]*>node \/private\/tmp\/mcp_client\.mjs/);
       } else if (testCase.toolName === 'wait') {
-        assert.match(html, /class="trajectory-field-detail">\{&quot;cell_id&quot;/);
+        assert.match(html, /class="trajectory-field-detail"[^>]*>\{&quot;cell_id&quot;/);
       } else {
-        assert.match(html, /class="trajectory-field-detail">\{\}/);
+        assert.match(html, /class="trajectory-field-detail"[^>]*>\{\}/);
       }
     }
   });

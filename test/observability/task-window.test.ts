@@ -85,6 +85,85 @@ describe('source-neutral task window', () => {
     ]);
   });
 
+  it('associates only an explicit next-turn correction with the selected task', () => {
+    const events = [
+      timelineEvent('current-start', 1, 'lifecycle', { turnId: 'turn-current', label: 'turn_started' }),
+      timelineEvent('current-user', 2, 'user_message', {
+        turnId: 'turn-current', role: 'user', fullText: '先实现第一版。',
+      }),
+      timelineEvent('current-answer', 3, 'assistant_message', {
+        turnId: 'turn-current', role: 'assistant', fullText: '已经完成。',
+      }),
+      timelineEvent('current-end', 4, 'lifecycle', { turnId: 'turn-current', label: 'turn_completed' }),
+      timelineEvent('next-start', 5, 'lifecycle', { turnId: 'turn-next', label: 'turn_started' }),
+      timelineEvent('next-user', 6, 'user_message', {
+        turnId: 'turn-next', role: 'user', fullText: '不对，应该保留原来的交互。',
+      }),
+    ];
+
+    const resolved = resolveTaskWindow(session(events, []), 'turn-current');
+
+    assert.deepEqual(resolved.events.map((event) => event.id), [
+      'current-start',
+      'current-user',
+      'current-answer',
+      'current-end',
+    ]);
+    assert.deepEqual(resolved.relatedEvents.map((event) => event.id), ['next-user']);
+  });
+
+  it('does not treat an unrelated next task as correction evidence', () => {
+    const events = [
+      timelineEvent('current-user', 1, 'user_message', { role: 'user', fullText: '完成当前任务。' }),
+      timelineEvent('current-answer', 2, 'assistant_message', { role: 'assistant', fullText: '已完成。' }),
+      timelineEvent('next-user', 3, 'user_message', { role: 'user', fullText: '接下来看看文档。' }),
+    ];
+    const input = session(events, []);
+
+    const resolved = resolveTaskWindow(input, input.turns[0]!.turnId);
+
+    assert.deepEqual(resolved.relatedEvents, []);
+  });
+
+  it('does not treat broad correction keywords in a new task as follow-up evidence', () => {
+    const events = [
+      timelineEvent('current-user', 1, 'user_message', { role: 'user', fullText: '完成当前任务。' }),
+      timelineEvent('current-answer', 2, 'assistant_message', { role: 'assistant', fullText: '已完成。' }),
+      timelineEvent('next-user', 3, 'user_message', { role: 'user', fullText: '改成检查另一个模块。' }),
+    ];
+    const input = session(events, []);
+
+    const resolved = resolveTaskWindow(input, input.turns[0]!.turnId);
+
+    assert.deepEqual(resolved.relatedEvents, []);
+  });
+
+  it('finds follow-up corrections only on the selected task trace', () => {
+    const events = [
+      timelineEvent('a-current-user', 1, 'user_message', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a-current', role: 'user',
+        timestamp: '2026-08-06T00:00:00.000Z', fullText: '完成 A。',
+      }),
+      timelineEvent('a-current-answer', 2, 'assistant_message', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a-current', role: 'assistant',
+        timestamp: '2026-08-06T00:00:01.000Z', fullText: 'A 已完成。',
+      }),
+      timelineEvent('b-user', 3, 'user_message', {
+        traceId: 'trace-b', sourceTrace: '/b.jsonl', turnId: 'turn-b', role: 'user',
+        timestamp: '2026-08-06T00:00:02.000Z', fullText: '不对，B 应该重做。',
+      }),
+      timelineEvent('a-next-user', 4, 'user_message', {
+        traceId: 'trace-a', sourceTrace: '/a.jsonl', turnId: 'turn-a-next', role: 'user',
+        timestamp: '2026-08-06T00:00:03.000Z', fullText: '不对，A 应该保留原来的交互。',
+      }),
+    ];
+    const input = session(events, []);
+
+    const resolved = resolveTaskWindow(input, 'turn-a-current');
+
+    assert.deepEqual(resolved.relatedEvents.map((event) => event.id), ['a-next-user']);
+  });
+
   it('keeps interleaved traces out of each other task windows', () => {
     const events = [
       timelineEvent('a-start', 1, 'lifecycle', {
@@ -205,7 +284,7 @@ describe('source-neutral task window', () => {
     assert.deepEqual(resolved.events, []);
   });
 
-  it('keeps the complete normalized task while bounding only the semantic projection', () => {
+  it('keeps the complete normalized task while spreading the bounded semantic projection', () => {
     const events = Array.from({ length: 20 }, (_, index) => timelineEvent(
       `event-${index}`,
       index,
@@ -218,18 +297,103 @@ describe('source-neutral task window', () => {
 
     assert.equal(resolved.events.length, 20);
     assert.equal(resolved.semanticEvents.length, 10);
+    const semanticIds = resolved.semanticEvents.map((event) => event.id);
+    assert.equal(semanticIds[0], 'event-0');
+    assert.equal(semanticIds.at(-1), 'event-19');
+    assert.ok(semanticIds.some((id) => Number(id.split('-')[1]) >= 7 && Number(id.split('-')[1]) <= 12));
+    assert.equal(resolved.scope.truncated, true);
+  });
+
+  it('retains a failed tool exchange in the middle of a long task', () => {
+    const events = Array.from({ length: 40 }, (_, index) => timelineEvent(
+      `event-${index}`,
+      index,
+      index === 0 ? 'user_message' : index === 39 ? 'assistant_message' : 'model_activity',
+      { role: index === 0 ? 'user' : index === 39 ? 'assistant' : 'other' },
+    ));
+    events[19] = timelineEvent('failed-call', 19, 'tool_use', {
+      callInstanceId: 'call-failed',
+      toolName: 'Bash',
+    });
+    events[20] = timelineEvent('failed-result', 20, 'tool_result', {
+      callInstanceId: 'call-failed',
+      toolName: 'Bash',
+      toolStatus: 'failure',
+      isError: true,
+    });
+
+    const input = session(events, []);
+    const resolved = resolveTaskWindow(input, input.turns[0]!.turnId, 8);
+    const semanticIds = resolved.semanticEvents.map((event) => event.id);
+
+    assert.ok(semanticIds.includes('failed-call'));
+    assert.ok(semanticIds.includes('failed-result'));
+    assert.ok(semanticIds.includes('event-0'));
+    assert.ok(semanticIds.includes('event-39'));
+  });
+
+  it('retains an unmatched tool call as the current state of a bounded open task', () => {
+    const events = Array.from({ length: 30 }, (_, index) => timelineEvent(
+      `event-${index}`,
+      index,
+      index === 0 ? 'lifecycle' : index === 1 ? 'user_message' : 'model_activity',
+      index === 0
+        ? { turnId: 'turn-open', label: 'turn_started' }
+        : index === 1
+          ? { turnId: 'turn-open', role: 'user' }
+          : { turnId: 'turn-open', role: 'other' },
+    ));
+    events[29] = timelineEvent('pending-call', 29, 'tool_use', {
+      turnId: 'turn-open',
+      callInstanceId: 'call-pending',
+      toolName: 'Bash',
+    });
+
+    const input = session(events, []);
+    const resolved = resolveTaskWindow(input, 'turn-open', 3);
+
+    assert.equal(input.turns[0]?.status, 'open');
     assert.deepEqual(resolved.semanticEvents.map((event) => event.id), [
       'event-0',
       'event-1',
-      'event-2',
-      'event-3',
-      'event-4',
-      'event-5',
-      'event-16',
-      'event-17',
-      'event-18',
-      'event-19',
+      'pending-call',
     ]);
-    assert.equal(resolved.scope.truncated, true);
+  });
+
+  it('retains the latest unmatched call when an open task has several pending calls', () => {
+    const events = [
+      timelineEvent('task-start', 0, 'lifecycle', { turnId: 'turn-open', label: 'turn_started' }),
+      timelineEvent('user', 1, 'user_message', { turnId: 'turn-open', role: 'user' }),
+      timelineEvent('pending-old', 2, 'tool_use', {
+        turnId: 'turn-open', callInstanceId: 'call-old', toolName: 'Bash',
+      }),
+      timelineEvent('pending-latest', 3, 'tool_use', {
+        turnId: 'turn-open', callInstanceId: 'call-latest', toolName: 'Bash',
+      }),
+    ];
+    const input = session(events, []);
+
+    const resolved = resolveTaskWindow(input, 'turn-open', 3);
+
+    assert.deepEqual(resolved.semanticEvents.map((event) => event.id), [
+      'task-start',
+      'user',
+      'pending-latest',
+    ]);
+  });
+
+  it('preserves the request and final answer when the semantic limit is extremely small', () => {
+    const events = [
+      timelineEvent('task-start', 0, 'lifecycle', { label: 'turn_started' }),
+      timelineEvent('user', 1, 'user_message', { role: 'user' }),
+      timelineEvent('failed-result', 2, 'tool_result', { toolStatus: 'failure', isError: true }),
+      timelineEvent('assistant', 3, 'assistant_message', { role: 'assistant' }),
+      timelineEvent('task-end', 4, 'lifecycle', { label: 'turn_completed' }),
+    ];
+    const input = session(events, []);
+
+    const resolved = resolveTaskWindow(input, input.turns[0]!.turnId, 2);
+
+    assert.deepEqual(resolved.semanticEvents.map((event) => event.id), ['user', 'assistant']);
   });
 });

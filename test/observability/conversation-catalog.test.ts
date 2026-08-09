@@ -73,6 +73,39 @@ describe('Codex conversation catalog', () => {
     assert.equal(first.lines.length, 5);
     assert.ok(first.lines.some((line) => line.text.includes('turn-a')));
     assert.ok(first.lines.every((line) => !line.text.includes('turn-b')));
+
+    const withFollowUp = readCodexTaskRecords(index, index.tasks[0]!, {
+      includeNextHumanMessage: true,
+    });
+    assert.equal(withFollowUp.lines.length, 7);
+    assert.ok(withFollowUp.lines.some((line) => line.text.includes('turn-b')));
+    assert.ok(withFollowUp.lines.some((line) => line.text.includes('第二项任务')));
+    assert.ok(withFollowUp.lines.every((line) => !line.text.includes('完成第二项任务')));
+  });
+
+  it('reads through injected context to the next human message and stops there', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-follow-up-context.jsonl');
+    const records = [
+      { timestamp: '2026-08-06T00:00:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:00:00.100Z', type: 'event_msg', payload: { type: 'user_message', message: '完成第一项任务。' } },
+      { timestamp: '2026-08-06T00:00:00.200Z', type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-06T00:01:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-b' } },
+      { timestamp: '2026-08-06T00:01:00.050Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<in-app-browser-context source="ambient-ui-state">\nCurrent URL: http://127.0.0.1:7799/\n</in-app-browser-context>' }] } },
+      { timestamp: '2026-08-06T00:01:00.100Z', type: 'event_msg', payload: { type: 'user_message', message: '不对，应该保留原来的交互。' } },
+      { timestamp: '2026-08-06T00:01:00.200Z', type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'call-b', name: 'exec_command', input: '{}' } },
+    ];
+    writeFileSync(rolloutPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`);
+
+    const index = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+    const selected = readCodexTaskRecords(index, index.tasks[0]!, {
+      includeNextHumanMessage: true,
+    });
+
+    assert.equal(selected.lines.length, 6);
+    assert.ok(selected.lines.some((line) => line.text.includes('ambient-ui-state')));
+    assert.ok(selected.lines.some((line) => line.text.includes('不对，应该保留原来的交互。')));
+    assert.ok(selected.lines.every((line) => !line.text.includes('call-b')));
   });
 
   it('prefers the native user message over injected user-role context', () => {
@@ -97,7 +130,7 @@ describe('Codex conversation catalog', () => {
 
     const index = buildCodexRolloutIndex(rolloutPath, 'codex-knowledge-debugger-failure');
 
-    assert.deepEqual(index.tasks.map((task) => ({
+    assert.deepEqual(index.tasks.slice(0, 1).map((task) => ({
       turnId: task.turnId,
       title: task.title,
       toolCallCount: task.toolCallCount,
@@ -108,6 +141,7 @@ describe('Codex conversation catalog', () => {
       toolCallCount: 2,
       toolFailureCount: 1,
     }]);
+    assert.equal(index.tasks[1]?.turnId, 'turn-correction');
   });
 
   it('does not keep a superseded task running when its terminal event is missing', () => {
@@ -425,7 +459,7 @@ describe('Codex conversation catalog', () => {
     assert.equal(trajectory?.session.threadId, 'main-thread');
     assert.ok(trajectory?.session.turns.some((turn) => turn.sourceTurnId === 'turn-a'));
     assert.ok(trajectory?.session.fullSessionTimeline.some((event) => event.kind === 'user_message'));
-    assert.equal(trajectory?.sourceRecords.recordCount, 5);
+    assert.equal(trajectory?.sourceRecords.recordCount, 7);
   });
 
   it('streams fresh snapshots while an indexed Codex task is still open', async () => {

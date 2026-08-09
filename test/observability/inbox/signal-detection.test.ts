@@ -18,6 +18,7 @@ import {
   isExperienceTraceInProgress,
   type ExperienceSessionSummary,
 } from '../../../src/observability/experience.js';
+import { hasExplicitFollowUpCorrectionSignal } from '../../../src/observability/feedback-matchers.js';
 import {
   hasAssistantDeliverySignalText,
   hasUserHardRuleText,
@@ -42,6 +43,15 @@ describe('observe inbox - signal detection', () => {
     assert.equal(hasUserCorrectionSignal('这里不是；重来。'), true);
     const text = '这里的拆解不对称。不是，重新看。';
     assert.deepEqual(findUserCorrectionMatches(text).map((range) => text.slice(range.start, range.end)), ['不是']);
+  });
+
+  it('keeps follow-up task linkage stricter than statistical correction metrics', () => {
+    assert.equal(hasUserCorrectionSignal('改成检查另一个模块。'), true);
+    assert.equal(hasExplicitFollowUpCorrectionSignal('改成检查另一个模块。'), false);
+    assert.equal(hasExplicitFollowUpCorrectionSignal('不对吧，应该保留原来的交互。'), true);
+    assert.equal(hasExplicitFollowUpCorrectionSignal('这个不对，应该保留原来的交互。'), true);
+    assert.equal(hasExplicitFollowUpCorrectionSignal("That's wrong. Keep the original interaction."), true);
+    assert.equal(hasExplicitFollowUpCorrectionSignal('That is incorrect. Keep the original interaction.'), true);
   });
 
   it('detects neutral user goal shift separately from correction', () => {

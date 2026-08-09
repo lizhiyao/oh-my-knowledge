@@ -38,7 +38,7 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.equal(model.summary.userGoal, '检查并发布当前版本。');
     assert.equal(model.summary.finalResponse, '版本已经可以发布。');
     assert.equal(model.summary.observedStartTimestamp, '2026-08-03T00:00:00.500Z');
-    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:08.000Z');
+    assert.equal(model.summary.observedEndTimestamp, '2026-08-03T00:00:07.000Z');
     assert.equal(model.summary.toolCallCount, 2);
     assert.equal(model.summary.toolFailureCount, 1);
     assert.equal(model.summary.hasUserCorrection, true);
@@ -56,8 +56,9 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.ok(toolSteps.every((step) => step.events.length === 2));
     assert.equal(toolSteps[1].toolStatus, 'failure');
     assert.match(toolSteps[1].events[1]?.fullText ?? '', /missing doctor\/eval evidence/);
-    assert.equal(model.steps.at(-2)?.stepKind, 'user_correction');
-    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-2)?.stepKind, 'lifecycle');
+    assert.equal(model.steps.at(-1)?.stepKind, 'user_correction');
+    assert.ok(model.normalizedEvents.every((item) => item.turnId !== 'turn-correction'));
     assert.equal(model.taskScope.basis, 'turn_id');
     assert.equal(model.taskScope.turnId, 'turn-release');
 
@@ -136,8 +137,8 @@ describe('Knowledge Debugger task trajectory', () => {
     assert.ok(session);
     const model = buildKnowledgeDebuggerViewModel(session, 'turn-release');
 
-    assert.equal(model.steps.at(-1)?.stepKind, 'lifecycle');
-    assert.equal(model.steps.at(-1)?.events[0]?.label, 'turn_completed');
+    const completion = model.steps.find((step) => step.events[0]?.label === 'turn_completed');
+    assert.equal(completion?.stepKind, 'lifecycle');
     assert.ok(model.knowledgeEvidence.every((item) =>
       item.evidenceRefs.every((ref) => ref.kind !== 'lifecycle')
     ));
@@ -231,6 +232,55 @@ describe('Knowledge Debugger task trajectory', () => {
     const publish = model.steps.find((step) => (step.events[0]?.fullText ?? '').includes('npm publish'));
     assert.equal(publish?.events.length, 1);
     assert.equal(publish?.toolStatus, 'unknown');
+  });
+
+  it('computes task facts from the complete window instead of the bounded replay', () => {
+    const events = [
+      event('task-start', 'lifecycle', {
+        order: 0, turnId: 'turn-long', label: 'turn_started', timestamp: '2026-08-03T00:00:00.000Z',
+      }),
+      event('user', 'user_message', {
+        order: 1, turnId: 'turn-long', role: 'user', fullText: '检查长任务。', timestamp: '2026-08-03T00:00:01.000Z',
+      }),
+      ...Array.from({ length: 245 }, (_, index) => event(`context-${index}`, 'runtime_context', {
+        order: index + 2,
+        turnId: 'turn-long',
+        runtimeKind: 'execution_context',
+        timestamp: `2026-08-03T00:00:02.${String(index).padStart(3, '0')}Z`,
+      })),
+      event('unmatched-call', 'tool_use', {
+        order: 247,
+        turnId: 'turn-long',
+        callInstanceId: 'missing-result',
+        toolName: 'Bash',
+        timestamp: '2026-08-03T00:00:03.000Z',
+      }),
+      event('assistant', 'assistant_message', {
+        order: 248, turnId: 'turn-long', role: 'assistant', fullText: '检查结束。', timestamp: '2026-08-03T00:00:04.000Z',
+      }),
+      event('task-end', 'lifecycle', {
+        order: 249, turnId: 'turn-long', label: 'turn_completed', timestamp: '2026-08-03T00:00:05.000Z',
+      }),
+    ];
+    const turns = reconstructExperienceTurns(events);
+    const model = buildKnowledgeDebuggerViewModel({
+      id: 'session-1',
+      threadId: 'thread-long',
+      sourceThreadId: 'session-1',
+      sessionId: 'session-1',
+      sourceTrace: '/traces/codex.jsonl',
+      sourceKind: 'codex',
+      turns,
+      attributedEventIds: [],
+      fullSessionTimeline: events,
+    }, 'turn-long');
+
+    assert.equal(model.taskScope.truncated, true);
+    assert.equal(model.steps.some((step) => step.events[0]?.id === 'unmatched-call'), false);
+    assert.equal(model.summary.toolCallCount, 1);
+    assert.ok(model.integrity.notices.some((notice) => (
+      notice.code === 'unmatched_tool_calls' && notice.count === 1
+    )));
   });
 });
 
