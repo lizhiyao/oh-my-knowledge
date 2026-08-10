@@ -16,6 +16,13 @@ export interface ConversationActivitySnapshot {
   runningCount: number;
 }
 
+export interface ConversationDetailActivitySnapshot {
+  schemaVersion: 1;
+  revision: string;
+  taskCount: number;
+  runningCount: number;
+}
+
 export function buildConversationActivitySnapshot(
   model: ConversationIndexViewModel,
 ): ConversationActivitySnapshot {
@@ -34,6 +41,23 @@ export function buildConversationActivitySnapshot(
     schemaVersion: 1,
     revision: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 24),
     runningCount,
+  };
+}
+
+export function buildConversationDetailActivitySnapshot(
+  conversation: ConversationListItem,
+): ConversationDetailActivitySnapshot {
+  const state = conversation.tasks.map((task) => [
+    task.turnId,
+    task.status,
+    task.startTimestamp ?? null,
+    task.endTimestamp ?? null,
+  ]);
+  return {
+    schemaVersion: 1,
+    revision: createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 24),
+    taskCount: conversation.tasks.length,
+    runningCount: conversation.tasks.filter((task) => task.status === 'open').length,
   };
 }
 
@@ -122,11 +146,12 @@ export function renderConversationDetailPage(
 ): string {
   const zh = lang === 'zh';
   const langSuffix = lang === DEFAULT_LANG ? '' : '?lang=en';
+  const activity = buildConversationDetailActivitySnapshot(conversation);
   const taskRows = conversationTaskEntries(conversation.tasks)
     .map(({ task, ordinal }) => renderTaskRow(task, ordinal, lang))
     .join('');
   return layout(zh ? '对话任务' : 'Conversation tasks', `
-    <main class="conversation-page conversation-detail-page">
+    <main class="conversation-page conversation-detail-page" data-activity-revision="${e(activity.revision)}" data-activity-endpoint="/api/conversations/${encodeURIComponent(conversation.threadId)}/activity${langSuffix}">
       <header class="conversation-page-head conversation-detail-head">
         <div>
           <a class="back-link" href="/conversations${langSuffix}">${zh ? '返回对话总览' : 'Back to conversations'}</a>
@@ -142,11 +167,12 @@ export function renderConversationDetailPage(
         </div>
       </header>
       <section class="task-list" aria-label="${zh ? '任务列表' : 'Task list'}">
-        <header class="task-list-head"><span>${zh ? '任务' : 'Task'}</span><span>${zh ? '时间' : 'Time'}</span><span>${zh ? '执行' : 'Execution'}</span><span></span></header>
+        <header class="task-list-head"><span>${zh ? '任务' : 'Task'}</span><span>${zh ? '时间' : 'Time'}</span><span>${zh ? '执行' : 'Execution'}</span><button type="button" class="task-order-toggle" data-task-order-toggle data-task-order="desc" aria-label="${zh ? '切换为最早优先' : 'Switch to oldest first'}" title="${zh ? '切换为最早优先' : 'Switch to oldest first'}">${icon('arrow-up-down', { size: 14 })}<span data-task-order-label>${zh ? '最新优先' : 'Newest first'}</span></button></header>
         ${taskRows || `<div class="empty-state"><strong>${zh ? '没有识别到任务边界' : 'No task boundaries found'}</strong><span>${zh ? '该对话的原始日志可能尚未写入完整的 turn 生命周期。' : 'The raw log may not contain complete turn lifecycle records yet.'}</span></div>`}
       </section>
     </main>
     <style>${CSS}</style>
+    <script>${conversationDetailScript(lang)}</script>
   `, lang);
 }
 
@@ -193,23 +219,108 @@ function conversationTaskEntries(
 ): Array<{ task: ConversationTaskItem; ordinal: number }> {
   return tasks
     .map((task, index) => ({ task, ordinal: index + 1 }))
-    .sort((left, right) => (
-      Number(right.task.status === 'open') - Number(left.task.status === 'open')
-      || left.ordinal - right.ordinal
-    ));
+    .sort((left, right) => right.ordinal - left.ordinal);
 }
 
 function renderTaskRow(task: ConversationTaskItem, ordinal: number, lang: Lang): string {
   const zh = lang === 'zh';
   const href = taskTrajectoryHref(task, lang) ?? '#';
   const status = statusLabel(task.status, lang);
-  return `<article class="task-row${task.status === 'open' ? ' is-running' : ''}" data-task-status="${e(task.status)}">
+  return `<article class="task-row${task.status === 'open' ? ' is-running' : ''}" data-task-status="${e(task.status)}" data-task-ordinal="${ordinal}">
     <div class="task-index">${String(ordinal).padStart(2, '0')}</div>
     <div class="task-main"><div class="task-title">${renderSafeInlineMarkdown(task.title, { links: 'text' })}</div><div class="task-context">${task.eventCount} ${zh ? '条原始日志' : 'raw records'}</div></div>
     <div class="task-time"><span>${e(formatTime(task.startTimestamp))}</span><small>${e(formatDuration(task.durationMs, lang))}</small></div>
     <div class="task-execution"><span class="task-status status-${e(task.status)}">${e(status)}</span><small>${task.toolCallCount} ${zh ? '次调用' : 'calls'}${task.toolFailureCount > 0 ? ` · ${task.toolFailureCount} ${zh ? '次失败' : 'failures'}` : ''}</small></div>
     <a class="trajectory-link" href="${e(href)}">${zh ? '查看任务轨迹' : 'View trajectory'} →</a>
   </article>`;
+}
+
+function conversationDetailScript(lang: Lang): string {
+  const newestLabel = lang === 'zh' ? '最新优先' : 'Newest first';
+  const oldestLabel = lang === 'zh' ? '最早优先' : 'Oldest first';
+  const switchToNewest = lang === 'zh' ? '切换为最新优先' : 'Switch to newest first';
+  const switchToOldest = lang === 'zh' ? '切换为最早优先' : 'Switch to oldest first';
+  return `
+(() => {
+  const root = document.querySelector('.conversation-detail-page');
+  const taskList = root?.querySelector('.task-list');
+  const toggle = root?.querySelector('[data-task-order-toggle]');
+  const label = toggle?.querySelector('[data-task-order-label]');
+  const rows = [...(taskList?.querySelectorAll('.task-row') || [])];
+  const preferenceKey = 'omk.conversationTaskOrder';
+  let activityTimer;
+  let activityRequest;
+  let activityStopped = false;
+
+  const applyOrder = (order) => {
+    if (!taskList || !toggle) return;
+    const sorted = [...rows].sort((left, right) => {
+      const leftOrdinal = Number(left.dataset.taskOrdinal || 0);
+      const rightOrdinal = Number(right.dataset.taskOrdinal || 0);
+      return order === 'asc' ? leftOrdinal - rightOrdinal : rightOrdinal - leftOrdinal;
+    });
+    for (const row of sorted) taskList.append(row);
+    toggle.dataset.taskOrder = order;
+    if (label) label.textContent = order === 'asc' ? '${oldestLabel}' : '${newestLabel}';
+    const actionLabel = order === 'asc' ? '${switchToNewest}' : '${switchToOldest}';
+    toggle.setAttribute('aria-label', actionLabel);
+    toggle.setAttribute('title', actionLabel);
+  };
+
+  let initialOrder = 'desc';
+  try {
+    const storedOrder = sessionStorage.getItem(preferenceKey);
+    if (storedOrder === 'asc' || storedOrder === 'desc') initialOrder = storedOrder;
+  } catch { /* Storage can be unavailable in hardened browser contexts. */ }
+  applyOrder(initialOrder);
+  toggle?.addEventListener('click', () => {
+    const order = toggle.dataset.taskOrder === 'asc' ? 'desc' : 'asc';
+    applyOrder(order);
+    try { sessionStorage.setItem(preferenceKey, order); } catch { /* Ignore unavailable storage. */ }
+  });
+
+  const stopActivityPolling = () => {
+    activityStopped = true;
+    if (activityTimer) clearTimeout(activityTimer);
+    activityRequest?.abort();
+  };
+  const scheduleActivityPoll = (delay = 5000) => {
+    if (activityStopped) return;
+    if (activityTimer) clearTimeout(activityTimer);
+    activityTimer = setTimeout(pollActivity, delay);
+  };
+  const pollActivity = async () => {
+    if (activityStopped) return;
+    if (document.hidden) {
+      scheduleActivityPoll();
+      return;
+    }
+    const endpoint = root?.dataset.activityEndpoint;
+    if (!endpoint) return;
+    activityRequest?.abort();
+    activityRequest = new AbortController();
+    try {
+      const response = await fetch(endpoint, {
+        cache: 'no-store',
+        signal: activityRequest.signal,
+      });
+      if (!response.ok) throw new Error('conversation activity unavailable');
+      const snapshot = await response.json();
+      if (snapshot.revision && snapshot.revision !== root?.dataset.activityRevision) {
+        window.location.reload();
+        return;
+      }
+    } catch (cause) {
+      if (cause?.name === 'AbortError') return;
+    }
+    scheduleActivityPoll();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleActivityPoll(0);
+  });
+  window.addEventListener('pagehide', stopActivityPolling, { once: true });
+  scheduleActivityPoll();
+})();`;
 }
 
 function taskTrajectoryHref(task: ConversationTaskItem, lang: Lang): string | undefined {
@@ -428,7 +539,7 @@ const CSS = `
 .conversation-activity{display:flex;flex-direction:column;min-width:0}.conversation-activity strong{font-size:12px;font-weight:650;white-space:nowrap}.conversation-activity span{color:var(--text-muted);font:500 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.running-label{display:flex;align-items:center;gap:6px;color:var(--accent)}.running-label i,.live-task-link i{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(79,70,229,.1)}
 .conversation-main{min-width:0}.conversation-title{display:block;font-size:14px;font-weight:650;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}.conversation-main:has(.conversation-context) .conversation-title{margin-bottom:4px}.conversation-title code,.task-title code{padding:1px 3px;border-radius:3px;background:var(--bg-elevated);font:600 .92em ui-monospace,SFMono-Regular,Menlo,monospace}.inline-markdown-link{color:var(--accent);text-decoration:underline;text-decoration-color:rgba(79,70,229,.28);text-underline-offset:3px}.inline-markdown-link:hover{text-decoration-color:currentColor}.conversation-meta,.conversation-context,.detail-meta{display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:11px;min-width:0}.conversation-meta span+span:before,.conversation-context span+span:before,.detail-meta span+span:before{content:'·';margin-right:8px}.source-mark{color:var(--accent);font-weight:700}.conversation-workspace{min-width:0;color:var(--text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .conversation-counts{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:2px;color:var(--text-secondary);font-size:11px;white-space:nowrap}.conversation-counts span{display:flex;gap:4px;align-items:baseline}.conversation-counts b{font-size:14px;color:var(--text-primary);font-variant-numeric:tabular-nums}.live-task-link{z-index:3!important;display:flex;align-items:center;gap:6px;color:var(--accent);font-weight:650;text-decoration:none;pointer-events:auto!important}.live-task-link:hover{text-decoration:underline}.failure-count{color:var(--red)!important}.index-pending{color:var(--text-muted)}.row-arrow{display:flex;align-items:center;justify-content:center;color:var(--text-faint);transition:color .14s,transform .14s}.conversation-row:hover .row-arrow{color:var(--accent);transform:translateX(2px)}.empty-state{display:flex;flex-direction:column;gap:4px;padding:36px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);color:var(--text-secondary)}.empty-state strong{color:var(--text-primary)}
-.conversation-detail-head{align-items:flex-start}.conversation-detail-head h1{max-width:920px;font-size:24px}.detail-meta{margin-top:10px}.task-list-head,.task-row{display:grid;grid-template-columns:minmax(0,1fr) 140px 160px 150px;gap:18px;align-items:center}.task-list-head{padding:10px 22px 10px 72px;color:var(--text-muted);font-size:12px;background:var(--bg-elevated);border-bottom:1px solid var(--border)}.task-row{position:relative;padding:17px 22px 17px 72px;border-bottom:1px solid var(--border)}.task-row.is-running{background:rgba(79,70,229,.035);box-shadow:inset 3px 0 0 var(--accent)}.task-row:last-child{border-bottom:0}.task-index{position:absolute;left:22px;top:19px;font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted)}.task-row.is-running .task-index{color:var(--accent)}.task-main{min-width:0}.task-title{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}.task-context{color:var(--text-muted);font-size:12px}.task-time,.task-execution{display:flex;flex-direction:column;gap:3px}.task-time small,.task-execution small{color:var(--text-muted)}.task-status{font-weight:650}.status-aborted,.status-interrupted{color:var(--red)}.status-open{color:var(--accent)}.status-unknown{color:var(--yellow)}.status-completed{color:var(--green)}.trajectory-link{text-align:right;font-size:13px;white-space:nowrap}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.conversation-detail-head{align-items:flex-start}.conversation-detail-head h1{max-width:920px;font-size:24px}.detail-meta{margin-top:10px}.task-list-head,.task-row{display:grid;grid-template-columns:minmax(0,1fr) 140px 160px 150px;gap:18px;align-items:center}.task-list-head{padding:8px 22px 8px 72px;color:var(--text-muted);font-size:12px;background:var(--bg-elevated);border-bottom:1px solid var(--border)}.task-order-toggle{justify-self:end;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text-secondary);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}.task-order-toggle:hover{border-color:var(--border);background:var(--bg-surface);color:var(--text-primary)}.task-order-toggle:focus-visible{outline:2px solid rgba(79,70,229,.42);outline-offset:1px}.task-row{position:relative;padding:17px 22px 17px 72px;border-bottom:1px solid var(--border)}.task-row.is-running{background:rgba(79,70,229,.035);box-shadow:inset 3px 0 0 var(--accent)}.task-row:last-child{border-bottom:0}.task-index{position:absolute;left:22px;top:19px;font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted)}.task-row.is-running .task-index{color:var(--accent)}.task-main{min-width:0}.task-title{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}.task-context{color:var(--text-muted);font-size:12px}.task-time,.task-execution{display:flex;flex-direction:column;gap:3px}.task-time small,.task-execution small{color:var(--text-muted)}.task-status{font-weight:650}.status-aborted,.status-interrupted{color:var(--red)}.status-open{color:var(--accent)}.status-unknown{color:var(--yellow)}.status-completed{color:var(--green)}.trajectory-link{text-align:right;font-size:13px;white-space:nowrap}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 html:has(.conversation-index-app),body:has(.conversation-index-app){height:100%;overflow:hidden;scrollbar-gutter:auto}
 body:has(.conversation-index-app) .app-bar{display:none}

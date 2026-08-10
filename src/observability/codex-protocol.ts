@@ -35,6 +35,14 @@ const EVENT_MESSAGE_TYPES: ReadonlySet<string> = new Set([
 
 const IN_APP_BROWSER_CONTEXT_RE = /<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>/gi;
 const CODEX_RUNTIME_MESSAGE_RE = /^# AGENTS\.md instructions\b|^<(?:app-context|environment_context|permissions instructions|collaboration_mode|apps_instructions|plugins_instructions|skills_instructions|recommended_plugins)>/i;
+const CODEX_USER_REQUEST_HEADING_RE = /^## My request(?: for Codex)?:\s*$/im;
+const CODEX_USER_FILES_HEADING_RE = /^# Files mentioned by the user:\s*$/im;
+const IMAGE_ATTACHMENT_RE = /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|webp)$/i;
+
+export interface CodexUserAttachment {
+  attachmentKind: 'image' | 'file';
+  name: string;
+}
 
 export function isCodexResponseItemType(value: string | undefined): boolean {
   return value !== undefined && RESPONSE_ITEM_TYPES.has(value);
@@ -46,8 +54,7 @@ export function isCodexEventMessageType(value: string | undefined): boolean {
 
 /** Preserve source text separately while removing Codex UI transport envelopes from semantic display. */
 export function codexUserDisplayText(text: string): string | undefined {
-  const requestHeading = /^## My request for Codex:\s*$/im;
-  const requestMatch = requestHeading.exec(text);
+  const requestMatch = CODEX_USER_REQUEST_HEADING_RE.exec(text);
   const request = requestMatch
     ? text.slice(requestMatch.index + requestMatch[0].length)
     : text;
@@ -58,6 +65,44 @@ export function codexUserDisplayText(text: string): string | undefined {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return visible || undefined;
+}
+
+/** Extract privacy-safe attachment metadata without projecting local paths into Trace IR. */
+export function codexUserAttachments(text: string): CodexUserAttachment[] {
+  const attachments = new Map<string, CodexUserAttachment>();
+  const requestMatch = CODEX_USER_REQUEST_HEADING_RE.exec(text);
+  const filesMatch = CODEX_USER_FILES_HEADING_RE.exec(text);
+  if (filesMatch && (!requestMatch || filesMatch.index < requestMatch.index)) {
+    const sectionEnd = requestMatch?.index ?? text.length;
+    const section = text.slice(filesMatch.index + filesMatch[0].length, sectionEnd);
+    for (const match of section.matchAll(/^##\s+(.+?):\s+(.+)\s*$/gm)) {
+      addCodexUserAttachment(attachments, match[1], match[2]);
+    }
+  }
+
+  for (const match of text.matchAll(/<image\b[^>]*\bpath="([^"]+)"[^>]*>/gi)) {
+    addCodexUserAttachment(attachments, undefined, match[1]);
+  }
+  return [...attachments.values()];
+}
+
+function addCodexUserAttachment(
+  attachments: Map<string, CodexUserAttachment>,
+  declaredName: string | undefined,
+  sourcePath: string | undefined,
+): void {
+  const normalizedPath = sourcePath?.trim();
+  const inferredName = normalizedPath?.split(/[\\/]/).at(-1);
+  const name = declaredName?.trim() || inferredName?.trim();
+  if (!name) return;
+  const key = name.toLocaleLowerCase('en-US');
+  if (attachments.has(key)) return;
+  attachments.set(key, {
+    attachmentKind: IMAGE_ATTACHMENT_RE.test(name) || IMAGE_ATTACHMENT_RE.test(normalizedPath ?? '')
+      ? 'image'
+      : 'file',
+    name,
+  });
 }
 
 export function codexUserMessageOrigin(text: string): 'human' | 'runtime' {

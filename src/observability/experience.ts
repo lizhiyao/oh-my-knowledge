@@ -1329,11 +1329,21 @@ function isTimelineEvent(value: unknown): value is ExperienceTimelineEvent {
     !optionalStrings.every((field) => field === undefined || typeof field === 'string')
     || !isOptionalTimestamp(value.timestamp)
     || (value.isError !== undefined && typeof value.isError !== 'boolean')
+    || (value.attachments !== undefined && !isTimelineAttachmentArray(value.attachments))
   ) return false;
   return value.kind !== 'tool_result'
     || value.toolStatus === undefined
     || value.isError === undefined
     || value.isError === (value.toolStatus === 'failure');
+}
+
+function isTimelineAttachmentArray(value: unknown): value is NonNullable<ExperienceTimelineEvent['attachments']> {
+  return Array.isArray(value) && value.every((attachment) => (
+    isObjectRecord(attachment)
+    && (attachment.attachmentKind === 'image' || attachment.attachmentKind === 'file')
+    && typeof attachment.name === 'string'
+    && attachment.name.length > 0
+  ));
 }
 
 function isTimelineEventArray(value: unknown): value is ExperienceTimelineEvent[] {
@@ -3426,6 +3436,7 @@ function userTimelineEvents(
     order: order + (commandEnvelope ? 1 : 0),
     snippet: snippet(semanticText, 700),
     fullText: fullText(semanticText),
+    attachments: event.attachments,
     label: userTextEventLabel(kind),
   }));
   return events;

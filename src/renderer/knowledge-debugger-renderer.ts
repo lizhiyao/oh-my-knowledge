@@ -1480,6 +1480,8 @@ function projectReplay(
         ? 'failure'
         : conversation ? 'message' : 'result';
     const opaqueModelActivity = modelActivity && event?.contentVisibility === 'opaque';
+    const messageAttachments = event?.attachments ?? [];
+    const messageAttachmentLabel = attachmentSummary(messageAttachments, lang);
     const text = eventPreview(event, opaqueModelActivity
       ? (zh ? '不可见' : 'Unavailable')
       : (zh ? '没有可展示的事件内容。' : 'No event content available.'));
@@ -1496,7 +1498,7 @@ function projectReplay(
         : STEP_LABELS[step.stepKind][lang],
       model: eventModel,
       title: text,
-      detail: '',
+      detail: messageAttachmentLabel,
       facetIds: operationFacetIds,
       rawId: event ? `${event.kind} · ${event.id}` : step.id, primary: true,
       compact: opaqueModelActivity,
@@ -1538,6 +1540,11 @@ function projectReplay(
           { label: zh ? '角色' : 'Role', value: roleLabel(event, lang), detail: event?.kind ?? step.stepKind },
           { label: zh ? '时间' : 'Time', value: formatRelativeTimestamp(step.timestamp, startTimestamp), detail: formatDisplayTimestamp(step.timestamp, lang) },
           ...(eventModel ? [{ label: zh ? '模型' : 'Model', value: eventModel, detail: zh ? '由 trace 明确记录的事件模型' : 'Event model explicitly recorded by the trace' }] : []),
+          ...(messageAttachments.length > 0 ? [{
+            label: zh ? '附件' : 'Attachments',
+            value: messageAttachmentLabel,
+            detail: messageAttachments.map((attachment) => attachment.name).join('\n'),
+          }] : []),
           {
             label: zh ? '内容' : 'Content',
             value: text,
@@ -1639,6 +1646,18 @@ function replayEventModel(
   return step.stepKind === 'assistant_message' || step.stepKind === 'model_activity'
     ? event?.model?.trim() || undefined
     : undefined;
+}
+
+function attachmentSummary(
+  attachments: NonNullable<ExperienceTimelineEvent['attachments']>,
+  lang: Lang,
+): string {
+  const imageCount = attachments.filter((attachment) => attachment.attachmentKind === 'image').length;
+  const fileCount = attachments.length - imageCount;
+  const parts = lang === 'zh'
+    ? [imageCount > 0 ? `图片 ${imageCount} 张` : '', fileCount > 0 ? `文件 ${fileCount} 个` : '']
+    : [imageCount > 0 ? `${imageCount} image${imageCount === 1 ? '' : 's'}` : '', fileCount > 0 ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : ''];
+  return parts.filter(Boolean).join(' · ');
 }
 
 function replayCardWidth(step: TaskReplayStep, lang: Lang, pendingToolResults: boolean): number {

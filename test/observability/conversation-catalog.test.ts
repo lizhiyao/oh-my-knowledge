@@ -125,6 +125,33 @@ describe('Codex conversation catalog', () => {
     assert.equal(index.tasks[0]?.title, '用户真正发送的任务');
   });
 
+  it('uses the request body instead of the attachment envelope as the task title', () => {
+    const root = temporaryRoot();
+    const rolloutPath = join(root, 'rollout-user-attachment.jsonl');
+    const message = [
+      '# Files mentioned by the user:',
+      '',
+      '## codex-clipboard-example.png:',
+      '/private/tmp/codex-clipboard-example.png',
+      '',
+      '## My request:',
+      '这种展示要优化不',
+    ].join('\n');
+    const records = [
+      { timestamp: '2026-08-10T00:00:00.000Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-a' } },
+      { timestamp: '2026-08-10T00:00:00.100Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: message }] } },
+      { timestamp: '2026-08-10T00:00:00.200Z', type: 'event_msg', payload: { type: 'user_message', message } },
+      { timestamp: '2026-08-10T00:00:00.300Z', type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-a' } },
+    ];
+    writeFileSync(rolloutPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`);
+
+    const index = buildCodexRolloutIndex(rolloutPath, 'main-thread');
+
+    assert.equal(index.schemaVersion, 12);
+    assert.equal(index.tasks[0]?.title, '这种展示要优化不');
+    assert.doesNotMatch(index.tasks[0]?.title ?? '', /Files mentioned|private\/tmp/);
+  });
+
   it('does not invent a task for runtime context before a native turn', () => {
     const rolloutPath = new URL('../fixtures/codex-knowledge-debugger-failure.jsonl', import.meta.url).pathname;
 
