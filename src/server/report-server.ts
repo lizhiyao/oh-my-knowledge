@@ -13,6 +13,7 @@ import { renderObservationInboxPage } from '../renderer/observation-inbox-render
 import { renderKnowledgeDebuggerPage } from '../renderer/knowledge-debugger-renderer.js';
 import {
   buildConversationActivitySnapshot,
+  buildConversationDetailActivitySnapshot,
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../renderer/conversation-renderer.js';
@@ -1053,6 +1054,24 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         return;
       }
 
+      const conversationActivityMatch = path.match(/^\/api\/conversations\/([^/]+)\/activity$/);
+      if (conversationActivityMatch) {
+        let threadId = '';
+        try { threadId = decodeURIComponent(conversationActivityMatch[1]); } catch { /* invalid path */ }
+        const conversation = threadId ? await resolvedConversationCatalog.getConversation(threadId) : undefined;
+        if (!conversation) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'conversation_not_found' }));
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(buildConversationDetailActivitySnapshot(conversation)));
+        return;
+      }
+
       if (path === '/conversations') {
         const html = renderConversationIndexPage(await resolvedConversationCatalog.listConversations(), lang);
         res.writeHead(200, {
@@ -1230,7 +1249,10 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end(lang === 'en' ? 'conversation not found' : '对话不存在');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
         res.end(renderConversationDetailPage(conversation, lang));
         return;
       }

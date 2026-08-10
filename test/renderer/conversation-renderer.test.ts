@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
+  buildConversationDetailActivitySnapshot,
   renderConversationDetailPage,
   renderConversationIndexPage,
 } from '../../src/renderer/conversation-renderer.js';
@@ -98,7 +99,7 @@ describe('conversation overview renderer', () => {
 });
 
 describe('conversation detail renderer', () => {
-  it('surfaces open tasks first while preserving their chronological ordinals', () => {
+  it('renders tasks newest first while preserving their chronological ordinals', () => {
     const model = conversation('thread', '对话', 'completed');
     const firstTask = { ...model.tasks[0], turnId: 'first', title: '最早任务' };
     const runningTask = {
@@ -113,10 +114,34 @@ describe('conversation detail renderer', () => {
 
     const html = renderConversationDetailPage(model, 'zh');
 
+    assert.ok(html.indexOf('最近历史任务') < html.indexOf('当前任务'));
     assert.ok(html.indexOf('当前任务') < html.indexOf('最早任务'));
-    assert.ok(html.indexOf('最早任务') < html.indexOf('最近历史任务'));
     assert.ok(html.includes('class="task-row is-running" data-task-status="open"'));
     assert.ok(html.includes('<div class="task-index">02</div>'));
+    assert.ok(html.includes('data-task-order="desc"'));
+    assert.ok(html.includes('最新优先'));
+    assert.ok(html.includes('data-task-ordinal="3"'));
+    assert.ok(html.includes('sessionStorage.setItem(preferenceKey, order)'));
+    assert.ok(html.includes('data-activity-endpoint="/api/conversations/thread/activity"'));
+    assert.ok(html.includes('window.location.reload()'));
+  });
+
+  it('changes the activity revision only when task boundaries or states change', () => {
+    const model = conversation('thread', '对话', 'open');
+    const initial = buildConversationDetailActivitySnapshot(model);
+    const withMoreEvents = buildConversationDetailActivitySnapshot({
+      ...model,
+      tasks: model.tasks.map((task) => ({ ...task, eventCount: task.eventCount + 1, toolCallCount: 2 })),
+    });
+    const completed = buildConversationDetailActivitySnapshot({
+      ...model,
+      tasks: model.tasks.map((task) => ({ ...task, status: 'completed' as const })),
+    });
+
+    assert.equal(withMoreEvents.revision, initial.revision);
+    assert.notEqual(completed.revision, initial.revision);
+    assert.equal(initial.runningCount, 1);
+    assert.equal(completed.runningCount, 0);
   });
 
   it('describes unknown terminal evidence without implying the task is still running', () => {
