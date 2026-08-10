@@ -457,6 +457,34 @@ describe('Knowledge Debugger task trajectory server', () => {
     assert.match(html, /<div class="trajectory-field-content"><strong>Complete answer<\/strong>[\s\S]*DETAIL_END_MARKER<\/div>/);
   });
 
+  it('renders user attachments as safe metadata instead of transport envelopes', () => {
+    const userStep = debuggerModel.steps.find((step) =>
+      step.stepKind === 'user_request' || step.stepKind === 'user_message');
+    assert.ok(userStep);
+    const html = renderKnowledgeDebuggerPage({
+      ...debuggerModel,
+      steps: debuggerModel.steps.map((step) => step.id === userStep.id
+        ? {
+            ...step,
+            events: step.events.map((event, index) => index === 0
+              ? {
+                  ...event,
+                  fullText: '优化任务轨迹中的附件展示',
+                  snippet: '优化任务轨迹中的附件展示',
+                  attachments: [{ attachmentKind: 'image' as const, name: 'timeline.png' }],
+                }
+              : event),
+          }
+        : step),
+    });
+
+    assert.match(html, /优化任务轨迹中的附件展示/);
+    assert.match(html, /图片 1 张/);
+    assert.match(html, /<span class="trajectory-field-label">附件<\/span>/);
+    assert.match(html, /timeline\.png/);
+    assert.doesNotMatch(html, /\/private\/tmp\/timeline\.png/);
+  });
+
   it('shows observable context content in the inspector and distinguishes missing source content', () => {
     const contextStep = debuggerModel.steps.find((step) => step.stepKind === 'runtime_context');
     assert.ok(contextStep);

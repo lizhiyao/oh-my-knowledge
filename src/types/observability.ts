@@ -542,6 +542,10 @@ export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
   toolStatus?: ToolCallStatus;
   isError?: boolean;
   fullText?: string;
+  attachments?: Array<{
+    attachmentKind: 'image' | 'file';
+    name: string;
+  }>;
 }
 
 // ---------- Knowledge Debugger task trajectory ----------

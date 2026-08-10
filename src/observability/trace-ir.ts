@@ -23,6 +23,12 @@ export type TraceModelActivityContentSource = 'summary' | 'content' | 'text';
 export type TraceRuntimeContextKind = 'session_context' | 'execution_context' | 'settings' | 'goal';
 export type TraceAgentActivityKind = 'communication' | 'status';
 
+export interface TraceMessageAttachment {
+  attachmentKind: 'image' | 'file';
+  /** Privacy-safe display name. Source-local paths remain available only in raw logs. */
+  name: string;
+}
+
 /** Source-neutral tool identity, including provider namespaces when present. */
 export type TraceToolRef = NormalizedToolIdentity;
 
@@ -43,6 +49,7 @@ export interface TraceMessageEvent extends TraceEventBase {
   text: string;
   /** Human-facing text after a source adapter removes transport/UI envelopes. */
   displayText?: string;
+  attachments?: TraceMessageAttachment[];
   model?: string;
   attributionSkill?: string;
 }

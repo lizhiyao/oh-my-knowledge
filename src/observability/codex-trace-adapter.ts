@@ -23,6 +23,7 @@ import {
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
 import { extractCodexExecCommands } from './codex-exec-command.js';
 import {
+  codexUserAttachments,
   codexUserDisplayText,
   codexUserMessageOrigin,
   isCodexEventMessageType,
@@ -320,6 +321,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
             : normalizedRole === 'system' ? 'runtime' : 'synthetic',
           text,
           displayText: normalizedRole === 'user' ? codexUserDisplayText(text) : undefined,
+          attachments: normalizedRole === 'user' ? codexUserAttachments(text) : undefined,
           model: normalizedRole === 'assistant' ? activeModel : undefined,
         });
       }
@@ -603,6 +605,7 @@ function convertCodexRecords(rawRecords: unknown[], runId: string): TraceEvent[]
           origin: codexUserMessageOrigin(text),
           text,
           displayText: codexUserDisplayText(text),
+          attachments: codexUserAttachments(text),
         });
       }
       return;
@@ -1200,6 +1203,7 @@ function indexDuplicateEventMessages(records: unknown[]): Set<number> {
       : payloadType === 'agent_message' ? 'assistant' : undefined;
     const text = stringValue(payload.message);
     if (!role || !text) return;
+    const mirrorText = role === 'user' ? codexUserDisplayText(text) : text;
     const nearbyRecords = [-1, 1].flatMap((direction) => {
       let candidateIndex = sourceIndex + direction;
       while (candidateIndex >= 0 && candidateIndex < records.length) {
@@ -1213,9 +1217,12 @@ function indexDuplicateEventMessages(records: unknown[]): Set<number> {
       const adjacent = asCodexRecord(candidate);
       if (adjacent?.type !== 'response_item') return false;
       const adjacentPayload = isObject(adjacent.payload) ? adjacent.payload : {};
-      return adjacentPayload.type === 'message'
-        && adjacentPayload.role === role
-        && codexContentText(adjacentPayload.content) === text;
+      if (adjacentPayload.type !== 'message' || adjacentPayload.role !== role) return false;
+      const adjacentText = codexContentText(adjacentPayload.content);
+      if (!adjacentText) return false;
+      return role === 'user'
+        ? Boolean(mirrorText) && codexUserDisplayText(adjacentText) === mirrorText
+        : adjacentText === text;
     });
     if (mirrored) duplicateIndexes.add(sourceIndex);
   });

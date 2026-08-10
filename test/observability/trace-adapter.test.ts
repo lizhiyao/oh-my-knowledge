@@ -342,7 +342,7 @@ describe('loadCcSessions', () => {
       '',
       '## screenshot.png: /private/tmp/screenshot.png',
       '',
-      '## My request for Codex:',
+      '## My request:',
       '为什么插件不可用？',
       '',
       '<image name=[Image #1] path="/private/tmp/screenshot.png">',
@@ -366,6 +366,53 @@ describe('loadCcSessions', () => {
     assert.equal(
       message?.eventKind === 'message' ? message.displayText : undefined,
       '为什么插件不可用？',
+    );
+    assert.deepEqual(
+      message?.eventKind === 'message' ? message.attachments : undefined,
+      [{ attachmentKind: 'image', name: 'screenshot.png' }],
+    );
+  });
+
+  it('deduplicates mirrored Codex attachment messages by their semantic request', () => {
+    const envelope = [
+      '# Files mentioned by the user:',
+      '',
+      '## timeline.png: /private/tmp/timeline.png',
+      '',
+      '## My request:',
+      '优化任务轨迹中的附件展示',
+    ].join('\n');
+    const path = writeSession(tmpDir, 'codex-attachment-mirror.jsonl', [
+      {
+        timestamp: '2026-07-25T00:00:01.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_text', text: envelope },
+            { type: 'input_text', text: '<image name="[Image #1]" path="/private/tmp/timeline.png">' },
+            { type: 'input_image', image_url: 'data:image/png;base64,redacted' },
+            { type: 'input_text', text: '</image>' },
+          ],
+        },
+      },
+      {
+        timestamp: '2026-07-25T00:00:01.100Z',
+        type: 'event_msg',
+        payload: { type: 'user_message', message: envelope },
+      },
+    ]);
+
+    const [session] = loadCcSessions(path);
+    const messages = session.events.filter((event) => event.eventKind === 'message');
+    assert.equal(messages.length, 1);
+    const [message] = messages;
+    assert.equal(message?.eventKind, 'message');
+    assert.equal(message?.eventKind === 'message' ? message.displayText : undefined, '优化任务轨迹中的附件展示');
+    assert.deepEqual(
+      message?.eventKind === 'message' ? message.attachments : undefined,
+      [{ attachmentKind: 'image', name: 'timeline.png' }],
     );
   });
 

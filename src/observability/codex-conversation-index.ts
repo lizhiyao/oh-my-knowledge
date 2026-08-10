@@ -9,7 +9,7 @@ import {
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION = 11;
+const INDEX_SCHEMA_VERSION = 12;
 const MAX_CURRENT_INDEX_ATTEMPTS = 4;
 
 export interface CodexIndexedTask {
@@ -28,7 +28,7 @@ export interface CodexIndexedTask {
 }
 
 export interface CodexRolloutIndex {
-  schemaVersion: 11;
+  schemaVersion: 12;
   sourcePath: string;
   /** File size observed when the index was produced. */
   sourceSize: number;
