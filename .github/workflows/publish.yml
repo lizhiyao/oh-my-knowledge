@@ -10,28 +10,30 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # 创建 GitHub Release(npm publish 完成后自动建, release notes 由 GitHub 从 PR 列表自动生成)
-      id-token: write # 使工作流能够通过 OIDC 从 GitHub 获取凭证（npm provenance 必需）
+      id-token: write # npm Trusted Publishing 通过 OIDC 换取短期发布凭证，并自动生成 provenance
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v7
 
-    # Enable Corepack before setup-node so its `cache: yarn` step resolves the
-    # cache folder via the packageManager-pinned Yarn 4.
-    - name: Enable Corepack
-      run: corepack enable
-
     - name: Setup Node.js
       uses: actions/setup-node@v7
       with:
-        node-version: '22.x'
+        node-version: '24.x'
         registry-url: 'https://registry.npmjs.org'
-        cache: yarn
+        package-manager-cache: false
+
+    - name: Setup package managers
+      run: |
+        corepack enable
+        npm install --global 'npm@^11.5.1'
+        node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)" "$(npm --version)"
 
     - name: Install dependencies
       run: yarn install --immutable
 
     - name: Validate release tag
+      id: release
       shell: bash
       run: |
         set -euo pipefail
@@ -59,6 +61,12 @@ jobs:
           exit 1
         fi
 
+        if [[ "${package_version}" == *-* ]]; then
+          echo "npm_tag=next" >> "${GITHUB_OUTPUT}"
+        else
+          echo "npm_tag=latest" >> "${GITHUB_OUTPUT}"
+        fi
+
         git fetch --no-tags origin main
         tag_commit="$(git rev-list -n 1 "${tag_ref}")"
         if ! git merge-base --is-ancestor "${tag_commit}" origin/main; then
@@ -76,9 +84,7 @@ jobs:
       run: yarn run test
 
     - name: Publish to NPM
-      run: npm publish --access public --provenance
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: npm publish --access public --tag "${{ steps.release.outputs.npm_tag }}"
 
     # softprops/action-gh-release 是行业通用 GitHub Release action (~17k stars)。
     # generate_release_notes 让 GitHub 直接从 tag 之间的 PR 列表自动生成

@@ -55,6 +55,19 @@ git push -u origin feat/my-feature
 
 ### Releasing a new version
 
+npm 发布使用 GitHub Actions OIDC Trusted Publishing，不保存长期 npm token。首次启用时，在
+`oh-my-knowledge` 的 npm package settings 配置：
+
+- provider：GitHub Actions
+- repository：`lizhiyao/oh-my-knowledge`
+- workflow：`publish.yml`（只填文件名）
+- environment：留空
+- allowed action：仅 `npm publish`
+
+`.github/workflows/publish.yml` 固定使用 GitHub-hosted runner、Node 24 和 npm ≥ 11.5.1。
+`id-token: write` 让 npm 用 OIDC 换取短期发布凭证，provenance 由 npm 自动生成；不要重新加入
+`NPM_TOKEN`、`NODE_AUTH_TOKEN` 或显式 `--provenance`。
+
 ```bash
 # cut a release version-bump branch from main
 git checkout main
@@ -83,6 +96,12 @@ git tag -a v0.28.0 -m "Release v0.28.0"
 # event that fires the tag workflow.
 git push origin v0.28.0
 ```
+
+迁移 Trusted Publishing 时，先发布一个 prerelease（例如 `0.52.3-oidc.0`）验证 OIDC 和
+provenance；workflow 会自动把 prerelease 发布到 `next` dist-tag，不影响 `latest`。验证成功后，
+先执行 `npm access set mfa=publish oh-my-knowledge`，再在 npm package settings 的 Publishing
+access 选择「Require two-factor authentication and disallow tokens」，最后删除 GitHub 仓库中的
+`NPM_TOKEN` secret。不要在验证前删除 token，以便失败时仍可回滚 workflow。
 
 ### Hotfix against a released version
 
