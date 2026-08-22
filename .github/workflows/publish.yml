@@ -63,8 +63,10 @@ jobs:
 
         if [[ "${package_version}" == *-* ]]; then
           echo "npm_tag=next" >> "${GITHUB_OUTPUT}"
+          echo "github_prerelease=true" >> "${GITHUB_OUTPUT}"
         else
           echo "npm_tag=latest" >> "${GITHUB_OUTPUT}"
+          echo "github_prerelease=false" >> "${GITHUB_OUTPUT}"
         fi
 
         git fetch --no-tags origin main
@@ -94,3 +96,4 @@ jobs:
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: true
+        prerelease: ${{ steps.release.outputs.github_prerelease }}
