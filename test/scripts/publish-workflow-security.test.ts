@@ -52,14 +52,21 @@ describe('npm 发布供应链', () => {
     assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/, '发布 workflow 不应引用长期 npm token');
   });
 
-  it('prerelease 使用 next dist-tag，正式版本使用 latest', () => {
+  it('prerelease 使用 next dist-tag 并创建 GitHub prerelease，正式版本使用 latest', () => {
     const { workflow } = loadWorkflow();
     const steps = workflow.jobs?.publish?.steps ?? [];
     const validate = steps.find((step) => step.name === 'Validate release tag');
     const publish = steps.find((step) => step.name === 'Publish to NPM');
+    const githubRelease = steps.find((step) => step.name === 'Create GitHub Release');
 
     assert.match(validate?.run ?? '', /npm_tag=next/);
     assert.match(validate?.run ?? '', /npm_tag=latest/);
+    assert.match(validate?.run ?? '', /github_prerelease=true/);
+    assert.match(validate?.run ?? '', /github_prerelease=false/);
     assert.match(publish?.run ?? '', /steps\.release\.outputs\.npm_tag/);
+    assert.equal(
+      githubRelease?.with?.prerelease,
+      '${{ steps.release.outputs.github_prerelease }}',
+    );
   });
 });
