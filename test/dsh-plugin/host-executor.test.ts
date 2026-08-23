@@ -65,7 +65,28 @@ class FakeDshHost implements DshHostContextLike {
       };
       let settle: (() => void) | undefined;
       let idle = Promise.resolve();
-      const agentCtx: UnknownRecord = {};
+      type SetupContext = Parameters<typeof options.setup>[0];
+      const scope = { agent: undefined as DshAgentLike | undefined };
+      const agentCtx: SetupContext = {
+        get agent() { return scope.agent; },
+        systemPrompt: {
+          section: (section) => {
+            this.promptSections.push(section);
+            return () => undefined;
+          },
+          suppressRuntimeContext: () => {
+            this.runtimeContextSuppressed += 1;
+            return () => undefined;
+          },
+        },
+        tools: {
+          get: (name) => name === 'skill' ? {} : undefined,
+          restrict: (filter) => {
+            this.deniedTools.push([...filter.deny]);
+            return () => undefined;
+          },
+        },
+      };
       const agent: DshAgentLike = {
         id: options.sessionId,
         options: options.agentOptions,
@@ -112,27 +133,8 @@ class FakeDshHost implements DshHostContextLike {
           if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
-      Object.assign(agentCtx, {
-        agent,
-        systemPrompt: {
-          section: (section) => {
-            this.promptSections.push(section);
-            return () => undefined;
-          },
-          suppressRuntimeContext: () => {
-            this.runtimeContextSuppressed += 1;
-            return () => undefined;
-          },
-        },
-        tools: {
-          get: (name) => name === 'skill' ? {} : undefined,
-          restrict: (filter) => {
-            this.deniedTools.push([...filter.deny]);
-            return () => undefined;
-          },
-        },
-      });
-      options.setup(agentCtx as Parameters<typeof options.setup>[0]);
+      scope.agent = agent;
+      options.setup(agentCtx);
       this.created.push({
         sessionId: options.sessionId,
         cwd: options.meta.cwd,
