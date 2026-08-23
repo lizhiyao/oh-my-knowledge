@@ -5,7 +5,7 @@ import {
   __resetSigintRegistryForTest,
   registerSigintSubscriber,
   type SpawnHelperError,
-} from '../../src/executors/shared.js';
+} from '../../src/executors/core/subprocess.js';
 
 // SIGINT 传播 helper 测试。直接 spawn 真子进程(node -e "...")替代 vi.mock,
 // 因为 spawn / ChildProcess / EventEmitter 跟 'exit' / 'close' / 'error' / signal

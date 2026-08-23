@@ -1,5 +1,5 @@
 import type { Report } from '../types/index.js';
-import { executorVendor, type ExecutorVendor } from '../executors/shared.js';
+import { executorVendor, type ExecutorVendor } from '../executors/core/registry.js';
 
 /**
  * 评委独立性分析(单一来源,verdict caveat 与 analysis 诊断共用)。

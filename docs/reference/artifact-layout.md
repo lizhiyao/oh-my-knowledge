@@ -23,7 +23,7 @@ To observe a project's runtime context by itself, use a non-`baseline` label plu
 
 ## Artifact directory layout
 
-For the `name` form, the built-in executors (claude / codex / gemini, etc.) support two layouts, mixable in the same run:
+For the `name` form, the built-in executors (claude / codex, etc.) support two layouts, mixable in the same run:
 
 ```
 skills/

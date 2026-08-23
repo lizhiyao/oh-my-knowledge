@@ -159,7 +159,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 |---|---|
 | **One-line verdict** | `omk eval` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
-| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Gemini / Anthropic API / any custom command |
+| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Anthropic API / any custom command |
 | **30+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
 | **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |

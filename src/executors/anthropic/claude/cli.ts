@@ -1,16 +1,14 @@
-import type { ExecResult, ExecutorInput } from '../types/index.js';
+import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import { materializeForCliConfigDir } from '../../../eval-core/mocks-runtime.js';
+import { buildClaudeResult, parseClaudeStreamJson } from './protocol.js';
+import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';
 import {
   buildExecEnv,
-  DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
-  MAX_BUFFER,
-  spawnWithSigintPropagation,
   timeoutExecResult,
-  type SpawnHelperError,
-} from './shared.js';
-import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
-import { buildClaudeResult, parseClaudeStreamJson } from './claude-protocol.js';
+} from '../../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../../core/subprocess.js';
 
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
 // `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。非空 skill 白名单不再支持

@@ -10,11 +10,12 @@ An **executor** is the backend that runs an artifact against a model — it turn
 | `claude-sdk` | agent eval (tool / turn traces), structured output | uses Claude Agent SDK — extracts turns / toolCalls traces, no stdout parsing, avoids buffer truncation |
 | `codex` | Codex / ChatGPT desktop coding tasks (CLI) | invokes `codex exec --json` (`@openai/codex` npm); best-effort tool trace; **costUSD not reported** (codex CLI does not emit USD; check usage externally) |
 | `codex-sdk` | Codex agent eval (SDK) | uses `@openai/codex-sdk` with its bundled `@openai/codex` binary and streamed SDK events; **costUSD not reported** |
-| `gemini` | cross-vendor comparison | invokes `gemini` CLI |
 | `anthropic-api` | CI / no CLI installed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |
 | `openai-api` | CI / no CLI; or route a non-Claude model | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
+
+The former built-in `gemini` executor has been removed because it did not expose the trace, isolation, mock, or cost evidence required for a trustworthy built-in integration. Existing `executor: gemini` configurations now fail explicitly instead of silently falling back to the custom-command protocol. To keep using Gemini CLI, wrap it in a [custom executor](#custom-executor) that translates OMK's JSON stdin/stdout contract.
 
 ## Sample mock compatibility
 
@@ -24,7 +25,7 @@ API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OP
 |---|---|
 | `claude` / `claude-sdk` | supported through native hooks |
 | `codex` / `codex-sdk` | unsupported; the current CLI and SDK expose traces but no tool-interception hook |
-| `gemini` / `anthropic-api` / `openai-api` | unsupported |
+| `anthropic-api` / `openai-api` | unsupported |
 | custom command | delegated through `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE`; the command must install or consume the supplied hook |
 
 When the selected executor does not support interception, `omk sample` automatically generates mockless samples and removes positive evidence that would require a simulated call (`mock_hit`, `tools_called`, `tools_count_min`, `tool_input_contains`, and `tool_output_contains`). If a model still emits `environment`, its facts are moved into explicitly non-materialized `context` rather than discarded or presented as fixtures. `omk eval`, including `--dry-run` and `--skip-doctor`, rejects existing samples with mocks before any model call instead of silently turning harness incompatibility into a model failure.
@@ -118,7 +119,6 @@ omk eval --executor "./my-executor.sh"
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
 - **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
 - **openai-api**: set the `OPENAI_API_KEY` env var
-- **gemini**: `npm i -g @google/gemini-cli` and authenticate
 
 ## Related
 

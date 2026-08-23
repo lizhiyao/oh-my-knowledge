@@ -1,14 +1,14 @@
-import type { ToolCallInfo, TurnInfo } from '../types/index.js';
-import type { ClaudeSdkBaseMessage } from './shared.js';
-import { safeSliceForJson } from '../util/safe-slice.js';
-import { isToolResultFailureText } from '../observability/text-signals.js';
-import { normalizeToolIdentity } from '../shared/tool-identity.js';
+import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
+import type { ClaudeMessage } from './protocol.js';
+import { safeSliceForJson } from '../../../util/safe-slice.js';
+import { isToolResultFailureText } from '../../../observability/text-signals.js';
+import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
 
-export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean {
+export function isClaudeResultMessage(message: ClaudeMessage): boolean {
   return message.type === 'result';
 }
 
-export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[]; fullNumTurns: number; numSubAgents: number } {
+export function extractClaudeTrace(messages: ClaudeMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[]; fullNumTurns: number; numSubAgents: number } {
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
   const pendingToolUse = new Map<string, ToolCallInfo[]>();

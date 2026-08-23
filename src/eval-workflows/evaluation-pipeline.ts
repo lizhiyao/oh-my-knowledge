@@ -45,7 +45,7 @@ import {
 import { finalizeEvaluationReport } from './evaluation-pipeline/report-finalize.js';
 import { emitIsolationWarnings, emitPowerWarnings } from './evaluation-pipeline/preflight-warnings.js';
 import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
-import { assertSamplesCompatibleWithExecutor } from '../executors/capabilities.js';
+import { assertSamplesCompatibleWithExecutor } from '../executors/core/capabilities.js';
 
 // 兼容 re-export:测试与 run-evaluation.ts 动态 import 仍打 evaluation-pipeline.js
 export { buildPowerWarnings, buildIsolationWarnings } from './evaluation-pipeline/preflight-warnings.js';

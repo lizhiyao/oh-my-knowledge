@@ -10,7 +10,7 @@ import {
   buildCodexSdkThreadOptions,
   codexSdkExecutor,
   getIsolatedCodexHome,
-} from '../../src/executors/codex-sdk.js';
+} from '../../src/executors/openai/codex/sdk.js';
 
 describe('codex-sdk executor parity contract', () => {
   it('maps the SDK-exposed eval-critical thread options to codex-cli equivalents', () => {

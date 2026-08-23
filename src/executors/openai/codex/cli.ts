@@ -1,17 +1,17 @@
-import type { ExecResult, ExecutorInput } from '../types/index.js';
-import type { CodexEvent } from './shared.js';
-import { buildCodexResult } from './codex-protocol.js';
+import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import {
+  buildCodexResult,
+  normalizeCodexProtocolEvent,
+  type CodexEvent,
+} from './protocol.js';
+import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';
 import {
   buildExecEnv,
-  DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
-  MAX_BUFFER,
-  normalizeCodexProtocolEvent,
-  spawnWithSigintPropagation,
   timeoutExecResult,
-  type SpawnHelperError,
-} from './shared.js';
+} from '../../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../../core/subprocess.js';
 
 export {
   extractCodexFinalOutput,
@@ -19,7 +19,7 @@ export {
   extractCodexStopReason,
   extractCodexUsage,
   sumCodexElapsed,
-} from './codex-protocol.js';
+} from './protocol.js';
 
 // codex CLI(0.125)隔离能力对比 claude-cli:
 //   Claude:三条 channel(SDK skills auto-discovery / subagent Skill 工具 /

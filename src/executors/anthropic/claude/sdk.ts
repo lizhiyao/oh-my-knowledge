@@ -1,21 +1,21 @@
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { ExecResult, ExecutorInput } from '../types/index.js';
-import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './shared.js';
+import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import type { ClaudeMessage, ClaudeSdkModule } from './protocol.js';
+import { DEFAULT_TIMEOUT_MS } from '../../core/limits.js';
 import {
   asErrorLike,
   buildExecEnv,
-  DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
-  registerSigintSubscriber,
   timeoutExecResult,
-} from './shared.js';
-import { buildSdkHookCallback } from '../eval-core/mocks-runtime.js';
-import { buildClaudeResult } from './claude-protocol.js';
+} from '../../core/runtime.js';
+import { registerSigintSubscriber } from '../../core/subprocess.js';
+import { buildSdkHookCallback } from '../../../eval-core/mocks-runtime.js';
+import { buildClaudeResult } from './protocol.js';
 
-export { normalizeClaudeSdkMeasurements } from './claude-protocol.js';
+export { normalizeClaudeMeasurements } from './protocol.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
@@ -71,7 +71,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
 
   const env = buildExecEnv(skillDir);
 
-  const messages: ClaudeSdkBaseMessage[] = [];
+  const messages: ClaudeMessage[] = [];
   const messageTimestamps: number[] = [];
 
   // mock 注入:in-process PreToolUse hook,无 spawn / 无文件 IO,跑完就消失。

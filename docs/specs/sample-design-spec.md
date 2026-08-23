@@ -110,7 +110,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
   - **`return` has three forms**: string / `{stdout, stderr, exit}` (simulates Bash) / `return_file` external file / `return_seq[]` state machine (the Nth hit on the same mock returns in order, falling back to `return` once exhausted).
 - **assertion-side mock_hit / tool_input_contains**: used together with mocks. `mock_hit: "Bash:2"` means "the 2nd Bash mock must be hit at least once", proving the LLM reached that step. `tool_input_contains: "Bash:logstore_query"` checks that the Bash command string contains `logstore_query`.
   - Every `mock_hit` must reference a declared per-tool mock ordinal. The loader rejects missing or out-of-range references before execution.
-  - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, Gemini, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
+  - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
 
 **Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. tripwire only affects the diagnostic's attribution suggestion (the `tripwire_intentional` rootCause); it does not affect the layered scores or the verdict.
 

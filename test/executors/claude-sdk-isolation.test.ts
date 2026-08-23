@@ -1,6 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildSdkIsolationOptions, claudeSdkExecutor } from '../../src/executors/claude-sdk.js';
+import {
+  buildSdkIsolationOptions,
+  claudeSdkExecutor,
+} from '../../src/executors/anthropic/claude/sdk.js';
 
 describe('buildSdkIsolationOptions', () => {
   it('allowedSkills=undefined → {} (SDK 默认全发现)', () => {

@@ -2,27 +2,13 @@ import type {
   ExecutorFn,
   ExecutorInput,
   Sample,
-} from '../types/index.js';
+} from '../../types/index.js';
+import {
+  getExecutorDescriptor,
+  type ExecutorCapabilities,
+} from './registry.js';
 
-export type SampleMockSupport =
-  | 'native-hooks'
-  | 'delegated-script'
-  | 'unsupported';
-
-export interface ExecutorCapabilities {
-  sampleMocks: SampleMockSupport;
-}
-
-const BUILTIN_CAPABILITIES: Readonly<Record<string, ExecutorCapabilities>> = {
-  claude: { sampleMocks: 'native-hooks' },
-  'claude-sdk': { sampleMocks: 'native-hooks' },
-  codex: { sampleMocks: 'unsupported' },
-  'codex-sdk': { sampleMocks: 'unsupported' },
-  'dsh-host': { sampleMocks: 'unsupported' },
-  gemini: { sampleMocks: 'unsupported' },
-  'anthropic-api': { sampleMocks: 'unsupported' },
-  'openai-api': { sampleMocks: 'unsupported' },
-};
+export type { ExecutorCapabilities, SampleMockSupport } from './registry.js';
 
 /**
  * Custom script executors receive the OMK_MOCK_* protocol environment and own
@@ -30,8 +16,9 @@ const BUILTIN_CAPABILITIES: Readonly<Record<string, ExecutorCapabilities>> = {
  * silently turn mock assertions into model failures.
  */
 export function getExecutorCapabilities(executorName: string): ExecutorCapabilities {
-  return BUILTIN_CAPABILITIES[executorName]
-    ?? { sampleMocks: 'delegated-script' };
+  return {
+    sampleMocks: getExecutorDescriptor(executorName)?.sampleMocks ?? 'delegated-script',
+  };
 }
 
 export function executorSupportsSampleMocks(executorName: string): boolean {

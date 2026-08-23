@@ -110,7 +110,7 @@ samples:
   - **`return` 三种形式**：string / `{stdout, stderr, exit}`（模拟 Bash）/ `return_file` 外置文件 / `return_seq[]` 状态机（同 mock 第 N 次命中按序返回，超出回退 `return`）。
 - **断言侧的 mock_hit / tool_input_contains**：配合 mocks 使用。`mock_hit: "Bash:2"` 表示「第 2 条 Bash mock 必须被命中至少一次」，证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
   - 每条 `mock_hit` 必须指向该工具已经声明的 mock 序号。引用不存在或越界时，loader 会在执行前拒绝用例。
-  - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk`、Gemini 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
+  - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk` 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
 
 **与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。tripwire 仅影响 diagnostic 的归因建议（`tripwire_intentional` rootCause），不影响 layered scores 或 verdict。
 

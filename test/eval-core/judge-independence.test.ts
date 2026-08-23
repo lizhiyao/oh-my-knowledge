@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { executorVendor } from '../../src/executors/shared.js';
+import { executorVendor } from '../../src/executors/core/registry.js';
 import { analyzeJudgeIndependence } from '../../src/eval-core/judge-independence.js';
 import type { JudgeConfig, Report } from '../../src/types/index.js';
 
@@ -10,9 +10,6 @@ describe('executorVendor', () => {
   });
   it('OpenAI 家族(含 codex —— codex 是 OpenAI 模型)', () => {
     for (const e of ['codex', 'codex-sdk', 'openai-api']) assert.equal(executorVendor(e), 'openai');
-  });
-  it('Google', () => {
-    assert.equal(executorVendor('gemini'), 'google');
   });
   it('未知 / 自定义 script → unknown', () => {
     assert.equal(executorVendor('my-script.sh'), 'unknown');

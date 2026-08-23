@@ -1,6 +1,6 @@
 import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { anthropicApiExecutor } from '../../src/executors/anthropic-api.js';
+import { anthropicApiExecutor } from '../../src/executors/anthropic/api.js';
 
 describe('anthropicApiExecutor protocol boundary', () => {
   const originalApiKey = process.env.ANTHROPIC_API_KEY;

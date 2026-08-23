@@ -37,7 +37,7 @@ import {
   getDiagnosticPromptHash,
   resolveDiagnosticTarget,
 } from '../grading/diagnostic.js';
-import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { getExecutorRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import { parseReportDocument } from '../eval-core/report-document.js';
 import type {
   JudgeConfig,

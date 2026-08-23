@@ -2,9 +2,9 @@ import type { ExecutorRuntimeFingerprint } from './executor.js';
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
 export interface JudgeConfig {
-  /** Executor name (claude / openai / gemini / anthropic-api / openai-api / shell command). */
+  /** Executor name (claude / codex / anthropic-api / openai-api / shell command). */
   executor: string;
-  /** Model alias passed to the executor (e.g. "opus", "haiku", "gpt-4o", "gemini-2.0-pro"). */
+  /** Model alias passed to the executor (e.g. "opus", "haiku", "gpt-4o"). */
   model: string;
 }
 

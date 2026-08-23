@@ -1,16 +1,74 @@
-import type { ExecResult } from '../types/index.js';
+import type { ExecResult } from '../../../types/index.js';
 import {
   checkedSumTokenCounts,
   nonNegativeMetric,
   optionalTokenCount,
-} from '../shared/token-usage.js';
-import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
-import type {
-  ClaudeSdkBaseMessage,
-  ClaudeSdkResultMessage,
-} from './shared.js';
+} from '../../../shared/token-usage.js';
+import { extractClaudeTrace, isClaudeResultMessage } from './trace.js';
 
-export interface ClaudeSdkMeasurements {
+interface ClaudeTokenUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+export interface ClaudeSdkQueryOptions {
+  model?: string;
+  systemPrompt?: string;
+  cwd: string;
+  permissionMode: 'bypassPermissions';
+  allowDangerouslySkipPermissions: true;
+  abortController: AbortController;
+  env: NodeJS.ProcessEnv;
+}
+
+export interface ClaudeSdkQueryInput {
+  prompt: string;
+  options: ClaudeSdkQueryOptions;
+}
+
+export interface ClaudeMessage {
+  type: string;
+  message?: {
+    role?: string;
+    content?: Array<{
+      type: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      input?: unknown;
+    }>;
+  };
+  tool_use_id?: string;
+  content?: string | Array<{ type: string; text?: string }>;
+  is_error?: boolean;
+}
+
+export interface ClaudeResultMessage extends ClaudeMessage {
+  type: 'result';
+  result?: string;
+  usage?: ClaudeTokenUsage;
+  total_cost_usd?: number;
+  duration_api_ms?: number;
+  duration_ms?: number;
+  num_turns?: number;
+  stop_reason?: string | null;
+  modelUsage?: Record<string, {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }>;
+  subtype?: string;
+  errors?: string[];
+}
+
+export interface ClaudeSdkModule {
+  query: (opts: ClaudeSdkQueryInput) => AsyncIterable<ClaudeMessage>;
+}
+
+export interface ClaudeMeasurements {
   durationMs: number;
   durationApiMs: number;
   inputTokens: number;
@@ -21,9 +79,9 @@ export interface ClaudeSdkMeasurements {
   numTurns: number;
 }
 
-export function normalizeClaudeSdkMeasurements(
-  result: ClaudeSdkResultMessage,
-): ClaudeSdkMeasurements | { error: string } {
+export function normalizeClaudeMeasurements(
+  result: ClaudeResultMessage,
+): ClaudeMeasurements | { error: string } {
   const durationMs = optionalTokenCount(result.duration_ms);
   const durationApiMs = optionalTokenCount(result.duration_api_ms);
   const numTurns = optionalTokenCount(result.num_turns);
@@ -99,12 +157,12 @@ export function normalizeClaudeSdkMeasurements(
 }
 
 export interface ClaudeStreamParseResult {
-  messages: ClaudeSdkBaseMessage[];
+  messages: ClaudeMessage[];
   malformedLineCount: number;
 }
 
 export function parseClaudeStreamJson(stdout: string): ClaudeStreamParseResult {
-  const messages: ClaudeSdkBaseMessage[] = [];
+  const messages: ClaudeMessage[] = [];
   let malformedLineCount = 0;
   for (const line of stdout.split('\n')) {
     const trimmed = line.trim();
@@ -119,7 +177,7 @@ export function parseClaudeStreamJson(stdout: string): ClaudeStreamParseResult {
       ) {
         malformedLineCount += 1;
       } else {
-        messages.push(value as ClaudeSdkBaseMessage);
+        messages.push(value as ClaudeMessage);
       }
     } catch {
       malformedLineCount += 1;
@@ -129,7 +187,7 @@ export function parseClaudeStreamJson(stdout: string): ClaudeStreamParseResult {
 }
 
 export function buildClaudeResult(options: {
-  messages: ClaudeSdkBaseMessage[];
+  messages: ClaudeMessage[];
   wallClockDurationMs: number;
   source: 'claude stream-json' | 'claude-sdk';
   malformedLineCount?: number;
@@ -144,8 +202,8 @@ export function buildClaudeResult(options: {
     forcedError,
     messageTimestamps,
   } = options;
-  const resultMessages = messages.filter(isClaudeSdkResultMessage) as ClaudeSdkResultMessage[];
-  const trace = extractAgentTrace(messages, messageTimestamps);
+  const resultMessages = messages.filter(isClaudeResultMessage) as ClaudeResultMessage[];
+  const trace = extractClaudeTrace(messages, messageTimestamps);
   const traceFields = {
     fullNumTurns: trace.fullNumTurns,
     numSubAgents: trace.numSubAgents,
@@ -183,7 +241,7 @@ export function buildClaudeResult(options: {
   }
 
   const result = resultMessages[0];
-  const measurements = normalizeClaudeSdkMeasurements(result);
+  const measurements = normalizeClaudeMeasurements(result);
   if ('error' in measurements) {
     errors.push(measurements.error);
     return {
