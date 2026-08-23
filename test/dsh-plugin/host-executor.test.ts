@@ -342,11 +342,12 @@ describe('DSH bundle metadata', () => {
       name: 'oh-my-knowledge/dist/dsh-plugin/index.js',
     });
     assert.ok(inject.includes('agentPresets'));
+    assert.ok(!inject.includes('systemPrompt'));
   });
 });
 
 describe('DSH plugin config boundary', () => {
-  async function invokeConfig(yaml: string): Promise<{ kind: string; text?: string }> {
+  async function invokeConfig(yaml: string): Promise<{ kind: string; text?: string; created: number }> {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
       writeFileSync(join(dir, 'eval.yaml'), yaml);
@@ -367,7 +368,7 @@ describe('DSH plugin config boundary', () => {
       });
       apply(ctx as never);
       assert.ok(handler);
-      return await handler({
+      const result = await handler({
         agent: {
           ...parentAgent,
           session: { ...parentAgent.session, header: { ...parentAgent.session.header, cwd: dir } },
@@ -375,6 +376,7 @@ describe('DSH plugin config boundary', () => {
         rawInput: 'eval eval.yaml',
         signal: new AbortController().signal,
       }) as { kind: string; text?: string };
+      return { ...result, created: host.created.length };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -406,6 +408,12 @@ variants:
     assert.equal(result.kind, 'error');
     assert.match(result.text ?? '', /无法与 OMK 五档无损映射/);
     assert.match(result.text ?? '', /删除 eval\.yaml 中的 effort/);
+  });
+
+  it('reuses inherited host connectivity without extra model calls', async () => {
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
+    assert.equal(result.kind, 'success', result.text);
+    assert.equal(result.created, 1);
   });
 
   it('surfaces gold loading failures instead of silently ignoring goldDir', async () => {

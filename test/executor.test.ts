@@ -32,6 +32,10 @@ describe('createExecutor', () => {
     assert.throws(() => createExecutor(''), /required/);
   });
 
+  it('rejects the host-only DSH executor outside its plugin runtime', () => {
+    assert.throws(() => createExecutor('dsh-host'), /仅供 DeepSeek Harness 宿主插件内部使用/);
+  });
+
   it('falls back to script executor for unknown name', () => {
     const executor = createExecutor('echo hello');
     assert.equal(typeof executor, 'function');

@@ -80,4 +80,53 @@ describe('DSH event projection', () => {
     assert.equal(result.toolCalls?.[0]?.traceRole, 'main');
     assert.equal(result.numSubAgents, 1);
   });
+
+  it('accepts string message content from compatible DSH hosts', () => {
+    const result = buildDshHostResult({
+      rootSessionId: 'root',
+      finalResponse: 'answer',
+      childSessionIds: [],
+      events: [
+        {
+          sessionId: 'root',
+          traceRole: 'main',
+          event: { type: 'user/message', data: { message: { content: 'question' } } },
+        },
+        {
+          sessionId: 'root',
+          traceRole: 'main',
+          event: {
+            type: 'assistant/message',
+            data: { message: { content: 'answer' }, usage: { inputTokens: 1, outputTokens: 1 } },
+          },
+        },
+        {
+          sessionId: 'root',
+          traceRole: 'main',
+          event: { type: 'turn/end', data: { reason: { kind: 'completed' } } },
+        },
+      ],
+    }, 10);
+
+    assert.deepEqual(result.turns?.map((turn) => turn.content), ['question', 'answer']);
+    assert.equal(result.ok, true);
+  });
+
+  it('treats the DSH max-tokens terminal reason as a truncated failure', () => {
+    const result = buildDshHostResult({
+      rootSessionId: 'root',
+      finalResponse: 'partial answer',
+      childSessionIds: [],
+      events: [{
+        sessionId: 'root',
+        traceRole: 'main',
+        event: { type: 'turn/end', data: { reason: { kind: 'max-tokens' } } },
+      }],
+    }, 10);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.output, 'partial answer');
+    assert.equal(result.stopReason, 'max-tokens');
+    assert.match(result.error ?? '', /output-token limit/);
+  });
 });

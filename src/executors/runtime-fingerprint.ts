@@ -225,7 +225,7 @@ function withFingerprint(input: Omit<ExecutorRuntimeFingerprint, 'fingerprint'>)
         status: input.sdk.version ? 'ok' : input.sdk.error ? 'error' : 'missing',
       }
       : undefined,
-    auditability: input.auditability,
+    ...(input.auditability ? { auditability: input.auditability } : {}),
     capabilities: input.capabilities,
   };
   return { ...input, fingerprint: hashString(canonicalStringify(stablePayload)) };

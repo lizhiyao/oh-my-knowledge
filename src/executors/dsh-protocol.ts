@@ -58,6 +58,7 @@ function contentBlocks(value: unknown): UnknownRecord[] {
 }
 
 function textFromBlocks(value: unknown): string {
+  if (typeof value === 'string') return value;
   return contentBlocks(value)
     .flatMap((block) => block.type === 'text' && typeof block.text === 'string'
       ? [block.text]
@@ -113,6 +114,9 @@ function terminalReason(events: DshEventRecord[], rootSessionId: string): {
   }
   if (['aborted', 'blocked', 'interrupted'].includes(stopReason)) {
     return { stopReason, error: `dsh turn ended with ${stopReason}` };
+  }
+  if (stopReason === 'max-tokens') {
+    return { stopReason, error: 'dsh turn ended after reaching the output-token limit' };
   }
   return { stopReason };
 }
@@ -240,7 +244,7 @@ export function buildDshHostResult(result: DshHostRunResult, wallClockDurationMs
 
   const terminal = terminalReason(events, result.rootSessionId);
   const output = result.finalResponse || null;
-  const successfulStop = terminal.stopReason === 'completed' || terminal.stopReason === 'max-tokens';
+  const successfulStop = terminal.stopReason === 'completed';
   const error = terminal.error ?? (!output ? 'dsh runtime produced no root assistant output' : undefined);
 
   return {

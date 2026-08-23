@@ -15,6 +15,7 @@ interface DshCommandInvocationLike {
   readonly signal: AbortSignal;
 }
 
+// These `kind` records mirror the host-owned DSH command protocol.
 type DshCommandResultLike =
   | Readonly<Record<'kind', 'success'> & { text?: string }>
   | Readonly<Record<'kind', 'error'> & { text: string }>;
@@ -33,7 +34,7 @@ interface DshPluginContextLike extends DshHostContextLike {
 }
 
 export const name = 'omk-dsh-plugin';
-export const inject = ['agentPresets', 'agents', 'commands', 'systemPrompt', 'tools'];
+export const inject = ['agentPresets', 'agents', 'commands', 'tools'];
 
 const USAGE = '用法：/omk eval <eval.yaml>';
 
@@ -104,6 +105,8 @@ async function executeEvalCommand(
     signal: invocation.signal,
   });
   const judgeModels = normalizeJudgeModels(config.judgeModels, model);
+  const currentSessionProvesConnectivity = config.model === undefined
+    && judgeModels.every((judge) => judge.executor === 'dsh-host');
   const root = projectRoot(configPath);
   const outputDir = join(root, '.omk', 'reports');
   const options = {
@@ -119,6 +122,7 @@ async function executeEvalCommand(
     executorName: 'dsh-host',
     executorOverrides: { 'dsh-host': executor },
     judgeModels,
+    skipConnectivity: currentSessionProvesConnectivity,
     skipDoctor: config.skipDoctor ?? false,
     lang: 'zh' as const,
     mcpConfig: config.mcpConfig,

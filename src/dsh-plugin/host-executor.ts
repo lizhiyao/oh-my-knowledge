@@ -26,6 +26,7 @@ export interface DshAgentLike {
   readonly session: DshSessionLike;
   followup(message: UnknownRecord): void;
   whenIdle(): Promise<void>;
+  /** `kind` mirrors DSH's host-owned cancellation protocol. */
   cancel(cause: Readonly<Record<'kind', 'hook'> & { reason: string }>): void;
 }
 
@@ -105,6 +106,7 @@ function errorMessage(error: unknown): string {
 }
 
 function textFromContent(value: unknown): string {
+  if (typeof value === 'string') return value;
   if (!Array.isArray(value)) return '';
   return value.flatMap((block) => {
     if (typeof block !== 'object' || block === null || Array.isArray(block)) return [];
@@ -149,6 +151,7 @@ function failureResult(startedAt: number, error: unknown): ExecResult {
 }
 
 function createPromptMessage(prompt: string): UnknownRecord {
+  // `source.kind` mirrors the host-owned DSH message protocol and must retain its wire name.
   return Object.freeze({
     id: randomUUID(),
     role: 'user',
@@ -225,6 +228,7 @@ export function createDshHostExecutor(
   const activeAgentPreset = options.parentAgent
     ? ctx.agentPresets.composedPreset(options.parentAgent.ctx)
     : undefined;
+  // Preserve host schema order because DSH sends this order to the model; it is part of runtime identity.
   const toolSchemas = ctx.tools?.schemas(options.parentAgent)
     .filter((schema) => schema.name !== 'skill');
   const runtimeFingerprint: NonNullable<ExecutorFn['runtimeFingerprint']> = (model) => (
