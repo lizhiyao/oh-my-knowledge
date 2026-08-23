@@ -106,7 +106,9 @@ async function executeEvalCommand(
   });
   const judgeModels = normalizeJudgeModels(config.judgeModels, model);
   const currentSessionProvesConnectivity = config.model === undefined
-    && judgeModels.every((judge) => judge.executor === 'dsh-host');
+    && ((config.noJudge ?? false) || judgeModels.every((judge) => (
+      judge.executor === 'dsh-host' && judge.model === model
+    )));
   const root = projectRoot(configPath);
   const outputDir = join(root, '.omk', 'reports');
   const options = {

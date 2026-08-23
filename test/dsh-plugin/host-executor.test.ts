@@ -347,7 +347,12 @@ describe('DSH bundle metadata', () => {
 });
 
 describe('DSH plugin config boundary', () => {
-  async function invokeConfig(yaml: string): Promise<{ kind: string; text?: string; created: number }> {
+  async function invokeConfig(yaml: string): Promise<{
+    kind: string;
+    text?: string;
+    created: number;
+    models: string[];
+  }> {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
       writeFileSync(join(dir, 'eval.yaml'), yaml);
@@ -376,7 +381,11 @@ describe('DSH plugin config boundary', () => {
         rawInput: 'eval eval.yaml',
         signal: new AbortController().signal,
       }) as { kind: string; text?: string };
-      return { ...result, created: host.created.length };
+      return {
+        ...result,
+        created: host.created.length,
+        models: host.created.map(({ model }) => model),
+      };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -414,6 +423,28 @@ variants:
     const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.equal(result.created, 1);
+  });
+
+  it('reuses inherited connectivity for the default same-model DSH judge', async () => {
+    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
+    assert.equal(result.kind, 'success', result.text);
+    assert.deepEqual(result.models, ['configured-model']);
+  });
+
+  it('preflights an explicitly configured different DSH judge model', async () => {
+    const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unproven-judge\n`);
+    assert.equal(result.kind, 'success', result.text);
+    assert.deepEqual(result.models, [
+      'configured-model',
+      'unproven-judge',
+      'configured-model',
+    ]);
+  });
+
+  it('ignores unused judge models when noJudge is enabled', async () => {
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unused-judge\n`);
+    assert.equal(result.kind, 'success', result.text);
+    assert.deepEqual(result.models, ['configured-model']);
   });
 
   it('surfaces gold loading failures instead of silently ignoring goldDir', async () => {
