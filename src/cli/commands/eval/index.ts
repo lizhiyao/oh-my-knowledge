@@ -695,8 +695,8 @@ export default class Eval extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
-        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
+        zh: '执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'judge-models': Flags.string({

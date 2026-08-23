@@ -112,7 +112,7 @@ export interface SpawnHelperOptions {
  * spawn child + 注册到全局 SIGINT registry。返回 { child, done } 让 caller 自己
  * 操作 stdin（写入 / 关闭），通过 done 等结果。
  *
- * 适用：claude / codex / gemini / script CLI 子进程。HTTP executor（*-api）用 fetch +
+ * 适用：claude / codex / script CLI 子进程。HTTP executor（*-api）用 fetch +
  * AbortSignal.timeout，自带 abort，不走这个。claude-sdk in-process 也不走。
  */
 export function spawnWithSigintPropagation(

@@ -10,11 +10,12 @@
 | `claude-sdk` | agent 评测（工具 / 轮次 trace）、结构化输出 | 通过 Claude Agent SDK 调用，抽取 turns / toolCalls trace，无 stdout 解析、避免 buffer 截断 |
 | `codex` | Codex / ChatGPT desktop 编程任务（CLI） | 通过 `codex exec --json` 调用，需本地装好登录的 codex（`@openai/codex`）；best-effort tool trace，**costUSD 不报**（codex 自身不输出 USD，需外部账单核算） |
 | `codex-sdk` | Codex agent 评测（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
-| `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | CI / 没装 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
 | `openai-api` | CI / 没装 CLI；或接非 Claude 模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
+
+原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义命令协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
 
 ## Sample mock 兼容性
 
@@ -24,7 +25,7 @@ API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_
 |--------|---------------------|
 | `claude` / `claude-sdk` | 支持，通过原生 hooks 拦截 |
 | `codex` / `codex-sdk` | 不支持；当前 CLI 和 SDK 能输出 trace，但没有工具拦截 hook |
-| `gemini` / `anthropic-api` / `openai-api` | 不支持 |
+| `anthropic-api` / `openai-api` | 不支持 |
 | 自定义命令 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
 
 目标执行器不支持拦截时，`omk sample` 会自动生成无 mock 用例，并移除依赖模拟调用的正向证据（`mock_hit`、`tools_called`、`tools_count_min`、`tool_input_contains`、`tool_output_contains`）。模型若仍输出 `environment`，其中的事实会迁移到明确标注「未物化」的 `context`，不会被丢弃或冒充 fixture。`omk eval` 会在任何模型调用前拒绝已有的 mocks 用例；`--dry-run` 和 `--skip-doctor` 也不能绕过，避免把评测环境不兼容误算成模型失败。
@@ -118,7 +119,6 @@ omk eval --executor "./my-executor.sh"
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
-- **gemini**：`npm i -g @google/gemini-cli` 并认证
 
 ## 相关
 

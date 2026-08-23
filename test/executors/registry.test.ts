@@ -20,7 +20,6 @@ describe('executor registry', () => {
       'codex',
       'codex-sdk',
       'dsh-host',
-      'gemini',
       'anthropic-api',
       'openai-api',
     ]);

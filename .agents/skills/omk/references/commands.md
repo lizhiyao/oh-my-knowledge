@@ -85,7 +85,7 @@ omk eval [flags]
 - `--control-cwd` `option`:control 的 runtime context 目录
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
-- `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
+- `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
 - `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
 - `--gold-dir` `option`:gold dataset 目录
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合

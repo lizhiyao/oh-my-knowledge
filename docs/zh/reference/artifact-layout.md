@@ -23,7 +23,7 @@
 
 ## Artifact 目录结构
 
-`name` 形式下，默认执行器（claude / codex / gemini 等）支持两种布局，同一次评测中可混用：
+`name` 形式下，默认执行器（claude / codex 等）支持两种布局，同一次评测中可混用：
 
 ```
 skills/

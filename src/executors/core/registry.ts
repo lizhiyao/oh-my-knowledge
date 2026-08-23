@@ -3,13 +3,12 @@ import type {
   ExecutorRuntimeKind,
 } from '../../types/index.js';
 
-export type ExecutorVendor = 'anthropic' | 'openai' | 'google' | 'unknown';
+export type ExecutorVendor = 'anthropic' | 'openai' | 'unknown';
 
 export type ExecutorFamily =
   | 'claude'
   | 'codex'
   | 'dsh'
-  | 'gemini'
   | 'anthropic-api'
   | 'openai-api';
 
@@ -23,7 +22,7 @@ export interface ExecutorCapabilities {
 }
 
 export type ExecutorFingerprintSpec =
-  | { readonly strategy: 'path-cli'; readonly command: 'claude' | 'codex' | 'gemini' }
+  | { readonly strategy: 'path-cli'; readonly command: 'claude' | 'codex' }
   | { readonly strategy: 'claude-sdk' }
   | { readonly strategy: 'codex-sdk' }
   | { readonly strategy: 'api' }
@@ -115,21 +114,6 @@ const EXECUTOR_DESCRIPTORS = [
       skillIsolation: 'full-no-partial',
     },
     fingerprint: { strategy: 'dsh-host' },
-  },
-  {
-    name: 'gemini',
-    execution: 'builtin',
-    family: 'gemini',
-    vendor: 'google',
-    sampleMocks: 'unsupported',
-    runtimeKind: 'agent-cli',
-    runtimeCapabilities: {
-      systemPrompt: 'prepended',
-      costUSD: 'not-reported',
-      trace: 'none',
-      skillIsolation: 'none',
-    },
-    fingerprint: { strategy: 'path-cli', command: 'gemini' },
   },
   {
     name: 'anthropic-api',

@@ -11,9 +11,6 @@ describe('executorVendor', () => {
   it('OpenAI 家族(含 codex —— codex 是 OpenAI 模型)', () => {
     for (const e of ['codex', 'codex-sdk', 'openai-api']) assert.equal(executorVendor(e), 'openai');
   });
-  it('Google', () => {
-    assert.equal(executorVendor('gemini'), 'google');
-  });
   it('未知 / 自定义 script → unknown', () => {
     assert.equal(executorVendor('my-script.sh'), 'unknown');
     assert.equal(executorVendor(''), 'unknown');

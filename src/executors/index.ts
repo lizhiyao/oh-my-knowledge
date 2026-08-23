@@ -6,7 +6,6 @@ import { claudeSdkExecutor } from './claude/sdk.js';
 import { extractAgentTrace } from './claude/sdk-trace.js';
 import { codexCliExecutor } from './codex/cli.js';
 import { codexSdkExecutor } from './codex/sdk.js';
-import { geminiExecutor } from './gemini/index.js';
 import { createScriptExecutor } from './script/index.js';
 import { enforceExecutorCapabilities } from './core/capabilities.js';
 import {
@@ -22,7 +21,6 @@ const EXECUTOR_FACTORIES = {
   'claude-sdk': claudeSdkExecutor,
   codex: codexCliExecutor,
   'codex-sdk': codexSdkExecutor,
-  gemini: geminiExecutor,
   'anthropic-api': anthropicApiExecutor,
   'openai-api': openAiApiExecutor,
 } satisfies Record<ExecutableExecutorName, ExecutorFn>;
@@ -38,6 +36,11 @@ export {
 export function createExecutor(name: string): ExecutorFn {
   if (name.trim().length === 0) {
     throw new Error('executor name or script command is required');
+  }
+  if (name === 'gemini') {
+    throw new Error(
+      '内置 gemini 执行器已移除；请改用自定义执行器适配脚本，并显式填写脚本命令。',
+    );
   }
   const descriptor = getExecutorDescriptor(name);
   if (descriptor?.execution === 'host-only') {

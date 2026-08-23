@@ -393,7 +393,7 @@ export function computeJudgeAgreement(judgeScores: number[][]): JudgeAgreement {
 
 /**
  * Judge a single (output, rubric) pair with N judge models in parallel. Each judge
- * may use a different executor (e.g. claude:opus + openai-api:gpt-4o + gemini:pro). Each
+ * may use a different executor (e.g. claude:opus + openai-api:gpt-4o). Each
  * judge can also be repeated `judgeRepeat` times — final per-judge score is its mean.
  *
  * Returns: aggregate DimensionResult (score = mean across judges; this is the "consensus"
