@@ -1,6 +1,6 @@
 import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
@@ -99,9 +99,38 @@ describe('runtime fingerprint', () => {
 
       assert.equal(fingerprint.binary?.name, '@deepseek-ai/dsh');
       assert.equal(fingerprint.binary?.version, '9.8.7-test');
-      assert.equal(fingerprint.binary?.path, entrypoint);
+      assert.equal(fingerprint.binary?.path, realpathSync(entrypoint));
       assert.equal(fingerprint.binary?.package?.name, '@deepseek-ai/dsh');
       assert.equal(fingerprint.binary?.package?.version, '9.8.7-test');
+    } finally {
+      process.argv[1] = previousEntrypoint;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves a symlinked DSH bin before locating its package identity', async () => {
+    vi.resetModules();
+    const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-dsh-symlink-'));
+    const packageDir = join(dir, 'package');
+    const entrypoint = join(packageDir, 'lib', 'bin.js');
+    const invokedEntrypoint = join(dir, 'dsh');
+    const previousEntrypoint = process.argv[1];
+    try {
+      mkdirSync(join(packageDir, 'lib'), { recursive: true });
+      writeFileSync(join(packageDir, 'package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh',
+        version: '9.8.8-symlink',
+      }));
+      writeFileSync(entrypoint, '');
+      symlinkSync(entrypoint, invokedEntrypoint);
+      process.argv[1] = invokedEntrypoint;
+      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+
+      const fingerprint = getExecutorRuntimeFingerprint('dsh-host', 'deepseek-chat');
+
+      assert.equal(fingerprint.binary?.version, '9.8.8-symlink');
+      assert.equal(fingerprint.binary?.path, realpathSync(entrypoint));
+      assert.equal(fingerprint.binary?.package?.version, '9.8.8-symlink');
     } finally {
       process.argv[1] = previousEntrypoint;
       rmSync(dir, { recursive: true, force: true });

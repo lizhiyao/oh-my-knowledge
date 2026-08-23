@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,11 +74,17 @@ function readInvokingDshPackage(): {
   entrypoint?: string;
   package: ExecutorRuntimePackage;
 } {
-  const entrypoint = process.argv[1];
-  if (!entrypoint || !isAbsolute(entrypoint)) {
+  const invokedEntrypoint = process.argv[1];
+  if (!invokedEntrypoint || !isAbsolute(invokedEntrypoint)) {
     return {
       package: { name: '@deepseek-ai/dsh', error: 'DSH host entrypoint not found' },
     };
+  }
+  let entrypoint = invokedEntrypoint;
+  try {
+    entrypoint = realpathSync(invokedEntrypoint);
+  } catch {
+    // Keep the invoked path so the audit record still explains the lookup failure.
   }
   let dir = dirname(entrypoint);
   for (let i = 0; i < 10; i++) {

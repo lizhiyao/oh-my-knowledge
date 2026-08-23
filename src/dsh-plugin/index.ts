@@ -33,7 +33,7 @@ interface DshPluginContextLike extends DshHostContextLike {
 }
 
 export const name = 'omk-dsh-plugin';
-export const inject = ['agents', 'commands', 'systemPrompt', 'tools'];
+export const inject = ['agentPresets', 'agents', 'commands', 'systemPrompt', 'tools'];
 
 const USAGE = '用法：/omk eval <eval.yaml>';
 
@@ -91,6 +91,12 @@ async function executeEvalCommand(
       text: 'DSH 内运行 OMK 时，被测执行器固定为当前 DSH；请删除 eval.yaml 中的顶层 executor。',
     };
   }
+  if (config.effort) {
+    return {
+      kind: 'error',
+      text: 'DSH 的 reasoning effort 是 provider-owned 枚举，当前无法与 OMK 五档无损映射；请删除 eval.yaml 中的 effort，并在 DSH profile 中固定模型推理配置。',
+    };
+  }
 
   const model = modelFor(invocation.agent, config.model);
   const executor = createDshHostExecutor(ctx, {
@@ -99,12 +105,13 @@ async function executeEvalCommand(
   });
   const judgeModels = normalizeJudgeModels(config.judgeModels, model);
   const root = projectRoot(configPath);
+  const outputDir = join(root, '.omk', 'reports');
   const options = {
     samplesPath: config.samples,
     skillDir: join(root, 'skills'),
     variantSpecs: configVariantsToSpecs(config.variants),
     model,
-    outputDir: join(root, '.omk', 'reports'),
+    outputDir,
     noJudge: config.noJudge ?? false,
     concurrency: config.concurrency ?? 1,
     timeoutMs: config.timeoutMs,
@@ -122,13 +129,33 @@ async function executeEvalCommand(
     lengthDebias: config.lengthDebias,
     budget: config.budget,
     strictBaseline: config.strictBaseline,
-    effort: config.effort,
     noDiagnostic: config.noDiagnostic,
   };
   const result = config.repeat && config.repeat > 1
     ? await runMultiple({ ...options, repeat: config.repeat })
     : await runEvaluation(options);
   const report = result.report as Report;
+  const goldMessages: string[] = [];
+  if (config.goldDir) {
+    const { attachGoldAgreementToReport } = await import('../grading/gold-cli.js');
+    const gold = attachGoldAgreementToReport({
+      report,
+      goldDir: config.goldDir,
+      outputDir,
+      samples: config.bootstrapSamples,
+    });
+    if (gold.result && gold.gold) {
+      const alpha = Number.isFinite(gold.result.agreement.alpha)
+        ? gold.result.agreement.alpha.toFixed(3)
+        : '不可计算';
+      goldMessages.push(`Gold 一致性：Krippendorff α=${alpha}，N=${gold.result.agreement.sampleCount}，标注者=${gold.gold.metadata.annotator}`);
+      if (gold.result.contaminationWarning) {
+        goldMessages.push(`⚠ Gold 污染提示：${gold.result.contaminationWarning}`);
+      }
+    } else {
+      goldMessages.push(`⚠ Gold 数据未加载：${gold.loadIssues.join('；') || config.goldDir}`);
+    }
+  }
   const verdict = computeVerdict(report);
   return {
     kind: 'success',
@@ -137,6 +164,7 @@ async function executeEvalCommand(
       verdict.headline,
       `报告：${report.id}`,
       ...(result.filePath ? [`文件：${result.filePath}`] : []),
+      ...goldMessages,
     ].join('\n'),
   };
 }

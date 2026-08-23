@@ -10,7 +10,7 @@ import {
   type DshHostContextLike,
   type DshSessionLike,
 } from '../../src/dsh-plugin/host-executor.js';
-import { apply } from '../../src/dsh-plugin/index.js';
+import { apply, inject } from '../../src/dsh-plugin/index.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -19,11 +19,13 @@ class FakeDshHost implements DshHostContextLike {
     sessionId: string;
     cwd: string;
     parentSession?: string;
+    agentPreset?: string;
     provider?: string;
     model: string;
   }> = [];
   readonly promptSections: UnknownRecord[] = [];
   readonly deniedTools: string[][] = [];
+  readonly composedPresets: Array<{ agentCtx: object; parentCtx: object }> = [];
   disposed = 0;
   runtimeContextSuppressed = 0;
   private readonly eventListeners = new Set<(session: DshSessionLike, event: UnknownRecord) => void>();
@@ -32,7 +34,15 @@ class FakeDshHost implements DshHostContextLike {
   constructor(private readonly behavior: {
     cancelSettles?: boolean;
     disposeSettles?: boolean;
-  } = {}) {}
+  } = {}, private readonly activePreset = 'standard') {}
+
+  readonly agentPresets = {
+    composedPreset: () => this.activePreset,
+    composeFrom: (agentCtx: object, parentCtx: object) => {
+      this.composedPresets.push({ agentCtx, parentCtx });
+      return this.activePreset;
+    },
+  };
 
   readonly tools = {
     schemas: () => [
@@ -50,13 +60,16 @@ class FakeDshHost implements DshHostContextLike {
         header: {
           cwd: options.meta.cwd,
           ...(options.meta.parentSession ? { parentSession: options.meta.parentSession } : {}),
+          ...(options.meta.agentPreset ? { agentPreset: options.meta.agentPreset } : {}),
         },
       };
       let settle: (() => void) | undefined;
       let idle = Promise.resolve();
+      const agentCtx: UnknownRecord = {};
       const agent: DshAgentLike = {
         id: options.sessionId,
         options: options.agentOptions,
+        ctx: agentCtx,
         session,
         followup: (message) => {
           idle = new Promise<void>((resolve) => { settle = resolve; });
@@ -99,7 +112,7 @@ class FakeDshHost implements DshHostContextLike {
           if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
-      options.setup({
+      Object.assign(agentCtx, {
         agent,
         systemPrompt: {
           section: (section) => {
@@ -119,10 +132,12 @@ class FakeDshHost implements DshHostContextLike {
           },
         },
       });
+      options.setup(agentCtx as Parameters<typeof options.setup>[0]);
       this.created.push({
         sessionId: options.sessionId,
         cwd: options.meta.cwd,
         ...(options.meta.parentSession ? { parentSession: options.meta.parentSession } : {}),
+        ...(options.meta.agentPreset ? { agentPreset: options.meta.agentPreset } : {}),
         ...(options.agentOptions.provider ? { provider: options.agentOptions.provider } : {}),
         model: options.agentOptions.model,
       });
@@ -160,6 +175,7 @@ class FakeDshHost implements DshHostContextLike {
 const parentAgent = {
   id: 'interactive-session',
   options: { provider: 'configured-provider', model: 'configured-model' },
+  ctx: { name: 'interactive-agent-context' },
   session: {
     id: 'interactive-session',
     events: [],
@@ -193,14 +209,17 @@ describe('DSH host executor', () => {
     assert.equal(result.cacheCreationTokens, 1);
     assert.equal(result.costReportedByExecutor, false);
     assert.equal(result.toolCalls?.[0]?.sourceTrace?.startsWith('dsh-host:'), true);
-    assert.deepEqual(host.created.map(({ cwd, parentSession, provider, model }) => ({
-      cwd, parentSession, provider, model,
+    assert.deepEqual(host.created.map(({ cwd, parentSession, agentPreset, provider, model }) => ({
+      cwd, parentSession, agentPreset, provider, model,
     })), [{
       cwd: '/project',
       parentSession: 'interactive-session',
+      agentPreset: 'standard',
       provider: 'configured-provider',
       model: 'measured-model',
     }]);
+    assert.equal(host.composedPresets.length, 1);
+    assert.equal(host.composedPresets[0]?.parentCtx, parentAgent.ctx);
     assert.deepEqual(host.promptSections, [{
       name: 'omk:evaluation',
       order: 0,
@@ -277,6 +296,21 @@ describe('DSH host executor', () => {
     assert.notEqual(firstRuntime?.fingerprint, secondRuntime?.fingerprint);
   });
 
+  it('uses the live parent preset instead of the possibly stale session header', async () => {
+    const host = new FakeDshHost({}, 'minimal');
+    const executor = createDshHostExecutor(host, { parentAgent });
+    const result = await executor({ model: 'measured-model', prompt: 'test' });
+
+    assert.equal(result.ok, true, result.error);
+    assert.equal(parentAgent.session.header.agentPreset, 'standard');
+    assert.equal(host.created[0]?.agentPreset, 'minimal');
+    const standard = createDshHostExecutor(new FakeDshHost({}, 'standard'), { parentAgent });
+    assert.notEqual(
+      executor.runtimeFingerprint?.('measured-model').fingerprint,
+      standard.runtimeFingerprint?.('measured-model').fingerprint,
+    );
+  });
+
   it('rejects partial skill isolation before creating a DSH agent', async () => {
     const host = new FakeDshHost();
     const executor = createDshHostExecutor(host, { parentAgent });
@@ -305,6 +339,7 @@ describe('DSH bundle metadata', () => {
       id: 'omk',
       name: 'oh-my-knowledge/dist/dsh-plugin/index.js',
     });
+    assert.ok(inject.includes('agentPresets'));
   });
 });
 
@@ -313,6 +348,11 @@ describe('DSH plugin config boundary', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
       writeFileSync(join(dir, 'eval.yaml'), yaml);
+      writeFileSync(join(dir, 'samples.json'), JSON.stringify([{
+        sample_id: 's1',
+        prompt: 'test',
+        assertions: [{ type: 'contains', value: 'host' }],
+      }]));
       const host = new FakeDshHost();
       let handler: ((invocation: UnknownRecord) => unknown) | undefined;
       const ctx = Object.assign(host, {
@@ -357,5 +397,19 @@ variants:
     assert.equal(result.kind, 'error');
     assert.match(result.text ?? '', /内部执行器标识/);
     assert.match(result.text ?? '', /executor: dsh/);
+  });
+
+  it('rejects generic OMK effort instead of recording an option DSH did not run', async () => {
+    const result = await invokeConfig(`${minimal}effort: high\n`);
+    assert.equal(result.kind, 'error');
+    assert.match(result.text ?? '', /无法与 OMK 五档无损映射/);
+    assert.match(result.text ?? '', /删除 eval\.yaml 中的 effort/);
+  });
+
+  it('surfaces gold loading failures instead of silently ignoring goldDir', async () => {
+    const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\ngoldDir: ./missing-gold\n`);
+    assert.equal(result.kind, 'success', result.text);
+    assert.match(result.text ?? '', /Gold 数据未加载/);
+    assert.match(result.text ?? '', /missing-gold/);
   });
 });

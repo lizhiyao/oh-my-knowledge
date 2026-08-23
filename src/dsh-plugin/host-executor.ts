@@ -22,6 +22,7 @@ export interface DshAgentLike {
     readonly provider?: string;
     readonly model?: string;
   };
+  readonly ctx: object;
   readonly session: DshSessionLike;
   followup(message: UnknownRecord): void;
   whenIdle(): Promise<void>;
@@ -45,6 +46,11 @@ interface DshAgentScopeLike {
   };
 }
 
+interface DshAgentPresetsLike {
+  composedPreset(agentCtx: object): string | undefined;
+  composeFrom(agentCtx: object, parentCtx: object): string | undefined;
+}
+
 interface DshAgentHandleLike {
   readonly agent: DshAgentLike;
   dispose(): Promise<void>;
@@ -58,6 +64,7 @@ export interface DshHostContextLike {
       readonly meta: {
         readonly cwd: string;
         readonly parentSession?: string;
+        readonly agentPreset?: string;
       };
       readonly agentOptions: {
         readonly provider?: string;
@@ -69,6 +76,7 @@ export interface DshHostContextLike {
   readonly tools?: {
     schemas(scope?: DshAgentLike): readonly UnknownRecord[];
   };
+  readonly agentPresets: DshAgentPresetsLike;
   on(
     event: 'session/event',
     listener: (session: DshSessionLike, entry: UnknownRecord) => void,
@@ -214,13 +222,16 @@ export function createDshHostExecutor(
   options: DshHostExecutorOptions = {},
 ): ExecutorFn {
   const provider = options.provider ?? options.parentAgent?.options.provider;
+  const activeAgentPreset = options.parentAgent
+    ? ctx.agentPresets.composedPreset(options.parentAgent.ctx)
+    : undefined;
   const toolSchemas = ctx.tools?.schemas(options.parentAgent)
     .filter((schema) => schema.name !== 'skill');
   const runtimeFingerprint: NonNullable<ExecutorFn['runtimeFingerprint']> = (model) => (
     createDshHostRuntimeFingerprint(model, {
       ...(provider ? { provider } : {}),
-      ...(options.parentAgent?.session.header.agentPreset
-        ? { agentPreset: options.parentAgent.session.header.agentPreset }
+      ...(activeAgentPreset
+        ? { agentPreset: activeAgentPreset }
         : {}),
       ...(toolSchemas ? { toolSchemas } : {}),
     })
@@ -255,12 +266,19 @@ export function createDshHostExecutor(
         meta: {
           cwd,
           ...(options.parentAgent ? { parentSession: String(options.parentAgent.id) } : {}),
+          ...(activeAgentPreset ? { agentPreset: activeAgentPreset } : {}),
         },
         agentOptions: {
           ...(provider ? { provider } : {}),
           model: input.model,
         },
         setup(agentCtx) {
+          if (options.parentAgent) {
+            const composedPreset = ctx.agentPresets.composeFrom(agentCtx, options.parentAgent.ctx);
+            if (composedPreset !== activeAgentPreset) {
+              throw new Error(`DSH agent preset changed during measurement setup: ${activeAgentPreset ?? 'none'} -> ${composedPreset ?? 'none'}`);
+            }
+          }
           agentCtx.systemPrompt.section({
             name: 'omk:evaluation',
             order: 0,
