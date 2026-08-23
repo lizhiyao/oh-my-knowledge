@@ -182,22 +182,34 @@ describe('spawnWithSigintPropagation', () => {
   });
 
   it('timeout remains authoritative when child traps SIGTERM and exits 0', async () => {
-    const { done } = spawnWithSigintPropagation(
-      'node',
-      [
-        '-e',
-        // SIGTERM trap:写完 stdout 后 exit 0(模拟 codex / claude binary 的 telemetry flush)
-        'process.on("SIGTERM",()=>{process.stdout.write("done");process.exit(0)}); setTimeout(()=>{}, 5000)',
-      ],
-      { timeoutMs: 100 },
-    );
-    await assert.rejects(done, (err: SpawnHelperError) => {
-      assert.equal(err.code, 0);
-      assert.equal(err.stdout, 'done');
-      assert.equal(err.killedByTimeout, true);
-      assert.match(err.message, /timed out/);
-      return true;
-    });
+    vi.useFakeTimers();
+    try {
+      const { child, done } = spawnWithSigintPropagation(
+        'node',
+        [
+          '-e',
+          // 先发 readiness，确保 parent 触发 timeout 前 SIGTERM handler 已安装。
+          // handler 写完 stdout 后 exit 0，模拟 codex／claude binary 的 telemetry flush。
+          'process.on("SIGTERM",()=>{process.stdout.write("done");process.exit(0)}); process.stdout.write("ready\\n"); setInterval(()=>{},1000)',
+        ],
+        { timeoutMs: 100 },
+      );
+      const rejected = assert.rejects(done, (err: SpawnHelperError) => {
+        assert.equal(err.code, 0);
+        assert.equal(err.stdout, 'ready\ndone');
+        assert.equal(err.killedByTimeout, true);
+        assert.match(err.message, /timed out/);
+        return true;
+      });
+
+      await new Promise<void>((resolve) => {
+        child.stdout?.once('data', () => resolve());
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // UltraReview Item 7:bufferOverflow 路径要走 graceTimer,不能裸 SIGTERM。
