@@ -19,6 +19,7 @@ import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type { Artifact } from '../../types/index.js';
 import type { Lang } from '../../types/shared.js';
+import { executorFamily } from '../../executors/registry.js';
 import { tEvalWorkflowMessage } from '../messages.js';
 
 export function buildPowerWarnings(sampleCount: number, repeat: number, lang: Lang = 'zh'): string[] {
@@ -59,11 +60,12 @@ export function buildIsolationWarnings(
   if (!hasUnisolatedBaseline) return [];
 
   const executorName = options.executorName;
+  const family = executorFamily(executorName);
   const home = options.homeDir ?? homedir();
   const cwd = options.cwd ?? process.cwd();
-  const roots = executorName === 'claude' || executorName === 'claude-sdk'
+  const roots = family === 'claude'
     ? [join(home, '.claude', 'skills'), join(cwd, '.claude', 'skills')]
-    : executorName === 'codex' || executorName === 'codex-sdk'
+    : family === 'codex'
       ? [
         join(home, '.agents', 'skills'),
         join(home, '.codex', 'skills'),

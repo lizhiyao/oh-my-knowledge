@@ -13,25 +13,6 @@ export const JUDGE_MODEL = 'haiku';
 export const DEFAULT_TIMEOUT_MS = 600_000;
 export const MAX_BUFFER = 10 * 1024 * 1024;
 
-export type ExecutorVendor = 'anthropic' | 'openai' | 'google' | 'unknown';
-
-// 把 executor 名归到模型厂商家族,用于评委独立性判断(同厂商评委 = 自我偏好敞口)。
-// codex 是 OpenAI 的代码模型,故 codex* 归 OpenAI。自定义 script executor 无法归类 → unknown
-// (调用方据此跳过判断,不误报)。
-const EXECUTOR_VENDOR: Record<string, ExecutorVendor> = {
-  claude: 'anthropic',
-  'claude-sdk': 'anthropic',
-  'anthropic-api': 'anthropic',
-  codex: 'openai',
-  'codex-sdk': 'openai',
-  'openai-api': 'openai',
-  gemini: 'google',
-};
-
-export function executorVendor(executor: string): ExecutorVendor {
-  return EXECUTOR_VENDOR[executor] ?? 'unknown';
-}
-
 export interface TokenUsage {
   input_tokens?: number;
   output_tokens?: number;

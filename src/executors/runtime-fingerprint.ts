@@ -9,6 +9,7 @@ import {
   isScriptFileInterpreter,
   resolveScriptCommand,
 } from './script-command.js';
+import { getExecutorDescriptor } from './registry.js';
 import type {
   ExecutorFn,
   ExecutorRuntimeBinary,
@@ -365,13 +366,12 @@ export function createDshHostRuntimeFingerprint(
   model: string,
   identity: DshHostRuntimeIdentity = {},
 ): ExecutorRuntimeFingerprint {
+  const descriptor = getExecutorDescriptor('dsh-host');
+  if (!descriptor || descriptor.name !== 'dsh-host') {
+    throw new Error('dsh-host executor descriptor is missing');
+  }
   const host = readInvokingDshPackage();
-  return runtime('dsh-host', model, 'agent-sdk', {
-    systemPrompt: 'native',
-    costUSD: 'not-reported',
-    trace: 'native',
-    skillIsolation: 'full-no-partial',
-  }, {
+  return runtime(descriptor.name, model, descriptor.runtimeKind, descriptor.runtimeCapabilities, {
     binary: {
       name: '@deepseek-ai/dsh',
       source: host.package.version ? 'path' : 'unknown',
@@ -407,48 +407,38 @@ export function getExecutorRuntimeFingerprint(
   options: ExecutorRuntimeFingerprintOptions = {},
 ): ExecutorRuntimeFingerprint {
   const env = runtimeEnv(options);
-  if (![
-    'claude',
-    'claude-sdk',
-    'codex',
-    'codex-sdk',
-    'dsh-host',
-    'gemini',
-    'anthropic-api',
-    'openai-api',
-  ].includes(executorName)) {
+  const descriptor = getExecutorDescriptor(executorName);
+  if (!descriptor) {
     // Custom executors are local code. Re-read their referenced files so a
     // long-running Studio process cannot reuse stale outputs after the script
     // changes while the command line remains identical.
     return scriptRuntime(executorName, model, env);
   }
-  if (executorName === 'dsh-host') return createDshHostRuntimeFingerprint(model);
+  if (descriptor.fingerprint.strategy === 'dsh-host') {
+    return createDshHostRuntimeFingerprint(model);
+  }
   const pathHash = hashString(env.PATH || '');
   const cacheKey = `${executorName}\0${model}\0${pathHash}`;
   const cached = RUNTIME_CACHE.get(cacheKey);
   if (cached) return structuredClone(cached);
 
   let fp: ExecutorRuntimeFingerprint;
-  switch (executorName) {
-    case 'claude': {
-      fp = runtime(executorName, model, 'agent-cli', {
-        systemPrompt: 'native',
-        costUSD: 'reported',
-        trace: 'native',
-        skillIsolation: 'full-no-partial',
-      }, { binary: readPathBinary('claude', env) });
+  switch (descriptor.fingerprint.strategy) {
+    case 'path-cli': {
+      fp = runtime(
+        descriptor.name,
+        model,
+        descriptor.runtimeKind,
+        descriptor.runtimeCapabilities,
+        { binary: readPathBinary(descriptor.fingerprint.command, env) },
+      );
       break;
     }
     case 'claude-sdk': {
       const sdkPackageJson = resolvePackageJson('@anthropic-ai/claude-agent-sdk');
       const sdk = readPackage('@anthropic-ai/claude-agent-sdk', sdkPackageJson ?? undefined);
       const claudeCodeVersion = readPackageField<string>('@anthropic-ai/claude-agent-sdk', 'claudeCodeVersion', sdkPackageJson ?? undefined);
-      fp = runtime(executorName, model, 'agent-sdk', {
-        systemPrompt: 'native',
-        costUSD: 'reported',
-        trace: 'native',
-        skillIsolation: 'full',
-      }, {
+      fp = runtime(descriptor.name, model, descriptor.runtimeKind, descriptor.runtimeCapabilities, {
         sdk,
         binary: {
           name: 'claude-code',
@@ -459,25 +449,11 @@ export function getExecutorRuntimeFingerprint(
       });
       break;
     }
-    case 'codex': {
-      fp = runtime(executorName, model, 'agent-cli', {
-        systemPrompt: 'prepended',
-        costUSD: 'not-reported',
-        trace: 'best-effort',
-        skillIsolation: 'cwd-only',
-      }, { binary: readPathBinary('codex', env) });
-      break;
-    }
     case 'codex-sdk': {
       const sdkPackageJson = resolvePackageJson('@openai/codex-sdk');
       const sdk = readPackage('@openai/codex-sdk', sdkPackageJson ?? undefined);
       const bundledCodex = readPackage('@openai/codex', sdkPackageJson ?? undefined);
-      fp = runtime(executorName, model, 'agent-sdk', {
-        systemPrompt: 'prepended',
-        costUSD: 'not-reported',
-        trace: 'best-effort',
-        skillIsolation: 'cwd-only',
-      }, {
+      fp = runtime(descriptor.name, model, descriptor.runtimeKind, descriptor.runtimeCapabilities, {
         sdk,
         binary: {
           name: 'codex',
@@ -488,27 +464,20 @@ export function getExecutorRuntimeFingerprint(
       });
       break;
     }
-    case 'gemini': {
-      fp = runtime(executorName, model, 'agent-cli', {
-        systemPrompt: 'prepended',
-        costUSD: 'not-reported',
-        trace: 'none',
-        skillIsolation: 'none',
-      }, { binary: readPathBinary('gemini', env) });
+    case 'api': {
+      fp = runtime(
+        descriptor.name,
+        model,
+        descriptor.runtimeKind,
+        descriptor.runtimeCapabilities,
+        { binary: { name: descriptor.name, source: 'none' } },
+      );
       break;
     }
-    case 'anthropic-api':
-    case 'openai-api': {
-      fp = runtime(executorName, model, 'api', {
-        systemPrompt: 'native',
-        costUSD: 'not-reported',
-        trace: 'none',
-        skillIsolation: 'none',
-      }, { binary: { name: executorName, source: 'none' } });
-      break;
+    default: {
+      const unreachable: never = descriptor.fingerprint;
+      throw new Error(`unreachable executor fingerprint strategy: ${JSON.stringify(unreachable)}`);
     }
-    default:
-      throw new Error(`unreachable executor runtime: ${executorName}`);
   }
 
   RUNTIME_CACHE.set(cacheKey, structuredClone(fp));

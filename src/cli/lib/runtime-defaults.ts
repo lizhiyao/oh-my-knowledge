@@ -2,6 +2,7 @@ import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
 import { DEFAULT_MODEL, JUDGE_MODEL } from '../../executors/shared.js';
+import { executorFamily } from '../../executors/registry.js';
 
 export interface RuntimeResolutionOptions {
   env?: NodeJS.ProcessEnv;
@@ -44,7 +45,7 @@ export function isCodexHost(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 export function isCodexExecutor(executor: string): boolean {
-  return executor === 'codex' || executor === 'codex-sdk';
+  return executorFamily(executor) === 'codex';
 }
 
 export function resolveCliExecutor(

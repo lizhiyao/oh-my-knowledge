@@ -24,6 +24,7 @@ import {
   hasUsableSamplesPath,
 } from '../../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
+import { executorNamesForFamily } from '../../../executors/registry.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -45,10 +46,10 @@ interface RepeatProgressInfo {
 
 type ParsedValues = Record<string, string | boolean | undefined>;
 
-const CLAUDE_EXECUTORS = new Set(['claude', 'claude-sdk']);
-const CODEX_EXECUTORS = new Set(['codex', 'codex-sdk']);
-const OPENAI_API_EXECUTORS = new Set(['openai-api']);
-const ANTHROPIC_API_EXECUTORS = new Set(['anthropic-api']);
+const CLAUDE_EXECUTORS = executorNamesForFamily('claude');
+const CODEX_EXECUTORS = executorNamesForFamily('codex');
+const OPENAI_API_EXECUTORS = executorNamesForFamily('openai-api');
+const ANTHROPIC_API_EXECUTORS = executorNamesForFamily('anthropic-api');
 
 interface RecordedEvidenceForPrompt {
   name: string;
@@ -169,13 +170,13 @@ function matchingPreflightRuntimes(
   return matches;
 }
 
-function hasExecutor(matches: PreflightRuntimeMatch[], executors: Set<string>): boolean {
+function hasExecutor(matches: PreflightRuntimeMatch[], executors: ReadonlySet<string>): boolean {
   return matches.some((match) => executors.has(match.executor));
 }
 
 function configHasExecutor(
   config: Pick<RunConfig, 'executorName' | 'judgeModels' | 'noJudge'>,
-  executors: Set<string>,
+  executors: ReadonlySet<string>,
 ): boolean {
   if (config.executorName && executors.has(config.executorName)) return true;
   return !config.noJudge && config.judgeModels.some((judge) => executors.has(judge.executor));
@@ -183,7 +184,7 @@ function configHasExecutor(
 
 function shouldSwitchJudgeWithTask(
   config: Pick<RunConfig, 'judgeModels' | 'noJudge'>,
-  executors: Set<string>,
+  executors: ReadonlySet<string>,
 ): boolean {
   return !config.noJudge && config.judgeModels.length === 1 && executors.has(config.judgeModels[0].executor);
 }
