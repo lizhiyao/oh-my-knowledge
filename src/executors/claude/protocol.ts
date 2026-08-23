@@ -1,10 +1,10 @@
-import type { ExecResult } from '../types/index.js';
+import type { ExecResult } from '../../types/index.js';
 import {
   checkedSumTokenCounts,
   nonNegativeMetric,
   optionalTokenCount,
-} from '../shared/token-usage.js';
-import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
+} from '../../shared/token-usage.js';
+import { extractAgentTrace, isClaudeSdkResultMessage } from './sdk-trace.js';
 
 interface ClaudeTokenUsage {
   input_tokens?: number;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { buildDshHostResult } from '../../src/executors/dsh-protocol.js';
+import { buildDshHostResult } from '../../src/dsh-plugin/protocol.js';
 
 describe('DSH event projection', () => {
   it('preserves host-observed order across root, tool, and subagent events', () => {

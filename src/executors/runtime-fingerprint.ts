@@ -8,7 +8,7 @@ import { buildExecEnv } from './runtime.js';
 import {
   isScriptFileInterpreter,
   resolveScriptCommand,
-} from './script-command.js';
+} from './script/command.js';
 import { getExecutorDescriptor } from './registry.js';
 import type {
   ExecutorFn,

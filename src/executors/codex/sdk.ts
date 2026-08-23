@@ -3,22 +3,22 @@ import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Codex, CodexOptions, ThreadEvent } from '@openai/codex-sdk';
-import type { ExecResult, ExecutorInput } from '../types/index.js';
+import type { ExecResult, ExecutorInput } from '../../types/index.js';
 import {
   buildCodexResult,
   normalizeCodexProtocolEvent,
   type CodexEvent,
-} from './codex-protocol.js';
-import { DEFAULT_TIMEOUT_MS } from './defaults.js';
+} from './protocol.js';
+import { DEFAULT_TIMEOUT_MS } from '../defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from './runtime.js';
-import { registerSigintSubscriber } from './subprocess.js';
-import { isolateCodexCwd } from './codex-cli.js';
+} from '../runtime.js';
+import { registerSigintSubscriber } from '../subprocess.js';
+import { isolateCodexCwd } from './cli.js';
 
 type CodexSdkModule = typeof import('@openai/codex-sdk');
 

@@ -1,21 +1,21 @@
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { ExecResult, ExecutorInput } from '../types/index.js';
-import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './claude-protocol.js';
-import { DEFAULT_TIMEOUT_MS } from './defaults.js';
+import type { ExecResult, ExecutorInput } from '../../types/index.js';
+import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './protocol.js';
+import { DEFAULT_TIMEOUT_MS } from '../defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from './runtime.js';
-import { registerSigintSubscriber } from './subprocess.js';
-import { buildSdkHookCallback } from '../eval-core/mocks-runtime.js';
-import { buildClaudeResult } from './claude-protocol.js';
+} from '../runtime.js';
+import { registerSigintSubscriber } from '../subprocess.js';
+import { buildSdkHookCallback } from '../../eval-core/mocks-runtime.js';
+import { buildClaudeResult } from './protocol.js';
 
-export { normalizeClaudeSdkMeasurements } from './claude-protocol.js';
+export { normalizeClaudeSdkMeasurements } from './protocol.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 

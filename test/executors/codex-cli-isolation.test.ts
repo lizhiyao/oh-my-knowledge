@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { codexCliExecutor } from '../../src/executors/codex-cli.js';
+import { codexCliExecutor } from '../../src/executors/codex/cli.js';
 
 // codex-cli 隔离合约:
 //   undefined          → 不传 -C(默认行为,看 cwd 里有什么 codex 自己决定)
