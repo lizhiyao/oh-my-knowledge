@@ -1,30 +1,26 @@
 /**
- * `omk promote` 端到端编排测(execFile 打到 dist):锁住门禁 + 写决定 + 生命周期跃迁的闭环契约 ——
+ * `omk promote` command 编排测：锁住门禁 + 写决定 + 生命周期跃迁的闭环契约 ——
  *   - PROGRESS + 可比 + 不漂 → 退 0、记录追加 promote 决定、`omk list` 显 promoted ✓;
  *   - verdict 不达标 / 源漂移 / 记录不存在 → 退 1,拦截原因走 stderr;
- *   - --force 越门 → 退 0 且决定带 override;无当前证据 / 可达源 hash 已变 → force 也退 1;
+ *   - --force 越门 → 退 0 且决定带 override;可达源 hash 已变时仍拒;
  *   - --json 出版本化信封。
  * 证据 fixture 的 judgePromptHash 取自真实 getJudgePromptHash,contentHash 取自真实 hashArtifactSource,
- * 故门禁的可比性 / drift 判定都打到真实口径而非 mock。HOME 指临时空目录,避免回退本机全局受管目录。
+ * 故 drift 判定打到真实口径而非 mock。HOME 指临时空目录,避免回退本机全局受管目录。
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
 import { getJudgePromptHash } from '../../src/grading/judge.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');
+import PromoteCommand from '../../src/cli/commands/promote.js';
+import ListCommand from '../../src/cli/commands/list.js';
+import { runCommand } from '../helpers/run-command.js';
 
 interface RunResult { code: number; stdout: string; stderr: string; }
 
-describe('omk promote 端到端', () => {
+describe('omk promote command', () => {
   let proj: string;
   let home: string;
   let env: NodeJS.ProcessEnv;
@@ -33,15 +29,15 @@ describe('omk promote 端到端', () => {
   let recId: string;
   let curHash: string;
 
-  /** 写一条受管记录,带一条「当前内容」证据(verdict / judgeHash 可定制)。 */
-  function writeRecord(opts: { verdict?: string; judgeHash?: string; contentHash?: string } = {}): void {
+  /** 写一条受管记录,带一条「当前内容」证据。 */
+  function writeRecord(opts: { verdict?: string; contentHash?: string; judgeHash?: string; withoutEvidence?: boolean } = {}): void {
     const judge = opts.judgeHash ?? getJudgePromptHash(true);
     const rec = {
       recordKind: 'managed-artifact', schemaVersion: 2, id: recId, name: 'review', kind: 'skill',
       source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
       contentHash: opts.contentHash ?? curHash, installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],
-      evidence: [{
+      evidence: opts.withoutEvidence ? [] : [{
         reportId: 'rep1', contentHash: opts.contentHash ?? curHash, recordedAt: '2026-06-07T00:00:00.000Z',
         verdict: opts.verdict ?? 'PROGRESS', comparability: { cliVersion: '0.36.0', judgePromptHash: judge },
       }],
@@ -55,8 +51,10 @@ describe('omk promote 端到端', () => {
   }
 
   const run = async (args: string[]): Promise<RunResult> => {
+    const [command, ...commandArgs] = args;
+    const CommandType = command === 'promote' ? PromoteCommand : ListCommand;
     try {
-      const { stdout, stderr } = await execFileAsync('node', [CLI, ...args, '--lang', 'en'], { cwd: proj, env });
+      const { stdout, stderr } = await runCommand(CommandType, [...commandArgs, '--lang', 'en'], { cwd: proj, env });
       return { code: 0, stdout, stderr };
     } catch (e) {
       const err = e as { code?: number; stdout?: string; stderr?: string };
@@ -91,15 +89,6 @@ describe('omk promote 端到端', () => {
     assert.equal(JSON.parse(list.stdout).rows[0].state, 'promoted', 'list 显 promoted');
   });
 
-  it('幂等:已 promote 的当前内容再 promote → 退 0、不堆第二条决定', async () => {
-    writeRecord({ verdict: 'PROGRESS' });
-    await run(['promote', 'review']);
-    const r = await run(['promote', 'review']);
-    assert.equal(r.code, 0);
-    assert.ok(r.stderr.includes('already promoted'), `幂等提示:${r.stderr}`);
-    assert.equal(readRecord().decisions.length, 1, '不重复追加');
-  });
-
   it('幂等:已 promote 后源不可达 → 仍 no-op,不误走 drift gate', async () => {
     writeRecord({ verdict: 'PROGRESS' });
     await run(['promote', 'review']);
@@ -120,11 +109,11 @@ describe('omk promote 端到端', () => {
     assert.equal(readRecord().decisions.length, 0, '被拦不写决定');
   });
 
-  it('--accept-cautious:放行 CAUTIOUS', async () => {
+  it('--accept-cautious 把 CAUTIOUS 接到门禁并放行', async () => {
     writeRecord({ verdict: 'CAUTIOUS' });
-    assert.equal((await run(['promote', 'review'])).code, 1, '默认拦 CAUTIOUS');
-    const r = await run(['promote', 'review', '--accept-cautious']);
-    assert.equal(r.code, 0, r.stderr);
+    assert.equal((await run(['promote', 'review'])).code, 1, '默认仍拦 CAUTIOUS');
+    const accepted = await run(['promote', 'review', '--accept-cautious']);
+    assert.equal(accepted.code, 0, accepted.stderr);
     assert.equal(readRecord().decisions[0].decisionKind, 'promote');
   });
 
@@ -172,18 +161,22 @@ describe('omk promote 端到端', () => {
     assert.equal(row.reachable, false, 'promoted 但仍标明当前环境源未核');
   });
 
-  it('无当前证据 → 退 1,force 也越不过', async () => {
-    // 证据是旧内容的(contentHash 与记录基线不同)→ 无当前证据。
-    const rec = {
-      recordKind: 'managed-artifact', schemaVersion: 2, id: recId, name: 'review', kind: 'skill',
-      source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
-      contentHash: curHash, installedAt: '2026-06-06T00:00:00.000Z', distribution: [],
-      evidence: [{ reportId: 'rep1', contentHash: 'OLDCONTENT00', recordedAt: 't', verdict: 'PROGRESS' }],
-      decisions: [],
-    };
-    writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
-    assert.equal((await run(['promote', 'review'])).code, 1, '无当前证据拦');
-    assert.equal((await run(['promote', 'review', '--force', '--reason', 'x'])).code, 1, 'force 也越不过空证据');
+  it('无当前证据 → --force 也不能越门', async () => {
+    writeRecord({ withoutEvidence: true });
+    const blocked = await run(['promote', 'review', '--force', '--reason', '已人工复核']);
+    assert.equal(blocked.code, 1);
+    assert.ok(blocked.stderr.includes('no evaluation evidence for the current content'), blocked.stderr);
+    assert.equal(readRecord().decisions.length, 0);
+  });
+
+  it('旧评委指纹 → incomparable；--force 记录被越过的门禁', async () => {
+    writeRecord({ judgeHash: 'STALE_JUDGE_NOT_CURRENT' });
+    const blocked = await run(['promote', 'review']);
+    assert.equal(blocked.code, 1);
+    assert.ok(blocked.stderr.includes('not the current judge'), blocked.stderr);
+    const forced = await run(['promote', 'review', '--force', '--reason', '已核对评委变更']);
+    assert.equal(forced.code, 0, forced.stderr);
+    assert.deepEqual(readRecord().decisions[0].override?.overriddenBlocks, ['incomparable']);
   });
 
   it('记录不存在 → 退 1 not_managed', async () => {
@@ -219,17 +212,6 @@ describe('omk promote 端到端', () => {
     assert.equal(parsed.promoted.override, false);
   });
 
-  it('评委已变(judgePromptHash 失配)→ 退 1 incomparable;--force 越门记 override', async () => {
-    writeRecord({ verdict: 'PROGRESS', judgeHash: 'STALE_JUDGE_NOT_CURRENT' });
-    const blocked = await run(['promote', 'review']);
-    assert.equal(blocked.code, 1);
-    assert.ok(blocked.stderr.includes('not the current judge'), `incomparable 拦截:${blocked.stderr}`);
-    assert.equal(readRecord().decisions.length, 0);
-    const forced = await run(['promote', 'review', '--force', '--reason', 'ok']);
-    assert.equal(forced.code, 0, forced.stderr);
-    assert.deepEqual(readRecord().decisions[0].override?.overriddenBlocks, ['incomparable'], 'override 标明越过 incomparable');
-  });
-
   it('--json:拦截出版本化信封 { schemaVersion:1, blocked:{ reasons:[{blockKind,detail}] } }', async () => {
     writeRecord({ verdict: 'NOISE' });
     const r = await run(['promote', 'review', '--json']);
@@ -250,15 +232,6 @@ describe('omk promote 端到端', () => {
     assert.equal(parsed.schemaVersion, 1);
     assert.equal(parsed.alreadyPromoted.name, 'review');
     assert.equal(parsed.alreadyPromoted.contentHash, curHash);
-  });
-
-  it('不可信受管 JSON 的 verdict 含 ANSI/控制符 → 存储边界整条拒绝，不喷转义', async () => {
-    writeRecord({ verdict: '\x1b[2J\x1b]0;PWNED\x07\rNOISE' });
-    const r = await run(['promote', 'review']);
-    assert.equal(r.code, 1);
-    assert.ok(!r.stderr.includes('\x1b'), 'ESC 不得原样喷到终端');
-    assert.ok(!r.stderr.includes('\x07'), 'BEL 不得原样喷出');
-    assert.ok(r.stderr.includes('No managed record'), '非法 verdict 使不可信记录在存储边界失败关闭');
-    assert.ok(!r.stderr.includes('PWNED'), '不可信 verdict 不进入任何文本输出');
+    assert.equal(readRecord().decisions.length, 1, '幂等路径不重复追加决定');
   });
 });

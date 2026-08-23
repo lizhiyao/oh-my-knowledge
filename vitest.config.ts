@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     testTimeout: 30000,
+    // Git/Node subprocesses become I/O-bound under full CPU parallelism.
+    // Keep proportional headroom while allowing larger hosts to scale.
+    maxWorkers: '55%',
     // Default the test suite to lenient assertion-language enforcement so that
     // legacy fixture sample files (e.g. test/fixtures/code-review/eval-samples.json
     // containing `not_contains "looks good"`) keep loading via stderr-warning
@@ -24,7 +27,11 @@ export default defineConfig({
     // 需要更细粒度的用例仍可 per-test 覆盖 OMK_TREES_DIR / OMK_ARTIFACT_INDEX_DIR 等子目录变量。
     env: {
       OMK_LENIENT_ASSERTIONS: '1',
-      OMK_HOME: join(tmpdir(), 'omk-test-home'),
+      OMK_HOME: join(tmpdir(), `omk-test-home-${process.pid}`),
+      // Update-check behavior has dedicated tests. Disable it everywhere else
+      // so CLI integration tests do not create caches or detached refresh
+      // workers for every command invocation.
+      OMK_SKIP_UPDATE_CHECK: '1',
     },
   },
 });

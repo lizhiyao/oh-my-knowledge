@@ -1,9 +1,10 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
+import { aggregateReport, getGitInfo } from '../../src/eval-core/evaluation-reporting.js';
 import { parseReportDocument } from '../../src/eval-core/report-document.js';
 import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types/index.js';
 
@@ -52,6 +53,33 @@ function writeFakeBinary(dir: string, name: string, output: string): void {
   writeFileSync(filePath, content);
   if (process.platform !== 'win32') chmodSync(filePath, 0o755);
 }
+
+describe('getGitInfo', () => {
+  it('reads commit, branch, detached state, and dirty state from one porcelain-v2 probe', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-git-info-'));
+    try {
+      execFileSync('git', ['init', '--quiet', '--initial-branch=main'], { cwd: root });
+      writeFileSync(join(root, 'tracked.txt'), 'clean\n');
+      execFileSync('git', ['add', 'tracked.txt'], { cwd: root });
+      execFileSync('git', ['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '--quiet', '-m', 'fixture'], { cwd: root });
+
+      const clean = getGitInfo(root);
+      assert.ok(clean);
+      assert.match(clean.commit, /^[0-9a-f]{40}$/);
+      assert.equal(clean.commitShort, clean.commit.slice(0, 7));
+      assert.equal(clean.branch, 'main');
+      assert.equal(clean.dirty, false);
+
+      writeFileSync(join(root, 'tracked.txt'), 'dirty\n');
+      assert.equal(getGitInfo(root)?.dirty, true);
+
+      execFileSync('git', ['checkout', '--quiet', '--detach'], { cwd: root });
+      assert.equal(getGitInfo(root)?.branch, 'HEAD');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('aggregateReport — reproducibility metadata', () => {
   const baseOpts = {

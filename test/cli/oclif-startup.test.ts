@@ -139,16 +139,6 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     }
   });
 
-  it(`eval --bogus-flag 错误路径 exit 2(parse fail 回归)`, async () => {
-    try {
-      await execFileAsync('node', [CLI, 'eval', '--bogus-flag']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
-    }
-  });
-
   it(`[BREAKING-CLI] 顶层 --lang 不再 dispatch 到 subcommand(normalizeArgv 已删)`, async () => {
     // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
     // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
@@ -184,6 +174,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
       const out = e.stdout + e.stderr;
       assert.ok(/batch 模式/.test(out) && /Batch mode/.test(out),
         `expected bilingual flag dump (zh + en), got:\n${out.slice(0, 600)}`);

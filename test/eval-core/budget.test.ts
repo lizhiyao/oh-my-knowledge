@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { executeTasks } from '../../src/eval-core/evaluation-execution.js';
@@ -36,6 +36,17 @@ const makeExecutor = (perCallCost: number, perCallMs = 10): ExecutorFn => async 
     costUSD: perCallCost, stopReason: 'end_turn', numTurns: 1,
   };
 };
+
+async function withoutRetryBackoff<T>(run: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers();
+  try {
+    const pending = run();
+    await vi.runAllTimersAsync();
+    return await pending;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 describe('executeTasks —  budget tracker', () => {
   it('缓存开启时拒绝没有 identity 的匿名 executor', async () => {
@@ -177,7 +188,7 @@ describe('executeTasks —  budget tracker', () => {
         error: 'retryable',
       };
     };
-    const outcome = await executeTasks({
+    const outcome = await withoutRetryBackoff(() => executeTasks({
       tasks: [task('retry-cost')],
       executor,
       executorName: 'custom-executor',
@@ -191,7 +202,7 @@ describe('executeTasks —  budget tracker', () => {
       verbose: false,
       retry: 3,
       budget: { perSampleUSD: 0.3 },
-    });
+    }));
     const result = outcome.results['retry-cost'].v1;
     assert.equal(calls, 2);
     assert.equal(result.attemptCount, 2);
@@ -220,7 +231,7 @@ describe('executeTasks —  budget tracker', () => {
         ...(calls === 1 ? { error: 'retryable' } : {}),
       };
     };
-    const outcome = await executeTasks({
+    const outcome = await withoutRetryBackoff(() => executeTasks({
       tasks: [task('retry-success')],
       executor,
       executorName: 'custom-executor',
@@ -233,7 +244,7 @@ describe('executeTasks —  budget tracker', () => {
       noCache: true,
       verbose: false,
       retry: 1,
-    });
+    }));
     const result = outcome.results['retry-success'].v1;
     assert.equal(calls, 2);
     assert.equal(result.ok, true);
@@ -263,7 +274,7 @@ describe('executeTasks —  budget tracker', () => {
         error: 'retryable',
       };
     };
-    const outcome = await executeTasks({
+    const outcome = await withoutRetryBackoff(() => executeTasks({
       tasks: [task('retry-overflow')],
       executor,
       executorName: 'custom-executor',
@@ -276,7 +287,7 @@ describe('executeTasks —  budget tracker', () => {
       noCache: true,
       verbose: false,
       retry: 1,
-    });
+    }));
     const result = outcome.results['retry-overflow'].v1;
     assert.equal(calls, 2);
     assert.equal(result.execCostUSD, Number.MAX_SAFE_INTEGER);

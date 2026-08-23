@@ -44,7 +44,10 @@ const TARGET_SPECS: Record<AgentTarget, AgentTargetSpec> = {
 
 function packagedOmkAgentSkillDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, '..', '..', 'assets', 'agent-skills', 'omk');
+  const packaged = resolve(here, '..', '..', 'assets', 'agent-skills', 'omk');
+  if (existsSync(packaged)) return packaged;
+  const workspace = resolve(here, '..', '..', '..', '.agents', 'skills', 'omk');
+  return existsSync(workspace) ? workspace : packaged;
 }
 
 function knownTarget(target: AgentTarget): InstallTarget {

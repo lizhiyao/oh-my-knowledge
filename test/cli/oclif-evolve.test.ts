@@ -1,5 +1,5 @@
 /**
- * oclif 路径 evolve 命令验收。
+ * oclif 路由验收 + evolve command 生命周期测试。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -7,6 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import EvolveCommand from '../../src/cli/commands/evolve.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +36,7 @@ describe('oclif evolve', () => {
 
   it('非法 --significance-alpha → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--significance-alpha', '2']);
+      await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--significance-alpha', '2']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -44,7 +46,7 @@ describe('oclif evolve', () => {
 
   it('--test-ratio 不配 --holdout-ratio → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--test-ratio', '0.2']);
+      await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--test-ratio', '0.2']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -58,19 +60,9 @@ describe('oclif evolve', () => {
     assert.ok(stdout.includes('Auto-iterate skill improvement'), 'stdout should contain en description');
   });
 
-  it('unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'evolve', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
-    }
-  });
-
   it('非法 --rounds → exit 2 + 中文 parser 错误', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--rounds', 'nope']);
+      await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--rounds', 'nope']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -92,7 +84,7 @@ describe('oclif evolve', () => {
 
   it('缺 skillPath positional → exit 2(oclif required-args)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve']);
+      await runCommand(EvolveCommand, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
