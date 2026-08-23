@@ -1,6 +1,6 @@
 /**
  * Agent evaluation feature tests:
- * - extractAgentTrace: message stream → turns + toolCalls
+ * - extractClaudeTrace: message stream → turns + toolCalls
  * - Agent assertions: tools_called, tools_not_called, tools_count_max/min, tool_output_contains, turns_min
  * - buildTraceSummary: turns/toolCalls → judge context string
  * - schema: buildVariantResult/buildVariantSummary with agent metrics
@@ -10,7 +10,7 @@
 
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractAgentTrace } from '../src/executors/index.js';
+import { extractClaudeTrace } from '../src/executors/index.js';
 import { runAssertions, buildTraceSummary } from '../src/grading/index.js';
 import { renderAgentOverview } from '../src/renderer/summary.js';
 import { buildVariantResult, buildVariantSummary } from '../src/eval-core/schema.js';
@@ -18,10 +18,10 @@ import { analyzeResults } from '../src/analysis/report-diagnostics.js';
 import type { ExecResult, Report, ToolCallInfo, TurnInfo } from '../src/types/index.js';
 
 // ---------------------------------------------------------------------------
-// extractAgentTrace
+// extractClaudeTrace
 // ---------------------------------------------------------------------------
 
-describe('extractAgentTrace', () => {
+describe('extractClaudeTrace', () => {
   it('extracts tool_use from assistant message and tool_result from user message', () => {
     const messages = [
       { type: 'system' },
@@ -55,7 +55,7 @@ describe('extractAgentTrace', () => {
       { type: 'result', result: 'The project name is omk.' },
     ];
 
-    const { turns, toolCalls } = extractAgentTrace(messages as never[]);
+    const { turns, toolCalls } = extractClaudeTrace(messages as never[]);
 
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].tool, 'Read');
@@ -94,7 +94,7 @@ describe('extractAgentTrace', () => {
       { type: 'result', result: 'done' },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls.length, 2);
     assert.equal(toolCalls[0].tool, 'Bash');
     assert.equal(toolCalls[1].tool, 'Read');
@@ -128,7 +128,7 @@ describe('extractAgentTrace', () => {
       },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls[0].tool, 'github.fetch_file');
     assert.equal(toolCalls[0].sourceTool, 'mcp__github__fetch_file');
     assert.equal(toolCalls[0].toolNamespace, 'mcp__github');
@@ -159,7 +159,7 @@ describe('extractAgentTrace', () => {
       },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.deepEqual(
       toolCalls.map((call) => [call.input, call.output, call.status]),
       [
@@ -183,7 +183,7 @@ describe('extractAgentTrace', () => {
       { type: 'result', result: '' },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].success, false);
     assert.equal(toolCalls[0].status, 'failure');
@@ -196,7 +196,7 @@ describe('extractAgentTrace', () => {
       { type: 'result', result: 'Hello' },
     ];
 
-    const { turns, toolCalls } = extractAgentTrace(messages as never[]);
+    const { turns, toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls.length, 0);
     assert.equal(turns.length, 1); // one text turn
   });
@@ -210,7 +210,7 @@ describe('extractAgentTrace', () => {
       },
     }];
 
-    const { turns, toolCalls } = extractAgentTrace(messages as never[]);
+    const { turns, toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].status, 'unknown');
     assert.equal(toolCalls[0].statusSource, 'unknown');
@@ -242,7 +242,7 @@ describe('extractAgentTrace', () => {
       },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.deepEqual(
       toolCalls.map((call) => [call.status, call.statusSource, call.success]),
       [
@@ -265,7 +265,7 @@ describe('extractAgentTrace', () => {
       { type: 'result', result: '' },
     ];
 
-    const { toolCalls } = extractAgentTrace(messages as never[]);
+    const { toolCalls } = extractClaudeTrace(messages as never[]);
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].tool, 'Read');
   });

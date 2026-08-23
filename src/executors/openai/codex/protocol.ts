@@ -1,11 +1,11 @@
-import type { ExecResult } from '../../types/index.js';
+import type { ExecResult } from '../../../types/index.js';
 import {
   checkedSumTokenCounts,
   optionalTokenCount,
   splitInclusiveInputTokens,
   sumTokenCounts,
-} from '../../shared/token-usage.js';
-import { extractCodexTrace, isCodexResultEvent } from './cli-trace.js';
+} from '../../../shared/token-usage.js';
+import { extractCodexTrace, isCodexResultEvent } from './trace.js';
 
 // Codex CLI `codex exec --json` 事件流 schema（基于 codex 0.125 实测）。
 // schema 没有官方稳定文档，字段缺失静默 skip 不 throw。未来 schema 漂移时 fixture 测试会先红。

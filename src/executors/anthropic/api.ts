@@ -1,6 +1,6 @@
 import type { ExecResult, ExecutorInput } from '../../types/index.js';
 import { optionalTokenCount } from '../../shared/token-usage.js';
-import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
 import { readJsonResponse, responseBodyPreview } from '../core/http.js';
 import { asErrorLike, errorMessage } from '../core/runtime.js';
 

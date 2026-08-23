@@ -4,8 +4,8 @@ import {
   buildCodexResult,
   extractCodexProtocolError,
   validateCodexProtocol,
-} from '../../src/executors/openai/protocol.js';
-import type { CodexEvent } from '../../src/executors/openai/protocol.js';
+} from '../../src/executors/openai/codex/protocol.js';
+import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 
 describe('Codex protocol normalization', () => {
   it('keeps an item-level error non-fatal when the turn still completes with an answer', () => {

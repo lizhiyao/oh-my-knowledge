@@ -1,17 +1,17 @@
-import type { ExecResult, ExecutorInput } from '../../types/index.js';
+import type { ExecResult, ExecutorInput } from '../../../types/index.js';
 import {
   buildCodexResult,
   normalizeCodexProtocolEvent,
   type CodexEvent,
 } from './protocol.js';
-import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../core/defaults.js';
+import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';
 import {
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from '../core/runtime.js';
-import { spawnWithSigintPropagation, type SpawnHelperError } from '../core/subprocess.js';
+} from '../../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../../core/subprocess.js';
 
 export {
   extractCodexFinalOutput,

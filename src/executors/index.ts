@@ -1,11 +1,11 @@
 import type { ExecutorFn } from '../types/index.js';
 import { anthropicApiExecutor } from './anthropic/api.js';
-import { claudeCliExecutor } from './anthropic/claude-cli.js';
-import { claudeSdkExecutor } from './anthropic/claude-sdk.js';
-import { extractAgentTrace } from './anthropic/sdk-trace.js';
+import { claudeCliExecutor } from './anthropic/claude/cli.js';
+import { claudeSdkExecutor } from './anthropic/claude/sdk.js';
+import { extractClaudeTrace } from './anthropic/claude/trace.js';
 import { openAiApiExecutor } from './openai/api.js';
-import { codexCliExecutor } from './openai/codex-cli.js';
-import { codexSdkExecutor } from './openai/codex-sdk.js';
+import { codexCliExecutor } from './openai/codex/cli.js';
+import { codexSdkExecutor } from './openai/codex/sdk.js';
 import { createScriptExecutor } from './script/index.js';
 import { enforceExecutorCapabilities } from './core/capabilities.js';
 import {
@@ -25,7 +25,7 @@ const EXECUTOR_FACTORIES = {
   'openai-api': openAiApiExecutor,
 } satisfies Record<ExecutableExecutorName, ExecutorFn>;
 
-export { extractAgentTrace, createScriptExecutor };
+export { extractClaudeTrace, createScriptExecutor };
 export {
   assertExecutorInputCapabilities,
   assertSamplesCompatibleWithExecutor,

@@ -1,8 +1,11 @@
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
-import { DEFAULT_MODEL, JUDGE_MODEL } from '../../executors/core/defaults.js';
 import { executorFamily } from '../../executors/core/registry.js';
+
+// Claude 的模型 alias 只属于 CLI runtime 选择策略，不是执行器共享默认值。
+export const DEFAULT_CLAUDE_MODEL = 'sonnet';
+export const DEFAULT_CLAUDE_JUDGE_MODEL = 'haiku';
 
 export interface RuntimeResolutionOptions {
   env?: NodeJS.ProcessEnv;
@@ -78,7 +81,7 @@ export function resolveCliModel(
   const envModel = nonEmpty(env.OMK_MODEL);
   if (envModel) return envModel;
 
-  if (!isCodexExecutor(executor)) return DEFAULT_MODEL;
+  if (!isCodexExecutor(executor)) return DEFAULT_CLAUDE_MODEL;
 
   const suggestion = getCodexModelSuggestion(env);
   if (suggestion.fromConfig) return suggestion.model;
@@ -90,7 +93,7 @@ export function resolveCliModel(
 }
 
 export function defaultJudgeModel(executor: string, taskModel: string): string {
-  return isCodexExecutor(executor) ? taskModel : JUDGE_MODEL;
+  return isCodexExecutor(executor) ? taskModel : DEFAULT_CLAUDE_JUDGE_MODEL;
 }
 
 export function resolveRuntimeSelection(

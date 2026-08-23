@@ -5,7 +5,7 @@ import {
   normalizeExecResultToolIdentities,
 } from '../../shared/executor-result.js';
 import { resolveScriptCommand } from './command.js';
-import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
 import {
   interruptedExecResult,
   timeoutExecResult,

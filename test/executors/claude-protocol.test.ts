@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
   buildClaudeResult,
-  normalizeClaudeSdkMeasurements,
+  normalizeClaudeMeasurements,
   parseClaudeStreamJson,
-} from '../../src/executors/anthropic/protocol.js';
-import type { ClaudeSdkResultMessage } from '../../src/executors/anthropic/protocol.js';
+} from '../../src/executors/anthropic/claude/protocol.js';
+import type { ClaudeResultMessage } from '../../src/executors/anthropic/claude/protocol.js';
 
-function result(overrides: Partial<ClaudeSdkResultMessage> = {}): ClaudeSdkResultMessage {
+function result(overrides: Partial<ClaudeResultMessage> = {}): ClaudeResultMessage {
   return {
     type: 'result',
     subtype: 'success',
@@ -28,7 +28,7 @@ function result(overrides: Partial<ClaudeSdkResultMessage> = {}): ClaudeSdkResul
 
 describe('claude-sdk measurement protocol', () => {
   it('uses source-wide modelUsage without double-counting the fallback usage', () => {
-    const normalized = normalizeClaudeSdkMeasurements(result({
+    const normalized = normalizeClaudeMeasurements(result({
       modelUsage: {
         sonnet: {
           inputTokens: 10,
@@ -59,13 +59,13 @@ describe('claude-sdk measurement protocol', () => {
 
   it('rejects malformed or overflowing counters instead of reporting zero', () => {
     assert.match(
-      (normalizeClaudeSdkMeasurements(result({
+      (normalizeClaudeMeasurements(result({
         usage: { input_tokens: 10, output_tokens: -1 },
       })) as { error: string }).error,
       /invalid token usage/,
     );
     assert.match(
-      (normalizeClaudeSdkMeasurements(result({
+      (normalizeClaudeMeasurements(result({
         modelUsage: {
           one: {
             inputTokens: Number.MAX_SAFE_INTEGER,

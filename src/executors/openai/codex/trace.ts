@@ -1,10 +1,10 @@
-import type { ToolCallInfo, TurnInfo } from '../../types/index.js';
-import { safeSliceForJson } from '../../util/safe-slice.js';
+import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
+import { safeSliceForJson } from '../../../util/safe-slice.js';
 import type { CodexEvent } from './protocol.js';
-import { normalizeToolIdentity } from '../../shared/tool-identity.js';
+import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
 
-// Codex CLI(codex 0.125)`exec --json` 事件流 → omk trace 抽取器。
-// 跟 claude-sdk-trace.ts 不同源:
+// Codex CLI(codex 0.125)`exec --json` 与 SDK ThreadEvent 共用的 omk trace 抽取器。
+// 跟 Claude message trace 不同源:
 //   Claude SDK 是 message[block] 嵌套结构,有 tool_use / tool_result 配对;
 //   Codex 是事件流(turn.started → turn.completed,夹杂 item.* 事件),每个
 //   item.completed 事件直接生成完整 ToolCallInfo,**不需要 use/result 配对**。

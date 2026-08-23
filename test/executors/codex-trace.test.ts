@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractCodexTrace } from '../../src/executors/openai/cli-trace.js';
-import type { CodexEvent } from '../../src/executors/openai/protocol.js';
+import { extractCodexTrace } from '../../src/executors/openai/codex/trace.js';
+import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 
 // Fixture 锁住 codex 0.125 实测 schema 假设。
 // schema 漂移时这些 test 会先红,提醒更新 parser。

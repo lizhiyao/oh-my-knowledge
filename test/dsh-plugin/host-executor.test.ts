@@ -250,7 +250,7 @@ describe('DSH host executor', () => {
 
   it('uses the shared default timeout when the eval config omits timeoutMs', async () => {
     vi.useFakeTimers();
-    const { DEFAULT_TIMEOUT_MS } = await import('../../src/executors/core/defaults.js');
+    const { DEFAULT_TIMEOUT_MS } = await import('../../src/executors/core/limits.js');
     const host = new FakeDshHost();
     const executor = createDshHostExecutor(host, { parentAgent });
     const pending = executor({ model: 'measured-model', prompt: '__hang__' });

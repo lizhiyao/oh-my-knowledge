@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { MAX_BUFFER } from './defaults.js';
+import { MAX_BUFFER } from './limits.js';
 
 // ===========================================================================
 // SIGINT propagation：统一让 spawn 出来的 child 在 parent 收到 SIGINT 时被 kill，
