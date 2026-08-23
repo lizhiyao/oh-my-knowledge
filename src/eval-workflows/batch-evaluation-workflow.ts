@@ -8,7 +8,7 @@ import {
   persistReport,
 } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
-import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { getExecutorRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import { createFileJobStore } from '../server/job-store.js';
 import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
 import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';

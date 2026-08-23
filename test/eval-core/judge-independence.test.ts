@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { executorVendor } from '../../src/executors/registry.js';
+import { executorVendor } from '../../src/executors/core/registry.js';
 import { analyzeJudgeIndependence } from '../../src/eval-core/judge-independence.js';
 import type { JudgeConfig, Report } from '../../src/types/index.js';
 

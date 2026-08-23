@@ -1,5 +1,5 @@
 import { createExecutor } from '../executors/index.js';
-import { executorSupportsSampleMocks } from '../executors/capabilities.js';
+import { executorSupportsSampleMocks } from '../executors/core/capabilities.js';
 import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
 import { sampleMockReferenceKeys } from '../shared/sample-contract.js';
 import type {

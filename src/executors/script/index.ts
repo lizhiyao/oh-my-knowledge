@@ -5,12 +5,12 @@ import {
   normalizeExecResultToolIdentities,
 } from '../../shared/executor-result.js';
 import { resolveScriptCommand } from './command.js';
-import { DEFAULT_TIMEOUT_MS } from '../defaults.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
 import {
   interruptedExecResult,
   timeoutExecResult,
-} from '../runtime.js';
-import { spawnWithSigintPropagation, type SpawnHelperError } from '../subprocess.js';
+} from '../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../core/subprocess.js';
 
 // script executor 由用户自定义,omk 无法保证它实现 skill 隔离。
 // 任何 allowedSkills(包括 [])下都 stderr 一次性 warn,不阻塞执行,

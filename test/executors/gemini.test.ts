@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { geminiExecutor } from '../../src/executors/gemini.js';
+import { geminiExecutor } from '../../src/executors/gemini/index.js';
 
 describe('geminiExecutor process boundary', () => {
   const originalPath = process.env.PATH;

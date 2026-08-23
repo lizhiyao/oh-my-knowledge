@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
 import { buildTasksFromArtifacts } from '../../src/eval-core/task-planner.js';
-import { buildExecEnv } from '../../src/executors/runtime.js';
+import { buildExecEnv } from '../../src/executors/core/runtime.js';
 import type { Artifact } from '../../src/types/index.js';
 
 function planSkillDir(artifact: Artifact): string | null | undefined {

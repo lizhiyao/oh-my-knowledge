@@ -19,7 +19,7 @@ import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
 import type { Artifact } from '../../types/index.js';
 import type { Lang } from '../../types/shared.js';
-import { executorFamily } from '../../executors/registry.js';
+import { executorFamily } from '../../executors/core/registry.js';
 import { tEvalWorkflowMessage } from '../messages.js';
 
 export function buildPowerWarnings(sampleCount: number, repeat: number, lang: Lang = 'zh'): string[] {

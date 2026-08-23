@@ -1,7 +1,7 @@
 import { tCli, type CliLang } from './i18n.js';
 import { codexExecutorFlags, codexModelFlagValue, codexModelHint } from './codex-model-hint.js';
 import { looksLikeLlmSetupFailure, looksLikeModelUnavailableFailure } from './llm-failure-classifier.js';
-import { executorFamily } from '../../executors/registry.js';
+import { executorFamily } from '../../executors/core/registry.js';
 
 export function formatSampleGenerationFailureHint(
   message: string,

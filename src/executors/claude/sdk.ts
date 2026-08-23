@@ -3,15 +3,15 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { ExecResult, ExecutorInput } from '../../types/index.js';
 import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './protocol.js';
-import { DEFAULT_TIMEOUT_MS } from '../defaults.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from '../runtime.js';
-import { registerSigintSubscriber } from '../subprocess.js';
+} from '../core/runtime.js';
+import { registerSigintSubscriber } from '../core/subprocess.js';
 import { buildSdkHookCallback } from '../../eval-core/mocks-runtime.js';
 import { buildClaudeResult } from './protocol.js';
 

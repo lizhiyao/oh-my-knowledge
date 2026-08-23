@@ -8,7 +8,7 @@ import { buildExecEnv } from './runtime.js';
 import {
   isScriptFileInterpreter,
   resolveScriptCommand,
-} from './script/command.js';
+} from '../script/command.js';
 import { getExecutorDescriptor } from './registry.js';
 import type {
   ExecutorFn,
@@ -17,7 +17,7 @@ import type {
   ExecutorRuntimeFingerprint,
   ExecutorRuntimeKind,
   ExecutorRuntimePackage,
-} from '../types/index.js';
+} from '../../types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);

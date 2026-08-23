@@ -10,7 +10,7 @@ import {
   getDiagnosticPromptHash,
   resolveDiagnosticTarget,
 } from '../grading/diagnostic.js';
-import { resolveExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { resolveExecutorRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import type {
   Artifact,
   EvalBudget,

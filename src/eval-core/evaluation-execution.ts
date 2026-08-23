@@ -6,8 +6,8 @@ import { checkFacts } from './fact-checker.js';
 import type { FactCheckEvidence, FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
 import { DEFAULT_CACHE_DIR, DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
-import { resolveExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
-import { isRegisteredExecutorName } from '../executors/registry.js';
+import { resolveExecutorRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
+import { isRegisteredExecutorName } from '../executors/core/registry.js';
 import {
   ownRecordValue,
   setOwnRecordValue,

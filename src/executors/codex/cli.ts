@@ -4,14 +4,14 @@ import {
   normalizeCodexProtocolEvent,
   type CodexEvent,
 } from './protocol.js';
-import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../defaults.js';
+import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../core/defaults.js';
 import {
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from '../runtime.js';
-import { spawnWithSigintPropagation, type SpawnHelperError } from '../subprocess.js';
+} from '../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../core/subprocess.js';
 
 export {
   extractCodexFinalOutput,

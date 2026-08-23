@@ -1,7 +1,7 @@
 import type {
   ExecutorRuntimeCapabilities,
   ExecutorRuntimeKind,
-} from '../types/index.js';
+} from '../../types/index.js';
 
 export type ExecutorVendor = 'anthropic' | 'openai' | 'google' | 'unknown';
 

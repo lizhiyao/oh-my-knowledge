@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { getExecutorCapabilities } from '../../src/executors/capabilities.js';
+import { getExecutorCapabilities } from '../../src/executors/core/capabilities.js';
 import { createExecutor } from '../../src/executors/index.js';
 import {
   executorDescriptors,
@@ -9,7 +9,7 @@ import {
   executorVendor,
   getExecutorDescriptor,
   isRegisteredExecutorName,
-} from '../../src/executors/registry.js';
+} from '../../src/executors/core/registry.js';
 
 describe('executor registry', () => {
   it('freezes the complete registered executor identity set', () => {

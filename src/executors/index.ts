@@ -6,13 +6,13 @@ import { claudeSdkExecutor } from './claude/sdk.js';
 import { extractAgentTrace } from './claude/sdk-trace.js';
 import { codexCliExecutor } from './codex/cli.js';
 import { codexSdkExecutor } from './codex/sdk.js';
-import { geminiExecutor } from './gemini.js';
+import { geminiExecutor } from './gemini/index.js';
 import { createScriptExecutor } from './script/index.js';
-import { enforceExecutorCapabilities } from './capabilities.js';
+import { enforceExecutorCapabilities } from './core/capabilities.js';
 import {
   getExecutorDescriptor,
   type ExecutableExecutorName,
-} from './registry.js';
+} from './core/registry.js';
 
 // 命名一致性:provider HTTP 路径统一用 `<vendor>-api`(`anthropic-api` / `openai-api`),
 // vendor coding agent CLI 用 vendor 名(`claude` / `codex`)。`openai` 这个不带 -api 后缀的
@@ -33,7 +33,7 @@ export {
   assertSamplesCompatibleWithExecutor,
   executorSupportsSampleMocks,
   getExecutorCapabilities,
-} from './capabilities.js';
+} from './core/capabilities.js';
 
 export function createExecutor(name: string): ExecutorFn {
   if (name.trim().length === 0) {

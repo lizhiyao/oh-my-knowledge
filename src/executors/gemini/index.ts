@@ -1,8 +1,8 @@
-import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { optionalTokenCount } from '../shared/token-usage.js';
-import { DEFAULT_TIMEOUT_MS } from './defaults.js';
-import { errorMessage, interruptedExecResult, timeoutExecResult } from './runtime.js';
-import { spawnWithSigintPropagation, type SpawnHelperError } from './subprocess.js';
+import type { ExecResult, ExecutorInput } from '../../types/index.js';
+import { optionalTokenCount } from '../../shared/token-usage.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
+import { errorMessage, interruptedExecResult, timeoutExecResult } from '../core/runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from '../core/subprocess.js';
 
 interface GeminiResponse {
   response?: string;

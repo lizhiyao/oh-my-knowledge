@@ -2,7 +2,7 @@ import type {
   ExecutorFn,
   ExecutorInput,
   Sample,
-} from '../types/index.js';
+} from '../../types/index.js';
 import {
   getExecutorDescriptor,
   type ExecutorCapabilities,

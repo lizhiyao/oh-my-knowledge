@@ -24,7 +24,7 @@ import {
 import {
   getExecutorRuntimeFingerprint,
   resolveExecutorRuntimeFingerprint,
-} from '../executors/runtime-fingerprint.js';
+} from '../executors/core/runtime-fingerprint.js';
 import {
   ownRecordValue,
   setOwnRecordValue,

@@ -5,7 +5,7 @@ import {
   enforceExecutorCapabilities,
   executorSupportsSampleMocks,
   getExecutorCapabilities,
-} from '../../src/executors/capabilities.js';
+} from '../../src/executors/core/capabilities.js';
 import { createExecutor } from '../../src/executors/index.js';
 import type { ExecutorFn, Sample } from '../../src/types/index.js';
 

@@ -9,15 +9,15 @@ import {
   normalizeCodexProtocolEvent,
   type CodexEvent,
 } from './protocol.js';
-import { DEFAULT_TIMEOUT_MS } from '../defaults.js';
+import { DEFAULT_TIMEOUT_MS } from '../core/defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
   timeoutExecResult,
-} from '../runtime.js';
-import { registerSigintSubscriber } from '../subprocess.js';
+} from '../core/runtime.js';
+import { registerSigintSubscriber } from '../core/subprocess.js';
 import { isolateCodexCwd } from './cli.js';
 
 type CodexSdkModule = typeof import('@openai/codex-sdk');

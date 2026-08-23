@@ -29,7 +29,7 @@ function writeFakeBinary(dir: string, name: string, output: string): void {
 describe('runtime fingerprint', () => {
   it('probes PATH from the same env shape executors use', async () => {
     vi.resetModules();
-    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
     const dirA = mkdtempSync(join(tmpdir(), 'omk-runtime-a-'));
     const dirB = mkdtempSync(join(tmpdir(), 'omk-runtime-b-'));
     try {
@@ -56,7 +56,7 @@ describe('runtime fingerprint', () => {
 
   it('binds a custom script runtime to referenced file contents', async () => {
     vi.resetModules();
-    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
     const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-script-'));
     const script = join(dir, 'executor.mjs');
     try {
@@ -78,7 +78,7 @@ describe('runtime fingerprint', () => {
 
   it('does not expose mutable references owned by the runtime cache', async () => {
     vi.resetModules();
-    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
     const first = getExecutorRuntimeFingerprint('openai-api', 'gpt-test');
     const expected = first.fingerprint;
     first.fingerprint = 'caller-mutated';
@@ -92,7 +92,7 @@ describe('runtime fingerprint', () => {
 
   it('preserves the legacy fingerprint payload for runtimes without auditability metadata', async () => {
     vi.resetModules();
-    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
     const runtime = getExecutorRuntimeFingerprint('openai-api', 'gpt-test');
     const legacyPayload = {
       executor: runtime.executor,
@@ -145,7 +145,7 @@ describe('runtime fingerprint', () => {
       }));
       writeFileSync(entrypoint, '');
       process.argv[1] = entrypoint;
-      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
 
       const fingerprint = getExecutorRuntimeFingerprint('dsh-host', 'deepseek-chat');
 
@@ -176,7 +176,7 @@ describe('runtime fingerprint', () => {
       writeFileSync(entrypoint, '');
       symlinkSync(entrypoint, invokedEntrypoint);
       process.argv[1] = invokedEntrypoint;
-      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/core/runtime-fingerprint.js');
 
       const fingerprint = getExecutorRuntimeFingerprint('dsh-host', 'deepseek-chat');
 

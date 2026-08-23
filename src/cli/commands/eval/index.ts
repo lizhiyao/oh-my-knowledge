@@ -24,7 +24,7 @@ import {
   hasUsableSamplesPath,
 } from '../../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
-import { executorNamesForFamily } from '../../../executors/registry.js';
+import { executorNamesForFamily } from '../../../executors/core/registry.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
