@@ -125,6 +125,20 @@ function isRuntimeFingerprint(value: unknown): value is ExecutorRuntimeFingerpri
     || !['full', 'full-no-partial', 'cwd-only', 'none', 'unknown'].includes(
       String(value.capabilities.skillIsolation),
     )
+    || (
+      value.auditability !== undefined
+      && (
+        !isRecord(value.auditability)
+        || !['complete', 'partial'].includes(String(value.auditability.status))
+        || (
+          value.auditability.reasons !== undefined
+          && (
+            !Array.isArray(value.auditability.reasons)
+            || !value.auditability.reasons.every((reason) => typeof reason === 'string')
+          )
+        )
+      )
+    )
     || (value.sdk !== undefined && !isRuntimePackage(value.sdk))
   ) return false;
   if (value.binary === undefined) return true;

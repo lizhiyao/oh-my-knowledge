@@ -76,6 +76,20 @@ describe('comparability warnings', () => {
     assert.ok(warnings.some((w) => w.code === 'executor_runtime_unverifiable'));
   });
 
+  it('warns when a host explicitly reports only partial runtime auditability', () => {
+    const warnings = reportComparabilityWarnings(report({
+      executorRuntime: {
+        ...runtime('dsh-host', 'm', 'exec11111111'),
+        auditability: {
+          status: 'partial',
+          reasons: ['host plugin graph has no canonical digest'],
+        },
+      },
+    }));
+    const warning = warnings.find((entry) => entry.code === 'executor_runtime_unverifiable');
+    assert.match(warning?.en ?? '', /host plugin graph has no canonical digest/);
+  });
+
   it('warns when a judged report lacks judgePromptHash even if both sides are missing it', () => {
     const warnings = crossReportComparabilityWarnings(
       report({ judgePromptHash: undefined }),

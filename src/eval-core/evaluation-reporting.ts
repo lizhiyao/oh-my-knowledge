@@ -21,7 +21,10 @@ import {
   DEFAULT_BOOTSTRAP_ALPHA,
   DEFAULT_BOOTSTRAP_SAMPLES,
 } from './bootstrap.js';
-import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import {
+  getExecutorRuntimeFingerprint,
+  resolveExecutorRuntimeFingerprint,
+} from '../executors/runtime-fingerprint.js';
 import {
   ownRecordValue,
   setOwnRecordValue,
@@ -105,6 +108,7 @@ export function buildExecutorRuntimesByVariant({
   tasks,
   artifacts,
   request,
+  executor,
 }: {
   variants: string[];
   model: string;
@@ -112,14 +116,15 @@ export function buildExecutorRuntimesByVariant({
   tasks: Task[];
   artifacts: Artifact[];
   request?: Pick<EvaluationRequest, 'skillDir' | 'timeoutMs'>;
+  executor?: import('../types/index.js').ExecutorFn;
 }): Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> {
   const runtimes: Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> = {};
   for (const task of tasks) {
     if (ownRecordValue(runtimes, task.variant)) continue;
     const executionPlan = resolveExecutionStrategy(task, model, request?.timeoutMs, false);
-    setOwnRecordValue(runtimes, task.variant, getExecutorRuntimeFingerprint(executorName, model, {
+    setOwnRecordValue(runtimes, task.variant, resolveExecutorRuntimeFingerprint(executorName, model, {
       skillDir: executionPlan.input.skillDir,
-    }));
+    }, executor));
   }
 
   for (const variant of variants) {
@@ -133,9 +138,9 @@ export function buildExecutorRuntimesByVariant({
         : artifact?.locator
           ? dirname(artifact.locator)
           : request?.skillDir);
-    setOwnRecordValue(runtimes, variant, getExecutorRuntimeFingerprint(executorName, model, {
+    setOwnRecordValue(runtimes, variant, resolveExecutorRuntimeFingerprint(executorName, model, {
       skillDir: fallbackSkillDir,
-    }));
+    }, executor));
   }
 
   return runtimes;
@@ -158,6 +163,8 @@ interface AggregateReportOptions {
   run?: EvaluationRun;
   job?: EvaluationJob;
   layeredStats?: boolean;
+  executor?: import('../types/index.js').ExecutorFn;
+  judgeExecutors?: Readonly<Record<string, import('../types/index.js').ExecutorFn>>;
 }
 
 export function aggregateReport({
@@ -177,6 +184,8 @@ export function aggregateReport({
   run,
   job,
   layeredStats,
+  executor,
+  judgeExecutors,
 }: AggregateReportOptions): Report {
   const summary: Record<string, VariantSummary> = {};
   for (const variant of variants) {
@@ -263,10 +272,18 @@ export function aggregateReport({
   );
   const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
   const runtimeOptions = { skillDir: request?.skillDir };
-  const executorRuntimes = buildExecutorRuntimesByVariant({ variants, model, executorName, tasks, artifacts, request });
+  const executorRuntimes = buildExecutorRuntimesByVariant({
+    variants,
+    model,
+    executorName,
+    tasks,
+    artifacts,
+    request,
+    executor,
+  });
   const executorRuntime = commonRuntime(executorRuntimes)
     ?? representativeRuntime(executorRuntimes)
-    ?? getExecutorRuntimeFingerprint(executorName, model, runtimeOptions);
+    ?? resolveExecutorRuntimeFingerprint(executorName, model, runtimeOptions, executor);
   // request.judgeModels is the authoritative source (always non-empty in new schema).
   // Fallback synthesizes a 1-entry from positional judgeModel/executorName for any
   // legacy caller not yet migrated to the array. noJudge ⇒ runtime undefined per entry.
@@ -274,7 +291,14 @@ export function aggregateReport({
   const judgeModelsMeta: import('../types/index.js').JudgeRuntimeEntry[] = requestJudges.map((jc) => ({
     executor: jc.executor,
     model: jc.model,
-    ...(noJudge ? {} : { runtime: getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions) }),
+    ...(noJudge ? {} : {
+      runtime: resolveExecutorRuntimeFingerprint(
+        jc.executor,
+        jc.model,
+        runtimeOptions,
+        judgeExecutors?.[jc.executor],
+      ),
+    }),
   }));
   const diagnosticEnabled = request?.noDiagnostic !== true;
   const diagnosticTarget = resolveDiagnosticTarget(
@@ -287,9 +311,12 @@ export function aggregateReport({
       enabled: true as const,
       executor: diagnosticTarget.executor,
       model: diagnosticTarget.model,
-      runtime: getExecutorRuntimeFingerprint(
+      runtime: resolveExecutorRuntimeFingerprint(
         diagnosticTarget.executor,
         diagnosticTarget.model,
+        {},
+        judgeExecutors?.[diagnosticTarget.executor]
+          ?? (diagnosticTarget.executor === executorName ? executor : undefined),
       ),
       promptHash: getDiagnosticPromptHash(),
     }

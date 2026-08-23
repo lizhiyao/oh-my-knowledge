@@ -9,10 +9,11 @@ type UnknownRecord = Record<string, unknown>;
 export interface DshHostRunResult {
   rootSessionId: string;
   finalResponse: string;
-  rootEvents: UnknownRecord[];
-  descendantEvents: Array<{
+  /** Root and descendant events in host-observed receive order. */
+  events: Array<{
     sessionId: string;
     event: UnknownRecord;
+    traceRole: 'main' | 'subagent';
   }>;
   childSessionIds: string[];
 }
@@ -25,6 +26,7 @@ interface DshEventRecord {
 
 interface MutableToolCall {
   info: ToolCallInfo;
+  turn: TurnInfo;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -83,20 +85,11 @@ function resultBlock(data: UnknownRecord): UnknownRecord | undefined {
 }
 
 function collectEvents(result: DshHostRunResult): DshEventRecord[] {
-  const records: DshEventRecord[] = result.rootEvents.map((event) => ({
-    sessionId: result.rootSessionId,
+  return result.events.map(({ sessionId, event, traceRole }) => ({
+    sessionId,
     event,
-    traceRole: 'main',
+    traceRole,
   }));
-  for (const descendant of result.descendantEvents) {
-    if (descendant.sessionId === result.rootSessionId) continue;
-    records.push({
-      sessionId: descendant.sessionId,
-      event: descendant.event,
-      traceRole: 'subagent',
-    });
-  }
-  return records;
 }
 
 function terminalReason(events: DshEventRecord[], rootSessionId: string): {
@@ -214,9 +207,15 @@ export function buildDshHostResult(result: DshHostRunResult, wallClockDurationMs
         sourceTrace: `dsh-host:${sessionId}`,
         traceRole,
       };
-      const mutable = { info };
+      const turn: TurnInfo = {
+        role: 'tool',
+        content: 'null',
+        toolCalls: [info],
+      };
+      const mutable = { info, turn };
       tools.set(`${sessionId}\0${callId}`, mutable);
       orderedTools.push(mutable);
+      turns.push(turn);
       continue;
     }
 
@@ -233,17 +232,10 @@ export function buildDshHostResult(result: DshHostRunResult, wallClockDurationMs
       tool.info.status = failed ? 'failure' : 'success';
       tool.info.statusSource = 'runtime';
       tool.info.success = !failed;
+      tool.turn.content = typeof tool.info.output === 'string'
+        ? tool.info.output
+        : JSON.stringify(tool.info.output);
     }
-  }
-
-  for (const mutable of orderedTools) {
-    turns.push({
-      role: 'tool',
-      content: typeof mutable.info.output === 'string'
-        ? mutable.info.output
-        : JSON.stringify(mutable.info.output),
-      toolCalls: [mutable.info],
-    });
   }
 
   const terminal = terminalReason(events, result.rootSessionId);

@@ -327,6 +327,7 @@ export async function runEvaluation({
         samplesBaseDir,
         tasks,
         artifacts: resolvedArtifacts,
+        executorOverrides,
       });
       if (compatibility.compatible) {
         const sourceBySample = new Map(

@@ -66,10 +66,15 @@ function normalizeJudgeModels(
   model: string,
 ): import('../types/index.js').JudgeConfig[] {
   if (!configured || configured.length === 0) return [{ executor: 'dsh-host', model }];
-  return configured.map((judge) => ({
-    ...judge,
-    executor: judge.executor === 'dsh' ? 'dsh-host' : judge.executor,
-  }));
+  return configured.map((judge) => {
+    if (judge.executor === 'dsh-host') {
+      throw new Error('dsh-host 是 OMK 内部执行器标识；评委要复用当前 DSH 时，请使用 executor: dsh 或省略 judgeModels。');
+    }
+    return {
+      ...judge,
+      executor: judge.executor === 'dsh' ? 'dsh-host' : judge.executor,
+    };
+  });
 }
 
 async function executeEvalCommand(
@@ -80,10 +85,10 @@ async function executeEvalCommand(
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const configPath = resolve(cwd, requestedPath);
   const config = loadEvalConfig(configPath);
-  if (config.executor && config.executor !== 'dsh' && config.executor !== 'dsh-host') {
+  if (config.executor) {
     return {
       kind: 'error',
-      text: `DSH 内运行 OMK 时，被测执行器固定为当前 DSH；请删除 eval.yaml 中的 executor: ${config.executor}。`,
+      text: 'DSH 内运行 OMK 时，被测执行器固定为当前 DSH；请删除 eval.yaml 中的顶层 executor。',
     };
   }
 

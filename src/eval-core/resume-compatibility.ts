@@ -10,7 +10,7 @@ import {
   getDiagnosticPromptHash,
   resolveDiagnosticTarget,
 } from '../grading/diagnostic.js';
-import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { resolveExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import type {
   Artifact,
   EvalBudget,
@@ -64,6 +64,7 @@ export interface ResumeCompatibilityInput {
   samplesBaseDir?: string;
   tasks: Task[];
   artifacts: Artifact[];
+  executorOverrides?: Readonly<Record<string, import('../types/index.js').ExecutorFn>>;
 }
 
 export interface ResumeCompatibilityResult {
@@ -139,6 +140,7 @@ export function checkResumeCompatibility(
       skillDir: current.skillDir,
       timeoutMs: current.timeoutMs,
     },
+    executor: current.executorOverrides?.[current.executorName],
   });
   check(
     'meta.executorRuntimes',
@@ -156,9 +158,9 @@ export function checkResumeCompatibility(
     model: judge.model,
     ...(!current.noJudge
       ? {
-        runtime: getExecutorRuntimeFingerprint(judge.executor, judge.model, {
+        runtime: resolveExecutorRuntimeFingerprint(judge.executor, judge.model, {
           skillDir: current.skillDir,
-        }).fingerprint,
+        }, current.executorOverrides?.[judge.executor]).fingerprint,
       }
       : {}),
   }));
@@ -182,9 +184,11 @@ export function checkResumeCompatibility(
       enabled: true,
       executor: diagnosticTarget.executor,
       model: diagnosticTarget.model,
-      runtime: getExecutorRuntimeFingerprint(
+      runtime: resolveExecutorRuntimeFingerprint(
         diagnosticTarget.executor,
         diagnosticTarget.model,
+        {},
+        current.executorOverrides?.[diagnosticTarget.executor],
       ).fingerprint,
       promptHash: getDiagnosticPromptHash(),
     }

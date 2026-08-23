@@ -168,29 +168,46 @@ describe('runEvaluation', () => {
     let calls = 0;
     const outputDir = mkdtempSync(join(tmpdir(), 'omk-dsh-host-report-'));
     try {
+      const hostExecutor = Object.assign(async () => {
+        calls += 1;
+        return {
+          ok: true,
+          output: 'host result',
+          durationMs: 1,
+          durationApiMs: 1,
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          costUSD: 0,
+          costReportedByExecutor: false,
+          stopReason: 'completed',
+          numTurns: 1,
+        };
+      }, {
+        runtimeFingerprint: (model: string) => ({
+          executor: 'dsh-host',
+          model,
+          runtimeKind: 'agent-sdk' as const,
+          fingerprint: 'host-runtime-override',
+          binary: { name: '@deepseek-ai/dsh', source: 'path' as const, version: 'test' },
+          sdk: { name: 'oh-my-knowledge', version: 'test' },
+          auditability: { status: 'partial' as const, reasons: ['test host'] },
+          capabilities: {
+            systemPrompt: 'native' as const,
+            costUSD: 'not-reported' as const,
+            trace: 'native' as const,
+            skillIsolation: 'full-no-partial' as const,
+          },
+        }),
+      });
       const result = await runEvaluation({
         samplesPath: SAMPLES_PATH,
         skillDir: SKILL_DIR,
         variantSpecs: asSpecs(['v1']),
         executorName: 'dsh-host',
         executorOverrides: {
-          'dsh-host': async () => {
-            calls += 1;
-            return {
-              ok: true,
-              output: 'host result',
-              durationMs: 1,
-              durationApiMs: 1,
-              inputTokens: 1,
-              outputTokens: 1,
-              cacheReadTokens: 0,
-              cacheCreationTokens: 0,
-              costUSD: 0,
-              costReportedByExecutor: false,
-              stopReason: 'completed',
-              numTurns: 1,
-            };
-          },
+          'dsh-host': hostExecutor,
         },
         noJudge: true,
         noDiagnostic: true,
@@ -201,7 +218,10 @@ describe('runEvaluation', () => {
       });
 
       assert.equal(calls, 5);
-      assert.equal((result.report as Report).meta.executor, 'dsh-host');
+      const report = result.report as Report;
+      assert.equal(report.meta.executor, 'dsh-host');
+      assert.equal(report.meta.executorRuntime?.fingerprint, 'host-runtime-override');
+      assert.equal(report.meta.executorRuntimes?.v1?.fingerprint, 'host-runtime-override');
     } finally {
       rmSync(outputDir, { recursive: true, force: true });
     }

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { buildDshHostResult, type DshHostRunResult } from '../executors/dsh-protocol.js';
+import { createDshHostRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { DEFAULT_TIMEOUT_MS } from '../executors/shared.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -10,6 +12,7 @@ export interface DshSessionLike {
   readonly header: {
     readonly cwd?: string;
     readonly parentSession?: string;
+    readonly agentPreset?: string;
   };
 }
 
@@ -63,6 +66,9 @@ export interface DshHostContextLike {
       readonly setup: (ctx: DshAgentScopeLike) => void;
     }): Promise<DshAgentHandleLike>;
   };
+  readonly tools?: {
+    schemas(scope?: DshAgentLike): readonly UnknownRecord[];
+  };
   on(
     event: 'session/event',
     listener: (session: DshSessionLike, entry: UnknownRecord) => void,
@@ -80,7 +86,11 @@ export interface DshHostExecutorOptions {
   provider?: string;
   /** Cancellation owned by the DSH command or embedding surface. */
   signal?: AbortSignal;
+  /** Maximum time spent waiting for cancellation or disposal to settle. */
+  cleanupTimeoutMs?: number;
 }
+
+const DEFAULT_CLEANUP_TIMEOUT_MS = 5_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -139,23 +149,36 @@ function createPromptMessage(prompt: string): UnknownRecord {
   });
 }
 
+async function settleWithin(promise: Promise<void>, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const settled = await Promise.race([
+    promise.then(() => true),
+    new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    }),
+  ]);
+  if (timer !== undefined) clearTimeout(timer);
+  return settled;
+}
+
 async function waitForIdle(
   agent: DshAgentLike,
-  timeoutMs: number | undefined,
+  timeoutMs: number,
   signal: AbortSignal | undefined,
-): Promise<'idle' | 'timeout' | 'aborted'> {
+  cleanupTimeoutMs: number,
+): Promise<{ outcome: 'idle' | 'timeout' | 'aborted'; cleanupTimedOut: boolean }> {
   if (signal?.aborted) {
     agent.cancel({ kind: 'hook', reason: 'OMK evaluation command was aborted' });
-    await agent.whenIdle();
-    return 'aborted';
+    const settled = await settleWithin(agent.whenIdle(), cleanupTimeoutMs);
+    return { outcome: 'aborted', cleanupTimedOut: !settled };
   }
   let timer: NodeJS.Timeout | undefined;
   let removeAbortListener: (() => void) | undefined;
   const outcome = await Promise.race([
     agent.whenIdle().then(() => 'idle' as const),
-    ...(timeoutMs === undefined ? [] : [new Promise<'timeout'>((resolve) => {
+    new Promise<'timeout'>((resolve) => {
       timer = setTimeout(() => resolve('timeout'), timeoutMs);
-    })]),
+    }),
     ...(signal === undefined ? [] : [new Promise<'aborted'>((resolve) => {
       const onAbort = (): void => resolve('aborted');
       signal.addEventListener('abort', onAbort, { once: true });
@@ -164,15 +187,15 @@ async function waitForIdle(
   ]);
   if (timer !== undefined) clearTimeout(timer);
   removeAbortListener?.();
-  if (outcome === 'idle') return outcome;
+  if (outcome === 'idle') return { outcome, cleanupTimedOut: false };
   agent.cancel({
     kind: 'hook',
     reason: outcome === 'timeout'
-      ? `OMK sample timed out after ${timeoutMs ?? 0}ms`
+      ? `OMK sample timed out after ${timeoutMs}ms`
       : 'OMK evaluation command was aborted',
   });
-  await agent.whenIdle();
-  return outcome;
+  const settled = await settleWithin(agent.whenIdle(), cleanupTimeoutMs);
+  return { outcome, cleanupTimedOut: !settled };
 }
 
 function assertSupportedIsolation(input: ExecutorInput): void {
@@ -190,12 +213,24 @@ export function createDshHostExecutor(
   ctx: DshHostContextLike,
   options: DshHostExecutorOptions = {},
 ): ExecutorFn {
-  return async (input): Promise<ExecResult> => {
+  const provider = options.provider ?? options.parentAgent?.options.provider;
+  const toolSchemas = ctx.tools?.schemas(options.parentAgent)
+    .filter((schema) => schema.name !== 'skill');
+  const runtimeFingerprint: NonNullable<ExecutorFn['runtimeFingerprint']> = (model) => (
+    createDshHostRuntimeFingerprint(model, {
+      ...(provider ? { provider } : {}),
+      ...(options.parentAgent?.session.header.agentPreset
+        ? { agentPreset: options.parentAgent.session.header.agentPreset }
+        : {}),
+      ...(toolSchemas ? { toolSchemas } : {}),
+    })
+  );
+  const executor = async (input: ExecutorInput): Promise<ExecResult> => {
     const startedAt = Date.now();
     let handle: DshAgentHandleLike | undefined;
     const rootSessionId = `omk-${randomUUID()}`;
     const descendants = new Set<string>();
-    const descendantEvents: DshHostRunResult['descendantEvents'] = [];
+    const orderedEvents: DshHostRunResult['events'] = [];
     const disposeCreated = ctx.on('session/created', (session) => {
       const parent = session.header.parentSession;
       if (parent !== rootSessionId && (parent === undefined || !descendants.has(parent))) return;
@@ -203,15 +238,18 @@ export function createDshHostExecutor(
     });
     const disposeEvents = ctx.on('session/event', (session, event) => {
       const sessionId = String(session.id);
-      if (sessionId === rootSessionId) return;
-      if (!descendants.has(sessionId)) return;
-      descendantEvents.push({ sessionId, event });
+      if (sessionId === rootSessionId) {
+        orderedEvents.push({ sessionId, event, traceRole: 'main' });
+        return;
+      }
+      if (descendants.has(sessionId)) {
+        orderedEvents.push({ sessionId, event, traceRole: 'subagent' });
+      }
     });
 
     try {
       assertSupportedIsolation(input);
       const cwd = input.cwd ?? process.cwd();
-      const provider = options.provider ?? options.parentAgent?.options.provider;
       handle = await ctx.agents.create({
         sessionId: rootSessionId,
         meta: {
@@ -238,14 +276,20 @@ export function createDshHostExecutor(
       });
 
       handle.agent.followup(createPromptMessage(input.prompt));
-      const outcome = await waitForIdle(handle.agent, input.timeoutMs, options.signal);
+      const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const cleanupTimeoutMs = options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
+      const { outcome, cleanupTimedOut } = await waitForIdle(
+        handle.agent,
+        timeoutMs,
+        options.signal,
+        cleanupTimeoutMs,
+      );
       const wallClockDurationMs = Date.now() - startedAt;
       const events = [...handle.agent.session.events];
       const result = buildDshHostResult({
         rootSessionId,
         finalResponse: lastAssistantText(events),
-        rootEvents: events,
-        descendantEvents,
+        events: orderedEvents,
         childSessionIds: [...descendants],
       }, wallClockDurationMs);
       if (outcome === 'idle') return result;
@@ -254,8 +298,8 @@ export function createDshHostExecutor(
         ok: false,
         stopReason: outcome,
         error: outcome === 'timeout'
-          ? `dsh-host execution timed out after ${input.timeoutMs ?? 0}ms`
-          : 'dsh-host execution aborted by its DSH command',
+          ? `dsh-host execution timed out after ${timeoutMs}ms${cleanupTimedOut ? `; cancellation did not settle within ${cleanupTimeoutMs}ms` : ''}`
+          : `dsh-host execution aborted by its DSH command${cleanupTimedOut ? `; cancellation did not settle within ${cleanupTimeoutMs}ms` : ''}`,
       };
     } catch (error) {
       return failureResult(startedAt, error);
@@ -263,12 +307,18 @@ export function createDshHostExecutor(
       disposeEvents();
       disposeCreated();
       if (handle !== undefined) {
-        try {
-          await handle.dispose();
-        } catch (error) {
+        const disposal = handle.dispose().catch((error: unknown) => {
           process.stderr.write(`[dsh-host] 评测 session 关闭失败：${errorMessage(error)}\n`);
+        });
+        const disposed = await settleWithin(
+          disposal,
+          options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS,
+        );
+        if (!disposed) {
+          process.stderr.write('[dsh-host] 评测 session 关闭超出清理宽限期，已停止等待。\n');
         }
       }
     }
   };
+  return Object.assign(executor, { runtimeFingerprint });
 }

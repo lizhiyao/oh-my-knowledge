@@ -10,6 +10,7 @@ import {
   resolveScriptCommand,
 } from './script-command.js';
 import type {
+  ExecutorFn,
   ExecutorRuntimeBinary,
   ExecutorRuntimeCapabilities,
   ExecutorRuntimeFingerprint,
@@ -218,6 +219,7 @@ function withFingerprint(input: Omit<ExecutorRuntimeFingerprint, 'fingerprint'>)
         status: input.sdk.version ? 'ok' : input.sdk.error ? 'error' : 'missing',
       }
       : undefined,
+    auditability: input.auditability,
     capabilities: input.capabilities,
   };
   return { ...input, fingerprint: hashString(canonicalStringify(stablePayload)) };
@@ -228,7 +230,7 @@ function runtime(
   model: string,
   kind: ExecutorRuntimeKind,
   capabilities: ExecutorRuntimeCapabilities,
-  extra: Pick<ExecutorRuntimeFingerprint, 'binary' | 'sdk'> = {},
+  extra: Pick<ExecutorRuntimeFingerprint, 'binary' | 'sdk' | 'auditability'> = {},
 ): ExecutorRuntimeFingerprint {
   return withFingerprint({
     executor,
@@ -237,6 +239,41 @@ function runtime(
     capabilities,
     ...extra,
   });
+}
+
+export interface DshHostRuntimeIdentity {
+  provider?: string;
+  agentPreset?: string;
+  toolSchemas?: readonly unknown[];
+}
+
+function ownPackage(): ExecutorRuntimePackage {
+  const packageJson = findNearestPackageJson(fileURLToPath(import.meta.url));
+  if (!packageJson) return { name: 'oh-my-knowledge', error: 'package.json not found' };
+  try {
+    const pkg = JSON.parse(readFileSync(packageJson, 'utf-8')) as {
+      name?: string;
+      version?: string;
+    };
+    return {
+      name: pkg.name ?? 'oh-my-knowledge',
+      ...(pkg.version ? { version: pkg.version } : {}),
+    };
+  } catch (error) {
+    return {
+      name: 'oh-my-knowledge',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function dshCompositionHash(identity: DshHostRuntimeIdentity): string {
+  return createHash('sha256').update(canonicalStringify({
+    adapter: 'omk-dsh-host-v1',
+    provider: identity.provider ?? null,
+    agentPreset: identity.agentPreset ?? null,
+    toolSchemas: identity.toolSchemas ?? null,
+  })).digest('hex');
 }
 
 export interface ExecutorRuntimeFingerprintOptions {
@@ -318,7 +355,10 @@ function scriptRuntime(
   });
 }
 
-function dshHostRuntime(model: string): ExecutorRuntimeFingerprint {
+export function createDshHostRuntimeFingerprint(
+  model: string,
+  identity: DshHostRuntimeIdentity = {},
+): ExecutorRuntimeFingerprint {
   const host = readInvokingDshPackage();
   return runtime('dsh-host', model, 'agent-sdk', {
     systemPrompt: 'native',
@@ -331,10 +371,28 @@ function dshHostRuntime(model: string): ExecutorRuntimeFingerprint {
       source: host.package.version ? 'path' : 'unknown',
       ...(host.package.version ? { version: host.package.version } : {}),
       ...(host.entrypoint ? { path: host.entrypoint } : {}),
+      contentHash: dshCompositionHash(identity),
       package: host.package,
       ...(host.package.error ? { error: host.package.error } : {}),
     },
+    sdk: ownPackage(),
+    auditability: {
+      status: 'partial',
+      reasons: [
+        'DSH does not expose a canonical digest for every active plugin and policy; the fingerprint covers provider, agent preset, and effective tool schemas',
+      ],
+    },
   });
+}
+
+export function resolveExecutorRuntimeFingerprint(
+  executorName: string,
+  model: string,
+  options: ExecutorRuntimeFingerprintOptions = {},
+  executor?: ExecutorFn,
+): ExecutorRuntimeFingerprint {
+  return executor?.runtimeFingerprint?.(model, options)
+    ?? getExecutorRuntimeFingerprint(executorName, model, options);
 }
 
 export function getExecutorRuntimeFingerprint(
@@ -358,7 +416,7 @@ export function getExecutorRuntimeFingerprint(
     // changes while the command line remains identical.
     return scriptRuntime(executorName, model, env);
   }
-  if (executorName === 'dsh-host') return dshHostRuntime(model);
+  if (executorName === 'dsh-host') return createDshHostRuntimeFingerprint(model);
   const pathHash = hashString(env.PATH || '');
   const cacheKey = `${executorName}\0${model}\0${pathHash}`;
   const cached = RUNTIME_CACHE.get(cacheKey);

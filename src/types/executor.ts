@@ -129,7 +129,15 @@ export interface ExecutorInput {
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
-export type ExecutorFn = (input: ExecutorInput) => Promise<ExecResult>;
+export type ExecutorRuntimeFingerprintResolver = (
+  model: string,
+  options?: { skillDir?: string | null },
+) => ExecutorRuntimeFingerprint;
+
+export type ExecutorFn = ((input: ExecutorInput) => Promise<ExecResult>) & {
+  /** Same-process hosts can report the runtime that actually owns execution. */
+  readonly runtimeFingerprint?: ExecutorRuntimeFingerprintResolver;
+};
 
 export interface ExecutorCache {
   get(key: string): ExecResult | null;
@@ -205,5 +213,10 @@ export interface ExecutorRuntimeFingerprint {
   fingerprint: string;
   binary?: ExecutorRuntimeBinary;
   sdk?: ExecutorRuntimePackage;
+  /** Whether the recorded fields cover the complete effective runtime composition. */
+  auditability?: {
+    status: 'complete' | 'partial';
+    reasons?: string[];
+  };
   capabilities: ExecutorRuntimeCapabilities;
 }

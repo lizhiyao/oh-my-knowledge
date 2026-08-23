@@ -130,6 +130,7 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
     `cost=${runtime.capabilities.costUSD}`,
     `trace=${runtime.capabilities.trace}`,
     `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ...(runtime.auditability ? [`auditability=${runtime.auditability.status}`] : []),
     ...(runtime.binary?.contentHash
       ? [`contentHash=${runtime.binary.contentHash}`]
       : []),

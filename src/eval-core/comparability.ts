@@ -53,6 +53,9 @@ function packageReasons(pkg: ExecutorRuntimePackage | undefined, label: string):
 
 function runtimeUnverifiableReasons(runtime: ExecutorRuntimeFingerprint): string[] {
   const reasons: string[] = [];
+  if (runtime.auditability?.status === 'partial') {
+    reasons.push(...(runtime.auditability.reasons ?? ['runtime auditability partial']));
+  }
   if (runtime.runtimeKind === 'api') return reasons;
 
   if (runtime.runtimeKind === 'agent-sdk') {

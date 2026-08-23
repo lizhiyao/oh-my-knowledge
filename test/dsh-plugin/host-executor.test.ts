@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { load } from 'js-yaml';
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import {
   createDshHostExecutor,
   type DshAgentLike,
   type DshHostContextLike,
   type DshSessionLike,
 } from '../../src/dsh-plugin/host-executor.js';
+import { apply } from '../../src/dsh-plugin/index.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -26,6 +28,18 @@ class FakeDshHost implements DshHostContextLike {
   runtimeContextSuppressed = 0;
   private readonly eventListeners = new Set<(session: DshSessionLike, event: UnknownRecord) => void>();
   private readonly createdListeners = new Set<(session: DshSessionLike) => void>();
+
+  constructor(private readonly behavior: {
+    cancelSettles?: boolean;
+    disposeSettles?: boolean;
+  } = {}) {}
+
+  readonly tools = {
+    schemas: () => [
+      { name: 'read', description: 'read files', parameters: { type: 'object' } },
+      { name: 'skill', description: 'ambient skills', parameters: { type: 'object' } },
+    ],
+  };
 
   readonly agents = {
     create: async (options: Parameters<DshHostContextLike['agents']['create']>[0]) => {
@@ -82,7 +96,7 @@ class FakeDshHost implements DshHostContextLike {
             type: 'turn/end',
             data: { reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'test' } } },
           });
-          settle?.();
+          if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
       options.setup({
@@ -115,7 +129,10 @@ class FakeDshHost implements DshHostContextLike {
       for (const listener of this.createdListeners) listener(session);
       return {
         agent,
-        dispose: async () => { this.disposed += 1; },
+        dispose: async () => {
+          this.disposed += 1;
+          if (this.behavior.disposeSettles === false) await new Promise<void>(() => undefined);
+        },
       };
     },
   };
@@ -143,13 +160,19 @@ class FakeDshHost implements DshHostContextLike {
 const parentAgent = {
   id: 'interactive-session',
   options: { provider: 'configured-provider', model: 'configured-model' },
-  session: { id: 'interactive-session', events: [], header: { cwd: '/project' } },
+  session: {
+    id: 'interactive-session',
+    events: [],
+    header: { cwd: '/project', agentPreset: 'standard' },
+  },
   followup() {},
   whenIdle: () => Promise.resolve(),
   cancel() {},
 } satisfies DshAgentLike;
 
 describe('DSH host executor', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('runs a fresh measurement session inside the existing DSH host', async () => {
     const host = new FakeDshHost();
     const executor = createDshHostExecutor(host, { parentAgent });
@@ -204,6 +227,56 @@ describe('DSH host executor', () => {
     assert.equal(host.disposed, 1);
   });
 
+  it('uses the shared default timeout when the eval config omits timeoutMs', async () => {
+    vi.useFakeTimers();
+    const { DEFAULT_TIMEOUT_MS } = await import('../../src/executors/shared.js');
+    const host = new FakeDshHost();
+    const executor = createDshHostExecutor(host, { parentAgent });
+    const pending = executor({ model: 'measured-model', prompt: '__hang__' });
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+    const result = await pending;
+
+    assert.equal(result.stopReason, 'timeout');
+    assert.match(result.error ?? '', new RegExp(String(DEFAULT_TIMEOUT_MS)));
+    assert.equal(host.disposed, 1);
+  });
+
+  it('returns after a bounded cleanup grace when cancellation and disposal never settle', async () => {
+    const host = new FakeDshHost({ cancelSettles: false, disposeSettles: false });
+    const executor = createDshHostExecutor(host, {
+      parentAgent,
+      cleanupTimeoutMs: 5,
+    });
+    const startedAt = Date.now();
+    const result = await executor({
+      model: 'measured-model',
+      prompt: '__hang__',
+      timeoutMs: 5,
+    });
+
+    assert.equal(result.stopReason, 'timeout');
+    assert.match(result.error ?? '', /cancellation did not settle within 5ms/);
+    assert.ok(Date.now() - startedAt < 500);
+    assert.equal(host.disposed, 1);
+  });
+
+  it('binds the runtime fingerprint to the effective host composition', () => {
+    const first = createDshHostExecutor(new FakeDshHost(), { parentAgent });
+    const otherParent = {
+      ...parentAgent,
+      options: { ...parentAgent.options, provider: 'other-provider' },
+    } satisfies DshAgentLike;
+    const second = createDshHostExecutor(new FakeDshHost(), { parentAgent: otherParent });
+    const firstRuntime = first.runtimeFingerprint?.('measured-model');
+    const secondRuntime = second.runtimeFingerprint?.('measured-model');
+
+    assert.equal(firstRuntime?.auditability?.status, 'partial');
+    assert.match(firstRuntime?.binary?.contentHash ?? '', /^[a-f0-9]{64}$/);
+    assert.equal(firstRuntime?.sdk?.name, 'oh-my-knowledge');
+    assert.notEqual(firstRuntime?.fingerprint, secondRuntime?.fingerprint);
+  });
+
   it('rejects partial skill isolation before creating a DSH agent', async () => {
     const host = new FakeDshHost();
     const executor = createDshHostExecutor(host, { parentAgent });
@@ -232,5 +305,57 @@ describe('DSH bundle metadata', () => {
       id: 'omk',
       name: 'oh-my-knowledge/dist/dsh-plugin/index.js',
     });
+  });
+});
+
+describe('DSH plugin config boundary', () => {
+  async function invokeConfig(yaml: string): Promise<{ kind: string; text?: string }> {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
+    try {
+      writeFileSync(join(dir, 'eval.yaml'), yaml);
+      const host = new FakeDshHost();
+      let handler: ((invocation: UnknownRecord) => unknown) | undefined;
+      const ctx = Object.assign(host, {
+        commands: {
+          register(definition: { handler: (invocation: UnknownRecord) => unknown }) {
+            handler = definition.handler;
+            return () => undefined;
+          },
+        },
+      });
+      apply(ctx as never);
+      assert.ok(handler);
+      return await handler({
+        agent: {
+          ...parentAgent,
+          session: { ...parentAgent.session, header: { ...parentAgent.session.header, cwd: dir } },
+        },
+        rawInput: 'eval eval.yaml',
+        signal: new AbortController().signal,
+      }) as { kind: string; text?: string };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const minimal = `samples: ./samples.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+`;
+
+  it('requires omitting the top-level executor inside DSH', async () => {
+    const result = await invokeConfig(`${minimal}executor: dsh\n`);
+    assert.equal(result.kind, 'error');
+    assert.match(result.text ?? '', /删除 eval\.yaml 中的顶层 executor/);
+    assert.doesNotMatch(result.text ?? '', /dsh-host/);
+  });
+
+  it('rejects the internal dsh-host judge identifier in user config', async () => {
+    const result = await invokeConfig(`${minimal}judgeModels:\n  - executor: dsh-host\n    model: measured-model\n`);
+    assert.equal(result.kind, 'error');
+    assert.match(result.text ?? '', /内部执行器标识/);
+    assert.match(result.text ?? '', /executor: dsh/);
   });
 });

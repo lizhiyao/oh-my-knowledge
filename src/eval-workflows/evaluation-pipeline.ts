@@ -298,6 +298,8 @@ export async function executeEvaluationPipeline({
         run,
         job,
         layeredStats,
+        executor,
+        judgeExecutors: resolvedJudgeExecutors,
       }),
       results,
       artifacts,
