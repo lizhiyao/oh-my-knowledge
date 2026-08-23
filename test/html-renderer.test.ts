@@ -125,6 +125,23 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('not found'));
   });
 
+  it('renders dsh-host with a user-facing host-mode label without mutating report identity', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.meta.executor = 'dsh-host';
+    report.meta.judgeModels = [{ executor: 'dsh-host', model: 'deepseek-v4-flash' }];
+
+    const zh = renderRunDetail(report, 'zh');
+    assert.match(zh, /执行器: DeepSeek Harness（宿主模式）/);
+    assert.match(zh, /评委: DeepSeek Harness（宿主模式） · deepseek-v4-flash/);
+    assert.doesNotMatch(zh, /执行器: dsh-host/);
+
+    const en = renderRunDetail(report, 'en');
+    assert.match(en, /Executor: DeepSeek Harness \(host mode\)/);
+    assert.match(en, /Judge: DeepSeek Harness \(host mode\) · deepseek-v4-flash/);
+    assert.equal(report.meta.executor, 'dsh-host');
+    assert.equal(report.meta.judgeModels?.[0]?.executor, 'dsh-host');
+  });
+
   it('renders six dimensions (Fact / Behavior / LLM judge / Cost / Efficiency / Stability)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     // 强断言:thead 里必须出现 6 个 dim* i18n key,不是散落在 tooltip 里
