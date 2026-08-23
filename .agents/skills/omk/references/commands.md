@@ -85,11 +85,11 @@ omk eval [flags]
 - `--control-cwd` `option`:control 的 runtime context 目录
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
-- `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
+- `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / dsh / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
 - `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/reports，而非项目 .omk/
 - `--gold-dir` `option`:gold dataset 目录
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
-- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。
+- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku、codex:<model> 或 dsh:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex／DSH 沿用被测模型。
 - `--judge-repeat` `option`:每个 dim 评 N 次
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--layered-stats` `boolean`:输出分层统计

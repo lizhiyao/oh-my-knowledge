@@ -159,7 +159,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 |---|---|
 | **One-line verdict** | `omk eval` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
-| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / Anthropic API / any custom command |
+| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Gemini / Anthropic API / any custom command |
 | **30+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
 | **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
@@ -176,6 +176,17 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
 | **Traceability** | reports carry CLI version, Node version, artifact version fingerprint, judge prompt hash |
 | **EN / ZH switch** | one-click language toggle in the HTML report |
+
+### Run inside an existing DeepSeek Harness
+
+Install OMK as a DSH bundle to reuse the profile's model, credentials, tools, and sandbox:
+
+```bash
+dsh plugin --profile web add oh-my-knowledge
+dsh --profile web
+```
+
+Then run `/omk eval eval.yaml` inside DSH. Each sample gets an isolated DSH session while OMK still owns the report and statistics. See the [executor guide](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin).
 
 ## Documentation
 
@@ -198,7 +209,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 
 | Variable | Description |
 |---|---|
-| `OMK_EXECUTOR` | default executor preference, e.g. `codex` / `codex-sdk` / `claude` |
+| `OMK_EXECUTOR` | default executor preference, e.g. `codex` / `codex-sdk` / `dsh` / `claude` |
 | `OMK_MODEL` | default evaluated model; Codex reads local `config.toml` when unset |
 | `OMK_JUDGE_MODELS` | default judge list in `executor:model[,...]` format |
 | `CCV_PROXY_URL` | proxy requests through cc-viewer for live eval-traffic visualization |

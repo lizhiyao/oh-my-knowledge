@@ -235,11 +235,11 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --control-cwd <value>           Runtime context dir for control
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
-  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
+  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / dsh / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
   --global                        Write report to global ~/.oh-my-knowledge/reports instead of project .omk/
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
-  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.
+  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku, codex:<model>, or dsh:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex/DSH reuse the evaluated model.
   --judge-repeat <value>          Judge each dim N times
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --layered-stats                 Emit layered stats

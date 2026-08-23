@@ -159,7 +159,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 |------|------|
 | **Verdict 一行结论** | `omk eval` 六档判定 + ship 建议 + exit code 路由，与 HTML 报告 verdict pill 共享规则 |
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
-| **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / Anthropic API 及自定义命令 |
+| **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / DeepSeek Harness / OpenAI / Gemini / Anthropic API 及自定义命令 |
 | **30+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
 | **统计严谨性** | Bootstrap CI / 长度去偏 / 饱和曲线默认开，Krippendorff α 提供 gold 集即自动计算。[详情 →](docs/zh/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖 |
@@ -176,6 +176,17 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本用例 |
 | **可追溯性** | 报告含 CLI 版本、Node 版本、知识载体版本指纹、judge prompt hash |
 | **中英切换** | HTML 报告右上角一键切换语言 |
+
+### 在已有 DeepSeek Harness 中运行
+
+OMK 可以作为 DSH bundle 安装到现有 profile，直接复用其模型、凭证、工具与 sandbox：
+
+```bash
+dsh plugin --profile web add oh-my-knowledge
+dsh --profile web
+```
+
+进入 DSH 后运行 `/omk eval eval.yaml`。每条用例会使用独立 DSH session，报告仍由 OMK 生成。详见[执行器文档](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)。
 
 ## 文档
 
@@ -198,7 +209,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 | 变量 | 说明 |
 |------|------|
-| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `claude` |
+| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `dsh` / `claude` |
 | `OMK_MODEL` | 默认被测模型；Codex 未设置时读取本机 `config.toml` |
 | `OMK_JUDGE_MODELS` | 默认评委列表，格式 `executor:model[,...]` |
 | `CCV_PROXY_URL` | 通过 cc-viewer 代理请求，实时可视化评测流量 |

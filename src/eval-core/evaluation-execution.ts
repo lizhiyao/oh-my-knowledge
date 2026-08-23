@@ -34,6 +34,7 @@ const PREFLIGHT_RUNTIME_LABEL_EXECUTORS = new Set([
   'claude-sdk',
   'codex',
   'codex-sdk',
+  'dsh-host',
   'gemini',
   'anthropic-api',
   'openai-api',

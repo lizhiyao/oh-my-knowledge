@@ -164,6 +164,47 @@ afterEach(() => {
 });
 
 describe('runEvaluation', () => {
+  it('uses a same-process executor override supplied by an embedding host', async () => {
+    let calls = 0;
+    const outputDir = mkdtempSync(join(tmpdir(), 'omk-dsh-host-report-'));
+    try {
+      const result = await runEvaluation({
+        samplesPath: SAMPLES_PATH,
+        skillDir: SKILL_DIR,
+        variantSpecs: asSpecs(['v1']),
+        executorName: 'dsh-host',
+        executorOverride: async () => {
+          calls += 1;
+          return {
+            ok: true,
+            output: 'host result',
+            durationMs: 1,
+            durationApiMs: 1,
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            costUSD: 0,
+            costReportedByExecutor: false,
+            stopReason: 'completed',
+            numTurns: 1,
+          };
+        },
+        noJudge: true,
+        noDiagnostic: true,
+        skipConnectivity: true,
+        skipDoctor: true,
+        noCache: true,
+        outputDir,
+      });
+
+      assert.equal(calls, 5);
+      assert.equal((result.report as Report).meta.executor, 'dsh-host');
+    } finally {
+      rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it('dry-run: experimentRole 从 variantSpecs 正确穿透到每个 task (非默认排序)', async () => {
     // 显式颠倒顺序(v2 在前,v1 在后)+ 自定义 role 分配,验证 experimentRole 来自 spec
     // 而非 asSpecs 的位置约定或下游 kind 反推。这是 spec"唯一来源"的端到端保护。

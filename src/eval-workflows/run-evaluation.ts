@@ -56,6 +56,10 @@ interface CommonEvaluationOptions {
   timeoutMs?: number;
   /** Core API is runtime-neutral: CLI/default resolution happens before this boundary. */
   executorName: string;
+  /** Same-process executor supplied by an embedding host such as a DSH plugin. */
+  executorOverride?: ExecutorFn;
+  /** Same-process judge executors keyed by the JudgeConfig.executor value. */
+  judgeExecutorOverrides?: Record<string, ExecutorFn>;
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
@@ -183,6 +187,8 @@ export async function runEvaluation({
   timeoutMs,
   noCache = false,
   executorName,
+  executorOverride,
+  judgeExecutorOverrides,
   jobStore = null,
   persistJob = true,
   onProgress = null,
@@ -367,8 +373,11 @@ export async function runEvaluation({
     ? true
     : skipConnectivity;
 
-  const executor: ExecutorFn = createExecutor(executorName);
-  const judgeExecutor: ExecutorFn = createExecutor(judgeExecutorName || executorName);
+  const executor: ExecutorFn = executorOverride ?? createExecutor(executorName);
+  const effectiveJudgeExecutorName = judgeExecutorName || executorName;
+  const judgeExecutor: ExecutorFn = judgeExecutorOverrides?.[effectiveJudgeExecutorName]
+    ?? (effectiveJudgeExecutorName === executorName ? executorOverride : undefined)
+    ?? createExecutor(effectiveJudgeExecutorName);
   return executeEvaluationPipeline({
     samplesPath,
     samplesBaseDir,
@@ -384,6 +393,7 @@ export async function runEvaluation({
     judgeExecutorName: judgeExecutorName || executorName,
     executor,
     judgeExecutor,
+    judgeExecutorOverrides,
     outputDir,
     project,
     owner,

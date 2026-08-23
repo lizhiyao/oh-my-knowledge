@@ -99,6 +99,17 @@ describe('Codex-first CLI runtime defaults', () => {
     assert.equal(defaultJudgeModel('claude', 'sonnet'), 'haiku');
   });
 
+  it('requires an explicit DSH model and reuses it for the default judge', () => {
+    assert.throws(
+      () => resolveCliModel('dsh', undefined, { env: {}, lang: 'en' }),
+      /dsh executor needs an explicit model/,
+    );
+    assert.equal(resolveCliModel('dsh', undefined, {
+      env: { DSH_MODEL: 'deepseek-chat' },
+    }), 'deepseek-chat');
+    assert.equal(defaultJudgeModel('dsh', 'deepseek-chat'), 'deepseek-chat');
+  });
+
   it('applies the Codex runtime to eval task and judge defaults together', () => {
     const env = codexEnv('gpt-eval');
     const { config } = parseRunConfig({

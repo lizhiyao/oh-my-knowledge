@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildExecEnv } from './shared.js';
+import { resolveDshLaunchConfig } from './dsh-sdk.js';
 import {
   isScriptFileInterpreter,
   resolveScriptCommand,
@@ -67,6 +68,48 @@ function findNearestPackageJson(fromPath: string): string | null {
     dir = parent;
   }
   return null;
+}
+
+function readInvokingDshPackage(): {
+  entrypoint?: string;
+  package: ExecutorRuntimePackage;
+} {
+  const entrypoint = process.argv[1];
+  if (!entrypoint || !isAbsolute(entrypoint)) {
+    return {
+      package: { name: '@deepseek-ai/dsh', error: 'DSH host entrypoint not found' },
+    };
+  }
+  let dir = dirname(entrypoint);
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(dir, 'package.json');
+    if (existsSync(candidate)) {
+      try {
+        const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as {
+          name?: string;
+          version?: string;
+        };
+        if (pkg.name === '@deepseek-ai/dsh') {
+          return {
+            entrypoint,
+            package: {
+              name: pkg.name,
+              ...(pkg.version ? { version: pkg.version } : {}),
+            },
+          };
+        }
+      } catch {
+        // Keep walking: a parent package may still be the DSH CLI package.
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return {
+    entrypoint,
+    package: { name: '@deepseek-ai/dsh', error: 'invoking @deepseek-ai/dsh package.json not found' },
+  };
 }
 
 function resolvePackageJson(packageName: string, from?: string): string | null {
@@ -276,6 +319,70 @@ function scriptRuntime(
   });
 }
 
+function dshRuntime(
+  model: string,
+  env: NodeJS.ProcessEnv,
+): ExecutorRuntimeFingerprint {
+  const config = resolveDshLaunchConfig(env);
+  const executablePath = resolvePathBinary(config.command, env);
+  const referencedArgs = config.args
+    .map((arg) => isAbsolute(arg) ? arg : join(process.cwd(), arg))
+    .filter((arg) => existsSync(arg));
+  const fileIdentity = hashRuntimeFiles([
+    config.configPath,
+    ...referencedArgs,
+    ...(executablePath ? [executablePath] : []),
+  ]);
+  const contentHash = createHash('sha256')
+    .update(fileIdentity.contentHash ?? '')
+    .update('\0')
+    .update(canonicalStringify({
+      args: config.args,
+      configPath: config.configPath,
+      provider: config.provider,
+      maxTokens: config.maxTokens,
+    }))
+    .digest('hex');
+  const errors = [
+    !executablePath ? 'executable not found on PATH' : undefined,
+    fileIdentity.error,
+  ].filter(Boolean).join('; ');
+  return runtime('dsh', model, 'agent-sdk', {
+    systemPrompt: 'native',
+    costUSD: 'not-reported',
+    trace: 'native',
+    skillIsolation: 'cwd-only',
+  }, {
+    sdk: readPackage('@deepseek-ai/dsh-sdk-client'),
+    binary: {
+      name: config.command,
+      source: executablePath ? 'path' : 'unknown',
+      ...(executablePath && { path: executablePath }),
+      contentHash,
+      ...(errors && { error: errors }),
+    },
+  });
+}
+
+function dshHostRuntime(model: string): ExecutorRuntimeFingerprint {
+  const host = readInvokingDshPackage();
+  return runtime('dsh-host', model, 'agent-sdk', {
+    systemPrompt: 'native',
+    costUSD: 'not-reported',
+    trace: 'native',
+    skillIsolation: 'full-no-partial',
+  }, {
+    binary: {
+      name: '@deepseek-ai/dsh',
+      source: host.package.version ? 'path' : 'unknown',
+      ...(host.package.version ? { version: host.package.version } : {}),
+      ...(host.entrypoint ? { path: host.entrypoint } : {}),
+      package: host.package,
+      ...(host.package.error ? { error: host.package.error } : {}),
+    },
+  });
+}
+
 export function getExecutorRuntimeFingerprint(
   executorName: string,
   model: string,
@@ -287,6 +394,8 @@ export function getExecutorRuntimeFingerprint(
     'claude-sdk',
     'codex',
     'codex-sdk',
+    'dsh',
+    'dsh-host',
     'gemini',
     'anthropic-api',
     'openai-api',
@@ -296,6 +405,12 @@ export function getExecutorRuntimeFingerprint(
     // changes while the command line remains identical.
     return scriptRuntime(executorName, model, env);
   }
+  if (executorName === 'dsh') {
+    // The runtime/config are explicit local inputs. Re-read them for every
+    // report so Studio cannot retain a stale fingerprint after either changes.
+    return dshRuntime(model, env);
+  }
+  if (executorName === 'dsh-host') return dshHostRuntime(model);
   const pathHash = hashString(env.PATH || '');
   const cacheKey = `${executorName}\0${model}\0${pathHash}`;
   const cached = RUNTIME_CACHE.get(cacheKey);

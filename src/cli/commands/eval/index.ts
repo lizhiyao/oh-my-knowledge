@@ -694,14 +694,14 @@ export default class Eval extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器：claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
-        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
+        zh: '执行器：claude / claude-sdk / codex / codex-sdk / dsh / openai-api / gemini / 自定义命令。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / dsh / openai-api / gemini / custom. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex 沿用被测模型。',
-        en: 'Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex reuses the evaluated model.',
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku、codex:<model> 或 dsh:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Codex／DSH 沿用被测模型。',
+        en: 'Judge config: executor:model[,...], e.g. claude:haiku, codex:<model>, or dsh:<model> (≥ 2 = ensemble). Defaults to the selected executor; Codex/DSH reuse the evaluated model.',
       }),
     }),
     'output-dir': Flags.string({

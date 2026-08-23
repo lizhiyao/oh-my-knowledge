@@ -19,7 +19,7 @@ flowchart TD
     end
 
     subgraph Exec["④ 执行器(固定模型)"]
-        E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / 自定义命令"]
+        E["claude / claude-sdk / codex / dsh / dsh-host / gemini<br/>anthropic-api / openai-api / 自定义命令"]
         T["执行器 adapter 统一<br/>turns / toolCalls trace"]
         E -.-> T
     end
@@ -61,6 +61,7 @@ flowchart TD
 - **variant = artifact + runtime context**：`cwd`（用 `--control-cwd`/`--treatment-cwd` 或 eval.yaml 的 `cwd:` 字段声明，与 artifact 表达式分开）让对照组可以显式声明「项目目录」这个隐性输入，把「项目级沉淀」和「显式 artifact 注入」拆开测。
 - **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性）。综合分取事实 / 行为 / 评委三层里实际存在那几层的均值。
 - **知识缺口信号**不是评分的一部分，而是一个独立追踪项：它告诉你「这次评测覆盖了多少风险敞口」，用于追踪收敛，而非断言知识「完备」。
+- **DSH 宿主模式**由现有 DSH plugin tree 持有模型、凭证、工具与 sandbox；OMK 只创建隔离的测量 session、注入 variant 并消费 session event。`dsh-host` 是报告中的内部执行器身份，不是用户要在 `omk eval --executor` 中选择的 CLI 名称。
 
 ## 观测链路：source-neutral Trace IR
 

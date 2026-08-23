@@ -19,7 +19,7 @@ flowchart TD
     end
 
     subgraph Exec["④ Executor (fixed model)"]
-        E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / custom"]
+        E["claude / claude-sdk / codex / dsh / dsh-host / gemini<br/>anthropic-api / openai-api / custom"]
         T["executor adapters normalize<br/>turns / toolCalls trace"]
         E -.-> T
     end
@@ -61,6 +61,7 @@ flowchart TD
 - **variant = artifact + runtime context**: the `cwd` (declared via `--control-cwd`/`--treatment-cwd` or eval.yaml's `cwd:` field, separate from the artifact expression) lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
 - **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). The composite is the mean of whichever scoring layers (fact / behavior / judge) are actually present.
 - **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
+- **DSH host mode** leaves the model, credentials, tools, and sandbox with the existing DSH plugin tree. OMK only creates isolated measurement sessions, injects each variant, and consumes session events. `dsh-host` is an internal report identity, not a CLI value users select with `omk eval --executor`.
 
 ## Observation pipeline: source-neutral Trace IR
 

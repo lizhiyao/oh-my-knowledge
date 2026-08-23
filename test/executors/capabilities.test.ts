@@ -29,6 +29,7 @@ describe('executor sample-mock capabilities', () => {
     assert.equal(getExecutorCapabilities('claude-sdk').sampleMocks, 'native-hooks');
     assert.equal(getExecutorCapabilities('codex').sampleMocks, 'unsupported');
     assert.equal(getExecutorCapabilities('codex-sdk').sampleMocks, 'unsupported');
+    assert.equal(getExecutorCapabilities('dsh').sampleMocks, 'unsupported');
     assert.equal(getExecutorCapabilities('openai-api').sampleMocks, 'unsupported');
     assert.equal(
       getExecutorCapabilities('./custom-executor.sh').sampleMocks,

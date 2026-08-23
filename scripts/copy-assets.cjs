@@ -12,6 +12,7 @@ const path = require('node:path');
 const ASSETS = [
   ['src/eval-core/mock-hook.cjs', 'dist/eval-core/mock-hook.cjs'],
   ['src/observability/prompts/llm-enhanced-review.prompt.md', 'dist/observability/prompts/llm-enhanced-review.prompt.md'],
+  ['src/dsh-plugin/cordis.patch.yml', 'dist/dsh-plugin/cordis.patch.yml'],
 ];
 
 for (const [src, dst] of ASSETS) {

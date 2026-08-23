@@ -354,6 +354,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@deepseek-ai/dsh-sdk-client@npm:0.1.1-rc.2":
+  version: 0.1.1-rc.2
+  resolution: "@deepseek-ai/dsh-sdk-client@npm:0.1.1-rc.2"
+  peerDependencies:
+    "@deepseek-ai/cordis": ^4.0.1
+    "@deepseek-ai/dsh-invariants": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-llm": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-sdk-protocol": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-session": ^0.1.1-rc.2
+  checksum: 10c0/a50eb66ebf2e690eb546bc5bdc64fb7ef789e59df16aeeae85936bff7a72713b22f66e382c702c371173c7b1e4a7b30e72f3d9e8d380f8ec9ce4404c98e36a38
+  languageName: node
+  linkType: hard
+
+"@deepseek-ai/dsh-sdk-protocol@npm:0.1.1-rc.2":
+  version: 0.1.1-rc.2
+  resolution: "@deepseek-ai/dsh-sdk-protocol@npm:0.1.1-rc.2"
+  peerDependencies:
+    "@deepseek-ai/cordis": ^4.0.1
+    "@deepseek-ai/dsh-invariants": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-llm": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-session": ^0.1.1-rc.2
+    "@deepseek-ai/dsh-subagent": ^0.1.1-rc.2
+  checksum: 10c0/e41d72a4b6da5de1d34d27491c9f3b1beeae23482b61440803b0b12a15389db206e7e981de93373c5063e454d34bd4c2308e92c7dfced2de5782e2911b2b9789
+  languageName: node
+  linkType: hard
+
 "@docsearch/css@npm:3.8.2":
   version: 3.8.2
   resolution: "@docsearch/css@npm:3.8.2"
@@ -3919,6 +3945,8 @@ __metadata:
   dependencies:
     "@anthropic-ai/claude-agent-sdk": "npm:^0.3.143"
     "@anthropic-ai/sdk": "npm:^0.117.1"
+    "@deepseek-ai/dsh-sdk-client": "npm:0.1.1-rc.2"
+    "@deepseek-ai/dsh-sdk-protocol": "npm:0.1.1-rc.2"
     "@inquirer/prompts": "npm:^8.4.3"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
     "@oclif/core": "npm:^4"
