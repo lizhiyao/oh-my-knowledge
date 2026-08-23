@@ -5,7 +5,7 @@ import {
   normalizeClaudeSdkMeasurements,
   parseClaudeStreamJson,
 } from '../../src/executors/claude-protocol.js';
-import type { ClaudeSdkResultMessage } from '../../src/executors/shared.js';
+import type { ClaudeSdkResultMessage } from '../../src/executors/claude-protocol.js';
 
 function result(overrides: Partial<ClaudeSdkResultMessage> = {}): ClaudeSdkResultMessage {
   return {

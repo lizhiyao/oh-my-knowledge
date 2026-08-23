@@ -1,13 +1,20 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import {
-  AnthropicResponse,
-  asErrorLike,
-  DEFAULT_TIMEOUT_MS,
-  errorMessage,
-  readJsonResponse,
-  responseBodyPreview,
-} from './shared.js';
 import { optionalTokenCount } from '../shared/token-usage.js';
+import { DEFAULT_TIMEOUT_MS } from './defaults.js';
+import { readJsonResponse, responseBodyPreview } from './http.js';
+import { asErrorLike, errorMessage } from './runtime.js';
+
+interface AnthropicResponse {
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
+  content?: Array<{ type?: string; text?: string }>;
+  stop_reason?: string;
+  error?: { message?: string };
+}
 
 export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;

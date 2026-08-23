@@ -2,16 +2,16 @@ import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './shared.js';
+import type { ClaudeSdkBaseMessage, ClaudeSdkModule } from './claude-protocol.js';
+import { DEFAULT_TIMEOUT_MS } from './defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
-  DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
-  registerSigintSubscriber,
   timeoutExecResult,
-} from './shared.js';
+} from './runtime.js';
+import { registerSigintSubscriber } from './subprocess.js';
 import { buildSdkHookCallback } from '../eval-core/mocks-runtime.js';
 import { buildClaudeResult } from './claude-protocol.js';
 

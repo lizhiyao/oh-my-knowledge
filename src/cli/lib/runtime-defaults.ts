@@ -1,7 +1,7 @@
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
-import { DEFAULT_MODEL, JUDGE_MODEL } from '../../executors/shared.js';
+import { DEFAULT_MODEL, JUDGE_MODEL } from '../../executors/defaults.js';
 import { executorFamily } from '../../executors/registry.js';
 
 export interface RuntimeResolutionOptions {

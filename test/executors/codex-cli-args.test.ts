@@ -8,7 +8,7 @@ import {
   parseCodexJsonl,
   sumCodexElapsed,
 } from '../../src/executors/codex-cli.js';
-import type { CodexEvent } from '../../src/executors/shared.js';
+import type { CodexEvent } from '../../src/executors/codex-protocol.js';
 
 // Args shape 回归测:codex CLI 0.125 起去掉 `--ask-for-approval` flag。
 // 我们曾经用过这个 flag,会让 preflight 直接挂(unexpected argument)。

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { extractCodexTrace } from '../../src/executors/codex-cli-trace.js';
-import type { CodexEvent } from '../../src/executors/shared.js';
+import type { CodexEvent } from '../../src/executors/codex-protocol.js';
 
 // Fixture 锁住 codex 0.125 实测 schema 假设。
 // schema 漂移时这些 test 会先红,提醒更新 parser。

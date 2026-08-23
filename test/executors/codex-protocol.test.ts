@@ -5,7 +5,7 @@ import {
   extractCodexProtocolError,
   validateCodexProtocol,
 } from '../../src/executors/codex-protocol.js';
-import type { CodexEvent } from '../../src/executors/shared.js';
+import type { CodexEvent } from '../../src/executors/codex-protocol.js';
 
 describe('Codex protocol normalization', () => {
   it('keeps an item-level error non-fatal when the turn still completes with an answer', () => {

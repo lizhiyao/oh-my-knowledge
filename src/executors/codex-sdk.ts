@@ -4,18 +4,20 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Codex, CodexOptions, ThreadEvent } from '@openai/codex-sdk';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import type { CodexEvent } from './shared.js';
-import { buildCodexResult } from './codex-protocol.js';
+import {
+  buildCodexResult,
+  normalizeCodexProtocolEvent,
+  type CodexEvent,
+} from './codex-protocol.js';
+import { DEFAULT_TIMEOUT_MS } from './defaults.js';
 import {
   asErrorLike,
   buildExecEnv,
-  DEFAULT_TIMEOUT_MS,
   errorMessage,
   interruptedExecResult,
-  normalizeCodexProtocolEvent,
-  registerSigintSubscriber,
   timeoutExecResult,
-} from './shared.js';
+} from './runtime.js';
+import { registerSigintSubscriber } from './subprocess.js';
 import { isolateCodexCwd } from './codex-cli.js';
 
 type CodexSdkModule = typeof import('@openai/codex-sdk');

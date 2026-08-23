@@ -5,10 +5,68 @@ import {
   optionalTokenCount,
 } from '../shared/token-usage.js';
 import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
-import type {
-  ClaudeSdkBaseMessage,
-  ClaudeSdkResultMessage,
-} from './shared.js';
+
+interface ClaudeTokenUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+export interface ClaudeSdkQueryOptions {
+  model?: string;
+  systemPrompt?: string;
+  cwd: string;
+  permissionMode: 'bypassPermissions';
+  allowDangerouslySkipPermissions: true;
+  abortController: AbortController;
+  env: NodeJS.ProcessEnv;
+}
+
+export interface ClaudeSdkQueryInput {
+  prompt: string;
+  options: ClaudeSdkQueryOptions;
+}
+
+export interface ClaudeSdkBaseMessage {
+  type: string;
+  message?: {
+    role?: string;
+    content?: Array<{
+      type: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      input?: unknown;
+    }>;
+  };
+  tool_use_id?: string;
+  content?: string | Array<{ type: string; text?: string }>;
+  is_error?: boolean;
+}
+
+export interface ClaudeSdkResultMessage extends ClaudeSdkBaseMessage {
+  type: 'result';
+  result?: string;
+  usage?: ClaudeTokenUsage;
+  total_cost_usd?: number;
+  duration_api_ms?: number;
+  duration_ms?: number;
+  num_turns?: number;
+  stop_reason?: string | null;
+  modelUsage?: Record<string, {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  }>;
+  subtype?: string;
+  errors?: string[];
+}
+
+export interface ClaudeSdkModule {
+  query: (opts: ClaudeSdkQueryInput) => AsyncIterable<ClaudeSdkBaseMessage>;
+}
 
 export interface ClaudeSdkMeasurements {
   durationMs: number;

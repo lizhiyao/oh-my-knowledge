@@ -1,6 +1,6 @@
 import type { ToolCallInfo, TurnInfo } from '../types/index.js';
 import { safeSliceForJson } from '../util/safe-slice.js';
-import type { CodexEvent } from './shared.js';
+import type { CodexEvent } from './codex-protocol.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
 
 // Codex CLI(codex 0.125)`exec --json` 事件流 → omk trace 抽取器。

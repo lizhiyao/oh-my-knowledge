@@ -1,13 +1,21 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import {
-  asErrorLike,
-  DEFAULT_TIMEOUT_MS,
-  errorMessage,
-  OpenAiResponse,
-  readJsonResponse,
-  responseBodyPreview,
-} from './shared.js';
 import { optionalTokenCount, splitInclusiveInputTokens } from '../shared/token-usage.js';
+import { DEFAULT_TIMEOUT_MS } from './defaults.js';
+import { readJsonResponse, responseBodyPreview } from './http.js';
+import { asErrorLike, errorMessage } from './runtime.js';
+
+interface OpenAiResponse {
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+  };
+  choices?: Array<{
+    message?: { content?: string | null; refusal?: string | null };
+    finish_reason?: string;
+  }>;
+  error?: { message?: string };
+}
 
 export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.OPENAI_API_KEY;

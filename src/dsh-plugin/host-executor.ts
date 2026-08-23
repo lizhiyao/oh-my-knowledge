@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { buildDshHostResult, type DshHostRunResult } from '../executors/dsh-protocol.js';
 import { createDshHostRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
-import { DEFAULT_TIMEOUT_MS } from '../executors/shared.js';
+import { DEFAULT_TIMEOUT_MS } from '../executors/defaults.js';
 
 type UnknownRecord = Record<string, unknown>;
 

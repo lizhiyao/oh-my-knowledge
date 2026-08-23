@@ -6,7 +6,76 @@ import {
   sumTokenCounts,
 } from '../shared/token-usage.js';
 import { extractCodexTrace, isCodexResultEvent } from './codex-cli-trace.js';
-import type { CodexEvent } from './shared.js';
+
+// Codex CLI `codex exec --json` 事件流 schema（基于 codex 0.125 实测）。
+// schema 没有官方稳定文档，字段缺失静默 skip 不 throw。未来 schema 漂移时 fixture 测试会先红。
+export interface CodexEvent {
+  type?: string;
+  turn_id?: string;
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+  };
+  elapsed_ms?: number;
+  stop_reason?: string;
+  item?: {
+    id?: string;
+    type?: string;
+    text?: string;
+    command?: string;
+    aggregated_output?: string;
+    exit_code?: number | null;
+    status?: string;
+    path?: string;
+    content?: string;
+    query?: string;
+    results?: unknown[];
+    changes?: Array<{ path?: string; changeKind?: string }>;
+    server?: string;
+    tool?: string;
+    name?: string;
+    arguments?: unknown;
+    result?: unknown;
+    message?: string;
+    error?: { message?: string };
+  };
+  error?: { message?: string };
+  message?: string;
+  ts?: number;
+}
+
+/**
+ * Translate Codex's external event shape into omk's internal protocol model.
+ * Codex currently calls file-change discriminators `kind`; omk reserves bare
+ * `kind` for ArtifactKind, so the raw field is qualified at the boundary.
+ */
+export function normalizeCodexProtocolEvent(value: unknown): CodexEvent | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const event = value as Record<string, unknown>;
+  const rawItem = event.item;
+  if (typeof rawItem !== 'object' || rawItem === null || Array.isArray(rawItem)) {
+    return event as unknown as CodexEvent;
+  }
+
+  const item = rawItem as Record<string, unknown>;
+  const rawChanges = item.changes;
+  const normalizedItem = {
+    ...item,
+    ...(Array.isArray(rawChanges) && {
+      changes: rawChanges.flatMap((change) => {
+        if (typeof change !== 'object' || change === null || Array.isArray(change)) return [];
+        const rawChange = change as Record<string, unknown>;
+        return [{
+          ...(typeof rawChange.path === 'string' && { path: rawChange.path }),
+          ...(typeof rawChange.kind === 'string' && { changeKind: rawChange.kind }),
+        }];
+      }),
+    }),
+  };
+  return { ...event, item: normalizedItem } as unknown as CodexEvent;
+}
 
 const CODEX_EVENT_TYPES = new Set([
   'thread.started',

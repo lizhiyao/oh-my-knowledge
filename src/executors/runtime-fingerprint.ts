@@ -4,7 +4,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildExecEnv } from './shared.js';
+import { buildExecEnv } from './runtime.js';
 import {
   isScriptFileInterpreter,
   resolveScriptCommand,

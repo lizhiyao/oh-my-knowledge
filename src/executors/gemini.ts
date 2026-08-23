@@ -1,15 +1,13 @@
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import {
-  DEFAULT_TIMEOUT_MS,
-  errorMessage,
-  GeminiResponse,
-  interruptedExecResult,
-  parseJson,
-  spawnWithSigintPropagation,
-  timeoutExecResult,
-  type SpawnHelperError,
-} from './shared.js';
 import { optionalTokenCount } from '../shared/token-usage.js';
+import { DEFAULT_TIMEOUT_MS } from './defaults.js';
+import { errorMessage, interruptedExecResult, timeoutExecResult } from './runtime.js';
+import { spawnWithSigintPropagation, type SpawnHelperError } from './subprocess.js';
+
+interface GeminiResponse {
+  response?: string;
+  stats?: { inputTokens?: number; outputTokens?: number };
+}
 
 export async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const fullPrompt = system ? `${system}\n\n${prompt}` : prompt;
@@ -57,7 +55,7 @@ export async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAUL
     let outputTokens = 0;
     let tokenUsageReported = false;
     try {
-      const parsed = parseJson<unknown>(output);
+      const parsed = JSON.parse(output) as unknown;
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const record = parsed as Record<string, unknown>;
         const declaresProtocol = Object.hasOwn(record, 'response')
