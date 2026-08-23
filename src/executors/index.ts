@@ -35,6 +35,9 @@ export function createExecutor(name: string): ExecutorFn {
   if (name.trim().length === 0) {
     throw new Error('executor name or script command is required');
   }
+  if (name === 'dsh-host') {
+    throw new Error('dsh-host 仅供 DeepSeek Harness 宿主插件内部使用；请在 DSH 中运行 /omk eval。');
+  }
   const executor = EXECUTOR_REGISTRY[name] || createScriptExecutor(name);
   return enforceExecutorCapabilities(name, executor);
 }

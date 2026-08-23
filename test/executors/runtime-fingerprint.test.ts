@@ -1,10 +1,20 @@
 import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 vi.unmock('node:child_process');
+
+function canonicalStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalStringify).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalStringify(record[key])}`
+  )).join(',')}}`;
+}
 
 function writeFakeBinary(dir: string, name: string, output: string): void {
   const fileName = process.platform === 'win32' ? `${name}.cmd` : name;
@@ -78,5 +88,104 @@ describe('runtime fingerprint', () => {
     assert.equal(second.fingerprint, expected);
     assert.equal(second.binary?.name, 'openai-api');
     assert.notEqual(first, second);
+  });
+
+  it('preserves the legacy fingerprint payload for runtimes without auditability metadata', async () => {
+    vi.resetModules();
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+    const runtime = getExecutorRuntimeFingerprint('openai-api', 'gpt-test');
+    const legacyPayload = {
+      executor: runtime.executor,
+      model: runtime.model,
+      runtimeKind: runtime.runtimeKind,
+      binary: runtime.binary
+        ? {
+          name: runtime.binary.name,
+          source: runtime.binary.source,
+          version: runtime.binary.version,
+          contentHash: runtime.binary.contentHash,
+          status: runtime.binary.version ? 'ok' : runtime.binary.error ? 'error' : 'missing',
+          package: runtime.binary.package
+            ? {
+              name: runtime.binary.package.name,
+              version: runtime.binary.package.version,
+              status: runtime.binary.package.version ? 'ok' : runtime.binary.package.error ? 'error' : 'missing',
+            }
+            : undefined,
+        }
+        : undefined,
+      sdk: runtime.sdk
+        ? {
+          name: runtime.sdk.name,
+          version: runtime.sdk.version,
+          status: runtime.sdk.version ? 'ok' : runtime.sdk.error ? 'error' : 'missing',
+        }
+        : undefined,
+      capabilities: runtime.capabilities,
+    };
+    const legacyFingerprint = createHash('sha256')
+      .update(canonicalStringify(legacyPayload))
+      .digest('hex')
+      .slice(0, 12);
+
+    assert.equal(runtime.auditability, undefined);
+    assert.equal(runtime.fingerprint, legacyFingerprint);
+  });
+
+  it('fingerprints dsh-host from the actual invoking DSH CLI package', async () => {
+    vi.resetModules();
+    const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-dsh-host-'));
+    const entrypoint = join(dir, 'lib', 'bin.js');
+    const previousEntrypoint = process.argv[1];
+    try {
+      mkdirSync(join(dir, 'lib'));
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh',
+        version: '9.8.7-test',
+      }));
+      writeFileSync(entrypoint, '');
+      process.argv[1] = entrypoint;
+      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+
+      const fingerprint = getExecutorRuntimeFingerprint('dsh-host', 'deepseek-chat');
+
+      assert.equal(fingerprint.binary?.name, '@deepseek-ai/dsh');
+      assert.equal(fingerprint.binary?.version, '9.8.7-test');
+      assert.equal(fingerprint.binary?.path, realpathSync(entrypoint));
+      assert.equal(fingerprint.binary?.package?.name, '@deepseek-ai/dsh');
+      assert.equal(fingerprint.binary?.package?.version, '9.8.7-test');
+    } finally {
+      process.argv[1] = previousEntrypoint;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves a symlinked DSH bin before locating its package identity', async () => {
+    vi.resetModules();
+    const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-dsh-symlink-'));
+    const packageDir = join(dir, 'package');
+    const entrypoint = join(packageDir, 'lib', 'bin.js');
+    const invokedEntrypoint = join(dir, 'dsh');
+    const previousEntrypoint = process.argv[1];
+    try {
+      mkdirSync(join(packageDir, 'lib'), { recursive: true });
+      writeFileSync(join(packageDir, 'package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh',
+        version: '9.8.8-symlink',
+      }));
+      writeFileSync(entrypoint, '');
+      symlinkSync(entrypoint, invokedEntrypoint);
+      process.argv[1] = invokedEntrypoint;
+      const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
+
+      const fingerprint = getExecutorRuntimeFingerprint('dsh-host', 'deepseek-chat');
+
+      assert.equal(fingerprint.binary?.version, '9.8.8-symlink');
+      assert.equal(fingerprint.binary?.path, realpathSync(entrypoint));
+      assert.equal(fingerprint.binary?.package?.version, '9.8.8-symlink');
+    } finally {
+      process.argv[1] = previousEntrypoint;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

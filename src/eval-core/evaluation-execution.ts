@@ -6,7 +6,7 @@ import { checkFacts } from './fact-checker.js';
 import type { FactCheckEvidence, FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
 import { DEFAULT_CACHE_DIR, DEFAULT_ISOLATED_CWD_DIR } from './default-dirs.js';
-import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
+import { resolveExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import {
   ownRecordValue,
   setOwnRecordValue,
@@ -34,6 +34,7 @@ const PREFLIGHT_RUNTIME_LABEL_EXECUTORS = new Set([
   'claude-sdk',
   'codex',
   'codex-sdk',
+  'dsh-host',
   'gemini',
   'anthropic-api',
   'openai-api',
@@ -221,9 +222,9 @@ export async function executeTasks({
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort, samplesBaseDir);
-    const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
+    const executorRuntime = resolveExecutorRuntimeFingerprint(effectiveExecutorName, model, {
       skillDir: executionPlan.input.skillDir,
-    });
+    }, executor);
 
     let execResult: ExecResult;
     // include allowedSkills in cache key so isolation-on / isolation-off runs

@@ -60,6 +60,34 @@ Without the optional variables, the model comes from Codex config and the judge 
 - **Config and session isolation**: before launch, omk reads only the top-level Codex `model` and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.
 - **SDK execpolicy limitation**: the current `@openai/codex-sdk` API does not expose the CLI's `--ignore-rules` switch. Project execpolicy discovered from an explicitly selected working directory can therefore still affect `codex-sdk`. Keep the executor and runtime context fixed, or prefer `codex` when project-rule isolation is required.
 
+## DeepSeek Harness: prefer the host plugin
+
+If DSH is already your local harness, load OMK into the existing profile instead of making OMK start another runtime:
+
+```bash
+dsh plugin --profile web add oh-my-knowledge
+dsh --profile web
+```
+
+Then run this inside DSH:
+
+```text
+/omk eval eval.yaml
+```
+
+The config path is resolved from the current DSH session `cwd`. Omit the top-level `executor` from `eval.yaml`: the measured executor is always the current DSH host. The evaluated model inherits the current session unless `model` is explicit in the config. A judge can use the public `executor: dsh` alias; `dsh-host` is an internal OMK identifier and is rejected in user config. For every sample, the plugin creates a fresh DSH agent/session and reuses the profile's provider, credentials, tools, sandbox, and persistence. OMK installs a complete system-prompt section for the control/treatment, suppresses runtime context and the ambient `skill` tool, maps DSH `session/event` records in host-observed order into token/turn/tool/subagent evidence, and writes reports under the project's `.omk/reports`.
+
+The plugin composes each measurement agent from the initiating session's active agent preset before applying OMK isolation. When the model is inherited and every judge reuses that same DSH model, the live interactive session itself is the connectivity evidence, so OMK creates no extra probe sessions; an explicit measured-model override, a different DSH judge model, or an external judge still receives connectivity preflight. Omit `effort` from this host-mode config: DSH reasoning effort identifiers are provider-owned and cannot be mapped losslessly to OMK's five generic levels. Fix the desired reasoning behavior in the DSH profile instead. `goldDir` remains supported and attaches human-gold agreement to the persisted report.
+
+This PoC exposes `/omk` through DSH's human-command registry, so the profile needs `ctx.commands` and a command adapter. The built-in `web` profile satisfies that requirement; headless, ACP, and JSON-RPC surfaces do not currently consume the command. `Sample.mocks` remains unsupported. The runtime fingerprint includes the DSH host version, OMK adapter version, provider, agent preset, and effective tool schemas. DSH does not expose a canonical digest for every plugin and policy, so the fingerprint is explicitly marked partially auditable and strict comparability checks emit a warning instead of claiming full runtime parity.
+
+For a local checkout, build it and link it directly into the profile:
+
+```bash
+npm run build
+dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
+```
+
 ## Custom executor
 
 Any shell command can serve as an executor, communicating via stdin/stdout JSON:
@@ -87,6 +115,7 @@ omk eval --executor "./my-executor.sh"
 - **claude-sdk**: install [Claude Code](https://claude.ai/code) and authenticate (uses Agent SDK, no CLI stdout parsing)
 - **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
 - **codex-sdk**: `npm i @openai/codex-sdk` (bundles the `@openai/codex` binary)
+- **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
 - **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
 - **openai-api**: set the `OPENAI_API_KEY` env var
 - **gemini**: `npm i -g @google/gemini-cli` and authenticate

@@ -79,13 +79,27 @@ function pluralizeEn(count: number, singular: string, plural = `${singular}s`): 
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function executorDisplayName(executor: string | undefined, lang: Lang): string {
+  if (executor === 'dsh-host') {
+    return lang === 'zh' ? 'DeepSeek Harness（宿主模式）' : 'DeepSeek Harness (host mode)';
+  }
+  return executor || 'unknown';
+}
+
+function executorModelDisplayName(executor: string | undefined, model: string | undefined, lang: Lang): string {
+  const executorName = executorDisplayName(executor, lang);
+  const modelName = model || 'unknown';
+  if (executor === 'dsh-host') return `${executorName} · ${modelName}`;
+  return `${executorName}:${modelName}`;
+}
+
 interface RuntimeScope {
   role: 'executor' | 'judge' | 'diagnostic';
   scope: string;
   runtime: ExecutorRuntimeFingerprint;
 }
 
-function gatherRuntimeScopes(meta: RuntimeMeta): RuntimeScope[] {
+function gatherRuntimeScopes(meta: RuntimeMeta, lang: Lang): RuntimeScope[] {
   const scopes: RuntimeScope[] = [];
   if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
     Object.entries(meta.executorRuntimes)
@@ -101,13 +115,19 @@ function gatherRuntimeScopes(meta: RuntimeMeta): RuntimeScope[] {
       .slice()
       .sort((a, b) => `${a.executor}:${a.model}`.localeCompare(`${b.executor}:${b.model}`))
       .forEach((entry) => {
-        if (entry.runtime) scopes.push({ role: 'judge', scope: `${entry.executor}:${entry.model}`, runtime: entry.runtime });
+        if (entry.runtime) {
+          scopes.push({
+            role: 'judge',
+            scope: executorModelDisplayName(entry.executor, entry.model, lang),
+            runtime: entry.runtime,
+          });
+        }
       });
   }
   if (meta.diagnostic?.enabled && meta.diagnostic.runtime) {
     scopes.push({
       role: 'diagnostic',
-      scope: `${meta.diagnostic.executor}:${meta.diagnostic.model}`,
+      scope: executorModelDisplayName(meta.diagnostic.executor, meta.diagnostic.model, lang),
       runtime: meta.diagnostic.runtime,
     });
   }
@@ -130,6 +150,7 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
     `cost=${runtime.capabilities.costUSD}`,
     `trace=${runtime.capabilities.trace}`,
     `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ...(runtime.auditability ? [`auditability=${runtime.auditability.status}`] : []),
     ...(runtime.binary?.contentHash
       ? [`contentHash=${runtime.binary.contentHash}`]
       : []),
@@ -141,7 +162,7 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
 // fingerprint 重复 3 遍，扫读成本高。新版按 (fingerprint, versionText)
 // 分组，scope 合并到 tag 内 "适用于 ..." 后缀。
 function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
-  const scopes = gatherRuntimeScopes(meta);
+  const scopes = gatherRuntimeScopes(meta, lang);
   if (scopes.length === 0) return '';
 
   const groups = new Map<string, {
@@ -515,11 +536,11 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
       const list = m.judgeModels ?? [];
       if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
-      if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
-      return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
+      if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(executorModelDisplayName(list[0].executor, list[0].model, lang))}</span>`;
+      return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(executorModelDisplayName(j.executor, j.model, lang))).join(' · ')}</span>`;
     })()}
     ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
-    <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'unknown')}</span>
+    <span class="meta-tag">${t('executor', lang)}: ${e(executorDisplayName(m.executor, lang))}</span>
     ${m.effort ? `<span class="meta-tag" title="${e(lang === 'zh' ? 'executor LLM 的扩展思考预算(--effort)。跨 effort 报告不可严格比较' : 'reasoning effort for executor LLM (--effort); reports across different efforts are not strictly comparable')}">effort: ${e(m.effort)}</span>` : ''}
     <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
     <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${totalCostLabel}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>${processCostTag ? `
@@ -689,10 +710,10 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
         if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
         const list = m.judgeModels ?? [];
         if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
-        if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
-        return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
+        if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(executorModelDisplayName(list[0].executor, list[0].model, lang))}</span>`;
+        return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(executorModelDisplayName(j.executor, j.model, lang))).join(' · ')}</span>`;
       })()}
-      <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'unknown')}</span>
+      <span class="meta-tag">${t('executor', lang)}: ${e(executorDisplayName(m.executor, lang))}</span>
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
     </div>
     ${(() => {

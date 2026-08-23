@@ -13,6 +13,11 @@
   "files": [
     "dist/"
   ],
+  "dsh": {
+    "bundle": {
+      "patch": "./dist/dsh-plugin/cordis.patch.yml"
+    }
+  },
   "scripts": {
     "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
     "build": "run-s build:src build:scripts build:assets",

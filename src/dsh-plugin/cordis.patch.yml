@@ -1,0 +1,3 @@
+- insert:
+    - id: omk
+      name: oh-my-knowledge/dist/dsh-plugin/index.js

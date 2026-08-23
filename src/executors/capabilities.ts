@@ -18,6 +18,7 @@ const BUILTIN_CAPABILITIES: Readonly<Record<string, ExecutorCapabilities>> = {
   'claude-sdk': { sampleMocks: 'native-hooks' },
   codex: { sampleMocks: 'unsupported' },
   'codex-sdk': { sampleMocks: 'unsupported' },
+  'dsh-host': { sampleMocks: 'unsupported' },
   gemini: { sampleMocks: 'unsupported' },
   'anthropic-api': { sampleMocks: 'unsupported' },
   'openai-api': { sampleMocks: 'unsupported' },
