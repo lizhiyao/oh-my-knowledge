@@ -47,10 +47,6 @@ export function isCodexExecutor(executor: string): boolean {
   return executor === 'codex' || executor === 'codex-sdk';
 }
 
-export function isDshExecutor(executor: string): boolean {
-  return executor === 'dsh';
-}
-
 export function resolveCliExecutor(
   explicitExecutor?: string,
   options: RuntimeResolutionOptions = {},
@@ -81,15 +77,6 @@ export function resolveCliModel(
   const envModel = nonEmpty(env.OMK_MODEL);
   if (envModel) return envModel;
 
-  if (isDshExecutor(executor)) {
-    const dshModel = nonEmpty(env.DSH_MODEL);
-    if (dshModel) return dshModel;
-    const lang = options.lang ?? 'zh';
-    throw new Error(lang === 'zh'
-      ? 'dsh 执行器需要明确模型。请用 --model <model>，或设置 OMK_MODEL／DSH_MODEL。'
-      : 'The dsh executor needs an explicit model. Pass --model <model>, or set OMK_MODEL/DSH_MODEL.');
-  }
-
   if (!isCodexExecutor(executor)) return DEFAULT_MODEL;
 
   const suggestion = getCodexModelSuggestion(env);
@@ -102,7 +89,7 @@ export function resolveCliModel(
 }
 
 export function defaultJudgeModel(executor: string, taskModel: string): string {
-  return isCodexExecutor(executor) || isDshExecutor(executor) ? taskModel : JUDGE_MODEL;
+  return isCodexExecutor(executor) ? taskModel : JUDGE_MODEL;
 }
 
 export function resolveRuntimeSelection(

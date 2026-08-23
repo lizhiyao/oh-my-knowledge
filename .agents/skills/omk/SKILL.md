@@ -29,7 +29,7 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 ### 在 DeepSeek Harness 中
 
-如果当前 DSH profile 已安装 `oh-my-knowledge` bundle，优先使用 `/omk eval <eval.yaml>`。该路径直接复用现有 DSH 的模型、凭证、工具与 sandbox，并为每条用例创建隔离 session；不要再要求用户配置 `OMK_DSH_COMMAND` 或另起 JSON-RPC runtime。`--executor dsh` 只用于从 OMK CLI 外部驱动 DSH 的 CI／批处理场景。
+如果当前 DSH profile 已安装 `oh-my-knowledge` bundle，使用 `/omk eval <eval.yaml>`。该路径直接复用现有 DSH 的模型、凭证、工具与 sandbox，并为每条用例创建隔离 session；不要要求用户另起 DSH runtime。
 
 ## 第二步：理解用户意图
 

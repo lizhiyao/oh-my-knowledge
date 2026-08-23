@@ -80,34 +80,6 @@ describe('runtime fingerprint', () => {
     assert.notEqual(first, second);
   });
 
-  it('binds the DSH fingerprint to its runtime, config, and SDK contract', async () => {
-    vi.resetModules();
-    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
-    const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-dsh-'));
-    const config = join(dir, 'cordis.yml');
-    try {
-      writeFakeBinary(dir, 'dsh-jsonrpc-agent', 'unused');
-      writeFileSync(config, 'plugins: []\n');
-      const env = {
-        ...process.env,
-        PATH: `${dir}${delimiter}${process.env.PATH || ''}`,
-        OMK_DSH_CONFIG: config,
-      };
-      const first = getExecutorRuntimeFingerprint('dsh', 'deepseek-chat', { env });
-      writeFileSync(config, 'plugins:\n  - changed\n');
-      const second = getExecutorRuntimeFingerprint('dsh', 'deepseek-chat', { env });
-
-      assert.equal(first.runtimeKind, 'agent-sdk');
-      assert.equal(first.capabilities.trace, 'native');
-      assert.equal(first.capabilities.costUSD, 'not-reported');
-      assert.equal(first.sdk?.name, '@deepseek-ai/dsh-sdk-client');
-      assert.match(first.binary?.contentHash ?? '', /^[a-f0-9]{64}$/);
-      assert.notEqual(first.fingerprint, second.fingerprint);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it('fingerprints dsh-host from the actual invoking DSH CLI package', async () => {
     vi.resetModules();
     const dir = mkdtempSync(join(tmpdir(), 'omk-runtime-dsh-host-'));

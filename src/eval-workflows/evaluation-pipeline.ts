@@ -69,7 +69,7 @@ export interface EvaluationPipelineOptions {
   executor: ExecutorFn;
   judgeExecutor: ExecutorFn;
   /** Embedding-host executors that must not be reconstructed from a CLI name. */
-  judgeExecutorOverrides?: Record<string, ExecutorFn>;
+  executorOverrides?: Readonly<Record<string, ExecutorFn>>;
   outputDir?: string | null;
   project?: string;
   owner?: string;
@@ -135,7 +135,7 @@ export async function executeEvaluationPipeline({
   judgeExecutorName,
   executor,
   judgeExecutor,
-  judgeExecutorOverrides,
+  executorOverrides,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -224,7 +224,7 @@ export async function executeEvaluationPipeline({
           setOwnRecordValue(
             resolvedJudgeExecutors,
             jc.executor,
-            judgeExecutorOverrides?.[jc.executor]
+            executorOverrides?.[jc.executor]
               ?? (jc.executor === executorName ? executor : undefined)
               ?? createExecutor(jc.executor),
           );

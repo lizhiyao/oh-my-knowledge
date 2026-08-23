@@ -19,7 +19,7 @@ flowchart TD
     end
 
     subgraph Exec["④ 执行器(固定模型)"]
-        E["claude / claude-sdk / codex / dsh / dsh-host / gemini<br/>anthropic-api / openai-api / 自定义命令"]
+        E["claude / claude-sdk / codex / dsh-host / gemini<br/>anthropic-api / openai-api / 自定义命令"]
         T["执行器 adapter 统一<br/>turns / toolCalls trace"]
         E -.-> T
     end

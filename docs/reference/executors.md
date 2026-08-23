@@ -10,7 +10,6 @@ An **executor** is the backend that runs an artifact against a model — it turn
 | `claude-sdk` | agent eval (tool / turn traces), structured output | uses Claude Agent SDK — extracts turns / toolCalls traces, no stdout parsing, avoids buffer truncation |
 | `codex` | Codex / ChatGPT desktop coding tasks (CLI) | invokes `codex exec --json` (`@openai/codex` npm); best-effort tool trace; **costUSD not reported** (codex CLI does not emit USD; check usage externally) |
 | `codex-sdk` | Codex agent eval (SDK) | uses `@openai/codex-sdk` with its bundled `@openai/codex` binary and streamed SDK events; **costUSD not reported** |
-| `dsh` | experimental DeepSeek Harness agent eval | drives an explicit DSH JSON-RPC runtime through `@deepseek-ai/dsh-sdk-client`; maps root/subagent event logs and tool traces; **costUSD not reported** |
 | `gemini` | cross-vendor comparison | invokes `gemini` CLI |
 | `anthropic-api` | CI / no CLI installed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |
 | `openai-api` | CI / no CLI; or route a non-Claude model | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
@@ -24,7 +23,7 @@ API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OP
 | Executor | `Sample.mocks` support |
 |---|---|
 | `claude` / `claude-sdk` | supported through native hooks |
-| `codex` / `codex-sdk` / `dsh` | unsupported; the current SDKs expose traces but no tool-interception hook |
+| `codex` / `codex-sdk` | unsupported; the current CLI and SDK expose traces but no tool-interception hook |
 | `gemini` / `anthropic-api` / `openai-api` | unsupported |
 | custom command | delegated through `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE`; the command must install or consume the supplied hook |
 
@@ -40,7 +39,7 @@ Precedence is: explicit CLI flag → `eval.yaml` → `OMK_*` environment prefere
 - In a regular terminal where only the Codex CLI is available, omk selects `codex`.
 - When both Claude and Codex are installed outside a Codex task, omk keeps the legacy `claude` default to avoid silently switching the measurement runtime after an upgrade.
 - When Codex is selected without `--model`, omk reads the top-level `model` from `$CODEX_HOME/config.toml` or `~/.codex/config.toml`.
-- The default judge follows the selected executor: Claude uses `claude:haiku`; Codex and DSH use the same model as the evaluated task and never fall back to Claude.
+- The default judge follows the selected executor: Claude uses `claude:haiku`; Codex uses the same model as the evaluated task and never falls back to Claude.
 - The same resolver covers `eval`, `doctor`, `sample`, `evolve`, and `observe inbox --llm-enhanced-review`.
 
 To pin Codex in regular terminals, add this to your shell profile (for example `~/.zshrc`):
@@ -87,36 +86,6 @@ npm run build
 dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 ```
 
-### Drive DSH externally from the OMK CLI
-
-`--executor dsh` is the inverse automation path for CI or batches that must start from the OMK CLI. It consumes DSH's typed SDK event stream without parsing interactive stdout, but requires a separate JSON-RPC runtime. Existing DSH users normally do not need this route.
-
-The DSH TypeScript SDK does not bundle a runtime. Point OMK at a JSON-RPC runtime and its Cordis config:
-
-```bash
-export OMK_DSH_COMMAND=node
-export OMK_DSH_ARGS='["/absolute/path/to/dsh-jsonrpc-runtime.js"]'
-export OMK_DSH_CONFIG=/absolute/path/to/cordis.yml
-export OMK_DSH_PROVIDER=deepseek-official
-
-omk eval --executor dsh --model deepseek-chat \
-  --control baseline --treatment ./skills/my-skill \
-  --samples eval-samples.json
-```
-
-`OMK_DSH_ARGS` is a JSON string array. OMK appends `OMK_DSH_CONFIG` as the final runtime argument. `OMK_DSH_MAX_TOKENS` optionally sets a positive per-request output cap. The model must come from `--model`, `OMK_MODEL`, or `DSH_MODEL`.
-
-Every executor call gets a fresh runtime process, SDK session, `DSH_HOME`, and `DSH_SESSION_ROOT`; the temporary state is removed after shutdown. OMK also exposes this bridge contract to the runtime:
-
-| Environment variable | Contract |
-|---|---|
-| `DSH_CORDIS_CONFIG` | absolute path to the same explicit Cordis config |
-| `DSH_CWD` | isolated sample workspace |
-| `DSH_SYSTEM_PROMPT` | exact artifact system prompt, or an empty string |
-| `DSH_HOME` / `DSH_SESSION_ROOT` | per-call temporary state roots |
-
-The supplied Cordis config must consume these values. For strict control/treatment comparisons, it must disable ambient DSH skill discovery and pin provider, preset, sandbox, approval policy, plugin set, and lockfile. OMK fingerprints the runtime executable, launch args, Cordis config bytes, provider/model, and DSH SDK version. A Cordis config that ignores the bridge variables can still run, but its result is not evidence that only the artifact changed. DSH is currently a pinned experimental integration; minor SDK changes may require adapter updates.
-
 ## Custom executor
 
 Any shell command can serve as an executor, communicating via stdin/stdout JSON:
@@ -145,7 +114,6 @@ omk eval --executor "./my-executor.sh"
 - **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
 - **codex-sdk**: `npm i @openai/codex-sdk` (bundles the `@openai/codex` binary)
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
-- **external dsh executor**: only when driving from the OMK CLI, provide a DSH JSON-RPC runtime and pinned Cordis config; OMK includes the client SDK but not the runtime
 - **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
 - **openai-api**: set the `OPENAI_API_KEY` env var
 - **gemini**: `npm i -g @google/gemini-cli` and authenticate

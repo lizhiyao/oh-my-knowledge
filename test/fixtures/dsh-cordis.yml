@@ -1,2 +1,0 @@
-# The fixture runtime only verifies that OMK supplies an explicit config path.
-name: omk-dsh-fixture

@@ -5,7 +5,6 @@ import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildExecEnv } from './shared.js';
-import { resolveDshLaunchConfig } from './dsh-sdk.js';
 import {
   isScriptFileInterpreter,
   resolveScriptCommand,
@@ -319,51 +318,6 @@ function scriptRuntime(
   });
 }
 
-function dshRuntime(
-  model: string,
-  env: NodeJS.ProcessEnv,
-): ExecutorRuntimeFingerprint {
-  const config = resolveDshLaunchConfig(env);
-  const executablePath = resolvePathBinary(config.command, env);
-  const referencedArgs = config.args
-    .map((arg) => isAbsolute(arg) ? arg : join(process.cwd(), arg))
-    .filter((arg) => existsSync(arg));
-  const fileIdentity = hashRuntimeFiles([
-    config.configPath,
-    ...referencedArgs,
-    ...(executablePath ? [executablePath] : []),
-  ]);
-  const contentHash = createHash('sha256')
-    .update(fileIdentity.contentHash ?? '')
-    .update('\0')
-    .update(canonicalStringify({
-      args: config.args,
-      configPath: config.configPath,
-      provider: config.provider,
-      maxTokens: config.maxTokens,
-    }))
-    .digest('hex');
-  const errors = [
-    !executablePath ? 'executable not found on PATH' : undefined,
-    fileIdentity.error,
-  ].filter(Boolean).join('; ');
-  return runtime('dsh', model, 'agent-sdk', {
-    systemPrompt: 'native',
-    costUSD: 'not-reported',
-    trace: 'native',
-    skillIsolation: 'cwd-only',
-  }, {
-    sdk: readPackage('@deepseek-ai/dsh-sdk-client'),
-    binary: {
-      name: config.command,
-      source: executablePath ? 'path' : 'unknown',
-      ...(executablePath && { path: executablePath }),
-      contentHash,
-      ...(errors && { error: errors }),
-    },
-  });
-}
-
 function dshHostRuntime(model: string): ExecutorRuntimeFingerprint {
   const host = readInvokingDshPackage();
   return runtime('dsh-host', model, 'agent-sdk', {
@@ -394,7 +348,6 @@ export function getExecutorRuntimeFingerprint(
     'claude-sdk',
     'codex',
     'codex-sdk',
-    'dsh',
     'dsh-host',
     'gemini',
     'anthropic-api',
@@ -404,11 +357,6 @@ export function getExecutorRuntimeFingerprint(
     // long-running Studio process cannot reuse stale outputs after the script
     // changes while the command line remains identical.
     return scriptRuntime(executorName, model, env);
-  }
-  if (executorName === 'dsh') {
-    // The runtime/config are explicit local inputs. Re-read them for every
-    // report so Studio cannot retain a stale fingerprint after either changes.
-    return dshRuntime(model, env);
   }
   if (executorName === 'dsh-host') return dshHostRuntime(model);
   const pathHash = hashString(env.PATH || '');

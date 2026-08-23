@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
-import { buildDshResult, type DshRunResult } from '../executors/dsh-protocol.js';
+import { buildDshHostResult, type DshHostRunResult } from '../executors/dsh-protocol.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -195,27 +195,17 @@ export function createDshHostExecutor(
     let handle: DshAgentHandleLike | undefined;
     const rootSessionId = `omk-${randomUUID()}`;
     const descendants = new Set<string>();
-    const notifications: DshRunResult['notifications'] = [];
+    const descendantEvents: DshHostRunResult['descendantEvents'] = [];
     const disposeCreated = ctx.on('session/created', (session) => {
       const parent = session.header.parentSession;
       if (parent !== rootSessionId && (parent === undefined || !descendants.has(parent))) return;
       descendants.add(String(session.id));
-      notifications.push({
-        method: 'subagent.started',
-        params: {
-          parentSessionId: String(parent),
-          childSessionId: String(session.id),
-        },
-      });
     });
     const disposeEvents = ctx.on('session/event', (session, event) => {
       const sessionId = String(session.id);
       if (sessionId === rootSessionId) return;
       if (!descendants.has(sessionId)) return;
-      notifications.push({
-        method: 'session.event',
-        params: { sessionId, event },
-      });
+      descendantEvents.push({ sessionId, event });
     });
 
     try {
@@ -251,12 +241,12 @@ export function createDshHostExecutor(
       const outcome = await waitForIdle(handle.agent, input.timeoutMs, options.signal);
       const wallClockDurationMs = Date.now() - startedAt;
       const events = [...handle.agent.session.events];
-      const result = buildDshResult({
-        sessionId: rootSessionId,
+      const result = buildDshHostResult({
+        rootSessionId,
         finalResponse: lastAssistantText(events),
-        events,
-        notifications,
-        sourceTracePrefix: 'dsh-host',
+        rootEvents: events,
+        descendantEvents,
+        childSessionIds: [...descendants],
       }, wallClockDurationMs);
       if (outcome === 'idle') return result;
       return {

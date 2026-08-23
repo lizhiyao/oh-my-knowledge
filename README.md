@@ -209,7 +209,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 
 | Variable | Description |
 |---|---|
-| `OMK_EXECUTOR` | default executor preference, e.g. `codex` / `codex-sdk` / `dsh` / `claude` |
+| `OMK_EXECUTOR` | default executor preference, e.g. `codex` / `codex-sdk` / `claude` |
 | `OMK_MODEL` | default evaluated model; Codex reads local `config.toml` when unset |
 | `OMK_JUDGE_MODELS` | default judge list in `executor:model[,...]` format |
 | `CCV_PROXY_URL` | proxy requests through cc-viewer for live eval-traffic visualization |

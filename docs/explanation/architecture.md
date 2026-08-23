@@ -19,7 +19,7 @@ flowchart TD
     end
 
     subgraph Exec["④ Executor (fixed model)"]
-        E["claude / claude-sdk / codex / dsh / dsh-host / gemini<br/>anthropic-api / openai-api / custom"]
+        E["claude / claude-sdk / codex / dsh-host / gemini<br/>anthropic-api / openai-api / custom"]
         T["executor adapters normalize<br/>turns / toolCalls trace"]
         E -.-> T
     end

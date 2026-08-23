@@ -173,22 +173,24 @@ describe('runEvaluation', () => {
         skillDir: SKILL_DIR,
         variantSpecs: asSpecs(['v1']),
         executorName: 'dsh-host',
-        executorOverride: async () => {
-          calls += 1;
-          return {
-            ok: true,
-            output: 'host result',
-            durationMs: 1,
-            durationApiMs: 1,
-            inputTokens: 1,
-            outputTokens: 1,
-            cacheReadTokens: 0,
-            cacheCreationTokens: 0,
-            costUSD: 0,
-            costReportedByExecutor: false,
-            stopReason: 'completed',
-            numTurns: 1,
-          };
+        executorOverrides: {
+          'dsh-host': async () => {
+            calls += 1;
+            return {
+              ok: true,
+              output: 'host result',
+              durationMs: 1,
+              durationApiMs: 1,
+              inputTokens: 1,
+              outputTokens: 1,
+              cacheReadTokens: 0,
+              cacheCreationTokens: 0,
+              costUSD: 0,
+              costReportedByExecutor: false,
+              stopReason: 'completed',
+              numTurns: 1,
+            };
+          },
         },
         noJudge: true,
         noDiagnostic: true,

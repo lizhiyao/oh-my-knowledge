@@ -5,19 +5,16 @@ import { safeSliceForJson } from '../util/safe-slice.js';
 
 type UnknownRecord = Record<string, unknown>;
 
-/** The stable portion of the SDK result consumed by the adapter. Keeping this
- * structural prevents DSH's type-only ecosystem peers from leaking through
- * OMK's public declarations; the runtime boundary is still the official SDK. */
-export interface DshRunResult {
-  sessionId: string;
+/** Host-owned DSH events consumed by OMK without importing DSH runtime types. */
+export interface DshHostRunResult {
+  rootSessionId: string;
   finalResponse: string;
-  events: UnknownRecord[];
-  /** Trace origin used to distinguish SDK subprocesses from in-process hosts. */
-  sourceTracePrefix?: 'dsh-sdk' | 'dsh-host';
-  notifications: Array<{
-    method: string;
-    params: UnknownRecord;
+  rootEvents: UnknownRecord[];
+  descendantEvents: Array<{
+    sessionId: string;
+    event: UnknownRecord;
   }>;
+  childSessionIds: string[];
 }
 
 interface DshEventRecord {
@@ -85,29 +82,17 @@ function resultBlock(data: UnknownRecord): UnknownRecord | undefined {
   return contentBlocks(message?.content).find((block) => block.type === 'tool-result');
 }
 
-function childSessionIds(result: DshRunResult): Set<string> {
-  const ids = new Set<string>();
-  for (const notification of result.notifications) {
-    if (notification.method !== 'subagent.started') continue;
-    const child = nonEmptyString(notification.params.childSessionId);
-    if (child) ids.add(child);
-  }
-  return ids;
-}
-
-function collectEvents(result: DshRunResult): DshEventRecord[] {
-  const records: DshEventRecord[] = result.events.map((event) => ({
-    sessionId: result.sessionId,
+function collectEvents(result: DshHostRunResult): DshEventRecord[] {
+  const records: DshEventRecord[] = result.rootEvents.map((event) => ({
+    sessionId: result.rootSessionId,
     event,
     traceRole: 'main',
   }));
-  for (const notification of result.notifications) {
-    if (notification.method !== 'session.event') continue;
-    const sessionId = nonEmptyString(notification.params.sessionId);
-    if (!sessionId || sessionId === result.sessionId || !isRecord(notification.params.event)) continue;
+  for (const descendant of result.descendantEvents) {
+    if (descendant.sessionId === result.rootSessionId) continue;
     records.push({
-      sessionId,
-      event: notification.params.event,
+      sessionId: descendant.sessionId,
+      event: descendant.event,
       traceRole: 'subagent',
     });
   }
@@ -142,11 +127,10 @@ function terminalReason(events: DshEventRecord[], rootSessionId: string): {
 /**
  * Map DSH's append-only session log into OMK's source-neutral executor result.
  * Root and descendant token/tool evidence are included; final output remains
- * the root session's last assistant text, matching the SDK-owned run interval.
+ * the root session's last assistant text.
  */
-export function buildDshResult(result: DshRunResult, wallClockDurationMs: number): ExecResult {
+export function buildDshHostResult(result: DshHostRunResult, wallClockDurationMs: number): ExecResult {
   const events = collectEvents(result);
-  const sourceTracePrefix = result.sourceTracePrefix ?? 'dsh-sdk';
   const tools = new Map<string, MutableToolCall>();
   const orderedTools: MutableToolCall[] = [];
   const turns: TurnInfo[] = [];
@@ -163,7 +147,7 @@ export function buildDshResult(result: DshRunResult, wallClockDurationMs: number
     const data = isRecord(event.data) ? event.data : {};
     const eventType = nonEmptyString(event.type);
 
-    if (eventType === 'turn/end' && sessionId === result.sessionId) rootTurns += 1;
+    if (eventType === 'turn/end' && sessionId === result.rootSessionId) rootTurns += 1;
 
     if (eventType === 'assistant/message') {
       assistantMessages += 1;
@@ -227,7 +211,7 @@ export function buildDshResult(result: DshRunResult, wallClockDurationMs: number
         callInstanceId: `${sessionId}:${callId}`,
         toolUseId: callId,
         ...(timestamp && { timestamp }),
-        sourceTrace: `${sourceTracePrefix}:${sessionId}`,
+        sourceTrace: `dsh-host:${sessionId}`,
         traceRole,
       };
       const mutable = { info };
@@ -262,7 +246,7 @@ export function buildDshResult(result: DshRunResult, wallClockDurationMs: number
     });
   }
 
-  const terminal = terminalReason(events, result.sessionId);
+  const terminal = terminalReason(events, result.rootSessionId);
   const output = result.finalResponse || null;
   const successfulStop = terminal.stopReason === 'completed' || terminal.stopReason === 'max-tokens';
   const error = terminal.error ?? (!output ? 'dsh runtime produced no root assistant output' : undefined);
@@ -282,7 +266,7 @@ export function buildDshResult(result: DshRunResult, wallClockDurationMs: number
     stopReason: terminal.stopReason,
     numTurns: rootTurns,
     fullNumTurns: assistantMessages,
-    numSubAgents: childSessionIds(result).size,
+    numSubAgents: new Set(result.childSessionIds).size,
     ...(error && { error }),
     turns,
     toolCalls: orderedTools.map(({ info }) => info),

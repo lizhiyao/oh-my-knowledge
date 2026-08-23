@@ -10,7 +10,6 @@
 | `claude-sdk` | agent 评测（工具 / 轮次 trace）、结构化输出 | 通过 Claude Agent SDK 调用，抽取 turns / toolCalls trace，无 stdout 解析、避免 buffer 截断 |
 | `codex` | Codex / ChatGPT desktop 编程任务（CLI） | 通过 `codex exec --json` 调用，需本地装好登录的 codex（`@openai/codex`）；best-effort tool trace，**costUSD 不报**（codex 自身不输出 USD，需外部账单核算） |
 | `codex-sdk` | Codex agent 评测（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
-| `dsh` | 实验性 DeepSeek Harness agent 评测 | 通过 `@deepseek-ai/dsh-sdk-client` 驱动显式 DSH JSON-RPC runtime；映射主会话／子 agent 事件与工具 trace；**costUSD 不报** |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | CI / 没装 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
 | `openai-api` | CI / 没装 CLI；或接非 Claude 模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
@@ -24,7 +23,7 @@ API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_
 | 执行器 | `Sample.mocks` 支持 |
 |--------|---------------------|
 | `claude` / `claude-sdk` | 支持，通过原生 hooks 拦截 |
-| `codex` / `codex-sdk` / `dsh` | 不支持；当前 SDK 能输出 trace，但没有工具拦截 hook |
+| `codex` / `codex-sdk` | 不支持；当前 CLI 和 SDK 能输出 trace，但没有工具拦截 hook |
 | `gemini` / `anthropic-api` / `openai-api` | 不支持 |
 | 自定义命令 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
 
@@ -40,7 +39,7 @@ CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yam
 - 普通终端只有 Codex CLI 可用时选择 `codex`。
 - 普通终端同时装有 Claude 和 Codex 时保留 `claude` 默认，避免升级后无提示切换历史测量 runtime。
 - 显式选择 Codex 而没有传 `--model` 时，读取 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 的顶层 `model`。
-- 默认评委跟随所选执行器：Claude 使用 `claude:haiku`；Codex／DSH 使用与被测任务相同的模型，不会回落到 Claude。
+- 默认评委跟随所选执行器：Claude 使用 `claude:haiku`；Codex 使用与被测任务相同的模型，不会回落到 Claude。
 - `eval`、`doctor`、`sample`、`evolve` 和 `observe inbox --llm-enhanced-review` 共用这套解析逻辑。
 
 要在普通终端固定使用 Codex，把下面的偏好加入 shell 配置，例如 `~/.zshrc`：
@@ -87,36 +86,6 @@ npm run build
 dsh plugin --profile web add /absolute/path/to/oh-my-knowledge
 ```
 
-### 从 OMK CLI 外部驱动 DSH
-
-`--executor dsh` 是反方向的自动化入口，适合 CI 或明确需要从 OMK CLI 发起的批处理。它消费 DSH typed SDK 事件流，不解析交互式 CLI stdout，但需要独立 JSON-RPC runtime；已有 DSH 用户通常不需要这条路径。
-
-DSH TypeScript SDK 不自带 runtime。需要显式提供 JSON-RPC runtime 与 Cordis 配置：
-
-```bash
-export OMK_DSH_COMMAND=node
-export OMK_DSH_ARGS='["/absolute/path/to/dsh-jsonrpc-runtime.js"]'
-export OMK_DSH_CONFIG=/absolute/path/to/cordis.yml
-export OMK_DSH_PROVIDER=deepseek-official
-
-omk eval --executor dsh --model deepseek-chat \
-  --control baseline --treatment ./skills/my-skill \
-  --samples eval-samples.json
-```
-
-`OMK_DSH_ARGS` 是 JSON 字符串数组；OMK 会把 `OMK_DSH_CONFIG` 追加为 runtime 的最后一个参数。`OMK_DSH_MAX_TOKENS` 可设置每次请求的正整数输出上限。模型必须来自 `--model`、`OMK_MODEL` 或 `DSH_MODEL`。
-
-每次 executor 调用都会创建全新的 runtime 进程、SDK session、`DSH_HOME` 和 `DSH_SESSION_ROOT`，关闭后删除临时状态。OMK 还向 runtime 暴露以下 bridge 契约：
-
-| 环境变量 | 契约 |
-|---|---|
-| `DSH_CORDIS_CONFIG` | 同一份显式 Cordis 配置的绝对路径 |
-| `DSH_CWD` | 隔离后的 sample 工作目录 |
-| `DSH_SYSTEM_PROMPT` | artifact 的原始 system prompt；没有时为空字符串 |
-| `DSH_HOME` / `DSH_SESSION_ROOT` | 每次调用独立的临时状态目录 |
-
-提供的 Cordis 配置必须消费这些变量。严格比较 control／treatment 时，还必须关闭环境中的 DSH skill 自动发现，并固定 provider、preset、sandbox、approval policy、plugin 集合与 lockfile。OMK 会把 runtime 可执行文件、启动参数、Cordis 配置字节、provider／model 和 DSH SDK 版本写入指纹。忽略 bridge 变量的配置仍可能跑通，但其结果不能证明只有 artifact 发生变化。DSH 当前是固定版本的实验性集成；SDK 小版本变化也可能需要更新 adapter。
-
 ## 自定义执行器
 
 任何 shell 命令都可以作为执行器，通过 stdin/stdout JSON 协议通信：
@@ -145,7 +114,6 @@ omk eval --executor "./my-executor.sh"
 - **codex**：安装 Codex CLI（`npm i -g @openai/codex`）并认证
 - **codex-sdk**：`npm i @openai/codex-sdk`（自带 `@openai/codex` binary）
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
-- **dsh 外部执行器**：仅在从 OMK CLI 驱动时提供 DSH JSON-RPC runtime 与固定 Cordis 配置；OMK 包含 client SDK，但不包含 runtime
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证

@@ -209,7 +209,7 @@ dsh --profile web
 
 | 变量 | 说明 |
 |------|------|
-| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `dsh` / `claude` |
+| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `claude` |
 | `OMK_MODEL` | 默认被测模型；Codex 未设置时读取本机 `config.toml` |
 | `OMK_JUDGE_MODELS` | 默认评委列表，格式 `executor:model[,...]` |
 | `CCV_PROXY_URL` | 通过 cc-viewer 代理请求，实时可视化评测流量 |
