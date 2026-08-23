@@ -1,6 +1,6 @@
 import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { openAiApiExecutor } from '../../src/executors/api/openai.js';
+import { openAiApiExecutor } from '../../src/executors/openai/api.js';
 
 describe('openAiApiExecutor usage', () => {
   const originalApiKey = process.env.OPENAI_API_KEY;

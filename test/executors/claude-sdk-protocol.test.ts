@@ -4,8 +4,8 @@ import {
   buildClaudeResult,
   normalizeClaudeSdkMeasurements,
   parseClaudeStreamJson,
-} from '../../src/executors/claude/protocol.js';
-import type { ClaudeSdkResultMessage } from '../../src/executors/claude/protocol.js';
+} from '../../src/executors/anthropic/protocol.js';
+import type { ClaudeSdkResultMessage } from '../../src/executors/anthropic/protocol.js';
 
 function result(overrides: Partial<ClaudeSdkResultMessage> = {}): ClaudeSdkResultMessage {
   return {

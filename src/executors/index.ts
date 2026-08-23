@@ -1,11 +1,11 @@
 import type { ExecutorFn } from '../types/index.js';
-import { anthropicApiExecutor } from './api/anthropic.js';
-import { openAiApiExecutor } from './api/openai.js';
-import { claudeCliExecutor } from './claude/cli.js';
-import { claudeSdkExecutor } from './claude/sdk.js';
-import { extractAgentTrace } from './claude/sdk-trace.js';
-import { codexCliExecutor } from './codex/cli.js';
-import { codexSdkExecutor } from './codex/sdk.js';
+import { anthropicApiExecutor } from './anthropic/api.js';
+import { claudeCliExecutor } from './anthropic/claude-cli.js';
+import { claudeSdkExecutor } from './anthropic/claude-sdk.js';
+import { extractAgentTrace } from './anthropic/sdk-trace.js';
+import { openAiApiExecutor } from './openai/api.js';
+import { codexCliExecutor } from './openai/codex-cli.js';
+import { codexSdkExecutor } from './openai/codex-sdk.js';
 import { createScriptExecutor } from './script/index.js';
 import { enforceExecutorCapabilities } from './core/capabilities.js';
 import {

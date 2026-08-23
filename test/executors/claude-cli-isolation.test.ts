@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { claudeCliExecutor } from '../../src/executors/claude/cli.js';
+import { claudeCliExecutor } from '../../src/executors/anthropic/claude-cli.js';
 
 // claude CLI executor isolation 行为契约。
 //

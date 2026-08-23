@@ -18,7 +18,7 @@ import {
   timeoutExecResult,
 } from '../core/runtime.js';
 import { registerSigintSubscriber } from '../core/subprocess.js';
-import { isolateCodexCwd } from './cli.js';
+import { isolateCodexCwd } from './codex-cli.js';
 
 type CodexSdkModule = typeof import('@openai/codex-sdk');
 
