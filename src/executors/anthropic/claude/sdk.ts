@@ -18,6 +18,7 @@ import { buildClaudeResult } from './protocol.js';
 export { normalizeClaudeMeasurements } from './protocol.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
+const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 
 /**
  * Map ExecutorInput.allowedSkills to SDK query options for skill isolation.
@@ -45,7 +46,7 @@ export function buildSdkIsolationOptions(allowedSkills: string[] | undefined): {
 
 async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   if (!sdkQuery) {
-    const sdk = await import('@anthropic-ai/claude-agent-sdk') as ClaudeSdkModule;
+    const sdk = await import(CLAUDE_AGENT_SDK_PACKAGE) as ClaudeSdkModule;
     sdkQuery = sdk.query;
   }
   return sdkQuery;

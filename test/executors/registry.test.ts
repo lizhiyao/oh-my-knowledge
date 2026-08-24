@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { getExecutorCapabilities } from '../../src/executors/core/capabilities.js';
+import { getOptionalExecutorDependency } from '../../src/executors/core/optional-dependencies.js';
 import { createExecutor } from '../../src/executors/index.js';
 import {
   executorDescriptors,
@@ -24,9 +25,18 @@ describe('executor registry', () => {
       'openai-api',
     ]);
     assert.equal(new Set(descriptors.map(({ name }) => name)).size, descriptors.length);
+    assert.deepEqual(
+      descriptors
+        .filter((descriptor) => (
+          descriptor.execution === 'builtin'
+          && getOptionalExecutorDependency(descriptor.name)
+        ))
+        .map(({ name }) => name),
+      ['claude-sdk', 'codex-sdk'],
+    );
   });
 
-  it('binds every executable descriptor to a factory and reserves host-only entries', () => {
+  it('binds core descriptors and reserves host-only entries', () => {
     for (const descriptor of executorDescriptors()) {
       assert.equal(getExecutorDescriptor(descriptor.name), descriptor);
       assert.equal(isRegisteredExecutorName(descriptor.name), true);
@@ -35,7 +45,9 @@ describe('executor registry', () => {
         descriptor.sampleMocks,
       );
       if (descriptor.execution === 'builtin') {
-        assert.equal(typeof createExecutor(descriptor.name), 'function');
+        if (!getOptionalExecutorDependency(descriptor.name)) {
+          assert.equal(typeof createExecutor(descriptor.name), 'function');
+        }
       } else {
         assert.throws(() => createExecutor(descriptor.name), /宿主插件内部使用/);
       }

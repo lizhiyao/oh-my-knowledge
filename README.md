@@ -222,6 +222,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
   - Codex: install and authenticate the Codex CLI (`npm i -g @openai/codex`); Codex tasks in the ChatGPT desktop app select it automatically
   - Claude: install and authenticate [Claude Code](https://claude.ai/code)
   - API / other executors: configure them as described in [Executors](docs/reference/executors.md)
+- Advanced `claude-sdk` / `codex-sdk` executors are optional and are not downloaded by the base OMK install. Install the matching SDK in the same local project or global npm prefix only when you select one; see [Executor prerequisites](docs/reference/executors.md#prerequisites).
 
 ## Security notice
 

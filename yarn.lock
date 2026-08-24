@@ -202,99 +202,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.238"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.238"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.238"
-  conditions: os=linux & cpu=arm64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.238"
-  conditions: os=linux & cpu=arm64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.238"
-  conditions: os=linux & cpu=x64 & libc=musl
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.238"
-  conditions: os=linux & cpu=x64 & libc=glibc
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.238"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.238":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.238"
-  conditions: os=win32 & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@anthropic-ai/claude-agent-sdk@npm:^0.3.143":
-  version: 0.3.238
-  resolution: "@anthropic-ai/claude-agent-sdk@npm:0.3.238"
-  dependencies:
-    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-darwin-x64": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-linux-arm64": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-linux-x64": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-win32-arm64": "npm:0.3.238"
-    "@anthropic-ai/claude-agent-sdk-win32-x64": "npm:0.3.238"
-  peerDependencies:
-    "@anthropic-ai/sdk": ">=0.93.0"
-    "@modelcontextprotocol/sdk": ^1.29.0
-    zod: ^4.0.0
-  dependenciesMeta:
-    "@anthropic-ai/claude-agent-sdk-darwin-arm64":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-darwin-x64":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-linux-arm64":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-linux-x64":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-linux-x64-musl":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-win32-arm64":
-      optional: true
-    "@anthropic-ai/claude-agent-sdk-win32-x64":
-      optional: true
-  checksum: 10c0/79e8f82e4329ea33e26dbe957ae8eb7347e4121a6dfb2a882678667175fd5178a938d8c8af10cc7cb2d590876c845e7a9617b4083e9b046d7d4559c2f02f78fa
-  languageName: node
-  linkType: hard
-
 "@anthropic-ai/sdk@npm:^0.120.0":
   version: 0.120.0
   resolution: "@anthropic-ai/sdk@npm:0.120.0"
@@ -1048,86 +955,6 @@ __metadata:
     wrap-ansi: "npm:^7.0.0"
     wsl-utils: "npm:^0.4.0"
   checksum: 10c0/369407d870740926aa3f26f7dc63eb9c7d55f1fa18da86d57317edd8efaa0e1c97b65ff25bb9468160975e086a775aef72c19f5fbdf10a90366c0fd3d3650a29
-  languageName: node
-  linkType: hard
-
-"@openai/codex-darwin-arm64@npm:@openai/codex@0.149.0-darwin-arm64":
-  version: 0.149.0-darwin-arm64
-  resolution: "@openai/codex@npm:0.149.0-darwin-arm64"
-  conditions: os=darwin & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@openai/codex-darwin-x64@npm:@openai/codex@0.149.0-darwin-x64":
-  version: 0.149.0-darwin-x64
-  resolution: "@openai/codex@npm:0.149.0-darwin-x64"
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@openai/codex-linux-arm64@npm:@openai/codex@0.149.0-linux-arm64":
-  version: 0.149.0-linux-arm64
-  resolution: "@openai/codex@npm:0.149.0-linux-arm64"
-  conditions: os=linux & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@openai/codex-linux-x64@npm:@openai/codex@0.149.0-linux-x64":
-  version: 0.149.0-linux-x64
-  resolution: "@openai/codex@npm:0.149.0-linux-x64"
-  conditions: os=linux & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@openai/codex-sdk@npm:0.149.0":
-  version: 0.149.0
-  resolution: "@openai/codex-sdk@npm:0.149.0"
-  dependencies:
-    "@openai/codex": "npm:0.149.0"
-  checksum: 10c0/a793ad905de4361dfa96c903707fb27ba0f8b83f93c88926bc0b08e713264c863930fe6a16575e165d4feb570a69d2d0dda8dc6e1bfa07c5a2ed360336f0a686
-  languageName: node
-  linkType: hard
-
-"@openai/codex-win32-arm64@npm:@openai/codex@0.149.0-win32-arm64":
-  version: 0.149.0-win32-arm64
-  resolution: "@openai/codex@npm:0.149.0-win32-arm64"
-  conditions: os=win32 & cpu=arm64
-  languageName: node
-  linkType: hard
-
-"@openai/codex-win32-x64@npm:@openai/codex@0.149.0-win32-x64":
-  version: 0.149.0-win32-x64
-  resolution: "@openai/codex@npm:0.149.0-win32-x64"
-  conditions: os=win32 & cpu=x64
-  languageName: node
-  linkType: hard
-
-"@openai/codex@npm:0.149.0":
-  version: 0.149.0
-  resolution: "@openai/codex@npm:0.149.0"
-  dependencies:
-    "@openai/codex-darwin-arm64": "npm:@openai/codex@0.149.0-darwin-arm64"
-    "@openai/codex-darwin-x64": "npm:@openai/codex@0.149.0-darwin-x64"
-    "@openai/codex-linux-arm64": "npm:@openai/codex@0.149.0-linux-arm64"
-    "@openai/codex-linux-x64": "npm:@openai/codex@0.149.0-linux-x64"
-    "@openai/codex-win32-arm64": "npm:@openai/codex@0.149.0-win32-arm64"
-    "@openai/codex-win32-x64": "npm:@openai/codex@0.149.0-win32-x64"
-  dependenciesMeta:
-    "@openai/codex-darwin-arm64":
-      optional: true
-    "@openai/codex-darwin-x64":
-      optional: true
-    "@openai/codex-linux-arm64":
-      optional: true
-    "@openai/codex-linux-x64":
-      optional: true
-    "@openai/codex-win32-arm64":
-      optional: true
-    "@openai/codex-win32-x64":
-      optional: true
-  bin:
-    codex: bin/codex.js
-  checksum: 10c0/bcbe5d15b959815aaa9963fffcec5960c511a3c552b4767ff438dc6fa2e0773de2666069d7d81b9813cbdb070c8e9c791f749d099f4be9f1d376314746f17438
   languageName: node
   linkType: hard
 
@@ -3917,12 +3744,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "oh-my-knowledge@workspace:."
   dependencies:
-    "@anthropic-ai/claude-agent-sdk": "npm:^0.3.143"
     "@anthropic-ai/sdk": "npm:^0.120.0"
     "@inquirer/prompts": "npm:^8.4.3"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
     "@oclif/core": "npm:^4"
-    "@openai/codex-sdk": "npm:0.149.0"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^25.5.0"
     ajv: "npm:^8.18.0"
@@ -3939,6 +3764,14 @@ __metadata:
     vitepress: "npm:^1.6.4"
     vitest: "npm:4.1.11"
     zod: "npm:^4.4.3"
+  peerDependencies:
+    "@anthropic-ai/claude-agent-sdk": ^0.3.143
+    "@openai/codex-sdk": ^0.149.0
+  peerDependenciesMeta:
+    "@anthropic-ai/claude-agent-sdk":
+      optional: true
+    "@openai/codex-sdk":
+      optional: true
   bin:
     omk: dist/cli/index.js
   languageName: unknown

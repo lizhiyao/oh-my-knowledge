@@ -18,11 +18,6 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('returns a function for codex-sdk', () => {
-    const exec = createExecutor('codex-sdk');
-    assert.equal(typeof exec, 'function');
-  });
-
   it('rejects the removed gemini built-in instead of treating it as a custom command', () => {
     assert.throws(() => createExecutor('gemini'), /内置 gemini 执行器已移除/);
   });

@@ -112,10 +112,12 @@ omk eval --executor "./my-executor.sh"
 
 ## 前置要求
 
+OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。默认的 `claude`／`codex` CLI 执行器、API 执行器、自定义执行器和 DSH 宿主插件都不需要它们。只有明确选择 `*-sdk` 执行器时，才在 OMK 所在的同一作用域安装对应 SDK。
+
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
-- **claude-sdk**：安装 [Claude Code](https://claude.ai/code) 并认证（使用 Agent SDK，无需 CLI stdout 解析）
+- **claude-sdk**：本地安装可选 Agent SDK：`npm i @anthropic-ai/claude-agent-sdk@^0.3.143`；如果 OMK 是全局安装，则在同一全局 npm prefix 执行 `npm i -g @anthropic-ai/claude-agent-sdk@^0.3.143`，随后完成 Claude 认证
 - **codex**：安装 Codex CLI（`npm i -g @openai/codex`）并认证
-- **codex-sdk**：`npm i @openai/codex-sdk`（自带 `@openai/codex` binary）
+- **codex-sdk**：本地安装兼容的可选 SDK：`npm i @openai/codex-sdk@^0.149.0`；如果 OMK 是全局安装，则执行 `npm i -g @openai/codex-sdk@^0.149.0`（自带 `@openai/codex` binary）
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
