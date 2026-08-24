@@ -222,6 +222,7 @@ dsh --profile web
   - Codex：安装并登录 Codex CLI（`npm i -g @openai/codex`）；ChatGPT desktop 的 Codex 任务会自动选择它
   - Claude：安装并登录 [Claude Code](https://claude.ai/code)
   - API / 其它执行器：按[执行器文档](docs/zh/reference/executors.md)配置
+- 高级 `claude-sdk`／`codex-sdk` 执行器是可选能力，OMK 基础安装不再下载它们。仅在明确选择对应 SDK 时，才在 OMK 所在的本地项目或全局 npm prefix 安装；详见[执行器前置要求](docs/zh/reference/executors.md#前置要求)。
 
 ## 安全说明
 

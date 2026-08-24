@@ -12,6 +12,7 @@ import {
   getExecutorDescriptor,
   type ExecutableExecutorName,
 } from './core/registry.js';
+import { assertOptionalExecutorDependency } from './core/optional-dependencies.js';
 
 // 命名一致性:provider HTTP 路径统一用 `<vendor>-api`(`anthropic-api` / `openai-api`),
 // vendor coding agent CLI 用 vendor 名(`claude` / `codex`)。`openai` 这个不带 -api 后缀的
@@ -46,6 +47,7 @@ export function createExecutor(name: string): ExecutorFn {
   if (descriptor?.execution === 'host-only') {
     throw new Error('dsh-host 仅供 DeepSeek Harness 宿主插件内部使用；请在 DSH 中运行 /omk eval。');
   }
+  if (descriptor) assertOptionalExecutorDependency(descriptor.name);
   const executor = descriptor
     ? EXECUTOR_FACTORIES[descriptor.name]
     : createScriptExecutor(name);

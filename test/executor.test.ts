@@ -18,9 +18,11 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('returns a function for codex-sdk', () => {
-    const exec = createExecutor('codex-sdk');
-    assert.equal(typeof exec, 'function');
+  it('fails fast with an install command when an optional SDK is absent', () => {
+    assert.throws(
+      () => createExecutor('codex-sdk'),
+      /npm install @openai\/codex-sdk@0\.149\.0/,
+    );
   });
 
   it('rejects the removed gemini built-in instead of treating it as a custom command', () => {

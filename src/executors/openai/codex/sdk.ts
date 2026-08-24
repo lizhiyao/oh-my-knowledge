@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Codex, CodexOptions, ThreadEvent } from '@openai/codex-sdk';
 import type { ExecResult, ExecutorInput } from '../../../types/index.js';
 import {
   buildCodexResult,
@@ -20,7 +19,30 @@ import {
 import { registerSigintSubscriber } from '../../core/subprocess.js';
 import { isolateCodexCwd } from './cli.js';
 
-type CodexSdkModule = typeof import('@openai/codex-sdk');
+interface CodexSdkThread {
+  runStreamed(input: string, options?: { signal?: AbortSignal }): Promise<{
+    events: AsyncIterable<unknown>;
+  }>;
+}
+
+export interface CodexSdkClient {
+  startThread(options: ReturnType<typeof buildCodexSdkThreadOptions>): CodexSdkThread;
+}
+
+export interface CodexSdkClientOptions {
+  env: Record<string, string>;
+  codexPathOverride?: string;
+}
+
+interface CodexSdkConstructor {
+  new(options?: CodexSdkClientOptions): CodexSdkClient;
+}
+
+interface CodexSdkModule {
+  Codex: CodexSdkConstructor;
+}
+
+const CODEX_SDK_PACKAGE = '@openai/codex-sdk';
 
 let CodexCtor: CodexSdkModule['Codex'] | null = null;
 let hasWarnedSystem = false;
@@ -28,7 +50,7 @@ let hasWarnedCost = false;
 
 async function getCodexCtor(): Promise<CodexSdkModule['Codex']> {
   if (!CodexCtor) {
-    const sdk = await import('@openai/codex-sdk') as CodexSdkModule;
+    const sdk = await import(CODEX_SDK_PACKAGE) as CodexSdkModule;
     CodexCtor = sdk.Codex;
   }
   return CodexCtor;
@@ -87,7 +109,7 @@ export function buildCodexSdkThreadOptions({ model, cwd }: { model: string; cwd?
   };
 }
 
-export function buildCodexSdkClientOptions(env: NodeJS.ProcessEnv): CodexOptions {
+export function buildCodexSdkClientOptions(env: NodeJS.ProcessEnv): CodexSdkClientOptions {
   return {
     // Leave codexPathOverride unset: the SDK should use its bundled @openai/codex
     // binary, matching the SDK executor contract instead of delegating to PATH.
@@ -95,12 +117,12 @@ export function buildCodexSdkClientOptions(env: NodeJS.ProcessEnv): CodexOptions
   };
 }
 
-export async function createCodexSdkClient(env: NodeJS.ProcessEnv): Promise<Codex> {
+export async function createCodexSdkClient(env: NodeJS.ProcessEnv): Promise<CodexSdkClient> {
   const CodexClient = await getCodexCtor();
   return new CodexClient(buildCodexSdkClientOptions(env));
 }
 
-function normalizeSdkEvent(event: ThreadEvent): CodexEvent {
+function normalizeSdkEvent(event: unknown): CodexEvent {
   return normalizeCodexProtocolEvent(event) ?? {};
 }
 

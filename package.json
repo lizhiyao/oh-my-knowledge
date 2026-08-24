@@ -104,18 +104,28 @@
   "author": "lizhiyao",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.143",
     "@anthropic-ai/sdk": "^0.120.0",
     "@inquirer/prompts": "^8.4.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@oclif/core": "^4",
-    "@openai/codex-sdk": "0.149.0",
     "ajv": "^8.18.0",
     "chart.js": "^4.5.1",
     "es-module-lexer": "^2.0.0",
     "js-yaml": "^4.1.1",
     "simple-statistics": "^7.8.9",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.143",
+    "@openai/codex-sdk": "0.149.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@openai/codex-sdk": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org"
