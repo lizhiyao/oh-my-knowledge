@@ -159,8 +159,7 @@ docs(readme): 补充评测用例说明
 ## Tests
 
 - `yarn test` runs the full vitest suite
-- `yarn test:profile` runs one warmup plus three measured full-suite passes, then writes a gitignored JSON report under `.omk/test-profiles/`. Compare the median and range instead of a single fastest run; use `--runs`, `--warmup`, `--max-workers`, `--top`, or `--output` to control the protocol.
-- Absolute baselines come from the fixed `ubuntu-24.04` **Test Performance Profile** workflow, not a busy developer machine. Run it manually after merge, or add the `test-profile` label to a PR when the profiling implementation itself changes; the workflow uploads every raw Vitest report plus `summary.json`.
+- `yarn test:profile` runs the full suite once and lists the slowest test files. Use it to locate optimization targets; it is not a performance baseline or CI gate. Pass `--top <n>` to control the list length.
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 - 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
