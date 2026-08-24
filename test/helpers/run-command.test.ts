@@ -42,4 +42,34 @@ describe('runCommand', () => {
     );
     assert.equal(process.exitCode, previousExitCode);
   });
+
+  it('把 env 当作覆盖项合并，并在结束后恢复进程环境', async () => {
+    class EnvCommand extends Command {
+      async run(): Promise<void> {
+        await this.parse(EnvCommand);
+        this.log(`${process.env.PATH ? 'path' : 'missing'}:${process.env.OMK_RUN_COMMAND_TEST}`);
+      }
+    }
+
+    const previous = process.env.OMK_RUN_COMMAND_TEST;
+    const output = await runCommand(EnvCommand, [], {
+      env: { OMK_RUN_COMMAND_TEST: 'override' },
+    });
+    assert.equal(output.stdout, 'path:override\n');
+    assert.equal(process.env.OMK_RUN_COMMAND_TEST, previous);
+  });
+
+  it('只设置 command 实例 id，不修改 Command class 的静态状态', async () => {
+    class IdCommand extends Command {
+      async run(): Promise<void> {
+        await this.parse(IdCommand);
+        this.log(this.id ?? 'missing');
+      }
+    }
+
+    assert.equal(Object.hasOwn(IdCommand, 'id'), false);
+    assert.equal((await runCommand(IdCommand, [])).stdout, 'idcommand\n');
+    assert.equal((await runCommand(IdCommand, [])).stdout, 'idcommand\n');
+    assert.equal(Object.hasOwn(IdCommand, 'id'), false);
+  });
 });

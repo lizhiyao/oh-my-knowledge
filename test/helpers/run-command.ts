@@ -30,6 +30,7 @@ function commandConfig(): Promise<Config> {
 
 export interface RunCommandOptions {
   cwd?: string;
+  /** Environment overrides merged onto the current test-process environment. */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -59,8 +60,9 @@ function chunkText(chunk: string | Uint8Array): string {
 /**
  * Runs one source oclif Command class in-process through its full lifecycle.
  * Dispatcher/startup and module-load-sensitive contracts still use a real
- * `node dist/cli/index.js` process. `options.env` affects command runtime only;
- * env-derived constants initialized while importing modules require a process test.
+ * `node dist/cli/index.js` process. `options.env` merges runtime overrides onto
+ * the current process environment; env-derived constants initialized while
+ * importing modules still require a process test.
  */
 export async function runCommand(
   CommandType: CommandClass,
@@ -92,17 +94,10 @@ export async function runCommand(
   try {
     process.argv = [process.execPath, 'omk', ...argv];
     if (options.cwd) process.chdir(options.cwd);
-    if (options.env) {
-      for (const key of Object.keys(process.env)) delete process.env[key];
-      Object.assign(process.env, options.env);
-    }
+    if (options.env) Object.assign(process.env, options.env);
 
     const command = new CommandType(argv, await commandConfig());
-    if (!command.id) {
-      const id = CommandType.name.toLowerCase();
-      command.id = id;
-      CommandType.id = id;
-    }
+    if (!command.id) command.id = CommandType.name.toLowerCase();
     await (command as Command & { _run(): Promise<unknown> })._run();
     return { stdout, stderr };
   } catch (cause) {
