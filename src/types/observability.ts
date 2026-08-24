@@ -211,7 +211,7 @@ export interface SkillChainAdvisory {
 
 // ---------- inbox ----------
 
-export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
+export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker' | 'user_feedback';
 /** @deprecated Prefer TraceSourceKind for new source-neutral APIs. */
 export type ObservationSourceKind = TraceSourceKind;
 export type ObservationSeverityReasonCode =
@@ -221,6 +221,7 @@ export type ObservationSeverityReasonCode =
   | 'exploratory_probe'
   | 'skill_asset_unavailable'
   | 'soft_hedging_signal'
+  | 'user_reported_knowledge_issue'
   | 'tool_or_runtime_noise';
 export type ObservationSignalSubtype =
   | 'hard_miss'
@@ -237,7 +238,25 @@ export type ObservationSignalSubtype =
   | 'tool_failure'
   | 'regex_only'
   | 'llm_classified'
-  | 'marker';
+  | 'marker'
+  | 'explicit_user_feedback';
+
+export type ObservationCaptureObservedEventKind =
+  | 'tool_boundary'
+  | 'user_feedback'
+  | 'submitted_evidence';
+
+export type ObservationCaptureUnavailableEventKind =
+  | 'full_conversation'
+  | 'external_tool_calls'
+  | 'hidden_reasoning';
+
+export interface ObservationCaptureCoverage {
+  coverageStatus: 'partial';
+  capturePath: 'explicit_tool_call';
+  observedEventKinds: ObservationCaptureObservedEventKind[];
+  unavailableEventKinds: ObservationCaptureUnavailableEventKind[];
+}
 
 export interface ObservationEvidence {
   traceId?: string;
@@ -249,6 +268,8 @@ export interface ObservationEvidence {
   path?: string;
   outputSnippet?: string;
   assistantSnippet?: string;
+  userFeedbackSnippet?: string;
+  submittedEvidenceSnippet?: string;
   markerToken?: string;
   messageIndex?: number;
   messageUuid?: string;
@@ -290,6 +311,7 @@ export interface ObservationInboxItem {
   severity: 'high' | 'medium' | 'low' | 'noise';
   severityReasonCode?: ObservationSeverityReasonCode;
   severityReason?: string;
+  captureCoverage?: ObservationCaptureCoverage;
   evidence: ObservationEvidence;
   messageWindow?: ObservationMessageWindow;
   firstSeen: string;

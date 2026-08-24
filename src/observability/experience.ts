@@ -3498,7 +3498,16 @@ function observationEvidenceRef(item: ObservationInboxItem): ExperienceEvidenceR
     timestamp: item.evidence.segmentTimestamp,
     role: 'other',
     label: `${item.signalType}/${item.signalSubtype}`,
-    snippet: snippet(item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || item.evidence.markerToken, 700),
+    snippet: snippet(
+      item.evidence.userFeedbackSnippet
+      || item.evidence.submittedEvidenceSnippet
+      || item.evidence.query
+      || item.evidence.path
+      || item.evidence.assistantSnippet
+      || item.evidence.outputSnippet
+      || item.evidence.markerToken,
+      700,
+    ),
   };
 }
 

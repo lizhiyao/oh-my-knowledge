@@ -5,7 +5,8 @@
   "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
   "bin": {
-    "omk": "dist/cli/index.js"
+    "omk": "dist/cli/index.js",
+    "omk-chatgpt-mcp": "dist/chatgpt-plugin/stdio.js"
   },
   "engines": {
     "node": ">=22"

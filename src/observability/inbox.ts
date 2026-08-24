@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { OMK_HOME } from '../eval-core/default-dirs.js';
 import { isReportFileName, randomRunToken, reportFilePath } from '../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,
+  ObservationCaptureCoverage,
   ObservationEvidence,
   ObservationExperienceReport,
   ObservationInboxItem,
@@ -54,9 +54,28 @@ import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-sessio
 import { isInstalledSkillAssetPath } from './trace-attribution.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { writeObservationSourceRecordArchives } from './source-record-archive.js';
+import { loadExplicitObservationCaptureItems } from './explicit-capture.js';
+import { isObservationCaptureCoverage } from './capture-coverage.js';
+import {
+  normalizeObservationKeyInput,
+  observationInboxItemKey,
+} from './inbox-identity.js';
+import {
+  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
+  DEFAULT_OBSERVATIONS_DIR,
+  DEFAULT_PROJECT_OBSERVATIONS_DIR,
+} from './observation-paths.js';
+
+export {
+  DEFAULT_GLOBAL_OBSERVATIONS_DIR,
+  DEFAULT_OBSERVATIONS_DIR,
+  DEFAULT_PROJECT_OBSERVATIONS_DIR,
+  normalizeObservationKeyInput,
+};
 
 export type {
   BuildObservationInboxReportOptions,
+  ObservationCaptureCoverage,
   ObservationEvidence,
   ObservationInboxItem,
   ObservationInboxReport,
@@ -77,35 +96,11 @@ export type PersistedObservationInboxReport = Omit<ObservationInboxReport, 'expe
 // observe inbox（观测收件箱）产物根目录。导出名沿用 *_OBSERVATIONS_DIR 以少动 importer,
 // 但落盘目录已统一到 observe-inbox 词根(命令 omk observe inbox / kind observe-inbox)。
 // 项目级 .omk/observe-inbox 优先、全局兜底 —— 这套 project/global 归属是既有正常行为,本次只改名不改归属。
-export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observe-inbox');
-export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(OMK_HOME, 'observe-inbox');
-export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
 const OBSERVATION_INBOX_SCHEMA_VERSION = 2;
 const UNOBSERVED_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
 function hashString(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
-}
-
-export function normalizeObservationKeyInput(value: unknown): string {
-  const raw = typeof value === 'string'
-    ? value
-    : value === null || value === undefined
-      ? ''
-      : typeof value === 'object'
-        ? JSON.stringify(value)
-        : String(value);
-  const trimmed = raw.trim();
-  const protocolMatch = trimmed.match(/^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i);
-  const prefix = protocolMatch?.[1] ?? '';
-  const body = protocolMatch?.[2] ?? trimmed;
-  return (prefix + body
-    .toLowerCase()
-    .replace(/^['"`]|['"`]$/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/:\d+(:\d+)?\b/g, '')
-    .replace(/\/+/g, '/')
-    .replace(/\/$/, ''));
 }
 
 /** Legacy migration only. New reports take sourceKind from Trace IR. */
@@ -116,22 +111,6 @@ export function inferObservationSourceKind(sourceTrace: string): ObservationSour
   if (/(?:^|\/)\.?claude(?:\/|$)/.test(normalized)) return 'claude';
   if (normalized.endsWith('.log')) return 'markdown_log';
   return 'unknown';
-}
-
-function keyFor(item: Pick<ObservationInboxItem, 'skillName' | 'cwd' | 'sourceKind' | 'signalType' | 'signalSubtype' | 'evidence'>): string {
-  const raw = item.signalSubtype === 'bash_probe'
-    ? 'bash_probe'
-    : item.signalType === 'explicit_marker'
-    ? item.evidence.markerToken || item.signalSubtype
-    : item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || '';
-  return [
-    item.sourceKind,
-    item.skillName,
-    item.cwd ?? '',
-    item.signalType,
-    item.signalSubtype,
-    normalizeObservationKeyInput(raw),
-  ].join('\u0000');
 }
 
 function markerTokenFromSignal(signal: GapSignalRef): string {
@@ -248,7 +227,7 @@ function confidenceForSubtype(subtype: ObservationSignalSubtype, signal?: GapSig
 }
 
 function severityFor(signalType: ObservationSignalType, subtype: ObservationSignalSubtype, confidence: number): ObservationInboxItem['severity'] {
-  if (signalType === 'repeated_failure' || signalType === 'explicit_marker') return 'high';
+  if (signalType === 'repeated_failure' || signalType === 'explicit_marker' || signalType === 'user_feedback') return 'high';
   if (subtype === 'hard_miss') return 'high';
   if (signalType === 'hedging' && confidence >= 0.7) return 'high';
   if (subtype === 'exploratory_miss' || subtype === 'bash_probe') return 'medium';
@@ -292,6 +271,7 @@ const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {
   exploratory_probe: 'skill 运行过程中出现了试路径、试目录或前序失败后后续成功的行为；先抽样确认，不直接判为要改 skill。',
   skill_asset_unavailable: '读取该 skill 自身资源失败，可能是路径错位、资源未提交或 ignore 配置问题。',
   soft_hedging_signal: '模型文本里出现了不确定表达，属于低置信文本信号，需要结合上下文人工判断。',
+  user_reported_knowledge_issue: '用户明确提交了真实使用中的 knowledge 问题；当前只保留用户授权提交的部分证据，需人工复核后再进入样本集。',
   tool_or_runtime_noise: '更像路径、权限、文件太大、临时文件或工具运行问题；通常不作为 skill 内容缺失。',
 };
 
@@ -302,6 +282,7 @@ const SEVERITY_REASON_EN: Record<ObservationSeverityReasonCode, string> = {
   exploratory_probe: 'The event looks like path probing, directory probing, or an earlier miss followed by later success; sample it before changing the skill.',
   skill_asset_unavailable: 'The agent failed to read an asset inside the skill itself; check path alignment, committed resources, or ignore rules.',
   soft_hedging_signal: 'The agent used uncertain wording; treat this as a low-confidence text signal.',
+  user_reported_knowledge_issue: 'The user explicitly submitted a knowledge issue from real usage; only the authorized partial evidence is retained until human review.',
   tool_or_runtime_noise: 'This looks like a path, permission, token limit, transient file, or runtime tool issue rather than missing skill content.',
 };
 
@@ -331,6 +312,7 @@ export function legacySeverityReasonFor(item: Pick<ObservationInboxItem, 'signal
 }
 
 export function severityReasonCodeFor(item: Pick<ObservationInboxItem, 'signalType' | 'signalSubtype' | 'severity' | 'confidence'>): ObservationSeverityReasonCode {
+  if (item.signalType === 'user_feedback') return 'user_reported_knowledge_issue';
   if (item.signalSubtype === 'repeated_failure') return 'repeated_failure_suspected';
   if (item.signalType === 'explicit_marker') return 'explicit_gap_marker';
   if (item.signalSubtype === 'hard_miss') return 'knowledge_gap_suspected';
@@ -542,7 +524,7 @@ export function buildObservationInboxReportFromTraceSessions(
   // 中解析，同时保留本次发生的 trace/session/timestamp 作为归因事实。
   const experienceItems = occurrenceItems.map((item) => ({
     ...item,
-    id: aggregationState.byKey.get(keyFor(item))?.id ?? item.id,
+    id: aggregationState.byKey.get(observationInboxItemKey(item))?.id ?? item.id,
   }));
   const experience = buildObservationExperienceReport({
     sessions,
@@ -596,7 +578,7 @@ function createInboxAggregationState(): InboxAggregationState {
 
 function addInboxItemsToState(state: InboxAggregationState, items: ObservationInboxItem[]): void {
   for (const item of items) {
-    const key = keyFor(item);
+    const key = observationInboxItemKey(item);
     const sessionLastSeen = state.sessionLastSeenByKey.get(key) ?? new Map<string, string>();
     const traceLastSeen = state.traceLastSeenByKey.get(key) ?? new Map<string, string>();
     const traceIdentity = item.traceId
@@ -665,6 +647,7 @@ function addInboxItemsToState(state: InboxAggregationState, items: ObservationIn
       replaceOptionalProperty(existing, 'messageWindow', item.messageWindow);
       replaceOptionalProperty(existing, 'traceId', item.traceId);
       replaceOptionalProperty(existing, 'cwd', item.cwd);
+      replaceOptionalProperty(existing, 'captureCoverage', item.captureCoverage);
     }
     existing.confidence = Math.max(existing.confidence, item.confidence);
     existing.attributionConfidence = Math.max(existing.attributionConfidence, item.attributionConfidence);
@@ -732,6 +715,8 @@ function observationEvidenceIdentity(value: ObservationEvidence): string {
     value.path ?? '',
     value.outputSnippet ?? '',
     value.assistantSnippet ?? '',
+    value.userFeedbackSnippet ?? '',
+    value.submittedEvidenceSnippet ?? '',
     value.markerToken ?? '',
     value.messageIndex ?? null,
     value.messageUuid ?? '',
@@ -1189,6 +1174,10 @@ function isObservationInboxItem(value: unknown): value is ObservationInboxItem {
       && !isObservationSeverityReasonCode(value.severityReasonCode)
     )
     || (value.severityReason !== undefined && typeof value.severityReason !== 'string')
+    || (
+      value.captureCoverage !== undefined
+      && !isObservationCaptureCoverage(value.captureCoverage)
+    )
     || !isObservationEvidence(value.evidence)
     || !isInboxTimestampRange(value.firstSeen, value.lastSeen)
     || !isInboxCount(value.occurrences)
@@ -1234,6 +1223,8 @@ function isObservationEvidence(value: unknown): boolean {
     value.path,
     value.outputSnippet,
     value.assistantSnippet,
+    value.userFeedbackSnippet,
+    value.submittedEvidenceSnippet,
     value.markerToken,
     value.messageUuid,
     value.callInstanceId,
@@ -1281,7 +1272,8 @@ function isObservationSignalType(value: unknown): value is ObservationSignalType
   return value === 'failed_search'
     || value === 'repeated_failure'
     || value === 'hedging'
-    || value === 'explicit_marker';
+    || value === 'explicit_marker'
+    || value === 'user_feedback';
 }
 
 function isObservationSignalSubtype(value: unknown): value is ObservationSignalSubtype {
@@ -1299,7 +1291,8 @@ function isObservationSignalSubtype(value: unknown): value is ObservationSignalS
     || value === 'tool_failure'
     || value === 'regex_only'
     || value === 'llm_classified'
-    || value === 'marker';
+    || value === 'marker'
+    || value === 'explicit_user_feedback';
 }
 
 function isObservationSeverity(value: unknown): boolean {
@@ -1313,6 +1306,7 @@ function isObservationSeverityReasonCode(value: unknown): boolean {
     || value === 'exploratory_probe'
     || value === 'skill_asset_unavailable'
     || value === 'soft_hedging_signal'
+    || value === 'user_reported_knowledge_issue'
     || value === 'tool_or_runtime_noise';
 }
 
@@ -1394,7 +1388,10 @@ export function loadLatestObservationInboxReports(dir: string = DEFAULT_OBSERVAT
 
 export function queryObservationInbox(dir: string = DEFAULT_OBSERVATIONS_DIR): ObservationInboxItem[] {
   const reports = loadLatestObservationInboxReports(dir);
-  return aggregateInboxItems(reports.flatMap((report) => report.items));
+  return aggregateInboxItems([
+    ...reports.flatMap((report) => report.items),
+    ...loadExplicitObservationCaptureItems(dir),
+  ]);
 }
 
 export function summarizeObservationInboxBySkill(
@@ -1449,7 +1446,10 @@ export function findObservationInboxItem(id: string, dir: string = DEFAULT_OBSER
   for (const item of [...reports].reverse().flatMap((report) => report.items)) {
     if (item.id === id) return item;
   }
-  return aggregateInboxItems(reports.flatMap((report) => report.items)).find((item) => item.id === id) ?? null;
+  return aggregateInboxItems([
+    ...reports.flatMap((report) => report.items),
+    ...loadExplicitObservationCaptureItems(dir),
+  ]).find((item) => item.id === id) ?? null;
 }
 
 export function buildObservationMessageWindow(
@@ -1504,6 +1504,19 @@ export function formatObservationShow(item: ObservationInboxItem): string {
     item.severityReasonCode ? `reason=${item.severityReasonCode}` : '',
     '',
   ].filter(Boolean);
+  if (item.captureCoverage) {
+    lines.push(
+      `coverage=${item.captureCoverage.coverageStatus} capture=${item.captureCoverage.capturePath}`,
+      `observed=${item.captureCoverage.observedEventKinds.join(',')}`,
+      `unavailable=${item.captureCoverage.unavailableEventKinds.join(',')}`,
+    );
+  }
+  if (item.evidence.userFeedbackSnippet) {
+    lines.push(`userFeedback=${item.evidence.userFeedbackSnippet}`);
+  }
+  if (item.evidence.submittedEvidenceSnippet) {
+    lines.push(`submittedEvidence=${item.evidence.submittedEvidenceSnippet}`);
+  }
   if (!window) {
     lines.push('No message window available for this observation.');
     return lines.join('\n');
