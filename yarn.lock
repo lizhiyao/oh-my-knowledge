@@ -3774,6 +3774,7 @@ __metadata:
       optional: true
   bin:
     omk: dist/cli/index.js
+    omk-chatgpt-mcp: dist/chatgpt-plugin/stdio.js
   languageName: unknown
   linkType: soft
 
