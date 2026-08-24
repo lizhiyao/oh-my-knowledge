@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import {
   extractRun,
@@ -97,5 +99,15 @@ describe('test-profile', () => {
       medianTestTimeMs: 4_000,
       durationsMs: [3_000, 7_000, 5_000],
     }]);
+  });
+
+  it('受控 CI profile 固定 runner，且只按需运行并上传原始报告', () => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/test-profile.yml'), 'utf8');
+    assert.ok(workflow.includes('workflow_dispatch:'));
+    assert.ok(workflow.includes("contains(github.event.pull_request.labels.*.name, 'test-profile')"));
+    assert.ok(workflow.includes('runs-on: ubuntu-24.04'));
+    assert.ok(workflow.includes('yarn test:profile'));
+    assert.ok(workflow.includes('uses: actions/upload-artifact@v7'));
+    assert.ok(workflow.includes('path: .omk/test-profiles/ci/'));
   });
 });

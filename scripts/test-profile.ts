@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { availableParallelism, cpus, loadavg, platform, arch } from 'node:os';
+import { availableParallelism, cpus, loadavg, platform, arch, release } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
@@ -328,9 +328,13 @@ export async function main(argv: string[]): Promise<void> {
       vitestVersion: readVitestVersion(),
       platform: platform(),
       arch: arch(),
+      osRelease: release(),
       availableParallelism: parallelism,
       logicalCpuCount: cpus().length,
       cpuModel: cpus()[0]?.model ?? 'unknown',
+      githubActions: process.env.GITHUB_ACTIONS === 'true',
+      runnerImageOS: process.env.ImageOS,
+      runnerImageVersion: process.env.ImageVersion,
       initialLoadAverage: initialLoadAverage.map(round),
       initialLoad1mPerCpu: loadPerCpu(initialLoadAverage, parallelism),
       initiallyContended: loadPerCpu(initialLoadAverage, parallelism) >= 1,
