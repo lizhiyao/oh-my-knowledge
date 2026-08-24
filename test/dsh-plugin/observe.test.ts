@@ -170,6 +170,36 @@ class FakePersistence implements DshSessionPersistenceLike {
   }
 }
 
+class DetachedLogicalPersistence implements DshSessionPersistenceLike {
+  listCalls = 0;
+
+  constructor(readonly inspections: Map<string, DshSessionInspectionLike>) {}
+
+  async listSnapshots(): Promise<readonly DshPersistenceSnapshotLike[]> {
+    this.listCalls += 1;
+    return Array.from(this.inspections.values()).reverse().map((inspection) => ({
+      header: structuredClone(inspection.meta),
+      revision: `detached:${inspection.meta.id}`,
+    }));
+  }
+
+  async inspect(id: string): Promise<DshSessionInspectionLike> {
+    const inspection = this.inspections.get(id);
+    if (!inspection) throw new Error(`missing ${id}`);
+    return structuredClone(inspection);
+  }
+}
+
+class ContinuouslyChangingPersistence extends FakePersistence {
+  override async listSnapshots(): Promise<readonly DshPersistenceSnapshotLike[]> {
+    this.listCalls += 1;
+    return Array.from(this.inspections.values()).map((inspection) => ({
+      header: inspection.meta,
+      revision: `changing:${this.listCalls}:${inspection.meta.id}`,
+    }));
+  }
+}
+
 function persistenceWithGroup(mutateRevisionOnce = false): FakePersistence {
   const root = header('root-session');
   const child = header('child-session', {
@@ -216,6 +246,72 @@ describe('DSH Trace IR adapter', () => {
     assert.equal(usage?.inputTokens, 20);
     assert.equal(usage?.cacheReadTokens, undefined);
     assert.ok(result.session.events.some((item) => item.eventKind === 'model_activity'));
+  });
+
+  it('maps every terminal outcome without claiming unknown reasons are complete', () => {
+    const cases = [
+      {
+        reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'stopped' } },
+        status: 'aborted',
+        phase: 'turn_aborted',
+        complete: true,
+      },
+      {
+        reason: { kind: 'interrupted' },
+        status: 'interrupted',
+        phase: 'turn_interrupted',
+        complete: true,
+      },
+      {
+        reason: { kind: 'error', error: { message: 'provider failed', code: 'UNKNOWN' } },
+        status: 'failed',
+        phase: 'turn_failed',
+        complete: true,
+      },
+      {
+        reason: { kind: 'future-terminal' },
+        status: 'unknown',
+        phase: 'turn_ended_unknown',
+        complete: false,
+      },
+    ] as const;
+
+    cases.forEach((item, index) => {
+      const result = adaptDshSession(header(`terminal-${index}`), [
+        event(0, 'turn/start', { turn: 1 }),
+        event(1, 'turn/end', { turn: 1, reason: item.reason }),
+      ]);
+      const terminal = result.session.events.find((candidate) => (
+        candidate.eventKind === 'lifecycle' && candidate.sourceType === 'turn/end'
+      ));
+      assert.equal(result.integrity.status, item.status, item.reason.kind);
+      assert.equal(result.integrity.complete, item.complete, item.reason.kind);
+      assert.equal(terminal?.eventKind, 'lifecycle');
+      if (terminal?.eventKind === 'lifecycle') assert.equal(terminal.phase, item.phase, item.reason.kind);
+    });
+  });
+
+  it('preserves an observed tool failure without making the matched trace incomplete', () => {
+    const events = completedEvents();
+    events[5] = event(5, 'tool/result', {
+      turn: 1,
+      step: 1,
+      message: {
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call-1',
+          content: [{ type: 'text', text: 'permission denied' }],
+          isError: true,
+        }],
+      },
+      error: { name: 'PermissionError', code: 'DENIED' },
+    });
+    const result = adaptDshSession(header('tool-failure'), events);
+    const toolResult = result.session.events.find((item) => item.eventKind === 'tool_result');
+    assert.equal(toolResult?.status, 'failure');
+    assert.equal(result.integrity.unmatchedToolCallCount, 0);
+    assert.equal(result.integrity.unmatchedToolResultCount, 0);
+    assert.equal(result.integrity.complete, true);
   });
 
   it('does not project inherited seed records as child task activity', () => {
@@ -278,6 +374,36 @@ describe('DSH Trace IR adapter', () => {
     );
   });
 
+  it('rejects malformed envelopes, event payloads, and seed metadata', () => {
+    const cases: Array<{ name: string; run: () => unknown; expected: RegExp }> = [
+      {
+        name: 'negative timestamp',
+        run: () => adaptDshSession(header('negative-time'), [
+          event(0, 'turn/start', { turn: 1 }, { time: -1 }),
+        ]),
+        expected: /time 非法/u,
+      },
+      {
+        name: 'empty event type',
+        run: () => adaptDshSession(header('empty-type'), [event(0, ' ', {})]),
+        expected: /type 为空/u,
+      },
+      {
+        name: 'missing turn id',
+        run: () => adaptDshSession(header('missing-turn'), [event(0, 'turn/start', {})]),
+        expected: /缺少 turn/u,
+      },
+      {
+        name: 'seed beyond log',
+        run: () => adaptDshSession(header('bad-seed', { seedLength: 2 }), [
+          event(0, 'session/end-seed', {}),
+        ]),
+        expected: /seedLength 非法/u,
+      },
+    ];
+    cases.forEach((item) => assert.throws(item.run, item.expected, item.name));
+  });
+
   it('does not represent open turns or missing tool results as complete', () => {
     const result = adaptDshSession(header('partial'), [
       event(0, 'turn/start', { turn: 1 }),
@@ -302,10 +428,29 @@ describe('DSH persistence observation', () => {
     assert.deepEqual(group.traces.map((item) => item.session.role), ['main', 'subagent']);
   });
 
-  it('returns equivalent Trace IR for backend implementations exposing the same logical events', async () => {
-    const jsonl = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
-    const sqlite = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
-    assert.deepEqual(jsonl.traces.map((item) => item.session), sqlite.traces.map((item) => item.session));
+  it('rejects a group whose revision never stabilizes within the bounded retry budget', async () => {
+    const source = persistenceWithGroup();
+    const persistence = new ContinuouslyChangingPersistence(source.inspections);
+    await assert.rejects(
+      readDshObservedGroup(persistence, 'root-session'),
+      /3 次一致快照均失败/u,
+    );
+    assert.equal(persistence.listCalls, 6);
+  });
+
+  it('depends only on the logical seam across differently behaved persistence implementations', async () => {
+    const referencePersistence = persistenceWithGroup();
+    const detachedPersistence = new DetachedLogicalPersistence(referencePersistence.inspections);
+    const reference = await readDshObservedGroup(referencePersistence, 'root-session');
+    const detached = await readDshObservedGroup(detachedPersistence, 'root-session');
+    assert.deepEqual(
+      reference.traces.map((item) => item.session),
+      detached.traces.map((item) => item.session),
+    );
+    assert.deepEqual(
+      reference.inspections,
+      detached.inspections,
+    );
   });
 
   it('counts consolidated assistant chunks as parsed logical records', async () => {
@@ -322,6 +467,42 @@ describe('DSH persistence observation', () => {
     persistence.inspections.set('current-session', { meta: current, events: completedEvents('当前命令') });
     const rows = await listDshObserveCandidates(persistence, { excludeSessionId: 'current-session' });
     assert.deepEqual(rows.map((item) => item.sessionId), ['root-session']);
+  });
+
+  it('lists every supported terminal status and excludes unknown terminal reasons', async () => {
+    const reasons = [
+      { id: 'completed', reason: { kind: 'completed' }, status: 'completed' },
+      {
+        id: 'failed',
+        reason: { kind: 'error', error: { message: 'failed', code: 'UNKNOWN' } },
+        status: 'failed',
+      },
+      {
+        id: 'aborted',
+        reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'stopped' } },
+        status: 'aborted',
+      },
+      { id: 'interrupted', reason: { kind: 'interrupted' }, status: 'interrupted' },
+      { id: 'unknown', reason: { kind: 'future-terminal' }, status: 'unknown' },
+    ] as const;
+    const persistence = new FakePersistence(new Map(reasons.map((item, index) => [
+      item.id,
+      {
+        meta: header(item.id, { createdAt: BASE_TIME + index * 1_000 }),
+        events: [
+          event(0, 'turn/start', { turn: 1 }),
+          event(1, 'turn/end', { turn: 1, reason: item.reason }),
+        ],
+      },
+    ])));
+
+    const rows = await listDshObserveCandidates(persistence);
+    assert.deepEqual(rows.map((item) => ({ id: item.sessionId, status: item.status })), [
+      { id: 'interrupted', status: 'interrupted' },
+      { id: 'aborted', status: 'aborted' },
+      { id: 'failed', status: 'failed' },
+      { id: 'completed', status: 'completed' },
+    ]);
   });
 
   it('does not list a root while one descendant trace is incomplete', async () => {
