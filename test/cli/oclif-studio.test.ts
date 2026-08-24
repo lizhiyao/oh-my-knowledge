@@ -35,16 +35,6 @@ describe('oclif studio', () => {
     assert.ok(stdout.includes('Start omk Studio'), 'stdout should contain en description');
   });
 
-  it('unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'studio', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
-    }
-  });
-
   it('非法 --port → exit 2 + 中文 parser 错误', async () => {
     try {
       await execFileAsync('node', [CLI, 'studio', '--port', '70000']);

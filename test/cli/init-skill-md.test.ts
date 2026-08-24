@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from 'node:fs';
@@ -13,18 +13,18 @@ const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');
 
 describe('omk init produces directory-skill SKILL.md layout', () => {
   let tmpDir: string;
+  let initOutput: string;
 
-  beforeEach(() => {
+  beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'omk-init-test-'));
+    initOutput = execFileSync('node', [CLI, 'init', tmpDir], { encoding: 'utf-8' });
   });
 
-  afterEach(() => {
+  afterAll(() => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('creates two directory-skill variants under skills/', () => {
-    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
-
     assert.ok(existsSync(join(tmpDir, 'skills', 'code-review-v1')), 'v1 skill dir');
     assert.ok(existsSync(join(tmpDir, 'skills', 'code-review-v2')), 'v2 skill dir');
     assert.ok(statSync(join(tmpDir, 'skills', 'code-review-v1')).isDirectory(), 'v1 is a dir');
@@ -39,8 +39,6 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
   });
 
   it('SKILL.md ships with Claude Code-compatible frontmatter so the file is deployable as-is', () => {
-    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
-
     const v1Content = readFileSync(join(tmpDir, 'skills', 'code-review-v1', 'SKILL.md'), 'utf-8');
     const v2Content = readFileSync(join(tmpDir, 'skills', 'code-review-v2', 'SKILL.md'), 'utf-8');
 
@@ -62,8 +60,6 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
   });
 
   it('skill loader resolves the produced layout as directory-skill artifacts', () => {
-    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
-
     const artifacts = resolveArtifacts(
       join(tmpDir, 'skills'),
       ['code-review-v1', 'code-review-v2'],
@@ -80,15 +76,14 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
   });
 
   it('next-step output keeps evaluation injection as a concise note', () => {
-    const output = execFileSync('node', [CLI, 'init', tmpDir], { encoding: 'utf-8' });
-    assert.match(output, /看报告里的 verdict|Read the report verdict/);
-    assert.match(output, /omk sample <skill-path>/);
+    assert.match(initOutput, /看报告里的 verdict|Read the report verdict/);
+    assert.match(initOutput, /omk sample <skill-path>/);
 
     // Evaluation path: omk injects SKILL.md as system prompt uniformly across executors.
     // The note must NOT claim Claude executor goes through native skill auto-discovery,
     // because that's the runtime mechanism (~/.claude/skills/), not omk's eval path.
-    assert.match(output, /system prompt|system 注入/);
-    assert.doesNotMatch(output, /Claude executor 走 native skill/);
-    assert.doesNotMatch(output, /~\/\.claude\/skills\/code-review-v1/);
+    assert.match(initOutput, /system prompt|system 注入/);
+    assert.doesNotMatch(initOutput, /Claude executor 走 native skill/);
+    assert.doesNotMatch(initOutput, /~\/\.claude\/skills\/code-review-v1/);
   });
 });

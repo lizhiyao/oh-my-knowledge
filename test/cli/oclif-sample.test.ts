@@ -1,8 +1,7 @@
 /**
- * oclif 路径 sample 命令验收。
+ * oclif 路由验收 + sample command 生命周期测试。
  * 验证 sample 三模式入口都能正确分流到生产 execute():
  * - 缺 positional + 非 batch / fix → exit 1 + 中文 hint
- * - unknown flag → exit 2
  * - --batch 走不存在的 skill-dir → exit 1
  */
 import { describe, it } from 'vitest';
@@ -11,6 +10,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import SampleCommand from '../../src/cli/commands/sample.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,7 +42,7 @@ describe('oclif sample', () => {
 
   it('缺 positional + 非 batch + 非 fix → exit 1 (生产 execute 透传)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample']);
+      await runCommand(SampleCommand, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -55,7 +56,7 @@ describe('oclif sample', () => {
 
   it('--append 与 --batch 互斥 → exit 2 + 中文提示', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', '--batch', '--append']);
+      await runCommand(SampleCommand, ['--batch', '--append']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -69,7 +70,7 @@ describe('oclif sample', () => {
 
   it('--skill 仅支持 --from-traces → exit 2 + 中文提示', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', 'skills/demo/SKILL.md', '--skill', 'audit']);
+      await runCommand(SampleCommand, ['skills/demo/SKILL.md', '--skill', 'audit']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -78,17 +79,6 @@ describe('oclif sample', () => {
         e.stderr.includes('--skill') && e.stderr.includes('--from-traces'),
         `stderr missing skill-from-traces-only hint:\n${e.stderr}`,
       );
-    }
-  });
-
-  it('unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'sample', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}`);
-      assert.ok(e.stderr.includes('Nonexistent flag'));
     }
   });
 
@@ -105,7 +95,7 @@ describe('oclif sample', () => {
 
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', '--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
+      await runCommand(SampleCommand, ['--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

@@ -9,11 +9,31 @@
  * 历史背景:assets/ 旧位置 + package.json.files 漏 dist 子目录,发出去的 tarball 漏 hook,
  * 本测试是这个 issue 的回归门。
  */
-import { describe, it, expect } from 'vitest';
-import { existsSync } from 'node:fs';
+import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('packaging — mock-hook ships with omk package', () => {
+  let packedPaths: string[] | undefined;
+  let npmCache: string | undefined;
+
+  beforeAll(() => {
+    if (!existsSync('dist/eval-core/mocks-runtime.js')) return;
+    npmCache = mkdtempSync(join(tmpdir(), 'omk-test-npm-cache-'));
+    const out = execSync('npm pack --dry-run --json --ignore-scripts', {
+      encoding: 'utf-8',
+      env: { ...process.env, npm_config_cache: npmCache },
+    });
+    const meta = JSON.parse(out)[0];
+    packedPaths = (meta.files || []).map((file: { path: string }) => file.path);
+  });
+
+  afterAll(() => {
+    if (npmCache) rmSync(npmCache, { recursive: true, force: true });
+  });
+
   it('源码位置存在 mock-hook.cjs', () => {
     expect(existsSync('src/eval-core/mock-hook.cjs')).toBe(true);
   });
@@ -31,10 +51,7 @@ describe('packaging — mock-hook ships with omk package', () => {
       console.warn('[skip] dist/ 缺失,先 `yarn build` 再跑');
       return;
     }
-    const out = execSync('npm pack --dry-run --json', { encoding: 'utf-8' });
-    const meta = JSON.parse(out)[0];
-    const paths: string[] = (meta.files || []).map((f: { path: string }) => f.path);
-    expect(paths).toContain('dist/eval-core/mock-hook.cjs');
+    expect(packedPaths).toContain('dist/eval-core/mock-hook.cjs');
   });
 
   // dist/ 扁平化(rootDir=src,outDir=dist)后,任何 dist/src/** 都是旧产物
@@ -45,13 +62,10 @@ describe('packaging — mock-hook ships with omk package', () => {
       console.warn('[skip] dist/ 缺失,先 `yarn build` 再跑');
       return;
     }
-    const out = execSync('npm pack --dry-run --json', { encoding: 'utf-8' });
-    const meta = JSON.parse(out)[0];
-    const paths: string[] = (meta.files || []).map((f: { path: string }) => f.path);
-    const leaks = paths.filter((p) =>
-      p.startsWith('dist/src/') ||
-      p.startsWith('dist-scripts/') ||
-      p.endsWith('.tsbuildinfo')
+    const leaks = packedPaths!.filter((path) =>
+      path.startsWith('dist/src/') ||
+      path.startsWith('dist-scripts/') ||
+      path.endsWith('.tsbuildinfo')
     );
     expect(leaks).toEqual([]);
   });

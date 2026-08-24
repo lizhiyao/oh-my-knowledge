@@ -1,6 +1,6 @@
 /**
- * oclif 路径 observe + 3 sub 命令验收。
- * 关键验证:oclif 默认命令 + 子命令文件目录共存(observe.ts + observe/{ingest,inbox,show}.ts)。
+ * oclif 路由验收 + observe command 生命周期测试。
+ * 帮助与默认目录边界保留真实进程，其余直接运行源码 Command。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -10,6 +10,10 @@ import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
+import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
+import ObserveShow from '../../src/cli/commands/observe/show.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,21 +72,12 @@ describe('oclif observe', () => {
     assert.ok(stdout.includes('--kb'), 'should list --kb flag');
   });
 
-  it('observe unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'observe', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
-    }
-  });
-
   it('observe ingest --help', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', 'ingest', '--help']);
     assert.ok(stdout.includes('ingest 成 observation inbox'), `ingest --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('TRACEDIR'), 'should list TRACEDIR positional');
     assert.ok(stdout.includes('--json'), 'should list explicit full JSON output flag');
+    assert.ok(stdout.includes('--global'), 'should list --global flag');
   });
 
   it('observe ingest 默认只输出摘要，--json 才输出完整报告', async () => {
@@ -90,18 +85,18 @@ describe('oclif observe', () => {
     const traceDir = makeIngestTrace(join(tmpBase, 'trace'));
     try {
       const summaryDir = join(tmpBase, 'summary');
-      const summary = await execFileAsync(
-        'node',
-        [CLI, 'observe', 'ingest', traceDir, '--output-dir', summaryDir],
+      const summary = await runCommand(
+        ObserveIngest,
+        [traceDir, '--output-dir', summaryDir],
         { cwd: tmpBase },
       );
       assert.match(summary.stdout, /^observe inbox：会话 \d+ · 片段 \d+ · 信号 \d+/);
       assert.ok(summary.stdout.length < 300, `default stdout must stay concise, got ${summary.stdout.length} chars`);
 
       const jsonDir = join(tmpBase, 'json');
-      const full = await execFileAsync(
-        'node',
-        [CLI, 'observe', 'ingest', traceDir, '--output-dir', jsonDir, '--json'],
+      const full = await runCommand(
+        ObserveIngest,
+        [traceDir, '--output-dir', jsonDir, '--json'],
         { cwd: tmpBase },
       );
       const parsed = JSON.parse(full.stdout);
@@ -120,12 +115,14 @@ describe('oclif observe', () => {
     assert.ok(stdout.includes('--llm-enhanced-review'), 'should list --llm-enhanced-review');
     assert.ok(stdout.includes('--model'), 'should list --model');
     assert.ok(stdout.includes('--json'), 'should list --json');
+    assert.ok(stdout.includes('--global'), 'should list --global');
   });
 
   it('observe show --help', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', 'show', '--help']);
     assert.ok(stdout.includes('展开 observation inbox 中某条'), `show --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('INBOXID'), 'should list INBOXID positional');
+    assert.ok(stdout.includes('--global'), 'should list --global flag');
   });
 
   it('observe inbox --json 实跑(空 inbox 返回空数组)', async () => {
@@ -138,7 +135,7 @@ describe('oclif observe', () => {
 
   it('observe show 缺 inbox id → exit 2(oclif required-args)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'observe', 'show']);
+      await runCommand(ObserveShow, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -148,7 +145,7 @@ describe('oclif observe', () => {
 
   it('observe inbox 非法 --limit → exit 2 + 中文 parser 错误', async () => {
     try {
-      await execFileAsync('node', [CLI, 'observe', 'inbox', '--limit', '0']);
+      await runCommand(ObserveInbox, ['--limit', '0']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -168,7 +165,7 @@ describe('oclif observe', () => {
     mkdirSync(cwdDir);
     try {
       try {
-        await execFileAsync('node', [CLI, 'observe', 'ingest', traceDir, '--output-dir', ''], { cwd: cwdDir });
+        await runCommand(ObserveIngest, [traceDir, '--output-dir', ''], { cwd: cwdDir });
         assert.fail('expected non-zero exit');
       } catch (err) {
         const e = err as ExecError;

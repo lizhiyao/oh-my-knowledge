@@ -10,11 +10,20 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import InstallCommand from '../../src/cli/commands/install.js';
+import { runCommand } from '../helpers/run-command.js';
 
-const execFileAsync = promisify(execFile);
+const runCliProcess = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+
+async function runInstallCommand(
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return runCommand(InstallCommand, args, options);
+}
 
 interface ExecError extends Error {
   code?: number;
@@ -28,31 +37,21 @@ function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 describe('oclif install', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'install', '--help']);
+    const { stdout } = await runCliProcess('node', [CLI, 'install', '--help']);
     assert.ok(stdout.includes('安装 omk 官方 Agent Skill'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('omk-agent-skill'), 'stdout missing builtin id');
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'install', '--help', '--lang', 'en']);
+    const { stdout } = await runCliProcess('node', [CLI, 'install', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Install the official omk Agent Skill'), 'stdout should contain en description');
-  });
-
-  it('unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
-    }
   });
 
   it('installs omk-agent-skill into a custom skill root', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-'));
     try {
       const dest = join(dir, 'skills-root');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--dest', dest]);
       assert.ok(stdout.includes('已安装 omk Agent Skill'), `stdout missing install msg:\n${stdout}`);
       assert.ok(stdout.includes('现在可以在 coding agent 中说'), `stdout missing next hint:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
@@ -66,7 +65,7 @@ describe('oclif install', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-en-'));
     try {
       const dest = join(dir, 'skills-root');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--lang', 'en']);
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--dest', dest, '--lang', 'en']);
       assert.ok(stdout.includes('Installed omk Agent Skill'), `stdout missing en install msg:\n${stdout}`);
       assert.ok(stdout.includes('You can now ask your coding agent'), `stdout missing en next hint:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
@@ -81,7 +80,7 @@ describe('oclif install', () => {
       const home = join(dir, 'home');
       await mkdir(join(home, '.codex'), { recursive: true });
       await mkdir(join(home, '.claude'), { recursive: true });
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+      const { stdout } = await runInstallCommand(['omk-agent-skill'], {
         env: cliEnv({ HOME: home }),
       });
       assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
@@ -99,7 +98,7 @@ describe('oclif install', () => {
       await mkdir(home, { recursive: true });
       await writeFile(join(home, '.codex'), 'not a directory');
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+        await runInstallCommand(['omk-agent-skill'], {
           env: cliEnv({ HOME: home }),
         });
         assert.fail('expected non-zero exit');
@@ -119,7 +118,7 @@ describe('oclif install', () => {
     try {
       const home = join(dir, 'home');
       await mkdir(home, { recursive: true });
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'codex,claude'], {
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'codex,claude'], {
         env: cliEnv({ HOME: home }),
       });
       assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
@@ -135,7 +134,7 @@ describe('oclif install', () => {
     try {
       const home = join(dir, 'home');
       await mkdir(home, { recursive: true });
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'all'], {
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'all'], {
         env: cliEnv({ HOME: home }),
       });
       assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
@@ -152,7 +151,7 @@ describe('oclif install', () => {
       try {
         const home = join(dir, 'home');
         await mkdir(home, { recursive: true });
-        const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', target], {
+        const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', target], {
           env: cliEnv({ HOME: home }),
         });
         assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
@@ -168,7 +167,7 @@ describe('oclif install', () => {
 
   it('rejects unknown install targets', async () => {
     try {
-      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'gemini']);
+      await runInstallCommand(['omk-agent-skill', '--to', 'gemini']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -180,7 +179,7 @@ describe('oclif install', () => {
   it('rejects mixed auto/all target combinations', async () => {
     for (const to of ['auto,codex', 'all,claude']) {
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', to]);
+        await runInstallCommand(['omk-agent-skill', '--to', to]);
         assert.fail(`expected non-zero exit for --to ${to}`);
       } catch (err) {
         const e = err as ExecError;
@@ -197,7 +196,7 @@ describe('oclif install', () => {
       const home = join(dir, 'home');
       await mkdir(home, { recursive: true });
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+        await runInstallCommand(['omk-agent-skill'], {
           env: cliEnv({ HOME: home }),
         });
         assert.fail('expected non-zero exit');
@@ -219,9 +218,9 @@ describe('oclif install', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-exists-'));
     try {
       const dest = join(dir, 'skills-root');
-      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      await runInstallCommand(['omk-agent-skill', '--dest', dest]);
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+        await runInstallCommand(['omk-agent-skill', '--dest', dest]);
         assert.fail('expected non-zero exit');
       } catch (err) {
         const e = err as ExecError;
@@ -242,7 +241,7 @@ describe('oclif install', () => {
       await writeFile(join(claudeSkill, 'SKILL.md'), 'existing claude install');
 
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'codex,claude'], {
+        await runInstallCommand(['omk-agent-skill', '--to', 'codex,claude'], {
           env: cliEnv({ HOME: home }),
         });
         assert.fail('expected non-zero exit');
@@ -264,9 +263,9 @@ describe('oclif install', () => {
     try {
       const dest = join(dir, 'skills-root');
       const skillMd = join(dest, 'omk', 'SKILL.md');
-      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      await runInstallCommand(['omk-agent-skill', '--dest', dest]);
       await writeFile(skillMd, 'local edit');
-      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--force']);
+      await runInstallCommand(['omk-agent-skill', '--dest', dest, '--force']);
       const body = await readFile(skillMd, 'utf8');
       assert.ok(body.includes('name: omk'), 'force install should restore packaged skill');
       assert.ok(!body.includes('local edit'), 'force install should overwrite local edit');
@@ -279,7 +278,7 @@ describe('oclif install', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-dry-'));
     try {
       const dest = join(dir, 'skills-root');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--dry-run']);
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--dest', dest, '--dry-run']);
       assert.ok(stdout.includes('将安装 omk Agent Skill 到'), `stdout missing plan msg:\n${stdout}`);
       assert.ok(!existsSync(join(dest, 'omk')), 'dry-run must not create target');
     } finally {
@@ -289,7 +288,7 @@ describe('oclif install', () => {
 
   it('unknown bare token exits non-zero and points at supported inputs', async () => {
     try {
-      await execFileAsync('node', [CLI, 'install', 'other-skill']);
+      await runInstallCommand(['other-skill']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -320,7 +319,7 @@ describe('oclif install', () => {
     try {
       await makeDirSkill(dir, 'review');
       const dest = join(dir, 'dist-skills');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], {
+      const { stdout } = await runInstallCommand(['skills/review', '--dest', dest], {
         cwd: dir,
         env: cliEnv(),
       });
@@ -354,7 +353,7 @@ describe('oclif install', () => {
     try {
       await writeFile(join(dir, 'notes.md'), `---\nname: notes\ndescription: demo\n---\n# notes\nbody\n`);
       const dest = join(dir, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'notes.md', '--kind', 'skill', '--dest', dest], {
+      await runInstallCommand(['notes.md', '--kind', 'skill', '--dest', dest], {
         cwd: dir,
         env: cliEnv(),
       });
@@ -371,7 +370,7 @@ describe('oclif install', () => {
     try {
       await makeDirSkill(dir, 'review');
       const dest = join(dir, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest, '--dry-run'], {
+      await runInstallCommand(['skills/review', '--dest', dest, '--dry-run'], {
         cwd: dir,
         env: cliEnv(),
       });
@@ -387,8 +386,8 @@ describe('oclif install', () => {
     try {
       await makeDirSkill(dir, 'review');
       const dest = join(dir, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
-      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest, '--force'], { cwd: dir, env: cliEnv() });
+      await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      await runInstallCommand(['skills/review', '--dest', dest, '--force'], { cwd: dir, env: cliEnv() });
       const record = await readSoleManagedRecord(dir);
       const distribution = record.distribution as Array<Record<string, unknown>>;
       assert.equal(distribution.length, 1, 'distribution must dedup by path');
@@ -405,9 +404,9 @@ describe('oclif install', () => {
         await makeDirSkill(dir, 'review'); // → <dir>/skills/review
         const skillsDir = join(dir, 'skills');
         const source = join(skillsDir, 'review');
-        const args = ['install', 'skills/review', '--dest', 'skills'];
+        const args = ['skills/review', '--dest', 'skills'];
         if (force) args.push('--force');
-        await execFileAsync('node', [CLI, ...args], { cwd: dir, env: cliEnv() });
+        await runInstallCommand(args, { cwd: dir, env: cliEnv() });
         // 源必须还在(绝不能被自删)
         assert.ok(existsSync(join(source, 'SKILL.md')), `adopt(force=${force}) must not delete the source skill`);
         assert.ok(existsSync(join(source, 'references', 'cmd.md')), 'asset must survive');
@@ -426,7 +425,7 @@ describe('oclif install', () => {
     try {
       await makeDirSkill(dir, 'evolve'); // skill 本身就叫 evolve
       const dest = join(dir, 'dist-skills');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'skills/evolve', '--dest', dest], { cwd: dir, env: cliEnv() });
+      const { stdout } = await runInstallCommand(['skills/evolve', '--dest', dest], { cwd: dir, env: cliEnv() });
       assert.ok(stdout.includes('已安装 skill evolve'), 'should report install');
       assert.ok(existsSync(join(dest, 'evolve', 'SKILL.md')), '源根名叫 evolve 不该让整棵目录被跳过');
       assert.ok(existsSync(join(dest, 'evolve', 'references', 'cmd.md')), 'asset must be distributed');
@@ -444,7 +443,7 @@ describe('oclif install', () => {
       await mkdir(join(dir, 'skills', 'review', 'evolve'), { recursive: true }); // 源根 evolve:应排除
       await writeFile(join(dir, 'skills', 'review', 'evolve', 'cand.md'), 'cand\n');
       const dest = join(dir, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
       assert.ok(existsSync(join(dest, 'review', 'references', 'evolve', 'guide.md')), '嵌套 evolve 资产应被分发');
       assert.ok(!existsSync(join(dest, 'review', 'evolve')), '源根 evolve 不应被分发');
     } finally {
@@ -461,7 +460,7 @@ describe('oclif install', () => {
       await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\ndescription: d\n---\n# review\n');
       await writeFile(join(dir, 'skills', 'review', 'keep.txt'), 'precious');
       try {
-        await execFileAsync('node', [CLI, 'install', 'skills/review/review', '--dest', 'skills', '--force'], { cwd: dir, env: cliEnv() });
+        await runInstallCommand(['skills/review/review', '--dest', 'skills', '--force'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
         const e = err as ExecError;
@@ -479,7 +478,7 @@ describe('oclif install', () => {
     try {
       await writeFile(join(dir, 'omk-agnt-skill'), 'junk'); // typo 的内置 id,恰好 cwd 有同名文件
       try {
-        await execFileAsync('node', [CLI, 'install', 'omk-agnt-skill'], { cwd: dir, env: cliEnv() });
+        await runInstallCommand(['omk-agnt-skill'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
         const e = err as ExecError;
@@ -499,7 +498,7 @@ describe('oclif install', () => {
       await mkdir(join(dir, 'skills', 'review', '.omk'), { recursive: true });
       await writeFile(join(dir, 'skills', 'review', '.omk', 'samples.json'), '[]\n');
       const dest = join(dir, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'skill distributed');
       assert.ok(!existsSync(join(dest, 'review', '.omk')), '.omk 评测数据不应被分发到 agent skill 目录');
     } finally {
@@ -513,7 +512,7 @@ describe('oclif install', () => {
       await makeDirSkill(dir, 'review');
       const dest = join(dir, 'dist-skills');
       try {
-        await execFileAsync('node', [CLI, 'install', 'skills/review', '--kind', 'prompt', '--dest', dest], {
+        await runInstallCommand(['skills/review', '--kind', 'prompt', '--dest', dest], {
           cwd: dir,
           env: cliEnv(),
         });
@@ -550,7 +549,7 @@ describe('oclif install', () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
+      const { stdout } = await runInstallCommand(['git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
       assert.ok(stdout.includes('已安装 skill review'), `stdout missing copy msg:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'git skill SKILL.md not distributed');
       assert.ok(existsSync(join(dest, 'review', 'references', 'cmd.md')), 'git skill asset not distributed');
@@ -570,8 +569,8 @@ describe('oclif install', () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
-      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--force'], { cwd: repo, env: cliEnv() });
+      await runInstallCommand(['git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
+      await runInstallCommand(['git:HEAD:skills/review', '--dest', dest, '--force'], { cwd: repo, env: cliEnv() });
       const record = await readSoleManagedRecord(repo);
       assert.equal((record.distribution as Array<unknown>).length, 1, 'distribution 应按 path 去重');
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'force 重装后目标仍在');
@@ -584,7 +583,7 @@ describe('oclif install', () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
-      const { stdout } = await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
+      const { stdout } = await runInstallCommand(['git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
       assert.ok(!existsSync(join(repo, '.omk', 'managed')), 'dry-run must not register');
       assert.ok(stdout.includes('将安装 skill review'), `plan 文案应源中性:\n${stdout}`);
@@ -594,10 +593,10 @@ describe('oclif install', () => {
     }
   });
 
-  it('git 源裸 spec 歧义:文件优先(e2e 端到端记录 isDirectorySkill:false,防 evidence 静默剥离)', async () => {
+  it('git 源裸 spec 歧义:文件优先(command 集成记录 isDirectorySkill:false,防 evidence 静默剥离)', async () => {
     // 同名同时存在 skills/dual.md 与 skills/dual/SKILL.md。eval(skill-loader resolveArtifacts)先试
     // <name>.md 再 <name>/SKILL.md → 量的是文件;install 必须同样文件优先,否则注册成目录、contentHash
-    // 与 eval 不同,evidence 读时按 hash 门控被静默剥离、记录永久 stale。这里端到端锁住 install 的归类。
+    // 与 eval 不同,evidence 读时按 hash 门控被静默剥离、记录永久 stale。这里锁住 install command 的归类接线。
     const repo = await mkdtemp(join(tmpdir(), 'omk-install-gitdual-'));
     try {
       git(repo, ['init', '-q']);
@@ -609,7 +608,7 @@ describe('oclif install', () => {
       git(repo, ['add', '-A']);
       git(repo, ['commit', '-q', '-m', 'dual']);
       const dest = join(repo, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/dual', '--dest', dest], { cwd: repo, env: cliEnv() });
+      await runInstallCommand(['git:HEAD:skills/dual', '--dest', dest], { cwd: repo, env: cliEnv() });
       const record = await readSoleManagedRecord(repo);
       const source = record.source as Record<string, unknown>;
       assert.equal(source.isDirectorySkill, false, '裸 spec 歧义必须文件优先,与 eval 对齐');
@@ -624,7 +623,7 @@ describe('oclif install', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-nogit-'));
     try {
       try {
-        await execFileAsync('node', [CLI, 'install', 'git:HEAD:review'], { cwd: dir, env: cliEnv() });
+        await runInstallCommand(['git:HEAD:review'], { cwd: dir, env: cliEnv() });
         assert.fail('expected non-zero exit');
       } catch (err) {
         const e = err as ExecError;

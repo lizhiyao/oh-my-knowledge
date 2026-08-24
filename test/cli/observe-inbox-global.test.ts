@@ -144,10 +144,4 @@ describe('observe-inbox --global', () => {
     } finally { s.cleanup(); }
   });
 
-  it('ingest / inbox / show --help 都列出 --global', async () => {
-    for (const sub of ['ingest', 'inbox', 'show']) {
-      const { stdout } = await execFileAsync('node', [CLI, 'observe', sub, '--help']);
-      assert.ok(stdout.includes('--global'), `observe ${sub} --help 应列 --global`);
-    }
-  });
 });

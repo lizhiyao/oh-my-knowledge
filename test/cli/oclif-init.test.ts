@@ -1,5 +1,5 @@
 /**
- * oclif 路径 init 命令验收。
+ * oclif 路由验收 + init command 生命周期测试。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -10,6 +10,8 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import InitCommand from '../../src/cli/commands/init.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,21 +37,11 @@ describe('oclif init', () => {
     assert.ok(stdout.includes('Initialize an omk project'), 'stdout should contain en description');
   });
 
-  it('unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'init', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
-    }
-  });
-
   it('happy path: 初始化指定目录,生成 skills/ + eval-samples.json', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-'));
     try {
       const target = join(dir, 'project');
-      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project'], { cwd: dir });
+      const { stdout } = await runCommand(InitCommand, ['project'], { cwd: dir });
       assert.ok(stdout.includes('已初始化 omk 项目'), `stdout missing scaffolded msg:\n${stdout}`);
       assert.ok(
         stdout.includes(`cd project && omk eval --control code-review-v1 --treatment code-review-v2`),
@@ -80,7 +72,7 @@ describe('oclif init', () => {
   it('英文输出链接到英文 executor 文档', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-en-'));
     try {
-      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project', '--lang', 'en'], { cwd: dir });
+      const { stdout } = await runCommand(InitCommand, ['project', '--lang', 'en'], { cwd: dir });
       assert.ok(stdout.includes('https://oh-my-knowledge.pages.dev/reference/executors'), `stdout should link en users to public en executor docs:\n${stdout}`);
       assert.ok(!stdout.includes('https://oh-my-knowledge.pages.dev/zh/reference/executors'), `stdout should not link en users to the zh executor docs:\n${stdout}`);
       assert.ok(!stdout.includes('docs/reference/executors.md'), `stdout should not point a fresh project at a missing local docs path:\n${stdout}`);
@@ -95,7 +87,7 @@ describe('oclif init', () => {
       const cwd = join(dir, 'cwd');
       const target = join(dir, 'project');
       await mkdir(cwd);
-      const { stdout } = await execFileAsync('node', [CLI, 'init', target], { cwd });
+      const { stdout } = await runCommand(InitCommand, [target], { cwd });
       assert.ok(
         stdout.includes(`cd ${target} && omk eval --control code-review-v1 --treatment code-review-v2`),
         `stdout should avoid awkward ../ paths for targets outside cwd:\n${stdout}`,
@@ -111,7 +103,7 @@ describe('oclif init', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-'));
     try {
       const target = join(dir, 'project with spaces');
-      const { stdout } = await execFileAsync('node', [CLI, 'init', 'project with spaces'], { cwd: dir });
+      const { stdout } = await runCommand(InitCommand, ['project with spaces'], { cwd: dir });
       assert.ok(
         stdout.includes(`cd 'project with spaces' && omk eval --control code-review-v1 --treatment code-review-v2`),
         `stdout should quote the target dir in the copy/paste command:\n${stdout}`,
@@ -124,7 +116,7 @@ describe('oclif init', () => {
 
   it('init -- --weird 拒绝以 -- 开头的 positional(防 legacy 创建名为 --weird 的目录)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'init', '--', '--weird']);
+      await runCommand(InitCommand, ['--', '--weird']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -137,7 +129,7 @@ describe('oclif init', () => {
 
   it('init -- --weird --lang en 拒绝且报英文', async () => {
     try {
-      await execFileAsync('node', [CLI, 'init', '--', '--weird', '--lang', 'en']);
+      await runCommand(InitCommand, ['--', '--weird', '--lang', 'en']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

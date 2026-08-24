@@ -3,7 +3,7 @@
  * 验证 fetch→pin SHA→复用 classify/materialize 的链路,以及 fail-closed 错误。
  * URL 全程结构化、不经任何字符串切分,scp 形式 git@host:path 的 `@`/`:` 不会被误切。
  */
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import { describe, it, beforeAll, afterAll, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +21,7 @@ describe('git-remote', () => {
   let repo: string;
   const cleanups: Array<() => void> = [];
 
-  beforeEach(() => {
+  beforeAll(() => {
     repo = mkdtempSync(join(tmpdir(), 'omk-remote-src-'));
     mkdirSync(join(repo, 'skills', 'review', 'references'), { recursive: true });
     writeFileSync(join(repo, 'skills', 'review', 'SKILL.md'), '# review\n');
@@ -30,8 +30,10 @@ describe('git-remote', () => {
     git(repo, ['add', '-A']);
     git(repo, ['commit', '-q', '-m', 'v1']);
   });
-  afterEach(() => {
+  afterAll(() => {
     rmSync(repo, { recursive: true, force: true });
+  });
+  afterEach(() => {
     for (const c of cleanups.splice(0)) c();
   });
 

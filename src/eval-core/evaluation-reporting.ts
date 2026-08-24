@@ -75,15 +75,24 @@ export function getCliVersion(): string {
   return PKG.version;
 }
 
-export function getGitInfo(): GitInfo | null {
-  // stdio 静默 stderr:在非 git 目录(如 omk init 出来的 demo)里 rev-parse 会打印
-  // `fatal: not a git repository` 到终端。catch 已把失败兜成 null(报告省略 git 信息),
-  // 这条 fatal 对用户是纯噪声,吞掉它。与 skill-loader 的 GIT_PROBE_STDIO 同口径。
+export function getGitInfo(cwd: string = process.cwd()): GitInfo | null {
+  // porcelain v2 的 branch header 一次返回 commit / branch，后续状态行同时表达 dirty。
+  // 相比 rev-parse ×2 + status，少启动两个同步 Git 子进程；报告字段语义不变。
+  // stdio 静默 stderr：非 git 目录仍返回 null，不把 fatal 噪声泄漏给用户。
   const gitProbeStdio: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore'];
   try {
-    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim();
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim();
-    const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf-8', stdio: gitProbeStdio }).trim().length > 0;
+    const output = execFileSync('git', ['status', '--porcelain=v2', '--branch'], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: gitProbeStdio,
+    });
+    const lines = output.split('\n');
+    const oid = lines.find((line) => line.startsWith('# branch.oid '))?.slice('# branch.oid '.length).trim();
+    const head = lines.find((line) => line.startsWith('# branch.head '))?.slice('# branch.head '.length).trim();
+    if (!oid || oid === '(initial)' || !head) return null;
+    const commit = oid;
+    const branch = head === '(detached)' ? 'HEAD' : head;
+    const dirty = lines.some((line) => line.length > 0 && !line.startsWith('# '));
     return { commit, commitShort: commit.slice(0, 7), branch, dirty };
   } catch {
     return null;

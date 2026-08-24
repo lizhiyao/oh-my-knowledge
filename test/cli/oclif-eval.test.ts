@@ -1,6 +1,6 @@
 /**
- * oclif 路径 eval + 3 gold sub-sub 命令验收。
- * 关键验证:oclif 文件目录三级路由(eval.ts default + eval/gold/{init,validate,compare}.ts)。
+ * oclif 路由验收 + eval/gold command 生命周期测试。
+ * 帮助、三级路由与 dispatcher 语言选择保留真实进程，其余直接运行源码 Command。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -11,6 +11,11 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import EvalCommand from '../../src/cli/commands/eval/index.js';
+import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
+import EvalGoldInit from '../../src/cli/commands/eval/gold/init.js';
+import EvalGoldValidate from '../../src/cli/commands/eval/gold/validate.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -61,13 +66,16 @@ describe('oclif eval', () => {
     assert.ok(stdout.includes('--gold-dir'), 'should list --gold-dir');
   });
 
-  it('eval gold init 实跑(tmpdir 生成 3 文件)', async () => {
+  it('eval gold init + validate 实跑', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-gold-'));
     try {
       const out = join(dir, 'gold');
-      await execFileAsync('node', [CLI, 'eval', 'gold', 'init', '--out', out]);
+      const init = await runCommand(EvalGoldInit, ['--out', out, '--annotator', 'human-team']);
+      assert.ok(init.stdout.includes('metadata.yaml'));
       assert.ok(existsSync(join(out, 'metadata.yaml')), 'metadata.yaml not created');
       assert.ok(existsSync(join(out, 'annotations.yaml')), 'annotations.yaml not created');
+      const validate = await runCommand(EvalGoldValidate, [out]);
+      assert.ok(validate.stdout.includes('gold dataset OK'));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -78,21 +86,11 @@ describe('oclif eval', () => {
     // package.json oclif.exitCodes.requiredArgs)。原来 exit 1 是 legacy
     // execute() throw CliExit(1) 的行为,迁 oclif 后由 oclif 接管。
     try {
-      await execFileAsync('node', [CLI, 'eval', 'gold', 'validate']);
+      await runCommand(EvalGoldValidate, []);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
       assert.equal(e.code, 2, `expected exit 2, got ${e.code}`);
-    }
-  });
-
-  it('eval unknown flag → exit 2', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'eval', '--bogus']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2);
     }
   });
 
@@ -114,9 +112,7 @@ describe('oclif eval', () => {
       await writeFile(join(dir, 'skills', 'review', 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
 
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI,
-          'eval',
+        () => runCommand(EvalCommand, [
           '--control', 'baseline',
           '--treatment', 'review',
           '--skill-dir', 'skills',
@@ -150,9 +146,7 @@ describe('oclif eval', () => {
       ]));
 
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI,
-          'eval',
+        () => runCommand(EvalCommand, [
           '--control', 'baseline',
           '--treatment', 'review',
           '--skill-dir', 'skills',
@@ -178,7 +172,7 @@ describe('oclif eval', () => {
 
   it('eval gold compare 非法 --bootstrap-samples → exit 2 + 中文 parser 错误', async () => {
     try {
-      await execFileAsync('node', [CLI, 'eval', 'gold', 'compare', 'report-1', '--bootstrap-samples', '10']);
+      await runCommand(EvalGoldCompare, ['report-1', '--bootstrap-samples', '10']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

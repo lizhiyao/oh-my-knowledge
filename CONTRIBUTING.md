@@ -161,6 +161,9 @@ docs(readme): 补充评测用例说明
 - `yarn test` runs the full vitest suite
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
+- 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
+- command 业务测试优先使用 `test/helpers/run-command.ts` 运行源码 Command 的完整 Oclif 生命周期，不要为每个 case 重复启动 Node。只有被测行为依赖 dispatcher、模块加载时环境或独立 `process` 时才使用 `execFile`，并在测试注释里说明该边界。
+- Oclif 的公共行为（例如 unknown flag 的统一 exit code）用代表命令锁一次；各命令只增加自身特有的 flag 校验、文案或历史回归，避免重复框架契约。
 
 ## CLI 走 oclif 框架(issue #109 / #121)
 
@@ -195,7 +198,7 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 1. 在 `src/cli/commands/<name>.ts` 写 `export default class extends Command`,声明 `static args / flags / examples / description`(flag description 用 `bilingual({zh, en})` 包装)
 2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
 3. CliExit 边界:业务 `throw new CliExit(code)` 通过每个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
-4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
+4. 在 `test/cli/oclif-<name>.test.ts` 加命令特有的 help 文案 / flag 校验和关键 happy/error case；公共 Oclif 契约不要逐命令重复，业务 case 优先走进程内 command harness
 5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.agents/skills/omk/references/commands.md`（见下一节）
 
 ### CLI 文档 codegen（#109）

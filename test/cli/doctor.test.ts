@@ -1,19 +1,24 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import DoctorCommand from '../../src/cli/commands/doctor.js';
+import { runCommand } from '../helpers/run-command.js';
 
-const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const EXAMPLE_SKILL = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills', 'v1.md');
 const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
 // Fixture executor bypasses real LLM calls; outcome is steered via
 // OMK_DOCTOR_FIXTURE_OUTCOME env (pass/fail).
 const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
+
+async function runDoctorCommand(
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return runCommand(DoctorCommand, args, options);
+}
 
 interface ExecError extends Error {
   code: number;
@@ -21,27 +26,9 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-describe('omk doctor CLI', () => {
-  it('--help shows usage with key flags and check items', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
-    assert.ok(stdout.includes('omk doctor'));
-    assert.ok(stdout.includes('健康度'));
-    assert.ok(stdout.includes('--json'));
-    assert.ok(stdout.includes('--gate'));
-    assert.ok(stdout.includes('--repeat'));
-  });
-
-  it('--help --lang en shows English usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help', '--lang', 'en']);
-    assert.ok(stdout.includes('omk doctor'));
-    assert.ok(stdout.includes('health audit'));
-    assert.ok(!stdout.includes('健康度'));
-  });
-
+describe('omk doctor command', () => {
   it('--json on example skill outputs valid DoctorReport with kind=doctor', async () => {
-    const { stdout } = await execFileAsync('node', [
-      CLI,
-      'doctor',
+    const { stdout } = await runDoctorCommand([
       EXAMPLE_SKILL,
       '--json',
       '--executor', DOCTOR_FIXTURE,
@@ -61,7 +48,7 @@ describe('omk doctor CLI', () => {
 
   it('--static-only runs offline (no executor) with static rules only, no LLM / samples-contract', async () => {
     // 不给 --executor → 证明 --static-only 不需要 LLM
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', EXAMPLE_SKILL, '--static-only', '--json']);
+    const { stdout } = await runDoctorCommand([EXAMPLE_SKILL, '--static-only', '--json']);
     const ids = (JSON.parse(stdout).skills[0].results as Array<{ ruleId: string }>).map((r) => r.ruleId);
     assert.ok(ids.includes('skill_readable'), `expected skill_readable, got: ${ids.join(',')}`);
     assert.ok(ids.includes('skill_metadata'));
@@ -71,9 +58,7 @@ describe('omk doctor CLI', () => {
   });
 
   it('--json on directory batches all skills', async () => {
-    const { stdout } = await execFileAsync('node', [
-      CLI,
-      'doctor',
+    const { stdout } = await runDoctorCommand([
       EXAMPLE_SKILLS_DIR,
       '--json',
       '--executor', DOCTOR_FIXTURE,
@@ -85,7 +70,7 @@ describe('omk doctor CLI', () => {
 
   it('--gate exits 1 on non-existent target', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'doctor', '/tmp/__nonexistent_doctor_target__', '--gate']),
+      () => runDoctorCommand(['/tmp/__nonexistent_doctor_target__', '--gate']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 1);
@@ -95,9 +80,7 @@ describe('omk doctor CLI', () => {
   });
 
   it('--gate exits 0 on passing skill', async () => {
-    const { stderr } = await execFileAsync('node', [
-      CLI,
-      'doctor',
+    const { stderr } = await runDoctorCommand([
       EXAMPLE_SKILL,
       '--gate',
       '--executor', DOCTOR_FIXTURE,
@@ -114,7 +97,7 @@ describe('omk doctor CLI', () => {
       const skillPath = join(tmp, 'broken.md');
       writeFileSync(skillPath, '一个内容足够长但被 fixture 标记为不健康的 skill 文件。');
       await assert.rejects(
-        () => execFileAsync('node', [CLI, 'doctor', skillPath, '--gate', '--executor', DOCTOR_FIXTURE], {
+        () => runDoctorCommand([skillPath, '--gate', '--executor', DOCTOR_FIXTURE], {
           env: { ...process.env, OMK_DOCTOR_FIXTURE_OUTCOME: 'fail' },
         }),
         (err: unknown) => {
@@ -133,9 +116,7 @@ describe('omk doctor CLI', () => {
   });
 
   it('default (no flags) renders human-readable text to stderr', async () => {
-    const { stderr } = await execFileAsync('node', [
-      CLI,
-      'doctor',
+    const { stderr } = await runDoctorCommand([
       EXAMPLE_SKILL,
       '--executor', DOCTOR_FIXTURE,
     ]);
@@ -165,9 +146,7 @@ describe('omk doctor CLI', () => {
       writeFileSync(join(skillRoot, 'references', 'rules.md'), 'rules');
 
       const outputDir = join(tmp, '.omk', 'doctors');
-      await execFileAsync('node', [
-        CLI,
-        'doctor',
+      await runDoctorCommand([
         skillRoot,
         '--repeat', '1',
         '--executor', DOCTOR_FIXTURE,
@@ -194,12 +173,5 @@ describe('omk doctor CLI', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  });
-
-  it('product dispatch lists doctor as a top-level command', async () => {
-    // omk --help 走 oclif 的 COMMANDS 列表,doctor 出现在其中。
-    const { stdout } = await execFileAsync('node', [CLI, '--help']);
-    assert.ok(stdout.includes('doctor'), `--help missing 'doctor' command listing:\n${stdout}`);
-    assert.ok(/COMMANDS|TOPICS/i.test(stdout), `--help should have oclif COMMANDS / TOPICS block:\n${stdout}`);
   });
 });

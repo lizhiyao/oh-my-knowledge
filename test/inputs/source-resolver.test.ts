@@ -1,7 +1,7 @@
 /**
  * source-resolver 的 git 物化单测:真实临时 git 仓库。
  */
-import { describe, it, beforeEach, afterEach } from 'vitest';
+import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
@@ -17,7 +17,7 @@ describe('source-resolver git', () => {
   let repo: string;
   let prevCwd: string;
 
-  beforeEach(() => {
+  beforeAll(() => {
     repo = realpathSync(mkdtempSync(join(tmpdir(), 'omk-src-git-')));
     git(repo, ['init', '-q']);
     git(repo, ['config', 'user.email', 't@t']);
@@ -34,7 +34,7 @@ describe('source-resolver git', () => {
     process.chdir(repo);
   });
 
-  afterEach(() => {
+  afterAll(() => {
     process.chdir(prevCwd);
     rmSync(repo, { recursive: true, force: true });
   });

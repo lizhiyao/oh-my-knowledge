@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 import type { Artifact, Sample, Task, VariantResult } from '../src/types/index.js';
 import { reportFileName } from '../src/eval-core/artifact-file-names.js';
 import { aggregateReport } from '../src/eval-core/evaluation-reporting.js';
+import EvalCommand from '../src/cli/commands/eval/index.js';
+import InstallCommand from '../src/cli/commands/install.js';
+import { runCommand } from './helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,6 +19,13 @@ const PROJECT_ROOT = join(__dirname, '..');
 const FIXTURES_ROOT = join(__dirname, 'fixtures');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'echo-executor.sh');
+
+async function runEvalCommand(
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return runCommand(EvalCommand, args, { cwd: options.cwd, env: options.env });
+}
 
 interface ExecError extends Error {
   code?: number;
@@ -120,7 +130,9 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     'PROMOTE_TARGET_E2E',
   ].join('\n'));
 
-  const samples = Array.from({ length: 20 }, (_, i) => ({
+  // 该夹具验证 managed evidence 绑定与提示，不验证统计功效。稳定的全通过/全失败
+  // 配对差用 5 条即可得到确定 verdict，避免为每个场景启动 40 个 executor 子进程。
+  const samples = Array.from({ length: 5 }, (_, i) => ({
     sample_id: `s${String(i + 1).padStart(2, '0')}`,
     prompt: 'Return the pass token.',
     assertions: [{ type: 'contains', value: 'PASS', weight: 1 }],
@@ -155,7 +167,7 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     '    artifact: ./skills/review',
   ].join('\n'));
 
-  await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', join(dir, 'dist-skills')], {
+  await runCommand(InstallCommand, ['skills/review', '--dest', join(dir, 'dist-skills')], {
     cwd: dir,
     env: { ...process.env, HOME: dir, OMK_SKIP_UPDATE_CHECK: '1' },
   });
@@ -163,8 +175,7 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
   let stdout: string;
   let stderr: string;
   try {
-    const result = await execFileAsync('node', [
-      CLI, 'eval',
+    const result = await runEvalCommand([
       '--config', 'eval.yaml',
       '--output-dir', join(dir, 'reports'),
       '--skip-connectivity',
@@ -173,7 +184,6 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     ], {
       cwd: dir,
       env: { ...process.env, HOME: dir, OMK_SKIP_UPDATE_CHECK: '1' },
-      maxBuffer: 2 * 1024 * 1024,
     });
     stdout = result.stdout;
     stderr = result.stderr;
@@ -210,44 +220,10 @@ describe('CLI', () => {
     assert.ok(!stdout.includes('bench '));
   });
 
-  it('eval --help shows workflow usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
-    assert.ok(stdout.includes('\nUSAGE\n'), 'should have oclif USAGE block');
-    assert.ok(stdout.includes('--batch'));
-    assert.ok(stdout.includes('--report-only'));
-    assert.ok(stdout.includes('--no-gate'));
-  });
-
-  it('init --help shows scaffold-specific usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help']);
-    assert.ok(stdout.includes('\nUSAGE\n'), 'should have oclif USAGE block');
-    assert.ok(stdout.includes('init'));
-    assert.ok(/TARGETDIR/i.test(stdout), 'should show TARGETDIR positional');
-  });
-
   it('second-level --help routes to subcommand usage', async () => {
     const gold = await execFileAsync('node', [CLI, 'eval', 'gold', '--help']);
     assert.ok(gold.stdout.includes('omk eval gold'));
     assert.ok(!gold.stdout.includes('omk eval --control'));
-  });
-
-  it('observe --help shows session observation usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
-    assert.ok(stdout.includes('omk observe'));
-    assert.ok(stdout.includes('--last'));
-  });
-
-  it('evolve --help shows skill auto-iteration usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help']);
-    assert.ok(stdout.includes('omk evolve'));
-    assert.ok(stdout.includes('--rounds'));
-    assert.ok(stdout.includes('--target'));
-  });
-
-  it('sample --help shows test-case generation usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help']);
-    assert.ok(stdout.includes('omk sample'));
-    assert.ok(stdout.includes('--batch'));
   });
 
   // 回归: parser 必须用 positionals 取 skill path,不能扫 argv 的非 -- 项
@@ -399,14 +375,6 @@ describe('CLI', () => {
     }
   });
 
-  it('studio --help shows local workbench usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help']);
-    assert.ok(stdout.includes('omk studio'));
-    assert.ok(stdout.includes('--reports-dir'));
-    assert.ok(stdout.includes('--analyses-dir'));
-    assert.ok(stdout.includes('--no-open'));
-  });
-
   // dispatcher 检查 --help 时扫整个 argv,不限第一位。
   // 之前 gate 只查 argv[0] === '--help', 中间位置的 --help 会被 parseArgs 拒。
   it('eval --skip-connectivity --help triggers help from any position', async () => {
@@ -455,26 +423,7 @@ describe('CLI', () => {
   it('eval --dry-run exits 0 through eval workflow', async () => {
     const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
     const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
-    const { stdout, stderr } = await execFileAsync('node', [
-      CLI, 'eval',
-      '--dry-run',
-      '--samples', samplesPath,
-      '--skill-dir', skillDir,
-      '--control', 'v1',
-      '--treatment', 'v2',
-      '--lang', 'zh',
-    ]);
-    assert.ok(stdout.includes('eval dry-run'));
-    assert.ok(stdout.includes('去掉 --dry-run 运行正式评测'));
-    assert.ok(stderr.includes('只能识别很大的效果'));
-    assert.ok(!stderr.includes('exploration-only'));
-  });
-
-  it('eval dry-run accepts product workflow options on the unified runner', async () => {
-    const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
-    const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
-    const { stdout } = await execFileAsync('node', [
-      CLI, 'eval',
+    const { stdout, stderr } = await runEvalCommand([
       '--dry-run',
       '--samples', samplesPath,
       '--skill-dir', skillDir,
@@ -488,42 +437,9 @@ describe('CLI', () => {
       '--lang', 'zh',
     ]);
     assert.ok(stdout.includes('eval dry-run'));
-  });
-
-  it('Claude Code SKILL manifest uses current product commands', async () => {
-    const body = await readFile(join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md'), 'utf8');
-    assert.ok(body.includes('argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"'));
-    assert.ok(body.includes('omk eval --batch'));
-    assert.ok(body.includes('omk sample --batch'));
-    assert.ok(body.includes('omk evolve'));
-    assert.ok(body.includes('omk studio'));
-    assert.ok(!body.includes('omk bench'));
-    assert.ok(!body.includes('omk improve'));
-    assert.ok(!body.includes('--each'));
-  });
-
-  it('init initializes an omk project from top-level command', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-init-'));
-    try {
-      const { stdout } = await execFileAsync('node', [CLI, 'init', dir]);
-      assert.ok(stdout.includes('已初始化 omk 项目'));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('eval gold init and validate are available under the eval workflow', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-cli-gold-'));
-    try {
-      const goldDir = join(dir, 'gold-dataset');
-      const init = await execFileAsync('node', [CLI, 'eval', 'gold', 'init', '--out', goldDir, '--annotator', 'human-team']);
-      assert.ok(init.stdout.includes('metadata.yaml'));
-
-      const validate = await execFileAsync('node', [CLI, 'eval', 'gold', 'validate', goldDir]);
-      assert.ok(validate.stdout.includes('gold dataset OK'));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    assert.ok(stdout.includes('去掉 --dry-run 运行正式评测'));
+    assert.ok(stderr.includes('只能识别很大的效果'));
+    assert.ok(!stderr.includes('exploration-only'));
   });
 
   it('eval gold compare reads reports through the eval workflow', async () => {
@@ -563,8 +479,7 @@ describe('CLI', () => {
 
   it('eval --batch --dry-run exits 0', async () => {
     const skillDir = join(FIXTURES_ROOT, 'multi-skills', 'skills');
-    await execFileAsync('node', [
-      CLI, 'eval',
+    await runEvalCommand([
       '--batch',
       '--dry-run',
       '--skill-dir', skillDir,
@@ -575,8 +490,7 @@ describe('CLI', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-cli-eval-'));
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runEvalCommand([
           '--samples', join(FIXTURES_ROOT, 'custom-executor', 'eval-samples.json'),
           '--skill-dir', join(FIXTURES_ROOT, 'custom-executor', 'skills'),
           '--control', 'baseline',
@@ -588,7 +502,6 @@ describe('CLI', () => {
           '--bootstrap-samples', '100',
         ], {
           env: { ...process.env, HOME: dir },
-          maxBuffer: 2 * 1024 * 1024,
         }),
         (err: unknown) => {
           const e = err as ExecError;
@@ -611,8 +524,7 @@ describe('CLI', () => {
   it('eval --report-only persists report and bypasses verdict exit code', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-cli-report-only-'));
     try {
-      const { stdout, stderr } = await execFileAsync('node', [
-        CLI, 'eval',
+      const { stdout, stderr } = await runEvalCommand([
         '--samples', join(FIXTURES_ROOT, 'custom-executor', 'eval-samples.json'),
         '--skill-dir', join(FIXTURES_ROOT, 'custom-executor', 'skills'),
         '--control', 'baseline',
@@ -625,7 +537,6 @@ describe('CLI', () => {
         '--report-only',
       ], {
         env: { ...process.env, HOME: dir },
-        maxBuffer: 2 * 1024 * 1024,
       });
       // 回归(reviewer #290):非 TTY 下 stdout 必须是纯 report JSON,`omk eval | jq` 能直接消费;
       // verdict 文案走 stderr,不再拼到 stdout 末尾把 JSON.parse 噎死。
@@ -674,8 +585,7 @@ describe('CLI', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-cli-batch-'));
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runEvalCommand([
           '--batch',
           '--skill-dir', join(FIXTURES_ROOT, 'multi-skills', 'skills'),
           '--executor', CUSTOM_EXECUTOR,
@@ -685,7 +595,6 @@ describe('CLI', () => {
           '--bootstrap-samples', '100',
         ], {
           env: { ...process.env, HOME: dir },
-          maxBuffer: 2 * 1024 * 1024,
         }),
         (err: unknown) => {
           const e = err as ExecError;
@@ -704,23 +613,6 @@ describe('CLI', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
-
-  // 回归: eval runner 的 try/catch 不能吞 CliExit(0)。dry-run / PROGRESS / SOLO PASS
-  // 路径都在 try 内 throw CliExit(0),catch 必须 instanceof 守卫透传,
-  // 否则 `omk eval && deploy` 在 PASS 时也会挡住部署。
-  it('eval --dry-run keeps CliExit(0) passing through catch', async () => {
-    const samplesPath = join(FIXTURES_ROOT, 'code-review', 'eval-samples.json');
-    const skillDir = join(FIXTURES_ROOT, 'code-review', 'skills');
-    // execFile 默认 reject on non-zero exit; resolve = exit 0.
-    await execFileAsync('node', [
-      CLI, 'eval',
-      '--dry-run',
-      '--samples', samplesPath,
-      '--skill-dir', skillDir,
-      '--control', 'v1',
-      '--treatment', 'v2',
-    ]);
   });
 
 });

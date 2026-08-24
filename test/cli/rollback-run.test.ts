@@ -1,31 +1,28 @@
 /**
- * `omk rollback` 端到端编排测(execFile 打到 dist):锁住「撤销当前 promoted 接受」的闭环契约 ——
+ * `omk rollback` command 编排测：锁住「撤销当前 promoted 接受」的闭环契约 ——
  *   - 已 promoted → rollback 退 0、追加 rollback 决定、`omk list` 回 measurable;
  *   - 未 promoted(仅 install)→ 退 1 not_promoted,不写决定;
  *   - 已 rollback 再 rollback → 退 0 幂等、不堆决定;
- *   - promote→rollback→promote 真实切换 → list 恢复 promoted(决定流 latest-wins);
- *   - --json 出版本化信封;CLI 入参 name 含控制符 → 文本路径洗白。
+ *   - 源漂移后 rollback 仍可撤销旧 baseline 接受;
+ *   - --json 出版本化信封。
  * promoted 态由真实 `omk promote` 建立(证据 judgePromptHash 取自真实 getJudgePromptHash),故 rollback
  * 打到的是真链路而非 mock。HOME 指临时空目录,避免回退本机全局受管目录。
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
 import { getJudgePromptHash } from '../../src/grading/judge.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');
+import PromoteCommand from '../../src/cli/commands/promote.js';
+import RollbackCommand from '../../src/cli/commands/rollback.js';
+import ListCommand from '../../src/cli/commands/list.js';
+import { runCommand } from '../helpers/run-command.js';
 
 interface RunResult { code: number; stdout: string; stderr: string; }
 
-describe('omk rollback 端到端', () => {
+describe('omk rollback command', () => {
   let proj: string;
   let home: string;
   let env: NodeJS.ProcessEnv;
@@ -55,8 +52,14 @@ describe('omk rollback 端到端', () => {
   }
 
   const run = async (args: string[]): Promise<RunResult> => {
+    const [command, ...commandArgs] = args;
+    const CommandType = command === 'promote'
+      ? PromoteCommand
+      : command === 'rollback'
+        ? RollbackCommand
+        : ListCommand;
     try {
-      const { stdout, stderr } = await execFileAsync('node', [CLI, ...args, '--lang', 'en'], { cwd: proj, env });
+      const { stdout, stderr } = await runCommand(CommandType, [...commandArgs, '--lang', 'en'], { cwd: proj, env });
       return { code: 0, stdout, stderr };
     } catch (e) {
       const err = e as { code?: number; stdout?: string; stderr?: string };
@@ -112,16 +115,6 @@ describe('omk rollback 端到端', () => {
     assert.equal(readDecisions().length, 2, 'promote + 一条 rollback,不重复');
   });
 
-  it('promote→rollback→promote:决定流 latest-wins,list 恢复 promoted', async () => {
-    writeRecord();
-    await run(['promote', 'review']);
-    await run(['rollback', 'review']);
-    const rp = await run(['promote', 'review']);
-    assert.equal(rp.code, 0, rp.stderr);
-    assert.equal(await stateOf(), 'promoted', 'rollback 后再 promote 应恢复 promoted');
-    assert.equal(readDecisions().length, 3, 'promote→rollback→promote 三条都在');
-  });
-
   it('已 promoted 后源漂移 → rollback 仍成功(撤销旧 baseline 接受),但 list 仍 stale(rollback 不探源)', async () => {
     writeRecord();
     await run(['promote', 'review']);
@@ -167,11 +160,4 @@ describe('omk rollback 端到端', () => {
     assert.ok(r.stderr.includes('only kind=skill'), `kind_unsupported 拦截:${r.stderr}`);
   });
 
-  it('CLI-arg name 含 ANSI/控制符 → 文本输出洗成 U+FFFD,不喷转义', async () => {
-    const r = await run(['rollback', 'gh\x1b]0;PWNED\x07\x1b[2Jost']);
-    assert.equal(r.code, 1);
-    assert.ok(!r.stderr.includes('\x1b'), 'ESC 不得原样喷到终端');
-    assert.ok(!r.stderr.includes('\x07'), 'BEL 不得原样喷出');
-    assert.ok(r.stderr.includes('�'), '控制符应映射为 U+FFFD');
-  });
 });

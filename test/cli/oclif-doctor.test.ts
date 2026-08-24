@@ -2,7 +2,6 @@
  * oclif 路径 doctor 命令验收。
  * 跟 test/cli.test.ts L341-357 的 legacy doctor 测试对照,验证迁移后行为对得齐:
  * - --help 双语切换
- * - unknown flag → exit 2
  * - happy path 同 legacy stderr 关键字
  */
 import { describe, it } from 'vitest';
@@ -42,17 +41,6 @@ describe('oclif doctor', () => {
   it('OMK_LANG=en env 同效切到英文', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: { ...process.env, OMK_LANG: 'en' } });
     assert.ok(stdout.includes('Preflight health checks'), 'OMK_LANG=en should switch help to en');
-  });
-
-  it('unknown flag → exit code 2 (oclif failedFlagParsing invariant)', async () => {
-    try {
-      await execFileAsync('node', [CLI, 'doctor', '--no-such-flag']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.ok(e.stderr.includes('Nonexistent flag'), 'stderr should mention nonexistent flag');
-    }
   });
 
   it('非法采样参数 → exit code 2, 不进入 LLM 体检', async () => {

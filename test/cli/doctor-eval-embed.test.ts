@@ -1,16 +1,12 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import EvalCommand from '../../src/cli/commands/eval/index.js';
+import { runCommand } from '../helpers/run-command.js';
 
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+const PROJECT_ROOT = process.cwd();
 const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
 const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
 
@@ -58,8 +54,7 @@ describe('omk eval doctor preflight embedding', () => {
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runCommand(EvalCommand, [
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -84,37 +79,11 @@ describe('omk eval doctor preflight embedding', () => {
     }
   });
 
-  it('eval applies the same doctor gate as the old CI path', async () => {
-    const broken = setupBrokenSkillDir();
-    try {
-      await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
-          '--samples', join(broken, 'eval-samples.json'),
-          '--skill-dir', join(broken, 'skills'),
-          '--control', 'v1',
-          '--treatment', 'v2',
-          '--dry-run',
-        ], { cwd: broken }),
-        (err: unknown) => {
-          const e = err as ExecError;
-          assert.equal(e.code, 1);
-          assert.ok(e.stderr.includes('doctor failed:'), `eval should gate on doctor: ${e.stderr.slice(0, 500)}`);
-          assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `eval should explain the doctor gate: ${e.stderr.slice(0, 800)}`);
-          return true;
-        },
-      );
-    } finally {
-      rmSync(broken, { recursive: true, force: true });
-    }
-  });
-
   it('eval doctor gate is actionable in English too', async () => {
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runCommand(EvalCommand, [
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -139,8 +108,7 @@ describe('omk eval doctor preflight embedding', () => {
 
   it('eval --dry-run on healthy example skills passes doctor and proceeds', async () => {
     // example skills are healthy; --dry-run skips LLM connectivity (separate from doctor)
-    const { stdout, stderr } = await execFileAsync('node', [
-      CLI, 'eval',
+    const { stdout, stderr } = await runCommand(EvalCommand, [
       '--samples', EXAMPLE_SAMPLES,
       '--skill-dir', EXAMPLE_SKILLS_DIR,
       '--control', 'v1',
@@ -159,8 +127,7 @@ describe('omk eval doctor preflight embedding', () => {
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runCommand(EvalCommand, [
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -187,8 +154,7 @@ describe('omk eval doctor preflight embedding', () => {
     const tmp = setupBatchMixedSkillDir();
     try {
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'eval',
+        () => runCommand(EvalCommand, [
           '--skill-dir', join(tmp, 'skills'),
           '--batch',
           '--dry-run',
@@ -221,8 +187,7 @@ describe('omk eval doctor preflight embedding', () => {
         samples: [{ sample_id: 's1', prompt: 'review' }],
       }));
 
-      const { stdout, stderr } = await execFileAsync('node', [
-        CLI, 'eval',
+      const { stdout, stderr } = await runCommand(EvalCommand, [
         '--samples', join(tmp, 'eval-samples.json'),
         '--skill-dir', skillDir,
         '--control', 'v1',

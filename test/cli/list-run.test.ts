@@ -1,5 +1,5 @@
 /**
- * `omk list` 端到端编排测(execFile 打到 dist):锁住 run() 这层一直没覆盖的契约 ——
+ * `omk list` command 编排测：锁住 run() 这层一直没覆盖的契约 ——
  *   - 表格走 stdout、表头 / 注脚走 stderr(`omk list | grep` 才不被装饰行污染);
  *   - `--json` 出**版本化信封** `{ schemaVersion, rows }`(脚本可检测形态变更);
  *   - drift_note 仅在有漂移行时出、unreachable_note 仅在有不可达行时出(两个谓词不被写反);
@@ -8,18 +8,12 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { managedRecordId } from '../../src/managed/index.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+import ListCommand from '../../src/cli/commands/list.js';
+import { runCommand } from '../helpers/run-command.js';
 
 interface Rec { name: string; locator: string; isDirectorySkill: boolean; contentHash: string; observations?: unknown[]; }
 function writeRecord(dir: string, r: Rec): void {
@@ -40,7 +34,7 @@ const redGapObs = {
   gapByType: { failed_search: 3, explicit_marker: 1, hedging: 0, repeated_failure: 0 },
 };
 
-describe('omk list 端到端', () => {
+describe('omk list command', () => {
   let proj: string;
   let home: string;
   let env: NodeJS.ProcessEnv;
@@ -54,7 +48,7 @@ describe('omk list 端到端', () => {
   });
   afterEach(() => { rmSync(proj, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); });
 
-  const run = (args: string[]) => execFileAsync('node', [CLI, 'list', '--lang', 'en', ...args], { cwd: proj, env });
+  const run = (args: string[]) => runCommand(ListCommand, ['--lang', 'en', ...args], { cwd: proj, env });
 
   it('漂移行:表格走 stdout、drift_note 走 stderr,不出 unreachable_note', async () => {
     // 真源存在但 contentHash 故意写错 → reachable 且漂移 → drifted。
