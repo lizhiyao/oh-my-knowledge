@@ -8,15 +8,5 @@
       { "type": "regex", "pattern": "user experience|UX", "flags": "i", "weight": 1 },
       { "type": "not_contains", "value": "untranslated", "weight": 0.5 }
     ]
-  },
-  {
-    "sample_id": "tr002",
-    "prompt": "请将以下中文翻译为英文",
-    "context": "部署流水线会在推送到生产环境前自动运行单元测试、集成测试和安全扫描。",
-    "rubric": "翻译应准确流畅，保留技术术语",
-    "assertions": [
-      { "type": "regex", "pattern": "deployment pipeline|pipeline", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "unit tests|integration tests", "flags": "i", "weight": 1 }
-    ]
   }
 ]
