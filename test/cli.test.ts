@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -144,17 +144,22 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
 
   const candidateOutput = candidatePasses ? 'PASS' : 'FAIL';
   const baselineOutput = candidatePasses ? 'FAIL' : 'PASS';
-  const executor = join(dir, 'executor.mjs');
+  const executor = join(dir, 'executor.sh');
   await writeFile(executor, [
-    'import { readFileSync } from "node:fs";',
-    'const req = JSON.parse(readFileSync(0, "utf8"));',
-    `const output = req.system.includes("PROMOTE_TARGET_E2E") ? ${JSON.stringify(candidateOutput)} : ${JSON.stringify(baselineOutput)};`,
-    'console.log(JSON.stringify({ output }));',
+    '#!/bin/sh',
+    // Keep this fixture dependency-free: the executor runs once per sample.
+    'IFS= read -r request',
+    'case "$request" in',
+    `  *PROMOTE_TARGET_E2E*) output=${candidateOutput} ;;`,
+    `  *) output=${baselineOutput} ;;`,
+    'esac',
+    'printf \'{"output":"%s"}\\n\' "$output"',
   ].join('\n'));
+  await chmod(executor, 0o755);
 
   await writeFile(join(dir, 'eval.yaml'), [
     'samples: ./samples.json',
-    `executor: ${JSON.stringify(`node ${executor}`)}`,
+    `executor: ${JSON.stringify(executor)}`,
     'noJudge: true',
     'noDiagnostic: true',
     'skipDoctor: true',
