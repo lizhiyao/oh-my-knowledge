@@ -97,6 +97,7 @@ export async function runCommand(
     if (options.env) Object.assign(process.env, options.env);
 
     const command = new CommandType(argv, await commandConfig());
+    // Synthetic test commands are absent from Config; initialize only this instance so runs cannot pollute CommandType.id.
     if (!command.id) command.id = CommandType.name.toLowerCase();
     await (command as Command & { _run(): Promise<unknown> })._run();
     return { stdout, stderr };
