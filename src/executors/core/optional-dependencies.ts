@@ -12,7 +12,7 @@ const OPTIONAL_EXECUTOR_DEPENDENCIES: Partial<Record<ExecutableExecutorName, Opt
   },
   'codex-sdk': {
     packageName: '@openai/codex-sdk',
-    installSpec: '@openai/codex-sdk@0.149.0',
+    installSpec: '@openai/codex-sdk@^0.149.0',
   },
 };
 

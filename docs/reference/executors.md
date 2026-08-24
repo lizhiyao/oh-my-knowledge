@@ -117,7 +117,7 @@ The base OMK install omits the optional Agent SDK packages and their large platf
 - **claude**: install [Claude Code](https://claude.ai/code) and authenticate
 - **claude-sdk**: install the optional Agent SDK locally with `npm i @anthropic-ai/claude-agent-sdk@^0.3.143`, or globally beside a global OMK install with `npm i -g @anthropic-ai/claude-agent-sdk@^0.3.143`; then authenticate Claude
 - **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
-- **codex-sdk**: install the compatible optional SDK locally with `npm i @openai/codex-sdk@0.149.0`, or globally beside a global OMK install with `npm i -g @openai/codex-sdk@0.149.0` (it bundles the `@openai/codex` binary)
+- **codex-sdk**: install the compatible optional SDK locally with `npm i @openai/codex-sdk@^0.149.0`, or globally beside a global OMK install with `npm i -g @openai/codex-sdk@^0.149.0` (it bundles the `@openai/codex` binary)
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
 - **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
 - **openai-api**: set the `OPENAI_API_KEY` env var
