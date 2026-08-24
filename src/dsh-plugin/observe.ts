@@ -92,7 +92,9 @@ function rootSessionId(
   while (true) {
     if (seen.has(current)) throw new Error(`DSH session lineage 存在循环：${sessionId}。`);
     seen.add(current);
-    const parent = snapshots.get(current)?.header.parentSession;
+    const currentHeader = snapshots.get(current)?.header;
+    if (currentHeader?.origin !== 'subagent') return current;
+    const parent = currentHeader.parentSession;
     if (!parent) return current;
     if (!snapshots.has(String(parent))) {
       throw new Error(`DSH session lineage 缺少 parent session：${String(parent)}。`);
@@ -111,7 +113,7 @@ function groupSessionIds(
     changed = false;
     for (const [id, snapshot] of snapshots) {
       const parent = snapshot.header.parentSession ? String(snapshot.header.parentSession) : undefined;
-      if (!parent || !ids.has(parent) || ids.has(id)) continue;
+      if (snapshot.header.origin !== 'subagent' || !parent || !ids.has(parent) || ids.has(id)) continue;
       ids.add(id);
       changed = true;
     }
@@ -217,7 +219,8 @@ export async function listDshObserveCandidates(
 ): Promise<DshObserveCandidate[]> {
   const limit = Math.max(1, options.limit ?? DEFAULT_LIST_LIMIT);
   const snapshots = [...await persistence.listSnapshots(options.signal)]
-    .filter((snapshot) => !snapshot.header.parentSession && String(snapshot.header.id) !== options.excludeSessionId)
+    .filter((snapshot) => snapshot.header.origin !== 'subagent'
+      && String(snapshot.header.id) !== options.excludeSessionId)
     .sort((left, right) => right.header.createdAt - left.header.createdAt)
     .slice(0, Math.max(limit, LIST_INSPECTION_LIMIT));
   const candidates: DshObserveCandidate[] = [];

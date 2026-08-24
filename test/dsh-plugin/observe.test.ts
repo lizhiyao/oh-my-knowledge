@@ -109,6 +109,42 @@ function completedEvents(prompt = '检查任务轨迹'): DshSessionEventLike[] {
   ];
 }
 
+function completedEventsAfterSeed(
+  seedPrompt = '父任务历史',
+  activePrompt = '执行子任务',
+): DshSessionEventLike[] {
+  return [
+    ...completedEvents(seedPrompt),
+    event(10, 'session/end-seed', {}),
+    event(11, 'turn/start', { turn: 2 }),
+    event(12, 'step/start', { turn: 2, step: 1 }),
+    event(13, 'user/message', {
+      id: 'user-2',
+      role: 'user',
+      content: [{ type: 'text', text: activePrompt }],
+      source: { kind: 'user' },
+    }),
+    event(14, 'request/context', {
+      provider: 'deepseek',
+      model: 'deepseek-v4',
+      contextWindow: 128_000,
+    }),
+    event(15, 'assistant/message', {
+      turn: 2,
+      step: 1,
+      message: {
+        id: 'assistant-2',
+        role: 'assistant',
+        source: { kind: 'model', provider: 'deepseek', model: 'deepseek-v4' },
+        content: [{ type: 'text', text: '子任务已完成' }],
+      },
+      usage: { inputTokens: 2, outputTokens: 1 },
+    }),
+    event(16, 'step/end', { turn: 2, step: 1 }),
+    event(17, 'turn/end', { turn: 2, reason: { kind: 'completed' } }),
+  ];
+}
+
 class FakePersistence implements DshSessionPersistenceLike {
   listCalls = 0;
 
@@ -182,6 +218,39 @@ describe('DSH Trace IR adapter', () => {
     assert.ok(result.session.events.some((item) => item.eventKind === 'model_activity'));
   });
 
+  it('does not project inherited seed records as child task activity', () => {
+    const result = adaptDshSession(header('seeded-child', {
+      parentSession: 'root',
+      origin: 'subagent',
+      delegationDepth: 1,
+      seedLength: 10,
+      createdAt: BASE_TIME + 1_000,
+    }), completedEventsAfterSeed(), { rootRunId: 'root', role: 'subagent' });
+
+    const messages = result.session.events
+      .filter((item) => item.eventKind === 'message')
+      .map((item) => item.text);
+    assert.deepEqual(messages, ['执行子任务', '子任务已完成']);
+    assert.equal(result.session.events.some((item) => item.eventKind === 'tool_call'), false);
+    assert.deepEqual(
+      result.session.events.filter((item) => item.eventKind === 'usage').map((item) => item.inputTokens),
+      [2],
+    );
+    assert.equal(result.session.events.some((item) => item.sourceIndex > 0 && item.sourceIndex <= 10), false);
+    assert.equal(result.integrity.status, 'completed');
+    assert.equal(result.integrity.complete, true);
+  });
+
+  it('keeps an ordinary fork standalone outside subagent grouping semantics', () => {
+    const result = adaptDshSession(header('ordinary-fork', {
+      parentSession: 'source-session',
+      seedLength: 0,
+    }), completedEvents());
+    assert.equal(result.session.rootRunId, 'ordinary-fork');
+    assert.equal(result.session.parentRunId, undefined);
+    assert.equal(result.session.role, 'main');
+  });
+
   it('distinguishes runtime, skill-context, and synthetic user-role messages', () => {
     const result = adaptDshSession(header('origins'), [
       event(0, 'user/message', { content: [{ type: 'text', text: 'runtime' }], source: { kind: 'agent-instructions' } }),
@@ -202,6 +271,10 @@ describe('DSH Trace IR adapter', () => {
     assert.throws(
       () => adaptDshSession(header('gap'), [event(1, 'turn/start', { turn: 1 })]),
       /seq 不连续/,
+    );
+    assert.throws(
+      () => adaptDshSession(header('required-seed', { seedLength: 1 }), [event(0, 'plugin/required', {})]),
+      DshTraceUnsupportedEventError,
     );
   });
 
@@ -262,6 +335,42 @@ describe('DSH persistence observation', () => {
     assert.deepEqual(await listDshObserveCandidates(persistence), []);
   });
 
+  it('keeps ordinary forks independent while grouping their own durable subagents', async () => {
+    const persistence = persistenceWithGroup();
+    persistence.inspections.set('fork-session', {
+      meta: header('fork-session', {
+        parentSession: 'root-session',
+        createdAt: BASE_TIME + 20_000,
+      }),
+      events: completedEvents('普通 fork 任务'),
+    });
+    persistence.inspections.set('fork-child', {
+      meta: header('fork-child', {
+        parentSession: 'fork-session',
+        origin: 'subagent',
+        delegationDepth: 1,
+        createdAt: BASE_TIME + 20_250,
+      }),
+      events: completedEvents('fork 子任务'),
+    });
+
+    const rootGroup = await readDshObservedGroup(persistence, 'root-session');
+    assert.deepEqual(rootGroup.traces.map((item) => item.session.runId), [
+      'root-session',
+      'child-session',
+    ]);
+    const forkGroup = await readDshObservedGroup(persistence, 'fork-child');
+    assert.equal(forkGroup.rootSessionId, 'fork-session');
+    assert.deepEqual(forkGroup.traces.map((item) => item.session.runId), [
+      'fork-session',
+      'fork-child',
+    ]);
+    assert.deepEqual(forkGroup.traces.map((item) => item.session.role), ['main', 'subagent']);
+
+    const candidates = await listDshObserveCandidates(persistence);
+    assert.deepEqual(candidates.map((item) => item.sessionId), ['fork-session', 'root-session']);
+  });
+
   it('feeds the existing source-neutral Studio catalog', async () => {
     const group = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
     const catalog = createDshConversationCatalog();
@@ -314,7 +423,7 @@ describe('DSH /omk observe command', () => {
     assert.equal(listed.kind, 'success');
     assert.match(listed.text ?? '', /root-session/);
     const observed = await handler({ ...invocation, rawInput: 'observe root-session' });
-    assert.equal(observed.kind, 'success');
+    assert.equal(observed.kind, 'success', observed.text);
     const url = /任务轨迹：(http:\/\/[^\s]+)/u.exec(observed.text ?? '')?.[1];
     assert.ok(url);
     const response = await fetch(url);

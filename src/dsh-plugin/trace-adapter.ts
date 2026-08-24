@@ -96,6 +96,28 @@ const AUXILIARY_EVENT_TYPES = new Set([
   'web/deepseek-search-llm-request',
 ]);
 
+const PROJECTED_EVENT_TYPES = new Set([
+  'assistant/chunk',
+  'assistant/message',
+  'request/context',
+  'request/header',
+  'session/end-seed',
+  'step/end',
+  'step/start',
+  'todo/write',
+  'tool/call',
+  'tool/result',
+  'turn/end',
+  'turn/start',
+  'user/message',
+]);
+
+function supportsEventType(eventType: string): boolean {
+  return PROJECTED_EVENT_TYPES.has(eventType)
+    || AUXILIARY_EVENT_TYPES.has(eventType)
+    || eventType.startsWith('compaction/');
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -316,10 +338,17 @@ export function adaptDshSession(
 ): DshTraceAdapterResult {
   const runId = String(header.id);
   if (!runId.trim()) throw new Error('DSH session header 缺少 id。');
+  const seedLength = header.seedLength === undefined ? 0 : nonNegativeInteger(header.seedLength);
+  if (seedLength === undefined || seedLength > inputEvents.length) {
+    throw new Error(`DSH session header seedLength 非法：${String(header.seedLength)}。`);
+  }
+  inputEvents.forEach(validateEnvelope);
+  const activeEvents = inputEvents.slice(seedLength);
+  const isSubagent = header.origin === 'subagent';
   const sourcePath = `dsh:${runId}`;
   const traceId = createTraceId({ sourceKind: 'dsh', runId, sourcePath });
-  const rootRunId = options.rootRunId ?? header.parentSession ?? runId;
-  const role = options.role ?? (header.parentSession || header.origin === 'subagent' ? 'subagent' : 'main');
+  const rootRunId = options.rootRunId ?? (isSubagent ? header.parentSession : undefined) ?? runId;
+  const role = options.role ?? (isSubagent ? 'subagent' : 'main');
   const events: TraceEvent[] = [{
     eventKind: 'lifecycle',
     eventId: `${runId}:header:session-started`,
@@ -336,7 +365,7 @@ export function adaptDshSession(
     runtimeKind: 'session_context',
     runtimeName: 'DeepSeek Harness',
     cwd: header.cwd,
-    parentRunId: header.parentSession,
+    parentRunId: isSubagent ? header.parentSession : undefined,
     delegationDepth: header.delegationDepth,
     sourceOrigin: header.origin,
     historyMode: header.seedLength === undefined ? undefined : `seed:${header.seedLength}`,
@@ -359,7 +388,7 @@ export function adaptDshSession(
   let observedModel: string | undefined;
   let observedProvider: string | undefined;
 
-  for (const event of inputEvents) {
+  for (const event of activeEvents) {
     if (event.type !== 'assistant/message') continue;
     const data = isRecord(event.data) ? event.data : {};
     const turn = nonNegativeInteger(data.turn);
@@ -367,8 +396,14 @@ export function adaptDshSession(
     if (turn !== undefined && step !== undefined) assembledSteps.add(`${turn}:${step}`);
   }
 
-  inputEvents.forEach((event, index) => {
-    validateEnvelope(event, index);
+  inputEvents.slice(0, seedLength).forEach((event) => {
+    if (event.ignorable !== true && !supportsEventType(event.type)) {
+      throw new DshTraceUnsupportedEventError(event.type, event.seq);
+    }
+  });
+
+  activeEvents.forEach((event, activeIndex) => {
+    const index = seedLength + activeIndex;
     const sourceIndex = index + 1;
     const data = isRecord(event.data) ? event.data : {};
     const base = (suffix: string) => eventBase(runId, event, sourceIndex, suffix);
@@ -607,7 +642,7 @@ export function adaptDshSession(
     session: {
       runId,
       rootRunId,
-      ...(header.parentSession ? { parentRunId: header.parentSession } : {}),
+      ...(isSubagent && header.parentSession ? { parentRunId: header.parentSession } : {}),
       traceId,
       groupPath: options.groupPath ?? `dsh:${rootRunId}`,
       role,
