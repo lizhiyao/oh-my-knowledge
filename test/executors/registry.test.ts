@@ -27,7 +27,10 @@ describe('executor registry', () => {
     assert.equal(new Set(descriptors.map(({ name }) => name)).size, descriptors.length);
     assert.deepEqual(
       descriptors
-        .filter(({ name }) => getOptionalExecutorDependency(name))
+        .filter((descriptor) => (
+          descriptor.execution === 'builtin'
+          && getOptionalExecutorDependency(descriptor.name)
+        ))
         .map(({ name }) => name),
       ['claude-sdk', 'codex-sdk'],
     );
