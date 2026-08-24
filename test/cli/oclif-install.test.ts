@@ -3,20 +3,14 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import InstallCommand from '../../src/cli/commands/install.js';
-import { runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
-const runCliProcess = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 
 async function runInstallCommand(
   args: string[],
@@ -37,13 +31,13 @@ function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 describe('oclif install', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await runCliProcess('node', [CLI, 'install', '--help']);
+    const stdout = await renderCommandHelp('install');
     assert.ok(stdout.includes('安装 omk 官方 Agent Skill'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('omk-agent-skill'), 'stdout missing builtin id');
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await runCliProcess('node', [CLI, 'install', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('install', 'en');
     assert.ok(stdout.includes('Install the official omk Agent Skill'), 'stdout should contain en description');
   });
 

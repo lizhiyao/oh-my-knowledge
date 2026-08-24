@@ -3,20 +3,12 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { promisify } from 'node:util';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import InitCommand from '../../src/cli/commands/init.js';
-import { runCommand } from '../helpers/run-command.js';
-
-const execFileAsync = promisify(execFile);
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 interface ExecError extends Error {
   code?: number;
@@ -27,13 +19,13 @@ interface ExecError extends Error {
 
 describe('oclif init', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help']);
+    const stdout = await renderCommandHelp('init');
     assert.ok(stdout.includes('初始化一个 omk 项目'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('TARGETDIR'), 'stdout missing positional');
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('init', 'en');
     assert.ok(stdout.includes('Initialize an omk project'), 'stdout should contain en description');
   });
 

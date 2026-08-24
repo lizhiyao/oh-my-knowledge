@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { renderCommandHelp } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,7 @@ interface ExecError extends Error {
 
 describe('oclif studio', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help']);
+    const stdout = await renderCommandHelp('studio');
     assert.ok(stdout.includes('启动 omk Studio'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--port'), 'stdout missing --port flag');
     assert.ok(stdout.includes('--no-open'), 'stdout missing --no-open flag');
@@ -31,7 +32,7 @@ describe('oclif studio', () => {
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('studio', 'en');
     assert.ok(stdout.includes('Start omk Studio'), 'stdout should contain en description');
   });
 

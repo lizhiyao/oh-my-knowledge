@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import ObserveShow from '../../src/cli/commands/observe/show.js';
-import { runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -66,14 +66,14 @@ function makeIngestTrace(dir: string): string {
 
 describe('oclif observe', () => {
   it('observe --help (默认 = health 分析)', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', '--help']);
+    const stdout = await renderCommandHelp('observe');
     assert.ok(stdout.includes('统一为 Trace IR'), `default observe --help missing source-neutral description:\n${stdout}`);
     assert.ok(stdout.includes('SESSIONSDIR'), 'should list positional');
     assert.ok(stdout.includes('--kb'), 'should list --kb flag');
   });
 
   it('observe ingest --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', 'ingest', '--help']);
+    const stdout = await renderCommandHelp('observe:ingest');
     assert.ok(stdout.includes('ingest 成 observation inbox'), `ingest --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('TRACEDIR'), 'should list TRACEDIR positional');
     assert.ok(stdout.includes('--json'), 'should list explicit full JSON output flag');
@@ -109,7 +109,7 @@ describe('oclif observe', () => {
   });
 
   it('observe inbox --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', 'inbox', '--help']);
+    const stdout = await renderCommandHelp('observe:inbox');
     assert.ok(stdout.includes('查询 observation inbox'), `inbox --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('--by-skill'), 'should list --by-skill');
     assert.ok(stdout.includes('--llm-enhanced-review'), 'should list --llm-enhanced-review');
@@ -119,7 +119,7 @@ describe('oclif observe', () => {
   });
 
   it('observe show --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'observe', 'show', '--help']);
+    const stdout = await renderCommandHelp('observe:show');
     assert.ok(stdout.includes('展开 observation inbox 中某条'), `show --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('INBOXID'), 'should list INBOXID positional');
     assert.ok(stdout.includes('--global'), 'should list --global flag');

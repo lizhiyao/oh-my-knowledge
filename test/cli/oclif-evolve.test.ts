@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import EvolveCommand from '../../src/cli/commands/evolve.js';
-import { runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,7 @@ interface ExecError extends Error {
 
 describe('oclif evolve', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help']);
+    const stdout = await renderCommandHelp('evolve');
     assert.ok(stdout.includes('自动迭代改进 skill'), `stdout missing zh:\n${stdout}`);
     assert.ok(stdout.includes('--rounds'), 'stdout missing --rounds flag');
     assert.ok(stdout.includes('--target'), 'stdout missing --target flag');
@@ -56,7 +56,7 @@ describe('oclif evolve', () => {
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('evolve', 'en');
     assert.ok(stdout.includes('Auto-iterate skill improvement'), 'stdout should contain en description');
   });
 

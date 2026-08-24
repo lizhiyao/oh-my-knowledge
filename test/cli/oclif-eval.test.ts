@@ -15,7 +15,7 @@ import EvalCommand from '../../src/cli/commands/eval/index.js';
 import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
 import EvalGoldInit from '../../src/cli/commands/eval/gold/init.js';
 import EvalGoldValidate from '../../src/cli/commands/eval/gold/validate.js';
-import { runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ interface ExecError extends Error {
 
 describe('oclif eval', () => {
   it('eval --help 含 41 flag', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
+    const stdout = await renderCommandHelp('eval');
     assert.ok(stdout.includes('跑评测'), `default eval --help missing zh:\n${stdout.slice(0, 200)}`);
     // 抽样核心 flag
     assert.ok(stdout.includes('--control'), 'should list --control');
@@ -42,25 +42,25 @@ describe('oclif eval', () => {
   });
 
   it('eval --help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('eval', 'en');
     assert.ok(stdout.includes('Run evaluation'), 'should contain en description');
   });
 
   it('eval gold init --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', 'gold', 'init', '--help']);
+    const stdout = await renderCommandHelp('eval:gold:init');
     assert.ok(stdout.includes('初始化 gold dataset'), `gold init --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('--out'), 'should list --out');
     assert.ok(stdout.includes('--annotator'), 'should list --annotator');
   });
 
   it('eval gold validate --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', 'gold', 'validate', '--help']);
+    const stdout = await renderCommandHelp('eval:gold:validate');
     assert.ok(stdout.includes('校验 gold dataset'), `gold validate --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('DIR'), 'should list DIR positional');
   });
 
   it('eval gold compare --help', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'eval', 'gold', 'compare', '--help']);
+    const stdout = await renderCommandHelp('eval:gold:compare');
     assert.ok(stdout.includes('evaluation report 跟 gold dataset 对比'), `gold compare --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('REPORTID'), 'should list REPORTID positional');
     assert.ok(stdout.includes('--gold-dir'), 'should list --gold-dir');
