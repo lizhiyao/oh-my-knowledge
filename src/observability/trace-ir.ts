@@ -77,8 +77,8 @@ export interface TraceUsageEvent extends TraceEventBase {
   model?: string;
   inputTokens: number;
   outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   reasoningTokens?: number;
 }
 
@@ -93,7 +93,17 @@ export interface TraceModelActivityEvent extends TraceEventBase {
 
 export interface TraceLifecycleEvent extends TraceEventBase {
   eventKind: 'lifecycle';
-  phase: 'session_started' | 'session_ended' | 'turn_started' | 'turn_completed' | 'turn_aborted' | 'turn_interrupted';
+  phase:
+    | 'session_started'
+    | 'session_ended'
+    | 'turn_started'
+    | 'turn_completed'
+    | 'turn_failed'
+    | 'turn_aborted'
+    | 'turn_interrupted'
+    | 'turn_ended_unknown'
+    | 'step_started'
+    | 'step_completed';
   reason?: string;
   durationMs?: number;
 }
@@ -125,6 +135,9 @@ export interface TraceRuntimeContextEvent extends TraceEventBase {
   memoryMode?: string;
   historyMode?: string;
   contextWindowId?: string;
+  parentRunId?: string;
+  delegationDepth?: number;
+  sourceOrigin?: string;
   availableTools?: string[];
   instructions?: string;
   goal?: string;

@@ -186,7 +186,13 @@ dsh plugin --profile web add oh-my-knowledge
 dsh --profile web
 ```
 
-Then run `/omk eval eval.yaml` inside DSH. Each sample gets an isolated DSH session while OMK still owns the report and statistics. See the [executor guide](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin).
+Inside DSH:
+
+- `/omk eval eval.yaml` runs every sample in an isolated DSH session while OMK owns the report and statistics;
+- `/omk observe` lists recent terminal sessions;
+- `/omk observe <session-id>` reads a consistent snapshot and returns its Studio Task Trajectory URL.
+
+Observe uses the profile's `sessionPersistence` directly, so users do not export or locate JSONL / SQLite files. The first version is offline-only and does not live-follow a session that is still being written. See the [executor guide](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) and [observe guide](docs/guides/observe-production.md#inspect-a-task-inside-deepseek-harness).
 
 ## Documentation
 

@@ -186,7 +186,13 @@ dsh plugin --profile web add oh-my-knowledge
 dsh --profile web
 ```
 
-进入 DSH 后运行 `/omk eval eval.yaml`。每条用例会使用独立 DSH session，报告仍由 OMK 生成。详见[执行器文档](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)。
+进入 DSH 后：
+
+- `/omk eval eval.yaml`：每条用例使用独立 DSH session，报告仍由 OMK 生成；
+- `/omk observe`：列出最近已结束的 session；
+- `/omk observe <session-id>`：只读摄取一致快照，并返回 Studio 任务轨迹链接。
+
+observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JSONL／SQLite 文件；首版不实时跟随正在写入的 session。详见[执行器文档](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)与[观测指南](docs/zh/guides/observe-production.md#在-deepseek-harness-中查看任务轨迹)。
 
 ## 文档
 

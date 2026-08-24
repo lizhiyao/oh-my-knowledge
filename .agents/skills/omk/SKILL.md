@@ -31,6 +31,8 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 如果当前 DSH profile 已安装 `oh-my-knowledge` bundle，使用 `/omk eval <eval.yaml>`。该路径直接复用现有 DSH 的模型、凭证、工具与 sandbox，并为每条用例创建隔离 session；不要要求用户另起 DSH runtime。
 
+查看真实 DSH 任务轨迹时，先运行 `/omk observe` 列出最近已结束的 session，再运行 `/omk observe <session-id>`。OMK 通过当前 profile 的 `sessionPersistence` 只读摄取一致快照，并返回 Studio 任务轨迹链接；不要求用户导出或定位 JSONL／SQLite 文件。首版不实时跟随正在写入的 session，也不默认选择发起 observe 命令的当前 session。
+
 ## 第二步：理解用户意图
 
 根据用户的描述，匹配对应的操作：

@@ -2,6 +2,7 @@
 export type TraceSourceKind =
   | 'claude'
   | 'codex'
+  | 'dsh'
   | 'openclaw'
   | 'markdown_log'
   | 'unknown';

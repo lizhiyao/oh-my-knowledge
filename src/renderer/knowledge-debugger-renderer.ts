@@ -1223,6 +1223,7 @@ export function renderKnowledgeDebuggerPage(
             syncing: zh ? '同步中' : 'Syncing',
             reconnecting: zh ? '重连中' : 'Reconnecting',
             failed: zh ? '实时更新失败' : 'Live update failed',
+            taskFailed: zh ? '任务已失败' : 'Task failed',
             following: zh ? '跟随中' : 'Following',
             resume: zh ? '跟随最新' : 'Follow latest',
             pending: zh ? '查看更新' : 'View update',
@@ -1604,8 +1605,12 @@ function lifecycleEventLabel(label: string | undefined, lang: Lang): string {
     session_ended: { zh: '会话结束', en: 'Session ended' },
     turn_started: { zh: '本轮开始', en: 'Turn started' },
     turn_completed: { zh: '本轮完成', en: 'Turn completed' },
+    turn_failed: { zh: '本轮失败', en: 'Turn failed' },
     turn_aborted: { zh: '本轮中止', en: 'Turn aborted' },
     turn_interrupted: { zh: '本轮被打断', en: 'Turn interrupted' },
+    turn_ended_unknown: { zh: '本轮结束状态未知', en: 'Turn ended with unknown status' },
+    step_started: { zh: '步骤开始', en: 'Step started' },
+    step_completed: { zh: '步骤完成', en: 'Step completed' },
   };
   return labels[label ?? '']?.[lang] ?? (label || (lang === 'zh' ? '运行状态变化' : 'Lifecycle event'));
 }
@@ -1613,7 +1618,7 @@ function lifecycleEventLabel(label: string | undefined, lang: Lang): string {
 function lifecycleMilestoneTone(label: string | undefined): ReplayMilestoneTone {
   if (label === 'session_started' || label === 'turn_started') return 'start';
   if (label === 'session_ended' || label === 'turn_completed') return 'end';
-  if (label === 'turn_aborted' || label === 'turn_interrupted') return 'warning';
+  if (label === 'turn_failed' || label === 'turn_aborted' || label === 'turn_interrupted') return 'warning';
   return 'neutral';
 }
 

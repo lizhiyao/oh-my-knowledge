@@ -87,9 +87,9 @@ export function renderConversationIndexPage(
   const rows = conversations.map((conversation) => renderConversationRow(conversation, lang)).join('');
   const content = model.conversations.length > 0
     ? `<div class="conversation-list" role="list">${rows}</div>`
-    : `<div class="empty-state"><strong>${zh ? '还没有可浏览的 Codex 对话' : 'No Codex conversations yet'}</strong><span>${zh ? 'Studio 会直接读取 Codex 的本机会话索引，不需要先运行 observe。' : 'Studio reads the local Codex conversation index directly; observe is not required.'}</span></div>`;
+    : `<div class="empty-state"><strong>${zh ? '还没有可浏览的对话' : 'No conversations yet'}</strong><span>${zh ? '从受支持的 runtime 摄取任务轨迹后，会话会显示在这里。' : 'Sessions appear here after a supported runtime supplies task trajectories.'}</span></div>`;
 
-  return layout(zh ? 'Codex 对话' : 'Codex conversations', `
+  return layout(zh ? '对话' : 'Conversations', `
     <main class="conversation-page conversation-index-app" data-activity-revision="${e(activity.revision)}">
       <header class="conversation-app-head">
         <a class="conversation-app-brand" href="/${langQuery}">
@@ -101,7 +101,7 @@ export function renderConversationIndexPage(
         </nav>
       </header>
       <div class="conversation-app-body">
-        <section class="conversation-browser" aria-label="${zh ? 'Codex 对话' : 'Codex conversations'}">
+        <section class="conversation-browser" aria-label="${zh ? '对话' : 'Conversations'}">
           <header class="conversation-toolbar">
             <div class="conversation-browser-title">
               <h1>${zh ? '对话' : 'Conversations'}</h1>
@@ -155,7 +155,7 @@ export function renderConversationDetailPage(
       <header class="conversation-page-head conversation-detail-head">
         <div>
           <a class="back-link" href="/conversations${langSuffix}">${zh ? '返回对话总览' : 'Back to conversations'}</a>
-          <p class="conversation-eyebrow">CODEX · ${e(shortThreadId(conversation.sourceThreadId))}</p>
+          <p class="conversation-eyebrow">${e(sourceLabel(conversation))} · ${e(shortThreadId(conversation.sourceThreadId))}</p>
           <h1>${renderSafeInlineMarkdown(conversation.title)}</h1>
           <div class="detail-meta">
             ${conversation.model ? `<span>${e(conversation.model)}</span>` : ''}
@@ -196,8 +196,8 @@ function renderConversationRow(conversation: ConversationListItem, lang: Lang): 
     ? '<span class="index-pending">—</span>'
     : `<span><b>${conversation.turnCount}</b>${zh ? '任务' : 'tasks'}</span>`;
   const activity = openTask
-    ? `<strong class="running-label"><i aria-hidden="true"></i>${zh ? '进行中' : 'Running'}</strong><span>${e(updated)} · ${e(conversation.model ?? 'Codex')}</span>`
-    : `<strong>${e(updated)}</strong><span>${e(conversation.model ?? 'Codex')}</span>`;
+    ? `<strong class="running-label"><i aria-hidden="true"></i>${zh ? '进行中' : 'Running'}</strong><span>${e(updated)} · ${e(conversation.model ?? sourceLabel(conversation))}</span>`
+    : `<strong>${e(updated)}</strong><span>${e(conversation.model ?? sourceLabel(conversation))}</span>`;
   const liveTaskLink = openTaskHref
     ? `<a class="live-task-link" href="${e(openTaskHref)}" aria-label="${zh ? '查看进行中任务的实时轨迹' : 'View the live trajectory for the running task'}"><i aria-hidden="true"></i>${zh ? '查看实时轨迹' : 'View live'}</a>`
     : '';
@@ -389,10 +389,20 @@ function shortThreadId(value: string): string {
   return value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
 }
 
+function sourceLabel(conversation: ConversationListItem): string {
+  if (conversation.sourceKind === 'dsh') return 'DeepSeek Harness';
+  if (conversation.sourceKind === 'codex') return 'Codex';
+  if (conversation.sourceKind === 'claude') return 'Claude';
+  if (conversation.sourceKind === 'openclaw') return 'OpenClaw';
+  if (conversation.sourceKind === 'markdown_log') return 'Markdown';
+  return 'Runtime';
+}
+
 function statusLabel(status: ExperienceTurnStatus, lang: Lang): string {
   const zh = lang === 'zh';
   const labels: Record<ExperienceTurnStatus, [string, string]> = {
     completed: ['已完成', 'Completed'],
+    failed: ['已失败', 'Failed'],
     aborted: ['已中止', 'Aborted'],
     interrupted: ['已打断', 'Interrupted'],
     open: ['进行中', 'Open'],

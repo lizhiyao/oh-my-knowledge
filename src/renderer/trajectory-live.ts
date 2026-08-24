@@ -4,6 +4,7 @@ export interface TrajectoryLiveLabels {
   syncing: string;
   reconnecting: string;
   failed: string;
+  taskFailed: string;
   following: string;
   resume: string;
   pending: string;
@@ -58,7 +59,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
   const lifecycle = new AbortController();
   let followLatest = Boolean(liveEndpoint);
   let pendingRevision = '';
-  let terminalState: 'completed' | 'aborted' | 'interrupted' | 'unknown' | undefined;
+  let terminalState: 'completed' | 'failed' | 'aborted' | 'interrupted' | 'unknown' | undefined;
   let refreshTimer: number | undefined;
   let scrollReleaseTimer: number | undefined;
   let suppressScrollTracking = false;
@@ -97,7 +98,9 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
     const state = terminalState ?? (!followLatest && pendingRevision
       ? 'pending'
       : (followLatest ? 'following' : 'paused'));
-    const terminalLabel = terminalState ? labels[terminalState] : undefined;
+    const terminalLabel = terminalState
+      ? terminalState === 'failed' ? labels.taskFailed : labels[terminalState]
+      : undefined;
     followButton.dataset.state = state;
     followButton.dataset.following = String(followLatest);
     followButton.setAttribute('aria-pressed', String(followLatest));
@@ -248,11 +251,12 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
           liveObservable?: boolean;
         };
         const explicitTerminal = update.status === 'completed'
+          || update.status === 'failed'
           || update.status === 'aborted'
           || update.status === 'interrupted';
         const streamTerminal = update.liveObservable === false || explicitTerminal;
         terminalState = explicitTerminal
-          ? update.status as 'completed' | 'aborted' | 'interrupted'
+          ? update.status as 'completed' | 'failed' | 'aborted' | 'interrupted'
           : update.liveObservable === false ? 'unknown' : undefined;
         if (streamTerminal) {
           source.close();
@@ -261,7 +265,7 @@ export function createTrajectoryLiveController(options: TrajectoryLiveClientOpti
         if (!update.revision || update.revision === shell.dataset.liveRevision) {
           const quiet = update.status === 'unknown';
           const connectionLabel = terminalState
-            ? labels[terminalState]
+            ? terminalState === 'failed' ? labels.taskFailed : labels[terminalState]
             : quiet ? labels.reconnecting : labels.live;
           setConnectionState(
             terminalState ?? (quiet ? 'reconnecting' : 'live'),

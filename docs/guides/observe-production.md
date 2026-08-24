@@ -49,6 +49,19 @@ Supported trace formats: Codex rollout JSONL, Claude Code session JSONL, OpenCla
 
 Both workflows persist an ingestion summary. If the source contains malformed records, valid JSON values that are not records, or events the current adapter cannot recognize, the CLI and Studio show a completeness notice. Review that notice before treating absence of a signal as evidence that no problem occurred. Runtime guardian sessions are counted separately as intentional filters.
 
+## Inspect a task inside DeepSeek Harness
+
+When the OMK bundle is installed and the profile provides `sessionPersistence`, no DSH log export is needed:
+
+```text
+/omk observe
+/omk observe <session-id>
+```
+
+The first command lists recent terminal root sessions and excludes the current command session. The second reads the root and descendant logical logs through DSH's read-only `listSnapshots()` / `inspect()` seam, obtains a consistent snapshot, and returns its Studio Task Trajectory URL. JSONL, zstd, and SQLite backends are transparent to the user.
+
+The first version is offline-only and does not follow a session that is still being written. Continuous revision changes, unknown required events, sequence gaps, unclosed turns / steps, or missing tool results prevent OMK from presenting the trace as complete. The page retains observable cwd, provider / model, message origins, tool outcomes, terminal status, and subagent lineage without inferring hidden reasoning.
+
 ## Inspect one task
 
 Start `omk studio` directly; `observe ingest` is not required. Studio reads the local Codex conversation index and organizes Codex rollouts as **Thread → Turn**:

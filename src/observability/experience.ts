@@ -1366,6 +1366,7 @@ function isExperienceTurnSummaryArray(value: unknown): value is ExperienceTurnSu
     && isOptionalTimestamp(turn.endTimestamp)
     && (
       turn.status === 'completed'
+      || turn.status === 'failed'
       || turn.status === 'aborted'
       || turn.status === 'interrupted'
       || turn.status === 'open'
@@ -3301,6 +3302,9 @@ function timelineEventsFromTraceEvent(
       memoryMode: event.memoryMode,
       historyMode: event.historyMode,
       contextWindowId: event.contextWindowId,
+      parentRunId: event.parentRunId,
+      delegationDepth: event.delegationDepth,
+      sourceOrigin: event.sourceOrigin,
       availableTools: event.availableTools,
       instructions: event.instructions,
       goal: event.goal,

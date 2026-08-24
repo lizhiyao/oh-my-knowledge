@@ -49,6 +49,19 @@ omk observe show <inbox_id>
 
 两条工作流都会持久化摄取摘要。源数据包含格式损坏记录、不是对象的合法 JSON 值，或当前 adapter 无法识别的事件时，CLI 与 Studio 会显示完整性提示。把「没有发现信号」解释成「没有问题」之前，应先复核这项提示。运行时守护会话属于有意过滤，会单独计数。
 
+## 在 DeepSeek Harness 中查看任务轨迹
+
+已安装 OMK bundle 且 profile 启用了 `sessionPersistence` 时，无需导出 DSH 日志：
+
+```text
+/omk observe
+/omk observe <session-id>
+```
+
+第一条命令列出最近已结束的 root session，并排除正在承载命令的当前 session。第二条命令通过 DSH 的 `listSnapshots()`／`inspect()` 只读读取 root 与子 agent 的逻辑事件流，取得一致快照后返回 Studio 任务轨迹链接。JSONL、zstd 或 SQLite backend 对用户透明。
+
+首版只观察离线快照，不实时跟随正在写入的 session。revision 持续变化、required 未知事件、seq 不连续、未闭合 turn／step 或缺失 tool result 时，OMK 会拒绝把它展示为完整轨迹。页面保留 DSH 的 cwd、provider／model、消息来源、工具结果、终态与子 agent lineage，只陈述可核验事实。
+
 ## 查看一次任务
 
 直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，在首页按「对话(Thread) → 任务(Turn)」组织 Codex rollout：

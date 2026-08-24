@@ -10,6 +10,7 @@ import {
 const labels: TrajectoryLiveLabels = {
   connecting: '连接中', live: '实时', syncing: '同步中', reconnecting: '重连中',
   failed: '实时更新失败',
+  taskFailed: '任务失败',
   following: '跟随中', resume: '跟随最新', pending: '查看更新', completed: '任务已结束',
   aborted: '任务已中止', interrupted: '任务已中断', unknown: '状态未知',
   pauseTitle: '暂停自动跟随',
