@@ -44,7 +44,16 @@ interface DshPluginContextLike extends DshHostContextLike {
 export const name = 'omk-dsh-plugin';
 export const inject = ['agentPresets', 'agents', 'commands', 'tools'];
 
-const USAGE = '用法：/omk eval <eval.yaml> 或 /omk observe [session-id]';
+const HELP = [
+  'OMK 已接入当前 DeepSeek Harness。',
+  '',
+  '受控评测：/omk eval <eval.yaml>',
+  '查看最近任务：/omk observe',
+  '打开任务轨迹：/omk observe <session-id>',
+  '',
+  '文档：https://oh-my-knowledge.pages.dev/zh/reference/executors',
+].join('\n');
+const USAGE = '用法：/omk eval <eval.yaml> 或 /omk observe [session-id]；运行 /omk 查看帮助。';
 
 function unquote(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"'))
@@ -55,10 +64,13 @@ function unquote(value: string): string {
 }
 
 type DshCommand =
+  | { commandKind: 'help' }
   | { commandKind: 'eval'; path: string }
   | { commandKind: 'observe'; sessionId?: string };
 
 function parseCommand(rawInput: string): DshCommand | undefined {
+  const normalized = rawInput.trim();
+  if (!normalized || normalized === 'help') return { commandKind: 'help' };
   const evalMatch = /^\s*eval\s+(.+?)\s*$/u.exec(rawInput);
   const evalPath = evalMatch?.[1]?.trim();
   if (evalPath) return { commandKind: 'eval', path: unquote(evalPath) };
@@ -326,6 +338,7 @@ export function apply(ctx: DshPluginContextLike): () => void {
     async handler(invocation) {
       const command = parseCommand(invocation.rawInput);
       if (!command) return { kind: 'error', text: USAGE };
+      if (command.commandKind === 'help') return { kind: 'success', text: HELP };
       try {
         return command.commandKind === 'eval'
           ? await executeEvalCommand(ctx, invocation, command.path)

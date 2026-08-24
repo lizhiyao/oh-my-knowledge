@@ -16,6 +16,8 @@
 
 **相同模型，相同评测用例，只改变知识载体。**
 
+**DeepSeek Harness 用户：** OMK 可作为原生 bundle 安装，复用当前 profile 做受控评测，并在 Studio 打开已持久化的 DSH 任务轨迹。[接入 DSH 宿主插件 →](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)
+
 ![omk 知识载体评测流程：doctor / eval / observe / sample / evolve 闭环](./docs/public/omk-knowledge-flow-animated.gif)
 
 📖 **完整文档：[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)**（可搜索，可切换英文）

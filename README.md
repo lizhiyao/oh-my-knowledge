@@ -16,6 +16,8 @@ Observe real-world performance, measure version differences, and determine wheth
 
 **Same model. Same evaluation samples. Only the knowledge artifact changes.**
 
+**DeepSeek Harness users:** install OMK as a native bundle, reuse the current profile for controlled evaluations, and open persisted DSH task trajectories in Studio. [Set up the DSH host plugin →](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin)
+
 ![omk knowledge artifact evaluation flow: doctor / eval / observe / sample / evolve loop](./docs/public/omk-knowledge-flow-en-animated.gif)
 
 📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)

@@ -332,8 +332,11 @@ describe('DSH bundle metadata', () => {
   it('makes the published OMK package directly installable into a DSH profile', () => {
     const manifest = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
       dsh?: { bundle?: { patch?: string } };
+      keywords?: string[];
     };
     assert.equal(manifest.dsh?.bundle?.patch, './dist/dsh-plugin/cordis.patch.yml');
+    assert.ok(manifest.keywords?.includes('deepseek-harness'));
+    assert.ok(manifest.keywords?.includes('dsh-plugin'));
     const patch = load(readFileSync(join(process.cwd(), 'src/dsh-plugin/cordis.patch.yml'), 'utf8')) as Array<{
       insert?: Array<{ id?: string; name?: string }>;
     }>;
@@ -343,6 +346,38 @@ describe('DSH bundle metadata', () => {
     });
     assert.ok(inject.includes('agentPresets'));
     assert.ok(!inject.includes('systemPrompt'));
+  });
+});
+
+describe('DSH plugin discovery', () => {
+  it('confirms the installed integration and presents both user entrypoints', async () => {
+    let definition: {
+      description: string;
+      handler: (invocation: Record<string, unknown>) => Promise<{ kind: string; text?: string }>;
+    } | undefined;
+    const dispose = apply({
+      commands: {
+        register(value: typeof definition) {
+          definition = value;
+          return () => undefined;
+        },
+      },
+    } as never);
+    assert.ok(definition);
+    assert.match(definition.description, /对照评测或查看任务轨迹/u);
+    const invocation = {
+      agent: parentAgent,
+      signal: new AbortController().signal,
+    };
+    for (const rawInput of ['', 'help']) {
+      const result = await definition.handler({ ...invocation, rawInput });
+      assert.equal(result.kind, 'success');
+      assert.match(result.text ?? '', /已接入当前 DeepSeek Harness/u);
+      assert.match(result.text ?? '', /\/omk eval <eval\.yaml>/u);
+      assert.match(result.text ?? '', /\/omk observe <session-id>/u);
+      assert.match(result.text ?? '', /oh-my-knowledge\.pages\.dev/u);
+    }
+    dispose();
   });
 });
 
