@@ -102,7 +102,9 @@ describe('test-profile', () => {
   });
 
   it('受控 CI profile 固定 runner，且只按需运行并上传原始报告', () => {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as { scripts: Record<string, string> };
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/test-profile.yml'), 'utf8');
+    assert.equal(pkg.scripts['test:profile'], 'yarn build && node dist-scripts/test-profile.js');
     assert.ok(workflow.includes('workflow_dispatch:'));
     assert.ok(workflow.includes("contains(github.event.pull_request.labels.*.name, 'test-profile')"));
     assert.ok(workflow.includes('runs-on: ubuntu-24.04'));

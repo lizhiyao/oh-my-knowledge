@@ -33,7 +33,7 @@
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "lint-staged": "lint-staged",
     "test": "vitest run",
-    "test:profile": "yarn build:scripts && node dist-scripts/test-profile.js",
+    "test:profile": "yarn build && node dist-scripts/test-profile.js",
     "ci": "run-s lint typecheck build build:docs:check test",
     "prepublishOnly": "run-s clean build",
     "prepare": "husky"
