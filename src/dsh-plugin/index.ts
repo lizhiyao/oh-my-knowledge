@@ -10,6 +10,7 @@ import {
 } from './host-executor.js';
 import {
   createDshConversationCatalog,
+  dshTraceIngestionSummary,
   listDshObserveCandidates,
   readDshObservedGroup,
   type DshSessionPersistenceLike,
@@ -293,19 +294,10 @@ async function executeObserveCommand(
   } = await import('../observability/inbox.js');
   const { loadObservationReviewState } = await import('../observability/review-state.js');
   const { buildObserveDiagnosticsFromReport } = await import('../diagnosis/observe-producer.js');
-  const sourceRecordCount = group.inspections.reduce((sum, item) => sum + item.events.length + 1, 0);
   const report = buildObservationInboxReportFromTraceSessions(
     `dsh:${group.rootSessionId}`,
     group.traces.map((trace) => trace.session),
-    {
-      fileCount: group.traces.length,
-      sourceRecordCount,
-      parsedRecordCount: sourceRecordCount,
-      malformedRecordCount: 0,
-      ignoredValueCount: group.traces.reduce((sum, trace) => sum + trace.integrity.ignoredChunkCount, 0),
-      unknownEventCount: group.traces.reduce((sum, trace) => sum + trace.integrity.unknownEventCount, 0),
-      filteredSessionCount: 0,
-    },
+    dshTraceIngestionSummary(group),
     { reviewState: loadObservationReviewState(observationsDir) },
   );
   report.diagnostics = buildObserveDiagnosticsFromReport(report);

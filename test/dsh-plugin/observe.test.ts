@@ -6,6 +6,7 @@ import { afterEach, describe, it } from 'vitest';
 import { apply } from '../../src/dsh-plugin/index.js';
 import {
   createDshConversationCatalog,
+  dshTraceIngestionSummary,
   listDshObserveCandidates,
   readDshObservedGroup,
   type DshPersistenceSnapshotLike,
@@ -84,7 +85,12 @@ function completedEvents(prompt = '检查任务轨迹'): DshSessionEventLike[] {
         }],
       },
     }),
-    event(6, 'assistant/message', {
+    event(6, 'assistant/chunk', {
+      turn: 1,
+      step: 1,
+      chunk: { type: 'text-delta', text: '任务已完成' },
+    }),
+    event(7, 'assistant/message', {
       turn: 1,
       step: 1,
       message: {
@@ -98,8 +104,8 @@ function completedEvents(prompt = '检查任务轨迹'): DshSessionEventLike[] {
       },
       usage: { inputTokens: 20, outputTokens: 8 },
     }),
-    event(7, 'step/end', { turn: 1, step: 1 }),
-    event(8, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    event(8, 'step/end', { turn: 1, step: 1 }),
+    event(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
   ];
 }
 
@@ -150,7 +156,7 @@ describe('DSH Trace IR adapter', () => {
       delegationDepth: 1,
     }), [
       ...completedEvents(),
-      event(9, 'plugin/telemetry-note', { note: 'safe to skip' }, { ignorable: true }),
+      event(10, 'plugin/telemetry-note', { note: 'safe to skip' }, { ignorable: true }),
     ], { rootRunId: 'root', role: 'subagent' });
 
     assert.equal(result.session.sourceKind, 'dsh');
@@ -162,6 +168,7 @@ describe('DSH Trace IR adapter', () => {
     assert.equal(result.integrity.status, 'completed');
     assert.equal(result.integrity.complete, true);
     assert.equal(result.integrity.unknownEventCount, 1);
+    assert.equal(result.integrity.ignoredChunkCount, 1);
     const user = result.session.events.find((item) => item.eventKind === 'message' && item.role === 'user');
     assert.equal(user?.eventKind, 'message');
     if (user?.eventKind === 'message') assert.equal(user.origin, 'human');
@@ -226,6 +233,14 @@ describe('DSH persistence observation', () => {
     const jsonl = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
     const sqlite = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
     assert.deepEqual(jsonl.traces.map((item) => item.session), sqlite.traces.map((item) => item.session));
+  });
+
+  it('counts consolidated assistant chunks as parsed logical records', async () => {
+    const group = await readDshObservedGroup(persistenceWithGroup(), 'root-session');
+    const ingestion = dshTraceIngestionSummary(group);
+    assert.equal(ingestion.parsedRecordCount, ingestion.sourceRecordCount);
+    assert.equal(ingestion.ignoredValueCount, 0);
+    assert.ok(group.traces.every((item) => item.integrity.ignoredChunkCount === 1));
   });
 
   it('lists terminal roots and excludes the current command session', async () => {

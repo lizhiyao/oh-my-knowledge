@@ -6,6 +6,7 @@ import type {
   ExperienceTurnSummary,
   ObservationSourceRecord,
   ObservationSourceRecordArchiveView,
+  TraceIngestionSummary,
 } from '../types/index.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
@@ -57,6 +58,23 @@ export interface DshObservedGroup {
   revision: string;
   traces: DshTraceAdapterResult[];
   inspections: DshSessionInspectionLike[];
+}
+
+/** Count every valid DSH logical record as parsed, including chunks consolidated into messages. */
+export function dshTraceIngestionSummary(group: DshObservedGroup): TraceIngestionSummary {
+  const sourceRecordCount = group.inspections.reduce((sum, item) => sum + item.events.length + 1, 0);
+  return {
+    fileCount: group.traces.length,
+    sourceRecordCount,
+    parsedRecordCount: sourceRecordCount,
+    malformedRecordCount: 0,
+    ignoredValueCount: 0,
+    unknownEventCount: group.traces.reduce(
+      (sum, item) => sum + item.integrity.unknownEventCount,
+      0,
+    ),
+    filteredSessionCount: 0,
+  };
 }
 
 function snapshotMap(
@@ -435,15 +453,7 @@ export function createDshConversationCatalog(): MutableDshConversationCatalog {
           fullSessionTimeline: entry.timeline,
           indicators: { userCorrectionCount: 0 },
         },
-        ingestion: {
-          fileCount: entry.group.traces.length,
-          sourceRecordCount: entry.group.inspections.reduce((sum, item) => sum + item.events.length + 1, 0),
-          parsedRecordCount: entry.group.inspections.reduce((sum, item) => sum + item.events.length + 1, 0),
-          malformedRecordCount: 0,
-          ignoredValueCount: entry.group.traces.reduce((sum, item) => sum + item.integrity.ignoredChunkCount, 0),
-          unknownEventCount: entry.group.traces.reduce((sum, item) => sum + item.integrity.unknownEventCount, 0),
-          filteredSessionCount: 0,
-        },
+        ingestion: dshTraceIngestionSummary(entry.group),
         sourceRecords: entry.records,
       };
     },
