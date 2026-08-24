@@ -19,11 +19,13 @@ import type {
   ObservationSignalType,
   ObservationSkillRollup,
   ObservationSourceKind,
+  TraceIngestionSummary,
   ToolCallInfo,
 } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
   loadTraceSessions,
+  segmentTraceBySkill,
   tracesToResultEntries,
   skillSegmentTimestampObserved,
   type TraceSession,
@@ -441,7 +443,18 @@ function skillSessionCountKey(segment: SkillSegment): string {
  * `buildObserveDiagnosticsFromReport(report)` 写入 `report.diagnostics`。
  */
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
-  const { sessions, segments, ingestion } = tracesToResultEntries(tracePath);
+  const { sessions, ingestion } = tracesToResultEntries(tracePath);
+  return buildObservationInboxReportFromTraceSessions(tracePath, sessions, ingestion, options);
+}
+
+/** Build the existing inbox artifact from an in-memory source-neutral corpus. */
+export function buildObservationInboxReportFromTraceSessions(
+  tracePath: string,
+  sessions: TraceSession[],
+  ingestion: TraceIngestionSummary,
+  options: BuildObservationInboxReportOptions = {},
+): ObservationInboxReport {
+  const segments = sessions.flatMap(segmentTraceBySkill);
   const skillSegments = segments.filter((segment) => segment.skillName !== 'general');
   const generatedAt = new Date().toISOString();
   const sessionTimeRanges = buildSessionTimeRanges(sessions);

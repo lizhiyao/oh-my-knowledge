@@ -3,6 +3,7 @@ import type { TraceSourceKind } from '../types/trace.js';
 const TRACE_SOURCE_KINDS = new Set<TraceSourceKind>([
   'claude',
   'codex',
+  'dsh',
   'openclaw',
   'markdown_log',
   'unknown',

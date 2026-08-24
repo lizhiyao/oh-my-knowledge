@@ -683,7 +683,7 @@ function trajectoryRevisionFromStat(
 }
 
 function isTerminalTaskStatus(status: ExperienceTurnStatus): boolean {
-  return status === 'completed' || status === 'aborted' || status === 'interrupted';
+  return status === 'completed' || status === 'failed' || status === 'aborted' || status === 'interrupted';
 }
 
 function secondsToMs(value: unknown): number | undefined {

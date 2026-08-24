@@ -8,6 +8,12 @@ import {
   type DshAgentLike,
   type DshHostContextLike,
 } from './host-executor.js';
+import {
+  createDshConversationCatalog,
+  listDshObserveCandidates,
+  readDshObservedGroup,
+  type DshSessionPersistenceLike,
+} from './observe.js';
 
 interface DshCommandInvocationLike {
   readonly agent: DshAgentLike;
@@ -21,6 +27,7 @@ type DshCommandResultLike =
   | Readonly<Record<'kind', 'error'> & { text: string }>;
 
 interface DshPluginContextLike extends DshHostContextLike {
+  get?(name: 'sessionPersistence'): DshSessionPersistenceLike | undefined;
   readonly commands: {
     register(definition: {
       readonly name: string;
@@ -36,18 +43,31 @@ interface DshPluginContextLike extends DshHostContextLike {
 export const name = 'omk-dsh-plugin';
 export const inject = ['agentPresets', 'agents', 'commands', 'tools'];
 
-const USAGE = '用法：/omk eval <eval.yaml>';
+const USAGE = '用法：/omk eval <eval.yaml> 或 /omk observe [session-id]';
 
-function commandPath(rawInput: string): string | undefined {
-  const match = /^\s*eval\s+(.+?)\s*$/u.exec(rawInput);
-  if (!match) return undefined;
-  const value = match[1]?.trim();
-  if (!value) return undefined;
+function unquote(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"'))
     || (value.startsWith("'") && value.endsWith("'"))) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+type DshCommand =
+  | { commandKind: 'eval'; path: string }
+  | { commandKind: 'observe'; sessionId?: string };
+
+function parseCommand(rawInput: string): DshCommand | undefined {
+  const evalMatch = /^\s*eval\s+(.+?)\s*$/u.exec(rawInput);
+  const evalPath = evalMatch?.[1]?.trim();
+  if (evalPath) return { commandKind: 'eval', path: unquote(evalPath) };
+  const observeMatch = /^\s*observe(?:\s+(.+?))?\s*$/u.exec(rawInput);
+  if (!observeMatch) return undefined;
+  const sessionId = observeMatch[1]?.trim();
+  return {
+    commandKind: 'observe',
+    ...(sessionId ? { sessionId: unquote(sessionId) } : {}),
+  };
 }
 
 function projectRoot(configPath: string): string {
@@ -175,17 +195,149 @@ async function executeEvalCommand(
   };
 }
 
-/** Register `/omk eval <eval.yaml>` in every DSH command-capable surface. */
-export function apply(ctx: DshPluginContextLike): void {
-  ctx.commands.register({
+interface DshStudioServer {
+  start(): Promise<string>;
+  stop(): Promise<void>;
+  getUrl(): string | null;
+}
+
+interface DshObserveState {
+  readonly catalog: ReturnType<typeof createDshConversationCatalog>;
+  server?: DshStudioServer;
+  serverUrl?: string;
+}
+
+function persistenceFor(ctx: DshPluginContextLike): DshSessionPersistenceLike {
+  const persistence = ctx.get?.('sessionPersistence');
+  if (!persistence) {
+    throw new Error('当前 DSH profile 没有启用 sessionPersistence；/omk eval 仍可使用，但任务轨迹需要配置 JSONL 或 SQLite persistence backend。');
+  }
+  return persistence;
+}
+
+async function studioUrl(
+  invocation: DshCommandInvocationLike,
+  state: DshObserveState,
+): Promise<string> {
+  if (state.serverUrl) return state.serverUrl;
+  const cwd = invocation.agent.session.header.cwd ?? process.cwd();
+  const omkDir = join(cwd, '.omk');
+  const { createReportServer } = await import('../server/report-server.js');
+  state.server = createReportServer({
+    port: 0,
+    reportsDir: join(omkDir, 'reports'),
+    analysesDir: join(omkDir, 'observe-health'),
+    doctorsDir: join(omkDir, 'doctors'),
+    observationsDir: join(omkDir, 'observe-inbox'),
+    jobsDir: join(omkDir, 'jobs'),
+    managedDir: join(omkDir, 'managed'),
+    conversationCatalog: state.catalog,
+  });
+  state.serverUrl = await state.server.start();
+  return state.serverUrl;
+}
+
+async function executeObserveCommand(
+  ctx: DshPluginContextLike,
+  invocation: DshCommandInvocationLike,
+  sessionId: string | undefined,
+  state: DshObserveState,
+): Promise<DshCommandResultLike> {
+  const persistence = persistenceFor(ctx);
+  if (!sessionId) {
+    const candidates = await listDshObserveCandidates(persistence, {
+      excludeSessionId: String(invocation.agent.session.id),
+      signal: invocation.signal,
+    });
+    if (candidates.length === 0) {
+      return {
+        kind: 'success',
+        text: '没有找到可观测的已结束 DSH session。完成一个任务后再运行 /omk observe。',
+      };
+    }
+    return {
+      kind: 'success',
+      text: [
+        '最近可观测的 DSH session：',
+        ...candidates.map((candidate) => (
+          `- ${candidate.sessionId}　${candidate.status}　${candidate.createdAt}${candidate.cwd ? `　${candidate.cwd}` : ''}`
+        )),
+        '',
+        '查看轨迹：/omk observe <session-id>',
+      ].join('\n'),
+    };
+  }
+  const group = await readDshObservedGroup(persistence, sessionId, invocation.signal);
+  const selected = group.traces.find((trace) => trace.session.runId === sessionId);
+  if (!selected) throw new Error(`DSH session 一致快照缺少目标 session：${sessionId}。`);
+  const incomplete = group.traces.filter((trace) => !trace.integrity.complete);
+  if (incomplete.length > 0) {
+    const details = incomplete.map((trace) => {
+      const integrity = trace.integrity;
+      const reasons = [
+        integrity.openTurnCount > 0 ? `未闭合 turn=${integrity.openTurnCount}` : '',
+        integrity.openStepCount > 0 ? `未闭合 step=${integrity.openStepCount}` : '',
+        integrity.unmatchedToolCallCount > 0 ? `缺失 tool result=${integrity.unmatchedToolCallCount}` : '',
+        integrity.unmatchedToolResultCount > 0 ? `孤立 tool result=${integrity.unmatchedToolResultCount}` : '',
+        integrity.status === 'unknown' ? '终态未知' : '',
+      ].filter(Boolean).join('；');
+      return `${trace.session.runId}（${reasons || '完整性检查未通过'}）`;
+    }).join('；');
+    throw new Error(`DSH session group 无法形成完整任务轨迹：${details}。`);
+  }
+  const cwd = invocation.agent.session.header.cwd ?? process.cwd();
+  const observationsDir = join(cwd, '.omk', 'observe-inbox');
+  const {
+    buildObservationInboxReportFromTraceSessions,
+    saveObservationInboxReport,
+  } = await import('../observability/inbox.js');
+  const { loadObservationReviewState } = await import('../observability/review-state.js');
+  const { buildObserveDiagnosticsFromReport } = await import('../diagnosis/observe-producer.js');
+  const sourceRecordCount = group.inspections.reduce((sum, item) => sum + item.events.length + 1, 0);
+  const report = buildObservationInboxReportFromTraceSessions(
+    `dsh:${group.rootSessionId}`,
+    group.traces.map((trace) => trace.session),
+    {
+      fileCount: group.traces.length,
+      sourceRecordCount,
+      parsedRecordCount: sourceRecordCount,
+      malformedRecordCount: 0,
+      ignoredValueCount: group.traces.reduce((sum, trace) => sum + trace.integrity.ignoredChunkCount, 0),
+      unknownEventCount: group.traces.reduce((sum, trace) => sum + trace.integrity.unknownEventCount, 0),
+      filteredSessionCount: 0,
+    },
+    { reviewState: loadObservationReviewState(observationsDir) },
+  );
+  report.diagnostics = buildObserveDiagnosticsFromReport(report);
+  const inboxPath = saveObservationInboxReport(report, observationsDir);
+  const target = state.catalog.upsert(group);
+  const baseUrl = await studioUrl(invocation, state);
+  const trajectoryUrl = `${baseUrl}/conversations/${encodeURIComponent(target.threadId)}/tasks/${encodeURIComponent(target.turnId)}`;
+  return {
+    kind: 'success',
+    text: [
+      `已只读摄取 DSH session：${sessionId}`,
+      `任务状态：${selected.integrity.status}`,
+      `任务轨迹：${trajectoryUrl}`,
+      `观测收件箱：${inboxPath}`,
+    ].join('\n'),
+  };
+}
+
+/** Register `/omk eval` and `/omk observe` in every DSH command-capable surface. */
+export function apply(ctx: DshPluginContextLike): () => void {
+  const observeState: DshObserveState = { catalog: createDshConversationCatalog() };
+  const disposeCommand = ctx.commands.register({
     name: 'omk',
-    description: '在当前 DeepSeek Harness 中运行 OMK 对照评测',
-    input: { hint: 'eval <eval.yaml>' },
+    description: '在当前 DeepSeek Harness 中运行 OMK 对照评测或查看任务轨迹',
+    input: { hint: 'eval <eval.yaml> | observe [session-id]' },
     async handler(invocation) {
-      const path = commandPath(invocation.rawInput);
-      if (!path) return { kind: 'error', text: USAGE };
+      const command = parseCommand(invocation.rawInput);
+      if (!command) return { kind: 'error', text: USAGE };
       try {
-        return await executeEvalCommand(ctx, invocation, path);
+        return command.commandKind === 'eval'
+          ? await executeEvalCommand(ctx, invocation, command.path)
+          : await executeObserveCommand(ctx, invocation, command.sessionId, observeState);
       } catch (error) {
         return {
           kind: 'error',
@@ -194,4 +346,8 @@ export function apply(ctx: DshPluginContextLike): void {
       }
     },
   });
+  return () => {
+    disposeCommand();
+    void observeState.server?.stop().catch(() => undefined);
+  };
 }

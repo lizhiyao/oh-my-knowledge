@@ -583,6 +583,7 @@ export type TaskWindowBasis =
 
 export type ExperienceTurnStatus =
   | 'completed'
+  | 'failed'
   | 'aborted'
   | 'interrupted'
   | 'open'

@@ -21,8 +21,10 @@ interface IndexedEvent {
 
 const TERMINAL_LIFECYCLE_LABELS = new Set([
   'turn_completed',
+  'turn_failed',
   'turn_aborted',
   'turn_interrupted',
+  'turn_ended_unknown',
 ]);
 
 /** Reconstruct every observable task without consulting Skill attribution. */
@@ -178,6 +180,7 @@ function syntheticTurnId(value: TurnCandidate): string {
 function turnStatus(events: ExperienceTimelineEvent[]): ExperienceTurnStatus {
   const labels = new Set(events.map((event) => event.label));
   if (labels.has('turn_completed')) return 'completed';
+  if (labels.has('turn_failed')) return 'failed';
   if (labels.has('turn_aborted')) return 'aborted';
   if (labels.has('turn_interrupted')) return 'interrupted';
   if (labels.has('turn_started')) return 'open';

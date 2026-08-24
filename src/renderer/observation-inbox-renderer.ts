@@ -262,8 +262,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSourceBadge = (item: ObservationInboxItem): string => {
-    const label = item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'codex' ? 'Codex' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
-    const color = item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'codex' ? '#1677ff' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
+    const label = item.sourceKind === 'dsh' ? 'DeepSeek Harness' : item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'codex' ? 'Codex' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
+    const color = item.sourceKind === 'dsh' ? '#0f766e' : item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'codex' ? '#1677ff' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
     return `<span title="调用日志来源：${e(label)}" style="display:inline-flex;margin-top:4px;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:${color};font-size:11px;font-weight:650">${e(label)}</span>`;
   };
   const confidenceHeaderHelp = '判断把握：OMK 对“这条 过程发现 是否需要处理/是否高风险/需关注”的规则判断有多确定。归属把握：OMK 把这条 过程发现 归到当前 skill 名下有多确定，例如明确调用 skill 通常更高。';

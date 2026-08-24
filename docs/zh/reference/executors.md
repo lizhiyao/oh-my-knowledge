@@ -74,6 +74,8 @@ dsh --profile web
 
 ```text
 /omk eval eval.yaml
+/omk observe
+/omk observe <session-id>
 ```
 
 `eval.yaml` 相对当前 DSH session 的 `cwd` 解析。配置中应省略顶层 `executor`，被测执行器始终是当前 DSH 宿主。被测模型默认继承当前 session；也可以在配置中显式写 `model`。评委需要复用当前 DSH 时，可使用面向用户的 `executor: dsh` 别名；`dsh-host` 是 OMK 内部标识，不能写入用户配置。插件为每条 sample 创建新的 DSH agent／session，复用当前 profile 已配置的 provider、凭证、工具、sandbox 与持久化，同时用 complete system-prompt section 注入 control／treatment、关闭 runtime context 和环境 `skill` 工具。DSH 的 `session/event` 按宿主观测顺序映射为 OMK 的 token、turn、tool call 与子 agent 证据，报告写入项目的 `.omk/reports`。
@@ -81,6 +83,8 @@ dsh --profile web
 插件会先从发起命令的 session 组合 active agent preset，再叠加 OMK 的测量隔离。继承当前 session 模型且评委均复用同一个 DSH 模型时，当前交互 session 本身即作为连通性证据，不会额外创建探测 session；显式覆盖被测模型、使用不同 DSH 评委模型或外部评委时仍会执行连通性预检。宿主模式的配置应省略 `effort`：DSH 的 reasoning effort 是 provider-owned 枚举，无法与 OMK 的五档通用级别无损映射；需要在 DSH profile 中固定目标推理配置。`goldDir` 仍受支持，并会把人工 gold 一致性写回持久化报告。
 
 当前 PoC 通过 DSH 的人类命令注册表提供 `/omk`，因此要求 profile 组合 `ctx.commands` 及其命令适配器；内置 `web` profile 满足这一条件，headless／ACP／JSON-RPC surface 暂不消费该命令。`Sample.mocks` 仍不支持。runtime 指纹包含 DSH 宿主版本、OMK 适配器版本、provider、agent preset 和有效工具 schema。由于 DSH 尚未提供覆盖全部插件与策略的规范组合摘要，该指纹会明确标记为仅部分可审计，严格可比性检查将给出警告，而不会声称运行时完全一致。
+
+`/omk observe` 还要求 profile 提供 `ctx.sessionPersistence`。它列出最近已结束的 root session，并排除发起命令的当前 session；`/omk observe <session-id>` 通过 `listSnapshots()`／`inspect()` 只读取得逻辑事件流，比较读取前后的 revision，稳定后转换为 `sourceKind: dsh` 的 Trace IR，并返回实际监听地址下的 Studio 任务轨迹链接。JSONL、zstd 与 SQLite 的物理格式均由 DSH backend 负责，OMK 不解析这些文件。持续写入、required 未知事件、序号断裂、未闭合 turn／step 或缺失 tool result 都会拒绝“完整轨迹”结论。首版是离线快照，不实时跟随正在运行的 session。
 
 本地开发 checkout 可以先构建，再直接链接到 profile：
 

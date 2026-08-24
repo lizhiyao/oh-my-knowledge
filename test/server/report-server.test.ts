@@ -1090,11 +1090,11 @@ describe('report-server', () => {
     assert.equal(res.status, 404);
   });
 
-  it('GET / returns the Codex conversation overview', async () => {
+  it('GET / returns the conversation overview', async () => {
     const res = await fetch(`${baseUrl}/`);
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
-    assert.ok(res.body.includes('Codex 对话'));
+    assert.ok(res.body.includes('<title>OMK · 对话</title>'));
     assert.ok(res.body.includes('conversation-app-nav'));
     assert.ok(res.body.includes('<h1>对话</h1>'));
     assert.ok(res.body.includes('conversation-index-app'));

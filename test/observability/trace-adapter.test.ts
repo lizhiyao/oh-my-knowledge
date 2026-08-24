@@ -3875,7 +3875,7 @@ describe('segmentBySkill', () => {
       ],
     });
 
-    const summaries = (['claude', 'codex', 'openclaw', 'unknown'] as const).map((sourceKind) => {
+    const summaries = (['claude', 'codex', 'dsh', 'openclaw', 'unknown'] as const).map((sourceKind) => {
       const segments = segmentBySkill(makeSession(sourceKind));
       return {
         skills: segments.map((segment) => segment.skillName),
