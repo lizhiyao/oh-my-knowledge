@@ -3,6 +3,7 @@ import { format } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
+import LangAwareHelp from '../../src/cli/oclif/help.js';
 
 type CommandClass = {
   new (argv: string[], config: Config): Command;
@@ -42,6 +43,23 @@ export interface CommandOutput {
 export interface CommandRunError extends Error, CommandOutput {
   code: number;
   cause: unknown;
+}
+
+/**
+ * Render one command with the production Help subclass without paying for a
+ * fresh Node + oclif discovery process. Dispatcher routing keeps separate
+ * process-level coverage in oclif-dispatch / oclif-startup tests.
+ */
+export async function renderCommandHelp(id: string, lang: 'zh' | 'en' = 'zh'): Promise<string> {
+  const previousArgv = process.argv;
+  try {
+    process.argv = [process.execPath, 'omk', ...id.split(':'), '--help', '--lang', lang];
+    const config = await commandConfig();
+    const command = config.findCommand(id, { must: true });
+    return new LangAwareHelp(config).formatCommand(command);
+  } finally {
+    process.argv = previousArgv;
+  }
 }
 
 function exitCodeOf(error: unknown): number | undefined {

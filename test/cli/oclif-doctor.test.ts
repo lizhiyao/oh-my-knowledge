@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { renderCommandHelp } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +26,7 @@ interface ExecError extends Error {
 
 describe('oclif doctor', () => {
   it('--help 默认 zh 含中文 description', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
+    const stdout = await renderCommandHelp('doctor');
     assert.ok(stdout.includes('体检 omk 工作目录'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('USAGE'), 'stdout missing USAGE block');
     assert.ok(stdout.includes('--repeat'), 'stdout missing --repeat flag');
@@ -33,7 +34,7 @@ describe('oclif doctor', () => {
   });
 
   it('--help --lang en 切到英文 description', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('doctor', 'en');
     assert.ok(stdout.includes('Preflight health checks'), `stdout missing en description:\n${stdout}`);
     assert.ok(!stdout.includes('体检 omk 工作目录'), 'stdout should not contain zh in --lang en mode');
   });

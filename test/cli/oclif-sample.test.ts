@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import SampleCommand from '../../src/cli/commands/sample.js';
-import { runCommand } from '../helpers/run-command.js';
+import { renderCommandHelp, runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,7 +27,7 @@ interface ExecError extends Error {
 
 describe('oclif sample', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help']);
+    const stdout = await renderCommandHelp('sample');
     assert.ok(stdout.includes('为指定 skill 生成评测用例'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--batch'), 'stdout missing --batch flag');
     assert.ok(stdout.includes('--fix'), 'stdout missing --fix flag');
@@ -35,7 +35,7 @@ describe('oclif sample', () => {
   });
 
   it('--help --lang en 切英文', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help', '--lang', 'en']);
+    const stdout = await renderCommandHelp('sample', 'en');
     assert.ok(stdout.includes('Generate eval samples'), 'stdout should contain en description');
     assert.ok(stdout.includes('specified skill'), 'stdout should describe --skill in English');
   });

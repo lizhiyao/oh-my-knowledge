@@ -11,6 +11,9 @@ import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import DoctorCommand from '../../src/cli/commands/doctor.js';
+import InitCommand from '../../src/cli/commands/init.js';
+import { runCommand } from '../helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,10 +46,10 @@ function hostileEnv(home: string): NodeJS.ProcessEnv {
   };
 }
 
-async function runShortPath(args: string[]): Promise<void> {
+async function runShortPath(args: string[]): Promise<string> {
   const home = mkdtempSync(join(tmpdir(), 'omk-startup-short-'));
   try {
-    await execFileAsync('node', [CLI, ...args], {
+    const { stdout } = await execFileAsync('node', [CLI, ...args], {
       env: hostileEnv(home),
       timeout: SHORT_PATH_TIMEOUT_MS,
     });
@@ -55,31 +58,24 @@ async function runShortPath(args: string[]): Promise<void> {
       false,
       `${args.join(' ')} should skip checkUpdate and not write update-check cache`,
     );
+    return stdout;
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 }
 
 describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', () => {
-  it('--help 不触发 checkUpdate（不写缓存、不被 hostile registry 拖住）', async () => {
-    await runShortPath(['--help']);
-  });
-
-  it('--version 不触发 checkUpdate', async () => {
-    await runShortPath(['--version']);
-  });
-
   it('doctor --help 不触发 checkUpdate（子命令 --help 同样走短路径）', async () => {
     await runShortPath(['doctor', '--help']);
   });
 
   it(`-h 短开关跟 --help 等价(走 oclif additionalHelpFlags)`, async () => {
-    const { stdout } = await execFileAsync('node', [CLI, '-h']);
+    const stdout = await runShortPath(['-h']);
     assert.ok(stdout.includes('\nUSAGE\n'), `expected oclif USAGE block on -h, got:\n${stdout.slice(0, 200)}`);
   });
 
   it(`-v 短开关跟 --version 等价`, async () => {
-    const { stdout } = await execFileAsync('node', [CLI, '-v']);
+    const stdout = await runShortPath(['-v']);
     assert.ok(/\d+\.\d+\.\d+/.test(stdout), `expected version string on -v, got: ${stdout}`);
   });
 
@@ -100,14 +96,13 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`显式 --lang fr 不被 oclif enum 拦(legacy fallback to zh)`, async () => {
     // legacy getCliLang 的契约:unsupported lang fallback to zh,不是 exit。
     // oclif lang flag 不应当 enum 校验。
-    const { existsSync, rmSync } = await import('node:fs');
-    const dir = '/tmp/omk-startup-lang-fr-test';
-    rmSync(dir, { recursive: true, force: true });
+    const base = mkdtempSync(join(tmpdir(), 'omk-startup-lang-fr-'));
+    const dir = join(base, 'project');
     try {
-      await execFileAsync('node', [CLI, 'init', dir, '--lang', 'fr']);
+      await runCommand(InitCommand, [dir, '--lang', 'fr']);
       assert.ok(existsSync(dir), `init --lang fr should fallback to zh and succeed, dir ${dir} should exist`);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true });
     }
   });
 
@@ -117,7 +112,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test'], { env });
+      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -130,7 +125,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
+      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

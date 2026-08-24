@@ -30,10 +30,10 @@ agent / 工具调用 + 控制实验 fixture。`skills/v1.md`、`skills/v2.md` + 
 
 ## custom-executor/
 
-离线执行器 fixture：`echo-executor.sh` 从 stdin 读 JSON、输出 `{"output": "Echo: " + prompt}`（即回显 prompt）。`skills/v1.md` + 2 样本。
+离线执行器 fixture：`fixture-executor.sh` 从 stdin 消费请求并返回固定 JSON 输出。`skills/v1.md` + 2 样本。脚本只负责为 runner / CLI 集成测试提供确定性结果；自定义 executor 的输入透传与协议解析由 `test/executor.test.ts` 单独覆盖。
 
 load-bearing 值：
-- `test/runner.test.ts` 的「no-judge 确定性断言分」：断言 `results[0]`（即 `s001`）`assertions.total === 1`、`passed === 0`、`score === 1`。**s001 必须恰好 1 条断言，且该断言对「Echo: <prompt>」不通过**（当前 `s001` 问 `What is two plus two?`、断言 `contains "four"`，回显里没有 `four` → 不通过）。改 prompt/断言要保持这个「回显里不含答案 token」的关系。
+- `test/runner.test.ts` 的「no-judge 确定性断言分」：断言 `results[0]`（即 `s001`）`assertions.total === 1`、`passed === 0`、`score === 1`。**s001 必须恰好 1 条断言，且该断言对固定输出 `fixture output` 不通过**。改断言时要保持这个关系。
 - `test/cli.test.ts`：用 echo 跑 **非 dry-run** eval / batch（`--no-judge`），靠整体低分得出 verdict → 退出码 1；不 pin 具体分数。
 
 ## multi-skills/
@@ -43,4 +43,5 @@ load-bearing 值：
 load-bearing 值：
 - `test/runner.test.ts`：`discoverVariants` 断言能发现 `classifier`；batch dry-run 按 `sampleCount × 2` 算 `taskCount`。
 - `test/cli.test.ts` 的 batch 测试：断言「批量评测结论：未通过」+ `UNDERPOWERED:`（依赖每个 skill 的小样本量）。三个 skill 都得在、各自样本量小，别删。
+- `classifier` 保留 2 条样本以覆盖 batch 的 `UNDERPOWERED` 分支；其余 skill 只保留 1 条。这些夹具验证 batch 发现、任务规划和聚合门禁，不验证领域用例多样性；增加样本会按「skill × 样本 × 2 variants」放大子进程数量。
 - `src/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。

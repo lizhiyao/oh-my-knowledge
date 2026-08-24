@@ -9,15 +9,5 @@
       { "type": "max_length", "value": 200, "weight": 1 },
       { "type": "regex", "pattern": "95%|60%", "weight": 0.5 }
     ]
-  },
-  {
-    "sample_id": "sum002",
-    "prompt": "请摘要以下内容",
-    "context": "2024 年全球电动汽车销量突破 1800 万辆，同比增长 25%。中国市场贡献了其中的 60%，欧洲和北美分别占 20% 和 12%。电池技术的进步使得续航里程普遍超过 500 公里，而充电基础设施的扩建也在加速。分析师预测，到 2030 年电动汽车将占全球新车销量的 50%。",
-    "rubric": "摘要应保留销量数据和市场趋势",
-    "assertions": [
-      { "type": "contains", "value": "1800", "weight": 1 },
-      { "type": "max_length", "value": 150, "weight": 1 }
-    ]
   }
 ]

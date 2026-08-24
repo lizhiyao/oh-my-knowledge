@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,10 @@ import type { Artifact, Sample, Task, VariantResult } from '../src/types/index.j
 import { reportFileName } from '../src/eval-core/artifact-file-names.js';
 import { aggregateReport } from '../src/eval-core/evaluation-reporting.js';
 import EvalCommand from '../src/cli/commands/eval/index.js';
+import EvalGoldCompare from '../src/cli/commands/eval/gold/compare.js';
+import EvolveCommand from '../src/cli/commands/evolve.js';
 import InstallCommand from '../src/cli/commands/install.js';
+import SampleCommand from '../src/cli/commands/sample.js';
 import { runCommand } from './helpers/run-command.js';
 
 const execFileAsync = promisify(execFile);
@@ -18,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
 const FIXTURES_ROOT = join(__dirname, 'fixtures');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'echo-executor.sh');
+const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'fixture-executor.sh');
 
 async function runEvalCommand(
   args: string[],
@@ -141,17 +144,22 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
 
   const candidateOutput = candidatePasses ? 'PASS' : 'FAIL';
   const baselineOutput = candidatePasses ? 'FAIL' : 'PASS';
-  const executor = join(dir, 'executor.mjs');
+  const executor = join(dir, 'executor.sh');
   await writeFile(executor, [
-    'import { readFileSync } from "node:fs";',
-    'const req = JSON.parse(readFileSync(0, "utf8"));',
-    `const output = req.system.includes("PROMOTE_TARGET_E2E") ? ${JSON.stringify(candidateOutput)} : ${JSON.stringify(baselineOutput)};`,
-    'console.log(JSON.stringify({ output }));',
+    '#!/bin/sh',
+    // Keep this fixture dependency-free: the executor runs once per sample.
+    'IFS= read -r request',
+    'case "$request" in',
+    `  *PROMOTE_TARGET_E2E*) output=${candidateOutput} ;;`,
+    `  *) output=${baselineOutput} ;;`,
+    'esac',
+    'printf \'{"output":"%s"}\\n\' "$output"',
   ].join('\n'));
+  await chmod(executor, 0o755);
 
   await writeFile(join(dir, 'eval.yaml'), [
     'samples: ./samples.json',
-    `executor: ${JSON.stringify(`node ${executor}`)}`,
+    `executor: ${JSON.stringify(executor)}`,
     'noJudge: true',
     'noDiagnostic: true',
     'skipDoctor: true',
@@ -231,8 +239,7 @@ describe('CLI', () => {
   it('sample 把 flag value 跟 skill 路径区分开', async () => {
     const fakePath = join(tmpdir(), 'omk-sample-flag-test-no-such-skill.md');
     await assert.rejects(
-      () => execFileAsync('node', [
-        CLI, 'sample',
+      () => runCommand(SampleCommand, [
         '--count', '3',
         '--model', 'sonnet',
         fakePath,
@@ -271,8 +278,8 @@ describe('CLI', () => {
       ].join('\n'));
 
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'sample', 'skills/triage',
+        () => runCommand(SampleCommand, [
+          'skills/triage',
           '--executor', 'openai-api',
           '--model', 'gpt-4o-mini',
           '--count', '1',
@@ -310,8 +317,8 @@ describe('CLI', () => {
       ].join('\n'));
 
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'sample', '--batch',
+        () => runCommand(SampleCommand, [
+          '--batch',
           '--skill-dir', 'skills',
           '--executor', 'openai-api',
           '--model', 'gpt-4o-mini',
@@ -349,8 +356,8 @@ describe('CLI', () => {
       ].join('\n'));
 
       await assert.rejects(
-        () => execFileAsync('node', [
-          CLI, 'evolve', 'skills/triage',
+        () => runCommand(EvolveCommand, [
+          'skills/triage',
           '--executor', 'openai-api',
           '--model', 'gpt-4o-mini',
           '--judge-models', 'openai-api:gpt-4o-mini',
@@ -380,44 +387,6 @@ describe('CLI', () => {
   it('eval --skip-connectivity --help triggers help from any position', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '--skip-connectivity', '--help']);
     assert.ok(stdout.includes('omk eval'));
-  });
-
-  it('unknown command exits 1 with command-not-found message', async () => {
-    // oclif 的 unknown command 信号是 stderr 含 "not found"。
-    // exit 1（package.json oclif.exitCodes.default=1）。
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'unknown-domain-xyz']),
-      (err: unknown) => {
-        const e = err as ExecError;
-        assert.equal(e.code, 1);
-        assert.ok(/not found|未知命令/i.test(e.stderr), `stderr should signal command not found: ${e.stderr}`);
-        return true;
-      },
-    );
-  });
-
-  it('old bench namespace is not exposed', async () => {
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', '--help']),
-      (err: unknown) => {
-        const e = err as ExecError;
-        assert.equal(e.code, 1);
-        assert.ok(/not found|未知命令/i.test(e.stderr));
-        return true;
-      },
-    );
-  });
-
-  it('old analyze entrypoint is not exposed', async () => {
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'analyze', '--help']),
-      (err: unknown) => {
-        const e = err as ExecError;
-        assert.equal(e.code, 1);
-        assert.ok(/not found|未知命令/i.test(e.stderr));
-        return true;
-      },
-    );
   });
 
   it('eval --dry-run exits 0 through eval workflow', async () => {
@@ -463,8 +432,8 @@ describe('CLI', () => {
         '    score: 5',
       ].join('\n'));
 
-      const { stdout } = await execFileAsync('node', [
-        CLI, 'eval', 'gold', 'compare', reportId,
+      const { stdout } = await runCommand(EvalGoldCompare, [
+        reportId,
         '--gold-dir', goldDir,
         '--reports-dir', reportsDir,
         '--variant', 'v1',

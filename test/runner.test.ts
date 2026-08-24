@@ -147,7 +147,7 @@ const AGENT_CONTROL_DIR = join(__dirname, 'fixtures', 'agent-eval', 'control-exp
 const AGENT_SKILL_DIR = join(__dirname, 'fixtures', 'agent-eval', 'skills');
 const CUSTOM_EXECUTOR_SAMPLES = join(__dirname, 'fixtures', 'custom-executor', 'eval-samples.json');
 const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, 'fixtures', 'custom-executor', 'skills');
-const CUSTOM_EXECUTOR_PATH = join(__dirname, 'fixtures', 'custom-executor', 'echo-executor.sh');
+const CUSTOM_EXECUTOR_PATH = join(__dirname, 'fixtures', 'custom-executor', 'fixture-executor.sh');
 
 let stderrCapture: CapturedStderr;
 
