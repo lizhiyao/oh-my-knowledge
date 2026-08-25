@@ -4,6 +4,19 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 
 该集成只采集用户明确授权并通过工具提交的反馈。所有结果仍是 `coverageStatus: partial`；它不代表 OMK 能读取完整对话、其他工具调用或隐藏推理。
 
+## 可观测事件矩阵
+
+| 事件 | OMK 是否可观测 | 可作为证据 | 边界 |
+| --- | --- | --- | --- |
+| `capture_observation` 的输入与结果 | 是 | 是 | 只包含用户授权提交的字段 |
+| `get_observation`、复核与草稿工具的输入与结果 | 是 | 是 | 只覆盖当前 principal 可访问的 OMK 记录 |
+| OMK component 内的点击、编辑与工具调用 | 是 | 是 | 仅限 component 主动提交给 OMK 的操作 |
+| 用户显式提交的消息片段 | 是 | 是 | 片段是用户提供的 evidence，不代表完整原始消息流 |
+| ChatGPT thread／turn 标识 | 视宿主而定 | 仅在宿主提供时 | 不自行伪造稳定的 ChatGPT 标识 |
+| 当前对话的前后文 | 否 | 否 | 标准 MCP 工具边界不能被动订阅完整 transcript |
+| 未经 OMK 调用的其它工具事件 | 否 | 否 | 不推断或补写缺失调用 |
+| 隐藏 reasoning | 否 | 否 | 永不读取、保存或推断 |
+
 ## 选择部署形态
 
 | 形态 | 身份与存储 | 用途 |
@@ -33,6 +46,22 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 组件遵循开放 MCP Apps bridge：通过 `ui/notifications/tool-result` 接收结构化工具结果，通过 `tools/call` 发起复核和草稿操作。组件不在浏览器存储中保存权威 review 或 draft 状态；每次变更仍由服务端重新鉴权并持久化，组件根据写工具返回的权威结果更新。卡片会先展示 `coverageStatus: partial` 和未观测事件，再提供人工结论操作。
 
 典型模型调用顺序是先 `get_observation`，再 `render_observation_review`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
+
+## 三种触发路径
+
+### 用户显式触发
+
+用户说「刚才关于退款期限的回答错了，请记录这个问题」。模型调用 `capture_observation`，并设置 `confirmedByUser: true`；evidence 只包含用户授权的纠正和必要片段。捕获后不会自动生成草稿或写入正式样本集。
+
+### Skill 启发式触发
+
+用户只说「不对，退款期限应该是 30 天，不是 7 天」时，skill 可以建议「要把这个知识缺口记录到 OMK 吗？」。在用户明确确认前，不调用 `capture_observation`。这条路径依赖模型判断，是 best-effort，不能用作完整召回率。
+
+### Component 操作
+
+已有 observation 时，模型先调用 `get_observation`，再调用 `render_observation_review`。用户在 component 内选择「真实问题」后，component 调用 `record_observation_review`；只有服务端确认结论为 `real_issue` 后，才允许调用 `draft_sample_from_observation`。草稿仍与正式 eval sample 隔离。
+
+仓库在 `examples/chatgpt-observation/eval-samples.json` 提供 direct／indirect／negative 行为用例。它们必须在能够暴露 MCP 工具轨迹的 ChatGPT 兼容宿主中运行；普通文本执行器看不到工具调用，不能用于验证这组边界。
 
 ## 本地 stdio
 
