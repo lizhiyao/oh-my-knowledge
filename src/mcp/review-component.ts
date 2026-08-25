@@ -94,7 +94,7 @@ export function registerObservationReviewComponent(
   server.registerTool('show_observation_review', {
     title: 'OMK 知识反馈',
     description: [
-      'Render the inline review component for an observation.',
+      'Show the inline review component for an observation.',
       'First call get_observation, propose a regression prompt only from its authorized evidence,',
       'then pass the observationId and optional proposal to this tool.',
     ].join(' '),
