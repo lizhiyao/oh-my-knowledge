@@ -1,4 +1,14 @@
 export const OBSERVATION_CAPTURE_SCOPE = 'observation:capture';
+export const OBSERVATION_READ_SCOPE = 'observation:read';
+export const OBSERVATION_REVIEW_SCOPE = 'observation:review';
+export const OBSERVATION_DRAFT_SCOPE = 'observation:draft';
+
+const OBSERVATION_SCOPES = [
+  OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_READ_SCOPE,
+  OBSERVATION_REVIEW_SCOPE,
+  OBSERVATION_DRAFT_SCOPE,
+] as const;
 
 export interface ObservationPrincipal {
   tenantId: string;
@@ -33,7 +43,7 @@ export class ObservationPrincipalError extends Error {
 export const LOCAL_OBSERVATION_PRINCIPAL: ObservationPrincipal = Object.freeze({
   tenantId: 'local',
   principalId: 'local-user',
-  scopes: Object.freeze([OBSERVATION_CAPTURE_SCOPE]),
+  scopes: Object.freeze([...OBSERVATION_SCOPES]),
 });
 
 export function validateObservationPrincipal(value: unknown): ObservationPrincipal {
@@ -54,11 +64,33 @@ export function validateObservationPrincipal(value: unknown): ObservationPrincip
 }
 
 export function assertObservationCaptureScope(principal: ObservationPrincipal): void {
-  if (!principal.scopes.includes(OBSERVATION_CAPTURE_SCOPE)) {
+  assertObservationScope(principal, OBSERVATION_CAPTURE_SCOPE);
+}
+
+export function assertObservationReadScope(principal: ObservationPrincipal): void {
+  assertObservationScope(principal, OBSERVATION_READ_SCOPE);
+}
+
+export function assertObservationReviewScope(principal: ObservationPrincipal): void {
+  assertObservationScope(principal, OBSERVATION_REVIEW_SCOPE);
+}
+
+export function assertObservationDraftScope(principal: ObservationPrincipal): void {
+  assertObservationScope(principal, OBSERVATION_DRAFT_SCOPE);
+}
+
+export function assertObservationAccessScope(principal: ObservationPrincipal): void {
+  if (!OBSERVATION_SCOPES.some((scope) => principal.scopes.includes(scope))) {
     throw new ObservationPrincipalError(
       'forbidden',
-      `Principal 缺少 ${OBSERVATION_CAPTURE_SCOPE} scope。`,
+      'Principal 缺少 observation scope。',
     );
+  }
+}
+
+function assertObservationScope(principal: ObservationPrincipal, scope: string): void {
+  if (!principal.scopes.includes(scope)) {
+    throw new ObservationPrincipalError('forbidden', `Principal 缺少 ${scope} scope。`);
   }
 }
 

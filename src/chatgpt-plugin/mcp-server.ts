@@ -4,12 +4,23 @@ import {
   type ExplicitObservationCaptureOptions,
 } from '../observability/explicit-capture.js';
 import {
-  FileObservationCaptureStore,
   type ObservationCaptureStore,
 } from './capture-store.js';
 import {
+  FileObservationFeedbackStore,
+  isObservationFeedbackStore,
+  ObservationFeedbackStoreError,
+} from './feedback-store.js';
+import {
   assertObservationCaptureScope,
+  assertObservationDraftScope,
+  assertObservationReadScope,
+  assertObservationReviewScope,
   LOCAL_OBSERVATION_PRINCIPAL,
+  OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_DRAFT_SCOPE,
+  OBSERVATION_READ_SCOPE,
+  OBSERVATION_REVIEW_SCOPE,
   validateObservationPrincipal,
   type ObservationPrincipal,
 } from './principal.js';
@@ -24,6 +35,19 @@ const unavailableEventKindSchema = z.enum([
   'external_tool_calls',
   'hidden_reasoning',
 ]);
+const reviewVerdictSchema = z.enum(['real_issue', 'not_issue', 'needs_more_context']);
+const reviewStateVerdictSchema = z.enum([
+  'reviewed',
+  'real_issue',
+  'not_issue',
+  'needs_more_context',
+]);
+const captureCoverageSchema = z.object({
+  coverageStatus: z.literal('partial'),
+  capturePath: z.literal('explicit_tool_call'),
+  observedEventKinds: z.array(observedEventKindSchema),
+  unavailableEventKinds: z.array(unavailableEventKindSchema),
+});
 
 export interface ChatGptObservationToolOptions {
   principal: ObservationPrincipal;
@@ -49,7 +73,7 @@ export function createChatGptObservationMcpServer(
   const principal = validateObservationPrincipal(
     options.principal ?? LOCAL_OBSERVATION_PRINCIPAL,
   );
-  const captureStore = options.captureStore ?? new FileObservationCaptureStore({
+  const captureStore = options.captureStore ?? new FileObservationFeedbackStore({
     observationsDir: options.observationsDir,
     now: options.now,
     partition: options.principal ? 'principal' : 'shared',
@@ -65,7 +89,8 @@ export function registerChatGptObservationTools(
 ): void {
   const principal = validateObservationPrincipal(options.principal);
 
-  server.registerTool('capture_observation', {
+  if (principal.scopes.includes(OBSERVATION_CAPTURE_SCOPE)) {
+    server.registerTool('capture_observation', {
     title: 'Capture an explicit OMK observation',
     description: [
       'Record knowledge feedback only after the user explicitly asks to save it.',
@@ -96,12 +121,7 @@ export function registerChatGptObservationTools(
       capturedAt: z.string(),
       created: z.boolean(),
       reviewPath: z.string(),
-      captureCoverage: z.object({
-        coverageStatus: z.literal('partial'),
-        capturePath: z.literal('explicit_tool_call'),
-        observedEventKinds: z.array(observedEventKindSchema),
-        unavailableEventKinds: z.array(unavailableEventKindSchema),
-      }),
+      captureCoverage: captureCoverageSchema,
     },
     annotations: {
       readOnlyHint: false,
@@ -131,5 +151,186 @@ export function registerChatGptObservationTools(
       }],
       structuredContent,
     };
-  });
+    });
+  }
+
+  if (!isObservationFeedbackStore(options.captureStore)) return;
+  const feedbackStore = options.captureStore;
+
+  if (principal.scopes.includes(OBSERVATION_READ_SCOPE)) {
+    server.registerTool('get_observation', {
+    title: 'Get an OMK observation',
+    description: [
+      'Read one explicitly captured observation, its user-authorized evidence, partial coverage,',
+      'and current human review state. This never returns a complete ChatGPT transcript or hidden reasoning.',
+    ].join(' '),
+    inputSchema: {
+      observationId: z.string().trim().min(1).max(128),
+    },
+    outputSchema: {
+      observationId: z.string(),
+      skillName: z.string(),
+      artifactVersion: z.string(),
+      artifactHash: z.string().optional(),
+      cwd: z.string().optional(),
+      firstSeen: z.string(),
+      lastSeen: z.string(),
+      occurrences: z.number().int().positive(),
+      captureCoverage: captureCoverageSchema,
+      evidence: z.array(z.object({
+        captureId: z.string(),
+        payloadHash: z.string(),
+        capturedAt: z.string(),
+        userFeedback: z.string(),
+        evidenceSnippet: z.string().optional(),
+      })),
+      review: z.object({
+        verdict: reviewStateVerdictSchema,
+        reviewedAt: z.string(),
+        note: z.string().optional(),
+      }).optional(),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  }, async ({ observationId }) => {
+    assertObservationReadScope(principal);
+    const detail = await feedbackStore.get(principal, observationId);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Observation ${detail.observationId} 共有 ${detail.occurrences} 次显式捕获；覆盖范围为 partial。`,
+      }],
+      structuredContent: {
+        ...detail,
+        review: detail.review ? {
+          verdict: detail.review.verdict,
+          reviewedAt: detail.review.reviewedAt,
+          note: detail.review.note,
+        } : undefined,
+      },
+    };
+    });
+  }
+
+  if (principal.scopes.includes(OBSERVATION_REVIEW_SCOPE)) {
+    server.registerTool('record_observation_review', {
+    title: 'Record a human review for an OMK observation',
+    description: [
+      'Record the user or reviewer decision for a captured observation.',
+      'Use real_issue only after a human confirms the knowledge gap.',
+    ].join(' '),
+    inputSchema: {
+      observationId: z.string().trim().min(1).max(128),
+      verdict: reviewVerdictSchema,
+      note: z.string().trim().min(1).max(500).optional(),
+    },
+    outputSchema: {
+      observationId: z.string(),
+      review: z.object({
+        verdict: reviewVerdictSchema,
+        reviewedAt: z.string(),
+        note: z.string().optional(),
+      }),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  }, async (input) => {
+    assertObservationReviewScope(principal);
+    const result = await feedbackStore.review(principal, input);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `已记录 observation 复核结论：${result.review.verdict}。`,
+      }],
+      structuredContent: {
+        observationId: result.observationId,
+        review: {
+          verdict: result.review.verdict,
+          reviewedAt: result.review.reviewedAt,
+          note: result.review.note,
+        },
+      },
+    };
+    });
+  }
+
+  if (principal.scopes.includes(OBSERVATION_DRAFT_SCOPE)) {
+    server.registerTool('draft_sample_from_observation', {
+    title: 'Draft a regression sample from an OMK observation',
+    description: [
+      'Persist a candidate regression sample proposed from a human-confirmed observation.',
+      'The result remains a draft and never changes the formal eval sample set.',
+      'Base the prompt and rubric only on user-authorized evidence returned by get_observation.',
+    ].join(' '),
+    inputSchema: {
+      observationId: z.string().trim().min(1).max(128),
+      prompt: z.string().trim().min(1).max(16_000)
+        .describe('Proposed reproducible evaluation prompt.'),
+      rubric: z.string().trim().min(1).max(8_000).optional()
+        .describe('Optional reviewable success criteria.'),
+      sampleId: z.string().trim().min(1).max(200).optional(),
+      draftId: z.string().trim().min(1).max(512).optional()
+        .describe('Optional stable idempotency key. OMK stores only its hash.'),
+    },
+    outputSchema: {
+      draftId: z.string(),
+      createdAt: z.string(),
+      created: z.boolean(),
+      status: z.literal('draft'),
+      observationId: z.string(),
+      sourceEvidence: z.array(z.object({
+        captureId: z.string(),
+        payloadHash: z.string(),
+        capturedAt: z.string(),
+      })),
+      sample: z.object({
+        sample_id: z.string(),
+        prompt: z.string(),
+        rubric: z.string().optional(),
+        provenance: z.literal('production-trace'),
+      }),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  }, async (input) => {
+    assertObservationDraftScope(principal);
+    const observation = await feedbackStore.get(principal, input.observationId);
+    if (observation.review?.verdict !== 'real_issue') {
+      throw new ObservationFeedbackStoreError(
+        'observation_review_required',
+        '只有人工确认为 real_issue 的 observation 才能生成 sample 草稿。',
+      );
+    }
+    const result = await feedbackStore.draftSample(principal, input);
+    return {
+      content: [{
+        type: 'text' as const,
+        text: result.created
+          ? '已生成 regression sample 草稿；未写入正式评测集。'
+          : '该 regression sample 草稿已存在，本次返回幂等结果。',
+      }],
+      structuredContent: {
+        draftId: result.draft.draftId,
+        createdAt: result.draft.createdAt,
+        created: result.created,
+        status: result.draft.status,
+        observationId: result.draft.observationId,
+        sourceEvidence: result.draft.sourceEvidence,
+        sample: result.draft.sample,
+      },
+    };
+    });
+  }
 }

@@ -1,6 +1,6 @@
 # 组合 ChatGPT MCP 集成
 
-OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 `capture_observation` 工具契约。公共边界把 observation 语义留在 OMK，让私有宿主注入身份、策略、持久化和部署能力。
+OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback loop 契约。公共边界把 observation 语义、人工复核门禁和 sample 草稿生命周期留在 OMK，让私有宿主只注入身份、策略、持久化和部署能力。
 
 该集成只采集用户明确授权并通过工具提交的反馈。所有结果仍是 `coverageStatus: partial`；它不代表 OMK 能读取完整对话、其他工具调用或隐藏推理。
 
@@ -11,6 +11,19 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 `capture_observati
 | 本地 stdio | 固定本地主体和既有 `.omk/observe-inbox` v1 File Store | 单个开发者在本机使用 OMK |
 | 私有宿主 | 宿主提供 `PrincipalResolver` 和 `ObservationCaptureStore`，通过 Streamable HTTP 提供服务 | 多用户共享宿主自己的认证和持久化边界 |
 | OMK 托管服务 | 当前未提供 | 可能的未来服务；不能从当前 npm 包推断其存在 |
+
+## 工具与领域门禁
+
+| 工具 | Scope | OMK 保证 |
+| --- | --- | --- |
+| `capture_observation` | `observation:capture` | 只接受用户明确确认的可见证据，幂等写入 |
+| `get_observation` | `observation:read` | 只返回当前 principal 分区中的证据、复核状态和 `partial` coverage |
+| `record_observation_review` | `observation:review` | 只记录 `real_issue`／`not_issue`／`needs_more_context` 人工结论 |
+| `draft_sample_from_observation` | `observation:draft` | 只允许从 `real_issue` 生成候选草稿；不写正式 eval sample |
+
+`draft_sample_from_observation` 由当前 ChatGPT 根据 `get_observation` 返回的授权证据提供候选 prompt 和 rubric。OMK 负责复核门禁、provenance、原始证据引用和草稿状态，不把 ChatGPT 当作受控评委。
+
+MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能力不会出现在工具列表中。
 
 ## 本地 stdio
 
@@ -29,8 +42,11 @@ omk-chatgpt-mcp
 ```ts
 import type { IncomingMessage } from 'node:http';
 import {
-  FileObservationCaptureStore,
+  FileObservationFeedbackStore,
   OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_DRAFT_SCOPE,
+  OBSERVATION_READ_SCOPE,
+  OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
   startChatGptObservationHttpServer,
   type PrincipalResolver,
@@ -48,7 +64,12 @@ const principalResolver: PrincipalResolver<IncomingMessage> = {
     return {
       tenantId: subject.tenantId,
       principalId: subject.stableSubjectId,
-      scopes: [OBSERVATION_CAPTURE_SCOPE],
+      scopes: [
+        OBSERVATION_CAPTURE_SCOPE,
+        OBSERVATION_READ_SCOPE,
+        OBSERVATION_REVIEW_SCOPE,
+        OBSERVATION_DRAFT_SCOPE,
+      ],
     };
   },
 };
@@ -57,7 +78,7 @@ const started = await startChatGptObservationHttpServer({
   host: '127.0.0.1',
   port: 0,
   principalResolver,
-  captureStore: new FileObservationCaptureStore({
+  captureStore: new FileObservationFeedbackStore({
     observationsDir: '/srv/omk/observations',
   }),
 });
@@ -71,7 +92,9 @@ console.log(started.url.href);
 
 ## 实现其它 Store
 
-`ObservationCaptureStore` 是持久化接缝。OMK 同时导出准备标准 v1 record 和生成标准结果的 helper，因此 adapter 不需要重新实现 capture 哈希、coverage 或 Inbox identity。
+`ObservationCaptureStore` 是最小持久化接缝；实现它时 MCP Server 只注册 `capture_observation`。`ObservationFeedbackStore` 在此基础上增加 `get`、`review` 和 `draftSample`；实现完整接口时才注册后三个工具。这样旧 adapter 不会被迫虚假承诺未实现的能力。
+
+OMK 同时导出准备标准 v1 record 和生成标准结果的 helper，因此 capture adapter 不需要重新实现 capture 哈希、coverage 或 Inbox identity。
 
 ```ts
 import {
@@ -95,6 +118,8 @@ const captureStore: ObservationCaptureStore = {
 ```
 
 `insertOrLoad` 必须是原子操作。重复键返回已有 record；同一 identity 对应不同 payload 时必须 fail closed。持久化实现属于宿主，不包含在 OMK 中。
+
+完整私有 adapter 应实现 `ObservationFeedbackStore`，并保持与 `FileObservationFeedbackStore` 相同的不变量：所有操作按 `(tenantId, principalId)` 隔离；不存在的 observation fail closed；只有 `real_issue` 可写草稿；草稿持续保留 source evidence hash，且不能直接混入正式评测集。
 
 ## 认证边界
 
