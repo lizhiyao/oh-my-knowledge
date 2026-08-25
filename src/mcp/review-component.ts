@@ -529,10 +529,10 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
       const copy = zh ? {
         loading: "正在准备 observation 复核…",
         coverageTitle: "覆盖范围：部分",
-        coverageDescription: "只包含用户明确提交到 OMK 的反馈与证据，不代表完整 ChatGPT 对话。",
+        coverageDescription: "只包含用户明确提交到 OMK 的反馈与证据，不代表客户端中的完整对话。",
         coverageDetails: "查看未观测内容",
         unavailable: {
-          full_conversation: "完整 ChatGPT 对话",
+          full_conversation: "客户端中的完整对话",
           external_tool_calls: "其它工具调用",
           hidden_reasoning: "隐藏推理"
         },
@@ -570,10 +570,10 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
       } : {
         loading: "Preparing observation review…",
         coverageTitle: "Coverage: partial",
-        coverageDescription: "Includes only feedback and evidence explicitly submitted to OMK, not the complete ChatGPT conversation.",
+        coverageDescription: "Includes only feedback and evidence explicitly submitted to OMK, not the complete client conversation.",
         coverageDetails: "See what was not observed",
         unavailable: {
-          full_conversation: "Complete ChatGPT conversation",
+          full_conversation: "Complete client conversation",
           external_tool_calls: "Other tool calls",
           hidden_reasoning: "Hidden reasoning"
         },

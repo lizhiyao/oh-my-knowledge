@@ -1,4 +1,4 @@
-# 组合 ChatGPT MCP 集成
+# 组合 OMK MCP 集成
 
 OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback loop 契约。公共边界把 observation 语义、人工复核门禁和 sample 草稿生命周期留在 OMK，让私有宿主只注入身份、策略、持久化和部署能力。
 
@@ -12,7 +12,7 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 | `get_observation`、复核与草稿工具的输入与结果 | 是 | 是 | 只覆盖当前 principal 可访问的 OMK 记录 |
 | OMK component 内的点击、编辑与工具调用 | 是 | 是 | 仅限 component 主动提交给 OMK 的操作 |
 | 用户显式提交的消息片段 | 是 | 是 | 片段是用户提供的 evidence，不代表完整原始消息流 |
-| ChatGPT thread／turn 标识 | 视宿主而定 | 仅在宿主提供时 | 不自行伪造稳定的 ChatGPT 标识 |
+| 客户端 conversation／turn 标识 | 视宿主而定 | 仅在宿主提供时 | 不自行伪造稳定的客户端标识 |
 | 当前对话的前后文 | 否 | 否 | 标准 MCP 工具边界不能被动订阅完整 transcript |
 | 未经 OMK 调用的其它工具事件 | 否 | 否 | 不推断或补写缺失调用 |
 | 隐藏 reasoning | 否 | 否 | 永不读取、保存或推断 |
@@ -21,7 +21,7 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 
 | 形态 | 身份与存储 | 用途 |
 | --- | --- | --- |
-| 本地 stdio | 固定本地主体和既有 `.omk/observe-inbox` v1 File Store | 单个开发者在本机使用 OMK |
+| 本地 stdio | 固定本地主体和 `.omk/observe-inbox` v1 File Store | 单个开发者在本机使用 OMK |
 | 私有宿主 | 宿主提供 `PrincipalResolver` 和 `ObservationCaptureStore`，通过 Streamable HTTP 提供服务 | 多用户共享宿主自己的认证和持久化边界 |
 | OMK 托管服务 | 当前未提供 | 可能的未来服务；不能从当前 npm 包推断其存在 |
 
@@ -35,7 +35,7 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 | `draft_sample_from_observation` | `observation:draft` | 只允许从 `real_issue` 生成候选草稿；不写正式 eval sample |
 | `render_observation_review` | `observation:read` | 从权威 observation 快照渲染可选的对话内复核组件 |
 
-`draft_sample_from_observation` 由当前 ChatGPT 根据 `get_observation` 返回的授权证据提供候选 prompt 和 rubric。OMK 负责复核门禁、provenance、原始证据引用和草稿状态，不把 ChatGPT 当作受控评委。
+`draft_sample_from_observation` 由当前 MCP 客户端根据 `get_observation` 返回的授权证据提供候选 prompt 和 rubric。OMK 负责复核门禁、provenance、原始证据引用和草稿状态，不把客户端当作受控评委。
 
 MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能力不会出现在工具列表中。
 
@@ -61,21 +61,21 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 已有 observation 时，模型先调用 `get_observation`，再调用 `render_observation_review`。用户在 component 内选择「真实问题」后，component 调用 `record_observation_review`；只有服务端确认结论为 `real_issue` 后，才允许调用 `draft_sample_from_observation`。草稿仍与正式 eval sample 隔离。
 
-仓库在 `examples/chatgpt-observation/eval-samples.json` 提供 direct／indirect／negative 行为用例。它们必须在能够暴露 MCP 工具轨迹的 ChatGPT 兼容宿主中运行；普通文本执行器看不到工具调用，不能用于验证这组边界。
+仓库在 `examples/mcp-observation/eval-samples.json` 提供 direct／indirect／negative 行为用例。它们必须在能够暴露 MCP 工具轨迹的宿主中运行；普通文本执行器看不到工具调用，不能用于验证这组边界。
 
 ## 本地 stdio
 
-安装 OMK 后启动既有 MCP Server：
+安装 OMK 后启动 MCP Server：
 
 ```bash
-omk-chatgpt-mcp
+omk-mcp
 ```
 
-该入口继续使用原有单用户目录布局和 v1 capture record。
+该入口使用单用户目录布局和 v1 capture record。
 
 ## 组合 Streamable HTTP 服务
 
-公共集成契约从 `oh-my-knowledge/chatgpt-plugin` 导出。下面的示例故意把凭据校验留给宿主；不要把 `hostAuth.verify` 替换成未校验的身份 header。
+公共集成契约从 `oh-my-knowledge/mcp` 导出。下面的示例故意把凭据校验留给宿主；不要把 `hostAuth.verify` 替换成未校验的身份 header。
 
 ```ts
 import type { IncomingMessage } from 'node:http';
@@ -86,9 +86,9 @@ import {
   OBSERVATION_READ_SCOPE,
   OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
-  startChatGptObservationHttpServer,
+  startObservationMcpHttpServer,
   type PrincipalResolver,
-} from 'oh-my-knowledge/chatgpt-plugin';
+} from 'oh-my-knowledge/mcp';
 
 const principalResolver: PrincipalResolver<IncomingMessage> = {
   async resolve(request) {
@@ -112,7 +112,7 @@ const principalResolver: PrincipalResolver<IncomingMessage> = {
   },
 };
 
-const started = await startChatGptObservationHttpServer({
+const started = await startObservationMcpHttpServer({
   host: '127.0.0.1',
   port: 0,
   principalResolver,
@@ -140,7 +140,7 @@ import {
   explicitObservationCaptureResult,
   prepareExplicitObservationCaptureRecord,
   type ObservationCaptureStore,
-} from 'oh-my-knowledge/chatgpt-plugin';
+} from 'oh-my-knowledge/mcp';
 
 const captureStore: ObservationCaptureStore = {
   async create(principal, input) {
@@ -161,7 +161,7 @@ const captureStore: ObservationCaptureStore = {
 
 ## 认证边界
 
-`PrincipalResolver` 是 adapter contract，不是 OAuth 实现。用于 ChatGPT 生产连接时，应遵循 [OpenAI 官方认证指南](https://developers.openai.com/plugins/build/auth)中的 MCP OAuth 要求，包括 protected-resource metadata、token audience 与 scope 校验，以及正确的 `401` challenge。OAuth metadata 和标准 adapter 有意不包含在本次集成边界内。
+`PrincipalResolver` 是 adapter contract，不是 OAuth 实现。生产宿主必须校验 MCP 客户端所需的认证协议，包括 token audience、scope 和正确的 `401` challenge。OAuth metadata 和标准 adapter 有意不包含在本次集成边界内。如果具体接入 ChatGPT，还应遵循 [OpenAI 官方认证指南](https://developers.openai.com/plugins/build/auth)中的 MCP OAuth 要求。
 
 ## 使用 MCP Inspector 验证
 
@@ -171,6 +171,6 @@ const captureStore: ObservationCaptureStore = {
 npx @modelcontextprotocol/inspector@latest
 ```
 
-选择 **Streamable HTTP**，填入 `startChatGptObservationHttpServer` 返回的实际 URL，并配置宿主 resolver 所需的凭据。依次验证初始化、`tools/list`、`resources/list`、组件 resource 的 MIME type、工具 annotation、授权调用、重复调用返回 `created: false`、无效确认、缺少 scope 和无效凭据。先调用 `get_observation`，再调用 `render_observation_review`；后者应是唯一携带 `_meta.ui.resourceUri` 的工具。OpenAI 的 [MCP Server 指南](https://developers.openai.com/plugins/build/mcp-server#run-and-test-locally)建议在连接 ChatGPT 前先完成 Inspector 验证。
+选择 **Streamable HTTP**，填入 `startObservationMcpHttpServer` 返回的实际 URL，并配置宿主 resolver 所需的凭据。依次验证初始化、`tools/list`、`resources/list`、组件 resource 的 MIME type、工具 annotation、授权调用、重复调用返回 `created: false`、无效确认、缺少 scope 和无效凭据。先调用 `get_observation`，再调用 `render_observation_review`；后者应是唯一携带 `_meta.ui.resourceUri` 的工具。
 
-Secure MCP Tunnel 可以在 ChatGPT developer mode 中连接私有开发服务。它是开发连接路径，不能代替公开提交插件所需的稳定公共 HTTPS endpoint。
+对于 ChatGPT 这一具体客户端，Secure MCP Tunnel 可以在 developer mode 中连接私有开发服务。这条可选接入路径不改变 OMK 的通用 MCP 契约，也不能代替稳定的公共 HTTPS endpoint。

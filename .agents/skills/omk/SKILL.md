@@ -21,13 +21,13 @@ npm i oh-my-knowledge -g
 
 omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
-### 在 Codex / ChatGPT desktop 中
+### 在 Codex / 支持 MCP 的客户端中
 
 Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `doctor` / `sample` / `evolve`，以及 `omk observe inbox --llm-enhanced-review`，会自动选择 `codex`，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 读取顶层 `model`，默认评委沿用同一个 Codex 模型；不要额外回落到 Claude。
 
 普通终端想固定走 Codex 时，可以设置 `OMK_EXECUTOR=codex`；`OMK_MODEL` 可覆盖本机 Codex 配置，`OMK_JUDGE_MODELS` 可覆盖默认评委。逐次覆盖仍可使用 `--executor` / `--model` / `--judge-models`。Codex 不需要 Claude Code 风格的 `/omk` slash command，直接执行 CLI。
 
-如果当前 ChatGPT 会话还提供 `capture_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `render_observation_review`，按以下边界处理反馈：
+如果当前 MCP 客户端提供 `capture_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `render_observation_review`，按以下边界处理反馈：
 
 - 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `capture_observation`；只提交用户授权的最小可见证据。
 - 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `capture_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。

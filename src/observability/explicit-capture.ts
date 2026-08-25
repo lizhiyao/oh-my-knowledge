@@ -23,7 +23,7 @@ const CAPTURE_SCHEMA_VERSION = 1;
 const CAPTURES_DIR_NAME = 'captures';
 const CAPTURE_FILE_SUFFIX = '.capture.json';
 
-export type ObservationCaptureSourceKind = 'chatgpt_plugin';
+export type ObservationCaptureSourceKind = 'mcp';
 
 export interface ExplicitObservationCaptureInput {
   captureSourceKind: ObservationCaptureSourceKind;
@@ -58,7 +58,7 @@ export interface ExplicitObservationCaptureRecord {
   captureId: string;
   payloadHash: string;
   capturedAt: string;
-  captureSourceKind: 'chatgpt_plugin';
+  captureSourceKind: 'mcp';
   skillName: string;
   userFeedback: string;
   evidenceSnippet?: string;
@@ -188,7 +188,7 @@ function normalizeExplicitObservationCaptureRecord(value: unknown): ExplicitObse
   if (
     value.captureKind !== 'explicit_observation'
     || value.schemaVersion !== CAPTURE_SCHEMA_VERSION
-    || value.captureSourceKind !== 'chatgpt_plugin'
+    || value.captureSourceKind !== 'mcp'
     || !isBoundedText(value.captureId, 64)
     || !isBoundedText(value.payloadHash, 64)
     || !isIsoTimestamp(value.capturedAt)
@@ -235,7 +235,7 @@ function normalizeCaptureInput(input: ExplicitObservationCaptureInput): Normaliz
 }
 
 function normalizeCaptureSourceKind(value: unknown): ObservationCaptureSourceKind {
-  if (value !== 'chatgpt_plugin') throw new Error('不支持的 captureSourceKind。');
+  if (value !== 'mcp') throw new Error('不支持的 captureSourceKind。');
   return value;
 }
 
@@ -253,7 +253,7 @@ function optionalText(value: unknown, field: string, maxLength: number): string 
 
 function projectCaptureRecord(record: ExplicitObservationCaptureRecord): ObservationInboxItem {
   const sessionId = `explicit-capture:${record.captureId}`;
-  const sourceTrace = `chatgpt-plugin:${record.captureId}`;
+  const sourceTrace = `mcp:${record.captureId}`;
   const evidence: ObservationEvidence = {
     traceId: record.captureId,
     sessionId,

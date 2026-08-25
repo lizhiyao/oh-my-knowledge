@@ -8,7 +8,7 @@ import {
 import type { AddressInfo } from 'node:net';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { ObservationCaptureStore } from './capture-store.js';
-import { createChatGptObservationMcpServer } from './mcp-server.js';
+import { createObservationMcpServer } from './mcp-server.js';
 import {
   assertObservationAccessScope,
   LOCAL_OBSERVATION_PRINCIPAL,
@@ -22,7 +22,7 @@ const DEFAULT_BODY_LIMIT_BYTES = 256 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 32;
 
-export interface ChatGptObservationHttpOptions {
+export interface ObservationMcpHttpOptions {
   captureStore: ObservationCaptureStore;
   principalResolver?: PrincipalResolver<IncomingMessage>;
   path?: string;
@@ -31,12 +31,12 @@ export interface ChatGptObservationHttpOptions {
   maxConcurrentRequests?: number;
 }
 
-export interface ChatGptObservationHttpListenOptions extends ChatGptObservationHttpOptions {
+export interface ObservationMcpHttpListenOptions extends ObservationMcpHttpOptions {
   host?: string;
   port?: number;
 }
 
-export interface StartedChatGptObservationHttpServer {
+export interface StartedObservationMcpHttpServer {
   server: Server;
   url: URL;
   close(): Promise<void>;
@@ -53,8 +53,8 @@ export class ObservationHttpTransportError extends Error {
   }
 }
 
-export function createChatGptObservationHttpHandler(
-  options: ChatGptObservationHttpOptions,
+export function createObservationMcpHttpHandler(
+  options: ObservationMcpHttpOptions,
 ): RequestListener {
   const path = validatePath(options.path ?? DEFAULT_PATH);
   const bodyLimit = positiveInteger(
@@ -109,7 +109,7 @@ export function createChatGptObservationHttpHandler(
       const principal = validateObservationPrincipal(await resolver.resolve(request));
       assertObservationAccessScope(principal);
       const body = await readJsonBody(request, bodyLimit, timeoutMs);
-      const server = createChatGptObservationMcpServer({
+      const server = createObservationMcpServer({
         principal,
         captureStore: options.captureStore,
       });
@@ -130,9 +130,9 @@ export function createChatGptObservationHttpHandler(
   };
 }
 
-export async function startChatGptObservationHttpServer(
-  options: ChatGptObservationHttpListenOptions,
-): Promise<StartedChatGptObservationHttpServer> {
+export async function startObservationMcpHttpServer(
+  options: ObservationMcpHttpListenOptions,
+): Promise<StartedObservationMcpHttpServer> {
   const host = options.host ?? '127.0.0.1';
   if (!isLoopbackHost(host) && !options.principalResolver) {
     throw new Error('监听非 loopback 地址时必须提供 principalResolver。');
@@ -141,7 +141,7 @@ export async function startChatGptObservationHttpServer(
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error('port 必须是 0 至 65535 的整数。');
   }
-  const server = createServer(createChatGptObservationHttpHandler(options));
+  const server = createServer(createObservationMcpHttpHandler(options));
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {

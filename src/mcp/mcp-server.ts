@@ -50,21 +50,21 @@ const captureCoverageSchema = z.object({
   unavailableEventKinds: z.array(unavailableEventKindSchema),
 });
 
-export interface ChatGptObservationToolOptions {
+export interface ObservationMcpToolOptions {
   principal: ObservationPrincipal;
   captureStore: ObservationCaptureStore;
 }
 
-export interface ChatGptObservationMcpServerOptions extends ExplicitObservationCaptureOptions {
+export interface ObservationMcpServerOptions extends ExplicitObservationCaptureOptions {
   principal?: ObservationPrincipal;
   captureStore?: ObservationCaptureStore;
 }
 
-export function createChatGptObservationMcpServer(
-  options: ChatGptObservationMcpServerOptions = {},
+export function createObservationMcpServer(
+  options: ObservationMcpServerOptions = {},
 ): McpServer {
   const server = new McpServer({
-    name: 'omk-chatgpt-observation-capture',
+    name: 'omk-observation-mcp',
     version: '0.1.0',
   });
 
@@ -79,14 +79,14 @@ export function createChatGptObservationMcpServer(
     now: options.now,
     partition: options.principal ? 'principal' : 'shared',
   });
-  registerChatGptObservationTools(server, { principal, captureStore });
+  registerObservationMcpTools(server, { principal, captureStore });
 
   return server;
 }
 
-export function registerChatGptObservationTools(
+export function registerObservationMcpTools(
   server: McpServer,
-  options: ChatGptObservationToolOptions,
+  options: ObservationMcpToolOptions,
 ): void {
   const principal = validateObservationPrincipal(options.principal);
 
@@ -96,7 +96,7 @@ export function registerChatGptObservationTools(
     description: [
       'Record knowledge feedback only after the user explicitly asks to save it.',
       'This captures the submitted feedback and optional evidence at the OMK tool boundary.',
-      'It does not capture the full ChatGPT conversation, other tool calls, or hidden reasoning.',
+      'It does not capture the full client conversation, other tool calls, or hidden reasoning.',
     ].join(' '),
     inputSchema: {
       skillName: z.string().trim().min(1).max(120)
@@ -134,7 +134,7 @@ export function registerChatGptObservationTools(
     assertObservationCaptureScope(principal);
     const result = await options.captureStore.create(principal, {
       ...input,
-      captureSourceKind: 'chatgpt_plugin',
+      captureSourceKind: 'mcp',
     });
     const structuredContent = {
       observationId: result.observationId,
@@ -163,7 +163,7 @@ export function registerChatGptObservationTools(
     title: 'Get an OMK observation',
     description: [
       'Read one explicitly captured observation, its user-authorized evidence, partial coverage,',
-      'and current human review state. This never returns a complete ChatGPT transcript or hidden reasoning.',
+      'and current human review state. This never returns a complete client transcript or hidden reasoning.',
     ].join(' '),
     inputSchema: {
       observationId: z.string().trim().min(1).max(128),

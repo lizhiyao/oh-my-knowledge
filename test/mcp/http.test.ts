@@ -6,11 +6,11 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, it } from 'vitest';
-import { FileObservationCaptureStore } from '../../src/chatgpt-plugin/capture-store.js';
-import { FileObservationFeedbackStore } from '../../src/chatgpt-plugin/feedback-store.js';
+import { FileObservationCaptureStore } from '../../src/mcp/capture-store.js';
+import { FileObservationFeedbackStore } from '../../src/mcp/feedback-store.js';
 import {
-  startChatGptObservationHttpServer,
-} from '../../src/chatgpt-plugin/http.js';
+  startObservationMcpHttpServer,
+} from '../../src/mcp/http.js';
 import {
   OBSERVATION_CAPTURE_SCOPE,
   OBSERVATION_DRAFT_SCOPE,
@@ -19,7 +19,7 @@ import {
   ObservationPrincipalError,
   type ObservationPrincipal,
   type PrincipalResolver,
-} from '../../src/chatgpt-plugin/principal.js';
+} from '../../src/mcp/principal.js';
 
 const TOKEN_PRINCIPALS: Record<string, ObservationPrincipal> = {
   'token-a': {
@@ -67,10 +67,10 @@ const resolver: PrincipalResolver<IncomingMessage> = {
   },
 };
 
-describe('ChatGPT observation Streamable HTTP server', () => {
+describe('OMK observation Streamable HTTP server', () => {
   it('uses one tool contract and isolates idempotency by server-resolved principal', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-'));
-    const started = await startChatGptObservationHttpServer({
+    const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationFeedbackStore({ observationsDir: dir }),
       principalResolver: resolver,
     });
@@ -102,7 +102,7 @@ describe('ChatGPT observation Streamable HTTP server', () => {
 
   it('fails closed for unauthenticated, missing-scope, and wrong-tenant requests', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-auth-'));
-    const started = await startChatGptObservationHttpServer({
+    const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
       principalResolver: resolver,
     });
@@ -134,13 +134,13 @@ describe('ChatGPT observation Streamable HTTP server', () => {
   it('rejects anonymous non-loopback binding and oversized request bodies', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-limits-'));
     await assert.rejects(
-      () => startChatGptObservationHttpServer({
+      () => startObservationMcpHttpServer({
         host: '0.0.0.0',
         captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
       }),
       /principalResolver/,
     );
-    const started = await startChatGptObservationHttpServer({
+    const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
       requestBodyLimitBytes: 64,
     });

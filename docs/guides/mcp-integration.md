@@ -1,4 +1,4 @@
-# Compose the ChatGPT MCP integration
+# Compose the OMK MCP integration
 
 OMK exposes one knowledge-feedback-loop contract over local stdio and standard Streamable HTTP. The public boundary keeps observation semantics, the human-review gate, and the sample-draft lifecycle in OMK while allowing a private host to supply identity, policy, persistence, and deployment.
 
@@ -12,8 +12,8 @@ This integration captures only user-authorized feedback submitted through the to
 | Inputs and results of get, review, and draft tools | Yes | Yes | Only OMK records visible to the current principal |
 | Clicks, edits, and tool calls inside the OMK component | Yes | Yes | Only actions actively submitted to OMK by the component |
 | A message excerpt explicitly submitted by the user | Yes | Yes | The excerpt is user-provided evidence, not the complete message stream |
-| ChatGPT thread or turn identifiers | Host-dependent | Only when supplied by the host | OMK does not invent a stable ChatGPT identifier |
-| Surrounding ChatGPT transcript | No | No | The standard MCP tool boundary cannot passively subscribe to the full transcript |
+| Client conversation or turn identifiers | Host-dependent | Only when supplied by the host | OMK does not invent a stable client identifier |
+| Surrounding client transcript | No | No | The standard MCP tool boundary cannot passively subscribe to the full transcript |
 | Other tool events that are not routed through OMK | No | No | OMK does not infer or backfill missing calls |
 | Hidden reasoning | No | No | Never read, stored, or inferred |
 
@@ -21,7 +21,7 @@ This integration captures only user-authorized feedback submitted through the to
 
 | Shape | Identity and storage | Intended use |
 | --- | --- | --- |
-| Local stdio | Fixed local principal and the existing `.omk/observe-inbox` v1 File Store | One developer using OMK locally |
+| Local stdio | Fixed local principal and the `.omk/observe-inbox` v1 File Store | One developer using OMK locally |
 | Private host | Host-provided `PrincipalResolver` and `ObservationCaptureStore` over Streamable HTTP | Multiple users behind a host-owned authentication and persistence boundary |
 | Hosted OMK service | Not provided | Possible future service; do not infer it from the current package |
 
@@ -35,7 +35,7 @@ This integration captures only user-authorized feedback submitted through the to
 | `draft_sample_from_observation` | `observation:draft` | Drafts only from `real_issue`; never writes the formal eval sample set |
 | `render_observation_review` | `observation:read` | Renders the optional inline review component from an authoritative observation snapshot |
 
-For `draft_sample_from_observation`, the current ChatGPT proposes a candidate prompt and rubric from the authorized evidence returned by `get_observation`. OMK owns the review gate, provenance, source-evidence references, and draft status; it does not treat ChatGPT as a controlled judge.
+For `draft_sample_from_observation`, the current MCP client proposes a candidate prompt and rubric from the authorized evidence returned by `get_observation`. OMK owns the review gate, provenance, source-evidence references, and draft status; it does not treat the client as a controlled judge.
 
 MCP `tools/list` is also filtered by the scopes returned by the resolver: capabilities a user does not have are omitted from that user's tool list.
 
@@ -61,21 +61,21 @@ The user only says, “That is wrong: the refund window is 30 days, not 7.” Th
 
 For an existing observation, the model calls `get_observation` and then `render_observation_review`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
 
-The repository provides direct, indirect, and negative behavior cases in `examples/chatgpt-observation/eval-samples.json`. Run them only in a ChatGPT-compatible host that exposes MCP tool traces; a text-only executor cannot validate these boundaries.
+The repository provides direct, indirect, and negative behavior cases in `examples/mcp-observation/eval-samples.json`. Run them only in an MCP host that exposes tool traces; a text-only executor cannot validate these boundaries.
 
 ## Local stdio
 
-After installing OMK, start the existing MCP server:
+After installing OMK, start the MCP server:
 
 ```bash
-omk-chatgpt-mcp
+omk-mcp
 ```
 
-This keeps the pre-existing single-user directory layout and v1 capture records.
+This uses the single-user directory layout and v1 capture records.
 
 ## Compose a Streamable HTTP server
 
-The package exports its integration contract from `oh-my-knowledge/chatgpt-plugin`. The example below deliberately leaves credential verification to the host. Do not replace `hostAuth.verify` with an unverified identity header.
+The package exports its integration contract from `oh-my-knowledge/mcp`. The example below deliberately leaves credential verification to the host. Do not replace `hostAuth.verify` with an unverified identity header.
 
 ```ts
 import type { IncomingMessage } from 'node:http';
@@ -86,9 +86,9 @@ import {
   OBSERVATION_READ_SCOPE,
   OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
-  startChatGptObservationHttpServer,
+  startObservationMcpHttpServer,
   type PrincipalResolver,
-} from 'oh-my-knowledge/chatgpt-plugin';
+} from 'oh-my-knowledge/mcp';
 
 const principalResolver: PrincipalResolver<IncomingMessage> = {
   async resolve(request) {
@@ -112,7 +112,7 @@ const principalResolver: PrincipalResolver<IncomingMessage> = {
   },
 };
 
-const started = await startChatGptObservationHttpServer({
+const started = await startObservationMcpHttpServer({
   host: '127.0.0.1',
   port: 0,
   principalResolver,
@@ -140,7 +140,7 @@ import {
   explicitObservationCaptureResult,
   prepareExplicitObservationCaptureRecord,
   type ObservationCaptureStore,
-} from 'oh-my-knowledge/chatgpt-plugin';
+} from 'oh-my-knowledge/mcp';
 
 const captureStore: ObservationCaptureStore = {
   async create(principal, input) {
@@ -161,7 +161,7 @@ A full private adapter should implement `ObservationFeedbackStore` with the same
 
 ## Authentication boundary
 
-`PrincipalResolver` is an adapter contract, not an OAuth implementation. For a ChatGPT production connection, follow the official MCP OAuth requirements in [OpenAI's authentication guide](https://developers.openai.com/plugins/build/auth), including protected-resource metadata, token audience and scope verification, and appropriate `401` challenges. OAuth metadata and a standard adapter are intentionally outside this integration boundary.
+`PrincipalResolver` is an adapter contract, not an OAuth implementation. A production host must validate the authentication protocol required by its MCP client, including token audience and scopes and appropriate `401` challenges. OAuth metadata and a standard adapter are intentionally outside this integration boundary. For ChatGPT specifically, follow the MCP OAuth requirements in [OpenAI's authentication guide](https://developers.openai.com/plugins/build/auth).
 
 ## Verify with MCP Inspector
 
@@ -171,6 +171,6 @@ Start the HTTP service, then run:
 npx @modelcontextprotocol/inspector@latest
 ```
 
-Select **Streamable HTTP**, enter the actual URL returned by `startChatGptObservationHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `render_observation_review`; the latter should be the only tool carrying `_meta.ui.resourceUri`. OpenAI's [MCP server guide](https://developers.openai.com/plugins/build/mcp-server#run-and-test-locally) recommends Inspector verification before connecting the endpoint to ChatGPT.
+Select **Streamable HTTP**, enter the actual URL returned by `startObservationMcpHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `render_observation_review`; the latter should be the only tool carrying `_meta.ui.resourceUri`.
 
-Secure MCP Tunnel can expose a private development server to ChatGPT developer mode. It is a development connection path, not a replacement for the stable public HTTPS endpoint required for public plugin submission.
+For ChatGPT-specific development, Secure MCP Tunnel can expose a private server to developer mode. That optional client path does not change OMK's generic MCP contract and is not a replacement for a stable public HTTPS endpoint.
