@@ -1,6 +1,6 @@
 # Compose the ChatGPT MCP integration
 
-OMK exposes one `capture_observation` tool contract for both local stdio and standard Streamable HTTP. The public boundary keeps observation semantics in OMK while allowing a private host to supply identity, policy, persistence, and deployment.
+OMK exposes one knowledge-feedback-loop contract over local stdio and standard Streamable HTTP. The public boundary keeps observation semantics, the human-review gate, and the sample-draft lifecycle in OMK while allowing a private host to supply identity, policy, persistence, and deployment.
 
 This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning.
 
@@ -11,6 +11,19 @@ This integration captures only user-authorized feedback submitted through the to
 | Local stdio | Fixed local principal and the existing `.omk/observe-inbox` v1 File Store | One developer using OMK locally |
 | Private host | Host-provided `PrincipalResolver` and `ObservationCaptureStore` over Streamable HTTP | Multiple users behind a host-owned authentication and persistence boundary |
 | Hosted OMK service | Not provided | Possible future service; do not infer it from the current package |
+
+## Tools and domain gates
+
+| Tool | Scope | OMK guarantee |
+| --- | --- | --- |
+| `capture_observation` | `observation:capture` | Accepts only explicitly confirmed, user-visible evidence and writes idempotently |
+| `get_observation` | `observation:read` | Returns only evidence, review state, and `partial` coverage from the current principal partition |
+| `record_observation_review` | `observation:review` | Records only `real_issue`, `not_issue`, or `needs_more_context` human decisions |
+| `draft_sample_from_observation` | `observation:draft` | Drafts only from `real_issue`; never writes the formal eval sample set |
+
+For `draft_sample_from_observation`, the current ChatGPT proposes a candidate prompt and rubric from the authorized evidence returned by `get_observation`. OMK owns the review gate, provenance, source-evidence references, and draft status; it does not treat ChatGPT as a controlled judge.
+
+MCP `tools/list` is also filtered by the scopes returned by the resolver: capabilities a user does not have are omitted from that user's tool list.
 
 ## Local stdio
 
@@ -29,8 +42,11 @@ The package exports its integration contract from `oh-my-knowledge/chatgpt-plugi
 ```ts
 import type { IncomingMessage } from 'node:http';
 import {
-  FileObservationCaptureStore,
+  FileObservationFeedbackStore,
   OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_DRAFT_SCOPE,
+  OBSERVATION_READ_SCOPE,
+  OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
   startChatGptObservationHttpServer,
   type PrincipalResolver,
@@ -48,7 +64,12 @@ const principalResolver: PrincipalResolver<IncomingMessage> = {
     return {
       tenantId: subject.tenantId,
       principalId: subject.stableSubjectId,
-      scopes: [OBSERVATION_CAPTURE_SCOPE],
+      scopes: [
+        OBSERVATION_CAPTURE_SCOPE,
+        OBSERVATION_READ_SCOPE,
+        OBSERVATION_REVIEW_SCOPE,
+        OBSERVATION_DRAFT_SCOPE,
+      ],
     };
   },
 };
@@ -57,7 +78,7 @@ const started = await startChatGptObservationHttpServer({
   host: '127.0.0.1',
   port: 0,
   principalResolver,
-  captureStore: new FileObservationCaptureStore({
+  captureStore: new FileObservationFeedbackStore({
     observationsDir: '/srv/omk/observations',
   }),
 });
@@ -71,7 +92,9 @@ With no resolver, the HTTP helper binds to loopback by default and uses the loca
 
 ## Implement another store
 
-`ObservationCaptureStore` is the persistence seam. OMK also exports helpers that prepare the canonical v1 record and build the canonical result, so an adapter does not need to recreate capture hashes, coverage, or Inbox identity.
+`ObservationCaptureStore` is the minimal persistence seam; implementing it registers only `capture_observation`. `ObservationFeedbackStore` adds `get`, `review`, and `draftSample`; the server registers the other three tools only when the store implements that full contract. Existing adapters therefore do not falsely advertise capabilities they have not implemented.
+
+OMK also exports helpers that prepare the canonical v1 record and build the canonical result, so a capture adapter does not need to recreate capture hashes, coverage, or Inbox identity.
 
 ```ts
 import {
@@ -95,6 +118,8 @@ const captureStore: ObservationCaptureStore = {
 ```
 
 `insertOrLoad` must be atomic. A duplicate key returns the existing record; reusing the same identity with another payload must fail closed. The persistence implementation belongs to the host and is not included in OMK.
+
+A full private adapter should implement `ObservationFeedbackStore` with the same invariants as `FileObservationFeedbackStore`: isolate every operation by `(tenantId, principalId)`; fail closed for unknown observations; draft only from `real_issue`; preserve source-evidence hashes in every draft; and never merge a draft directly into the formal evaluation set.
 
 ## Authentication boundary
 

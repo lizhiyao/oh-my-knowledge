@@ -1,4 +1,5 @@
 export * from './capture-store.js';
+export * from './feedback-store.js';
 export * from './http.js';
 export * from './mcp-server.js';
 export * from './principal.js';

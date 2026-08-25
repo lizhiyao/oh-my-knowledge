@@ -42,8 +42,8 @@ export interface FileObservationCaptureStoreOptions extends ExplicitObservationC
 }
 
 export class FileObservationCaptureStore implements ObservationCaptureStore {
-  private readonly observationsDir: string;
-  private readonly now?: () => Date;
+  protected readonly observationsDir: string;
+  protected readonly now?: () => Date;
   private readonly partition: 'principal' | 'shared';
 
   constructor(options: FileObservationCaptureStoreOptions = {}) {
@@ -57,15 +57,7 @@ export class FileObservationCaptureStore implements ObservationCaptureStore {
     capture: ExplicitObservationCaptureInput,
   ): Promise<ExplicitObservationCaptureResult> {
     const principal = validateObservationPrincipal(rawPrincipal);
-    const observationsDir = this.partition === 'shared'
-      ? this.observationsDir
-      : join(
-        this.observationsDir,
-        'tenants',
-        hashPartition('tenant', principal.tenantId),
-        'principals',
-        hashPartition('principal', principal.principalId),
-      );
+    const observationsDir = this.resolveObservationsDir(principal);
     try {
       return captureExplicitObservation(capture, {
         observationsDir,
@@ -79,6 +71,18 @@ export class FileObservationCaptureStore implements ObservationCaptureStore {
         { cause: error },
       );
     }
+  }
+
+  protected resolveObservationsDir(principal: ObservationPrincipal): string {
+    return this.partition === 'shared'
+      ? this.observationsDir
+      : join(
+        this.observationsDir,
+        'tenants',
+        hashPartition('tenant', principal.tenantId),
+        'principals',
+        hashPartition('principal', principal.principalId),
+      );
   }
 }
 

@@ -10,7 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { ObservationCaptureStore } from './capture-store.js';
 import { createChatGptObservationMcpServer } from './mcp-server.js';
 import {
-  assertObservationCaptureScope,
+  assertObservationAccessScope,
   LOCAL_OBSERVATION_PRINCIPAL,
   ObservationPrincipalError,
   validateObservationPrincipal,
@@ -107,7 +107,7 @@ export function createChatGptObservationHttpHandler(
     activeRequests += 1;
     try {
       const principal = validateObservationPrincipal(await resolver.resolve(request));
-      assertObservationCaptureScope(principal);
+      assertObservationAccessScope(principal);
       const body = await readJsonBody(request, bodyLimit, timeoutMs);
       const server = createChatGptObservationMcpServer({
         principal,

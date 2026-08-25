@@ -7,11 +7,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, it } from 'vitest';
 import { FileObservationCaptureStore } from '../../src/chatgpt-plugin/capture-store.js';
+import { FileObservationFeedbackStore } from '../../src/chatgpt-plugin/feedback-store.js';
 import {
   startChatGptObservationHttpServer,
 } from '../../src/chatgpt-plugin/http.js';
 import {
   OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_DRAFT_SCOPE,
+  OBSERVATION_READ_SCOPE,
+  OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
   type ObservationPrincipal,
   type PrincipalResolver,
@@ -21,12 +25,22 @@ const TOKEN_PRINCIPALS: Record<string, ObservationPrincipal> = {
   'token-a': {
     tenantId: 'tenant-a',
     principalId: 'principal-a',
-    scopes: [OBSERVATION_CAPTURE_SCOPE],
+    scopes: [
+      OBSERVATION_CAPTURE_SCOPE,
+      OBSERVATION_READ_SCOPE,
+      OBSERVATION_REVIEW_SCOPE,
+      OBSERVATION_DRAFT_SCOPE,
+    ],
   },
   'token-b': {
     tenantId: 'tenant-a',
     principalId: 'principal-b',
-    scopes: [OBSERVATION_CAPTURE_SCOPE],
+    scopes: [
+      OBSERVATION_CAPTURE_SCOPE,
+      OBSERVATION_READ_SCOPE,
+      OBSERVATION_REVIEW_SCOPE,
+      OBSERVATION_DRAFT_SCOPE,
+    ],
   },
   'token-no-scope': {
     tenantId: 'tenant-a',
@@ -57,7 +71,7 @@ describe('ChatGPT observation Streamable HTTP server', () => {
   it('uses one tool contract and isolates idempotency by server-resolved principal', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-'));
     const started = await startChatGptObservationHttpServer({
-      captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
+      captureStore: new FileObservationFeedbackStore({ observationsDir: dir }),
       principalResolver: resolver,
     });
     const clientA = createClient(started.url, 'token-a');
@@ -65,7 +79,12 @@ describe('ChatGPT observation Streamable HTTP server', () => {
     try {
       await Promise.all([clientA.connect(), clientB.connect()]);
       const tools = await clientA.client.listTools();
-      assert.deepEqual(tools.tools.map((tool) => tool.name), ['capture_observation']);
+      assert.deepEqual(tools.tools.map((tool) => tool.name), [
+        'capture_observation',
+        'get_observation',
+        'record_observation_review',
+        'draft_sample_from_observation',
+      ]);
 
       const first = await clientA.client.callTool(captureRequest());
       const duplicate = await clientA.client.callTool(captureRequest());
