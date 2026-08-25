@@ -105,6 +105,7 @@ export function registerObservationReviewComponent(
     },
     outputSchema: reviewComponentOutputSchema,
     annotations: {
+      title: '复核 OMK 知识反馈',
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,

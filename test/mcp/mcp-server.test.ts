@@ -49,6 +49,8 @@ describe('OMK observation MCP server', () => {
       assert.ok(tool.outputSchema);
 
       const renderTool = tools.tools.at(-1);
+      assert.equal(renderTool?.title, '复核 OMK 知识反馈');
+      assert.equal(renderTool?.annotations?.title, '复核 OMK 知识反馈');
       assert.deepEqual(renderTool?._meta?.ui, {
         resourceUri: OBSERVATION_REVIEW_RESOURCE_URI,
       });
