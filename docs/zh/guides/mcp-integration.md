@@ -8,7 +8,7 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 
 | 事件 | OMK 是否可观测 | 可作为证据 | 边界 |
 | --- | --- | --- | --- |
-| `capture_observation` 的输入与结果 | 是 | 是 | 只包含用户授权提交的字段 |
+| `save_observation` 的输入与结果 | 是 | 是 | 只包含用户授权提交的字段 |
 | `get_observation`、复核与草稿工具的输入与结果 | 是 | 是 | 只覆盖当前 principal 可访问的 OMK 记录 |
 | OMK component 内的点击、编辑与工具调用 | 是 | 是 | 仅限 component 主动提交给 OMK 的操作 |
 | 用户显式提交的消息片段 | 是 | 是 | 片段是用户提供的 evidence，不代表完整原始消息流 |
@@ -29,11 +29,11 @@ OMK 为本地 stdio 和标准 Streamable HTTP 暴露同一份 knowledge feedback
 
 | 工具 | Scope | OMK 保证 |
 | --- | --- | --- |
-| `capture_observation` | `observation:capture` | 只接受用户明确确认的可见证据，幂等写入 |
+| `save_observation` | `observation:capture` | 只接受用户明确确认的可见证据，幂等写入 |
 | `get_observation` | `observation:read` | 只返回当前 principal 分区中的证据、复核状态和 `partial` coverage |
 | `record_observation_review` | `observation:review` | 只记录 `real_issue`／`not_issue`／`needs_more_context` 人工结论 |
 | `draft_sample_from_observation` | `observation:draft` | 只允许从 `real_issue` 生成候选草稿；不写正式 eval sample |
-| `show_observation_review` | `observation:read` | 从权威 observation 快照展示可选的对话内复核组件 |
+| `review_observation` | `observation:read` | 从权威 observation 快照展示可选的对话内复核组件 |
 
 `draft_sample_from_observation` 由当前 MCP 客户端根据 `get_observation` 返回的授权证据提供候选 prompt 和 rubric。OMK 负责复核门禁、provenance、原始证据引用和草稿状态，不把客户端当作受控评委。
 
@@ -41,25 +41,25 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 ## 对话内复核组件
 
-四个数据工具在不支持自定义 UI 的 MCP 客户端中仍可独立使用。`show_observation_review` 是单独的展示工具，也是唯一关联版本化 `ui://omk/observation-review/v1.html` resource 的工具；capture、读取和写入不会反复挂载组件。
+四个数据工具在不支持自定义 UI 的 MCP 客户端中仍可独立使用。`review_observation` 是单独的展示工具，也是唯一关联版本化 `ui://omk/observation-review/v1.html` resource 的工具；capture、读取和写入不会反复挂载组件。
 
 组件遵循开放 MCP Apps bridge：通过 `ui/notifications/tool-result` 接收结构化工具结果，通过 `tools/call` 发起复核和草稿操作。组件不在浏览器存储中保存权威 review 或 draft 状态；每次变更仍由服务端重新鉴权并持久化，组件根据写工具返回的权威结果更新。卡片会先展示 `coverageStatus: partial` 和未观测事件，再提供人工结论操作。
 
-典型模型调用顺序是先 `get_observation`，再 `show_observation_review`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
+典型模型调用顺序是先 `get_observation`，再 `review_observation`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
 
 ## 三种触发路径
 
 ### 用户显式触发
 
-用户说「刚才关于退款期限的回答错了，请记录这个问题」。模型调用 `capture_observation`，并设置 `confirmedByUser: true`；evidence 只包含用户授权的纠正和必要片段。捕获后不会自动生成草稿或写入正式样本集。
+用户说「刚才关于退款期限的回答错了，请记录这个问题」。模型调用 `save_observation`，并设置 `confirmedByUser: true`；evidence 只包含用户授权的纠正和必要片段。捕获后不会自动生成草稿或写入正式样本集。
 
 ### Skill 启发式触发
 
-用户只说「不对，退款期限应该是 30 天，不是 7 天」时，skill 可以建议「要把这个知识缺口记录到 OMK 吗？」。在用户明确确认前，不调用 `capture_observation`。这条路径依赖模型判断，是 best-effort，不能用作完整召回率。
+用户只说「不对，退款期限应该是 30 天，不是 7 天」时，skill 可以建议「要把这个知识缺口记录到 OMK 吗？」。在用户明确确认前，不调用 `save_observation`。这条路径依赖模型判断，是 best-effort，不能用作完整召回率。
 
 ### Component 操作
 
-已有 observation 时，模型先调用 `get_observation`，再调用 `show_observation_review`。用户在 component 内选择「真实问题」后，component 调用 `record_observation_review`；只有服务端确认结论为 `real_issue` 后，才允许调用 `draft_sample_from_observation`。草稿仍与正式 eval sample 隔离。
+已有 observation 时，模型先调用 `get_observation`，再调用 `review_observation`。用户在 component 内选择「真实问题」后，component 调用 `record_observation_review`；只有服务端确认结论为 `real_issue` 后，才允许调用 `draft_sample_from_observation`。草稿仍与正式 eval sample 隔离。
 
 仓库在 `examples/mcp-observation/eval-samples.json` 提供 direct／indirect／negative 行为用例。它们必须在能够暴露 MCP 工具轨迹的宿主中运行；普通文本执行器看不到工具调用，不能用于验证这组边界。
 
@@ -130,7 +130,7 @@ console.log(started.url.href);
 
 ## 实现其它 Store
 
-`ObservationCaptureStore` 是最小持久化接缝；实现它时 MCP Server 只注册 `capture_observation`。`ObservationFeedbackStore` 在此基础上增加 `get`、`review` 和 `draftSample`；实现完整接口时才注册三个 feedback 数据工具和可选复核组件。这样旧 adapter 不会被迫虚假承诺未实现的能力。
+`ObservationCaptureStore` 是最小持久化接缝；实现它时 MCP Server 只注册 `save_observation`。`ObservationFeedbackStore` 在此基础上增加 `get`、`review` 和 `draftSample`；实现完整接口时才注册三个 feedback 数据工具和可选复核组件。这样旧 adapter 不会被迫虚假承诺未实现的能力。
 
 OMK 同时导出准备标准 v1 record 和生成标准结果的 helper，因此 capture adapter 不需要重新实现 capture 哈希、coverage 或 Inbox identity。
 
@@ -171,6 +171,6 @@ const captureStore: ObservationCaptureStore = {
 npx @modelcontextprotocol/inspector@latest
 ```
 
-选择 **Streamable HTTP**，填入 `startObservationMcpHttpServer` 返回的实际 URL，并配置宿主 resolver 所需的凭据。依次验证初始化、`tools/list`、`resources/list`、组件 resource 的 MIME type、工具 annotation、授权调用、重复调用返回 `created: false`、无效确认、缺少 scope 和无效凭据。先调用 `get_observation`，再调用 `show_observation_review`；后者应是唯一携带 `_meta.ui.resourceUri` 的工具。
+选择 **Streamable HTTP**，填入 `startObservationMcpHttpServer` 返回的实际 URL，并配置宿主 resolver 所需的凭据。依次验证初始化、`tools/list`、`resources/list`、组件 resource 的 MIME type、工具 annotation、授权调用、重复调用返回 `created: false`、无效确认、缺少 scope 和无效凭据。先调用 `get_observation`，再调用 `review_observation`；后者应是唯一携带 `_meta.ui.resourceUri` 的工具。
 
 对于 ChatGPT 这一具体客户端，Secure MCP Tunnel 可以在 developer mode 中连接私有开发服务。这条可选接入路径不改变 OMK 的通用 MCP 契约，也不能代替稳定的公共 HTTPS endpoint。

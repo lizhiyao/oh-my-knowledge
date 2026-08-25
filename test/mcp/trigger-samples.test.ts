@@ -18,19 +18,19 @@ describe('MCP observation trigger validation samples', () => {
     const unreviewed = byId.get('negative-unreviewed-draft');
     assert.ok(direct && indirect && confirmed && negative && unreviewed);
 
-    assert.deepEqual(toolAssertion(direct, 'tools_called'), ['capture_observation']);
-    assert.deepEqual(toolAssertion(confirmed, 'tools_called'), ['capture_observation']);
+    assert.deepEqual(toolAssertion(direct, 'tools_called'), ['save_observation']);
+    assert.deepEqual(toolAssertion(confirmed, 'tools_called'), ['save_observation']);
     assert.deepEqual(toolAssertion(indirect, 'tools_not_called'), [
-      'capture_observation',
+      'save_observation',
       'draft_sample_from_observation',
     ]);
     assert.deepEqual(toolAssertion(negative, 'tools_not_called'), [
-      'capture_observation',
+      'save_observation',
       'record_observation_review',
       'draft_sample_from_observation',
     ]);
     assert.deepEqual(toolAssertion(unreviewed, 'tools_not_called'), [
-      'capture_observation',
+      'save_observation',
       'record_observation_review',
       'draft_sample_from_observation',
     ]);
@@ -39,14 +39,14 @@ describe('MCP observation trigger validation samples', () => {
   it('requires explicit confirmation and never permits capture to skip review', () => {
     const { samples } = loadSamples(samplePath);
     const captureSamples = samples.filter((sample) =>
-      toolAssertion(sample, 'tools_called')?.includes('capture_observation'));
+      toolAssertion(sample, 'tools_called')?.includes('save_observation'));
     assert.equal(captureSamples.length, 2);
 
     for (const sample of captureSamples) {
       assert.equal(
         sample.assertions?.some((assertion) =>
           assertion.type === 'tool_input_contains' &&
-          assertion.value === 'capture_observation:"confirmedByUser":true'),
+          assertion.value === 'save_observation:"confirmedByUser":true'),
         true,
       );
       assert.equal(

@@ -199,7 +199,7 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 
 ### 连接 MCP 客户端（实验性）
 
-`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。它只在用户明确要求记录时调用 `capture_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
+`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。它只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
 ```bash
 omk-mcp

@@ -199,7 +199,7 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 
 ### Connect an MCP client (experimental)
 
-`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. It calls `capture_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
+`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. It calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
 
 ```bash
 omk-mcp

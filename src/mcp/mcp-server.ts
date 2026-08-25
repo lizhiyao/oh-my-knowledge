@@ -91,8 +91,8 @@ export function registerObservationMcpTools(
   const principal = validateObservationPrincipal(options.principal);
 
   if (principal.scopes.includes(OBSERVATION_CAPTURE_SCOPE)) {
-    server.registerTool('capture_observation', {
-    title: 'Capture an explicit OMK observation',
+    server.registerTool('save_observation', {
+    title: '保存 OMK 知识反馈',
     description: [
       'Record knowledge feedback only after the user explicitly asks to save it.',
       'This captures the submitted feedback and optional evidence at the OMK tool boundary.',
@@ -125,6 +125,7 @@ export function registerObservationMcpTools(
       captureCoverage: captureCoverageSchema,
     },
     annotations: {
+      title: '保存 OMK 知识反馈',
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -160,7 +161,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_READ_SCOPE)) {
     server.registerTool('get_observation', {
-    title: 'Get an OMK observation',
+    title: '读取 OMK 知识反馈',
     description: [
       'Read one explicitly captured observation, its user-authorized evidence, partial coverage,',
       'and current human review state. This never returns a complete client transcript or hidden reasoning.',
@@ -192,6 +193,7 @@ export function registerObservationMcpTools(
       }).optional(),
     },
     annotations: {
+      title: '读取 OMK 知识反馈',
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
@@ -219,7 +221,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_REVIEW_SCOPE)) {
     server.registerTool('record_observation_review', {
-    title: 'Record a human review for an OMK observation',
+    title: '保存 OMK 人工复核',
     description: [
       'Record the user or reviewer decision for a captured observation.',
       'Use real_issue only after a human confirms the knowledge gap.',
@@ -238,6 +240,7 @@ export function registerObservationMcpTools(
       }),
     },
     annotations: {
+      title: '保存 OMK 人工复核',
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -265,7 +268,7 @@ export function registerObservationMcpTools(
 
   if (principal.scopes.includes(OBSERVATION_DRAFT_SCOPE)) {
     server.registerTool('draft_sample_from_observation', {
-    title: 'Draft a regression sample from an OMK observation',
+    title: '生成 OMK 回归评测草稿',
     description: [
       'Persist a candidate regression sample proposed from a human-confirmed observation.',
       'The result remains a draft and never changes the formal eval sample set.',
@@ -300,6 +303,7 @@ export function registerObservationMcpTools(
       }),
     },
     annotations: {
+      title: '生成 OMK 回归评测草稿',
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,

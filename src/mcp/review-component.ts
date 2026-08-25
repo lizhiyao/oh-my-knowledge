@@ -91,7 +91,7 @@ export function registerObservationReviewComponent(
     }],
   }));
 
-  server.registerTool('show_observation_review', {
+  server.registerTool('review_observation', {
     title: 'OMK 知识反馈',
     description: [
       'Show the inline review component for an observation.',
