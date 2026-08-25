@@ -203,6 +203,14 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 
 `omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. The client calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
 
+In Codex, explicitly invoke the OMK Skill to submit the current knowledge feedback:
+
+```text
+$omk feedback
+```
+
+The explicit invocation itself confirms the save. The agent selects the most recent clear issue from the visible conversation and calls `save_observation` with `confirmedByUser: true`; it asks first when the candidate is ambiguous. This shortcut is not a CLI command, and it does not automatically review the observation, draft a sample, or write to a gold set.
+
 ```bash
 omk-mcp
 ```

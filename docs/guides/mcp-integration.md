@@ -53,13 +53,17 @@ The component follows the open MCP Apps bridge: it receives structured tool resu
 
 A typical model flow is `get_observation` followed by `review_observation`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
 
-## Three trigger paths
+## Four trigger paths
+
+### Skill shortcut
+
+In Codex, enter `$omk feedback` to explicitly invoke the OMK Skill and save the most recent clear knowledge issue in the current conversation. The invocation itself confirms the save. The agent calls `save_observation` with `confirmedByUser: true` while submitting only the minimum visible evidence. It must ask first when no candidate is clear or multiple candidates are ambiguous. This shortcut is not a CLI subcommand and cannot bypass the downstream human-review gate.
 
 ### Explicit user trigger
 
 The user says, “The previous answer about the refund window was wrong; record this issue.” The model calls `save_observation` with `confirmedByUser: true`, submitting only the authorized correction and the minimum necessary excerpt. Capture does not automatically create a draft or modify the formal sample set.
 
-### Skill heuristic trigger
+### Skill heuristic suggestion
 
 The user only says, “That is wrong: the refund window is 30 days, not 7.” The skill may suggest recording the knowledge gap and ask for confirmation. It must not call `save_observation` until the user explicitly confirms. This model-dependent path is best-effort and cannot be treated as complete recall.
 

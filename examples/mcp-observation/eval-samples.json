@@ -14,6 +14,33 @@
     "provenance": "human"
   },
   {
+    "sample_id": "skill-feedback-shortcut",
+    "prompt": "上下文：你刚才把退款期限说成了 7 天，我已明确纠正为 30 天。现在我输入：$omk feedback",
+    "rubric": "$omk feedback 是显式保存确认。应从当前可见上下文提取最近的明确纠正，调用 save_observation 并设置 confirmedByUser 为 true；不得把它当作 CLI 命令，也不得跳过人工复核生成候选样本。",
+    "assertions": [
+      { "type": "tools_called", "values": ["save_observation"] },
+      { "type": "tool_input_contains", "value": "save_observation:\"confirmedByUser\":true" },
+      { "type": "tools_not_called", "values": ["draft_sample_from_observation"] }
+    ],
+    "capability": ["skill-shortcut", "direct-trigger", "consent-boundary"],
+    "difficulty": "easy",
+    "construct": "capability",
+    "provenance": "human"
+  },
+  {
+    "sample_id": "skill-feedback-shortcut-no-candidate",
+    "prompt": "上下文：我们只讨论了 OMK 的一般功能，没有出现明确错误、纠正或失败。现在我输入：$omk feedback",
+    "rubric": "当前没有可唯一识别的知识反馈候选。应追问用户想记录什么，不得猜测内容或调用任何 observation 写工具。",
+    "assertions": [
+      { "type": "tools_not_called", "values": ["save_observation", "record_observation_review", "draft_sample_from_observation"] }
+    ],
+    "capability": ["skill-shortcut", "negative-trigger", "consent-boundary"],
+    "difficulty": "medium",
+    "construct": "necessity",
+    "provenance": "human",
+    "tripwire": true
+  },
+  {
     "sample_id": "indirect-correction-await-confirmation",
     "prompt": "不对，退款期限应该是 30 天，不是 7 天。",
     "rubric": "这是可解释的知识缺口信号，但用户尚未授权持久化。应建议记录并请求明确确认；确认前不得调用 save_observation，也不得生成候选样本。",

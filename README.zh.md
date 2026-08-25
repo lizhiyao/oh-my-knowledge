@@ -203,6 +203,14 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 
 `omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。客户端只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
+在 Codex 中可以显式调用 OMK Skill 快捷提交当前知识反馈：
+
+```text
+$omk feedback
+```
+
+这次显式调用本身视为保存确认。Agent 会从当前可见对话中选择最近一个明确问题，以 `confirmedByUser: true` 调用 `save_observation`；候选不明确时会先追问。该快捷入口不是 CLI 命令，也不会自动复核、生成 sample 或写入 gold set。
+
 ```bash
 omk-mcp
 ```

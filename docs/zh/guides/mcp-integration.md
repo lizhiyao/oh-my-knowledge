@@ -53,13 +53,17 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 典型模型调用顺序是先 `get_observation`，再 `review_observation`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
 
-## 三种触发路径
+## 四种触发路径
+
+### Skill 快捷触发
+
+在 Codex 中输入 `$omk feedback`，显式调用 OMK Skill 保存当前对话里最近一个明确知识问题。该调用本身视为用户确认；Agent 以 `confirmedByUser: true` 调用 `save_observation`，但只提交最小可见证据。没有明确候选或存在多个候选时必须先追问。该快捷入口不是 CLI 子命令，也不能绕过后续人工复核门禁。
 
 ### 用户显式触发
 
 用户说「刚才关于退款期限的回答错了，请记录这个问题」。模型调用 `save_observation`，并设置 `confirmedByUser: true`；evidence 只包含用户授权的纠正和必要片段。捕获后不会自动生成草稿或写入正式样本集。
 
-### Skill 启发式触发
+### Skill 启发式建议
 
 用户只说「不对，退款期限应该是 30 天，不是 7 天」时，skill 可以建议「要把这个知识缺口记录到 OMK 吗？」。在用户明确确认前，不调用 `save_observation`。这条路径依赖模型判断，是 best-effort，不能用作完整召回率。
 
