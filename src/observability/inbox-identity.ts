@@ -51,4 +51,3 @@ export function aggregateObservationInboxItemId(item: ObservationIdentityInput):
     .digest('hex')
     .slice(0, 16);
 }
-
