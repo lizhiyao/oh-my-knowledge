@@ -67,7 +67,7 @@ console.log(started.url.href);
 
 `tenantId` 和 `principalId` 只来自 resolver，不会出现在 MCP 工具输入 schema 中。File Store 会把二者分别哈希后用于目录分区，因此同一个 `captureId` 会在每个 `(tenantId, principalId)` 组合内独立幂等。原始 principal 标识不会写入 capture record 或文件路径。
 
-未提供 resolver 时，HTTP helper 默认只监听 loopback，并使用本地主体；没有显式 resolver 时，它会拒绝绑定非 loopback 地址。入口还限制请求体大小、并发数、字段长度和请求体读取超时。生产宿主应自行提供 TLS 终止、限流策略、生命周期管理和运行遥测，但不应记录反馈或 evidence 正文。
+未提供 resolver 时，HTTP helper 默认只监听 loopback，并使用本地主体；没有显式 resolver 时，它会拒绝绑定非 loopback 地址，并拒绝非 loopback `Host` 或 `Origin`，关闭浏览器跨站请求和 DNS rebinding 路径。入口还限制请求体大小、并发数、字段长度和请求体读取超时。生产宿主应自行提供 TLS 终止、限流策略、生命周期管理和运行遥测，但不应记录反馈或 evidence 正文。
 
 ## 实现其它 Store
 

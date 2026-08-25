@@ -77,9 +77,18 @@ export function createChatGptObservationHttpHandler(
   let activeRequests = 0;
 
   return async (request, response) => {
-    if (!options.principalResolver && !isLoopbackHost(request.socket.localAddress ?? '')) {
-      sendJsonRpcError(response, 401, -32001, 'Authentication required.');
-      return;
+    if (!options.principalResolver) {
+      if (!isLoopbackHost(request.socket.localAddress ?? '')) {
+        sendJsonRpcError(response, 401, -32001, 'Authentication required.');
+        return;
+      }
+      if (
+        !isLoopbackAuthority(request.headers.host)
+        || !isAllowedLoopbackOrigin(request.headers.origin)
+      ) {
+        sendJsonRpcError(response, 403, -32001, 'Forbidden.');
+        return;
+      }
     }
     if (new URL(request.url ?? '/', 'http://localhost').pathname !== path) {
       sendJsonRpcError(response, 404, -32004, 'Not found.');
@@ -249,7 +258,7 @@ function positiveInteger(value: number, field: string): number {
 }
 
 function isLoopbackHost(host: string): boolean {
-  const normalized = host.toLowerCase();
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, '');
   if (normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') {
     return true;
   }
@@ -257,4 +266,24 @@ function isLoopbackHost(host: string): boolean {
   return parts.length === 4
     && parts[0] === '127'
     && parts.slice(1).every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+}
+
+function isLoopbackAuthority(authority: string | undefined): boolean {
+  if (!authority) return false;
+  try {
+    return isLoopbackHost(new URL(`http://${authority}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedLoopbackOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) return true;
+  try {
+    const value = new URL(origin);
+    return (value.protocol === 'http:' || value.protocol === 'https:')
+      && isLoopbackHost(value.hostname);
+  } catch {
+    return false;
+  }
 }

@@ -67,7 +67,7 @@ console.log(started.url.href);
 
 `tenantId` and `principalId` come only from the resolver and never appear in the MCP tool input schema. The File Store hashes both values into directory partitions, so the same `captureId` is independently idempotent for each `(tenantId, principalId)` pair. Raw principal identifiers are not written into capture records or paths.
 
-With no resolver, the HTTP helper binds to loopback by default and uses the local principal. It refuses a non-loopback bind without an explicit resolver. The endpoint also applies bounded request bodies, bounded concurrency, field limits, and a body-read timeout. A production host should add its own TLS termination, rate policy, lifecycle management, and operational telemetry without logging feedback or evidence bodies.
+With no resolver, the HTTP helper binds to loopback by default and uses the local principal. It refuses a non-loopback bind without an explicit resolver, and rejects non-loopback `Host` or `Origin` values to close browser cross-origin and DNS-rebinding paths. The endpoint also applies bounded request bodies, bounded concurrency, field limits, and a body-read timeout. A production host should add its own TLS termination, rate policy, lifecycle management, and operational telemetry without logging feedback or evidence bodies.
 
 ## Implement another store
 

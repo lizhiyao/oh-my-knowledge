@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync } from 'node:fs';
-import type { IncomingMessage } from 'node:http';
+import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -125,6 +125,17 @@ describe('ChatGPT observation Streamable HTTP server', () => {
       requestBodyLimitBytes: 64,
     });
     try {
+      const crossOrigin = await fetch(started.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          Origin: 'https://untrusted.example',
+        },
+        body: '{}',
+      });
+      assert.equal(crossOrigin.status, 403);
+      assert.equal(await postWithHost(started.url, 'untrusted.example'), 403);
+
       const response = await fetch(started.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,6 +148,23 @@ describe('ChatGPT observation Streamable HTTP server', () => {
     }
   });
 });
+
+function postWithHost(url: URL, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Host: host,
+      },
+    }, (response) => {
+      response.resume();
+      response.once('end', () => resolve(response.statusCode ?? 0));
+    });
+    request.once('error', reject);
+    request.end('{}');
+  });
+}
 
 function createClient(url: URL, token: string): {
   client: Client;
