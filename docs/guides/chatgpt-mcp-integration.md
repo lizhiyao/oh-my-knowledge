@@ -4,6 +4,19 @@ OMK exposes one knowledge-feedback-loop contract over local stdio and standard S
 
 This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning.
 
+## Observable event matrix
+
+| Event | Observable to OMK | Usable as evidence | Boundary |
+| --- | --- | --- | --- |
+| `capture_observation` input and result | Yes | Yes | Only fields explicitly authorized by the user |
+| Inputs and results of get, review, and draft tools | Yes | Yes | Only OMK records visible to the current principal |
+| Clicks, edits, and tool calls inside the OMK component | Yes | Yes | Only actions actively submitted to OMK by the component |
+| A message excerpt explicitly submitted by the user | Yes | Yes | The excerpt is user-provided evidence, not the complete message stream |
+| ChatGPT thread or turn identifiers | Host-dependent | Only when supplied by the host | OMK does not invent a stable ChatGPT identifier |
+| Surrounding ChatGPT transcript | No | No | The standard MCP tool boundary cannot passively subscribe to the full transcript |
+| Other tool events that are not routed through OMK | No | No | OMK does not infer or backfill missing calls |
+| Hidden reasoning | No | No | Never read, stored, or inferred |
+
 ## Choose a deployment shape
 
 | Shape | Identity and storage | Intended use |
@@ -33,6 +46,22 @@ The four data tools remain useful in any MCP client without custom UI. `render_o
 The component follows the open MCP Apps bridge: it receives structured tool results through `ui/notifications/tool-result` and invokes review and draft operations through `tools/call`. It does not keep authoritative review or draft state in browser storage. Every mutation is re-authorized and persisted by the server, and the component updates from the authoritative write result. The card always displays `coverageStatus: partial` and lists the unavailable event kinds before offering a human verdict.
 
 A typical model flow is `get_observation` followed by `render_observation_review`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
+
+## Three trigger paths
+
+### Explicit user trigger
+
+The user says, “The previous answer about the refund window was wrong; record this issue.” The model calls `capture_observation` with `confirmedByUser: true`, submitting only the authorized correction and the minimum necessary excerpt. Capture does not automatically create a draft or modify the formal sample set.
+
+### Skill heuristic trigger
+
+The user only says, “That is wrong: the refund window is 30 days, not 7.” The skill may suggest recording the knowledge gap and ask for confirmation. It must not call `capture_observation` until the user explicitly confirms. This model-dependent path is best-effort and cannot be treated as complete recall.
+
+### Component action
+
+For an existing observation, the model calls `get_observation` and then `render_observation_review`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
+
+The repository provides direct, indirect, and negative behavior cases in `examples/chatgpt-observation/eval-samples.json`. Run them only in a ChatGPT-compatible host that exposes MCP tool traces; a text-only executor cannot validate these boundaries.
 
 ## Local stdio
 
