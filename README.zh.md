@@ -167,7 +167,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖 |
 | **LLM 健康度审计** | `omk doctor` 给 7 个内置维度独立打分；重复采样（`--repeat`）+ k/n 共识归并 |
 | **线上 session 观测** | 将 Codex、Claude Code、OpenClaw 与 markdown 日志统一为 source-neutral Trace IR，测量各 skill 的执行结果、耗时、token 使用和知识缺口信号 |
-| **ChatGPT 显式反馈采集（实验性）** | 通过 MCP 工具把用户明确授权的 knowledge 反馈实时写入 Observation Inbox，并固定标记 `coverage: partial` |
+| **MCP 显式反馈采集（实验性）** | 通过 MCP 工具把用户明确授权的 knowledge 反馈实时写入 Observation Inbox，并固定标记 `coverage: partial` |
 | **知识缺口识别** | 严重度加权的信号量化风险敞口，不宣称完备性 |
 | **用例隔离 (construct validity)** | `--strict-baseline`（默认开）三堵 baseline 拿到被测 skill 的污染路径 |
 | **Git / 远端源** | install / eval 支持本地 git ref 或远端 git URL（`--git-url`）；目录-skill 在内容寻址**隔离副本**里执行，`references/` 资产是真实测量输入，不只是 `SKILL.md` |
@@ -197,15 +197,15 @@ dsh --profile web
 
 observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JSONL／SQLite 文件；首版不实时跟随正在写入的 session。详见[执行器文档](docs/zh/reference/executors.md#deepseek-harness优先使用宿主插件)与[观测指南](docs/zh/guides/observe-production.md#在-deepseek-harness-中查看任务轨迹)。
 
-### 连接 ChatGPT（实验性）
+### 连接 MCP 客户端（实验性）
 
-`omk-chatgpt-mcp` 提供一个 stdio MCP Server；本地开发时可配合 OpenAI 的 [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) 接入 ChatGPT。它只在用户明确要求记录时调用 `capture_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
+`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。它只在用户明确要求记录时调用 `capture_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
 ```bash
-omk-chatgpt-mcp
+omk-mcp
 ```
 
-这不是完整对话监听。每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 ChatGPT MCP 集成](docs/zh/guides/chatgpt-mcp-integration.md)。
+这不是完整对话监听。每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 OMK MCP 集成](docs/zh/guides/mcp-integration.md)。
 
 ## 文档
 

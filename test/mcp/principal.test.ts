@@ -12,7 +12,7 @@ import {
   OBSERVATION_REVIEW_SCOPE,
   ObservationPrincipalError,
   validateObservationPrincipal,
-} from '../../src/chatgpt-plugin/principal.js';
+} from '../../src/mcp/principal.js';
 
 describe('observation principal', () => {
   it('accepts opaque host identities without assigning identity semantics', () => {

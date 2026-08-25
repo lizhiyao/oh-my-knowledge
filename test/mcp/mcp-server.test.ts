@@ -5,23 +5,23 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, it } from 'vitest';
-import { createChatGptObservationMcpServer } from '../../src/chatgpt-plugin/mcp-server.js';
-import { FileObservationCaptureStore } from '../../src/chatgpt-plugin/capture-store.js';
-import { FileObservationFeedbackStore } from '../../src/chatgpt-plugin/feedback-store.js';
+import { createObservationMcpServer } from '../../src/mcp/mcp-server.js';
+import { FileObservationCaptureStore } from '../../src/mcp/capture-store.js';
+import { FileObservationFeedbackStore } from '../../src/mcp/feedback-store.js';
 import {
   OBSERVATION_CAPTURE_SCOPE,
   OBSERVATION_READ_SCOPE,
-} from '../../src/chatgpt-plugin/principal.js';
+} from '../../src/mcp/principal.js';
 import {
   MCP_APP_HTML_MIME_TYPE,
   OBSERVATION_REVIEW_RESOURCE_URI,
-} from '../../src/chatgpt-plugin/review-component.js';
+} from '../../src/mcp/review-component.js';
 import { queryObservationInbox } from '../../src/observability/inbox.js';
 
-describe('ChatGPT observation MCP server', () => {
+describe('OMK observation MCP server', () => {
   it('advertises a focused, accurately annotated capture tool', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-list-'));
-    const server = createChatGptObservationMcpServer({ observationsDir: dir });
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-list-'));
+    const server = createObservationMcpServer({ observationsDir: dir });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -73,8 +73,8 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('captures authorized feedback and returns explicit partial coverage', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-call-'));
-    const server = createChatGptObservationMcpServer({
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-call-'));
+    const server = createObservationMcpServer({
       observationsDir: dir,
       now: () => new Date('2026-08-24T02:03:04.000Z'),
     });
@@ -108,8 +108,8 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('advertises only the tools allowed by the resolved principal scopes', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-scopes-'));
-    const server = createChatGptObservationMcpServer({
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-scopes-'));
+    const server = createObservationMcpServer({
       principal: {
         tenantId: 'tenant',
         principalId: 'capture-only',
@@ -131,8 +131,8 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('keeps capture-only store adapters backward compatible', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-capture-only-'));
-    const server = createChatGptObservationMcpServer({
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-capture-only-'));
+    const server = createObservationMcpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
     });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
@@ -149,7 +149,7 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('renders a read-only component without advertising review or draft actions', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-read-only-'));
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-read-only-'));
     const principal = {
       tenantId: 'tenant',
       principalId: 'reader',
@@ -160,9 +160,9 @@ describe('ChatGPT observation MCP server', () => {
       skillName: 'omk',
       userFeedback: '需要展示只读复核卡片。',
       confirmedByUser: true,
-      captureSourceKind: 'chatgpt_plugin',
+      captureSourceKind: 'mcp',
     });
-    const server = createChatGptObservationMcpServer({ principal, captureStore: store });
+    const server = createObservationMcpServer({ principal, captureStore: store });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -186,8 +186,8 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('rejects calls without explicit confirmation', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-reject-'));
-    const server = createChatGptObservationMcpServer({ observationsDir: dir });
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-reject-'));
+    const server = createObservationMcpServer({ observationsDir: dir });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -209,8 +209,8 @@ describe('ChatGPT observation MCP server', () => {
   });
 
   it('reads, reviews, and drafts without promoting unconfirmed feedback', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-feedback-'));
-    const server = createChatGptObservationMcpServer({
+    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-feedback-'));
+    const server = createObservationMcpServer({
       observationsDir: dir,
       now: () => new Date('2026-08-24T02:03:04.000Z'),
     });

@@ -3,9 +3,9 @@ import { resolve } from 'node:path';
 import { describe, it } from 'vitest';
 import { loadSamples } from '../../src/inputs/load-samples.js';
 
-const samplePath = resolve('examples/chatgpt-observation/eval-samples.json');
+const samplePath = resolve('examples/mcp-observation/eval-samples.json');
 
-describe('ChatGPT observation trigger validation samples', () => {
+describe('MCP observation trigger validation samples', () => {
   it('keeps direct, indirect, and negative consent boundaries executable', () => {
     const { samples } = loadSamples(samplePath);
     assert.equal(samples.length, 5);

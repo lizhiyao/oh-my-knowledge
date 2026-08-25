@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { describe, it } from 'vitest';
-import { observationReviewComponentHtml } from '../../src/chatgpt-plugin/review-component.js';
+import { observationReviewComponentHtml } from '../../src/mcp/review-component.js';
 
 type EventHandler = (event?: unknown) => unknown;
 
@@ -204,7 +204,7 @@ function componentState(options: {
   };
 }
 
-describe('ChatGPT observation review component bridge', () => {
+describe('OMK observation review component bridge', () => {
   it('preserves an existing note and updates from the authoritative review result', async () => {
     const harness = createBridgeHarness();
     harness.notify(componentState({ verdict: 'needs_more_context', note: 'Original note.' }));

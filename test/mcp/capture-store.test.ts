@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
-import { FileObservationCaptureStore } from '../../src/chatgpt-plugin/capture-store.js';
-import { FileObservationFeedbackStore } from '../../src/chatgpt-plugin/feedback-store.js';
-import { OBSERVATION_CAPTURE_SCOPE } from '../../src/chatgpt-plugin/principal.js';
+import { FileObservationCaptureStore } from '../../src/mcp/capture-store.js';
+import { FileObservationFeedbackStore } from '../../src/mcp/feedback-store.js';
+import { OBSERVATION_CAPTURE_SCOPE } from '../../src/mcp/principal.js';
 
 const CAPTURE = {
-  captureSourceKind: 'chatgpt_plugin',
+  captureSourceKind: 'mcp',
   skillName: 'demo-skill',
   userFeedback: '需要补充失败恢复步骤。',
   captureId: 'same-host-capture-id',

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
@@ -20,7 +20,7 @@ describe('explicit observation capture', () => {
   it('persists an append-only record and projects it into the inbox', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-'));
     const result = captureExplicitObservation({
-      captureSourceKind: 'chatgpt_plugin',
+      captureSourceKind: 'mcp',
       skillName: 'docs-skill',
       userFeedback: '这个回答遗漏了升级步骤。',
       evidenceSnippet: '用户要求从 1.x 升级到 2.x。',
@@ -62,7 +62,7 @@ describe('explicit observation capture', () => {
   it('is idempotent and rejects identity reuse with another payload', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-idempotency-'));
     const input = {
-      captureSourceKind: 'chatgpt_plugin',
+      captureSourceKind: 'mcp',
       skillName: 'demo-skill',
       userFeedback: '缺少边界条件。',
       captureId: 'stable-tool-call-id',
@@ -88,7 +88,7 @@ describe('explicit observation capture', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-confirmation-'));
     assert.throws(
       () => captureExplicitObservation({
-        captureSourceKind: 'chatgpt_plugin',
+        captureSourceKind: 'mcp',
         skillName: 'demo-skill',
         userFeedback: '不应被记录。',
         confirmedByUser: false,
@@ -97,7 +97,7 @@ describe('explicit observation capture', () => {
     );
   });
 
-  it('keeps trace reports unchanged and ignores malformed capture records', () => {
+  it('keeps trace reports unchanged and ignores malformed or pre-contract capture records', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-projection-'));
     saveObservationInboxReport({
       kind: 'observe-inbox',
@@ -112,13 +112,22 @@ describe('explicit observation capture', () => {
       items: [baseItem({ id: 'trace-item', skillName: 'trace-skill' })],
     }, dir);
     captureExplicitObservation({
-      captureSourceKind: 'chatgpt_plugin',
+      captureSourceKind: 'mcp',
       skillName: 'captured-skill',
       userFeedback: '这里的术语已经过期。',
       captureId: 'capture-2',
       confirmedByUser: true,
     }, { observationsDir: dir });
-    writeFileSync(join(dir, 'captures', 'malformed.capture.json'), '{not-json');
+    const capturesDir = join(dir, 'captures');
+    const [captureFile] = readdirSync(capturesDir);
+    assert.ok(captureFile);
+    const legacyRecord = {
+      ...JSON.parse(readFileSync(join(capturesDir, captureFile), 'utf8')),
+      captureId: 'legacy-chatgpt-plugin-record',
+      captureSourceKind: 'chatgpt_plugin',
+    };
+    writeFileSync(join(capturesDir, 'legacy.capture.json'), JSON.stringify(legacyRecord));
+    writeFileSync(join(capturesDir, 'malformed.capture.json'), '{not-json');
 
     const [latest] = loadLatestObservationInboxReports(dir);
     assert.ok(latest);
@@ -129,7 +138,7 @@ describe('explicit observation capture', () => {
       queryObservationInbox(dir).map((item) => item.skillName).sort(),
       ['captured-skill', 'trace-skill'],
     );
-    assert.equal(readdirSync(join(dir, 'captures')).filter((file) => file.endsWith('.capture.json')).length, 2);
+    assert.equal(readdirSync(capturesDir).filter((file) => file.endsWith('.capture.json')).length, 3);
     assert.equal(loadExplicitObservationCaptureRecords(dir).length, 1);
   });
 });
