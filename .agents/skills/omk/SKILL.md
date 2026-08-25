@@ -27,13 +27,13 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 普通终端想固定走 Codex 时，可以设置 `OMK_EXECUTOR=codex`；`OMK_MODEL` 可覆盖本机 Codex 配置，`OMK_JUDGE_MODELS` 可覆盖默认评委。逐次覆盖仍可使用 `--executor` / `--model` / `--judge-models`。Codex 不需要 Claude Code 风格的 `/omk` slash command，直接执行 CLI。
 
-如果当前 MCP 客户端提供 `capture_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `render_observation_review`，按以下边界处理反馈：
+如果当前 MCP 客户端提供 `capture_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `show_observation_review`，按以下边界处理反馈：
 
 - 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `capture_observation`；只提交用户授权的最小可见证据。
 - 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `capture_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。
 - 普通追问、假设性例子、泛泛的不满意或没有明确知识缺口的反馈，不要记录 observation。
 - 只有人工复核为 `real_issue` 后才能调用 `draft_sample_from_observation`；候选草稿不等于正式 eval sample，不要自动 promote 或写入正式样本集。
-- 需要对话内复核时，先 `get_observation`，再 `render_observation_review`。所有结果都按 `coverageStatus: partial` 解读，不推断未提交的上下文、其它工具调用或隐藏推理。
+- 需要对话内复核时，先 `get_observation`，再 `show_observation_review`。所有结果都按 `coverageStatus: partial` 解读，不推断未提交的上下文、其它工具调用或隐藏推理。
 
 ### 在 DeepSeek Harness 中
 

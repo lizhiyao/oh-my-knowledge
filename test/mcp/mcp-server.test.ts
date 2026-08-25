@@ -32,7 +32,7 @@ describe('OMK observation MCP server', () => {
         'get_observation',
         'record_observation_review',
         'draft_sample_from_observation',
-        'render_observation_review',
+        'show_observation_review',
       ]);
       const tool = tools.tools[0];
       assert.ok(tool);
@@ -171,10 +171,10 @@ describe('OMK observation MCP server', () => {
     try {
       assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
         'get_observation',
-        'render_observation_review',
+        'show_observation_review',
       ]);
       const rendered = await client.callTool({
-        name: 'render_observation_review',
+        name: 'show_observation_review',
         arguments: { observationId: captured.observationId },
       });
       assert.deepEqual(
@@ -289,7 +289,7 @@ describe('OMK observation MCP server', () => {
       assert.equal(detailContent.captureCoverage.coverageStatus, 'partial');
 
       const rendered = await client.callTool({
-        name: 'render_observation_review',
+        name: 'show_observation_review',
         arguments: {
           observationId,
           candidatePrompt: '说明公共 OMK 与私有宿主的边界。',

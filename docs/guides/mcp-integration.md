@@ -33,7 +33,7 @@ This integration captures only user-authorized feedback submitted through the to
 | `get_observation` | `observation:read` | Returns only evidence, review state, and `partial` coverage from the current principal partition |
 | `record_observation_review` | `observation:review` | Records only `real_issue`, `not_issue`, or `needs_more_context` human decisions |
 | `draft_sample_from_observation` | `observation:draft` | Drafts only from `real_issue`; never writes the formal eval sample set |
-| `render_observation_review` | `observation:read` | Renders the optional inline review component from an authoritative observation snapshot |
+| `show_observation_review` | `observation:read` | Shows the optional inline review component from an authoritative observation snapshot |
 
 For `draft_sample_from_observation`, the current MCP client proposes a candidate prompt and rubric from the authorized evidence returned by `get_observation`. OMK owns the review gate, provenance, source-evidence references, and draft status; it does not treat the client as a controlled judge.
 
@@ -41,11 +41,11 @@ MCP `tools/list` is also filtered by the scopes returned by the resolver: capabi
 
 ## Inline review component
 
-The four data tools remain useful in any MCP client without custom UI. `render_observation_review` is a separate presentation tool and is the only tool associated with the versioned `ui://omk/observation-review/v1.html` resource. This prevents capture, reads, and writes from remounting the component unnecessarily.
+The four data tools remain useful in any MCP client without custom UI. `show_observation_review` is a separate presentation tool and is the only tool associated with the versioned `ui://omk/observation-review/v1.html` resource. This prevents capture, reads, and writes from remounting the component unnecessarily.
 
 The component follows the open MCP Apps bridge: it receives structured tool results through `ui/notifications/tool-result` and invokes review and draft operations through `tools/call`. It does not keep authoritative review or draft state in browser storage. Every mutation is re-authorized and persisted by the server, and the component updates from the authoritative write result. The card always displays `coverageStatus: partial` and lists the unavailable event kinds before offering a human verdict.
 
-A typical model flow is `get_observation` followed by `render_observation_review`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
+A typical model flow is `get_observation` followed by `show_observation_review`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
 
 ## Three trigger paths
 
@@ -59,7 +59,7 @@ The user only says, “That is wrong: the refund window is 30 days, not 7.” Th
 
 ### Component action
 
-For an existing observation, the model calls `get_observation` and then `render_observation_review`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
+For an existing observation, the model calls `get_observation` and then `show_observation_review`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
 
 The repository provides direct, indirect, and negative behavior cases in `examples/mcp-observation/eval-samples.json`. Run them only in an MCP host that exposes tool traces; a text-only executor cannot validate these boundaries.
 
@@ -171,6 +171,6 @@ Start the HTTP service, then run:
 npx @modelcontextprotocol/inspector@latest
 ```
 
-Select **Streamable HTTP**, enter the actual URL returned by `startObservationMcpHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `render_observation_review`; the latter should be the only tool carrying `_meta.ui.resourceUri`.
+Select **Streamable HTTP**, enter the actual URL returned by `startObservationMcpHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `show_observation_review`; the latter should be the only tool carrying `_meta.ui.resourceUri`.
 
 For ChatGPT-specific development, Secure MCP Tunnel can expose a private server to developer mode. That optional client path does not change OMK's generic MCP contract and is not a replacement for a stable public HTTPS endpoint.
