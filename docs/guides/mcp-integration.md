@@ -2,7 +2,13 @@
 
 OMK exposes one knowledge-feedback-loop contract over local stdio and standard Streamable HTTP. The public boundary keeps observation semantics, the human-review gate, and the sample-draft lifecycle in OMK while allowing a private host to supply identity, policy, persistence, and deployment.
 
-This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning.
+## Capability positioning
+
+**OMK MCP is an active knowledge-feedback interface, not a conversation monitor.** The standard MCP tool boundary lets a client, model, or component actively call OMK tools; OMK MCP cannot independently monitor, subscribe to, or pull a client's complete conversation.
+
+An Agent Skill may use the currently visible context to recognize a potential knowledge gap and suggest recording it, but this is only a best-effort trigger decision. OMK receives feedback only after the user confirms and the client explicitly calls `save_observation` with authorized content. Automatic recognition is not automatic monitoring.
+
+This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning. Continuous monitoring requires an authorized host to actively forward events from an event stream. Monitoring, authorization, and redaction belong to the host-integration boundary; OMK provides only the generic feedback-ingestion and downstream-processing capabilities.
 
 ## Observable event matrix
 

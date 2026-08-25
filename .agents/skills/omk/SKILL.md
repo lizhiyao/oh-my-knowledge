@@ -29,6 +29,7 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 如果当前 MCP 客户端提供 `save_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `review_observation`，按以下边界处理反馈：
 
+- OMK MCP 是主动知识反馈接口，不是对话监听器；它不能自行监听或订阅完整对话。skill 可以识别潜在反馈时机，但自动识别不等于自动监听，保存仍须用户确认并显式调用 `save_observation`。
 - 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `save_observation`；只提交用户授权的最小可见证据。
 - 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `save_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。
 - 普通追问、假设性例子、泛泛的不满意或没有明确知识缺口的反馈，不要记录 observation。

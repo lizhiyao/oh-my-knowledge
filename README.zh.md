@@ -167,7 +167,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖 |
 | **LLM 健康度审计** | `omk doctor` 给 7 个内置维度独立打分；重复采样（`--repeat`）+ k/n 共识归并 |
 | **线上 session 观测** | 将 Codex、Claude Code、OpenClaw 与 markdown 日志统一为 source-neutral Trace IR，测量各 skill 的执行结果、耗时、token 使用和知识缺口信号 |
-| **MCP 显式反馈采集（实验性）** | 通过 MCP 工具把用户明确授权的 knowledge 反馈实时写入 Observation Inbox，并固定标记 `coverage: partial` |
+| **MCP 主动知识反馈（实验性）** | 由 MCP 客户端主动调用工具，把用户明确授权的 knowledge 反馈写入 Observation Inbox；不监听对话，并固定标记 `coverage: partial` |
 | **知识缺口识别** | 严重度加权的信号量化风险敞口，不宣称完备性 |
 | **用例隔离 (construct validity)** | `--strict-baseline`（默认开）三堵 baseline 拿到被测 skill 的污染路径 |
 | **Git / 远端源** | install / eval 支持本地 git ref 或远端 git URL（`--git-url`）；目录-skill 在内容寻址**隔离副本**里执行，`references/` 资产是真实测量输入，不只是 `SKILL.md` |
@@ -199,13 +199,15 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 
 ### 连接 MCP 客户端（实验性）
 
-`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。它只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
+> **定位：OMK MCP 是主动知识反馈接口，不是对话监听器。** 仅靠 OMK MCP 无法自动监听或订阅 Codex、ChatGPT 等客户端的完整对话。只有客户端、模型或 component 主动调用 `save_observation` 并提交授权内容后，OMK 才能收到并保存这条反馈。Agent Skill 可以自动识别潜在反馈时机，但识别结果仍须经过用户确认和一次显式 MCP 工具调用。
+
+`omk-mcp` 提供与客户端无关的 stdio MCP Server。Codex 等本地 MCP 客户端可直接启动它，私有宿主也可组合导出的 Streamable HTTP adapter。客户端只在用户明确要求记录时调用 `save_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
 ```bash
 omk-mcp
 ```
 
-这不是完整对话监听。每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 OMK MCP 集成](docs/zh/guides/mcp-integration.md)。
+每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。需要持续监听时，必须由有权访问事件流的宿主系统主动转交事件，这属于宿主集成能力，不属于 OMK MCP 自身能力。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 OMK MCP 集成](docs/zh/guides/mcp-integration.md)。
 
 ## 文档
 

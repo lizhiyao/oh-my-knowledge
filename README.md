@@ -167,7 +167,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; repeats the audit (`--repeat`) and merges findings by k/n consensus |
 | **Production observability** | normalize Codex, Claude Code, OpenClaw, and markdown logs into source-neutral Trace IR; measure per-skill outcomes / latency / token use / knowledge-gap signals |
-| **Explicit MCP feedback capture (experimental)** | use an MCP tool to write user-authorized knowledge feedback into Observation Inbox in real time, always marked `coverage: partial` |
+| **Active MCP knowledge feedback (experimental)** | an MCP client actively calls a tool to write user-authorized knowledge feedback into Observation Inbox; it does not monitor conversations, and every record is marked `coverage: partial` |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
 | **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
@@ -199,13 +199,15 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 
 ### Connect an MCP client (experimental)
 
-`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. It calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
+> **Positioning: OMK MCP is an active knowledge-feedback interface, not a conversation monitor.** OMK MCP alone cannot automatically monitor or subscribe to complete conversations in Codex, ChatGPT, or another client. OMK receives a record only after the client, model, or component actively calls `save_observation` with authorized content. An Agent Skill may automatically recognize a potential feedback moment, but saving it still requires user confirmation and an explicit MCP tool call.
+
+`omk-mcp` is a client-neutral stdio MCP server. Codex and other local MCP clients can start it directly; a private host can compose the exported Streamable HTTP adapter. The client calls `save_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
 
 ```bash
 omk-mcp
 ```
 
-This is not full-conversation monitoring. Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim. For a private-host Streamable HTTP integration, see [Compose the OMK MCP integration](docs/guides/mcp-integration.md).
+Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Continuous monitoring requires a host that is authorized to access an event stream and actively forwards those events; that is a host-integration capability, not an OMK MCP capability. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim. For a private-host Streamable HTTP integration, see [Compose the OMK MCP integration](docs/guides/mcp-integration.md).
 
 ## Documentation
 
