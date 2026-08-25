@@ -1,9 +1,18 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
-  captureExplicitObservation,
   type ExplicitObservationCaptureOptions,
 } from '../observability/explicit-capture.js';
+import {
+  FileObservationCaptureStore,
+  type ObservationCaptureStore,
+} from './capture-store.js';
+import {
+  assertObservationCaptureScope,
+  LOCAL_OBSERVATION_PRINCIPAL,
+  validateObservationPrincipal,
+  type ObservationPrincipal,
+} from './principal.js';
 
 const observedEventKindSchema = z.enum([
   'tool_boundary',
@@ -16,7 +25,15 @@ const unavailableEventKindSchema = z.enum([
   'hidden_reasoning',
 ]);
 
-export type ChatGptObservationMcpServerOptions = ExplicitObservationCaptureOptions;
+export interface ChatGptObservationToolOptions {
+  principal: ObservationPrincipal;
+  captureStore: ObservationCaptureStore;
+}
+
+export interface ChatGptObservationMcpServerOptions extends ExplicitObservationCaptureOptions {
+  principal?: ObservationPrincipal;
+  captureStore?: ObservationCaptureStore;
+}
 
 export function createChatGptObservationMcpServer(
   options: ChatGptObservationMcpServerOptions = {},
@@ -25,6 +42,28 @@ export function createChatGptObservationMcpServer(
     name: 'omk-chatgpt-observation-capture',
     version: '0.1.0',
   });
+
+  if (options.captureStore && (options.observationsDir || options.now)) {
+    throw new Error('注入 captureStore 时不能同时设置 observationsDir 或 now。');
+  }
+  const principal = validateObservationPrincipal(
+    options.principal ?? LOCAL_OBSERVATION_PRINCIPAL,
+  );
+  const captureStore = options.captureStore ?? new FileObservationCaptureStore({
+    observationsDir: options.observationsDir,
+    now: options.now,
+    partition: options.principal ? 'principal' : 'shared',
+  });
+  registerChatGptObservationTools(server, { principal, captureStore });
+
+  return server;
+}
+
+export function registerChatGptObservationTools(
+  server: McpServer,
+  options: ChatGptObservationToolOptions,
+): void {
+  const principal = validateObservationPrincipal(options.principal);
 
   server.registerTool('capture_observation', {
     title: 'Capture an explicit OMK observation',
@@ -71,10 +110,11 @@ export function createChatGptObservationMcpServer(
       openWorldHint: false,
     },
   }, async (input) => {
-    const result = captureExplicitObservation({
+    assertObservationCaptureScope(principal);
+    const result = await options.captureStore.create(principal, {
       ...input,
       captureSourceKind: 'chatgpt_plugin',
-    }, options);
+    });
     const structuredContent = {
       observationId: result.observationId,
       capturedAt: result.capturedAt,
@@ -92,6 +132,4 @@ export function createChatGptObservationMcpServer(
       structuredContent,
     };
   });
-
-  return server;
 }

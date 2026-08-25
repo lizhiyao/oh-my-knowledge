@@ -205,7 +205,7 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 omk-chatgpt-mcp
 ```
 
-This is not full-conversation monitoring. Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim.
+This is not full-conversation monitoring. Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim. For a private-host Streamable HTTP integration, see [Compose the ChatGPT MCP integration](docs/guides/chatgpt-mcp-integration.md).
 
 ## Documentation
 

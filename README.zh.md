@@ -205,7 +205,7 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 omk-chatgpt-mcp
 ```
 
-这不是完整对话监听。每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。
+这不是完整对话监听。每条记录都固定携带 `coverageStatus: partial`：已观测的是 OMK 工具边界、用户提交的反馈及可选证据；未观测的是完整对话、其他工具调用和隐藏推理。对话 ID、turn ID 与幂等键只用于生成哈希，不会原样落盘。私有宿主的 Streamable HTTP 组合方式见[组合 ChatGPT MCP 集成](docs/zh/guides/chatgpt-mcp-integration.md)。
 
 ## 文档
 

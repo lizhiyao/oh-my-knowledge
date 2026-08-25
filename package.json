@@ -4,6 +4,14 @@
   "packageManager": "yarn@4.16.0",
   "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
+  "exports": {
+    "./chatgpt-plugin": {
+      "types": "./dist/chatgpt-plugin/index.d.ts",
+      "import": "./dist/chatgpt-plugin/index.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "omk": "dist/cli/index.js",
     "omk-chatgpt-mcp": "dist/chatgpt-plugin/stdio.js"

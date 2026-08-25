@@ -22,6 +22,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Evaluate an agent (project-level runtime context)](./guides/agent-eval.md)
 - [Auto-improve a skill](./guides/auto-improve-skills.md)
 - [Observe production traces](./guides/observe-production.md)
+- [Compose the ChatGPT MCP integration](./guides/chatgpt-mcp-integration.md)
 - [Reproduce Codex parent/subagent observation](./guides/codex-observe-case.md)
 - [Use non-Claude models (GLM / Qwen / DeepSeek / Moonshot / Ollama)](./guides/non-claude-models.md)
 

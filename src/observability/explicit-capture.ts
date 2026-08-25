@@ -68,12 +68,40 @@ export interface ExplicitObservationCaptureRecord {
   captureCoverage: ObservationCaptureCoverage;
 }
 
+export class ExplicitObservationCaptureConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ExplicitObservationCaptureConflictError';
+  }
+}
+
 export function captureExplicitObservation(
   rawInput: ExplicitObservationCaptureInput,
   options: ExplicitObservationCaptureOptions = {},
 ): ExplicitObservationCaptureResult {
-  const input = normalizeCaptureInput(rawInput);
+  const record = prepareExplicitObservationCaptureRecord(rawInput, options);
   const observationsDir = options.observationsDir ?? DEFAULT_OBSERVATIONS_DIR;
+  const recordPath = explicitCaptureRecordPath(observationsDir, record.captureId);
+
+  return withFileLock(`${recordPath}.lock`, () => {
+    const existing = loadExplicitObservationCaptureRecord(recordPath);
+    if (existing) {
+      assertCompatibleExplicitObservationCapture(existing, record);
+      return explicitObservationCaptureResult(existing, false);
+    }
+    if (existsSync(recordPath)) {
+      throw new Error('目标 capture record 已存在但无法解析，拒绝覆盖。');
+    }
+    writeJsonFileAtomic(recordPath, record);
+    return explicitObservationCaptureResult(record, true);
+  }, { label: 'explicit observation capture' });
+}
+
+export function prepareExplicitObservationCaptureRecord(
+  rawInput: ExplicitObservationCaptureInput,
+  options: Pick<ExplicitObservationCaptureOptions, 'now'> = {},
+): ExplicitObservationCaptureRecord {
+  const input = normalizeCaptureInput(rawInput);
   const capturedAt = (options.now ?? (() => new Date()))().toISOString();
   const payloadHash = hashJson({
     skillName: input.skillName,
@@ -89,7 +117,7 @@ export function captureExplicitObservation(
   const sourceIdentity = `${input.captureSourceKind}\u0000${input.captureId ?? (turnIdentity || payloadHash)}`;
   const captureId = hashText(`explicit-observation\u0000${sourceIdentity}`);
   const captureCoverage = buildExplicitObservationCaptureCoverage(Boolean(input.evidenceSnippet));
-  const record: ExplicitObservationCaptureRecord = {
+  return {
     captureKind: 'explicit_observation',
     schemaVersion: CAPTURE_SCHEMA_VERSION,
     captureId,
@@ -104,22 +132,17 @@ export function captureExplicitObservation(
     cwd: input.cwd,
     captureCoverage,
   };
-  const recordPath = explicitCaptureRecordPath(observationsDir, captureId);
+}
 
-  return withFileLock(`${recordPath}.lock`, () => {
-    const existing = loadExplicitObservationCaptureRecord(recordPath);
-    if (existing) {
-      if (existing.payloadHash !== payloadHash) {
-        throw new Error('captureId 或对话 turn identity 已用于不同的 observation payload。');
-      }
-      return captureResult(existing, false);
-    }
-    if (existsSync(recordPath)) {
-      throw new Error('目标 capture record 已存在但无法解析，拒绝覆盖。');
-    }
-    writeJsonFileAtomic(recordPath, record);
-    return captureResult(record, true);
-  }, { label: 'explicit observation capture' });
+export function assertCompatibleExplicitObservationCapture(
+  existing: ExplicitObservationCaptureRecord,
+  candidate: ExplicitObservationCaptureRecord,
+): void {
+  if (existing.captureId !== candidate.captureId || existing.payloadHash !== candidate.payloadHash) {
+    throw new ExplicitObservationCaptureConflictError(
+      'captureId 或对话 turn identity 已用于不同的 observation payload。',
+    );
+  }
 }
 
 export function loadExplicitObservationCaptureRecords(
@@ -270,7 +293,7 @@ function projectCaptureRecord(record: ExplicitObservationCaptureRecord): Observa
   };
 }
 
-function captureResult(
+export function explicitObservationCaptureResult(
   record: ExplicitObservationCaptureRecord,
   created: boolean,
 ): ExplicitObservationCaptureResult {
