@@ -3,6 +3,7 @@ export * from './feedback-store.js';
 export * from './http.js';
 export * from './mcp-server.js';
 export * from './principal.js';
+export * from './review-component.js';
 export {
   assertCompatibleExplicitObservationCapture,
   ExplicitObservationCaptureConflictError,

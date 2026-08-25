@@ -84,6 +84,7 @@ describe('ChatGPT observation Streamable HTTP server', () => {
         'get_observation',
         'record_observation_review',
         'draft_sample_from_observation',
+        'render_observation_review',
       ]);
 
       const first = await clientA.client.callTool(captureRequest());

@@ -11,6 +11,7 @@ import {
   isObservationFeedbackStore,
   ObservationFeedbackStoreError,
 } from './feedback-store.js';
+import { registerObservationReviewComponent } from './review-component.js';
 import {
   assertObservationCaptureScope,
   assertObservationDraftScope,
@@ -332,5 +333,9 @@ export function registerChatGptObservationTools(
       },
     };
     });
+  }
+
+  if (principal.scopes.includes(OBSERVATION_READ_SCOPE)) {
+    registerObservationReviewComponent(server, { principal, feedbackStore });
   }
 }
