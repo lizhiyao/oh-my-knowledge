@@ -27,6 +27,8 @@ describe('ChatGPT observation MCP server', () => {
         openWorldHint: false,
       });
       assert.equal(tool.inputSchema.required?.includes('confirmedByUser'), true);
+      assert.equal(JSON.stringify(tool.inputSchema).includes('tenantId'), false);
+      assert.equal(JSON.stringify(tool.inputSchema).includes('principalId'), false);
       assert.ok(tool.outputSchema);
     } finally {
       await client.close();

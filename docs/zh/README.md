@@ -22,6 +22,7 @@
 - [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
 - [自动迭代 skill](./guides/auto-improve-skills.md)
 - [观测生产 trace](./guides/observe-production.md)
+- [组合 ChatGPT MCP 集成](./guides/chatgpt-mcp-integration.md)
 - [复现 Codex 父子任务观测](./guides/codex-observe-case.md)
 - [使用非 Claude 模型（GLM / 通义 / DeepSeek / Moonshot / Ollama）](./guides/non-claude-models.md)
 
