@@ -121,7 +121,7 @@ interface BridgeRequest {
   };
 }
 
-function createBridgeHarness() {
+function createBridgeHarness(language = 'en') {
   const document = new FakeDocument();
   const requests: BridgeRequest[] = [];
   let messageHandler: EventHandler | undefined;
@@ -140,7 +140,7 @@ function createBridgeHarness() {
   const script = extractComponentScript();
   runInNewContext(script, {
     document,
-    navigator: { language: 'en' },
+    navigator: { language },
     window,
   });
 
@@ -173,12 +173,13 @@ function extractComponentScript(): string {
 function componentState(options: {
   verdict?: 'real_issue' | 'not_issue' | 'needs_more_context';
   note?: string;
+  artifactVersion?: string;
 } = {}): Record<string, unknown> {
   return {
     observation: {
       observationId: 'observation-1',
       skillName: 'omk',
-      artifactVersion: 'v1',
+      artifactVersion: options.artifactVersion ?? 'v1',
       occurrences: 1,
       captureCoverage: {
         coverageStatus: 'partial',
@@ -205,6 +206,27 @@ function componentState(options: {
 }
 
 describe('OMK observation review component bridge', () => {
+  it('renders the Chinese interface without mixed-language labels', () => {
+    const harness = createBridgeHarness('zh-CN');
+    harness.notify(componentState({ artifactVersion: 'unknown' }));
+
+    assert.equal(harness.document.documentElement.lang, 'zh-CN');
+    assert.equal(harness.document.getElementById('coverage-title').textContent, '仅覆盖已提交内容');
+    assert.equal(harness.document.getElementById('eyebrow').textContent, '知识反馈');
+    assert.equal(
+      harness.document.getElementById('observation-meta').textContent,
+      '记录 observation-1 · 知识版本 未标注',
+    );
+    assert.equal(harness.document.getElementById('occurrences-label').textContent, '次记录');
+    assert.equal(harness.document.getElementById('evidence-heading').textContent, '反馈证据');
+    assert.equal(harness.document.getElementById('evidence-count').textContent, '1条');
+    assert.deepEqual(
+      harness.document.verdictButtons.map((button) => button.textContent),
+      ['真实问题', '不是问题', '需要更多上下文'],
+    );
+    assert.equal(harness.document.getElementById('note-label').textContent, '判断依据（可选）');
+  });
+
   it('preserves an existing note and updates from the authoritative review result', async () => {
     const harness = createBridgeHarness();
     harness.notify(componentState({ verdict: 'needs_more_context', note: 'Original note.' }));

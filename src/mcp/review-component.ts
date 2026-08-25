@@ -75,8 +75,8 @@ export function registerObservationReviewComponent(
   options: ObservationReviewComponentOptions,
 ): void {
   server.registerResource('omk-observation-review', OBSERVATION_REVIEW_RESOURCE_URI, {
-    title: 'OMK observation review',
-    description: 'Inspect explicit evidence, record a human verdict, and draft a regression sample.',
+    title: 'OMK 知识反馈复核',
+    description: '查看用户授权的证据，记录人工结论，并生成回归评测草稿。',
     mimeType: MCP_APP_HTML_MIME_TYPE,
   }, async () => ({
     contents: [{
@@ -92,7 +92,7 @@ export function registerObservationReviewComponent(
   }));
 
   server.registerTool('render_observation_review', {
-    title: 'Render an OMK observation review',
+    title: '复核 OMK 知识反馈',
     description: [
       'Render the inline review component for an observation.',
       'First call get_observation, propose a regression prompt only from its authorized evidence,',
@@ -112,8 +112,8 @@ export function registerObservationReviewComponent(
     },
     _meta: {
       ui: { resourceUri: OBSERVATION_REVIEW_RESOURCE_URI },
-      'openai/toolInvocation/invoking': 'Preparing observation review…',
-      'openai/toolInvocation/invoked': 'Observation review ready.',
+      'openai/toolInvocation/invoking': '正在准备知识反馈复核…',
+      'openai/toolInvocation/invoked': '知识反馈复核已就绪。',
     },
   }, async ({ observationId, candidatePrompt, candidateRubric }) => {
     const detail = await options.feedbackStore.get(options.principal, observationId);
@@ -131,7 +131,7 @@ export function registerObservationReviewComponent(
     return {
       content: [{
         type: 'text' as const,
-        text: `已准备 observation ${detail.observationId} 的复核卡片；覆盖范围为 partial。`,
+        text: `已准备知识反馈 ${detail.observationId} 的复核卡片；覆盖范围为部分。`,
       }],
       structuredContent,
     };
@@ -162,37 +162,36 @@ function projectObservationForComponent(detail: ObservationDetail) {
 }
 
 export const observationReviewComponentHtml = String.raw`<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OMK observation review</title>
+  <title>OMK 知识反馈复核</title>
   <style>
     :root {
       color-scheme: light dark;
-      --canvas: #eef4f6;
-      --surface: #fbfdfe;
-      --surface-raised: #ffffff;
-      --ink: #17212b;
-      --muted: #5e6e7c;
-      --line: #ccd8de;
-      --accent: #2457c5;
-      --accent-strong: #173f99;
-      --accent-soft: #e3ebff;
-      --warning: #9a4d05;
-      --warning-soft: #fff0d6;
-      --success: #087668;
-      --danger: #a33a32;
-      --focus: #8bb3ff;
-      --radius: 14px;
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --paper: #fcfcfb;
+      --paper-raised: #ffffff;
+      --ink: #18212b;
+      --muted: #68737f;
+      --line: #dce2e7;
+      --soft: #f4f6f7;
+      --accent: #167a68;
+      --accent-strong: #0f6657;
+      --accent-soft: #eaf5f2;
+      --warning: #a56a12;
+      --warning-soft: #fbf4e7;
+      --danger: #a9463d;
+      --success: #167a68;
+      --focus: #5aa99b;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      padding: 10px;
+      padding: 0;
       color: var(--ink);
       background: transparent;
     }
@@ -200,109 +199,129 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
     button, textarea, input { font: inherit; }
 
     button:focus-visible, textarea:focus-visible, summary:focus-visible {
-      outline: 3px solid var(--focus);
+      outline: 2px solid var(--focus);
       outline-offset: 2px;
     }
 
     .card {
       position: relative;
       overflow: hidden;
-      max-width: 760px;
+      max-width: 720px;
       margin: 0 auto;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--surface);
-      box-shadow: 0 8px 24px rgba(24, 49, 64, 0.09);
+      background: var(--paper);
     }
 
     .coverage-rail {
-      display: grid;
-      grid-template-columns: 8px 1fr;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin: 0 18px 14px;
+      padding: 11px 12px;
+      border: 1px solid #ead9bb;
+      border-radius: 9px;
       background: var(--warning-soft);
-      border-bottom: 1px solid #e5c68e;
     }
 
     .coverage-rail::before {
       content: "";
-      background: repeating-linear-gradient(
-        -45deg,
-        var(--warning) 0,
-        var(--warning) 5px,
-        #e9a94d 5px,
-        #e9a94d 10px
-      );
+      flex: 0 0 auto;
+      width: 7px;
+      height: 7px;
+      margin-top: 5px;
+      border-radius: 50%;
+      background: var(--warning);
     }
 
-    .coverage-copy { padding: 11px 14px 11px 12px; }
+    .coverage-copy { min-width: 0; }
 
     .coverage-title {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 0 0 3px;
-      color: #683100;
-      font-size: 12px;
-      font-weight: 760;
-      letter-spacing: 0.035em;
-      text-transform: uppercase;
+      margin: 0 0 2px;
+      color: #70470c;
+      font-size: 13px;
+      font-weight: 700;
     }
 
     .coverage-copy p {
       margin: 0;
-      color: #704414;
+      color: #765b35;
       font-size: 12px;
-      line-height: 1.45;
+      line-height: 1.55;
     }
 
     .header {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 14px;
-      align-items: start;
-      padding: 18px 20px 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 18px 18px 12px;
     }
 
     .eyebrow {
-      margin: 0 0 5px;
+      margin: 0 0 4px;
       color: var(--accent);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(20px, 4vw, 28px);
-      line-height: 1.08;
-      letter-spacing: -0.025em;
+      font-size: clamp(20px, 4vw, 25px);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
     }
 
     .meta {
-      margin: 7px 0 0;
+      margin: 6px 0 0;
       color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 11px;
       overflow-wrap: anywhere;
     }
 
     .count {
-      min-width: 70px;
-      padding: 9px 10px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--surface-raised);
-      text-align: center;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--soft);
+      white-space: nowrap;
     }
 
-    .count strong { display: block; font-size: 24px; line-height: 1; }
-    .count span { color: var(--muted); font-size: 10px; }
+    .count strong { color: var(--ink); font-size: 12px; line-height: 1; }
+    .count span { font-size: 11px; }
 
     .section {
-      margin: 0 20px;
-      padding: 15px 0;
+      position: relative;
+      margin: 0 18px;
+      padding: 15px 0 15px 28px;
       border-top: 1px solid var(--line);
+    }
+
+    .section::before {
+      content: attr(data-step);
+      position: absolute;
+      top: 14px;
+      left: 0;
+      display: grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--muted);
+      background: var(--paper);
+      font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .section + .section::after {
+      content: "";
+      position: absolute;
+      top: -16px;
+      left: 9px;
+      width: 1px;
+      height: 30px;
+      background: var(--line);
     }
 
     .section-heading {
@@ -313,16 +332,16 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
       margin-bottom: 10px;
     }
 
-    h2 { margin: 0; font-size: 13px; letter-spacing: 0.01em; }
+    h2 { margin: 0; font-size: 14px; letter-spacing: 0.01em; }
     .section-hint { color: var(--muted); font-size: 11px; }
 
     .evidence-list { display: grid; gap: 9px; }
 
     .evidence {
-      padding: 12px 13px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--surface-raised);
+      padding: 11px 12px;
+      border-left: 2px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      background: var(--soft);
     }
 
     .evidence-time {
@@ -332,65 +351,65 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
       font-size: 10px;
     }
 
-    .evidence p { margin: 0; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+    .evidence p { margin: 0; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
 
     .snippet {
       margin-top: 8px !important;
       padding-left: 10px;
-      border-left: 3px solid var(--accent);
+      border-left: 2px solid var(--line);
       color: var(--muted);
     }
 
     .verdict {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
     }
 
     .button {
-      min-height: 38px;
-      padding: 8px 12px;
+      min-height: 36px;
+      padding: 7px 10px;
       border: 1px solid var(--line);
-      border-radius: 9px;
+      border-radius: 8px;
       color: var(--ink);
-      background: var(--surface-raised);
+      background: var(--paper-raised);
       cursor: pointer;
-      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+      transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
     }
 
-    .button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); }
+    .button:hover:not(:disabled) { border-color: #aeb9c1; background: var(--soft); }
     .button:disabled { cursor: not-allowed; opacity: 0.55; }
     .button.primary { color: #fff; border-color: var(--accent); background: var(--accent); }
     .button.primary:hover:not(:disabled) { background: var(--accent-strong); }
-    .button[data-active="true"] { border-color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
+    .button[data-active="true"] { color: #fff; border-color: var(--accent); background: var(--accent); }
 
     .field { display: grid; gap: 6px; margin-top: 11px; }
-    .field label { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 600; }
 
     textarea {
       width: 100%;
-      min-height: 72px;
+      min-height: 68px;
       resize: vertical;
       padding: 10px 11px;
       border: 1px solid var(--line);
-      border-radius: 9px;
+      border-radius: 8px;
       color: var(--ink);
-      background: var(--surface-raised);
-      line-height: 1.45;
+      background: var(--paper-raised);
+      line-height: 1.55;
     }
 
     .draft-panel {
       display: none;
       margin-top: 13px;
-      padding: 13px;
-      border: 1px solid #b9c8ef;
-      border-radius: 10px;
-      background: var(--accent-soft);
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--soft);
     }
 
     .draft-panel[data-visible="true"] { display: block; }
     .draft-panel h3 { margin: 0; font-size: 13px; }
-    .draft-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .draft-panel p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
     .draft-actions { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
 
     .status {
@@ -404,20 +423,17 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
     .status[data-tone="error"] { color: var(--danger); }
     .status[data-tone="success"] { color: var(--success); }
 
-    details { margin-top: 8px; color: var(--muted); font-size: 11px; }
+    details { margin-top: 5px; color: var(--muted); font-size: 11px; }
     summary { width: fit-content; cursor: pointer; }
     .unavailable { margin: 7px 0 0; padding-left: 18px; line-height: 1.6; }
 
-    .loading { padding: 26px 20px; color: var(--muted); font-size: 13px; }
+    .loading { padding: 22px 18px; color: var(--muted); font-size: 13px; }
 
     @media (max-width: 520px) {
-      body { padding: 6px; }
-      .header { grid-template-columns: 1fr; padding: 16px 15px 12px; }
-      .count { display: flex; align-items: baseline; gap: 6px; width: fit-content; }
-      .count strong { font-size: 18px; }
-      .section { margin: 0 15px; }
-      .verdict { display: grid; }
-      .button { width: 100%; }
+      .header { padding: 16px 14px 10px; }
+      .coverage-rail { margin: 0 14px 12px; }
+      .section { margin: 0 14px; padding-left: 26px; }
+      .verdict { grid-template-columns: 1fr; }
       .draft-actions { display: grid; }
     }
 
@@ -427,31 +443,30 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --canvas: #172127;
-        --surface: #172127;
-        --surface-raised: #202d34;
-        --ink: #edf5f7;
-        --muted: #adbbc2;
-        --line: #3a4a52;
-        --accent: #7ca6ff;
-        --accent-strong: #507fde;
-        --accent-soft: #23365d;
-        --warning: #e5a24b;
-        --warning-soft: #3b2d1d;
-        --success: #64cdbd;
-        --danger: #ff9187;
-        --focus: #9fbeff;
+        --paper: #171b1f;
+        --paper-raised: #20262b;
+        --ink: #edf1f3;
+        --muted: #a9b2b9;
+        --line: #343c42;
+        --soft: #20262b;
+        --accent: #53b5a3;
+        --accent-strong: #67c8b6;
+        --accent-soft: #1d3833;
+        --warning: #d6a24e;
+        --warning-soft: #332a1c;
+        --danger: #f08b82;
+        --focus: #73c9ba;
       }
-      .coverage-rail { border-bottom-color: #654c2c; }
-      .coverage-title, .coverage-copy p { color: #f2c17d; }
-      .button.primary { color: #10203d; }
-      .draft-panel { border-color: #415c93; }
+      .coverage-rail { border-color: #564427; }
+      .coverage-title { color: #efc77f; }
+      .coverage-copy p { color: #d2bb93; }
+      .button.primary, .button[data-active="true"] { color: #10241f; }
     }
   </style>
 </head>
 <body>
   <main class="card" aria-live="polite">
-    <div id="loading" class="loading">Preparing observation review…</div>
+    <div id="loading" class="loading">正在准备复核…</div>
     <div id="content" hidden>
       <section class="coverage-rail" aria-labelledby="coverage-title">
         <div class="coverage-copy">
@@ -473,7 +488,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         <div class="count"><strong id="occurrences"></strong><span id="occurrences-label"></span></div>
       </header>
 
-      <section class="section" aria-labelledby="evidence-heading">
+      <section class="section" data-step="1" aria-labelledby="evidence-heading">
         <div class="section-heading">
           <h2 id="evidence-heading"></h2>
           <span id="evidence-count" class="section-hint"></span>
@@ -481,7 +496,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         <div id="evidence-list" class="evidence-list"></div>
       </section>
 
-      <section class="section" aria-labelledby="review-heading">
+      <section class="section" data-step="2" aria-labelledby="review-heading">
         <div class="section-heading">
           <h2 id="review-heading"></h2>
           <span id="current-verdict" class="section-hint"></span>
@@ -527,42 +542,47 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
 
       const zh = (navigator.language || "").toLowerCase().startsWith("zh");
       const copy = zh ? {
-        loading: "正在准备 observation 复核…",
-        coverageTitle: "覆盖范围：部分",
-        coverageDescription: "只包含用户明确提交到 OMK 的反馈与证据，不代表客户端中的完整对话。",
-        coverageDetails: "查看未观测内容",
+        loading: "正在准备复核…",
+        coverageTitle: "仅覆盖已提交内容",
+        coverageDescription: "此记录不包含完整对话、其它工具调用或隐藏推理。",
+        coverageDetails: "查看范围说明",
         unavailable: {
-          full_conversation: "客户端中的完整对话",
+          full_conversation: "完整对话",
           external_tool_calls: "其它工具调用",
           hidden_reasoning: "隐藏推理"
         },
-        eyebrow: "显式 knowledge observation",
-        occurrences: "次捕获",
-        evidence: "用户授权证据",
+        unknownUnavailable: "其它未观测内容",
+        eyebrow: "知识反馈",
+        recordId: "记录",
+        artifactVersion: "知识版本",
+        unknownVersion: "未标注",
+        occurrences: "次记录",
+        evidence: "反馈证据",
         evidenceCount: "条",
         review: "人工复核",
-        notReviewed: "尚未复核",
+        notReviewed: "待复核",
         verdict: {
           reviewed: "已复核",
           real_issue: "真实问题",
           not_issue: "不是问题",
           needs_more_context: "需要更多上下文"
         },
-        note: "复核备注（可选）",
-        notePlaceholder: "记录判断依据，最多 500 字。",
+        unknownVerdict: "未知结论",
+        note: "判断依据（可选）",
+        notePlaceholder: "补充判断依据，最多 500 字。",
         reviewSaved: "复核结论已保存。",
         reviewFailed: "复核失败：",
         readOnly: "当前连接只有读取权限。",
-        draftHeading: "回归样本草稿",
-        draftDescription: "只生成候选草稿，不写入正式评测集。请先检查 prompt 与 rubric。",
-        prompt: "候选 prompt",
-        rubric: "成功标准 rubric（可选）",
-        promptPlaceholder: "输入可复现该 knowledge gap 的问题。",
-        rubricPlaceholder: "输入可审查的成功标准。",
-        createDraft: "生成 sample 草稿",
-        draftSaved: "sample 草稿已保存，状态仍为 draft。",
-        draftFailed: "生成草稿失败：",
-        draftPermission: "当前连接没有生成草稿的权限。",
+        draftHeading: "回归评测草稿",
+        draftDescription: "仅保存候选草稿，不会写入正式评测集。",
+        prompt: "复现问题",
+        rubric: "通过标准（可选）",
+        promptPlaceholder: "输入可以复现该知识问题的提问。",
+        rubricPlaceholder: "输入清晰、可核验的通过标准。",
+        createDraft: "保存为评测草稿",
+        draftSaved: "评测草稿已保存，正式评测集未改变。",
+        draftFailed: "保存草稿失败：",
+        draftPermission: "当前连接无权保存评测草稿。",
         emptyEvidence: "没有可展示的授权证据。",
         invalidReviewResponse: "复核服务未返回权威状态。",
         invalidDraftResponse: "草稿服务未返回有效结果。",
@@ -577,7 +597,11 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
           external_tool_calls: "Other tool calls",
           hidden_reasoning: "Hidden reasoning"
         },
+        unknownUnavailable: "Other unavailable context",
         eyebrow: "Explicit knowledge observation",
+        recordId: "Record",
+        artifactVersion: "Knowledge version",
+        unknownVersion: "Not specified",
         occurrences: "captures",
         evidence: "User-authorized evidence",
         evidenceCount: "items",
@@ -589,6 +613,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
           not_issue: "Not an issue",
           needs_more_context: "Needs more context"
         },
+        unknownVerdict: "Unknown verdict",
         note: "Review note (optional)",
         notePlaceholder: "Record the reason for this decision, up to 500 characters.",
         reviewSaved: "Review saved.",
@@ -648,6 +673,10 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
       }
 
+      function formatCount(value, unit) {
+        return zh ? String(value) + unit : String(value) + " " + unit;
+      }
+
       function renderEvidence(observation) {
         const list = document.getElementById("evidence-list");
         list.replaceChildren();
@@ -691,18 +720,22 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         unavailable.replaceChildren();
         (coverage.unavailableEventKinds || []).forEach((eventKind) => {
           const item = document.createElement("li");
-          item.textContent = copy.unavailable[eventKind] || String(eventKind);
+          item.textContent = copy.unavailable[eventKind] || copy.unknownUnavailable;
           unavailable.append(item);
         });
         document.getElementById("eyebrow").textContent = copy.eyebrow;
         document.getElementById("skill-name").textContent = String(observation.skillName || "OMK");
+        const artifactVersion = observation.artifactVersion && observation.artifactVersion !== "unknown"
+          ? String(observation.artifactVersion)
+          : copy.unknownVersion;
         document.getElementById("observation-meta").textContent =
-          String(observation.observationId || "") + " · " + String(observation.artifactVersion || "unknown");
+          copy.recordId + " " + String(observation.observationId || "") +
+          " · " + copy.artifactVersion + " " + artifactVersion;
         document.getElementById("occurrences").textContent = String(observation.occurrences || 0);
         document.getElementById("occurrences-label").textContent = copy.occurrences;
         document.getElementById("evidence-heading").textContent = copy.evidence;
         document.getElementById("evidence-count").textContent =
-          String((observation.evidence || []).length) + " " + copy.evidenceCount;
+          formatCount((observation.evidence || []).length, copy.evidenceCount);
         renderEvidence(observation);
 
         document.getElementById("review-heading").textContent = copy.review;
@@ -714,11 +747,11 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         }
         const verdict = observation.review && observation.review.verdict;
         document.getElementById("current-verdict").textContent = verdict
-          ? copy.verdict[verdict] || verdict
+          ? copy.verdict[verdict] || copy.unknownVerdict
           : copy.notReviewed;
         document.querySelectorAll("[data-verdict]").forEach((button) => {
           const value = button.dataset.verdict;
-          button.textContent = copy.verdict[value] || value;
+          button.textContent = copy.verdict[value] || copy.unknownVerdict;
           button.dataset.active = String(value === verdict);
           button.hidden = !state.actions.canReview;
         });
