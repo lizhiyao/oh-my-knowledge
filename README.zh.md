@@ -199,7 +199,7 @@ observe 直接使用 profile 的 `sessionPersistence`，无需导出或定位 JS
 
 ### 连接 ChatGPT（实验性）
 
-`omk-chatgpt-mcp` 提供一个 stdio MCP Server；本地开发时可配合 OpenAI 的 [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) 接入 ChatGPT。它只在用户明确要求记录时调用 `capture_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`；随后可用 `omk observe inbox` 或 Studio 复核。
+`omk-chatgpt-mcp` 提供一个 stdio MCP Server；本地开发时可配合 OpenAI 的 [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) 接入 ChatGPT。它只在用户明确要求记录时调用 `capture_observation`，把反馈和可选证据追加到 `.omk/observe-inbox/captures/`，并可渲染对话内 MCP Apps 复核卡片，供人工确认问题和生成 regression sample 草稿。
 
 ```bash
 omk-chatgpt-mcp

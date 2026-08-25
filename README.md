@@ -199,7 +199,7 @@ Observe uses the profile's `sessionPersistence` directly, so users do not export
 
 ### Connect ChatGPT (experimental)
 
-`omk-chatgpt-mcp` is a stdio MCP server. During local development, OpenAI's [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) can expose it to ChatGPT. It calls `capture_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and makes it available to `omk observe inbox` and Studio for review.
+`omk-chatgpt-mcp` is a stdio MCP server. During local development, OpenAI's [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) can expose it to ChatGPT. It calls `capture_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and can render an inline MCP Apps review card for a human verdict and regression-sample draft.
 
 ```bash
 omk-chatgpt-mcp

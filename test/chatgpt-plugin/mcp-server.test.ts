@@ -8,7 +8,14 @@ import { describe, it } from 'vitest';
 import { createChatGptObservationMcpServer } from '../../src/chatgpt-plugin/mcp-server.js';
 import { FileObservationCaptureStore } from '../../src/chatgpt-plugin/capture-store.js';
 import { FileObservationFeedbackStore } from '../../src/chatgpt-plugin/feedback-store.js';
-import { OBSERVATION_CAPTURE_SCOPE } from '../../src/chatgpt-plugin/principal.js';
+import {
+  OBSERVATION_CAPTURE_SCOPE,
+  OBSERVATION_READ_SCOPE,
+} from '../../src/chatgpt-plugin/principal.js';
+import {
+  MCP_APP_HTML_MIME_TYPE,
+  OBSERVATION_REVIEW_RESOURCE_URI,
+} from '../../src/chatgpt-plugin/review-component.js';
 import { queryObservationInbox } from '../../src/observability/inbox.js';
 
 describe('ChatGPT observation MCP server', () => {
@@ -25,6 +32,7 @@ describe('ChatGPT observation MCP server', () => {
         'get_observation',
         'record_observation_review',
         'draft_sample_from_observation',
+        'render_observation_review',
       ]);
       const tool = tools.tools[0];
       assert.ok(tool);
@@ -39,6 +47,25 @@ describe('ChatGPT observation MCP server', () => {
       assert.equal(JSON.stringify(tool.inputSchema).includes('tenantId'), false);
       assert.equal(JSON.stringify(tool.inputSchema).includes('principalId'), false);
       assert.ok(tool.outputSchema);
+
+      const renderTool = tools.tools.at(-1);
+      assert.deepEqual(renderTool?._meta?.ui, {
+        resourceUri: OBSERVATION_REVIEW_RESOURCE_URI,
+      });
+      assert.equal(tools.tools.slice(0, -1).some((item) => item._meta?.ui), false);
+
+      const resources = await client.listResources();
+      assert.deepEqual(resources.resources.map((resource) => resource.uri), [
+        OBSERVATION_REVIEW_RESOURCE_URI,
+      ]);
+      const resource = await client.readResource({ uri: OBSERVATION_REVIEW_RESOURCE_URI });
+      const component = resource.contents[0];
+      assert.equal(component?.mimeType, MCP_APP_HTML_MIME_TYPE);
+      assert.equal(component?.uri, OBSERVATION_REVIEW_RESOURCE_URI);
+      assert.ok(component && 'text' in component);
+      assert.equal(component.text.includes('tools/call'), true);
+      assert.equal(component.text.includes('localStorage'), false);
+      assert.equal(component.text.includes('innerHTML'), false);
     } finally {
       await client.close();
       await server.close();
@@ -115,6 +142,43 @@ describe('ChatGPT observation MCP server', () => {
       assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
         'capture_observation',
       ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('renders a read-only component without advertising review or draft actions', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-chatgpt-mcp-read-only-'));
+    const principal = {
+      tenantId: 'tenant',
+      principalId: 'reader',
+      scopes: [OBSERVATION_READ_SCOPE],
+    };
+    const store = new FileObservationFeedbackStore({ observationsDir: dir });
+    const captured = await store.create(principal, {
+      skillName: 'omk',
+      userFeedback: '需要展示只读复核卡片。',
+      confirmedByUser: true,
+      captureSourceKind: 'chatgpt_plugin',
+    });
+    const server = createChatGptObservationMcpServer({ principal, captureStore: store });
+    const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
+        'get_observation',
+        'render_observation_review',
+      ]);
+      const rendered = await client.callTool({
+        name: 'render_observation_review',
+        arguments: { observationId: captured.observationId },
+      });
+      assert.deepEqual(
+        (rendered.structuredContent as { actions: Record<string, boolean> }).actions,
+        { canReview: false, canDraft: false },
+      );
     } finally {
       await client.close();
       await server.close();
@@ -221,6 +285,28 @@ describe('ChatGPT observation MCP server', () => {
       assert.equal(detailContent.occurrences, 1);
       assert.equal(detailContent.review?.verdict, 'real_issue');
       assert.equal(detailContent.captureCoverage.coverageStatus, 'partial');
+
+      const rendered = await client.callTool({
+        name: 'render_observation_review',
+        arguments: {
+          observationId,
+          candidatePrompt: '说明公共 OMK 与私有宿主的边界。',
+          candidateRubric: '必须明确通用能力与宿主责任。',
+        },
+      });
+      assert.notEqual(rendered.isError, true);
+      const renderedContent = rendered.structuredContent as {
+        observation: { observationId: string; captureCoverage: { coverageStatus: string } };
+        actions: { canReview: boolean; canDraft: boolean };
+        proposal?: { prompt: string; rubric?: string };
+      };
+      assert.equal(renderedContent.observation.observationId, observationId);
+      assert.equal(renderedContent.observation.captureCoverage.coverageStatus, 'partial');
+      assert.deepEqual(renderedContent.actions, { canReview: true, canDraft: true });
+      assert.deepEqual(renderedContent.proposal, {
+        prompt: '说明公共 OMK 与私有宿主的边界。',
+        rubric: '必须明确通用能力与宿主责任。',
+      });
     } finally {
       await client.close();
       await server.close();
