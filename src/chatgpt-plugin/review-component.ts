@@ -523,6 +523,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
       let nextRequestId = 1;
       let state;
       let busy = false;
+      let reviewNoteDirty = false;
 
       const zh = (navigator.language || "").toLowerCase().startsWith("zh");
       const copy = zh ? {
@@ -563,6 +564,8 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         draftFailed: "生成草稿失败：",
         draftPermission: "当前连接没有生成草稿的权限。",
         emptyEvidence: "没有可展示的授权证据。",
+        invalidReviewResponse: "复核服务未返回权威状态。",
+        invalidDraftResponse: "草稿服务未返回有效结果。",
         unknownError: "未知错误"
       } : {
         loading: "Preparing observation review…",
@@ -602,6 +605,8 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         draftFailed: "Draft failed: ",
         draftPermission: "This connection cannot create drafts.",
         emptyEvidence: "No authorized evidence is available.",
+        invalidReviewResponse: "The review service did not return authoritative state.",
+        invalidDraftResponse: "The draft service did not return a valid result.",
         unknownError: "Unknown error"
       };
 
@@ -616,6 +621,13 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
 
       function errorText(error) {
         return error && typeof error.message === "string" ? error.message : copy.unknownError;
+      }
+
+      function toolResultError(result) {
+        const textItem = result && Array.isArray(result.content)
+          ? result.content.find((item) => item && item.type === "text" && typeof item.text === "string")
+          : undefined;
+        return new Error(textItem && textItem.text ? textItem.text : copy.unknownError);
       }
 
       function setStatus(id, message, tone) {
@@ -695,7 +707,11 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
 
         document.getElementById("review-heading").textContent = copy.review;
         document.getElementById("note-label").textContent = copy.note;
-        document.getElementById("review-note").placeholder = copy.notePlaceholder;
+        const reviewNote = document.getElementById("review-note");
+        reviewNote.placeholder = copy.notePlaceholder;
+        if (!reviewNoteDirty && document.activeElement !== reviewNote) {
+          reviewNote.value = String((observation.review && observation.review.note) || "");
+        }
         const verdict = observation.review && observation.review.verdict;
         document.getElementById("current-verdict").textContent = verdict
           ? copy.verdict[verdict] || verdict
@@ -706,7 +722,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
           button.dataset.active = String(value === verdict);
           button.hidden = !state.actions.canReview;
         });
-        document.getElementById("review-note").hidden = !state.actions.canReview;
+        reviewNote.hidden = !state.actions.canReview;
         document.getElementById("note-label").hidden = !state.actions.canReview;
         if (!state.actions.canReview) setStatus("review-status", copy.readOnly, "");
 
@@ -729,27 +745,13 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         if (draftVisible && !state.actions.canDraft) setStatus("draft-status", copy.draftPermission, "");
       }
 
-      async function refreshObservation() {
-        const result = await request("tools/call", {
-          name: "get_observation",
-          arguments: { observationId: state.observation.observationId }
-        });
-        if (result && result.structuredContent) {
-          render({
-            observation: result.structuredContent,
-            actions: state.actions,
-            proposal: state.proposal
-          });
-        }
-      }
-
       document.querySelectorAll("[data-verdict]").forEach((button) => {
         button.addEventListener("click", async () => {
           if (busy || !state || !state.actions.canReview) return;
           setBusy(true);
           setStatus("review-status", "", "");
           try {
-            await request("tools/call", {
+            const result = await request("tools/call", {
               name: "record_observation_review",
               arguments: {
                 observationId: state.observation.observationId,
@@ -757,7 +759,14 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
                 note: document.getElementById("review-note").value.trim() || undefined
               }
             });
-            await refreshObservation();
+            const review = result && result.structuredContent && result.structuredContent.review;
+            if (!review) throw new Error(copy.invalidReviewResponse);
+            reviewNoteDirty = false;
+            render({
+              observation: { ...state.observation, review },
+              actions: state.actions,
+              proposal: state.proposal
+            });
             setStatus("review-status", copy.reviewSaved, "success");
           } catch (error) {
             setStatus("review-status", copy.reviewFailed + errorText(error), "error");
@@ -765,6 +774,10 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
             setBusy(false);
           }
         });
+      });
+
+      document.getElementById("review-note").addEventListener("input", () => {
+        reviewNoteDirty = true;
       });
 
       document.getElementById("draft-button").addEventListener("click", async () => {
@@ -778,7 +791,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         setBusy(true);
         setStatus("draft-status", "", "");
         try {
-          await request("tools/call", {
+          const result = await request("tools/call", {
             name: "draft_sample_from_observation",
             arguments: {
               observationId: state.observation.observationId,
@@ -786,6 +799,9 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
               rubric: rubric || undefined
             }
           });
+          if (!result || !result.structuredContent || result.structuredContent.status !== "draft") {
+            throw new Error(copy.invalidDraftResponse);
+          }
           setStatus("draft-status", copy.draftSaved, "success");
         } catch (error) {
           setStatus("draft-status", copy.draftFailed + errorText(error), "error");
@@ -802,7 +818,9 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
           const pending = pendingRequests.get(message.id);
           pendingRequests.delete(message.id);
           if (message.error) pending.reject(message.error);
-          else pending.resolve(message.result);
+          else if (message.result && message.result.isError) {
+            pending.reject(toolResultError(message.result));
+          } else pending.resolve(message.result);
           return;
         }
         if (message.method === "ui/notifications/tool-result") {

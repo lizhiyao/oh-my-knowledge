@@ -30,7 +30,7 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 四个数据工具在不支持自定义 UI 的 MCP 客户端中仍可独立使用。`render_observation_review` 是单独的展示工具，也是唯一关联版本化 `ui://omk/observation-review/v1.html` resource 的工具；capture、读取和写入不会反复挂载组件。
 
-组件遵循开放 MCP Apps bridge：通过 `ui/notifications/tool-result` 接收结构化工具结果，通过 `tools/call` 发起复核、刷新和草稿操作。组件不在浏览器存储中保存权威 review 或 draft 状态；每次变更仍由服务端重新鉴权并持久化。卡片会先展示 `coverageStatus: partial` 和未观测事件，再提供人工结论操作。
+组件遵循开放 MCP Apps bridge：通过 `ui/notifications/tool-result` 接收结构化工具结果，通过 `tools/call` 发起复核和草稿操作。组件不在浏览器存储中保存权威 review 或 draft 状态；每次变更仍由服务端重新鉴权并持久化，组件根据写工具返回的权威结果更新。卡片会先展示 `coverageStatus: partial` 和未观测事件，再提供人工结论操作。
 
 典型模型调用顺序是先 `get_observation`，再 `render_observation_review`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
 
