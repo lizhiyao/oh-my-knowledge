@@ -167,6 +167,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; repeats the audit (`--repeat`) and merges findings by k/n consensus |
 | **Production observability** | normalize Codex, Claude Code, OpenClaw, and markdown logs into source-neutral Trace IR; measure per-skill outcomes / latency / token use / knowledge-gap signals |
+| **Explicit ChatGPT feedback capture (experimental)** | use an MCP tool to write user-authorized knowledge feedback into Observation Inbox in real time, always marked `coverage: partial` |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
 | **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
@@ -195,6 +196,16 @@ Inside DSH:
 - `/omk observe <session-id>` reads a consistent snapshot and returns its Studio Task Trajectory URL.
 
 Observe uses the profile's `sessionPersistence` directly, so users do not export or locate JSONL / SQLite files. The first version is offline-only and does not live-follow a session that is still being written. See the [executor guide](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) and [observe guide](docs/guides/observe-production.md#inspect-a-task-inside-deepseek-harness).
+
+### Connect ChatGPT (experimental)
+
+`omk-chatgpt-mcp` is a stdio MCP server. During local development, OpenAI's [Secure MCP Tunnel](https://developers.openai.com/plugins/build/mcp-server#secure-mcp-tunnel) can expose it to ChatGPT. It calls `capture_observation` only after the user explicitly asks to record feedback, appends the feedback and optional evidence under `.omk/observe-inbox/captures/`, and makes it available to `omk observe inbox` and Studio for review.
+
+```bash
+omk-chatgpt-mcp
+```
+
+This is not full-conversation monitoring. Every record carries `coverageStatus: partial`: OMK observes its tool boundary, submitted feedback, and optional evidence, but not the full conversation, other tool calls, or hidden reasoning. Conversation IDs, turn IDs, and idempotency keys are hashed rather than persisted verbatim.
 
 ## Documentation
 
