@@ -92,7 +92,7 @@ export function registerObservationReviewComponent(
   }));
 
   server.registerTool('render_observation_review', {
-    title: '复核 OMK 知识反馈',
+    title: 'OMK 知识反馈',
     description: [
       'Render the inline review component for an observation.',
       'First call get_observation, propose a regression prompt only from its authorized evidence,',
@@ -105,7 +105,7 @@ export function registerObservationReviewComponent(
     },
     outputSchema: reviewComponentOutputSchema,
     annotations: {
-      title: '复核 OMK 知识反馈',
+      title: 'OMK 知识反馈',
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
