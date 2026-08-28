@@ -36,6 +36,7 @@
 
 ## 我想贡献 / 看设计 spec
 
+- [Evaluation Core vNext RFC](./specs/evaluation-core-vnext.md)
 - [用例设计科学性指南](./specs/sample-design-spec.md)
 - [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics 规范](./specs/rag-metrics-spec.md)
