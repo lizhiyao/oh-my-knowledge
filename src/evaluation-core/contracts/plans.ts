@@ -65,11 +65,14 @@ export const EvaluationPlanPolicySchema = z.object({
   failure: FailurePolicySchema,
 }).strict();
 
+export const SchedulingTargetGroupSchema = z.array(IdentifierSchema).min(1);
+
 export const ExecutionPlanSchema = z.object({
   schemaVersion: z.literal(EXECUTION_PLAN_SCHEMA_VERSION),
   executionInputDigest: Sha256DigestSchema,
   samples: z.array(ExecutionInputSampleSchema).min(1),
   targets: z.array(TargetDefinitionSchema).min(1),
+  schedulingTargetGroups: z.array(SchedulingTargetGroupSchema).min(1),
   experiment: ExperimentDesignSchema,
   runtimes: z.array(ResolvedRuntimeSchema),
   policy: ExecutionPlanPolicySchema,

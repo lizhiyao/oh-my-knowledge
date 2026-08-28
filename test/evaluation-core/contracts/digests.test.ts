@@ -88,6 +88,7 @@ const definition: EvaluationDefinition = {
       repeatedMeasures: false,
       resamplingUnit: 'sample',
       estimatorId: 'bootstrap.mean-percentile/v1',
+      seedCoupling: 'independent-by-target',
     },
     scheduling: { schedulingKind: 'sequential' },
   },
@@ -301,6 +302,82 @@ describe('Evaluation Core layered digests', () => {
     expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
     expect(second.analysisPlanDigest).toBe(first.analysisPlanDigest);
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
+  });
+
+  it('binds paired comparison connectivity into Execution identity', () => {
+    const paired: EvaluationDefinition = {
+      ...definition,
+      targets: [
+        definition.targets[0],
+        { ...definition.targets[0], targetId: 'variant-a' },
+        { ...definition.targets[0], targetId: 'variant-b' },
+      ],
+      experiment: {
+        ...definition.experiment,
+        sampling: {
+          ...definition.experiment.sampling,
+          pairingKey: '/input/cohort',
+          resamplingUnit: 'paired-block',
+        },
+      },
+      comparisons: [{
+        comparisonId: 'control-vs-a',
+        controlTargetId: 'control',
+        treatmentTargetIds: ['variant-a'],
+        metricIds: ['correct'],
+      }],
+    };
+    const first = planDigests(paired);
+    const changedConnectivity: EvaluationDefinition = {
+      ...paired,
+      comparisons: [{
+        ...paired.comparisons[0],
+        treatmentTargetIds: ['variant-b'],
+      }],
+    };
+    const second = planDigests(changedConnectivity);
+
+    expect(second.executionPlanDigest).not.toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).not.toBe(first.evaluationPlanDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
+  });
+
+  it('keeps paired Decision-only comparison fields out of Execution identity', () => {
+    const paired: EvaluationDefinition = {
+      ...definition,
+      targets: [
+        definition.targets[0],
+        { ...definition.targets[0], targetId: 'treatment' },
+      ],
+      experiment: {
+        ...definition.experiment,
+        sampling: {
+          ...definition.experiment.sampling,
+          pairingKey: '/input/cohort',
+          resamplingUnit: 'paired-block',
+        },
+      },
+      comparisons: [{
+        comparisonId: 'control-vs-treatment',
+        controlTargetId: 'control',
+        treatmentTargetIds: ['treatment'],
+        metricIds: ['correct'],
+      }],
+    };
+    const first = planDigests(paired);
+    const changed = planDigests({
+      ...paired,
+      comparisons: [{
+        ...paired.comparisons[0],
+        comparisonId: 'renamed-comparison',
+      }],
+    });
+
+    expect(changed.executionPlanDigest).toBe(first.executionPlanDigest);
+    expect(changed.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
+    expect(changed.analysisPlanDigest).toBe(first.analysisPlanDigest);
+    expect(changed.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
   it('computes Bundle and Report identities without self-referencing digest fields', () => {

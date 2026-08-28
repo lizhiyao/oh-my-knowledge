@@ -41,45 +41,71 @@ export const UsageRecordSchema = z.object({
   details: JsonValueSchema.optional(),
 }).strict();
 
-export const ExecutionAttemptSchema = z.object({
-  attemptId: IdentifierSchema,
+const ExecutionAttemptBaseSchema = z.object({
+  attemptId: Sha256DigestSchema,
   attemptNumber: z.number().int().positive(),
-  attemptStatus: z.enum(['completed', 'failed', 'cancelled']),
   timing: TimingRecordSchema,
-  error: EvaluationErrorSchema.optional(),
 }).strict();
 
-const ExecutionRecordBaseSchema = z.object({
+export const ExecutionAttemptSchema = z.discriminatedUnion('attemptStatus', [
+  ExecutionAttemptBaseSchema.extend({
+    attemptStatus: z.literal('completed'),
+  }).strict(),
+  ExecutionAttemptBaseSchema.extend({
+    attemptStatus: z.literal('failed'),
+    error: EvaluationErrorSchema,
+  }).strict(),
+  ExecutionAttemptBaseSchema.extend({
+    attemptStatus: z.literal('cancelled'),
+    error: EvaluationErrorSchema.optional(),
+  }).strict(),
+]);
+
+export const SamplingUnitIdsSchema = z.object({
+  pairingBlockId: Sha256DigestSchema.optional(),
+  clusterId: Sha256DigestSchema.optional(),
+  stratumId: Sha256DigestSchema.optional(),
+}).strict();
+
+const ExecutionRecordIdentitySchema = z.object({
   targetId: IdentifierSchema,
   sampleId: IdentifierSchema,
-  trialId: IdentifierSchema,
+  trialIndex: z.number().int().nonnegative(),
+  trialId: Sha256DigestSchema,
+  trialSeed: Sha256DigestSchema,
+  schedulingBlockId: Sha256DigestSchema,
+  samplingUnitIds: SamplingUnitIdsSchema,
   runtime: RuntimeIdentitySchema,
+  provenance: ProvenanceSchema,
+}).strict();
+
+const ActiveExecutionRecordBaseSchema = ExecutionRecordIdentitySchema.extend({
   attempts: z.array(ExecutionAttemptSchema).min(1),
   timing: TimingRecordSchema,
   usage: UsageRecordSchema.optional(),
   trace: CapturedContentSchema.optional(),
-  provenance: ProvenanceSchema,
   cache: CacheProvenanceSchema,
 }).strict();
 
-export const CompletedExecutionRecordSchema = ExecutionRecordBaseSchema.extend({
+export const CompletedExecutionRecordSchema = ActiveExecutionRecordBaseSchema.extend({
   executionStatus: z.literal('completed'),
-  output: CapturedContentSchema,
+  output: CapturedContentSchema.optional(),
 }).strict();
 
-export const FailedExecutionRecordSchema = ExecutionRecordBaseSchema.extend({
+export const FailedExecutionRecordSchema = ActiveExecutionRecordBaseSchema.extend({
   executionStatus: z.literal('failed'),
   error: EvaluationErrorSchema,
 }).strict();
 
-export const CancelledExecutionRecordSchema = ExecutionRecordBaseSchema.extend({
+export const CancelledExecutionRecordSchema = ActiveExecutionRecordBaseSchema.extend({
   executionStatus: z.literal('cancelled'),
   error: EvaluationErrorSchema.optional(),
 }).strict();
 
-export const CensoredExecutionRecordSchema = ExecutionRecordBaseSchema.extend({
+export const CensoredExecutionRecordSchema = ExecutionRecordIdentitySchema.extend({
   executionStatus: z.literal('budget-censored'),
-  censorReason: NonEmptyStringSchema,
+  censorReasonCode: IdentifierSchema,
+  censoredAt: TimestampSchema,
 }).strict();
 
 export const ExecutionRecordSchema = z.discriminatedUnion('executionStatus', [
@@ -89,6 +115,16 @@ export const ExecutionRecordSchema = z.discriminatedUnion('executionStatus', [
   CensoredExecutionRecordSchema,
 ]);
 
+export const ExecutionCoverageSchema = z.object({
+  planned: z.number().int().nonnegative(),
+  started: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+  budgetCensored: z.number().int().nonnegative(),
+  notStarted: z.number().int().nonnegative(),
+}).strict();
+
 export const ExecutionBundleSchema = z.object({
   schemaVersion: z.literal(EXECUTION_BUNDLE_SCHEMA_VERSION),
   bundleId: IdentifierSchema,
@@ -96,6 +132,14 @@ export const ExecutionBundleSchema = z.object({
   executionPlanDigest: Sha256DigestSchema,
   datasetRevisionDigest: Sha256DigestSchema,
   executionInputDigest: Sha256DigestSchema,
+  executionBundleStatus: z.enum([
+    'completed',
+    'cancelled',
+    'budget-exhausted',
+    'failed',
+  ]),
+  terminationReasonCode: IdentifierSchema.optional(),
+  coverage: ExecutionCoverageSchema,
   replayability: ReplayabilitySchema,
   records: z.array(ExecutionRecordSchema),
   provenance: ProvenanceSchema,
@@ -319,7 +363,9 @@ export const EvaluationEventSchema = z.object({
 export type TimingRecord = z.infer<typeof TimingRecordSchema>;
 export type UsageRecord = z.infer<typeof UsageRecordSchema>;
 export type ExecutionAttempt = z.infer<typeof ExecutionAttemptSchema>;
+export type SamplingUnitIds = z.infer<typeof SamplingUnitIdsSchema>;
 export type ExecutionRecord = z.infer<typeof ExecutionRecordSchema>;
+export type ExecutionCoverage = z.infer<typeof ExecutionCoverageSchema>;
 export type ExecutionBundle = z.infer<typeof ExecutionBundleSchema>;
 export type MetricObservation = z.infer<typeof MetricObservationSchema>;
 export type EvaluationRecord = z.infer<typeof EvaluationRecordSchema>;

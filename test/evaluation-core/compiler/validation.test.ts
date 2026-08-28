@@ -150,10 +150,82 @@ describe('Compiler definition validation', () => {
 
     await expectCode(
       validDefinition(),
+      cachePolicy,
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ executorAssurance: 'declared' }),
+    );
+
+    await expectCode(
+      validDefinition(),
       validPolicy(),
       'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
       testRuntime({ evaluatorValueTypes: ['numeric'] }),
     );
+  });
+
+  it('rejects capture, cancellation, trace, and session-isolation mismatches', async () => {
+    const capturePolicy = validPolicy();
+    capturePolicy.evidence.output = 'digest';
+    await expectCode(
+      validDefinition(),
+      capturePolicy,
+      'EVAL_DEFINITION_POLICY_INVALID',
+    );
+
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ cancellation: 'unsupported' }),
+    );
+
+    const traceDefinition = validDefinition();
+    traceDefinition.evaluators[0].inputs.push({
+      bindingId: 'trajectory',
+      sourceKind: 'trace',
+      pointer: '',
+    });
+    await expectCode(
+      traceDefinition,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime(),
+    );
+
+    const sessionDefinition = validDefinition();
+    sessionDefinition.targets[0].protocolId = 'omk.session/v1';
+    await expectCode(
+      sessionDefinition,
+      validPolicy(),
+      'EVAL_DEFINITION_PROTOCOL_INVALID',
+      testRuntime({
+        executorProtocols: ['omk.invoke/v1', 'omk.session/v1'],
+        trialState: 'stateless',
+      }),
+    );
+  });
+
+  it('binds seed coupling to Runtime seed-control capability', async () => {
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ deterministic: false, seedControl: 'unsupported' }),
+    );
+
+    const uncontrolled = validDefinition();
+    uncontrolled.experiment.sampling.seedCoupling = 'uncontrolled';
+    await expectCode(
+      uncontrolled,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ deterministic: false, seedControl: 'required' }),
+    );
+    await expect(prepareEvaluationPlan(
+      uncontrolled,
+      validPolicy(),
+      testRuntime({ deterministic: false, seedControl: 'unsupported' }),
+    )).resolves.toBeDefined();
   });
 
   it('rejects Analysis value-domain and SamplingDesign capability mismatches', async () => {

@@ -9,10 +9,112 @@
       "type": "string"
     },
     "__schema10": {
+      "items": {
+        "$ref": "#/$defs/__schema4"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "estimatorId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "seedCoupling": {
+              "enum": [
+                "shared-within-block",
+                "independent-by-target",
+                "uncontrolled"
+              ],
+              "type": "string"
+            },
+            "stratumKey": {
+              "$ref": "#/$defs/__schema12"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "estimatorId",
+            "seedCoupling"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "sampling",
+        "scheduling"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
       "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
       "type": "string"
     },
-    "__schema11": {
+    "__schema13": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -82,7 +184,7 @@
       },
       "type": "array"
     },
-    "__schema12": {
+    "__schema14": {
       "additionalProperties": false,
       "properties": {
         "budget": {
@@ -228,7 +330,7 @@
       ],
       "type": "object"
     },
-    "__schema13": {
+    "__schema15": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -239,7 +341,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema14"
+            "$ref": "#/$defs/__schema16"
           }
         },
         "required": [
@@ -250,11 +352,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema14"
+        "$ref": "#/$defs/__schema16"
       },
       "type": "object"
     },
-    "__schema14": {
+    "__schema16": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -366,90 +468,11 @@
       "type": "string"
     },
     "__schema9": {
-      "additionalProperties": false,
-      "properties": {
-        "sampling": {
-          "additionalProperties": false,
-          "properties": {
-            "clusterKey": {
-              "$ref": "#/$defs/__schema10"
-            },
-            "estimatorId": {
-              "$ref": "#/$defs/__schema4"
-            },
-            "experimentalUnit": {
-              "enum": [
-                "sample",
-                "run",
-                "cluster"
-              ],
-              "type": "string"
-            },
-            "pairingKey": {
-              "$ref": "#/$defs/__schema10"
-            },
-            "repeatedMeasures": {
-              "type": "boolean"
-            },
-            "resamplingUnit": {
-              "enum": [
-                "sample",
-                "paired-block",
-                "cluster",
-                "run"
-              ],
-              "type": "string"
-            },
-            "stratumKey": {
-              "$ref": "#/$defs/__schema10"
-            }
-          },
-          "required": [
-            "experimentalUnit",
-            "repeatedMeasures",
-            "resamplingUnit",
-            "estimatorId"
-          ],
-          "type": "object"
-        },
-        "scheduling": {
-          "additionalProperties": false,
-          "properties": {
-            "blockSize": {
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "type": "integer"
-            },
-            "schedulingKind": {
-              "enum": [
-                "sequential",
-                "interleaved",
-                "randomized-block"
-              ],
-              "type": "string"
-            }
-          },
-          "required": [
-            "schedulingKind"
-          ],
-          "type": "object"
-        },
-        "seed": {
-          "$ref": "#/$defs/__schema8"
-        },
-        "trials": {
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
-        }
+      "items": {
+        "$ref": "#/$defs/__schema10"
       },
-      "required": [
-        "trials",
-        "seed",
-        "sampling",
-        "scheduling"
-      ],
-      "type": "object"
+      "minItems": 1,
+      "type": "array"
     }
   },
   "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/execution-plan.schema.json",
@@ -463,19 +486,22 @@
       "$ref": "#/$defs/__schema1"
     },
     "experiment": {
-      "$ref": "#/$defs/__schema9"
+      "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema15"
     },
     "policy": {
-      "$ref": "#/$defs/__schema12"
+      "$ref": "#/$defs/__schema14"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema11"
+      "$ref": "#/$defs/__schema13"
     },
     "samples": {
       "$ref": "#/$defs/__schema2"
+    },
+    "schedulingTargetGroups": {
+      "$ref": "#/$defs/__schema9"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
@@ -489,6 +515,7 @@
     "executionInputDigest",
     "samples",
     "targets",
+    "schedulingTargetGroups",
     "experiment",
     "runtimes",
     "policy",

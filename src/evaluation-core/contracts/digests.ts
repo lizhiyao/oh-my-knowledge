@@ -26,6 +26,7 @@ import {
   digestCanonicalJson,
   type Sha256Digest,
 } from './json.js';
+import { deriveSchedulingTargetGroups } from './execution-identities.js';
 
 export interface DatasetDigests {
   datasetRevisionDigest: Sha256Digest;
@@ -78,6 +79,7 @@ export function computeDatasetDigests(dataset: EvaluationDataset): DatasetDigest
 export interface ExecutionPlanIdentityInput {
   executionInputDigest: Sha256Digest;
   targets: TargetDefinition[];
+  schedulingTargetGroups: string[][];
   executorRuntimes: ResolvedRuntime[];
   experiment: ExperimentDesign;
   policy: {
@@ -97,6 +99,7 @@ export function computeExecutionPlanDigest(
     schemaVersion: EXECUTION_PLAN_SCHEMA_VERSION,
     executionInputDigest: input.executionInputDigest,
     targets: input.targets,
+    schedulingTargetGroups: input.schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
     experiment: input.experiment,
     policy: input.policy,
@@ -233,9 +236,15 @@ export interface PlanDigestInput {
 
 export function computePlanDigests(input: PlanDigestInput): PlanDigests {
   const dataset = computeDatasetDigests(input.dataset);
+  const schedulingTargetGroups = deriveSchedulingTargetGroups({
+    targetIds: input.targets.map((target) => target.targetId),
+    comparisons: input.comparisons,
+    paired: input.experiment.sampling.resamplingUnit === 'paired-block',
+  });
   const executionPlanDigest = computeExecutionPlanDigest({
     executionInputDigest: dataset.executionInputDigest,
     targets: input.targets,
+    schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
     experiment: input.experiment,
     policy: {

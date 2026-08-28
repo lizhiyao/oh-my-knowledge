@@ -2,6 +2,8 @@ export * from './artifacts.js';
 export * from './common.js';
 export * from './definition.js';
 export * from './digests.js';
+export * from './execution-identities.js';
+export * from './execution-bundle.js';
 export * from './json-schema.js';
 export * from './json.js';
 export * from './plans.js';

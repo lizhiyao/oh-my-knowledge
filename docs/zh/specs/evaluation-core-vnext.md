@@ -165,6 +165,8 @@ v1 只内建两个 protocol family：
 - `omk.invoke/v1`：一个 trial 对应一次结构化 request／response，可附 source-neutral trace；覆盖纯函数、模型、服务、RAG 和无会话 Workflow；
 - `omk.session/v1`：一个 trial 拥有独立 session lifecycle，支持多轮消息、工具调用和部分 trajectory；覆盖 Agent 和有状态 Workflow。
 
+每个 protocol manifest 还必须声明结构化 execution capability：并发安全性与上限、取消语义、run resource lifecycle、trial state、seed control、determinism，以及 trace／usage telemetry。run-scoped resource 只允许连接池、客户端等基础设施复用；`omk.session/v1` 的业务状态始终按 trial 隔离，`omk.invoke/v1` 的 trial state 始终 stateless。声明 `cancellation: unsupported` 的实现不能与 timeout policy 组合；随机 Runtime 若不支持 seed，只能使用 `uncontrolled` seed design；只有 determinism 与 Runtime assurance 都为 verified 的实现才能透明命中 Execution cache。
+
 导入宿主已经执行好的结果不属于第三个执行协议，而是直接校验并接收 ExecutionBundle。protocol ID 是不可变契约；不兼容修改发布新 major path，可选能力只能做不改变既有字段语义的追加。
 
 Runtime 在 prepare 阶段解析实际实现：
@@ -193,6 +195,7 @@ interface SamplingDesign {
   repeatedMeasures: boolean;
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   estimatorId: string;
+  seedCoupling: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
 }
 
 interface ExperimentDesign {
@@ -205,7 +208,9 @@ interface ExperimentDesign {
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
-配对比较以 scheduling block 为调度原子。预算不足时不得只启动 block 的一侧；部分 block 标记为 censored，不进入主要配对估计。报告分别记录 started、completed、comparable 和 censored coverage。
+配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`；改变配对连通性会产生新的 Execution 身份，而只影响决策的比较元数据不会。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+
+`pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
 
 ### 5．Evaluator、Metric、Reducer 与 DecisionPolicy
 
@@ -261,9 +266,9 @@ interface MeasurementPolicy {
 
 ### 2．ExecutionBundle
 
-按 `(targetId, sampleId, trialId)` 保存：
+按 canonical `(targetId, sampleId, trialIndex)` 顺序保存，每条记录携带从 ExecutionPlan 派生的 `trialId`、`trialSeed`、`schedulingBlockId` 和独立 sampling-unit IDs：
 
-- output 或 ContentDescriptor；
+- completed output 可按 EvidencePolicy 内联、保存 ContentDescriptor、仅保存 digest 或省略；是否省略不改变 executionStatus；
 - source-neutral trace；
 - usage、provider-reported cost、timing；
 - retry attempt 记录；
@@ -271,6 +276,12 @@ interface MeasurementPolicy {
 - RuntimeIdentity；
 - execution、cache／replay provenance；
 - 父 Plan digest 和 Bundle digest。
+
+started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。
+
+`parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、调用预算和 paired-block 原子删失；不能信任 Bundle 自报的 block 或 coverage。
+
+Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输入的 EvidencePolicy。Execution 阶段仍可只产生 `summary-only` Bundle；只有 `self-contained` 要求 completed output 以及所有 active record 的 trace 全部内联，`resolvable` 要求这些内容可内联或通过经 digest 校验的 descriptor 解析。
 
 价格目录推算的 cost 不是原始执行事实，应作为带 pricing fingerprint 的派生 AnalysisResult 保存。
 
@@ -370,7 +381,7 @@ Runtime ports 至少包括：
 - Clock、IdGenerator 和 RandomSource；
 - 可选 EventWriter。
 
-Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped session 和异步 disposer。资源所有权必须形成严格树：Engine 拥有 registry，Run 拥有 session，task／attempt 拥有临时资源。一个 Run 的取消或 teardown 不能关闭另一个 Run 的资源。
+Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped resource handle 和异步 disposer。资源所有权必须形成严格树：Engine 拥有 registry，Run 拥有连接池／客户端等资源，trial／attempt 拥有隔离的业务状态和临时资源。run-scoped resource lifecycle 不表示跨 trial 共享 session state；一个 Run 的取消或 teardown 不能关闭另一个 Run 的资源。
 
 取消统一使用 AbortSignal。用户取消产生诚实的部分 Bundle；timeout 和 budget 因为影响缺失机制，属于 sealed MeasurementPolicy。Core 不提供跨进程 resume；宿主可以从完整 ExecutionBundle 启动新的 Evaluation 阶段。
 
@@ -555,6 +566,8 @@ Digest 边界是可执行契约：
 | `runContractDigest` | 全部阶段 Plan digest、schema identity、EventDeliveryPolicy | Report annotations、仅 observer 使用的选项 |
 
 所有 digest 都是 RFC 8785 canonical UTF-8 bytes 的完整小写 `sha256:<hex>`。它只证明内容身份。Provenance trust、fingerprint basis 与 assurance level 保持独立字段；v1 不实现签名。
+
+[#431](https://github.com/lizhiyao/oh-my-knowledge/issues/431) 在 Execution 开工前加固 v1：SamplingDesign 显式封存 seed coupling；protocol manifest 拆分资源生命周期与 trial state；Execution identity 使用 domain separation；ExecutionBundle 把 active／censored record、terminal status、coverage 和 replayability 分开建模。因为尚无历史用户需要迁移，这些修改直接收敛 v1，不保留旧字段兼容层。
 
 ## 十八、行业参考
 

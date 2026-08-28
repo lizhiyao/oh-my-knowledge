@@ -69,6 +69,12 @@ export const MetricDefinitionSchema = z.object({
   missingPolicyId: IdentifierSchema,
 }).strict();
 
+export const SeedCouplingSchema = z.enum([
+  'shared-within-block',
+  'independent-by-target',
+  'uncontrolled',
+]);
+
 export const SamplingDesignSchema = z.object({
   experimentalUnit: z.enum(['sample', 'run', 'cluster']),
   pairingKey: JsonPointerSchema.optional(),
@@ -77,6 +83,7 @@ export const SamplingDesignSchema = z.object({
   repeatedMeasures: z.boolean(),
   resamplingUnit: z.enum(['sample', 'paired-block', 'cluster', 'run']),
   estimatorId: IdentifierSchema,
+  seedCoupling: SeedCouplingSchema,
 }).strict();
 
 export const SchedulingPolicySchema = z.object({
@@ -227,6 +234,7 @@ export type EvaluationDataset = z.infer<typeof EvaluationDatasetSchema>;
 export type TargetDefinition = z.infer<typeof TargetDefinitionSchema>;
 export type EvaluatorDefinition = z.infer<typeof EvaluatorDefinitionSchema>;
 export type MetricDefinition = z.infer<typeof MetricDefinitionSchema>;
+export type SeedCoupling = z.infer<typeof SeedCouplingSchema>;
 export type SamplingDesign = z.infer<typeof SamplingDesignSchema>;
 export type ExperimentDesign = z.infer<typeof ExperimentDesignSchema>;
 export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;
