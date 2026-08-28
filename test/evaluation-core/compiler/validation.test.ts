@@ -205,6 +205,29 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('binds seed coupling to Runtime seed-control capability', async () => {
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ deterministic: false, seedControl: 'unsupported' }),
+    );
+
+    const uncontrolled = validDefinition();
+    uncontrolled.experiment.sampling.seedCoupling = 'uncontrolled';
+    await expectCode(
+      uncontrolled,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ deterministic: false, seedControl: 'required' }),
+    );
+    await expect(prepareEvaluationPlan(
+      uncontrolled,
+      validPolicy(),
+      testRuntime({ deterministic: false, seedControl: 'unsupported' }),
+    )).resolves.toBeDefined();
+  });
+
   it('rejects Analysis value-domain and SamplingDesign capability mismatches', async () => {
     await expectCode(
       validDefinition(),

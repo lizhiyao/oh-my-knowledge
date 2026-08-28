@@ -325,7 +325,8 @@
         "seedCoupling": {
           "enum": [
             "shared-within-block",
-            "independent-by-target"
+            "independent-by-target",
+            "uncontrolled"
           ],
           "type": "string"
         },

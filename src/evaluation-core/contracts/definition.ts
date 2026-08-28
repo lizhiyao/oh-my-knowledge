@@ -72,6 +72,7 @@ export const MetricDefinitionSchema = z.object({
 export const SeedCouplingSchema = z.enum([
   'shared-within-block',
   'independent-by-target',
+  'uncontrolled',
 ]);
 
 export const SamplingDesignSchema = z.object({

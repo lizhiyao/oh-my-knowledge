@@ -163,6 +163,7 @@ interface RuntimeOptions {
   cancellation?: 'cooperative' | 'best-effort' | 'unsupported';
   trialState?: 'stateless' | 'isolated';
   traceCapability?: 'unsupported' | 'optional' | 'required';
+  seedControl?: 'unsupported' | 'optional' | 'required';
   executorProtocols?: Array<'omk.invoke/v1' | 'omk.session/v1'>;
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   analysisValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
@@ -218,7 +219,7 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
                   trialState: options.trialState
                     ?? (protocolId === 'omk.session/v1' ? 'isolated' : 'stateless'),
                 },
-                seedControl: 'optional',
+                seedControl: options.seedControl ?? 'optional',
                 determinism: (options.deterministic ?? true)
                   ? 'deterministic'
                   : 'stochastic',

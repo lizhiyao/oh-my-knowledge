@@ -165,7 +165,7 @@ v1 只内建两个 protocol family：
 - `omk.invoke/v1`：一个 trial 对应一次结构化 request／response，可附 source-neutral trace；覆盖纯函数、模型、服务、RAG 和无会话 Workflow；
 - `omk.session/v1`：一个 trial 拥有独立 session lifecycle，支持多轮消息、工具调用和部分 trajectory；覆盖 Agent 和有状态 Workflow。
 
-每个 protocol manifest 还必须声明结构化 execution capability：并发安全性与上限、取消语义、run resource lifecycle、trial state、seed control、determinism，以及 trace／usage telemetry。run-scoped resource 只允许连接池、客户端等基础设施复用；`omk.session/v1` 的业务状态始终按 trial 隔离，`omk.invoke/v1` 的 trial state 始终 stateless。声明 `cancellation: unsupported` 的实现不能与 timeout policy 组合；只有 determinism 与 Runtime assurance 都为 verified 的实现才能透明命中 Execution cache。
+每个 protocol manifest 还必须声明结构化 execution capability：并发安全性与上限、取消语义、run resource lifecycle、trial state、seed control、determinism，以及 trace／usage telemetry。run-scoped resource 只允许连接池、客户端等基础设施复用；`omk.session/v1` 的业务状态始终按 trial 隔离，`omk.invoke/v1` 的 trial state 始终 stateless。声明 `cancellation: unsupported` 的实现不能与 timeout policy 组合；随机 Runtime 若不支持 seed，只能使用 `uncontrolled` seed design；只有 determinism 与 Runtime assurance 都为 verified 的实现才能透明命中 Execution cache。
 
 导入宿主已经执行好的结果不属于第三个执行协议，而是直接校验并接收 ExecutionBundle。protocol ID 是不可变契约；不兼容修改发布新 major path，可选能力只能做不改变既有字段语义的追加。
 
@@ -195,7 +195,7 @@ interface SamplingDesign {
   repeatedMeasures: boolean;
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   estimatorId: string;
-  seedCoupling: 'shared-within-block' | 'independent-by-target';
+  seedCoupling: 'shared-within-block' | 'independent-by-target' | 'uncontrolled';
 }
 
 interface ExperimentDesign {
@@ -208,9 +208,9 @@ interface ExperimentDesign {
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
-配对比较以 scheduling block 为调度原子。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件，还是按 Target 派生独立随机条件，不能由 Executor 自行猜测；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`；改变配对连通性会产生新的 Execution 身份，而只影响决策的比较元数据不会。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
 
-`pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity 可显式纳入影响调度的 sampling-unit IDs。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
+`pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
 
 ### 5．Evaluator、Metric、Reducer 与 DecisionPolicy
 
@@ -277,9 +277,11 @@ interface MeasurementPolicy {
 - execution、cache／replay provenance；
 - 父 Plan digest 和 Bundle digest。
 
-started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。语义解析同时校验记录顺序、坐标唯一性、派生 ID、attempt 连续性、coverage、replayability 和 Bundle digest。
+started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。
 
-Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输入的 EvidencePolicy。Execution 阶段仍可只产生 `summary-only` Bundle；只有 `self-contained` 要求 completed output／trace 全部内联，`resolvable` 要求内容可内联或通过经 digest 校验的 descriptor 解析。
+`parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、调用预算和 paired-block 原子删失；不能信任 Bundle 自报的 block 或 coverage。
+
+Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输入的 EvidencePolicy。Execution 阶段仍可只产生 `summary-only` Bundle；只有 `self-contained` 要求 completed output 以及所有 active record 的 trace 全部内联，`resolvable` 要求这些内容可内联或通过经 digest 校验的 descriptor 解析。
 
 价格目录推算的 cost 不是原始执行事实，应作为带 pricing fingerprint 的派生 AnalysisResult 保存。
 

@@ -10,6 +10,7 @@ import {
   RunPlanSchema,
   canonicalizeJson,
   computePlanDigests,
+  deriveSchedulingTargetGroups,
   generateWireSchemaIdentities,
   parseWireDocument,
   projectEvaluationInputs,
@@ -69,7 +70,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
-  'seedCoupling',
+  'seedCoupling', 'schedulingTargetGroups',
   'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
@@ -469,6 +470,28 @@ async function resolveExecutors(
         details: { referenceId: target.targetId },
       });
     }
+    const { seedCoupling } = definition.experiment.sampling;
+    const { determinism, seedControl } = protocol.execution;
+    if (seedCoupling !== 'uncontrolled'
+        && determinism !== 'deterministic'
+        && seedControl === 'unsupported') {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: '随机 Target 必须支持 seed control，才能兑现声明的 seed coupling。',
+        details: { referenceId: target.targetId, seedCoupling },
+      });
+    }
+    if (seedCoupling === 'uncontrolled' && seedControl === 'required') {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: '要求 seed 的 Target Runtime 不能使用 uncontrolled seed design。',
+        details: { referenceId: target.targetId, seedCoupling },
+      });
+    }
     if (policy.cache.executionMode === 'transparent-deterministic'
         && (protocol.execution.determinism !== 'deterministic'
           || resolution.identity.assuranceLevel !== 'verified')) {
@@ -805,6 +828,11 @@ export async function prepareEvaluationPlan(
     runtime,
   );
   const schemaIdentities = sortSchemaIdentities(identitiesByUri);
+  const schedulingTargetGroups = deriveSchedulingTargetGroups({
+    targetIds: definition.targets.map((target) => target.targetId),
+    comparisons: definition.comparisons,
+    paired: definition.experiment.sampling.resamplingUnit === 'paired-block',
+  });
   const digests = computePlanDigests({
     dataset: definition.dataset,
     targets: definition.targets,
@@ -829,6 +857,7 @@ export async function prepareEvaluationPlan(
     executionInputDigest: digests.executionInputDigest,
     samples: projectExecutionInputs(definition.dataset),
     targets: definition.targets,
+    schedulingTargetGroups,
     experiment: definition.experiment,
     runtimes: executorRuntimes,
     policy: {

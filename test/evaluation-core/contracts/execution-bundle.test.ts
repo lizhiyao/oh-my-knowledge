@@ -8,7 +8,7 @@ import {
   deriveAttemptId,
   deriveTrialId,
   digestArtifactPayload,
-  parseExecutionBundle,
+  parseExecutionBundleDocument,
   type CapturedContent,
   type ExecutionBundle,
   type ExecutionRecord,
@@ -122,7 +122,7 @@ function resign(bundle: ExecutionBundle): ExecutionBundle {
 describe('ExecutionBundle contract', () => {
   it('accepts a canonical self-contained completed bundle', () => {
     const bundle = finalizeBundle();
-    expect(parseExecutionBundle(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+    expect(parseExecutionBundleDocument(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
   });
 
   it('keeps summary-only output omission distinct from execution failure', () => {
@@ -133,7 +133,7 @@ describe('ExecutionBundle contract', () => {
       replayability: 'summary-only',
       records: [record],
     });
-    expect(parseExecutionBundle(bundle).records[0]).not.toHaveProperty('output');
+    expect(parseExecutionBundleDocument(bundle).records[0]).not.toHaveProperty('output');
   });
 
   it('requires replayable output to be inline or resolvable as declared', () => {
@@ -144,7 +144,7 @@ describe('ExecutionBundle contract', () => {
         digest: contentDigest,
       })],
     });
-    expect(() => parseExecutionBundle(digestOnly)).toThrowError(
+    expect(() => parseExecutionBundleDocument(digestOnly)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID' }),
     );
 
@@ -160,7 +160,60 @@ describe('ExecutionBundle contract', () => {
         },
       })],
     });
-    expect(parseExecutionBundle(resolvable)).toEqual(resolvable);
+    expect(parseExecutionBundleDocument(resolvable)).toEqual(resolvable);
+  });
+
+  it('applies replayability to traces from failed and cancelled executions', () => {
+    const completed = makeCompletedRecord('target-a', 'sample-a');
+    const trialId = deriveTrialId({
+      executionPlanDigest,
+      targetId: 'target-b',
+      sampleId: 'sample-a',
+      trialIndex: 0,
+    });
+    const error = { code: 'provider-error', stage: 'execution' as const, message: 'failed' };
+    const failed: ExecutionRecord = {
+      targetId: 'target-b',
+      sampleId: 'sample-a',
+      trialIndex: 0,
+      trialId,
+      trialSeed,
+      schedulingBlockId,
+      samplingUnitIds: {},
+      runtime,
+      provenance,
+      attempts: [{
+        attemptId: deriveAttemptId({ trialId, attemptNumber: 1 }),
+        attemptNumber: 1,
+        attemptStatus: 'failed',
+        timing: { startedAt: '2026-08-28T00:00:00Z' },
+        error,
+      }],
+      timing: { startedAt: '2026-08-28T00:00:00Z' },
+      trace: {
+        contentKind: 'digest-only',
+        classification: 'public',
+        digest: contentDigest,
+      },
+      cache: { cacheStatus: 'not-used' },
+      executionStatus: 'failed',
+      error,
+    };
+    const bundle = finalizeBundle({
+      coverage: {
+        planned: 2,
+        started: 2,
+        succeeded: 1,
+        failed: 1,
+        cancelled: 0,
+        budgetCensored: 0,
+        notStarted: 0,
+      },
+      records: [completed, failed],
+    });
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID' }),
+    );
   });
 
   it('models budget censoring without pretending an attempt started', () => {
@@ -199,7 +252,7 @@ describe('ExecutionBundle contract', () => {
       replayability: 'summary-only',
       records: [censored],
     });
-    expect(parseExecutionBundle(bundle)).toEqual(bundle);
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
     expect(CensoredExecutionRecordSchema.safeParse({
       ...censored,
       attempts: [],
@@ -260,7 +313,7 @@ describe('ExecutionBundle contract', () => {
       replayability: 'summary-only',
       records: [active, censored],
     });
-    expect(() => parseExecutionBundle(bundle)).toThrowError(
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_BLOCK_ATOMICITY_INVALID' }),
     );
   });
@@ -277,7 +330,7 @@ describe('ExecutionBundle contract', () => {
         notStarted: 1,
       },
     });
-    expect(() => parseExecutionBundle(bundle)).toThrowError(
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_STATUS_INVALID' }),
     );
   });
@@ -299,14 +352,14 @@ describe('ExecutionBundle contract', () => {
       },
       records,
     });
-    expect(() => parseExecutionBundle(bundle)).toThrowError(
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_RECORD_ORDER_INVALID' }),
     );
 
     const duplicate = resign(structuredClone(bundle));
     duplicate.records = [records[1], records[1]];
     resign(duplicate);
-    expect(() => parseExecutionBundle(duplicate)).toThrowError(
+    expect(() => parseExecutionBundleDocument(duplicate)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_DUPLICATE_COORDINATE' }),
     );
   });
@@ -317,7 +370,21 @@ describe('ExecutionBundle contract', () => {
     if (record.executionStatus === 'budget-censored') throw new Error('unexpected record');
     record.attempts[0].attemptNumber = 2;
     resign(bundle);
-    expect(() => parseExecutionBundle(bundle)).toThrowError(
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID' }),
+    );
+
+    const repeatedSuccess = structuredClone(finalizeBundle());
+    const repeatedRecord = repeatedSuccess.records[0];
+    if (repeatedRecord.executionStatus !== 'completed') throw new Error('unexpected record');
+    repeatedRecord.attempts.push({
+      attemptId: deriveAttemptId({ trialId: repeatedRecord.trialId as Sha256Digest, attemptNumber: 2 }),
+      attemptNumber: 2,
+      attemptStatus: 'completed',
+      timing: { startedAt: '2026-08-28T00:00:02Z' },
+    });
+    resign(repeatedSuccess);
+    expect(() => parseExecutionBundleDocument(repeatedSuccess)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID' }),
     );
   });
@@ -325,9 +392,9 @@ describe('ExecutionBundle contract', () => {
   it('rejects a stale artifact digest after payload mutation', () => {
     const bundle = finalizeBundle();
     bundle.bundleId = 'mutated-bundle';
-    expect(() => parseExecutionBundle(bundle)).toThrowError(
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_DIGEST_MISMATCH' }),
     );
-    expect(() => parseExecutionBundle(bundle)).toThrow(ExecutionBundleValidationError);
+    expect(() => parseExecutionBundleDocument(bundle)).toThrow(ExecutionBundleValidationError);
   });
 });

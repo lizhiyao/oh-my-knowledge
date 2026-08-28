@@ -4,9 +4,15 @@ import {
   type ExecutionRecord,
 } from './artifacts.js';
 import type { CapturedContent } from './common.js';
-import { deriveAttemptId, deriveTrialId } from './execution-identities.js';
+import {
+  deriveAttemptId,
+  derivePlannedExecutionCoordinates,
+  deriveTrialId,
+  type ExecutionIdentityPlanContext,
+  type PlannedExecutionCoordinate,
+} from './execution-identities.js';
 import { digestArtifactPayload } from './digests.js';
-import { parseWireDocument, type Sha256Digest } from './json.js';
+import { canonicalizeJson, parseWireDocument, type Sha256Digest } from './json.js';
 
 export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_DUPLICATE_COORDINATE'
@@ -17,7 +23,9 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_COVERAGE_INVALID'
   | 'EXECUTION_BUNDLE_STATUS_INVALID'
   | 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID'
-  | 'EXECUTION_BUNDLE_DIGEST_MISMATCH';
+  | 'EXECUTION_BUNDLE_DIGEST_MISMATCH'
+  | 'EXECUTION_BUNDLE_PLAN_MISMATCH'
+  | 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID';
 
 export class ExecutionBundleValidationError extends TypeError {
   readonly code: ExecutionBundleValidationErrorCode;
@@ -96,6 +104,12 @@ function assertRecordIdentities(bundle: ExecutionBundle): void {
         );
       }
       attemptIds.add(attempt.attemptId);
+      if (index < record.attempts.length - 1 && attempt.attemptStatus === 'completed') {
+        throw new ExecutionBundleValidationError(
+          'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
+          'A completed ExecutionAttempt must terminate its trial.',
+        );
+      }
     }
     const terminalAttempt = record.attempts.at(-1);
     if (terminalAttempt?.attemptStatus !== record.executionStatus) {
@@ -223,6 +237,9 @@ function isResolvable(content: CapturedContent | undefined): boolean {
 
 function assertReplayability(bundle: ExecutionBundle): void {
   if (bundle.replayability === 'summary-only') return;
+  const active = bundle.records.filter(
+    (record) => record.executionStatus !== 'budget-censored',
+  );
   const completed = bundle.records.filter(
     (record) => record.executionStatus === 'completed',
   );
@@ -234,7 +251,10 @@ function assertReplayability(bundle: ExecutionBundle): void {
   }
   if (bundle.replayability === 'self-contained') {
     if (completed.some((record) => !isInline(record.output)
-      || (record.trace !== undefined && !isInline(record.trace)))) {
+      || (record.trace !== undefined && !isInline(record.trace)))
+      || active.some((record) => record.executionStatus !== 'completed'
+        && record.trace !== undefined
+        && !isInline(record.trace))) {
       throw new ExecutionBundleValidationError(
         'EXECUTION_BUNDLE_REPLAYABILITY_INVALID',
         'A self-contained ExecutionBundle requires inline completed outputs and traces.',
@@ -242,10 +262,17 @@ function assertReplayability(bundle: ExecutionBundle): void {
     }
     return;
   }
-  const contents = completed.flatMap((record) => [record.output, record.trace])
+  const contents = active.flatMap((record) => (
+    record.executionStatus === 'completed'
+      ? [record.output, record.trace]
+      : [record.trace]
+  ))
     .filter((content): content is CapturedContent => content !== undefined);
   if (completed.some((record) => !isResolvable(record.output)
       || (record.trace !== undefined && !isResolvable(record.trace)))
+      || active.some((record) => record.executionStatus !== 'completed'
+        && record.trace !== undefined
+        && !isResolvable(record.trace))
       || !contents.some((content) => content.contentKind === 'descriptor')) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_REPLAYABILITY_INVALID',
@@ -263,7 +290,144 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
   assertReplayability(bundle);
 }
 
-export function parseExecutionBundle(value: unknown): ExecutionBundle {
+export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext {
+  execution: ExecutionIdentityPlanContext['execution'] & {
+    executionInputDigest: string;
+    runtimes: readonly {
+      runtimeKind: 'executor' | 'evaluator' | 'analysis';
+      referenceId: string;
+      identity: unknown;
+    }[];
+    policy: {
+      retry: {
+        maxAttempts: number;
+        retryableErrorCodes: readonly string[];
+      };
+      budget: {
+        maxTargetInvocations?: number;
+      };
+    };
+  };
+  digests: {
+    datasetRevisionDigest: string;
+    executionInputDigest: string;
+    executionPlanDigest: string;
+    runContractDigest: string;
+  };
+}
+
+function coordinateKey(
+  coordinate: Pick<PlannedExecutionCoordinate, 'targetId' | 'sampleId' | 'trialIndex'>,
+): string {
+  return canonicalizeJson([
+    coordinate.targetId,
+    coordinate.sampleId,
+    coordinate.trialIndex,
+  ]);
+}
+
+function planMismatch(message: string): never {
+  throw new ExecutionBundleValidationError('EXECUTION_BUNDLE_PLAN_MISMATCH', message);
+}
+
+export function assertExecutionBundleMatchesPlan(
+  bundle: ExecutionBundle,
+  plan: ExecutionBundlePlanContext,
+): void {
+  if (bundle.runContractDigest !== plan.digests.runContractDigest
+      || bundle.executionPlanDigest !== plan.digests.executionPlanDigest
+      || bundle.executionPlanDigest !== plan.execution.executionPlanDigest
+      || bundle.datasetRevisionDigest !== plan.digests.datasetRevisionDigest
+      || bundle.executionInputDigest !== plan.digests.executionInputDigest
+      || bundle.executionInputDigest !== plan.execution.executionInputDigest) {
+    planMismatch('ExecutionBundle parent digests do not match the sealed RunPlan.');
+  }
+
+  const planned = derivePlannedExecutionCoordinates(plan);
+  if (bundle.coverage.planned !== planned.length) {
+    planMismatch('ExecutionBundle planned coverage does not match the sealed coordinate universe.');
+  }
+  const plannedByCoordinate = new Map(
+    planned.map((coordinate) => [coordinateKey(coordinate), coordinate]),
+  );
+  const recordsByCoordinate = new Map(
+    bundle.records.map((record) => [coordinateKey(record), record]),
+  );
+  const runtimesByTarget = new Map<string, unknown>();
+  for (const runtime of plan.execution.runtimes) {
+    if (runtime.runtimeKind !== 'executor') continue;
+    if (runtimesByTarget.has(runtime.referenceId)) {
+      planMismatch('ExecutionPlan contains duplicate executor Runtime bindings.');
+    }
+    runtimesByTarget.set(runtime.referenceId, runtime.identity);
+  }
+
+  let invocationCount = 0;
+  for (const record of bundle.records) {
+    const expected = plannedByCoordinate.get(coordinateKey(record));
+    if (expected === undefined) {
+      planMismatch('ExecutionBundle contains a coordinate outside the sealed ExecutionPlan.');
+    }
+    if (record.trialId !== expected.trialId
+        || record.trialSeed !== expected.trialSeed
+        || record.schedulingBlockId !== expected.schedulingBlockId
+        || canonicalizeJson(record.samplingUnitIds)
+          !== canonicalizeJson(expected.samplingUnitIds)) {
+      planMismatch('ExecutionRecord identities do not match their sealed derivation.');
+    }
+    const runtime = runtimesByTarget.get(record.targetId);
+    if (runtime === undefined
+        || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {
+      planMismatch('ExecutionRecord Runtime does not match its sealed Target binding.');
+    }
+    if (record.executionStatus === 'budget-censored') continue;
+    invocationCount += record.attempts.length;
+    if (record.attempts.length > plan.execution.policy.retry.maxAttempts) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+        'ExecutionRecord exceeds the sealed maximum attempt count.',
+      );
+    }
+    for (const attempt of record.attempts.slice(0, -1)) {
+      if (attempt.attemptStatus !== 'failed'
+          || !plan.execution.policy.retry.retryableErrorCodes.includes(attempt.error.code)) {
+        throw new ExecutionBundleValidationError(
+          'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+          'A non-terminal attempt must be a retryable failure under the sealed policy.',
+        );
+      }
+    }
+  }
+  const maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
+  if (maxInvocations !== undefined && invocationCount > maxInvocations) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+      'ExecutionBundle exceeds the sealed target invocation budget.',
+    );
+  }
+
+  const plannedByBlock = new Map<string, PlannedExecutionCoordinate[]>();
+  for (const coordinate of planned) {
+    const block = plannedByBlock.get(coordinate.schedulingBlockId) ?? [];
+    block.push(coordinate);
+    plannedByBlock.set(coordinate.schedulingBlockId, block);
+  }
+  for (const record of bundle.records) {
+    if (record.executionStatus !== 'budget-censored') continue;
+    const block = plannedByBlock.get(record.schedulingBlockId);
+    if (block === undefined || block.some((coordinate) => (
+      recordsByCoordinate.get(coordinateKey(coordinate))?.executionStatus
+        !== 'budget-censored'
+    ))) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_BLOCK_ATOMICITY_INVALID',
+        'Every coordinate in a budget-censored scheduling block must be censored together.',
+      );
+    }
+  }
+}
+
+export function parseExecutionBundleDocument(value: unknown): ExecutionBundle {
   const bundle = parseWireDocument(ExecutionBundleSchema, value);
   assertExecutionBundleSemantics(bundle);
   if (digestArtifactPayload(bundle, 'bundleDigest') !== bundle.bundleDigest) {
@@ -272,5 +436,14 @@ export function parseExecutionBundle(value: unknown): ExecutionBundle {
       'ExecutionBundle digest does not match its canonical payload.',
     );
   }
+  return bundle;
+}
+
+export function parseExecutionBundle(
+  value: unknown,
+  plan: ExecutionBundlePlanContext,
+): ExecutionBundle {
+  const bundle = parseExecutionBundleDocument(value);
+  assertExecutionBundleMatchesPlan(bundle, plan);
   return bundle;
 }

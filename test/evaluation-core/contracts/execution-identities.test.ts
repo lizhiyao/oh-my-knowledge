@@ -3,6 +3,7 @@ import {
   deriveAttemptId,
   deriveSamplingUnitId,
   deriveSchedulingBlockId,
+  deriveSchedulingTargetGroups,
   deriveTrialId,
   deriveTrialSeed,
   type Sha256Digest,
@@ -20,8 +21,10 @@ describe('Execution identity derivation', () => {
     const schedulingBlockId = deriveSchedulingBlockId({
       executionPlanDigest,
       trialIndex: 0,
-      targetIds: ['treatment', 'control'],
-      sampleIds: ['s1', 's2'],
+      coordinates: [
+        { targetId: 'treatment', sampleId: 's1' },
+        { targetId: 'control', sampleId: 's1' },
+      ],
       pairingBlockId,
     });
     const trialId = deriveTrialId({
@@ -35,7 +38,7 @@ describe('Execution identity derivation', () => {
       'sha256:ebadbb4f19e742a368d1cba4013a295ff7eaf36b58b5b4da0f0306909cebd4fe',
     );
     expect(schedulingBlockId).toBe(
-      'sha256:ee5ca2c68e77d436746f0f62c0d613c8d259f1a989b6f528f7153c258835dd3e',
+      'sha256:c3b78a4903377b684c7a120d8f00bf360613107fc5968ff43214c91f03727cd0',
     );
     expect(trialId).toBe(
       'sha256:6627fa21a900f74e3d5c6aa726ca5e5090595c0617d2385fff59afcf0b84dfa8',
@@ -46,7 +49,7 @@ describe('Execution identity derivation', () => {
       schedulingBlockId,
       sampleId: 's1',
     })).toBe(
-      'sha256:f1eb2f39b43ce07b47935d783ad32f34fb77062d59f2d671bd84942bdc141749',
+      'sha256:e42e56fb54bfc0f8dd1351bc498c20aab65ae326a9461b406b23b60ed6f08d3d',
     );
     expect(deriveTrialSeed({
       rootSeed: 'seed-1',
@@ -55,7 +58,16 @@ describe('Execution identity derivation', () => {
       sampleId: 's1',
       targetId: 'control',
     })).toBe(
-      'sha256:a8cd44e0f720f0cba70f77e6787892aaec98f240bf8e63ca093f5ad6a4f0f861',
+      'sha256:a626240acc0b900f5a9c3b8522b1a1f939eea1909b8504d56e1ce501e850c45f',
+    );
+    expect(deriveTrialSeed({
+      rootSeed: 'seed-1',
+      seedCoupling: 'uncontrolled',
+      schedulingBlockId,
+      sampleId: 's1',
+      targetId: 'control',
+    })).toBe(
+      'sha256:3da1ced0b792b5a67dc18d33e6dd7ccd37f1e1bd50232c9321fc870e0f26ad8c',
     );
     expect(deriveAttemptId({ trialId, attemptNumber: 1 })).toBe(
       'sha256:f664c308f4675c875006748ec0893aa279b47a2eb97d52e8845a13fcd27cc833',
@@ -72,6 +84,64 @@ describe('Execution identity derivation', () => {
       unitKind: 'pairing',
       memberSampleIds: ['s2', 's1'],
     }));
+    expect(deriveSchedulingBlockId({
+      executionPlanDigest,
+      trialIndex: 0,
+      coordinates: [
+        { targetId: 't2', sampleId: 's2' },
+        { targetId: 't1', sampleId: 's1' },
+      ],
+    })).toBe(deriveSchedulingBlockId({
+      executionPlanDigest,
+      trialIndex: 0,
+      coordinates: [
+        { targetId: 't1', sampleId: 's1' },
+        { targetId: 't2', sampleId: 's2' },
+      ],
+    }));
+  });
+
+  it('preserves target/sample coordinate incidence in scheduling identity', () => {
+    expect(deriveSchedulingBlockId({
+      executionPlanDigest,
+      trialIndex: 0,
+      coordinates: [
+        { targetId: 't1', sampleId: 's1' },
+        { targetId: 't2', sampleId: 's2' },
+      ],
+    })).not.toBe(deriveSchedulingBlockId({
+      executionPlanDigest,
+      trialIndex: 0,
+      coordinates: [
+        { targetId: 't1', sampleId: 's2' },
+        { targetId: 't2', sampleId: 's1' },
+      ],
+    }));
+  });
+
+  it('materializes canonical paired scheduling groups from comparison connectivity', () => {
+    expect(deriveSchedulingTargetGroups({
+      targetIds: ['variant-b', 'control', 'variant-a', 'unpaired'],
+      comparisons: [
+        { controlTargetId: 'control', treatmentTargetIds: ['variant-a'] },
+        { controlTargetId: 'variant-a', treatmentTargetIds: ['variant-b'] },
+      ],
+      paired: true,
+    })).toEqual([
+      ['control', 'variant-a', 'variant-b'],
+      ['unpaired'],
+    ]);
+  });
+
+  it('keeps non-paired scheduling groups independent from Decision comparisons', () => {
+    expect(deriveSchedulingTargetGroups({
+      targetIds: ['treatment', 'control'],
+      comparisons: [{
+        controlTargetId: 'control',
+        treatmentTargetIds: ['treatment'],
+      }],
+      paired: false,
+    })).toEqual([['control'], ['treatment']]);
   });
 
   it('makes seed coupling an explicit construct-validity choice', () => {
