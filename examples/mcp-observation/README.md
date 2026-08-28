@@ -2,7 +2,7 @@
 
 `eval-samples.json` defines the behavior contract for direct, indirect, and negative observation prompts.
 
-Run the suite only with an agent executor that is connected to the OMK MCP server and reports normalized MCP tool names in its trace. The executor must expose at least `capture_observation`, `record_observation_review`, and `draft_sample_from_observation`. A text-only executor cannot prove that a tool was or was not called.
+Run the suite only with an agent executor that is connected to the OMK MCP server and reports normalized MCP tool names in its trace. The executor must expose at least `save_observation`, `record_observation_review`, and `draft_sample_from_observation`. A text-only executor cannot prove that a tool was or was not called.
 
 The suite separates two constructs:
 

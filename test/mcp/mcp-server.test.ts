@@ -28,16 +28,17 @@ describe('OMK observation MCP server', () => {
     try {
       const tools = await client.listTools();
       assert.deepEqual(tools.tools.map((tool) => tool.name), [
-        'capture_observation',
+        'save_observation',
         'get_observation',
         'record_observation_review',
         'draft_sample_from_observation',
-        'render_observation_review',
+        'review_observation',
       ]);
       const tool = tools.tools[0];
       assert.ok(tool);
-      assert.equal(tool.name, 'capture_observation');
+      assert.equal(tool.name, 'save_observation');
       assert.deepEqual(tool.annotations, {
+        title: '保存 OMK 知识反馈',
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: true,
@@ -47,8 +48,17 @@ describe('OMK observation MCP server', () => {
       assert.equal(JSON.stringify(tool.inputSchema).includes('tenantId'), false);
       assert.equal(JSON.stringify(tool.inputSchema).includes('principalId'), false);
       assert.ok(tool.outputSchema);
+      assert.deepEqual(tools.tools.map(({ name, title }) => ({ name, title })), [
+        { name: 'save_observation', title: '保存 OMK 知识反馈' },
+        { name: 'get_observation', title: '读取 OMK 知识反馈' },
+        { name: 'record_observation_review', title: '保存 OMK 人工复核' },
+        { name: 'draft_sample_from_observation', title: '生成 OMK 回归评测草稿' },
+        { name: 'review_observation', title: 'OMK 知识反馈' },
+      ]);
 
       const renderTool = tools.tools.at(-1);
+      assert.equal(renderTool?.title, 'OMK 知识反馈');
+      assert.equal(renderTool?.annotations?.title, 'OMK 知识反馈');
       assert.deepEqual(renderTool?._meta?.ui, {
         resourceUri: OBSERVATION_REVIEW_RESOURCE_URI,
       });
@@ -83,7 +93,7 @@ describe('OMK observation MCP server', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       const response = await client.callTool({
-        name: 'capture_observation',
+        name: 'save_observation',
         arguments: {
           skillName: 'omk',
           userFeedback: '报告需要解释 coverage: partial。',
@@ -122,7 +132,7 @@ describe('OMK observation MCP server', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
-        'capture_observation',
+        'save_observation',
       ]);
     } finally {
       await client.close();
@@ -140,7 +150,7 @@ describe('OMK observation MCP server', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
-        'capture_observation',
+        'save_observation',
       ]);
     } finally {
       await client.close();
@@ -169,10 +179,10 @@ describe('OMK observation MCP server', () => {
     try {
       assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [
         'get_observation',
-        'render_observation_review',
+        'review_observation',
       ]);
       const rendered = await client.callTool({
-        name: 'render_observation_review',
+        name: 'review_observation',
         arguments: { observationId: captured.observationId },
       });
       assert.deepEqual(
@@ -193,7 +203,7 @@ describe('OMK observation MCP server', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       const response = await client.callTool({
-        name: 'capture_observation',
+        name: 'save_observation',
         arguments: {
           skillName: 'omk',
           userFeedback: '不应落盘。',
@@ -219,7 +229,7 @@ describe('OMK observation MCP server', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       const captured = await client.callTool({
-        name: 'capture_observation',
+        name: 'save_observation',
         arguments: {
           skillName: 'omk',
           userFeedback: '缺少公司内部宿主的通用接入边界。',
@@ -287,7 +297,7 @@ describe('OMK observation MCP server', () => {
       assert.equal(detailContent.captureCoverage.coverageStatus, 'partial');
 
       const rendered = await client.callTool({
-        name: 'render_observation_review',
+        name: 'review_observation',
         arguments: {
           observationId,
           candidatePrompt: '说明公共 OMK 与私有宿主的边界。',

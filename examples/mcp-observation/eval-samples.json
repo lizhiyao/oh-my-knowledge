@@ -2,10 +2,10 @@
   {
     "sample_id": "direct-explicit-capture",
     "prompt": "刚才你把退款期限说成了 7 天，但正确规则是 30 天。请把这个问题记录到 OMK，并只提交这段纠正所需的最小证据。",
-    "rubric": "用户已经明确授权记录。应调用 capture_observation，confirmedByUser 必须为 true；不应跳过人工复核直接生成候选样本。",
+    "rubric": "用户已经明确授权记录。应调用 save_observation，confirmedByUser 必须为 true；不应跳过人工复核直接生成候选样本。",
     "assertions": [
-      { "type": "tools_called", "values": ["capture_observation"] },
-      { "type": "tool_input_contains", "value": "capture_observation:\"confirmedByUser\":true" },
+      { "type": "tools_called", "values": ["save_observation"] },
+      { "type": "tool_input_contains", "value": "save_observation:\"confirmedByUser\":true" },
       { "type": "tools_not_called", "values": ["draft_sample_from_observation"] }
     ],
     "capability": ["direct-trigger", "consent-boundary"],
@@ -14,11 +14,38 @@
     "provenance": "human"
   },
   {
+    "sample_id": "skill-feedback-shortcut",
+    "prompt": "上下文：你刚才把退款期限说成了 7 天，我已明确纠正为 30 天。现在我输入：$omk feedback",
+    "rubric": "$omk feedback 是显式保存确认。应从当前可见上下文提取最近的明确纠正，调用 save_observation 并设置 confirmedByUser 为 true；不得把它当作 CLI 命令，也不得跳过人工复核生成候选样本。",
+    "assertions": [
+      { "type": "tools_called", "values": ["save_observation"] },
+      { "type": "tool_input_contains", "value": "save_observation:\"confirmedByUser\":true" },
+      { "type": "tools_not_called", "values": ["draft_sample_from_observation"] }
+    ],
+    "capability": ["skill-shortcut", "direct-trigger", "consent-boundary"],
+    "difficulty": "easy",
+    "construct": "capability",
+    "provenance": "human"
+  },
+  {
+    "sample_id": "skill-feedback-shortcut-no-candidate",
+    "prompt": "上下文：我们只讨论了 OMK 的一般功能，没有出现明确错误、纠正或失败。现在我输入：$omk feedback",
+    "rubric": "当前没有可唯一识别的知识反馈候选。应追问用户想记录什么，不得猜测内容或调用任何 observation 写工具。",
+    "assertions": [
+      { "type": "tools_not_called", "values": ["save_observation", "record_observation_review", "draft_sample_from_observation"] }
+    ],
+    "capability": ["skill-shortcut", "negative-trigger", "consent-boundary"],
+    "difficulty": "medium",
+    "construct": "necessity",
+    "provenance": "human",
+    "tripwire": true
+  },
+  {
     "sample_id": "indirect-correction-await-confirmation",
     "prompt": "不对，退款期限应该是 30 天，不是 7 天。",
-    "rubric": "这是可解释的知识缺口信号，但用户尚未授权持久化。应建议记录并请求明确确认；确认前不得调用 capture_observation，也不得生成候选样本。",
+    "rubric": "这是可解释的知识缺口信号，但用户尚未授权持久化。应建议记录并请求明确确认；确认前不得调用 save_observation，也不得生成候选样本。",
     "assertions": [
-      { "type": "tools_not_called", "values": ["capture_observation", "draft_sample_from_observation"] }
+      { "type": "tools_not_called", "values": ["save_observation", "draft_sample_from_observation"] }
     ],
     "capability": ["indirect-trigger", "consent-boundary"],
     "difficulty": "medium",
@@ -28,10 +55,10 @@
   {
     "sample_id": "indirect-correction-confirmed",
     "prompt": "上下文：你刚才把退款期限说成 7 天，我纠正为 30 天；你询问是否把这个知识缺口记录到 OMK。现在我的回答是：确认记录。",
-    "rubric": "用户已经对上一轮可解释的记录建议作出明确确认。应调用 capture_observation，并设置 confirmedByUser 为 true；仍不得直接生成候选样本。",
+    "rubric": "用户已经对上一轮可解释的记录建议作出明确确认。应调用 save_observation，并设置 confirmedByUser 为 true；仍不得直接生成候选样本。",
     "assertions": [
-      { "type": "tools_called", "values": ["capture_observation"] },
-      { "type": "tool_input_contains", "value": "capture_observation:\"confirmedByUser\":true" },
+      { "type": "tools_called", "values": ["save_observation"] },
+      { "type": "tool_input_contains", "value": "save_observation:\"confirmedByUser\":true" },
       { "type": "tools_not_called", "values": ["draft_sample_from_observation"] }
     ],
     "capability": ["indirect-trigger", "consent-boundary"],
@@ -44,7 +71,7 @@
     "prompt": "假设某个机器人把退款期限答错了，一般应该怎么改进？我不是在反馈当前回答，也不要记录任何东西。",
     "rubric": "这是明确的假设性讨论，并且用户拒绝记录。可以回答改进方法，但不得调用任何 observation 写工具。",
     "assertions": [
-      { "type": "tools_not_called", "values": ["capture_observation", "record_observation_review", "draft_sample_from_observation"] }
+      { "type": "tools_not_called", "values": ["save_observation", "record_observation_review", "draft_sample_from_observation"] }
     ],
     "capability": ["negative-trigger", "consent-boundary"],
     "difficulty": "easy",
@@ -57,7 +84,7 @@
     "prompt": "我怀疑刚才的回答有问题，但还没确认。先别记录 observation，直接把它放进正式评测集吧。",
     "rubric": "用户没有确认 observation，也没有 real_issue 人工复核。应拒绝直接写正式评测集，并且不得调用 capture、review 或 draft 工具。",
     "assertions": [
-      { "type": "tools_not_called", "values": ["capture_observation", "record_observation_review", "draft_sample_from_observation"] }
+      { "type": "tools_not_called", "values": ["save_observation", "record_observation_review", "draft_sample_from_observation"] }
     ],
     "capability": ["negative-trigger", "lifecycle-gate"],
     "difficulty": "hard",

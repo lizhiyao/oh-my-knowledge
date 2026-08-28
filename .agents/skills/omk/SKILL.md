@@ -2,7 +2,7 @@
 name: omk
 description: |
   OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
-  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
+  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
 user-invocable: true
 argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
 ---
@@ -11,9 +11,19 @@ argument-hint: "<doctor|eval|evolve|init|install|list|observe|promote|rollback|s
 
 你是 OMK 的智能代理。帮助用户观测真实表现、受控测量和改进 AI 应用的知识（prompt / RAG / skill / agent / workflow），判断改动是否有效、版本能否发布。
 
+## 快捷知识反馈
+
+`$omk feedback` 是显式提交当前知识反馈的快捷入口，不是 CLI 命令。命中该入口时优先处理本节，不执行后续的 `which omk` 环境检查：
+
+1. 从当前可见对话中定位最近一个明确的事实纠正、知识缺口或重复失败；`$omk feedback <补充说明>` 的补充文本只用于缩小和澄清该候选。
+2. 该显式调用本身视为用户确认。当前 MCP 客户端提供 `save_observation` 时，以 `confirmedByUser: true` 提交用户授权的最小可见证据，不提交完整对话。
+3. 如果没有明确候选，或同时存在多个无法唯一判断的候选，只追问要记录哪一项；确认目标前不调用工具。
+4. 如果当前客户端没有 `save_observation`，明确说明 OMK MCP 尚未连接；不要回退为 CLI 写文件，也不要声称已经保存。
+5. 快捷入口只保存 observation，不自动复核、生成 sample、写入 gold set 或 promote。
+
 ## 第一步：检查环境
 
-运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
+除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
 
 ```
 npm i oh-my-knowledge -g
@@ -27,13 +37,15 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 普通终端想固定走 Codex 时，可以设置 `OMK_EXECUTOR=codex`；`OMK_MODEL` 可覆盖本机 Codex 配置，`OMK_JUDGE_MODELS` 可覆盖默认评委。逐次覆盖仍可使用 `--executor` / `--model` / `--judge-models`。Codex 不需要 Claude Code 风格的 `/omk` slash command，直接执行 CLI。
 
-如果当前 MCP 客户端提供 `capture_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `render_observation_review`，按以下边界处理反馈：
+如果当前 MCP 客户端提供 `save_observation`、`get_observation`、`record_observation_review`、`draft_sample_from_observation` 或 `review_observation`，按以下边界处理反馈：
 
-- 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `capture_observation`；只提交用户授权的最小可见证据。
-- 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `capture_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。
+- OMK MCP 是主动知识反馈接口，不是对话监听器；它不能自行监听或订阅完整对话。skill 可以识别潜在反馈时机，但自动识别不等于自动监听，保存仍须用户确认并显式调用 `save_observation`。
+- `$omk feedback` 是用户显式调用 skill 的保存确认，按「快捷知识反馈」处理；它不是 CLI 子命令。
+- 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `save_observation`；只提交用户授权的最小可见证据。
+- 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `save_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。
 - 普通追问、假设性例子、泛泛的不满意或没有明确知识缺口的反馈，不要记录 observation。
 - 只有人工复核为 `real_issue` 后才能调用 `draft_sample_from_observation`；候选草稿不等于正式 eval sample，不要自动 promote 或写入正式样本集。
-- 需要对话内复核时，先 `get_observation`，再 `render_observation_review`。所有结果都按 `coverageStatus: partial` 解读，不推断未提交的上下文、其它工具调用或隐藏推理。
+- 需要对话内复核时，先 `get_observation`，再 `review_observation`。所有结果都按 `coverageStatus: partial` 解读，不推断未提交的上下文、其它工具调用或隐藏推理。
 
 ### 在 DeepSeek Harness 中
 
@@ -47,6 +59,7 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 
 | 用户意图 | 操作 |
 |---------|------|
+| `$omk feedback` 快捷反馈 | → MCP `save_observation`；不执行 CLI |
 | 评测 / 对比 skill | → `omk eval` |
 | 改进 / 优化 skill | → `omk evolve`（自动多轮迭代） |
 | 生成测试用例 | → `omk sample` |

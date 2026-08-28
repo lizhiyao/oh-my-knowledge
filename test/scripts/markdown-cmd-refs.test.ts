@@ -43,9 +43,10 @@ const SCAN_FILES = [
 //
 // 两条正则:
 //   INLINE_CODE_CMD:`omk <cmd>` 必须紧跟反引号(inline code 起始)
-//   FENCED_CMD:在 ``` ... ``` 内的任意 `omk <cmd>`(代码块里的全算命令引用)
+//   FENCED_CMD:在 ``` ... ``` 内的任意 `omk <cmd>`；`$omk ...` 是 Skill 调用，
+//   不属于 CLI 命令引用。
 const INLINE_CODE_CMD = /`omk\s+([a-z][a-z-]*)/g;
-const FENCED_CMD = /(?<![\w-])omk\s+([a-z][a-z-]*)/g;
+const FENCED_CMD = /(?<![\w$-])omk\s+([a-z][a-z-]*)/g;
 
 interface Violation {
   file: string;
@@ -154,7 +155,7 @@ const FLAG_SCAN_EXCLUDE = new Set<string>([
 ]);
 
 // omk 调用形态:用户向的 `omk <cmd>`,以及 dev 文档里的 `node dist/cli/index.js <cmd>`。
-const OMK_INVOCATION = /(?<![\w-])(?:omk|index\.js)\s+[a-z][a-z-]*/;
+const OMK_INVOCATION = /(?<![\w$-])(?:omk|index\.js)\s+[a-z][a-z-]*/;
 const FLAG_TOKEN = /--([a-z][a-z0-9-]*)/g;
 
 function collectOmkFlagNames(config: Config): Set<string> {

@@ -2,13 +2,19 @@
 
 OMK exposes one knowledge-feedback-loop contract over local stdio and standard Streamable HTTP. The public boundary keeps observation semantics, the human-review gate, and the sample-draft lifecycle in OMK while allowing a private host to supply identity, policy, persistence, and deployment.
 
-This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning.
+## Capability positioning
+
+**OMK MCP is an active knowledge-feedback interface, not a conversation monitor.** The standard MCP tool boundary lets a client, model, or component actively call OMK tools; OMK MCP cannot independently monitor, subscribe to, or pull a client's complete conversation.
+
+An Agent Skill may use the currently visible context to recognize a potential knowledge gap and suggest recording it, but this is only a best-effort trigger decision. OMK receives feedback only after the user confirms and the client explicitly calls `save_observation` with authorized content. Automatic recognition is not automatic monitoring.
+
+This integration captures only user-authorized feedback submitted through the tool. Every result remains `coverageStatus: partial`; it does not imply access to a complete conversation, other tool calls, or hidden reasoning. Continuous monitoring requires an authorized host to actively forward events from an event stream. Monitoring, authorization, and redaction belong to the host-integration boundary; OMK provides only the generic feedback-ingestion and downstream-processing capabilities.
 
 ## Observable event matrix
 
 | Event | Observable to OMK | Usable as evidence | Boundary |
 | --- | --- | --- | --- |
-| `capture_observation` input and result | Yes | Yes | Only fields explicitly authorized by the user |
+| `save_observation` input and result | Yes | Yes | Only fields explicitly authorized by the user |
 | Inputs and results of get, review, and draft tools | Yes | Yes | Only OMK records visible to the current principal |
 | Clicks, edits, and tool calls inside the OMK component | Yes | Yes | Only actions actively submitted to OMK by the component |
 | A message excerpt explicitly submitted by the user | Yes | Yes | The excerpt is user-provided evidence, not the complete message stream |
@@ -29,11 +35,11 @@ This integration captures only user-authorized feedback submitted through the to
 
 | Tool | Scope | OMK guarantee |
 | --- | --- | --- |
-| `capture_observation` | `observation:capture` | Accepts only explicitly confirmed, user-visible evidence and writes idempotently |
+| `save_observation` | `observation:capture` | Accepts only explicitly confirmed, user-visible evidence and writes idempotently |
 | `get_observation` | `observation:read` | Returns only evidence, review state, and `partial` coverage from the current principal partition |
 | `record_observation_review` | `observation:review` | Records only `real_issue`, `not_issue`, or `needs_more_context` human decisions |
 | `draft_sample_from_observation` | `observation:draft` | Drafts only from `real_issue`; never writes the formal eval sample set |
-| `render_observation_review` | `observation:read` | Renders the optional inline review component from an authoritative observation snapshot |
+| `review_observation` | `observation:read` | Shows the optional inline review component from an authoritative observation snapshot |
 
 For `draft_sample_from_observation`, the current MCP client proposes a candidate prompt and rubric from the authorized evidence returned by `get_observation`. OMK owns the review gate, provenance, source-evidence references, and draft status; it does not treat the client as a controlled judge.
 
@@ -41,25 +47,29 @@ MCP `tools/list` is also filtered by the scopes returned by the resolver: capabi
 
 ## Inline review component
 
-The four data tools remain useful in any MCP client without custom UI. `render_observation_review` is a separate presentation tool and is the only tool associated with the versioned `ui://omk/observation-review/v1.html` resource. This prevents capture, reads, and writes from remounting the component unnecessarily.
+The four data tools remain useful in any MCP client without custom UI. `review_observation` is a separate presentation tool and is the only tool associated with the versioned `ui://omk/observation-review/v1.html` resource. This prevents capture, reads, and writes from remounting the component unnecessarily.
 
 The component follows the open MCP Apps bridge: it receives structured tool results through `ui/notifications/tool-result` and invokes review and draft operations through `tools/call`. It does not keep authoritative review or draft state in browser storage. Every mutation is re-authorized and persisted by the server, and the component updates from the authoritative write result. The card always displays `coverageStatus: partial` and lists the unavailable event kinds before offering a human verdict.
 
-A typical model flow is `get_observation` followed by `render_observation_review`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
+A typical model flow is `get_observation` followed by `review_observation`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
 
-## Three trigger paths
+## Four trigger paths
+
+### Skill shortcut
+
+In Codex, enter `$omk feedback` to explicitly invoke the OMK Skill and save the most recent clear knowledge issue in the current conversation. The invocation itself confirms the save. The agent calls `save_observation` with `confirmedByUser: true` while submitting only the minimum visible evidence. It must ask first when no candidate is clear or multiple candidates are ambiguous. This shortcut is not a CLI subcommand and cannot bypass the downstream human-review gate.
 
 ### Explicit user trigger
 
-The user says, “The previous answer about the refund window was wrong; record this issue.” The model calls `capture_observation` with `confirmedByUser: true`, submitting only the authorized correction and the minimum necessary excerpt. Capture does not automatically create a draft or modify the formal sample set.
+The user says, “The previous answer about the refund window was wrong; record this issue.” The model calls `save_observation` with `confirmedByUser: true`, submitting only the authorized correction and the minimum necessary excerpt. Capture does not automatically create a draft or modify the formal sample set.
 
-### Skill heuristic trigger
+### Skill heuristic suggestion
 
-The user only says, “That is wrong: the refund window is 30 days, not 7.” The skill may suggest recording the knowledge gap and ask for confirmation. It must not call `capture_observation` until the user explicitly confirms. This model-dependent path is best-effort and cannot be treated as complete recall.
+The user only says, “That is wrong: the refund window is 30 days, not 7.” The skill may suggest recording the knowledge gap and ask for confirmation. It must not call `save_observation` until the user explicitly confirms. This model-dependent path is best-effort and cannot be treated as complete recall.
 
 ### Component action
 
-For an existing observation, the model calls `get_observation` and then `render_observation_review`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
+For an existing observation, the model calls `get_observation` and then `review_observation`. When the user selects “Real issue,” the component calls `record_observation_review`. `draft_sample_from_observation` becomes valid only after the server confirms `real_issue`; the resulting draft remains isolated from the formal evaluation set.
 
 The repository provides direct, indirect, and negative behavior cases in `examples/mcp-observation/eval-samples.json`. Run them only in an MCP host that exposes tool traces; a text-only executor cannot validate these boundaries.
 
@@ -130,7 +140,7 @@ With no resolver, the HTTP helper binds to loopback by default and uses the loca
 
 ## Implement another store
 
-`ObservationCaptureStore` is the minimal persistence seam; implementing it registers only `capture_observation`. `ObservationFeedbackStore` adds `get`, `review`, and `draftSample`; the server registers the three feedback data tools and the optional review component only when the store implements that full contract. Existing adapters therefore do not falsely advertise capabilities they have not implemented.
+`ObservationCaptureStore` is the minimal persistence seam; implementing it registers only `save_observation`. `ObservationFeedbackStore` adds `get`, `review`, and `draftSample`; the server registers the three feedback data tools and the optional review component only when the store implements that full contract. Existing adapters therefore do not falsely advertise capabilities they have not implemented.
 
 OMK also exports helpers that prepare the canonical v1 record and build the canonical result, so a capture adapter does not need to recreate capture hashes, coverage, or Inbox identity.
 
@@ -171,6 +181,6 @@ Start the HTTP service, then run:
 npx @modelcontextprotocol/inspector@latest
 ```
 
-Select **Streamable HTTP**, enter the actual URL returned by `startObservationMcpHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `render_observation_review`; the latter should be the only tool carrying `_meta.ui.resourceUri`.
+Select **Streamable HTTP**, enter the actual URL returned by `startObservationMcpHttpServer`, and configure the credential expected by the host resolver. Verify initialization, `tools/list`, `resources/list`, the component resource MIME type, the tool annotations, an authorized call, a repeated call with `created: false`, invalid confirmation, missing scope, and invalid credentials. Call `get_observation`, then `review_observation`; the latter should be the only tool carrying `_meta.ui.resourceUri`.
 
 For ChatGPT-specific development, Secure MCP Tunnel can expose a private server to developer mode. That optional client path does not change OMK's generic MCP contract and is not a replacement for a stable public HTTPS endpoint.

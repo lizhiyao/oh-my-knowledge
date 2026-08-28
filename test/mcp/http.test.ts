@@ -80,11 +80,11 @@ describe('OMK observation Streamable HTTP server', () => {
       await Promise.all([clientA.connect(), clientB.connect()]);
       const tools = await clientA.client.listTools();
       assert.deepEqual(tools.tools.map((tool) => tool.name), [
-        'capture_observation',
+        'save_observation',
         'get_observation',
         'record_observation_review',
         'draft_sample_from_observation',
-        'render_observation_review',
+        'review_observation',
       ]);
 
       const first = await clientA.client.callTool(captureRequest());
@@ -119,7 +119,7 @@ describe('OMK observation Streamable HTTP server', () => {
             jsonrpc: '2.0',
             id: 1,
             method: 'tools/call',
-            params: { name: 'capture_observation', arguments: captureRequest().arguments },
+            params: { name: 'save_observation', arguments: captureRequest().arguments },
           }),
         });
         return response.status;
@@ -202,7 +202,7 @@ function createClient(url: URL, token: string): {
 
 function captureRequest() {
   return {
-    name: 'capture_observation',
+    name: 'save_observation',
     arguments: {
       skillName: 'demo-skill',
       userFeedback: '需要补充远程集成边界。',
