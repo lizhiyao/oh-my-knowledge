@@ -69,6 +69,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
+  'seedCoupling',
   'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
@@ -413,13 +414,69 @@ async function resolveExecutors(
         details: { referenceId: target.targetId, protocolId: target.protocolId },
       });
     }
-    if (policy.cache.executionMode === 'transparent-deterministic'
-        && !protocol.deterministic) {
+    const expectedTrialState = target.protocolId === 'omk.session/v1'
+      ? 'isolated'
+      : 'stateless';
+    if (protocol.execution.state.trialState !== expectedTrialState) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_PROTOCOL_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Protocol manifest 的 trial state isolation 与 protocol family 不兼容。',
+        details: { referenceId: target.targetId, protocolId: target.protocolId },
+      });
+    }
+    if (protocol.execution.concurrency.safety === 'serialized'
+        && protocol.execution.concurrency.maxInFlight !== undefined
+        && protocol.execution.concurrency.maxInFlight !== 1) {
       throw new EvaluationDefinitionError({
         code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
         stage: 'configuration',
         preparationStage: 'runtime-resolution',
-        message: 'transparent-deterministic cache 只能用于已证明确定性的 Target。',
+        message: 'serialized Runtime 的 maxInFlight 只能为 1。',
+        details: { referenceId: target.targetId },
+      });
+    }
+    const traceCapability = protocol.execution.telemetry.trace;
+    if ((traceCapability === 'unsupported') === (protocol.traceSchema !== undefined)) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Runtime trace capability 与 trace schema identity 不一致。',
+        details: { referenceId: target.targetId },
+      });
+    }
+    const requiresTrace = definition.evaluators.some((evaluator) => (
+      evaluator.inputs.some((binding) => binding.sourceKind === 'trace')
+    ));
+    if (requiresTrace && traceCapability === 'unsupported') {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Evaluator 需要 trace，但 Target Runtime 不提供 trace。',
+        details: { referenceId: target.targetId },
+      });
+    }
+    if (policy.execution.timeoutMs !== undefined
+        && protocol.execution.cancellation === 'unsupported') {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: '声明 timeout 的 Target Runtime 必须支持 cooperative 或 best-effort cancellation。',
+        details: { referenceId: target.targetId },
+      });
+    }
+    if (policy.cache.executionMode === 'transparent-deterministic'
+        && (protocol.execution.determinism !== 'deterministic'
+          || resolution.identity.assuranceLevel !== 'verified')) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'transparent-deterministic cache 只能用于 verified deterministic Target。',
         details: { referenceId: target.targetId, protocolId: target.protocolId },
       });
     }

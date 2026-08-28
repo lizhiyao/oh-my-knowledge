@@ -165,6 +165,8 @@ v1 defines only two built-in protocol families:
 - `omk.invoke/v1`: one structured request/response per trial with an optional source-neutral trace; covers pure functions, models, services, RAG, and stateless workflows.
 - `omk.session/v1`: an isolated session lifecycle per trial with multi-turn messages, tool calls, and partial trajectories; covers agents and stateful workflows.
 
+Every protocol manifest also declares structured execution capabilities: concurrency safety and limits, cancellation semantics, run resource lifecycle, trial state, seed control, determinism, and trace/usage telemetry. Run-scoped resources may reuse infrastructure such as connection pools and clients; business state remains isolated per trial for `omk.session/v1`, while `omk.invoke/v1` remains stateless. A runtime declaring `cancellation: unsupported` cannot be combined with a timeout policy. Transparent Execution cache hits require both deterministic capability and verified Runtime assurance.
+
 Importing host-executed results is not a third execution protocol; Core validates and accepts an ExecutionBundle directly. Protocol IDs are immutable contracts. Incompatible changes use a new major path, while optional capabilities may only add behavior without changing existing field semantics.
 
 The Runtime resolves the actual implementation during prepare:
@@ -193,6 +195,7 @@ interface SamplingDesign {
   repeatedMeasures: boolean;
   resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
   estimatorId: string;
+  seedCoupling: 'shared-within-block' | 'independent-by-target';
 }
 
 interface ExperimentDesign {
@@ -205,7 +208,9 @@ interface ExperimentDesign {
 
 A trial is one repeated measurement under the same condition. A retry attempt is infrastructure recovery within one trial. They are not interchangeable. Statistical implementations validate that they support the SamplingDesign during prepare and never treat repeated trials as independent samples by default.
 
-Paired comparisons use a scheduling block as the dispatch atom. A block is not started unless budget exists for both sides. Partial blocks are censored and excluded from the primary paired estimator. Reports expose started, completed, comparable, and censored coverage separately.
+Paired comparisons use a scheduling block as the dispatch atom. `seedCoupling` explicitly chooses whether Targets for the same sample in a block share a random condition or derive independent per-Target conditions; an Executor cannot infer this choice. The sample coordinate always enters seed derivation so that distinct samples in a larger block never reuse a seed accidentally. A block is not started unless budget exists for all arms. Coordinates that never start are budget-censored, create no attempt, and are excluded from the primary paired estimator.
+
+`pairingBlockId`, `clusterId`, and `stratumId` express distinct statistical membership, while `schedulingBlockId` identifies only the dispatch atom. They never share one ambiguous ID. Scheduling identity may explicitly include sampling-unit IDs that affect dispatch. Each ID is domain-separated from the Plan digest and a canonical member set rather than hashing a low-entropy raw pairing, cluster, or stratum value.
 
 ### 5.5 Evaluator, Metric, Reducer, and DecisionPolicy
 
@@ -261,9 +266,9 @@ Every option that can change output, missingness, scheduling, evidence completen
 
 ### 6.2 ExecutionBundle
 
-For each `(targetId, sampleId, trialId)`, it records:
+Records use canonical `(targetId, sampleId, trialIndex)` order. Each carries an ExecutionPlan-derived `trialId`, `trialSeed`, `schedulingBlockId`, and distinct sampling-unit IDs:
 
-- output or ContentDescriptor;
+- completed output may be inline, a ContentDescriptor, digest-only, or omitted according to EvidencePolicy; omission does not change execution status;
 - source-neutral trace;
 - usage, provider-reported cost, and timing;
 - retry attempts;
@@ -271,6 +276,10 @@ For each `(targetId, sampleId, trialId)`, it records:
 - RuntimeIdentity;
 - execution and cache/replay provenance;
 - parent Plan digest and Bundle digest.
+
+Started records and budget-censored records are disjoint shapes. A censored record has no attempts, timing, output, trace, or usage because invocation never started. The Bundle has orthogonal terminal status and coverage counters: `planned = started + budgetCensored + notStarted` and `started = succeeded + failed + cancelled`. A `budget-exhausted` Bundle classifies every coordinate that did not start as budget-censored rather than generic notStarted. Semantic parsing verifies canonical order, coordinate uniqueness, derived identities, consecutive attempts, coverage, replayability, and the Bundle digest.
+
+If an Evaluator binds output or trace, prepare rejects any EvidencePolicy that removes that input. Execution may still produce a `summary-only` Bundle. Only `self-contained` requires every completed output/trace inline; `resolvable` permits inline content or digest-verified descriptors.
 
 Cost inferred from a pricing catalog is not a raw execution fact. It is a derived AnalysisResult carrying a pricing fingerprint.
 
@@ -370,7 +379,7 @@ Runtime ports include at least:
 - Clock, IdGenerator, and RandomSource;
 - optional EventWriter.
 
-Executors and Evaluators may use `openRun()` to return a run-scoped session and asynchronous disposer. Resource ownership is a strict tree: Engine owns registries, Run owns sessions, and tasks/attempts own temporary resources. One Run's cancellation or teardown cannot close another Run's resources.
+Executors and Evaluators may use `openRun()` to return a run-scoped resource handle and asynchronous disposer. Resource ownership is a strict tree: Engine owns registries, Run owns resources such as connection pools and clients, and trials/attempts own isolated business state and temporary resources. A run-scoped resource lifecycle never implies shared session state across trials. One Run's cancellation or teardown cannot close another Run's resources.
 
 Cancellation uses AbortSignal. User cancellation produces honest partial Bundles. Timeout and budget belong to sealed MeasurementPolicy because they affect missingness. Core does not provide cross-process resume; a host may start a new Evaluation stage from a complete ExecutionBundle.
 
@@ -555,6 +564,8 @@ Digest boundaries are executable contracts:
 | `runContractDigest` | all stage Plan digests, schema identities, and EventDeliveryPolicy | Report annotations and observer-only options |
 
 Every digest is the full lowercase `sha256:<hex>` of RFC 8785 canonical UTF-8 bytes. It proves content identity only. Provenance trust, fingerprint basis, and assurance level remain separate fields, and v1 does not implement signing.
+
+[#431](https://github.com/lizhiyao/oh-my-knowledge/issues/431) hardens v1 before Execution begins: SamplingDesign seals seed coupling explicitly; protocol manifests separate resource lifecycle from trial state; Execution identities use domain separation; and ExecutionBundle models active/censored records, terminal status, coverage, and replayability independently. With no historical users to migrate, these changes converge v1 directly and retain no compatibility layer for the old fields.
 
 ## 18. Industry references
 

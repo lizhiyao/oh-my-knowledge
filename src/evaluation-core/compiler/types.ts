@@ -12,7 +12,23 @@ export const ProtocolManifestSchema = z.object({
   inputSchema: SchemaIdentitySchema,
   outputSchema: SchemaIdentitySchema,
   traceSchema: SchemaIdentitySchema.optional(),
-  deterministic: z.boolean(),
+  execution: z.object({
+    concurrency: z.object({
+      safety: z.enum(['serialized', 'parallel-safe']),
+      maxInFlight: z.number().int().positive().optional(),
+    }).strict(),
+    cancellation: z.enum(['cooperative', 'best-effort', 'unsupported']),
+    state: z.object({
+      resourceLifecycle: z.enum(['per-invocation', 'per-run']),
+      trialState: z.enum(['stateless', 'isolated']),
+    }).strict(),
+    seedControl: z.enum(['unsupported', 'optional', 'required']),
+    determinism: z.enum(['deterministic', 'stochastic', 'unknown']),
+    telemetry: z.object({
+      trace: z.enum(['unsupported', 'optional', 'required']),
+      usage: z.enum(['unsupported', 'optional', 'required']),
+    }).strict(),
+  }).strict(),
 }).strict();
 
 export const ExecutorCapabilitiesSchema = z.object({

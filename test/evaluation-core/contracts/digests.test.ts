@@ -88,6 +88,7 @@ const definition: EvaluationDefinition = {
       repeatedMeasures: false,
       resamplingUnit: 'sample',
       estimatorId: 'bootstrap.mean-percentile/v1',
+      seedCoupling: 'independent-by-target',
     },
     scheduling: { schedulingKind: 'sequential' },
   },

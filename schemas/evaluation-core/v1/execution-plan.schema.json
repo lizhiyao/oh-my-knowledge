@@ -400,6 +400,13 @@
               ],
               "type": "string"
             },
+            "seedCoupling": {
+              "enum": [
+                "shared-within-block",
+                "independent-by-target"
+              ],
+              "type": "string"
+            },
             "stratumKey": {
               "$ref": "#/$defs/__schema10"
             }
@@ -408,7 +415,8 @@
             "experimentalUnit",
             "repeatedMeasures",
             "resamplingUnit",
-            "estimatorId"
+            "estimatorId",
+            "seedCoupling"
           ],
           "type": "object"
         },

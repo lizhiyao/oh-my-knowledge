@@ -25,13 +25,14 @@ function identity(
   implementationId: string,
   fingerprint: string,
   capabilities: RuntimeIdentity['capabilities'],
+  assuranceLevel: RuntimeIdentity['assuranceLevel'] = 'verified',
 ): RuntimeIdentity {
   return {
     implementationId,
     version: '1.0.0',
     fingerprint,
     fingerprintBasis: 'content-derived',
-    assuranceLevel: 'verified',
+    assuranceLevel,
     capabilities,
   };
 }
@@ -93,6 +94,7 @@ export function validDefinition(): EvaluationDefinition {
         repeatedMeasures: false,
         resamplingUnit: 'sample',
         estimatorId: 'bootstrap.mean-percentile/v1',
+        seedCoupling: 'independent-by-target',
       },
       scheduling: { schedulingKind: 'interleaved' },
     },
@@ -157,6 +159,10 @@ export function validPolicy(): MeasurementPolicy {
 interface RuntimeOptions {
   executorFingerprint?: string;
   deterministic?: boolean;
+  executorAssurance?: RuntimeIdentity['assuranceLevel'];
+  cancellation?: 'cooperative' | 'best-effort' | 'unsupported';
+  trialState?: 'stateless' | 'isolated';
+  traceCapability?: 'unsupported' | 'optional' | 'required';
   executorProtocols?: Array<'omk.invoke/v1' | 'omk.session/v1'>;
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   analysisValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
@@ -201,9 +207,29 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
               protocolId,
               inputSchema: schemaIdentity(`${protocolId}:input`),
               outputSchema: schemaIdentity(`${protocolId}:output`),
-              deterministic: options.deterministic ?? true,
+              ...((options.traceCapability ?? 'unsupported') !== 'unsupported'
+                ? { traceSchema: schemaIdentity(`${protocolId}:trace`) }
+                : {}),
+              execution: {
+                concurrency: { safety: 'parallel-safe' },
+                cancellation: options.cancellation ?? 'cooperative',
+                state: {
+                  resourceLifecycle: 'per-run',
+                  trialState: options.trialState
+                    ?? (protocolId === 'omk.session/v1' ? 'isolated' : 'stateless'),
+                },
+                seedControl: 'optional',
+                determinism: (options.deterministic ?? true)
+                  ? 'deterministic'
+                  : 'stochastic',
+                telemetry: {
+                  trace: options.traceCapability ?? 'unsupported',
+                  usage: 'optional',
+                },
+              },
             })),
           },
+          options.executorAssurance,
         )),
         satisfiesVersionConstraint: options.versionSatisfied ?? true,
       };

@@ -250,6 +250,20 @@ function validatePolicy(
   definition: EvaluationDefinition,
   policy: MeasurementPolicy,
 ): void {
+  const requiredExecutionSources = new Set(definition.evaluators.flatMap(
+    (evaluator) => evaluator.inputs.map((binding) => binding.sourceKind),
+  ));
+  for (const sourceKind of ['output', 'trace'] as const) {
+    const captureMode = policy.evidence[sourceKind];
+    if (requiredExecutionSources.has(sourceKind)
+        && (captureMode === 'digest' || captureMode === 'none')) {
+      throw definitionError(
+        'EVAL_DEFINITION_POLICY_INVALID',
+        `Evaluator 读取 ${sourceKind} 时，EvidencePolicy 必须保留 full 或 reference 内容。`,
+        { location: `evidence.${sourceKind}`, sourceKind },
+      );
+    }
+  }
   if (policy.failure.failureMode === 'failure-threshold') {
     if (policy.failure.maxFailures === undefined) {
       throw definitionError(
