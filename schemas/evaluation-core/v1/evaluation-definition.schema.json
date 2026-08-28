@@ -1,0 +1,657 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.evaluation-definition/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "datasetId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "samples": {
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "datasetId",
+        "samples"
+      ],
+      "type": "object"
+    },
+    "__schema10": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "higher-is-better",
+              "lower-is-better",
+              "target-is-best"
+            ],
+            "type": "string"
+          },
+          "metricId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "missingPolicyId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "scale": {
+            "additionalProperties": false,
+            "properties": {
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "target": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "scope": {
+            "enum": [
+              "sample",
+              "target",
+              "comparison",
+              "run"
+            ],
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/$defs/__schema7"
+          },
+          "valueType": {
+            "enum": [
+              "numeric",
+              "boolean",
+              "categorical",
+              "text",
+              "ranking"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "metricId",
+          "valueType",
+          "scope",
+          "missingPolicyId"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "estimatorId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "stratumKey": {
+              "$ref": "#/$defs/__schema9"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "estimatorId"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "sampling",
+        "scheduling"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "reducer",
+                    "type": "string"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema13"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema15"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "estimator",
+                    "type": "string"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema13"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema15"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "analysisNodeKind": {
+                    "const": "correction",
+                    "type": "string"
+                  },
+                  "implementationId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "inputs": {
+                    "$ref": "#/$defs/__schema13"
+                  },
+                  "nodeId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "outputResultId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "parameters": {
+                    "$ref": "#/$defs/__schema15"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "implementationId",
+                  "inputs",
+                  "outputResultId",
+                  "analysisNodeKind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "items": {
+        "$ref": "#/$defs/__schema14"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema14": {
+      "additionalProperties": false,
+      "properties": {
+        "inputKind": {
+          "enum": [
+            "metric-observations",
+            "analysis-result"
+          ],
+          "type": "string"
+        },
+        "referenceId": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "inputKind",
+        "referenceId"
+      ],
+      "type": "object"
+    },
+    "__schema15": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "__schema16": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisonId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "controlTargetId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "treatmentTargetIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparisonId",
+          "controlTargetId",
+          "treatmentTargetIds",
+          "metricIds"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisResultIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "decisionPolicyId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "minimumEvidenceStatus": {
+          "enum": [
+            "complete",
+            "partial",
+            "unresolvable"
+          ],
+          "type": "string"
+        },
+        "multipleComparisonPolicyId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "decisionPolicyId",
+        "implementationId",
+        "analysisResultIds",
+        "minimumEvidenceStatus"
+      ],
+      "type": "object"
+    },
+    "__schema18": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "schemaDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema19"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema19"
+      },
+      "type": "object"
+    },
+    "__schema19": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema2": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "evaluationContext": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "executionContext": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "expected": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "input": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "sampleId",
+        "input"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema5": {
+      "items": {
+        "$ref": "#/$defs/__schema6"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema6": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "executorId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "protocolId": {
+          "enum": [
+            "omk.invoke/v1",
+            "omk.session/v1"
+          ],
+          "type": "string"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "targetKind": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema7"
+        }
+      },
+      "required": [
+        "targetId",
+        "targetKind",
+        "protocolId",
+        "executorId"
+      ],
+      "type": "object"
+    },
+    "__schema7": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema8": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "evaluatorId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "evaluatorKind": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "implementationId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "inputs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "bindingId": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "pointer": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "sourceKind": {
+                  "enum": [
+                    "output",
+                    "trace",
+                    "expected",
+                    "evaluation-context"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bindingId",
+                "sourceKind",
+                "pointer"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "versionConstraint": {
+            "$ref": "#/$defs/__schema7"
+          }
+        },
+        "required": [
+          "evaluatorId",
+          "evaluatorKind",
+          "implementationId",
+          "metricIds",
+          "inputs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema9": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/evaluation-definition.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analysisGraph": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "comparisons": {
+      "$ref": "#/$defs/__schema16"
+    },
+    "dataset": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "decisionPolicy": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "evaluators": {
+      "$ref": "#/$defs/__schema8"
+    },
+    "experiment": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema18"
+    },
+    "metrics": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "targets": {
+      "$ref": "#/$defs/__schema5"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "dataset",
+    "targets",
+    "evaluators",
+    "metrics",
+    "experiment",
+    "analysisGraph",
+    "comparisons"
+  ],
+  "title": "OMK Evaluation Definition v1",
+  "type": "object"
+}

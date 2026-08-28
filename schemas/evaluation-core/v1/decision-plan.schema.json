@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.decision-plan/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema2": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisonId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "controlTargetId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "treatmentTargetIds": {
+            "items": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparisonId",
+          "controlTargetId",
+          "treatmentTargetIds",
+          "metricIds"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema3": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisResultIds": {
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "decisionPolicyId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "minimumEvidenceStatus": {
+          "enum": [
+            "complete",
+            "partial",
+            "unresolvable"
+          ],
+          "type": "string"
+        },
+        "multipleComparisonPolicyId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "decisionPolicyId",
+        "implementationId",
+        "analysisResultIds",
+        "minimumEvidenceStatus"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema6": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema7"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema7"
+      },
+      "type": "object"
+    },
+    "__schema7": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/decision-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analysisPlanDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "comparisons": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "decisionPlanDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "decisionPolicy": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "analysisPlanDigest",
+    "comparisons",
+    "decisionPlanDigest"
+  ],
+  "title": "OMK Decision Plan v1",
+  "type": "object"
+}

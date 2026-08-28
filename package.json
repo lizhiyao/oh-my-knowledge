@@ -29,9 +29,12 @@
   },
   "scripts": {
     "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
-    "build": "run-s build:src build:scripts build:assets",
+    "build": "run-s build:src build:scripts schemas:check build:assets",
     "build:src": "tsc -p tsconfig.build.json",
     "build:scripts": "tsc -p tsconfig.scripts.json",
+    "build:schemas": "run-s build:src schemas:write",
+    "schemas:write": "node scripts/build-evaluation-core-schemas.mjs --write",
+    "schemas:check": "node scripts/build-evaluation-core-schemas.mjs --check",
     "build:assets": "node scripts/copy-assets.cjs",
     "build:docs": "node dist-scripts/build-docs.js --write",
     "build:docs:check": "node dist-scripts/build-docs.js --check",

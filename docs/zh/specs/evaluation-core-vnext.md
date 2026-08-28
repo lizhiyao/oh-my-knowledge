@@ -1,6 +1,6 @@
 # Evaluation Core vNext RFC
 
-> **状态**：Draft。关联 [#425](https://github.com/lizhiyao/oh-my-knowledge/issues/425)，并作为 [#424](https://github.com/lizhiyao/oh-my-knowledge/issues/424) 的架构前置。本文定义全新 Evaluation Core 的领域边界和测量契约，不兼容现有 `runEvaluation`、文件型 Sample 或 Report JSON schema。旧实现只作为算法与失败案例的参考。
+> **状态**：已由 [#426](https://github.com/lizhiyao/oh-my-knowledge/pull/426) 接受。关联 [#425](https://github.com/lizhiyao/oh-my-knowledge/issues/425)，并作为 [#424](https://github.com/lizhiyao/oh-my-knowledge/issues/424) 的架构前置。本文定义全新 Evaluation Core 的领域边界和测量契约，不兼容现有 `runEvaluation`、文件型 Sample 或 Report JSON schema。旧实现只作为算法与失败案例的参考。
 
 ## 一、摘要
 
@@ -536,7 +536,27 @@ const result = await run.result;
 
 这些决定关闭 Contracts 开工前的架构选择；实现阶段仍需用 conformance 和 simulation 验证默认常量与算法正确性。
 
-## 十七、行业参考
+## 十七、Contracts v1 实现基线
+
+第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入历史 `src/eval-core/`、CLI、executor、grading、renderer 或 server 层。
+
+Catalog 当前在 `schemas/evaluation-core/v1/` 发布十二个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
+
+Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
+
+Digest 边界是可执行契约：
+
+| Identity | 包含 | 排除 |
+|---|---|---|
+| `datasetRevisionDigest` | 完整 Dataset | 无 |
+| `executionInputDigest` | `sampleId`、`input`、`executionContext` | Gold、evaluator context、annotations |
+| `evaluationInputDigest` | execution projection、`expected`、`evaluationContext` | annotations |
+| 各阶段 Plan digest | 前序阶段 identity、当前阶段定义、实际解析的 Runtime identity、相关 sealed policy | 后续阶段 policy、审计 annotations |
+| `runContractDigest` | 全部阶段 Plan digest、schema identity、EventDeliveryPolicy | Report annotations、仅 observer 使用的选项 |
+
+所有 digest 都是 RFC 8785 canonical UTF-8 bytes 的完整小写 `sha256:<hex>`。它只证明内容身份。Provenance trust、fingerprint basis 与 assurance level 保持独立字段；v1 不实现签名。
+
+## 十八、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；

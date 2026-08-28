@@ -1,0 +1,299 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.evaluation-report/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema10": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "facets": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "parentDigests": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "type": "array"
+        },
+        "provenanceKind": {
+          "enum": [
+            "native",
+            "imported",
+            "replay",
+            "derived"
+          ],
+          "type": "string"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "trust": {
+          "enum": [
+            "verified",
+            "declared",
+            "untrusted",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenanceKind",
+        "trust",
+        "parentDigests"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema9"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema6"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema6"
+      },
+      "type": "object"
+    },
+    "__schema2": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "conclusionStatus": {
+          "enum": [
+            "conclusive",
+            "inconclusive",
+            "not-evaluated"
+          ],
+          "type": "string"
+        },
+        "evidenceStatus": {
+          "enum": [
+            "complete",
+            "partial",
+            "unresolvable"
+          ],
+          "type": "string"
+        },
+        "runStatus": {
+          "enum": [
+            "completed",
+            "cancelled",
+            "budget-exhausted",
+            "failed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "runStatus",
+        "evidenceStatus",
+        "conclusionStatus"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bundleDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "bundleKind": {
+            "enum": [
+              "execution",
+              "evaluation",
+              "analysis"
+            ],
+            "type": "string"
+          },
+          "schemaVersion": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "uri": {
+            "$ref": "#/$defs/__schema6"
+          }
+        },
+        "required": [
+          "bundleKind",
+          "schemaVersion",
+          "bundleDigest"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema5": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema6": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema7": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "analysisResultIds": {
+              "items": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "decisionStatus": {
+              "const": "decided",
+              "type": "string"
+            },
+            "policyDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "verdict": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "required": [
+            "decisionStatus",
+            "verdict",
+            "policyDigest",
+            "analysisResultIds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "decisionStatus": {
+              "const": "not-decided",
+              "type": "string"
+            },
+            "reasonCodes": {
+              "items": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "decisionStatus",
+            "reasonCodes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema8": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema9": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema9"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema9"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/evaluation-report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "annotations": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "bundles": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "decision": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "provenance": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "reportDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "reportId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "runContractDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "status": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "summaries": {
+      "$ref": "#/$defs/__schema8"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "reportId",
+    "runContractDigest",
+    "status",
+    "bundles",
+    "provenance",
+    "reportDigest"
+  ],
+  "title": "OMK Evaluation Report v1",
+  "type": "object"
+}
