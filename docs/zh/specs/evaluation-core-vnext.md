@@ -277,7 +277,7 @@ interface MeasurementPolicy {
 - execution、cache／replay provenance；
 - 父 Plan digest 和 Bundle digest。
 
-started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。
+started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。预算也可能在最后一个已启动 trial 内耗尽，例如 retry 无法获准或 provider cost 只能在完成后得知；此时合法的 budget-exhausted Bundle 不需要伪造一个 censored coordinate。
 
 `parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、调用预算和 paired-block 原子删失；不能信任 Bundle 自报的 block 或 coverage。
 
@@ -385,6 +385,12 @@ Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped resource handle 
 
 取消统一使用 AbortSignal。用户取消产生诚实的部分 Bundle；timeout 和 budget 因为影响缺失机制，属于 sealed MeasurementPolicy。Core 不提供跨进程 resume；宿主可以从完整 ExecutionBundle 启动新的 Evaluation 阶段。
 
+Execution runtime 是 sealed RunPlan 的纯内存解释器。`startExecution()` 在暴露 Run 前同步检查所需端口和 Executor Runtime identity 是否与 Plan 完全一致。坐标只从 Plan 派生；randomized admission 只使用 sealed root seed；全局与每个 Executor 的 semaphore 均归当前 Run 所有。paired scheduling block 在 admission 时原子预留首次真实调用；cache hit 不消耗调用预算，每次 retry 则单独消耗。
+
+timeout 采用协作式取消：Core abort attempt signal 后仍等待 Executor promise settle，避免遗留晚到 promise；即使 Executor 在观察到 abort 后返回成功，也只记录一次 timeout terminal fact。外部取消遵循同样的单终态规则。`maxDurationMs` 是基于 monotonic clock 的软 admission deadline：已经获准的工作继续 settle，后续 block 才进入删失。provider cost 上限只使用供应商报告的可审计事实；已获准 batch 可能 overshoot，此后停止新 block admission，但不会回写或删除已经发生的 usage。
+
+Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
+
 ## 九、Event 语义
 
 `run.events` 是有界的热通知流：
@@ -393,10 +399,10 @@ Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped resource handle 
 - 每个 Run 只允许一个 AsyncIterable 消费者；多路 fan-out 由宿主完成；
 - Run 创建时即开始写入内存 journal，默认最多保留 256 条；晚订阅者先收到仍保留的历史事件，再进入实时流；Run 结束后仍可订阅一次并排空 journal；
 - 宿主可以在 start observer options 中调整容量；它不进入测量 digest，因为事件拥塞不能改变 Bundle 或结论；
-- 缓冲满时先按 subject 合并尚未消费的 `progress.updated`，仍超限则丢弃最旧的 observer event，并插入 `observer.events-dropped`，记录数量和 sequence 范围；terminal event 永远保留；
+- 缓冲满时丢弃最旧的 retained notification；terminal event 最后追加，因此始终保留在最终窗口中；
 - observation、Bundle 和 terminal data 不得只存在于事件中；
 - 每个 Event 带 schemaVersion、eventId、runId、单 Run 单调 sequence、eventKind、time、subject 和 data；
-- 需要无损持久化时使用 EventWriter，其失败策略在 sealed EventDeliveryPolicy 中声明。
+- 需要无损持久化时使用 EventWriter。v1 只支持 blocking backpressure；是否启用 writer 及失败策略由 sealed EventDeliveryPolicy 决定。required writer 失败会停止后续 admission，并改变权威 Bundle 的 terminal state；即使失败发生在最初 completed terminal event 的投递阶段也是如此。
 
 Event 可以在 adapter 层无损映射到 CloudEvents。Trace 可以映射到 OpenTelemetry／OpenInference，并可接收 W3C Trace Context；Core 不依赖这些 SDK。
 

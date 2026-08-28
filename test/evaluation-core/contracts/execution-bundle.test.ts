@@ -318,6 +318,14 @@ describe('ExecutionBundle contract', () => {
     );
   });
 
+  it('allows budget exhaustion during the final started trial without synthetic censoring', () => {
+    const bundle = finalizeBundle({
+      executionBundleStatus: 'budget-exhausted',
+      terminationReasonCode: 'provider-cost-budget-exhausted',
+    });
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
+  });
+
   it('rejects coverage and terminal-state contradictions', () => {
     const bundle = finalizeBundle({
       coverage: {

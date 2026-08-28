@@ -130,6 +130,42 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('treats overlapping paired comparisons as one atomic scheduling group', async () => {
+    const definition = validDefinition();
+    definition.targets.push({
+      ...structuredClone(definition.targets[1]),
+      targetId: 'treatment-b',
+    });
+    definition.comparisons.push({
+      comparisonId: 'treatment-vs-treatment-b',
+      controlTargetId: 'treatment',
+      treatmentTargetIds: ['treatment-b'],
+      metricIds: ['correct'],
+    });
+    definition.experiment.sampling.pairingKey = '/input/cohort';
+    definition.experiment.sampling.resamplingUnit = 'paired-block';
+    definition.experiment.scheduling = {
+      schedulingKind: 'randomized-block',
+      blockSize: 2,
+    };
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_POLICY_INVALID',
+      testRuntime({ samplingResamplingUnits: ['paired-block'] }),
+    );
+
+    definition.experiment.scheduling = { schedulingKind: 'interleaved' };
+    const policy = validPolicy();
+    policy.budget.maxTargetInvocations = 2;
+    await expectCode(
+      definition,
+      policy,
+      'EVAL_DEFINITION_POLICY_INVALID',
+      testRuntime({ samplingResamplingUnits: ['paired-block'] }),
+    );
+  });
+
   it('rejects unsupported protocol, deterministic cache, and evaluator capabilities', async () => {
     const protocol = validDefinition();
     protocol.targets[0].protocolId = 'omk.session/v1';
