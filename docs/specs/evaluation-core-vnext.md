@@ -257,7 +257,7 @@ interface MeasurementPolicy {
 }
 ```
 
-Every option that can change output, missingness, scheduling, evidence completeness, or conclusions belongs to MeasurementPolicy and enters the RunPlan and relevant digest during prepare. `start()` accepts only an external AbortSignal, annotations, and EventWriter and cannot override measurement policy.
+Every option that can change output, missingness, scheduling, evidence completeness, or conclusions belongs to MeasurementPolicy and enters the RunPlan and relevant digest during prepare. `start()` accepts only an external AbortSignal, annotations, EventWriter, and observer options that cannot affect measurement results; it cannot override measurement policy.
 
 ### 6.2 ExecutionBundle
 

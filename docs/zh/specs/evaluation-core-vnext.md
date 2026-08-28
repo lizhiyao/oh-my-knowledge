@@ -257,7 +257,7 @@ interface MeasurementPolicy {
 }
 ```
 
-所有可能改变输出、缺失、调度、证据完整度或结论的配置都属于 MeasurementPolicy，并在 prepare 时进入 RunPlan 和对应 digest。`start()` 只能接收外部 `AbortSignal`、annotations 和 EventWriter，不能覆盖测量策略。
+所有可能改变输出、缺失、调度、证据完整度或结论的配置都属于 MeasurementPolicy，并在 prepare 时进入 RunPlan 和对应 digest。`start()` 只能接收外部 `AbortSignal`、annotations、EventWriter 和不影响测量结果的 observer options，不能覆盖测量策略。
 
 ### 2．ExecutionBundle
 
