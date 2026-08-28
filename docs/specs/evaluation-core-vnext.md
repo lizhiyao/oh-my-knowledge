@@ -1,6 +1,6 @@
 # Evaluation Core vNext RFC
 
-> **Status**: Draft. Tracks [#425](https://github.com/lizhiyao/oh-my-knowledge/issues/425) and is the architecture prerequisite for [#424](https://github.com/lizhiyao/oh-my-knowledge/issues/424). This RFC defines a new Evaluation Core domain and measurement contract. It is intentionally incompatible with the current `runEvaluation`, file-based Sample, and Report JSON schema. The old pipeline is evidence for algorithms and failure modes, not a compatibility target.
+> **Status**: Accepted by [#426](https://github.com/lizhiyao/oh-my-knowledge/pull/426). Tracks [#425](https://github.com/lizhiyao/oh-my-knowledge/issues/425) and is the architecture prerequisite for [#424](https://github.com/lizhiyao/oh-my-knowledge/issues/424). This RFC defines a new Evaluation Core domain and measurement contract. It is intentionally incompatible with the current `runEvaluation`, file-based Sample, and Report JSON schema. The old pipeline is evidence for algorithms and failure modes, not a compatibility target.
 
 ## 1. Summary
 
@@ -536,7 +536,27 @@ This review closes five blocking questions:
 
 These decisions close the architectural choices required before Contracts. Conformance tests and simulations must still validate implementation constants and algorithms.
 
-## 17. Industry references
+## 17. Contracts v1 implementation baseline
+
+The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/evaluation-core/contracts/`; it does not import the historical `src/eval-core/`, CLI, executor, grading, renderer, or server layers.
+
+The catalog currently publishes twelve JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, Event, three Bundles, and EvaluationReport. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
+
+Wire entry points use `parseWireDocument()` rather than a bare schema parse. It first rejects values that cannot be represented as I-JSON or JCS input, including non-finite numbers, functions, symbols, cycles, sparse arrays, accessor properties, class instances, and unpaired Unicode surrogates, and then applies the Zod schema. Hosts accepting raw JSON text must additionally reject duplicate property names before constructing a JavaScript value because duplicates are no longer observable after ordinary `JSON.parse()`.
+
+Digest boundaries are executable contracts:
+
+| Identity | Includes | Excludes |
+|---|---|---|
+| `datasetRevisionDigest` | complete Dataset | nothing |
+| `executionInputDigest` | `sampleId`, `input`, `executionContext` | Gold, evaluator context, annotations |
+| `evaluationInputDigest` | execution projection, `expected`, `evaluationContext` | annotations |
+| stage Plan digests | previous-stage identity plus stage definitions, resolved Runtime identities, and relevant sealed policy | later-stage policy and audit annotations |
+| `runContractDigest` | all stage Plan digests, schema identities, and EventDeliveryPolicy | Report annotations and observer-only options |
+
+Every digest is the full lowercase `sha256:<hex>` of RFC 8785 canonical UTF-8 bytes. It proves content identity only. Provenance trust, fingerprint basis, and assurance level remain separate fields, and v1 does not implement signing.
+
+## 18. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)

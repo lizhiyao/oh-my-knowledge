@@ -33,6 +33,46 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   {
+    from: 'evaluation-core/',
+    to: 'eval-core/',
+    reason: 'Evaluation Core vNext 必须与旧 eval-core pipeline 物理隔离，旧实现只作为算法与失败案例参考。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'eval-workflows/',
+    reason: 'Evaluation Core vNext 是宿主无关内核，不依赖旧 workflow 装配层。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'types/',
+    reason: 'Evaluation Core vNext 拥有独立 wire contracts，不复用历史 public schema 或领域 DTO。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'cli/',
+    reason: 'Evaluation Core vNext 不得依赖 CLI、配置或命令装配。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'executors/',
+    reason: 'Contracts 只描述 Runtime identity 与 capability，不依赖具体 executor 实现。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'grading/',
+    reason: 'Evaluation Core vNext 的 Evaluator／Metric 契约不复用旧 grading pipeline。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'server/',
+    reason: 'Evaluation Core vNext 不依赖持久化、HTTP 或 Studio host。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'renderer/',
+    reason: 'Bundle 是事实契约，Report renderer 属于宿主物化视图。',
+  },
+  {
     from: 'types/',
     to: 'eval-core/',
     reason: 'types/ 是底层契约层,不应反向 import 业务实现 (eval-core)。DTO 应该下沉到 types/。',

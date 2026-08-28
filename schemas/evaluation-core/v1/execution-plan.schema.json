@@ -1,0 +1,499 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.execution-plan/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema10": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    },
+    "__schema11": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "assuranceLevel": {
+                "enum": [
+                  "verified",
+                  "declared",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "capabilities": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "fingerprint": {
+                "$ref": "#/$defs/__schema8"
+              },
+              "fingerprintBasis": {
+                "enum": [
+                  "content-derived",
+                  "environment-derived",
+                  "self-reported",
+                  "opaque"
+                ],
+                "type": "string"
+              },
+              "implementationId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "provenanceFacets": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "version": {
+                "$ref": "#/$defs/__schema8"
+              }
+            },
+            "required": [
+              "implementationId",
+              "fingerprint",
+              "fingerprintBasis",
+              "assuranceLevel",
+              "capabilities"
+            ],
+            "type": "object"
+          },
+          "referenceId": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "runtimeKind": {
+            "enum": [
+              "executor",
+              "evaluator",
+              "analysis"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeKind",
+          "referenceId",
+          "identity"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "additionalProperties": false,
+          "properties": {
+            "maxDurationMs": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxProviderCost": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "currency": {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "type": "object"
+            },
+            "maxTargetInvocations": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "execution": {
+          "additionalProperties": false,
+          "properties": {
+            "maxConcurrency": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "timeoutMs": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maxConcurrency"
+          ],
+          "type": "object"
+        },
+        "executionCacheMode": {
+          "enum": [
+            "disabled",
+            "replay-only",
+            "transparent-deterministic"
+          ],
+          "type": "string"
+        },
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "failureMode": {
+              "enum": [
+                "continue",
+                "fail-fast",
+                "failure-threshold"
+              ],
+              "type": "string"
+            },
+            "maxFailures": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "failureMode"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "additionalProperties": false,
+          "properties": {
+            "backoff": {
+              "additionalProperties": false,
+              "properties": {
+                "backoffKind": {
+                  "enum": [
+                    "none",
+                    "fixed",
+                    "exponential"
+                  ],
+                  "type": "string"
+                },
+                "initialDelayMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxDelayMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "backoffKind",
+                "initialDelayMs"
+              ],
+              "type": "object"
+            },
+            "maxAttempts": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "retryableErrorCodes": {
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "maxAttempts",
+            "retryableErrorCodes",
+            "backoff"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "execution",
+        "retry",
+        "budget",
+        "executionCacheMode",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema14"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema14"
+      },
+      "type": "object"
+    },
+    "__schema14": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema2": {
+      "items": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "executionContext": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "input": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "sampleId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "sampleId",
+        "input"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema6": {
+      "items": {
+        "$ref": "#/$defs/__schema7"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema7": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "executorId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "protocolId": {
+          "enum": [
+            "omk.invoke/v1",
+            "omk.session/v1"
+          ],
+          "type": "string"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetKind": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema8"
+        }
+      },
+      "required": [
+        "targetId",
+        "targetKind",
+        "protocolId",
+        "executorId"
+      ],
+      "type": "object"
+    },
+    "__schema8": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema9": {
+      "additionalProperties": false,
+      "properties": {
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "estimatorId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "stratumKey": {
+              "$ref": "#/$defs/__schema10"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "estimatorId"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "sampling",
+        "scheduling"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/execution-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "executionInputDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "executionPlanDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "experiment": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema13"
+    },
+    "policy": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "runtimes": {
+      "$ref": "#/$defs/__schema11"
+    },
+    "samples": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "targets": {
+      "$ref": "#/$defs/__schema6"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "executionInputDigest",
+    "samples",
+    "targets",
+    "experiment",
+    "runtimes",
+    "policy",
+    "executionPlanDigest"
+  ],
+  "title": "OMK Execution Plan v1",
+  "type": "object"
+}

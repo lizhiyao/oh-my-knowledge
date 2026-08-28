@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.evaluation-event/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema2": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "__schema3": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "subjectId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "subjectKind": {
+          "$ref": "#/$defs/__schema1"
+        }
+      },
+      "required": [
+        "subjectKind",
+        "subjectId"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema6": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "schemaDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema7"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema7"
+      },
+      "type": "object"
+    },
+    "__schema7": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/evaluation-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "eventId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "eventKind": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "runId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "sequence": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "subject": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "time": {
+      "$ref": "#/$defs/__schema3"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "sequence",
+    "runId",
+    "eventKind",
+    "time",
+    "subject",
+    "data"
+  ],
+  "title": "OMK Evaluation Event v1",
+  "type": "object"
+}

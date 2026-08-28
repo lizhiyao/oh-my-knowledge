@@ -1,0 +1,345 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.analysis-bundle/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema10": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema2": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema3": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisMode": {
+            "enum": [
+              "preregistered",
+              "exploratory"
+            ],
+            "type": "string"
+          },
+          "derivedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+            "type": "string"
+          },
+          "implementation": {
+            "additionalProperties": false,
+            "properties": {
+              "assuranceLevel": {
+                "enum": [
+                  "verified",
+                  "declared",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "capabilities": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "fingerprint": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "fingerprintBasis": {
+                "enum": [
+                  "content-derived",
+                  "environment-derived",
+                  "self-reported",
+                  "opaque"
+                ],
+                "type": "string"
+              },
+              "implementationId": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "provenanceFacets": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "version": {
+                "$ref": "#/$defs/__schema5"
+              }
+            },
+            "required": [
+              "implementationId",
+              "fingerprint",
+              "fingerprintBasis",
+              "assuranceLevel",
+              "capabilities"
+            ],
+            "type": "object"
+          },
+          "nodeId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "parentDigests": {
+            "items": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "resultId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "resultType": {
+            "enum": [
+              "scalar",
+              "interval",
+              "distribution",
+              "table",
+              "matrix",
+              "curve"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/__schema4"
+          }
+        },
+        "required": [
+          "resultId",
+          "nodeId",
+          "resultType",
+          "value",
+          "implementation",
+          "parentDigests",
+          "analysisMode",
+          "derivedAt"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema4": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema5": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema6": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptionId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "checkStatus": {
+            "enum": [
+              "passed",
+              "failed",
+              "not-evaluated"
+            ],
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "message": {
+            "$ref": "#/$defs/__schema5"
+          }
+        },
+        "required": [
+          "assumptionId",
+          "checkStatus"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema7": {
+      "additionalProperties": false,
+      "properties": {
+        "censored": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "comparable": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "completed": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missing": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "started": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "started",
+        "completed",
+        "comparable",
+        "censored",
+        "missing"
+      ],
+      "type": "object"
+    },
+    "__schema8": {
+      "additionalProperties": false,
+      "properties": {
+        "facets": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "parentDigests": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "type": "array"
+        },
+        "provenanceKind": {
+          "enum": [
+            "native",
+            "imported",
+            "replay",
+            "derived"
+          ],
+          "type": "string"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "trust": {
+          "enum": [
+            "verified",
+            "declared",
+            "untrusted",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenanceKind",
+        "trust",
+        "parentDigests"
+      ],
+      "type": "object"
+    },
+    "__schema9": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema10"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema10"
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/analysis-bundle.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analysisPlanDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "assumptionChecks": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "bundleDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "bundleId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "coverage": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "evaluationBundleDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "provenance": {
+      "$ref": "#/$defs/__schema8"
+    },
+    "results": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "runContractDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "bundleId",
+    "runContractDigest",
+    "evaluationBundleDigest",
+    "analysisPlanDigest",
+    "results",
+    "assumptionChecks",
+    "coverage",
+    "provenance",
+    "bundleDigest"
+  ],
+  "title": "OMK Analysis Bundle v1",
+  "type": "object"
+}

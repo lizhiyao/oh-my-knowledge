@@ -1,0 +1,154 @@
+import { z } from 'zod';
+import {
+  ExtensionsSchema,
+  IdentifierSchema,
+  RuntimeIdentitySchema,
+  SchemaIdentitySchema,
+  Sha256DigestSchema,
+} from './common.js';
+import {
+  AnalysisGraphDefinitionSchema,
+  BudgetPolicySchema,
+  CachePolicySchema,
+  ComparisonDefinitionSchema,
+  DecisionPolicyDefinitionSchema,
+  EvidencePolicySchema,
+  EvaluationDefinitionSchema,
+  EvaluationSampleSchema,
+  EvaluatorDefinitionSchema,
+  ExperimentDesignSchema,
+  ExecutionPolicySchema,
+  FailurePolicySchema,
+  MeasurementPolicySchema,
+  MetricDefinitionSchema,
+  RetryPolicySchema,
+  TargetDefinitionSchema,
+} from './definition.js';
+
+export const EXECUTION_PLAN_SCHEMA_VERSION = 'omk.execution-plan/v1' as const;
+export const EVALUATION_PLAN_SCHEMA_VERSION = 'omk.evaluation-plan/v1' as const;
+export const ANALYSIS_PLAN_SCHEMA_VERSION = 'omk.analysis-plan/v1' as const;
+export const DECISION_PLAN_SCHEMA_VERSION = 'omk.decision-plan/v1' as const;
+export const RUN_PLAN_SCHEMA_VERSION = 'omk.run-plan/v1' as const;
+
+export const ExecutionInputSampleSchema = EvaluationSampleSchema.pick({
+  sampleId: true,
+  input: true,
+  executionContext: true,
+}).strict();
+
+export const EvaluationInputSampleSchema = EvaluationSampleSchema.pick({
+  sampleId: true,
+  input: true,
+  executionContext: true,
+  expected: true,
+  evaluationContext: true,
+}).strict();
+
+export const ResolvedRuntimeSchema = z.object({
+  runtimeKind: z.enum(['executor', 'evaluator', 'analysis']),
+  referenceId: IdentifierSchema,
+  identity: RuntimeIdentitySchema,
+}).strict();
+
+export const ExecutionPlanPolicySchema = z.object({
+  execution: ExecutionPolicySchema,
+  retry: RetryPolicySchema,
+  budget: BudgetPolicySchema,
+  executionCacheMode: CachePolicySchema.shape.executionMode,
+  failure: FailurePolicySchema,
+}).strict();
+
+export const EvaluationPlanPolicySchema = z.object({
+  evaluationCacheMode: CachePolicySchema.shape.evaluationMode,
+  evidence: EvidencePolicySchema,
+  failure: FailurePolicySchema,
+}).strict();
+
+export const ExecutionPlanSchema = z.object({
+  schemaVersion: z.literal(EXECUTION_PLAN_SCHEMA_VERSION),
+  executionInputDigest: Sha256DigestSchema,
+  samples: z.array(ExecutionInputSampleSchema).min(1),
+  targets: z.array(TargetDefinitionSchema).min(1),
+  experiment: ExperimentDesignSchema,
+  runtimes: z.array(ResolvedRuntimeSchema),
+  policy: ExecutionPlanPolicySchema,
+  executionPlanDigest: Sha256DigestSchema,
+  extensions: ExtensionsSchema.optional(),
+}).strict().meta({
+  title: 'OMK Execution Plan v1',
+});
+
+export const EvaluationPlanSchema = z.object({
+  schemaVersion: z.literal(EVALUATION_PLAN_SCHEMA_VERSION),
+  executionPlanDigest: Sha256DigestSchema,
+  evaluationInputDigest: Sha256DigestSchema,
+  samples: z.array(EvaluationInputSampleSchema).min(1),
+  evaluators: z.array(EvaluatorDefinitionSchema),
+  metrics: z.array(MetricDefinitionSchema),
+  runtimes: z.array(ResolvedRuntimeSchema),
+  policy: EvaluationPlanPolicySchema,
+  evaluationPlanDigest: Sha256DigestSchema,
+  extensions: ExtensionsSchema.optional(),
+}).strict().meta({
+  title: 'OMK Evaluation Plan v1',
+});
+
+export const AnalysisPlanSchema = z.object({
+  schemaVersion: z.literal(ANALYSIS_PLAN_SCHEMA_VERSION),
+  evaluationPlanDigest: Sha256DigestSchema,
+  analysisGraph: AnalysisGraphDefinitionSchema,
+  sampling: ExperimentDesignSchema.shape.sampling,
+  runtimes: z.array(ResolvedRuntimeSchema),
+  analysisPlanDigest: Sha256DigestSchema,
+  extensions: ExtensionsSchema.optional(),
+}).strict().meta({
+  title: 'OMK Analysis Plan v1',
+});
+
+export const DecisionPlanSchema = z.object({
+  schemaVersion: z.literal(DECISION_PLAN_SCHEMA_VERSION),
+  analysisPlanDigest: Sha256DigestSchema,
+  comparisons: z.array(ComparisonDefinitionSchema),
+  decisionPolicy: DecisionPolicyDefinitionSchema.optional(),
+  decisionPlanDigest: Sha256DigestSchema,
+  extensions: ExtensionsSchema.optional(),
+}).strict().meta({
+  title: 'OMK Decision Plan v1',
+});
+
+export const PlanDigestsSchema = z.object({
+  datasetRevisionDigest: Sha256DigestSchema,
+  executionInputDigest: Sha256DigestSchema,
+  evaluationInputDigest: Sha256DigestSchema,
+  executionPlanDigest: Sha256DigestSchema,
+  evaluationPlanDigest: Sha256DigestSchema,
+  analysisPlanDigest: Sha256DigestSchema,
+  decisionPlanDigest: Sha256DigestSchema,
+  runContractDigest: Sha256DigestSchema,
+}).strict();
+
+export const RunPlanSchema = z.object({
+  schemaVersion: z.literal(RUN_PLAN_SCHEMA_VERSION),
+  definition: EvaluationDefinitionSchema,
+  measurementPolicy: MeasurementPolicySchema,
+  execution: ExecutionPlanSchema,
+  evaluation: EvaluationPlanSchema,
+  analysis: AnalysisPlanSchema,
+  decision: DecisionPlanSchema,
+  schemaIdentities: z.array(SchemaIdentitySchema).min(1),
+  digests: PlanDigestsSchema,
+  extensions: ExtensionsSchema.optional(),
+}).strict().meta({
+  title: 'OMK Run Plan v1',
+});
+
+export type ExecutionInputSample = z.infer<typeof ExecutionInputSampleSchema>;
+export type EvaluationInputSample = z.infer<typeof EvaluationInputSampleSchema>;
+export type ResolvedRuntime = z.infer<typeof ResolvedRuntimeSchema>;
+export type ExecutionPlan = z.infer<typeof ExecutionPlanSchema>;
+export type EvaluationPlan = z.infer<typeof EvaluationPlanSchema>;
+export type AnalysisPlan = z.infer<typeof AnalysisPlanSchema>;
+export type DecisionPlan = z.infer<typeof DecisionPlanSchema>;
+export type PlanDigests = z.infer<typeof PlanDigestsSchema>;
+export type RunPlan = z.infer<typeof RunPlanSchema>;
