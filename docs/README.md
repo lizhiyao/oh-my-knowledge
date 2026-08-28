@@ -36,6 +36,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 
 ## I want to contribute / read design specs
 
+- [Evaluation Core vNext RFC](./specs/evaluation-core-vnext.md)
 - [Sample design spec](./specs/sample-design-spec.md)
 - [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics spec](./specs/rag-metrics-spec.md)
