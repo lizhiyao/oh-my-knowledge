@@ -1,6 +1,9 @@
+import { z } from 'zod';
 import {
+  canonicalizeJson,
   digestCanonicalJson,
-  type AnalysisOutputSchemaValidator,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
@@ -22,69 +25,88 @@ import type {
   DecisionPolicyOutput,
 } from './types.js';
 
-const SCALAR_SCHEMA: JsonValue = {
-  type: 'number',
-};
+const FiniteNumberSchema = z.number().finite();
+const ProbabilitySchema = FiniteNumberSchema.min(0).max(1);
+const StrictEmptyParametersSchema = z.object({}).strict();
+const QuantileParametersSchema = z.object({
+  probability: ProbabilitySchema.default(0.5),
+}).strict();
+const BootstrapParametersSchema = z.object({
+  resamples: z.number().int().positive().safe().default(1_000),
+  alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
+}).strict();
+const BonferroniParametersSchema = z.object({
+  alpha: FiniteNumberSchema.gt(0).lt(1).default(0.05),
+}).strict();
+const ProgressParametersSchema = z.object({
+  threshold: FiniteNumberSchema.default(0),
+  equivalence: FiniteNumberSchema.nonnegative().default(0),
+}).strict();
 
-const INTERVAL_SCHEMA: JsonValue = {
-  type: 'object',
-  required: ['estimate', 'lower', 'upper', 'confidenceLevel', 'resamples', 'unitCount', 'method'],
-  properties: {
-    estimate: { type: 'number' },
-    lower: { type: 'number' },
-    upper: { type: 'number' },
-    confidenceLevel: { type: 'number' },
-    resamples: { type: 'integer' },
-    unitCount: { type: 'integer' },
-    method: { const: 'percentile' },
-  },
-  additionalProperties: false,
-};
+const ScalarEnvelopeSchema = z.object({
+  resultType: z.literal('scalar'),
+  value: FiniteNumberSchema,
+}).strict();
+const IntervalEnvelopeSchema = z.object({
+  resultType: z.literal('interval'),
+  value: z.object({
+    estimate: FiniteNumberSchema,
+    lower: FiniteNumberSchema,
+    upper: FiniteNumberSchema,
+    confidenceLevel: FiniteNumberSchema.gt(0).lt(1),
+    resamples: z.number().int().positive().safe(),
+    unitCount: z.number().int().positive().safe(),
+    method: z.literal('percentile'),
+  }).strict(),
+}).strict();
+const HypothesisInputEnvelopeSchema = z.object({
+  resultType: z.literal('table'),
+  value: z.object({
+    hypotheses: z.array(z.object({
+      hypothesisId: z.string().min(1),
+      pValue: ProbabilitySchema,
+    }).strict()).min(1),
+  }).strict(),
+}).strict();
+const HypothesisTableEnvelopeSchema = z.object({
+  resultType: z.literal('table'),
+  value: z.object({
+    familySize: z.number().int().positive().safe(),
+    alpha: FiniteNumberSchema.gt(0).lt(1),
+    hypotheses: z.array(z.object({
+      hypothesisId: z.string().min(1),
+      rawPValue: ProbabilitySchema,
+      adjustedPValue: ProbabilitySchema,
+      rejected: z.boolean(),
+    }).strict()).min(1),
+  }).strict(),
+}).strict().superRefine((envelope, context) => {
+  const { familySize, alpha, hypotheses } = envelope.value;
+  if (familySize !== hypotheses.length) {
+    context.addIssue({ code: 'custom', path: ['value', 'familySize'], message: 'familySize mismatch' });
+  }
+  const ids = hypotheses.map((entry) => entry.hypothesisId);
+  if (new Set(ids).size !== ids.length || canonicalizeJson(ids) !== canonicalizeJson([...ids].sort())) {
+    context.addIssue({ code: 'custom', path: ['value', 'hypotheses'], message: 'IDs must be unique and canonical' });
+  }
+  for (const [index, entry] of hypotheses.entries()) {
+    if (entry.adjustedPValue !== Math.min(1, entry.rawPValue * familySize)
+        || entry.rejected !== (entry.rawPValue <= alpha / familySize)) {
+      context.addIssue({ code: 'custom', path: ['value', 'hypotheses', index], message: 'Bonferroni invariant mismatch' });
+    }
+  }
+});
 
-const HYPOTHESIS_INPUT_SCHEMA: JsonValue = {
-  type: 'object',
-  required: ['hypotheses'],
-  properties: {
-    hypotheses: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['hypothesisId', 'pValue'],
-        properties: {
-          hypothesisId: { type: 'string', minLength: 1 },
-          pValue: { type: 'number', minimum: 0, maximum: 1 },
-        },
-        additionalProperties: false,
-      },
-    },
-  },
-  additionalProperties: false,
-};
-
-const HYPOTHESIS_TABLE_SCHEMA: JsonValue = {
-  type: 'object',
-  required: ['familySize', 'alpha', 'hypotheses'],
-  properties: {
-    familySize: { type: 'integer', minimum: 1 },
-    alpha: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 1 },
-    hypotheses: {
-      type: 'array',
-      minItems: 1,
-      items: {
-        type: 'object',
-        required: ['hypothesisId', 'rawPValue', 'adjustedPValue', 'rejected'],
-        properties: {
-          hypothesisId: { type: 'string', minLength: 1 },
-          rawPValue: { type: 'number', minimum: 0, maximum: 1 },
-          adjustedPValue: { type: 'number', minimum: 0, maximum: 1 },
-          rejected: { type: 'boolean' },
-        },
-        additionalProperties: false,
-      },
-    },
-  },
-  additionalProperties: false,
-};
+function jsonSchema(schema: z.ZodType, invariants?: readonly string[]): JsonValue {
+  const generated = z.toJSONSchema(schema, {
+    target: 'draft-2020-12',
+    unrepresentable: 'throw',
+    cycles: 'ref',
+    reused: 'ref',
+  }) as unknown as Record<string, JsonValue>;
+  const plain = { ...generated };
+  return invariants === undefined ? plain : { ...plain, 'x-omk-invariants': [...invariants] };
+}
 
 function schemaIdentity(
   schemaVersion: string,
@@ -101,25 +123,46 @@ function schemaIdentity(
 export const BUILTIN_SCALAR_RESULT_SCHEMA = schemaIdentity(
   'omk.analysis-result.scalar-number/v1',
   'urn:omk:analysis-result:scalar-number:v1',
-  SCALAR_SCHEMA,
+  jsonSchema(ScalarEnvelopeSchema),
 );
 
 export const BUILTIN_INTERVAL_RESULT_SCHEMA = schemaIdentity(
   'omk.analysis-result.percentile-interval/v1',
   'urn:omk:analysis-result:percentile-interval:v1',
-  INTERVAL_SCHEMA,
+  jsonSchema(IntervalEnvelopeSchema),
 );
 
 export const BUILTIN_HYPOTHESIS_TABLE_SCHEMA = schemaIdentity(
   'omk.analysis-result.hypothesis-table/v1',
   'urn:omk:analysis-result:hypothesis-table:v1',
-  HYPOTHESIS_TABLE_SCHEMA,
+  jsonSchema(HypothesisTableEnvelopeSchema, [
+    'familySize equals hypotheses.length',
+    'hypothesisId values are unique and lexicographically sorted',
+    'adjustedPValue=min(1,rawPValue*familySize)',
+    'rejected=(rawPValue<=alpha/familySize)',
+  ]),
 );
 
 export const BUILTIN_HYPOTHESIS_INPUT_SCHEMA = schemaIdentity(
   'omk.analysis-result.hypothesis-input/v1',
   'urn:omk:analysis-result:hypothesis-input:v1',
-  HYPOTHESIS_INPUT_SCHEMA,
+  jsonSchema(HypothesisInputEnvelopeSchema),
+);
+
+const EMPTY_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.empty/v1', 'urn:omk:parameters:empty:v1', jsonSchema(StrictEmptyParametersSchema),
+);
+const QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.quantile/v1', 'urn:omk:parameters:quantile:v1', jsonSchema(QuantileParametersSchema),
+);
+const BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.bootstrap/v1', 'urn:omk:parameters:bootstrap:v1', jsonSchema(BootstrapParametersSchema),
+);
+const BONFERRONI_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.bonferroni/v1', 'urn:omk:parameters:bonferroni:v1', jsonSchema(BonferroniParametersSchema),
+);
+const PROGRESS_PARAMETERS_SCHEMA = schemaIdentity(
+  'omk.parameters.progress/v1', 'urn:omk:parameters:progress:v1', jsonSchema(ProgressParametersSchema),
 );
 
 function runtimeIdentity(
@@ -150,6 +193,7 @@ function nodeCapabilities(input: {
   analysisResultSchemaUris?: string[];
   comparison?: boolean;
   outputSchema: SchemaIdentity;
+  parameterSchema: SchemaIdentity;
   sampling?: {
     experimentalUnits: Array<'sample' | 'run' | 'cluster'>;
     repeatedMeasures: boolean[];
@@ -178,9 +222,12 @@ function nodeCapabilities(input: {
     analysisNodeKinds: [input.analysisNodeKind],
     inputDomains,
     outputSchema: input.outputSchema,
-    ...(input.valueTypes !== undefined ? {
-      metricInputCardinality: { min: 1, max: 1 },
-    } : {}),
+    parameterSchema: input.parameterSchema,
+    inputCardinalities: {
+      metricObservations: input.valueTypes !== undefined ? { min: 1, max: 1 } : { min: 0, max: 0 },
+      analysisResults: input.analysisResultSchemaUris !== undefined ? { min: 1 } : { min: 0, max: 0 },
+      comparisons: input.comparison === true ? { min: 1, max: 1 } : { min: 0, max: 0 },
+    },
     ...(input.sampling !== undefined ? { sampling: input.sampling } : {}),
     schemas: [],
   };
@@ -200,14 +247,15 @@ const DECISION_CAPABILITIES: JsonValue = {
     BUILTIN_SCALAR_RESULT_SCHEMA.schemaUri,
   ].sort(),
   multipleComparisonPolicyIds: ['bonferroni/v1'],
+  parameterSchema: PROGRESS_PARAMETERS_SCHEMA,
   schemas: [],
 };
 
 interface BuiltinDefinition {
   identity: RuntimeIdentity;
   outputSchema: SchemaIdentity;
+  parameterSchema: SchemaIdentity;
   execute(context: Readonly<AnalysisNodeExecutionContext>): AnalysisNodeExecutionResult;
-  validateOutput(value: JsonValue): boolean;
 }
 
 function parameters(context: AnalysisNodeExecutionContext): Record<string, JsonValue> {
@@ -362,7 +410,7 @@ function bootstrapSeed(context: AnalysisNodeExecutionContext): Sha256Digest {
     .filter((input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
       input.inputKind === 'comparison'
     ))
-    .map((input) => input.comparison.comparisonId)
+    .map((input) => input.contrast.comparisonId)
     .sort();
   return digestCanonicalJson({
     derivation: 'omk.analysis-bootstrap-seed/v1',
@@ -492,21 +540,21 @@ function executeClusterBootstrap(context: AnalysisNodeExecutionContext): Analysi
 }
 
 function executePairedBootstrap(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult {
-  const comparisonInput = context.inputs.find((input) => input.inputKind === 'comparison');
-  if (comparisonInput?.inputKind !== 'comparison') {
-    throw new TypeError('Paired bootstrap requires a Comparison input.');
+  const comparisonInputs = context.inputs.filter(
+    (input): input is Extract<AnalysisNodeInput, { inputKind: 'comparison' }> => (
+      input.inputKind === 'comparison'
+    ),
+  );
+  if (comparisonInputs.length !== 1) {
+    throw new TypeError('Paired bootstrap requires exactly one Comparison contrast.');
   }
-  if (comparisonInput.comparison.treatmentTargetIds.length !== 1) {
-    return incomplete('analysis-paired-bootstrap-requires-one-treatment');
-  }
+  const comparisonInput = comparisonInputs[0];
   const metricInput = metricInputs(context)[0];
-  if (comparisonInput.comparison.metricIds.length !== 1
-      || metricInput === undefined
-      || comparisonInput.comparison.metricIds[0] !== metricInput.referenceId) {
+  if (metricInput === undefined || comparisonInput.contrast.metricId !== metricInput.referenceId) {
     return incomplete('analysis-paired-bootstrap-requires-one-matching-metric');
   }
-  const controlId = comparisonInput.comparison.controlTargetId;
-  const treatmentId = comparisonInput.comparison.treatmentTargetIds[0];
+  const controlId = comparisonInput.contrast.controlTargetId;
+  const treatmentId = comparisonInput.contrast.treatmentTargetId;
   const rows = observedRows(context);
   const groups = groupRows(rows, (row) => row.samplingUnitIds.pairingBlockId);
   const differences: BootstrapUnit[] = [];
@@ -591,66 +639,20 @@ function executeBonferroni(context: AnalysisNodeExecutionContext): AnalysisNodeE
   };
 }
 
-function isFiniteNumber(value: JsonValue): boolean {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function isInterval(value: JsonValue): boolean {
-  if (value === null || Array.isArray(value) || typeof value !== 'object') return false;
-  const object = value as Record<string, JsonValue>;
-  return isFiniteNumber(object.estimate)
-    && isFiniteNumber(object.lower)
-    && isFiniteNumber(object.upper)
-    && isFiniteNumber(object.confidenceLevel)
-    && Number.isSafeInteger(object.resamples)
-    && Number.isSafeInteger(object.unitCount)
-    && object.method === 'percentile';
-}
-
-function isHypothesisTable(value: JsonValue): boolean {
-  if (value === null || Array.isArray(value) || typeof value !== 'object') return false;
-  const object = value as Record<string, JsonValue>;
-  if (!Number.isSafeInteger(object.familySize)
-    || typeof object.familySize !== 'number'
-    || object.familySize < 1
-    || !isFiniteNumber(object.alpha)
-    || (object.alpha as number) <= 0
-    || (object.alpha as number) >= 1
-    || !Array.isArray(object.hypotheses)
-    || object.hypotheses.length !== object.familySize) return false;
-  const identifiers = new Set<string>();
-  return object.hypotheses.every((entry) => {
-    if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return false;
-    const item = entry as Record<string, JsonValue>;
-    if (typeof item.hypothesisId !== 'string'
-        || item.hypothesisId.length === 0
-        || identifiers.has(item.hypothesisId)
-        || !isFiniteNumber(item.rawPValue)
-        || !isFiniteNumber(item.adjustedPValue)
-        || (item.rawPValue as number) < 0
-        || (item.rawPValue as number) > 1
-        || (item.adjustedPValue as number) < 0
-        || (item.adjustedPValue as number) > 1
-        || typeof item.rejected !== 'boolean') return false;
-    identifiers.add(item.hypothesisId);
-    return true;
-  });
-}
-
 const BUILTIN_DEFINITIONS = new Map<string, BuiltinDefinition>();
 
 function register(
   implementationId: string,
   capabilities: JsonValue,
   outputSchema: SchemaIdentity,
+  parameterSchema: SchemaIdentity,
   execute: BuiltinDefinition['execute'],
-  validateOutput: BuiltinDefinition['validateOutput'],
 ): void {
   BUILTIN_DEFINITIONS.set(implementationId, {
     identity: runtimeIdentity(implementationId, capabilities),
     outputSchema,
+    parameterSchema,
     execute,
-    validateOutput,
   });
 }
 
@@ -661,10 +663,11 @@ register(
     valueTypes: ['numeric'],
     missingPolicyIds: ['exclude/v1'],
     outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: EMPTY_PARAMETERS_SCHEMA,
   }),
   BUILTIN_SCALAR_RESULT_SCHEMA,
+  EMPTY_PARAMETERS_SCHEMA,
   executeMean,
-  isFiniteNumber,
 );
 register(
   'descriptive.rate/v1',
@@ -673,10 +676,11 @@ register(
     valueTypes: ['boolean'],
     missingPolicyIds: ['exclude/v1'],
     outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: EMPTY_PARAMETERS_SCHEMA,
   }),
   BUILTIN_SCALAR_RESULT_SCHEMA,
+  EMPTY_PARAMETERS_SCHEMA,
   executeRate,
-  isFiniteNumber,
 );
 register(
   'descriptive.quantile/v1',
@@ -685,10 +689,11 @@ register(
     valueTypes: ['numeric'],
     missingPolicyIds: ['exclude/v1'],
     outputSchema: BUILTIN_SCALAR_RESULT_SCHEMA,
+    parameterSchema: QUANTILE_PARAMETERS_SCHEMA,
   }),
   BUILTIN_SCALAR_RESULT_SCHEMA,
+  QUANTILE_PARAMETERS_SCHEMA,
   executeQuantile,
-  isFiniteNumber,
 );
 register(
   'bootstrap.mean-percentile/v1',
@@ -697,6 +702,7 @@ register(
     valueTypes: ['numeric', 'boolean'],
     missingPolicyIds: ['exclude/v1'],
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
       experimentalUnits: ['sample', 'run'],
       repeatedMeasures: [false, true],
@@ -704,8 +710,8 @@ register(
     },
   }),
   BUILTIN_INTERVAL_RESULT_SCHEMA,
+  BOOTSTRAP_PARAMETERS_SCHEMA,
   executeMeanBootstrap,
-  isInterval,
 );
 register(
   'bootstrap.paired-difference-percentile/v1',
@@ -715,6 +721,7 @@ register(
     missingPolicyIds: ['exclude/v1'],
     comparison: true,
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
       experimentalUnits: ['sample'],
       repeatedMeasures: [false, true],
@@ -722,8 +729,8 @@ register(
     },
   }),
   BUILTIN_INTERVAL_RESULT_SCHEMA,
+  BOOTSTRAP_PARAMETERS_SCHEMA,
   executePairedBootstrap,
-  isInterval,
 );
 register(
   'bootstrap.cluster-percentile/v1',
@@ -732,6 +739,7 @@ register(
     valueTypes: ['numeric', 'boolean'],
     missingPolicyIds: ['exclude/v1'],
     outputSchema: BUILTIN_INTERVAL_RESULT_SCHEMA,
+    parameterSchema: BOOTSTRAP_PARAMETERS_SCHEMA,
     sampling: {
       experimentalUnits: ['cluster'],
       repeatedMeasures: [false, true],
@@ -739,8 +747,8 @@ register(
     },
   }),
   BUILTIN_INTERVAL_RESULT_SCHEMA,
+  BOOTSTRAP_PARAMETERS_SCHEMA,
   executeClusterBootstrap,
-  isInterval,
 );
 register(
   'bonferroni/v1',
@@ -748,10 +756,11 @@ register(
     analysisNodeKind: 'correction',
     analysisResultSchemaUris: [BUILTIN_HYPOTHESIS_INPUT_SCHEMA.schemaUri],
     outputSchema: BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
+    parameterSchema: BONFERRONI_PARAMETERS_SCHEMA,
   }),
   BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
+  BONFERRONI_PARAMETERS_SCHEMA,
   executeBonferroni,
-  isHypothesisTable,
 );
 
 class BuiltinNodeImplementation implements AnalysisNodeImplementation {
@@ -773,17 +782,17 @@ class BuiltinNodeImplementation implements AnalysisNodeImplementation {
   }
 }
 
-class BuiltinOutputValidator implements AnalysisOutputSchemaValidator {
+class BuiltinSchemaValidator implements CoreSchemaValidator {
   readonly schema: SchemaIdentity;
-  readonly #validate: (value: JsonValue) => boolean;
+  readonly #zod: z.ZodType;
 
-  constructor(definition: BuiltinDefinition) {
-    this.schema = definition.outputSchema;
-    this.#validate = definition.validateOutput;
+  constructor(schema: SchemaIdentity, zodSchema: z.ZodType) {
+    this.schema = schema;
+    this.#zod = zodSchema;
   }
 
-  validate(value: JsonValue): boolean {
-    return this.#validate(value);
+  parse(value: unknown): JsonValue {
+    return this.#zod.parse(value) as JsonValue;
   }
 }
 
@@ -835,14 +844,21 @@ export function createBuiltinAnalysisNodes(): ReadonlyMap<string, AnalysisNodeIm
   ]));
 }
 
-export function createBuiltinAnalysisOutputValidators(): ReadonlyMap<
-  string,
-  AnalysisOutputSchemaValidator
-> {
-  const validators = new Map<string, AnalysisOutputSchemaValidator>();
-  for (const definition of BUILTIN_DEFINITIONS.values()) {
-    const key = definition.outputSchema.schemaDigest;
-    if (!validators.has(key)) validators.set(key, new BuiltinOutputValidator(definition));
+export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, CoreSchemaValidator> {
+  const validators = new Map<string, CoreSchemaValidator>();
+  const entries: Array<[SchemaIdentity, z.ZodType]> = [
+    [BUILTIN_SCALAR_RESULT_SCHEMA, ScalarEnvelopeSchema],
+    [BUILTIN_INTERVAL_RESULT_SCHEMA, IntervalEnvelopeSchema],
+    [BUILTIN_HYPOTHESIS_INPUT_SCHEMA, HypothesisInputEnvelopeSchema],
+    [BUILTIN_HYPOTHESIS_TABLE_SCHEMA, HypothesisTableEnvelopeSchema],
+    [EMPTY_PARAMETERS_SCHEMA, StrictEmptyParametersSchema],
+    [QUANTILE_PARAMETERS_SCHEMA, QuantileParametersSchema],
+    [BOOTSTRAP_PARAMETERS_SCHEMA, BootstrapParametersSchema],
+    [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
+    [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
+  ];
+  for (const [schema, zodSchema] of entries) {
+    validators.set(schemaIdentityKey(schema), new BuiltinSchemaValidator(schema, zodSchema));
   }
   return validators;
 }

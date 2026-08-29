@@ -8,7 +8,8 @@ import {
 } from './artifacts.js';
 import {
   SchemaIdentitySchema,
-  type SchemaIdentity,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
 } from './common.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
@@ -21,7 +22,6 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   parseWireDocument,
-  type JsonValue,
 } from './json.js';
 
 export type AnalysisBundleValidationErrorCode =
@@ -224,12 +224,18 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
         nodeId: string;
         analysisNodeKind: 'reducer' | 'estimator' | 'correction';
         outputResultId: string;
-        inputs: readonly {
-          inputKind: 'metric-observations' | 'analysis-result' | 'comparison';
+        inputs: readonly ({
+          inputKind: 'metric-observations' | 'analysis-result';
           referenceId: string;
-        }[];
+        } | {
+          inputKind: 'comparison';
+          referenceId: string;
+          treatmentTargetId: string;
+          metricId: string;
+        })[];
       }[];
     };
+    metrics: readonly { metricId: string; missingPolicyId: string }[];
     comparisons: readonly {
       comparisonId: string;
       controlTargetId: string;
@@ -244,13 +250,8 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
   };
 }
 
-export interface AnalysisOutputSchemaValidator {
-  readonly schema: SchemaIdentity;
-  validate(value: JsonValue): boolean;
-}
-
 export interface AnalysisBundleValidationContext {
-  readonly outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>;
+  readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
 }
 
 interface ExpectedAnalysisRow {
@@ -293,17 +294,9 @@ function expectedRows(
     .filter((input) => input.inputKind === 'metric-observations')
     .map((input) => input.referenceId));
   if (metricIds.size === 0) return [];
-  const comparisonIds = new Set(node.inputs
-    .filter((input) => input.inputKind === 'comparison')
-    .map((input) => input.referenceId));
-  const comparisons = plan.analysis.comparisons.filter(
-    (comparison) => comparisonIds.has(comparison.comparisonId),
-  );
-  const allowedTargets = comparisons.length === 0 ? undefined : new Set(comparisons.flatMap(
-    (comparison) => [comparison.controlTargetId, ...comparison.treatmentTargetIds],
-  ));
-  const allowedMetrics = comparisons.length === 0 ? undefined : new Set(comparisons.flatMap(
-    (comparison) => [...comparison.metricIds],
+  const comparisonInputs = node.inputs.filter((input) => input.inputKind === 'comparison');
+  const comparisonById = new Map(plan.analysis.comparisons.map(
+    (comparison) => [comparison.comparisonId, comparison],
   ));
   const evaluatorById = new Map(plan.evaluation.evaluators.map(
     (evaluator) => [evaluator.evaluatorId, evaluator],
@@ -316,12 +309,21 @@ function expectedRows(
   ));
   const rows: ExpectedAnalysisRow[] = [];
   for (const coordinate of derivePlannedEvaluationCoordinates(plan)) {
-    if (allowedTargets !== undefined && !allowedTargets.has(coordinate.targetId)) continue;
     const evaluator = evaluatorById.get(coordinate.evaluatorId);
     if (evaluator === undefined) continue;
     for (const metricId of evaluator.metricIds) {
-      if (!metricIds.has(metricId)
-          || (allowedMetrics !== undefined && !allowedMetrics.has(metricId))) continue;
+      if (!metricIds.has(metricId)) continue;
+      const matchingContrasts = comparisonInputs.filter((input) => input.metricId === metricId);
+      if (comparisonInputs.length > 0 && matchingContrasts.length === 0) continue;
+      const allowedTargets = matchingContrasts.length === 0 ? undefined : new Set(
+        matchingContrasts.flatMap((input) => {
+          const comparison = comparisonById.get(input.referenceId);
+          return comparison === undefined
+            ? []
+            : [comparison.controlTargetId, input.treatmentTargetId];
+        }),
+      );
+      if (allowedTargets !== undefined && !allowedTargets.has(coordinate.targetId)) continue;
       const executionRecord = executionByCoordinate.get(coordinateKey(coordinate));
       const evaluationRecord = evaluationByCoordinate.get(evaluationKey(coordinate));
       const base = {
@@ -472,7 +474,7 @@ function assertMatchesPlan(
         'Analysis record does not match its sealed node and Runtime binding.',
       );
     }
-    const validator = validation.outputValidators.get(record.outputSchema.schemaDigest);
+    const validator = validation.schemaValidators.get(schemaIdentityKey(record.outputSchema));
     if (validator === undefined
         || canonicalizeJson(validator.schema) !== canonicalizeJson(record.outputSchema)) {
       throw new AnalysisBundleValidationError(
@@ -483,14 +485,15 @@ function assertMatchesPlan(
     if (record.analysisStatus === 'completed') {
       let valid = false;
       try {
-        valid = validator.validate(record.value);
+        const envelope = { resultType: record.resultType, value: record.value } as const;
+        valid = canonicalizeJson(validator.parse(envelope)) === canonicalizeJson(envelope);
       } catch {
         valid = false;
       }
       if (!valid) {
         throw new AnalysisBundleValidationError(
           'ANALYSIS_BUNDLE_PLAN_MISMATCH',
-          'Analysis result value does not match its sealed output schema.',
+          'Analysis result envelope does not match its sealed output schema.',
         );
       }
     }
@@ -518,9 +521,29 @@ function assertMatchesPlan(
       );
     }
   }
+  const executedNodeIds = new Set(plan.analysis.analysisGraph.nodes.map((node) => node.nodeId));
+  const usedMissingPolicyIds = new Set(plan.analysis.metrics.map(
+    (metric) => metric.missingPolicyId,
+  ));
+  const runtimeTrusts = plan.analysis.runtimes.flatMap((runtime) => {
+    if (!((runtime.runtimeKind === 'analysis-node' && executedNodeIds.has(runtime.referenceId))
+      || (runtime.runtimeKind === 'missing-policy' && usedMissingPolicyIds.has(runtime.referenceId)))) {
+      return [];
+    }
+    const identity = runtime.identity;
+    const assurance = identity !== null && typeof identity === 'object'
+      ? (identity as Record<string, unknown>).assuranceLevel
+      : undefined;
+    return typeof assurance === 'string' && assurance in TRUST_LEVEL
+      ? [assurance as keyof typeof TRUST_LEVEL]
+      : ['untrusted' as const];
+  });
+  const trustCeiling = [source.provenance.trust, ...runtimeTrusts].sort(
+    (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
+  )[0];
   if (canonicalizeJson(bundle.provenance.parentDigests)
         !== canonicalizeJson([source.bundleDigest])
-      || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[source.provenance.trust]) {
+      || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[trustCeiling]) {
     throw new AnalysisBundleValidationError(
       'ANALYSIS_BUNDLE_PROVENANCE_INVALID',
       'Analysis provenance must bind exactly one source EvaluationBundle and cannot upgrade trust.',

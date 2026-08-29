@@ -131,10 +131,43 @@ function gateReasons(
             : []
         )).sort()
         : [];
-      const expectedIds = family.map((member) => member.hypothesisId).sort();
+      const hypothesisMembers = family.filter(
+        (member): member is typeof member & { hypothesisId: string; hypothesisResultId: string } => (
+          'hypothesisId' in member
+        ),
+      );
+      const expectedIds = hypothesisMembers.map((member) => member.hypothesisId).sort();
       if (valueObject?.familySize !== familySize
+          || hypothesisMembers.length !== familySize
           || canonicalizeJson(hypothesisIds) !== canonicalizeJson(expectedIds)) {
         reasons.add('decision-multiple-comparison-family-mismatch');
+      }
+      const correctedById = new Map(Array.isArray(hypotheses) ? hypotheses.flatMap((entry) => {
+        if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
+        const object = entry as Record<string, JsonValue>;
+        return typeof object.hypothesisId === 'string' && typeof object.rawPValue === 'number'
+          ? [[object.hypothesisId, object.rawPValue] as const]
+          : [];
+      }) : []);
+      for (const member of hypothesisMembers) {
+        const source = recordByResultId.get(member.hypothesisResultId);
+        const sourceHypotheses = source?.analysisStatus === 'completed'
+          && source.value !== null && !Array.isArray(source.value) && typeof source.value === 'object'
+          ? (source.value as Record<string, JsonValue>).hypotheses
+          : undefined;
+        const sourcePValue = Array.isArray(sourceHypotheses)
+          ? sourceHypotheses.flatMap((entry) => {
+            if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
+            const object = entry as Record<string, JsonValue>;
+            return object.hypothesisId === member.hypothesisId && typeof object.pValue === 'number'
+              ? [object.pValue]
+              : [];
+          })
+          : [];
+        if (sourcePValue.length !== 1
+            || correctedById.get(member.hypothesisId) !== sourcePValue[0]) {
+          reasons.add('decision-multiple-comparison-lineage-mismatch');
+        }
       }
     }
   }
@@ -224,7 +257,7 @@ function prepareDecision(
     plan,
     execution,
     evaluation,
-    { outputValidators: ports.outputValidators },
+    { schemaValidators: ports.schemaValidators },
   );
   const runtime = plan.decision.runtimes.find((candidate) => (
     candidate.runtimeKind === 'decision-policy'
@@ -332,9 +365,10 @@ async function runDecision(
       AnalysisRecord,
       { analysisStatus: 'completed' }
     > => record?.analysisStatus === 'completed');
-    const comparisonIds = new Set(
-      (policy.comparisonFamily ?? []).map((member) => member.comparisonId),
-    );
+    const comparisonById = new Map(plan.analysis.comparisons.map(
+      (comparison) => [comparison.comparisonId, comparison],
+    ));
+    const signal = options.signal ?? new AbortController().signal;
     try {
       output = parseWireDocument(DecisionPolicyOutputSchema, await port.decide(deepFreeze({
         runId: options.runId,
@@ -342,20 +376,33 @@ async function runDecision(
         analysisBundleDigest: analysis.bundleDigest as Sha256Digest,
         analysisCoverage: analysis.coverage,
         results,
-        comparisons: plan.analysis.comparisons.filter(
-          (comparison) => comparisonIds.has(comparison.comparisonId),
-        ),
+        contrasts: (policy.comparisonFamily ?? []).map((member) => {
+          const comparison = comparisonById.get(member.comparisonId);
+          if (comparison === undefined) throw new TypeError('Decision contrast is missing.');
+          return {
+            comparisonId: member.comparisonId,
+            controlTargetId: comparison.controlTargetId,
+            treatmentTargetId: member.treatmentTargetId,
+            metricId: member.metricId,
+          };
+        }),
         evidenceStatus,
+        signal,
       })));
+      if (signal.aborted) {
+        output = { decisionStatus: 'not-decided', reasonCodes: ['decision-cancelled'] };
+      }
     } catch {
-      output = {
-        decisionStatus: 'failed',
-        error: {
-          code: 'decision-runtime-failed',
-          stage: 'analysis',
-          message: 'DecisionPolicy implementation failed.',
-        },
-      };
+      output = signal.aborted
+        ? { decisionStatus: 'not-decided', reasonCodes: ['decision-cancelled'] }
+        : {
+          decisionStatus: 'failed',
+          error: {
+            code: 'decision-runtime-failed',
+            stage: 'analysis',
+            message: 'DecisionPolicy implementation failed.',
+          },
+        };
     }
   }
   const decidedAt = ports.clock.timestamp();
@@ -447,7 +494,7 @@ export function materializeEvaluationReport(
   evaluationValue: unknown,
   analysisValue: unknown,
   decisionValue: unknown | undefined,
-  ports: Pick<AnalysisRuntimePorts, 'clock' | 'outputValidators'>,
+  ports: Pick<AnalysisRuntimePorts, 'clock' | 'schemaValidators'>,
   options: EvaluationReportMaterializationOptions,
 ): EvaluationReport {
   if (!IdentifierSchema.safeParse(options.reportId).success) {
@@ -463,7 +510,7 @@ export function materializeEvaluationReport(
     plan,
     execution,
     evaluation,
-    { outputValidators: ports.outputValidators },
+    { schemaValidators: ports.schemaValidators },
   );
   const decision = decisionValue === undefined
     ? undefined
@@ -480,6 +527,13 @@ export function materializeEvaluationReport(
     analysis.bundleDigest,
     ...(decision !== undefined ? [decision.decisionDigest] : []),
   ];
+  const decisionRuntimeTrust = decision === undefined
+    ? []
+    : plan.decision.runtimes.flatMap((runtime) => (
+      runtime.runtimeKind === 'decision-policy'
+        ? [runtime.identity.assuranceLevel]
+        : []
+    ));
   const payload = {
     schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
     reportId: options.reportId,
@@ -515,6 +569,7 @@ export function materializeEvaluationReport(
         execution.provenance.trust,
         evaluation.provenance.trust,
         analysis.provenance.trust,
+        ...decisionRuntimeTrust,
       ]),
       parentDigests,
       facets: { materializedAt: ports.clock.timestamp() },
@@ -533,7 +588,7 @@ export function materializeEvaluationReport(
     execution,
     evaluation,
     analysis,
-    { outputValidators: ports.outputValidators },
+    { schemaValidators: ports.schemaValidators },
   ));
 }
 

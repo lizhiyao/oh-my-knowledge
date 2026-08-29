@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   createBuiltinAnalysisNodes,
+  createBuiltinAnalysisSchemaValidators,
+  BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
+  BUILTIN_SCALAR_RESULT_SCHEMA,
   type AnalysisMetricRow,
   type AnalysisNodeExecutionContext,
 } from '../../../src/evaluation-core/analysis/index.js';
-import { digestCanonicalJson, type Sha256Digest } from '../../../src/evaluation-core/contracts/index.js';
+import {
+  digestCanonicalJson,
+  schemaIdentityKey,
+  type Sha256Digest,
+} from '../../../src/evaluation-core/contracts/index.js';
 
 function row(input: {
   sampleId: string;
@@ -54,7 +61,12 @@ function context(input: {
       inputs: [
         { inputKind: 'metric-observations', referenceId: 'score' },
         ...(input.comparison
-          ? [{ inputKind: 'comparison' as const, referenceId: 'comparison-1' }]
+          ? [{
+            inputKind: 'comparison' as const,
+            referenceId: 'comparison-1',
+            treatmentTargetId: 'treatment',
+            metricId: 'score',
+          }]
           : []),
       ],
       outputResultId: 'estimate-result',
@@ -74,11 +86,11 @@ function context(input: {
     }, ...(input.comparison ? [{
       inputKind: 'comparison' as const,
       referenceId: 'comparison-1',
-      comparison: {
+      contrast: {
         comparisonId: 'comparison-1',
         controlTargetId: 'control',
-        treatmentTargetIds: ['treatment'],
-        metricIds: ['score'],
+        treatmentTargetId: 'treatment',
+        metricId: 'score',
       },
     }] : [])],
     analysisPlanDigest: digestCanonicalJson({ analysisPlan: 1 }),
@@ -109,6 +121,27 @@ async function execute(input: AnalysisNodeExecutionContext) {
 }
 
 describe('Evaluation Core built-in estimators', () => {
+  it('validates the complete result envelope and Bonferroni invariants', () => {
+    const validators = createBuiltinAnalysisSchemaValidators();
+    const scalar = validators.get(schemaIdentityKey(BUILTIN_SCALAR_RESULT_SCHEMA));
+    const bonferroni = validators.get(schemaIdentityKey(BUILTIN_HYPOTHESIS_TABLE_SCHEMA));
+    expect(() => scalar?.parse({ resultType: 'table', value: 1 })).toThrow();
+    expect(() => scalar?.parse({ resultType: 'scalar', value: 1, extra: true })).toThrow();
+    expect(() => bonferroni?.parse({
+      resultType: 'table',
+      value: {
+        familySize: 1,
+        alpha: 0.05,
+        hypotheses: [{
+          hypothesisId: 'h1',
+          rawPValue: 0.01,
+          adjustedPValue: 0.9,
+          rejected: false,
+        }],
+      },
+    })).toThrow();
+  });
+
   it('resamples sample units rather than repeated trials', async () => {
     const input = context({
       implementationId: 'bootstrap.mean-percentile/v1',

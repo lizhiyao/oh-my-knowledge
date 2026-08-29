@@ -26,7 +26,7 @@ import {
 import {
   analyzeEvaluationBundle,
   createBuiltinAnalysisNodes,
-  createBuiltinAnalysisOutputValidators,
+  createBuiltinAnalysisSchemaValidators,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
   decideAnalysis,
@@ -57,7 +57,12 @@ class FakeClock implements ExecutionClock {
 
 function analysisAwareRuntime(): PreparationRuntime {
   const base = testRuntime();
+  const schemaValidators = new Map([
+    ...base.schemaValidators,
+    ...createBuiltinAnalysisSchemaValidators(),
+  ]);
   return {
+    schemaValidators,
     resolveExecutor: (requirement) => base.resolveExecutor(requirement),
     resolveEvaluator: (requirement) => base.resolveEvaluator(requirement),
     resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
@@ -201,7 +206,7 @@ async function makeAnalysisFixture(
   }, { runId: `run-${suffix}`, bundleId: `evaluation-${suffix}` });
   const ports = {
     analysisNodes: createBuiltinAnalysisNodes(),
-    outputValidators: createBuiltinAnalysisOutputValidators(),
+    schemaValidators: createBuiltinAnalysisSchemaValidators(),
     missingPolicies: createBuiltinMissingPolicies(),
     decisionPolicies: createBuiltinDecisionPolicies(),
     clock,
@@ -221,6 +226,15 @@ async function collectEvents(events: AsyncIterable<unknown>): Promise<unknown[]>
 }
 
 describe('Evaluation Core Analysis and Decision Runtime', () => {
+  it('seals parameter defaults and rejects unknown measurement parameters', async () => {
+    const plan = await makePlan();
+    expect(plan.analysis.analysisGraph.nodes[0].parameters).toEqual({});
+    expect(plan.decision.decisionPolicy?.parameters).toEqual({ threshold: 0.4, equivalence: 0 });
+    await expect(makePlan((definition) => {
+      definition.analysisGraph.nodes[0].parameters = { minimumCoverage: 0.8 };
+    })).rejects.toMatchObject({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' });
+  });
+
   it('derives a validated AnalysisBundle, decision, and materialized Report', async () => {
     const plan = await makePlan();
     const clock = new FakeClock();
@@ -239,7 +253,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-1', bundleId: 'evaluation-analysis-1' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -262,8 +276,9 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       value: 0.5,
       coverage: { planned: 2, observed: 2, included: 2 },
     });
+    expect(analysis.provenance.trust).toBe('declared');
     expect(parseAnalysisBundle(analysis, plan, execution, evaluation, {
-      outputValidators: ports.outputValidators,
+      schemaValidators: ports.schemaValidators,
     })).toEqual(analysis);
 
     const decisionRun = startDecision(
@@ -304,13 +319,14 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       evidenceStatus: 'complete',
       conclusionStatus: 'conclusive',
     });
+    expect(report.provenance.trust).toBe('declared');
     expect(parseEvaluationReport(
       report,
       plan,
       execution,
       evaluation,
       analysis,
-      { outputValidators: ports.outputValidators },
+      { schemaValidators: ports.schemaValidators },
     )).toEqual(report);
     expect(reportEvents.map((event) => event.eventKind)).toEqual(['report.materialized']);
     expect(reportEvents[0].sequence).toBeGreaterThan(
@@ -326,7 +342,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       execution,
       evaluation,
       analysis,
-      { outputValidators: ports.outputValidators },
+      { schemaValidators: ports.schemaValidators },
     )).toEqual(withUris);
 
     const builtinPolicy = ports.decisionPolicies.get('progress/v1');
@@ -367,7 +383,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-forge', bundleId: 'evaluation-analysis-forge' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -385,7 +401,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     });
 
     expect(() => parseAnalysisBundle(forged, plan, execution, evaluation, {
-      outputValidators: ports.outputValidators,
+      schemaValidators: ports.schemaValidators,
     })).toThrow(
       /sealed node and Runtime binding/,
     );
@@ -444,7 +460,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.plan,
       fixture.execution,
       fixture.evaluation,
-      { outputValidators: fixture.ports.outputValidators },
+      { schemaValidators: fixture.ports.schemaValidators },
     )).toThrow(/sealed output schema/);
   });
 
@@ -459,8 +475,19 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.plan,
       fixture.execution,
       fixture.evaluation,
-      { outputValidators: fixture.ports.outputValidators },
+      { schemaValidators: fixture.ports.schemaValidators },
     )).toThrow(/exactly one source EvaluationBundle/);
+
+    const upgraded = resealAnalysisBundle(fixture.analysis, (draft) => {
+      draft.provenance.trust = 'verified';
+    });
+    expect(() => parseAnalysisBundle(
+      upgraded,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+    )).toThrow(/cannot upgrade trust/);
   });
 
   it('closes Analysis, Decision, and Report streams when event sequencing throws', async () => {
@@ -518,8 +545,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         treatmentTargetIds: ['unrelated-treatment'],
         metricIds: ['correct'],
       });
+      definition.comparisons[0].treatmentTargetIds.push('unrelated-treatment');
       definition.decisionPolicy!.comparisonFamily = [{
-        hypothesisId: 'control-treatment-correct',
         comparisonId: 'control-vs-treatment',
         treatmentTargetId: 'treatment',
         metricId: 'correct',
@@ -527,7 +554,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     });
     const builtinPolicy = fixture.ports.decisionPolicies.get('progress/v1');
     if (builtinPolicy === undefined) throw new Error('missing builtin DecisionPolicy');
-    let receivedComparisonIds: string[] = [];
+    let receivedContrasts: unknown[] = [];
     const decision = await decideAnalysis(
       fixture.plan,
       fixture.execution,
@@ -538,9 +565,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         decisionPolicies: new Map([['progress/v1', {
           identity: builtinPolicy.identity,
           async decide(context) {
-            receivedComparisonIds = context.comparisons.map(
-              (comparison) => comparison.comparisonId,
-            );
+            receivedContrasts = [...context.contrasts];
             return { decisionStatus: 'decided' as const, verdict: 'PROGRESS' };
           },
         }]]),
@@ -549,7 +574,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     );
 
     expect(decision?.decisionStatus).toBe('decided');
-    expect(receivedComparisonIds).toEqual(['control-vs-treatment']);
+    expect(receivedContrasts).toEqual([{
+      comparisonId: 'control-vs-treatment',
+      controlTargetId: 'control',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+    }]);
   });
 
   it('binds AnalysisBundle to the exact EvaluationBundle content', async () => {
@@ -568,7 +598,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-source', bundleId: 'evaluation-analysis-source' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -586,7 +616,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     });
 
     expect(() => parseAnalysisBundle(analysis, plan, execution, replacement, {
-      outputValidators: ports.outputValidators,
+      schemaValidators: ports.schemaValidators,
     })).toThrow(
       /parent identities/,
     );
@@ -608,7 +638,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-missing', bundleId: 'evaluation-analysis-missing' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -647,7 +677,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       plan,
       execution,
       evaluation,
-      { outputValidators: ports.outputValidators },
+      { schemaValidators: ports.schemaValidators },
     )).toThrow(/source observation universe/);
     expect(decision).toMatchObject({
       decisionStatus: 'not-decided',
@@ -673,7 +703,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     controller.abort();
     const run = startAnalysis(plan, execution, evaluation, {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -688,6 +718,71 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     expect(analysis.analysisBundleStatus).toBe('cancelled');
     expect(analysis.records[0].analysisStatus).toBe('not-evaluated');
     expect(analysis.coverage.notStarted).toBe(1);
+  });
+
+  it('keeps in-flight Analysis and Decision cancellation authoritative', async () => {
+    const fixture = await makeAnalysisFixture('in-flight-cancel');
+    const originalNode = fixture.ports.analysisNodes.get('descriptive.rate/v1');
+    const originalPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    if (originalNode === undefined || originalPolicy === undefined) throw new Error('missing builtin');
+
+    const analysisController = new AbortController();
+    const analysisRun = startAnalysis(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodes: new Map([['descriptive.rate/v1', {
+          identity: originalNode.identity,
+          outputSchema: originalNode.outputSchema,
+          async openRun() {
+            return {
+              execute: async ({ signal }) => new Promise((_, reject) => {
+                signal.addEventListener('abort', () => reject(new Error('port aborted')), { once: true });
+              }),
+              dispose() {},
+            };
+          },
+        }]]),
+      },
+      {
+        runId: 'run-in-flight-analysis-cancel',
+        bundleId: 'analysis-in-flight-cancel',
+        signal: analysisController.signal,
+      },
+    );
+    await Promise.resolve();
+    analysisController.abort();
+    const cancelledAnalysis = await analysisRun.result;
+    expect(cancelledAnalysis).toMatchObject({
+      analysisBundleStatus: 'cancelled',
+      records: [{ analysisStatus: 'not-evaluated' }],
+    });
+
+    const decisionController = new AbortController();
+    const decisionRun = startDecision(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysis,
+      {
+        ...fixture.ports,
+        decisionPolicies: new Map([['progress/v1', {
+          identity: originalPolicy.identity,
+          decide: async ({ signal }) => new Promise((_, reject) => {
+            signal.addEventListener('abort', () => reject(new Error('policy aborted')), { once: true });
+          }),
+        }]]),
+      },
+      { runId: 'run-in-flight-decision-cancel', signal: decisionController.signal },
+    );
+    await Promise.resolve();
+    decisionController.abort();
+    await expect(decisionRun.result).resolves.toMatchObject({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['decision-cancelled'],
+    });
   });
 
   it('keeps EventWriter infrastructure failure separate from node facts', async () => {
@@ -715,7 +810,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-writer', bundleId: 'evaluation-analysis-writer' });
     const analysis = await analyzeEvaluationBundle(plan, execution, evaluation, {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -730,7 +825,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
     const failedPorts = {
       analysisNodes: createBuiltinAnalysisNodes(),
-      outputValidators: createBuiltinAnalysisOutputValidators(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,

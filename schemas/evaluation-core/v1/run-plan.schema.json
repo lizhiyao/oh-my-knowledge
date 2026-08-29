@@ -478,25 +478,67 @@
       "type": "array"
     },
     "__schema22": {
-      "additionalProperties": false,
-      "properties": {
-        "inputKind": {
-          "enum": [
-            "metric-observations",
-            "analysis-result",
-            "comparison"
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "metric-observations",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
           ],
-          "type": "string"
+          "type": "object"
         },
-        "referenceId": {
-          "$ref": "#/$defs/__schema4"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "analysis-result",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "comparison",
+              "type": "string"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId",
+            "treatmentTargetId",
+            "metricId"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "inputKind",
-        "referenceId"
-      ],
-      "type": "object"
+      ]
     },
     "__schema23": {
       "$ref": "#/$defs/__schema6"
@@ -592,28 +634,56 @@
       "type": "object"
     },
     "__schema28": {
-      "additionalProperties": false,
-      "properties": {
-        "comparisonId": {
-          "$ref": "#/$defs/__schema4"
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "comparisonId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "required": [
+            "comparisonId",
+            "treatmentTargetId",
+            "metricId"
+          ],
+          "type": "object"
         },
-        "hypothesisId": {
-          "$ref": "#/$defs/__schema4"
-        },
-        "metricId": {
-          "$ref": "#/$defs/__schema4"
-        },
-        "treatmentTargetId": {
-          "$ref": "#/$defs/__schema4"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "comparisonId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "hypothesisId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "hypothesisResultId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema4"
+            }
+          },
+          "required": [
+            "comparisonId",
+            "treatmentTargetId",
+            "metricId",
+            "hypothesisId",
+            "hypothesisResultId"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "hypothesisId",
-        "comparisonId",
-        "treatmentTargetId",
-        "metricId"
-      ],
-      "type": "object"
+      ]
     },
     "__schema29": {
       "$ref": "#/$defs/__schema30"

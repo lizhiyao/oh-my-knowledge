@@ -2,6 +2,9 @@ import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   digestCanonicalJson,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
+  type JsonValue,
   type EvaluationDefinition,
   type MeasurementPolicy,
   type RuntimeIdentity,
@@ -208,9 +211,23 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
     returnedIdentities.push(value);
     return value;
   };
+  const analysisOutputSchema = schemaIdentity('analysis-output');
+  const estimatorOutputSchema = schemaIdentity('estimator-output');
+  const analysisParameterSchema = schemaIdentity('analysis-parameters');
+  const decisionParameterSchema = schemaIdentity('decision-parameters');
+  const schemaValidators = new Map<string, CoreSchemaValidator>([
+    analysisOutputSchema,
+    estimatorOutputSchema,
+    analysisParameterSchema,
+    decisionParameterSchema,
+  ].map((schema) => [schemaIdentityKey(schema), {
+    schema,
+    parse: (value: unknown) => value as JsonValue,
+  }]));
   return {
     calls,
     returnedIdentities,
+    schemaValidators,
     resolveExecutor(requirement) {
       calls.executor += 1;
       if (options.throwExecutor) throw new Error('secret provider response');
@@ -295,6 +312,7 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
               capabilityKind: 'decision-policy',
               analysisResultSchemaUris: [schemaIdentity('analysis-output').schemaUri],
               multipleComparisonPolicyIds: ['bonferroni/v1'],
+              parameterSchema: decisionParameterSchema,
               schemas: [],
             },
           )),
@@ -314,8 +332,13 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
               valueTypes: options.analysisValueTypes ?? ['boolean'],
               missingPolicyIds: ['exclude/v1'],
             }],
-            outputSchema: schemaIdentity(isSampling ? 'estimator-output' : 'analysis-output'),
-            ...(!isSampling ? { metricInputCardinality: { min: 1, max: 1 } } : {}),
+            outputSchema: isSampling ? estimatorOutputSchema : analysisOutputSchema,
+            parameterSchema: analysisParameterSchema,
+            inputCardinalities: {
+              metricObservations: isSampling ? { min: 0, max: 0 } : { min: 1, max: 1 },
+              analysisResults: { min: 0, max: 0 },
+              comparisons: { min: 0, max: 0 },
+            },
             ...(isSampling ? {
               sampling: {
                 experimentalUnits: ['sample'],

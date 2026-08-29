@@ -15,6 +15,8 @@ import {
   parseWireDocument,
   projectEvaluationInputs,
   projectExecutionInputs,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
   type ExtensionEntry,
   type Extensions,
   type JsonValue,
@@ -79,7 +81,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
   'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
-  'hypothesisId', 'treatmentTargetId',
+  'hypothesisId', 'hypothesisResultId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
   'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'maxTargetInvocations',
@@ -202,6 +204,7 @@ function normalizeAnalysisCapabilities(
         referenceId,
         'multipleComparisonPolicyIds',
       ),
+      parameterSchema: capabilities.parameterSchema,
       schemas: sortedSchemas(capabilities.schemas),
     } as DecisionPolicyCapabilities;
   }
@@ -263,9 +266,8 @@ function normalizeAnalysisCapabilities(
     ) as AnalysisNodeCapabilities['analysisNodeKinds'],
     inputDomains,
     outputSchema: capabilities.outputSchema,
-    ...(capabilities.metricInputCardinality !== undefined
-      ? { metricInputCardinality: capabilities.metricInputCardinality }
-      : {}),
+    parameterSchema: capabilities.parameterSchema,
+    inputCardinalities: capabilities.inputCardinalities,
     ...(capabilities.sampling !== undefined ? {
       sampling: {
         experimentalUnits: sortedUniqueStrings(
@@ -396,6 +398,23 @@ function addCapabilitySchemas(
   referenceId: string,
 ): void {
   for (const identity of identities) addSchemaIdentity(identitiesByUri, identity, referenceId);
+}
+
+function requireSchemaValidator(
+  runtime: PreparationRuntime,
+  identity: SchemaIdentity,
+  referenceId: string,
+): CoreSchemaValidator {
+  const validator = runtime.schemaValidators.get(schemaIdentityKey(identity));
+  if (validator !== undefined
+      && canonicalizeJson(validator.schema) === canonicalizeJson(identity)) return validator;
+  throw new EvaluationDefinitionError({
+    code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+    stage: 'configuration',
+    preparationStage: 'runtime-resolution',
+    message: 'Runtime 声明的 schema identity 缺少 Core 绑定的精确 validator。',
+    details: { referenceId, schemaUri: identity.schemaUri },
+  });
 }
 
 async function resolveExecutors(
@@ -668,9 +687,11 @@ async function resolveAnalysisRequirement(
       },
     });
   }
+  requireSchemaValidator(runtime, capabilities.outputSchema, requirement.referenceId);
+  requireSchemaValidator(runtime, capabilities.parameterSchema, requirement.referenceId);
   addCapabilitySchemas(
     identitiesByUri,
-    [capabilities.outputSchema, ...capabilities.schemas],
+    [capabilities.outputSchema, capabilities.parameterSchema, ...capabilities.schemas],
     requirement.referenceId,
   );
   return {
@@ -839,6 +860,7 @@ async function resolveDecisionRuntimes(
       details: { referenceId: policy.decisionPolicyId },
     });
   }
+  requireSchemaValidator(runtime, capabilities.parameterSchema, policy.decisionPolicyId);
   if (policy.multipleComparisonPolicyId !== undefined
       && !capabilities.multipleComparisonPolicyIds.includes(
         policy.multipleComparisonPolicyId,
@@ -877,12 +899,89 @@ async function resolveDecisionRuntimes(
       details: { referenceId: policy.decisionPolicyId, resultId },
     });
   }
-  addCapabilitySchemas(identitiesByUri, capabilities.schemas, policy.decisionPolicyId);
+  addCapabilitySchemas(
+    identitiesByUri,
+    [capabilities.parameterSchema, ...capabilities.schemas],
+    policy.decisionPolicyId,
+  );
   return [{
     runtimeKind: 'decision-policy',
     referenceId: policy.decisionPolicyId,
     identity: bindCapabilities(resolution.identity, capabilities),
   }];
+}
+
+function normalizeDefinitionParameters(
+  definition: z.infer<typeof EvaluationDefinitionSchema>,
+  analysisRuntimes: readonly ResolvedRuntime[],
+  decisionRuntimes: readonly ResolvedRuntime[],
+  runtime: PreparationRuntime,
+): z.infer<typeof EvaluationDefinitionSchema> {
+  const analysisRuntimeByNodeId = new Map(analysisRuntimes
+    .filter((entry) => entry.runtimeKind === 'analysis-node')
+    .map((entry) => [entry.referenceId, entry]));
+  const nodes = definition.analysisGraph.nodes.map((node) => {
+    const resolved = analysisRuntimeByNodeId.get(node.nodeId);
+    const capabilities = resolved === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      resolved.identity.capabilities,
+    );
+    if (capabilities?.success !== true || capabilities.data.capabilityKind !== 'analysis-node') {
+      throw new TypeError('Resolved Analysis capabilities disappeared before sealing.');
+    }
+    const validator = requireSchemaValidator(
+      runtime,
+      capabilities.data.parameterSchema,
+      node.nodeId,
+    );
+    try {
+      return {
+        ...node,
+        parameters: validator.parse(node.parameters ?? {}),
+      };
+    } catch {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Analysis node parameters 不符合实现声明的 schema。',
+        details: { nodeId: node.nodeId },
+      });
+    }
+  });
+  let decisionPolicy = definition.decisionPolicy;
+  if (decisionPolicy !== undefined) {
+    const resolved = decisionRuntimes.find((entry) => entry.runtimeKind === 'decision-policy');
+    const capabilities = resolved === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      resolved.identity.capabilities,
+    );
+    if (capabilities?.success !== true || capabilities.data.capabilityKind !== 'decision-policy') {
+      throw new TypeError('Resolved Decision capabilities disappeared before sealing.');
+    }
+    const validator = requireSchemaValidator(
+      runtime,
+      capabilities.data.parameterSchema,
+      decisionPolicy.decisionPolicyId,
+    );
+    try {
+      decisionPolicy = {
+        ...decisionPolicy,
+        parameters: validator.parse(decisionPolicy.parameters ?? {}),
+      };
+    } catch {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'DecisionPolicy parameters 不符合实现声明的 schema。',
+        details: { referenceId: decisionPolicy.decisionPolicyId },
+      });
+    }
+  }
+  return parseInput(EvaluationDefinitionSchema, {
+    ...definition,
+    analysisGraph: { ...definition.analysisGraph, nodes },
+    ...(decisionPolicy !== undefined ? { decisionPolicy } : {}),
+  }, 'EvaluationDefinition');
 }
 
 function appendExtension(
@@ -984,7 +1083,7 @@ export async function prepareEvaluationPlan(
   measurementPolicyInput: unknown,
   runtime: PreparationRuntime,
 ): Promise<SealedRunPlan> {
-  const definition = parseInput(
+  let definition = parseInput(
     EvaluationDefinitionSchema,
     definitionInput,
     'EvaluationDefinition',
@@ -1013,6 +1112,12 @@ export async function prepareEvaluationPlan(
     runtime,
     analysisRuntimes,
     identitiesByUri,
+  );
+  definition = normalizeDefinitionParameters(
+    definition,
+    analysisRuntimes,
+    decisionRuntimes,
+    runtime,
   );
   const stageExtensions = await resolveExtensions(
     definition.extensions,

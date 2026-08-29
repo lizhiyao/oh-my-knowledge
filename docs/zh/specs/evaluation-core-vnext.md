@@ -232,9 +232,9 @@ interface MetricDefinition {
 - DecisionPolicy 消费命名的 AnalysisResult，产生 verdict；
 - weight 只属于明确的 composite reducer，不是 Metric 的通用属性。
 
-复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 还要封存可接受的 Metric 输入基数，避免只为单 Metric 设计的实现静默压平多份 Metric relation。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
+复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 会分别封存 parameter schema，以及 Metric、上游 result、Comparison 三类输入基数。Core 在计算 plan digest 前校验 parameter 并物化默认值，因此缺省、非法或被实现静默忽略的选项不会折叠成相同 runtime 行为。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
 
-DecisionPolicy 通过命名的 `(hypothesisId, comparisonId, treatmentTargetId, metricId)` member 显式声明 multiple-comparison family。超过一个 member 的 family 必须绑定唯一 correction result；空或单 member family 不能伪装成多重比较。Decision 只能收到该 family 命名的 Comparison，correction table 的 hypothesis ID 与 family size 必须精确一致，才能产生 verdict。因此，实验中不相关的 Comparison 不会扩大家族，也不会阻塞 gate。
+DecisionPolicy 通过 `(comparisonId, treatmentTargetId, metricId)` 声明单个精确 contrast。需要校正的 family 还必须为每个 member 声明 `(hypothesisId, hypothesisResultId)`，绑定实际产生该原始 hypothesis 的 Analysis node；correction node 的输入必须精确等于这些 result。超过一个 member 的 family 必须绑定唯一 correction result；空或单 member family 不能伪装成多重比较。Decision 只能收到投影后的精确 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。correction table 的 canonical hypothesis ID、family size 和 raw p-value 必须全部一致，才能产生 verdict。
 
 v1 内建的 reducer／estimator 保持最小：
 
@@ -599,15 +599,15 @@ Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider 
 
 [#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。AnalysisPlan 封存 Metric contract、包含 trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 变化会使 Analysis 及下游 identity 失效；仅 policy 变化只使 Decision 与 root contract 失效。
 
-Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或 Comparison 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出同时经过 wire result contract，以及由 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。
+Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或精确 Comparison contrast 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出以完整 `{ resultType, value }` envelope 同时经过 wire result contract，以及由完整 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。JSON Schema 无法表达的语义不变量，包括 Bonferroni 算术与 canonical family membership，也必须进入 validator 和 schema digest。
 
 内建 registry 提供三个 descriptive reducer、三个确定性的 percentile-bootstrap estimator、Bonferroni correction、显式 exclusion MissingPolicy 与最小 progress DecisionPolicy。每个内建 reducer／estimator 都封存恰好一个 Metric 输入。Bootstrap draw 从 sealed root seed、AnalysisPlan digest、node identity 与 replicate index 做 domain-separated 派生。重复 trial 先在声明的 sampling unit 内归约；paired contrast 先在完整 pairing block 内形成，再进行重采样；cluster bootstrap 按整簇重采样。有效单位不足或前提失败时产生 inconclusive result，绝不自动选择 fallback estimator。内建 Runtime identity 属于 self-reported，使用 `assuranceLevel: declared`；只有独立宿主 verifier 或 attestation 边界才能把实际执行代码提升为 verified assurance。
 
 Decision 只消费 policy 命名的 AnalysisResult，以及 coverage、assumption check、evidence status 与显式封存的 comparison family。correction result 必须匹配这个精确 family，而不是全局 Comparison 数量。gate 未通过时产生稳定的 `not-decided` reason；policy 或基础设施失败与统计结论保持分离。EvaluationReport 随后物化 Bundle reference、内容寻址的 DecisionResult、provenance 与派生的 run／evidence／conclusion 三轴状态，不重算统计量或 verdict。Host annotation 属于展示元数据：它可以改变 report artifact digest，但不能改变任何 stage Plan 或 source Bundle digest。
 
-AnalysisBundle 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。后者要求准确的 source Bundle chain、完整 graph／runtime／schema binding、独立 output validation、parent digest、policy digest，以及不高于最不可信 source 的 provenance trust。AnalysisBundle provenance 只能有一个 parent，即已验证的 EvaluationBundle，不能夹带无关 digest。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
+AnalysisBundle 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。后者要求准确的 source Bundle chain、完整 graph／runtime／schema binding、独立 output validation、parent digest、policy digest，以及不高于最不可信 source 或实际执行 Runtime assurance 的 provenance trust。Analysis trust 纳入全部已执行 AnalysisNode 与实际使用的 MissingPolicy；存在 decision 时，report trust 还要纳入 DecisionPolicy assurance。AnalysisBundle provenance 只能有一个 parent，即已验证的 EvaluationBundle，不能夹带无关 digest。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
 
-Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。所有异步终态路径都会关闭 event stream，Analysis 还会移除外部 AbortSignal listener，包括非预期的 clock、sequencer、validation 或 materialization failure。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
+Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。所有异步终态路径都会关闭 event stream，Analysis 还会移除外部 AbortSignal listener，包括非预期的 clock、sequencer、validation 或 materialization failure。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。同一个 AbortSignal 会传入执行中的 Analysis 与 Decision port；signal 一旦 abort，port 后续 reject 或迟到的成功结果都不能覆盖 cancelled 终态。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
 
 ## 二十、行业参考
 

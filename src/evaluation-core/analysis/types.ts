@@ -17,7 +17,7 @@ import type {
   EvaluationReport,
   JsonValue,
   RuntimeIdentity,
-  AnalysisOutputSchemaValidator,
+  CoreSchemaValidator,
   SamplingUnitIds,
   SchemaIdentity,
   Sha256Digest,
@@ -86,7 +86,12 @@ export type AnalysisNodeInput = {
 } | {
   inputKind: 'comparison';
   referenceId: string;
-  comparison: SealedRunPlan['analysis']['comparisons'][number];
+  contrast: {
+    comparisonId: string;
+    controlTargetId: string;
+    treatmentTargetId: string;
+    metricId: string;
+  };
 };
 
 export interface AnalysisNodeRunContext {
@@ -167,8 +172,14 @@ export interface DecisionPolicyContext {
   analysisBundleDigest: Sha256Digest;
   analysisCoverage: AnalysisBundle['coverage'];
   results: readonly Extract<AnalysisRecord, { analysisStatus: 'completed' }>[];
-  comparisons: SealedRunPlan['analysis']['comparisons'];
+  contrasts: readonly {
+    comparisonId: string;
+    controlTargetId: string;
+    treatmentTargetId: string;
+    metricId: string;
+  }[];
   evidenceStatus: 'complete' | 'partial' | 'unresolvable';
+  signal: AbortSignal;
 }
 
 export type DecisionPolicyOutput = {
@@ -205,7 +216,7 @@ export interface AnalysisEventWriter {
 
 export interface AnalysisRuntimePorts {
   analysisNodes: ReadonlyMap<string, AnalysisNodeImplementation>;
-  outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>;
+  schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
   missingPolicies: ReadonlyMap<string, AnalysisMissingPolicy>;
   decisionPolicies: ReadonlyMap<string, AnalysisDecisionPolicy>;
   clock: AnalysisClock;

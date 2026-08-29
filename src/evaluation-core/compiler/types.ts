@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   RuntimeIdentitySchema,
   SchemaIdentitySchema,
+  type CoreSchemaValidator,
   type ExtensionEntry,
   type JsonValue,
   type RunPlan,
@@ -79,6 +80,14 @@ const ComparisonInputDomainSchema = z.object({
   inputKind: z.literal('comparison'),
 }).strict();
 
+const InputCardinalitySchema = z.object({
+  min: z.number().int().nonnegative(),
+  max: z.number().int().nonnegative().optional(),
+}).strict().refine(
+  (cardinality) => cardinality.max === undefined || cardinality.min <= cardinality.max,
+  { message: 'Input cardinality min must not exceed max.' },
+);
+
 export const AnalysisNodeCapabilitiesSchema = z.object({
   capabilityKind: z.literal('analysis-node'),
   analysisNodeKinds: z.array(z.enum(['reducer', 'estimator', 'correction'])).min(1),
@@ -88,13 +97,12 @@ export const AnalysisNodeCapabilitiesSchema = z.object({
     ComparisonInputDomainSchema,
   ])),
   outputSchema: SchemaIdentitySchema,
-  metricInputCardinality: z.object({
-    min: z.number().int().nonnegative(),
-    max: z.number().int().nonnegative(),
-  }).strict().refine(
-    (cardinality) => cardinality.min <= cardinality.max,
-    { message: 'metricInputCardinality.min must not exceed max.' },
-  ).optional(),
+  parameterSchema: SchemaIdentitySchema,
+  inputCardinalities: z.object({
+    metricObservations: InputCardinalitySchema,
+    analysisResults: InputCardinalitySchema,
+    comparisons: InputCardinalitySchema,
+  }).strict(),
   sampling: SamplingCapabilitiesSchema.optional(),
   schemas: z.array(SchemaIdentitySchema),
 }).strict();
@@ -117,6 +125,7 @@ export const DecisionPolicyCapabilitiesSchema = z.object({
     z.string().regex(/^[A-Za-z][A-Za-z0-9+.-]*:/),
   ).min(1),
   multipleComparisonPolicyIds: z.array(z.string().min(1).max(256)),
+  parameterSchema: SchemaIdentitySchema,
   schemas: z.array(SchemaIdentitySchema),
 }).strict();
 
@@ -192,6 +201,7 @@ export interface ExtensionValidationRequest {
 }
 
 export interface PreparationRuntime {
+  schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
   resolveExecutor(requirement: Readonly<ExecutorRuntimeRequirement>): unknown | Promise<unknown>;
   resolveEvaluator(requirement: Readonly<EvaluatorRuntimeRequirement>): unknown | Promise<unknown>;
   resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>): unknown | Promise<unknown>;

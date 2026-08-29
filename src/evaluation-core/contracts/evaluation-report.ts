@@ -246,12 +246,26 @@ export function parseEvaluationReport(
     analysis.bundleDigest,
   ];
   if (report.decision !== undefined) parentDigests.push(report.decision.decisionDigest);
+  const decisionRuntimeTrust = report.decision === undefined
+    ? []
+    : plan.decision.runtimes.flatMap((runtime) => {
+      if (runtime.runtimeKind !== 'decision-policy') return [];
+      const identity = runtime.identity;
+      const assurance = identity !== null && typeof identity === 'object'
+        ? (identity as Record<string, unknown>).assuranceLevel
+        : undefined;
+      return typeof assurance === 'string'
+        && ['untrusted', 'unknown', 'declared', 'verified'].includes(assurance)
+        ? [assurance as Provenance['trust']]
+        : ['untrusted' as const];
+    });
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(parentDigests)
       || trustLevel(report.provenance.trust) > Math.min(
         trustLevel(execution.provenance.trust),
         trustLevel(evaluation.provenance.trust),
         trustLevel(analysis.provenance.trust),
+        ...decisionRuntimeTrust.map(trustLevel),
       )) {
     throw new EvaluationReportValidationError(
       'EVALUATION_REPORT_PROVENANCE_INVALID',

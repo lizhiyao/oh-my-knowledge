@@ -14,8 +14,9 @@ import {
   parseEvaluationBundle,
   parseExecutionBundle,
   parseWireDocument,
+  schemaIdentityKey,
   type AnalysisBundle,
-  type AnalysisOutputSchemaValidator,
+  type CoreSchemaValidator,
   type AnalysisObservationCoverage,
   type AnalysisRecord,
   type EvaluationBundle,
@@ -51,7 +52,7 @@ interface NodeBinding {
   port: AnalysisNodeImplementation;
   runtime: RuntimeIdentity;
   outputSchema: SchemaIdentity;
-  validator: AnalysisOutputSchemaValidator;
+  validator: CoreSchemaValidator;
 }
 
 interface PreparedAnalysisRuntime {
@@ -66,6 +67,8 @@ interface StopState {
   reasonCode?: string;
   error?: EvaluationError;
 }
+
+const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
 
 class AnalysisCancelledError extends Error {
   constructor() {
@@ -146,7 +149,7 @@ function prepareRuntime(
         `No sealed Analysis implementation is registered for ${node.nodeId}.`,
       );
     }
-    const validator = ports.outputValidators.get(parsedCapabilities.data.schemaDigest);
+    const validator = ports.schemaValidators.get(schemaIdentityKey(parsedCapabilities.data));
     if (canonicalizeJson(port.identity) !== canonicalizeJson(runtime.identity)
         || canonicalizeJson(port.outputSchema) !== canonicalizeJson(parsedCapabilities.data)
         || validator === undefined
@@ -497,7 +500,20 @@ function materializeNodeInputs(
         candidate.comparisonId === input.referenceId
       ));
       if (comparison === undefined) throw new TypeError('Analysis comparison input is missing.');
-      inputs.push({ inputKind: 'comparison', referenceId: input.referenceId, comparison });
+      if (!comparison.treatmentTargetIds.includes(input.treatmentTargetId)
+          || !comparison.metricIds.includes(input.metricId)) {
+        throw new TypeError('Analysis comparison contrast is missing.');
+      }
+      inputs.push({
+        inputKind: 'comparison',
+        referenceId: input.referenceId,
+        contrast: {
+          comparisonId: comparison.comparisonId,
+          controlTargetId: comparison.controlTargetId,
+          treatmentTargetId: input.treatmentTargetId,
+          metricId: input.metricId,
+        },
+      });
     } else {
       const record = recordsByResultId.get(input.referenceId);
       if (record?.analysisStatus !== 'completed') {
@@ -517,17 +533,19 @@ function materializeNodeInputs(
     ),
   );
   if (comparisons.length > 0) {
-    const allowedTargets = new Set(comparisons.flatMap((input) => [
-      input.comparison.controlTargetId,
-      ...input.comparison.treatmentTargetIds,
-    ]));
-    const allowedMetrics = new Set(comparisons.flatMap((input) => input.comparison.metricIds));
     for (let index = 0; index < inputs.length; index += 1) {
       const input = inputs[index];
       if (input.inputKind !== 'metric-observations') continue;
+      const matchingContrasts = comparisons.filter(
+        (comparison) => comparison.contrast.metricId === input.referenceId,
+      );
+      const allowedTargets = new Set(matchingContrasts.flatMap((comparison) => [
+        comparison.contrast.controlTargetId,
+        comparison.contrast.treatmentTargetId,
+      ]));
       inputs[index] = {
         ...input,
-        rows: allowedMetrics.has(input.referenceId)
+        rows: matchingContrasts.length > 0
           ? input.rows.filter((row) => allowedTargets.has(row.targetId))
           : [],
       };
@@ -564,8 +582,23 @@ function terminalEventKind(
   return 'analysis.run.failed';
 }
 
-function deriveTrust(source: Provenance['trust']): Provenance['trust'] {
-  return source;
+function deriveTrust(
+  plan: SealedRunPlan,
+  source: Provenance['trust'],
+): Provenance['trust'] {
+  const executedNodeIds = new Set(plan.analysis.analysisGraph.nodes.map((node) => node.nodeId));
+  const usedMissingPolicyIds = new Set(plan.analysis.metrics.map(
+    (metric) => metric.missingPolicyId,
+  ));
+  const trusts = plan.analysis.runtimes.flatMap((runtime) => (
+    (runtime.runtimeKind === 'analysis-node' && executedNodeIds.has(runtime.referenceId))
+      || (runtime.runtimeKind === 'missing-policy' && usedMissingPolicyIds.has(runtime.referenceId))
+      ? [runtime.identity.assuranceLevel]
+      : []
+  ));
+  return [source, ...trusts].sort(
+    (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
+  )[0];
 }
 
 function makeBundle(
@@ -574,7 +607,7 @@ function makeBundle(
   evaluation: EvaluationBundle,
   options: AnalysisRunOptions,
   records: readonly AnalysisRecord[],
-  outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>,
+  schemaValidators: ReadonlyMap<string, CoreSchemaValidator>,
   stop: StopState,
 ): AnalysisBundle {
   const ordered = [...records].sort((left, right) => compareStrings(left.nodeId, right.nodeId));
@@ -598,7 +631,7 @@ function makeBundle(
     records: ordered,
     provenance: {
       provenanceKind: 'derived' as const,
-      trust: deriveTrust(evaluation.provenance.trust),
+      trust: deriveTrust(plan, evaluation.provenance.trust),
       parentDigests: [evaluation.bundleDigest],
       ...(stop.error !== undefined ? { facets: { terminalErrorCode: stop.error.code } } : {}),
     },
@@ -615,7 +648,7 @@ function makeBundle(
     plan,
     execution,
     evaluation,
-    { outputValidators },
+    { schemaValidators },
   ));
 }
 
@@ -774,6 +807,7 @@ async function runAnalysis(
     let run;
     let output: AnalysisNodeExecutionResult | undefined;
     let failure: EvaluationError | undefined;
+    let disposalFailed = false;
     try {
       run = await binding.port.openRun(deepFreeze({
         runId: options.runId,
@@ -802,6 +836,7 @@ async function runAnalysis(
         try {
           await run.dispose();
         } catch {
+          disposalFailed = true;
           failure = {
             code: 'analysis-node-dispose-failed',
             stage: 'infrastructure',
@@ -809,6 +844,10 @@ async function runAnalysis(
           };
         }
       }
+    }
+    if (controller.signal.aborted && !disposalFailed) {
+      failure = safeError(new AnalysisCancelledError());
+      output = undefined;
     }
     if (failure !== undefined || output === undefined) {
       if (failure?.code === 'analysis-cancelled') {
@@ -906,7 +945,8 @@ async function runAnalysis(
       let value: JsonValue;
       try {
         value = snapshotJson(output.value);
-        if (!binding.validator.validate(value)) {
+        const envelope = { resultType: output.resultType, value } as const;
+        if (canonicalizeJson(binding.validator.parse(envelope)) !== canonicalizeJson(envelope)) {
           throw new TypeError('Analysis output does not match the sealed schema.');
         }
       } catch (error) {
@@ -966,7 +1006,7 @@ async function runAnalysis(
     prepared.evaluation,
     options,
     records,
-    ports.outputValidators,
+    ports.schemaValidators,
     stop,
   );
   const delivered = await events.emit(
@@ -986,7 +1026,7 @@ async function runAnalysis(
       prepared.evaluation,
       options,
       records,
-      ports.outputValidators,
+      ports.schemaValidators,
       stop,
     );
     await events.emitRecovery(

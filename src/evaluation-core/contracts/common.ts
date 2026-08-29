@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JsonValueSchema, type JsonValue } from './json.js';
+import { canonicalizeJson, JsonValueSchema, type JsonValue } from './json.js';
 
 export const NonEmptyStringSchema = z.string().min(1);
 export const IdentifierSchema = z.string().min(1).max(256);
@@ -15,6 +15,15 @@ export const SchemaIdentitySchema = z.object({
   schemaUri: UriSchema,
   schemaDigest: Sha256DigestSchema,
 }).strict();
+
+export interface CoreSchemaValidator {
+  readonly schema: SchemaIdentity;
+  parse(value: unknown): JsonValue;
+}
+
+export function schemaIdentityKey(identity: SchemaIdentity): string {
+  return canonicalizeJson(identity);
+}
 
 export const ExtensionEntrySchema = z.object({
   schemaUri: UriSchema,
