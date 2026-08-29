@@ -471,6 +471,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       runId: 'unverified-hit-seed',
       bundleId: 'unverified-hit-seed-bundle',
     });
+    const evaluationId = native.records[0].evaluationId as Sha256Digest;
     const forged = resealEvaluationBundle(native, (draft) => {
       const record = draft.records[0];
       if (record.evaluationStatus !== 'completed') throw new Error('unexpected record');
@@ -486,7 +487,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       }, {
         ...first,
         attemptId: deriveEvaluationAttemptId({
-          evaluationId: record.evaluationId,
+          evaluationId,
           attemptNumber: 2,
         }),
         attemptNumber: 2,
