@@ -87,7 +87,7 @@ A cached stochastic output cannot count as a new independent trial. Replay prese
 
 ### 4.5 Comparability is an explicit relation
 
-Different Bundle digests do not automatically mean incomparable, and equal digests do not prove a valid experimental design. ComparabilityPolicy inspects Dataset projections, Targets, Runtimes, Evaluators, SamplingDesign, and DecisionPolicy and returns compatible, conditional, or incompatible with reasons.
+Different Bundle digests do not automatically mean incomparable, and equal digests do not prove a valid experimental design. ComparabilityPolicy inspects Dataset projections, Targets, Runtimes, Evaluators, SamplingDesign, and DecisionPolicy and returns compatible, conditional, or incompatible with reasons. Section 7 freezes the v1 decision contract.
 
 ### 4.6 Standards-compatible, not standards-shaped
 
@@ -372,6 +372,172 @@ runContractDigest = H(all plan digests + schema identities)
 ```
 
 Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Output/trace capture mode and their classification ceiling enter ExecutionPlan identity because they change the durable Execution facts and cache key; the complete EvidencePolicy also enters EvaluationPlan because it determines evaluator bindings and evaluation evidence. Evaluation-only input/expected/evidence capture does not invalidate Execution.
+
+### 7.1 ADR: compare a declared subject under an invariant measurement system
+
+**Status:** accepted for v1 implementation; tracked by [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441).
+
+Comparability is a relation between two candidates for one declared use, not an intrinsic property of either Run. v1 supports one deliberately conservative design mode: `exact-measurement-design`. The caller declares one or more one-to-one Target mappings as the subjects under study. Only the mapped Target definitions and their Executor Runtime implementation identities may differ. Everything that defines how those subjects are observed, scored, sampled, analyzed, and—when requested—decided remains invariant.
+
+This decision separates three propositions that must never collapse into one Boolean:
+
+1. **Content identity:** equal canonical digests mean equal sealed content at that stage. They do not authenticate the producer or validate an experimental design.
+2. **Evidence qualification:** Runtime assurance, provenance trust, host attestation, and source-verification axes state how strongly the claimed content and execution are authenticated. They do not make different measurement instruments equivalent.
+3. **Experimental comparability:** the declared subject is varied while the measurement projection required by the requested scope remains invariant.
+
+Replayability and reproducibility remain separate artifact properties. A comparison may be valid without guaranteeing byte-identical reproduction, and a self-contained replay does not repair a changed Evaluator or sampling unit.
+
+### 7.2 Policy and assessment contract
+
+The v1 wire contract is conceptually:
+
+```ts
+interface ComparabilityPolicy {
+  schemaVersion: 'omk.comparability-policy/v1';
+  designMode: 'exact-measurement-design';
+  comparisonScope: 'evaluation' | 'analysis' | 'decision';
+  subjects: readonly {
+    subjectId: string;
+    leftTargetId: string;
+    rightTargetId: string;
+  }[];
+  policyDigest: Sha256Digest;
+}
+
+interface ComparabilityCandidateIdentity {
+  runContractDigest: Sha256Digest;
+  planDigests: PlanDigests;
+  artifacts: readonly {
+    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+    artifactDigest: Sha256Digest;
+  }[];
+  sourceVerification: readonly {
+    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+    sourceDigest: Sha256Digest;
+    verificationAxis:
+      | 'provenance-trust'
+      | 'parent-source-trust'
+      | 'cache-receipt'
+      | 'invocation-budget'
+      | 'provider-cost-budget'
+      | 'policy-execution';
+    verificationStatus:
+      | 'verified'
+      | 'indeterminate'
+      | 'declared'
+      | 'untrusted'
+      | 'unknown';
+  }[];
+  runtimeQualification: readonly {
+    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+    runtimeKind:
+      | 'executor'
+      | 'evaluator'
+      | 'analysis-node'
+      | 'missing-policy'
+      | 'decision-policy';
+    referenceId: string;
+    runtimeIdentityDigest: Sha256Digest;
+    fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
+    sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+    effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  }[];
+  candidateDigest: Sha256Digest;
+}
+
+interface ComparabilityAssessment {
+  schemaVersion: 'omk.comparability-assessment/v1';
+  policyDigest: Sha256Digest;
+  left: ComparabilityCandidateIdentity;
+  right: ComparabilityCandidateIdentity;
+  designStatus: 'compatible' | 'incompatible';
+  evidenceStatus: 'verified' | 'conditional';
+  comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
+  reasons: readonly ComparabilityReason[];
+  assessmentDigest: Sha256Digest;
+}
+
+interface ComparabilityReason {
+  reasonCode: ComparabilityReasonCode;
+  axis: 'design' | 'evidence' | 'identity';
+  severity: 'info' | 'conditional' | 'incompatible';
+  scope: 'evaluation' | 'analysis' | 'decision';
+  path: JsonPointer;
+  leftDigest?: Sha256Digest;
+  rightDigest?: Sha256Digest;
+}
+```
+
+`ComparabilityCandidateIdentity` records all stage Plan digests for audit, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. Its artifact, source-verification, and Runtime-qualification lists use canonical stage/axis/reference order. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
+
+Runtime comparison uses two projections: implementation identity contains `implementationId`, `version`, `fingerprint`, `fingerprintBasis`, and `capabilities`; evidence qualification contains sealed/effective assurance, `provenanceFacets`, effective source trust, and source-verification axes. An assurance-only change therefore cannot masquerade as a changed measurement algorithm, and an equal fingerprint cannot masquerade as authenticated execution. `effectiveAssuranceLevel` may only exceed the sealed level when the authenticated source envelope carries independent host-verifier evidence; transported fields cannot promote themselves.
+
+The Policy is immutable, canonical, and content-addressed. It is supplied to a pure Core comparison operation rather than embedded in `MeasurementPolicy` or either RunPlan: comparing historical Runs does not change how either Run was produced. The Assessment binds both candidate identities and the Policy digest. It contains no clock time, localized message, host path, or unordered reason collection. Reasons sort canonically by `(severity, axis, scope, path, reasonCode, leftDigest, rightDigest)`; presentation adapters map stable reason codes to human text. Re-running with newly obtained independent attestation produces a new evidence-qualified Assessment, never a silent mutation of the old one.
+
+Subject mappings must be non-empty, one-to-one on each side, and reference Targets present in the corresponding sealed Plan. Before comparing connectivity, Comparison references, or any other Target-keyed structure, Core alpha-renames each mapped Target to its canonical `subjectId`; unmapped Target IDs remain literal. A descriptive `targetKind` has no special semantics. An undeclared Target addition, removal, remapping, definition change, or Executor implementation change is measurement-system drift and is incompatible. A declared subject change is recorded as an informational reason rather than erased from the audit trail.
+
+### 7.3 Scope projections
+
+The comparison engine does not infer equivalence from root or downstream digest equality. It compares canonical component projections because an intentional subject change necessarily invalidates `executionPlanDigest` and every downstream digest.
+
+| Requested scope | Invariant measurement projection | Intentionally variable projection |
+| --- | --- | --- |
+| `evaluation` | execution and evaluation Dataset projections; sample identities and order; scheduling groups; complete ExperimentDesign including trials, root seed, seed coupling, pairing, strata, clusters, and resampling unit; execution/retry/budget/cache/failure policy; Evaluator and Metric definitions; Evaluator implementation identities; evaluation policy and evidence capture | only declared Target definitions and their bound Executor implementation identities |
+| `analysis` | everything for `evaluation`, plus Comparison definitions and families, AnalysisGraph, MissingPolicy and Analysis Runtime implementation identities, output schema identities, and estimator parameters | only declared Target definitions and their bound Executor implementation identities |
+| `decision` | everything for `analysis`, plus DecisionPolicy definition and Decision Runtime implementation identity | only declared Target definitions and their bound Executor implementation identities |
+
+Fields outside the requested scope do not poison a valid upstream comparison. For example, a DecisionPolicy-only change is compatible for `analysis` and incompatible for `decision`. Conversely, changing Gold, evaluation context, an Evaluator, Metric, evidence binding, trial count, seed coupling, pairing, cluster, stratum, resampling unit, or estimator is incompatible for every scope that consumes it. v1 does not guess that two different instruments, scales, sampling designs, or statistical models are “close enough.” Supporting calibration, bridge studies, independent-seed designs, Dataset overlap, or schema migration requires a future explicit design mode and construct-specific assumptions.
+
+JSON property order and annotations excluded from measurement identity produce no incompatibility. A schema identity change is incompatible at the first scope that consumes that schema. Extension data follows its compiler-declared impact stage; an `audit` extension is ignored, while a measurement-stage extension participates in the corresponding projection.
+
+### 7.4 Status derivation and fail-closed rules
+
+`designStatus` is `compatible` only when every invariant projection matches and every subject mapping is valid. Any mismatch makes it `incompatible`; multiple mismatches are all reported in deterministic order.
+
+`evidenceStatus` is `verified` only when the supplied source chain required by the scope is independently authenticated, every applicable verification axis is `verified`, and every actually used Runtime has verified effective assurance after applying any independent host verification. Plan-only preflight, transported JSON, absent attestation, `indeterminate` verification, unknown effective provenance, or declared/unknown effective Runtime assurance yields `conditional` with explicit reason codes. `fingerprintBasis: 'opaque'` also yields a condition because equality does not establish what implementation was held fixed. Structurally invalid Plans, artifacts, parent chains, or forged digests are rejected by their validators before comparison; ComparabilityPolicy is not an alternate artifact-admission path.
+
+The overall status is derived, never supplied by a host:
+
+```text
+if designStatus == incompatible                     => incompatible
+else if evidenceStatus == conditional               => conditional
+else                                                 => compatible
+```
+
+`conditional` therefore means “the experimental design matches, but listed authentication conditions remain unresolved.” It never means “the design is probably similar.” A conditional Assessment may support diagnostics or evidence collection, but cannot by itself authorize a directional release decision. Existing Decision and Report evidence gates continue to fail closed on indeterminate source verification.
+
+The initial change matrix below is normative. Outcomes assume otherwise verified evidence; `conditional` rows override that assumption. “Ignored” means outside the requested scope, not omitted from either Run's identity.
+
+| Change | `evaluation` | `analysis` | `decision` | Stable reason code |
+| --- | --- | --- | --- | --- |
+| annotations or JSON property order only | compatible | compatible | compatible | none |
+| Gold or evaluation context | incompatible | incompatible | incompatible | `comparability-design-evaluation-input-mismatch` |
+| Evaluator, Metric, or evaluation evidence policy | incompatible | incompatible | incompatible | `comparability-design-evaluation-instrument-mismatch` |
+| declared subject Target definition or bound Executor implementation | compatible | compatible | compatible | `comparability-identity-declared-subject-change` |
+| undeclared Target or Executor implementation | incompatible | incompatible | incompatible | `comparability-design-undeclared-subject-change` |
+| trial count, root seed, seed coupling, pairing, cluster, stratum, resampling unit, or scheduling connectivity | incompatible | incompatible | incompatible | `comparability-design-sampling-mismatch` |
+| AnalysisGraph or estimator | ignored | incompatible | incompatible | `comparability-design-analysis-mismatch` |
+| Comparison definition or family | ignored | incompatible | incompatible | `comparability-design-comparison-mismatch` |
+| DecisionPolicy or Decision Runtime implementation | ignored | ignored | incompatible | `comparability-design-decision-mismatch` |
+| consumed schema or measurement-stage extension | incompatible at first consuming scope | incompatible | incompatible | `comparability-design-schema-mismatch` |
+| plan-only comparison or required source absent | conditional | conditional | conditional | `comparability-evidence-source-absent` |
+| transported source verification is `indeterminate` | conditional | conditional | conditional | `comparability-evidence-verification-indeterminate` |
+| effective provenance or Runtime assurance is not verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| an invariant Runtime uses an opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
+
+Invalid subject mappings use `comparability-design-subject-mapping-invalid`; any invariant component not covered by a more specific code uses `comparability-design-projection-mismatch`. Equal versus different stage and artifact digests are recorded in candidate identities, not emitted as verdict reasons. Unknown reason codes fail closed for automated release consumers; readers may still preserve and display them.
+
+### 7.5 Consequences and rejected alternatives
+
+This design allows a new prompt, RAG configuration, skill, agent, workflow, model, or service implementation to be the independent variable without weakening the measurement instrument. It also allows an Analysis result to remain comparable when only a later DecisionPolicy changes. The cost is deliberate strictness: v1 rejects potentially defensible comparisons until their assumptions are represented by a versioned design mode.
+
+The following alternatives are rejected:
+
+- **Compare only `runContractDigest`:** rejects every intended subject change and conflates all downstream invalidation.
+- **Treat equal stage digests as sufficient:** proves content identity only and ignores provenance, subject declaration, and construct validity.
+- **Let CLI, Studio, or a host decide ad hoc:** produces mutually inconsistent release gates and unauditable historical results.
+- **Use `conditional` for arbitrary design drift:** turns a precise state into a waiver mechanism and makes automated decisions unsafe.
+- **Put ComparabilityPolicy in each RunPlan:** changes Run identity for a post-hoc relation and prevents one immutable Run from participating in multiple declared comparisons.
 
 ## 8. Runtime, resources, and cancellation
 
@@ -672,11 +838,13 @@ fully revalidates these trust chains, cluster-resampling artifacts, and correcte
 ## 21. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
+- [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/) and [LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)
 - [Pydantic Evals](https://pydantic.dev/docs/ai/evals/evals/) and [Report Evaluators](https://pydantic.dev/docs/ai/evals/evaluators/report-evaluators/)
 - [lm-evaluation-harness Task Guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md)
 - [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) and [OpenInference Semantic Conventions](https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md)
 - [CloudEvents](https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md) and [W3C Trace Context](https://www.w3.org/TR/trace-context/)
+- [W3C PROV Overview](https://www.w3.org/TR/prov-overview/) and [PROV-AQ](https://www.w3.org/TR/prov-aq/)
 - [JSON Schema 2020-12](https://json-schema.org/draft/2020-12), [RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785.html), and [RFC 6901 JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901)
 - [Zod 4 JSON Schema](https://zod.dev/json-schema), [Node.js Events](https://nodejs.org/api/events.html), and the [Sigstore Bundle specification](https://github.com/sigstore/protobuf-specs/blob/main/protos/sigstore_bundle.proto)
 
