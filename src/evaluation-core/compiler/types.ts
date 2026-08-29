@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   RuntimeIdentitySchema,
   SchemaIdentitySchema,
+  type CoreSchemaValidator,
   type ExtensionEntry,
   type JsonValue,
   type RunPlan,
@@ -75,16 +76,64 @@ const AnalysisResultInputDomainSchema = z.object({
   schemaUris: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9+.-]*:/)).min(1),
 }).strict();
 
-export const AnalysisCapabilitiesSchema = z.object({
+const ComparisonInputDomainSchema = z.object({
+  inputKind: z.literal('comparison'),
+}).strict();
+
+const InputCardinalitySchema = z.object({
+  min: z.number().int().nonnegative(),
+  max: z.number().int().nonnegative().optional(),
+}).strict().refine(
+  (cardinality) => cardinality.max === undefined || cardinality.min <= cardinality.max,
+  { message: 'Input cardinality min must not exceed max.' },
+);
+
+export const AnalysisNodeCapabilitiesSchema = z.object({
+  capabilityKind: z.literal('analysis-node'),
   analysisNodeKinds: z.array(z.enum(['reducer', 'estimator', 'correction'])).min(1),
   inputDomains: z.array(z.discriminatedUnion('inputKind', [
     MetricObservationInputDomainSchema,
     AnalysisResultInputDomainSchema,
+    ComparisonInputDomainSchema,
   ])),
   outputSchema: SchemaIdentitySchema,
+  parameterSchema: SchemaIdentitySchema,
+  inputCardinalities: z.object({
+    metricObservations: InputCardinalitySchema,
+    analysisResults: InputCardinalitySchema,
+    comparisons: InputCardinalitySchema,
+  }).strict(),
   sampling: SamplingCapabilitiesSchema.optional(),
   schemas: z.array(SchemaIdentitySchema),
 }).strict();
+
+export const MissingPolicyCapabilitiesSchema = z.object({
+  capabilityKind: z.literal('missing-policy'),
+  valueTypes: z.array(z.enum([
+    'numeric',
+    'boolean',
+    'categorical',
+    'text',
+    'ranking',
+  ])).min(1),
+  schemas: z.array(SchemaIdentitySchema),
+}).strict();
+
+export const DecisionPolicyCapabilitiesSchema = z.object({
+  capabilityKind: z.literal('decision-policy'),
+  analysisResultSchemaUris: z.array(
+    z.string().regex(/^[A-Za-z][A-Za-z0-9+.-]*:/),
+  ).min(1),
+  multipleComparisonPolicyIds: z.array(z.string().min(1).max(256)),
+  parameterSchema: SchemaIdentitySchema,
+  schemas: z.array(SchemaIdentitySchema),
+}).strict();
+
+export const AnalysisCapabilitiesSchema = z.discriminatedUnion('capabilityKind', [
+  AnalysisNodeCapabilitiesSchema,
+  MissingPolicyCapabilitiesSchema,
+  DecisionPolicyCapabilitiesSchema,
+]);
 
 export const RuntimeResolutionSchema = z.object({
   identity: RuntimeIdentitySchema,
@@ -108,6 +157,9 @@ export type ProtocolManifest = z.infer<typeof ProtocolManifestSchema>;
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilitiesSchema>;
 export type EvaluatorCapabilities = z.infer<typeof EvaluatorCapabilitiesSchema>;
 export type AnalysisCapabilities = z.infer<typeof AnalysisCapabilitiesSchema>;
+export type AnalysisNodeCapabilities = z.infer<typeof AnalysisNodeCapabilitiesSchema>;
+export type MissingPolicyCapabilities = z.infer<typeof MissingPolicyCapabilitiesSchema>;
+export type DecisionPolicyCapabilities = z.infer<typeof DecisionPolicyCapabilitiesSchema>;
 export type RuntimeResolution = z.infer<typeof RuntimeResolutionSchema>;
 export type ExtensionImpactStage = z.infer<typeof ExtensionImpactStageSchema>;
 export type ExtensionResolution = z.infer<typeof ExtensionResolutionSchema>;
@@ -125,12 +177,22 @@ export interface EvaluatorRuntimeRequirement {
   versionConstraint?: string;
 }
 
-export interface AnalysisRuntimeRequirement {
+export type AnalysisRuntimeRequirement = {
   referenceId: string;
   implementationId: string;
+  versionConstraint?: string;
   analysisNodeKind: 'reducer' | 'estimator' | 'correction';
   requirementKind: 'analysis-node' | 'sampling-estimator';
-}
+} | {
+  referenceId: string;
+  implementationId: string;
+  requirementKind: 'missing-policy';
+} | {
+  referenceId: string;
+  implementationId: string;
+  versionConstraint?: string;
+  requirementKind: 'decision-policy';
+};
 
 export interface ExtensionValidationRequest {
   namespace: string;
@@ -139,6 +201,7 @@ export interface ExtensionValidationRequest {
 }
 
 export interface PreparationRuntime {
+  schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
   resolveExecutor(requirement: Readonly<ExecutorRuntimeRequirement>): unknown | Promise<unknown>;
   resolveEvaluator(requirement: Readonly<EvaluatorRuntimeRequirement>): unknown | Promise<unknown>;
   resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>): unknown | Promise<unknown>;

@@ -208,7 +208,7 @@ interface ExperimentDesign {
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
-配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`；改变配对连通性会产生新的 Execution 身份，而只影响决策的比较元数据不会。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
 
 `pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
 
@@ -232,7 +232,9 @@ interface MetricDefinition {
 - DecisionPolicy 消费命名的 AnalysisResult，产生 verdict；
 - weight 只属于明确的 composite reducer，不是 Metric 的通用属性。
 
-复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；prepare 检查循环、缺失依赖和值域不匹配。
+复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 会分别封存 parameter schema，以及 Metric、上游 result、Comparison 三类输入基数。Core 在计算 plan digest 前校验 parameter 并物化默认值，因此缺省、非法或被实现静默忽略的选项不会折叠成相同 runtime 行为。completed result 校验还会接收这些 sealed parameter 作为上下文：estimator 回显的区间置信度、重采样次数，以及 correction 回显的 alpha，都必须在在线执行和 Bundle 重验时与 plan 一致。区间的 `unitCount` 由 Core 根据 included row 和 sealed resampling unit 独立推导；paired block 只有同时纳入声明 contrast 的两侧 target 才计数。percentile interval 不要求包含其点估计，但端点仍须有序（`lower <= upper`）。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
+
+DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, treatmentTargetId, metricId, analysisResultId)`。该 AnalysisResult 的 producer 必须精确且仅消费这个 member 的 Metric 与 Comparison selector，不能混入 family 外输入。未校正的 singleton result 必须由 DecisionPolicy 直接消费。需要校正的 family 还要为每个 member 声明 canonical `hypothesisId`；correction node 必须精确消费全部 member 的 `analysisResultId`，DecisionPolicy 则消费唯一 correction result。超过一个 member 的 family 必须绑定 correction；空或单 member family 不能伪装成多重比较。Decision 只能收到带 result identity 和可选 hypothesis identity 的投影 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。correction table 的 canonical hypothesis ID、family size 和 raw p-value 必须全部一致，才能产生 verdict。内建 `progress/v1` 只选择 singleton contrast 绑定的唯一 result；没有 family 时只接受唯一声明 result，输入有歧义则返回 not-decided，并且不声称支持 multiple-comparison。多 contrast 的发布语义必须由专用 DecisionPolicy 明确定义。
 
 v1 内建的 reducer／estimator 保持最小：
 
@@ -299,11 +301,13 @@ Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输
 
 ### 4．AnalysisBundle
 
-保存 AnalysisGraph 各节点的结果、前提检查、coverage、置信区间、分布、表格或曲线，以及 parent EvaluationBundle digest。
+为 AnalysisGraph 的每个节点保存一条 canonical 事实：completed、inconclusive、failed 或 not evaluated。每条事实绑定已解析的 RuntimeIdentity、输出 SchemaIdentity、声明的输入引用、对应 estimand 的 observation coverage、前提检查、父结果 digest、analysis mode、生成时间与 record digest。Bundle 另行记录 terminal status、graph coverage、EvaluationBundle 与 AnalysisPlan digest、provenance 和自身 digest。missing、invalid、evaluation-failed、source-unavailable、not-started 与 censored observation 保持独立计数；included 与 comparable 集合不能超过 observed evidence。
+
+`parseAnalysisBundleDocument()` 校验独立 wire、canonical result 顺序、coverage 算术、record digest 和 Bundle digest。`parseAnalysisBundle()` 再绑定 sealed RunPlan、ExecutionBundle 与 EvaluationBundle，核对完整 graph universe、Runtime／schema identity、声明输入、parent lineage、analysis mode 与 source trust ceiling。
 
 ### 5．EvaluationReport
 
-Report 是为人和产品消费构造的物化视图。它可以内联 Bundle 摘要或引用 Bundle，但不能成为重评分和审计的唯一数据源。
+Report 是为人和产品消费构造的物化视图。它可以内联稳定摘要，也可以按 digest 引用 Bundle 并附带可选 retrieval URI，但不能成为重评分和审计的唯一数据源。DecisionResult 单独进行内容寻址，并绑定 DecisionPlan、policy、已解析 runtime、AnalysisBundle 与命名 AnalysisResult。Report materializer 不执行 Analysis node 或 DecisionPolicy。
 
 Report 使用三个正交状态：
 
@@ -591,7 +595,21 @@ Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider 
 
 `parseEvaluationBundleDocument()` 校验独立 wire shape、状态转换、identity、coverage、replayability 和 digest。`parseEvaluationBundle()` 再绑定 sealed RunPlan 与已验证的 ExecutionBundle，并检查全部可由 artifact 结构判定的不变量；缺少外部 runtime evidence 时，durable Bundle 仍保持有效。`verifyEvaluationBundle()` 另行返回 `planVerification`：已知 native invocation 给出下界，未验证的 cache claim 给出上界；当 Bundle JSON 本身无法证明 lookup 时，cache receipt 或调用预算状态标记为 `indeterminate`，而不是把 Bundle 判为 invalid。调用方传入从可信 cache 边界独立取得的 `verifiedCacheRecordDigests` 后才能闭合该证明；Evaluation Runtime 返回自身 Bundle 前要求两项状态均为 `verified`。仅从 hit 重建 claimed native miss 永远不构成 receipt。Coverage 满足 `planned = eligible + sourceUnavailable`、`eligible = started + notStarted` 和 `started = completed + failed + cancelled`。
 
-## 十九、行业参考
+## 十九、Analysis 与 Decision Runtime v1 实现基线
+
+[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。AnalysisPlan 封存 Metric contract、包含 trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 变化会使 Analysis 及下游 identity 失效；仅 policy 变化只使 Decision 与 root contract 失效。
+
+Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或精确 Comparison contrast 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出以完整 `{ resultType, value }` envelope 同时经过 wire result contract，以及由完整 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。JSON Schema 无法表达的语义不变量，包括 Bonferroni 算术与 canonical family membership，也必须进入 validator 和 schema digest。
+
+内建 registry 提供三个 descriptive reducer、三个确定性的 percentile-bootstrap estimator、Bonferroni correction、显式 exclusion MissingPolicy 与最小 progress DecisionPolicy。每个内建 reducer／estimator 都封存恰好一个 Metric 输入。Bootstrap draw 从 sealed root seed、AnalysisPlan digest、node identity 与 replicate index 做 domain-separated 派生。重复 trial 先在声明的 sampling unit 内归约；paired contrast 先在完整 pairing block 内形成，再进行重采样；cluster bootstrap 按整簇重采样。有效单位不足或前提失败时产生 inconclusive result，绝不自动选择 fallback estimator。内建 Runtime identity 属于 self-reported，使用 `assuranceLevel: declared`；只有独立宿主 verifier 或 attestation 边界才能把实际执行代码提升为 verified assurance。
+
+Decision 只消费 policy 命名的 AnalysisResult，以及 coverage、assumption check、evidence status 与显式封存的 comparison family。correction result 必须匹配这个精确 family，而不是全局 Comparison 数量。gate 未通过时产生稳定的 `not-decided` reason；policy 或基础设施失败与统计结论保持分离。EvaluationReport 随后物化 Bundle reference、内容寻址的 DecisionResult、provenance 与派生的 run／evidence／conclusion 三轴状态，不重算统计量或 verdict。Host annotation 属于展示元数据：它可以改变 report artifact digest，但不能改变任何 stage Plan 或 source Bundle digest。
+
+AnalysisBundle 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。后者要求准确的 source Bundle chain、完整 graph／runtime／schema binding、独立 output validation、parent digest、policy digest，以及不高于最不可信 source 或实际执行 Runtime assurance 的 provenance trust。Analysis trust 纳入全部已执行 AnalysisNode 与实际使用的 MissingPolicy；存在 decision 时，report trust 还要纳入 DecisionPolicy assurance。AnalysisBundle provenance 只能有一个 parent，即已验证的 EvaluationBundle，不能夹带无关 digest。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
+
+Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。所有异步终态路径都会关闭 event stream，Analysis 还会移除外部 AbortSignal listener，包括非预期的 clock、sequencer、validation 或 materialization failure。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。同一个 AbortSignal 会传入执行中的 Analysis 与 Decision port；signal 一旦 abort，port 后续 reject 或迟到的成功结果都不能覆盖 cancelled 终态。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
+
+## 二十、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；

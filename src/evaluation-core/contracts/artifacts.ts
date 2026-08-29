@@ -315,9 +315,69 @@ export const EvaluationBundleSchema = z.object({
   title: 'OMK Evaluation Bundle v1',
 });
 
-export const AnalysisResultSchema = z.object({
+export const AnalysisObservationCoverageSchema = z.object({
+  planned: z.number().int().nonnegative(),
+  observed: z.number().int().nonnegative(),
+  missing: z.number().int().nonnegative(),
+  invalid: z.number().int().nonnegative(),
+  evaluationFailed: z.number().int().nonnegative(),
+  sourceUnavailable: z.number().int().nonnegative(),
+  notStarted: z.number().int().nonnegative(),
+  censored: z.number().int().nonnegative(),
+  included: z.number().int().nonnegative(),
+  excluded: z.number().int().nonnegative(),
+  comparable: z.number().int().nonnegative(),
+}).strict();
+
+export const AssumptionCheckSchema = z.object({
+  assumptionId: IdentifierSchema,
+  nodeId: IdentifierSchema,
+  checkStatus: z.enum(['passed', 'failed', 'not-evaluated']),
+  reasonCode: IdentifierSchema.optional(),
+  details: JsonValueSchema.optional(),
+}).strict();
+
+export const AnalysisExclusionSchema = z.object({
+  rowId: Sha256DigestSchema,
+  reasonCode: IdentifierSchema,
+}).strict();
+
+const AnalysisRecordBaseSchema = z.object({
   resultId: IdentifierSchema,
   nodeId: IdentifierSchema,
+  analysisNodeKind: z.enum(['reducer', 'estimator', 'correction']),
+  implementation: RuntimeIdentitySchema,
+  outputSchema: z.object({
+    schemaVersion: NonEmptyStringSchema,
+    schemaUri: UriSchema,
+    schemaDigest: Sha256DigestSchema,
+  }).strict(),
+  inputReferences: z.array(z.discriminatedUnion('inputKind', [
+    z.object({
+      inputKind: z.literal('metric-observations'),
+      referenceId: IdentifierSchema,
+    }).strict(),
+    z.object({
+      inputKind: z.literal('analysis-result'),
+      referenceId: IdentifierSchema,
+    }).strict(),
+    z.object({
+      inputKind: z.literal('comparison'),
+      referenceId: IdentifierSchema,
+      treatmentTargetId: IdentifierSchema,
+      metricId: IdentifierSchema,
+    }).strict(),
+  ])).min(1),
+  coverage: AnalysisObservationCoverageSchema,
+  exclusions: z.array(AnalysisExclusionSchema),
+  assumptionChecks: z.array(AssumptionCheckSchema),
+  analysisMode: z.enum(['preregistered', 'exploratory']),
+  derivedAt: TimestampSchema,
+  parentDigests: z.array(Sha256DigestSchema).min(1),
+}).strict();
+
+export const CompletedAnalysisRecordSchema = AnalysisRecordBaseSchema.extend({
+  analysisStatus: z.literal('completed'),
   resultType: z.enum([
     'scalar',
     'interval',
@@ -327,25 +387,41 @@ export const AnalysisResultSchema = z.object({
     'curve',
   ]),
   value: JsonValueSchema,
-  implementation: RuntimeIdentitySchema,
-  parentDigests: z.array(Sha256DigestSchema).min(1),
-  analysisMode: z.enum(['preregistered', 'exploratory']),
-  derivedAt: TimestampSchema,
+  recordDigest: Sha256DigestSchema,
 }).strict();
 
-export const AssumptionCheckSchema = z.object({
-  assumptionId: IdentifierSchema,
-  checkStatus: z.enum(['passed', 'failed', 'not-evaluated']),
-  message: NonEmptyStringSchema.optional(),
-  details: JsonValueSchema.optional(),
+export const InconclusiveAnalysisRecordSchema = AnalysisRecordBaseSchema.extend({
+  analysisStatus: z.literal('inconclusive'),
+  reasonCodes: z.array(IdentifierSchema).min(1),
+  recordDigest: Sha256DigestSchema,
 }).strict();
 
-export const CoverageRecordSchema = z.object({
+export const FailedAnalysisRecordSchema = AnalysisRecordBaseSchema.extend({
+  analysisStatus: z.literal('failed'),
+  error: EvaluationErrorSchema,
+  recordDigest: Sha256DigestSchema,
+}).strict();
+
+export const NotEvaluatedAnalysisRecordSchema = AnalysisRecordBaseSchema.extend({
+  analysisStatus: z.literal('not-evaluated'),
+  reasonCodes: z.array(IdentifierSchema).min(1),
+  recordDigest: Sha256DigestSchema,
+}).strict();
+
+export const AnalysisRecordSchema = z.discriminatedUnion('analysisStatus', [
+  CompletedAnalysisRecordSchema,
+  InconclusiveAnalysisRecordSchema,
+  FailedAnalysisRecordSchema,
+  NotEvaluatedAnalysisRecordSchema,
+]);
+
+export const AnalysisCoverageSchema = z.object({
+  planned: z.number().int().nonnegative(),
   started: z.number().int().nonnegative(),
   completed: z.number().int().nonnegative(),
-  comparable: z.number().int().nonnegative(),
-  censored: z.number().int().nonnegative(),
-  missing: z.number().int().nonnegative(),
+  inconclusive: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  notStarted: z.number().int().nonnegative(),
 }).strict();
 
 export const AnalysisBundleSchema = z.object({
@@ -354,9 +430,10 @@ export const AnalysisBundleSchema = z.object({
   runContractDigest: Sha256DigestSchema,
   evaluationBundleDigest: Sha256DigestSchema,
   analysisPlanDigest: Sha256DigestSchema,
-  results: z.array(AnalysisResultSchema),
-  assumptionChecks: z.array(AssumptionCheckSchema),
-  coverage: CoverageRecordSchema,
+  analysisBundleStatus: z.enum(['completed', 'cancelled', 'failed']),
+  terminationReasonCode: IdentifierSchema.optional(),
+  coverage: AnalysisCoverageSchema,
+  records: z.array(AnalysisRecordSchema),
   provenance: ProvenanceSchema,
   bundleDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
@@ -377,16 +454,31 @@ export const BundleReferenceSchema = z.object({
   uri: UriSchema.optional(),
 }).strict();
 
+const DecisionResultBaseSchema = z.object({
+  decisionPolicyId: IdentifierSchema,
+  implementation: RuntimeIdentitySchema,
+  analysisBundleDigest: Sha256DigestSchema,
+  decisionPlanDigest: Sha256DigestSchema,
+  policyDigest: Sha256DigestSchema,
+  analysisResultIds: z.array(IdentifierSchema).min(1),
+  decidedAt: TimestampSchema,
+}).strict();
+
 export const DecisionResultSchema = z.discriminatedUnion('decisionStatus', [
-  z.object({
+  DecisionResultBaseSchema.extend({
     decisionStatus: z.literal('decided'),
     verdict: IdentifierSchema,
-    policyDigest: Sha256DigestSchema,
-    analysisResultIds: z.array(IdentifierSchema).min(1),
+    decisionDigest: Sha256DigestSchema,
   }).strict(),
-  z.object({
+  DecisionResultBaseSchema.extend({
     decisionStatus: z.literal('not-decided'),
     reasonCodes: z.array(IdentifierSchema).min(1),
+    decisionDigest: Sha256DigestSchema,
+  }).strict(),
+  DecisionResultBaseSchema.extend({
+    decisionStatus: z.literal('failed'),
+    error: EvaluationErrorSchema,
+    decisionDigest: Sha256DigestSchema,
   }).strict(),
 ]);
 
@@ -435,8 +527,13 @@ export type EvaluationAttempt = z.infer<typeof EvaluationAttemptSchema>;
 export type EvaluationRecord = z.infer<typeof EvaluationRecordSchema>;
 export type EvaluationCoverage = z.infer<typeof EvaluationCoverageSchema>;
 export type EvaluationBundle = z.infer<typeof EvaluationBundleSchema>;
-export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
+export type AnalysisObservationCoverage = z.infer<typeof AnalysisObservationCoverageSchema>;
+export type AnalysisExclusion = z.infer<typeof AnalysisExclusionSchema>;
+export type AssumptionCheck = z.infer<typeof AssumptionCheckSchema>;
+export type AnalysisRecord = z.infer<typeof AnalysisRecordSchema>;
+export type AnalysisCoverage = z.infer<typeof AnalysisCoverageSchema>;
 export type AnalysisBundle = z.infer<typeof AnalysisBundleSchema>;
 export type EvaluationStatus = z.infer<typeof EvaluationStatusSchema>;
+export type DecisionResult = z.infer<typeof DecisionResultSchema>;
 export type EvaluationReport = z.infer<typeof EvaluationReportSchema>;
 export type EvaluationEvent = z.infer<typeof EvaluationEventSchema>;

@@ -334,7 +334,7 @@ export interface EvaluationBundlePlanContext
       scale?: { min?: number; max?: number; target?: number };
     }[];
     runtimes: readonly {
-      runtimeKind: 'executor' | 'evaluator' | 'analysis';
+      runtimeKind: 'executor' | 'evaluator' | 'analysis-node' | 'missing-policy' | 'decision-policy';
       referenceId: string;
       identity: EvaluationRuntimeIdentity;
     }[];

@@ -2,6 +2,9 @@ import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   digestCanonicalJson,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
+  type JsonValue,
   type EvaluationDefinition,
   type MeasurementPolicy,
   type RuntimeIdentity,
@@ -99,6 +102,7 @@ export function validDefinition(): EvaluationDefinition {
       scheduling: { schedulingKind: 'interleaved' },
     },
     analysisGraph: {
+      analysisMode: 'preregistered',
       nodes: [{
         analysisNodeKind: 'reducer',
         nodeId: 'mean-correct',
@@ -207,9 +211,23 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
     returnedIdentities.push(value);
     return value;
   };
+  const analysisOutputSchema = schemaIdentity('analysis-output');
+  const estimatorOutputSchema = schemaIdentity('estimator-output');
+  const analysisParameterSchema = schemaIdentity('analysis-parameters');
+  const decisionParameterSchema = schemaIdentity('decision-parameters');
+  const schemaValidators = new Map<string, CoreSchemaValidator>([
+    analysisOutputSchema,
+    estimatorOutputSchema,
+    analysisParameterSchema,
+    decisionParameterSchema,
+  ].map((schema) => [schemaIdentityKey(schema), {
+    schema,
+    parse: (value: unknown) => value as JsonValue,
+  }]));
   return {
     calls,
     returnedIdentities,
+    schemaValidators,
     resolveExecutor(requirement) {
       calls.executor += 1;
       if (options.throwExecutor) throw new Error('secret provider response');
@@ -271,19 +289,56 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
     resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
       calls.analysis += 1;
       if (!Object.isFrozen(requirement)) throw new Error('requirement is mutable');
+      if (requirement.requirementKind === 'missing-policy') {
+        return {
+          identity: remember(identity(
+            'exclude/v1',
+            'missing-policy-fingerprint-1',
+            {
+              capabilityKind: 'missing-policy',
+              valueTypes: ['numeric', 'boolean', 'categorical', 'text', 'ranking'],
+              schemas: [],
+            },
+          )),
+          satisfiesVersionConstraint: options.versionSatisfied ?? true,
+        };
+      }
+      if (requirement.requirementKind === 'decision-policy') {
+        return {
+          identity: remember(identity(
+            'progress/v1',
+            'decision-policy-fingerprint-1',
+            {
+              capabilityKind: 'decision-policy',
+              analysisResultSchemaUris: [schemaIdentity('analysis-output').schemaUri],
+              multipleComparisonPolicyIds: ['bonferroni/v1'],
+              parameterSchema: decisionParameterSchema,
+              schemas: [],
+            },
+          )),
+          satisfiesVersionConstraint: options.versionSatisfied ?? true,
+        };
+      }
       const isSampling = requirement.requirementKind === 'sampling-estimator';
       return {
         identity: remember(identity(
           `actual-${isSampling ? 'estimator' : 'analysis'}/v1`,
           `${isSampling ? 'estimator' : 'analysis'}-fingerprint-1`,
           {
+            capabilityKind: 'analysis-node',
             analysisNodeKinds: [isSampling ? 'estimator' : requirement.analysisNodeKind],
             inputDomains: isSampling ? [] : [{
               inputKind: 'metric-observations',
               valueTypes: options.analysisValueTypes ?? ['boolean'],
               missingPolicyIds: ['exclude/v1'],
             }],
-            outputSchema: schemaIdentity(isSampling ? 'estimator-output' : 'analysis-output'),
+            outputSchema: isSampling ? estimatorOutputSchema : analysisOutputSchema,
+            parameterSchema: analysisParameterSchema,
+            inputCardinalities: {
+              metricObservations: isSampling ? { min: 0, max: 0 } : { min: 1, max: 1 },
+              analysisResults: { min: 0, max: 0 },
+              comparisons: { min: 0, max: 0 },
+            },
             ...(isSampling ? {
               sampling: {
                 experimentalUnits: ['sample'],

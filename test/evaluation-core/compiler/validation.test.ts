@@ -3,6 +3,10 @@ import {
   EvaluationDefinitionError,
   prepareEvaluationPlan,
 } from '../../../src/evaluation-core/compiler/index.js';
+import {
+  validateAnalysisInputs,
+  validateDefinitionSemantics,
+} from '../../../src/evaluation-core/compiler/validation.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
 async function expectCode(
@@ -277,6 +281,227 @@ describe('Compiler definition validation', () => {
       'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
       testRuntime({ samplingResamplingUnits: ['cluster'] }),
     );
+  });
+
+  it('rejects an Analysis node that exceeds its sealed Metric input cardinality', async () => {
+    const definition = validDefinition();
+    definition.metrics.push({
+      ...structuredClone(definition.metrics[0]),
+      metricId: 'correct-secondary',
+    });
+    definition.evaluators[0].metricIds.push('correct-secondary');
+    definition.analysisGraph.nodes[0].inputs.push({
+      inputKind: 'metric-observations',
+      referenceId: 'correct-secondary',
+    });
+
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+    );
+  });
+
+  it('requires an explicit and internally consistent multiple-comparison family', async () => {
+    const unboundSingleton = validDefinition();
+    unboundSingleton.decisionPolicy!.comparisonFamily = [{
+      comparisonId: 'control-vs-treatment',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+      analysisResultId: 'correct-rate',
+    }];
+    await expectCode(
+      unboundSingleton,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
+    const missingContrast = validDefinition();
+    missingContrast.decisionPolicy!.comparisonFamily = [{
+      comparisonId: 'missing-comparison',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+      analysisResultId: 'correct-rate',
+    }];
+    await expectCode(
+      missingContrast,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
+    const uncorrectedFamily = validDefinition();
+    uncorrectedFamily.targets.push({
+      ...structuredClone(uncorrectedFamily.targets[1]),
+      targetId: 'treatment-secondary',
+    });
+    uncorrectedFamily.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+    uncorrectedFamily.decisionPolicy!.comparisonFamily = [
+      {
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'correct',
+        analysisResultId: 'correct-rate',
+      },
+      {
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment-secondary',
+        metricId: 'correct',
+        analysisResultId: 'missing-result',
+      },
+    ];
+    await expectCode(
+      uncorrectedFamily,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
+    const disguisedSingleTest = validDefinition();
+    disguisedSingleTest.decisionPolicy!.comparisonFamily = [{
+      comparisonId: 'control-vs-treatment',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+      analysisResultId: 'correct-rate',
+    }];
+    disguisedSingleTest.decisionPolicy!.multipleComparisonPolicyId = 'bonferroni/v1';
+    await expectCode(
+      disguisedSingleTest,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+  });
+
+  it('binds every family member to an exact and exclusive contrast producer', () => {
+    const definition = validDefinition();
+    definition.targets.push({
+      ...structuredClone(definition.targets[1]),
+      targetId: 'treatment-secondary',
+    });
+    definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+    definition.analysisGraph.nodes = [
+      {
+        analysisNodeKind: 'estimator',
+        nodeId: 'raw-primary',
+        implementationId: 'hypothesis/v1',
+          inputs: [
+            { inputKind: 'metric-observations', referenceId: 'correct' },
+            {
+              inputKind: 'comparison',
+              referenceId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+          },
+        ],
+        outputResultId: 'raw-primary-result',
+      },
+      {
+        analysisNodeKind: 'estimator',
+        nodeId: 'raw-secondary',
+        implementationId: 'hypothesis/v1',
+        inputs: [
+          { inputKind: 'metric-observations', referenceId: 'correct' },
+          {
+            inputKind: 'comparison',
+            referenceId: 'control-vs-treatment',
+            treatmentTargetId: 'treatment-secondary',
+            metricId: 'correct',
+          },
+        ],
+        outputResultId: 'raw-secondary-result',
+      },
+      {
+        analysisNodeKind: 'correction',
+        nodeId: 'correct-family',
+        implementationId: 'bonferroni/v1',
+        inputs: [
+          { inputKind: 'analysis-result', referenceId: 'raw-primary-result' },
+          { inputKind: 'analysis-result', referenceId: 'raw-secondary-result' },
+        ],
+        outputResultId: 'corrected-result',
+      },
+    ];
+    definition.decisionPolicy = {
+      decisionPolicyId: 'release-gate',
+      implementationId: 'progress/v1',
+      analysisResultIds: ['corrected-result'],
+      comparisonFamily: [
+        {
+          hypothesisId: 'h-primary',
+          analysisResultId: 'raw-primary-result',
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment',
+          metricId: 'correct',
+        },
+        {
+          hypothesisId: 'h-secondary',
+          analysisResultId: 'raw-secondary-result',
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment-secondary',
+          metricId: 'correct',
+        },
+      ],
+      multipleComparisonPolicyId: 'bonferroni/v1',
+      minimumEvidenceStatus: 'complete',
+    };
+
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
+
+    definition.analysisGraph.nodes[0].inputs.push({
+      inputKind: 'analysis-result',
+      referenceId: 'raw-secondary-result',
+    });
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+  });
+
+  it('enforces declared cardinality for every Analysis input kind', () => {
+    const node = {
+      analysisNodeKind: 'estimator' as const,
+      nodeId: 'paired',
+      implementationId: 'paired/v1',
+      inputs: [
+        { inputKind: 'metric-observations' as const, referenceId: 'correct' },
+        {
+          inputKind: 'comparison' as const,
+          referenceId: 'comparison-1',
+          treatmentTargetId: 'treatment-1',
+          metricId: 'correct',
+        },
+        {
+          inputKind: 'comparison' as const,
+          referenceId: 'comparison-2',
+          treatmentTargetId: 'treatment-2',
+          metricId: 'correct',
+        },
+      ],
+      outputResultId: 'paired-result',
+    };
+    const schema = {
+      schemaVersion: 'test/v1',
+      schemaUri: 'urn:test:v1',
+      schemaDigest: `sha256:${'a'.repeat(64)}`,
+    };
+    expect(() => validateAnalysisInputs(
+      node,
+      {
+        capabilityKind: 'analysis-node',
+        analysisNodeKinds: ['estimator'],
+        inputDomains: [
+          { inputKind: 'metric-observations', valueTypes: ['boolean'] },
+          { inputKind: 'comparison' },
+        ],
+        outputSchema: schema,
+        parameterSchema: schema,
+        inputCardinalities: {
+          metricObservations: { min: 1, max: 1 },
+          analysisResults: { min: 0, max: 0 },
+          comparisons: { min: 1, max: 1 },
+        },
+        schemas: [],
+      },
+      new Map([['correct', validDefinition().metrics[0]]]),
+      new Map(),
+    )).toThrowError(expect.objectContaining({ code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED' }));
   });
 
   it('keeps evaluator output record-scoped and delegates aggregation to AnalysisGraph', async () => {

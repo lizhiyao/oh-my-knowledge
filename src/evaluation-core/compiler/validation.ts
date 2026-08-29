@@ -1,7 +1,8 @@
 import type {
-  AnalysisCapabilities,
+  AnalysisNodeCapabilities,
 } from './types.js';
 import {
+  canonicalizeJson,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
   type AnalysisNodeDefinition,
@@ -344,11 +345,16 @@ function validatePolicy(
 function validateGraph(
   nodes: readonly AnalysisNodeDefinition[],
   metricIds: ReadonlySet<string>,
+  comparisons: ReadonlyMap<string, EvaluationDefinition['comparisons'][number]>,
 ): void {
   const resultProducer = new Map<string, string>();
   for (const node of nodes) resultProducer.set(node.outputResultId, node.nodeId);
   const dependencies = new Map<string, Set<string>>();
   for (const node of nodes) {
+    assertUnique(
+      node.inputs.map((input) => canonicalizeJson(input)),
+      `analysis-node:${node.nodeId}:input`,
+    );
     const nodeDependencies = new Set<string>();
     for (const input of node.inputs) {
       if (input.inputKind === 'metric-observations') {
@@ -358,7 +364,7 @@ function validateGraph(
           `analysisGraph.nodes.${node.nodeId}.inputs`,
           'Metric',
         );
-      } else {
+      } else if (input.inputKind === 'analysis-result') {
         const producer = resultProducer.get(input.referenceId);
         if (producer === undefined) {
           throw definitionError(
@@ -372,6 +378,23 @@ function validateGraph(
           );
         }
         nodeDependencies.add(producer);
+      } else {
+        assertReference(
+          new Set(comparisons.keys()),
+          input.referenceId,
+          `analysisGraph.nodes.${node.nodeId}.inputs`,
+          'Comparison',
+        );
+        const comparison = comparisons.get(input.referenceId);
+        if (comparison !== undefined
+            && (!comparison.treatmentTargetIds.includes(input.treatmentTargetId)
+              || !comparison.metricIds.includes(input.metricId))) {
+          throw definitionError(
+            'EVAL_DEFINITION_MISSING_REFERENCE',
+            'Analysis input 引用了不存在的 Comparison contrast。',
+            { nodeId: node.nodeId, referenceId: input.referenceId },
+          );
+        }
       }
     }
     dependencies.set(node.nodeId, nodeDependencies);
@@ -482,20 +505,151 @@ export function validateDefinitionSemantics(
         'AnalysisResult',
       );
     }
+    const family = definition.decisionPolicy.comparisonFamily ?? [];
+    const hypothesisMembers = family.filter(
+      (member): member is typeof member & { hypothesisId: string } => (
+        'hypothesisId' in member
+      ),
+    );
+    assertUnique(hypothesisMembers.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
+    assertUnique(family.map((member) => member.analysisResultId), 'decision-policy:family-analysis-result');
+    assertUnique(
+      family.map((member) => canonicalizeJson([
+        member.comparisonId,
+        member.treatmentTargetId,
+        member.metricId,
+      ])),
+      'decision-policy:comparison-family-member',
+    );
+    const comparisonById = new Map(definition.comparisons.map(
+      (comparison) => [comparison.comparisonId, comparison],
+    ));
+    const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
+      (node) => [node.outputResultId, node],
+    ));
+    for (const member of family) {
+      const comparison = comparisonById.get(member.comparisonId);
+      if (comparison === undefined
+          || !comparison.treatmentTargetIds.includes(member.treatmentTargetId)
+          || !comparison.metricIds.includes(member.metricId)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'DecisionPolicy comparison family 引用了不存在的 contrast。',
+          { comparisonId: member.comparisonId },
+        );
+      }
+      const producer = nodeByResultId.get(member.analysisResultId);
+      const expectedInputs = [
+        canonicalizeJson({
+          inputKind: 'metric-observations',
+          referenceId: member.metricId,
+        }),
+        canonicalizeJson({
+          inputKind: 'comparison',
+          referenceId: member.comparisonId,
+          treatmentTargetId: member.treatmentTargetId,
+          metricId: member.metricId,
+        }),
+      ].sort();
+      const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
+      if (producer === undefined
+          || canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'Comparison family member 必须精确绑定只消费该 contrast 的 AnalysisResult。',
+          { referenceId: member.analysisResultId },
+        );
+      }
+    }
+    const correctionId = definition.decisionPolicy.multipleComparisonPolicyId;
+    if ((family.length > 1) !== (correctionId !== undefined)) {
+      throw definitionError(
+        'EVAL_DEFINITION_MISSING_REFERENCE',
+        '多个 comparison family member 必须声明 correction，单个或空 family 不得伪装成多重比较。',
+      );
+    }
+    if (correctionId !== undefined) {
+      const correctionNodes = definition.analysisGraph.nodes.filter((node) => (
+        node.analysisNodeKind === 'correction'
+        && node.implementationId === correctionId
+      ));
+      if (correctionNodes.length !== 1
+          || !definition.decisionPolicy.analysisResultIds.includes(
+            correctionNodes[0].outputResultId,
+          )) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'DecisionPolicy 的 multiple-comparison policy 必须绑定唯一 correction result。',
+          { referenceId: correctionId },
+        );
+      }
+      if (hypothesisMembers.length !== family.length) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          '多重比较 family 的每个 member 都必须绑定原始 hypothesis result。',
+        );
+      }
+      const correctionInputs = correctionNodes[0].inputs;
+      const correctionResultIds = correctionInputs
+        .filter((input) => input.inputKind === 'analysis-result')
+        .map((input) => input.referenceId)
+        .sort();
+      const expectedResultIds = hypothesisMembers.map(
+        (member) => member.analysisResultId,
+      ).sort();
+      if (correctionInputs.some((input) => input.inputKind !== 'analysis-result')
+          || canonicalizeJson(correctionResultIds) !== canonicalizeJson(expectedResultIds)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'Correction node inputs 必须精确等于 comparison family 的原始 hypothesis results。',
+          { referenceId: correctionId },
+        );
+      }
+    } else {
+      for (const member of family) {
+        if (!definition.decisionPolicy.analysisResultIds.includes(member.analysisResultId)) {
+          throw definitionError(
+            'EVAL_DEFINITION_MISSING_REFERENCE',
+            '未校正的 comparison family member 必须直接绑定 DecisionPolicy 消费的 AnalysisResult。',
+            { referenceId: member.analysisResultId },
+          );
+        }
+      }
+    }
   }
   for (const metric of definition.metrics) validateMetric(metric);
   validateEvaluatorBindings(definition);
   validateSamplingDesign(definition);
-  validateGraph(definition.analysisGraph.nodes, metricIds);
+  validateGraph(
+    definition.analysisGraph.nodes,
+    metricIds,
+    new Map(definition.comparisons.map((comparison) => [comparison.comparisonId, comparison])),
+  );
   validatePolicy(definition, policy);
 }
 
 export function validateAnalysisInputs(
   node: AnalysisNodeDefinition,
-  capabilities: AnalysisCapabilities,
+  capabilities: AnalysisNodeCapabilities,
   metricsById: ReadonlyMap<string, MetricDefinition>,
   outputSchemasByResultId: ReadonlyMap<string, string>,
 ): void {
+  const cardinalities = [
+    ['metric-observations', capabilities.inputCardinalities.metricObservations],
+    ['analysis-result', capabilities.inputCardinalities.analysisResults],
+    ['comparison', capabilities.inputCardinalities.comparisons],
+  ] as const;
+  for (const [inputKind, cardinality] of cardinalities) {
+    const inputCount = node.inputs.filter((input) => input.inputKind === inputKind).length;
+    if (inputCount < cardinality.min
+        || (cardinality.max !== undefined && inputCount > cardinality.max)) {
+      throw definitionError(
+        'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        'Analysis Runtime 不支持声明的输入数量。',
+        { nodeId: node.nodeId, inputKind, inputCount },
+      );
+    }
+  }
   for (const input of node.inputs) {
     if (input.inputKind === 'metric-observations') {
       const metric = metricsById.get(input.referenceId);
@@ -508,6 +662,12 @@ export function validateAnalysisInputs(
       ));
       if (compatible) continue;
     } else {
+      if (input.inputKind === 'comparison') {
+        const compatible = capabilities.inputDomains.some(
+          (domain) => domain.inputKind === 'comparison',
+        );
+        if (compatible) continue;
+      }
       const schemaUri = outputSchemasByResultId.get(input.referenceId);
       const compatible = capabilities.inputDomains.some((domain) => (
         domain.inputKind === 'analysis-result'

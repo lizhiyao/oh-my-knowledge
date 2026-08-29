@@ -493,7 +493,9 @@
             "enum": [
               "executor",
               "evaluator",
-              "analysis"
+              "analysis-node",
+              "missing-policy",
+              "decision-policy"
             ],
             "type": "string"
           }

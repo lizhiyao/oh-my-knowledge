@@ -81,7 +81,7 @@ describe('Evaluation Core wire schemas', () => {
         },
         scheduling: { schedulingKind: 'sequential' },
       },
-      analysisGraph: { nodes: [] },
+      analysisGraph: { analysisMode: 'preregistered', nodes: [] },
       comparisons: [],
     };
 
@@ -157,7 +157,7 @@ describe('Evaluation Core wire schemas', () => {
         },
         scheduling: { schedulingKind: 'sequential' },
       },
-      analysisGraph: { nodes: [] },
+      analysisGraph: { analysisMode: 'preregistered', nodes: [] },
       comparisons: [],
       extensions: {
         'urn:example:attestation': {

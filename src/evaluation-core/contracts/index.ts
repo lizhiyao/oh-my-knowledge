@@ -1,4 +1,6 @@
 export * from './artifacts.js';
+export * from './analysis-identities.js';
+export * from './analysis-bundle.js';
 export * from './common.js';
 export * from './definition.js';
 export * from './digests.js';
@@ -6,6 +8,7 @@ export * from './execution-identities.js';
 export * from './execution-bundle.js';
 export * from './evaluation-identities.js';
 export * from './evaluation-bundle.js';
+export * from './evaluation-report.js';
 export * from './json-schema.js';
 export * from './json.js';
 export * from './plans.js';

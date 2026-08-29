@@ -98,14 +98,33 @@ export const ExperimentDesignSchema = z.object({
   scheduling: SchedulingPolicySchema,
 }).strict();
 
-export const AnalysisInputReferenceSchema = z.object({
-  inputKind: z.enum(['metric-observations', 'analysis-result']),
+const AnalysisMetricInputReferenceSchema = z.object({
+  inputKind: z.literal('metric-observations'),
   referenceId: IdentifierSchema,
 }).strict();
+
+const AnalysisResultInputReferenceSchema = z.object({
+  inputKind: z.literal('analysis-result'),
+  referenceId: IdentifierSchema,
+}).strict();
+
+const AnalysisComparisonInputReferenceSchema = z.object({
+  inputKind: z.literal('comparison'),
+  referenceId: IdentifierSchema,
+  treatmentTargetId: IdentifierSchema,
+  metricId: IdentifierSchema,
+}).strict();
+
+export const AnalysisInputReferenceSchema = z.discriminatedUnion('inputKind', [
+  AnalysisMetricInputReferenceSchema,
+  AnalysisResultInputReferenceSchema,
+  AnalysisComparisonInputReferenceSchema,
+]);
 
 const AnalysisNodeBaseSchema = z.object({
   nodeId: IdentifierSchema,
   implementationId: IdentifierSchema,
+  versionConstraint: NonEmptyStringSchema.optional(),
   inputs: z.array(AnalysisInputReferenceSchema).min(1),
   outputResultId: IdentifierSchema,
   parameters: JsonValueSchema.optional(),
@@ -130,6 +149,7 @@ export const AnalysisNodeDefinitionSchema = z.discriminatedUnion('analysisNodeKi
 ]);
 
 export const AnalysisGraphDefinitionSchema = z.object({
+  analysisMode: z.enum(['preregistered', 'exploratory']),
   nodes: z.array(AnalysisNodeDefinitionSchema),
 }).strict();
 
@@ -140,10 +160,26 @@ export const ComparisonDefinitionSchema = z.object({
   metricIds: z.array(IdentifierSchema).min(1),
 }).strict();
 
+const ComparisonFamilyMemberBaseSchema = z.object({
+  comparisonId: IdentifierSchema,
+  treatmentTargetId: IdentifierSchema,
+  metricId: IdentifierSchema,
+  analysisResultId: IdentifierSchema,
+}).strict();
+
+export const ComparisonFamilyMemberSchema = z.union([
+  ComparisonFamilyMemberBaseSchema,
+  ComparisonFamilyMemberBaseSchema.extend({
+    hypothesisId: IdentifierSchema,
+  }).strict(),
+]);
+
 export const DecisionPolicyDefinitionSchema = z.object({
   decisionPolicyId: IdentifierSchema,
   implementationId: IdentifierSchema,
+  versionConstraint: NonEmptyStringSchema.optional(),
   analysisResultIds: z.array(IdentifierSchema).min(1),
+  comparisonFamily: z.array(ComparisonFamilyMemberSchema).min(1).optional(),
   multipleComparisonPolicyId: IdentifierSchema.optional(),
   minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']),
   parameters: JsonValueSchema.optional(),
@@ -256,6 +292,7 @@ export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;
 export type AnalysisNodeDefinition = z.infer<typeof AnalysisNodeDefinitionSchema>;
 export type AnalysisGraphDefinition = z.infer<typeof AnalysisGraphDefinitionSchema>;
 export type ComparisonDefinition = z.infer<typeof ComparisonDefinitionSchema>;
+export type ComparisonFamilyMember = z.infer<typeof ComparisonFamilyMemberSchema>;
 export type DecisionPolicyDefinition = z.infer<typeof DecisionPolicyDefinitionSchema>;
 export type EvaluationDefinition = z.infer<typeof EvaluationDefinitionSchema>;
 export type EvaluationRuntimePolicy = z.infer<typeof EvaluationRuntimePolicySchema>;

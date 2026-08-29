@@ -15,6 +15,8 @@ import {
   parseWireDocument,
   projectEvaluationInputs,
   projectExecutionInputs,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
   type ExtensionEntry,
   type Extensions,
   type JsonValue,
@@ -34,6 +36,10 @@ import {
   ExtensionResolutionSchema,
   RuntimeResolutionSchema,
   type AnalysisCapabilities,
+  type AnalysisNodeCapabilities,
+  type AnalysisRuntimeRequirement,
+  type DecisionPolicyCapabilities,
+  type MissingPolicyCapabilities,
   type EvaluatorCapabilities,
   type ExecutorCapabilities,
   type ExtensionImpactStage,
@@ -58,7 +64,7 @@ interface StageExtensions {
 
 interface ResolvedAnalysisRuntime {
   runtime: ResolvedRuntime;
-  capabilities: AnalysisCapabilities;
+  capabilities: AnalysisNodeCapabilities;
 }
 
 const CONTRACT_PATH_SEGMENTS = new Set([
@@ -71,10 +77,11 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
   'seedCoupling', 'schedulingTargetGroups',
-  'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'nodes', 'nodeId',
+  'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'analysisMode', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
-  'decisionPolicy', 'decisionPolicyId', 'analysisResultIds',
+  'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
+  'hypothesisId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
   'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'maxTargetInvocations',
@@ -173,6 +180,34 @@ function normalizeAnalysisCapabilities(
   capabilities: AnalysisCapabilities,
   referenceId: string,
 ): AnalysisCapabilities {
+  if (capabilities.capabilityKind === 'missing-policy') {
+    return {
+      capabilityKind: 'missing-policy',
+      valueTypes: sortedUniqueStrings(
+        capabilities.valueTypes,
+        referenceId,
+        'valueTypes',
+      ) as MissingPolicyCapabilities['valueTypes'],
+      schemas: sortedSchemas(capabilities.schemas),
+    };
+  }
+  if (capabilities.capabilityKind === 'decision-policy') {
+    return {
+      capabilityKind: 'decision-policy',
+      analysisResultSchemaUris: sortedUniqueStrings(
+        capabilities.analysisResultSchemaUris,
+        referenceId,
+        'analysisResultSchemaUris',
+      ),
+      multipleComparisonPolicyIds: sortedUniqueStrings(
+        capabilities.multipleComparisonPolicyIds,
+        referenceId,
+        'multipleComparisonPolicyIds',
+      ),
+      parameterSchema: capabilities.parameterSchema,
+      schemas: sortedSchemas(capabilities.schemas),
+    } as DecisionPolicyCapabilities;
+  }
   const inputDomains = capabilities.inputDomains.map((domain) => (
     domain.inputKind === 'metric-observations'
       ? {
@@ -190,14 +225,14 @@ function normalizeAnalysisCapabilities(
           ),
         } : {}),
       }
-      : {
+      : domain.inputKind === 'analysis-result' ? {
         ...domain,
         schemaUris: sortedUniqueStrings(
           domain.schemaUris,
           referenceId,
           'inputDomains.schemaUris',
         ),
-      }
+      } : domain
   )).sort((left, right) => (
     compareStrings(canonicalizeJson(left), canonicalizeJson(right))
   ));
@@ -223,20 +258,23 @@ function normalizeAnalysisCapabilities(
     });
   }
   return {
+    capabilityKind: 'analysis-node',
     analysisNodeKinds: sortedUniqueStrings(
       capabilities.analysisNodeKinds,
       referenceId,
       'analysisNodeKinds',
-    ) as AnalysisCapabilities['analysisNodeKinds'],
+    ) as AnalysisNodeCapabilities['analysisNodeKinds'],
     inputDomains,
     outputSchema: capabilities.outputSchema,
+    parameterSchema: capabilities.parameterSchema,
+    inputCardinalities: capabilities.inputCardinalities,
     ...(capabilities.sampling !== undefined ? {
       sampling: {
         experimentalUnits: sortedUniqueStrings(
           capabilities.sampling.experimentalUnits,
           referenceId,
           'sampling.experimentalUnits',
-        ) as NonNullable<AnalysisCapabilities['sampling']>['experimentalUnits'],
+        ) as NonNullable<AnalysisNodeCapabilities['sampling']>['experimentalUnits'],
         repeatedMeasures: [...capabilities.sampling.repeatedMeasures].sort(
           (left, right) => Number(left) - Number(right),
         ),
@@ -244,7 +282,7 @@ function normalizeAnalysisCapabilities(
           capabilities.sampling.resamplingUnits,
           referenceId,
           'sampling.resamplingUnits',
-        ) as NonNullable<AnalysisCapabilities['sampling']>['resamplingUnits'],
+        ) as NonNullable<AnalysisNodeCapabilities['sampling']>['resamplingUnits'],
       },
     } : {}),
     schemas: sortedSchemas(capabilities.schemas),
@@ -360,6 +398,23 @@ function addCapabilitySchemas(
   referenceId: string,
 ): void {
   for (const identity of identities) addSchemaIdentity(identitiesByUri, identity, referenceId);
+}
+
+function requireSchemaValidator(
+  runtime: PreparationRuntime,
+  identity: SchemaIdentity,
+  referenceId: string,
+): CoreSchemaValidator {
+  const validator = runtime.schemaValidators.get(schemaIdentityKey(identity));
+  if (validator !== undefined
+      && canonicalizeJson(validator.schema) === canonicalizeJson(identity)) return validator;
+  throw new EvaluationDefinitionError({
+    code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+    stage: 'configuration',
+    preparationStage: 'runtime-resolution',
+    message: 'Runtime 声明的 schema identity 缺少 Core 绑定的精确 validator。',
+    details: { referenceId, schemaUri: identity.schemaUri },
+  });
 }
 
 async function resolveExecutors(
@@ -589,19 +644,20 @@ async function resolveEvaluators(
 
 async function resolveAnalysisRequirement(
   runtime: PreparationRuntime,
-  requirement: {
-    referenceId: string;
-    implementationId: string;
-    analysisNodeKind: 'reducer' | 'estimator' | 'correction';
+  requirement: Extract<AnalysisRuntimeRequirement, {
     requirementKind: 'analysis-node' | 'sampling-estimator';
-  },
+  }>,
   identitiesByUri: Map<string, SchemaIdentity>,
 ): Promise<ResolvedAnalysisRuntime> {
   const resolution = await resolveRuntime(
     requirement.referenceId,
     () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
   );
-  assertVersionSatisfied(requirement.referenceId, undefined, resolution.satisfiesVersionConstraint);
+  assertVersionSatisfied(
+    requirement.referenceId,
+    requirement.versionConstraint,
+    resolution.satisfiesVersionConstraint,
+  );
   const capabilities = normalizeAnalysisCapabilities(
     parseCapabilities(
       AnalysisCapabilitiesSchema,
@@ -610,6 +666,15 @@ async function resolveAnalysisRequirement(
     ),
     requirement.referenceId,
   );
+  if (capabilities.capabilityKind !== 'analysis-node') {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'Analysis node Runtime 返回了错误的 capability kind。',
+      details: { referenceId: requirement.referenceId },
+    });
+  }
   if (!capabilities.analysisNodeKinds.includes(requirement.analysisNodeKind)) {
     throw new EvaluationDefinitionError({
       code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
@@ -622,14 +687,16 @@ async function resolveAnalysisRequirement(
       },
     });
   }
+  requireSchemaValidator(runtime, capabilities.outputSchema, requirement.referenceId);
+  requireSchemaValidator(runtime, capabilities.parameterSchema, requirement.referenceId);
   addCapabilitySchemas(
     identitiesByUri,
-    [capabilities.outputSchema, ...capabilities.schemas],
+    [capabilities.outputSchema, capabilities.parameterSchema, ...capabilities.schemas],
     requirement.referenceId,
   );
   return {
     runtime: {
-      runtimeKind: 'analysis',
+      runtimeKind: 'analysis-node',
       referenceId: requirement.referenceId,
       identity: bindCapabilities(resolution.identity, capabilities),
     },
@@ -647,6 +714,9 @@ async function resolveAnalysisRuntimes(
     byNodeId.set(node.nodeId, await resolveAnalysisRequirement(runtime, {
       referenceId: node.nodeId,
       implementationId: node.implementationId,
+      ...(node.versionConstraint !== undefined
+        ? { versionConstraint: node.versionConstraint }
+        : {}),
       analysisNodeKind: node.analysisNodeKind,
       requirementKind: 'analysis-node',
     }, identitiesByUri));
@@ -692,11 +762,226 @@ async function resolveAnalysisRuntimes(
     }
   }
 
+  const missingPolicyRuntimes: ResolvedRuntime[] = [];
+  const valueTypesByPolicy = new Map<string, Set<string>>();
+  for (const metric of definition.metrics) {
+    const valueTypes = valueTypesByPolicy.get(metric.missingPolicyId) ?? new Set<string>();
+    valueTypes.add(metric.valueType);
+    valueTypesByPolicy.set(metric.missingPolicyId, valueTypes);
+  }
+  for (const missingPolicyId of [...valueTypesByPolicy.keys()].sort(compareStrings)) {
+    const requirement = {
+      referenceId: missingPolicyId,
+      implementationId: missingPolicyId,
+      requirementKind: 'missing-policy' as const,
+    };
+    const resolution = await resolveRuntime(
+      missingPolicyId,
+      () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
+    );
+    assertVersionSatisfied(missingPolicyId, undefined, resolution.satisfiesVersionConstraint);
+    const capabilities = normalizeAnalysisCapabilities(
+      parseCapabilities(
+        AnalysisCapabilitiesSchema,
+        resolution.identity.capabilities,
+        missingPolicyId,
+      ),
+      missingPolicyId,
+    );
+    if (capabilities.capabilityKind !== 'missing-policy'
+        || [...(valueTypesByPolicy.get(missingPolicyId) ?? [])].some(
+          (valueType) => !capabilities.valueTypes.includes(
+            valueType as MissingPolicyCapabilities['valueTypes'][number],
+          ),
+        )) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'MissingPolicy Runtime 不支持声明的 Metric 值域。',
+        details: { referenceId: missingPolicyId },
+      });
+    }
+    addCapabilitySchemas(identitiesByUri, capabilities.schemas, missingPolicyId);
+    missingPolicyRuntimes.push({
+      runtimeKind: 'missing-policy',
+      referenceId: missingPolicyId,
+      identity: bindCapabilities(resolution.identity, capabilities),
+    });
+  }
+
   return [
     ...definition.analysisGraph.nodes.map((node) => byNodeId.get(node.nodeId)?.runtime)
       .filter((entry): entry is ResolvedRuntime => entry !== undefined),
     samplingEstimator.runtime,
+    ...missingPolicyRuntimes,
   ];
+}
+
+async function resolveDecisionRuntimes(
+  definition: z.infer<typeof EvaluationDefinitionSchema>,
+  runtime: PreparationRuntime,
+  analysisRuntimes: readonly ResolvedRuntime[],
+  identitiesByUri: Map<string, SchemaIdentity>,
+): Promise<ResolvedRuntime[]> {
+  const policy = definition.decisionPolicy;
+  if (policy === undefined) return [];
+  const requirement = {
+    referenceId: policy.decisionPolicyId,
+    implementationId: policy.implementationId,
+    ...(policy.versionConstraint !== undefined
+      ? { versionConstraint: policy.versionConstraint }
+      : {}),
+    requirementKind: 'decision-policy' as const,
+  };
+  const resolution = await resolveRuntime(
+    policy.decisionPolicyId,
+    () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
+  );
+  assertVersionSatisfied(
+    policy.decisionPolicyId,
+    policy.versionConstraint,
+    resolution.satisfiesVersionConstraint,
+  );
+  const capabilities = normalizeAnalysisCapabilities(
+    parseCapabilities(
+      AnalysisCapabilitiesSchema,
+      resolution.identity.capabilities,
+      policy.decisionPolicyId,
+    ),
+    policy.decisionPolicyId,
+  );
+  if (capabilities.capabilityKind !== 'decision-policy') {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 返回了错误的 capability kind。',
+      details: { referenceId: policy.decisionPolicyId },
+    });
+  }
+  requireSchemaValidator(runtime, capabilities.parameterSchema, policy.decisionPolicyId);
+  if (policy.multipleComparisonPolicyId !== undefined
+      && !capabilities.multipleComparisonPolicyIds.includes(
+        policy.multipleComparisonPolicyId,
+      )) {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 不支持声明的 multiple-comparison policy。',
+      details: { referenceId: policy.decisionPolicyId },
+    });
+  }
+  const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
+    (node) => [node.outputResultId, node.nodeId],
+  ));
+  const runtimeByNodeId = new Map(analysisRuntimes
+    .filter((entry) => entry.runtimeKind === 'analysis-node')
+    .map((entry) => [entry.referenceId, entry]));
+  for (const resultId of policy.analysisResultIds) {
+    const nodeId = nodeByResultId.get(resultId);
+    const nodeRuntime = nodeId === undefined ? undefined : runtimeByNodeId.get(nodeId);
+    const parsed = nodeRuntime === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      nodeRuntime.identity.capabilities,
+    );
+    const schemaUri = parsed?.success === true
+      && parsed.data.capabilityKind === 'analysis-node'
+      ? parsed.data.outputSchema.schemaUri
+      : undefined;
+    if (schemaUri !== undefined
+        && capabilities.analysisResultSchemaUris.includes(schemaUri)) continue;
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 不接受声明的 AnalysisResult schema。',
+      details: { referenceId: policy.decisionPolicyId, resultId },
+    });
+  }
+  addCapabilitySchemas(
+    identitiesByUri,
+    [capabilities.parameterSchema, ...capabilities.schemas],
+    policy.decisionPolicyId,
+  );
+  return [{
+    runtimeKind: 'decision-policy',
+    referenceId: policy.decisionPolicyId,
+    identity: bindCapabilities(resolution.identity, capabilities),
+  }];
+}
+
+function normalizeDefinitionParameters(
+  definition: z.infer<typeof EvaluationDefinitionSchema>,
+  analysisRuntimes: readonly ResolvedRuntime[],
+  decisionRuntimes: readonly ResolvedRuntime[],
+  runtime: PreparationRuntime,
+): z.infer<typeof EvaluationDefinitionSchema> {
+  const analysisRuntimeByNodeId = new Map(analysisRuntimes
+    .filter((entry) => entry.runtimeKind === 'analysis-node')
+    .map((entry) => [entry.referenceId, entry]));
+  const nodes = definition.analysisGraph.nodes.map((node) => {
+    const resolved = analysisRuntimeByNodeId.get(node.nodeId);
+    const capabilities = resolved === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      resolved.identity.capabilities,
+    );
+    if (capabilities?.success !== true || capabilities.data.capabilityKind !== 'analysis-node') {
+      throw new TypeError('Resolved Analysis capabilities disappeared before sealing.');
+    }
+    const validator = requireSchemaValidator(
+      runtime,
+      capabilities.data.parameterSchema,
+      node.nodeId,
+    );
+    try {
+      return {
+        ...node,
+        parameters: validator.parse(node.parameters ?? {}),
+      };
+    } catch {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'Analysis node parameters 不符合实现声明的 schema。',
+        details: { nodeId: node.nodeId },
+      });
+    }
+  });
+  let decisionPolicy = definition.decisionPolicy;
+  if (decisionPolicy !== undefined) {
+    const resolved = decisionRuntimes.find((entry) => entry.runtimeKind === 'decision-policy');
+    const capabilities = resolved === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      resolved.identity.capabilities,
+    );
+    if (capabilities?.success !== true || capabilities.data.capabilityKind !== 'decision-policy') {
+      throw new TypeError('Resolved Decision capabilities disappeared before sealing.');
+    }
+    const validator = requireSchemaValidator(
+      runtime,
+      capabilities.data.parameterSchema,
+      decisionPolicy.decisionPolicyId,
+    );
+    try {
+      decisionPolicy = {
+        ...decisionPolicy,
+        parameters: validator.parse(decisionPolicy.parameters ?? {}),
+      };
+    } catch {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'DecisionPolicy parameters 不符合实现声明的 schema。',
+        details: { referenceId: decisionPolicy.decisionPolicyId },
+      });
+    }
+  }
+  return parseInput(EvaluationDefinitionSchema, {
+    ...definition,
+    analysisGraph: { ...definition.analysisGraph, nodes },
+    ...(decisionPolicy !== undefined ? { decisionPolicy } : {}),
+  }, 'EvaluationDefinition');
 }
 
 function appendExtension(
@@ -798,7 +1083,7 @@ export async function prepareEvaluationPlan(
   measurementPolicyInput: unknown,
   runtime: PreparationRuntime,
 ): Promise<SealedRunPlan> {
-  const definition = parseInput(
+  let definition = parseInput(
     EvaluationDefinitionSchema,
     definitionInput,
     'EvaluationDefinition',
@@ -822,6 +1107,18 @@ export async function prepareEvaluationPlan(
   );
   const evaluatorRuntimes = await resolveEvaluators(definition, runtime, identitiesByUri);
   const analysisRuntimes = await resolveAnalysisRuntimes(definition, runtime, identitiesByUri);
+  const decisionRuntimes = await resolveDecisionRuntimes(
+    definition,
+    runtime,
+    analysisRuntimes,
+    identitiesByUri,
+  );
+  definition = normalizeDefinitionParameters(
+    definition,
+    analysisRuntimes,
+    decisionRuntimes,
+    runtime,
+  );
   const stageExtensions = await resolveExtensions(
     definition.extensions,
     measurementPolicy.extensions,
@@ -848,6 +1145,7 @@ export async function prepareEvaluationPlan(
     executorRuntimes,
     evaluatorRuntimes,
     analysisRuntimes,
+    decisionRuntimes,
     schemaIdentities,
     stageExtensions,
   });
@@ -894,8 +1192,10 @@ export async function prepareEvaluationPlan(
   const analysis = {
     schemaVersion: ANALYSIS_PLAN_SCHEMA_VERSION,
     evaluationPlanDigest: digests.evaluationPlanDigest,
+    metrics: definition.metrics,
     analysisGraph: definition.analysisGraph,
-    sampling: definition.experiment.sampling,
+    experiment: definition.experiment,
+    comparisons: definition.comparisons,
     runtimes: analysisRuntimes,
     analysisPlanDigest: digests.analysisPlanDigest,
     ...(stageExtensions.analysis !== undefined
@@ -905,10 +1205,10 @@ export async function prepareEvaluationPlan(
   const decision = {
     schemaVersion: DECISION_PLAN_SCHEMA_VERSION,
     analysisPlanDigest: digests.analysisPlanDigest,
-    comparisons: definition.comparisons,
     ...(definition.decisionPolicy !== undefined
       ? { decisionPolicy: definition.decisionPolicy }
       : {}),
+    runtimes: decisionRuntimes,
     decisionPlanDigest: digests.decisionPlanDigest,
     ...(stageExtensions.decision !== undefined
       ? { extensions: stageExtensions.decision }
