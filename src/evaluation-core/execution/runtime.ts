@@ -513,8 +513,14 @@ function assertCachedRecord(
   key: Sha256Digest,
   coordinate: PlannedExecutionCoordinate,
   runtime: RuntimeIdentity,
+  plan: SealedRunPlan,
 ): CompletedExecutionRecord {
   const record = parseWireDocument(CompletedExecutionRecordSchema, entry.record);
+  const expectedProvenance = {
+    provenanceKind: 'native' as const,
+    trust: 'verified' as const,
+    parentDigests: [plan.execution.executionPlanDigest],
+  };
   if (entry.cacheKeyDigest !== key
       || entry.sourceRecordDigest !== digestCanonicalJson(record)
       || record.targetId !== coordinate.targetId
@@ -525,7 +531,12 @@ function assertCachedRecord(
       || record.schedulingBlockId !== coordinate.schedulingBlockId
       || canonicalizeJson(record.samplingUnitIds)
         !== canonicalizeJson(coordinate.samplingUnitIds)
-      || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {
+      || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)
+      || canonicalizeJson(record.provenance) !== canonicalizeJson(expectedProvenance)
+      || canonicalizeJson(record.cache) !== canonicalizeJson({
+        cacheStatus: 'miss',
+        cacheKeyDigest: key,
+      })) {
     throw new ExecutionRuntimeConfigurationError(
       'EXECUTION_RUNTIME_CACHE_ENTRY_INVALID',
       'Execution cache returned a record incompatible with the sealed coordinate.',
@@ -1041,7 +1052,7 @@ async function prepareBlock(
     try {
       const entry = await ports.cache?.get(key);
       if (entry !== undefined) {
-        const sourceRecord = assertCachedRecord(entry, key, coordinate, binding.runtime);
+        const sourceRecord = assertCachedRecord(entry, key, coordinate, binding.runtime, plan);
         coordinates.push({
           coordinate,
           cached: replayRecord(

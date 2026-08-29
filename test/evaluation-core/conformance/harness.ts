@@ -84,6 +84,8 @@ export interface ConformanceResult {
 
 export interface ConformanceHarnessOptions {
   suffix?: string;
+  runId?: string;
+  plan?: SealedRunPlan;
   mutate?: (definition: EvaluationDefinition, policy: MeasurementPolicy) => void;
   consumeEvent?: (event: EvaluationEvent) => void | Promise<void>;
   eventConsumption?: 'live' | 'after-result';
@@ -95,6 +97,7 @@ export interface ConformanceHarnessOptions {
   provideContentResolver?: boolean;
   executionCache?: InMemoryConformanceExecutionCache;
   evaluationCache?: InMemoryConformanceEvaluationCache;
+  runtimeRegistry?: ConformanceRuntimeRegistry;
 }
 
 export class InMemoryConformanceArtifactStore {
@@ -127,6 +130,11 @@ export class InMemoryConformanceArtifactStore {
     if (content === undefined) throw new Error('Conformance content is unavailable.');
     return structuredClone(content);
   }
+
+  tamper(digest: string, content: EvaluationContent): void {
+    if (!this.#values.has(digest)) throw new Error('Conformance content is unavailable.');
+    this.#values.set(digest, structuredClone(content));
+  }
 }
 
 export class InMemoryConformanceExecutionCache implements ExecutionCache {
@@ -147,6 +155,16 @@ export class InMemoryConformanceExecutionCache implements ExecutionCache {
     await this.#faults?.hit('cache-put');
     this.#entries.set(entry.cacheKeyDigest, structuredClone(entry));
   }
+
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  tamperFirst(mutate: (entry: ExecutionCacheEntry) => void): void {
+    const entry = this.#entries.values().next().value;
+    if (entry === undefined) throw new Error('Conformance Execution cache is empty.');
+    mutate(entry);
+  }
 }
 
 export class InMemoryConformanceEvaluationCache implements EvaluationCache {
@@ -166,6 +184,16 @@ export class InMemoryConformanceEvaluationCache implements EvaluationCache {
   async put(entry: Readonly<EvaluationCacheEntry>): Promise<void> {
     await this.#faults?.hit('cache-put');
     this.#entries.set(entry.cacheKeyDigest, structuredClone(entry));
+  }
+
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  tamperFirst(mutate: (entry: EvaluationCacheEntry) => void): void {
+    const entry = this.#entries.values().next().value;
+    if (entry === undefined) throw new Error('Conformance Evaluation cache is empty.');
+    mutate(entry);
   }
 }
 
@@ -449,15 +477,22 @@ function executorOutput(
   };
 }
 
+interface ConformanceRunBinding {
+  state: ConformanceState;
+  faults?: ConformanceFaultInjector;
+}
+
+type ConformanceRunBindingResolver = (runId: string) => ConformanceRunBinding;
+
 function makeExecutor(
   target: ConformanceTarget,
   plan: SealedRunPlan,
-  state: ConformanceState,
-  faults?: ConformanceFaultInjector,
+  resolveRun: ConformanceRunBindingResolver,
 ): ExecutionExecutor {
   return {
     identity: runtimeIdentity(plan, 'executor', 'control'),
-    async openRun() {
+    async openRun(context) {
+      const { state, faults } = resolveRun(context.runId);
       await faults?.hit('executor-open-run');
       state.executorRunOpens += 1;
       return {
@@ -513,8 +548,7 @@ function ragMetrics(ranking: string[], gold: string[]) {
 function makeEvaluator(
   target: ConformanceTarget,
   plan: SealedRunPlan,
-  state: ConformanceState,
-  faults?: ConformanceFaultInjector,
+  resolveRun: ConformanceRunBindingResolver,
 ): EvaluationEvaluator {
   const referenceId = target === 'function'
     ? 'exact'
@@ -523,7 +557,8 @@ function makeEvaluator(
       : 'trajectory';
   return {
     identity: runtimeIdentity(plan, 'evaluator', referenceId),
-    async openRun() {
+    async openRun(context) {
+      const { state, faults } = resolveRun(context.runId);
       await faults?.hit('evaluator-open-run');
       state.evaluatorRunOpens += 1;
       return {
@@ -596,12 +631,12 @@ function makeEvaluator(
 
 function makeOutputOnlyAgentEvaluator(
   plan: SealedRunPlan,
-  state: ConformanceState,
-  faults?: ConformanceFaultInjector,
+  resolveRun: ConformanceRunBindingResolver,
 ): EvaluationEvaluator {
   return {
     identity: runtimeIdentity(plan, 'evaluator', 'answer-shape'),
-    async openRun() {
+    async openRun(context) {
+      const { state, faults } = resolveRun(context.runId);
       await faults?.hit('evaluator-open-run');
       state.evaluatorRunOpens += 1;
       return {
@@ -682,6 +717,78 @@ function emptyState(): ConformanceState {
   };
 }
 
+function makeEvaluatorRegistry(
+  target: ConformanceTarget,
+  plan: SealedRunPlan,
+  resolveRun: ConformanceRunBindingResolver,
+): Map<string, EvaluationEvaluator> {
+  const evaluatorId = target === 'function'
+    ? 'exact/v1'
+    : target === 'rag'
+      ? 'retrieval/v1'
+      : 'trajectory/v1';
+  const evaluators = new Map([[evaluatorId, makeEvaluator(target, plan, resolveRun)]]);
+  if (target === 'agent') {
+    evaluators.set('answer-shape/v1', makeOutputOnlyAgentEvaluator(plan, resolveRun));
+  }
+  return evaluators;
+}
+
+export class ConformanceRuntimeRegistry {
+  readonly target: ConformanceTarget;
+  readonly planDigest: string;
+  readonly executors: ReadonlyMap<string, ExecutionExecutor>;
+  readonly evaluators: ReadonlyMap<string, EvaluationEvaluator>;
+  readonly eventSequencer = new InMemoryRuntimeEventSequencer();
+  readonly executionCache = new InMemoryConformanceExecutionCache();
+  readonly evaluationCache = new InMemoryConformanceEvaluationCache();
+  readonly artifactStore = new InMemoryConformanceArtifactStore();
+  readonly analysisNodes = createBuiltinAnalysisNodes();
+  readonly decisionPolicies = createBuiltinDecisionPolicies();
+  readonly eventWriter = {
+    write: async (event: Readonly<EvaluationEvent>) => {
+      const { state, faults } = this.#resolveRun(event.runId);
+      state.writtenEvents.push(structuredClone(event) as EvaluationEvent);
+      await faults?.hit('event-write');
+    },
+  };
+
+  readonly #runs = new Map<string, ConformanceRunBinding>();
+
+  constructor(target: ConformanceTarget, plan: SealedRunPlan) {
+    this.target = target;
+    this.planDigest = plan.digests.runContractDigest;
+    const resolveRun = (runId: string) => this.#resolveRun(runId);
+    this.executors = new Map([[
+      'executor-alias',
+      makeExecutor(target, plan, resolveRun),
+    ]]);
+    this.evaluators = makeEvaluatorRegistry(target, plan, resolveRun);
+  }
+
+  attach(
+    target: ConformanceTarget,
+    plan: SealedRunPlan,
+    runId: string,
+    binding: ConformanceRunBinding,
+  ): () => void {
+    if (target !== this.target || plan.digests.runContractDigest !== this.planDigest) {
+      throw new TypeError('Conformance Runtime registry does not match the sealed RunPlan.');
+    }
+    if (this.#runs.has(runId)) {
+      throw new TypeError(`Conformance Runtime registry already owns run ${runId}.`);
+    }
+    this.#runs.set(runId, binding);
+    return () => { this.#runs.delete(runId); };
+  }
+
+  #resolveRun(runId: string): ConformanceRunBinding {
+    const binding = this.#runs.get(runId);
+    if (binding === undefined) throw new Error(`Conformance run ${runId} is not attached.`);
+    return binding;
+  }
+}
+
 export async function prepareConformancePlan(
   target: ConformanceTarget,
   mutate?: (definition: EvaluationDefinition, policy: MeasurementPolicy) => void,
@@ -746,7 +853,10 @@ export async function runConformanceScenario(
   options: ConformanceHarnessOptions = {},
 ): Promise<ConformanceResult> {
   const suffix = options.suffix ?? target;
-  const plan = await prepareConformancePlan(
+  if (options.plan !== undefined && options.mutate !== undefined) {
+    throw new TypeError('A prepared Conformance plan cannot also be mutated.');
+  }
+  const plan = options.plan ?? await prepareConformancePlan(
     target,
     options.mutate,
     undefined,
@@ -754,127 +864,129 @@ export async function runConformanceScenario(
   );
   const state = emptyState();
   const clock = new DeterministicClock();
-  const eventSequencer = new InMemoryRuntimeEventSequencer();
-  const runId = `conformance-${target}`;
-  const executor = makeExecutor(target, plan, state, options.faults);
-  const evaluator = makeEvaluator(target, plan, state, options.faults);
-  const evaluatorId = target === 'function'
-    ? 'exact/v1'
-    : target === 'rag'
-      ? 'retrieval/v1'
-      : 'trajectory/v1';
-  const evaluators = new Map([[evaluatorId, evaluator]]);
-  if (target === 'agent') {
-    evaluators.set(
-      'answer-shape/v1',
-      makeOutputOnlyAgentEvaluator(plan, state, options.faults),
-    );
-  }
-  const eventWriter = options.faults === undefined
+  const runId = options.runId ?? `conformance-${target}`;
+  const localBinding = () => ({ state, faults: options.faults });
+  const registry = options.runtimeRegistry;
+  const detach = registry?.attach(target, plan, runId, {
+    state,
+    ...(options.faults === undefined ? {} : { faults: options.faults }),
+  });
+  const executors = registry?.executors
+    ?? new Map([['executor-alias', makeExecutor(target, plan, localBinding)]]);
+  const evaluators = registry?.evaluators
+    ?? makeEvaluatorRegistry(target, plan, localBinding);
+  const eventSequencer = registry?.eventSequencer ?? new InMemoryRuntimeEventSequencer();
+  const eventWriter = registry?.eventWriter ?? (options.faults === undefined
     ? undefined
     : {
       write: async (event: Readonly<EvaluationEvent>) => {
         state.writtenEvents.push(structuredClone(event) as EvaluationEvent);
         await options.faults?.hit('event-write');
       },
-    };
+    });
   const needsArtifactStore = plan.measurementPolicy.evidence.output === 'reference'
     || plan.measurementPolicy.evidence.trace === 'reference'
     || plan.measurementPolicy.evidence.evidence === 'reference';
-  const artifactStore = options.artifactStore
+  const artifactStore = options.artifactStore ?? registry?.artifactStore
     ?? (needsArtifactStore ? new InMemoryConformanceArtifactStore(options.faults) : undefined);
+  const executionCache = options.executionCache ?? registry?.executionCache;
+  const evaluationCache = options.evaluationCache ?? registry?.evaluationCache;
   const analysisPorts: AnalysisRuntimePorts = {
-    analysisNodes: faultableAnalysisNodes(options.faults),
+    analysisNodes: registry?.analysisNodes ?? faultableAnalysisNodes(options.faults),
     schemaValidators: createBuiltinAnalysisSchemaValidators(),
     missingPolicies: createBuiltinMissingPolicies(),
-    decisionPolicies: faultableDecisionPolicies(options.faults),
+    decisionPolicies: registry?.decisionPolicies ?? faultableDecisionPolicies(options.faults),
     clock,
     eventSequencer,
     ...(eventWriter === undefined ? {} : { eventWriter }),
   };
   const allEvents: EvaluationEvent[] = [];
 
-  const executionRun = options.execution === undefined
-    ? await settle(startExecution(plan, {
-      executors: new Map([['executor-alias', executor]]),
+  try {
+    const executionRun = options.execution === undefined
+      ? await settle(startExecution(plan, {
+        executors,
+        clock,
+        eventSequencer,
+        ...(eventWriter === undefined ? {} : { eventWriter }),
+        ...(artifactStore === undefined ? {} : { contentStore: artifactStore }),
+        ...(executionCache === undefined ? {} : { cache: executionCache }),
+      }, {
+        runId,
+        bundleId: `execution-${suffix}`,
+        eventBufferCapacity: 1,
+        ...(options.executionSignal === undefined ? {} : { signal: options.executionSignal }),
+      }), options.consumeEvent, options.eventConsumption)
+      : { value: options.execution, events: [] };
+    allEvents.push(...executionRun.events);
+
+    const evaluationRun = await settle(startEvaluation(plan, executionRun.value, {
+      evaluators,
       clock,
       eventSequencer,
       ...(eventWriter === undefined ? {} : { eventWriter }),
+      ...(artifactStore === undefined || options.provideContentResolver === false
+        ? {}
+        : { contentResolver: artifactStore }),
       ...(artifactStore === undefined ? {} : { contentStore: artifactStore }),
-      ...(options.executionCache === undefined ? {} : { cache: options.executionCache }),
+      ...(evaluationCache === undefined ? {} : { cache: evaluationCache }),
     }, {
       runId,
-      bundleId: `execution-${suffix}`,
+      bundleId: `evaluation-${suffix}`,
       eventBufferCapacity: 1,
-      ...(options.executionSignal === undefined ? {} : { signal: options.executionSignal }),
-    }), options.consumeEvent, options.eventConsumption)
-    : { value: options.execution, events: [] };
-  allEvents.push(...executionRun.events);
+      ...(options.evaluationSignal === undefined ? {} : { signal: options.evaluationSignal }),
+    }), options.consumeEvent, options.eventConsumption);
+    allEvents.push(...evaluationRun.events);
 
-  const evaluationRun = await settle(startEvaluation(plan, executionRun.value, {
-    evaluators,
-    clock,
-    eventSequencer,
-    ...(eventWriter === undefined ? {} : { eventWriter }),
-    ...(artifactStore === undefined || options.provideContentResolver === false
-      ? {}
-      : { contentResolver: artifactStore }),
-    ...(artifactStore === undefined ? {} : { contentStore: artifactStore }),
-    ...(options.evaluationCache === undefined ? {} : { cache: options.evaluationCache }),
-  }, {
-    runId,
-    bundleId: `evaluation-${suffix}`,
-    eventBufferCapacity: 1,
-    ...(options.evaluationSignal === undefined ? {} : { signal: options.evaluationSignal }),
-  }), options.consumeEvent, options.eventConsumption);
-  allEvents.push(...evaluationRun.events);
+    const analysisRun = await settle(startAnalysis(
+      plan,
+      executionRun.value,
+      evaluationRun.value,
+      analysisPorts,
+      {
+        runId,
+        bundleId: `analysis-${suffix}`,
+        eventBufferCapacity: 1,
+      },
+    ), options.consumeEvent, options.eventConsumption);
+    allEvents.push(...analysisRun.events);
 
-  const analysisRun = await settle(startAnalysis(
-    plan,
-    executionRun.value,
-    evaluationRun.value,
-    analysisPorts,
-    {
-      runId,
-      bundleId: `analysis-${suffix}`,
-      eventBufferCapacity: 1,
-    },
-  ), options.consumeEvent, options.eventConsumption);
-  allEvents.push(...analysisRun.events);
+    const decisionRun = await settle(startDecision(
+      plan,
+      executionRun.value,
+      evaluationRun.value,
+      analysisRun.value,
+      analysisPorts,
+      { runId, eventBufferCapacity: 1 },
+    ), options.consumeEvent, options.eventConsumption);
+    allEvents.push(...decisionRun.events);
 
-  const decisionRun = await settle(startDecision(
-    plan,
-    executionRun.value,
-    evaluationRun.value,
-    analysisRun.value,
-    analysisPorts,
-    { runId, eventBufferCapacity: 1 },
-  ), options.consumeEvent, options.eventConsumption);
-  allEvents.push(...decisionRun.events);
+    const reportRun = await settle(startReportMaterialization(
+      plan,
+      executionRun.value,
+      evaluationRun.value,
+      analysisRun.value,
+      decisionRun.value,
+      analysisPorts,
+      {
+        runId,
+        reportId: `report-${suffix}`,
+        eventBufferCapacity: 1,
+      },
+    ), options.consumeEvent, options.eventConsumption);
+    allEvents.push(...reportRun.events);
 
-  const reportRun = await settle(startReportMaterialization(
-    plan,
-    executionRun.value,
-    evaluationRun.value,
-    analysisRun.value,
-    decisionRun.value,
-    analysisPorts,
-    {
-      runId,
-      reportId: `report-${suffix}`,
-      eventBufferCapacity: 1,
-    },
-  ), options.consumeEvent, options.eventConsumption);
-  allEvents.push(...reportRun.events);
-
-  return {
-    plan,
-    execution: executionRun.value,
-    evaluation: evaluationRun.value,
-    analysis: analysisRun.value,
-    decision: decisionRun.value,
-    report: reportRun.value,
-    events: allEvents,
-    state,
-  };
+    return {
+      plan,
+      execution: executionRun.value,
+      evaluation: evaluationRun.value,
+      analysis: analysisRun.value,
+      decision: decisionRun.value,
+      report: reportRun.value,
+      events: allEvents,
+      state,
+    };
+  } finally {
+    detach?.();
+  }
 }

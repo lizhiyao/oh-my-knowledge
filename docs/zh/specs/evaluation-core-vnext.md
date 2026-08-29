@@ -627,11 +627,15 @@ facts 重新验证。
 该 suite 覆盖 Gold 隔离与只替换 Evaluator 的重评分、原生 Recall@K／Precision@K／MRR／NDCG
 observation、source-neutral trajectory evidence、output-only Evaluator 投影、session lifecycle、
 反向 Comparison 角色、paired-block 预算 censoring、重复 trial 的 unit count、evidence gate、
-classification 脱敏、reference 内容解析、cache replay、无实时 Event consumer、必需 EventWriter、
-外部取消、并发 Run 隔离，以及 resolve／open／execute／dispose 故障边界。全部 fixture 只使用
-确定性 clock、seed、deferred gate 与内存 store，不读取文件、网络、用户配置，也不依赖
-wall-clock delay。已知统计参考向量与确定性 simulation 共同守护 bootstrap unit 语义、宽松的
-区间 coverage 校准带，以及零 paired effect 的宽松 I 型错误率上界。
+classification 脱敏、reference 内容解析、cache replay、无实时 Event consumer 与必需
+EventWriter。fault matrix 覆盖 Runtime resolve／open／execute／dispose，cache
+read／write／miss／stale／forged provenance，ContentStore 与 ContentResolver 的 digest／classification
+失败，continue／fail-fast／failure-threshold，以及 admission 前、in-flight、阶段边界和 dispose
+期间的取消。并发 fixture 显式共享同一个 Runtime registry、event sequencer、artifact store 与两层
+cache，同时保持不同的 Run id、state、取消、session 和 teardown；deferred gate 强制生命周期真实
+重叠。全部 fixture 只使用确定性 clock、seed、deferred gate 与内存 store，不读取文件、网络、用户
+配置，也不依赖 wall-clock delay。已知统计参考向量与确定性 simulation 共同守护 bootstrap unit
+语义、宽松的区间 coverage 校准带，以及零 paired effect 的宽松 I 型错误率上界。
 
 #425 对 Contracts、Compiler、Execution、Evaluation、Analysis／Decision 与跨阶段 conformance
 的验收审计至此完成。包根 façade、公开 export 白名单和独立 Node.js 宿主验收仍明确归 #424；
@@ -641,6 +645,9 @@ Conformance 暴露并修复了一个跨阶段缺口：ExecutionBundle 接纳曾�
 完整 Dataset revision 等于当前 RunPlan。现在这些来源血缘仍被封存并受 provenance 绑定，
 但接纳只按 `executionPlanDigest` 与 `executionInputDigest` 做阶段化校验，因此 Gold 或
 Evaluator 变化可以重评分既有 ExecutionBundle，同时不削弱来源完整性。
+Execution cache 接纳还会校验 Core 为 sealed ExecutionPlan 产生的精确 native provenance 与原始
+cache-miss receipt。stale digest 或被重写为 replay provenance 的自洽记录会在打开 Executor 前
+fail closed。
 
 ## 二十一、行业参考
 

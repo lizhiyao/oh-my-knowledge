@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { digestCanonicalJson } from '../../../src/evaluation-core/contracts/index.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
 import {
   InMemoryConformanceArtifactStore,
@@ -77,6 +78,148 @@ describe('Evaluation Core artifact and replay conformance', () => {
     expect(JSON.stringify(result.report)).not.toContain(marker);
   });
 
+  it('fails the stage atomically when ContentResolver stops midway through binding closure', async () => {
+    const marker = 'midstream-resolver-secret';
+    const faults = new ConformanceFaultInjector();
+    const store = new InMemoryConformanceArtifactStore(faults);
+    const source = await runConformanceScenario('rag', {
+      suffix: 'midstream-resolver-source',
+      faults,
+      artifactStore: store,
+      mutate(_definition, policy) { policy.evidence.output = 'reference'; },
+    });
+    faults.fail('content-resolve', marker, faults.count('content-resolve') + 2);
+
+    const result = await runConformanceScenario('rag', {
+      suffix: 'midstream-resolver-failure',
+      execution: source.execution,
+      faults,
+      artifactStore: store,
+      mutate(_definition, policy) { policy.evidence.output = 'reference'; },
+    });
+
+    expect(result.evaluation.evaluationBundleStatus).toBe('failed');
+    expect(result.state.evaluatorAttempts).toBe(0);
+    expect(result.decision?.decisionStatus).toBe('not-decided');
+    expect(JSON.stringify(result)).not.toContain(marker);
+  });
+
+  it.each(['digest', 'classification'] as const)(
+    'rejects ContentResolver %s mismatch before invoking an Evaluator',
+    async (mismatch) => {
+      const store = new InMemoryConformanceArtifactStore();
+      const source = await runConformanceScenario('rag', {
+        suffix: `resolver-${mismatch}-source`,
+        artifactStore: store,
+        mutate(_definition, policy) { policy.evidence.output = 'reference'; },
+      });
+      const descriptor = source.execution.records.find((record) => (
+        record.executionStatus === 'completed'
+        && record.output?.contentKind === 'descriptor'
+      ));
+      if (descriptor?.executionStatus !== 'completed'
+          || descriptor.output?.contentKind !== 'descriptor') {
+        throw new Error('Expected a referenced execution output.');
+      }
+      const original = await store.resolve(descriptor.output.descriptor);
+      store.tamper(descriptor.output.descriptor.digest, mismatch === 'digest'
+        ? {
+          value: { documents: ['forged-document'] },
+          classification: descriptor.output.classification,
+          mediaType: descriptor.output.descriptor.mediaType,
+        }
+        : {
+          ...original,
+          classification: 'secret',
+        });
+
+      const result = await runConformanceScenario('rag', {
+        suffix: `resolver-${mismatch}-rejected`,
+        execution: source.execution,
+        artifactStore: store,
+        mutate(_definition, policy) { policy.evidence.output = 'reference'; },
+      });
+
+      expect(result.evaluation.evaluationBundleStatus).toBe('failed');
+      expect(result.state.evaluatorAttempts).toBe(0);
+      expect(result.decision?.decisionStatus).toBe('not-decided');
+      expect(JSON.stringify(result.report)).not.toContain('forged-document');
+    },
+  );
+
+  it('contains ContentStore failure and does not cache an unmaterialized output', async () => {
+    const faults = new ConformanceFaultInjector().fail('content-put');
+    const cache = new InMemoryConformanceExecutionCache(faults);
+    const result = await runConformanceScenario('rag', {
+      suffix: 'content-put-failure',
+      faults,
+      executionCache: cache,
+      mutate(_definition, policy) {
+        policy.evidence.output = 'reference';
+        policy.cache.executionMode = 'transparent-deterministic';
+      },
+    });
+
+    expect(result.execution).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'content-materialization-failed',
+    });
+    expect(cache.size).toBe(0);
+    expect(result.decision?.decisionStatus).toBe('not-decided');
+  });
+
+  it.each(['cache-get', 'cache-put'] as const)(
+    'contains Execution %s failure at the cache boundary',
+    async (boundary) => {
+      const faults = new ConformanceFaultInjector().fail(boundary);
+      const cache = new InMemoryConformanceExecutionCache(faults);
+      const result = await runConformanceScenario('function', {
+        suffix: `execution-${boundary}`,
+        faults,
+        executionCache: cache,
+        mutate(_definition, policy) {
+          policy.cache.executionMode = 'transparent-deterministic';
+        },
+      });
+
+      expect(result.execution).toMatchObject({
+        executionBundleStatus: 'failed',
+        terminationReasonCode: boundary === 'cache-get'
+          ? 'execution-cache-read-failed'
+          : 'execution-cache-write-failed',
+      });
+      expect(result.decision?.decisionStatus).toBe('not-decided');
+      expect(faults.count(boundary)).toBeGreaterThanOrEqual(1);
+    },
+  );
+
+  it.each(['cache-get', 'cache-put'] as const)(
+    'contains Evaluation %s failure at the cache boundary',
+    async (boundary) => {
+      const source = await runConformanceScenario('function', {
+        suffix: `evaluation-${boundary}-source`,
+      });
+      const faults = new ConformanceFaultInjector().fail(boundary);
+      const cache = new InMemoryConformanceEvaluationCache(faults);
+      const result = await runConformanceScenario('function', {
+        suffix: `evaluation-${boundary}`,
+        execution: source.execution,
+        faults,
+        evaluationCache: cache,
+        mutate(_definition, policy) { policy.cache.evaluationMode = 'reuse'; },
+      });
+
+      expect(result.evaluation).toMatchObject({
+        evaluationBundleStatus: 'failed',
+        terminationReasonCode: boundary === 'cache-get'
+          ? 'evaluation-cache-read-failed'
+          : 'evaluation-cache-write-failed',
+      });
+      expect(result.decision?.decisionStatus).toBe('not-decided');
+      expect(faults.count(boundary)).toBeGreaterThanOrEqual(1);
+    },
+  );
+
   it('reuses Execution cache without increasing Target invocation count', async () => {
     const cache = new InMemoryConformanceExecutionCache();
     const first = await runConformanceScenario('function', {
@@ -106,6 +249,23 @@ describe('Evaluation Core artifact and replay conformance', () => {
     });
   });
 
+  it('fails closed on an Execution replay-only cache miss', async () => {
+    const cache = new InMemoryConformanceExecutionCache();
+    const result = await runConformanceScenario('function', {
+      suffix: 'execution-replay-only-miss',
+      executionCache: cache,
+      mutate(_definition, policy) { policy.cache.executionMode = 'replay-only'; },
+    });
+
+    expect(result.execution).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'execution-cache-miss',
+      coverage: { started: 0, notStarted: 4 },
+    });
+    expect(result.state.executorAttempts).toBe(0);
+    expect(result.decision?.decisionStatus).toBe('not-decided');
+  });
+
   it('reuses Evaluation cache against the same ExecutionBundle without invoking Evaluators', async () => {
     const source = await runConformanceScenario('function', { suffix: 'evaluation-cache-source' });
     const cache = new InMemoryConformanceEvaluationCache();
@@ -129,5 +289,77 @@ describe('Evaluation Core artifact and replay conformance', () => {
       && record.cache.cacheStatus === 'transparent-hit'
       && record.provenance.provenanceKind === 'replay'
     ))).toBe(true);
+  });
+
+  it.each(['stale-digest', 'forged-provenance'] as const)(
+    'fails closed on an Execution cache entry with %s',
+    async (poison) => {
+      const cache = new InMemoryConformanceExecutionCache();
+      await runConformanceScenario('function', {
+        suffix: `execution-cache-${poison}-seed`,
+        executionCache: cache,
+        mutate(_definition, policy) {
+          policy.cache.executionMode = 'transparent-deterministic';
+        },
+      });
+      cache.tamperFirst((entry) => {
+        if (poison === 'stale-digest') {
+          entry.sourceRecordDigest = `sha256:${'0'.repeat(64)}`;
+          return;
+        }
+        entry.record.provenance = {
+          provenanceKind: 'replay',
+          trust: entry.record.provenance.trust,
+          parentDigests: [entry.sourceRecordDigest],
+        };
+        entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+      });
+
+      const result = await runConformanceScenario('function', {
+        suffix: `execution-cache-${poison}-rejected`,
+        executionCache: cache,
+        mutate(_definition, policy) {
+          policy.cache.executionMode = 'transparent-deterministic';
+        },
+      });
+      expect(result.execution).toMatchObject({
+        executionBundleStatus: 'failed',
+        terminationReasonCode: 'execution-cache-read-failed',
+      });
+      expect(result.state.executorAttempts).toBe(0);
+    },
+  );
+
+  it('fails closed on forged Evaluation cache provenance', async () => {
+    const source = await runConformanceScenario('function', {
+      suffix: 'evaluation-forged-cache-source',
+    });
+    const cache = new InMemoryConformanceEvaluationCache();
+    await runConformanceScenario('function', {
+      suffix: 'evaluation-forged-cache-seed',
+      execution: source.execution,
+      evaluationCache: cache,
+      mutate(_definition, policy) { policy.cache.evaluationMode = 'reuse'; },
+    });
+    cache.tamperFirst((entry) => {
+      entry.record.provenance = {
+        provenanceKind: 'replay',
+        trust: entry.record.provenance.trust,
+        parentDigests: [entry.cachedRecordDigest],
+      };
+      entry.cachedRecordDigest = digestCanonicalJson(entry.record);
+    });
+
+    const result = await runConformanceScenario('function', {
+      suffix: 'evaluation-forged-cache-rejected',
+      execution: source.execution,
+      evaluationCache: cache,
+      mutate(_definition, policy) { policy.cache.evaluationMode = 'reuse'; },
+    });
+    expect(result.evaluation).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-cache-read-failed',
+    });
+    expect(result.state.evaluatorAttempts).toBe(0);
   });
 });

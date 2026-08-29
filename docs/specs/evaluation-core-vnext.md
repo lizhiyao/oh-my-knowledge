@@ -629,11 +629,16 @@ The suite exercises Gold isolation and evaluator-only re-scoring, native Recall@
 MRR, and NDCG observations, source-neutral trajectory evidence, output-only evaluator projection,
 session lifecycle, reversed Comparison roles, paired-block budget censoring, repeated-trial unit
 counts, evidence gates, classification redaction, reference content resolution, cache replay,
-absent live Event consumers, required EventWriter behavior, external cancellation, concurrent Run
-isolation, and resolve/open/execute/dispose fault boundaries. All fixtures use deterministic clocks,
-seeds, deferred gates, and in-memory stores; they do not read files, networks, user configuration,
-or wall-clock delays. Known statistical vectors and deterministic simulations guard bootstrap
-unit semantics, broad interval coverage, and a broad null paired-effect type-I error bound.
+absent live Event consumers, and required EventWriter behavior. Its fault matrix covers Runtime
+resolve/open/execute/dispose, cache read/write/miss/stale/forged provenance, content store and
+resolver digest/classification failures, continue/fail-fast/failure-threshold, and cancellation
+before admission, in flight, at a stage boundary, and during disposal. Concurrent fixtures use one
+explicitly injected Runtime registry, event sequencer, artifact store, and pair of caches while
+retaining distinct Run ids, state, cancellation, sessions, and teardown; deferred gates force their
+lifecycles to overlap. All fixtures use deterministic clocks, seeds, deferred gates, and in-memory
+stores; they do not read files, networks, user configuration, or wall-clock delays. Known
+statistical vectors and deterministic simulations guard bootstrap unit semantics, broad interval
+coverage, and a broad null paired-effect type-I error bound.
 
 The #425 acceptance audit is now complete for Contracts, Compiler, Execution, Evaluation,
 Analysis/Decision, and cross-stage conformance. The package-root façade, public export allowlist,
@@ -645,6 +650,9 @@ originating root contract and complete Dataset revision with the current RunPlan
 facts still remain sealed and provenance-bound, but admission is now stage-scoped to
 `executionPlanDigest` and `executionInputDigest`, enabling Gold or Evaluator changes to re-score an
 existing ExecutionBundle without weakening origin integrity.
+Execution cache admission also verifies the exact native provenance and original cache-miss receipt
+that Core emitted for the sealed ExecutionPlan. A stale digest or a self-consistent record rewritten
+as replay provenance fails closed before an Executor is opened.
 
 ## 21. Industry references
 
