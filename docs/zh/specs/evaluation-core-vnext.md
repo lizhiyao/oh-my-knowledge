@@ -282,7 +282,7 @@ interface MeasurementPolicy {
 
 started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。预算也可能在最后一个已启动 trial 内耗尽，例如 retry 无法获准或 provider cost 只能在完成后得知；此时合法的 budget-exhausted Bundle 不需要伪造一个 censored coordinate。
 
-`parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、结构可判定的 cache envelope、provider-cost 事实和 paired-block 原子删失；不能信任 Bundle 自报的 block、cache status 或 coverage。`parseExecutionBundle()` 与 `verifyExecutionBundle()` 返回 `ExecutionBundleSource`，其中包含可序列化 Bundle 与独立的 `planVerification` 信封。native record 给出调用次数与 provider cost 下界，尚未验证的 replay claim 给出上界；若只凭 Bundle JSON 无法证明，则 provenance、cache receipt、调用预算或 provider-cost 预算状态为 `indeterminate`。只有从可信 cache 边界独立取得的 receipt 或宿主 attestation 才能闭合相应证明；从 Bundle 自身重建 digest 只能验证结构，不能认证 provenance 或 receipt。Execution Runtime 通过 `ExecutionRun.source` 暴露同一份已认证 source，`ExecutionRun.result` 仅作为可序列化 artifact 的便利入口；后续阶段必须消费 source，不能重新解析后丢弃 verification 信封。配置 provider-cost 预算时，completed Bundle 的每次 native attempt 都必须报告封存币种，且 native 调用总成本必须低于上限。
+`parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、结构可判定的 cache envelope、provider-cost 事实和 paired-block 原子删失；不能信任 Bundle 自报的 block、cache status 或 coverage。`parseExecutionBundle()` 与 `verifyExecutionBundle()` 返回 `ExecutionBundleSource`，其中包含可序列化 Bundle 与独立的 `planVerification` 信封。native record provenance 不能高于实际产出它的 sealed Executor Runtime assurance，Bundle provenance 也不能高于其中最不可信的 record。native record 给出调用次数与 provider cost 下界，尚未验证的 replay claim 给出上界；若只凭 Bundle JSON 无法证明，则 provenance、cache receipt、调用预算或 provider-cost 预算状态为 `indeterminate`。只有从可信 cache 边界独立取得的 receipt 或宿主 attestation 才能闭合相应证明；从 Bundle 自身重建 digest 只能验证结构，不能认证 provenance 或 receipt。Execution Runtime 通过 `ExecutionRun.source` 暴露同一份已认证 source，`ExecutionRun.result` 仅作为可序列化 artifact 的便利入口；后续阶段必须消费 source，不能重新解析后丢弃 verification 信封。配置 provider-cost 预算时，completed Bundle 的每次 native attempt 都必须报告封存币种，且 native 调用总成本必须低于上限。
 
 Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输入的 EvidencePolicy。Execution 阶段仍可只产生 `summary-only` Bundle；只有 `self-contained` 要求 completed output 以及所有 active record 的 trace 全部内联，`resolvable` 要求这些内容可内联或通过经 digest 校验的 descriptor 解析。
 
@@ -611,7 +611,9 @@ Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed r
 
 Decision 只消费 policy 命名的 AnalysisResult，以及 coverage、assumption check、evidence status 与显式封存的 comparison family。correction result 必须匹配这个精确 family，而不是全局 Comparison 数量。gate 未通过时产生稳定的 `not-decided` reason；policy 或基础设施失败与统计结论保持分离。EvaluationReport 随后物化 Bundle reference、内容寻址的 DecisionResult、provenance 与派生的 run／evidence／conclusion 三轴状态，不重算统计量或 verdict。Host annotation 属于展示元数据：它可以改变 report artifact digest，但不能改变任何 stage Plan 或 source Bundle digest。
 
-AnalysisBundle、DecisionResult 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。Runtime 与经验证的导入会为 Execution、Evaluation、Analysis 和 Decision 返回已认证 source envelope；每个 envelope 保留不可序列化的 verification evidence，并绑定直接父 artifact digest。下游阶段既要求这条准确 source chain，也递归要求每个被消费阶段匹配当前 Plan identity，因此不能拼接来自不同 Run、但各自结构合法的 artifact，旧阶段也不能越过已经变化的阶段边界。仅下游 Plan 变化时，只要上游自己的阶段 Plan 与直接父来源未变，仍可复用 durable envelope。各阶段 Bundle 的 `runContractDigest` 记录其生产时的 root；只有最终 EvaluationReport 必须绑定当前 RunContract root。传输后的 JSON 在 producer 或 host verifier 独立 attestation 其 digest 前一律保持 `indeterminate`；重建 digest 不能认证 provenance 或 policy execution。validator 还要求完整 graph／runtime／schema binding、独立 output validation、policy identity，以及不高于最不可信 source 或实际执行 Runtime assurance 的 provenance trust。Analysis trust 纳入全部已执行 AnalysisNode 与实际使用的 MissingPolicy；存在 decision 时，report trust 还要纳入 DecisionPolicy assurance。AnalysisBundle provenance 只能有一个 parent，即已验证的 EvaluationBundle，不能夹带无关 digest。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
+AnalysisBundle、DecisionResult 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。Runtime 与经验证的导入会为 Execution、Evaluation、Analysis 和 Decision 返回已认证 source envelope；每个 envelope 保留不可序列化的 verification evidence，并绑定直接父 artifact digest。下游阶段既要求这条准确 source chain，也递归要求每个被消费阶段匹配当前 Plan identity，因此不能拼接来自不同 Run、但各自结构合法的 artifact，旧阶段也不能越过已经变化的阶段边界。仅下游 Plan 变化时，只要上游自己的阶段 Plan 与直接父来源未变，仍可复用 durable envelope。各阶段 Bundle 的 `runContractDigest` 记录其生产时的 root；只有最终 EvaluationReport 必须绑定当前 RunContract root。传输后的 JSON 在 producer 或 host verifier 独立 attestation 其 digest 前一律保持 `indeterminate`；重建 digest 不能认证 provenance 或 policy execution。
+
+每个 child envelope 会把已认证直接父来源的 effective trust 与自身 provenance attestation 分开记录。因此，真实历史 artifact 在现场验证材料缺失时仍可保持结构合法，但 effective trust 会被封顶，而不是被误判为 invalid。只对 Evaluation、Analysis 或 Decision 子产物做 attestation，不能抬高未认证父来源的 trust。Decision effective trust 同时受 Analysis source trust、DecisionPolicy Runtime assurance 与 policy-execution attestation 限制；即使结果是非方向性的 `not-decided`，Report trust 也必须纳入这条有效 Decision trust。validator 还要求完整 graph／runtime／schema binding、独立 output validation、policy identity，以及不高于最不可信 source 或实际执行 Runtime assurance 的 provenance trust。Analysis trust 纳入全部已执行 AnalysisNode 与实际使用的 MissingPolicy。AnalysisBundle provenance 只能有一个 parent，即已验证的 EvaluationBundle，不能夹带无关 digest。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
 
 Execution、Evaluation、Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。所有异步终态路径都会关闭 event stream，Analysis 还会移除外部 AbortSignal listener，包括非预期的 clock、sequencer、validation 或 materialization failure。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。同一个 AbortSignal 会传入执行中的 Analysis 与 Decision port；signal 一旦 abort，port 后续 reject 或迟到的成功结果都不能覆盖 cancelled 终态。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
 
@@ -626,7 +628,8 @@ facts 重新验证。
 
 该 suite 覆盖 Gold 隔离与只替换 Evaluator 的重评分、原生 Recall@K／Precision@K／MRR／NDCG
 observation、source-neutral trajectory evidence、output-only Evaluator 投影、session lifecycle、
-反向 Comparison 角色、paired-block 预算 censoring、重复 trial 的 unit count、evidence gate、
+反向 Comparison 角色、paired-block 预算 censoring、重复 trial 与 cluster bootstrap 的 unit count、
+带 raw-to-corrected hypothesis lineage 的端到端 Bonferroni comparison family、evidence gate、
 classification 脱敏、reference 内容解析、cache replay、无实时 Event consumer 与必需
 EventWriter。fault matrix 覆盖 Runtime resolve／open／execute／dispose，cache
 read／write／miss／stale／forged provenance，ContentStore 与 ContentResolver 的 digest／classification
@@ -641,7 +644,7 @@ cache，同时保持不同的 Run id、state、取消、session 和 teardown；d
 的验收审计至此完成。包根 façade、公开 export 白名单和独立 Node.js 宿主验收仍明确归 #424；
 CLI／Studio 迁移是后续消费者，不构成 Evaluation Core 验收前置条件。
 
-Conformance 暴露并修复了一个跨阶段缺口：durable Bundle 接纳曾要求来源 root contract 等于
+Conformance 暴露并修复了多个跨阶段缺口：durable Bundle 接纳曾要求来源 root contract 等于
 当前 RunPlan。来源血缘仍被封存并受 provenance 绑定，但接纳现在按阶段发生，递归校验每个被
 消费阶段的 Plan 与准确直接父来源。仅下游变化时，可以复用仍然有效的 Execution、Evaluation 或
 Analysis 证据；某阶段一旦变化，旧阶段 envelope 会在 Runtime admission 前被拒绝。EvaluationReport
@@ -652,6 +655,11 @@ cache-miss receipt，以及封存的 output／trace capture、classification、a
 提升、capture mode 不匹配、attempt chain 畸形、伪造 aggregate usage，或 cost 缺失、币种不匹配、
 达到封存上限，都会在打开 Executor 前 fail closed。Execution capture policy 属于 ExecutionPlan identity，
 因此合法策略变化会进入新的 cache namespace，而不是被误报成基础设施故障。
+Executor provenance 现在从每条 native record、ExecutionBundle 一直到最终 Report 都受 sealed Runtime
+assurance 封顶。source envelope 还会独立保留直接父来源的 effective trust，child attestation 不能越级
+抬高 parent；Report provenance 对方向性与非方向性结果都会纳入 Decision policy-execution attestation。
+Conformance suite 会对这些 trust chain、cluster resampling artifact 与已校正 comparison family 进行
+序列化导入和完整重验。
 
 ## 二十一、行业参考
 

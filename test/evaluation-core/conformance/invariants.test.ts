@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { digestCanonicalJson } from '../../../src/evaluation-core/contracts/index.js';
 import {
   prepareConformancePlan,
+  revalidateConformanceResult,
   runConformanceScenario,
 } from './harness.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
@@ -59,6 +60,26 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
     }
   });
 
+  it('caps the full report provenance at the Executor Runtime assurance', async () => {
+    const result = await runConformanceScenario('function', {
+      suffix: 'unknown-executor-assurance',
+      executorAssurance: 'unknown',
+    });
+
+    expect(result.execution.records.every((record) => (
+      record.executionStatus === 'budget-censored'
+        || record.provenance.trust === 'unknown'
+    ))).toBe(true);
+    expect(result.execution.provenance.trust).toBe('unknown');
+    expect(result.executionSource.planVerification.provenanceTrustStatus).toBe('verified');
+    expect(result.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+    });
+    expect(revalidateConformanceResult(result)).toEqual(result.report);
+    expect(result.report.provenance.trust).toBe('unknown');
+  });
+
   it('re-scores changed Gold without invoking the Target again', async () => {
     const baseline = await runConformanceScenario('function', { suffix: 'rescore-source' });
     const rescored = await runConformanceScenario('function', {
@@ -110,6 +131,183 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
       throw new Error('Expected a completed interval result.');
     }
     expect(record.value.unitCount).toBe(2);
+  });
+
+  it('uses declared clusters as the end-to-end bootstrap unit', async () => {
+    const result = await runConformanceScenario('function', {
+      suffix: 'cluster-bootstrap',
+      mutate(definition) {
+        definition.dataset.samples = [
+          ...definition.dataset.samples,
+          {
+            ...structuredClone(definition.dataset.samples[0]),
+            sampleId: 'sample-3',
+          },
+          {
+            ...structuredClone(definition.dataset.samples[1]),
+            sampleId: 'sample-4',
+          },
+        ];
+        for (const [index, sample] of definition.dataset.samples.entries()) {
+          sample.input = {
+            ...(sample.input as Record<string, unknown>),
+            cluster: index % 2 === 0 ? 'cluster-a' : 'cluster-b',
+          };
+        }
+        definition.experiment.sampling.experimentalUnit = 'cluster';
+        definition.experiment.sampling.clusterKey = '/input/cluster';
+        definition.experiment.sampling.resamplingUnit = 'cluster';
+        definition.experiment.sampling.estimatorId = 'bootstrap.cluster-percentile/v1';
+        delete definition.experiment.sampling.pairingKey;
+        definition.analysisGraph.nodes = [{
+          analysisNodeKind: 'estimator',
+          nodeId: 'cluster-bootstrap-correct',
+          implementationId: 'bootstrap.cluster-percentile/v1',
+          inputs: [{ inputKind: 'metric-observations', referenceId: 'correct' }],
+          outputResultId: 'cluster-correct-interval',
+          parameters: { resamples: 64, alpha: 0.1 },
+        }];
+        definition.decisionPolicy!.analysisResultIds = ['cluster-correct-interval'];
+      },
+    });
+    const record = result.analysis.records[0];
+
+    expect(result.execution.records).toHaveLength(8);
+    const clusterIds = new Map(result.execution.records.map((entry) => [
+      entry.sampleId,
+      entry.samplingUnitIds.clusterId,
+    ]));
+    expect(new Set(clusterIds.values()).size).toBe(2);
+    expect(clusterIds.get('sample-1')).toBe(clusterIds.get('sample-3'));
+    expect(clusterIds.get('sample-2')).toBe(clusterIds.get('sample-4'));
+    expect(record.analysisStatus).toBe('completed');
+    if (record.analysisStatus !== 'completed'
+        || record.value === null
+        || Array.isArray(record.value)
+        || typeof record.value !== 'object') {
+      throw new Error('Expected a completed cluster interval result.');
+    }
+    expect(record.value.unitCount).toBe(2);
+    expect(result.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+    });
+    expect(revalidateConformanceResult(result)).toEqual(result.report);
+  });
+
+  it('preserves a multiple-comparison family through correction and Decision lineage', async () => {
+    const result = await runConformanceScenario('function', {
+      suffix: 'multiple-comparison-family',
+      mutate(definition) {
+        definition.comparisons.push({
+          ...structuredClone(definition.comparisons[0]),
+          comparisonId: 'secondary-comparison',
+        });
+        definition.analysisGraph.nodes = [
+          {
+            analysisNodeKind: 'estimator',
+            nodeId: 'hypothesis-primary',
+            implementationId: 'conformance.hypothesis/v1',
+            inputs: [
+              { inputKind: 'metric-observations', referenceId: 'correct' },
+              {
+                inputKind: 'comparison',
+                referenceId: 'control-vs-treatment',
+                treatmentTargetId: 'treatment',
+                metricId: 'correct',
+              },
+            ],
+            outputResultId: 'hypothesis-primary-result',
+            parameters: {},
+          },
+          {
+            analysisNodeKind: 'estimator',
+            nodeId: 'hypothesis-secondary',
+            implementationId: 'conformance.hypothesis/v1',
+            inputs: [
+              { inputKind: 'metric-observations', referenceId: 'correct' },
+              {
+                inputKind: 'comparison',
+                referenceId: 'secondary-comparison',
+                treatmentTargetId: 'treatment',
+                metricId: 'correct',
+              },
+            ],
+            outputResultId: 'hypothesis-secondary-result',
+            parameters: {},
+          },
+          {
+            analysisNodeKind: 'correction',
+            nodeId: 'bonferroni-family',
+            implementationId: 'bonferroni/v1',
+            inputs: [
+              { inputKind: 'analysis-result', referenceId: 'hypothesis-primary-result' },
+              { inputKind: 'analysis-result', referenceId: 'hypothesis-secondary-result' },
+            ],
+            outputResultId: 'corrected-family',
+            parameters: { alpha: 0.05 },
+          },
+        ];
+        definition.decisionPolicy = {
+          decisionPolicyId: 'family-gate',
+          implementationId: 'conformance.family-gate/v1',
+          analysisResultIds: ['corrected-family'],
+          comparisonFamily: [
+            {
+              comparisonId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+              analysisResultId: 'hypothesis-primary-result',
+              hypothesisId: 'hypothesis-primary',
+            },
+            {
+              comparisonId: 'secondary-comparison',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+              analysisResultId: 'hypothesis-secondary-result',
+              hypothesisId: 'hypothesis-secondary',
+            },
+          ],
+          multipleComparisonPolicyId: 'bonferroni/v1',
+          minimumEvidenceStatus: 'complete',
+          parameters: {},
+        };
+      },
+    });
+    const correction = result.analysis.records.find((record) => (
+      record.resultId === 'corrected-family'
+    ));
+
+    expect(correction).toMatchObject({
+      analysisStatus: 'completed',
+      value: {
+        familySize: 2,
+        hypotheses: [
+          {
+            hypothesisId: 'hypothesis-primary',
+            rawPValue: 0.01,
+            adjustedPValue: 0.02,
+            rejected: true,
+          },
+          {
+            hypothesisId: 'hypothesis-secondary',
+            rawPValue: 0.04,
+            adjustedPValue: 0.08,
+            rejected: false,
+          },
+        ],
+      },
+    });
+    expect(result.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      analysisResultIds: ['corrected-family'],
+    });
+    expect(result.report.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+    });
+    expect(revalidateConformanceResult(result)).toEqual(result.report);
   });
 
   it('censors an entire paired block and supports reversed Comparison roles', async () => {

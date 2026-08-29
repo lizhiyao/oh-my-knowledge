@@ -14,7 +14,16 @@ import {
   type JsonValue,
   type MeasurementPolicy,
   type RuntimeIdentity,
+  type SchemaIdentity,
+  type Sha256Digest,
+  digestCanonicalJson,
+  effectiveExecutionBundleTrust,
+  parseEvaluationReport,
   parseExecutionBundle,
+  verifyAnalysisBundle,
+  verifyDecisionResult,
+  verifyEvaluationBundle,
+  verifyExecutionBundle,
 } from '../../../src/evaluation-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
@@ -47,6 +56,8 @@ import {
   createBuiltinAnalysisSchemaValidators,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
+  BUILTIN_HYPOTHESIS_INPUT_SCHEMA,
+  BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
   resolveBuiltinAnalysisRuntime,
   startAnalysis,
   startDecision,
@@ -91,6 +102,66 @@ export interface ConformanceResult {
   state: ConformanceState;
 }
 
+export function revalidateConformanceResult(
+  result: Readonly<ConformanceResult>,
+): EvaluationReport {
+  if (result.decision === undefined) {
+    throw new TypeError('Conformance result does not contain a Decision artifact.');
+  }
+  const executionSource = verifyExecutionBundle(
+    JSON.parse(JSON.stringify(result.execution)) as unknown,
+    result.plan,
+    {
+      verifiedProvenanceBundleDigests: new Set([
+        result.execution.bundleDigest as Sha256Digest,
+      ]),
+    },
+  );
+  const evaluationSource = verifyEvaluationBundle(
+    JSON.parse(JSON.stringify(result.evaluation)) as unknown,
+    result.plan,
+    executionSource,
+    {
+      verifiedProvenanceBundleDigests: new Set([
+        result.evaluation.bundleDigest as Sha256Digest,
+      ]),
+      executionSourceTrust: effectiveExecutionBundleTrust(executionSource),
+    },
+  );
+  const analysisSource = verifyAnalysisBundle(
+    JSON.parse(JSON.stringify(result.analysis)) as unknown,
+    result.plan,
+    executionSource,
+    evaluationSource,
+    { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+    {
+      verifiedProvenanceBundleDigests: new Set([
+        result.analysis.bundleDigest as Sha256Digest,
+      ]),
+    },
+  );
+  const decisionSource = verifyDecisionResult(
+    JSON.parse(JSON.stringify(result.decision)) as unknown,
+    result.plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    {
+      verifiedPolicyExecutionDigests: new Set([
+        result.decision.decisionDigest as Sha256Digest,
+      ]),
+    },
+  );
+  return parseEvaluationReport(
+    JSON.parse(JSON.stringify(result.report)) as unknown,
+    result.plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    decisionSource,
+  );
+}
+
 export interface ConformanceHarnessOptions {
   suffix?: string;
   runId?: string;
@@ -108,6 +179,7 @@ export interface ConformanceHarnessOptions {
   executionCache?: InMemoryConformanceExecutionCache;
   evaluationCache?: InMemoryConformanceEvaluationCache;
   runtimeRegistry?: ConformanceRuntimeRegistry;
+  executorAssurance?: RuntimeIdentity['assuranceLevel'];
 }
 
 export class InMemoryConformanceArtifactStore {
@@ -241,13 +313,180 @@ function runtimeIdentity(
   return structuredClone(runtime.identity) as RuntimeIdentity;
 }
 
+function capabilitySchema(
+  identity: RuntimeIdentity,
+  field: 'parameterSchema',
+): SchemaIdentity {
+  const capabilities = identity.capabilities;
+  if (capabilities === null || Array.isArray(capabilities)
+      || typeof capabilities !== 'object') {
+    throw new TypeError('Expected structured Runtime capabilities.');
+  }
+  const schema = (capabilities as Record<string, JsonValue>)[field];
+  if (schema === null || Array.isArray(schema) || typeof schema !== 'object') {
+    throw new TypeError(`Expected Runtime capability ${field}.`);
+  }
+  return structuredClone(schema) as SchemaIdentity;
+}
+
+function requireRuntimeIdentity(
+  implementations: ReadonlyMap<string, { readonly identity: RuntimeIdentity }>,
+  implementationId: string,
+): RuntimeIdentity {
+  const implementation = implementations.get(implementationId);
+  if (implementation === undefined) {
+    throw new TypeError(`Missing conformance dependency ${implementationId}.`);
+  }
+  return implementation.identity;
+}
+
+function conformanceRuntimeIdentity(
+  implementationId: string,
+  capabilities: JsonValue,
+): RuntimeIdentity {
+  const version = '1.0.0';
+  return {
+    implementationId,
+    version,
+    fingerprint: digestCanonicalJson({ implementationId, version, capabilities }),
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
+    capabilities,
+  };
+}
+
+const BUILTIN_EMPTY_PARAMETERS_SCHEMA = capabilitySchema(
+  requireRuntimeIdentity(createBuiltinAnalysisNodes(), 'descriptive.mean/v1'),
+  'parameterSchema',
+);
+const BUILTIN_PROGRESS_PARAMETERS_SCHEMA = capabilitySchema(
+  requireRuntimeIdentity(createBuiltinDecisionPolicies(), 'progress/v1'),
+  'parameterSchema',
+);
+
+const CONFORMANCE_HYPOTHESIS_ID = 'conformance.hypothesis/v1';
+const CONFORMANCE_FAMILY_GATE_ID = 'conformance.family-gate/v1';
+
+const CONFORMANCE_HYPOTHESIS_IDENTITY = conformanceRuntimeIdentity(
+  CONFORMANCE_HYPOTHESIS_ID,
+  {
+    capabilityKind: 'analysis-node',
+    analysisNodeKinds: ['estimator'],
+    inputDomains: [
+      { inputKind: 'comparison' },
+      {
+        inputKind: 'metric-observations',
+        valueTypes: ['boolean'],
+        missingPolicyIds: ['exclude/v1'],
+      },
+    ],
+    outputSchema: BUILTIN_HYPOTHESIS_INPUT_SCHEMA,
+    parameterSchema: BUILTIN_EMPTY_PARAMETERS_SCHEMA,
+    inputCardinalities: {
+      metricObservations: { min: 1, max: 1 },
+      analysisResults: { min: 0, max: 0 },
+      comparisons: { min: 1, max: 1 },
+    },
+    schemas: [],
+  },
+);
+
+const CONFORMANCE_FAMILY_GATE_IDENTITY = conformanceRuntimeIdentity(
+  CONFORMANCE_FAMILY_GATE_ID,
+  {
+    capabilityKind: 'decision-policy',
+    analysisResultSchemaUris: [BUILTIN_HYPOTHESIS_TABLE_SCHEMA.schemaUri],
+    multipleComparisonPolicyIds: ['bonferroni/v1'],
+    parameterSchema: BUILTIN_PROGRESS_PARAMETERS_SCHEMA,
+    schemas: [],
+  },
+);
+
+function createConformanceAnalysisNodes(): ReadonlyMap<string, AnalysisNodeImplementation> {
+  return new Map([
+    ...createBuiltinAnalysisNodes(),
+    [CONFORMANCE_HYPOTHESIS_ID, {
+      identity: CONFORMANCE_HYPOTHESIS_IDENTITY,
+      outputSchema: BUILTIN_HYPOTHESIS_INPUT_SCHEMA,
+      async openRun() {
+        return {
+          async execute(context) {
+            const comparison = context.inputs.find((input) => input.inputKind === 'comparison');
+            const observations = context.inputs.find(
+              (input) => input.inputKind === 'metric-observations',
+            );
+            if (comparison?.inputKind !== 'comparison'
+                || observations?.inputKind !== 'metric-observations') {
+              throw new TypeError('Conformance hypothesis requires one contrast and one Metric.');
+            }
+            const hypothesisId = comparison.contrast.comparisonId === 'control-vs-treatment'
+              ? 'hypothesis-primary'
+              : 'hypothesis-secondary';
+            const pValue = hypothesisId === 'hypothesis-primary' ? 0.01 : 0.04;
+            return {
+              analysisStatus: 'completed' as const,
+              resultType: 'table' as const,
+              value: { hypotheses: [{ hypothesisId, pValue }] },
+              assumptionChecks: [{
+                assumptionId: 'conformance-hypothesis-defined',
+                checkStatus: 'passed' as const,
+              }],
+            };
+          },
+          dispose() {},
+        };
+      },
+    } satisfies AnalysisNodeImplementation],
+  ]);
+}
+
+function createConformanceDecisionPolicies(): ReadonlyMap<string, AnalysisDecisionPolicy> {
+  return new Map([
+    ...createBuiltinDecisionPolicies(),
+    [CONFORMANCE_FAMILY_GATE_ID, {
+      identity: CONFORMANCE_FAMILY_GATE_IDENTITY,
+      async decide(context) {
+        const correction = context.results.find((result) => (
+          result.outputSchema.schemaUri === BUILTIN_HYPOTHESIS_TABLE_SCHEMA.schemaUri
+        ));
+        const value = correction?.value;
+        const hypotheses = value !== null && value !== undefined
+          && !Array.isArray(value) && typeof value === 'object'
+          ? (value as Record<string, JsonValue>).hypotheses
+          : undefined;
+        const rejected = Array.isArray(hypotheses) && hypotheses.some((entry) => (
+          entry !== null && !Array.isArray(entry) && typeof entry === 'object'
+          && (entry as Record<string, JsonValue>).rejected === true
+        ));
+        return rejected
+          ? { decisionStatus: 'decided' as const, verdict: 'PROGRESS' }
+          : { decisionStatus: 'not-decided' as const, reasonCodes: ['family-gate-not-met'] };
+      },
+    } satisfies AnalysisDecisionPolicy],
+  ]);
+}
+
+function resolveConformanceAnalysisRuntime(
+  requirement: Readonly<AnalysisRuntimeRequirement>,
+) {
+  if (requirement.implementationId === CONFORMANCE_HYPOTHESIS_ID) {
+    return { identity: CONFORMANCE_HYPOTHESIS_IDENTITY, satisfiesVersionConstraint: true };
+  }
+  if (requirement.implementationId === CONFORMANCE_FAMILY_GATE_ID) {
+    return { identity: CONFORMANCE_FAMILY_GATE_IDENTITY, satisfiesVersionConstraint: true };
+  }
+  return resolveBuiltinAnalysisRuntime(requirement);
+}
+
 function analysisAwareRuntime(
   target: ConformanceTarget,
   executorFingerprint?: string,
+  executorAssurance?: RuntimeIdentity['assuranceLevel'],
   faults?: ConformanceFaultInjector,
 ): PreparationRuntime {
   const base = testRuntime({
     ...(executorFingerprint !== undefined ? { executorFingerprint } : {}),
+    ...(executorAssurance !== undefined ? { executorAssurance } : {}),
     executorProtocols: target === 'agent'
       ? ['omk.session/v1']
       : ['omk.invoke/v1'],
@@ -272,9 +511,9 @@ function analysisAwareRuntime(
       await faults?.hit(requirement.requirementKind === 'decision-policy'
         ? 'resolve-decision'
         : 'resolve-analysis');
-      const resolution = resolveBuiltinAnalysisRuntime(requirement);
+      const resolution = resolveConformanceAnalysisRuntime(requirement);
       if (resolution === undefined) {
-        throw new Error(`Unknown built-in runtime ${requirement.implementationId}.`);
+        throw new Error(`Unknown conformance runtime ${requirement.implementationId}.`);
       }
       return resolution;
     },
@@ -755,8 +994,8 @@ export class ConformanceRuntimeRegistry {
   readonly executionCache = new InMemoryConformanceExecutionCache();
   readonly evaluationCache = new InMemoryConformanceEvaluationCache();
   readonly artifactStore = new InMemoryConformanceArtifactStore();
-  readonly analysisNodes = createBuiltinAnalysisNodes();
-  readonly decisionPolicies = createBuiltinDecisionPolicies();
+  readonly analysisNodes = createConformanceAnalysisNodes();
+  readonly decisionPolicies = createConformanceDecisionPolicies();
   readonly eventWriter = {
     write: async (event: Readonly<EvaluationEvent>) => {
       const { state, faults } = this.#resolveRun(event.runId);
@@ -806,6 +1045,7 @@ export async function prepareConformancePlan(
   mutate?: (definition: EvaluationDefinition, policy: MeasurementPolicy) => void,
   executorFingerprint?: string,
   faults?: ConformanceFaultInjector,
+  executorAssurance?: RuntimeIdentity['assuranceLevel'],
 ): Promise<SealedRunPlan> {
   const definition = scenarioDefinition(target);
   const policy = scenarioPolicy(target);
@@ -813,15 +1053,15 @@ export async function prepareConformancePlan(
   return prepareEvaluationPlan(
     definition,
     policy,
-    analysisAwareRuntime(target, executorFingerprint, faults),
+    analysisAwareRuntime(target, executorFingerprint, executorAssurance, faults),
   );
 }
 
 function faultableAnalysisNodes(
   faults?: ConformanceFaultInjector,
 ): ReadonlyMap<string, AnalysisNodeImplementation> {
-  if (faults === undefined) return createBuiltinAnalysisNodes();
-  return new Map([...createBuiltinAnalysisNodes()].map(([implementationId, node]) => [
+  if (faults === undefined) return createConformanceAnalysisNodes();
+  return new Map([...createConformanceAnalysisNodes()].map(([implementationId, node]) => [
     implementationId,
     {
       identity: node.identity,
@@ -847,8 +1087,8 @@ function faultableAnalysisNodes(
 function faultableDecisionPolicies(
   faults?: ConformanceFaultInjector,
 ): ReadonlyMap<string, AnalysisDecisionPolicy> {
-  if (faults === undefined) return createBuiltinDecisionPolicies();
-  return new Map([...createBuiltinDecisionPolicies()].map(([implementationId, policy]) => [
+  if (faults === undefined) return createConformanceDecisionPolicies();
+  return new Map([...createConformanceDecisionPolicies()].map(([implementationId, policy]) => [
     implementationId,
     {
       identity: policy.identity,
@@ -876,6 +1116,7 @@ export async function runConformanceScenario(
     options.mutate,
     undefined,
     options.faults,
+    options.executorAssurance,
   );
   const state = emptyState();
   const clock = new DeterministicClock();

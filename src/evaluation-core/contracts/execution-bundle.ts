@@ -5,7 +5,7 @@ import {
   type ExecutionRecord,
   type UsageRecord,
 } from './artifacts.js';
-import type { CapturedContent, Provenance } from './common.js';
+import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
 import {
   deriveAttemptId,
   derivePlannedExecutionCoordinates,
@@ -35,6 +35,7 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_USAGE_INVALID'
   | 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID'
   | 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID'
+  | 'EXECUTION_BUNDLE_PROVENANCE_INVALID'
   | 'EXECUTION_BUNDLE_DIGEST_MISMATCH'
   | 'EXECUTION_BUNDLE_PLAN_MISMATCH'
   | 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID';
@@ -333,7 +334,7 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
     runtimes: readonly {
       runtimeKind: 'executor' | 'evaluator' | 'analysis-node' | 'missing-policy' | 'decision-policy';
       referenceId: string;
-      identity: unknown;
+      identity: ExecutionRuntimeIdentity;
     }[];
     policy: {
       executionCacheMode: 'disabled' | 'replay-only' | 'transparent-deterministic';
@@ -362,6 +363,14 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
     runContractDigest: string;
   };
 }
+
+type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
+  ? readonly DeepReadonlyValue<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: DeepReadonlyValue<T[Key]> }
+    : T;
+
+type ExecutionRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 
 export interface ExecutionBundleVerificationContext {
   /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
@@ -425,6 +434,29 @@ export function effectiveExecutionBundleTrust(
     return source.bundle.provenance.trust;
   }
   return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
+}
+
+const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
+
+function minimumTrust(
+  ...values: readonly Provenance['trust'][]
+): Provenance['trust'] {
+  return values.reduce((minimum, value) => (
+    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
+  ), 'verified');
+}
+
+function assertTrustAtMost(
+  actual: Provenance['trust'],
+  ceiling: Provenance['trust'],
+  message: string,
+): void {
+  if (TRUST_LEVEL[actual] > TRUST_LEVEL[ceiling]) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PROVENANCE_INVALID',
+      message,
+    );
+  }
 }
 
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
@@ -580,11 +612,17 @@ function assertExecutionCachePolicy(
   record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
   plan: ExecutionBundlePlanContext,
   expected: PlannedExecutionCoordinate,
+  runtime: ExecutionRuntimeIdentity,
 ): boolean {
   const { cache, provenance } = record;
   const noDigests = cache.cacheKeyDigest === undefined
     && cache.sourceRecordDigest === undefined;
   const mode = plan.execution.policy.executionCacheMode;
+  assertTrustAtMost(
+    provenance.trust,
+    runtime.assuranceLevel,
+    'ExecutionRecord trust exceeds its sealed Executor Runtime assurance.',
+  );
   if (mode === 'disabled') {
     if (cache.cacheStatus !== 'not-used'
         || !noDigests
@@ -665,7 +703,7 @@ export function assertExecutionBundleMatchesPlan(
   const recordsByCoordinate = new Map(
     bundle.records.map((record) => [coordinateKey(record), record]),
   );
-  const runtimesByTarget = new Map<string, unknown>();
+  const runtimesByTarget = new Map<string, ExecutionRuntimeIdentity>();
   for (const runtime of plan.execution.runtimes) {
     if (runtime.runtimeKind !== 'executor') continue;
     if (runtimesByTarget.has(runtime.referenceId)) {
@@ -706,7 +744,7 @@ export function assertExecutionBundleMatchesPlan(
         'ExecutionRecord evidence contradicts the sealed capture or classification policy.',
       );
     }
-    const cacheHit = assertExecutionCachePolicy(record, plan, expected);
+    const cacheHit = assertExecutionCachePolicy(record, plan, expected, runtime);
     const sourceRecordDigest = record.cache.sourceRecordDigest as Sha256Digest | undefined;
     const verifiedCacheHit = cacheHit
       && sourceRecordDigest !== undefined
@@ -737,6 +775,11 @@ export function assertExecutionBundleMatchesPlan(
       }
     }
   }
+  assertTrustAtMost(
+    bundle.provenance.trust,
+    minimumTrust(...bundle.records.map((record) => record.provenance.trust)),
+    'ExecutionBundle trust exceeds its record provenance.',
+  );
   const maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
   if (maxInvocations !== undefined && minimumTargetInvocations > maxInvocations) {
     throw new ExecutionBundleValidationError(

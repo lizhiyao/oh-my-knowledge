@@ -10,6 +10,7 @@ import {
   SchemaIdentitySchema,
   schemaIdentityKey,
   type CoreSchemaValidator,
+  type Provenance,
 } from './common.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
@@ -19,6 +20,7 @@ import { derivePlannedExecutionCoordinates } from './execution-identities.js';
 import {
   assertEvaluationBundleSourceChain,
   assertEvaluationBundleSourceMatchesPlan,
+  effectiveEvaluationBundleTrust,
   type EvaluationBundlePlanContext,
   type EvaluationBundleSource,
 } from './evaluation-bundle.js';
@@ -271,10 +273,13 @@ export interface AnalysisBundleValidationContext {
 export interface AnalysisBundleVerificationContext {
   /** Independently attested by the producing Runtime or a host trust verifier. */
   readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust independently observed from the Evaluation source at production time. */
+  readonly evaluationSourceTrust?: Provenance['trust'];
 }
 
 export interface AnalysisBundlePlanVerification {
   readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+  readonly evaluationSourceTrust: Provenance['trust'];
 }
 
 export interface AnalysisBundleVerificationResult {
@@ -332,10 +337,12 @@ export function effectiveAnalysisBundleTrust(
   source: AnalysisBundleSource,
 ): AnalysisBundle['provenance']['trust'] {
   assertAnalysisBundleSource(source);
-  if (source.planVerification.provenanceTrustStatus === 'verified') {
-    return source.bundle.provenance.trust;
-  }
-  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
+  const trusts: Provenance['trust'][] = [
+    source.bundle.provenance.trust,
+    source.planVerification.evaluationSourceTrust,
+    source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
+  ];
+  return trusts.sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
 }
 
 interface ExpectedAnalysisRow {
@@ -530,6 +537,7 @@ function assertMatchesPlan(
   plan: AnalysisBundlePlanContext,
   execution: ExecutionBundle,
   source: EvaluationBundle,
+  sourceTrust: Provenance['trust'],
   validation: AnalysisBundleValidationContext,
 ): void {
   if (bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest) {
@@ -667,7 +675,7 @@ function assertMatchesPlan(
       ? [assurance as keyof typeof TRUST_LEVEL]
       : ['untrusted' as const];
   });
-  const trustCeiling = [source.provenance.trust, ...runtimeTrusts].sort(
+  const trustCeiling = [sourceTrust, ...runtimeTrusts].sort(
     (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
   )[0];
   if (canonicalizeJson(bundle.provenance.parentDigests)
@@ -708,7 +716,10 @@ export function verifyAnalysisBundle(
   const execution = executionSource.bundle;
   const source = evaluationSource.bundle;
   const bundle = parseAnalysisBundleDocument(value);
-  assertMatchesPlan(bundle, plan, execution, source, validation);
+  const sourceTrust = verification?.evaluationSourceTrust ?? source.provenance.trust;
+  const effectiveSourceTrust = verification?.evaluationSourceTrust
+    ?? effectiveEvaluationBundleTrust(evaluationSource);
+  assertMatchesPlan(bundle, plan, execution, source, sourceTrust, validation);
   const result = {
     bundle,
     planVerification: {
@@ -717,6 +728,7 @@ export function verifyAnalysisBundle(
       ) === true
         ? 'verified' as const
         : 'indeterminate' as const,
+      evaluationSourceTrust: effectiveSourceTrust,
     },
   };
   analysisBundleSources.add(result);

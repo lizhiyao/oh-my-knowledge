@@ -10,6 +10,7 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   effectiveAnalysisBundleTrust,
+  effectiveDecisionResultTrust,
   effectiveEvaluationBundleTrust,
   effectiveExecutionBundleTrust,
   parseDecisionResultDocument,
@@ -632,13 +633,6 @@ export function materializeEvaluationReport(
     analysis.bundleDigest,
     ...(decision !== undefined ? [decision.decisionDigest] : []),
   ];
-  const decisionRuntimeTrust = decision === undefined
-    ? []
-    : plan.decision.runtimes.flatMap((runtime) => (
-      runtime.runtimeKind === 'decision-policy'
-        ? [runtime.identity.assuranceLevel]
-        : []
-    ));
   const payload = {
     schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
     reportId: options.reportId,
@@ -674,7 +668,9 @@ export function materializeEvaluationReport(
         effectiveExecutionBundleTrust(executionSource),
         effectiveEvaluationBundleTrust(evaluationSource),
         effectiveAnalysisBundleTrust(analysisSource),
-        ...decisionRuntimeTrust,
+        ...(decisionSource === undefined
+          ? []
+          : [effectiveDecisionResultTrust(decisionSource)]),
       ]),
       parentDigests,
       facets: { materializedAt: ports.clock.timestamp() },

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseEvaluationReport,
+  effectiveAnalysisBundleTrust,
+  effectiveDecisionResultTrust,
+  effectiveEvaluationBundleTrust,
   effectiveExecutionBundleTrust,
   verifyAnalysisBundle,
   verifyDecisionResult,
@@ -8,7 +11,10 @@ import {
   verifyExecutionBundle,
   type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
-import { createBuiltinAnalysisSchemaValidators } from '../../../src/evaluation-core/analysis/index.js';
+import {
+  createBuiltinAnalysisSchemaValidators,
+  materializeEvaluationReport,
+} from '../../../src/evaluation-core/analysis/index.js';
 import {
   runConformanceScenario,
   type ConformanceTarget,
@@ -121,6 +127,107 @@ describe.each(targets)('Evaluation Core %s target conformance', (target) => {
       analysisSource,
       decisionSource,
     )).toEqual(result.report);
+  });
+});
+
+describe('Evaluation Core provenance conformance', () => {
+  it('does not let child attestations upgrade transported parent trust', async () => {
+    const result = await runConformanceScenario('function', {
+      suffix: 'child-attestation-ceiling',
+    });
+    const executionSource = verifyExecutionBundle(
+      structuredClone(result.execution),
+      result.plan,
+    );
+    const evaluationSource = verifyEvaluationBundle(
+      structuredClone(result.evaluation),
+      result.plan,
+      executionSource,
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          result.evaluation.bundleDigest as Sha256Digest,
+        ]),
+      },
+    );
+    const analysisSource = verifyAnalysisBundle(
+      structuredClone(result.analysis),
+      result.plan,
+      executionSource,
+      evaluationSource,
+      { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          result.analysis.bundleDigest as Sha256Digest,
+        ]),
+      },
+    );
+
+    expect(effectiveExecutionBundleTrust(executionSource)).toBe('unknown');
+    expect(evaluationSource.planVerification).toMatchObject({
+      provenanceTrustStatus: 'verified',
+      executionSourceTrust: 'unknown',
+    });
+    expect(effectiveEvaluationBundleTrust(evaluationSource)).toBe('unknown');
+    expect(analysisSource.planVerification).toEqual({
+      provenanceTrustStatus: 'verified',
+      evaluationSourceTrust: 'unknown',
+    });
+    expect(effectiveAnalysisBundleTrust(analysisSource)).toBe('unknown');
+  });
+
+  it('keeps an unattested non-directional Decision parent at unknown trust', async () => {
+    const result = await runConformanceScenario('function', {
+      suffix: 'transported-decision-trust',
+      mutate(_definition, policy) {
+        policy.evaluation.budget.maxEvaluatorInvocations = 1;
+      },
+    });
+    if (result.decision === undefined || result.decisionSource === undefined) {
+      throw new Error('missing Decision source');
+    }
+    expect(result.decision.decisionStatus).toBe('not-decided');
+    const transported = verifyDecisionResult(
+      structuredClone(result.decision),
+      result.plan,
+      result.executionSource,
+      result.evaluationSource,
+      result.analysisSource,
+    );
+    expect(effectiveDecisionResultTrust(transported)).toBe('unknown');
+
+    const transportedReport = materializeEvaluationReport(
+      result.plan,
+      result.executionSource,
+      result.evaluationSource,
+      result.analysisSource,
+      transported,
+      { clock: { timestamp: () => '2026-08-29T00:00:00.000Z' } },
+      { reportId: 'report-transported-decision-trust' },
+    );
+    expect(transportedReport.provenance.trust).toBe('unknown');
+
+    const attested = verifyDecisionResult(
+      structuredClone(result.decision),
+      result.plan,
+      result.executionSource,
+      result.evaluationSource,
+      result.analysisSource,
+      {
+        verifiedPolicyExecutionDigests: new Set([
+          result.decision.decisionDigest as Sha256Digest,
+        ]),
+      },
+    );
+    expect(effectiveDecisionResultTrust(attested)).toBe('declared');
+    expect(materializeEvaluationReport(
+      result.plan,
+      result.executionSource,
+      result.evaluationSource,
+      result.analysisSource,
+      attested,
+      { clock: { timestamp: () => '2026-08-29T00:00:00.000Z' } },
+      { reportId: 'report-attested-decision-trust' },
+    ).provenance.trust).toBe('declared');
   });
 });
 

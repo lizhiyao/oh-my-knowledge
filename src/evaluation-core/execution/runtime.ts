@@ -26,6 +26,7 @@ import {
   type ExecutionRecord,
   type JsonValue,
   type PlannedExecutionCoordinate,
+  type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
   type UsageRecord,
@@ -60,6 +61,23 @@ import {
 
 type ActiveExecutionRecord = Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>;
 type CompletedExecutionRecord = Extract<ExecutionRecord, { executionStatus: 'completed' }>;
+
+const PROVENANCE_TRUST_LEVEL = {
+  untrusted: 0,
+  unknown: 1,
+  declared: 2,
+  verified: 3,
+} as const;
+
+function minimumProvenanceTrust(
+  records: readonly ExecutionRecord[],
+): Provenance['trust'] {
+  return records.reduce<Provenance['trust']>((minimum, record) => (
+    PROVENANCE_TRUST_LEVEL[record.provenance.trust] < PROVENANCE_TRUST_LEVEL[minimum]
+      ? record.provenance.trust
+      : minimum
+  ), 'verified');
+}
 
 interface TargetRuntimeBinding {
   target: SealedRunPlan['execution']['targets'][number];
@@ -483,7 +501,7 @@ function assertCachedRecord(
   assertExecutionRecordMatchesAttemptPolicy(record, plan.execution.policy.retry);
   const expectedProvenance = {
     provenanceKind: 'native' as const,
-    trust: 'verified' as const,
+    trust: runtime.assuranceLevel,
     parentDigests: [plan.execution.executionPlanDigest],
   };
   if (entry.cacheKeyDigest !== key
@@ -942,7 +960,7 @@ async function executeCoordinate(
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native' as const,
-      trust: 'verified' as const,
+      trust: binding.runtime.assuranceLevel,
       parentDigests: [plan.execution.executionPlanDigest],
     },
     attempts,
@@ -1154,7 +1172,7 @@ function makeBundle(
     records: sortedRecords,
     provenance: {
       provenanceKind: 'native',
-      trust: 'verified',
+      trust: minimumProvenanceTrust(sortedRecords),
       parentDigests: [
         plan.digests.runContractDigest,
         plan.digests.executionPlanDigest,

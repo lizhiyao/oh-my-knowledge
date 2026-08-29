@@ -191,6 +191,26 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(Object.isFrozen(source.planVerification)).toBe(true);
   });
 
+  it('rejects provenance above the sealed Executor Runtime assurance', async () => {
+    const definition = validDefinition();
+    const policy = validPolicy();
+    const plan = await prepareEvaluationPlan(
+      definition,
+      policy,
+      testRuntime({ executorAssurance: 'unknown' }),
+    );
+    const forged = mutableJson(makeBundle(plan));
+
+    expect(() => parseExecutionBundle(forged, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVENANCE_INVALID' }),
+    );
+
+    for (const record of forged.records) record.provenance.trust = 'unknown';
+    forged.provenance.trust = 'unknown';
+    resign(forged);
+    expect(parseExecutionBundle(forged, plan).bundle).toEqual(forged);
+  });
+
   it('rejects captured content above the sealed Execution evidence policy', async () => {
     const plan = await makePlan(false, (policy) => {
       policy.evidence.maximumClassification = 'public';

@@ -81,10 +81,13 @@ export function parseDecisionResultDocument(value: unknown): DecisionResult {
 export interface DecisionResultVerificationContext {
   /** Independently attested by the executing Decision Runtime or a host trust verifier. */
   readonly verifiedPolicyExecutionDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust independently observed from the Analysis source at production time. */
+  readonly analysisSourceTrust?: Provenance['trust'];
 }
 
 export interface DecisionResultPlanVerification {
   readonly policyExecutionStatus: 'verified' | 'indeterminate';
+  readonly analysisSourceTrust: Provenance['trust'];
 }
 
 export interface DecisionResultVerificationResult {
@@ -104,6 +107,18 @@ export function assertDecisionResultSource(
       'Report stage requires a source returned by verifyDecisionResult() or the Runtime.',
     );
   }
+}
+
+export function effectiveDecisionResultTrust(
+  source: DecisionResultSource,
+): Provenance['trust'] {
+  assertDecisionResultSource(source);
+  const values: Provenance['trust'][] = [
+    source.result.implementation.assuranceLevel,
+    source.planVerification.analysisSourceTrust,
+    source.planVerification.policyExecutionStatus === 'verified' ? 'verified' : 'unknown',
+  ];
+  return values.sort((left, right) => trustLevel(left) - trustLevel(right))[0];
 }
 
 export function assertDecisionResultSourceChain(
@@ -306,6 +321,8 @@ export function verifyDecisionResult(
       ) === true
         ? 'verified' as const
         : 'indeterminate' as const,
+      analysisSourceTrust: verification?.analysisSourceTrust
+        ?? effectiveAnalysisBundleTrust(analysisSource),
     },
   };
   decisionResultSources.add(provisional);
@@ -396,26 +413,16 @@ export function parseEvaluationReport(
     analysis.bundleDigest,
   ];
   if (report.decision !== undefined) parentDigests.push(report.decision.decisionDigest);
-  const decisionRuntimeTrust = report.decision === undefined
+  const decisionTrust = decisionSource === undefined
     ? []
-    : plan.decision.runtimes.flatMap((runtime) => {
-      if (runtime.runtimeKind !== 'decision-policy') return [];
-      const identity = runtime.identity;
-      const assurance = identity !== null && typeof identity === 'object'
-        ? (identity as Record<string, unknown>).assuranceLevel
-        : undefined;
-      return typeof assurance === 'string'
-        && ['untrusted', 'unknown', 'declared', 'verified'].includes(assurance)
-        ? [assurance as Provenance['trust']]
-        : ['untrusted' as const];
-    });
+    : [effectiveDecisionResultTrust(decisionSource)];
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(parentDigests)
       || trustLevel(report.provenance.trust) > Math.min(
         trustLevel(effectiveExecutionBundleTrust(executionSource)),
         trustLevel(effectiveEvaluationBundleTrust(evaluationSource)),
         trustLevel(effectiveAnalysisBundleTrust(analysisSource)),
-        ...decisionRuntimeTrust.map(trustLevel),
+        ...decisionTrust.map(trustLevel),
       )) {
     throw new EvaluationReportValidationError(
       'EVALUATION_REPORT_PROVENANCE_INVALID',

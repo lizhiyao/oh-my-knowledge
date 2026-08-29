@@ -19,6 +19,7 @@ import {
 import {
   assertExecutionBundleSource,
   assertExecutionBundleSourceMatchesPlan,
+  effectiveExecutionBundleTrust,
   type ExecutionBundlePlanContext,
   type ExecutionBundleSource,
 } from './execution-bundle.js';
@@ -385,6 +386,7 @@ export interface EvaluationBundleVerificationContext {
 
 export interface EvaluationBundlePlanVerification {
   readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+  readonly executionSourceTrust: Provenance['trust'];
   readonly cacheReceiptStatus: 'verified' | 'indeterminate';
   readonly invocationBudgetStatus: 'verified' | 'indeterminate';
   readonly providerCostBudgetStatus: 'verified' | 'indeterminate';
@@ -455,10 +457,11 @@ export function effectiveEvaluationBundleTrust(
   source: EvaluationBundleSource,
 ): Provenance['trust'] {
   assertEvaluationBundleSource(source);
-  if (source.planVerification.provenanceTrustStatus === 'verified') {
-    return source.bundle.provenance.trust;
-  }
-  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
+  return minimumTrust(
+    source.bundle.provenance.trust,
+    source.planVerification.executionSourceTrust,
+    source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
+  );
 }
 
 export function aggregateEvaluationAttemptUsage(
@@ -950,10 +953,14 @@ function assertRecordAgainstPlan(
 export function assertEvaluationBundleMatchesPlan(
   bundle: EvaluationBundle,
   plan: EvaluationBundlePlanContext,
-  source: ExecutionBundle,
+  executionSource: ExecutionBundleSource,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundlePlanVerification {
+  assertExecutionBundleSourceMatchesPlan(executionSource, plan);
+  const source = executionSource.bundle;
   const sourceTrust = verification?.executionSourceTrust ?? source.provenance.trust;
+  const effectiveSourceTrust = verification?.executionSourceTrust
+    ?? effectiveExecutionBundleTrust(executionSource);
   if (bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
       || bundle.evaluationPlanDigest !== plan.evaluation.evaluationPlanDigest
       || bundle.evaluationInputDigest !== plan.digests.evaluationInputDigest
@@ -1111,6 +1118,7 @@ export function assertEvaluationBundleMatchesPlan(
     ) === true
       ? 'verified'
       : 'indeterminate',
+    executionSourceTrust: effectiveSourceTrust,
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
       ? 'verified'
       : 'indeterminate',
@@ -1172,7 +1180,7 @@ export function verifyEvaluationBundle(
   const planVerification = assertEvaluationBundleMatchesPlan(
     bundle,
     plan,
-    source.bundle,
+    source,
     verification,
   );
   const result = { bundle, planVerification };
