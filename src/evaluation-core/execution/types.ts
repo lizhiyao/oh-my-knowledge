@@ -10,6 +10,7 @@ import type {
   UsageRecord,
 } from '../contracts/index.js';
 import type { SealedRunPlan } from '../compiler/index.js';
+import type { RuntimeEventSequencer } from '../runtime/events.js';
 
 export const EXECUTION_EVENT_KINDS = [
   'execution.run.started',
@@ -124,6 +125,7 @@ export interface ExecutionEventWriter {
 export interface ExecutionRuntimePorts {
   executors: ReadonlyMap<string, ExecutionExecutor>;
   clock: ExecutionClock;
+  eventSequencer: RuntimeEventSequencer;
   cache?: ExecutionCache;
   contentStore?: ExecutionContentStore;
   eventWriter?: ExecutionEventWriter;

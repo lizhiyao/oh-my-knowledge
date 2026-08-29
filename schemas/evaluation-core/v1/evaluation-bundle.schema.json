@@ -441,7 +441,7 @@
       "$ref": "#/$defs/__schema23"
     },
     "__schema28": {
-      "$ref": "#/$defs/__schema11"
+      "$ref": "#/$defs/__schema23"
     },
     "__schema29": {
       "additionalProperties": {

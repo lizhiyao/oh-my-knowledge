@@ -5,11 +5,13 @@ import type {
   EvaluationEvent,
   EvaluationRecord,
   JsonValue,
+  MetricDefinition,
   RuntimeIdentity,
   Sha256Digest,
   UsageRecord,
 } from '../contracts/index.js';
 import type { SealedRunPlan } from '../compiler/index.js';
+import type { RuntimeEventSequencer } from '../runtime/events.js';
 
 export const EVALUATION_RUNTIME_EVENT_KINDS = [
   'evaluation.run.started',
@@ -46,35 +48,35 @@ export type EvaluatorObservation = {
   valueType: 'numeric';
   value: number;
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 } | {
   metricId: string;
   observationStatus: 'observed';
   valueType: 'boolean';
   value: boolean;
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 } | {
   metricId: string;
   observationStatus: 'observed';
   valueType: 'categorical' | 'text';
   value: string;
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 } | {
   metricId: string;
   observationStatus: 'observed';
   valueType: 'ranking';
   value: string[];
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 } | {
   metricId: string;
   observationStatus: 'missing';
   valueType: 'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking';
   reasonCode: string;
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 } | {
   metricId: string;
   observationStatus: 'invalid';
@@ -82,7 +84,7 @@ export type EvaluatorObservation = {
   reasonCode: string;
   invalidValue?: EvaluationContent;
   evidence?: EvaluationContent;
-  metadata?: JsonValue;
+  metadata?: EvaluationContent;
 };
 
 export interface EvaluatorRunContext {
@@ -99,6 +101,7 @@ export interface EvaluatorRecordContext {
   evaluationId: Sha256Digest;
   evaluatorConfig?: JsonValue;
   bindings: readonly EvaluatorBindingValue[];
+  metrics: readonly MetricDefinition[];
 }
 
 export interface EvaluatorAttemptContext {
@@ -165,6 +168,7 @@ export interface EvaluationEventWriter {
 export interface EvaluationRuntimePorts {
   evaluators: ReadonlyMap<string, EvaluationEvaluator>;
   clock: EvaluationClock;
+  eventSequencer: RuntimeEventSequencer;
   contentResolver?: EvaluationContentResolver;
   contentStore?: EvaluationContentStore;
   cache?: EvaluationCache;

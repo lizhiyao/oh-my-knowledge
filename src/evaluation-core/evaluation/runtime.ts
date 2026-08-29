@@ -1,10 +1,10 @@
 import {
   EVALUATION_BUNDLE_SCHEMA_VERSION,
-  EVALUATION_EVENT_SCHEMA_VERSION,
+  CompletedEvaluationRecordSchema,
   EvaluationErrorSchema,
-  EvaluationEventSchema,
   IdentifierSchema,
   MetricObservationSchema,
+  UsageRecordSchema,
   canonicalizeJson,
   deriveEvaluationAttemptId,
   deriveMetricObservationId,
@@ -24,13 +24,15 @@ import {
   type JsonValue,
   type MetricObservation,
   type PlannedEvaluationCoordinate,
+  type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
   type UsageRecord,
 } from '../contracts/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
-import { BoundedEventStream } from '../execution/event-stream.js';
+import { BoundedEventStream } from '../runtime/event-stream.js';
+import { RuntimeEventEmitter } from '../runtime/events.js';
 import {
   EvaluationPortFailure,
   EvaluationRuntimeConfigurationError,
@@ -67,6 +69,24 @@ interface PreparedRuntime {
   bindings: ReadonlyMap<string, EvaluatorBinding>;
   source: ExecutionBundle;
 }
+
+interface EligibleCoordinate {
+  coordinate: PlannedEvaluationCoordinate;
+  binding: EvaluatorBinding;
+  source: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>;
+  sourceRecordDigest: Sha256Digest;
+  sourceTrust: Provenance['trust'];
+  inputs: readonly EvaluatorBindingValue[];
+}
+
+interface UnavailableCoordinate {
+  coordinate: PlannedEvaluationCoordinate;
+  binding: EvaluatorBinding;
+  source?: ExecutionRecord;
+  reasonCode: string;
+}
+
+type PreparedCoordinate = EligibleCoordinate | UnavailableCoordinate;
 
 class EvaluationAttemptTimeoutError extends Error {
   constructor() {
@@ -123,6 +143,12 @@ function prepareRuntime(
   options: EvaluationRunOptions,
 ): PreparedRuntime {
   validateOptions(options);
+  if (ports.eventSequencer === undefined) {
+    configurationError(
+      'EVALUATION_RUNTIME_EVENT_SEQUENCER_REQUIRED',
+      'Evaluation runtime requires a shared per-Run EventSequencer.',
+    );
+  }
   const source = parseExecutionBundle(sourceValue, plan);
   if (plan.evaluation.policy.evaluationCacheMode !== 'disabled' && ports.cache === undefined) {
     configurationError(
@@ -212,6 +238,19 @@ function durationMs(start: number, end: number): number {
   return Math.max(0, end - start);
 }
 
+function validatedUsage(value: UsageRecord | undefined): UsageRecord | undefined {
+  if (value === undefined) return undefined;
+  const parsed = UsageRecordSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new EvaluationPortFailure({
+      code: 'evaluator-usage-invalid',
+      stage: 'infrastructure',
+      message: 'Evaluator returned an invalid UsageRecord.',
+    });
+  }
+  return parsed.data;
+}
+
 function aggregateUsage(values: readonly (UsageRecord | undefined)[]): UsageRecord | undefined {
   const reported = values.filter((value): value is UsageRecord => value !== undefined);
   if (reported.length === 0) return undefined;
@@ -296,7 +335,7 @@ async function resolveCaptured(
 
 async function materializeBindings(
   plan: SealedRunPlan,
-  record: Extract<ExecutionRecord, { executionStatus: 'completed' }>,
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
   evaluator: SealedRunPlan['evaluation']['evaluators'][number],
   ports: EvaluationRuntimePorts,
 ): Promise<EvaluatorBindingValue[] | undefined> {
@@ -305,7 +344,11 @@ async function materializeBindings(
   const result: EvaluatorBindingValue[] = [];
   for (const input of evaluator.inputs) {
     let source: EvaluationContent | undefined;
-    if (input.sourceKind === 'output') source = await resolveCaptured(record.output, ports);
+    if (input.sourceKind === 'output') {
+      source = record.executionStatus === 'completed'
+        ? await resolveCaptured(record.output, ports)
+        : undefined;
+    }
     else if (input.sourceKind === 'trace') source = await resolveCaptured(record.trace, ports);
     else {
       const value = input.sourceKind === 'expected'
@@ -408,13 +451,12 @@ async function normalizeObservations(
       continue;
     }
     const evidence = await capture(rawObservation.evidence, plan, ports);
+    const metadata = await capture(rawObservation.metadata, plan, ports);
     const base = {
       observationId,
       metricId,
       ...(evidence === undefined ? {} : { evidence }),
-      ...(rawObservation.metadata === undefined
-        ? {}
-        : { metadata: snapshotJson(rawObservation.metadata) }),
+      ...(metadata === undefined ? {} : { metadata }),
     };
     if (rawObservation.valueType !== metric.valueType) {
       normalized.push({
@@ -491,101 +533,33 @@ async function withTimeout<T>(
   const controller = new AbortController();
   const unlink = linkAbort(parent, controller);
   const timerController = new AbortController();
-  const timer = timeoutMs === undefined
-    ? undefined
-    : clock.sleep(timeoutMs, timerController.signal).then(() => {
-      controller.abort('timeout');
-      throw new EvaluationAttemptTimeoutError();
-    });
-  const result = operation(controller.signal).catch((error: unknown) => {
-    if (controller.signal.reason === 'timeout') throw new EvaluationAttemptTimeoutError();
-    throw error;
-  });
+  const operationResult = Promise.resolve().then(() => operation(controller.signal));
   try {
-    return await (timer === undefined
-      ? result
-      : Promise.race([result, timer]));
+    if (timeoutMs === undefined) return await operationResult;
+    const winner = await Promise.race([
+      operationResult.then(
+        (value) => ({ resultKind: 'value' as const, value }),
+        (error: unknown) => ({ resultKind: 'error' as const, error }),
+      ),
+      clock.sleep(timeoutMs, timerController.signal).then(() => ({
+        resultKind: 'timeout' as const,
+      })),
+    ]);
+    if (winner.resultKind === 'value') return winner.value;
+    if (winner.resultKind === 'error') throw winner.error;
+    controller.abort('timeout');
+    await operationResult.catch(() => undefined);
+    throw new EvaluationAttemptTimeoutError();
   } finally {
     unlink();
     timerController.abort();
-    await timer?.catch(() => undefined);
   }
 }
 
-class RuntimeEvents {
-  readonly #plan: SealedRunPlan;
-  readonly #ports: EvaluationRuntimePorts;
-  readonly #options: EvaluationRunOptions;
-  readonly #stream: BoundedEventStream;
-  readonly #onFatal: (reason: string, error: EvaluationError) => void;
-  #sequence = 0;
-  #writerEnabled: boolean;
-  #fatal = false;
-  #tail: Promise<void> = Promise.resolve();
-
-  constructor(
-    plan: SealedRunPlan,
-    ports: EvaluationRuntimePorts,
-    options: EvaluationRunOptions,
-    stream: BoundedEventStream,
-    onFatal: (reason: string, error: EvaluationError) => void,
-  ) {
-    this.#plan = plan;
-    this.#ports = ports;
-    this.#options = options;
-    this.#stream = stream;
-    this.#onFatal = onFatal;
-    this.#writerEnabled = plan.measurementPolicy.eventDelivery.writerMode !== 'disabled'
-      && ports.eventWriter !== undefined;
-  }
-
-  async emit(
-    eventKind: EvaluationRuntimeEventKind,
-    subjectKind: 'run' | 'evaluation' | 'attempt',
-    subjectId: string,
-    data: JsonValue,
-  ): Promise<boolean> {
-    const sequence = this.#sequence;
-    this.#sequence += 1;
-    const event = deepFreeze(parseWireDocument(EvaluationEventSchema, {
-      schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
-      eventId: digestCanonicalJson({
-        derivation: 'omk.evaluation-event-id/v1',
-        runId: this.#options.runId,
-        sequence,
-      }),
-      sequence,
-      runId: this.#options.runId,
-      eventKind,
-      time: this.#ports.clock.timestamp(),
-      subject: { subjectKind, subjectId },
-      data,
-    }));
-    const delivery = this.#tail.then(async () => {
-      if (this.#writerEnabled) {
-        try {
-          await this.#ports.eventWriter?.write(event);
-        } catch {
-          this.#writerEnabled = false;
-          if (this.#plan.measurementPolicy.eventDelivery.writerFailureMode === 'fail-run') {
-            this.#fatal = true;
-            this.#onFatal('evaluation-event-writer-failed', {
-              code: 'evaluation-event-writer-failed',
-              stage: 'infrastructure',
-              message: 'Evaluation EventWriter failed under fail-run policy.',
-            });
-          }
-        }
-      }
-      this.#stream.push(event);
-    });
-    this.#tail = delivery.catch(() => undefined);
-    await delivery;
-    return !this.#fatal;
-  }
-
-  close(): void { this.#stream.close(); }
-}
+type RuntimeEvents = RuntimeEventEmitter<
+  EvaluationRuntimeEventKind,
+  'run' | 'evaluation' | 'attempt'
+>;
 
 class Sessions {
   readonly #plan: SealedRunPlan;
@@ -621,6 +595,7 @@ class Budget {
   readonly #max?: number;
   readonly #cost?: { amount: number; currency: string };
   #used = 0;
+  #reserved = 0;
   #providerCost = 0;
 
   constructor(plan: SealedRunPlan) {
@@ -628,10 +603,21 @@ class Budget {
     this.#cost = plan.evaluation.policy.runtime.budget.maxProviderCost;
   }
 
-  take(): boolean {
-    if (this.#max !== undefined && this.#used >= this.#max) return false;
-    this.#used += 1;
+  reserveInvocation(): boolean {
+    if (this.#max !== undefined && this.#used + this.#reserved >= this.#max) return false;
+    this.#reserved += 1;
     return true;
+  }
+
+  consumeReservation(): void {
+    if (this.#reserved < 1) throw new Error('Evaluator invocation reservation disappeared.');
+    this.#reserved -= 1;
+    this.#used += 1;
+  }
+
+  releaseReservation(): void {
+    if (this.#reserved < 1) throw new Error('Evaluator invocation reservation disappeared.');
+    this.#reserved -= 1;
   }
 
   record(usage: UsageRecord | undefined): EvaluationError | undefined {
@@ -655,12 +641,30 @@ class Budget {
   }
 }
 
+const TRUST_LEVEL: Record<Provenance['trust'], number> = {
+  untrusted: 0,
+  unknown: 1,
+  declared: 2,
+  verified: 3,
+};
+
+function minimumTrust(...values: readonly Provenance['trust'][]): Provenance['trust'] {
+  return values.reduce((minimum, value) => (
+    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
+  ), 'verified');
+}
+
+function runtimeTrust(runtime: RuntimeIdentity): Provenance['trust'] {
+  return runtime.assuranceLevel;
+}
+
 function notEvaluatedRecord(
   plan: SealedRunPlan,
   binding: EvaluatorBinding,
   coordinate: PlannedEvaluationCoordinate,
   reason: string,
   time: string,
+  sourceTrust: Provenance['trust'],
   source?: ExecutionRecord,
 ): Extract<EvaluationRecord, { evaluationStatus: 'not-evaluated' }> {
   return {
@@ -668,8 +672,11 @@ function notEvaluatedRecord(
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native',
-      trust: 'verified',
-      parentDigests: [plan.evaluation.evaluationPlanDigest],
+      trust: minimumTrust(sourceTrust, runtimeTrust(binding.runtime)),
+      parentDigests: [
+        plan.evaluation.evaluationPlanDigest,
+        ...(source === undefined ? [] : [digestCanonicalJson(source)]),
+      ],
     },
     evaluationStatus: 'not-evaluated',
     notEvaluatedReasonCode: reason,
@@ -701,12 +708,60 @@ function replayRecord(
   coordinate: PlannedEvaluationCoordinate,
   binding: EvaluatorBinding,
   sourceRecordDigest: Sha256Digest,
+  sourceTrust: Provenance['trust'],
+  plan: SealedRunPlan,
 ): CompletedRecord {
+  const parsedRecord = CompletedEvaluationRecordSchema.safeParse(entry.record);
+  if (!parsedRecord.success) {
+    throw new EvaluationPortFailure({
+      code: 'evaluation-cache-entry-invalid',
+      stage: 'infrastructure',
+      message: 'Evaluation cache entry is not a valid completed record.',
+    });
+  }
+  const record = parsedRecord.data;
+  const expectedMetricIds = binding.evaluator.metricIds;
+  const metrics = new Map(plan.evaluation.metrics.map((metric) => [metric.metricId, metric]));
+  const contractInvalid = record.targetId !== coordinate.targetId
+    || record.sampleId !== coordinate.sampleId
+    || record.trialIndex !== coordinate.trialIndex
+    || record.trialId !== coordinate.trialId
+    || record.evaluatorId !== coordinate.evaluatorId
+    || record.evaluationId !== coordinate.evaluationId
+    || record.sourceRecordDigest !== sourceRecordDigest
+    || canonicalizeJson(record.runtime) !== canonicalizeJson(binding.runtime)
+    || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
+    || record.attempts.at(-1)?.attemptStatus !== 'completed'
+    || record.attempts.some((attempt, index) => (
+      attempt.attemptNumber !== index + 1
+      || attempt.attemptId !== deriveEvaluationAttemptId({
+        evaluationId: coordinate.evaluationId,
+        attemptNumber: index + 1,
+      })
+      || (index < record.attempts.length - 1
+        && (attempt.attemptStatus !== 'failed'
+          || !plan.evaluation.policy.runtime.retry.retryableErrorCodes
+            .includes(attempt.error.code)))
+    ))
+    || record.observations.length !== expectedMetricIds.length
+    || record.observations.some((observation, index) => {
+      const metric = metrics.get(observation.metricId);
+      if (observation.metricId !== expectedMetricIds[index]
+          || observation.observationId !== deriveMetricObservationId({
+            evaluationId: coordinate.evaluationId,
+            metricId: observation.metricId,
+          })
+          || metric === undefined
+          || observation.valueType !== metric.valueType) return true;
+      return observation.observationStatus === 'observed'
+        && observation.valueType === 'numeric'
+        && metric.scale !== undefined
+        && ((metric.scale.min !== undefined && observation.value < metric.scale.min)
+          || (metric.scale.max !== undefined && observation.value > metric.scale.max));
+    });
   if (entry.cacheKeyDigest !== key
-      || entry.cachedRecordDigest !== digestCanonicalJson(entry.record)
-      || entry.record.evaluationId !== coordinate.evaluationId
-      || entry.record.sourceRecordDigest !== sourceRecordDigest
-      || canonicalizeJson(entry.record.runtime) !== canonicalizeJson(binding.runtime)) {
+      || entry.cachedRecordDigest !== digestCanonicalJson(record)
+      || contractInvalid) {
     throw new EvaluationPortFailure({
       code: 'evaluation-cache-entry-invalid',
       stage: 'infrastructure',
@@ -714,10 +769,13 @@ function replayRecord(
     });
   }
   return {
-    ...snapshotJson(entry.record),
+    ...snapshotJson(record),
     provenance: {
       provenanceKind: 'replay',
-      trust: 'verified',
+      trust: minimumTrust(record.provenance.trust, sourceTrust, runtimeTrust(binding.runtime)),
+      ...(record.provenance.sourceId === undefined
+        ? {}
+        : { sourceId: record.provenance.sourceId }),
       parentDigests: [entry.cachedRecordDigest],
     },
     cache: {
@@ -731,57 +789,28 @@ function replayRecord(
 async function evaluateCoordinate(
   plan: SealedRunPlan,
   ports: EvaluationRuntimePorts,
-  prepared: PreparedRuntime,
   sessions: Sessions,
   events: RuntimeEvents,
   budget: Budget,
-  coordinate: PlannedEvaluationCoordinate,
-  source: ExecutionRecord | undefined,
+  prepared: EligibleCoordinate,
   signal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
 ): Promise<{ record?: EvaluationRecord; cacheEntry?: EvaluationCacheEntry }> {
-  const binding = prepared.bindings.get(coordinate.evaluatorId);
-  if (binding === undefined) throw new Error('Evaluator binding disappeared');
-  if (source?.executionStatus !== 'completed') {
-    const record = notEvaluatedRecord(
-      plan,
-      binding,
-      coordinate,
-      source === undefined ? 'execution-record-unavailable' : `execution-${source.executionStatus}`,
-      ports.clock.timestamp(),
-      source,
-    );
-    await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
-      reasonCode: record.notEvaluatedReasonCode,
-    });
-    return { record };
-  }
-  let bindings: EvaluatorBindingValue[] | undefined;
-  try { bindings = await materializeBindings(plan, source, binding.evaluator, ports); } catch (error) {
-    setStop('failed', 'evaluation-content-resolution-failed', safeError(error));
-    return {};
-  }
-  if (bindings === undefined) {
-    const record = notEvaluatedRecord(
-      plan,
-      binding,
-      coordinate,
-      'evaluator-input-unavailable',
-      ports.clock.timestamp(),
-      source,
-    );
-    await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
-      reasonCode: record.notEvaluatedReasonCode,
-    });
-    return { record };
-  }
-  const sourceRecordDigest = digestCanonicalJson(source);
-  const key = cacheKey(plan, coordinate, binding, sourceRecordDigest, bindings);
+  const { binding, coordinate, sourceRecordDigest, sourceTrust, inputs } = prepared;
+  const key = cacheKey(plan, coordinate, binding, sourceRecordDigest, inputs);
   if (plan.evaluation.policy.evaluationCacheMode === 'reuse') {
     try {
       const entry = await ports.cache?.get(key);
       if (entry !== undefined) {
-        const record = replayRecord(entry, key, coordinate, binding, sourceRecordDigest);
+        const record = replayRecord(
+          entry,
+          key,
+          coordinate,
+          binding,
+          sourceRecordDigest,
+          sourceTrust,
+          plan,
+        );
         await events.emit('evaluation.cache.hit', 'evaluation', coordinate.evaluationId, {
           cacheKeyDigest: key,
         });
@@ -795,11 +824,6 @@ async function evaluateCoordinate(
       return {};
     }
   }
-  if (!budget.take()) {
-    setStop('budget-exhausted', 'evaluator-invocation-budget-exhausted');
-    return {};
-  }
-
   const attempts: EvaluationAttempt[] = [];
   const usages: (UsageRecord | undefined)[] = [];
   const startedAt = ports.clock.timestamp();
@@ -822,12 +846,17 @@ async function evaluateCoordinate(
       ...(binding.evaluator.config === undefined
         ? {}
         : { evaluatorConfig: binding.evaluator.config as JsonValue }),
-      bindings,
+      bindings: inputs,
+      metrics: binding.evaluator.metricIds.map((metricId) => {
+        const metric = plan.evaluation.metrics.find((candidate) => candidate.metricId === metricId);
+        if (metric === undefined) throw new Error('Sealed metric disappeared');
+        return metric;
+      }),
     })) as Parameters<EvaluationEvaluatorRun['openRecord']>[0]);
     const activeEvaluatorRecord = evaluatorRecord;
     const retry = plan.evaluation.policy.runtime.retry;
     for (let attemptNumber = 1; attemptNumber <= retry.maxAttempts; attemptNumber += 1) {
-      if (attemptNumber > 1 && !budget.take()) {
+      if (!budget.reserveInvocation()) {
         setStop('budget-exhausted', 'evaluator-invocation-budget-exhausted');
         break;
       }
@@ -837,13 +866,19 @@ async function evaluateCoordinate(
       });
       const attemptStartedAt = ports.clock.timestamp();
       const attemptStartedMono = ports.clock.monotonicNow();
-      await events.emit('evaluation.attempt.started', 'attempt', attemptId, {
+      const attemptDelivery = await events.emit('evaluation.attempt.started', 'attempt', attemptId, {
         evaluationId: coordinate.evaluationId,
         attemptNumber,
       });
+      if (!attemptDelivery || signal.aborted) {
+        budget.releaseReservation();
+        break;
+      }
+      budget.consumeReservation();
+      let attemptUsage: UsageRecord | undefined;
       try {
         const result = await withTimeout(
-          (attemptSignal) => activeEvaluatorRecord.evaluate(deepFreeze({
+          (attemptSignal) => activeEvaluatorRecord.evaluate(Object.freeze({
             attemptId,
             attemptNumber,
             signal: attemptSignal,
@@ -852,6 +887,7 @@ async function evaluateCoordinate(
           ports.clock,
           signal,
         );
+        attemptUsage = validatedUsage(result.usage);
         observations = await normalizeObservations(
           result.observations,
           coordinate.evaluationId,
@@ -870,10 +906,10 @@ async function evaluateCoordinate(
             completedAt,
             durationMs: durationMs(attemptStartedMono, ports.clock.monotonicNow()),
           },
-          ...(result.usage === undefined ? {} : { usage: snapshotJson(result.usage) }),
+          ...(attemptUsage === undefined ? {} : { usage: snapshotJson(attemptUsage) }),
         });
-        usages.push(result.usage === undefined ? undefined : snapshotJson(result.usage));
-        const budgetError = budget.record(result.usage);
+        usages.push(attemptUsage === undefined ? undefined : snapshotJson(attemptUsage));
+        const budgetError = budget.record(attemptUsage);
         if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
         await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
           attemptNumber,
@@ -881,15 +917,18 @@ async function evaluateCoordinate(
         });
         break;
       } catch (error) {
-        const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
-        const failure = !signal.aborted
-            && timeoutMs !== undefined
-            && durationMs(attemptStartedMono, ports.clock.monotonicNow()) >= timeoutMs
-          ? safeError(new EvaluationAttemptTimeoutError())
-          : safeError(error);
+        let failure = safeError(error);
         const cancelled = signal.aborted;
         const completedAt = ports.clock.timestamp();
-        const usage = error instanceof EvaluationPortFailure ? error.usage : undefined;
+        let usage = attemptUsage;
+        if (usage === undefined && error instanceof EvaluationPortFailure
+            && error.usage !== undefined) {
+          try {
+            usage = validatedUsage(error.usage);
+          } catch (usageValidationError) {
+            failure = safeError(usageValidationError);
+          }
+        }
         attempts.push({
           attemptId,
           attemptNumber,
@@ -903,13 +942,16 @@ async function evaluateCoordinate(
           ...(usage === undefined ? {} : { usage: snapshotJson(usage) }),
         });
         usages.push(usage);
+        const budgetError = budget.record(usage);
+        if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
         terminalError = failure;
         await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
           attemptNumber,
           attemptStatus: cancelled ? 'cancelled' : 'failed',
           errorCode: failure.code,
         });
-        if (cancelled || !retry.retryableErrorCodes.includes(failure.code)
+        if (signal.aborted || budget.exhausted
+            || cancelled || !retry.retryableErrorCodes.includes(failure.code)
             || attemptNumber === retry.maxAttempts) break;
         const delay = retry.backoff.backoffKind === 'none'
           ? 0
@@ -952,8 +994,8 @@ async function evaluateCoordinate(
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native' as const,
-      trust: 'verified' as const,
-      parentDigests: [plan.evaluation.evaluationPlanDigest],
+      trust: minimumTrust(sourceTrust, runtimeTrust(binding.runtime)),
+      parentDigests: [plan.evaluation.evaluationPlanDigest, sourceRecordDigest],
     },
     sourceRecordDigest,
     attempts,
@@ -1008,6 +1050,7 @@ function replayability(records: readonly EvaluationRecord[]): EvaluationBundle['
       ...(record.evaluationStatus === 'completed'
         ? record.observations.flatMap((observation) => [
           observation.evidence,
+          observation.metadata,
           observation.observationStatus === 'invalid' ? observation.invalidValue : undefined,
         ])
         : []),
@@ -1059,7 +1102,10 @@ function makeBundle(
     records,
     provenance: {
       provenanceKind: 'native',
-      trust: 'verified',
+      trust: minimumTrust(
+        source.provenance.trust,
+        ...records.map((record) => record.provenance.trust),
+      ),
       parentDigests: [source.bundleDigest, plan.evaluation.evaluationPlanDigest],
       ...(stop.error === undefined
         ? {}
@@ -1069,6 +1115,51 @@ function makeBundle(
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
   return parseEvaluationBundle(bundle, plan, source);
+}
+
+async function prepareEvaluationCoordinates(
+  plan: SealedRunPlan,
+  ports: EvaluationRuntimePorts,
+  prepared: PreparedRuntime,
+  coordinates: readonly PlannedEvaluationCoordinate[],
+): Promise<PreparedCoordinate[]> {
+  const sourceByTrial = new Map(
+    prepared.source.records.map((record) => [trialKey(record), record]),
+  );
+  const result: PreparedCoordinate[] = [];
+  for (const coordinate of coordinates) {
+    const binding = prepared.bindings.get(coordinate.evaluatorId);
+    if (binding === undefined) throw new Error('Evaluator binding disappeared');
+    const source = sourceByTrial.get(trialKey(coordinate));
+    if (source === undefined || source.executionStatus === 'budget-censored') {
+      result.push({
+        coordinate,
+        binding,
+        ...(source === undefined ? {} : { source }),
+        reasonCode: source === undefined
+          ? 'execution-record-unavailable'
+          : 'execution-budget-censored',
+      });
+      continue;
+    }
+    const inputs = await materializeBindings(plan, source, binding.evaluator, ports);
+    if (inputs === undefined) {
+      result.push({ coordinate, binding, source, reasonCode: 'evaluator-input-unavailable' });
+      continue;
+    }
+    result.push({
+      coordinate,
+      binding,
+      source,
+      sourceRecordDigest: digestCanonicalJson(source),
+      sourceTrust: minimumTrust(
+        prepared.source.provenance.trust,
+        source.provenance.trust,
+      ),
+      inputs,
+    });
+  }
+  return result;
 }
 
 function terminalKind(status: EvaluationBundle['evaluationBundleStatus']): EvaluationRuntimeEventKind {
@@ -1086,7 +1177,6 @@ async function runEvaluation(
   stream: BoundedEventStream,
 ): Promise<EvaluationBundle> {
   const coordinates = derivePlannedEvaluationCoordinates(plan);
-  const sourceByTrial = new Map(prepared.source.records.map((record) => [trialKey(record), record]));
   const records = new Map<string, EvaluationRecord>();
   const pendingCache: EvaluationCacheEntry[] = [];
   const stop: StopState = {};
@@ -1101,9 +1191,27 @@ async function runEvaluation(
   const externalAbort = (): void => setStop('cancelled', 'external-cancellation');
   if (options.signal?.aborted) externalAbort();
   else options.signal?.addEventListener('abort', externalAbort, { once: true });
-  const events = new RuntimeEvents(plan, ports, options, stream, (reason, error) => {
-    setStop('failed', reason, error);
-  });
+  const events = new RuntimeEventEmitter<
+    EvaluationRuntimeEventKind,
+    'run' | 'evaluation' | 'attempt'
+  >(
+    ports.clock,
+    ports.eventSequencer,
+    ports.eventWriter,
+    {
+      runId: options.runId,
+      writerMode: plan.measurementPolicy.eventDelivery.writerMode,
+      writerFailureMode: plan.measurementPolicy.eventDelivery.writerFailureMode,
+      writerFailureReason: 'evaluation-event-writer-failed',
+      writerFailureError: {
+        code: 'evaluation-event-writer-failed',
+        stage: 'infrastructure',
+        message: 'Evaluation EventWriter failed under fail-run policy.',
+      },
+    },
+    stream,
+    (reason: string, error: EvaluationError) => setStop('failed', reason, error),
+  );
   const sessions = new Sessions(plan, options);
   const budget = new Budget(plan);
   const durationController = new AbortController();
@@ -1120,27 +1228,34 @@ async function runEvaluation(
       executionBundleDigest: prepared.source.bundleDigest,
       planned: coordinates.length,
     });
-    for (const coordinate of coordinates) {
-      const source = sourceByTrial.get(trialKey(coordinate));
-      if (source?.executionStatus === 'completed') continue;
-      const binding = prepared.bindings.get(coordinate.evaluatorId);
-      if (binding === undefined) throw new Error('Evaluator binding disappeared');
+    const preparedCoordinates = await prepareEvaluationCoordinates(
+      plan,
+      ports,
+      prepared,
+      coordinates,
+    );
+    for (const item of preparedCoordinates) {
+      if (!('reasonCode' in item)) continue;
       const record = notEvaluatedRecord(
         plan,
-        binding,
-        coordinate,
-        source === undefined ? 'execution-record-unavailable' : `execution-${source.executionStatus}`,
+        item.binding,
+        item.coordinate,
+        item.reasonCode,
         ports.clock.timestamp(),
-        source,
+        minimumTrust(
+          prepared.source.provenance.trust,
+          item.source?.provenance.trust ?? prepared.source.provenance.trust,
+        ),
+        item.source,
       );
       records.set(record.evaluationId, record);
-      await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
+      await events.emit('evaluation.record.not-evaluated', 'evaluation', item.coordinate.evaluationId, {
         reasonCode: record.notEvaluatedReasonCode,
       });
     }
-    const eligibleCoordinates = coordinates.filter((coordinate) => (
-      sourceByTrial.get(trialKey(coordinate))?.executionStatus === 'completed'
-    ));
+    const eligibleCoordinates = preparedCoordinates.filter(
+      (item): item is EligibleCoordinate => !('reasonCode' in item),
+    );
     const width = plan.evaluation.policy.runtime.maxConcurrency;
     for (let offset = 0;
       offset < eligibleCoordinates.length && stop.stopKind === undefined;
@@ -1149,12 +1264,10 @@ async function runEvaluation(
       const results = await Promise.all(batch.map((coordinate) => evaluateCoordinate(
         plan,
         ports,
-        prepared,
         sessions,
         events,
         budget,
         coordinate,
-        sourceByTrial.get(trialKey(coordinate)),
         controller.signal,
         setStop,
       )));

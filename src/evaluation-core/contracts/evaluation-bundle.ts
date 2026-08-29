@@ -256,6 +256,9 @@ function contents(record: EvaluationRecord): CapturedContent[] {
       observation.evidence === undefined ? [] : [observation.evidence]
     )),
     ...record.observations.flatMap((observation) => (
+      observation.metadata === undefined ? [] : [observation.metadata]
+    )),
+    ...record.observations.flatMap((observation) => (
       observation.observationStatus === 'invalid' && observation.invalidValue !== undefined
         ? [observation.invalidValue]
         : []
@@ -377,18 +380,17 @@ function assertRecordAgainstPlan(
     planMismatch('EvaluationRecord Runtime does not match its sealed Evaluator binding.');
   }
   const sourceRecordDigest = digestCanonicalJson(executionRecord);
-  if (record.sourceRecordDigest !== undefined
-      && record.sourceRecordDigest !== sourceRecordDigest) {
+  if (record.sourceRecordDigest !== sourceRecordDigest) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_SOURCE_MISMATCH',
       'EvaluationRecord source digest does not match its ExecutionRecord.',
     );
   }
-  if (executionRecord.executionStatus !== 'completed'
+  if (executionRecord.executionStatus === 'budget-censored'
       && record.evaluationStatus !== 'not-evaluated') {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_SOURCE_MISMATCH',
-      'A non-completed ExecutionRecord cannot produce an active evaluation.',
+      'A budget-censored ExecutionRecord cannot produce an active evaluation.',
     );
   }
   if (record.evaluationStatus === 'not-evaluated') return 0;
@@ -479,10 +481,21 @@ export function assertEvaluationBundleMatchesPlan(
     if (expected === undefined) planMismatch('EvaluationBundle contains an unknown coordinate.');
     const executionRecord = executionByTrial.get(trialKey(record));
     if (executionRecord === undefined) {
-      throw new EvaluationBundleValidationError(
-        'EVALUATION_BUNDLE_SOURCE_MISMATCH',
-        'EvaluationRecord has no corresponding ExecutionRecord.',
-      );
+      if (record.evaluationStatus !== 'not-evaluated'
+          || record.sourceRecordDigest !== undefined) {
+        throw new EvaluationBundleValidationError(
+          'EVALUATION_BUNDLE_SOURCE_MISMATCH',
+          'Only a source-less not-evaluated record may omit its ExecutionRecord.',
+        );
+      }
+      const runtime = runtimesByEvaluator.get(record.evaluatorId);
+      if (runtime === undefined) planMismatch('EvaluationRecord has no sealed Runtime binding.');
+      if (record.trialId !== expected.trialId
+          || record.evaluationId !== expected.evaluationId
+          || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {
+        planMismatch('Source-less EvaluationRecord does not match its sealed coordinate.');
+      }
+      continue;
     }
     const runtime = runtimesByEvaluator.get(record.evaluatorId);
     if (runtime === undefined) planMismatch('EvaluationRecord has no sealed Runtime binding.');
@@ -503,7 +516,7 @@ export function assertEvaluationBundleMatchesPlan(
   }
   for (const coordinate of planned) {
     const executionRecord = executionByTrial.get(trialKey(coordinate));
-    if ((executionRecord === undefined || executionRecord.executionStatus !== 'completed')
+    if ((executionRecord === undefined || executionRecord.executionStatus === 'budget-censored')
         && recordsByCoordinate.get(coordinateKey(coordinate))?.evaluationStatus
           !== 'not-evaluated') {
       throw new EvaluationBundleValidationError(

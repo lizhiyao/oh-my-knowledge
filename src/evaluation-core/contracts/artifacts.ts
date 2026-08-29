@@ -154,7 +154,7 @@ const MetricObservationBaseSchema = z.object({
   observationId: Sha256DigestSchema,
   metricId: IdentifierSchema,
   evidence: CapturedContentSchema.optional(),
-  metadata: JsonValueSchema.optional(),
+  metadata: CapturedContentSchema.optional(),
 }).strict();
 
 export const NumericMetricObservationSchema = MetricObservationBaseSchema.extend({

@@ -10,6 +10,7 @@ import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/ind
 import {
   ExecutionPortFailure,
   ExecutionRuntimeConfigurationError,
+  InMemoryRuntimeEventSequencer,
   deriveExecutionSchedule,
   executeRunPlan,
   startExecution,
@@ -224,6 +225,7 @@ function portsFor(
   const ports: ExecutionRuntimePorts = {
     executors: new Map([['executor-alias', executor]]),
     clock: new FakeClock(),
+    eventSequencer: new InMemoryRuntimeEventSequencer(),
     contentStore,
     ...overrides,
   };
@@ -604,6 +606,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     };
     const cancelledRun = startExecution(plan, ports, {
@@ -1142,6 +1145,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     };
     const bundle = await executeRunPlan(plan, ports, {
@@ -1210,6 +1214,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
       cache,
     };
@@ -1274,6 +1279,7 @@ describe('Evaluation Core Execution runtime', () => {
     const run = startExecution(plan, {
       executors: registry,
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     }, {
       runId: 'run-registry-snapshot',
