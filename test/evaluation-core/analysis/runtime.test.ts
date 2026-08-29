@@ -94,7 +94,7 @@ function analysisAwareRuntime(): PreparationRuntime {
 async function makePlan(mutate?: (
   definition: ReturnType<typeof validDefinition>,
   policy: ReturnType<typeof validPolicy>,
-) => void): Promise<Plan> {
+) => void, runtime: PreparationRuntime = analysisAwareRuntime()): Promise<Plan> {
   const definition = validDefinition();
   delete definition.analysisGraph.nodes[0].parameters;
   definition.decisionPolicy = {
@@ -106,7 +106,7 @@ async function makePlan(mutate?: (
   delete policy.evaluation.timeoutMs;
   policy.evidence.trace = 'full';
   mutate?.(definition, policy);
-  return prepareEvaluationPlan(definition, policy, analysisAwareRuntime());
+  return prepareEvaluationPlan(definition, policy, runtime);
 }
 
 function identity(
@@ -384,6 +384,10 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       resultType: 'scalar',
       value: 0.5,
       coverage: { planned: 2, observed: 2, included: 2 },
+      runtimeDependencies: [{
+        runtimeKind: 'analysis-node',
+        referenceId: 'mean-correct',
+      }],
     });
     expect(analysis.provenance.trust).toBe('declared');
     expect(parseAnalysisBundle(analysis, plan, execution, evaluation, {
@@ -492,6 +496,82 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       decisionStatus: 'failed',
       error: { code: 'decision-runtime-failed', stage: 'analysis' },
     });
+  });
+
+  it('caps Analysis trust only with Runtime dependencies that were actually used', async () => {
+    const preparation = analysisAwareRuntime();
+    const builtinPolicy = createBuiltinMissingPolicies().get('exclude/v1');
+    if (builtinPolicy === undefined) throw new Error('missing builtin MissingPolicy');
+    const missingPolicyIdentity: RuntimeIdentity = {
+      ...structuredClone(builtinPolicy.identity),
+      assuranceLevel: 'unknown',
+    };
+    const runtime: PreparationRuntime = {
+      ...preparation,
+      resolveAnalysis(requirement) {
+        if (requirement.requirementKind === 'missing-policy') {
+          return { identity: missingPolicyIdentity, satisfiesVersionConstraint: true };
+        }
+        return preparation.resolveAnalysis(requirement);
+      },
+    };
+    const plan = await makePlan(undefined, runtime);
+    const clock = new FakeClock();
+    const eventSequencer = new InMemoryRuntimeEventSequencer();
+    const execution = await executeRunPlanSource(plan, {
+      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      clock,
+      eventSequencer,
+    }, { runId: 'run-analysis-dependencies', bundleId: 'execution-analysis-dependencies' });
+    const observedEvaluation = await evaluateExecutionBundleSource(plan, execution, {
+      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      clock,
+      eventSequencer,
+    }, { runId: 'run-analysis-observed', bundleId: 'evaluation-analysis-observed' });
+    const missingEvaluation = await evaluateExecutionBundleSource(plan, execution, {
+      evaluators: new Map([['exact/v1', evaluator(plan, true)]]),
+      clock,
+      eventSequencer,
+    }, {
+      runId: 'run-analysis-missing-dependency',
+      bundleId: 'evaluation-analysis-missing-dependency',
+    });
+    const ports = {
+      analysisNodes: createBuiltinAnalysisNodes(),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
+      missingPolicies: new Map([['exclude/v1', {
+        ...builtinPolicy,
+        identity: missingPolicyIdentity,
+      }]]),
+      decisionPolicies: createBuiltinDecisionPolicies(),
+      clock,
+      eventSequencer,
+    };
+    const observed = await analyzeEvaluationBundleSource(
+      plan,
+      execution,
+      observedEvaluation,
+      ports,
+      { runId: 'run-analysis-observed', bundleId: 'analysis-observed' },
+    );
+    const missing = await analyzeEvaluationBundleSource(
+      plan,
+      execution,
+      missingEvaluation,
+      ports,
+      { runId: 'run-analysis-missing-dependency', bundleId: 'analysis-missing-dependency' },
+    );
+
+    expect(observed.bundle.records[0].runtimeDependencies).toEqual([{
+      runtimeKind: 'analysis-node',
+      referenceId: 'mean-correct',
+    }]);
+    expect(observed.bundle.provenance.trust).toBe('declared');
+    expect(missing.bundle.records[0].runtimeDependencies).toEqual([
+      { runtimeKind: 'analysis-node', referenceId: 'mean-correct' },
+      { runtimeKind: 'missing-policy', referenceId: 'exclude/v1' },
+    ]);
+    expect(missing.bundle.provenance.trust).toBe('unknown');
   });
 
   it('rejects a fully resealed AnalysisBundle with a forged Runtime identity', async () => {
@@ -1127,6 +1207,10 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     expect(analysis.records[0]).toMatchObject({
       analysisStatus: 'inconclusive',
       coverage: { observed: 0, missing: 2, included: 0 },
+      runtimeDependencies: [
+        { runtimeKind: 'analysis-node', referenceId: 'mean-correct' },
+        { runtimeKind: 'missing-policy', referenceId: 'exclude/v1' },
+      ],
     });
     expect(analysis.records[0].exclusions).toHaveLength(2);
     expect(analysis.records[0].exclusions.every(
@@ -1143,6 +1227,30 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       evaluation,
       { schemaValidators: ports.schemaValidators },
     )).toThrow(/source observation universe/);
+    const forgedDependencies = resealAnalysisBundle(analysis, (draft) => {
+      draft.records[0].runtimeDependencies = draft.records[0].runtimeDependencies.filter(
+        (dependency) => dependency.runtimeKind !== 'missing-policy',
+      );
+    });
+    expect(() => parseAnalysisBundle(
+      forgedDependencies,
+      plan,
+      execution,
+      evaluation,
+      { schemaValidators: ports.schemaValidators },
+    )).toThrow(/MissingPolicy dependency/);
+    const omittedNodeDependency = resealAnalysisBundle(analysis, (draft) => {
+      draft.records[0].runtimeDependencies = draft.records[0].runtimeDependencies.filter(
+        (dependency) => dependency.runtimeKind !== 'analysis-node',
+      );
+    });
+    expect(() => parseAnalysisBundle(
+      omittedNodeDependency,
+      plan,
+      execution,
+      evaluation,
+      { schemaValidators: ports.schemaValidators },
+    )).toThrow(/MissingPolicy rejections/);
     expect(decision).toMatchObject({
       decisionStatus: 'not-decided',
       reasonCodes: expect.arrayContaining(['decision-analysis-result-unavailable']),
@@ -1180,8 +1288,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const analysis = await run.result;
 
     expect(analysis.analysisBundleStatus).toBe('cancelled');
-    expect(analysis.records[0].analysisStatus).toBe('not-evaluated');
+    expect(analysis.records[0]).toMatchObject({
+      analysisStatus: 'not-evaluated',
+      runtimeDependencies: [],
+    });
     expect(analysis.coverage.notStarted).toBe(1);
+    expect(analysis.provenance.trust).toBe('verified');
   });
 
   it('keeps in-flight Analysis and Decision cancellation authoritative', async () => {
@@ -1225,7 +1337,14 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const cancelledAnalysis = await analysisRun.result;
     expect(cancelledAnalysis).toMatchObject({
       analysisBundleStatus: 'cancelled',
-      records: [{ analysisStatus: 'not-evaluated' }],
+      records: [{
+        analysisStatus: 'not-evaluated',
+        runtimeDependencies: [{
+          runtimeKind: 'analysis-node',
+          referenceId: 'mean-correct',
+        }],
+      }],
+      provenance: { trust: 'declared' },
     });
 
     const decisionController = new AbortController();

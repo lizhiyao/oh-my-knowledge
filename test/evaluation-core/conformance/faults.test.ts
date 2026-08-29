@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AnalysisPortFailure } from '../../../src/evaluation-core/analysis/index.js';
 import { ConformanceFaultInjector, deferredGate } from './fault-injector.js';
 import {
   ConformanceRuntimeRegistry,
@@ -80,6 +81,41 @@ describe('Evaluation Core conformance fault matrix', () => {
     });
     expect(result.decision?.decisionStatus).toBe('not-decided');
     expect(faults.count('analysis-open-run')).toBe(1);
+  });
+
+  it.each([
+    {
+      name: 'sanitizes structured Analysis failures',
+      failure: new AnalysisPortFailure({
+        code: 'analysis-provider-failed',
+        stage: 'analysis',
+        message: 'analysis-provider-secret',
+      }),
+      expectedCode: 'analysis-provider-failed',
+    },
+    {
+      name: 'contains malformed structured Analysis failures',
+      failure: new AnalysisPortFailure({} as never),
+      expectedCode: 'analysis-error-invalid',
+    },
+  ])('$name', async ({ failure, expectedCode }) => {
+    const faults = new ConformanceFaultInjector().at('analysis-open-run', () => {
+      throw failure;
+    });
+    const result = await runConformanceScenario('function', {
+      suffix: expectedCode,
+      faults,
+    });
+
+    expect(result.analysis).toMatchObject({
+      analysisBundleStatus: 'failed',
+      records: [{
+        analysisStatus: 'failed',
+        error: { code: expectedCode },
+      }],
+    });
+    expect(JSON.stringify(result)).not.toContain('analysis-provider-secret');
+    expect(result.decision?.decisionStatus).toBe('not-decided');
   });
 
   it('materializes honest partial downstream artifacts after one Executor failure', async () => {

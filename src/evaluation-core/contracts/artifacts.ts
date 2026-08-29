@@ -342,6 +342,11 @@ export const AnalysisExclusionSchema = z.object({
   reasonCode: IdentifierSchema,
 }).strict();
 
+export const AnalysisRuntimeDependencySchema = z.object({
+  runtimeKind: z.enum(['analysis-node', 'missing-policy']),
+  referenceId: IdentifierSchema,
+}).strict();
+
 const AnalysisRecordBaseSchema = z.object({
   resultId: IdentifierSchema,
   nodeId: IdentifierSchema,
@@ -371,6 +376,7 @@ const AnalysisRecordBaseSchema = z.object({
   coverage: AnalysisObservationCoverageSchema,
   exclusions: z.array(AnalysisExclusionSchema),
   assumptionChecks: z.array(AssumptionCheckSchema),
+  runtimeDependencies: z.array(AnalysisRuntimeDependencySchema),
   analysisMode: z.enum(['preregistered', 'exploratory']),
   derivedAt: TimestampSchema,
   parentDigests: z.array(Sha256DigestSchema).min(1),

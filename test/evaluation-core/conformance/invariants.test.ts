@@ -187,7 +187,15 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
         || typeof record.value !== 'object') {
       throw new Error('Expected a completed cluster interval result.');
     }
-    expect(record.value.unitCount).toBe(2);
+    expect(record.value).toEqual({
+      estimate: 0.5,
+      lower: 0.5,
+      upper: 0.5,
+      confidenceLevel: 0.9,
+      resamples: 64,
+      unitCount: 2,
+      method: 'percentile',
+    });
     expect(result.decision).toMatchObject({
       decisionStatus: 'decided',
       verdict: 'PROGRESS',

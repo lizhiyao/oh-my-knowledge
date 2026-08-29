@@ -262,14 +262,33 @@
       "type": "array"
     },
     "__schema18": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "referenceId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "runtimeKind": {
+            "enum": [
+              "analysis-node",
+              "missing-policy"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtimeKind",
+          "referenceId"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema19": {
       "enum": [
         "preregistered",
         "exploratory"
       ],
-      "type": "string"
-    },
-    "__schema19": {
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
       "type": "string"
     },
     "__schema2": {
@@ -277,18 +296,22 @@
       "type": "string"
     },
     "__schema20": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "__schema21": {
       "items": {
         "$ref": "#/$defs/__schema2"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema21": {
+    "__schema22": {
       "additionalProperties": false,
       "properties": {
         "causes": {
           "items": {
-            "$ref": "#/$defs/__schema21"
+            "$ref": "#/$defs/__schema22"
           },
           "type": "array"
         },
@@ -320,7 +343,7 @@
       ],
       "type": "object"
     },
-    "__schema22": {
+    "__schema23": {
       "additionalProperties": false,
       "properties": {
         "facets": {
@@ -361,7 +384,7 @@
       ],
       "type": "object"
     },
-    "__schema23": {
+    "__schema24": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -449,7 +472,7 @@
             "additionalProperties": false,
             "properties": {
               "analysisMode": {
-                "$ref": "#/$defs/__schema18"
+                "$ref": "#/$defs/__schema19"
               },
               "analysisNodeKind": {
                 "$ref": "#/$defs/__schema7"
@@ -465,7 +488,7 @@
                 "$ref": "#/$defs/__schema15"
               },
               "derivedAt": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema20"
               },
               "exclusions": {
                 "$ref": "#/$defs/__schema16"
@@ -483,7 +506,7 @@
                 "$ref": "#/$defs/__schema11"
               },
               "parentDigests": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "recordDigest": {
                 "$ref": "#/$defs/__schema2"
@@ -502,6 +525,9 @@
                 ],
                 "type": "string"
               },
+              "runtimeDependencies": {
+                "$ref": "#/$defs/__schema18"
+              },
               "value": {
                 "$ref": "#/$defs/__schema10"
               }
@@ -516,6 +542,7 @@
               "coverage",
               "exclusions",
               "assumptionChecks",
+              "runtimeDependencies",
               "analysisMode",
               "derivedAt",
               "parentDigests",
@@ -530,7 +557,7 @@
             "additionalProperties": false,
             "properties": {
               "analysisMode": {
-                "$ref": "#/$defs/__schema18"
+                "$ref": "#/$defs/__schema19"
               },
               "analysisNodeKind": {
                 "$ref": "#/$defs/__schema7"
@@ -546,7 +573,7 @@
                 "$ref": "#/$defs/__schema15"
               },
               "derivedAt": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema20"
               },
               "exclusions": {
                 "$ref": "#/$defs/__schema16"
@@ -564,7 +591,7 @@
                 "$ref": "#/$defs/__schema11"
               },
               "parentDigests": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "reasonCodes": {
                 "items": {
@@ -578,6 +605,9 @@
               },
               "resultId": {
                 "$ref": "#/$defs/__schema1"
+              },
+              "runtimeDependencies": {
+                "$ref": "#/$defs/__schema18"
               }
             },
             "required": [
@@ -590,6 +620,7 @@
               "coverage",
               "exclusions",
               "assumptionChecks",
+              "runtimeDependencies",
               "analysisMode",
               "derivedAt",
               "parentDigests",
@@ -603,7 +634,7 @@
             "additionalProperties": false,
             "properties": {
               "analysisMode": {
-                "$ref": "#/$defs/__schema18"
+                "$ref": "#/$defs/__schema19"
               },
               "analysisNodeKind": {
                 "$ref": "#/$defs/__schema7"
@@ -619,10 +650,10 @@
                 "$ref": "#/$defs/__schema15"
               },
               "derivedAt": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema20"
               },
               "error": {
-                "$ref": "#/$defs/__schema21"
+                "$ref": "#/$defs/__schema22"
               },
               "exclusions": {
                 "$ref": "#/$defs/__schema16"
@@ -640,13 +671,16 @@
                 "$ref": "#/$defs/__schema11"
               },
               "parentDigests": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "recordDigest": {
                 "$ref": "#/$defs/__schema2"
               },
               "resultId": {
                 "$ref": "#/$defs/__schema1"
+              },
+              "runtimeDependencies": {
+                "$ref": "#/$defs/__schema18"
               }
             },
             "required": [
@@ -659,6 +693,7 @@
               "coverage",
               "exclusions",
               "assumptionChecks",
+              "runtimeDependencies",
               "analysisMode",
               "derivedAt",
               "parentDigests",
@@ -672,7 +707,7 @@
             "additionalProperties": false,
             "properties": {
               "analysisMode": {
-                "$ref": "#/$defs/__schema18"
+                "$ref": "#/$defs/__schema19"
               },
               "analysisNodeKind": {
                 "$ref": "#/$defs/__schema7"
@@ -688,7 +723,7 @@
                 "$ref": "#/$defs/__schema15"
               },
               "derivedAt": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema20"
               },
               "exclusions": {
                 "$ref": "#/$defs/__schema16"
@@ -706,7 +741,7 @@
                 "$ref": "#/$defs/__schema11"
               },
               "parentDigests": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "reasonCodes": {
                 "items": {
@@ -720,6 +755,9 @@
               },
               "resultId": {
                 "$ref": "#/$defs/__schema1"
+              },
+              "runtimeDependencies": {
+                "$ref": "#/$defs/__schema18"
               }
             },
             "required": [
@@ -732,6 +770,7 @@
               "coverage",
               "exclusions",
               "assumptionChecks",
+              "runtimeDependencies",
               "analysisMode",
               "derivedAt",
               "parentDigests",
@@ -826,10 +865,10 @@
       "$ref": "#/$defs/__schema2"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema23"
+      "$ref": "#/$defs/__schema24"
     },
     "provenance": {
-      "$ref": "#/$defs/__schema22"
+      "$ref": "#/$defs/__schema23"
     },
     "records": {
       "$ref": "#/$defs/__schema6"
