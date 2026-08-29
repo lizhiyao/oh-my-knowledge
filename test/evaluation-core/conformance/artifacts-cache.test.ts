@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
   verifyExecutionBundle,
+  type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
 import {
@@ -246,9 +247,9 @@ describe('Evaluation Core artifact and replay conformance', () => {
       record.executionStatus === 'completed'
       && record.cache.cacheStatus === 'transparent-hit'
     ))).toBe(true);
-    const sourceRecordDigests = new Set(replay.execution.records.flatMap((record) => (
+    const sourceRecordDigests = new Set<Sha256Digest>(replay.execution.records.flatMap((record) => (
       record.executionStatus === 'completed' && record.cache.sourceRecordDigest !== undefined
-        ? [record.cache.sourceRecordDigest]
+        ? [record.cache.sourceRecordDigest as Sha256Digest]
         : []
     )));
     expect(verifyExecutionBundle(replay.execution, replay.plan).planVerification).toMatchObject({

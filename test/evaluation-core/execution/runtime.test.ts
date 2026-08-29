@@ -683,7 +683,9 @@ describe('Evaluation Core Execution runtime', () => {
       unverifiedCacheRecordDigests: [sourceRecordDigest],
     });
     expect(verifyExecutionBundle(second, plan, {
-      verifiedCacheRecordDigests: new Set([sourceRecordDigest]),
+      verifiedCacheRecordDigests: new Set<Sha256Digest>([
+        sourceRecordDigest as Sha256Digest,
+      ]),
     }).planVerification).toMatchObject({
       cacheReceiptStatus: 'verified',
       minimumTargetInvocations: 0,
