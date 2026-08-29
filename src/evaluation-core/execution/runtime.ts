@@ -443,7 +443,17 @@ class RunSessions {
   }
 }
 
-type EventEmitter = RuntimeEventEmitter<ExecutionEventKind, ExecutionEventSubjectKind>;
+type ExecutionTerminalEventKind =
+  | 'execution.run.completed'
+  | 'execution.run.cancelled'
+  | 'execution.run.budget-exhausted'
+  | 'execution.run.failed';
+
+type EventEmitter = RuntimeEventEmitter<
+  ExecutionEventKind,
+  ExecutionEventSubjectKind,
+  ExecutionTerminalEventKind
+>;
 
 function linkAbortSignal(parent: AbortSignal | undefined, controller: AbortController): () => void {
   if (parent === undefined) return () => undefined;
@@ -1175,7 +1185,7 @@ function makeBundle(
 
 function terminalEventKind(
   status: ExecutionBundle['executionBundleStatus'],
-): ExecutionEventKind {
+): ExecutionTerminalEventKind {
   switch (status) {
     case 'completed': return 'execution.run.completed';
     case 'cancelled': return 'execution.run.cancelled';
@@ -1207,7 +1217,11 @@ async function runExecution(
   };
   if (options.signal?.aborted) onExternalAbort();
   else options.signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const events = new RuntimeEventEmitter<ExecutionEventKind, ExecutionEventSubjectKind>(
+  const events = new RuntimeEventEmitter<
+    ExecutionEventKind,
+    ExecutionEventSubjectKind,
+    ExecutionTerminalEventKind
+  >(
     ports.clock,
     ports.eventSequencer,
     ports.eventWriter,
@@ -1221,6 +1235,12 @@ async function runExecution(
         stage: 'infrastructure',
         message: 'Required EventWriter delivery failed.',
       },
+      recoveryEventKinds: [
+        'execution.run.completed',
+        'execution.run.cancelled',
+        'execution.run.budget-exhausted',
+        'execution.run.failed',
+      ],
     },
     stream,
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),

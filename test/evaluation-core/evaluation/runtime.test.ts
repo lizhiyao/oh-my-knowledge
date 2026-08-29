@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestArtifactPayload,
   digestCanonicalJson,
+  deriveEvaluationAttemptId,
   parseEvaluationBundle,
   type EvaluationBundle,
   type EvaluationEvent,
@@ -455,6 +456,59 @@ describe('Evaluation Core Evaluation runtime', () => {
       { runId: 'cache-dirty', bundleId: 'cache-dirty-bundle' },
     )).resolves.toMatchObject({ evaluationBundleStatus: 'failed' });
     expect(dirtyCache.puts).toBe(0);
+  });
+
+  it('does not exempt a structurally valid but externally unverified cache-hit claim', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+      policy.evaluation.budget.maxEvaluatorInvocations = 2;
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const native = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      cache: new MemoryCache(),
+    }), {
+      runId: 'unverified-hit-seed',
+      bundleId: 'unverified-hit-seed-bundle',
+    });
+    const forged = resealEvaluationBundle(native, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus !== 'completed') throw new Error('unexpected record');
+      const first = record.attempts[0];
+      record.attempts = [{
+        ...first,
+        attemptStatus: 'failed',
+        error: {
+          code: 'timeout',
+          stage: 'evaluation',
+          message: 'Forged retryable failure.',
+        },
+      }, {
+        ...first,
+        attemptId: deriveEvaluationAttemptId({
+          evaluationId: record.evaluationId,
+          attemptNumber: 2,
+        }),
+        attemptNumber: 2,
+        attemptStatus: 'completed',
+      }];
+      const nativeRecordDigest = digestCanonicalJson(record);
+      const cacheKeyDigest = record.cache.cacheKeyDigest;
+      if (cacheKeyDigest === undefined) throw new Error('missing cache key');
+      record.provenance = {
+        provenanceKind: 'replay',
+        trust: record.provenance.trust,
+        parentDigests: [nativeRecordDigest],
+      };
+      record.cache = {
+        cacheStatus: 'transparent-hit',
+        cacheKeyDigest,
+        sourceRecordDigest: nativeRecordDigest,
+      };
+    });
+
+    expect(() => parseEvaluationBundle(forged, plan, source))
+      .toThrowError(/exceeds the sealed evaluator invocation budget/);
   });
 
   it('rejects missing evaluator bindings synchronously', async () => {
@@ -1165,6 +1219,46 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     expect(() => parseEvaluationBundle(forged, plan, source))
       .toThrowError(/trust exceeds/);
+  });
+
+  it('uses effective source trust to isolate evaluation cache entries', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const first = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+      runId: 'trust-key-verified-run',
+      bundleId: 'trust-key-verified-bundle',
+    });
+    const downgradedSource = resealExecutionBundle(source, (draft) => {
+      draft.provenance = {
+        ...draft.provenance,
+        provenanceKind: 'imported',
+        trust: 'declared',
+      };
+    });
+    const second = evaluator(plan);
+    const downgraded = await evaluateExecutionBundle(
+      plan,
+      downgradedSource,
+      ports(plan, second.port, { cache }),
+      {
+        runId: 'trust-key-declared-run',
+        bundleId: 'trust-key-declared-bundle',
+      },
+    );
+
+    expect(downgraded.evaluationBundleStatus).toBe('completed');
+    expect(downgraded.provenance.trust).toBe('declared');
+    expect(downgraded.records.every((record) => (
+      record.evaluationStatus === 'completed'
+      && record.cache.cacheStatus === 'miss'
+      && record.provenance.trust === 'declared'
+    ))).toBe(true);
+    expect(second.state.attempts).toBe(2);
+    expect(cache.puts).toBe(4);
   });
 
   it('captures observation metadata under the same classification policy as evidence', async () => {

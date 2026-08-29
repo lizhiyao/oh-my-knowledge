@@ -581,9 +581,16 @@ async function withTimeout<T>(
   }
 }
 
+type EvaluationTerminalEventKind =
+  | 'evaluation.run.completed'
+  | 'evaluation.run.cancelled'
+  | 'evaluation.run.budget-exhausted'
+  | 'evaluation.run.failed';
+
 type RuntimeEvents = RuntimeEventEmitter<
   EvaluationRuntimeEventKind,
-  'run' | 'evaluation' | 'attempt'
+  'run' | 'evaluation' | 'attempt',
+  EvaluationTerminalEventKind
 >;
 
 class Sessions {
@@ -715,6 +722,7 @@ function cacheKey(
   coordinate: PlannedEvaluationCoordinate,
   binding: EvaluatorBinding,
   sourceRecordDigest: Sha256Digest,
+  sourceTrust: Provenance['trust'],
   bindings: readonly EvaluatorBindingValue[],
 ): Sha256Digest {
   return digestCanonicalJson({
@@ -723,6 +731,7 @@ function cacheKey(
     evaluationId: coordinate.evaluationId,
     evaluatorRuntime: binding.runtime,
     sourceRecordDigest,
+    sourceTrust,
     bindings,
   });
 }
@@ -829,10 +838,21 @@ async function evaluateCoordinate(
   prepared: EligibleCoordinate,
   signal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
-): Promise<{ record?: EvaluationRecord; cacheEntry?: EvaluationCacheEntry }> {
+): Promise<{
+  record?: EvaluationRecord;
+  cacheEntry?: EvaluationCacheEntry;
+  verifiedCacheRecordDigest?: Sha256Digest;
+}> {
   const { binding, coordinate, sourceRecordDigest, sourceTrust, inputs } = prepared;
   if (signal.aborted) return {};
-  const key = cacheKey(plan, coordinate, binding, sourceRecordDigest, inputs);
+  const key = cacheKey(
+    plan,
+    coordinate,
+    binding,
+    sourceRecordDigest,
+    sourceTrust,
+    inputs,
+  );
   if (plan.evaluation.policy.evaluationCacheMode === 'reuse') {
     try {
       const entry = await ports.cache?.get(key);
@@ -851,7 +871,7 @@ async function evaluateCoordinate(
           cacheKeyDigest: key,
         });
         if (!delivered || signal.aborted) return {};
-        return { record };
+        return { record, verifiedCacheRecordDigest: entry.cachedRecordDigest };
       }
       const delivered = await events.emit('evaluation.cache.miss', 'evaluation', coordinate.evaluationId, {
         cacheKeyDigest: key,
@@ -1115,6 +1135,7 @@ function makeBundle(
   records: EvaluationRecord[],
   planned: number,
   stop: StopState,
+  verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>,
 ): EvaluationBundle {
   records.sort(compareRecords);
   const sourceUnavailable = records.filter(
@@ -1160,7 +1181,7 @@ function makeBundle(
     bundleDigest: `sha256:${'0'.repeat(64)}`,
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
-  return parseEvaluationBundle(bundle, plan, source);
+  return parseEvaluationBundle(bundle, plan, source, { verifiedCacheRecordDigests });
 }
 
 async function prepareEvaluationCoordinates(
@@ -1219,7 +1240,9 @@ async function prepareEvaluationCoordinates(
   return result;
 }
 
-function terminalKind(status: EvaluationBundle['evaluationBundleStatus']): EvaluationRuntimeEventKind {
+function terminalKind(
+  status: EvaluationBundle['evaluationBundleStatus'],
+): EvaluationTerminalEventKind {
   if (status === 'completed') return 'evaluation.run.completed';
   if (status === 'cancelled') return 'evaluation.run.cancelled';
   if (status === 'budget-exhausted') return 'evaluation.run.budget-exhausted';
@@ -1236,6 +1259,7 @@ async function runEvaluation(
   const coordinates = derivePlannedEvaluationCoordinates(plan);
   const records = new Map<string, EvaluationRecord>();
   const pendingCache: EvaluationCacheEntry[] = [];
+  const verifiedCacheRecordDigests = new Set<Sha256Digest>();
   const stop: StopState = {};
   const controller = new AbortController();
   const setStop = (stopKind: StopKind, reason: string, error?: EvaluationError): void => {
@@ -1250,7 +1274,8 @@ async function runEvaluation(
   else options.signal?.addEventListener('abort', externalAbort, { once: true });
   const events = new RuntimeEventEmitter<
     EvaluationRuntimeEventKind,
-    'run' | 'evaluation' | 'attempt'
+    'run' | 'evaluation' | 'attempt',
+    EvaluationTerminalEventKind
   >(
     ports.clock,
     ports.eventSequencer,
@@ -1265,6 +1290,12 @@ async function runEvaluation(
         stage: 'infrastructure',
         message: 'Evaluation EventWriter failed under fail-run policy.',
       },
+      recoveryEventKinds: [
+        'evaluation.run.completed',
+        'evaluation.run.cancelled',
+        'evaluation.run.budget-exhausted',
+        'evaluation.run.failed',
+      ],
     },
     stream,
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),
@@ -1344,6 +1375,9 @@ async function runEvaluation(
         const result = results[index];
         if (result.record !== undefined) records.set(result.record.evaluationId, result.record);
         if (result.cacheEntry !== undefined) pendingCache.push(result.cacheEntry);
+        if (result.verifiedCacheRecordDigest !== undefined) {
+          verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
+        }
       }
       const failures = results.filter((result) => result.record?.evaluationStatus === 'failed').length;
       const totalFailures = [...records.values()].filter(
@@ -1395,6 +1429,7 @@ async function runEvaluation(
     [...records.values()],
     coordinates.length,
     stop,
+    verifiedCacheRecordDigests,
   );
   const terminalDelivered = await events.emit(
     terminalKind(bundle.evaluationBundleStatus),
@@ -1414,6 +1449,7 @@ async function runEvaluation(
       [...records.values()],
       coordinates.length,
       stop,
+      verifiedCacheRecordDigests,
     );
     await events.emitRecovery(terminalKind(bundle.evaluationBundleStatus), 'run', options.runId, {
       bundleDigest: bundle.bundleDigest,

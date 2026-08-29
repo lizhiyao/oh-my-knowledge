@@ -364,6 +364,11 @@ type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
 
 type EvaluationRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 
+export interface EvaluationBundleVerificationContext {
+  /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
+  readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
+}
+
 function planMismatch(message: string): never {
   throw new EvaluationBundleValidationError('EVALUATION_BUNDLE_PLAN_MISMATCH', message);
 }
@@ -556,7 +561,8 @@ function assertCachePolicy(
     }
     return false;
   }
-  const expectedTrust = minimumTrust(sourceTrust, executionRecordTrust, runtimeTrust(runtime));
+  const effectiveSourceTrust = minimumTrust(sourceTrust, executionRecordTrust);
+  const expectedTrust = minimumTrust(effectiveSourceTrust, runtimeTrust(runtime));
   const expectedNativeProvenance = {
     provenanceKind: 'native' as const,
     trust: expectedTrust,
@@ -570,6 +576,7 @@ function assertCachePolicy(
       evaluationId: expected.evaluationId,
       evaluatorRuntime: runtime,
       sourceRecordDigest,
+      sourceTrust: effectiveSourceTrust,
       bindings: closure.bindings,
     });
   if (cache.cacheStatus === 'miss'
@@ -612,6 +619,7 @@ function assertRecordAgainstPlan(
   executionRecord: ExecutionRecord,
   runtime: EvaluationBundlePlanContext['evaluation']['runtimes'][number]['identity'],
   sourceTrust: ExecutionBundle['provenance']['trust'],
+  verification: EvaluationBundleVerificationContext | undefined,
 ): number {
   if (record.trialId !== expected.trialId
       || record.evaluationId !== expected.evaluationId) {
@@ -717,13 +725,19 @@ function assertRecordAgainstPlan(
       assertObservation(observation, metric);
     }
   }
-  return cacheHit ? 0 : record.attempts.length;
+  const verifiedCacheHit = cacheHit
+    && record.cache.sourceRecordDigest !== undefined
+    && verification?.verifiedCacheRecordDigests?.has(
+      record.cache.sourceRecordDigest as Sha256Digest,
+    ) === true;
+  return verifiedCacheHit ? 0 : record.attempts.length;
 }
 
 export function assertEvaluationBundleMatchesPlan(
   bundle: EvaluationBundle,
   plan: EvaluationBundlePlanContext,
   source: ExecutionBundle,
+  verification?: EvaluationBundleVerificationContext,
 ): void {
   if (bundle.runContractDigest !== plan.digests.runContractDigest
       || bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
@@ -797,6 +811,7 @@ export function assertEvaluationBundleMatchesPlan(
       executionRecord,
       runtime,
       source.provenance.trust,
+      verification,
     );
   }
   const maxInvocations = plan.evaluation.policy.runtime.budget.maxEvaluatorInvocations;
@@ -843,9 +858,10 @@ export function parseEvaluationBundle(
   value: unknown,
   plan: EvaluationBundlePlanContext,
   sourceValue: unknown,
+  verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundle {
   const source = parseExecutionBundle(sourceValue, plan);
   const bundle = parseEvaluationBundleDocument(value);
-  assertEvaluationBundleMatchesPlan(bundle, plan, source);
+  assertEvaluationBundleMatchesPlan(bundle, plan, source, verification);
   return bundle;
 }

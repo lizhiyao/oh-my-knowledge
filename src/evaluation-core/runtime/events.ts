@@ -32,26 +32,30 @@ export interface RuntimeEventWriter {
   write(event: Readonly<EvaluationEvent>): Promise<void>;
 }
 
-export interface RuntimeEventEmitterOptions {
+export interface RuntimeEventEmitterOptions<RecoveryEventKind extends string> {
   runId: string;
   writerMode: 'disabled' | 'optional' | 'required';
   writerFailureMode: 'ignore' | 'fail-run';
   writerFailureReason: string;
   writerFailureError: EvaluationError;
+  recoveryEventKinds: readonly RecoveryEventKind[];
 }
 
 export class RuntimeEventEmitter<
   EventKind extends string,
   SubjectKind extends string,
+  RecoveryEventKind extends EventKind,
 > {
   readonly #clock: RuntimeEventClock;
   readonly #sequencer: RuntimeEventSequencer;
   readonly #writer?: RuntimeEventWriter;
-  readonly #options: RuntimeEventEmitterOptions;
+  readonly #options: RuntimeEventEmitterOptions<RecoveryEventKind>;
+  readonly #recoveryEventKinds: ReadonlySet<string>;
   readonly #stream: BoundedEventStream;
   readonly #onFatal: (reason: string, error: EvaluationError) => void;
   #writerEnabled: boolean;
   #fatal = false;
+  #recovered = false;
   #lastSequence = -1;
   #deliveryTail: Promise<void> = Promise.resolve();
 
@@ -59,7 +63,7 @@ export class RuntimeEventEmitter<
     clock: RuntimeEventClock,
     sequencer: RuntimeEventSequencer,
     writer: RuntimeEventWriter | undefined,
-    options: RuntimeEventEmitterOptions,
+    options: RuntimeEventEmitterOptions<RecoveryEventKind>,
     stream: BoundedEventStream,
     onFatal: (reason: string, error: EvaluationError) => void,
   ) {
@@ -67,6 +71,7 @@ export class RuntimeEventEmitter<
     this.#sequencer = sequencer;
     this.#writer = writer;
     this.#options = options;
+    this.#recoveryEventKinds = new Set(options.recoveryEventKinds);
     this.#stream = stream;
     this.#onFatal = onFatal;
     this.#writerEnabled = options.writerMode !== 'disabled' && writer !== undefined;
@@ -106,16 +111,23 @@ export class RuntimeEventEmitter<
   }
 
   async emitRecovery(
-    eventKind: EventKind,
+    eventKind: RecoveryEventKind,
     subjectKind: SubjectKind,
     subjectId: string,
     data: JsonValue,
   ): Promise<void> {
-    const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
     const delivery = this.#deliveryTail.then(() => {
       if (!this.#fatal || this.#options.writerFailureMode !== 'fail-run') {
         throw new TypeError('Recovery events require a fatal EventWriter failure.');
       }
+      if (!this.#recoveryEventKinds.has(eventKind)) {
+        throw new TypeError('Recovery delivery accepts terminal event kinds only.');
+      }
+      if (this.#recovered) {
+        throw new TypeError('A fatal EventWriter failure accepts one recovery terminal only.');
+      }
+      this.#recovered = true;
+      const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
       this.#stream.push(event);
     });
     this.#deliveryTail = delivery.catch(() => undefined);

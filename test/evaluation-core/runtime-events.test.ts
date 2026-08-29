@@ -17,7 +17,8 @@ describe('Evaluation Core runtime event delivery', () => {
     const stream = new BoundedEventStream(16);
     const emitter = new RuntimeEventEmitter<
       'evaluation.run.started' | 'evaluation.record.started' | 'evaluation.run.failed',
-      'run' | 'evaluation'
+      'run' | 'evaluation',
+      'evaluation.run.failed'
     >(
       { timestamp: () => '2026-08-29T00:00:00.000Z' },
       new InMemoryRuntimeEventSequencer(),
@@ -37,6 +38,7 @@ describe('Evaluation Core runtime event delivery', () => {
           stage: 'infrastructure',
           message: 'Writer failed.',
         },
+        recoveryEventKinds: ['evaluation.run.failed'],
       },
       stream,
       () => { fatals += 1; },
@@ -54,12 +56,31 @@ describe('Evaluation Core runtime event delivery', () => {
       'evaluation-2',
       {},
     )).resolves.toBe(false);
+    await expect((emitter as unknown as {
+      emitRecovery(
+        eventKind: string,
+        subjectKind: string,
+        subjectId: string,
+        data: Record<string, never>,
+      ): Promise<void>;
+    }).emitRecovery(
+      'evaluation.record.started',
+      'evaluation',
+      'evaluation-3',
+      {},
+    )).rejects.toThrow(/terminal event kinds only/);
     await emitter.emitRecovery(
       'evaluation.run.failed',
       'run',
       'fatal-delivery-run',
       { bundleDigest: 're-sealed' },
     );
+    await expect(emitter.emitRecovery(
+      'evaluation.run.failed',
+      'run',
+      'fatal-delivery-run',
+      { bundleDigest: 'duplicate' },
+    )).rejects.toThrow(/one recovery terminal only/);
     emitter.close();
 
     const journal: EvaluationEvent[] = [];
