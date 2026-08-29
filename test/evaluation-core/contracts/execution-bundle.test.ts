@@ -421,7 +421,7 @@ describe('ExecutionBundle contract', () => {
     resign(bundle);
 
     expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
-      expect.objectContaining({ code: 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID' }),
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_USAGE_INVALID' }),
     );
   });
 

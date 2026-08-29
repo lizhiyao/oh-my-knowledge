@@ -149,6 +149,41 @@ describe('ExecutionBundle RunPlan binding', () => {
     );
   });
 
+  it('rejects replayed records that could not pass the sealed provider-cost audit', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    const record = bundle.records[0];
+    if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+    const sourceRecordDigest = `sha256:${'a'.repeat(64)}` as Sha256Digest;
+    record.cache = {
+      cacheStatus: 'transparent-hit',
+      cacheKeyDigest: `sha256:${'b'.repeat(64)}`,
+      sourceRecordDigest,
+    };
+    record.provenance = {
+      provenanceKind: 'replay',
+      trust: 'verified',
+      sourceId: record.trialId,
+      parentDigests: [sourceRecordDigest],
+    };
+    resign(bundle);
+
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID' }),
+    );
+
+    const usage = {
+      providerCost: { amount: 0.25, currency: 'USD' as const, reportedByProvider: true as const },
+    };
+    record.attempts[0].usage = mutableJson(usage);
+    record.usage = mutableJson(usage);
+    resign(bundle);
+    expect(parseExecutionBundle(bundle, plan)).toEqual(bundle);
+  });
+
   it('accepts a foreign origin with the same ExecutionPlan but rejects foreign coordinates', async () => {
     const plan = await makePlan();
     const foreignParent = mutableJson(makeBundle(plan));

@@ -361,7 +361,7 @@ describe('Evaluation Core artifact and replay conformance', () => {
     },
   );
 
-  it.each(['classification', 'capture-mode', 'usage'] as const)(
+  it.each(['classification', 'capture-mode', 'usage', 'attempt-chain'] as const)(
     'fails closed on an Execution cache entry violating sealed %s semantics',
     async (poison) => {
       const marker = 'cache-secret-marker';
@@ -391,11 +391,13 @@ describe('Evaluation Core artifact and replay conformance', () => {
             classification: 'public',
             digest: digestCanonicalJson({ answer: marker }),
           };
-        } else {
+        } else if (poison === 'usage') {
           entry.record.usage = {
             inputTokens: 999,
             details: { aggregationKind: 'forged' },
           };
+        } else {
+          entry.record.attempts[0].attemptNumber = 2;
         }
         entry.sourceRecordDigest = digestCanonicalJson(entry.record);
       });

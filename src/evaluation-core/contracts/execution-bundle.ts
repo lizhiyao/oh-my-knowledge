@@ -26,6 +26,8 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_STATUS_INVALID'
   | 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID'
   | 'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID'
+  | 'EXECUTION_BUNDLE_USAGE_INVALID'
+  | 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID'
   | 'EXECUTION_BUNDLE_DIGEST_MISMATCH'
   | 'EXECUTION_BUNDLE_PLAN_MISMATCH'
   | 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID';
@@ -86,41 +88,53 @@ function assertRecordIdentities(bundle: ExecutionBundle): void {
     }
     trialIds.add(record.trialId);
     if (record.executionStatus === 'budget-censored') continue;
-
-    for (let index = 0; index < record.attempts.length; index += 1) {
-      const attempt = record.attempts[index];
-      const expectedNumber = index + 1;
-      if (attempt.attemptNumber !== expectedNumber) {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-          'Execution attempts must be ordered consecutively from one.',
-        );
-      }
-      const expectedAttemptId = deriveAttemptId({
-        trialId: record.trialId as Sha256Digest,
-        attemptNumber: attempt.attemptNumber,
-      });
-      if (attempt.attemptId !== expectedAttemptId || attemptIds.has(attempt.attemptId)) {
+    assertExecutionRecordAttemptSemantics(record);
+    for (const attempt of record.attempts) {
+      if (attemptIds.has(attempt.attemptId)) {
         throw new ExecutionBundleValidationError(
           'EXECUTION_BUNDLE_IDENTITY_MISMATCH',
-          'ExecutionAttempt identity does not match its trial and attempt number.',
+          'ExecutionBundle contains a duplicate ExecutionAttempt identity.',
         );
       }
       attemptIds.add(attempt.attemptId);
-      if (index < record.attempts.length - 1 && attempt.attemptStatus === 'completed') {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-          'A completed ExecutionAttempt must terminate its trial.',
-        );
-      }
     }
-    const terminalAttempt = record.attempts.at(-1);
-    if (terminalAttempt?.attemptStatus !== record.executionStatus) {
+  }
+}
+
+export function assertExecutionRecordAttemptSemantics(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+): void {
+  for (let index = 0; index < record.attempts.length; index += 1) {
+    const attempt = record.attempts[index];
+    const expectedNumber = index + 1;
+    if (attempt.attemptNumber !== expectedNumber) {
       throw new ExecutionBundleValidationError(
         'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-        'The final attempt status must match the active ExecutionRecord status.',
+        'Execution attempts must be ordered consecutively from one.',
       );
     }
+    const expectedAttemptId = deriveAttemptId({
+      trialId: record.trialId as Sha256Digest,
+      attemptNumber: expectedNumber,
+    });
+    if (attempt.attemptId !== expectedAttemptId) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_IDENTITY_MISMATCH',
+        'ExecutionAttempt identity does not match its trial and attempt number.',
+      );
+    }
+    if (index < record.attempts.length - 1 && attempt.attemptStatus === 'completed') {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
+        'A completed ExecutionAttempt must terminate its trial.',
+      );
+    }
+  }
+  if (record.attempts.at(-1)?.attemptStatus !== record.executionStatus) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
+      'The final attempt status must match the active ExecutionRecord status.',
+    );
   }
 }
 
@@ -292,7 +306,7 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
     if (record.executionStatus !== 'budget-censored'
         && !executionRecordUsageMatchesAttempts(record)) {
       throw new ExecutionBundleValidationError(
-        'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+        'EXECUTION_BUNDLE_USAGE_INVALID',
         'ExecutionRecord usage does not match its attempt facts.',
       );
     }
@@ -321,6 +335,10 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
       };
       budget: {
         maxTargetInvocations?: number;
+        maxProviderCost?: {
+          amount: number;
+          currency: string;
+        };
       };
       evidence: {
         output: 'full' | 'reference' | 'digest' | 'none';
@@ -422,6 +440,37 @@ export function executionRecordUsageMatchesAttempts(
     === canonicalizeJson(aggregateExecutionAttemptUsage(record.attempts) ?? null);
 }
 
+export function assertExecutionRecordMatchesAttemptPolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  policy: ExecutionBundlePlanContext['execution']['policy']['retry'],
+): void {
+  assertExecutionRecordAttemptSemantics(record);
+  if (record.attempts.length > policy.maxAttempts
+      || record.attempts.slice(0, -1).some((attempt) => (
+        attempt.attemptStatus !== 'failed'
+        || !policy.retryableErrorCodes.includes(attempt.error.code)
+      ))) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+      'ExecutionRecord attempts do not satisfy the sealed retry policy.',
+    );
+  }
+}
+
+export function executionRecordSatisfiesCacheCostPolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  maximum: { amount: number; currency: string } | undefined,
+): boolean {
+  if (maximum === undefined) return true;
+  let amount = 0;
+  for (const attempt of record.attempts) {
+    const cost = attempt.usage?.providerCost;
+    if (cost === undefined || cost.currency !== maximum.currency) return false;
+    amount += cost.amount;
+  }
+  return amount < maximum.amount;
+}
+
 function coordinateKey(
   coordinate: Pick<PlannedExecutionCoordinate, 'targetId' | 'sampleId' | 'trialIndex'>,
 ): string {
@@ -491,25 +540,22 @@ export function assertExecutionBundleMatchesPlan(
         'ExecutionRecord evidence contradicts the sealed capture or classification policy.',
       );
     }
+    if ((record.cache.cacheStatus === 'replay'
+        || record.cache.cacheStatus === 'transparent-hit')
+        && !executionRecordSatisfiesCacheCostPolicy(
+          record,
+          plan.execution.policy.budget.maxProviderCost,
+        )) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_CACHE_POLICY_INVALID',
+        'Replayed ExecutionRecord cost facts do not satisfy the sealed cache policy.',
+      );
+    }
     if (record.cache.cacheStatus !== 'replay'
         && record.cache.cacheStatus !== 'transparent-hit') {
       invocationCount += record.attempts.length;
     }
-    if (record.attempts.length > plan.execution.policy.retry.maxAttempts) {
-      throw new ExecutionBundleValidationError(
-        'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
-        'ExecutionRecord exceeds the sealed maximum attempt count.',
-      );
-    }
-    for (const attempt of record.attempts.slice(0, -1)) {
-      if (attempt.attemptStatus !== 'failed'
-          || !plan.execution.policy.retry.retryableErrorCodes.includes(attempt.error.code)) {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
-          'A non-terminal attempt must be a retryable failure under the sealed policy.',
-        );
-      }
-    }
+    assertExecutionRecordMatchesAttemptPolicy(record, plan.execution.policy.retry);
   }
   const maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
   if (maxInvocations !== undefined && invocationCount > maxInvocations) {

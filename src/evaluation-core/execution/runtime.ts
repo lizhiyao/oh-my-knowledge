@@ -7,11 +7,13 @@ import {
   IdentifierSchema,
   UsageRecordSchema,
   aggregateExecutionAttemptUsage,
+  assertExecutionRecordMatchesAttemptPolicy,
   canonicalizeJson,
   deriveAttemptId,
   digestArtifactPayload,
   digestCanonicalJson,
   executionRecordMatchesEvidencePolicy,
+  executionRecordSatisfiesCacheCostPolicy,
   executionRecordUsageMatchesAttempts,
   parseExecutionBundle,
   parseWireDocument,
@@ -476,6 +478,7 @@ function assertCachedRecord(
   plan: SealedRunPlan,
 ): CompletedExecutionRecord {
   const record = parseWireDocument(CompletedExecutionRecordSchema, entry.record);
+  assertExecutionRecordMatchesAttemptPolicy(record, plan.execution.policy.retry);
   const expectedProvenance = {
     provenanceKind: 'native' as const,
     trust: 'verified' as const,
@@ -498,6 +501,10 @@ function assertCachedRecord(
         cacheKeyDigest: key,
       })
       || !executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)
+      || !executionRecordSatisfiesCacheCostPolicy(
+        record,
+        plan.execution.policy.budget.maxProviderCost,
+      )
       || !executionRecordUsageMatchesAttempts(record)) {
     throw new ExecutionRuntimeConfigurationError(
       'EXECUTION_RUNTIME_CACHE_ENTRY_INVALID',

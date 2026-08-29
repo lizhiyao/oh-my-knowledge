@@ -395,7 +395,7 @@ Execution runtime 是 sealed RunPlan 的纯内存解释器。`startExecution()` 
 
 timeout 采用协作式取消：Core abort attempt signal 后仍等待 Executor promise settle，避免遗留晚到 promise；即使 Executor 在观察到 abort 后返回成功，也只记录一次 timeout terminal fact。外部取消遵循同样的单终态规则。`maxDurationMs` 是基于 monotonic clock 的软 admission deadline：已经获准的工作继续 settle，后续 block 才进入删失。provider cost 上限只使用供应商报告的可审计事实；已获准 batch 可能 overshoot，此后停止新 block admission，但不会回写或删除已经发生的 usage。
 
-Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。任一 cached record 成为 replay fact 前，接纳层会重验 coordinate／runtime identity、native provenance、原始 miss receipt、output／trace capture mode、classification ceiling 与从 attempt 推导的 usage。cache write 推迟到 resource teardown 成功、且 commit 时尚未出现 execution、cancellation 或 budget terminal 之后；只有 cost audit、evidence materialization 和 trial teardown 全部成功的 record 才 eligible。随后发生的 terminal-event delivery failure 不会追溯作废已经提交的 Target fact。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
+Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。任一 cached record 成为 replay fact 前，接纳层会重验 coordinate／runtime identity、native provenance、原始 miss receipt、output／trace capture mode、classification ceiling、完整 attempt／retry chain、从 attempt 推导的 usage 与 provider-cost eligibility；durable replay 同样执行这条封存成本规则。cache write 推迟到 resource teardown 成功、且 commit 时尚未出现 execution、cancellation 或 budget terminal 之后；只有 cost audit、evidence materialization 和 trial teardown 全部成功的 record 才 eligible。随后发生的 terminal-event delivery failure 不会追溯作废已经提交的 Target fact。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
 
 每个 attempt 保留自己的精确 UsageRecord；record 级 UsageRecord 只负责可聚合摘要。token 与同币种 cost 可以求和；混合币种或部分上报的 cost 只保留在 attempt facts 中，并在 aggregate details 标记为不可直接比较。Runtime 不得因为无法形成一个标量总额而删除已经观察到的 cost。
 
@@ -646,9 +646,10 @@ Conformance 暴露并修复了一个跨阶段缺口：ExecutionBundle 接纳曾�
 但接纳只按 `executionPlanDigest` 与 `executionInputDigest` 做阶段化校验，因此 Gold 或
 Evaluator 变化可以重评分既有 ExecutionBundle，同时不削弱来源完整性。
 Execution cache 接纳还会校验 Core 为 sealed ExecutionPlan 产生的精确 native provenance 与原始
-cache-miss receipt，以及封存的 output／trace capture、classification 和 attempt-derived usage 语义。
-stale digest、replay provenance 改写、classification 提升、capture mode 不匹配或伪造 aggregate
-usage 都会在打开 Executor 前 fail closed。Execution capture policy 属于 ExecutionPlan identity，
+cache-miss receipt，以及封存的 output／trace capture、classification、attempt／retry chain、
+确定性 aggregate usage 与 provider-cost 语义。stale digest、replay provenance 改写、classification
+提升、capture mode 不匹配、attempt chain 畸形、伪造 aggregate usage，或 cost 缺失、币种不匹配、
+达到封存上限，都会在打开 Executor 前 fail closed。Execution capture policy 属于 ExecutionPlan identity，
 因此合法策略变化会进入新的 cache namespace，而不是被误报成基础设施故障。
 
 ## 二十一、行业参考
