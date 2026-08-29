@@ -164,6 +164,8 @@ interface RuntimeOptions {
   trialState?: 'stateless' | 'isolated';
   traceCapability?: 'unsupported' | 'optional' | 'required';
   seedControl?: 'unsupported' | 'optional' | 'required';
+  concurrencySafety?: 'serialized' | 'parallel-safe';
+  maxInFlight?: number;
   executorProtocols?: Array<'omk.invoke/v1' | 'omk.session/v1'>;
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   analysisValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
@@ -212,7 +214,12 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
                 ? { traceSchema: schemaIdentity(`${protocolId}:trace`) }
                 : {}),
               execution: {
-                concurrency: { safety: 'parallel-safe' },
+                concurrency: {
+                  safety: options.concurrencySafety ?? 'parallel-safe',
+                  ...(options.maxInFlight !== undefined
+                    ? { maxInFlight: options.maxInFlight }
+                    : {}),
+                },
                 cancellation: options.cancellation ?? 'cooperative',
                 state: {
                   resourceLifecycle: 'per-run',

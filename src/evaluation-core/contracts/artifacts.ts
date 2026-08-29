@@ -45,6 +45,7 @@ const ExecutionAttemptBaseSchema = z.object({
   attemptId: Sha256DigestSchema,
   attemptNumber: z.number().int().positive(),
   timing: TimingRecordSchema,
+  usage: UsageRecordSchema.optional(),
 }).strict();
 
 export const ExecutionAttemptSchema = z.discriminatedUnion('attemptStatus', [

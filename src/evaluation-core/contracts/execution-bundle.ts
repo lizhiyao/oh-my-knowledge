@@ -205,26 +205,23 @@ function assertStatus(bundle: ExecutionBundle): void {
     );
   }
   if (status === 'budget-exhausted'
-      && (coverage.budgetCensored === 0 || coverage.notStarted !== 0)) {
+      && coverage.notStarted !== 0) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_STATUS_INVALID',
-      'A budget-exhausted ExecutionBundle must classify every unstarted coordinate as budget-censored.',
+      'A budget-exhausted ExecutionBundle must classify every unstarted coordinate as budget-censored; exhaustion during a started trial may leave no censored coordinate.',
     );
   }
   if (status === 'cancelled'
-      && coverage.cancelled + coverage.notStarted === 0) {
+      && coverage.cancelled + coverage.notStarted === 0
+      && coverage.started !== coverage.planned) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_STATUS_INVALID',
       'A cancelled ExecutionBundle must expose cancelled or unstarted coordinates.',
     );
   }
-  if (status === 'failed'
-      && coverage.failed + coverage.cancelled + coverage.notStarted === 0) {
-    throw new ExecutionBundleValidationError(
-      'EXECUTION_BUNDLE_STATUS_INVALID',
-      'A failed ExecutionBundle must expose failed, cancelled, or unstarted coordinates.',
-    );
-  }
+  // A run-level infrastructure or teardown failure can happen after every
+  // coordinate has completed, so terminationReasonCode is the authoritative
+  // failed-state fact rather than record coverage alone.
 }
 
 function isInline(content: CapturedContent | undefined): boolean {
@@ -381,7 +378,10 @@ export function assertExecutionBundleMatchesPlan(
       planMismatch('ExecutionRecord Runtime does not match its sealed Target binding.');
     }
     if (record.executionStatus === 'budget-censored') continue;
-    invocationCount += record.attempts.length;
+    if (record.cache.cacheStatus !== 'replay'
+        && record.cache.cacheStatus !== 'transparent-hit') {
+      invocationCount += record.attempts.length;
+    }
     if (record.attempts.length > plan.execution.policy.retry.maxAttempts) {
       throw new ExecutionBundleValidationError(
         'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',

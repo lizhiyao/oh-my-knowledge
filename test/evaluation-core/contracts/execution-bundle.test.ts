@@ -274,6 +274,13 @@ describe('ExecutionBundle contract', () => {
       ...attempt,
       attemptStatus: 'failed',
     }).success).toBe(false);
+    expect(ExecutionAttemptSchema.safeParse({
+      ...attempt,
+      usage: {
+        inputTokens: 1,
+        providerCost: { amount: 0.01, currency: 'USD', reportedByProvider: true },
+      },
+    }).success).toBe(true);
   });
 
   it('rejects a scheduling block split between active and budget-censored records', () => {
@@ -316,6 +323,14 @@ describe('ExecutionBundle contract', () => {
     expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_BLOCK_ATOMICITY_INVALID' }),
     );
+  });
+
+  it('allows budget exhaustion during the final started trial without synthetic censoring', () => {
+    const bundle = finalizeBundle({
+      executionBundleStatus: 'budget-exhausted',
+      terminationReasonCode: 'provider-cost-budget-exhausted',
+    });
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
   });
 
   it('rejects coverage and terminal-state contradictions', () => {

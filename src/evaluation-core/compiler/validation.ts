@@ -2,6 +2,7 @@ import type {
   AnalysisCapabilities,
 } from './types.js';
 import {
+  deriveSchedulingTargetGroups,
   projectExecutionInputs,
   type AnalysisNodeDefinition,
   type EvaluationDefinition,
@@ -232,8 +233,13 @@ function validateSamplingDesign(definition: EvaluationDefinition): void {
   }
   if (sampling.resamplingUnit === 'paired-block'
       && scheduling.schedulingKind === 'randomized-block') {
-    const requiredBlockSize = Math.max(...definition.comparisons.map(
-      (comparison) => 1 + comparison.treatmentTargetIds.length,
+    const schedulingTargetGroups = deriveSchedulingTargetGroups({
+      targetIds: definition.targets.map((target) => target.targetId),
+      comparisons: definition.comparisons,
+      paired: true,
+    });
+    const requiredBlockSize = Math.max(...schedulingTargetGroups.map(
+      (targetIds) => targetIds.length,
     ));
     if ((scheduling.blockSize ?? 0) < requiredBlockSize) {
       throw definitionError(
@@ -316,8 +322,13 @@ function validatePolicy(
   }
 
   if (definition.experiment.sampling.resamplingUnit === 'paired-block') {
-    const smallestBlock = Math.min(...definition.comparisons.map(
-      (comparison) => 1 + comparison.treatmentTargetIds.length,
+    const schedulingTargetGroups = deriveSchedulingTargetGroups({
+      targetIds: definition.targets.map((target) => target.targetId),
+      comparisons: definition.comparisons,
+      paired: true,
+    });
+    const smallestBlock = Math.min(...schedulingTargetGroups.map(
+      (targetIds) => targetIds.length,
     ));
     if (policy.budget.maxTargetInvocations !== undefined
         && policy.budget.maxTargetInvocations < smallestBlock) {
