@@ -37,6 +37,15 @@ const policy: MeasurementPolicy = {
     backoff: { backoffKind: 'none', initialDelayMs: 0 },
   },
   budget: {},
+  evaluation: {
+    maxConcurrency: 2,
+    retry: {
+      maxAttempts: 1,
+      retryableErrorCodes: [],
+      backoff: { backoffKind: 'none', initialDelayMs: 0 },
+    },
+    budget: {},
+  },
   cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
   evidence: {
     input: 'digest',

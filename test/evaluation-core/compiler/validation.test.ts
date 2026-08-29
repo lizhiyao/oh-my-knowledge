@@ -279,6 +279,17 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('keeps evaluator output record-scoped and delegates aggregation to AnalysisGraph', async () => {
+    const definition = validDefinition();
+    definition.metrics[0].scope = 'target';
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+      testRuntime(),
+    );
+  });
+
   it('rejects unresolved versions and invalid extensions', async () => {
     await expectCode(
       validDefinition(),

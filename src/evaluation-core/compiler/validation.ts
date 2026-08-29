@@ -413,6 +413,7 @@ export function validateDefinitionSemantics(
 
   const targetIds = new Set(definition.targets.map((target) => target.targetId));
   const metricIds = new Set(definition.metrics.map((metric) => metric.metricId));
+  const metricsById = new Map(definition.metrics.map((metric) => [metric.metricId, metric]));
   const resultIds = new Set(
     definition.analysisGraph.nodes.map((node) => node.outputResultId),
   );
@@ -426,6 +427,13 @@ export function validateDefinitionSemantics(
         `evaluators.${evaluator.evaluatorId}.metricIds`,
         'Metric',
       );
+      if (metricsById.get(metricId)?.scope !== 'sample') {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'v1 record-scoped Evaluator 只能直接产生 sample scope Metric。',
+          { evaluatorId: evaluator.evaluatorId, metricId },
+        );
+      }
     }
   }
   for (const comparison of definition.comparisons) {

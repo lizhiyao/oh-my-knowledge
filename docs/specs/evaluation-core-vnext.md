@@ -255,6 +255,7 @@ interface MeasurementPolicy {
   execution: ExecutionPolicy;
   retry: RetryPolicy;
   budget: BudgetPolicy;
+  evaluation: EvaluationRuntimePolicy;
   cache: CachePolicy;
   evidence: EvidencePolicy;
   failure: FailurePolicy;
@@ -577,7 +578,19 @@ Every digest is the full lowercase `sha256:<hex>` of RFC 8785 canonical UTF-8 by
 
 [#431](https://github.com/lizhiyao/oh-my-knowledge/issues/431) hardens v1 before Execution begins: SamplingDesign seals seed coupling explicitly; protocol manifests separate resource lifecycle from trial state; Execution identities use domain separation; and ExecutionBundle models active/censored records, terminal status, coverage, and replayability independently. With no historical users to migrate, these changes converge v1 directly and retain no compatibility layer for the old fields.
 
-## 18. Industry references
+## 18. Evaluation Runtime v1 implementation baseline
+
+[#435](https://github.com/lizhiyao/oh-my-knowledge/issues/435) implements record-scoped re-evaluation as a separate stage. Its ports expose Evaluators, content resolution/storage, cache, clock, and EventWriter only; no Executor can be reached through the Evaluation API. `startEvaluation(plan, executionBundle, ports, options)` validates the sealed source bundle synchronously before starting asynchronous work.
+
+Evaluation coordinates use canonical `(targetId, sampleId, trialIndex, evaluatorId)` order. `evaluationId`, attempt IDs, and observation IDs use domain-separated digest derivation. Every active EvaluationRecord binds the exact canonical ExecutionRecord digest and resolved Evaluator RuntimeIdentity. The cache key additionally binds the EvaluationPlan, materialized inputs, and source record, so changing Gold, evaluator identity, bindings, or execution evidence cannot silently reuse a score.
+
+Evaluation retry, timeout, concurrency, invocation/duration/provider-cost budgets are sealed under `MeasurementPolicy.evaluation`; start-time options cannot override them. Per-attempt timing, usage, and provider-reported cost remain raw facts. Cache entries are committed only after evaluator record/run resources close cleanly. Event delivery reuses the stage-neutral sealed EventDeliveryPolicy.
+
+Missingness is source-aware. A non-completed execution or unresolvable required binding produces `not-evaluated`, never a zero or default score. Evaluator omissions become explicit missing observations. Unknown/duplicate metrics are evaluator failures; value-type mismatches and numeric scale violations become invalid observations without coercion or clamping. Evaluator-produced metrics are sample-scoped; aggregation remains an AnalysisGraph responsibility.
+
+`parseEvaluationBundleDocument()` validates standalone wire shape, state transitions, identities, coverage, replayability, and digest. `parseEvaluationBundle()` additionally binds the sealed RunPlan and validated ExecutionBundle, checks the coordinate universe, source digests, Runtime identities, metric contracts, retry rules, and invocation budget. Coverage follows `planned = eligible + sourceUnavailable`, `eligible = started + notStarted`, and `started = completed + failed + cancelled`.
+
+## 19. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)

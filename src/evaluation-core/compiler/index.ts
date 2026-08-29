@@ -881,6 +881,7 @@ export async function prepareEvaluationPlan(
     metrics: definition.metrics,
     runtimes: evaluatorRuntimes,
     policy: {
+      runtime: measurementPolicy.evaluation,
       evaluationCacheMode: measurementPolicy.cache.evaluationMode,
       evidence: measurementPolicy.evidence,
       failure: measurementPolicy.failure,

@@ -188,6 +188,20 @@ export const BudgetPolicySchema = z.object({
   }).strict().optional(),
 }).strict();
 
+export const EvaluationRuntimePolicySchema = z.object({
+  timeoutMs: z.number().int().positive().optional(),
+  maxConcurrency: z.number().int().positive(),
+  retry: RetryPolicySchema,
+  budget: z.object({
+    maxEvaluatorInvocations: z.number().int().positive().optional(),
+    maxDurationMs: z.number().int().positive().optional(),
+    maxProviderCost: z.object({
+      amount: z.number().nonnegative(),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+    }).strict().optional(),
+  }).strict(),
+}).strict();
+
 export const CachePolicySchema = z.object({
   executionMode: z.enum(['disabled', 'replay-only', 'transparent-deterministic']),
   evaluationMode: z.enum(['disabled', 'reuse']),
@@ -220,6 +234,7 @@ export const MeasurementPolicySchema = z.object({
   execution: ExecutionPolicySchema,
   retry: RetryPolicySchema,
   budget: BudgetPolicySchema,
+  evaluation: EvaluationRuntimePolicySchema,
   cache: CachePolicySchema,
   evidence: EvidencePolicySchema,
   failure: FailurePolicySchema,
@@ -243,4 +258,5 @@ export type AnalysisGraphDefinition = z.infer<typeof AnalysisGraphDefinitionSche
 export type ComparisonDefinition = z.infer<typeof ComparisonDefinitionSchema>;
 export type DecisionPolicyDefinition = z.infer<typeof DecisionPolicyDefinitionSchema>;
 export type EvaluationDefinition = z.infer<typeof EvaluationDefinitionSchema>;
+export type EvaluationRuntimePolicy = z.infer<typeof EvaluationRuntimePolicySchema>;
 export type MeasurementPolicy = z.infer<typeof MeasurementPolicySchema>;

@@ -24,10 +24,37 @@
       "type": "object"
     },
     "__schema10": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "schemaDigest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema11"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema11"
+      },
+      "type": "object"
+    },
+    "__schema11": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
-    "__schema11": {
+    "__schema12": {
       "anyOf": [
         {
           "type": "null"
@@ -43,13 +70,13 @@
         },
         {
           "items": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema12"
           },
           "type": "array"
         },
         {
           "additionalProperties": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema12"
           },
           "propertyNames": {
             "type": "string"
@@ -147,6 +174,64 @@
     "__schema4": {
       "additionalProperties": false,
       "properties": {
+        "budget": {
+          "additionalProperties": false,
+          "properties": {
+            "maxDurationMs": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxEvaluatorInvocations": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxProviderCost": {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "currency": {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "maxConcurrency": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "retry": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "timeoutMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxConcurrency",
+        "retry",
+        "budget"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "additionalProperties": false,
+      "properties": {
         "evaluationMode": {
           "enum": [
             "disabled",
@@ -169,17 +254,17 @@
       ],
       "type": "object"
     },
-    "__schema5": {
+    "__schema6": {
       "additionalProperties": false,
       "properties": {
         "evidence": {
-          "$ref": "#/$defs/__schema6"
+          "$ref": "#/$defs/__schema7"
         },
         "expected": {
-          "$ref": "#/$defs/__schema6"
+          "$ref": "#/$defs/__schema7"
         },
         "input": {
-          "$ref": "#/$defs/__schema6"
+          "$ref": "#/$defs/__schema7"
         },
         "maximumClassification": {
           "enum": [
@@ -191,10 +276,10 @@
           "type": "string"
         },
         "output": {
-          "$ref": "#/$defs/__schema6"
+          "$ref": "#/$defs/__schema7"
         },
         "trace": {
-          "$ref": "#/$defs/__schema6"
+          "$ref": "#/$defs/__schema7"
         }
       },
       "required": [
@@ -207,7 +292,7 @@
       ],
       "type": "object"
     },
-    "__schema6": {
+    "__schema7": {
       "enum": [
         "full",
         "reference",
@@ -216,7 +301,7 @@
       ],
       "type": "string"
     },
-    "__schema7": {
+    "__schema8": {
       "additionalProperties": false,
       "properties": {
         "failureMode": {
@@ -238,7 +323,7 @@
       ],
       "type": "object"
     },
-    "__schema8": {
+    "__schema9": {
       "additionalProperties": false,
       "properties": {
         "backpressureMode": {
@@ -269,33 +354,6 @@
         "writerFailureMode"
       ],
       "type": "object"
-    },
-    "__schema9": {
-      "additionalProperties": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/__schema11"
-          },
-          "schemaDigest": {
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "schemaUri": {
-            "$ref": "#/$defs/__schema10"
-          }
-        },
-        "required": [
-          "schemaUri",
-          "schemaDigest",
-          "data"
-        ],
-        "type": "object"
-      },
-      "propertyNames": {
-        "$ref": "#/$defs/__schema10"
-      },
-      "type": "object"
     }
   },
   "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/measurement-policy.schema.json",
@@ -306,22 +364,25 @@
       "$ref": "#/$defs/__schema3"
     },
     "cache": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "evaluation": {
       "$ref": "#/$defs/__schema4"
     },
     "eventDelivery": {
-      "$ref": "#/$defs/__schema8"
+      "$ref": "#/$defs/__schema9"
     },
     "evidence": {
-      "$ref": "#/$defs/__schema5"
+      "$ref": "#/$defs/__schema6"
     },
     "execution": {
       "$ref": "#/$defs/__schema1"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema9"
+      "$ref": "#/$defs/__schema10"
     },
     "failure": {
-      "$ref": "#/$defs/__schema7"
+      "$ref": "#/$defs/__schema8"
     },
     "retry": {
       "$ref": "#/$defs/__schema2"
@@ -335,6 +396,7 @@
     "execution",
     "retry",
     "budget",
+    "evaluation",
     "cache",
     "evidence",
     "failure",

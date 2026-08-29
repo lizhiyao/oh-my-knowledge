@@ -1,0 +1,1267 @@
+import {
+  EVALUATION_BUNDLE_SCHEMA_VERSION,
+  EVALUATION_EVENT_SCHEMA_VERSION,
+  EvaluationErrorSchema,
+  EvaluationEventSchema,
+  IdentifierSchema,
+  MetricObservationSchema,
+  canonicalizeJson,
+  deriveEvaluationAttemptId,
+  deriveMetricObservationId,
+  derivePlannedEvaluationCoordinates,
+  digestArtifactPayload,
+  digestCanonicalJson,
+  parseEvaluationBundle,
+  parseExecutionBundle,
+  parseWireDocument,
+  type CapturedContent,
+  type EvaluationAttempt,
+  type EvaluationBundle,
+  type EvaluationError,
+  type EvaluationRecord,
+  type ExecutionBundle,
+  type ExecutionRecord,
+  type JsonValue,
+  type MetricObservation,
+  type PlannedEvaluationCoordinate,
+  type RuntimeIdentity,
+  type Sha256Digest,
+  type UsageRecord,
+} from '../contracts/index.js';
+import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
+import type { SealedRunPlan } from '../compiler/index.js';
+import { BoundedEventStream } from '../execution/event-stream.js';
+import {
+  EvaluationPortFailure,
+  EvaluationRuntimeConfigurationError,
+  type EvaluationCacheEntry,
+  type EvaluationClock,
+  type EvaluationContent,
+  type EvaluationEvaluator,
+  type EvaluationEvaluatorRun,
+  type EvaluationRun,
+  type EvaluationRunOptions,
+  type EvaluationRuntimeEventKind,
+  type EvaluationRuntimePorts,
+  type EvaluatorBindingValue,
+  type EvaluatorObservation,
+} from './types.js';
+
+type ActiveRecord = Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>;
+type CompletedRecord = Extract<EvaluationRecord, { evaluationStatus: 'completed' }>;
+type StopKind = 'cancelled' | 'budget-exhausted' | 'failed';
+
+interface StopState {
+  stopKind?: StopKind;
+  reason?: string;
+  error?: EvaluationError;
+}
+
+interface EvaluatorBinding {
+  evaluator: SealedRunPlan['evaluation']['evaluators'][number];
+  port: EvaluationEvaluator;
+  runtime: RuntimeIdentity;
+}
+
+interface PreparedRuntime {
+  bindings: ReadonlyMap<string, EvaluatorBinding>;
+  source: ExecutionBundle;
+}
+
+class EvaluationAttemptTimeoutError extends Error {
+  constructor() {
+    super('Evaluation attempt timed out.');
+    this.name = 'EvaluationAttemptTimeoutError';
+  }
+}
+
+const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+
+function configurationError(code: string, message: string): never {
+  throw new EvaluationRuntimeConfigurationError(code, message);
+}
+
+function compareStrings(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function compareRecords(left: EvaluationRecord, right: EvaluationRecord): number {
+  return compareStrings(left.targetId, right.targetId)
+    || compareStrings(left.sampleId, right.sampleId)
+    || left.trialIndex - right.trialIndex
+    || compareStrings(left.evaluatorId, right.evaluatorId);
+}
+
+function trialKey(value: { targetId: string; sampleId: string; trialIndex: number }): string {
+  return canonicalizeJson([value.targetId, value.sampleId, value.trialIndex]);
+}
+
+function validateOptions(options: EvaluationRunOptions): void {
+  if (!IdentifierSchema.safeParse(options.runId).success
+      || !IdentifierSchema.safeParse(options.bundleId).success) {
+    configurationError(
+      'EVALUATION_RUNTIME_IDENTIFIER_INVALID',
+      'runId and bundleId must be valid Evaluation Core identifiers.',
+    );
+  }
+  if (options.eventBufferCapacity !== undefined
+      && (!Number.isSafeInteger(options.eventBufferCapacity)
+        || options.eventBufferCapacity < 1)) {
+    configurationError(
+      'EVALUATION_RUNTIME_EVENT_BUFFER_INVALID',
+      'eventBufferCapacity must be a positive safe integer.',
+    );
+  }
+}
+
+function prepareRuntime(
+  plan: SealedRunPlan,
+  sourceValue: unknown,
+  ports: EvaluationRuntimePorts,
+  options: EvaluationRunOptions,
+): PreparedRuntime {
+  validateOptions(options);
+  const source = parseExecutionBundle(sourceValue, plan);
+  if (plan.evaluation.policy.evaluationCacheMode !== 'disabled' && ports.cache === undefined) {
+    configurationError(
+      'EVALUATION_RUNTIME_CACHE_REQUIRED',
+      'Evaluation cache reuse requires an injected EvaluationCache.',
+    );
+  }
+  if (plan.measurementPolicy.evidence.evidence === 'reference'
+      && ports.contentStore === undefined) {
+    configurationError(
+      'EVALUATION_RUNTIME_CONTENT_STORE_REQUIRED',
+      'Reference evidence capture requires an injected EvaluationContentStore.',
+    );
+  }
+  if (plan.measurementPolicy.eventDelivery.writerMode === 'required'
+      && ports.eventWriter === undefined) {
+    configurationError(
+      'EVALUATION_RUNTIME_EVENT_WRITER_REQUIRED',
+      'Required EventWriter mode needs an injected EventWriter.',
+    );
+  }
+  const runtimes = new Map<string, RuntimeIdentity>();
+  for (const runtime of plan.evaluation.runtimes) {
+    if (runtime.runtimeKind !== 'evaluator') continue;
+    if (runtimes.has(runtime.referenceId)) {
+      configurationError(
+        'EVALUATION_RUNTIME_BINDING_INVALID',
+        `EvaluationPlan contains duplicate Runtime binding for ${runtime.referenceId}.`,
+      );
+    }
+    runtimes.set(runtime.referenceId, runtime.identity as RuntimeIdentity);
+  }
+  const bindings = new Map<string, EvaluatorBinding>();
+  for (const evaluator of plan.evaluation.evaluators) {
+    const port = ports.evaluators.get(evaluator.implementationId);
+    const runtime = runtimes.get(evaluator.evaluatorId);
+    if (port === undefined) {
+      configurationError(
+        'EVALUATION_RUNTIME_EVALUATOR_MISSING',
+        `No Evaluator is registered for ${evaluator.implementationId}.`,
+      );
+    }
+    if (runtime === undefined
+        || canonicalizeJson(port.identity) !== canonicalizeJson(runtime)) {
+      configurationError(
+        'EVALUATION_RUNTIME_IDENTITY_MISMATCH',
+        `Evaluator identity for ${evaluator.evaluatorId} differs from the sealed plan.`,
+      );
+    }
+    bindings.set(evaluator.evaluatorId, { evaluator, port, runtime });
+  }
+  return { bindings, source };
+}
+
+function safeError(error: unknown): EvaluationError {
+  if (error instanceof EvaluationAttemptTimeoutError) {
+    return {
+      code: 'timeout',
+      stage: 'evaluation',
+      message: 'Evaluator attempt exceeded the sealed timeout.',
+    };
+  }
+  if (error instanceof EvaluationPortFailure) {
+    const parsed = EvaluationErrorSchema.safeParse(error.evaluationError);
+    if (parsed.success) return {
+      code: parsed.data.code,
+      stage: parsed.data.stage,
+      message: 'Evaluator reported a structured failure.',
+    };
+    return {
+      code: 'evaluator-error-invalid',
+      stage: 'infrastructure',
+      message: 'Evaluator returned an invalid structured failure.',
+    };
+  }
+  if (error instanceof Error && error.name === 'AbortError') {
+    return { code: 'cancelled', stage: 'infrastructure', message: 'Evaluation was cancelled.' };
+  }
+  return {
+    code: 'evaluator-error',
+    stage: 'evaluation',
+    message: 'Evaluator failed without a structured EvaluationError.',
+  };
+}
+
+function durationMs(start: number, end: number): number {
+  return Math.max(0, end - start);
+}
+
+function aggregateUsage(values: readonly (UsageRecord | undefined)[]): UsageRecord | undefined {
+  const reported = values.filter((value): value is UsageRecord => value !== undefined);
+  if (reported.length === 0) return undefined;
+  const sum = (field: 'inputTokens' | 'outputTokens' | 'totalTokens'): number | undefined => (
+    reported.some((value) => value[field] !== undefined)
+      ? reported.reduce((total, value) => total + (value[field] ?? 0), 0)
+      : undefined
+  );
+  const costs = reported.flatMap((value) => value.providerCost === undefined
+    ? []
+    : [value.providerCost]);
+  const currencies = new Set(costs.map((cost) => cost.currency));
+  return {
+    ...(sum('inputTokens') === undefined ? {} : { inputTokens: sum('inputTokens') }),
+    ...(sum('outputTokens') === undefined ? {} : { outputTokens: sum('outputTokens') }),
+    ...(sum('totalTokens') === undefined ? {} : { totalTokens: sum('totalTokens') }),
+    ...(costs.length === values.length && currencies.size === 1
+      ? {
+        providerCost: {
+          amount: costs.reduce((total, cost) => total + cost.amount, 0),
+          currency: costs[0].currency,
+          reportedByProvider: true as const,
+        },
+      }
+      : {}),
+    details: {
+      aggregationKind: 'omk.evaluation-usage-summary/v1',
+      attemptCount: values.length,
+      reportedAttemptCount: reported.length,
+    },
+  };
+}
+
+function resolvePointer(value: JsonValue, pointer: string): JsonValue {
+  let current: unknown = value;
+  if (pointer === '') return value;
+  for (const encoded of pointer.slice(1).split('/')) {
+    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
+    if (current === null || typeof current !== 'object') throw new TypeError('pointer-unresolved');
+    if (Array.isArray(current)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) {
+        throw new TypeError('pointer-unresolved');
+      }
+      current = current[Number(token)];
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(current, token)) {
+        throw new TypeError('pointer-unresolved');
+      }
+      current = (current as Record<string, unknown>)[token];
+    }
+  }
+  canonicalizeJson(current);
+  return current as JsonValue;
+}
+
+async function resolveCaptured(
+  content: CapturedContent | undefined,
+  ports: EvaluationRuntimePorts,
+): Promise<EvaluationContent | undefined> {
+  if (content === undefined || content.contentKind === 'digest-only') return undefined;
+  if (content.contentKind === 'inline') {
+    return { value: snapshotJson(content.value), classification: content.classification };
+  }
+  if (ports.contentResolver === undefined) return undefined;
+  const resolved = await ports.contentResolver.resolve(content.descriptor);
+  if (digestCanonicalJson(resolved.value) !== content.descriptor.digest) {
+    throw new EvaluationPortFailure({
+      code: 'content-digest-mismatch',
+      stage: 'infrastructure',
+      message: 'Resolved content does not match its descriptor digest.',
+    });
+  }
+  if (resolved.classification !== content.classification) {
+    throw new EvaluationPortFailure({
+      code: 'content-classification-mismatch',
+      stage: 'infrastructure',
+      message: 'Resolved content classification differs from its descriptor.',
+    });
+  }
+  return snapshotJson(resolved);
+}
+
+async function materializeBindings(
+  plan: SealedRunPlan,
+  record: Extract<ExecutionRecord, { executionStatus: 'completed' }>,
+  evaluator: SealedRunPlan['evaluation']['evaluators'][number],
+  ports: EvaluationRuntimePorts,
+): Promise<EvaluatorBindingValue[] | undefined> {
+  const sample = plan.evaluation.samples.find((candidate) => candidate.sampleId === record.sampleId);
+  if (sample === undefined) throw new Error('Sealed evaluation sample disappeared');
+  const result: EvaluatorBindingValue[] = [];
+  for (const input of evaluator.inputs) {
+    let source: EvaluationContent | undefined;
+    if (input.sourceKind === 'output') source = await resolveCaptured(record.output, ports);
+    else if (input.sourceKind === 'trace') source = await resolveCaptured(record.trace, ports);
+    else {
+      const value = input.sourceKind === 'expected'
+        ? sample.expected
+        : sample.evaluationContext;
+      if (value !== undefined) source = {
+        value: snapshotJson(value) as JsonValue,
+        classification: 'gold',
+      };
+    }
+    if (source === undefined) return undefined;
+    try {
+      result.push({
+        bindingId: input.bindingId,
+        sourceKind: input.sourceKind,
+        value: resolvePointer(source.value, input.pointer),
+        classification: source.classification,
+        ...(source.mediaType === undefined ? {} : { mediaType: source.mediaType }),
+      });
+    } catch {
+      return undefined;
+    }
+  }
+  return result;
+}
+
+async function capture(
+  content: EvaluationContent | undefined,
+  plan: SealedRunPlan,
+  ports: EvaluationRuntimePorts,
+): Promise<CapturedContent | undefined> {
+  if (content === undefined || plan.measurementPolicy.evidence.evidence === 'none') {
+    return undefined;
+  }
+  if (CLASSIFICATION_LEVEL[content.classification]
+      > CLASSIFICATION_LEVEL[plan.measurementPolicy.evidence.maximumClassification]) {
+    throw new EvaluationPortFailure({
+      code: 'evidence-classification-exceeded',
+      stage: 'infrastructure',
+      message: 'Evaluator evidence exceeds the sealed classification ceiling.',
+    });
+  }
+  const digest = digestCanonicalJson(content.value);
+  const mode = plan.measurementPolicy.evidence.evidence;
+  if (mode === 'full') {
+    return { contentKind: 'inline', classification: content.classification, value: snapshotJson(content.value) };
+  }
+  if (mode === 'digest') {
+    return { contentKind: 'digest-only', classification: content.classification, digest };
+  }
+  const descriptor = await ports.contentStore?.put({
+    ...snapshotJson(content),
+    digest,
+    mediaType: content.mediaType ?? 'application/json',
+  });
+  if (descriptor === undefined || descriptor.digest !== digest) {
+    throw new EvaluationPortFailure({
+      code: 'content-store-invalid',
+      stage: 'infrastructure',
+      message: 'ContentStore returned an invalid descriptor.',
+    });
+  }
+  return { contentKind: 'descriptor', classification: content.classification, descriptor };
+}
+
+async function normalizeObservations(
+  raw: readonly EvaluatorObservation[],
+  evaluationId: Sha256Digest,
+  evaluator: SealedRunPlan['evaluation']['evaluators'][number],
+  plan: SealedRunPlan,
+  ports: EvaluationRuntimePorts,
+): Promise<MetricObservation[]> {
+  const rawByMetric = new Map<string, EvaluatorObservation>();
+  for (const observation of raw) {
+    if (!evaluator.metricIds.includes(observation.metricId)
+        || rawByMetric.has(observation.metricId)) {
+      throw new EvaluationPortFailure({
+        code: 'evaluator-observation-set-invalid',
+        stage: 'infrastructure',
+        message: 'Evaluator returned an unknown or duplicate metric observation.',
+      });
+    }
+    rawByMetric.set(observation.metricId, observation);
+  }
+  const metrics = new Map(plan.evaluation.metrics.map((metric) => [metric.metricId, metric]));
+  const normalized: MetricObservation[] = [];
+  for (const metricId of evaluator.metricIds) {
+    const metric = metrics.get(metricId);
+    if (metric === undefined) throw new Error('Sealed metric disappeared');
+    const observationId = deriveMetricObservationId({ evaluationId, metricId });
+    const rawObservation = rawByMetric.get(metricId);
+    if (rawObservation === undefined) {
+      normalized.push({
+        observationId,
+        metricId,
+        observationStatus: 'missing',
+        valueType: metric.valueType,
+        reasonCode: 'evaluator-omitted-metric',
+      });
+      continue;
+    }
+    const evidence = await capture(rawObservation.evidence, plan, ports);
+    const base = {
+      observationId,
+      metricId,
+      ...(evidence === undefined ? {} : { evidence }),
+      ...(rawObservation.metadata === undefined
+        ? {}
+        : { metadata: snapshotJson(rawObservation.metadata) }),
+    };
+    if (rawObservation.valueType !== metric.valueType) {
+      normalized.push({
+        ...base,
+        observationStatus: 'invalid',
+        valueType: metric.valueType,
+        reasonCode: 'evaluator-value-type-mismatch',
+      });
+      continue;
+    }
+    if (rawObservation.observationStatus === 'observed'
+        && rawObservation.valueType === 'numeric'
+        && metric.scale !== undefined
+        && ((metric.scale.min !== undefined && rawObservation.value < metric.scale.min)
+          || (metric.scale.max !== undefined && rawObservation.value > metric.scale.max))) {
+      const invalidValue = await capture({
+        value: rawObservation.value,
+        classification: 'public',
+      }, plan, ports);
+      normalized.push({
+        ...base,
+        observationStatus: 'invalid',
+        valueType: 'numeric',
+        reasonCode: 'metric-scale-out-of-range',
+        ...(invalidValue === undefined ? {} : { invalidValue }),
+      });
+      continue;
+    }
+    const capturedInvalidValue = rawObservation.observationStatus === 'invalid'
+        && rawObservation.invalidValue !== undefined
+      ? await capture(rawObservation.invalidValue, plan, ports)
+      : undefined;
+    const candidate = rawObservation.observationStatus === 'observed'
+      ? {
+        ...base,
+        observationStatus: rawObservation.observationStatus,
+        valueType: rawObservation.valueType,
+        value: snapshotJson(rawObservation.value),
+      }
+      : rawObservation.observationStatus === 'missing'
+        ? {
+          ...base,
+          observationStatus: rawObservation.observationStatus,
+          valueType: rawObservation.valueType,
+          reasonCode: rawObservation.reasonCode,
+        }
+        : {
+          ...base,
+          observationStatus: rawObservation.observationStatus,
+          valueType: rawObservation.valueType,
+          reasonCode: rawObservation.reasonCode,
+          ...(capturedInvalidValue === undefined
+            ? {}
+            : { invalidValue: capturedInvalidValue }),
+        };
+    normalized.push(parseWireDocument(MetricObservationSchema, candidate));
+  }
+  return normalized;
+}
+
+function linkAbort(parent: AbortSignal, child: AbortController): () => void {
+  const abort = (): void => child.abort(parent.reason);
+  if (parent.aborted) abort();
+  else parent.addEventListener('abort', abort, { once: true });
+  return () => parent.removeEventListener('abort', abort);
+}
+
+async function withTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number | undefined,
+  clock: EvaluationClock,
+  parent: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  const unlink = linkAbort(parent, controller);
+  const timerController = new AbortController();
+  const timer = timeoutMs === undefined
+    ? undefined
+    : clock.sleep(timeoutMs, timerController.signal).then(() => {
+      controller.abort('timeout');
+      throw new EvaluationAttemptTimeoutError();
+    });
+  const result = operation(controller.signal).catch((error: unknown) => {
+    if (controller.signal.reason === 'timeout') throw new EvaluationAttemptTimeoutError();
+    throw error;
+  });
+  try {
+    return await (timer === undefined
+      ? result
+      : Promise.race([result, timer]));
+  } finally {
+    unlink();
+    timerController.abort();
+    await timer?.catch(() => undefined);
+  }
+}
+
+class RuntimeEvents {
+  readonly #plan: SealedRunPlan;
+  readonly #ports: EvaluationRuntimePorts;
+  readonly #options: EvaluationRunOptions;
+  readonly #stream: BoundedEventStream;
+  readonly #onFatal: (reason: string, error: EvaluationError) => void;
+  #sequence = 0;
+  #writerEnabled: boolean;
+  #fatal = false;
+  #tail: Promise<void> = Promise.resolve();
+
+  constructor(
+    plan: SealedRunPlan,
+    ports: EvaluationRuntimePorts,
+    options: EvaluationRunOptions,
+    stream: BoundedEventStream,
+    onFatal: (reason: string, error: EvaluationError) => void,
+  ) {
+    this.#plan = plan;
+    this.#ports = ports;
+    this.#options = options;
+    this.#stream = stream;
+    this.#onFatal = onFatal;
+    this.#writerEnabled = plan.measurementPolicy.eventDelivery.writerMode !== 'disabled'
+      && ports.eventWriter !== undefined;
+  }
+
+  async emit(
+    eventKind: EvaluationRuntimeEventKind,
+    subjectKind: 'run' | 'evaluation' | 'attempt',
+    subjectId: string,
+    data: JsonValue,
+  ): Promise<boolean> {
+    const sequence = this.#sequence;
+    this.#sequence += 1;
+    const event = deepFreeze(parseWireDocument(EvaluationEventSchema, {
+      schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
+      eventId: digestCanonicalJson({
+        derivation: 'omk.evaluation-event-id/v1',
+        runId: this.#options.runId,
+        sequence,
+      }),
+      sequence,
+      runId: this.#options.runId,
+      eventKind,
+      time: this.#ports.clock.timestamp(),
+      subject: { subjectKind, subjectId },
+      data,
+    }));
+    const delivery = this.#tail.then(async () => {
+      if (this.#writerEnabled) {
+        try {
+          await this.#ports.eventWriter?.write(event);
+        } catch {
+          this.#writerEnabled = false;
+          if (this.#plan.measurementPolicy.eventDelivery.writerFailureMode === 'fail-run') {
+            this.#fatal = true;
+            this.#onFatal('evaluation-event-writer-failed', {
+              code: 'evaluation-event-writer-failed',
+              stage: 'infrastructure',
+              message: 'Evaluation EventWriter failed under fail-run policy.',
+            });
+          }
+        }
+      }
+      this.#stream.push(event);
+    });
+    this.#tail = delivery.catch(() => undefined);
+    await delivery;
+    return !this.#fatal;
+  }
+
+  close(): void { this.#stream.close(); }
+}
+
+class Sessions {
+  readonly #plan: SealedRunPlan;
+  readonly #options: EvaluationRunOptions;
+  readonly #sessions = new Map<string, Promise<EvaluationEvaluatorRun>>();
+
+  constructor(plan: SealedRunPlan, options: EvaluationRunOptions) {
+    this.#plan = plan;
+    this.#options = options;
+  }
+
+  get(binding: EvaluatorBinding): Promise<EvaluationEvaluatorRun> {
+    const current = this.#sessions.get(binding.evaluator.implementationId);
+    if (current !== undefined) return current;
+    const session = Promise.resolve(binding.port.openRun(deepFreeze(snapshotJson({
+      runId: this.#options.runId,
+      evaluationPlanDigest: this.#plan.evaluation.evaluationPlanDigest as Sha256Digest,
+    }))));
+    this.#sessions.set(binding.evaluator.implementationId, session);
+    return session;
+  }
+
+  async dispose(): Promise<boolean> {
+    let failed = false;
+    for (const session of this.#sessions.values()) {
+      try { await (await session).dispose(); } catch { failed = true; }
+    }
+    return failed;
+  }
+}
+
+class Budget {
+  readonly #max?: number;
+  readonly #cost?: { amount: number; currency: string };
+  #used = 0;
+  #providerCost = 0;
+
+  constructor(plan: SealedRunPlan) {
+    this.#max = plan.evaluation.policy.runtime.budget.maxEvaluatorInvocations;
+    this.#cost = plan.evaluation.policy.runtime.budget.maxProviderCost;
+  }
+
+  take(): boolean {
+    if (this.#max !== undefined && this.#used >= this.#max) return false;
+    this.#used += 1;
+    return true;
+  }
+
+  record(usage: UsageRecord | undefined): EvaluationError | undefined {
+    if (this.#cost === undefined) return undefined;
+    if (usage?.providerCost === undefined) return {
+      code: 'provider-cost-unreported',
+      stage: 'infrastructure',
+      message: 'Provider cost budget requires every evaluator invocation to report cost.',
+    };
+    if (usage.providerCost.currency !== this.#cost.currency) return {
+      code: 'provider-cost-currency-mismatch',
+      stage: 'infrastructure',
+      message: 'Evaluator cost currency differs from the sealed budget currency.',
+    };
+    this.#providerCost += usage.providerCost.amount;
+    return undefined;
+  }
+
+  get exhausted(): boolean {
+    return this.#cost !== undefined && this.#providerCost >= this.#cost.amount;
+  }
+}
+
+function notEvaluatedRecord(
+  plan: SealedRunPlan,
+  binding: EvaluatorBinding,
+  coordinate: PlannedEvaluationCoordinate,
+  reason: string,
+  time: string,
+  source?: ExecutionRecord,
+): Extract<EvaluationRecord, { evaluationStatus: 'not-evaluated' }> {
+  return {
+    ...coordinate,
+    runtime: snapshotJson(binding.runtime),
+    provenance: {
+      provenanceKind: 'native',
+      trust: 'verified',
+      parentDigests: [plan.evaluation.evaluationPlanDigest],
+    },
+    evaluationStatus: 'not-evaluated',
+    notEvaluatedReasonCode: reason,
+    notEvaluatedAt: time,
+    ...(source === undefined ? {} : { sourceRecordDigest: digestCanonicalJson(source) }),
+  };
+}
+
+function cacheKey(
+  plan: SealedRunPlan,
+  coordinate: PlannedEvaluationCoordinate,
+  binding: EvaluatorBinding,
+  sourceRecordDigest: Sha256Digest,
+  bindings: readonly EvaluatorBindingValue[],
+): Sha256Digest {
+  return digestCanonicalJson({
+    derivation: 'omk.evaluation-cache-key/v1',
+    evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
+    evaluationId: coordinate.evaluationId,
+    evaluatorRuntime: binding.runtime,
+    sourceRecordDigest,
+    bindings,
+  });
+}
+
+function replayRecord(
+  entry: EvaluationCacheEntry,
+  key: Sha256Digest,
+  coordinate: PlannedEvaluationCoordinate,
+  binding: EvaluatorBinding,
+  sourceRecordDigest: Sha256Digest,
+): CompletedRecord {
+  if (entry.cacheKeyDigest !== key
+      || entry.cachedRecordDigest !== digestCanonicalJson(entry.record)
+      || entry.record.evaluationId !== coordinate.evaluationId
+      || entry.record.sourceRecordDigest !== sourceRecordDigest
+      || canonicalizeJson(entry.record.runtime) !== canonicalizeJson(binding.runtime)) {
+    throw new EvaluationPortFailure({
+      code: 'evaluation-cache-entry-invalid',
+      stage: 'infrastructure',
+      message: 'Evaluation cache entry does not match its sealed coordinate.',
+    });
+  }
+  return {
+    ...snapshotJson(entry.record),
+    provenance: {
+      provenanceKind: 'replay',
+      trust: 'verified',
+      parentDigests: [entry.cachedRecordDigest],
+    },
+    cache: {
+      cacheStatus: 'transparent-hit',
+      cacheKeyDigest: key,
+      sourceRecordDigest: entry.cachedRecordDigest,
+    },
+  };
+}
+
+async function evaluateCoordinate(
+  plan: SealedRunPlan,
+  ports: EvaluationRuntimePorts,
+  prepared: PreparedRuntime,
+  sessions: Sessions,
+  events: RuntimeEvents,
+  budget: Budget,
+  coordinate: PlannedEvaluationCoordinate,
+  source: ExecutionRecord | undefined,
+  signal: AbortSignal,
+  setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
+): Promise<{ record?: EvaluationRecord; cacheEntry?: EvaluationCacheEntry }> {
+  const binding = prepared.bindings.get(coordinate.evaluatorId);
+  if (binding === undefined) throw new Error('Evaluator binding disappeared');
+  if (source?.executionStatus !== 'completed') {
+    const record = notEvaluatedRecord(
+      plan,
+      binding,
+      coordinate,
+      source === undefined ? 'execution-record-unavailable' : `execution-${source.executionStatus}`,
+      ports.clock.timestamp(),
+      source,
+    );
+    await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
+      reasonCode: record.notEvaluatedReasonCode,
+    });
+    return { record };
+  }
+  let bindings: EvaluatorBindingValue[] | undefined;
+  try { bindings = await materializeBindings(plan, source, binding.evaluator, ports); } catch (error) {
+    setStop('failed', 'evaluation-content-resolution-failed', safeError(error));
+    return {};
+  }
+  if (bindings === undefined) {
+    const record = notEvaluatedRecord(
+      plan,
+      binding,
+      coordinate,
+      'evaluator-input-unavailable',
+      ports.clock.timestamp(),
+      source,
+    );
+    await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
+      reasonCode: record.notEvaluatedReasonCode,
+    });
+    return { record };
+  }
+  const sourceRecordDigest = digestCanonicalJson(source);
+  const key = cacheKey(plan, coordinate, binding, sourceRecordDigest, bindings);
+  if (plan.evaluation.policy.evaluationCacheMode === 'reuse') {
+    try {
+      const entry = await ports.cache?.get(key);
+      if (entry !== undefined) {
+        const record = replayRecord(entry, key, coordinate, binding, sourceRecordDigest);
+        await events.emit('evaluation.cache.hit', 'evaluation', coordinate.evaluationId, {
+          cacheKeyDigest: key,
+        });
+        return { record };
+      }
+      await events.emit('evaluation.cache.miss', 'evaluation', coordinate.evaluationId, {
+        cacheKeyDigest: key,
+      });
+    } catch (error) {
+      setStop('failed', 'evaluation-cache-read-failed', safeError(error));
+      return {};
+    }
+  }
+  if (!budget.take()) {
+    setStop('budget-exhausted', 'evaluator-invocation-budget-exhausted');
+    return {};
+  }
+
+  const attempts: EvaluationAttempt[] = [];
+  const usages: (UsageRecord | undefined)[] = [];
+  const startedAt = ports.clock.timestamp();
+  const startedMono = ports.clock.monotonicNow();
+  let terminalError: EvaluationError | undefined;
+  let observations: MetricObservation[] | undefined;
+  let evidence: CapturedContent | undefined;
+  let evaluatorRecord: Awaited<ReturnType<EvaluationEvaluatorRun['openRecord']>> | undefined;
+  let resourceClean = true;
+  await events.emit('evaluation.record.started', 'evaluation', coordinate.evaluationId, {
+    targetId: coordinate.targetId,
+    sampleId: coordinate.sampleId,
+    trialIndex: coordinate.trialIndex,
+    evaluatorId: coordinate.evaluatorId,
+  });
+  try {
+    const session = await sessions.get(binding);
+    evaluatorRecord = await session.openRecord(deepFreeze(snapshotJson({
+      ...coordinate,
+      ...(binding.evaluator.config === undefined
+        ? {}
+        : { evaluatorConfig: binding.evaluator.config as JsonValue }),
+      bindings,
+    })) as Parameters<EvaluationEvaluatorRun['openRecord']>[0]);
+    const activeEvaluatorRecord = evaluatorRecord;
+    const retry = plan.evaluation.policy.runtime.retry;
+    for (let attemptNumber = 1; attemptNumber <= retry.maxAttempts; attemptNumber += 1) {
+      if (attemptNumber > 1 && !budget.take()) {
+        setStop('budget-exhausted', 'evaluator-invocation-budget-exhausted');
+        break;
+      }
+      const attemptId = deriveEvaluationAttemptId({
+        evaluationId: coordinate.evaluationId,
+        attemptNumber,
+      });
+      const attemptStartedAt = ports.clock.timestamp();
+      const attemptStartedMono = ports.clock.monotonicNow();
+      await events.emit('evaluation.attempt.started', 'attempt', attemptId, {
+        evaluationId: coordinate.evaluationId,
+        attemptNumber,
+      });
+      try {
+        const result = await withTimeout(
+          (attemptSignal) => activeEvaluatorRecord.evaluate(deepFreeze({
+            attemptId,
+            attemptNumber,
+            signal: attemptSignal,
+          })),
+          plan.evaluation.policy.runtime.timeoutMs,
+          ports.clock,
+          signal,
+        );
+        observations = await normalizeObservations(
+          result.observations,
+          coordinate.evaluationId,
+          binding.evaluator,
+          plan,
+          ports,
+        );
+        evidence = await capture(result.evidence, plan, ports);
+        const completedAt = ports.clock.timestamp();
+        attempts.push({
+          attemptId,
+          attemptNumber,
+          attemptStatus: 'completed',
+          timing: {
+            startedAt: attemptStartedAt,
+            completedAt,
+            durationMs: durationMs(attemptStartedMono, ports.clock.monotonicNow()),
+          },
+          ...(result.usage === undefined ? {} : { usage: snapshotJson(result.usage) }),
+        });
+        usages.push(result.usage === undefined ? undefined : snapshotJson(result.usage));
+        const budgetError = budget.record(result.usage);
+        if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
+        await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
+          attemptNumber,
+          attemptStatus: 'completed',
+        });
+        break;
+      } catch (error) {
+        const timeoutMs = plan.evaluation.policy.runtime.timeoutMs;
+        const failure = !signal.aborted
+            && timeoutMs !== undefined
+            && durationMs(attemptStartedMono, ports.clock.monotonicNow()) >= timeoutMs
+          ? safeError(new EvaluationAttemptTimeoutError())
+          : safeError(error);
+        const cancelled = signal.aborted;
+        const completedAt = ports.clock.timestamp();
+        const usage = error instanceof EvaluationPortFailure ? error.usage : undefined;
+        attempts.push({
+          attemptId,
+          attemptNumber,
+          attemptStatus: cancelled ? 'cancelled' : 'failed',
+          timing: {
+            startedAt: attemptStartedAt,
+            completedAt,
+            durationMs: durationMs(attemptStartedMono, ports.clock.monotonicNow()),
+          },
+          error: failure,
+          ...(usage === undefined ? {} : { usage: snapshotJson(usage) }),
+        });
+        usages.push(usage);
+        terminalError = failure;
+        await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
+          attemptNumber,
+          attemptStatus: cancelled ? 'cancelled' : 'failed',
+          errorCode: failure.code,
+        });
+        if (cancelled || !retry.retryableErrorCodes.includes(failure.code)
+            || attemptNumber === retry.maxAttempts) break;
+        const delay = retry.backoff.backoffKind === 'none'
+          ? 0
+          : retry.backoff.backoffKind === 'fixed'
+            ? retry.backoff.initialDelayMs
+            : Math.min(
+              retry.backoff.initialDelayMs * (2 ** (attemptNumber - 1)),
+              retry.backoff.maxDelayMs ?? Number.MAX_SAFE_INTEGER,
+            );
+        await events.emit('evaluation.retry.scheduled', 'evaluation', coordinate.evaluationId, {
+          attemptNumber: attemptNumber + 1,
+          delayMs: delay,
+          errorCode: failure.code,
+        });
+        if (delay > 0) await ports.clock.sleep(delay, signal);
+      }
+    }
+  } catch (error) {
+    terminalError = safeError(error);
+    if (attempts.length === 0) {
+      setStop('failed', 'evaluator-resource-open-failed', terminalError);
+      return {};
+    }
+  } finally {
+    if (evaluatorRecord !== undefined) {
+      try { await evaluatorRecord.dispose(); } catch {
+        resourceClean = false;
+        setStop('failed', 'evaluator-record-dispose-failed', {
+          code: 'evaluator-record-dispose-failed',
+          stage: 'infrastructure',
+          message: 'Evaluator record resource disposal failed.',
+        });
+      }
+    }
+  }
+  if (attempts.length === 0) return {};
+  const finalStatus = attempts.at(-1)?.attemptStatus;
+  const base = {
+    ...coordinate,
+    runtime: snapshotJson(binding.runtime),
+    provenance: {
+      provenanceKind: 'native' as const,
+      trust: 'verified' as const,
+      parentDigests: [plan.evaluation.evaluationPlanDigest],
+    },
+    sourceRecordDigest,
+    attempts,
+    timing: {
+      startedAt,
+      completedAt: ports.clock.timestamp(),
+      durationMs: durationMs(startedMono, ports.clock.monotonicNow()),
+    },
+    ...(aggregateUsage(usages) === undefined ? {} : { usage: aggregateUsage(usages) }),
+    ...(evidence === undefined ? {} : { evidence }),
+    cache: plan.evaluation.policy.evaluationCacheMode === 'disabled'
+      ? { cacheStatus: 'not-used' as const }
+      : { cacheStatus: 'miss' as const, cacheKeyDigest: key },
+  };
+  const record: ActiveRecord = finalStatus === 'completed' && observations !== undefined
+    ? { ...base, evaluationStatus: 'completed', observations }
+    : finalStatus === 'cancelled'
+      ? {
+        ...base,
+        evaluationStatus: 'cancelled',
+        ...(terminalError === undefined ? {} : { error: terminalError }),
+      }
+      : {
+        ...base,
+        evaluationStatus: 'failed',
+        error: terminalError ?? {
+          code: 'evaluation-failed',
+          stage: 'evaluation',
+          message: 'Evaluation failed without a terminal error.',
+        },
+      };
+  await events.emit('evaluation.record.completed', 'evaluation', coordinate.evaluationId, {
+    evaluationStatus: record.evaluationStatus,
+  });
+  const cacheEntry = record.evaluationStatus === 'completed'
+      && resourceClean
+      && plan.evaluation.policy.evaluationCacheMode === 'reuse'
+    ? {
+      cacheKeyDigest: key,
+      cachedRecordDigest: digestCanonicalJson(record),
+      record: snapshotJson(record),
+    } satisfies EvaluationCacheEntry
+    : undefined;
+  return { record, ...(cacheEntry === undefined ? {} : { cacheEntry }) };
+}
+
+function replayability(records: readonly EvaluationRecord[]): EvaluationBundle['replayability'] {
+  const captured = records.flatMap((record) => {
+    if (record.evaluationStatus === 'not-evaluated') return [];
+    return [
+      record.evidence,
+      ...(record.evaluationStatus === 'completed'
+        ? record.observations.flatMap((observation) => [
+          observation.evidence,
+          observation.observationStatus === 'invalid' ? observation.invalidValue : undefined,
+        ])
+        : []),
+    ].filter((content): content is CapturedContent => content !== undefined);
+  });
+  if (captured.every((content) => content.contentKind === 'inline')) return 'self-contained';
+  if (captured.every((content) => content.contentKind !== 'digest-only')
+      && captured.some((content) => content.contentKind === 'descriptor')) return 'resolvable';
+  return 'summary-only';
+}
+
+function makeBundle(
+  plan: SealedRunPlan,
+  source: ExecutionBundle,
+  options: EvaluationRunOptions,
+  records: EvaluationRecord[],
+  planned: number,
+  stop: StopState,
+): EvaluationBundle {
+  records.sort(compareRecords);
+  const sourceUnavailable = records.filter(
+    (record) => record.evaluationStatus === 'not-evaluated',
+  ).length;
+  const completed = records.filter((record) => record.evaluationStatus === 'completed').length;
+  const failed = records.filter((record) => record.evaluationStatus === 'failed').length;
+  const cancelled = records.filter((record) => record.evaluationStatus === 'cancelled').length;
+  const started = completed + failed + cancelled;
+  const eligible = planned - sourceUnavailable;
+  const bundle: EvaluationBundle = {
+    schemaVersion: EVALUATION_BUNDLE_SCHEMA_VERSION,
+    bundleId: options.bundleId,
+    runContractDigest: plan.digests.runContractDigest,
+    executionBundleDigest: source.bundleDigest,
+    evaluationPlanDigest: plan.digests.evaluationPlanDigest,
+    evaluationInputDigest: plan.digests.evaluationInputDigest,
+    evaluationBundleStatus: stop.stopKind ?? 'completed',
+    ...(stop.reason === undefined ? {} : { terminationReasonCode: stop.reason }),
+    coverage: {
+      planned,
+      eligible,
+      sourceUnavailable,
+      started,
+      completed,
+      failed,
+      cancelled,
+      notStarted: eligible - started,
+    },
+    replayability: replayability(records),
+    records,
+    provenance: {
+      provenanceKind: 'native',
+      trust: 'verified',
+      parentDigests: [source.bundleDigest, plan.evaluation.evaluationPlanDigest],
+      ...(stop.error === undefined
+        ? {}
+        : { facets: snapshotJson({ terminalError: stop.error }) as unknown as JsonValue }),
+    },
+    bundleDigest: `sha256:${'0'.repeat(64)}`,
+  };
+  bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
+  return parseEvaluationBundle(bundle, plan, source);
+}
+
+function terminalKind(status: EvaluationBundle['evaluationBundleStatus']): EvaluationRuntimeEventKind {
+  if (status === 'completed') return 'evaluation.run.completed';
+  if (status === 'cancelled') return 'evaluation.run.cancelled';
+  if (status === 'budget-exhausted') return 'evaluation.run.budget-exhausted';
+  return 'evaluation.run.failed';
+}
+
+async function runEvaluation(
+  plan: SealedRunPlan,
+  ports: EvaluationRuntimePorts,
+  options: EvaluationRunOptions,
+  prepared: PreparedRuntime,
+  stream: BoundedEventStream,
+): Promise<EvaluationBundle> {
+  const coordinates = derivePlannedEvaluationCoordinates(plan);
+  const sourceByTrial = new Map(prepared.source.records.map((record) => [trialKey(record), record]));
+  const records = new Map<string, EvaluationRecord>();
+  const pendingCache: EvaluationCacheEntry[] = [];
+  const stop: StopState = {};
+  const controller = new AbortController();
+  const setStop = (stopKind: StopKind, reason: string, error?: EvaluationError): void => {
+    if (stop.stopKind !== undefined) return;
+    stop.stopKind = stopKind;
+    stop.reason = reason;
+    if (error !== undefined) stop.error = error;
+    if (stopKind !== 'budget-exhausted') controller.abort(reason);
+  };
+  const externalAbort = (): void => setStop('cancelled', 'external-cancellation');
+  if (options.signal?.aborted) externalAbort();
+  else options.signal?.addEventListener('abort', externalAbort, { once: true });
+  const events = new RuntimeEvents(plan, ports, options, stream, (reason, error) => {
+    setStop('failed', reason, error);
+  });
+  const sessions = new Sessions(plan, options);
+  const budget = new Budget(plan);
+  const durationController = new AbortController();
+  const duration = plan.evaluation.policy.runtime.budget.maxDurationMs === undefined
+    ? undefined
+    : ports.clock.sleep(
+      plan.evaluation.policy.runtime.budget.maxDurationMs,
+      durationController.signal,
+    ).then(() => setStop('budget-exhausted', 'evaluation-duration-budget-exhausted'))
+      .catch(() => undefined);
+  try {
+    await events.emit('evaluation.run.started', 'run', options.runId, {
+      evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
+      executionBundleDigest: prepared.source.bundleDigest,
+      planned: coordinates.length,
+    });
+    for (const coordinate of coordinates) {
+      const source = sourceByTrial.get(trialKey(coordinate));
+      if (source?.executionStatus === 'completed') continue;
+      const binding = prepared.bindings.get(coordinate.evaluatorId);
+      if (binding === undefined) throw new Error('Evaluator binding disappeared');
+      const record = notEvaluatedRecord(
+        plan,
+        binding,
+        coordinate,
+        source === undefined ? 'execution-record-unavailable' : `execution-${source.executionStatus}`,
+        ports.clock.timestamp(),
+        source,
+      );
+      records.set(record.evaluationId, record);
+      await events.emit('evaluation.record.not-evaluated', 'evaluation', coordinate.evaluationId, {
+        reasonCode: record.notEvaluatedReasonCode,
+      });
+    }
+    const eligibleCoordinates = coordinates.filter((coordinate) => (
+      sourceByTrial.get(trialKey(coordinate))?.executionStatus === 'completed'
+    ));
+    const width = plan.evaluation.policy.runtime.maxConcurrency;
+    for (let offset = 0;
+      offset < eligibleCoordinates.length && stop.stopKind === undefined;
+      offset += width) {
+      const batch = eligibleCoordinates.slice(offset, offset + width);
+      const results = await Promise.all(batch.map((coordinate) => evaluateCoordinate(
+        plan,
+        ports,
+        prepared,
+        sessions,
+        events,
+        budget,
+        coordinate,
+        sourceByTrial.get(trialKey(coordinate)),
+        controller.signal,
+        setStop,
+      )));
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        if (result.record !== undefined) records.set(result.record.evaluationId, result.record);
+        if (result.cacheEntry !== undefined) pendingCache.push(result.cacheEntry);
+      }
+      const failures = results.filter((result) => result.record?.evaluationStatus === 'failed').length;
+      const totalFailures = [...records.values()].filter(
+        (record) => record.evaluationStatus === 'failed',
+      ).length;
+      const policy = plan.evaluation.policy.failure;
+      if (stop.stopKind === undefined && policy.failureMode === 'fail-fast' && failures > 0) {
+        setStop('failed', 'evaluation-failure-policy-fail-fast');
+      } else if (stop.stopKind === undefined
+          && policy.failureMode === 'failure-threshold'
+          && totalFailures > (policy.maxFailures ?? 0)) {
+        setStop('failed', 'evaluation-failure-policy-threshold');
+      } else if (stop.stopKind === undefined && budget.exhausted) {
+        setStop('budget-exhausted', 'evaluation-provider-cost-budget-exhausted');
+      }
+    }
+  } catch (error) {
+    setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
+  } finally {
+    durationController.abort();
+    await duration;
+    options.signal?.removeEventListener('abort', externalAbort);
+    if (await sessions.dispose()) {
+      setStop('failed', 'evaluator-run-dispose-failed', {
+        code: 'evaluator-run-dispose-failed',
+        stage: 'infrastructure',
+        message: 'Evaluator run resource disposal failed.',
+      });
+    }
+    if (stop.stopKind === undefined) {
+      for (const entry of pendingCache.sort((left, right) => (
+        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+      ))) {
+        try { await ports.cache?.put(entry); } catch {
+          setStop('failed', 'evaluation-cache-write-failed', {
+            code: 'evaluation-cache-write-failed',
+            stage: 'infrastructure',
+            message: 'Evaluation cache write failed.',
+          });
+          break;
+        }
+      }
+    }
+  }
+  let bundle = makeBundle(
+    plan,
+    prepared.source,
+    options,
+    [...records.values()],
+    coordinates.length,
+    stop,
+  );
+  const terminalDelivered = await events.emit(
+    terminalKind(bundle.evaluationBundleStatus),
+    'run',
+    options.runId,
+    {
+    bundleDigest: bundle.bundleDigest,
+    evaluationBundleStatus: bundle.evaluationBundleStatus,
+    coverage: bundle.coverage,
+    },
+  );
+  if (!terminalDelivered) {
+    bundle = makeBundle(
+      plan,
+      prepared.source,
+      options,
+      [...records.values()],
+      coordinates.length,
+      stop,
+    );
+    await events.emit(terminalKind(bundle.evaluationBundleStatus), 'run', options.runId, {
+      bundleDigest: bundle.bundleDigest,
+      evaluationBundleStatus: bundle.evaluationBundleStatus,
+      coverage: bundle.coverage,
+    });
+  }
+  events.close();
+  return bundle;
+}
+
+export function startEvaluation(
+  plan: SealedRunPlan,
+  source: unknown,
+  ports: EvaluationRuntimePorts,
+  options: EvaluationRunOptions,
+): EvaluationRun {
+  const prepared = prepareRuntime(plan, source, ports, options);
+  const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  return {
+    events: stream,
+    result: runEvaluation(plan, ports, options, prepared, stream),
+  };
+}
+
+export async function evaluateExecutionBundle(
+  plan: SealedRunPlan,
+  source: unknown,
+  ports: EvaluationRuntimePorts,
+  options: EvaluationRunOptions,
+): Promise<EvaluationBundle> {
+  return startEvaluation(plan, source, ports, options).result;
+}

@@ -255,6 +255,7 @@ interface MeasurementPolicy {
   execution: ExecutionPolicy;
   retry: RetryPolicy;
   budget: BudgetPolicy;
+  evaluation: EvaluationRuntimePolicy;
   cache: CachePolicy;
   evidence: EvidencePolicy;
   failure: FailurePolicy;
@@ -577,7 +578,19 @@ Digest 边界是可执行契约：
 
 [#431](https://github.com/lizhiyao/oh-my-knowledge/issues/431) 在 Execution 开工前加固 v1：SamplingDesign 显式封存 seed coupling；protocol manifest 拆分资源生命周期与 trial state；Execution identity 使用 domain separation；ExecutionBundle 把 active／censored record、terminal status、coverage 和 replayability 分开建模。因为尚无历史用户需要迁移，这些修改直接收敛 v1，不保留旧字段兼容层。
 
-## 十八、行业参考
+## 十八、Evaluation Runtime v1 实现基线
+
+[#435](https://github.com/lizhiyao/oh-my-knowledge/issues/435) 把 record-scoped 重评分实现为独立阶段。其 ports 只暴露 Evaluator、内容解析／存储、cache、clock 和 EventWriter，Evaluation API 无法触达 Executor。`startEvaluation(plan, executionBundle, ports, options)` 会在异步工作开始前同步校验 sealed source bundle。
+
+Evaluation coordinate 使用 canonical `(targetId, sampleId, trialIndex, evaluatorId)` 顺序。`evaluationId`、attempt ID 和 observation ID 使用 domain-separated digest 派生。每条 active EvaluationRecord 都绑定准确的 canonical ExecutionRecord digest 和已解析的 Evaluator RuntimeIdentity。cache key 还绑定 EvaluationPlan、物化后的输入与 source record，因此 Gold、Evaluator identity、binding 或 execution evidence 任一变化都不能静默复用旧评分。
+
+Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider cost 预算统一封存在 `MeasurementPolicy.evaluation`，start-time options 不得覆盖。每次 attempt 的 timing、usage 与 provider-reported cost 保留为原始事实。只有 evaluator record／run 资源全部正常关闭后才提交 cache。Event delivery 复用阶段中立的 sealed EventDeliveryPolicy。
+
+缺失必须保留来源。未完成的 execution 或无法解析的必要 binding 产生 `not-evaluated`，绝不伪造零分或默认分。Evaluator 省略 metric 时生成显式 missing observation；未知／重复 metric 属于 Evaluator failure；value type 不匹配和数值越界产生 invalid observation，不做 coercion 或 clamp。Evaluator 只能产生 sample-scoped metric，聚合仍由 AnalysisGraph 负责。
+
+`parseEvaluationBundleDocument()` 校验独立 wire shape、状态转换、identity、coverage、replayability 和 digest。`parseEvaluationBundle()` 再绑定 sealed RunPlan 与已验证的 ExecutionBundle，核对完整 coordinate universe、source digest、Runtime identity、metric contract、retry 规则和调用预算。Coverage 满足 `planned = eligible + sourceUnavailable`、`eligible = started + notStarted` 和 `started = completed + failed + cancelled`。
+
+## 十九、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；
