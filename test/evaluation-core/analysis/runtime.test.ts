@@ -4,6 +4,7 @@ import {
   digestCanonicalJson,
   parseAnalysisBundle,
   parseEvaluationReport,
+  schemaIdentityKey,
   type AnalysisBundle,
   type EvaluationBundle,
   type RuntimeIdentity,
@@ -25,6 +26,7 @@ import {
 } from '../../../src/evaluation-core/evaluation/index.js';
 import {
   analyzeEvaluationBundle,
+  BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
   createBuiltinDecisionPolicies,
@@ -239,6 +241,76 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     await expect(makePlan((definition) => {
       definition.analysisGraph.nodes[0].parameters = { minimumCoverage: 0.8 };
     })).rejects.toMatchObject({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' });
+  });
+
+  it('rejects progress/v1 over an unsupported hypothesis table during preparation', async () => {
+    const base = analysisAwareRuntime();
+    const parameterSchema = {
+      schemaVersion: 'test.empty-parameters/v1',
+      schemaUri: 'urn:test:parameters:empty:v1',
+      schemaDigest: digestCanonicalJson({ type: 'object', additionalProperties: false }),
+    };
+    const schemaValidators = new Map(base.schemaValidators);
+    schemaValidators.set(schemaIdentityKey(parameterSchema), {
+      schema: parameterSchema,
+      parse(value: unknown) {
+        if (value === null || Array.isArray(value) || typeof value !== 'object'
+            || Object.keys(value).length !== 0) {
+          throw new TypeError('Expected empty parameters.');
+        }
+        return {};
+      },
+    });
+    const producerIdentity: RuntimeIdentity = {
+      implementationId: 'test.hypothesis-table/v1',
+      version: '1.0.0',
+      fingerprint: digestCanonicalJson({ implementationId: 'test.hypothesis-table/v1' }),
+      fingerprintBasis: 'content-derived',
+      assuranceLevel: 'verified',
+      capabilities: {
+        capabilityKind: 'analysis-node',
+        analysisNodeKinds: ['reducer'],
+        inputDomains: [{
+          inputKind: 'metric-observations',
+          valueTypes: ['boolean'],
+          missingPolicyIds: ['exclude/v1'],
+        }],
+        outputSchema: BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
+        parameterSchema,
+        inputCardinalities: {
+          metricObservations: { min: 1, max: 1 },
+          analysisResults: { min: 0, max: 0 },
+          comparisons: { min: 0, max: 0 },
+        },
+        schemas: [],
+      },
+    };
+    const runtime: PreparationRuntime = {
+      ...base,
+      schemaValidators,
+      resolveAnalysis(requirement) {
+        if (requirement.requirementKind === 'analysis-node'
+            && requirement.implementationId === producerIdentity.implementationId) {
+          return { identity: producerIdentity, satisfiesVersionConstraint: true };
+        }
+        return base.resolveAnalysis(requirement);
+      },
+    };
+    const definition = validDefinition();
+    definition.analysisGraph.nodes = [{
+      analysisNodeKind: 'reducer',
+      nodeId: 'hypothesis-table',
+      implementationId: producerIdentity.implementationId,
+      inputs: [{ inputKind: 'metric-observations', referenceId: 'correct' }],
+      outputResultId: 'hypothesis-table-result',
+    }];
+    definition.decisionPolicy!.analysisResultIds = ['hypothesis-table-result'];
+
+    await expect(prepareEvaluationPlan(
+      definition,
+      validPolicy(),
+      runtime,
+    )).rejects.toMatchObject({ code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED' });
   });
 
   it('derives a validated AnalysisBundle, decision, and materialized Report', async () => {

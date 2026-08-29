@@ -201,6 +201,14 @@ describe('Evaluation Core built-in estimators', () => {
       parameters: { resamples: 64, alpha: 0.1 },
       inputFacts: { resamplingUnitCount: 2 },
     })).toEqual(intervalExcludingEstimate);
+    expect(() => interval?.parse({
+      ...intervalEnvelope,
+      value: { ...intervalEnvelope.value, lower: 2, upper: 0 },
+    }, {
+      validationKind: 'analysis-output',
+      parameters: { resamples: 64, alpha: 0.1 },
+      inputFacts: { resamplingUnitCount: 2 },
+    })).toThrow(/lower <= upper/);
 
     const hypothesisEnvelope = {
       resultType: 'table',
@@ -371,7 +379,13 @@ describe('Evaluation Core built-in estimators', () => {
   it('selects the exact bound effect for the progress decision', async () => {
     const progress = createBuiltinDecisionPolicies().get('progress/v1');
     if (progress === undefined) throw new Error('missing progress policy');
-    expect(progress.identity.capabilities).toMatchObject({ multipleComparisonPolicyIds: [] });
+    expect(progress.identity.capabilities).toMatchObject({
+      analysisResultSchemaUris: [
+        BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri,
+        BUILTIN_SCALAR_RESULT_SCHEMA.schemaUri,
+      ].sort(),
+      multipleComparisonPolicyIds: [],
+    });
     const context = {
       policy: { parameters: { threshold: 0, equivalence: 0 } },
       results: [

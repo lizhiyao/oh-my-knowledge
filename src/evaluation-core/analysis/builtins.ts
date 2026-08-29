@@ -59,7 +59,15 @@ const IntervalEnvelopeSchema = z.object({
     unitCount: z.number().int().positive().safe(),
     method: z.literal('percentile'),
   }).strict(),
-}).strict();
+}).strict().superRefine((envelope, context) => {
+  if (envelope.value.lower > envelope.value.upper) {
+    context.addIssue({
+      code: 'custom',
+      path: ['value'],
+      message: 'Interval bounds must satisfy lower <= upper',
+    });
+  }
+});
 const HypothesisInputEnvelopeSchema = z.object({
   resultType: z.literal('table'),
   value: z.object({
@@ -131,6 +139,7 @@ export const BUILTIN_INTERVAL_RESULT_SCHEMA = schemaIdentity(
   'omk.analysis-result.percentile-interval/v1',
   'urn:omk:analysis-result:percentile-interval:v1',
   jsonSchema(IntervalEnvelopeSchema, [
+    'lower<=upper',
     'resamples equals the sealed node parameter resamples',
     'confidenceLevel equals 1 minus the sealed node parameter alpha',
     'unitCount equals the Core-derived count of included resampling units',
@@ -261,7 +270,6 @@ const EXCLUDE_CAPABILITIES: JsonValue = {
 const DECISION_CAPABILITIES: JsonValue = {
   capabilityKind: 'decision-policy',
   analysisResultSchemaUris: [
-    BUILTIN_HYPOTHESIS_TABLE_SCHEMA.schemaUri,
     BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri,
     BUILTIN_SCALAR_RESULT_SCHEMA.schemaUri,
   ].sort(),
