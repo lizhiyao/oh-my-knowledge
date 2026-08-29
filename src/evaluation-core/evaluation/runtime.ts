@@ -347,12 +347,13 @@ async function materializeBindings(
   evaluator: SealedRunPlan['evaluation']['evaluators'][number],
   ports: EvaluationRuntimePorts,
   signal: AbortSignal,
+  shouldStop: () => boolean,
 ): Promise<EvaluatorBindingValue[] | undefined> {
   const sample = plan.evaluation.samples.find((candidate) => candidate.sampleId === record.sampleId);
   if (sample === undefined) throw new Error('Sealed evaluation sample disappeared');
   const result: EvaluatorBindingValue[] = [];
   for (const input of evaluator.inputs) {
-    if (signal.aborted) throw new EvaluationAttemptCancelledError();
+    if (signal.aborted || shouldStop()) throw new EvaluationAttemptCancelledError();
     let source: EvaluationContent | undefined;
     if (input.sourceKind === 'output') {
       source = record.executionStatus === 'completed'
@@ -369,7 +370,7 @@ async function materializeBindings(
         classification: 'gold',
       };
     }
-    if (signal.aborted) throw new EvaluationAttemptCancelledError();
+    if (signal.aborted || shouldStop()) throw new EvaluationAttemptCancelledError();
     if (source === undefined) return undefined;
     try {
       result.push({
@@ -565,12 +566,15 @@ async function withTimeout<T>(
         resultKind: 'timeout' as const,
       })),
     ]);
+    if (winner.resultKind === 'timeout') {
+      controller.abort('timeout');
+      await operationResult.catch(() => undefined);
+      if (parent.aborted) throw new EvaluationAttemptCancelledError();
+      throw new EvaluationAttemptTimeoutError();
+    }
     if (parent.aborted) throw new EvaluationAttemptCancelledError();
     if (winner.resultKind === 'value') return winner.value;
-    if (winner.resultKind === 'error') throw winner.error;
-    controller.abort('timeout');
-    await operationResult.catch(() => undefined);
-    throw new EvaluationAttemptTimeoutError();
+    throw winner.error;
   } finally {
     unlink();
     timerController.abort();
@@ -743,6 +747,12 @@ function replayRecord(
   const record = parsedRecord.data;
   const expectedMetricIds = binding.evaluator.metricIds;
   const metrics = new Map(plan.evaluation.metrics.map((metric) => [metric.metricId, metric]));
+  const expectedTrust = minimumTrust(sourceTrust, runtimeTrust(binding.runtime));
+  const expectedNativeProvenance = {
+    provenanceKind: 'native' as const,
+    trust: expectedTrust,
+    parentDigests: [plan.evaluation.evaluationPlanDigest, sourceRecordDigest],
+  };
   const contractInvalid = record.targetId !== coordinate.targetId
     || record.sampleId !== coordinate.sampleId
     || record.trialIndex !== coordinate.trialIndex
@@ -751,6 +761,11 @@ function replayRecord(
     || record.evaluationId !== coordinate.evaluationId
     || record.sourceRecordDigest !== sourceRecordDigest
     || canonicalizeJson(record.runtime) !== canonicalizeJson(binding.runtime)
+    || canonicalizeJson(record.provenance) !== canonicalizeJson(expectedNativeProvenance)
+    || canonicalizeJson(record.cache) !== canonicalizeJson({
+      cacheStatus: 'miss',
+      cacheKeyDigest: key,
+    })
     || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
     || !evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)
     || record.attempts.at(-1)?.attemptStatus !== 'completed'
@@ -794,10 +809,7 @@ function replayRecord(
     ...snapshotJson(record),
     provenance: {
       provenanceKind: 'replay',
-      trust: minimumTrust(record.provenance.trust, sourceTrust, runtimeTrust(binding.runtime)),
-      ...(record.provenance.sourceId === undefined
-        ? {}
-        : { sourceId: record.provenance.sourceId }),
+      trust: expectedTrust,
       parentDigests: [entry.cachedRecordDigest],
     },
     cache: {
@@ -1157,13 +1169,14 @@ async function prepareEvaluationCoordinates(
   prepared: PreparedRuntime,
   coordinates: readonly PlannedEvaluationCoordinate[],
   signal: AbortSignal,
+  shouldStop: () => boolean,
 ): Promise<PreparedCoordinate[]> {
   const sourceByTrial = new Map(
     prepared.source.records.map((record) => [trialKey(record), record]),
   );
   const result: PreparedCoordinate[] = [];
   for (const coordinate of coordinates) {
-    if (signal.aborted) break;
+    if (signal.aborted || shouldStop()) break;
     const binding = prepared.bindings.get(coordinate.evaluatorId);
     if (binding === undefined) throw new Error('Evaluator binding disappeared');
     const source = sourceByTrial.get(trialKey(coordinate));
@@ -1184,8 +1197,9 @@ async function prepareEvaluationCoordinates(
       binding.evaluator,
       ports,
       signal,
+      shouldStop,
     );
-    if (signal.aborted) break;
+    if (signal.aborted || shouldStop()) break;
     if (inputs === undefined) {
       result.push({ coordinate, binding, source, reasonCode: 'evaluator-input-unavailable' });
       continue;
@@ -1280,6 +1294,7 @@ async function runEvaluation(
       prepared,
       coordinates,
       controller.signal,
+      () => stop.stopKind !== undefined,
     );
     for (const item of preparedCoordinates) {
       if (stop.stopKind !== undefined) break;
@@ -1400,7 +1415,7 @@ async function runEvaluation(
       coordinates.length,
       stop,
     );
-    await events.emit(terminalKind(bundle.evaluationBundleStatus), 'run', options.runId, {
+    await events.emitRecovery(terminalKind(bundle.evaluationBundleStatus), 'run', options.runId, {
       bundleDigest: bundle.bundleDigest,
       evaluationBundleStatus: bundle.evaluationBundleStatus,
       coverage: bundle.coverage,

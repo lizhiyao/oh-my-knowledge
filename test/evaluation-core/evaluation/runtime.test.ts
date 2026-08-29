@@ -900,6 +900,108 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(disposedBeforeSettlement).toBe(false);
   });
 
+  it('waits for settlement when timeout and external cancellation become observable together', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evaluation.timeoutMs = 5;
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.retry.maxAttempts = 1;
+    });
+    const source = await sourceBundle(plan);
+    const controller = new AbortController();
+    let release: (() => void) | undefined;
+    let started: (() => void) | undefined;
+    const allowSettlement = new Promise<void>((resolve) => { release = resolve; });
+    const attemptStarted = new Promise<void>((resolve) => { started = resolve; });
+    let settled = false;
+    let disposedBeforeSettlement = false;
+    const fake = evaluator(plan, async () => {
+      started?.();
+      await allowSettlement;
+      settled = true;
+      return { observations: [] };
+    });
+    const originalOpenRun = fake.port.openRun.bind(fake.port);
+    fake.port.openRun = async (context) => {
+      const run = await originalOpenRun(context);
+      return {
+        ...run,
+        async openRecord(recordContext) {
+          const record = await run.openRecord(recordContext);
+          return {
+            ...record,
+            async dispose() {
+              if (!settled) disposedBeforeSettlement = true;
+              await record.dispose();
+            },
+          };
+        },
+      };
+    };
+    const clock = new FakeClock();
+    clock.sleep = async (_delayMs, signal) => {
+      if (signal.aborted) throw abortError();
+      controller.abort();
+      await Promise.resolve();
+    };
+    const run = startEvaluation(plan, source, ports(plan, fake.port, { clock }), {
+      runId: 'cancel-timeout-race-run',
+      bundleId: 'cancel-timeout-race-bundle',
+      signal: controller.signal,
+    });
+    await attemptStarted;
+    await Promise.resolve();
+    expect(fake.state.recordDisposals).toBe(0);
+    release?.();
+    const bundle = await run.result;
+
+    expect(bundle.evaluationBundleStatus).toBe('cancelled');
+    expect(settled).toBe(true);
+    expect(disposedBeforeSettlement).toBe(false);
+  });
+
+  it('stops binding resolution immediately when the evaluation duration budget expires', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.evidence.output = 'reference';
+      policy.evaluation.budget.maxDurationMs = 5;
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    let expireBudget: (() => void) | undefined;
+    const clock = new FakeClock();
+    clock.sleep = async (_delayMs, signal) => new Promise<void>((resolve, reject) => {
+      expireBudget = resolve;
+      signal.addEventListener('abort', () => reject(abortError()), { once: true });
+    });
+    let resolves = 0;
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      clock,
+      contentResolver: {
+        async resolve(descriptor) {
+          resolves += 1;
+          expireBudget?.();
+          await Promise.resolve();
+          const value = descriptor.digest === digestCanonicalJson({ answer: 'A' })
+            ? { answer: 'A' }
+            : { answer: 'B' };
+          return { value, classification: 'public' };
+        },
+      },
+    }), {
+      runId: 'binding-duration-budget-run',
+      bundleId: 'binding-duration-budget-bundle',
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'budget-exhausted',
+      terminationReasonCode: 'evaluation-duration-budget-exhausted',
+      coverage: { started: 0, notStarted: 2 },
+    });
+    expect(resolves).toBe(1);
+    expect(fake.state).toMatchObject({ attempts: 0, recordContexts: [], runDisposals: 0 });
+  });
+
   it('rejects cache records that violate the sealed metric contract', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
@@ -926,6 +1028,63 @@ describe('Evaluation Core Evaluation runtime', () => {
       terminationReasonCode: 'evaluation-cache-read-failed',
     });
     expect(second.state.attempts).toBe(0);
+  });
+
+  it('rejects cache entries whose native miss envelope was rewritten', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const seeded = new MemoryCache();
+    const first = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache: seeded }), {
+      runId: 'poison-envelope-seed',
+      bundleId: 'poison-envelope-seed-bundle',
+    });
+
+    for (const scenario of ['cache-status', 'cache-key', 'provenance'] as const) {
+      const poisoned = new MemoryCache();
+      for (const [key, value] of seeded.entries) {
+        poisoned.entries.set(key, structuredClone(value));
+      }
+      const entry = poisoned.entries.values().next().value;
+      if (entry === undefined) throw new Error('missing cache entry');
+      if (scenario === 'cache-status') {
+        entry.record.cache = {
+          cacheStatus: 'transparent-hit',
+          cacheKeyDigest: entry.cacheKeyDigest,
+          sourceRecordDigest: entry.cachedRecordDigest,
+        };
+      } else if (scenario === 'cache-key') {
+        entry.record.cache = {
+          cacheStatus: 'miss',
+          cacheKeyDigest: digestCanonicalJson({ wrong: 'cache-key' }),
+        };
+      } else {
+        entry.record.provenance = {
+          provenanceKind: 'replay',
+          trust: entry.record.provenance.trust,
+          parentDigests: [entry.cachedRecordDigest],
+        };
+      }
+      entry.cachedRecordDigest = digestCanonicalJson(entry.record);
+      const second = evaluator(plan);
+      const bundle = await evaluateExecutionBundle(
+        plan,
+        source,
+        ports(plan, second.port, { cache: poisoned }),
+        {
+          runId: `poison-envelope-${scenario}`,
+          bundleId: `poison-envelope-${scenario}-bundle`,
+        },
+      );
+
+      expect(bundle).toMatchObject({
+        evaluationBundleStatus: 'failed',
+        terminationReasonCode: 'evaluation-cache-read-failed',
+      });
+      expect(second.state.attempts).toBe(0);
+    }
   });
 
   it.each([

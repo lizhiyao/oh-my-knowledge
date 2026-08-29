@@ -6,7 +6,7 @@ import {
   type ExecutionRecord,
   type MetricObservation,
 } from './artifacts.js';
-import type { CapturedContent } from './common.js';
+import type { CapturedContent, RuntimeIdentity } from './common.js';
 import {
   deriveEvaluationAttemptId,
   deriveEvaluationId,
@@ -23,6 +23,7 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
   parseWireDocument,
+  type JsonValue,
   type Sha256Digest,
 } from './json.js';
 
@@ -332,9 +333,7 @@ export interface EvaluationBundlePlanContext
     runtimes: readonly {
       runtimeKind: 'executor' | 'evaluator' | 'analysis';
       referenceId: string;
-      identity: {
-        assuranceLevel: 'verified' | 'declared' | 'unknown';
-      };
+      identity: EvaluationRuntimeIdentity;
     }[];
     policy: {
       evaluationCacheMode: 'disabled' | 'reuse';
@@ -356,6 +355,14 @@ export interface EvaluationBundlePlanContext
     evaluationPlanDigest: string;
   };
 }
+
+type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
+  ? readonly DeepReadonlyValue<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: DeepReadonlyValue<T[Key]> }
+    : T;
+
+type EvaluationRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 
 function planMismatch(message: string): never {
   throw new EvaluationBundleValidationError('EVALUATION_BUNDLE_PLAN_MISMATCH', message);
@@ -433,71 +440,108 @@ function assertTrustAtMost(
   }
 }
 
-function pointerResolves(value: unknown, pointer: string): boolean {
+function resolvePointer(value: unknown, pointer: string): { resolved: boolean; value?: unknown } {
   let current = value;
-  if (pointer === '') return true;
+  if (pointer === '') return { resolved: true, value: current };
   for (const encoded of pointer.slice(1).split('/')) {
     const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (current === null || typeof current !== 'object') return false;
+    if (current === null || typeof current !== 'object') return { resolved: false };
     if (Array.isArray(current)) {
-      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) return false;
+      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) {
+        return { resolved: false };
+      }
       current = current[Number(token)];
     } else {
-      if (!Object.prototype.hasOwnProperty.call(current, token)) return false;
+      if (!Object.prototype.hasOwnProperty.call(current, token)) return { resolved: false };
       current = (current as Record<string, unknown>)[token];
     }
   }
-  return true;
+  return { resolved: true, value: current };
 }
 
 type BindingAvailability = 'available' | 'unavailable' | 'indeterminate';
-
-function capturedBindingAvailability(
-  content: CapturedContent | undefined,
-  pointer: string,
-): BindingAvailability {
-  if (content === undefined || content.contentKind === 'digest-only') return 'unavailable';
-  if (content.contentKind === 'descriptor') return 'indeterminate';
-  return pointerResolves(content.value, pointer) ? 'available' : 'unavailable';
+interface BindingClosure {
+  availability: BindingAvailability;
+  bindings?: readonly JsonValue[];
 }
 
-function bindingClosureAvailability(
+function capturedBinding(
+  content: CapturedContent | undefined,
+  pointer: string,
+): { availability: BindingAvailability; value?: unknown; classification?: string } {
+  if (content === undefined || content.contentKind === 'digest-only') {
+    return { availability: 'unavailable' };
+  }
+  if (content.contentKind === 'descriptor') return { availability: 'indeterminate' };
+  const resolved = resolvePointer(content.value, pointer);
+  return resolved.resolved
+    ? { availability: 'available', value: resolved.value, classification: content.classification }
+    : { availability: 'unavailable' };
+}
+
+function bindingClosure(
   plan: EvaluationBundlePlanContext,
   evaluator: EvaluationBundlePlanContext['evaluation']['evaluators'][number],
   executionRecord: ExecutionRecord,
-): BindingAvailability {
+): BindingClosure {
   const sample = plan.evaluation.samples.find(
     (candidate) => candidate.sampleId === executionRecord.sampleId,
   );
   if (sample === undefined) planMismatch('EvaluationRecord refers to an unknown sample.');
   let availability: BindingAvailability = 'available';
+  const bindings: JsonValue[] = [];
   for (const input of evaluator.inputs) {
-    let binding: BindingAvailability;
+    let binding: {
+      availability: BindingAvailability;
+      value?: unknown;
+      classification?: string;
+    };
     if (input.sourceKind === 'output') {
       binding = executionRecord.executionStatus === 'completed'
-        ? capturedBindingAvailability(executionRecord.output, input.pointer)
-        : 'unavailable';
+        ? capturedBinding(executionRecord.output, input.pointer)
+        : { availability: 'unavailable' };
     } else if (input.sourceKind === 'trace') {
       binding = executionRecord.executionStatus === 'budget-censored'
-        ? 'unavailable'
-        : capturedBindingAvailability(executionRecord.trace, input.pointer);
+        ? { availability: 'unavailable' }
+        : capturedBinding(executionRecord.trace, input.pointer);
     } else {
       const value = input.sourceKind === 'expected'
         ? sample.expected
         : sample.evaluationContext;
-      binding = value !== undefined && pointerResolves(value, input.pointer)
-        ? 'available'
-        : 'unavailable';
+      const resolved = value === undefined
+        ? { resolved: false as const }
+        : resolvePointer(value, input.pointer);
+      binding = resolved.resolved
+        ? { availability: 'available', value: resolved.value, classification: 'gold' }
+        : { availability: 'unavailable' };
     }
-    if (binding === 'unavailable') return 'unavailable';
-    if (binding === 'indeterminate') availability = 'indeterminate';
+    if (binding.availability === 'unavailable') return { availability: 'unavailable' };
+    if (binding.availability === 'indeterminate') {
+      availability = 'indeterminate';
+      continue;
+    }
+    bindings.push({
+      bindingId: input.bindingId,
+      sourceKind: input.sourceKind,
+      value: binding.value as JsonValue,
+      classification: binding.classification as 'public' | 'sensitive' | 'secret' | 'gold',
+    });
   }
-  return availability;
+  return availability === 'available'
+    ? { availability, bindings }
+    : { availability };
 }
 
 function assertCachePolicy(
   record: Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>,
   mode: EvaluationBundlePlanContext['evaluation']['policy']['evaluationCacheMode'],
+  plan: EvaluationBundlePlanContext,
+  expected: PlannedEvaluationCoordinate,
+  runtime: EvaluationRuntimeIdentity,
+  sourceRecordDigest: Sha256Digest,
+  sourceTrust: ExecutionBundle['provenance']['trust'],
+  executionRecordTrust: ExecutionRecord['provenance']['trust'],
+  closure: BindingClosure,
 ): boolean {
   const { cache } = record;
   const noDigests = cache.cacheKeyDigest === undefined && cache.sourceRecordDigest === undefined;
@@ -512,16 +556,49 @@ function assertCachePolicy(
     }
     return false;
   }
+  const expectedTrust = minimumTrust(sourceTrust, executionRecordTrust, runtimeTrust(runtime));
+  const expectedNativeProvenance = {
+    provenanceKind: 'native' as const,
+    trust: expectedTrust,
+    parentDigests: [plan.evaluation.evaluationPlanDigest, sourceRecordDigest],
+  };
+  const expectedCacheKey = closure.bindings === undefined
+    ? undefined
+    : digestCanonicalJson({
+      derivation: 'omk.evaluation-cache-key/v1',
+      evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
+      evaluationId: expected.evaluationId,
+      evaluatorRuntime: runtime,
+      sourceRecordDigest,
+      bindings: closure.bindings,
+    });
   if (cache.cacheStatus === 'miss'
       && cache.cacheKeyDigest !== undefined
       && cache.sourceRecordDigest === undefined
-      && record.provenance.provenanceKind !== 'replay') return false;
+      && (expectedCacheKey === undefined || cache.cacheKeyDigest === expectedCacheKey)
+      && canonicalizeJson(record.provenance) === canonicalizeJson(expectedNativeProvenance)) {
+    return false;
+  }
   if ((cache.cacheStatus === 'replay' || cache.cacheStatus === 'transparent-hit')
+      && record.evaluationStatus === 'completed'
       && cache.cacheKeyDigest !== undefined
       && cache.sourceRecordDigest !== undefined
-      && record.provenance.provenanceKind === 'replay'
-      && record.provenance.parentDigests.length === 1
-      && record.provenance.parentDigests[0] === cache.sourceRecordDigest) return true;
+      && (expectedCacheKey === undefined || cache.cacheKeyDigest === expectedCacheKey)
+      && canonicalizeJson(record.provenance) === canonicalizeJson({
+        provenanceKind: 'replay',
+        trust: expectedTrust,
+        parentDigests: [cache.sourceRecordDigest],
+      })) {
+    const nativeRecord = {
+      ...record,
+      provenance: expectedNativeProvenance,
+      cache: {
+        cacheStatus: 'miss' as const,
+        cacheKeyDigest: cache.cacheKeyDigest,
+      },
+    };
+    if (digestCanonicalJson(nativeRecord) === cache.sourceRecordDigest) return true;
+  }
   throw new EvaluationBundleValidationError(
     'EVALUATION_BUNDLE_CACHE_POLICY_INVALID',
     'EvaluationRecord cache facts do not satisfy the sealed reuse policy.',
@@ -573,10 +650,10 @@ function assertRecordAgainstPlan(
     }
     return 0;
   }
-  const closure = bindingClosureAvailability(plan, evaluator, executionRecord);
+  const closure = bindingClosure(plan, evaluator, executionRecord);
   if (record.evaluationStatus === 'not-evaluated') {
     if (record.notEvaluatedReasonCode !== 'evaluator-input-unavailable'
-        || closure === 'available') {
+        || closure.availability === 'available') {
       throw new EvaluationBundleValidationError(
         'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID',
         'A source-backed not-evaluated record requires unavailable evaluator bindings.',
@@ -584,7 +661,7 @@ function assertRecordAgainstPlan(
     }
     return 0;
   }
-  if (closure === 'unavailable') {
+  if (closure.availability === 'unavailable') {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID',
       'An active EvaluationRecord requires every statically checkable binding.',
@@ -599,6 +676,13 @@ function assertRecordAgainstPlan(
   const cacheHit = assertCachePolicy(
     record,
     plan.evaluation.policy.evaluationCacheMode,
+    plan,
+    expected,
+    runtime,
+    sourceRecordDigest as Sha256Digest,
+    sourceTrust,
+    executionRecord.provenance.trust,
+    closure,
   );
   if (record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts) {
     throw new EvaluationBundleValidationError(

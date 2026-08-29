@@ -1382,7 +1382,7 @@ async function runExecution(
       plannedCoordinates.length,
       stop,
     );
-    await events.emit(
+    await events.emitRecovery(
       terminalEventKind(bundle.executionBundleStatus),
       'run',
       options.runId,

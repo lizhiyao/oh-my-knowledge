@@ -51,6 +51,7 @@ export class RuntimeEventEmitter<
   readonly #stream: BoundedEventStream;
   readonly #onFatal: (reason: string, error: EvaluationError) => void;
   #writerEnabled: boolean;
+  #fatal = false;
   #lastSequence = -1;
   #deliveryTail: Promise<void> = Promise.resolve();
 
@@ -77,12 +78,62 @@ export class RuntimeEventEmitter<
     subjectId: string,
     data: JsonValue,
   ): Promise<boolean> {
+    const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
+    let published = false;
+    const delivery = this.#deliveryTail.then(async () => {
+      if (this.#fatal) return;
+      if (this.#writerEnabled) {
+        try {
+          await this.#writer?.write(event);
+        } catch {
+          this.#writerEnabled = false;
+          if (this.#options.writerFailureMode === 'fail-run') {
+            this.#fatal = true;
+            this.#onFatal(
+              this.#options.writerFailureReason,
+              this.#options.writerFailureError,
+            );
+            return;
+          }
+        }
+      }
+      this.#stream.push(event);
+      published = true;
+    });
+    this.#deliveryTail = delivery.catch(() => undefined);
+    await delivery;
+    return published;
+  }
+
+  async emitRecovery(
+    eventKind: EventKind,
+    subjectKind: SubjectKind,
+    subjectId: string,
+    data: JsonValue,
+  ): Promise<void> {
+    const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
+    const delivery = this.#deliveryTail.then(() => {
+      if (!this.#fatal || this.#options.writerFailureMode !== 'fail-run') {
+        throw new TypeError('Recovery events require a fatal EventWriter failure.');
+      }
+      this.#stream.push(event);
+    });
+    this.#deliveryTail = delivery.catch(() => undefined);
+    await delivery;
+  }
+
+  #createEvent(
+    eventKind: EventKind,
+    subjectKind: SubjectKind,
+    subjectId: string,
+    data: JsonValue,
+  ): Readonly<EvaluationEvent> {
     const sequence = this.#sequencer.next(this.#options.runId);
     if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence <= this.#lastSequence) {
       throw new TypeError('EventSequencer must return a strictly increasing safe integer.');
     }
     this.#lastSequence = sequence;
-    const event = deepFreeze(parseWireDocument(EvaluationEventSchema, {
+    return deepFreeze(parseWireDocument(EvaluationEventSchema, {
       schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
       eventId: digestCanonicalJson({
         derivation: 'omk.evaluation-event-id/v1',
@@ -96,27 +147,6 @@ export class RuntimeEventEmitter<
       subject: { subjectKind, subjectId },
       data,
     }));
-    let published = true;
-    const delivery = this.#deliveryTail.then(async () => {
-      if (this.#writerEnabled) {
-        try {
-          await this.#writer?.write(event);
-        } catch {
-          this.#writerEnabled = false;
-          if (this.#options.writerFailureMode === 'fail-run') {
-            published = false;
-            this.#onFatal(
-              this.#options.writerFailureReason,
-              this.#options.writerFailureError,
-            );
-          }
-        }
-      }
-      if (published) this.#stream.push(event);
-    });
-    this.#deliveryTail = delivery.catch(() => undefined);
-    await delivery;
-    return published;
   }
 
   close(): void {
