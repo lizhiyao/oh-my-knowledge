@@ -30,6 +30,12 @@ const provenance = {
   parentDigests: [executionPlanDigest],
 };
 
+const bundleProvenance = {
+  provenanceKind: 'native' as const,
+  trust: 'verified' as const,
+  parentDigests: [runContractDigest, executionPlanDigest],
+};
+
 const runtime = {
   implementationId: 'executor-a',
   fingerprint: 'executor-a@1',
@@ -106,7 +112,7 @@ function finalizeBundle(
     },
     replayability: 'self-contained',
     records: [makeCompletedRecord()],
-    provenance,
+    provenance: bundleProvenance,
     bundleDigest: placeholderDigest,
     ...overrides,
   };
@@ -401,6 +407,21 @@ describe('ExecutionBundle contract', () => {
     resign(repeatedSuccess);
     expect(() => parseExecutionBundleDocument(repeatedSuccess)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID' }),
+    );
+  });
+
+  it('rejects aggregate usage that contradicts attempt facts', () => {
+    const bundle = structuredClone(finalizeBundle());
+    const record = bundle.records[0];
+    if (record.executionStatus === 'budget-censored') throw new Error('unexpected record');
+    record.usage = {
+      inputTokens: 999,
+      details: { aggregationKind: 'forged' },
+    };
+    resign(bundle);
+
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_USAGE_INVALID' }),
     );
   });
 

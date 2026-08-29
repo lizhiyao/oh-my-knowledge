@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateEvaluationAttemptUsage,
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
+  parseExecutionBundle,
   parseEvaluationBundle,
   verifyEvaluationBundle,
   type EvaluationBundle,
@@ -13,7 +15,7 @@ import {
 } from '../../../src/evaluation-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
 import {
-  executeRunPlan,
+  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
@@ -134,7 +136,7 @@ function executor(plan: Plan, fail = false): ExecutionExecutor {
 }
 
 async function sourceBundle(plan: Plan, fail = false) {
-  return executeRunPlan(plan, {
+  return executeRunPlanSource(plan, {
     executors: new Map([['executor-alias', executor(plan, fail)]]),
     clock: new FakeClock(),
     eventSequencer: new InMemoryRuntimeEventSequencer(),
@@ -258,7 +260,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       cancelled: 0,
       notStarted: 0,
     });
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     expect(fake.state.recordContexts[0].bindings).toEqual([
       expect.objectContaining({ bindingId: 'actual', sourceKind: 'output' }),
       expect.objectContaining({ bindingId: 'gold', sourceKind: 'expected', value: 'A' }),
@@ -509,7 +511,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
     });
 
-    expect(parseEvaluationBundle(forged, plan, source)).toEqual(forged);
+    expect(parseEvaluationBundle(forged, plan, source).bundle).toEqual(forged);
     expect(verifyEvaluationBundle(forged, plan, source).planVerification).toMatchObject({
       cacheReceiptStatus: 'indeterminate',
       invocationBudgetStatus: 'indeterminate',
@@ -570,7 +572,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const transported = structuredClone(replay);
     const verification = verifyEvaluationBundle(transported, plan, source);
 
-    expect(parseEvaluationBundle(transported, plan, source)).toEqual(transported);
+    expect(parseEvaluationBundle(transported, plan, source).bundle).toEqual(transported);
     expect(replayEvaluator.state.attempts).toBe(0);
     expect(verification.planVerification).toMatchObject({
       cacheReceiptStatus: 'indeterminate',
@@ -693,7 +695,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       evaluationBundleStatus: 'failed',
       terminationReasonCode: 'evaluation-event-writer-failed',
     });
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     const terminals = journal.filter((event) => event.eventKind.startsWith('evaluation.run.')
       && event.eventKind !== 'evaluation.run.started');
     expect(terminals).toEqual([expect.objectContaining({
@@ -805,7 +807,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       bundleId: 'digest-bundle',
     });
     const sourceDigests = new Set<string>(
-      source.records.map((record) => digestCanonicalJson(record)),
+      source.bundle.records.map((record) => digestCanonicalJson(record)),
     );
     expect([...cache.entries.values()].every((entry) => (
       sourceDigests.has(entry.record.sourceRecordDigest)
@@ -813,15 +815,16 @@ describe('Evaluation Core Evaluation runtime', () => {
   });
 
   it('evaluates failed execution records when every sealed trace binding is materializable', async () => {
-    const plan = await makePlan((definition) => {
+    const plan = await makePlan((definition, policy) => {
       definition.evaluators[0].inputs = [{
         bindingId: 'trace',
         sourceKind: 'trace',
         pointer: '/message',
       }];
+      policy.evidence.trace = 'full';
     }, testRuntime({ traceCapability: 'optional' }));
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.records = draft.records.map((record, recordIndex) => {
         if (record.executionStatus !== 'completed') throw new Error('unexpected source');
         if (recordIndex > 0) return {
@@ -859,7 +862,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
       draft.executionBundleStatus = 'failed';
       draft.terminationReasonCode = 'target-failed';
-    });
+    }), plan);
     const fake = evaluator(plan);
     const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
       runId: 'trace-only-run',
@@ -879,12 +882,12 @@ describe('Evaluation Core Evaluation runtime', () => {
       policy.evaluation.maxConcurrency = 1;
     });
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       const record = draft.records[1];
       if (record.executionStatus !== 'completed') throw new Error('unexpected source');
       delete record.output;
       draft.replayability = 'summary-only';
-    });
+    }), plan);
     const fake = evaluator(plan, () => {
       throw new EvaluationPortFailure({
         code: 'terminal-evaluator-error',
@@ -909,7 +912,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('accepts a partial ExecutionBundle and preserves source-less not-evaluated facts', async () => {
     const plan = await makePlan();
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.records = [draft.records[0]];
       draft.coverage = {
         ...draft.coverage,
@@ -919,14 +922,14 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
       draft.executionBundleStatus = 'cancelled';
       draft.terminationReasonCode = 'partial-source';
-    });
+    }), plan);
     const fake = evaluator(plan);
     const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
       runId: 'partial-run',
       bundleId: 'partial-bundle',
     });
 
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     expect(bundle.coverage).toMatchObject({ eligible: 1, sourceUnavailable: 1 });
     expect(bundle.records.find((record) => record.evaluationStatus === 'not-evaluated'))
       .not.toHaveProperty('sourceRecordDigest');
@@ -988,7 +991,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       ports(plan, fake.port),
       { runId: 'active-binding-seed', bundleId: 'active-binding-seed-bundle' },
     );
-    const failedSource = resealExecutionBundle(completedSource, (draft) => {
+    const failedSource = parseExecutionBundle(resealExecutionBundle(completedSource.bundle, (draft) => {
       const record = draft.records[0];
       if (record.executionStatus !== 'completed') throw new Error('unexpected source');
       const last = record.attempts.at(-1);
@@ -1012,12 +1015,12 @@ describe('Evaluation Core Evaluation runtime', () => {
       draft.replayability = 'summary-only';
       draft.executionBundleStatus = 'failed';
       draft.terminationReasonCode = 'target-failed';
-    });
+    }), plan);
     const forged = resealEvaluationBundle(valid, (draft) => {
       const record = draft.records[0];
-      draft.executionBundleDigest = failedSource.bundleDigest;
+      draft.executionBundleDigest = failedSource.bundle.bundleDigest;
       if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
-      record.sourceRecordDigest = digestCanonicalJson(failedSource.records[0]);
+      record.sourceRecordDigest = digestCanonicalJson(failedSource.bundle.records[0]);
     });
 
     expect(() => parseEvaluationBundle(forged, plan, failedSource))
@@ -1071,6 +1074,45 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(bundle.evaluationBundleStatus).toBe('budget-exhausted');
     expect(record.attempts).toHaveLength(1);
     expect(record.attempts[0].usage?.providerCost?.amount).toBe(1);
+  });
+
+  it('rejects a resealed Bundle whose native evaluator cost exceeds the sealed budget', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: {
+        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+      },
+    }));
+    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'forge-provider-cost-run',
+      bundleId: 'forge-provider-cost-bundle',
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      for (const record of draft.records) {
+        if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected status');
+        for (const attempt of record.attempts) {
+          attempt.usage = {
+            providerCost: { amount: 0.75, currency: 'USD', reportedByProvider: true },
+          };
+        }
+        record.usage = aggregateEvaluationAttemptUsage(record.attempts);
+      }
+    });
+
+    expect(() => verifyEvaluationBundle(forged, plan, source))
+      .toThrowError(expect.objectContaining({
+        code: 'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      }));
   });
 
   it('waits for a timed-out evaluator to settle before disposal and retry', async () => {
@@ -1521,18 +1563,18 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(second.state.attempts).toBe(0);
   });
 
-  it('does not upgrade imported source trust in native or replayed evaluation facts', async () => {
+  it('downgrades unauthenticated imported source trust in native and replayed facts', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
     });
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.provenance = { ...draft.provenance, provenanceKind: 'imported', trust: 'declared' };
       draft.records = draft.records.map((record) => ({
         ...record,
         provenance: { ...record.provenance, provenanceKind: 'imported', trust: 'declared' },
       }));
-    });
+    }), plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
     const native = await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
@@ -1545,9 +1587,9 @@ describe('Evaluation Core Evaluation runtime', () => {
       bundleId: 'declared-replay-bundle',
     });
 
-    expect(native.provenance.trust).toBe('declared');
-    expect(native.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
-    expect(replay.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
+    expect(native.provenance.trust).toBe('unknown');
+    expect(native.records.every((record) => record.provenance.trust === 'unknown')).toBe(true);
+    expect(replay.records.every((record) => record.provenance.trust === 'unknown')).toBe(true);
 
     const forged = resealEvaluationBundle(native, (draft) => {
       draft.provenance.trust = 'verified';
@@ -1568,13 +1610,13 @@ describe('Evaluation Core Evaluation runtime', () => {
       runId: 'trust-key-verified-run',
       bundleId: 'trust-key-verified-bundle',
     });
-    const downgradedSource = resealExecutionBundle(source, (draft) => {
+    const downgradedSource = parseExecutionBundle(resealExecutionBundle(source.bundle, (draft) => {
       draft.provenance = {
         ...draft.provenance,
         provenanceKind: 'imported',
         trust: 'declared',
       };
-    });
+    }), plan);
     const second = evaluator(plan);
     const downgraded = await evaluateExecutionBundle(
       plan,
@@ -1587,11 +1629,11 @@ describe('Evaluation Core Evaluation runtime', () => {
     );
 
     expect(downgraded.evaluationBundleStatus).toBe('completed');
-    expect(downgraded.provenance.trust).toBe('declared');
+    expect(downgraded.provenance.trust).toBe('unknown');
     expect(downgraded.records.every((record) => (
       record.evaluationStatus === 'completed'
       && record.cache.cacheStatus === 'miss'
-      && record.provenance.trust === 'declared'
+      && record.provenance.trust === 'unknown'
     ))).toBe(true);
     expect(second.state.attempts).toBe(2);
     expect(cache.puts).toBe(4);
@@ -1630,7 +1672,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const events: EvaluationEvent[] = [];
     const eventWriter = { async write(event: Readonly<EvaluationEvent>) { events.push(event); } };
-    const source = await executeRunPlan(plan, {
+    const source = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan)]]),
       clock: new FakeClock(),
       eventSequencer,
@@ -1657,5 +1699,27 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(new Set(events.map((event) => event.eventId)).size).toBe(events.length);
     expect(events.find((event) => event.eventKind === 'evaluation.run.started')?.sequence)
       .toBeGreaterThan(events.find((event) => event.eventKind === 'execution.run.completed')?.sequence ?? -1);
+  });
+
+  it('closes the Event stream when terminal event sequencing throws', async () => {
+    const plan = await makePlan();
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const run = startEvaluation(plan, source, ports(plan, fake.port, {
+      eventSequencer: {
+        next() { throw new Error('sequencer unavailable'); },
+      },
+    }), {
+      runId: 'evaluation-sequencer-failure',
+      bundleId: 'evaluation-sequencer-failure-bundle',
+    });
+    const events = (async () => {
+      const collected: EvaluationEvent[] = [];
+      for await (const event of run.events) collected.push(event);
+      return collected;
+    })();
+
+    await expect(run.source).rejects.toThrow('sequencer unavailable');
+    await expect(events).resolves.toEqual([]);
   });
 });

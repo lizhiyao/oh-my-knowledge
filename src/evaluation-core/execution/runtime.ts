@@ -6,20 +6,27 @@ import {
   EvaluationErrorSchema,
   IdentifierSchema,
   UsageRecordSchema,
+  aggregateExecutionAttemptUsage,
+  assertExecutionRecordMatchesAttemptPolicy,
   canonicalizeJson,
   deriveAttemptId,
   digestArtifactPayload,
   digestCanonicalJson,
-  parseExecutionBundle,
+  executionRecordMatchesEvidencePolicy,
+  executionRecordSatisfiesCacheCostPolicy,
+  executionRecordUsageMatchesAttempts,
   parseWireDocument,
+  verifyExecutionBundle,
   type CacheProvenance,
   type CapturedContent,
   type EvaluationError,
   type ExecutionAttempt,
   type ExecutionBundle,
+  type ExecutionBundleSource,
   type ExecutionRecord,
   type JsonValue,
   type PlannedExecutionCoordinate,
+  type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
   type UsageRecord,
@@ -54,6 +61,23 @@ import {
 
 type ActiveExecutionRecord = Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>;
 type CompletedExecutionRecord = Extract<ExecutionRecord, { executionStatus: 'completed' }>;
+
+const PROVENANCE_TRUST_LEVEL = {
+  untrusted: 0,
+  unknown: 1,
+  declared: 2,
+  verified: 3,
+} as const;
+
+function minimumProvenanceTrust(
+  records: readonly ExecutionRecord[],
+): Provenance['trust'] {
+  return records.reduce<Provenance['trust']>((minimum, record) => (
+    PROVENANCE_TRUST_LEVEL[record.provenance.trust] < PROVENANCE_TRUST_LEVEL[minimum]
+      ? record.provenance.trust
+      : minimum
+  ), 'verified');
+}
 
 interface TargetRuntimeBinding {
   target: SealedRunPlan['execution']['targets'][number];
@@ -90,6 +114,7 @@ interface PreparedBlock {
 interface CoordinateResult {
   record?: ActiveExecutionRecord;
   cacheEntry?: ExecutionCacheEntry;
+  verifiedCacheRecordDigest?: Sha256Digest;
   failed: boolean;
 }
 
@@ -301,49 +326,6 @@ function durationMs(started: number, completed: number): number {
   return Math.max(0, completed - started);
 }
 
-function aggregateUsage(
-  attempts: readonly (UsageRecord | undefined)[],
-): UsageRecord | undefined {
-  const reported = attempts.filter((usage): usage is UsageRecord => usage !== undefined);
-  if (reported.length === 0) return undefined;
-  if (attempts.length === 1) return snapshotJson(reported[0]);
-  const costs = reported.flatMap((usage) => (
-    usage.providerCost === undefined ? [] : [usage.providerCost]
-  ));
-  const currencies = new Set(costs.map((cost) => cost.currency));
-  const providerCost = costs.length === attempts.length && currencies.size === 1
-    ? {
-      amount: costs.reduce((sum, cost) => sum + cost.amount, 0),
-      currency: costs[0].currency,
-      reportedByProvider: true as const,
-    }
-    : undefined;
-  return {
-    ...(reported.some((usage) => usage.inputTokens !== undefined)
-      ? { inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0) }
-      : {}),
-    ...(reported.some((usage) => usage.outputTokens !== undefined)
-      ? { outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0) }
-      : {}),
-    ...(reported.some((usage) => usage.totalTokens !== undefined)
-      ? { totalTokens: reported.reduce((sum, usage) => sum + (usage.totalTokens ?? 0), 0) }
-      : {}),
-    ...(providerCost !== undefined ? { providerCost } : {}),
-    details: {
-      aggregationKind: 'omk.execution-usage-summary/v1',
-      attemptCount: attempts.length,
-      reportedAttemptCount: reported.length,
-      providerCostAggregation: costs.length === 0
-        ? 'unreported'
-        : costs.length !== attempts.length
-          ? 'partial'
-          : currencies.size === 1
-            ? 'summed'
-            : 'mixed-currency',
-    },
-  };
-}
-
 class BudgetTracker {
   readonly #maxInvocations?: number;
   readonly #maxProviderCost?: { amount: number; currency: string };
@@ -513,8 +495,15 @@ function assertCachedRecord(
   key: Sha256Digest,
   coordinate: PlannedExecutionCoordinate,
   runtime: RuntimeIdentity,
+  plan: SealedRunPlan,
 ): CompletedExecutionRecord {
   const record = parseWireDocument(CompletedExecutionRecordSchema, entry.record);
+  assertExecutionRecordMatchesAttemptPolicy(record, plan.execution.policy.retry);
+  const expectedProvenance = {
+    provenanceKind: 'native' as const,
+    trust: runtime.assuranceLevel,
+    parentDigests: [plan.execution.executionPlanDigest],
+  };
   if (entry.cacheKeyDigest !== key
       || entry.sourceRecordDigest !== digestCanonicalJson(record)
       || record.targetId !== coordinate.targetId
@@ -525,7 +514,18 @@ function assertCachedRecord(
       || record.schedulingBlockId !== coordinate.schedulingBlockId
       || canonicalizeJson(record.samplingUnitIds)
         !== canonicalizeJson(coordinate.samplingUnitIds)
-      || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {
+      || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)
+      || canonicalizeJson(record.provenance) !== canonicalizeJson(expectedProvenance)
+      || canonicalizeJson(record.cache) !== canonicalizeJson({
+        cacheStatus: 'miss',
+        cacheKeyDigest: key,
+      })
+      || !executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)
+      || !executionRecordSatisfiesCacheCostPolicy(
+        record,
+        plan.execution.policy.budget.maxProviderCost,
+      )
+      || !executionRecordUsageMatchesAttempts(record)) {
     throw new ExecutionRuntimeConfigurationError(
       'EXECUTION_RUNTIME_CACHE_ENTRY_INVALID',
       'Execution cache returned a record incompatible with the sealed coordinate.',
@@ -686,7 +686,11 @@ async function executeCoordinate(
       trialId: coordinate.coordinate.trialId,
       cacheStatus: coordinate.cached.cache.cacheStatus,
     });
-    return { record: coordinate.cached, failed: false };
+    return {
+      record: coordinate.cached,
+      verifiedCacheRecordDigest: coordinate.cached.cache.sourceRecordDigest as Sha256Digest,
+      failed: false,
+    };
   }
   const binding = prepared.bindings.get(coordinate.coordinate.targetId);
   if (binding === undefined) throw new Error('Target binding disappeared');
@@ -703,7 +707,6 @@ async function executeCoordinate(
   }
 
   const attempts: ExecutionAttempt[] = [];
-  const attemptUsages: Array<UsageRecord | undefined> = [];
   let trial: ExecutionExecutorTrial | undefined;
   let inFlightAttempt: InFlightAttempt | undefined;
   const trialStartedAt = ports.clock.timestamp();
@@ -775,7 +778,6 @@ async function executeCoordinate(
       if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
         snapshotJson(outcome.result);
         const attemptUsage = validatedUsage(outcome.result.usage);
-        attemptUsages.push(attemptUsage);
         const costError = budget.recordUsage(attemptUsage);
         if (costError !== undefined) {
           cacheEligible = false;
@@ -825,7 +827,6 @@ async function executeCoordinate(
 
       const failure = attemptError(outcome, runSignal);
       const attemptUsage = validatedUsage(failure.usage);
-      attemptUsages.push(attemptUsage);
       const costError = budget.recordUsage(attemptUsage);
       if (costError !== undefined) {
         cacheEligible = false;
@@ -910,7 +911,6 @@ async function executeCoordinate(
         },
         error: evaluationError,
       });
-      attemptUsages.push(undefined);
       inFlightAttempt = undefined;
       terminalError = evaluationError;
       terminalStatus = 'failed';
@@ -953,14 +953,14 @@ async function executeCoordinate(
 
   if (attempts.length === 0) return { failed: false };
 
-  const usage = aggregateUsage(attemptUsages);
+  const usage = aggregateExecutionAttemptUsage(attempts);
   const completedAt = ports.clock.timestamp();
   const recordBase = {
     ...coordinate.coordinate,
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native' as const,
-      trust: 'verified' as const,
+      trust: binding.runtime.assuranceLevel,
       parentDigests: [plan.execution.executionPlanDigest],
     },
     attempts,
@@ -1041,7 +1041,7 @@ async function prepareBlock(
     try {
       const entry = await ports.cache?.get(key);
       if (entry !== undefined) {
-        const sourceRecord = assertCachedRecord(entry, key, coordinate, binding.runtime);
+        const sourceRecord = assertCachedRecord(entry, key, coordinate, binding.runtime, plan);
         coordinates.push({
           coordinate,
           cached: replayRecord(
@@ -1154,7 +1154,8 @@ function makeBundle(
   records: ExecutionRecord[],
   plannedCount: number,
   stop: StopState,
-): ExecutionBundle {
+  verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>,
+): ExecutionBundleSource {
   const sortedRecords = records.sort(compareRecords);
   const executionBundleStatus = stop.stopKind ?? 'completed';
   const bundle: ExecutionBundle = {
@@ -1171,8 +1172,11 @@ function makeBundle(
     records: sortedRecords,
     provenance: {
       provenanceKind: 'native',
-      trust: 'verified',
-      parentDigests: [plan.digests.runContractDigest],
+      trust: minimumProvenanceTrust(sortedRecords),
+      parentDigests: [
+        plan.digests.runContractDigest,
+        plan.digests.executionPlanDigest,
+      ],
       ...(stop.error !== undefined
         ? { facets: snapshotJson({ terminalError: stop.error }) as unknown as JsonValue }
         : {}),
@@ -1180,7 +1184,18 @@ function makeBundle(
     bundleDigest: `sha256:${'0'.repeat(64)}`,
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
-  return parseExecutionBundle(bundle, plan);
+  const verified = verifyExecutionBundle(bundle, plan, {
+    verifiedCacheRecordDigests,
+    verifiedProvenanceBundleDigests: new Set([bundle.bundleDigest as Sha256Digest]),
+  });
+  if (verified.planVerification.provenanceTrustStatus !== 'verified'
+      || verified.planVerification.cacheReceiptStatus !== 'verified'
+      || verified.planVerification.invocationBudgetStatus !== 'verified'
+      || (bundle.executionBundleStatus === 'completed'
+        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
+    throw new TypeError('Execution Runtime produced an unverifiable Bundle.');
+  }
+  return verified;
 }
 
 function terminalEventKind(
@@ -1200,7 +1215,7 @@ async function runExecution(
   options: ExecutionRunOptions,
   prepared: PreparedRuntime,
   stream: BoundedEventStream,
-): Promise<ExecutionBundle> {
+): Promise<ExecutionBundleSource> {
   const schedule = deriveExecutionSchedule(plan);
   const plannedCoordinates = schedule.flatMap((block) => block.coordinates);
   const stop: StopState = {};
@@ -1250,6 +1265,7 @@ async function runExecution(
   const budget = new BudgetTracker(plan);
   const records = new Map<string, ExecutionRecord>();
   const pendingCacheEntries = new Map<Sha256Digest, ExecutionCacheEntry>();
+  const verifiedCacheRecordDigests = new Set<Sha256Digest>();
   const durationController = new AbortController();
   const durationTimer = plan.execution.policy.budget.maxDurationMs === undefined
     ? undefined
@@ -1260,7 +1276,8 @@ async function runExecution(
       setStop('budget-exhausted', 'duration-budget-exhausted');
     }).catch(() => undefined);
   try {
-    await events.emit('execution.run.started', 'run', options.runId, {
+    try {
+      await events.emit('execution.run.started', 'run', options.runId, {
       runContractDigest: plan.digests.runContractDigest,
       executionPlanDigest: plan.execution.executionPlanDigest,
       planned: plannedCoordinates.length,
@@ -1307,6 +1324,9 @@ async function runExecution(
           if (result.cacheEntry !== undefined) {
             pendingCacheEntries.set(result.cacheEntry.cacheKeyDigest, result.cacheEntry);
           }
+          if (result.verifiedCacheRecordDigest !== undefined) {
+            verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
+          }
         }
         await events.emit('execution.block.completed', 'scheduling-block', preparedBlock.block.schedulingBlockId, {
           coordinateCount: preparedBlock.coordinates.length,
@@ -1332,94 +1352,98 @@ async function runExecution(
         setStop('budget-exhausted', 'provider-cost-budget-exhausted');
       }
     }
-  } catch (error) {
-    if (!(error instanceof Error
-        && error.name === 'AbortError'
-        && stop.stopKind !== undefined)) {
-      setStop('failed', 'execution-runtime-internal-failed', {
-        code: 'execution-runtime-internal-failed',
-        stage: 'internal',
-        message: 'Execution runtime encountered an internal failure.',
-      });
-    }
-  } finally {
-    durationController.abort();
-    await durationTimer;
-    options.signal?.removeEventListener('abort', onExternalAbort);
-    const disposeErrors = await sessions.dispose();
-    if (disposeErrors.length > 0) {
-      setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
-    }
-    if (disposeErrors.length === 0 && stop.stopKind === undefined) {
-      for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
-        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
-      ))) {
-        try {
-          await ports.cache?.put(entry);
-        } catch {
-          setStop('failed', 'execution-cache-write-failed', {
-            code: 'execution-cache-write-failed',
-            stage: 'infrastructure',
-            message: 'Execution cache write failed.',
-          });
-          break;
+    } catch (error) {
+      if (!(error instanceof Error
+          && error.name === 'AbortError'
+          && stop.stopKind !== undefined)) {
+        setStop('failed', 'execution-runtime-internal-failed', {
+          code: 'execution-runtime-internal-failed',
+          stage: 'internal',
+          message: 'Execution runtime encountered an internal failure.',
+        });
+      }
+    } finally {
+      durationController.abort();
+      await durationTimer;
+      options.signal?.removeEventListener('abort', onExternalAbort);
+      const disposeErrors = await sessions.dispose();
+      if (disposeErrors.length > 0) {
+        setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
+      }
+      if (disposeErrors.length === 0 && stop.stopKind === undefined) {
+        for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
+          compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+        ))) {
+          try {
+            await ports.cache?.put(entry);
+          } catch {
+            setStop('failed', 'execution-cache-write-failed', {
+              code: 'execution-cache-write-failed',
+              stage: 'infrastructure',
+              message: 'Execution cache write failed.',
+            });
+            break;
+          }
         }
       }
     }
-  }
 
-  if (stop.stopKind === 'budget-exhausted') {
-    const censoredAt = ports.clock.timestamp();
-    for (const coordinate of plannedCoordinates) {
-      if (!records.has(coordinateKey(coordinate))) {
-        records.set(coordinateKey(coordinate), censoredRecord(
-          plan,
-          prepared,
-          coordinate,
-          censoredAt,
-          stop.reason ?? 'budget-exhausted',
-        ));
+    if (stop.stopKind === 'budget-exhausted') {
+      const censoredAt = ports.clock.timestamp();
+      for (const coordinate of plannedCoordinates) {
+        if (!records.has(coordinateKey(coordinate))) {
+          records.set(coordinateKey(coordinate), censoredRecord(
+            plan,
+            prepared,
+            coordinate,
+            censoredAt,
+            stop.reason ?? 'budget-exhausted',
+          ));
+        }
       }
     }
-  }
-  let bundle = makeBundle(
-    plan,
-    options,
-    [...records.values()],
-    plannedCoordinates.length,
-    stop,
-  );
-  const terminalDelivered = await events.emit(
-    terminalEventKind(bundle.executionBundleStatus),
-    'run',
-    options.runId,
-    {
-      bundleDigest: bundle.bundleDigest,
-      executionBundleStatus: bundle.executionBundleStatus,
-      coverage: bundle.coverage,
-    },
-  );
-  if (!terminalDelivered) {
-    bundle = makeBundle(
+    let source = makeBundle(
       plan,
       options,
       [...records.values()],
       plannedCoordinates.length,
       stop,
+      verifiedCacheRecordDigests,
     );
-    await events.emitRecovery(
-      terminalEventKind(bundle.executionBundleStatus),
+    const terminalDelivered = await events.emit(
+      terminalEventKind(source.bundle.executionBundleStatus),
       'run',
       options.runId,
       {
-        bundleDigest: bundle.bundleDigest,
-        executionBundleStatus: bundle.executionBundleStatus,
-        coverage: bundle.coverage,
+        bundleDigest: source.bundle.bundleDigest,
+        executionBundleStatus: source.bundle.executionBundleStatus,
+        coverage: source.bundle.coverage,
       },
     );
+    if (!terminalDelivered) {
+      source = makeBundle(
+        plan,
+        options,
+        [...records.values()],
+        plannedCoordinates.length,
+        stop,
+        verifiedCacheRecordDigests,
+      );
+      await events.emitRecovery(
+        terminalEventKind(source.bundle.executionBundleStatus),
+        'run',
+        options.runId,
+        {
+          bundleDigest: source.bundle.bundleDigest,
+          executionBundleStatus: source.bundle.executionBundleStatus,
+          coverage: source.bundle.coverage,
+        },
+      );
+    }
+    return source;
+  } finally {
+    events.close();
   }
-  events.close();
-  return bundle;
 }
 
 export function startExecution(
@@ -1429,9 +1453,15 @@ export function startExecution(
 ): ExecutionRun {
   const prepared = prepareRuntime(plan, ports, options);
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const source = runExecution(plan, ports, options, prepared, stream);
+  let result: Promise<ExecutionBundle> | undefined;
   return {
     events: stream,
-    result: runExecution(plan, ports, options, prepared, stream),
+    source,
+    get result() {
+      result ??= source.then((verified) => verified.bundle);
+      return result;
+    },
   };
 }
 
@@ -1441,4 +1471,12 @@ export async function executeRunPlan(
   options: ExecutionRunOptions,
 ): Promise<ExecutionBundle> {
   return startExecution(plan, ports, options).result;
+}
+
+export async function executeRunPlanSource(
+  plan: SealedRunPlan,
+  ports: ExecutionRuntimePorts,
+  options: ExecutionRunOptions,
+): Promise<ExecutionBundleSource> {
+  return startExecution(plan, ports, options).source;
 }

@@ -3,6 +3,7 @@ import type {
   EvaluationError,
   EvaluationEvent,
   ExecutionBundle,
+  ExecutionBundleSource,
   ExecutionRecord,
   JsonValue,
   RuntimeIdentity,
@@ -141,6 +142,7 @@ export interface ExecutionRunOptions {
 export interface ExecutionRun {
   events: AsyncIterable<EvaluationEvent>;
   result: Promise<ExecutionBundle>;
+  source: Promise<ExecutionBundleSource>;
 }
 
 export class ExecutionPortFailure extends Error {

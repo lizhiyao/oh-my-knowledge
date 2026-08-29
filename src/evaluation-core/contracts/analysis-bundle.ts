@@ -10,6 +10,7 @@ import {
   SchemaIdentitySchema,
   schemaIdentityKey,
   type CoreSchemaValidator,
+  type Provenance,
 } from './common.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
@@ -17,15 +18,20 @@ import {
 } from './analysis-identities.js';
 import { derivePlannedExecutionCoordinates } from './execution-identities.js';
 import {
-  parseEvaluationBundle,
+  assertEvaluationBundleSourceChain,
+  assertEvaluationBundleSourceMatchesPlan,
+  effectiveEvaluationBundleTrust,
   type EvaluationBundlePlanContext,
+  type EvaluationBundleSource,
 } from './evaluation-bundle.js';
 import { digestArtifactPayload } from './digests.js';
-import { parseExecutionBundle } from './execution-bundle.js';
+import type { ExecutionBundleSource } from './execution-bundle.js';
 import {
   canonicalizeJson,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
+  type Sha256Digest,
 } from './json.js';
 
 export type AnalysisBundleValidationErrorCode =
@@ -35,6 +41,7 @@ export type AnalysisBundleValidationErrorCode =
   | 'ANALYSIS_BUNDLE_COVERAGE_INVALID'
   | 'ANALYSIS_BUNDLE_STATUS_INVALID'
   | 'ANALYSIS_BUNDLE_ASSUMPTION_INVALID'
+  | 'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID'
   | 'ANALYSIS_BUNDLE_DIGEST_MISMATCH'
   | 'ANALYSIS_BUNDLE_PLAN_MISMATCH'
   | 'ANALYSIS_BUNDLE_SOURCE_MISMATCH'
@@ -72,6 +79,10 @@ function assertObservationCoverage(coverage: AnalysisObservationCoverage): void 
       'Analysis observation coverage counters are not internally consistent.',
     );
   }
+}
+
+function runtimeDependencyKey(input: AnalysisRecord['runtimeDependencies'][number]): string {
+  return `${input.runtimeKind}\u0000${input.referenceId}`;
 }
 
 function assertRecords(bundle: AnalysisBundle): void {
@@ -133,6 +144,19 @@ function assertRecords(bundle: AnalysisBundle): void {
         throw new AnalysisBundleValidationError(
           'ANALYSIS_BUNDLE_ASSUMPTION_INVALID',
           'A failed or unevaluated assumption check requires a reason code.',
+        );
+      }
+    }
+    for (let dependencyIndex = 0;
+      dependencyIndex < record.runtimeDependencies.length;
+      dependencyIndex += 1) {
+      const dependency = record.runtimeDependencies[dependencyIndex];
+      const previousDependency = record.runtimeDependencies[dependencyIndex - 1];
+      if (previousDependency !== undefined
+          && runtimeDependencyKey(previousDependency) >= runtimeDependencyKey(dependency)) {
+        throw new AnalysisBundleValidationError(
+          'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+          'Analysis Runtime dependencies must use unique canonical order.',
         );
       }
     }
@@ -264,8 +288,84 @@ export interface AnalysisBundleValidationContext {
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
 }
 
+export interface AnalysisBundleVerificationContext {
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust independently observed from the Evaluation source at production time. */
+  readonly evaluationSourceTrust?: Provenance['trust'];
+}
+
+export interface AnalysisBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+  readonly evaluationSourceTrust: Provenance['trust'];
+}
+
+export interface AnalysisBundleVerificationResult {
+  readonly bundle: AnalysisBundle;
+  readonly planVerification: AnalysisBundlePlanVerification;
+}
+
+export type AnalysisBundleSource = AnalysisBundleVerificationResult;
+
+const analysisBundleSources = new WeakSet<object>();
+
+export function assertAnalysisBundleSource(
+  value: unknown,
+): asserts value is AnalysisBundleSource {
+  if (value === null || typeof value !== 'object' || !analysisBundleSources.has(value)) {
+    throw new TypeError(
+      'Decision stage requires a source returned by parseAnalysisBundle() or the Runtime.',
+    );
+  }
+}
+
+export function assertAnalysisBundleSourceChain(
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+): void {
+  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
+  assertAnalysisBundleSource(analysisSource);
+  if (analysisSource.bundle.evaluationBundleDigest
+      !== evaluationSource.bundle.bundleDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_SOURCE_MISMATCH',
+      'Analysis source is not bound to the supplied Evaluation source.',
+    );
+  }
+}
+
+export function assertAnalysisBundleSourceMatchesPlan(
+  plan: AnalysisBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+): void {
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  if (analysisSource.bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+      'Analysis source does not match the current AnalysisPlan.',
+    );
+  }
+}
+
+export function effectiveAnalysisBundleTrust(
+  source: AnalysisBundleSource,
+): AnalysisBundle['provenance']['trust'] {
+  assertAnalysisBundleSource(source);
+  const trusts: Provenance['trust'][] = [
+    source.bundle.provenance.trust,
+    source.planVerification.evaluationSourceTrust,
+    source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
+  ];
+  return trusts.sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
+}
+
 interface ExpectedAnalysisRow {
   rowId: string;
+  metricId: string;
   targetId: string;
   sampleId: string;
   samplingUnitIds: {
@@ -358,6 +458,7 @@ function expectedRows(
           evaluationId: coordinate.evaluationId,
           metricId,
         }),
+        metricId,
         targetId: coordinate.targetId,
         sampleId: coordinate.sampleId,
         samplingUnitIds: plannedExecution.samplingUnitIds,
@@ -451,19 +552,138 @@ const TRUST_LEVEL = {
   verified: 3,
 } as const;
 
+export function analysisRuntimeDependencyTrusts(
+  plan: Pick<AnalysisBundlePlanContext, 'analysis'>,
+  records: readonly AnalysisRecord[],
+): Provenance['trust'][] {
+  const runtimeByKey = new Map(plan.analysis.runtimes.map((runtime) => [
+    `${runtime.runtimeKind}\u0000${runtime.referenceId}`,
+    runtime,
+  ]));
+  const dependencies = new Set(records.flatMap((record) => (
+    record.runtimeDependencies.map(runtimeDependencyKey)
+  )));
+  return [...dependencies].sort(compareStrings).map((key) => {
+    const identity = runtimeByKey.get(key)?.identity;
+    const assurance = identity !== null && typeof identity === 'object'
+      ? (identity as Record<string, unknown>).assuranceLevel
+      : undefined;
+    return typeof assurance === 'string' && assurance in TRUST_LEVEL
+      ? assurance as Provenance['trust']
+      : 'untrusted';
+  });
+}
+
+function expectedMissingPolicyIds(
+  plan: AnalysisBundlePlanContext,
+  node: AnalysisBundlePlanContext['analysis']['analysisGraph']['nodes'][number],
+  sourceRows: readonly ExpectedAnalysisRow[],
+): Set<string> {
+  const nonObservedMetricIds = new Set(sourceRows
+    .filter((row) => row.rowStatus !== 'observed')
+    .map((row) => row.metricId));
+  const metricById = new Map(plan.analysis.metrics.map((metric) => [metric.metricId, metric]));
+  return new Set(node.inputs.flatMap((input) => {
+    if (input.inputKind !== 'metric-observations'
+        || !nonObservedMetricIds.has(input.referenceId)) return [];
+    const policyId = metricById.get(input.referenceId)?.missingPolicyId;
+    return policyId === undefined ? [] : [policyId];
+  }));
+}
+
+function assertRuntimeDependencies(
+  record: AnalysisRecord,
+  plan: AnalysisBundlePlanContext,
+  node: AnalysisBundlePlanContext['analysis']['analysisGraph']['nodes'][number],
+  sourceRows: readonly ExpectedAnalysisRow[],
+): void {
+  const availableRuntimeKeys = new Set(plan.analysis.runtimes.map((runtime) => (
+    `${runtime.runtimeKind}\u0000${runtime.referenceId}`
+  )));
+  const expectedPolicyIds = expectedMissingPolicyIds(plan, node, sourceRows);
+  const dependencyKeys = new Set(record.runtimeDependencies.map(runtimeDependencyKey));
+  const nodeDependencyKey = `analysis-node\u0000${node.nodeId}`;
+  for (const dependency of record.runtimeDependencies) {
+    if (!availableRuntimeKeys.has(runtimeDependencyKey(dependency))
+        || (dependency.runtimeKind === 'analysis-node' && dependency.referenceId !== node.nodeId)
+        || (dependency.runtimeKind === 'missing-policy'
+          && !expectedPolicyIds.has(dependency.referenceId))) {
+      throw new AnalysisBundleValidationError(
+        'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+        'Analysis Runtime dependency does not match a reachable sealed Runtime.',
+      );
+    }
+  }
+  if (record.analysisStatus === 'completed' && !dependencyKeys.has(nodeDependencyKey)) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+      'A completed Analysis record must depend on its AnalysisNode Runtime.',
+    );
+  }
+  if (dependencyKeys.has(nodeDependencyKey)
+      && [...expectedPolicyIds].some((policyId) => (
+        !dependencyKeys.has(`missing-policy\u0000${policyId}`)
+      ))) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+      'An invoked AnalysisNode must retain every preceding MissingPolicy dependency.',
+    );
+  }
+  if (!dependencyKeys.has(nodeDependencyKey)
+      && record.analysisStatus === 'inconclusive'
+      && (expectedPolicyIds.size === 0 || [...expectedPolicyIds].some((policyId) => (
+        !dependencyKeys.has(`missing-policy\u0000${policyId}`)
+      )))) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+      'An inconclusive pre-node result must retain every consulted MissingPolicy dependency.',
+    );
+  }
+  if (!dependencyKeys.has(nodeDependencyKey) && record.analysisStatus === 'inconclusive') {
+    const rejectionCodes = record.assumptionChecks.flatMap((check) => (
+      check.assumptionId.startsWith('missing-policy-')
+          && check.checkStatus === 'failed'
+          && check.reasonCode?.startsWith('missing-policy-rejected:') === true
+        ? [check.reasonCode]
+        : []
+    )).sort(compareStrings);
+    if (canonicalizeJson(record.reasonCodes) !== canonicalizeJson(rejectionCodes)) {
+      throw new AnalysisBundleValidationError(
+        'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+        'An inconclusive pre-node result must be explained by MissingPolicy rejections.',
+      );
+    }
+  }
+  if (!dependencyKeys.has(nodeDependencyKey)
+      && record.analysisStatus === 'failed'
+      && !record.runtimeDependencies.some((dependency) => (
+        dependency.runtimeKind === 'missing-policy'
+      ))) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_RUNTIME_DEPENDENCY_INVALID',
+      'A failed pre-node result must retain its failing MissingPolicy dependency.',
+    );
+  }
+}
+
 function assertMatchesPlan(
   bundle: AnalysisBundle,
   plan: AnalysisBundlePlanContext,
   execution: ExecutionBundle,
   source: EvaluationBundle,
+  sourceTrust: Provenance['trust'],
   validation: AnalysisBundleValidationContext,
 ): void {
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest
-      || bundle.evaluationBundleDigest !== source.bundleDigest) {
+  if (bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+      'AnalysisBundle does not match the current AnalysisPlan.',
+    );
+  }
+  if (bundle.evaluationBundleDigest !== source.bundleDigest) {
     throw new AnalysisBundleValidationError(
       'ANALYSIS_BUNDLE_SOURCE_MISMATCH',
-      'AnalysisBundle parent identities do not match the sealed plan and source bundle.',
+      'AnalysisBundle parent identities do not match the source EvaluationBundle.',
     );
   }
   const nodeById = new Map(plan.analysis.analysisGraph.nodes.map((node) => [node.nodeId, node]));
@@ -512,6 +732,7 @@ function assertMatchesPlan(
       );
     }
     const sourceRows = expectedRows(plan, execution, source, node);
+    assertRuntimeDependencies(record, plan, node, sourceRows);
     if (record.analysisStatus === 'completed') {
       let valid = false;
       try {
@@ -572,24 +793,8 @@ function assertMatchesPlan(
       );
     }
   }
-  const executedNodeIds = new Set(plan.analysis.analysisGraph.nodes.map((node) => node.nodeId));
-  const usedMissingPolicyIds = new Set(plan.analysis.metrics.map(
-    (metric) => metric.missingPolicyId,
-  ));
-  const runtimeTrusts = plan.analysis.runtimes.flatMap((runtime) => {
-    if (!((runtime.runtimeKind === 'analysis-node' && executedNodeIds.has(runtime.referenceId))
-      || (runtime.runtimeKind === 'missing-policy' && usedMissingPolicyIds.has(runtime.referenceId)))) {
-      return [];
-    }
-    const identity = runtime.identity;
-    const assurance = identity !== null && typeof identity === 'object'
-      ? (identity as Record<string, unknown>).assuranceLevel
-      : undefined;
-    return typeof assurance === 'string' && assurance in TRUST_LEVEL
-      ? [assurance as keyof typeof TRUST_LEVEL]
-      : ['untrusted' as const];
-  });
-  const trustCeiling = [source.provenance.trust, ...runtimeTrusts].sort(
+  const runtimeTrusts = analysisRuntimeDependencyTrusts(plan, bundle.records);
+  const trustCeiling = [sourceTrust, ...runtimeTrusts].sort(
     (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
   )[0];
   if (canonicalizeJson(bundle.provenance.parentDigests)
@@ -605,13 +810,46 @@ function assertMatchesPlan(
 export function parseAnalysisBundle(
   value: unknown,
   plan: AnalysisBundlePlanContext,
-  executionSource: unknown,
-  evaluationSource: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   validation: AnalysisBundleValidationContext,
-): AnalysisBundle {
-  const execution = parseExecutionBundle(executionSource, plan);
-  const source = parseEvaluationBundle(evaluationSource, plan, execution);
+): AnalysisBundleSource {
+  return verifyAnalysisBundle(
+    value,
+    plan,
+    executionSource,
+    evaluationSource,
+    validation,
+  );
+}
+
+export function verifyAnalysisBundle(
+  value: unknown,
+  plan: AnalysisBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  validation: AnalysisBundleValidationContext,
+  verification?: AnalysisBundleVerificationContext,
+): AnalysisBundleSource {
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
+  const execution = executionSource.bundle;
+  const source = evaluationSource.bundle;
   const bundle = parseAnalysisBundleDocument(value);
-  assertMatchesPlan(bundle, plan, execution, source, validation);
-  return bundle;
+  const sourceTrust = verification?.evaluationSourceTrust ?? source.provenance.trust;
+  const effectiveSourceTrust = verification?.evaluationSourceTrust
+    ?? effectiveEvaluationBundleTrust(evaluationSource);
+  assertMatchesPlan(bundle, plan, execution, source, sourceTrust, validation);
+  const result = {
+    bundle,
+    planVerification: {
+      provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
+        bundle.bundleDigest as Sha256Digest,
+      ) === true
+        ? 'verified' as const
+        : 'indeterminate' as const,
+      evaluationSourceTrust: effectiveSourceTrust,
+    },
+  };
+  analysisBundleSources.add(result);
+  return deepFreezeCanonicalJson(result);
 }

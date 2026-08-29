@@ -7,10 +7,12 @@ import {
 import { JsonValueSchema } from '../contracts/json.js';
 import type {
   AnalysisBundle,
+  AnalysisBundleSource,
   AnalysisObservationCoverage,
   AnalysisRecord,
   AssumptionCheck,
   DecisionResult,
+  DecisionResultSource,
   EvaluationBundle,
   EvaluationError,
   EvaluationEvent,
@@ -236,6 +238,7 @@ export interface AnalysisRunOptions {
 export interface AnalysisRun {
   events: AsyncIterable<EvaluationEvent>;
   result: Promise<AnalysisBundle>;
+  source: Promise<AnalysisBundleSource>;
 }
 
 export interface DecisionOptions {
@@ -247,6 +250,7 @@ export interface DecisionOptions {
 export interface DecisionRun {
   events: AsyncIterable<EvaluationEvent>;
   result: Promise<DecisionResult | undefined>;
+  source: Promise<DecisionResultSource | undefined>;
 }
 
 export interface EvaluationReportMaterializationOptions {

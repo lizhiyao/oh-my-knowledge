@@ -3,26 +3,31 @@ import {
   AnalysisBundleSchema,
   AnalysisRecordSchema,
   AssumptionCheckSchema,
+  EvaluationErrorSchema,
   IdentifierSchema,
   SchemaIdentitySchema,
+  assertEvaluationBundleSourceMatchesPlan,
+  analysisRuntimeDependencyTrusts,
   canonicalizeJson,
   countAnalysisResamplingUnits,
   derivePlannedEvaluationCoordinates,
   derivePlannedExecutionCoordinates,
   digestArtifactPayload,
   digestCanonicalJson,
-  parseAnalysisBundle,
-  parseEvaluationBundle,
-  parseExecutionBundle,
+  effectiveEvaluationBundleTrust,
   parseWireDocument,
   schemaIdentityKey,
+  verifyAnalysisBundle,
   type AnalysisBundle,
+  type AnalysisBundleSource,
   type CoreSchemaValidator,
   type AnalysisObservationCoverage,
   type AnalysisRecord,
   type EvaluationBundle,
+  type EvaluationBundleSource,
   type EvaluationError,
   type ExecutionBundle,
+  type ExecutionBundleSource,
   type JsonValue,
   type Provenance,
   type RuntimeIdentity,
@@ -57,6 +62,8 @@ interface NodeBinding {
 }
 
 interface PreparedAnalysisRuntime {
+  executionSource: ExecutionBundleSource;
+  evaluationSource: EvaluationBundleSource;
   execution: ExecutionBundle;
   evaluation: EvaluationBundle;
   nodeBindings: ReadonlyMap<string, NodeBinding>;
@@ -108,12 +115,13 @@ function validateOptions(options: AnalysisRunOptions): void {
 
 function prepareRuntime(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): PreparedAnalysisRuntime {
   validateOptions(options);
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
   if (ports.eventSequencer === undefined) {
     configurationError(
       'ANALYSIS_RUNTIME_EVENT_SEQUENCER_REQUIRED',
@@ -127,8 +135,8 @@ function prepareRuntime(
       'Required EventWriter mode needs an injected EventWriter.',
     );
   }
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
   const runtimeByNodeId = new Map(plan.analysis.runtimes
     .filter((runtime) => runtime.runtimeKind === 'analysis-node')
     .map((runtime) => [runtime.referenceId, runtime]));
@@ -184,7 +192,14 @@ function prepareRuntime(
     }
     missingPolicies.set(metric.missingPolicyId, port);
   }
-  return { execution, evaluation, nodeBindings, missingPolicies };
+  return {
+    executionSource,
+    evaluationSource,
+    execution,
+    evaluation,
+    nodeBindings,
+    missingPolicies,
+  };
 }
 
 function coordinateKey(value: {
@@ -426,7 +441,21 @@ function exclusionFacts(
 }
 
 function safeError(error: unknown): EvaluationError {
-  if (error instanceof AnalysisPortFailure) return error.evaluationError;
+  if (error instanceof AnalysisPortFailure) {
+    const parsed = EvaluationErrorSchema.safeParse(error.evaluationError);
+    if (!parsed.success) {
+      return {
+        code: 'analysis-error-invalid',
+        stage: 'infrastructure',
+        message: 'Analysis Runtime returned an invalid structured failure.',
+      };
+    }
+    return {
+      code: parsed.data.code,
+      stage: parsed.data.stage,
+      message: 'Analysis Runtime reported a structured failure.',
+    };
+  }
   if (error instanceof AnalysisCancelledError) {
     return { code: 'analysis-cancelled', stage: 'analysis', message: 'Analysis cancelled.' };
   }
@@ -443,9 +472,16 @@ function recordDigest(record: Omit<AnalysisRecord, 'recordDigest'>): Sha256Diges
 
 function buildRecord(
   base: Readonly<Record<string, unknown>>,
+  runtimeDependencies: ReadonlyMap<string, AnalysisRecord['runtimeDependencies'][number]>,
   terminal: Readonly<Record<string, unknown>>,
 ): AnalysisRecord {
-  const payload = snapshotJson({ ...base, ...terminal }) as Omit<
+  const payload = snapshotJson({
+    ...base,
+    runtimeDependencies: [...runtimeDependencies.values()].sort((left, right) => (
+      compareStrings(`${left.runtimeKind}\u0000${left.referenceId}`, `${right.runtimeKind}\u0000${right.referenceId}`)
+    )),
+    ...terminal,
+  }) as Omit<
     AnalysisRecord,
     'recordDigest'
   >;
@@ -558,6 +594,7 @@ function materializeNodeInputs(
 function validateMissingPolicies(
   policies: ReadonlyMap<string, AnalysisMissingPolicy>,
   inputs: readonly AnalysisNodeInput[],
+  runtimeDependencies: Map<string, AnalysisRecord['runtimeDependencies'][number]>,
 ): string[] {
   const rejectionCodes = new Set<string>();
   for (const input of inputs) {
@@ -566,6 +603,10 @@ function validateMissingPolicies(
     if (policy === undefined) throw new TypeError('MissingPolicy port disappeared after prepare.');
     for (const row of input.rows) {
       if (row.rowStatus === 'observed') continue;
+      runtimeDependencies.set(`missing-policy\u0000${input.metric.missingPolicyId}`, {
+        runtimeKind: 'missing-policy',
+        referenceId: input.metric.missingPolicyId,
+      });
       const disposition = policy.decide(deepFreeze({ metric: input.metric, row }));
       if (disposition === 'reject') {
         rejectionCodes.add(`missing-policy-rejected:${input.metric.metricId}`);
@@ -585,18 +626,10 @@ function terminalEventKind(
 
 function deriveTrust(
   plan: SealedRunPlan,
+  records: readonly AnalysisRecord[],
   source: Provenance['trust'],
 ): Provenance['trust'] {
-  const executedNodeIds = new Set(plan.analysis.analysisGraph.nodes.map((node) => node.nodeId));
-  const usedMissingPolicyIds = new Set(plan.analysis.metrics.map(
-    (metric) => metric.missingPolicyId,
-  ));
-  const trusts = plan.analysis.runtimes.flatMap((runtime) => (
-    (runtime.runtimeKind === 'analysis-node' && executedNodeIds.has(runtime.referenceId))
-      || (runtime.runtimeKind === 'missing-policy' && usedMissingPolicyIds.has(runtime.referenceId))
-      ? [runtime.identity.assuranceLevel]
-      : []
-  ));
+  const trusts = analysisRuntimeDependencyTrusts(plan, records);
   return [source, ...trusts].sort(
     (left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right],
   )[0];
@@ -604,13 +637,14 @@ function deriveTrust(
 
 function makeBundle(
   plan: SealedRunPlan,
-  execution: ExecutionBundle,
-  evaluation: EvaluationBundle,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   options: AnalysisRunOptions,
   records: readonly AnalysisRecord[],
   schemaValidators: ReadonlyMap<string, CoreSchemaValidator>,
   stop: StopState,
-): AnalysisBundle {
+): AnalysisBundleSource {
+  const evaluation = evaluationSource.bundle;
   const ordered = [...records].sort((left, right) => compareStrings(left.nodeId, right.nodeId));
   const coverage = {
     planned: ordered.length,
@@ -632,7 +666,7 @@ function makeBundle(
     records: ordered,
     provenance: {
       provenanceKind: 'derived' as const,
-      trust: deriveTrust(plan, evaluation.provenance.trust),
+      trust: deriveTrust(plan, ordered, effectiveEvaluationBundleTrust(evaluationSource)),
       parentDigests: [evaluation.bundleDigest],
       ...(stop.error !== undefined ? { facets: { terminalErrorCode: stop.error.code } } : {}),
     },
@@ -644,13 +678,18 @@ function makeBundle(
       'bundleDigest',
     ),
   });
-  return deepFreeze(parseAnalysisBundle(
+  return verifyAnalysisBundle(
     bundle,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     { schemaValidators },
-  ));
+    {
+      verifiedProvenanceBundleDigests: new Set([
+        bundle.bundleDigest as Sha256Digest,
+      ]),
+    },
+  );
 }
 
 async function runAnalysis(
@@ -659,7 +698,7 @@ async function runAnalysis(
   options: AnalysisRunOptions,
   prepared: PreparedAnalysisRuntime,
   stream: BoundedEventStream,
-): Promise<AnalysisBundle> {
+): Promise<AnalysisBundleSource> {
   const stop: StopState = {};
   const setStop = (
     stopKind: NonNullable<StopState['stopKind']>,
@@ -719,6 +758,10 @@ async function runAnalysis(
   });
 
   for (const binding of bindings) {
+    const runtimeDependencies = new Map<
+      string,
+      AnalysisRecord['runtimeDependencies'][number]
+    >();
     const { inputs, blockedReasonCodes } = materializeNodeInputs(
       plan,
       binding,
@@ -751,7 +794,7 @@ async function runAnalysis(
         : stop.stopKind === 'failed'
           ? ['analysis-run-failed']
           : blockedReasonCodes;
-      const record = buildRecord(base, {
+      const record = buildRecord(base, runtimeDependencies, {
         analysisStatus: 'not-evaluated',
         reasonCodes,
       } as never);
@@ -764,10 +807,14 @@ async function runAnalysis(
     }
     let missingRejections: string[];
     try {
-      missingRejections = validateMissingPolicies(prepared.missingPolicies, inputs);
+      missingRejections = validateMissingPolicies(
+        prepared.missingPolicies,
+        inputs,
+        runtimeDependencies,
+      );
     } catch (error) {
       const evaluationError = safeError(error);
-      const record = buildRecord(base, {
+      const record = buildRecord(base, runtimeDependencies, {
         analysisStatus: 'failed',
         error: evaluationError,
       });
@@ -789,10 +836,14 @@ async function runAnalysis(
           reasonCode,
         },
       ));
-      const record = buildRecord({ ...base, assumptionChecks: checks }, {
+      const record = buildRecord(
+        { ...base, assumptionChecks: checks },
+        runtimeDependencies,
+        {
         analysisStatus: 'inconclusive',
         reasonCodes: missingRejections,
-      } as never);
+        } as never,
+      );
       records.push(record);
       recordsByResultId.set(record.resultId, record);
       await events.emit('analysis.node.inconclusive', 'analysis-node', binding.node.nodeId, {
@@ -802,6 +853,12 @@ async function runAnalysis(
     }
     if (controller.signal.aborted) {
       setStop('cancelled', 'analysis-external-cancelled');
+      const record = buildRecord(base, runtimeDependencies, {
+        analysisStatus: 'not-evaluated',
+        reasonCodes: ['analysis-run-cancelled'],
+      } as never);
+      records.push(record);
+      recordsByResultId.set(record.resultId, record);
       continue;
     }
     await events.emit('analysis.node.started', 'analysis-node', binding.node.nodeId, {});
@@ -810,6 +867,10 @@ async function runAnalysis(
     let failure: EvaluationError | undefined;
     let disposalFailed = false;
     try {
+      runtimeDependencies.set(`analysis-node\u0000${binding.node.nodeId}`, {
+        runtimeKind: 'analysis-node',
+        referenceId: binding.node.nodeId,
+      });
       run = await binding.port.openRun(deepFreeze({
         runId: options.runId,
         analysisPlanDigest: plan.analysis.analysisPlanDigest as Sha256Digest,
@@ -853,7 +914,7 @@ async function runAnalysis(
     if (failure !== undefined || output === undefined) {
       if (failure?.code === 'analysis-cancelled') {
         setStop('cancelled', 'analysis-external-cancelled');
-        const record = buildRecord(base, {
+        const record = buildRecord(base, runtimeDependencies, {
           analysisStatus: 'not-evaluated',
           reasonCodes: ['analysis-run-cancelled'],
         } as never);
@@ -866,7 +927,11 @@ async function runAnalysis(
         stage: 'analysis' as const,
         message: 'Analysis node returned no result.',
       };
-      const record = buildRecord(base, { analysisStatus: 'failed', error } as never);
+      const record = buildRecord(
+        base,
+        runtimeDependencies,
+        { analysisStatus: 'failed', error } as never,
+      );
       records.push(record);
       recordsByResultId.set(record.resultId, record);
       setStop('failed', error.code, error);
@@ -885,7 +950,7 @@ async function runAnalysis(
       coverage = observationCoverage(rows, includedRowIds, comparableRowIds);
     } catch (error) {
       const evaluationError = safeError(error);
-      const record = buildRecord(base, {
+      const record = buildRecord(base, runtimeDependencies, {
         analysisStatus: 'failed',
         error: evaluationError,
       } as never);
@@ -910,7 +975,7 @@ async function runAnalysis(
       });
     } catch (error) {
       const evaluationError = safeError(error);
-      const record = buildRecord(base, {
+      const record = buildRecord(base, runtimeDependencies, {
         analysisStatus: 'failed',
         error: evaluationError,
       });
@@ -926,15 +991,19 @@ async function runAnalysis(
       const failedChecks = checks.filter((check) => check.checkStatus !== 'passed');
       if (failedChecks.length > 0) {
         const reasonCodes = failedChecks.map((check) => check.reasonCode as string).sort();
-        const record = buildRecord({
-          ...base,
-          coverage,
-          exclusions: exclusionFacts(rows, includedRowIds),
-          assumptionChecks: checks,
-        }, {
-          analysisStatus: 'inconclusive',
-          reasonCodes,
-        });
+        const record = buildRecord(
+          {
+            ...base,
+            coverage,
+            exclusions: exclusionFacts(rows, includedRowIds),
+            assumptionChecks: checks,
+          },
+          runtimeDependencies,
+          {
+            analysisStatus: 'inconclusive',
+            reasonCodes,
+          },
+        );
         records.push(record);
         recordsByResultId.set(record.resultId, record);
         await events.emit('analysis.node.inconclusive', 'analysis-node', binding.node.nodeId, {
@@ -965,7 +1034,7 @@ async function runAnalysis(
         }
       } catch (error) {
         const evaluationError = safeError(error);
-        const record = buildRecord(base, {
+        const record = buildRecord(base, runtimeDependencies, {
           analysisStatus: 'failed',
           error: evaluationError,
         } as never);
@@ -977,16 +1046,20 @@ async function runAnalysis(
         });
         continue;
       }
-      const record = buildRecord({
-        ...base,
-        coverage,
-        exclusions: exclusionFacts(rows, includedRowIds),
-        assumptionChecks: checks,
-      }, {
-        analysisStatus: 'completed',
-        resultType: output.resultType,
-        value,
-      } as never);
+      const record = buildRecord(
+        {
+          ...base,
+          coverage,
+          exclusions: exclusionFacts(rows, includedRowIds),
+          assumptionChecks: checks,
+        },
+        runtimeDependencies,
+        {
+          analysisStatus: 'completed',
+          resultType: output.resultType,
+          value,
+        } as never,
+      );
       records.push(record);
       recordsByResultId.set(record.resultId, record);
       await events.emit('analysis.node.completed', 'analysis-node', binding.node.nodeId, {
@@ -996,15 +1069,19 @@ async function runAnalysis(
       });
     } else {
       const reasonCodes = [...new Set(output.reasonCodes)].sort(compareStrings);
-      const record = buildRecord({
-        ...base,
-        coverage,
-        exclusions: exclusionFacts(rows, includedRowIds),
-        assumptionChecks: checks,
-      }, {
-        analysisStatus: 'inconclusive',
-        reasonCodes,
-      } as never);
+      const record = buildRecord(
+        {
+          ...base,
+          coverage,
+          exclusions: exclusionFacts(rows, includedRowIds),
+          assumptionChecks: checks,
+        },
+        runtimeDependencies,
+        {
+          analysisStatus: 'inconclusive',
+          reasonCodes,
+        } as never,
+      );
       records.push(record);
       recordsByResultId.set(record.resultId, record);
       await events.emit('analysis.node.inconclusive', 'analysis-node', binding.node.nodeId, {
@@ -1014,47 +1091,47 @@ async function runAnalysis(
     }
   }
 
-  let bundle = makeBundle(
+  let source = makeBundle(
     plan,
-    prepared.execution,
-    prepared.evaluation,
+    prepared.executionSource,
+    prepared.evaluationSource,
     options,
     records,
     ports.schemaValidators,
     stop,
   );
   const delivered = await events.emit(
-    terminalEventKind(bundle.analysisBundleStatus),
+    terminalEventKind(source.bundle.analysisBundleStatus),
     'run',
     options.runId,
     {
-      bundleDigest: bundle.bundleDigest,
-      analysisBundleStatus: bundle.analysisBundleStatus,
-      coverage: bundle.coverage,
+      bundleDigest: source.bundle.bundleDigest,
+      analysisBundleStatus: source.bundle.analysisBundleStatus,
+      coverage: source.bundle.coverage,
     },
   );
   if (!delivered) {
-    bundle = makeBundle(
+    source = makeBundle(
       plan,
-      prepared.execution,
-      prepared.evaluation,
+      prepared.executionSource,
+      prepared.evaluationSource,
       options,
       records,
       ports.schemaValidators,
       stop,
     );
     await events.emitRecovery(
-      terminalEventKind(bundle.analysisBundleStatus),
+      terminalEventKind(source.bundle.analysisBundleStatus),
       'run',
       options.runId,
       {
-        bundleDigest: bundle.bundleDigest,
-        analysisBundleStatus: bundle.analysisBundleStatus,
-        coverage: bundle.coverage,
+        bundleDigest: source.bundle.bundleDigest,
+        analysisBundleStatus: source.bundle.analysisBundleStatus,
+        coverage: source.bundle.coverage,
       },
     );
   }
-  return bundle;
+  return source;
   } finally {
     options.signal?.removeEventListener('abort', externalAbort);
     events.close();
@@ -1063,8 +1140,8 @@ async function runAnalysis(
 
 export function startAnalysis(
   plan: SealedRunPlan,
-  executionBundle: unknown,
-  evaluationBundle: unknown,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): AnalysisRun {
@@ -1076,18 +1153,34 @@ export function startAnalysis(
     options,
   );
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const source = runAnalysis(plan, ports, options, prepared, stream);
+  let result: Promise<AnalysisBundle> | undefined;
   return {
     events: stream,
-    result: runAnalysis(plan, ports, options, prepared, stream),
+    source,
+    get result() {
+      result ??= source.then((verified) => verified.bundle);
+      return result;
+    },
   };
 }
 
 export async function analyzeEvaluationBundle(
   plan: SealedRunPlan,
-  executionBundle: unknown,
-  evaluationBundle: unknown,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): Promise<AnalysisBundle> {
   return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).result;
+}
+
+export async function analyzeEvaluationBundleSource(
+  plan: SealedRunPlan,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
+  ports: AnalysisRuntimePorts,
+  options: AnalysisRunOptions,
+): Promise<AnalysisBundleSource> {
+  return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).source;
 }

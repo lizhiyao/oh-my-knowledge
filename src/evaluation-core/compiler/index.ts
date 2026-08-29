@@ -1163,6 +1163,11 @@ export async function prepareEvaluationPlan(
       retry: measurementPolicy.retry,
       budget: measurementPolicy.budget,
       executionCacheMode: measurementPolicy.cache.executionMode,
+      evidence: {
+        output: measurementPolicy.evidence.output,
+        trace: measurementPolicy.evidence.trace,
+        maximumClassification: measurementPolicy.evidence.maximumClassification,
+      },
       failure: measurementPolicy.failure,
     },
     executionPlanDigest: digests.executionPlanDigest,

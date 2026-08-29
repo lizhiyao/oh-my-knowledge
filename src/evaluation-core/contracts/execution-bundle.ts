@@ -1,9 +1,11 @@
 import {
   ExecutionBundleSchema,
   type ExecutionBundle,
+  type ExecutionAttempt,
   type ExecutionRecord,
+  type UsageRecord,
 } from './artifacts.js';
-import type { CapturedContent } from './common.js';
+import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
 import {
   deriveAttemptId,
   derivePlannedExecutionCoordinates,
@@ -12,7 +14,13 @@ import {
   type PlannedExecutionCoordinate,
 } from './execution-identities.js';
 import { digestArtifactPayload } from './digests.js';
-import { canonicalizeJson, parseWireDocument, type Sha256Digest } from './json.js';
+import {
+  canonicalizeJson,
+  deepFreezeCanonicalJson,
+  digestCanonicalJson,
+  parseWireDocument,
+  type Sha256Digest,
+} from './json.js';
 
 export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_DUPLICATE_COORDINATE'
@@ -23,6 +31,11 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_COVERAGE_INVALID'
   | 'EXECUTION_BUNDLE_STATUS_INVALID'
   | 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID'
+  | 'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID'
+  | 'EXECUTION_BUNDLE_USAGE_INVALID'
+  | 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID'
+  | 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID'
+  | 'EXECUTION_BUNDLE_PROVENANCE_INVALID'
   | 'EXECUTION_BUNDLE_DIGEST_MISMATCH'
   | 'EXECUTION_BUNDLE_PLAN_MISMATCH'
   | 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID';
@@ -83,41 +96,53 @@ function assertRecordIdentities(bundle: ExecutionBundle): void {
     }
     trialIds.add(record.trialId);
     if (record.executionStatus === 'budget-censored') continue;
-
-    for (let index = 0; index < record.attempts.length; index += 1) {
-      const attempt = record.attempts[index];
-      const expectedNumber = index + 1;
-      if (attempt.attemptNumber !== expectedNumber) {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-          'Execution attempts must be ordered consecutively from one.',
-        );
-      }
-      const expectedAttemptId = deriveAttemptId({
-        trialId: record.trialId as Sha256Digest,
-        attemptNumber: attempt.attemptNumber,
-      });
-      if (attempt.attemptId !== expectedAttemptId || attemptIds.has(attempt.attemptId)) {
+    assertExecutionRecordAttemptSemantics(record);
+    for (const attempt of record.attempts) {
+      if (attemptIds.has(attempt.attemptId)) {
         throw new ExecutionBundleValidationError(
           'EXECUTION_BUNDLE_IDENTITY_MISMATCH',
-          'ExecutionAttempt identity does not match its trial and attempt number.',
+          'ExecutionBundle contains a duplicate ExecutionAttempt identity.',
         );
       }
       attemptIds.add(attempt.attemptId);
-      if (index < record.attempts.length - 1 && attempt.attemptStatus === 'completed') {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-          'A completed ExecutionAttempt must terminate its trial.',
-        );
-      }
     }
-    const terminalAttempt = record.attempts.at(-1);
-    if (terminalAttempt?.attemptStatus !== record.executionStatus) {
+  }
+}
+
+export function assertExecutionRecordAttemptSemantics(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+): void {
+  for (let index = 0; index < record.attempts.length; index += 1) {
+    const attempt = record.attempts[index];
+    const expectedNumber = index + 1;
+    if (attempt.attemptNumber !== expectedNumber) {
       throw new ExecutionBundleValidationError(
         'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
-        'The final attempt status must match the active ExecutionRecord status.',
+        'Execution attempts must be ordered consecutively from one.',
       );
     }
+    const expectedAttemptId = deriveAttemptId({
+      trialId: record.trialId as Sha256Digest,
+      attemptNumber: expectedNumber,
+    });
+    if (attempt.attemptId !== expectedAttemptId) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_IDENTITY_MISMATCH',
+        'ExecutionAttempt identity does not match its trial and attempt number.',
+      );
+    }
+    if (index < record.attempts.length - 1 && attempt.attemptStatus === 'completed') {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
+        'A completed ExecutionAttempt must terminate its trial.',
+      );
+    }
+  }
+  if (record.attempts.at(-1)?.attemptStatus !== record.executionStatus) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID',
+      'The final attempt status must match the active ExecutionRecord status.',
+    );
   }
 }
 
@@ -285,6 +310,22 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
   assertCoverage(bundle);
   assertStatus(bundle);
   assertReplayability(bundle);
+  for (const record of bundle.records) {
+    if (record.executionStatus !== 'budget-censored'
+        && !executionRecordUsageMatchesAttempts(record)) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_USAGE_INVALID',
+        'ExecutionRecord usage does not match its attempt facts.',
+      );
+    }
+  }
+  if (canonicalizeJson(bundle.provenance.parentDigests)
+      !== canonicalizeJson([bundle.runContractDigest, bundle.executionPlanDigest])) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PLAN_MISMATCH',
+      'ExecutionBundle provenance must bind its originating RunPlan and ExecutionPlan.',
+    );
+  }
 }
 
 export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext {
@@ -293,15 +334,25 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
     runtimes: readonly {
       runtimeKind: 'executor' | 'evaluator' | 'analysis-node' | 'missing-policy' | 'decision-policy';
       referenceId: string;
-      identity: unknown;
+      identity: ExecutionRuntimeIdentity;
     }[];
     policy: {
+      executionCacheMode: 'disabled' | 'replay-only' | 'transparent-deterministic';
       retry: {
         maxAttempts: number;
         retryableErrorCodes: readonly string[];
       };
       budget: {
         maxTargetInvocations?: number;
+        maxProviderCost?: {
+          amount: number;
+          currency: string;
+        };
+      };
+      evidence: {
+        output: 'full' | 'reference' | 'digest' | 'none';
+        trace: 'full' | 'reference' | 'digest' | 'none';
+        maximumClassification: 'public' | 'sensitive' | 'secret' | 'gold';
       };
     };
   };
@@ -311,6 +362,225 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
     executionPlanDigest: string;
     runContractDigest: string;
   };
+}
+
+type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
+  ? readonly DeepReadonlyValue<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: DeepReadonlyValue<T[Key]> }
+    : T;
+
+type ExecutionRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
+
+export interface ExecutionBundleVerificationContext {
+  /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
+  readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+}
+
+export interface ExecutionBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+  readonly cacheReceiptStatus: 'verified' | 'indeterminate';
+  readonly invocationBudgetStatus: 'verified' | 'indeterminate';
+  readonly providerCostBudgetStatus: 'verified' | 'indeterminate';
+  readonly minimumTargetInvocations: number;
+  readonly maximumTargetInvocations: number;
+  readonly minimumProviderCost?: { readonly amount: number; readonly currency: string };
+  readonly maximumProviderCost?: { readonly amount: number; readonly currency: string };
+  readonly unverifiedCacheRecordDigests: readonly Sha256Digest[];
+}
+
+export interface ExecutionBundleVerificationResult {
+  readonly bundle: ExecutionBundle;
+  readonly planVerification: ExecutionBundlePlanVerification;
+}
+
+export type ExecutionBundleSource = ExecutionBundleVerificationResult;
+
+const executionBundleSources = new WeakSet<object>();
+
+export function assertExecutionBundleSource(
+  value: unknown,
+): asserts value is ExecutionBundleSource {
+  if (value === null || typeof value !== 'object' || !executionBundleSources.has(value)) {
+    throw new TypeError(
+      'Execution stage requires a source returned by parseExecutionBundle() or the Runtime.',
+    );
+  }
+}
+
+export function assertExecutionBundleSourceMatchesPlan(
+  source: ExecutionBundleSource,
+  plan: ExecutionBundlePlanContext,
+): void {
+  assertExecutionBundleSource(source);
+  if (source.bundle.executionPlanDigest !== plan.execution.executionPlanDigest
+      || source.bundle.executionPlanDigest !== plan.digests.executionPlanDigest
+      || source.bundle.executionInputDigest !== plan.execution.executionInputDigest
+      || source.bundle.executionInputDigest !== plan.digests.executionInputDigest) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PLAN_MISMATCH',
+      'Execution source does not match the current ExecutionPlan.',
+    );
+  }
+}
+
+export function effectiveExecutionBundleTrust(
+  source: ExecutionBundleSource,
+): Provenance['trust'] {
+  assertExecutionBundleSource(source);
+  if (source.planVerification.provenanceTrustStatus === 'verified') {
+    return source.bundle.provenance.trust;
+  }
+  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
+}
+
+const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
+
+function minimumTrust(
+  ...values: readonly Provenance['trust'][]
+): Provenance['trust'] {
+  return values.reduce((minimum, value) => (
+    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
+  ), 'verified');
+}
+
+function assertTrustAtMost(
+  actual: Provenance['trust'],
+  ceiling: Provenance['trust'],
+  message: string,
+): void {
+  if (TRUST_LEVEL[actual] > TRUST_LEVEL[ceiling]) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PROVENANCE_INVALID',
+      message,
+    );
+  }
+}
+
+const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+
+type ExecutionEvidencePolicy = ExecutionBundlePlanContext['execution']['policy']['evidence'];
+
+function capturedContentMatchesPolicy(
+  content: CapturedContent | undefined,
+  mode: ExecutionEvidencePolicy['output'],
+  maximumClassification: ExecutionEvidencePolicy['maximumClassification'],
+): boolean {
+  if (content === undefined) return true;
+  if (mode === 'none'
+      || CLASSIFICATION_LEVEL[content.classification]
+        > CLASSIFICATION_LEVEL[maximumClassification]) return false;
+  const expectedKind = mode === 'full'
+    ? 'inline'
+    : mode === 'reference'
+      ? 'descriptor'
+      : 'digest-only';
+  return content.contentKind === expectedKind;
+}
+
+export function executionRecordMatchesEvidencePolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  policy: ExecutionEvidencePolicy,
+): boolean {
+  return capturedContentMatchesPolicy(record.trace, policy.trace, policy.maximumClassification)
+    && (record.executionStatus !== 'completed'
+      || capturedContentMatchesPolicy(
+        record.output,
+        policy.output,
+        policy.maximumClassification,
+      ));
+}
+
+export function aggregateExecutionAttemptUsage(
+  attempts: readonly ExecutionAttempt[],
+): UsageRecord | undefined {
+  const values = attempts.map((attempt) => attempt.usage);
+  const reported = values.filter((usage): usage is UsageRecord => usage !== undefined);
+  if (reported.length === 0) return undefined;
+  if (values.length === 1) return reported[0];
+  const costs = reported.flatMap((usage) => (
+    usage.providerCost === undefined ? [] : [usage.providerCost]
+  ));
+  const currencies = new Set(costs.map((cost) => cost.currency));
+  const providerCost = costs.length === values.length && currencies.size === 1
+    ? {
+      amount: costs.reduce((sum, cost) => sum + cost.amount, 0),
+      currency: costs[0].currency,
+      reportedByProvider: true as const,
+    }
+    : undefined;
+  return {
+    ...(reported.some((usage) => usage.inputTokens !== undefined)
+      ? { inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0) }
+      : {}),
+    ...(reported.some((usage) => usage.outputTokens !== undefined)
+      ? { outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0) }
+      : {}),
+    ...(reported.some((usage) => usage.totalTokens !== undefined)
+      ? { totalTokens: reported.reduce((sum, usage) => sum + (usage.totalTokens ?? 0), 0) }
+      : {}),
+    ...(providerCost !== undefined ? { providerCost } : {}),
+    details: {
+      aggregationKind: 'omk.execution-usage-summary/v1',
+      attemptCount: values.length,
+      reportedAttemptCount: reported.length,
+      providerCostAggregation: costs.length === 0
+        ? 'unreported'
+        : costs.length !== values.length
+          ? 'partial'
+          : currencies.size === 1
+            ? 'summed'
+            : 'mixed-currency',
+    },
+  };
+}
+
+export function executionRecordUsageMatchesAttempts(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+): boolean {
+  return canonicalizeJson(record.usage ?? null)
+    === canonicalizeJson(aggregateExecutionAttemptUsage(record.attempts) ?? null);
+}
+
+export function assertExecutionRecordMatchesAttemptPolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  policy: ExecutionBundlePlanContext['execution']['policy']['retry'],
+): void {
+  assertExecutionRecordAttemptSemantics(record);
+  if (record.attempts.length > policy.maxAttempts
+      || record.attempts.slice(0, -1).some((attempt) => (
+        attempt.attemptStatus !== 'failed'
+        || !policy.retryableErrorCodes.includes(attempt.error.code)
+      ))) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+      'ExecutionRecord attempts do not satisfy the sealed retry policy.',
+    );
+  }
+}
+
+export function executionRecordSatisfiesCacheCostPolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  maximum: { amount: number; currency: string } | undefined,
+): boolean {
+  if (maximum === undefined) return true;
+  const amount = executionRecordProviderCost(record, maximum.currency);
+  return amount !== undefined && amount < maximum.amount;
+}
+
+function executionRecordProviderCost(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  currency: string,
+): number | undefined {
+  let amount = 0;
+  for (const attempt of record.attempts) {
+    const cost = attempt.usage?.providerCost;
+    if (cost === undefined || cost.currency !== currency) return undefined;
+    amount += cost.amount;
+  }
+  return amount;
 }
 
 function coordinateKey(
@@ -327,17 +597,100 @@ function planMismatch(message: string): never {
   throw new ExecutionBundleValidationError('EXECUTION_BUNDLE_PLAN_MISMATCH', message);
 }
 
+function executionCacheKey(
+  plan: ExecutionBundlePlanContext,
+  coordinate: PlannedExecutionCoordinate,
+): Sha256Digest {
+  return digestCanonicalJson({
+    derivation: 'omk.execution-cache-key/v1',
+    executionPlanDigest: plan.execution.executionPlanDigest,
+    trialId: coordinate.trialId,
+  });
+}
+
+function assertExecutionCachePolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  plan: ExecutionBundlePlanContext,
+  expected: PlannedExecutionCoordinate,
+  runtime: ExecutionRuntimeIdentity,
+): boolean {
+  const { cache, provenance } = record;
+  const noDigests = cache.cacheKeyDigest === undefined
+    && cache.sourceRecordDigest === undefined;
+  const mode = plan.execution.policy.executionCacheMode;
+  assertTrustAtMost(
+    provenance.trust,
+    runtime.assuranceLevel,
+    'ExecutionRecord trust exceeds its sealed Executor Runtime assurance.',
+  );
+  if (mode === 'disabled') {
+    if (cache.cacheStatus !== 'not-used'
+        || !noDigests
+        || provenance.provenanceKind === 'replay') {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_CACHE_POLICY_INVALID',
+        'ExecutionRecord cache facts contradict the sealed disabled cache policy.',
+      );
+    }
+    return false;
+  }
+
+  const expectedCacheKey = executionCacheKey(plan, expected);
+  if (mode === 'transparent-deterministic'
+      && cache.cacheStatus === 'miss'
+      && cache.cacheKeyDigest === expectedCacheKey
+      && cache.sourceRecordDigest === undefined
+      && provenance.provenanceKind !== 'replay'
+      && provenance.parentDigests.includes(plan.execution.executionPlanDigest)) {
+    return false;
+  }
+
+  const expectedHitStatus = mode === 'replay-only' ? 'replay' : 'transparent-hit';
+  if (cache.cacheStatus === expectedHitStatus
+      && record.executionStatus === 'completed'
+      && cache.cacheKeyDigest === expectedCacheKey
+      && cache.sourceRecordDigest !== undefined
+      && canonicalizeJson(provenance) === canonicalizeJson({
+        provenanceKind: 'replay',
+        trust: provenance.trust,
+        sourceId: record.trialId,
+        parentDigests: [cache.sourceRecordDigest],
+      })) {
+    const nativeRecord = {
+      ...record,
+      provenance: {
+        provenanceKind: 'native' as const,
+        trust: provenance.trust,
+        parentDigests: [plan.execution.executionPlanDigest],
+      },
+      cache: {
+        cacheStatus: 'miss' as const,
+        cacheKeyDigest: expectedCacheKey,
+      },
+    };
+    if (digestCanonicalJson(nativeRecord) === cache.sourceRecordDigest
+        && executionRecordSatisfiesCacheCostPolicy(
+          record,
+          plan.execution.policy.budget.maxProviderCost,
+        )) return true;
+  }
+
+  throw new ExecutionBundleValidationError(
+    'EXECUTION_BUNDLE_CACHE_POLICY_INVALID',
+    'ExecutionRecord cache facts do not satisfy the sealed reuse policy.',
+  );
+}
+
 export function assertExecutionBundleMatchesPlan(
   bundle: ExecutionBundle,
   plan: ExecutionBundlePlanContext,
-): void {
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.executionPlanDigest !== plan.digests.executionPlanDigest
+  verification?: ExecutionBundleVerificationContext,
+): ExecutionBundlePlanVerification {
+  if (bundle.executionPlanDigest !== plan.digests.executionPlanDigest
       || bundle.executionPlanDigest !== plan.execution.executionPlanDigest
-      || bundle.datasetRevisionDigest !== plan.digests.datasetRevisionDigest
       || bundle.executionInputDigest !== plan.digests.executionInputDigest
       || bundle.executionInputDigest !== plan.execution.executionInputDigest) {
-    planMismatch('ExecutionBundle parent digests do not match the sealed RunPlan.');
+    planMismatch('ExecutionBundle execution-stage digests do not match the sealed RunPlan.');
   }
 
   const planned = derivePlannedExecutionCoordinates(plan);
@@ -350,7 +703,7 @@ export function assertExecutionBundleMatchesPlan(
   const recordsByCoordinate = new Map(
     bundle.records.map((record) => [coordinateKey(record), record]),
   );
-  const runtimesByTarget = new Map<string, unknown>();
+  const runtimesByTarget = new Map<string, ExecutionRuntimeIdentity>();
   for (const runtime of plan.execution.runtimes) {
     if (runtime.runtimeKind !== 'executor') continue;
     if (runtimesByTarget.has(runtime.referenceId)) {
@@ -359,7 +712,13 @@ export function assertExecutionBundleMatchesPlan(
     runtimesByTarget.set(runtime.referenceId, runtime.identity);
   }
 
-  let invocationCount = 0;
+  let minimumTargetInvocations = 0;
+  let maximumTargetInvocations = 0;
+  let minimumProviderCostAmount = 0;
+  let maximumProviderCostAmount = 0;
+  let providerCostUpperBoundKnown = true;
+  const unverifiedCacheRecordDigests: Sha256Digest[] = [];
+  const providerCostBudget = plan.execution.policy.budget.maxProviderCost;
   for (const record of bundle.records) {
     const expected = plannedByCoordinate.get(coordinateKey(record));
     if (expected === undefined) {
@@ -378,31 +737,71 @@ export function assertExecutionBundleMatchesPlan(
       planMismatch('ExecutionRecord Runtime does not match its sealed Target binding.');
     }
     if (record.executionStatus === 'budget-censored') continue;
-    if (record.cache.cacheStatus !== 'replay'
-        && record.cache.cacheStatus !== 'transparent-hit') {
-      invocationCount += record.attempts.length;
-    }
-    if (record.attempts.length > plan.execution.policy.retry.maxAttempts) {
+    assertExecutionRecordMatchesAttemptPolicy(record, plan.execution.policy.retry);
+    if (!executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)) {
       throw new ExecutionBundleValidationError(
-        'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
-        'ExecutionRecord exceeds the sealed maximum attempt count.',
+        'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID',
+        'ExecutionRecord evidence contradicts the sealed capture or classification policy.',
       );
     }
-    for (const attempt of record.attempts.slice(0, -1)) {
-      if (attempt.attemptStatus !== 'failed'
-          || !plan.execution.policy.retry.retryableErrorCodes.includes(attempt.error.code)) {
-        throw new ExecutionBundleValidationError(
-          'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
-          'A non-terminal attempt must be a retryable failure under the sealed policy.',
-        );
+    const cacheHit = assertExecutionCachePolicy(record, plan, expected, runtime);
+    const sourceRecordDigest = record.cache.sourceRecordDigest as Sha256Digest | undefined;
+    const verifiedCacheHit = cacheHit
+      && sourceRecordDigest !== undefined
+      && verification?.verifiedCacheRecordDigests?.has(sourceRecordDigest) === true;
+    if (!cacheHit) {
+      minimumTargetInvocations += record.attempts.length;
+      maximumTargetInvocations += record.attempts.length;
+    } else if (!verifiedCacheHit) {
+      maximumTargetInvocations += record.attempts.length;
+      unverifiedCacheRecordDigests.push(sourceRecordDigest as Sha256Digest);
+    }
+
+    if (providerCostBudget !== undefined) {
+      const amount = executionRecordProviderCost(record, providerCostBudget.currency);
+      if (amount === undefined) {
+        if (bundle.executionBundleStatus === 'completed') {
+          throw new ExecutionBundleValidationError(
+            'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
+            'A completed ExecutionBundle must report sealed-currency provider cost for every native invocation.',
+          );
+        }
+        if (!cacheHit) providerCostUpperBoundKnown = false;
+      } else if (!cacheHit) {
+        minimumProviderCostAmount += amount;
+        maximumProviderCostAmount += amount;
+      } else if (!verifiedCacheHit) {
+        maximumProviderCostAmount += amount;
       }
     }
   }
+  assertTrustAtMost(
+    bundle.provenance.trust,
+    minimumTrust(...bundle.records.map((record) => record.provenance.trust)),
+    'ExecutionBundle trust exceeds its record provenance.',
+  );
   const maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
-  if (maxInvocations !== undefined && invocationCount > maxInvocations) {
+  if (maxInvocations !== undefined && minimumTargetInvocations > maxInvocations) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
       'ExecutionBundle exceeds the sealed target invocation budget.',
+    );
+  }
+  if (providerCostBudget !== undefined
+      && bundle.executionBundleStatus === 'completed'
+      && minimumProviderCostAmount >= providerCostBudget.amount) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
+      'A completed ExecutionBundle cannot exhaust the sealed provider-cost budget.',
+    );
+  }
+  if (providerCostBudget !== undefined
+      && bundle.terminationReasonCode === 'provider-cost-budget-exhausted'
+      && (!providerCostUpperBoundKnown
+        || minimumProviderCostAmount < providerCostBudget.amount)) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
+      'Provider-cost exhaustion requires enough reported native invocation cost.',
     );
   }
 
@@ -425,6 +824,46 @@ export function assertExecutionBundleMatchesPlan(
       );
     }
   }
+  const providerCostBudgetStatus = providerCostBudget === undefined
+    || minimumProviderCostAmount >= providerCostBudget.amount
+    || (providerCostUpperBoundKnown
+      && maximumProviderCostAmount < providerCostBudget.amount)
+    ? 'verified'
+    : 'indeterminate';
+  return {
+    provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
+      bundle.bundleDigest as Sha256Digest,
+    ) === true
+      ? 'verified'
+      : 'indeterminate',
+    cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
+      ? 'verified'
+      : 'indeterminate',
+    invocationBudgetStatus: maxInvocations === undefined
+        || maximumTargetInvocations <= maxInvocations
+      ? 'verified'
+      : 'indeterminate',
+    providerCostBudgetStatus,
+    minimumTargetInvocations,
+    maximumTargetInvocations,
+    ...(providerCostBudget === undefined
+      ? {}
+      : {
+        minimumProviderCost: {
+          amount: minimumProviderCostAmount,
+          currency: providerCostBudget.currency,
+        },
+        ...(providerCostUpperBoundKnown
+          ? {
+            maximumProviderCost: {
+              amount: maximumProviderCostAmount,
+              currency: providerCostBudget.currency,
+            },
+          }
+          : {}),
+      }),
+    unverifiedCacheRecordDigests,
+  };
 }
 
 export function parseExecutionBundleDocument(value: unknown): ExecutionBundle {
@@ -442,8 +881,18 @@ export function parseExecutionBundleDocument(value: unknown): ExecutionBundle {
 export function parseExecutionBundle(
   value: unknown,
   plan: ExecutionBundlePlanContext,
-): ExecutionBundle {
+): ExecutionBundleSource {
+  return verifyExecutionBundle(value, plan);
+}
+
+export function verifyExecutionBundle(
+  value: unknown,
+  plan: ExecutionBundlePlanContext,
+  verification?: ExecutionBundleVerificationContext,
+): ExecutionBundleVerificationResult {
   const bundle = parseExecutionBundleDocument(value);
-  assertExecutionBundleMatchesPlan(bundle, plan);
-  return bundle;
+  const planVerification = assertExecutionBundleMatchesPlan(bundle, plan, verification);
+  const source = { bundle, planVerification };
+  executionBundleSources.add(source);
+  return deepFreezeCanonicalJson(source);
 }

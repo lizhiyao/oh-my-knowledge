@@ -1,6 +1,7 @@
 import type {
   ContentDescriptor,
   EvaluationBundle,
+  EvaluationBundleSource,
   EvaluationError,
   EvaluationEvent,
   EvaluationRecord,
@@ -185,6 +186,7 @@ export interface EvaluationRunOptions {
 export interface EvaluationRun {
   events: AsyncIterable<EvaluationEvent>;
   result: Promise<EvaluationBundle>;
+  source: Promise<EvaluationBundleSource>;
 }
 
 export class EvaluationPortFailure extends Error {

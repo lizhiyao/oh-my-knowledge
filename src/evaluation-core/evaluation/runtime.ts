@@ -16,15 +16,17 @@ import {
   evaluationRecordMatchesEvidencePolicy,
   evaluationRecordSatisfiesCacheCostPolicy,
   evaluationRecordUsageMatchesAttempts,
-  parseExecutionBundle,
+  assertExecutionBundleSourceMatchesPlan,
+  effectiveExecutionBundleTrust,
   parseWireDocument,
   verifyEvaluationBundle,
   type CapturedContent,
   type EvaluationAttempt,
   type EvaluationBundle,
+  type EvaluationBundleSource,
   type EvaluationError,
   type EvaluationRecord,
-  type ExecutionBundle,
+  type ExecutionBundleSource,
   type ExecutionRecord,
   type JsonValue,
   type MetricObservation,
@@ -72,7 +74,7 @@ interface EvaluatorBinding {
 
 interface PreparedRuntime {
   bindings: ReadonlyMap<string, EvaluatorBinding>;
-  source: ExecutionBundle;
+  source: ExecutionBundleSource;
 }
 
 interface EligibleCoordinate {
@@ -150,7 +152,7 @@ function validateOptions(options: EvaluationRunOptions): void {
 
 function prepareRuntime(
   plan: SealedRunPlan,
-  sourceValue: unknown,
+  source: ExecutionBundleSource,
   ports: EvaluationRuntimePorts,
   options: EvaluationRunOptions,
 ): PreparedRuntime {
@@ -161,7 +163,7 @@ function prepareRuntime(
       'Evaluation runtime requires a shared per-Run EventSequencer.',
     );
   }
-  const source = parseExecutionBundle(sourceValue, plan);
+  assertExecutionBundleSourceMatchesPlan(source, plan);
   if (plan.evaluation.policy.evaluationCacheMode !== 'disabled' && ports.cache === undefined) {
     configurationError(
       'EVALUATION_RUNTIME_CACHE_REQUIRED',
@@ -1123,13 +1125,14 @@ function replayability(records: readonly EvaluationRecord[]): EvaluationBundle['
 
 function makeBundle(
   plan: SealedRunPlan,
-  source: ExecutionBundle,
+  source: ExecutionBundleSource,
   options: EvaluationRunOptions,
   records: EvaluationRecord[],
   planned: number,
   stop: StopState,
   verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>,
-): EvaluationBundle {
+): EvaluationBundleSource {
+  const execution = source.bundle;
   records.sort(compareRecords);
   const sourceUnavailable = records.filter(
     (record) => record.evaluationStatus === 'not-evaluated',
@@ -1143,7 +1146,7 @@ function makeBundle(
     schemaVersion: EVALUATION_BUNDLE_SCHEMA_VERSION,
     bundleId: options.bundleId,
     runContractDigest: plan.digests.runContractDigest,
-    executionBundleDigest: source.bundleDigest,
+    executionBundleDigest: execution.bundleDigest,
     evaluationPlanDigest: plan.digests.evaluationPlanDigest,
     evaluationInputDigest: plan.digests.evaluationInputDigest,
     evaluationBundleStatus: stop.stopKind ?? 'completed',
@@ -1163,10 +1166,10 @@ function makeBundle(
     provenance: {
       provenanceKind: 'native',
       trust: minimumTrust(
-        source.provenance.trust,
+        effectiveExecutionBundleTrust(source),
         ...records.map((record) => record.provenance.trust),
       ),
-      parentDigests: [source.bundleDigest, plan.evaluation.evaluationPlanDigest],
+      parentDigests: [execution.bundleDigest, plan.evaluation.evaluationPlanDigest],
       ...(stop.error === undefined
         ? {}
         : { facets: snapshotJson({ terminalError: stop.error }) as unknown as JsonValue }),
@@ -1178,13 +1181,20 @@ function makeBundle(
     bundle,
     plan,
     source,
-    { verifiedCacheRecordDigests },
+    {
+      verifiedCacheRecordDigests,
+      verifiedProvenanceBundleDigests: new Set([bundle.bundleDigest as Sha256Digest]),
+      executionSourceTrust: effectiveExecutionBundleTrust(source),
+    },
   );
-  if (verified.planVerification.cacheReceiptStatus !== 'verified'
-      || verified.planVerification.invocationBudgetStatus !== 'verified') {
+  if (verified.planVerification.provenanceTrustStatus !== 'verified'
+      || verified.planVerification.cacheReceiptStatus !== 'verified'
+      || verified.planVerification.invocationBudgetStatus !== 'verified'
+      || (bundle.evaluationBundleStatus === 'completed'
+        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
     throw new TypeError('Evaluation Runtime produced an unverifiable Bundle.');
   }
-  return verified.bundle;
+  return verified;
 }
 
 async function prepareEvaluationCoordinates(
@@ -1196,7 +1206,7 @@ async function prepareEvaluationCoordinates(
   shouldStop: () => boolean,
 ): Promise<PreparedCoordinate[]> {
   const sourceByTrial = new Map(
-    prepared.source.records.map((record) => [trialKey(record), record]),
+    prepared.source.bundle.records.map((record) => [trialKey(record), record]),
   );
   const result: PreparedCoordinate[] = [];
   for (const coordinate of coordinates) {
@@ -1234,7 +1244,7 @@ async function prepareEvaluationCoordinates(
       source,
       sourceRecordDigest: digestCanonicalJson(source),
       sourceTrust: minimumTrust(
-        prepared.source.provenance.trust,
+        effectiveExecutionBundleTrust(prepared.source),
         source.provenance.trust,
       ),
       inputs,
@@ -1258,7 +1268,7 @@ async function runEvaluation(
   options: EvaluationRunOptions,
   prepared: PreparedRuntime,
   stream: BoundedEventStream,
-): Promise<EvaluationBundle> {
+): Promise<EvaluationBundleSource> {
   const coordinates = derivePlannedEvaluationCoordinates(plan);
   const records = new Map<string, EvaluationRecord>();
   const pendingCache: EvaluationCacheEntry[] = [];
@@ -1315,9 +1325,10 @@ async function runEvaluation(
     ).then(() => setStop('budget-exhausted', 'evaluation-duration-budget-exhausted'))
       .catch(() => undefined);
   try {
-    const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
+    try {
+      const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
       evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
-      executionBundleDigest: prepared.source.bundleDigest,
+      executionBundleDigest: prepared.source.bundle.bundleDigest,
       planned: coordinates.length,
     });
     if (!runStarted || stop.stopKind !== undefined) {
@@ -1341,8 +1352,8 @@ async function runEvaluation(
         item.reasonCode,
         ports.clock.timestamp(),
         minimumTrust(
-          prepared.source.provenance.trust,
-          item.source?.provenance.trust ?? prepared.source.provenance.trust,
+          effectiveExecutionBundleTrust(prepared.source),
+          item.source?.provenance.trust ?? effectiveExecutionBundleTrust(prepared.source),
         ),
         item.source,
       );
@@ -1398,58 +1409,38 @@ async function runEvaluation(
         setStop('budget-exhausted', 'evaluation-provider-cost-budget-exhausted');
       }
     }
-  } catch (error) {
-    if (!(error instanceof EvaluationAttemptCancelledError
-        && stop.stopKind !== undefined)) {
-      setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
-    }
-  } finally {
-    durationController.abort();
-    await duration;
-    options.signal?.removeEventListener('abort', externalAbort);
-    if (await sessions.dispose()) {
-      setStop('failed', 'evaluator-run-dispose-failed', {
-        code: 'evaluator-run-dispose-failed',
-        stage: 'infrastructure',
-        message: 'Evaluator run resource disposal failed.',
-      });
-    }
-    if (stop.stopKind === undefined) {
-      for (const entry of pendingCache.sort((left, right) => (
-        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
-      ))) {
-        try { await ports.cache?.put(entry); } catch {
-          setStop('failed', 'evaluation-cache-write-failed', {
-            code: 'evaluation-cache-write-failed',
-            stage: 'infrastructure',
-            message: 'Evaluation cache write failed.',
-          });
-          break;
+    } catch (error) {
+      if (!(error instanceof EvaluationAttemptCancelledError
+          && stop.stopKind !== undefined)) {
+        setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
+      }
+    } finally {
+      durationController.abort();
+      await duration;
+      options.signal?.removeEventListener('abort', externalAbort);
+      if (await sessions.dispose()) {
+        setStop('failed', 'evaluator-run-dispose-failed', {
+          code: 'evaluator-run-dispose-failed',
+          stage: 'infrastructure',
+          message: 'Evaluator run resource disposal failed.',
+        });
+      }
+      if (stop.stopKind === undefined) {
+        for (const entry of pendingCache.sort((left, right) => (
+          compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+        ))) {
+          try { await ports.cache?.put(entry); } catch {
+            setStop('failed', 'evaluation-cache-write-failed', {
+              code: 'evaluation-cache-write-failed',
+              stage: 'infrastructure',
+              message: 'Evaluation cache write failed.',
+            });
+            break;
+          }
         }
       }
     }
-  }
-  let bundle = makeBundle(
-    plan,
-    prepared.source,
-    options,
-    [...records.values()],
-    coordinates.length,
-    stop,
-    verifiedCacheRecordDigests,
-  );
-  const terminalDelivered = await events.emit(
-    terminalKind(bundle.evaluationBundleStatus),
-    'run',
-    options.runId,
-    {
-    bundleDigest: bundle.bundleDigest,
-    evaluationBundleStatus: bundle.evaluationBundleStatus,
-    coverage: bundle.coverage,
-    },
-  );
-  if (!terminalDelivered) {
-    bundle = makeBundle(
+    let source = makeBundle(
       plan,
       prepared.source,
       options,
@@ -1458,35 +1449,77 @@ async function runEvaluation(
       stop,
       verifiedCacheRecordDigests,
     );
-    await events.emitRecovery(terminalKind(bundle.evaluationBundleStatus), 'run', options.runId, {
-      bundleDigest: bundle.bundleDigest,
-      evaluationBundleStatus: bundle.evaluationBundleStatus,
-      coverage: bundle.coverage,
-    });
+    const terminalDelivered = await events.emit(
+      terminalKind(source.bundle.evaluationBundleStatus),
+      'run',
+      options.runId,
+      {
+      bundleDigest: source.bundle.bundleDigest,
+      evaluationBundleStatus: source.bundle.evaluationBundleStatus,
+      coverage: source.bundle.coverage,
+      },
+    );
+    if (!terminalDelivered) {
+      source = makeBundle(
+        plan,
+        prepared.source,
+        options,
+        [...records.values()],
+        coordinates.length,
+        stop,
+        verifiedCacheRecordDigests,
+      );
+      await events.emitRecovery(
+        terminalKind(source.bundle.evaluationBundleStatus),
+        'run',
+        options.runId,
+        {
+          bundleDigest: source.bundle.bundleDigest,
+          evaluationBundleStatus: source.bundle.evaluationBundleStatus,
+          coverage: source.bundle.coverage,
+        },
+      );
+    }
+    return source;
+  } finally {
+    events.close();
   }
-  events.close();
-  return bundle;
 }
 
 export function startEvaluation(
   plan: SealedRunPlan,
-  source: unknown,
+  source: ExecutionBundleSource,
   ports: EvaluationRuntimePorts,
   options: EvaluationRunOptions,
 ): EvaluationRun {
   const prepared = prepareRuntime(plan, source, ports, options);
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const verified = runEvaluation(plan, ports, options, prepared, stream);
+  let result: Promise<EvaluationBundle> | undefined;
   return {
     events: stream,
-    result: runEvaluation(plan, ports, options, prepared, stream),
+    source: verified,
+    get result() {
+      result ??= verified.then((sourceResult) => sourceResult.bundle);
+      return result;
+    },
   };
 }
 
 export async function evaluateExecutionBundle(
   plan: SealedRunPlan,
-  source: unknown,
+  source: ExecutionBundleSource,
   ports: EvaluationRuntimePorts,
   options: EvaluationRunOptions,
 ): Promise<EvaluationBundle> {
   return startEvaluation(plan, source, ports, options).result;
+}
+
+export async function evaluateExecutionBundleSource(
+  plan: SealedRunPlan,
+  source: ExecutionBundleSource,
+  ports: EvaluationRuntimePorts,
+  options: EvaluationRunOptions,
+): Promise<EvaluationBundleSource> {
+  return startEvaluation(plan, source, ports, options).source;
 }

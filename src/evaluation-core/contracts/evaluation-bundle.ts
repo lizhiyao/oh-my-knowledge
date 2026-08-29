@@ -8,7 +8,7 @@ import {
   type MetricObservation,
   type UsageRecord,
 } from './artifacts.js';
-import type { CapturedContent, RuntimeIdentity } from './common.js';
+import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
 import {
   deriveEvaluationAttemptId,
   deriveEvaluationId,
@@ -17,12 +17,16 @@ import {
   type PlannedEvaluationCoordinate,
 } from './evaluation-identities.js';
 import {
-  parseExecutionBundle,
+  assertExecutionBundleSource,
+  assertExecutionBundleSourceMatchesPlan,
+  effectiveExecutionBundleTrust,
   type ExecutionBundlePlanContext,
+  type ExecutionBundleSource,
 } from './execution-bundle.js';
 import { digestArtifactPayload } from './digests.js';
 import {
   canonicalizeJson,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
   type JsonValue,
@@ -44,6 +48,7 @@ export type EvaluationBundleValidationErrorCode =
   | 'EVALUATION_BUNDLE_RETRY_POLICY_INVALID'
   | 'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID'
   | 'EVALUATION_BUNDLE_CACHE_POLICY_INVALID'
+  | 'EVALUATION_BUNDLE_PROVIDER_COST_INVALID'
   | 'EVALUATION_BUNDLE_EVIDENCE_POLICY_INVALID'
   | 'EVALUATION_BUNDLE_USAGE_INVALID'
   | 'EVALUATION_BUNDLE_PROVENANCE_INVALID';
@@ -373,19 +378,90 @@ type EvaluationRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 export interface EvaluationBundleVerificationContext {
   /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
   readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust observed from the authenticated Execution source at production time. */
+  readonly executionSourceTrust?: Provenance['trust'];
 }
 
 export interface EvaluationBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+  readonly executionSourceTrust: Provenance['trust'];
   readonly cacheReceiptStatus: 'verified' | 'indeterminate';
   readonly invocationBudgetStatus: 'verified' | 'indeterminate';
+  readonly providerCostBudgetStatus: 'verified' | 'indeterminate';
   readonly minimumEvaluatorInvocations: number;
   readonly maximumEvaluatorInvocations: number;
+  readonly minimumProviderCost?: { readonly amount: number; readonly currency: string };
+  readonly maximumProviderCost?: { readonly amount: number; readonly currency: string };
   readonly unverifiedCacheRecordDigests: readonly Sha256Digest[];
 }
 
 export interface EvaluationBundleVerificationResult {
   readonly bundle: EvaluationBundle;
   readonly planVerification: EvaluationBundlePlanVerification;
+}
+
+export type EvaluationBundleSource = EvaluationBundleVerificationResult;
+
+const evaluationBundleSources = new WeakSet<object>();
+
+export function assertEvaluationBundleSource(
+  value: unknown,
+): asserts value is EvaluationBundleSource {
+  if (value === null || typeof value !== 'object' || !evaluationBundleSources.has(value)) {
+    throw new TypeError(
+      'Evaluation stage requires a source returned by parseEvaluationBundle() or the Runtime.',
+    );
+  }
+}
+
+export function assertEvaluationBundleSourceChain(
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+): void {
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
+  if (evaluationSource.bundle.executionBundleDigest
+      !== executionSource.bundle.bundleDigest) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_SOURCE_MISMATCH',
+      'Evaluation source is not bound to the supplied Execution source.',
+    );
+  }
+}
+
+export function assertEvaluationBundleSourceMatchesPlan(
+  plan: EvaluationBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+): void {
+  assertExecutionBundleSourceMatchesPlan(executionSource, plan);
+  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
+  if (evaluationSource.bundle.evaluationPlanDigest
+        !== plan.evaluation.evaluationPlanDigest
+      || evaluationSource.bundle.evaluationPlanDigest
+        !== plan.digests.evaluationPlanDigest
+      || evaluationSource.bundle.evaluationInputDigest
+        !== plan.evaluation.evaluationInputDigest
+      || evaluationSource.bundle.evaluationInputDigest
+        !== plan.digests.evaluationInputDigest) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PLAN_MISMATCH',
+      'Evaluation source does not match the current EvaluationPlan.',
+    );
+  }
+}
+
+export function effectiveEvaluationBundleTrust(
+  source: EvaluationBundleSource,
+): Provenance['trust'] {
+  assertEvaluationBundleSource(source);
+  return minimumTrust(
+    source.bundle.provenance.trust,
+    source.planVerification.executionSourceTrust,
+    source.planVerification.provenanceTrustStatus === 'verified' ? 'verified' : 'unknown',
+  );
 }
 
 export function aggregateEvaluationAttemptUsage(
@@ -446,6 +522,19 @@ export function evaluationRecordSatisfiesCacheCostPolicy(
     amount += cost.amount;
   }
   return amount < maximum.amount;
+}
+
+function evaluationRecordProviderCost(
+  record: Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>,
+  currency: string,
+): number | undefined {
+  let amount = 0;
+  for (const attempt of record.attempts) {
+    const cost = attempt.usage?.providerCost;
+    if (cost === undefined || cost.currency !== currency) return undefined;
+    amount += cost.amount;
+  }
+  return amount;
 }
 
 function planMismatch(message: string): never {
@@ -707,6 +796,8 @@ function assertRecordAgainstPlan(
 ): {
   minimumInvocations: number;
   maximumInvocations: number;
+  cacheHit: boolean;
+  verifiedCacheHit: boolean;
   unverifiedCacheRecordDigest?: Sha256Digest;
 } {
   if (record.trialId !== expected.trialId
@@ -744,7 +835,12 @@ function assertRecordAgainstPlan(
         'A budget-censored ExecutionRecord requires its canonical not-evaluated fact.',
       );
     }
-    return { minimumInvocations: 0, maximumInvocations: 0 };
+    return {
+      minimumInvocations: 0,
+      maximumInvocations: 0,
+      cacheHit: false,
+      verifiedCacheHit: false,
+    };
   }
   const closure = bindingClosure(plan, evaluator, executionRecord);
   if (record.evaluationStatus === 'not-evaluated') {
@@ -755,7 +851,12 @@ function assertRecordAgainstPlan(
         'A source-backed not-evaluated record requires unavailable evaluator bindings.',
       );
     }
-    return { minimumInvocations: 0, maximumInvocations: 0 };
+    return {
+      minimumInvocations: 0,
+      maximumInvocations: 0,
+      cacheHit: false,
+      verifiedCacheHit: false,
+    };
   }
   if (closure.availability === 'unavailable') {
     throw new EvaluationBundleValidationError(
@@ -828,12 +929,23 @@ function assertRecordAgainstPlan(
     return {
       minimumInvocations: record.attempts.length,
       maximumInvocations: record.attempts.length,
+      cacheHit,
+      verifiedCacheHit,
     };
   }
-  if (verifiedCacheHit) return { minimumInvocations: 0, maximumInvocations: 0 };
+  if (verifiedCacheHit) {
+    return {
+      minimumInvocations: 0,
+      maximumInvocations: 0,
+      cacheHit,
+      verifiedCacheHit,
+    };
+  }
   return {
     minimumInvocations: 0,
     maximumInvocations: record.attempts.length,
+    cacheHit,
+    verifiedCacheHit,
     unverifiedCacheRecordDigest: record.cache.sourceRecordDigest as Sha256Digest,
   };
 }
@@ -841,11 +953,15 @@ function assertRecordAgainstPlan(
 export function assertEvaluationBundleMatchesPlan(
   bundle: EvaluationBundle,
   plan: EvaluationBundlePlanContext,
-  source: ExecutionBundle,
+  executionSource: ExecutionBundleSource,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundlePlanVerification {
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
+  assertExecutionBundleSourceMatchesPlan(executionSource, plan);
+  const source = executionSource.bundle;
+  const sourceTrust = verification?.executionSourceTrust ?? source.provenance.trust;
+  const effectiveSourceTrust = verification?.executionSourceTrust
+    ?? effectiveExecutionBundleTrust(executionSource);
+  if (bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
       || bundle.evaluationPlanDigest !== plan.evaluation.evaluationPlanDigest
       || bundle.evaluationInputDigest !== plan.digests.evaluationInputDigest
       || bundle.evaluationInputDigest !== plan.evaluation.evaluationInputDigest
@@ -881,7 +997,11 @@ export function assertEvaluationBundleMatchesPlan(
 
   let minimumEvaluatorInvocations = 0;
   let maximumEvaluatorInvocations = 0;
+  let minimumProviderCostAmount = 0;
+  let maximumProviderCostAmount = 0;
+  let providerCostUpperBoundKnown = true;
   const unverifiedCacheRecordDigests: Sha256Digest[] = [];
+  const providerCostBudget = plan.evaluation.policy.runtime.budget.maxProviderCost;
   for (const record of bundle.records) {
     const expected = plannedByCoordinate.get(coordinateKey(record));
     if (expected === undefined) planMismatch('EvaluationBundle contains an unknown coordinate.');
@@ -904,7 +1024,7 @@ export function assertEvaluationBundleMatchesPlan(
       }
       assertTrustAtMost(
         record.provenance.trust,
-        minimumTrust(source.provenance.trust, runtimeTrust(runtime)),
+        minimumTrust(sourceTrust, runtimeTrust(runtime)),
         'Source-less EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
       );
       continue;
@@ -917,11 +1037,28 @@ export function assertEvaluationBundleMatchesPlan(
       plan,
       executionRecord,
       runtime,
-      source.provenance.trust,
+      sourceTrust,
       verification,
     );
     minimumEvaluatorInvocations += recordVerification.minimumInvocations;
     maximumEvaluatorInvocations += recordVerification.maximumInvocations;
+    if (providerCostBudget !== undefined && record.evaluationStatus !== 'not-evaluated') {
+      const amount = evaluationRecordProviderCost(record, providerCostBudget.currency);
+      if (amount === undefined) {
+        if (bundle.evaluationBundleStatus === 'completed') {
+          throw new EvaluationBundleValidationError(
+            'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+            'A completed EvaluationBundle must report sealed-currency provider cost for every native invocation.',
+          );
+        }
+        if (!recordVerification.cacheHit) providerCostUpperBoundKnown = false;
+      } else if (!recordVerification.cacheHit) {
+        minimumProviderCostAmount += amount;
+        maximumProviderCostAmount += amount;
+      } else if (!recordVerification.verifiedCacheHit) {
+        maximumProviderCostAmount += amount;
+      }
+    }
     if (recordVerification.unverifiedCacheRecordDigest !== undefined) {
       unverifiedCacheRecordDigests.push(recordVerification.unverifiedCacheRecordDigest);
     }
@@ -931,6 +1068,23 @@ export function assertEvaluationBundleMatchesPlan(
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_RETRY_POLICY_INVALID',
       'EvaluationBundle exceeds the sealed evaluator invocation budget.',
+    );
+  }
+  if (providerCostBudget !== undefined
+      && bundle.evaluationBundleStatus === 'completed'
+      && minimumProviderCostAmount >= providerCostBudget.amount) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      'A completed EvaluationBundle cannot exhaust the sealed provider-cost budget.',
+    );
+  }
+  if (providerCostBudget !== undefined
+      && bundle.terminationReasonCode === 'evaluation-provider-cost-budget-exhausted'
+      && (!providerCostUpperBoundKnown
+        || minimumProviderCostAmount < providerCostBudget.amount)) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      'Provider-cost exhaustion requires enough reported native evaluator cost.',
     );
   }
   for (const coordinate of planned) {
@@ -947,12 +1101,24 @@ export function assertEvaluationBundleMatchesPlan(
   assertTrustAtMost(
     bundle.provenance.trust,
     minimumTrust(
-      source.provenance.trust,
+      sourceTrust,
       ...bundle.records.map((record) => record.provenance.trust),
     ),
     'EvaluationBundle trust exceeds its source or record provenance.',
   );
+  const providerCostBudgetStatus = providerCostBudget === undefined
+    || minimumProviderCostAmount >= providerCostBudget.amount
+    || (providerCostUpperBoundKnown
+      && maximumProviderCostAmount < providerCostBudget.amount)
+    ? 'verified'
+    : 'indeterminate';
   return {
+    provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
+      bundle.bundleDigest as Sha256Digest,
+    ) === true
+      ? 'verified'
+      : 'indeterminate',
+    executionSourceTrust: effectiveSourceTrust,
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
       ? 'verified'
       : 'indeterminate',
@@ -960,8 +1126,25 @@ export function assertEvaluationBundleMatchesPlan(
         || maximumEvaluatorInvocations <= maxInvocations
       ? 'verified'
       : 'indeterminate',
+    providerCostBudgetStatus,
     minimumEvaluatorInvocations,
     maximumEvaluatorInvocations,
+    ...(providerCostBudget === undefined
+      ? {}
+      : {
+        minimumProviderCost: {
+          amount: minimumProviderCostAmount,
+          currency: providerCostBudget.currency,
+        },
+        ...(providerCostUpperBoundKnown
+          ? {
+            maximumProviderCost: {
+              amount: maximumProviderCostAmount,
+              currency: providerCostBudget.currency,
+            },
+          }
+          : {}),
+      }),
     unverifiedCacheRecordDigests,
   };
 }
@@ -981,18 +1164,18 @@ export function parseEvaluationBundleDocument(value: unknown): EvaluationBundle 
 export function parseEvaluationBundle(
   value: unknown,
   plan: EvaluationBundlePlanContext,
-  sourceValue: unknown,
-): EvaluationBundle {
-  return verifyEvaluationBundle(value, plan, sourceValue).bundle;
+  source: ExecutionBundleSource,
+): EvaluationBundleSource {
+  return verifyEvaluationBundle(value, plan, source);
 }
 
 export function verifyEvaluationBundle(
   value: unknown,
   plan: EvaluationBundlePlanContext,
-  sourceValue: unknown,
+  source: ExecutionBundleSource,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundleVerificationResult {
-  const source = parseExecutionBundle(sourceValue, plan);
+  assertExecutionBundleSourceMatchesPlan(source, plan);
   const bundle = parseEvaluationBundleDocument(value);
   const planVerification = assertEvaluationBundleMatchesPlan(
     bundle,
@@ -1000,5 +1183,7 @@ export function verifyEvaluationBundle(
     source,
     verification,
   );
-  return { bundle, planVerification };
+  const result = { bundle, planVerification };
+  evaluationBundleSources.add(result);
+  return deepFreezeCanonicalJson(result);
 }

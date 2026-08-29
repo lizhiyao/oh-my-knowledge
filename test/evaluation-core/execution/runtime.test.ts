@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
   parseExecutionBundleDocument,
+  verifyExecutionBundle,
   type EvaluationEvent,
   type RuntimeIdentity,
   type Sha256Digest,
@@ -673,10 +674,113 @@ describe('Evaluation Core Execution runtime', () => {
     expect(second.records[0].executionStatus).toBe('completed');
     if (second.records[0].executionStatus === 'budget-censored') throw new Error('unexpected');
     expect(second.records[0].cache.cacheStatus).toBe('transparent-hit');
+    const sourceRecordDigest = second.records[0].cache.sourceRecordDigest;
+    if (sourceRecordDigest === undefined) throw new Error('missing cache receipt');
+    expect(verifyExecutionBundle(second, plan).planVerification).toMatchObject({
+      cacheReceiptStatus: 'indeterminate',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 1,
+      unverifiedCacheRecordDigests: [sourceRecordDigest],
+    });
+    expect(verifyExecutionBundle(second, plan, {
+      verifiedCacheRecordDigests: new Set<Sha256Digest>([
+        sourceRecordDigest as Sha256Digest,
+      ]),
+    }).planVerification).toMatchObject({
+      cacheReceiptStatus: 'verified',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 0,
+      unverifiedCacheRecordDigests: [],
+    });
     expect(state.attempts).toBe(1);
     expect(cache.puts).toBe(1);
     expect(cache.gets).toBe(2);
   });
+
+  it('fails closed on a cached attempt chain that violates the sealed retry policy', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'transparent-deterministic';
+    });
+    const seeded = portsFor(plan, undefined, { cache });
+    await executeRunPlan(plan, seeded.ports, {
+      runId: 'run-cache-attempt-seed',
+      bundleId: 'bundle-cache-attempt-seed',
+    });
+    const entry = cache.entries.values().next().value;
+    if (entry === undefined) throw new Error('missing cache entry');
+    entry.record.attempts[0].attemptNumber = 2;
+    entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+
+    const replayed = portsFor(plan, undefined, { cache });
+    const bundle = await executeRunPlan(plan, replayed.ports, {
+      runId: 'run-cache-attempt-replay',
+      bundleId: 'bundle-cache-attempt-replay',
+    });
+
+    expect(bundle).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'execution-cache-read-failed',
+    });
+    expect(replayed.state.attempts).toBe(0);
+  });
+
+  it.each(['missing', 'currency', 'exhausted'] as const)(
+    'fails closed when cached %s cost facts violate the sealed provider budget',
+    async (poison) => {
+      const cache = new MemoryCache();
+      const plan = await makePlan((definition, policy) => {
+        definition.targets = [definition.targets[0]];
+        definition.comparisons = [];
+        policy.cache.executionMode = 'transparent-deterministic';
+        policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      });
+      const seeded = portsFor(plan, () => ({
+        output: { value: { answer: 'seed' }, classification: 'public' },
+        usage: {
+          providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+        },
+      }), { cache });
+      await executeRunPlan(plan, seeded.ports, {
+        runId: 'run-cache-cost-seed',
+        bundleId: 'bundle-cache-cost-seed',
+      });
+      const entry = cache.entries.values().next().value;
+      if (entry === undefined) throw new Error('missing cache entry');
+      if (poison === 'missing') {
+        delete entry.record.attempts[0].usage;
+        delete entry.record.usage;
+      } else {
+        const attemptCost = entry.record.attempts[0].usage?.providerCost;
+        const aggregateCost = entry.record.usage?.providerCost;
+        if (attemptCost === undefined || aggregateCost === undefined) {
+          throw new Error('missing seeded provider cost');
+        }
+        if (poison === 'currency') {
+          attemptCost.currency = 'EUR';
+          aggregateCost.currency = 'EUR';
+        } else {
+          attemptCost.amount = 10;
+          aggregateCost.amount = 10;
+        }
+      }
+      entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+
+      const replayed = portsFor(plan, undefined, { cache });
+      const bundle = await executeRunPlan(plan, replayed.ports, {
+        runId: `run-cache-cost-${poison}-replay`,
+        bundleId: `bundle-cache-cost-${poison}-replay`,
+      });
+
+      expect(bundle).toMatchObject({
+        executionBundleStatus: 'failed',
+        terminationReasonCode: 'execution-cache-read-failed',
+      });
+      expect(replayed.state.attempts).toBe(0);
+    },
+  );
 
   it('does not cache a completed record when sealed provider-cost auditing fails', async () => {
     const cache = new MemoryCache();
@@ -783,6 +887,11 @@ describe('Evaluation Core Execution runtime', () => {
       started: 2,
       succeeded: 2,
       budgetCensored: 2,
+    });
+    expect(verifyExecutionBundle(bundle, plan).planVerification).toMatchObject({
+      providerCostBudgetStatus: 'verified',
+      minimumProviderCost: { amount: 1.2, currency: 'USD' },
+      maximumProviderCost: { amount: 1.2, currency: 'USD' },
     });
     expect(state.attempts).toBe(2);
   });
@@ -1307,6 +1416,27 @@ describe('Evaluation Core Execution runtime', () => {
       code: 'EXECUTION_RUNTIME_IDENTITY_MISMATCH',
     }));
     expect(state.runOpens).toBe(0);
+  });
+
+  it('closes the Event stream when terminal event sequencing throws', async () => {
+    const plan = await makePlan();
+    const { ports } = portsFor(plan, undefined, {
+      eventSequencer: {
+        next() { throw new Error('sequencer unavailable'); },
+      },
+    });
+    const run = startExecution(plan, ports, {
+      runId: 'run-sequencer-failure',
+      bundleId: 'bundle-sequencer-failure',
+    });
+    const events = (async () => {
+      const collected: EvaluationEvent[] = [];
+      for await (const event of run.events) collected.push(event);
+      return collected;
+    })();
+
+    await expect(run.source).rejects.toThrow('sequencer unavailable');
+    await expect(events).resolves.toEqual([]);
   });
 
   it('keeps the preflight Executor binding when the host mutates its registry after start', async () => {

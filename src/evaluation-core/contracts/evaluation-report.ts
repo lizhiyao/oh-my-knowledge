@@ -10,19 +10,35 @@ import {
 } from './artifacts.js';
 import type { Provenance } from './common.js';
 import {
-  parseAnalysisBundle,
+  assertAnalysisBundleSourceChain,
+  assertAnalysisBundleSourceMatchesPlan,
+  effectiveAnalysisBundleTrust,
+  type AnalysisBundleSource,
   type AnalysisBundlePlanContext,
-  type AnalysisBundleValidationContext,
 } from './analysis-bundle.js';
 import { digestArtifactPayload } from './digests.js';
-import { parseEvaluationBundle } from './evaluation-bundle.js';
-import { parseExecutionBundle } from './execution-bundle.js';
-import { canonicalizeJson, digestCanonicalJson, parseWireDocument } from './json.js';
+import {
+  effectiveEvaluationBundleTrust,
+  type EvaluationBundleSource,
+} from './evaluation-bundle.js';
+import {
+  effectiveExecutionBundleTrust,
+  type ExecutionBundleSource,
+} from './execution-bundle.js';
+import {
+  canonicalizeJson,
+  deepFreezeCanonicalJson,
+  digestCanonicalJson,
+  parseWireDocument,
+  type Sha256Digest,
+} from './json.js';
 
 export type EvaluationReportValidationErrorCode =
   | 'DECISION_RESULT_DIGEST_MISMATCH'
   | 'DECISION_RESULT_PLAN_MISMATCH'
+  | 'DECISION_RESULT_VERIFICATION_GATE_FAILED'
   | 'EVALUATION_REPORT_DIGEST_MISMATCH'
+  | 'EVALUATION_REPORT_PLAN_MISMATCH'
   | 'EVALUATION_REPORT_BUNDLE_REFERENCE_INVALID'
   | 'EVALUATION_REPORT_STATUS_INVALID'
   | 'EVALUATION_REPORT_PROVENANCE_INVALID';
@@ -60,6 +76,66 @@ export function parseDecisionResultDocument(value: unknown): DecisionResult {
     );
   }
   return result;
+}
+
+export interface DecisionResultVerificationContext {
+  /** Independently attested by the executing Decision Runtime or a host trust verifier. */
+  readonly verifiedPolicyExecutionDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust independently observed from the Analysis source at production time. */
+  readonly analysisSourceTrust?: Provenance['trust'];
+}
+
+export interface DecisionResultPlanVerification {
+  readonly policyExecutionStatus: 'verified' | 'indeterminate';
+  readonly analysisSourceTrust: Provenance['trust'];
+}
+
+export interface DecisionResultVerificationResult {
+  readonly result: DecisionResult;
+  readonly planVerification: DecisionResultPlanVerification;
+}
+
+export type DecisionResultSource = DecisionResultVerificationResult;
+
+const decisionResultSources = new WeakSet<object>();
+
+export function assertDecisionResultSource(
+  value: unknown,
+): asserts value is DecisionResultSource {
+  if (value === null || typeof value !== 'object' || !decisionResultSources.has(value)) {
+    throw new TypeError(
+      'Report stage requires a source returned by verifyDecisionResult() or the Runtime.',
+    );
+  }
+}
+
+export function effectiveDecisionResultTrust(
+  source: DecisionResultSource,
+): Provenance['trust'] {
+  assertDecisionResultSource(source);
+  const values: Provenance['trust'][] = [
+    source.result.implementation.assuranceLevel,
+    source.planVerification.analysisSourceTrust,
+    source.planVerification.policyExecutionStatus === 'verified' ? 'verified' : 'unknown',
+  ];
+  return values.sort((left, right) => trustLevel(left) - trustLevel(right))[0];
+}
+
+export function assertDecisionResultSourceChain(
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource,
+): void {
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertDecisionResultSource(decisionSource);
+  if (decisionSource.result.analysisBundleDigest
+      !== analysisSource.bundle.bundleDigest) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_PLAN_MISMATCH',
+      'Decision source is not bound to the supplied Analysis source.',
+    );
+  }
 }
 
 function assertBundleReferences(
@@ -176,6 +252,10 @@ function assertDecision(
   result: DecisionResult,
   plan: EvaluationReportPlanContext,
   analysis: AnalysisBundle,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource,
 ): void {
   const policy = plan.decision.decisionPolicy;
   const runtime = plan.decision.runtimes.find((candidate) => (
@@ -206,26 +286,103 @@ function assertDecision(
       'DecisionResult policy digest does not match the sealed policy.',
     );
   }
+  if (result.decisionStatus === 'decided'
+      && (Object.values(executionSource.planVerification).includes('indeterminate')
+        || Object.values(evaluationSource.planVerification).includes('indeterminate')
+        || Object.values(analysisSource.planVerification).includes('indeterminate')
+        || Object.values(decisionSource.planVerification).includes('indeterminate'))) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_VERIFICATION_GATE_FAILED',
+      'A directional DecisionResult requires conclusive source verification.',
+    );
+  }
+}
+
+export function verifyDecisionResult(
+  value: unknown,
+  plan: EvaluationReportPlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  verification?: DecisionResultVerificationContext,
+): DecisionResultSource {
+  assertAnalysisBundleSourceMatchesPlan(
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+  );
+  const result = parseDecisionResultDocument(value);
+  const provisional = {
+    result,
+    planVerification: {
+      policyExecutionStatus: verification?.verifiedPolicyExecutionDigests?.has(
+        result.decisionDigest as Sha256Digest,
+      ) === true
+        ? 'verified' as const
+        : 'indeterminate' as const,
+      analysisSourceTrust: verification?.analysisSourceTrust
+        ?? effectiveAnalysisBundleTrust(analysisSource),
+    },
+  };
+  decisionResultSources.add(provisional);
+  const source = deepFreezeCanonicalJson(provisional);
+  assertDecision(
+    result,
+    plan,
+    analysisSource.bundle,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    source,
+  );
+  return source;
 }
 
 export function parseEvaluationReport(
   value: unknown,
   plan: EvaluationReportPlanContext,
-  executionValue: unknown,
-  evaluationValue: unknown,
-  analysisValue: unknown,
-  validation: AnalysisBundleValidationContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource | undefined,
 ): EvaluationReport {
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
-  const analysis = parseAnalysisBundle(
-    analysisValue,
+  assertAnalysisBundleSourceMatchesPlan(
     plan,
-    execution,
-    evaluation,
-    validation,
+    executionSource,
+    evaluationSource,
+    analysisSource,
   );
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
+  const analysis = analysisSource.bundle;
   const report = parseEvaluationReportDocument(value);
+  if (report.runContractDigest !== plan.digests.runContractDigest) {
+    throw new EvaluationReportValidationError(
+      'EVALUATION_REPORT_PLAN_MISMATCH',
+      'EvaluationReport does not match the current RunContract.',
+    );
+  }
+  if ((report.decision === undefined) !== (decisionSource === undefined)) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_PLAN_MISMATCH',
+      'EvaluationReport decision presence must match its Decision source.',
+    );
+  }
+  if (decisionSource !== undefined) {
+    assertDecisionResultSourceChain(
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      decisionSource,
+    );
+    if (canonicalizeJson(report.decision) !== canonicalizeJson(decisionSource.result)) {
+      throw new EvaluationReportValidationError(
+        'DECISION_RESULT_PLAN_MISMATCH',
+        'EvaluationReport decision must equal its authenticated Decision source.',
+      );
+    }
+  }
   assertBundleReferences(report, execution, evaluation, analysis);
   const expectedStatus = deriveEvaluationStatus({
     execution,
@@ -239,33 +396,33 @@ export function parseEvaluationReport(
       'EvaluationReport status does not match its source facts and decision.',
     );
   }
-  if (report.decision !== undefined) assertDecision(report.decision, plan, analysis);
+  if (report.decision !== undefined) {
+    assertDecision(
+      report.decision,
+      plan,
+      analysis,
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      decisionSource as DecisionResultSource,
+    );
+  }
   const parentDigests = [
     execution.bundleDigest,
     evaluation.bundleDigest,
     analysis.bundleDigest,
   ];
   if (report.decision !== undefined) parentDigests.push(report.decision.decisionDigest);
-  const decisionRuntimeTrust = report.decision === undefined
+  const decisionTrust = decisionSource === undefined
     ? []
-    : plan.decision.runtimes.flatMap((runtime) => {
-      if (runtime.runtimeKind !== 'decision-policy') return [];
-      const identity = runtime.identity;
-      const assurance = identity !== null && typeof identity === 'object'
-        ? (identity as Record<string, unknown>).assuranceLevel
-        : undefined;
-      return typeof assurance === 'string'
-        && ['untrusted', 'unknown', 'declared', 'verified'].includes(assurance)
-        ? [assurance as Provenance['trust']]
-        : ['untrusted' as const];
-    });
+    : [effectiveDecisionResultTrust(decisionSource)];
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(parentDigests)
       || trustLevel(report.provenance.trust) > Math.min(
-        trustLevel(execution.provenance.trust),
-        trustLevel(evaluation.provenance.trust),
-        trustLevel(analysis.provenance.trust),
-        ...decisionRuntimeTrust.map(trustLevel),
+        trustLevel(effectiveExecutionBundleTrust(executionSource)),
+        trustLevel(effectiveEvaluationBundleTrust(evaluationSource)),
+        trustLevel(effectiveAnalysisBundleTrust(analysisSource)),
+        ...decisionTrust.map(trustLevel),
       )) {
     throw new EvaluationReportValidationError(
       'EVALUATION_REPORT_PROVENANCE_INVALID',
