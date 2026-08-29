@@ -982,6 +982,43 @@ describe('Evaluation Core Execution runtime', () => {
     })]);
   });
 
+  it.each([
+    ['cancelled', 'execution.run.cancelled'],
+    ['budget-exhausted', 'execution.run.budget-exhausted'],
+  ] as const)('lets terminal EventWriter failure override an existing %s execution stop', async (
+    stopStatus,
+    rejectedEventKind,
+  ) => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.eventDelivery.writerMode = 'optional';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      if (stopStatus === 'budget-exhausted') {
+        policy.budget.maxDurationMs = 1;
+      }
+    });
+    const controller = new AbortController();
+    if (stopStatus === 'cancelled') controller.abort();
+    const { ports } = portsFor(plan, undefined, {
+      eventWriter: {
+        async write(event) {
+          if (event.eventKind === rejectedEventKind) throw new Error('terminal writer failed');
+        },
+      },
+    });
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: `execution-terminal-precedence-${stopStatus}-run`,
+      bundleId: `execution-terminal-precedence-${stopStatus}-bundle`,
+      signal: controller.signal,
+    });
+
+    expect(bundle).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'event-writer-failed',
+    });
+  });
+
   it('does not open Target resources when the required EventWriter fails at run start', async () => {
     const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];

@@ -4,6 +4,7 @@ import {
   digestCanonicalJson,
   deriveEvaluationAttemptId,
   parseEvaluationBundle,
+  verifyEvaluationBundle,
   type EvaluationBundle,
   type EvaluationEvent,
   type ExecutionBundle,
@@ -508,8 +509,76 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
     });
 
-    expect(() => parseEvaluationBundle(forged, plan, source))
-      .toThrowError(/exceeds the sealed evaluator invocation budget/);
+    expect(parseEvaluationBundle(forged, plan, source)).toEqual(forged);
+    expect(verifyEvaluationBundle(forged, plan, source).planVerification).toMatchObject({
+      cacheReceiptStatus: 'indeterminate',
+      invocationBudgetStatus: 'indeterminate',
+      minimumEvaluatorInvocations: 1,
+      maximumEvaluatorInvocations: 3,
+    });
+  });
+
+  it('keeps a durable cache-hit Bundle valid while reporting an indeterminate budget proof', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.budget.maxEvaluatorInvocations = 2;
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const seed = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, seed.port, { cache }), {
+      runId: 'durable-receipt-seed-run',
+      bundleId: 'durable-receipt-seed-bundle',
+    });
+    const replaced = [...cache.entries].find(([, entry]) => (
+      entry.record.targetId === 'treatment'
+    ));
+    if (replaced === undefined) throw new Error('missing treatment cache entry');
+    cache.entries.delete(replaced[0]);
+    const retry = evaluator(plan, (state) => {
+      if (state.attempts === 1) {
+        throw new EvaluationPortFailure({
+          code: 'timeout',
+          stage: 'evaluation',
+          message: 'Retry before the replacement cache write.',
+        });
+      }
+      return {
+        observations: [{
+          metricId: 'correct',
+          observationStatus: 'observed',
+          valueType: 'boolean',
+          value: true,
+        }],
+      };
+    });
+    await evaluateExecutionBundle(plan, source, ports(plan, retry.port, { cache }), {
+      runId: 'durable-receipt-replace-run',
+      bundleId: 'durable-receipt-replace-bundle',
+    });
+    const replayEvaluator = evaluator(plan);
+    const replay = await evaluateExecutionBundle(
+      plan,
+      source,
+      ports(plan, replayEvaluator.port, { cache }),
+      {
+        runId: 'durable-receipt-replay-run',
+        bundleId: 'durable-receipt-replay-bundle',
+      },
+    );
+    const transported = structuredClone(replay);
+    const verification = verifyEvaluationBundle(transported, plan, source);
+
+    expect(parseEvaluationBundle(transported, plan, source)).toEqual(transported);
+    expect(replayEvaluator.state.attempts).toBe(0);
+    expect(verification.planVerification).toMatchObject({
+      cacheReceiptStatus: 'indeterminate',
+      invocationBudgetStatus: 'indeterminate',
+      minimumEvaluatorInvocations: 0,
+      maximumEvaluatorInvocations: 3,
+    });
+    expect(verification.planVerification.unverifiedCacheRecordDigests).toHaveLength(2);
   });
 
   it('rejects missing evaluator bindings synchronously', async () => {
@@ -631,6 +700,97 @@ describe('Evaluation Core Evaluation runtime', () => {
       eventKind: 'evaluation.run.failed',
       data: expect.objectContaining({ bundleDigest: bundle.bundleDigest }),
     })]);
+  });
+
+  it.each([
+    ['cancelled', 'evaluation.run.cancelled'],
+    ['budget-exhausted', 'evaluation.run.budget-exhausted'],
+  ] as const)('lets terminal EventWriter failure override an existing %s stop', async (
+    stopStatus,
+    rejectedEventKind,
+  ) => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.eventDelivery.writerMode = 'optional';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      if (stopStatus === 'budget-exhausted') {
+        policy.evaluation.budget.maxDurationMs = 1;
+      }
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const controller = new AbortController();
+    if (stopStatus === 'cancelled') controller.abort();
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      eventWriter: {
+        async write(event) {
+          if (event.eventKind === rejectedEventKind) throw new Error('terminal writer failed');
+        },
+      },
+    }), {
+      runId: `terminal-precedence-${stopStatus}-run`,
+      bundleId: `terminal-precedence-${stopStatus}-bundle`,
+      signal: controller.signal,
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-event-writer-failed',
+    });
+  });
+
+  it('lets run disposal failure override an in-flight external cancellation', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.retry.maxAttempts = 1;
+    });
+    const source = await sourceBundle(plan);
+    const controller = new AbortController();
+    let started: (() => void) | undefined;
+    let finish: (() => void) | undefined;
+    const attemptStarted = new Promise<void>((resolve) => { started = resolve; });
+    const allowSettlement = new Promise<void>((resolve) => { finish = resolve; });
+    const base = evaluator(plan, async () => {
+      started?.();
+      await allowSettlement;
+      return { observations: [] };
+    });
+    const evaluatorWithFailingRunDispose: EvaluationEvaluator = {
+      ...base.port,
+      async openRun(context) {
+        const run = await base.port.openRun(context);
+        return {
+          ...run,
+          async dispose() {
+            await run.dispose();
+            throw new Error('run dispose failed');
+          },
+        };
+      },
+    };
+    const running = startEvaluation(
+      plan,
+      source,
+      ports(plan, evaluatorWithFailingRunDispose),
+      {
+        runId: 'cancel-dispose-precedence-run',
+        bundleId: 'cancel-dispose-precedence-bundle',
+        signal: controller.signal,
+      },
+    );
+    await attemptStarted;
+    controller.abort();
+    finish?.();
+    const bundle = await running.result;
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluator-run-dispose-failed',
+      coverage: { cancelled: 1 },
+    });
   });
 
   it('binds cache identity to the exact source ExecutionRecord digest', async () => {
@@ -1057,6 +1217,103 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(fake.state).toMatchObject({ attempts: 0, recordContexts: [], runDisposals: 0 });
   });
 
+  it('uses the sealed descriptor media type when a ContentResolver omits it', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evidence.output = 'reference';
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      contentResolver: {
+        async resolve() {
+          return { value: { answer: 'A' }, classification: 'public' };
+        },
+      },
+    }), {
+      runId: 'sealed-media-type-run',
+      bundleId: 'sealed-media-type-bundle',
+    });
+
+    expect(bundle.evaluationBundleStatus).toBe('completed');
+    expect(fake.state.recordContexts[0].bindings.find((binding) => (
+      binding.bindingId === 'actual'
+    ))?.mediaType).toBe('application/json');
+  });
+
+  it('rejects a ContentResolver media type that contradicts the sealed descriptor', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evidence.output = 'reference';
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      contentResolver: {
+        async resolve() {
+          return {
+            value: { answer: 'A' },
+            classification: 'public',
+            mediaType: 'text/plain',
+          };
+        },
+      },
+    }), {
+      runId: 'mismatched-media-type-run',
+      bundleId: 'mismatched-media-type-bundle',
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-runtime-internal-failed',
+      coverage: { started: 0, notStarted: 1 },
+    });
+    expect(fake.state.attempts).toBe(0);
+  });
+
+  it('rejects a ContentStore descriptor that rewrites evaluator evidence media type', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evidence.evidence = 'reference';
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      evidence: {
+        value: { rationale: 'sealed' },
+        classification: 'public',
+        mediaType: 'application/json',
+      },
+    }));
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      contentStore: {
+        async put(request) {
+          return {
+            digest: request.digest,
+            mediaType: 'text/plain',
+            uri: `memory:${request.digest}`,
+          };
+        },
+      },
+    }), {
+      runId: 'store-media-type-run',
+      bundleId: 'store-media-type-bundle',
+    });
+
+    expect(bundle.records[0]).toMatchObject({
+      evaluationStatus: 'failed',
+      error: { code: 'content-store-invalid' },
+    });
+  });
+
   it('rejects cache records that violate the sealed metric contract', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
@@ -1076,6 +1333,84 @@ describe('Evaluation Core Evaluation runtime', () => {
     const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
       runId: 'poison-cache-run',
       bundleId: 'poison-cache-bundle',
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-cache-read-failed',
+    });
+    expect(second.state.attempts).toBe(0);
+  });
+
+  it('rejects a cache record whose aggregate usage differs from its attempts', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const first = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: { totalTokens: 1 },
+    }));
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+      runId: 'poison-usage-seed-run',
+      bundleId: 'poison-usage-seed-bundle',
+    });
+    const entry = cache.entries.values().next().value;
+    if (entry === undefined || entry.record.usage === undefined) {
+      throw new Error('missing cache usage');
+    }
+    entry.record.usage = { ...entry.record.usage, totalTokens: 999 };
+    entry.cachedRecordDigest = digestCanonicalJson(entry.record);
+    const second = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+      runId: 'poison-usage-run',
+      bundleId: 'poison-usage-bundle',
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-cache-read-failed',
+    });
+    expect(second.state.attempts).toBe(0);
+  });
+
+  it('rejects a cache record that could not pass the sealed provider-cost audit', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+      policy.evaluation.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const first = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: {
+        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+      },
+    }));
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+      runId: 'poison-cost-seed-run',
+      bundleId: 'poison-cost-seed-bundle',
+    });
+    const entry = cache.entries.values().next().value;
+    if (entry === undefined) throw new Error('missing cache entry');
+    delete entry.record.attempts[0].usage;
+    delete entry.record.usage;
+    entry.cachedRecordDigest = digestCanonicalJson(entry.record);
+    const second = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
+      runId: 'poison-cost-run',
+      bundleId: 'poison-cost-bundle',
     });
 
     expect(bundle).toMatchObject({

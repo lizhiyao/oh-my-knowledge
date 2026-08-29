@@ -1206,7 +1206,8 @@ async function runExecution(
   const stop: StopState = {};
   const controller = new AbortController();
   const setStop = (kind: StopKind, reason: string, error?: EvaluationError): void => {
-    if (stop.stopKind !== undefined) return;
+    if (stop.stopKind === 'failed'
+        || (stop.stopKind !== undefined && kind !== 'failed')) return;
     stop.stopKind = kind;
     stop.reason = reason;
     if (error !== undefined) stop.error = error;
@@ -1331,12 +1332,16 @@ async function runExecution(
         setStop('budget-exhausted', 'provider-cost-budget-exhausted');
       }
     }
-  } catch {
-    setStop('failed', 'execution-runtime-internal-failed', {
-      code: 'execution-runtime-internal-failed',
-      stage: 'internal',
-      message: 'Execution runtime encountered an internal failure.',
-    });
+  } catch (error) {
+    if (!(error instanceof Error
+        && error.name === 'AbortError'
+        && stop.stopKind !== undefined)) {
+      setStop('failed', 'execution-runtime-internal-failed', {
+        code: 'execution-runtime-internal-failed',
+        stage: 'internal',
+        message: 'Execution runtime encountered an internal failure.',
+      });
+    }
   } finally {
     durationController.abort();
     await durationTimer;

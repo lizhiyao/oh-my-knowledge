@@ -1,10 +1,12 @@
 import {
   EVALUATION_BUNDLE_SCHEMA_VERSION,
   CompletedEvaluationRecordSchema,
+  ContentDescriptorSchema,
   EvaluationErrorSchema,
   IdentifierSchema,
   MetricObservationSchema,
   UsageRecordSchema,
+  aggregateEvaluationAttemptUsage,
   canonicalizeJson,
   deriveEvaluationAttemptId,
   deriveMetricObservationId,
@@ -12,9 +14,11 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   evaluationRecordMatchesEvidencePolicy,
-  parseEvaluationBundle,
+  evaluationRecordSatisfiesCacheCostPolicy,
+  evaluationRecordUsageMatchesAttempts,
   parseExecutionBundle,
   parseWireDocument,
+  verifyEvaluationBundle,
   type CapturedContent,
   type EvaluationAttempt,
   type EvaluationBundle,
@@ -259,39 +263,6 @@ function validatedUsage(value: UsageRecord | undefined): UsageRecord | undefined
   return parsed.data;
 }
 
-function aggregateUsage(values: readonly (UsageRecord | undefined)[]): UsageRecord | undefined {
-  const reported = values.filter((value): value is UsageRecord => value !== undefined);
-  if (reported.length === 0) return undefined;
-  const sum = (field: 'inputTokens' | 'outputTokens' | 'totalTokens'): number | undefined => (
-    reported.some((value) => value[field] !== undefined)
-      ? reported.reduce((total, value) => total + (value[field] ?? 0), 0)
-      : undefined
-  );
-  const costs = reported.flatMap((value) => value.providerCost === undefined
-    ? []
-    : [value.providerCost]);
-  const currencies = new Set(costs.map((cost) => cost.currency));
-  return {
-    ...(sum('inputTokens') === undefined ? {} : { inputTokens: sum('inputTokens') }),
-    ...(sum('outputTokens') === undefined ? {} : { outputTokens: sum('outputTokens') }),
-    ...(sum('totalTokens') === undefined ? {} : { totalTokens: sum('totalTokens') }),
-    ...(costs.length === values.length && currencies.size === 1
-      ? {
-        providerCost: {
-          amount: costs.reduce((total, cost) => total + cost.amount, 0),
-          currency: costs[0].currency,
-          reportedByProvider: true as const,
-        },
-      }
-      : {}),
-    details: {
-      aggregationKind: 'omk.evaluation-usage-summary/v1',
-      attemptCount: values.length,
-      reportedAttemptCount: reported.length,
-    },
-  };
-}
-
 function resolvePointer(value: JsonValue, pointer: string): JsonValue {
   let current: unknown = value;
   if (pointer === '') return value;
@@ -338,7 +309,18 @@ async function resolveCaptured(
       message: 'Resolved content classification differs from its descriptor.',
     });
   }
-  return snapshotJson(resolved);
+  if (resolved.mediaType !== undefined
+      && resolved.mediaType !== content.descriptor.mediaType) {
+    throw new EvaluationPortFailure({
+      code: 'content-media-type-mismatch',
+      stage: 'infrastructure',
+      message: 'Resolved content media type differs from its descriptor.',
+    });
+  }
+  return {
+    ...snapshotJson(resolved),
+    mediaType: content.descriptor.mediaType,
+  };
 }
 
 async function materializeBindings(
@@ -411,19 +393,27 @@ async function capture(
   if (mode === 'digest') {
     return { contentKind: 'digest-only', classification: content.classification, digest };
   }
+  const mediaType = content.mediaType ?? 'application/json';
   const descriptor = await ports.contentStore?.put({
     ...snapshotJson(content),
     digest,
-    mediaType: content.mediaType ?? 'application/json',
+    mediaType,
   });
-  if (descriptor === undefined || descriptor.digest !== digest) {
+  const parsedDescriptor = ContentDescriptorSchema.safeParse(descriptor);
+  if (!parsedDescriptor.success
+      || parsedDescriptor.data.digest !== digest
+      || parsedDescriptor.data.mediaType !== mediaType) {
     throw new EvaluationPortFailure({
       code: 'content-store-invalid',
       stage: 'infrastructure',
       message: 'ContentStore returned an invalid descriptor.',
     });
   }
-  return { contentKind: 'descriptor', classification: content.classification, descriptor };
+  return {
+    contentKind: 'descriptor',
+    classification: content.classification,
+    descriptor: snapshotJson(parsedDescriptor.data),
+  };
 }
 
 async function normalizeObservations(
@@ -775,6 +765,11 @@ function replayRecord(
       cacheStatus: 'miss',
       cacheKeyDigest: key,
     })
+    || !evaluationRecordUsageMatchesAttempts(record)
+    || !evaluationRecordSatisfiesCacheCostPolicy(
+      record,
+      plan.evaluation.policy.runtime.budget.maxProviderCost,
+    )
     || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
     || !evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)
     || record.attempts.at(-1)?.attemptStatus !== 'completed'
@@ -883,7 +878,6 @@ async function evaluateCoordinate(
     }
   }
   const attempts: EvaluationAttempt[] = [];
-  const usages: (UsageRecord | undefined)[] = [];
   const startedAt = ports.clock.timestamp();
   const startedMono = ports.clock.monotonicNow();
   let terminalError: EvaluationError | undefined;
@@ -974,7 +968,6 @@ async function evaluateCoordinate(
           },
           ...(attemptUsage === undefined ? {} : { usage: snapshotJson(attemptUsage) }),
         });
-        usages.push(attemptUsage === undefined ? undefined : snapshotJson(attemptUsage));
         const budgetError = budget.record(attemptUsage);
         if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
         await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
@@ -1007,7 +1000,6 @@ async function evaluateCoordinate(
           error: failure,
           ...(usage === undefined ? {} : { usage: snapshotJson(usage) }),
         });
-        usages.push(usage);
         const budgetError = budget.record(usage);
         if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
         terminalError = failure;
@@ -1055,6 +1047,7 @@ async function evaluateCoordinate(
   }
   if (attempts.length === 0) return {};
   const finalStatus = attempts.at(-1)?.attemptStatus;
+  const usage = aggregateEvaluationAttemptUsage(attempts);
   const base = {
     ...coordinate,
     runtime: snapshotJson(binding.runtime),
@@ -1070,7 +1063,7 @@ async function evaluateCoordinate(
       completedAt: ports.clock.timestamp(),
       durationMs: durationMs(startedMono, ports.clock.monotonicNow()),
     },
-    ...(aggregateUsage(usages) === undefined ? {} : { usage: aggregateUsage(usages) }),
+    ...(usage === undefined ? {} : { usage }),
     ...(evidence === undefined ? {} : { evidence }),
     cache: plan.evaluation.policy.evaluationCacheMode === 'disabled'
       ? { cacheStatus: 'not-used' as const }
@@ -1181,7 +1174,17 @@ function makeBundle(
     bundleDigest: `sha256:${'0'.repeat(64)}`,
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
-  return parseEvaluationBundle(bundle, plan, source, { verifiedCacheRecordDigests });
+  const verified = verifyEvaluationBundle(
+    bundle,
+    plan,
+    source,
+    { verifiedCacheRecordDigests },
+  );
+  if (verified.planVerification.cacheReceiptStatus !== 'verified'
+      || verified.planVerification.invocationBudgetStatus !== 'verified') {
+    throw new TypeError('Evaluation Runtime produced an unverifiable Bundle.');
+  }
+  return verified.bundle;
 }
 
 async function prepareEvaluationCoordinates(
@@ -1263,7 +1266,8 @@ async function runEvaluation(
   const stop: StopState = {};
   const controller = new AbortController();
   const setStop = (stopKind: StopKind, reason: string, error?: EvaluationError): void => {
-    if (stop.stopKind !== undefined) return;
+    if (stop.stopKind === 'failed'
+        || (stop.stopKind !== undefined && stopKind !== 'failed')) return;
     stop.stopKind = stopKind;
     stop.reason = reason;
     if (error !== undefined) stop.error = error;
@@ -1395,7 +1399,10 @@ async function runEvaluation(
       }
     }
   } catch (error) {
-    setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
+    if (!(error instanceof EvaluationAttemptCancelledError
+        && stop.stopKind !== undefined)) {
+      setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
+    }
   } finally {
     durationController.abort();
     await duration;
