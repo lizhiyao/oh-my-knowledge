@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
+  createBuiltinDecisionPolicies,
   BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
   BUILTIN_INTERVAL_RESULT_SCHEMA,
   BUILTIN_SCALAR_RESULT_SCHEMA,
   type AnalysisMetricRow,
   type AnalysisNodeExecutionContext,
+  type DecisionPolicyContext,
 } from '../../../src/evaluation-core/analysis/index.js';
 import {
+  countAnalysisResamplingUnits,
   digestCanonicalJson,
   schemaIdentityKey,
   type Sha256Digest,
@@ -122,6 +125,26 @@ async function execute(input: AnalysisNodeExecutionContext) {
 }
 
 describe('Evaluation Core built-in estimators', () => {
+  it('counts only complete paired resampling units', () => {
+    expect(countAnalysisResamplingUnits('paired-block', [
+      {
+        targetId: 'control',
+        sampleId: 's1',
+        samplingUnitIds: { pairingBlockId: 'pair-1' },
+      },
+      {
+        targetId: 'treatment',
+        sampleId: 's1',
+        samplingUnitIds: { pairingBlockId: 'pair-1' },
+      },
+      {
+        targetId: 'control',
+        sampleId: 's2',
+        samplingUnitIds: { pairingBlockId: 'pair-2' },
+      },
+    ], ['control', 'treatment'])).toBe(1);
+  });
+
   it('validates the complete result envelope and Bonferroni invariants', () => {
     const validators = createBuiltinAnalysisSchemaValidators();
     const scalar = validators.get(schemaIdentityKey(BUILTIN_SCALAR_RESULT_SCHEMA));
@@ -157,18 +180,27 @@ describe('Evaluation Core built-in estimators', () => {
     expect(interval?.parse(intervalEnvelope, {
       validationKind: 'analysis-output',
       parameters: { resamples: 64, alpha: 0.1 },
+      inputFacts: { resamplingUnitCount: 2 },
     })).toEqual(intervalEnvelope);
     expect(() => interval?.parse(intervalEnvelope, {
       validationKind: 'analysis-output',
       parameters: { resamples: 1_000, alpha: 0.05 },
-    })).toThrow(/sealed node parameters/);
-    expect(() => interval?.parse({
-      ...intervalEnvelope,
-      value: { ...intervalEnvelope.value, estimate: 3 },
-    }, {
+      inputFacts: { resamplingUnitCount: 2 },
+    })).toThrow(/sealed Analysis facts/);
+    expect(() => interval?.parse(intervalEnvelope, {
       validationKind: 'analysis-output',
       parameters: { resamples: 64, alpha: 0.1 },
-    })).toThrow(/lower <= estimate <= upper/);
+      inputFacts: { resamplingUnitCount: 999 },
+    })).toThrow(/sealed Analysis facts/);
+    const intervalExcludingEstimate = {
+      ...intervalEnvelope,
+      value: { ...intervalEnvelope.value, estimate: 3 },
+    };
+    expect(interval?.parse(intervalExcludingEstimate, {
+      validationKind: 'analysis-output',
+      parameters: { resamples: 64, alpha: 0.1 },
+      inputFacts: { resamplingUnitCount: 2 },
+    })).toEqual(intervalExcludingEstimate);
 
     const hypothesisEnvelope = {
       resultType: 'table',
@@ -186,10 +218,12 @@ describe('Evaluation Core built-in estimators', () => {
     expect(bonferroni?.parse(hypothesisEnvelope, {
       validationKind: 'analysis-output',
       parameters: { alpha: 0.05 },
+      inputFacts: { resamplingUnitCount: 0 },
     })).toEqual(hypothesisEnvelope);
     expect(() => bonferroni?.parse(hypothesisEnvelope, {
       validationKind: 'analysis-output',
       parameters: { alpha: 0.1 },
+      inputFacts: { resamplingUnitCount: 0 },
     })).toThrow(/sealed node parameters/);
   });
 
@@ -331,6 +365,41 @@ describe('Evaluation Core built-in estimators', () => {
           },
         ],
       },
+    });
+  });
+
+  it('selects the exact bound effect for the progress decision', async () => {
+    const progress = createBuiltinDecisionPolicies().get('progress/v1');
+    if (progress === undefined) throw new Error('missing progress policy');
+    expect(progress.identity.capabilities).toMatchObject({ multipleComparisonPolicyIds: [] });
+    const context = {
+      policy: { parameters: { threshold: 0, equivalence: 0 } },
+      results: [
+        { resultId: 'unrelated-global', value: 1 },
+        { resultId: 'bound-effect', value: -1 },
+      ],
+      contrasts: [{
+        analysisResultId: 'bound-effect',
+        comparisonId: 'comparison-1',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment',
+        metricId: 'score',
+      }],
+    } as unknown as DecisionPolicyContext;
+
+    await expect(progress.decide(context)).resolves.toEqual({
+      decisionStatus: 'decided',
+      verdict: 'REGRESSION',
+    });
+    await expect(progress.decide({
+      ...context,
+      contrasts: [
+        ...context.contrasts,
+        { ...context.contrasts[0], analysisResultId: 'another-effect' },
+      ],
+    })).resolves.toEqual({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['decision-effect-unavailable'],
     });
   });
 });

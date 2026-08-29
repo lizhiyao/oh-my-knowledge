@@ -1,4 +1,5 @@
 export * from './artifacts.js';
+export * from './analysis-identities.js';
 export * from './analysis-bundle.js';
 export * from './common.js';
 export * from './definition.js';

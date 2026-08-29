@@ -59,16 +59,7 @@ const IntervalEnvelopeSchema = z.object({
     unitCount: z.number().int().positive().safe(),
     method: z.literal('percentile'),
   }).strict(),
-}).strict().superRefine((envelope, context) => {
-  const { estimate, lower, upper } = envelope.value;
-  if (lower > estimate || estimate > upper) {
-    context.addIssue({
-      code: 'custom',
-      path: ['value'],
-      message: 'Interval bounds must satisfy lower <= estimate <= upper',
-    });
-  }
-});
+}).strict();
 const HypothesisInputEnvelopeSchema = z.object({
   resultType: z.literal('table'),
   value: z.object({
@@ -140,9 +131,9 @@ export const BUILTIN_INTERVAL_RESULT_SCHEMA = schemaIdentity(
   'omk.analysis-result.percentile-interval/v1',
   'urn:omk:analysis-result:percentile-interval:v1',
   jsonSchema(IntervalEnvelopeSchema, [
-    'lower<=estimate<=upper',
     'resamples equals the sealed node parameter resamples',
     'confidenceLevel equals 1 minus the sealed node parameter alpha',
+    'unitCount equals the Core-derived count of included resampling units',
   ]),
 );
 
@@ -274,7 +265,7 @@ const DECISION_CAPABILITIES: JsonValue = {
     BUILTIN_INTERVAL_RESULT_SCHEMA.schemaUri,
     BUILTIN_SCALAR_RESULT_SCHEMA.schemaUri,
   ].sort(),
-  multipleComparisonPolicyIds: ['bonferroni/v1'],
+  multipleComparisonPolicyIds: [],
   parameterSchema: PROGRESS_PARAMETERS_SCHEMA,
   schemas: [],
 };
@@ -854,8 +845,9 @@ function validateIntervalContext(
   const sealed = BootstrapParametersSchema.parse(requireAnalysisOutputContext(context).parameters);
   const envelope = IntervalEnvelopeSchema.parse(value);
   if (envelope.value.resamples !== sealed.resamples
-      || envelope.value.confidenceLevel !== 1 - sealed.alpha) {
-    throw new TypeError('Interval metadata does not match the sealed node parameters.');
+      || envelope.value.confidenceLevel !== 1 - sealed.alpha
+      || envelope.value.unitCount !== context?.inputFacts.resamplingUnitCount) {
+    throw new TypeError('Interval metadata does not match the sealed Analysis facts.');
   }
 }
 
@@ -876,13 +868,20 @@ export const BUILTIN_EXCLUDE_MISSING_POLICY = {
 };
 
 function scalarEffect(context: DecisionPolicyContext): number | undefined {
-  for (const result of context.results) {
-    if (typeof result.value === 'number' && Number.isFinite(result.value)) return result.value;
-    if (result.value !== null && !Array.isArray(result.value)
-        && typeof result.value === 'object') {
-      const value = (result.value as Record<string, JsonValue>).estimate;
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
-    }
+  const resultId = context.contrasts.length === 1
+    ? context.contrasts[0].analysisResultId
+    : context.contrasts.length === 0 && context.results.length === 1
+      ? context.results[0].resultId
+      : undefined;
+  const result = resultId === undefined
+    ? undefined
+    : context.results.find((candidate) => candidate.resultId === resultId);
+  if (result === undefined) return undefined;
+  if (typeof result.value === 'number' && Number.isFinite(result.value)) return result.value;
+  if (result.value !== null && !Array.isArray(result.value)
+      && typeof result.value === 'object') {
+    const value = (result.value as Record<string, JsonValue>).estimate;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
   }
   return undefined;
 }

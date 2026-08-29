@@ -19,6 +19,9 @@ export const SchemaIdentitySchema = z.object({
 export interface CoreSchemaValidationContext {
   readonly validationKind: 'analysis-output';
   readonly parameters: unknown;
+  readonly inputFacts: {
+    readonly resamplingUnitCount: number;
+  };
 }
 
 export interface CoreSchemaValidator {

@@ -470,7 +470,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     )).toThrow(/sealed output schema/);
   });
 
-  it('binds completed output metadata to sealed Analysis parameters', async () => {
+  it('binds completed output metadata to sealed Analysis facts', async () => {
     const fixture = await makeAnalysisFixture('contextual-validator', (definition) => {
       definition.dataset.samples.push({
         ...structuredClone(definition.dataset.samples[0]),
@@ -532,6 +532,48 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       }],
     });
 
+    const wrongUnitCount = {
+      identity: original.identity,
+      outputSchema: original.outputSchema,
+      async openRun() {
+        return {
+          async execute() {
+            return {
+              analysisStatus: 'completed' as const,
+              resultType: 'interval' as const,
+              value: {
+                estimate: 0.5,
+                lower: 0,
+                upper: 1,
+                confidenceLevel: 0.9,
+                resamples: 64,
+                unitCount: 999,
+                method: 'percentile',
+              },
+            };
+          },
+          dispose() {},
+        };
+      },
+    };
+    const unitCountAnalysis = await analyzeEvaluationBundle(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodes: new Map([['bootstrap.mean-percentile/v1', wrongUnitCount]]),
+      },
+      { runId: 'run-unit-count-validator', bundleId: 'analysis-unit-count-validator' },
+    );
+    expect(unitCountAnalysis).toMatchObject({
+      analysisBundleStatus: 'failed',
+      records: [{
+        analysisStatus: 'failed',
+        error: { code: 'analysis-runtime-failed' },
+      }],
+    });
+
     const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
       const record = draft.records[0];
       if (record.analysisStatus !== 'completed'
@@ -545,6 +587,24 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     });
     expect(() => parseAnalysisBundle(
       forged,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+    )).toThrow(/sealed output schema/);
+
+    const forgedUnitCount = resealAnalysisBundle(fixture.analysis, (draft) => {
+      const record = draft.records[0];
+      if (record.analysisStatus !== 'completed'
+          || record.value === null
+          || Array.isArray(record.value)
+          || typeof record.value !== 'object') {
+        throw new Error('expected completed interval record');
+      }
+      record.value.unitCount = 999;
+    });
+    expect(() => parseAnalysisBundle(
+      forgedUnitCount,
       fixture.plan,
       fixture.execution,
       fixture.evaluation,

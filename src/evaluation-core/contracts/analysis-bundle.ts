@@ -13,6 +13,10 @@ import {
 } from './common.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
+  countAnalysisResamplingUnits,
+} from './analysis-identities.js';
+import { derivePlannedExecutionCoordinates } from './execution-identities.js';
+import {
   parseEvaluationBundle,
   type EvaluationBundlePlanContext,
 } from './evaluation-bundle.js';
@@ -236,6 +240,11 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
         })[];
       }[];
     };
+    experiment: {
+      sampling: {
+        resamplingUnit: 'sample' | 'paired-block' | 'cluster' | 'run';
+      };
+    };
     metrics: readonly { metricId: string; missingPolicyId: string }[];
     comparisons: readonly {
       comparisonId: string;
@@ -257,6 +266,12 @@ export interface AnalysisBundleValidationContext {
 
 interface ExpectedAnalysisRow {
   rowId: string;
+  targetId: string;
+  sampleId: string;
+  samplingUnitIds: {
+    pairingBlockId?: string;
+    clusterId?: string;
+  };
   rowStatus: 'observed' | 'missing' | 'invalid' | 'evaluation-failed'
     | 'source-unavailable' | 'not-started';
   censored: boolean;
@@ -305,6 +320,9 @@ function expectedRows(
   const executionByCoordinate = new Map(execution.records.map(
     (record) => [coordinateKey(record), record],
   ));
+  const plannedExecutionByCoordinate = new Map(derivePlannedExecutionCoordinates(plan).map(
+    (coordinate) => [coordinateKey(coordinate), coordinate],
+  ));
   const evaluationByCoordinate = new Map(evaluation.records.map(
     (record) => [evaluationKey(record), record],
   ));
@@ -326,6 +344,13 @@ function expectedRows(
       );
       if (allowedTargets !== undefined && !allowedTargets.has(coordinate.targetId)) continue;
       const executionRecord = executionByCoordinate.get(coordinateKey(coordinate));
+      const plannedExecution = plannedExecutionByCoordinate.get(coordinateKey(coordinate));
+      if (plannedExecution === undefined) {
+        throw new AnalysisBundleValidationError(
+          'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+          'Analysis source row has no sealed execution coordinate.',
+        );
+      }
       const evaluationRecord = evaluationByCoordinate.get(evaluationKey(coordinate));
       const base = {
         rowId: digestCanonicalJson({
@@ -333,6 +358,9 @@ function expectedRows(
           evaluationId: coordinate.evaluationId,
           metricId,
         }),
+        targetId: coordinate.targetId,
+        sampleId: coordinate.sampleId,
+        samplingUnitIds: plannedExecution.samplingUnitIds,
         censored: executionRecord?.executionStatus === 'budget-censored',
       };
       if (evaluationRecord === undefined) {
@@ -483,13 +511,32 @@ function assertMatchesPlan(
         'Analysis output schema has no independently bound Core validator.',
       );
     }
+    const sourceRows = expectedRows(plan, execution, source, node);
     if (record.analysisStatus === 'completed') {
       let valid = false;
       try {
         const envelope = { resultType: record.resultType, value: record.value } as const;
+        const excludedRowIds = new Set(record.exclusions.map((entry) => entry.rowId));
         valid = canonicalizeJson(validator.parse(envelope, {
           validationKind: 'analysis-output',
           parameters: node.parameters ?? {},
+          inputFacts: {
+            resamplingUnitCount: countAnalysisResamplingUnits(
+              plan.analysis.experiment.sampling.resamplingUnit,
+              sourceRows.filter((row) => (
+                row.rowStatus === 'observed' && !excludedRowIds.has(row.rowId)
+              )),
+              node.inputs.flatMap((input) => {
+                if (input.inputKind !== 'comparison') return [];
+                const comparison = plan.analysis.comparisons.find(
+                  (candidate) => candidate.comparisonId === input.referenceId,
+                );
+                return comparison === undefined
+                  ? []
+                  : [comparison.controlTargetId, input.treatmentTargetId];
+              }),
+            ),
+          },
         })) === canonicalizeJson(envelope);
       } catch {
         valid = false;
@@ -501,7 +548,7 @@ function assertMatchesPlan(
         );
       }
     }
-    assertSourceCoverage(record, expectedRows(plan, execution, source, node));
+    assertSourceCoverage(record, sourceRows);
     const parents = new Set<string>();
     for (const input of node.inputs) {
       if (input.inputKind === 'metric-observations') parents.add(source.bundleDigest);

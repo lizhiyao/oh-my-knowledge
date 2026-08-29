@@ -6,6 +6,7 @@ import {
   IdentifierSchema,
   SchemaIdentitySchema,
   canonicalizeJson,
+  countAnalysisResamplingUnits,
   derivePlannedEvaluationCoordinates,
   derivePlannedExecutionCoordinates,
   digestArtifactPayload,
@@ -946,9 +947,19 @@ async function runAnalysis(
       try {
         value = snapshotJson(output.value);
         const envelope = { resultType: output.resultType, value } as const;
+        const includedRowIdSet = new Set(includedRowIds);
         if (canonicalizeJson(binding.validator.parse(envelope, {
           validationKind: 'analysis-output',
           parameters: binding.node.parameters ?? {},
+          inputFacts: {
+            resamplingUnitCount: countAnalysisResamplingUnits(
+              plan.analysis.experiment.sampling.resamplingUnit,
+              rows.filter((row) => includedRowIdSet.has(row.rowId)),
+              inputs.flatMap((input) => input.inputKind === 'comparison'
+                ? [input.contrast.controlTargetId, input.contrast.treatmentTargetId]
+                : []),
+            ),
+          },
         })) !== canonicalizeJson(envelope)) {
           throw new TypeError('Analysis output does not match the sealed schema.');
         }
