@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
   parseExecutionBundleDocument,
+  verifyExecutionBundle,
   type EvaluationEvent,
   type RuntimeIdentity,
   type Sha256Digest,
@@ -673,6 +674,22 @@ describe('Evaluation Core Execution runtime', () => {
     expect(second.records[0].executionStatus).toBe('completed');
     if (second.records[0].executionStatus === 'budget-censored') throw new Error('unexpected');
     expect(second.records[0].cache.cacheStatus).toBe('transparent-hit');
+    const sourceRecordDigest = second.records[0].cache.sourceRecordDigest;
+    if (sourceRecordDigest === undefined) throw new Error('missing cache receipt');
+    expect(verifyExecutionBundle(second, plan).planVerification).toMatchObject({
+      cacheReceiptStatus: 'indeterminate',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 1,
+      unverifiedCacheRecordDigests: [sourceRecordDigest],
+    });
+    expect(verifyExecutionBundle(second, plan, {
+      verifiedCacheRecordDigests: new Set([sourceRecordDigest]),
+    }).planVerification).toMatchObject({
+      cacheReceiptStatus: 'verified',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 0,
+      unverifiedCacheRecordDigests: [],
+    });
     expect(state.attempts).toBe(1);
     expect(cache.puts).toBe(1);
     expect(cache.gets).toBe(2);
@@ -868,6 +885,11 @@ describe('Evaluation Core Execution runtime', () => {
       started: 2,
       succeeded: 2,
       budgetCensored: 2,
+    });
+    expect(verifyExecutionBundle(bundle, plan).planVerification).toMatchObject({
+      providerCostBudgetStatus: 'verified',
+      minimumProviderCost: { amount: 1.2, currency: 'USD' },
+      maximumProviderCost: { amount: 1.2, currency: 'USD' },
     });
     expect(state.attempts).toBe(2);
   });

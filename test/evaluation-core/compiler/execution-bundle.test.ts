@@ -6,8 +6,10 @@ import {
   deriveTrialId,
   deriveTrialSeed,
   digestArtifactPayload,
+  digestCanonicalJson,
   parseExecutionBundle,
   parseExecutionBundleDocument,
+  verifyExecutionBundle,
   type ExecutionBundle,
   type ExecutionRecord,
   type RuntimeIdentity,
@@ -55,7 +57,16 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
         completedAt: '2026-08-28T00:00:01Z',
         durationMs: 1000,
       },
-      cache: { cacheStatus: 'not-used' },
+      cache: plan.execution.policy.executionCacheMode === 'disabled'
+        ? { cacheStatus: 'not-used' }
+        : {
+          cacheStatus: 'miss',
+          cacheKeyDigest: digestCanonicalJson({
+            derivation: 'omk.execution-cache-key/v1',
+            executionPlanDigest: plan.execution.executionPlanDigest,
+            trialId: coordinate.trialId,
+          }),
+        },
       executionStatus: 'completed',
       output: {
         contentKind: 'inline',
@@ -100,6 +111,54 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
 function resign(bundle: ExecutionBundle): ExecutionBundle {
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
   return bundle;
+}
+
+function turnIntoCacheHit(
+  record: Extract<ExecutionRecord, { executionStatus: 'completed' }>,
+  status: 'replay' | 'transparent-hit' = 'transparent-hit',
+): Sha256Digest {
+  if (record.cache.cacheStatus !== 'miss' || record.cache.cacheKeyDigest === undefined) {
+    throw new Error('expected a native cache miss');
+  }
+  const sourceRecordDigest = digestCanonicalJson(record);
+  record.cache = {
+    cacheStatus: status,
+    cacheKeyDigest: record.cache.cacheKeyDigest,
+    sourceRecordDigest,
+  };
+  record.provenance = {
+    provenanceKind: 'replay',
+    trust: record.provenance.trust,
+    sourceId: record.trialId,
+    parentDigests: [sourceRecordDigest],
+  };
+  return sourceRecordDigest;
+}
+
+function setAttemptCost(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  amount: number,
+  currency = 'USD',
+): void {
+  const usage = {
+    providerCost: { amount, currency, reportedByProvider: true as const },
+  };
+  for (const attempt of record.attempts) attempt.usage = mutableJson(usage);
+  record.usage = record.attempts.length === 1
+    ? mutableJson(usage)
+    : {
+      providerCost: {
+        amount: amount * record.attempts.length,
+        currency,
+        reportedByProvider: true,
+      },
+      details: {
+        aggregationKind: 'omk.execution-usage-summary/v1',
+        attemptCount: record.attempts.length,
+        reportedAttemptCount: record.attempts.length,
+        providerCostAggregation: 'summed',
+      },
+    };
 }
 
 async function makePlan(
@@ -152,22 +211,16 @@ describe('ExecutionBundle RunPlan binding', () => {
   it('rejects replayed records that could not pass the sealed provider-cost audit', async () => {
     const plan = await makePlan(false, (policy) => {
       policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.cache.executionMode = 'transparent-deterministic';
     });
     const bundle = mutableJson(makeBundle(plan));
+    for (const candidate of bundle.records.slice(1)) {
+      if (candidate.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(candidate, 0.25);
+    }
     const record = bundle.records[0];
     if (record.executionStatus !== 'completed') throw new Error('unexpected record');
-    const sourceRecordDigest = `sha256:${'a'.repeat(64)}` as Sha256Digest;
-    record.cache = {
-      cacheStatus: 'transparent-hit',
-      cacheKeyDigest: `sha256:${'b'.repeat(64)}`,
-      sourceRecordDigest,
-    };
-    record.provenance = {
-      provenanceKind: 'replay',
-      trust: 'verified',
-      sourceId: record.trialId,
-      parentDigests: [sourceRecordDigest],
-    };
+    turnIntoCacheHit(record);
     resign(bundle);
 
     expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
@@ -175,13 +228,152 @@ describe('ExecutionBundle RunPlan binding', () => {
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID' }),
     );
 
-    const usage = {
-      providerCost: { amount: 0.25, currency: 'USD' as const, reportedByProvider: true as const },
-    };
-    record.attempts[0].usage = mutableJson(usage);
-    record.usage = mutableJson(usage);
+    const valid = mutableJson(makeBundle(plan));
+    for (const candidate of valid.records) {
+      if (candidate.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(candidate, 0.25);
+    }
+    const validRecord = valid.records[0];
+    if (validRecord.executionStatus !== 'completed') throw new Error('unexpected record');
+    turnIntoCacheHit(validRecord);
+    resign(valid);
+    expect(parseExecutionBundle(valid, plan)).toEqual(valid);
+  });
+
+  it('keeps unverified cache receipts and invocation budgets indeterminate', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.cache.executionMode = 'transparent-deterministic';
+      policy.budget.maxTargetInvocations = 1;
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    const sourceDigests = new Set<Sha256Digest>();
+    for (const record of bundle.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      sourceDigests.add(turnIntoCacheHit(record));
+    }
     resign(bundle);
-    expect(parseExecutionBundle(bundle, plan)).toEqual(bundle);
+
+    const transported = verifyExecutionBundle(bundle, plan);
+    expect(transported.planVerification).toEqual({
+      cacheReceiptStatus: 'indeterminate',
+      invocationBudgetStatus: 'indeterminate',
+      providerCostBudgetStatus: 'verified',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: bundle.records.length,
+      unverifiedCacheRecordDigests: [...sourceDigests],
+    });
+    expect(verifyExecutionBundle(bundle, plan, {
+      verifiedCacheRecordDigests: sourceDigests,
+    }).planVerification).toMatchObject({
+      cacheReceiptStatus: 'verified',
+      invocationBudgetStatus: 'verified',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 0,
+      unverifiedCacheRecordDigests: [],
+    });
+  });
+
+  it('rejects a resealed cache claim with contradictory provenance or key', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.cache.executionMode = 'transparent-deterministic';
+    });
+    const contradictory = mutableJson(makeBundle(plan));
+    const first = contradictory.records[0];
+    if (first.executionStatus !== 'completed') throw new Error('unexpected record');
+    turnIntoCacheHit(first);
+    first.provenance = {
+      provenanceKind: 'native',
+      trust: 'verified',
+      parentDigests: [plan.execution.executionPlanDigest],
+    };
+    resign(contradictory);
+    expect(() => parseExecutionBundle(contradictory, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID' }),
+    );
+
+    const wrongKey = mutableJson(makeBundle(plan));
+    const wrongKeyRecord = wrongKey.records[0];
+    if (wrongKeyRecord.executionStatus !== 'completed') throw new Error('unexpected record');
+    turnIntoCacheHit(wrongKeyRecord);
+    wrongKeyRecord.cache.cacheKeyDigest = `sha256:${'b'.repeat(64)}`;
+    resign(wrongKey);
+    expect(() => parseExecutionBundle(wrongKey, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID' }),
+    );
+  });
+
+  it('audits native provider cost across the completed Bundle', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+    });
+    const missing = mutableJson(makeBundle(plan));
+    resign(missing);
+    expect(() => parseExecutionBundle(missing, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
+
+    const mixedCurrency = mutableJson(makeBundle(plan));
+    for (const [index, record] of mixedCurrency.records.entries()) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 1, index === 0 ? 'USD' : 'EUR');
+    }
+    resign(mixedCurrency);
+    expect(() => parseExecutionBundle(mixedCurrency, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
+
+    const exhausted = mutableJson(makeBundle(plan));
+    for (const record of exhausted.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 6);
+    }
+    resign(exhausted);
+    expect(() => parseExecutionBundle(exhausted, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
+
+    const valid = mutableJson(makeBundle(plan));
+    for (const record of valid.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 4);
+    }
+    resign(valid);
+    expect(verifyExecutionBundle(valid, plan).planVerification).toMatchObject({
+      providerCostBudgetStatus: 'verified',
+      minimumProviderCost: { amount: 4 * valid.records.length, currency: 'USD' },
+      maximumProviderCost: { amount: 4 * valid.records.length, currency: 'USD' },
+    });
+  });
+
+  it('uses replayed historical cost as eligibility evidence, not current spend', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.cache.executionMode = 'transparent-deterministic';
+      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    const sourceDigests = new Set<Sha256Digest>();
+    for (const record of bundle.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 6);
+      sourceDigests.add(turnIntoCacheHit(record));
+    }
+    resign(bundle);
+
+    expect(verifyExecutionBundle(bundle, plan).planVerification).toMatchObject({
+      providerCostBudgetStatus: 'indeterminate',
+      minimumProviderCost: { amount: 0, currency: 'USD' },
+      maximumProviderCost: {
+        amount: 6 * bundle.records.length,
+        currency: 'USD',
+      },
+    });
+    expect(verifyExecutionBundle(bundle, plan, {
+      verifiedCacheRecordDigests: sourceDigests,
+    }).planVerification).toMatchObject({
+      providerCostBudgetStatus: 'verified',
+      minimumProviderCost: { amount: 0, currency: 'USD' },
+      maximumProviderCost: { amount: 0, currency: 'USD' },
+    });
   });
 
   it('accepts a foreign origin with the same ExecutionPlan but rejects foreign coordinates', async () => {

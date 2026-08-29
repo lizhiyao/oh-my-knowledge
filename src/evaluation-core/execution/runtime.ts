@@ -15,8 +15,8 @@ import {
   executionRecordMatchesEvidencePolicy,
   executionRecordSatisfiesCacheCostPolicy,
   executionRecordUsageMatchesAttempts,
-  parseExecutionBundle,
   parseWireDocument,
+  verifyExecutionBundle,
   type CacheProvenance,
   type CapturedContent,
   type EvaluationError,
@@ -95,6 +95,7 @@ interface PreparedBlock {
 interface CoordinateResult {
   record?: ActiveExecutionRecord;
   cacheEntry?: ExecutionCacheEntry;
+  verifiedCacheRecordDigest?: Sha256Digest;
   failed: boolean;
 }
 
@@ -666,7 +667,11 @@ async function executeCoordinate(
       trialId: coordinate.coordinate.trialId,
       cacheStatus: coordinate.cached.cache.cacheStatus,
     });
-    return { record: coordinate.cached, failed: false };
+    return {
+      record: coordinate.cached,
+      verifiedCacheRecordDigest: coordinate.cached.cache.sourceRecordDigest as Sha256Digest,
+      failed: false,
+    };
   }
   const binding = prepared.bindings.get(coordinate.coordinate.targetId);
   if (binding === undefined) throw new Error('Target binding disappeared');
@@ -1130,6 +1135,7 @@ function makeBundle(
   records: ExecutionRecord[],
   plannedCount: number,
   stop: StopState,
+  verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>,
 ): ExecutionBundle {
   const sortedRecords = records.sort(compareRecords);
   const executionBundleStatus = stop.stopKind ?? 'completed';
@@ -1159,7 +1165,14 @@ function makeBundle(
     bundleDigest: `sha256:${'0'.repeat(64)}`,
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
-  return parseExecutionBundle(bundle, plan);
+  const verified = verifyExecutionBundle(bundle, plan, { verifiedCacheRecordDigests });
+  if (verified.planVerification.cacheReceiptStatus !== 'verified'
+      || verified.planVerification.invocationBudgetStatus !== 'verified'
+      || (bundle.executionBundleStatus === 'completed'
+        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
+    throw new TypeError('Execution Runtime produced an unverifiable Bundle.');
+  }
+  return verified.bundle;
 }
 
 function terminalEventKind(
@@ -1229,6 +1242,7 @@ async function runExecution(
   const budget = new BudgetTracker(plan);
   const records = new Map<string, ExecutionRecord>();
   const pendingCacheEntries = new Map<Sha256Digest, ExecutionCacheEntry>();
+  const verifiedCacheRecordDigests = new Set<Sha256Digest>();
   const durationController = new AbortController();
   const durationTimer = plan.execution.policy.budget.maxDurationMs === undefined
     ? undefined
@@ -1285,6 +1299,9 @@ async function runExecution(
           }
           if (result.cacheEntry !== undefined) {
             pendingCacheEntries.set(result.cacheEntry.cacheKeyDigest, result.cacheEntry);
+          }
+          if (result.verifiedCacheRecordDigest !== undefined) {
+            verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
           }
         }
         await events.emit('execution.block.completed', 'scheduling-block', preparedBlock.block.schedulingBlockId, {
@@ -1367,6 +1384,7 @@ async function runExecution(
     [...records.values()],
     plannedCoordinates.length,
     stop,
+    verifiedCacheRecordDigests,
   );
   const terminalDelivered = await events.emit(
     terminalEventKind(bundle.executionBundleStatus),
@@ -1385,6 +1403,7 @@ async function runExecution(
       [...records.values()],
       plannedCoordinates.length,
       stop,
+      verifiedCacheRecordDigests,
     );
     await events.emitRecovery(
       terminalEventKind(bundle.executionBundleStatus),

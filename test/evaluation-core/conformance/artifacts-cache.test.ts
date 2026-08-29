@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson } from '../../../src/evaluation-core/contracts/index.js';
+import {
+  digestCanonicalJson,
+  verifyExecutionBundle,
+} from '../../../src/evaluation-core/contracts/index.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
 import {
   InMemoryConformanceArtifactStore,
@@ -243,6 +246,23 @@ describe('Evaluation Core artifact and replay conformance', () => {
       record.executionStatus === 'completed'
       && record.cache.cacheStatus === 'transparent-hit'
     ))).toBe(true);
+    const sourceRecordDigests = new Set(replay.execution.records.flatMap((record) => (
+      record.executionStatus === 'completed' && record.cache.sourceRecordDigest !== undefined
+        ? [record.cache.sourceRecordDigest]
+        : []
+    )));
+    expect(verifyExecutionBundle(replay.execution, replay.plan).planVerification).toMatchObject({
+      cacheReceiptStatus: 'indeterminate',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 4,
+    });
+    expect(verifyExecutionBundle(replay.execution, replay.plan, {
+      verifiedCacheRecordDigests: sourceRecordDigests,
+    }).planVerification).toMatchObject({
+      cacheReceiptStatus: 'verified',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 0,
+    });
     expect(replay.analysis.records[0]).toMatchObject({
       analysisStatus: 'completed',
       coverage: { planned: 4, included: 4 },
