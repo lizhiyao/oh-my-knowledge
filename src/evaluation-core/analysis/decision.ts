@@ -3,22 +3,24 @@ import {
   DecisionResultSchema,
   EvaluationReportSchema,
   IdentifierSchema,
-  assertEvaluationBundleSource,
-  assertExecutionBundleSource,
+  assertAnalysisBundleSourceChain,
   canonicalizeJson,
   computeDecisionPolicyDigest,
   deriveEvaluationStatus,
   digestArtifactPayload,
   digestCanonicalJson,
+  effectiveAnalysisBundleTrust,
   effectiveEvaluationBundleTrust,
   effectiveExecutionBundleTrust,
-  parseAnalysisBundle,
   parseDecisionResultDocument,
   parseEvaluationReport,
   parseWireDocument,
+  verifyDecisionResult,
   type AnalysisBundle,
+  type AnalysisBundleSource,
   type AnalysisRecord,
   type DecisionResult,
+  type DecisionResultSource,
   type EvaluationError,
   type EvaluationBundleSource,
   type EvaluationReport,
@@ -88,6 +90,7 @@ function gateReasons(
   evidenceStatus: 'complete' | 'partial' | 'unresolvable',
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
 ): string[] {
   const policy = plan.decision.decisionPolicy;
   if (policy === undefined) return ['decision-policy-not-declared'];
@@ -114,6 +117,12 @@ function gateReasons(
   }
   if (evaluationVerification.invocationBudgetStatus === 'indeterminate') {
     reasons.add('decision-evaluation-invocation-budget-indeterminate');
+  }
+  if (evaluationVerification.providerCostBudgetStatus === 'indeterminate') {
+    reasons.add('decision-evaluation-provider-cost-budget-indeterminate');
+  }
+  if (analysisSource.planVerification.provenanceTrustStatus === 'indeterminate') {
+    reasons.add('decision-analysis-provenance-indeterminate');
   }
   if (analysis.analysisBundleStatus !== 'completed') {
     reasons.add('analysis-run-not-completed');
@@ -254,6 +263,7 @@ function decisionPayload(input: {
 interface PreparedDecision {
   executionSource: ExecutionBundleSource;
   evaluationSource: EvaluationBundleSource;
+  analysisSource: AnalysisBundleSource;
   execution: ExecutionBundleSource['bundle'];
   evaluation: EvaluationBundleSource['bundle'];
   analysis: AnalysisBundle;
@@ -266,7 +276,7 @@ function prepareDecision(
   plan: SealedRunPlan,
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
-  analysisValue: unknown,
+  analysisSource: AnalysisBundleSource,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
 ): PreparedDecision | undefined {
@@ -281,17 +291,10 @@ function prepareDecision(
       'Required EventWriter mode needs an injected EventWriter.',
     );
   }
-  assertExecutionBundleSource(executionSource);
-  assertEvaluationBundleSource(evaluationSource);
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
-  const analysis = parseAnalysisBundle(
-    analysisValue,
-    plan,
-    executionSource,
-    evaluationSource,
-    { schemaValidators: ports.schemaValidators },
-  );
+  const analysis = analysisSource.bundle;
   const runtime = plan.decision.runtimes.find((candidate) => (
     candidate.runtimeKind === 'decision-policy'
     && candidate.referenceId === policy.decisionPolicyId
@@ -307,6 +310,7 @@ function prepareDecision(
   return {
     executionSource,
     evaluationSource,
+    analysisSource,
     execution,
     evaluation,
     analysis,
@@ -344,7 +348,7 @@ async function runDecision(
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
   stream: BoundedEventStream,
-): Promise<DecisionResult> {
+): Promise<DecisionResultSource> {
   let fatalError: EvaluationError | undefined;
   const events = new RuntimeEventEmitter<
     'decision.started' | 'decision.completed' | 'decision.not-decided' | 'decision.failed',
@@ -377,6 +381,7 @@ async function runDecision(
   const {
     executionSource,
     evaluationSource,
+    analysisSource,
     execution,
     evaluation,
     analysis,
@@ -395,6 +400,7 @@ async function runDecision(
     evidenceStatus,
     executionSource,
     evaluationSource,
+    analysisSource,
   );
   let output: { decisionStatus: 'decided'; verdict: string }
     | { decisionStatus: 'not-decided'; reasonCodes: readonly string[] }
@@ -459,6 +465,14 @@ async function runDecision(
   }
   const decidedAt = ports.clock.timestamp();
   let result = makeDecisionResult({ plan, analysis, runtime, decidedAt, output });
+  let source = verifyDecisionResult(
+    result,
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    { verifiedPolicyExecutionDigests: new Set([result.decisionDigest as Sha256Digest]) },
+  );
   const terminalKind = result.decisionStatus === 'decided'
     ? 'decision.completed'
     : result.decisionStatus === 'not-decided'
@@ -482,6 +496,14 @@ async function runDecision(
       decidedAt,
       output: { decisionStatus: 'failed', error: fatalError },
     });
+    source = verifyDecisionResult(
+      result,
+      plan,
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      { verifiedPolicyExecutionDigests: new Set([result.decisionDigest as Sha256Digest]) },
+    );
     await events.emitRecovery(
       'decision.failed',
       'decision-policy',
@@ -489,7 +511,7 @@ async function runDecision(
       { decisionDigest: result.decisionDigest, errorCode: fatalError.code },
     );
   }
-  return result;
+  return source;
   } finally {
     events.close();
   }
@@ -499,7 +521,7 @@ export function startDecision(
   plan: SealedRunPlan,
   executionValue: ExecutionBundleSource,
   evaluationValue: EvaluationBundleSource,
-  analysisValue: unknown,
+  analysisValue: AnalysisBundleSource,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
 ): DecisionRun {
@@ -514,11 +536,21 @@ export function startDecision(
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
   if (prepared === undefined) {
     stream.close();
-    return { events: stream, result: Promise.resolve(undefined) };
+    return {
+      events: stream,
+      source: Promise.resolve(undefined),
+      result: Promise.resolve(undefined),
+    };
   }
+  const source = runDecision(plan, prepared, ports, options, stream);
+  let result: Promise<DecisionResult | undefined> | undefined;
   return {
     events: stream,
-    result: runDecision(plan, prepared, ports, options, stream),
+    source,
+    get result() {
+      result ??= source.then((verified) => verified.result);
+      return result;
+    },
   };
 }
 
@@ -526,7 +558,7 @@ export async function decideAnalysis(
   plan: SealedRunPlan,
   executionValue: ExecutionBundleSource,
   evaluationValue: EvaluationBundleSource,
-  analysisValue: unknown,
+  analysisValue: AnalysisBundleSource,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
 ): Promise<DecisionResult | undefined> {
@@ -540,13 +572,31 @@ export async function decideAnalysis(
   ).result;
 }
 
+export async function decideAnalysisSource(
+  plan: SealedRunPlan,
+  executionValue: ExecutionBundleSource,
+  evaluationValue: EvaluationBundleSource,
+  analysisValue: AnalysisBundleSource,
+  ports: AnalysisRuntimePorts,
+  options: DecisionOptions,
+): Promise<DecisionResultSource | undefined> {
+  return startDecision(
+    plan,
+    executionValue,
+    evaluationValue,
+    analysisValue,
+    ports,
+    options,
+  ).source;
+}
+
 export function materializeEvaluationReport(
   plan: SealedRunPlan,
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
-  analysisValue: unknown,
-  decisionValue: unknown | undefined,
-  ports: Pick<AnalysisRuntimePorts, 'clock' | 'schemaValidators'>,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource | undefined,
+  ports: Pick<AnalysisRuntimePorts, 'clock'>,
   options: EvaluationReportMaterializationOptions,
 ): EvaluationReport {
   if (!IdentifierSchema.safeParse(options.reportId).success) {
@@ -555,20 +605,11 @@ export function materializeEvaluationReport(
       'reportId must be a valid Evaluation Core identifier.',
     );
   }
-  assertExecutionBundleSource(executionSource);
-  assertEvaluationBundleSource(evaluationSource);
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
-  const analysis = parseAnalysisBundle(
-    analysisValue,
-    plan,
-    executionSource,
-    evaluationSource,
-    { schemaValidators: ports.schemaValidators },
-  );
-  const decision = decisionValue === undefined
-    ? undefined
-    : parseDecisionResultDocument(decisionValue);
+  const analysis = analysisSource.bundle;
+  const decision = decisionSource?.result;
   const status = deriveEvaluationStatus({
     execution,
     evaluation,
@@ -622,7 +663,7 @@ export function materializeEvaluationReport(
       trust: minimumTrust([
         effectiveExecutionBundleTrust(executionSource),
         effectiveEvaluationBundleTrust(evaluationSource),
-        analysis.provenance.trust,
+        effectiveAnalysisBundleTrust(analysisSource),
         ...decisionRuntimeTrust,
       ]),
       parentDigests,
@@ -641,8 +682,8 @@ export function materializeEvaluationReport(
     plan,
     executionSource,
     evaluationSource,
-    analysis,
-    { schemaValidators: ports.schemaValidators },
+    analysisSource,
+    decisionSource,
   ));
 }
 
@@ -650,8 +691,8 @@ export function startReportMaterialization(
   plan: SealedRunPlan,
   executionValue: ExecutionBundleSource,
   evaluationValue: EvaluationBundleSource,
-  analysisValue: unknown,
-  decisionValue: unknown | undefined,
+  analysisValue: AnalysisBundleSource,
+  decisionValue: DecisionResultSource | undefined,
   ports: AnalysisRuntimePorts,
   options: EvaluationReportRunOptions,
 ): EvaluationReportRun {

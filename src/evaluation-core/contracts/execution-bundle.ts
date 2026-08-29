@@ -772,10 +772,9 @@ export function assertExecutionBundleMatchesPlan(
     ? 'verified'
     : 'indeterminate';
   return {
-    provenanceTrustStatus: bundle.provenance.trust !== 'verified'
-        || verification?.verifiedProvenanceBundleDigests?.has(
-          bundle.bundleDigest as Sha256Digest,
-        ) === true
+    provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
+      bundle.bundleDigest as Sha256Digest,
+    ) === true
       ? 'verified'
       : 'indeterminate',
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0

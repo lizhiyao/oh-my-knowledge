@@ -17,19 +17,18 @@ import {
 } from './analysis-identities.js';
 import { derivePlannedExecutionCoordinates } from './execution-identities.js';
 import {
-  assertEvaluationBundleSource,
+  assertEvaluationBundleSourceChain,
   type EvaluationBundlePlanContext,
   type EvaluationBundleSource,
 } from './evaluation-bundle.js';
 import { digestArtifactPayload } from './digests.js';
-import {
-  assertExecutionBundleSource,
-  type ExecutionBundleSource,
-} from './execution-bundle.js';
+import type { ExecutionBundleSource } from './execution-bundle.js';
 import {
   canonicalizeJson,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
+  type Sha256Digest,
 } from './json.js';
 
 export type AnalysisBundleValidationErrorCode =
@@ -266,6 +265,60 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
 
 export interface AnalysisBundleValidationContext {
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
+}
+
+export interface AnalysisBundleVerificationContext {
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+}
+
+export interface AnalysisBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
+}
+
+export interface AnalysisBundleVerificationResult {
+  readonly bundle: AnalysisBundle;
+  readonly planVerification: AnalysisBundlePlanVerification;
+}
+
+export type AnalysisBundleSource = AnalysisBundleVerificationResult;
+
+const analysisBundleSources = new WeakSet<object>();
+
+export function assertAnalysisBundleSource(
+  value: unknown,
+): asserts value is AnalysisBundleSource {
+  if (value === null || typeof value !== 'object' || !analysisBundleSources.has(value)) {
+    throw new TypeError(
+      'Decision stage requires a source returned by parseAnalysisBundle() or the Runtime.',
+    );
+  }
+}
+
+export function assertAnalysisBundleSourceChain(
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+): void {
+  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
+  assertAnalysisBundleSource(analysisSource);
+  if (analysisSource.bundle.evaluationBundleDigest
+      !== evaluationSource.bundle.bundleDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_SOURCE_MISMATCH',
+      'Analysis source is not bound to the supplied Evaluation source.',
+    );
+  }
+}
+
+export function effectiveAnalysisBundleTrust(
+  source: AnalysisBundleSource,
+): AnalysisBundle['provenance']['trust'] {
+  assertAnalysisBundleSource(source);
+  if (source.planVerification.provenanceTrustStatus === 'verified') {
+    return source.bundle.provenance.trust;
+  }
+  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
 }
 
 interface ExpectedAnalysisRow {
@@ -612,12 +665,39 @@ export function parseAnalysisBundle(
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
   validation: AnalysisBundleValidationContext,
-): AnalysisBundle {
-  assertExecutionBundleSource(executionSource);
-  assertEvaluationBundleSource(evaluationSource);
+): AnalysisBundleSource {
+  return verifyAnalysisBundle(
+    value,
+    plan,
+    executionSource,
+    evaluationSource,
+    validation,
+  );
+}
+
+export function verifyAnalysisBundle(
+  value: unknown,
+  plan: AnalysisBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  validation: AnalysisBundleValidationContext,
+  verification?: AnalysisBundleVerificationContext,
+): AnalysisBundleSource {
+  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
   const execution = executionSource.bundle;
   const source = evaluationSource.bundle;
   const bundle = parseAnalysisBundleDocument(value);
   assertMatchesPlan(bundle, plan, execution, source, validation);
-  return bundle;
+  const result = {
+    bundle,
+    planVerification: {
+      provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
+        bundle.bundleDigest as Sha256Digest,
+      ) === true
+        ? 'verified' as const
+        : 'indeterminate' as const,
+    },
+  };
+  analysisBundleSources.add(result);
+  return deepFreezeCanonicalJson(result);
 }

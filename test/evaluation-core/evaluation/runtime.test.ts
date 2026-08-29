@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateEvaluationAttemptUsage,
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
@@ -1075,6 +1076,45 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(record.attempts[0].usage?.providerCost?.amount).toBe(1);
   });
 
+  it('rejects a resealed Bundle whose native evaluator cost exceeds the sealed budget', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: {
+        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+      },
+    }));
+    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'forge-provider-cost-run',
+      bundleId: 'forge-provider-cost-bundle',
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      for (const record of draft.records) {
+        if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected status');
+        for (const attempt of record.attempts) {
+          attempt.usage = {
+            providerCost: { amount: 0.75, currency: 'USD', reportedByProvider: true },
+          };
+        }
+        record.usage = aggregateEvaluationAttemptUsage(record.attempts);
+      }
+    });
+
+    expect(() => verifyEvaluationBundle(forged, plan, source))
+      .toThrowError(expect.objectContaining({
+        code: 'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      }));
+  });
+
   it('waits for a timed-out evaluator to settle before disposal and retry', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evaluation.timeoutMs = 5;
@@ -1523,7 +1563,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(second.state.attempts).toBe(0);
   });
 
-  it('does not upgrade imported source trust in native or replayed evaluation facts', async () => {
+  it('downgrades unauthenticated imported source trust in native and replayed facts', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
     });
@@ -1547,9 +1587,9 @@ describe('Evaluation Core Evaluation runtime', () => {
       bundleId: 'declared-replay-bundle',
     });
 
-    expect(native.provenance.trust).toBe('declared');
-    expect(native.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
-    expect(replay.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
+    expect(native.provenance.trust).toBe('unknown');
+    expect(native.records.every((record) => record.provenance.trust === 'unknown')).toBe(true);
+    expect(replay.records.every((record) => record.provenance.trust === 'unknown')).toBe(true);
 
     const forged = resealEvaluationBundle(native, (draft) => {
       draft.provenance.trust = 'verified';
@@ -1589,11 +1629,11 @@ describe('Evaluation Core Evaluation runtime', () => {
     );
 
     expect(downgraded.evaluationBundleStatus).toBe('completed');
-    expect(downgraded.provenance.trust).toBe('declared');
+    expect(downgraded.provenance.trust).toBe('unknown');
     expect(downgraded.records.every((record) => (
       record.evaluationStatus === 'completed'
       && record.cache.cacheStatus === 'miss'
-      && record.provenance.trust === 'declared'
+      && record.provenance.trust === 'unknown'
     ))).toBe(true);
     expect(second.state.attempts).toBe(2);
     expect(cache.puts).toBe(4);

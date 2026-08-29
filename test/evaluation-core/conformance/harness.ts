@@ -1,6 +1,8 @@
 import {
   type AnalysisBundle,
+  type AnalysisBundleSource,
   type DecisionResult,
+  type DecisionResultSource,
   type EvaluationBundle,
   type EvaluationDefinition,
   type EvaluationEvent,
@@ -81,7 +83,9 @@ export interface ConformanceResult {
   evaluation: EvaluationBundle;
   evaluationSource: EvaluationBundleSource;
   analysis: AnalysisBundle;
+  analysisSource: AnalysisBundleSource;
   decision: DecisionResult | undefined;
+  decisionSource: DecisionResultSource | undefined;
   report: EvaluationReport;
   events: EvaluationEvent[];
   state: ConformanceState;
@@ -966,7 +970,7 @@ export async function runConformanceScenario(
     );
     allEvents.push(...evaluationRun.events);
 
-    const analysisRun = await settle(startAnalysis(
+    const analysisRuntime = startAnalysis(
       plan,
       executionRun.value,
       evaluationRun.value,
@@ -976,17 +980,27 @@ export async function runConformanceScenario(
         bundleId: `analysis-${suffix}`,
         eventBufferCapacity: 1,
       },
-    ), options.consumeEvent, options.eventConsumption);
+    );
+    const analysisRun = await settle(
+      { events: analysisRuntime.events, result: analysisRuntime.source },
+      options.consumeEvent,
+      options.eventConsumption,
+    );
     allEvents.push(...analysisRun.events);
 
-    const decisionRun = await settle(startDecision(
+    const decisionRuntime = startDecision(
       plan,
       executionRun.value,
       evaluationRun.value,
       analysisRun.value,
       analysisPorts,
       { runId, eventBufferCapacity: 1 },
-    ), options.consumeEvent, options.eventConsumption);
+    );
+    const decisionRun = await settle(
+      { events: decisionRuntime.events, result: decisionRuntime.source },
+      options.consumeEvent,
+      options.eventConsumption,
+    );
     allEvents.push(...decisionRun.events);
 
     const reportRun = await settle(startReportMaterialization(
@@ -1010,8 +1024,10 @@ export async function runConformanceScenario(
       executionSource: executionRun.value,
       evaluation: evaluationRun.value.bundle,
       evaluationSource: evaluationRun.value,
-      analysis: analysisRun.value,
-      decision: decisionRun.value,
+      analysis: analysisRun.value.bundle,
+      analysisSource: analysisRun.value,
+      decision: decisionRun.value?.result,
+      decisionSource: decisionRun.value,
       report: reportRun.value,
       events: allEvents,
       state,

@@ -10,22 +10,27 @@ import {
 } from './artifacts.js';
 import type { Provenance } from './common.js';
 import {
-  parseAnalysisBundle,
+  assertAnalysisBundleSourceChain,
+  effectiveAnalysisBundleTrust,
+  type AnalysisBundleSource,
   type AnalysisBundlePlanContext,
-  type AnalysisBundleValidationContext,
 } from './analysis-bundle.js';
 import { digestArtifactPayload } from './digests.js';
 import {
-  assertEvaluationBundleSource,
   effectiveEvaluationBundleTrust,
   type EvaluationBundleSource,
 } from './evaluation-bundle.js';
 import {
-  assertExecutionBundleSource,
   effectiveExecutionBundleTrust,
   type ExecutionBundleSource,
 } from './execution-bundle.js';
-import { canonicalizeJson, digestCanonicalJson, parseWireDocument } from './json.js';
+import {
+  canonicalizeJson,
+  deepFreezeCanonicalJson,
+  digestCanonicalJson,
+  parseWireDocument,
+  type Sha256Digest,
+} from './json.js';
 
 export type EvaluationReportValidationErrorCode =
   | 'DECISION_RESULT_DIGEST_MISMATCH'
@@ -69,6 +74,51 @@ export function parseDecisionResultDocument(value: unknown): DecisionResult {
     );
   }
   return result;
+}
+
+export interface DecisionResultVerificationContext {
+  /** Independently attested by the executing Decision Runtime or a host trust verifier. */
+  readonly verifiedPolicyExecutionDigests?: ReadonlySet<Sha256Digest>;
+}
+
+export interface DecisionResultPlanVerification {
+  readonly policyExecutionStatus: 'verified' | 'indeterminate';
+}
+
+export interface DecisionResultVerificationResult {
+  readonly result: DecisionResult;
+  readonly planVerification: DecisionResultPlanVerification;
+}
+
+export type DecisionResultSource = DecisionResultVerificationResult;
+
+const decisionResultSources = new WeakSet<object>();
+
+export function assertDecisionResultSource(
+  value: unknown,
+): asserts value is DecisionResultSource {
+  if (value === null || typeof value !== 'object' || !decisionResultSources.has(value)) {
+    throw new TypeError(
+      'Report stage requires a source returned by verifyDecisionResult() or the Runtime.',
+    );
+  }
+}
+
+export function assertDecisionResultSourceChain(
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource,
+): void {
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertDecisionResultSource(decisionSource);
+  if (decisionSource.result.analysisBundleDigest
+      !== analysisSource.bundle.bundleDigest) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_PLAN_MISMATCH',
+      'Decision source is not bound to the supplied Analysis source.',
+    );
+  }
 }
 
 function assertBundleReferences(
@@ -187,6 +237,8 @@ function assertDecision(
   analysis: AnalysisBundle,
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource,
 ): void {
   const policy = plan.decision.decisionPolicy;
   const runtime = plan.decision.runtimes.find((candidate) => (
@@ -219,7 +271,9 @@ function assertDecision(
   }
   if (result.decisionStatus === 'decided'
       && (Object.values(executionSource.planVerification).includes('indeterminate')
-        || Object.values(evaluationSource.planVerification).includes('indeterminate'))) {
+        || Object.values(evaluationSource.planVerification).includes('indeterminate')
+        || Object.values(analysisSource.planVerification).includes('indeterminate')
+        || Object.values(decisionSource.planVerification).includes('indeterminate'))) {
     throw new EvaluationReportValidationError(
       'DECISION_RESULT_VERIFICATION_GATE_FAILED',
       'A directional DecisionResult requires conclusive source verification.',
@@ -227,26 +281,73 @@ function assertDecision(
   }
 }
 
+export function verifyDecisionResult(
+  value: unknown,
+  plan: EvaluationReportPlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+  verification?: DecisionResultVerificationContext,
+): DecisionResultSource {
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  const result = parseDecisionResultDocument(value);
+  const provisional = {
+    result,
+    planVerification: {
+      policyExecutionStatus: verification?.verifiedPolicyExecutionDigests?.has(
+        result.decisionDigest as Sha256Digest,
+      ) === true
+        ? 'verified' as const
+        : 'indeterminate' as const,
+    },
+  };
+  decisionResultSources.add(provisional);
+  const source = deepFreezeCanonicalJson(provisional);
+  assertDecision(
+    result,
+    plan,
+    analysisSource.bundle,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    source,
+  );
+  return source;
+}
+
 export function parseEvaluationReport(
   value: unknown,
   plan: EvaluationReportPlanContext,
   executionSource: ExecutionBundleSource,
   evaluationSource: EvaluationBundleSource,
-  analysisValue: unknown,
-  validation: AnalysisBundleValidationContext,
+  analysisSource: AnalysisBundleSource,
+  decisionSource: DecisionResultSource | undefined,
 ): EvaluationReport {
-  assertExecutionBundleSource(executionSource);
-  assertEvaluationBundleSource(evaluationSource);
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
-  const analysis = parseAnalysisBundle(
-    analysisValue,
-    plan,
-    executionSource,
-    evaluationSource,
-    validation,
-  );
+  const analysis = analysisSource.bundle;
   const report = parseEvaluationReportDocument(value);
+  if ((report.decision === undefined) !== (decisionSource === undefined)) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_PLAN_MISMATCH',
+      'EvaluationReport decision presence must match its Decision source.',
+    );
+  }
+  if (decisionSource !== undefined) {
+    assertDecisionResultSourceChain(
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      decisionSource,
+    );
+    if (canonicalizeJson(report.decision) !== canonicalizeJson(decisionSource.result)) {
+      throw new EvaluationReportValidationError(
+        'DECISION_RESULT_PLAN_MISMATCH',
+        'EvaluationReport decision must equal its authenticated Decision source.',
+      );
+    }
+  }
   assertBundleReferences(report, execution, evaluation, analysis);
   const expectedStatus = deriveEvaluationStatus({
     execution,
@@ -261,7 +362,15 @@ export function parseEvaluationReport(
     );
   }
   if (report.decision !== undefined) {
-    assertDecision(report.decision, plan, analysis, executionSource, evaluationSource);
+    assertDecision(
+      report.decision,
+      plan,
+      analysis,
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      decisionSource as DecisionResultSource,
+    );
   }
   const parentDigests = [
     execution.bundleDigest,
@@ -287,7 +396,7 @@ export function parseEvaluationReport(
       || trustLevel(report.provenance.trust) > Math.min(
         trustLevel(effectiveExecutionBundleTrust(executionSource)),
         trustLevel(effectiveEvaluationBundleTrust(evaluationSource)),
-        trustLevel(analysis.provenance.trust),
+        trustLevel(effectiveAnalysisBundleTrust(analysisSource)),
         ...decisionRuntimeTrust.map(trustLevel),
       )) {
     throw new EvaluationReportValidationError(

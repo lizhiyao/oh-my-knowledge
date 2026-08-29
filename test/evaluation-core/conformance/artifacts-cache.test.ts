@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   digestArtifactPayload,
   digestCanonicalJson,
+  parseAnalysisBundle,
   parseEvaluationBundle,
   parseEvaluationReport,
+  verifyDecisionResult,
   verifyExecutionBundle,
 } from '../../../src/evaluation-core/contracts/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../../src/evaluation-core/analysis/index.js';
@@ -295,8 +297,8 @@ describe('Evaluation Core artifact and replay conformance', () => {
       transported.plan,
       transported.executionSource,
       transported.evaluationSource,
-      transported.analysis,
-      { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+      transported.analysisSource,
+      transported.decisionSource,
     )).toThrowError(expect.objectContaining({
       code: 'EVALUATION_REPORT_PROVENANCE_INVALID',
     }));
@@ -306,13 +308,19 @@ describe('Evaluation Core artifact and replay conformance', () => {
       replay.plan,
       transportedExecutionSource,
     );
-    expect(() => parseEvaluationReport(
-      structuredClone(replay.report),
+    const transportedAnalysisSource = parseAnalysisBundle(
+      structuredClone(replay.analysis),
       replay.plan,
       transportedExecutionSource,
       transportedEvaluationSource,
-      structuredClone(replay.analysis),
       { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+    );
+    expect(() => verifyDecisionResult(
+      structuredClone(replay.decision),
+      replay.plan,
+      transportedExecutionSource,
+      transportedEvaluationSource,
+      transportedAnalysisSource,
     )).toThrowError(expect.objectContaining({
       code: 'DECISION_RESULT_VERIFICATION_GATE_FAILED',
     }));

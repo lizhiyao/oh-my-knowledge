@@ -1188,7 +1188,9 @@ function makeBundle(
   );
   if (verified.planVerification.provenanceTrustStatus !== 'verified'
       || verified.planVerification.cacheReceiptStatus !== 'verified'
-      || verified.planVerification.invocationBudgetStatus !== 'verified') {
+      || verified.planVerification.invocationBudgetStatus !== 'verified'
+      || (bundle.evaluationBundleStatus === 'completed'
+        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
     throw new TypeError('Evaluation Runtime produced an unverifiable Bundle.');
   }
   return verified;

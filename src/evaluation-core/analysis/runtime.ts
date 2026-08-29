@@ -14,10 +14,11 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   effectiveEvaluationBundleTrust,
-  parseAnalysisBundle,
   parseWireDocument,
   schemaIdentityKey,
+  verifyAnalysisBundle,
   type AnalysisBundle,
+  type AnalysisBundleSource,
   type CoreSchemaValidator,
   type AnalysisObservationCoverage,
   type AnalysisRecord,
@@ -624,7 +625,7 @@ function makeBundle(
   records: readonly AnalysisRecord[],
   schemaValidators: ReadonlyMap<string, CoreSchemaValidator>,
   stop: StopState,
-): AnalysisBundle {
+): AnalysisBundleSource {
   const evaluation = evaluationSource.bundle;
   const ordered = [...records].sort((left, right) => compareStrings(left.nodeId, right.nodeId));
   const coverage = {
@@ -659,13 +660,18 @@ function makeBundle(
       'bundleDigest',
     ),
   });
-  return deepFreeze(parseAnalysisBundle(
+  return verifyAnalysisBundle(
     bundle,
     plan,
     executionSource,
     evaluationSource,
     { schemaValidators },
-  ));
+    {
+      verifiedProvenanceBundleDigests: new Set([
+        bundle.bundleDigest as Sha256Digest,
+      ]),
+    },
+  );
 }
 
 async function runAnalysis(
@@ -674,7 +680,7 @@ async function runAnalysis(
   options: AnalysisRunOptions,
   prepared: PreparedAnalysisRuntime,
   stream: BoundedEventStream,
-): Promise<AnalysisBundle> {
+): Promise<AnalysisBundleSource> {
   const stop: StopState = {};
   const setStop = (
     stopKind: NonNullable<StopState['stopKind']>,
@@ -1029,7 +1035,7 @@ async function runAnalysis(
     }
   }
 
-  let bundle = makeBundle(
+  let source = makeBundle(
     plan,
     prepared.executionSource,
     prepared.evaluationSource,
@@ -1039,17 +1045,17 @@ async function runAnalysis(
     stop,
   );
   const delivered = await events.emit(
-    terminalEventKind(bundle.analysisBundleStatus),
+    terminalEventKind(source.bundle.analysisBundleStatus),
     'run',
     options.runId,
     {
-      bundleDigest: bundle.bundleDigest,
-      analysisBundleStatus: bundle.analysisBundleStatus,
-      coverage: bundle.coverage,
+      bundleDigest: source.bundle.bundleDigest,
+      analysisBundleStatus: source.bundle.analysisBundleStatus,
+      coverage: source.bundle.coverage,
     },
   );
   if (!delivered) {
-    bundle = makeBundle(
+    source = makeBundle(
       plan,
       prepared.executionSource,
       prepared.evaluationSource,
@@ -1059,17 +1065,17 @@ async function runAnalysis(
       stop,
     );
     await events.emitRecovery(
-      terminalEventKind(bundle.analysisBundleStatus),
+      terminalEventKind(source.bundle.analysisBundleStatus),
       'run',
       options.runId,
       {
-        bundleDigest: bundle.bundleDigest,
-        analysisBundleStatus: bundle.analysisBundleStatus,
-        coverage: bundle.coverage,
+        bundleDigest: source.bundle.bundleDigest,
+        analysisBundleStatus: source.bundle.analysisBundleStatus,
+        coverage: source.bundle.coverage,
       },
     );
   }
-  return bundle;
+  return source;
   } finally {
     options.signal?.removeEventListener('abort', externalAbort);
     events.close();
@@ -1091,9 +1097,15 @@ export function startAnalysis(
     options,
   );
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const source = runAnalysis(plan, ports, options, prepared, stream);
+  let result: Promise<AnalysisBundle> | undefined;
   return {
     events: stream,
-    result: runAnalysis(plan, ports, options, prepared, stream),
+    source,
+    get result() {
+      result ??= source.then((verified) => verified.bundle);
+      return result;
+    },
   };
 }
 
@@ -1105,4 +1117,14 @@ export async function analyzeEvaluationBundle(
   options: AnalysisRunOptions,
 ): Promise<AnalysisBundle> {
   return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).result;
+}
+
+export async function analyzeEvaluationBundleSource(
+  plan: SealedRunPlan,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
+  ports: AnalysisRuntimePorts,
+  options: AnalysisRunOptions,
+): Promise<AnalysisBundleSource> {
+  return startAnalysis(plan, executionBundle, evaluationBundle, ports, options).source;
 }

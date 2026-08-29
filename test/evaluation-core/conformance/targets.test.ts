@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  parseAnalysisBundle,
   parseEvaluationReport,
   effectiveExecutionBundleTrust,
+  verifyAnalysisBundle,
+  verifyDecisionResult,
   verifyEvaluationBundle,
   verifyExecutionBundle,
   type Sha256Digest,
@@ -85,16 +86,40 @@ describe.each(targets)('Evaluation Core %s target conformance', (target) => {
     });
     expect(executionSource.bundle).toEqual(result.execution);
     expect(evaluationSource.bundle).toEqual(result.evaluation);
-    expect(parseAnalysisBundle(analysis, result.plan, executionSource, evaluationSource, {
-      schemaValidators: validators,
-    })).toEqual(result.analysis);
+    const analysisSource = verifyAnalysisBundle(
+      analysis,
+      result.plan,
+      executionSource,
+      evaluationSource,
+      { schemaValidators: validators },
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          result.analysisSource.bundle.bundleDigest as Sha256Digest,
+        ]),
+      },
+    );
+    if (result.decisionSource === undefined) throw new Error('missing Decision source');
+    const decisionSource = verifyDecisionResult(
+      result.decision,
+      result.plan,
+      executionSource,
+      evaluationSource,
+      analysisSource,
+      {
+        verifiedPolicyExecutionDigests: new Set([
+          result.decisionSource.result.decisionDigest as Sha256Digest,
+        ]),
+      },
+    );
+    expect(analysisSource.bundle).toEqual(result.analysis);
+    expect(decisionSource.result).toEqual(result.decision);
     expect(parseEvaluationReport(
       report,
       result.plan,
       executionSource,
       evaluationSource,
-      analysis,
-      { schemaValidators: validators },
+      analysisSource,
+      decisionSource,
     )).toEqual(result.report);
   });
 });
