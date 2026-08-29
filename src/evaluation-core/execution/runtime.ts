@@ -1,11 +1,9 @@
 import {
-  EVALUATION_EVENT_SCHEMA_VERSION,
   EXECUTION_BUNDLE_SCHEMA_VERSION,
   CompletedExecutionRecordSchema,
   ContentClassificationSchema,
   ContentDescriptorSchema,
   EvaluationErrorSchema,
-  EvaluationEventSchema,
   IdentifierSchema,
   UsageRecordSchema,
   canonicalizeJson,
@@ -17,7 +15,6 @@ import {
   type CacheProvenance,
   type CapturedContent,
   type EvaluationError,
-  type EvaluationEvent,
   type ExecutionAttempt,
   type ExecutionBundle,
   type ExecutionRecord,
@@ -33,7 +30,8 @@ import {
   type SealedRunPlan,
 } from '../compiler/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
-import { BoundedEventStream } from './event-stream.js';
+import { RuntimeEventEmitter } from '../runtime/events.js';
+import { BoundedEventStream } from '../runtime/event-stream.js';
 import { abortError, Semaphore } from './semaphore.js';
 import { deriveExecutionSchedule, type ExecutionSchedulingBlock } from './scheduler.js';
 import {
@@ -193,6 +191,12 @@ function prepareRuntime(
   options: ExecutionRunOptions,
 ): PreparedRuntime {
   validateOptions(options);
+  if (ports.eventSequencer === undefined) {
+    configurationError(
+      'EXECUTION_RUNTIME_EVENT_SEQUENCER_REQUIRED',
+      'Execution runtime requires a shared per-Run EventSequencer.',
+    );
+  }
   const cacheMode = plan.execution.policy.executionCacheMode;
   if (cacheMode !== 'disabled' && ports.cache === undefined) {
     configurationError(
@@ -439,83 +443,17 @@ class RunSessions {
   }
 }
 
-class EventEmitter {
-  readonly #plan: SealedRunPlan;
-  readonly #ports: ExecutionRuntimePorts;
-  readonly #options: ExecutionRunOptions;
-  readonly #stream: BoundedEventStream;
-  readonly #onFatal: (reason: string, error: EvaluationError) => void;
-  #sequence = 0;
-  #writerEnabled: boolean;
-  #deliveryTail: Promise<void> = Promise.resolve();
+type ExecutionTerminalEventKind =
+  | 'execution.run.completed'
+  | 'execution.run.cancelled'
+  | 'execution.run.budget-exhausted'
+  | 'execution.run.failed';
 
-  constructor(
-    plan: SealedRunPlan,
-    ports: ExecutionRuntimePorts,
-    options: ExecutionRunOptions,
-    stream: BoundedEventStream,
-    onFatal: (reason: string, error: EvaluationError) => void,
-  ) {
-    this.#plan = plan;
-    this.#ports = ports;
-    this.#options = options;
-    this.#stream = stream;
-    this.#onFatal = onFatal;
-    this.#writerEnabled = plan.measurementPolicy.eventDelivery.writerMode !== 'disabled'
-      && ports.eventWriter !== undefined;
-  }
-
-  async emit(
-    eventKind: ExecutionEventKind,
-    subjectKind: ExecutionEventSubjectKind,
-    subjectId: string,
-    data: JsonValue,
-  ): Promise<boolean> {
-    const sequence = this.#sequence;
-    this.#sequence += 1;
-    const event = deepFreeze(parseWireDocument(EvaluationEventSchema, {
-      schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
-      eventId: digestCanonicalJson({
-        derivation: 'omk.evaluation-event-id/v1',
-        runId: this.#options.runId,
-        sequence,
-      }),
-      sequence,
-      runId: this.#options.runId,
-      eventKind,
-      time: this.#ports.clock.timestamp(),
-      subject: { subjectKind, subjectId },
-      data,
-    }));
-    const delivery = this.#deliveryTail.then(() => this.#deliver(event));
-    this.#deliveryTail = delivery.then(() => undefined, () => undefined);
-    return delivery;
-  }
-
-  async #deliver(event: EvaluationEvent): Promise<boolean> {
-    if (this.#writerEnabled) {
-      try {
-        await this.#ports.eventWriter?.write(event);
-      } catch {
-        this.#writerEnabled = false;
-        if (this.#plan.measurementPolicy.eventDelivery.writerFailureMode === 'fail-run') {
-          this.#onFatal('event-writer-failed', {
-            code: 'event-writer-failed',
-            stage: 'infrastructure',
-            message: 'Required EventWriter delivery failed.',
-          });
-          return false;
-        }
-      }
-    }
-    this.#stream.push(event);
-    return true;
-  }
-
-  close(): void {
-    this.#stream.close();
-  }
-}
+type EventEmitter = RuntimeEventEmitter<
+  ExecutionEventKind,
+  ExecutionEventSubjectKind,
+  ExecutionTerminalEventKind
+>;
 
 function linkAbortSignal(parent: AbortSignal | undefined, controller: AbortController): () => void {
   if (parent === undefined) return () => undefined;
@@ -1247,7 +1185,7 @@ function makeBundle(
 
 function terminalEventKind(
   status: ExecutionBundle['executionBundleStatus'],
-): ExecutionEventKind {
+): ExecutionTerminalEventKind {
   switch (status) {
     case 'completed': return 'execution.run.completed';
     case 'cancelled': return 'execution.run.cancelled';
@@ -1268,7 +1206,8 @@ async function runExecution(
   const stop: StopState = {};
   const controller = new AbortController();
   const setStop = (kind: StopKind, reason: string, error?: EvaluationError): void => {
-    if (stop.stopKind !== undefined) return;
+    if (stop.stopKind === 'failed'
+        || (stop.stopKind !== undefined && kind !== 'failed')) return;
     stop.stopKind = kind;
     stop.reason = reason;
     if (error !== undefined) stop.error = error;
@@ -1279,9 +1218,34 @@ async function runExecution(
   };
   if (options.signal?.aborted) onExternalAbort();
   else options.signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const events = new EventEmitter(plan, ports, options, stream, (reason, error) => {
-    setStop('failed', reason, error);
-  });
+  const events = new RuntimeEventEmitter<
+    ExecutionEventKind,
+    ExecutionEventSubjectKind,
+    ExecutionTerminalEventKind
+  >(
+    ports.clock,
+    ports.eventSequencer,
+    ports.eventWriter,
+    {
+      runId: options.runId,
+      writerMode: plan.measurementPolicy.eventDelivery.writerMode,
+      writerFailureMode: plan.measurementPolicy.eventDelivery.writerFailureMode,
+      writerFailureReason: 'event-writer-failed',
+      writerFailureError: {
+        code: 'event-writer-failed',
+        stage: 'infrastructure',
+        message: 'Required EventWriter delivery failed.',
+      },
+      recoveryEventKinds: [
+        'execution.run.completed',
+        'execution.run.cancelled',
+        'execution.run.budget-exhausted',
+        'execution.run.failed',
+      ],
+    },
+    stream,
+    (reason: string, error: EvaluationError) => setStop('failed', reason, error),
+  );
   const sessions = new RunSessions(plan, options);
   const budget = new BudgetTracker(plan);
   const records = new Map<string, ExecutionRecord>();
@@ -1368,12 +1332,16 @@ async function runExecution(
         setStop('budget-exhausted', 'provider-cost-budget-exhausted');
       }
     }
-  } catch {
-    setStop('failed', 'execution-runtime-internal-failed', {
-      code: 'execution-runtime-internal-failed',
-      stage: 'internal',
-      message: 'Execution runtime encountered an internal failure.',
-    });
+  } catch (error) {
+    if (!(error instanceof Error
+        && error.name === 'AbortError'
+        && stop.stopKind !== undefined)) {
+      setStop('failed', 'execution-runtime-internal-failed', {
+        code: 'execution-runtime-internal-failed',
+        stage: 'internal',
+        message: 'Execution runtime encountered an internal failure.',
+      });
+    }
   } finally {
     durationController.abort();
     await durationTimer;
@@ -1439,7 +1407,7 @@ async function runExecution(
       plannedCoordinates.length,
       stop,
     );
-    await events.emit(
+    await events.emitRecovery(
       terminalEventKind(bundle.executionBundleStatus),
       'run',
       options.runId,

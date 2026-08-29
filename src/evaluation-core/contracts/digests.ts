@@ -114,6 +114,7 @@ export interface EvaluationPlanIdentityInput {
   metrics: MetricDefinition[];
   evaluatorRuntimes: ResolvedRuntime[];
   policy: {
+    runtime: MeasurementPolicy['evaluation'];
     evaluationCacheMode: MeasurementPolicy['cache']['evaluationMode'];
     evidence: MeasurementPolicy['evidence'];
     failure: MeasurementPolicy['failure'];
@@ -265,6 +266,7 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
     metrics: input.metrics,
     evaluatorRuntimes: input.evaluatorRuntimes,
     policy: {
+      runtime: input.measurementPolicy.evaluation,
       evaluationCacheMode: input.measurementPolicy.cache.evaluationMode,
       evidence: input.measurementPolicy.evidence,
       failure: input.measurementPolicy.failure,

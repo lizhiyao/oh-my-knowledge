@@ -1,0 +1,167 @@
+import {
+  EVALUATION_EVENT_SCHEMA_VERSION,
+  EvaluationEventSchema,
+  digestCanonicalJson,
+  parseWireDocument,
+  type EvaluationError,
+  type EvaluationEvent,
+  type JsonValue,
+} from '../contracts/index.js';
+import { deepFreeze } from '../compiler/immutability.js';
+import { BoundedEventStream } from './event-stream.js';
+
+export interface RuntimeEventSequencer {
+  next(runId: string): number;
+}
+
+export class InMemoryRuntimeEventSequencer implements RuntimeEventSequencer {
+  readonly #nextByRun = new Map<string, number>();
+
+  next(runId: string): number {
+    const sequence = this.#nextByRun.get(runId) ?? 0;
+    this.#nextByRun.set(runId, sequence + 1);
+    return sequence;
+  }
+}
+
+export interface RuntimeEventClock {
+  timestamp(): string;
+}
+
+export interface RuntimeEventWriter {
+  write(event: Readonly<EvaluationEvent>): Promise<void>;
+}
+
+export interface RuntimeEventEmitterOptions<RecoveryEventKind extends string> {
+  runId: string;
+  writerMode: 'disabled' | 'optional' | 'required';
+  writerFailureMode: 'ignore' | 'fail-run';
+  writerFailureReason: string;
+  writerFailureError: EvaluationError;
+  recoveryEventKinds: readonly RecoveryEventKind[];
+}
+
+export class RuntimeEventEmitter<
+  EventKind extends string,
+  SubjectKind extends string,
+  RecoveryEventKind extends EventKind,
+> {
+  readonly #clock: RuntimeEventClock;
+  readonly #sequencer: RuntimeEventSequencer;
+  readonly #writer?: RuntimeEventWriter;
+  readonly #options: RuntimeEventEmitterOptions<RecoveryEventKind>;
+  readonly #recoveryEventKinds: ReadonlySet<string>;
+  readonly #stream: BoundedEventStream;
+  readonly #onFatal: (reason: string, error: EvaluationError) => void;
+  #writerEnabled: boolean;
+  #fatal = false;
+  #recovered = false;
+  #lastSequence = -1;
+  #deliveryTail: Promise<void> = Promise.resolve();
+
+  constructor(
+    clock: RuntimeEventClock,
+    sequencer: RuntimeEventSequencer,
+    writer: RuntimeEventWriter | undefined,
+    options: RuntimeEventEmitterOptions<RecoveryEventKind>,
+    stream: BoundedEventStream,
+    onFatal: (reason: string, error: EvaluationError) => void,
+  ) {
+    this.#clock = clock;
+    this.#sequencer = sequencer;
+    this.#writer = writer;
+    this.#options = options;
+    this.#recoveryEventKinds = new Set(options.recoveryEventKinds);
+    this.#stream = stream;
+    this.#onFatal = onFatal;
+    this.#writerEnabled = options.writerMode !== 'disabled' && writer !== undefined;
+  }
+
+  async emit(
+    eventKind: EventKind,
+    subjectKind: SubjectKind,
+    subjectId: string,
+    data: JsonValue,
+  ): Promise<boolean> {
+    const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
+    let published = false;
+    const delivery = this.#deliveryTail.then(async () => {
+      if (this.#fatal) return;
+      if (this.#writerEnabled) {
+        try {
+          await this.#writer?.write(event);
+        } catch {
+          this.#writerEnabled = false;
+          if (this.#options.writerFailureMode === 'fail-run') {
+            this.#fatal = true;
+            this.#onFatal(
+              this.#options.writerFailureReason,
+              this.#options.writerFailureError,
+            );
+            return;
+          }
+        }
+      }
+      this.#stream.push(event);
+      published = true;
+    });
+    this.#deliveryTail = delivery.catch(() => undefined);
+    await delivery;
+    return published;
+  }
+
+  async emitRecovery(
+    eventKind: RecoveryEventKind,
+    subjectKind: SubjectKind,
+    subjectId: string,
+    data: JsonValue,
+  ): Promise<void> {
+    const delivery = this.#deliveryTail.then(() => {
+      if (!this.#fatal || this.#options.writerFailureMode !== 'fail-run') {
+        throw new TypeError('Recovery events require a fatal EventWriter failure.');
+      }
+      if (!this.#recoveryEventKinds.has(eventKind)) {
+        throw new TypeError('Recovery delivery accepts terminal event kinds only.');
+      }
+      if (this.#recovered) {
+        throw new TypeError('A fatal EventWriter failure accepts one recovery terminal only.');
+      }
+      this.#recovered = true;
+      const event = this.#createEvent(eventKind, subjectKind, subjectId, data);
+      this.#stream.push(event);
+    });
+    this.#deliveryTail = delivery.catch(() => undefined);
+    await delivery;
+  }
+
+  #createEvent(
+    eventKind: EventKind,
+    subjectKind: SubjectKind,
+    subjectId: string,
+    data: JsonValue,
+  ): Readonly<EvaluationEvent> {
+    const sequence = this.#sequencer.next(this.#options.runId);
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence <= this.#lastSequence) {
+      throw new TypeError('EventSequencer must return a strictly increasing safe integer.');
+    }
+    this.#lastSequence = sequence;
+    return deepFreeze(parseWireDocument(EvaluationEventSchema, {
+      schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
+      eventId: digestCanonicalJson({
+        derivation: 'omk.evaluation-event-id/v1',
+        runId: this.#options.runId,
+        sequence,
+      }),
+      sequence,
+      runId: this.#options.runId,
+      eventKind,
+      time: this.#clock.timestamp(),
+      subject: { subjectKind, subjectId },
+      data,
+    }));
+  }
+
+  close(): void {
+    this.#stream.close();
+  }
+}

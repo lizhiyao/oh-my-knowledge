@@ -105,14 +105,14 @@ describe('Evaluation Core wire schemas', () => {
 
   it('keeps Metric values native and represents missing separately from zero', () => {
     expect(MetricObservationSchema.parse({
-      observationId: 'o1',
+      observationId: `sha256:${'1'.repeat(64)}`,
       metricId: 'score',
       observationStatus: 'observed',
       valueType: 'numeric',
       value: 0,
     })).toMatchObject({ observationStatus: 'observed', value: 0 });
     expect(MetricObservationSchema.parse({
-      observationId: 'o2',
+      observationId: `sha256:${'2'.repeat(64)}`,
       metricId: 'score',
       observationStatus: 'missing',
       valueType: 'numeric',

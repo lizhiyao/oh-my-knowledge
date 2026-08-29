@@ -10,6 +10,7 @@ import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/ind
 import {
   ExecutionPortFailure,
   ExecutionRuntimeConfigurationError,
+  InMemoryRuntimeEventSequencer,
   deriveExecutionSchedule,
   executeRunPlan,
   startExecution,
@@ -224,6 +225,7 @@ function portsFor(
   const ports: ExecutionRuntimePorts = {
     executors: new Map([['executor-alias', executor]]),
     clock: new FakeClock(),
+    eventSequencer: new InMemoryRuntimeEventSequencer(),
     contentStore,
     ...overrides,
   };
@@ -604,6 +606,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     };
     const cancelledRun = startExecution(plan, ports, {
@@ -958,16 +961,62 @@ describe('Evaluation Core Execution runtime', () => {
         },
       },
     });
-    const bundle = await executeRunPlan(plan, ports, {
+    const run = startExecution(plan, ports, {
       runId: 'run-writer-failure',
       bundleId: 'bundle-writer-failure',
     });
+    const bundle = await run.result;
+    const journal: EvaluationEvent[] = [];
+    for await (const event of run.events) journal.push(event);
 
     expect(bundle.executionBundleStatus).toBe('failed');
     expect(bundle.terminationReasonCode).toBe('event-writer-failed');
     expect(bundle.coverage.succeeded).toBe(1);
     expect(bundle.coverage.notStarted).toBe(0);
     expect(written.length).toBeGreaterThan(0);
+    const terminals = journal.filter((event) => event.eventKind.startsWith('execution.run.')
+      && event.eventKind !== 'execution.run.started');
+    expect(terminals).toEqual([expect.objectContaining({
+      eventKind: 'execution.run.failed',
+      data: expect.objectContaining({ bundleDigest: bundle.bundleDigest }),
+    })]);
+  });
+
+  it.each([
+    ['cancelled', 'execution.run.cancelled'],
+    ['budget-exhausted', 'execution.run.budget-exhausted'],
+  ] as const)('lets terminal EventWriter failure override an existing %s execution stop', async (
+    stopStatus,
+    rejectedEventKind,
+  ) => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.eventDelivery.writerMode = 'optional';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      if (stopStatus === 'budget-exhausted') {
+        policy.budget.maxDurationMs = 1;
+      }
+    });
+    const controller = new AbortController();
+    if (stopStatus === 'cancelled') controller.abort();
+    const { ports } = portsFor(plan, undefined, {
+      eventWriter: {
+        async write(event) {
+          if (event.eventKind === rejectedEventKind) throw new Error('terminal writer failed');
+        },
+      },
+    });
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: `execution-terminal-precedence-${stopStatus}-run`,
+      bundleId: `execution-terminal-precedence-${stopStatus}-bundle`,
+      signal: controller.signal,
+    });
+
+    expect(bundle).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'event-writer-failed',
+    });
   });
 
   it('does not open Target resources when the required EventWriter fails at run start', async () => {
@@ -1142,6 +1191,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     };
     const bundle = await executeRunPlan(plan, ports, {
@@ -1210,6 +1260,7 @@ describe('Evaluation Core Execution runtime', () => {
     const ports: ExecutionRuntimePorts = {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
       cache,
     };
@@ -1274,6 +1325,7 @@ describe('Evaluation Core Execution runtime', () => {
     const run = startExecution(plan, {
       executors: registry,
       clock: new FakeClock(),
+      eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
     }, {
       runId: 'run-registry-snapshot',

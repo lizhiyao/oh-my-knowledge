@@ -77,9 +77,115 @@
             "failureMode"
           ],
           "type": "object"
+        },
+        "runtime": {
+          "additionalProperties": false,
+          "properties": {
+            "budget": {
+              "additionalProperties": false,
+              "properties": {
+                "maxDurationMs": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxEvaluatorInvocations": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxProviderCost": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "amount": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "currency": {
+                      "pattern": "^[A-Z]{3}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "maxConcurrency": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "retry": {
+              "additionalProperties": false,
+              "properties": {
+                "backoff": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "backoffKind": {
+                      "enum": [
+                        "none",
+                        "fixed",
+                        "exponential"
+                      ],
+                      "type": "string"
+                    },
+                    "initialDelayMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxDelayMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "backoffKind",
+                    "initialDelayMs"
+                  ],
+                  "type": "object"
+                },
+                "maxAttempts": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "retryableErrorCodes": {
+                  "items": {
+                    "$ref": "#/$defs/__schema4"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "maxAttempts",
+                "retryableErrorCodes",
+                "backoff"
+              ],
+              "type": "object"
+            },
+            "timeoutMs": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maxConcurrency",
+            "retry",
+            "budget"
+          ],
+          "type": "object"
         }
       },
       "required": [
+        "runtime",
         "evaluationCacheMode",
         "evidence",
         "failure"

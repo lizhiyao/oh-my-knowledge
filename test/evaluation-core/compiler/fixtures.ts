@@ -138,6 +138,20 @@ export function validPolicy(): MeasurementPolicy {
       },
     },
     budget: { maxTargetInvocations: 100 },
+    evaluation: {
+      maxConcurrency: 2,
+      timeoutMs: 10_000,
+      retry: {
+        maxAttempts: 2,
+        retryableErrorCodes: ['timeout'],
+        backoff: {
+          backoffKind: 'exponential',
+          initialDelayMs: 10,
+          maxDelayMs: 100,
+        },
+      },
+      budget: { maxEvaluatorInvocations: 100 },
+    },
     cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
     evidence: {
       input: 'digest',

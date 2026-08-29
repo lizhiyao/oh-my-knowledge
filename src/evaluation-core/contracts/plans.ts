@@ -13,6 +13,7 @@ import {
   ComparisonDefinitionSchema,
   DecisionPolicyDefinitionSchema,
   EvidencePolicySchema,
+  EvaluationRuntimePolicySchema,
   EvaluationDefinitionSchema,
   EvaluationSampleSchema,
   EvaluatorDefinitionSchema,
@@ -60,6 +61,7 @@ export const ExecutionPlanPolicySchema = z.object({
 }).strict();
 
 export const EvaluationPlanPolicySchema = z.object({
+  runtime: EvaluationRuntimePolicySchema,
   evaluationCacheMode: CachePolicySchema.shape.evaluationMode,
   evidence: EvidencePolicySchema,
   failure: FailurePolicySchema,
