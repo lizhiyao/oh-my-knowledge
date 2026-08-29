@@ -223,6 +223,32 @@
           },
           "type": "object"
         },
+        "evidence": {
+          "additionalProperties": false,
+          "properties": {
+            "maximumClassification": {
+              "enum": [
+                "public",
+                "sensitive",
+                "secret",
+                "gold"
+              ],
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "trace": {
+              "$ref": "#/$defs/__schema15"
+            }
+          },
+          "required": [
+            "output",
+            "trace",
+            "maximumClassification"
+          ],
+          "type": "object"
+        },
         "execution": {
           "additionalProperties": false,
           "properties": {
@@ -328,11 +354,21 @@
         "retry",
         "budget",
         "executionCacheMode",
+        "evidence",
         "failure"
       ],
       "type": "object"
     },
     "__schema15": {
+      "enum": [
+        "full",
+        "reference",
+        "digest",
+        "none"
+      ],
+      "type": "string"
+    },
+    "__schema16": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -343,7 +379,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema16"
+            "$ref": "#/$defs/__schema17"
           }
         },
         "required": [
@@ -354,11 +390,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema16"
+        "$ref": "#/$defs/__schema17"
       },
       "type": "object"
     },
-    "__schema16": {
+    "__schema17": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -491,7 +527,7 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema15"
+      "$ref": "#/$defs/__schema16"
     },
     "policy": {
       "$ref": "#/$defs/__schema14"

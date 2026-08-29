@@ -2,6 +2,7 @@ export type ConformanceFaultBoundary =
   | 'resolve-executor'
   | 'resolve-evaluator'
   | 'resolve-analysis'
+  | 'resolve-decision'
   | 'executor-open-run'
   | 'executor-open-trial'
   | 'executor-execute'

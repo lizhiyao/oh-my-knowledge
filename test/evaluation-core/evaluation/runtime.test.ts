@@ -813,12 +813,13 @@ describe('Evaluation Core Evaluation runtime', () => {
   });
 
   it('evaluates failed execution records when every sealed trace binding is materializable', async () => {
-    const plan = await makePlan((definition) => {
+    const plan = await makePlan((definition, policy) => {
       definition.evaluators[0].inputs = [{
         bindingId: 'trace',
         sourceKind: 'trace',
         pointer: '/message',
       }];
+      policy.evidence.trace = 'full';
     }, testRuntime({ traceCapability: 'optional' }));
     const completed = await sourceBundle(plan);
     const source = resealExecutionBundle(completed, (draft) => {

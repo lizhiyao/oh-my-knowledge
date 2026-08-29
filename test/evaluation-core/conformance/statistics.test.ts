@@ -160,8 +160,8 @@ describe('Evaluation Core deterministic statistical conformance', () => {
       paired: true,
     });
 
-    expect(mean).toMatchObject({ estimate: 2.5, unitCount: 4 });
-    expect(paired).toMatchObject({ estimate: 2.5, unitCount: 4 });
+    expect(mean).toEqual({ lower: 1.5, upper: 3.25, estimate: 2.5, unitCount: 4 });
+    expect(paired).toEqual({ lower: 1.5, upper: 3.5, estimate: 2.5, unitCount: 4 });
   });
 
   it('keeps deterministic 90% mean-interval coverage within a broad calibration band', async () => {

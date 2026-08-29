@@ -96,6 +96,24 @@ describe('Compiler digest invalidation boundaries', () => {
     expectStages(before, after, ['evaluation', 'analysis', 'decision', 'run']);
   });
 
+  it('binds Execution evidence capture and classification to Execution identity', async () => {
+    const before = await compile();
+    const after = await compile(undefined, (policy) => {
+      policy.evidence.output = 'reference';
+      policy.evidence.maximumClassification = 'secret';
+    });
+    expectStages(before, after, ['execution', 'evaluation', 'analysis', 'decision', 'run']);
+  });
+
+  it('keeps Evaluation-only evidence capture out of Execution identity', async () => {
+    const before = await compile();
+    const after = await compile(undefined, (policy) => {
+      policy.evidence.expected = 'digest';
+      policy.evidence.evidence = 'digest';
+    });
+    expectStages(before, after, ['evaluation', 'analysis', 'decision', 'run']);
+  });
+
   it('keeps EventDeliveryPolicy out of all stage plans and binds it at root', async () => {
     const before = await compile();
     const after = await compile(undefined, (policy) => {

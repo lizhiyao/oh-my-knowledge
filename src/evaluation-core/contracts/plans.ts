@@ -63,6 +63,11 @@ export const ExecutionPlanPolicySchema = z.object({
   retry: RetryPolicySchema,
   budget: BudgetPolicySchema,
   executionCacheMode: CachePolicySchema.shape.executionMode,
+  evidence: EvidencePolicySchema.pick({
+    output: true,
+    trace: true,
+    maximumClassification: true,
+  }).strict(),
   failure: FailurePolicySchema,
 }).strict();
 

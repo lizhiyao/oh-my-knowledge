@@ -11,6 +11,7 @@ describe('Evaluation Core conformance fault matrix', () => {
     'resolve-executor',
     'resolve-evaluator',
     'resolve-analysis',
+    'resolve-decision',
   ] as const)('contains and sanitizes %s failures during preparation', async (boundary) => {
     const marker = 'provider-secret-must-not-leak';
     const faults = new ConformanceFaultInjector().fail(boundary, marker);
@@ -400,9 +401,23 @@ describe('Evaluation Core conformance fault matrix', () => {
 
     expect(cancelled.execution.executionBundleStatus).toBe('cancelled');
     expect(completed.execution.executionBundleStatus).toBe('completed');
-    expect(completed.state).toMatchObject({
+    expect(cancelled.state).toMatchObject({
+      executorRunOpens: 1,
       executorRunDisposals: 1,
+      trialOpens: 1,
+      trialDisposals: 1,
+      evaluatorRunOpens: 0,
+      evaluatorRunDisposals: 0,
+    });
+    expect(completed.state).toMatchObject({
+      executorRunOpens: 1,
+      executorRunDisposals: 1,
+      trialOpens: 4,
+      trialDisposals: 4,
+      evaluatorRunOpens: 2,
       evaluatorRunDisposals: 2,
+      recordOpens: 8,
+      recordDisposals: 8,
     });
     expect(cancelled.events[0]?.sequence).toBe(0);
     expect(completed.events[0]?.sequence).toBe(0);

@@ -371,7 +371,7 @@ decisionPlanDigest = H(
 runContractDigest = H(all plan digests + schema identities)
 ```
 
-Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Evidence capture that changes auditability but not scores has an evidence contract and Bundle provenance. If capture removes an Evaluator input, it belongs in EvaluationPlan.
+Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Output/trace capture mode and their classification ceiling enter ExecutionPlan identity because they change the durable Execution facts and cache key; the complete EvidencePolicy also enters EvaluationPlan because it determines evaluator bindings and evaluation evidence. Evaluation-only input/expected/evidence capture does not invalidate Execution.
 
 ## 8. Runtime, resources, and cancellation
 
@@ -395,7 +395,7 @@ The Execution runtime is an in-memory interpreter of a sealed RunPlan. `startExe
 
 Timeout is cooperative: Core aborts the attempt signal, waits for the Executor promise to settle so no late promise is abandoned, and records timeout as the single terminal fact even if the Executor returns success after observing abort. External cancellation has the same single-terminal rule. `maxDurationMs` is a monotonic soft admission deadline: already admitted work settles, while later blocks are censored. Provider-cost limits use only provider-reported facts; an admitted batch may overshoot, after which no new block is admitted and already observed usage is never rewritten.
 
-Execution cache and evidence storage are injected ports rather than filesystem services. `replay-only` misses and invalid cache entries fail closed; transparent hits require the deterministic, verified identity already sealed by prepare. Cache writes are deferred until resources tear down successfully and the run has no execution, cancellation, or budget terminal at commit time; only records whose cost audit, evidence materialization, and trial teardown succeeded are eligible. A later terminal-event delivery failure does not retroactively invalidate an already committed Target fact. Full, reference, digest-only, and omitted capture are materialized under the classification ceiling. Reference capture verifies the ContentStore descriptor digest before it enters a Bundle. Raw host exception text is not copied into events or Bundles.
+Execution cache and evidence storage are injected ports rather than filesystem services. `replay-only` misses and invalid cache entries fail closed; transparent hits require the deterministic, verified identity already sealed by prepare. Admission revalidates coordinate/runtime identity, native provenance, the original miss receipt, output/trace capture mode, classification ceiling, and attempt-derived usage before any cached record becomes a replay fact. Cache writes are deferred until resources tear down successfully and the run has no execution, cancellation, or budget terminal at commit time; only records whose cost audit, evidence materialization, and trial teardown succeeded are eligible. A later terminal-event delivery failure does not retroactively invalidate an already committed Target fact. Full, reference, digest-only, and omitted capture are materialized under the classification ceiling. Reference capture verifies the ContentStore descriptor digest before it enters a Bundle. Raw host exception text is not copied into events or Bundles.
 
 Every attempt retains its exact UsageRecord. The record-level UsageRecord is only an aggregate: token counts and same-currency costs may be summed, while mixed or partial currencies remain solely in the attempt facts and are marked non-comparable in aggregate details. Runtime never deletes an observed cost merely because it cannot produce one scalar total.
 
@@ -651,8 +651,11 @@ facts still remain sealed and provenance-bound, but admission is now stage-scope
 `executionPlanDigest` and `executionInputDigest`, enabling Gold or Evaluator changes to re-score an
 existing ExecutionBundle without weakening origin integrity.
 Execution cache admission also verifies the exact native provenance and original cache-miss receipt
-that Core emitted for the sealed ExecutionPlan. A stale digest or a self-consistent record rewritten
-as replay provenance fails closed before an Executor is opened.
+that Core emitted for the sealed ExecutionPlan, plus sealed output/trace capture, classification and
+attempt-derived usage semantics. A stale digest, replay-provenance rewrite, classification escalation,
+capture-mode mismatch or forged aggregate usage fails closed before an Executor is opened. Execution
+capture policy is part of ExecutionPlan identity, so a legitimate policy change creates a fresh cache
+namespace instead of turning into an infrastructure failure.
 
 ## 21. Industry references
 

@@ -249,6 +249,37 @@ describe('Evaluation Core artifact and replay conformance', () => {
     });
   });
 
+  it('invalidates Execution cache when sealed output capture policy changes', async () => {
+    const cache = new InMemoryConformanceExecutionCache();
+    const full = await runConformanceScenario('function', {
+      suffix: 'execution-cache-full-policy',
+      executionCache: cache,
+      mutate(_definition, policy) {
+        policy.cache.executionMode = 'transparent-deterministic';
+        policy.evidence.output = 'full';
+      },
+    });
+    const reference = await runConformanceScenario('function', {
+      suffix: 'execution-cache-reference-policy',
+      executionCache: cache,
+      mutate(_definition, policy) {
+        policy.cache.executionMode = 'transparent-deterministic';
+        policy.evidence.output = 'reference';
+      },
+    });
+
+    expect(reference.plan.digests.executionPlanDigest).not.toBe(
+      full.plan.digests.executionPlanDigest,
+    );
+    expect(reference.state.executorAttempts).toBe(4);
+    expect(reference.execution.records.every((record) => (
+      record.executionStatus === 'completed'
+      && record.output?.contentKind === 'descriptor'
+      && record.cache.cacheStatus === 'miss'
+    ))).toBe(true);
+    expect(cache.size).toBe(8);
+  });
+
   it('fails closed on an Execution replay-only cache miss', async () => {
     const cache = new InMemoryConformanceExecutionCache();
     const result = await runConformanceScenario('function', {
@@ -327,6 +358,64 @@ describe('Evaluation Core artifact and replay conformance', () => {
         terminationReasonCode: 'execution-cache-read-failed',
       });
       expect(result.state.executorAttempts).toBe(0);
+    },
+  );
+
+  it.each(['classification', 'capture-mode', 'usage'] as const)(
+    'fails closed on an Execution cache entry violating sealed %s semantics',
+    async (poison) => {
+      const marker = 'cache-secret-marker';
+      const cache = new InMemoryConformanceExecutionCache();
+      await runConformanceScenario('function', {
+        suffix: `execution-cache-${poison}-policy-seed`,
+        executionCache: cache,
+        mutate(_definition, policy) {
+          policy.cache.executionMode = 'transparent-deterministic';
+          policy.evidence.output = 'full';
+          policy.evidence.maximumClassification = 'public';
+        },
+      });
+      cache.tamperFirst((entry) => {
+        if (entry.record.executionStatus !== 'completed') {
+          throw new Error('Expected a completed cached ExecutionRecord.');
+        }
+        if (poison === 'classification') {
+          entry.record.output = {
+            contentKind: 'inline',
+            classification: 'secret',
+            value: { answer: marker },
+          };
+        } else if (poison === 'capture-mode') {
+          entry.record.output = {
+            contentKind: 'digest-only',
+            classification: 'public',
+            digest: digestCanonicalJson({ answer: marker }),
+          };
+        } else {
+          entry.record.usage = {
+            inputTokens: 999,
+            details: { aggregationKind: 'forged' },
+          };
+        }
+        entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+      });
+
+      const result = await runConformanceScenario('function', {
+        suffix: `execution-cache-${poison}-policy-rejected`,
+        executionCache: cache,
+        mutate(_definition, policy) {
+          policy.cache.executionMode = 'transparent-deterministic';
+          policy.evidence.output = 'full';
+          policy.evidence.maximumClassification = 'public';
+        },
+      });
+
+      expect(result.execution).toMatchObject({
+        executionBundleStatus: 'failed',
+        terminationReasonCode: 'execution-cache-read-failed',
+      });
+      expect(result.state.executorAttempts).toBe(0);
+      expect(JSON.stringify(result)).not.toContain(marker);
     },
   );
 

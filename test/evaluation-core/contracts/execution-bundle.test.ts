@@ -410,6 +410,21 @@ describe('ExecutionBundle contract', () => {
     );
   });
 
+  it('rejects aggregate usage that contradicts attempt facts', () => {
+    const bundle = structuredClone(finalizeBundle());
+    const record = bundle.records[0];
+    if (record.executionStatus === 'budget-censored') throw new Error('unexpected record');
+    record.usage = {
+      inputTokens: 999,
+      details: { aggregationKind: 'forged' },
+    };
+    resign(bundle);
+
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID' }),
+    );
+  });
+
   it('rejects a stale artifact digest after payload mutation', () => {
     const bundle = finalizeBundle();
     bundle.bundleId = 'mutated-bundle';

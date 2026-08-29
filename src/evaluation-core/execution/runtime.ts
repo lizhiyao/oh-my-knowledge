@@ -6,10 +6,13 @@ import {
   EvaluationErrorSchema,
   IdentifierSchema,
   UsageRecordSchema,
+  aggregateExecutionAttemptUsage,
   canonicalizeJson,
   deriveAttemptId,
   digestArtifactPayload,
   digestCanonicalJson,
+  executionRecordMatchesEvidencePolicy,
+  executionRecordUsageMatchesAttempts,
   parseExecutionBundle,
   parseWireDocument,
   type CacheProvenance,
@@ -301,49 +304,6 @@ function durationMs(started: number, completed: number): number {
   return Math.max(0, completed - started);
 }
 
-function aggregateUsage(
-  attempts: readonly (UsageRecord | undefined)[],
-): UsageRecord | undefined {
-  const reported = attempts.filter((usage): usage is UsageRecord => usage !== undefined);
-  if (reported.length === 0) return undefined;
-  if (attempts.length === 1) return snapshotJson(reported[0]);
-  const costs = reported.flatMap((usage) => (
-    usage.providerCost === undefined ? [] : [usage.providerCost]
-  ));
-  const currencies = new Set(costs.map((cost) => cost.currency));
-  const providerCost = costs.length === attempts.length && currencies.size === 1
-    ? {
-      amount: costs.reduce((sum, cost) => sum + cost.amount, 0),
-      currency: costs[0].currency,
-      reportedByProvider: true as const,
-    }
-    : undefined;
-  return {
-    ...(reported.some((usage) => usage.inputTokens !== undefined)
-      ? { inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0) }
-      : {}),
-    ...(reported.some((usage) => usage.outputTokens !== undefined)
-      ? { outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0) }
-      : {}),
-    ...(reported.some((usage) => usage.totalTokens !== undefined)
-      ? { totalTokens: reported.reduce((sum, usage) => sum + (usage.totalTokens ?? 0), 0) }
-      : {}),
-    ...(providerCost !== undefined ? { providerCost } : {}),
-    details: {
-      aggregationKind: 'omk.execution-usage-summary/v1',
-      attemptCount: attempts.length,
-      reportedAttemptCount: reported.length,
-      providerCostAggregation: costs.length === 0
-        ? 'unreported'
-        : costs.length !== attempts.length
-          ? 'partial'
-          : currencies.size === 1
-            ? 'summed'
-            : 'mixed-currency',
-    },
-  };
-}
-
 class BudgetTracker {
   readonly #maxInvocations?: number;
   readonly #maxProviderCost?: { amount: number; currency: string };
@@ -536,7 +496,9 @@ function assertCachedRecord(
       || canonicalizeJson(record.cache) !== canonicalizeJson({
         cacheStatus: 'miss',
         cacheKeyDigest: key,
-      })) {
+      })
+      || !executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)
+      || !executionRecordUsageMatchesAttempts(record)) {
     throw new ExecutionRuntimeConfigurationError(
       'EXECUTION_RUNTIME_CACHE_ENTRY_INVALID',
       'Execution cache returned a record incompatible with the sealed coordinate.',
@@ -714,7 +676,6 @@ async function executeCoordinate(
   }
 
   const attempts: ExecutionAttempt[] = [];
-  const attemptUsages: Array<UsageRecord | undefined> = [];
   let trial: ExecutionExecutorTrial | undefined;
   let inFlightAttempt: InFlightAttempt | undefined;
   const trialStartedAt = ports.clock.timestamp();
@@ -786,7 +747,6 @@ async function executeCoordinate(
       if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
         snapshotJson(outcome.result);
         const attemptUsage = validatedUsage(outcome.result.usage);
-        attemptUsages.push(attemptUsage);
         const costError = budget.recordUsage(attemptUsage);
         if (costError !== undefined) {
           cacheEligible = false;
@@ -836,7 +796,6 @@ async function executeCoordinate(
 
       const failure = attemptError(outcome, runSignal);
       const attemptUsage = validatedUsage(failure.usage);
-      attemptUsages.push(attemptUsage);
       const costError = budget.recordUsage(attemptUsage);
       if (costError !== undefined) {
         cacheEligible = false;
@@ -921,7 +880,6 @@ async function executeCoordinate(
         },
         error: evaluationError,
       });
-      attemptUsages.push(undefined);
       inFlightAttempt = undefined;
       terminalError = evaluationError;
       terminalStatus = 'failed';
@@ -964,7 +922,7 @@ async function executeCoordinate(
 
   if (attempts.length === 0) return { failed: false };
 
-  const usage = aggregateUsage(attemptUsages);
+  const usage = aggregateExecutionAttemptUsage(attempts);
   const completedAt = ports.clock.timestamp();
   const recordBase = {
     ...coordinate.coordinate,

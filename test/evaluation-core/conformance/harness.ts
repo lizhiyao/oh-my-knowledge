@@ -259,7 +259,9 @@ function analysisAwareRuntime(
       return base.resolveEvaluator(requirement);
     },
     async resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
-      await faults?.hit('resolve-analysis');
+      await faults?.hit(requirement.requirementKind === 'decision-policy'
+        ? 'resolve-decision'
+        : 'resolve-analysis');
       const resolution = resolveBuiltinAnalysisRuntime(requirement);
       if (resolution === undefined) {
         throw new Error(`Unknown built-in runtime ${requirement.implementationId}.`);

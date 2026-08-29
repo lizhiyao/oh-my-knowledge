@@ -87,6 +87,7 @@ export interface ExecutionPlanIdentityInput {
     retry: MeasurementPolicy['retry'];
     budget: MeasurementPolicy['budget'];
     executionCacheMode: MeasurementPolicy['cache']['executionMode'];
+    evidence: Pick<MeasurementPolicy['evidence'], 'output' | 'trace' | 'maximumClassification'>;
     failure: MeasurementPolicy['failure'];
   };
   extensions?: Extensions;
@@ -258,6 +259,11 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
       retry: input.measurementPolicy.retry,
       budget: input.measurementPolicy.budget,
       executionCacheMode: input.measurementPolicy.cache.executionMode,
+      evidence: {
+        output: input.measurementPolicy.evidence.output,
+        trace: input.measurementPolicy.evidence.trace,
+        maximumClassification: input.measurementPolicy.evidence.maximumClassification,
+      },
       failure: input.measurementPolicy.failure,
     },
     ...(input.stageExtensions?.execution !== undefined

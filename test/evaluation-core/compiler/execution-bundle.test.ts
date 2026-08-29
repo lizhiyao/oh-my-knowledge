@@ -102,15 +102,20 @@ function resign(bundle: ExecutionBundle): ExecutionBundle {
   return bundle;
 }
 
-async function makePlan(paired = false): Promise<PreparedPlan> {
+async function makePlan(
+  paired = false,
+  mutatePolicy?: (policy: ReturnType<typeof validPolicy>) => void,
+): Promise<PreparedPlan> {
   const definition = validDefinition();
+  const policy = validPolicy();
   if (paired) {
     definition.experiment.sampling.pairingKey = '/input/cohort';
     definition.experiment.sampling.resamplingUnit = 'paired-block';
   }
+  mutatePolicy?.(policy);
   return prepareEvaluationPlan(
     definition,
-    validPolicy(),
+    policy,
     testRuntime({
       samplingResamplingUnits: paired ? ['paired-block'] : ['sample'],
     }),
@@ -122,6 +127,26 @@ describe('ExecutionBundle RunPlan binding', () => {
     const plan = await makePlan();
     const bundle = makeBundle(plan);
     expect(parseExecutionBundle(bundle, plan)).toEqual(bundle);
+  });
+
+  it('rejects captured content above the sealed Execution evidence policy', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.evidence.maximumClassification = 'public';
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    const record = bundle.records[0];
+    if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+    record.output = {
+      contentKind: 'inline',
+      classification: 'secret',
+      value: { answer: 'must-not-cross-policy' },
+    };
+    resign(bundle);
+
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID' }),
+    );
   });
 
   it('accepts a foreign origin with the same ExecutionPlan but rejects foreign coordinates', async () => {

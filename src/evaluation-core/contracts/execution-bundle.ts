@@ -1,7 +1,9 @@
 import {
   ExecutionBundleSchema,
   type ExecutionBundle,
+  type ExecutionAttempt,
   type ExecutionRecord,
+  type UsageRecord,
 } from './artifacts.js';
 import type { CapturedContent } from './common.js';
 import {
@@ -23,6 +25,7 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_COVERAGE_INVALID'
   | 'EXECUTION_BUNDLE_STATUS_INVALID'
   | 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID'
+  | 'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID'
   | 'EXECUTION_BUNDLE_DIGEST_MISMATCH'
   | 'EXECUTION_BUNDLE_PLAN_MISMATCH'
   | 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID';
@@ -285,6 +288,15 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
   assertCoverage(bundle);
   assertStatus(bundle);
   assertReplayability(bundle);
+  for (const record of bundle.records) {
+    if (record.executionStatus !== 'budget-censored'
+        && !executionRecordUsageMatchesAttempts(record)) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
+        'ExecutionRecord usage does not match its attempt facts.',
+      );
+    }
+  }
   if (canonicalizeJson(bundle.provenance.parentDigests)
       !== canonicalizeJson([bundle.runContractDigest, bundle.executionPlanDigest])) {
     throw new ExecutionBundleValidationError(
@@ -310,6 +322,11 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
       budget: {
         maxTargetInvocations?: number;
       };
+      evidence: {
+        output: 'full' | 'reference' | 'digest' | 'none';
+        trace: 'full' | 'reference' | 'digest' | 'none';
+        maximumClassification: 'public' | 'sensitive' | 'secret' | 'gold';
+      };
     };
   };
   digests: {
@@ -318,6 +335,91 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
     executionPlanDigest: string;
     runContractDigest: string;
   };
+}
+
+const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+
+type ExecutionEvidencePolicy = ExecutionBundlePlanContext['execution']['policy']['evidence'];
+
+function capturedContentMatchesPolicy(
+  content: CapturedContent | undefined,
+  mode: ExecutionEvidencePolicy['output'],
+  maximumClassification: ExecutionEvidencePolicy['maximumClassification'],
+): boolean {
+  if (content === undefined) return true;
+  if (mode === 'none'
+      || CLASSIFICATION_LEVEL[content.classification]
+        > CLASSIFICATION_LEVEL[maximumClassification]) return false;
+  const expectedKind = mode === 'full'
+    ? 'inline'
+    : mode === 'reference'
+      ? 'descriptor'
+      : 'digest-only';
+  return content.contentKind === expectedKind;
+}
+
+export function executionRecordMatchesEvidencePolicy(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  policy: ExecutionEvidencePolicy,
+): boolean {
+  return capturedContentMatchesPolicy(record.trace, policy.trace, policy.maximumClassification)
+    && (record.executionStatus !== 'completed'
+      || capturedContentMatchesPolicy(
+        record.output,
+        policy.output,
+        policy.maximumClassification,
+      ));
+}
+
+export function aggregateExecutionAttemptUsage(
+  attempts: readonly ExecutionAttempt[],
+): UsageRecord | undefined {
+  const values = attempts.map((attempt) => attempt.usage);
+  const reported = values.filter((usage): usage is UsageRecord => usage !== undefined);
+  if (reported.length === 0) return undefined;
+  if (values.length === 1) return reported[0];
+  const costs = reported.flatMap((usage) => (
+    usage.providerCost === undefined ? [] : [usage.providerCost]
+  ));
+  const currencies = new Set(costs.map((cost) => cost.currency));
+  const providerCost = costs.length === values.length && currencies.size === 1
+    ? {
+      amount: costs.reduce((sum, cost) => sum + cost.amount, 0),
+      currency: costs[0].currency,
+      reportedByProvider: true as const,
+    }
+    : undefined;
+  return {
+    ...(reported.some((usage) => usage.inputTokens !== undefined)
+      ? { inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0) }
+      : {}),
+    ...(reported.some((usage) => usage.outputTokens !== undefined)
+      ? { outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0) }
+      : {}),
+    ...(reported.some((usage) => usage.totalTokens !== undefined)
+      ? { totalTokens: reported.reduce((sum, usage) => sum + (usage.totalTokens ?? 0), 0) }
+      : {}),
+    ...(providerCost !== undefined ? { providerCost } : {}),
+    details: {
+      aggregationKind: 'omk.execution-usage-summary/v1',
+      attemptCount: values.length,
+      reportedAttemptCount: reported.length,
+      providerCostAggregation: costs.length === 0
+        ? 'unreported'
+        : costs.length !== values.length
+          ? 'partial'
+          : currencies.size === 1
+            ? 'summed'
+            : 'mixed-currency',
+    },
+  };
+}
+
+export function executionRecordUsageMatchesAttempts(
+  record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+): boolean {
+  return canonicalizeJson(record.usage ?? null)
+    === canonicalizeJson(aggregateExecutionAttemptUsage(record.attempts) ?? null);
 }
 
 function coordinateKey(
@@ -383,6 +485,12 @@ export function assertExecutionBundleMatchesPlan(
       planMismatch('ExecutionRecord Runtime does not match its sealed Target binding.');
     }
     if (record.executionStatus === 'budget-censored') continue;
+    if (!executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID',
+        'ExecutionRecord evidence contradicts the sealed capture or classification policy.',
+      );
+    }
     if (record.cache.cacheStatus !== 'replay'
         && record.cache.cacheStatus !== 'transparent-hit') {
       invocationCount += record.attempts.length;
