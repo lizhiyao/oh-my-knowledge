@@ -63,7 +63,7 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
     const baseline = await runConformanceScenario('function', { suffix: 'rescore-source' });
     const rescored = await runConformanceScenario('function', {
       suffix: 'rescore-result',
-      execution: baseline.execution,
+      executionSource: baseline.executionSource,
       mutate(definition) {
         definition.dataset.samples[0].expected = { answer: 'wrong-a' };
         definition.dataset.samples[1].expected = { answer: 'wrong-b' };

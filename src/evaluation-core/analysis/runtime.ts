@@ -5,15 +5,16 @@ import {
   AssumptionCheckSchema,
   IdentifierSchema,
   SchemaIdentitySchema,
+  assertEvaluationBundleSource,
+  assertExecutionBundleSource,
   canonicalizeJson,
   countAnalysisResamplingUnits,
   derivePlannedEvaluationCoordinates,
   derivePlannedExecutionCoordinates,
   digestArtifactPayload,
   digestCanonicalJson,
+  effectiveEvaluationBundleTrust,
   parseAnalysisBundle,
-  parseEvaluationBundle,
-  parseExecutionBundle,
   parseWireDocument,
   schemaIdentityKey,
   type AnalysisBundle,
@@ -21,8 +22,10 @@ import {
   type AnalysisObservationCoverage,
   type AnalysisRecord,
   type EvaluationBundle,
+  type EvaluationBundleSource,
   type EvaluationError,
   type ExecutionBundle,
+  type ExecutionBundleSource,
   type JsonValue,
   type Provenance,
   type RuntimeIdentity,
@@ -57,6 +60,8 @@ interface NodeBinding {
 }
 
 interface PreparedAnalysisRuntime {
+  executionSource: ExecutionBundleSource;
+  evaluationSource: EvaluationBundleSource;
   execution: ExecutionBundle;
   evaluation: EvaluationBundle;
   nodeBindings: ReadonlyMap<string, NodeBinding>;
@@ -108,12 +113,14 @@ function validateOptions(options: AnalysisRunOptions): void {
 
 function prepareRuntime(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): PreparedAnalysisRuntime {
   validateOptions(options);
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
   if (ports.eventSequencer === undefined) {
     configurationError(
       'ANALYSIS_RUNTIME_EVENT_SEQUENCER_REQUIRED',
@@ -127,8 +134,8 @@ function prepareRuntime(
       'Required EventWriter mode needs an injected EventWriter.',
     );
   }
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
   const runtimeByNodeId = new Map(plan.analysis.runtimes
     .filter((runtime) => runtime.runtimeKind === 'analysis-node')
     .map((runtime) => [runtime.referenceId, runtime]));
@@ -184,7 +191,14 @@ function prepareRuntime(
     }
     missingPolicies.set(metric.missingPolicyId, port);
   }
-  return { execution, evaluation, nodeBindings, missingPolicies };
+  return {
+    executionSource,
+    evaluationSource,
+    execution,
+    evaluation,
+    nodeBindings,
+    missingPolicies,
+  };
 }
 
 function coordinateKey(value: {
@@ -604,13 +618,14 @@ function deriveTrust(
 
 function makeBundle(
   plan: SealedRunPlan,
-  execution: ExecutionBundle,
-  evaluation: EvaluationBundle,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   options: AnalysisRunOptions,
   records: readonly AnalysisRecord[],
   schemaValidators: ReadonlyMap<string, CoreSchemaValidator>,
   stop: StopState,
 ): AnalysisBundle {
+  const evaluation = evaluationSource.bundle;
   const ordered = [...records].sort((left, right) => compareStrings(left.nodeId, right.nodeId));
   const coverage = {
     planned: ordered.length,
@@ -632,7 +647,7 @@ function makeBundle(
     records: ordered,
     provenance: {
       provenanceKind: 'derived' as const,
-      trust: deriveTrust(plan, evaluation.provenance.trust),
+      trust: deriveTrust(plan, effectiveEvaluationBundleTrust(evaluationSource)),
       parentDigests: [evaluation.bundleDigest],
       ...(stop.error !== undefined ? { facets: { terminalErrorCode: stop.error.code } } : {}),
     },
@@ -647,8 +662,8 @@ function makeBundle(
   return deepFreeze(parseAnalysisBundle(
     bundle,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     { schemaValidators },
   ));
 }
@@ -1016,8 +1031,8 @@ async function runAnalysis(
 
   let bundle = makeBundle(
     plan,
-    prepared.execution,
-    prepared.evaluation,
+    prepared.executionSource,
+    prepared.evaluationSource,
     options,
     records,
     ports.schemaValidators,
@@ -1036,8 +1051,8 @@ async function runAnalysis(
   if (!delivered) {
     bundle = makeBundle(
       plan,
-      prepared.execution,
-      prepared.evaluation,
+      prepared.executionSource,
+      prepared.evaluationSource,
       options,
       records,
       ports.schemaValidators,
@@ -1063,8 +1078,8 @@ async function runAnalysis(
 
 export function startAnalysis(
   plan: SealedRunPlan,
-  executionBundle: unknown,
-  evaluationBundle: unknown,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): AnalysisRun {
@@ -1084,8 +1099,8 @@ export function startAnalysis(
 
 export async function analyzeEvaluationBundle(
   plan: SealedRunPlan,
-  executionBundle: unknown,
-  evaluationBundle: unknown,
+  executionBundle: ExecutionBundleSource,
+  evaluationBundle: EvaluationBundleSource,
   ports: AnalysisRuntimePorts,
   options: AnalysisRunOptions,
 ): Promise<AnalysisBundle> {

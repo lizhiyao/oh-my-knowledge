@@ -453,7 +453,7 @@ describe('Evaluation Core conformance fault matrix', () => {
       runtimeRegistry: registry,
       runId: 'conformance-agent-replay',
       suffix: 'concurrent-replay',
-      execution: completed.execution,
+      executionSource: completed.executionSource,
     });
     expect(replay.state).toMatchObject({
       executorAttempts: 0,

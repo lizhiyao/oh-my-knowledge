@@ -22,6 +22,7 @@ import {
   type EvaluationError,
   type ExecutionAttempt,
   type ExecutionBundle,
+  type ExecutionBundleSource,
   type ExecutionRecord,
   type JsonValue,
   type PlannedExecutionCoordinate,
@@ -1136,7 +1137,7 @@ function makeBundle(
   plannedCount: number,
   stop: StopState,
   verifiedCacheRecordDigests: ReadonlySet<Sha256Digest>,
-): ExecutionBundle {
+): ExecutionBundleSource {
   const sortedRecords = records.sort(compareRecords);
   const executionBundleStatus = stop.stopKind ?? 'completed';
   const bundle: ExecutionBundle = {
@@ -1165,14 +1166,18 @@ function makeBundle(
     bundleDigest: `sha256:${'0'.repeat(64)}`,
   };
   bundle.bundleDigest = digestArtifactPayload(bundle, 'bundleDigest');
-  const verified = verifyExecutionBundle(bundle, plan, { verifiedCacheRecordDigests });
-  if (verified.planVerification.cacheReceiptStatus !== 'verified'
+  const verified = verifyExecutionBundle(bundle, plan, {
+    verifiedCacheRecordDigests,
+    verifiedProvenanceBundleDigests: new Set([bundle.bundleDigest as Sha256Digest]),
+  });
+  if (verified.planVerification.provenanceTrustStatus !== 'verified'
+      || verified.planVerification.cacheReceiptStatus !== 'verified'
       || verified.planVerification.invocationBudgetStatus !== 'verified'
       || (bundle.executionBundleStatus === 'completed'
         && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
     throw new TypeError('Execution Runtime produced an unverifiable Bundle.');
   }
-  return verified.bundle;
+  return verified;
 }
 
 function terminalEventKind(
@@ -1192,7 +1197,7 @@ async function runExecution(
   options: ExecutionRunOptions,
   prepared: PreparedRuntime,
   stream: BoundedEventStream,
-): Promise<ExecutionBundle> {
+): Promise<ExecutionBundleSource> {
   const schedule = deriveExecutionSchedule(plan);
   const plannedCoordinates = schedule.flatMap((block) => block.coordinates);
   const stop: StopState = {};
@@ -1378,7 +1383,7 @@ async function runExecution(
       }
     }
   }
-  let bundle = makeBundle(
+  let source = makeBundle(
     plan,
     options,
     [...records.values()],
@@ -1387,17 +1392,17 @@ async function runExecution(
     verifiedCacheRecordDigests,
   );
   const terminalDelivered = await events.emit(
-    terminalEventKind(bundle.executionBundleStatus),
+    terminalEventKind(source.bundle.executionBundleStatus),
     'run',
     options.runId,
     {
-      bundleDigest: bundle.bundleDigest,
-      executionBundleStatus: bundle.executionBundleStatus,
-      coverage: bundle.coverage,
+      bundleDigest: source.bundle.bundleDigest,
+      executionBundleStatus: source.bundle.executionBundleStatus,
+      coverage: source.bundle.coverage,
     },
   );
   if (!terminalDelivered) {
-    bundle = makeBundle(
+    source = makeBundle(
       plan,
       options,
       [...records.values()],
@@ -1406,18 +1411,18 @@ async function runExecution(
       verifiedCacheRecordDigests,
     );
     await events.emitRecovery(
-      terminalEventKind(bundle.executionBundleStatus),
+      terminalEventKind(source.bundle.executionBundleStatus),
       'run',
       options.runId,
       {
-        bundleDigest: bundle.bundleDigest,
-        executionBundleStatus: bundle.executionBundleStatus,
-        coverage: bundle.coverage,
+        bundleDigest: source.bundle.bundleDigest,
+        executionBundleStatus: source.bundle.executionBundleStatus,
+        coverage: source.bundle.coverage,
       },
     );
   }
   events.close();
-  return bundle;
+  return source;
 }
 
 export function startExecution(
@@ -1427,9 +1432,15 @@ export function startExecution(
 ): ExecutionRun {
   const prepared = prepareRuntime(plan, ports, options);
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
+  const source = runExecution(plan, ports, options, prepared, stream);
+  let result: Promise<ExecutionBundle> | undefined;
   return {
     events: stream,
-    result: runExecution(plan, ports, options, prepared, stream),
+    source,
+    get result() {
+      result ??= source.then((verified) => verified.bundle);
+      return result;
+    },
   };
 }
 
@@ -1439,4 +1450,12 @@ export async function executeRunPlan(
   options: ExecutionRunOptions,
 ): Promise<ExecutionBundle> {
   return startExecution(plan, ports, options).result;
+}
+
+export async function executeRunPlanSource(
+  plan: SealedRunPlan,
+  ports: ExecutionRuntimePorts,
+  options: ExecutionRunOptions,
+): Promise<ExecutionBundleSource> {
+  return startExecution(plan, ports, options).source;
 }

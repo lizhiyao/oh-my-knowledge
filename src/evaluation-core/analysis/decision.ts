@@ -3,23 +3,27 @@ import {
   DecisionResultSchema,
   EvaluationReportSchema,
   IdentifierSchema,
+  assertEvaluationBundleSource,
+  assertExecutionBundleSource,
   canonicalizeJson,
   computeDecisionPolicyDigest,
   deriveEvaluationStatus,
   digestArtifactPayload,
   digestCanonicalJson,
+  effectiveEvaluationBundleTrust,
+  effectiveExecutionBundleTrust,
   parseAnalysisBundle,
   parseDecisionResultDocument,
-  parseEvaluationBundle,
   parseEvaluationReport,
-  parseExecutionBundle,
   parseWireDocument,
   type AnalysisBundle,
   type AnalysisRecord,
   type DecisionResult,
   type EvaluationError,
+  type EvaluationBundleSource,
   type EvaluationReport,
   type JsonValue,
+  type ExecutionBundleSource,
   type Provenance,
   type RuntimeIdentity,
   type Sha256Digest,
@@ -82,10 +86,35 @@ function gateReasons(
   plan: SealedRunPlan,
   analysis: AnalysisBundle,
   evidenceStatus: 'complete' | 'partial' | 'unresolvable',
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
 ): string[] {
   const policy = plan.decision.decisionPolicy;
   if (policy === undefined) return ['decision-policy-not-declared'];
   const reasons = new Set<string>();
+  const executionVerification = executionSource.planVerification;
+  if (executionVerification.provenanceTrustStatus === 'indeterminate') {
+    reasons.add('decision-execution-provenance-indeterminate');
+  }
+  if (executionVerification.cacheReceiptStatus === 'indeterminate') {
+    reasons.add('decision-execution-cache-receipt-indeterminate');
+  }
+  if (executionVerification.invocationBudgetStatus === 'indeterminate') {
+    reasons.add('decision-execution-invocation-budget-indeterminate');
+  }
+  if (executionVerification.providerCostBudgetStatus === 'indeterminate') {
+    reasons.add('decision-execution-provider-cost-budget-indeterminate');
+  }
+  const evaluationVerification = evaluationSource.planVerification;
+  if (evaluationVerification.provenanceTrustStatus === 'indeterminate') {
+    reasons.add('decision-evaluation-provenance-indeterminate');
+  }
+  if (evaluationVerification.cacheReceiptStatus === 'indeterminate') {
+    reasons.add('decision-evaluation-cache-receipt-indeterminate');
+  }
+  if (evaluationVerification.invocationBudgetStatus === 'indeterminate') {
+    reasons.add('decision-evaluation-invocation-budget-indeterminate');
+  }
   if (analysis.analysisBundleStatus !== 'completed') {
     reasons.add('analysis-run-not-completed');
   }
@@ -223,8 +252,10 @@ function decisionPayload(input: {
 }
 
 interface PreparedDecision {
-  execution: ReturnType<typeof parseExecutionBundle>;
-  evaluation: ReturnType<typeof parseEvaluationBundle>;
+  executionSource: ExecutionBundleSource;
+  evaluationSource: EvaluationBundleSource;
+  execution: ExecutionBundleSource['bundle'];
+  evaluation: EvaluationBundleSource['bundle'];
   analysis: AnalysisBundle;
   policy: NonNullable<SealedRunPlan['decision']['decisionPolicy']>;
   runtime: RuntimeIdentity;
@@ -233,8 +264,8 @@ interface PreparedDecision {
 
 function prepareDecision(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   analysisValue: unknown,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
@@ -250,13 +281,15 @@ function prepareDecision(
       'Required EventWriter mode needs an injected EventWriter.',
     );
   }
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
   const analysis = parseAnalysisBundle(
     analysisValue,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     { schemaValidators: ports.schemaValidators },
   );
   const runtime = plan.decision.runtimes.find((candidate) => (
@@ -272,6 +305,8 @@ function prepareDecision(
     );
   }
   return {
+    executionSource,
+    evaluationSource,
     execution,
     evaluation,
     analysis,
@@ -339,13 +374,28 @@ async function runDecision(
     (_reasonCode, error) => { fatalError = error; },
   );
   try {
-  const { execution, evaluation, analysis, policy, runtime, port } = prepared;
+  const {
+    executionSource,
+    evaluationSource,
+    execution,
+    evaluation,
+    analysis,
+    policy,
+    runtime,
+    port,
+  } = prepared;
   await events.emit('decision.started', 'decision-policy', policy.decisionPolicyId, {
     analysisBundleDigest: analysis.bundleDigest,
     decisionPlanDigest: plan.decision.decisionPlanDigest,
   });
   const evidenceStatus = deriveEvaluationStatus({ execution, evaluation, analysis }).evidenceStatus;
-  const reasons = gateReasons(plan, analysis, evidenceStatus);
+  const reasons = gateReasons(
+    plan,
+    analysis,
+    evidenceStatus,
+    executionSource,
+    evaluationSource,
+  );
   let output: { decisionStatus: 'decided'; verdict: string }
     | { decisionStatus: 'not-decided'; reasonCodes: readonly string[] }
     | { decisionStatus: 'failed'; error: EvaluationError };
@@ -447,8 +497,8 @@ async function runDecision(
 
 export function startDecision(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionValue: ExecutionBundleSource,
+  evaluationValue: EvaluationBundleSource,
   analysisValue: unknown,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
@@ -474,8 +524,8 @@ export function startDecision(
 
 export async function decideAnalysis(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionValue: ExecutionBundleSource,
+  evaluationValue: EvaluationBundleSource,
   analysisValue: unknown,
   ports: AnalysisRuntimePorts,
   options: DecisionOptions,
@@ -492,8 +542,8 @@ export async function decideAnalysis(
 
 export function materializeEvaluationReport(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   analysisValue: unknown,
   decisionValue: unknown | undefined,
   ports: Pick<AnalysisRuntimePorts, 'clock' | 'schemaValidators'>,
@@ -505,13 +555,15 @@ export function materializeEvaluationReport(
       'reportId must be a valid Evaluation Core identifier.',
     );
   }
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
   const analysis = parseAnalysisBundle(
     analysisValue,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     { schemaValidators: ports.schemaValidators },
   );
   const decision = decisionValue === undefined
@@ -568,8 +620,8 @@ export function materializeEvaluationReport(
     provenance: {
       provenanceKind: 'derived' as const,
       trust: minimumTrust([
-        execution.provenance.trust,
-        evaluation.provenance.trust,
+        effectiveExecutionBundleTrust(executionSource),
+        effectiveEvaluationBundleTrust(evaluationSource),
         analysis.provenance.trust,
         ...decisionRuntimeTrust,
       ]),
@@ -587,8 +639,8 @@ export function materializeEvaluationReport(
   return deepFreeze(parseEvaluationReport(
     report,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     analysis,
     { schemaValidators: ports.schemaValidators },
   ));
@@ -596,8 +648,8 @@ export function materializeEvaluationReport(
 
 export function startReportMaterialization(
   plan: SealedRunPlan,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionValue: ExecutionBundleSource,
+  evaluationValue: EvaluationBundleSource,
   analysisValue: unknown,
   decisionValue: unknown | undefined,
   ports: AnalysisRuntimePorts,

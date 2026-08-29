@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseAnalysisBundle,
-  parseEvaluationBundle,
   parseEvaluationReport,
-  parseExecutionBundle,
+  effectiveExecutionBundleTrust,
+  verifyEvaluationBundle,
+  verifyExecutionBundle,
+  type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../../src/evaluation-core/analysis/index.js';
 import {
@@ -70,16 +72,27 @@ describe.each(targets)('Evaluation Core %s target conformance', (target) => {
     const report = JSON.parse(JSON.stringify(result.report)) as unknown;
     const validators = createBuiltinAnalysisSchemaValidators();
 
-    expect(parseExecutionBundle(execution, result.plan)).toEqual(result.execution);
-    expect(parseEvaluationBundle(evaluation, result.plan, execution)).toEqual(result.evaluation);
-    expect(parseAnalysisBundle(analysis, result.plan, execution, evaluation, {
+    const executionSource = verifyExecutionBundle(execution, result.plan, {
+      verifiedProvenanceBundleDigests: new Set([
+        result.execution.bundleDigest as Sha256Digest,
+      ]),
+    });
+    const evaluationSource = verifyEvaluationBundle(evaluation, result.plan, executionSource, {
+      verifiedProvenanceBundleDigests: new Set([
+        result.evaluation.bundleDigest as Sha256Digest,
+      ]),
+      executionSourceTrust: effectiveExecutionBundleTrust(executionSource),
+    });
+    expect(executionSource.bundle).toEqual(result.execution);
+    expect(evaluationSource.bundle).toEqual(result.evaluation);
+    expect(parseAnalysisBundle(analysis, result.plan, executionSource, evaluationSource, {
       schemaValidators: validators,
     })).toEqual(result.analysis);
     expect(parseEvaluationReport(
       report,
       result.plan,
-      execution,
-      evaluation,
+      executionSource,
+      evaluationSource,
       analysis,
       { schemaValidators: validators },
     )).toEqual(result.report);

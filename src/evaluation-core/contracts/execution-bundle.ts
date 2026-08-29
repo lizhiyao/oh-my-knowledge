@@ -5,7 +5,7 @@ import {
   type ExecutionRecord,
   type UsageRecord,
 } from './artifacts.js';
-import type { CapturedContent } from './common.js';
+import type { CapturedContent, Provenance } from './common.js';
 import {
   deriveAttemptId,
   derivePlannedExecutionCoordinates,
@@ -16,6 +16,7 @@ import {
 import { digestArtifactPayload } from './digests.js';
 import {
   canonicalizeJson,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
   type Sha256Digest,
@@ -365,9 +366,12 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
 export interface ExecutionBundleVerificationContext {
   /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
   readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
 }
 
 export interface ExecutionBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
   readonly cacheReceiptStatus: 'verified' | 'indeterminate';
   readonly invocationBudgetStatus: 'verified' | 'indeterminate';
   readonly providerCostBudgetStatus: 'verified' | 'indeterminate';
@@ -381,6 +385,30 @@ export interface ExecutionBundlePlanVerification {
 export interface ExecutionBundleVerificationResult {
   readonly bundle: ExecutionBundle;
   readonly planVerification: ExecutionBundlePlanVerification;
+}
+
+export type ExecutionBundleSource = ExecutionBundleVerificationResult;
+
+const executionBundleSources = new WeakSet<object>();
+
+export function assertExecutionBundleSource(
+  value: unknown,
+): asserts value is ExecutionBundleSource {
+  if (value === null || typeof value !== 'object' || !executionBundleSources.has(value)) {
+    throw new TypeError(
+      'Execution stage requires a source returned by parseExecutionBundle() or the Runtime.',
+    );
+  }
+}
+
+export function effectiveExecutionBundleTrust(
+  source: ExecutionBundleSource,
+): Provenance['trust'] {
+  assertExecutionBundleSource(source);
+  if (source.planVerification.provenanceTrustStatus === 'verified') {
+    return source.bundle.provenance.trust;
+  }
+  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
 }
 
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
@@ -744,6 +772,12 @@ export function assertExecutionBundleMatchesPlan(
     ? 'verified'
     : 'indeterminate';
   return {
+    provenanceTrustStatus: bundle.provenance.trust !== 'verified'
+        || verification?.verifiedProvenanceBundleDigests?.has(
+          bundle.bundleDigest as Sha256Digest,
+        ) === true
+      ? 'verified'
+      : 'indeterminate',
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
       ? 'verified'
       : 'indeterminate',
@@ -789,8 +823,8 @@ export function parseExecutionBundleDocument(value: unknown): ExecutionBundle {
 export function parseExecutionBundle(
   value: unknown,
   plan: ExecutionBundlePlanContext,
-): ExecutionBundle {
-  return verifyExecutionBundle(value, plan).bundle;
+): ExecutionBundleSource {
+  return verifyExecutionBundle(value, plan);
 }
 
 export function verifyExecutionBundle(
@@ -800,5 +834,7 @@ export function verifyExecutionBundle(
 ): ExecutionBundleVerificationResult {
   const bundle = parseExecutionBundleDocument(value);
   const planVerification = assertExecutionBundleMatchesPlan(bundle, plan, verification);
-  return { bundle, planVerification };
+  const source = { bundle, planVerification };
+  executionBundleSources.add(source);
+  return deepFreezeCanonicalJson(source);
 }

@@ -141,6 +141,17 @@ export function parseWireDocument<T>(schema: z.ZodType<T>, value: unknown): T {
   return schema.parse(value);
 }
 
+export function deepFreezeCanonicalJson<T>(value: T): T {
+  assertCanonicalJson(value);
+  const freeze = (candidate: unknown): void => {
+    if (candidate === null || typeof candidate !== 'object' || Object.isFrozen(candidate)) return;
+    for (const child of Object.values(candidate)) freeze(child);
+    Object.freeze(candidate);
+  };
+  freeze(value);
+  return value;
+}
+
 function serializeCanonical(value: JsonValue): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(serializeCanonical).join(',')}]`;

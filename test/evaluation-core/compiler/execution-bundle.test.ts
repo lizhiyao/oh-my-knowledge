@@ -185,7 +185,10 @@ describe('ExecutionBundle RunPlan binding', () => {
   it('accepts a Bundle derived from the sealed coordinate plan', async () => {
     const plan = await makePlan();
     const bundle = makeBundle(plan);
-    expect(parseExecutionBundle(bundle, plan)).toEqual(bundle);
+    const source = parseExecutionBundle(bundle, plan);
+    expect(source.bundle).toEqual(bundle);
+    expect(Object.isFrozen(source.bundle.records[0])).toBe(true);
+    expect(Object.isFrozen(source.planVerification)).toBe(true);
   });
 
   it('rejects captured content above the sealed Execution evidence policy', async () => {
@@ -237,7 +240,7 @@ describe('ExecutionBundle RunPlan binding', () => {
     if (validRecord.executionStatus !== 'completed') throw new Error('unexpected record');
     turnIntoCacheHit(validRecord);
     resign(valid);
-    expect(parseExecutionBundle(valid, plan)).toEqual(valid);
+    expect(parseExecutionBundle(valid, plan).bundle).toEqual(valid);
   });
 
   it('keeps unverified cache receipts and invocation budgets indeterminate', async () => {
@@ -255,6 +258,7 @@ describe('ExecutionBundle RunPlan binding', () => {
 
     const transported = verifyExecutionBundle(bundle, plan);
     expect(transported.planVerification).toEqual({
+      provenanceTrustStatus: 'indeterminate',
       cacheReceiptStatus: 'indeterminate',
       invocationBudgetStatus: 'indeterminate',
       providerCostBudgetStatus: 'verified',
@@ -386,7 +390,7 @@ describe('ExecutionBundle RunPlan binding', () => {
     ];
     resign(foreignParent);
     expect(parseExecutionBundleDocument(foreignParent)).toEqual(foreignParent);
-    expect(parseExecutionBundle(foreignParent, plan)).toEqual(foreignParent);
+    expect(parseExecutionBundle(foreignParent, plan).bundle).toEqual(foreignParent);
 
     const foreignCoordinate = mutableJson(makeBundle(plan));
     const record = foreignCoordinate.records[0];

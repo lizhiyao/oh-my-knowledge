@@ -15,13 +15,22 @@ import {
   type AnalysisBundleValidationContext,
 } from './analysis-bundle.js';
 import { digestArtifactPayload } from './digests.js';
-import { parseEvaluationBundle } from './evaluation-bundle.js';
-import { parseExecutionBundle } from './execution-bundle.js';
+import {
+  assertEvaluationBundleSource,
+  effectiveEvaluationBundleTrust,
+  type EvaluationBundleSource,
+} from './evaluation-bundle.js';
+import {
+  assertExecutionBundleSource,
+  effectiveExecutionBundleTrust,
+  type ExecutionBundleSource,
+} from './execution-bundle.js';
 import { canonicalizeJson, digestCanonicalJson, parseWireDocument } from './json.js';
 
 export type EvaluationReportValidationErrorCode =
   | 'DECISION_RESULT_DIGEST_MISMATCH'
   | 'DECISION_RESULT_PLAN_MISMATCH'
+  | 'DECISION_RESULT_VERIFICATION_GATE_FAILED'
   | 'EVALUATION_REPORT_DIGEST_MISMATCH'
   | 'EVALUATION_REPORT_BUNDLE_REFERENCE_INVALID'
   | 'EVALUATION_REPORT_STATUS_INVALID'
@@ -176,6 +185,8 @@ function assertDecision(
   result: DecisionResult,
   plan: EvaluationReportPlanContext,
   analysis: AnalysisBundle,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
 ): void {
   const policy = plan.decision.decisionPolicy;
   const runtime = plan.decision.runtimes.find((candidate) => (
@@ -206,23 +217,33 @@ function assertDecision(
       'DecisionResult policy digest does not match the sealed policy.',
     );
   }
+  if (result.decisionStatus === 'decided'
+      && (Object.values(executionSource.planVerification).includes('indeterminate')
+        || Object.values(evaluationSource.planVerification).includes('indeterminate'))) {
+    throw new EvaluationReportValidationError(
+      'DECISION_RESULT_VERIFICATION_GATE_FAILED',
+      'A directional DecisionResult requires conclusive source verification.',
+    );
+  }
 }
 
 export function parseEvaluationReport(
   value: unknown,
   plan: EvaluationReportPlanContext,
-  executionValue: unknown,
-  evaluationValue: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   analysisValue: unknown,
   validation: AnalysisBundleValidationContext,
 ): EvaluationReport {
-  const execution = parseExecutionBundle(executionValue, plan);
-  const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
+  const execution = executionSource.bundle;
+  const evaluation = evaluationSource.bundle;
   const analysis = parseAnalysisBundle(
     analysisValue,
     plan,
-    execution,
-    evaluation,
+    executionSource,
+    evaluationSource,
     validation,
   );
   const report = parseEvaluationReportDocument(value);
@@ -239,7 +260,9 @@ export function parseEvaluationReport(
       'EvaluationReport status does not match its source facts and decision.',
     );
   }
-  if (report.decision !== undefined) assertDecision(report.decision, plan, analysis);
+  if (report.decision !== undefined) {
+    assertDecision(report.decision, plan, analysis, executionSource, evaluationSource);
+  }
   const parentDigests = [
     execution.bundleDigest,
     evaluation.bundleDigest,
@@ -262,8 +285,8 @@ export function parseEvaluationReport(
   if (canonicalizeJson(report.provenance.parentDigests)
       !== canonicalizeJson(parentDigests)
       || trustLevel(report.provenance.trust) > Math.min(
-        trustLevel(execution.provenance.trust),
-        trustLevel(evaluation.provenance.trust),
+        trustLevel(effectiveExecutionBundleTrust(executionSource)),
+        trustLevel(effectiveEvaluationBundleTrust(evaluationSource)),
         trustLevel(analysis.provenance.trust),
         ...decisionRuntimeTrust.map(trustLevel),
       )) {

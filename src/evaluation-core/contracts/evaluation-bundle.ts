@@ -8,7 +8,7 @@ import {
   type MetricObservation,
   type UsageRecord,
 } from './artifacts.js';
-import type { CapturedContent, RuntimeIdentity } from './common.js';
+import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
 import {
   deriveEvaluationAttemptId,
   deriveEvaluationId,
@@ -17,12 +17,14 @@ import {
   type PlannedEvaluationCoordinate,
 } from './evaluation-identities.js';
 import {
-  parseExecutionBundle,
+  assertExecutionBundleSource,
   type ExecutionBundlePlanContext,
+  type ExecutionBundleSource,
 } from './execution-bundle.js';
 import { digestArtifactPayload } from './digests.js';
 import {
   canonicalizeJson,
+  deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
   type JsonValue,
@@ -373,9 +375,14 @@ type EvaluationRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 export interface EvaluationBundleVerificationContext {
   /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
   readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
+  /** Independently attested by the producing Runtime or a host trust verifier. */
+  readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;
+  /** Effective trust observed from the authenticated Execution source at production time. */
+  readonly executionSourceTrust?: Provenance['trust'];
 }
 
 export interface EvaluationBundlePlanVerification {
+  readonly provenanceTrustStatus: 'verified' | 'indeterminate';
   readonly cacheReceiptStatus: 'verified' | 'indeterminate';
   readonly invocationBudgetStatus: 'verified' | 'indeterminate';
   readonly minimumEvaluatorInvocations: number;
@@ -386,6 +393,30 @@ export interface EvaluationBundlePlanVerification {
 export interface EvaluationBundleVerificationResult {
   readonly bundle: EvaluationBundle;
   readonly planVerification: EvaluationBundlePlanVerification;
+}
+
+export type EvaluationBundleSource = EvaluationBundleVerificationResult;
+
+const evaluationBundleSources = new WeakSet<object>();
+
+export function assertEvaluationBundleSource(
+  value: unknown,
+): asserts value is EvaluationBundleSource {
+  if (value === null || typeof value !== 'object' || !evaluationBundleSources.has(value)) {
+    throw new TypeError(
+      'Evaluation stage requires a source returned by parseEvaluationBundle() or the Runtime.',
+    );
+  }
+}
+
+export function effectiveEvaluationBundleTrust(
+  source: EvaluationBundleSource,
+): Provenance['trust'] {
+  assertEvaluationBundleSource(source);
+  if (source.planVerification.provenanceTrustStatus === 'verified') {
+    return source.bundle.provenance.trust;
+  }
+  return source.bundle.provenance.trust === 'untrusted' ? 'untrusted' : 'unknown';
 }
 
 export function aggregateEvaluationAttemptUsage(
@@ -844,6 +875,7 @@ export function assertEvaluationBundleMatchesPlan(
   source: ExecutionBundle,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundlePlanVerification {
+  const sourceTrust = verification?.executionSourceTrust ?? source.provenance.trust;
   if (bundle.runContractDigest !== plan.digests.runContractDigest
       || bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
       || bundle.evaluationPlanDigest !== plan.evaluation.evaluationPlanDigest
@@ -904,7 +936,7 @@ export function assertEvaluationBundleMatchesPlan(
       }
       assertTrustAtMost(
         record.provenance.trust,
-        minimumTrust(source.provenance.trust, runtimeTrust(runtime)),
+        minimumTrust(sourceTrust, runtimeTrust(runtime)),
         'Source-less EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
       );
       continue;
@@ -917,7 +949,7 @@ export function assertEvaluationBundleMatchesPlan(
       plan,
       executionRecord,
       runtime,
-      source.provenance.trust,
+      sourceTrust,
       verification,
     );
     minimumEvaluatorInvocations += recordVerification.minimumInvocations;
@@ -947,12 +979,18 @@ export function assertEvaluationBundleMatchesPlan(
   assertTrustAtMost(
     bundle.provenance.trust,
     minimumTrust(
-      source.provenance.trust,
+      sourceTrust,
       ...bundle.records.map((record) => record.provenance.trust),
     ),
     'EvaluationBundle trust exceeds its source or record provenance.',
   );
   return {
+    provenanceTrustStatus: bundle.provenance.trust !== 'verified'
+        || verification?.verifiedProvenanceBundleDigests?.has(
+          bundle.bundleDigest as Sha256Digest,
+        ) === true
+      ? 'verified'
+      : 'indeterminate',
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
       ? 'verified'
       : 'indeterminate',
@@ -981,24 +1019,26 @@ export function parseEvaluationBundleDocument(value: unknown): EvaluationBundle 
 export function parseEvaluationBundle(
   value: unknown,
   plan: EvaluationBundlePlanContext,
-  sourceValue: unknown,
-): EvaluationBundle {
-  return verifyEvaluationBundle(value, plan, sourceValue).bundle;
+  source: ExecutionBundleSource,
+): EvaluationBundleSource {
+  return verifyEvaluationBundle(value, plan, source);
 }
 
 export function verifyEvaluationBundle(
   value: unknown,
   plan: EvaluationBundlePlanContext,
-  sourceValue: unknown,
+  source: ExecutionBundleSource,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundleVerificationResult {
-  const source = parseExecutionBundle(sourceValue, plan);
+  assertExecutionBundleSource(source);
   const bundle = parseEvaluationBundleDocument(value);
   const planVerification = assertEvaluationBundleMatchesPlan(
     bundle,
     plan,
-    source,
+    source.bundle,
     verification,
   );
-  return { bundle, planVerification };
+  const result = { bundle, planVerification };
+  evaluationBundleSources.add(result);
+  return deepFreezeCanonicalJson(result);
 }

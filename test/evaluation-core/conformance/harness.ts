@@ -6,10 +6,13 @@ import {
   type EvaluationEvent,
   type EvaluationReport,
   type ExecutionBundle,
+  type ExecutionBundleSource,
+  type EvaluationBundleSource,
   type ContentDescriptor,
   type JsonValue,
   type MeasurementPolicy,
   type RuntimeIdentity,
+  parseExecutionBundle,
 } from '../../../src/evaluation-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
@@ -74,7 +77,9 @@ export interface ConformanceState {
 export interface ConformanceResult {
   plan: SealedRunPlan;
   execution: ExecutionBundle;
+  executionSource: ExecutionBundleSource;
   evaluation: EvaluationBundle;
+  evaluationSource: EvaluationBundleSource;
   analysis: AnalysisBundle;
   decision: DecisionResult | undefined;
   report: EvaluationReport;
@@ -90,6 +95,7 @@ export interface ConformanceHarnessOptions {
   consumeEvent?: (event: EvaluationEvent) => void | Promise<void>;
   eventConsumption?: 'live' | 'after-result';
   execution?: ExecutionBundle;
+  executionSource?: ExecutionBundleSource;
   faults?: ConformanceFaultInjector;
   executionSignal?: AbortSignal;
   evaluationSignal?: AbortSignal;
@@ -858,6 +864,9 @@ export async function runConformanceScenario(
   if (options.plan !== undefined && options.mutate !== undefined) {
     throw new TypeError('A prepared Conformance plan cannot also be mutated.');
   }
+  if (options.execution !== undefined && options.executionSource !== undefined) {
+    throw new TypeError('Conformance execution artifact and verified source are mutually exclusive.');
+  }
   const plan = options.plan ?? await prepareConformancePlan(
     target,
     options.mutate,
@@ -905,8 +914,9 @@ export async function runConformanceScenario(
   const allEvents: EvaluationEvent[] = [];
 
   try {
-    const executionRun = options.execution === undefined
-      ? await settle(startExecution(plan, {
+    const executionRuntime = options.execution === undefined
+        && options.executionSource === undefined
+      ? startExecution(plan, {
         executors,
         clock,
         eventSequencer,
@@ -918,11 +928,22 @@ export async function runConformanceScenario(
         bundleId: `execution-${suffix}`,
         eventBufferCapacity: 1,
         ...(options.executionSignal === undefined ? {} : { signal: options.executionSignal }),
-      }), options.consumeEvent, options.eventConsumption)
-      : { value: options.execution, events: [] };
+      })
+      : undefined;
+    const executionRun = executionRuntime !== undefined
+      ? await settle(
+        { events: executionRuntime.events, result: executionRuntime.source },
+        options.consumeEvent,
+        options.eventConsumption,
+      )
+      : {
+        value: options.executionSource
+          ?? parseExecutionBundle(options.execution, plan),
+        events: [],
+      };
     allEvents.push(...executionRun.events);
 
-    const evaluationRun = await settle(startEvaluation(plan, executionRun.value, {
+    const evaluationRuntime = startEvaluation(plan, executionRun.value, {
       evaluators,
       clock,
       eventSequencer,
@@ -937,7 +958,12 @@ export async function runConformanceScenario(
       bundleId: `evaluation-${suffix}`,
       eventBufferCapacity: 1,
       ...(options.evaluationSignal === undefined ? {} : { signal: options.evaluationSignal }),
-    }), options.consumeEvent, options.eventConsumption);
+    });
+    const evaluationRun = await settle(
+      { events: evaluationRuntime.events, result: evaluationRuntime.source },
+      options.consumeEvent,
+      options.eventConsumption,
+    );
     allEvents.push(...evaluationRun.events);
 
     const analysisRun = await settle(startAnalysis(
@@ -980,8 +1006,10 @@ export async function runConformanceScenario(
 
     return {
       plan,
-      execution: executionRun.value,
-      evaluation: evaluationRun.value,
+      execution: executionRun.value.bundle,
+      executionSource: executionRun.value,
+      evaluation: evaluationRun.value.bundle,
+      evaluationSource: evaluationRun.value,
       analysis: analysisRun.value,
       decision: decisionRun.value,
       report: reportRun.value,

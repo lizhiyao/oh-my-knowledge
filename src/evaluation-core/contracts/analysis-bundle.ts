@@ -17,11 +17,15 @@ import {
 } from './analysis-identities.js';
 import { derivePlannedExecutionCoordinates } from './execution-identities.js';
 import {
-  parseEvaluationBundle,
+  assertEvaluationBundleSource,
   type EvaluationBundlePlanContext,
+  type EvaluationBundleSource,
 } from './evaluation-bundle.js';
 import { digestArtifactPayload } from './digests.js';
-import { parseExecutionBundle } from './execution-bundle.js';
+import {
+  assertExecutionBundleSource,
+  type ExecutionBundleSource,
+} from './execution-bundle.js';
 import {
   canonicalizeJson,
   digestCanonicalJson,
@@ -605,12 +609,14 @@ function assertMatchesPlan(
 export function parseAnalysisBundle(
   value: unknown,
   plan: AnalysisBundlePlanContext,
-  executionSource: unknown,
-  evaluationSource: unknown,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
   validation: AnalysisBundleValidationContext,
 ): AnalysisBundle {
-  const execution = parseExecutionBundle(executionSource, plan);
-  const source = parseEvaluationBundle(evaluationSource, plan, execution);
+  assertExecutionBundleSource(executionSource);
+  assertEvaluationBundleSource(evaluationSource);
+  const execution = executionSource.bundle;
+  const source = evaluationSource.bundle;
   const bundle = parseAnalysisBundleDocument(value);
   assertMatchesPlan(bundle, plan, execution, source, validation);
   return bundle;

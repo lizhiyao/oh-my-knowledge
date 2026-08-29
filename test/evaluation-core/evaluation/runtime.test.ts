@@ -3,6 +3,7 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
+  parseExecutionBundle,
   parseEvaluationBundle,
   verifyEvaluationBundle,
   type EvaluationBundle,
@@ -13,7 +14,7 @@ import {
 } from '../../../src/evaluation-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
 import {
-  executeRunPlan,
+  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
@@ -134,7 +135,7 @@ function executor(plan: Plan, fail = false): ExecutionExecutor {
 }
 
 async function sourceBundle(plan: Plan, fail = false) {
-  return executeRunPlan(plan, {
+  return executeRunPlanSource(plan, {
     executors: new Map([['executor-alias', executor(plan, fail)]]),
     clock: new FakeClock(),
     eventSequencer: new InMemoryRuntimeEventSequencer(),
@@ -258,7 +259,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       cancelled: 0,
       notStarted: 0,
     });
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     expect(fake.state.recordContexts[0].bindings).toEqual([
       expect.objectContaining({ bindingId: 'actual', sourceKind: 'output' }),
       expect.objectContaining({ bindingId: 'gold', sourceKind: 'expected', value: 'A' }),
@@ -509,7 +510,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
     });
 
-    expect(parseEvaluationBundle(forged, plan, source)).toEqual(forged);
+    expect(parseEvaluationBundle(forged, plan, source).bundle).toEqual(forged);
     expect(verifyEvaluationBundle(forged, plan, source).planVerification).toMatchObject({
       cacheReceiptStatus: 'indeterminate',
       invocationBudgetStatus: 'indeterminate',
@@ -570,7 +571,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const transported = structuredClone(replay);
     const verification = verifyEvaluationBundle(transported, plan, source);
 
-    expect(parseEvaluationBundle(transported, plan, source)).toEqual(transported);
+    expect(parseEvaluationBundle(transported, plan, source).bundle).toEqual(transported);
     expect(replayEvaluator.state.attempts).toBe(0);
     expect(verification.planVerification).toMatchObject({
       cacheReceiptStatus: 'indeterminate',
@@ -693,7 +694,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       evaluationBundleStatus: 'failed',
       terminationReasonCode: 'evaluation-event-writer-failed',
     });
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     const terminals = journal.filter((event) => event.eventKind.startsWith('evaluation.run.')
       && event.eventKind !== 'evaluation.run.started');
     expect(terminals).toEqual([expect.objectContaining({
@@ -805,7 +806,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       bundleId: 'digest-bundle',
     });
     const sourceDigests = new Set<string>(
-      source.records.map((record) => digestCanonicalJson(record)),
+      source.bundle.records.map((record) => digestCanonicalJson(record)),
     );
     expect([...cache.entries.values()].every((entry) => (
       sourceDigests.has(entry.record.sourceRecordDigest)
@@ -822,7 +823,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       policy.evidence.trace = 'full';
     }, testRuntime({ traceCapability: 'optional' }));
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.records = draft.records.map((record, recordIndex) => {
         if (record.executionStatus !== 'completed') throw new Error('unexpected source');
         if (recordIndex > 0) return {
@@ -860,7 +861,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
       draft.executionBundleStatus = 'failed';
       draft.terminationReasonCode = 'target-failed';
-    });
+    }), plan);
     const fake = evaluator(plan);
     const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
       runId: 'trace-only-run',
@@ -880,12 +881,12 @@ describe('Evaluation Core Evaluation runtime', () => {
       policy.evaluation.maxConcurrency = 1;
     });
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       const record = draft.records[1];
       if (record.executionStatus !== 'completed') throw new Error('unexpected source');
       delete record.output;
       draft.replayability = 'summary-only';
-    });
+    }), plan);
     const fake = evaluator(plan, () => {
       throw new EvaluationPortFailure({
         code: 'terminal-evaluator-error',
@@ -910,7 +911,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('accepts a partial ExecutionBundle and preserves source-less not-evaluated facts', async () => {
     const plan = await makePlan();
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.records = [draft.records[0]];
       draft.coverage = {
         ...draft.coverage,
@@ -920,14 +921,14 @@ describe('Evaluation Core Evaluation runtime', () => {
       };
       draft.executionBundleStatus = 'cancelled';
       draft.terminationReasonCode = 'partial-source';
-    });
+    }), plan);
     const fake = evaluator(plan);
     const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
       runId: 'partial-run',
       bundleId: 'partial-bundle',
     });
 
-    expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
     expect(bundle.coverage).toMatchObject({ eligible: 1, sourceUnavailable: 1 });
     expect(bundle.records.find((record) => record.evaluationStatus === 'not-evaluated'))
       .not.toHaveProperty('sourceRecordDigest');
@@ -989,7 +990,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       ports(plan, fake.port),
       { runId: 'active-binding-seed', bundleId: 'active-binding-seed-bundle' },
     );
-    const failedSource = resealExecutionBundle(completedSource, (draft) => {
+    const failedSource = parseExecutionBundle(resealExecutionBundle(completedSource.bundle, (draft) => {
       const record = draft.records[0];
       if (record.executionStatus !== 'completed') throw new Error('unexpected source');
       const last = record.attempts.at(-1);
@@ -1013,12 +1014,12 @@ describe('Evaluation Core Evaluation runtime', () => {
       draft.replayability = 'summary-only';
       draft.executionBundleStatus = 'failed';
       draft.terminationReasonCode = 'target-failed';
-    });
+    }), plan);
     const forged = resealEvaluationBundle(valid, (draft) => {
       const record = draft.records[0];
-      draft.executionBundleDigest = failedSource.bundleDigest;
+      draft.executionBundleDigest = failedSource.bundle.bundleDigest;
       if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
-      record.sourceRecordDigest = digestCanonicalJson(failedSource.records[0]);
+      record.sourceRecordDigest = digestCanonicalJson(failedSource.bundle.records[0]);
     });
 
     expect(() => parseEvaluationBundle(forged, plan, failedSource))
@@ -1527,13 +1528,13 @@ describe('Evaluation Core Evaluation runtime', () => {
       policy.cache.evaluationMode = 'reuse';
     });
     const completed = await sourceBundle(plan);
-    const source = resealExecutionBundle(completed, (draft) => {
+    const source = parseExecutionBundle(resealExecutionBundle(completed.bundle, (draft) => {
       draft.provenance = { ...draft.provenance, provenanceKind: 'imported', trust: 'declared' };
       draft.records = draft.records.map((record) => ({
         ...record,
         provenance: { ...record.provenance, provenanceKind: 'imported', trust: 'declared' },
       }));
-    });
+    }), plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
     const native = await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
@@ -1569,13 +1570,13 @@ describe('Evaluation Core Evaluation runtime', () => {
       runId: 'trust-key-verified-run',
       bundleId: 'trust-key-verified-bundle',
     });
-    const downgradedSource = resealExecutionBundle(source, (draft) => {
+    const downgradedSource = parseExecutionBundle(resealExecutionBundle(source.bundle, (draft) => {
       draft.provenance = {
         ...draft.provenance,
         provenanceKind: 'imported',
         trust: 'declared',
       };
-    });
+    }), plan);
     const second = evaluator(plan);
     const downgraded = await evaluateExecutionBundle(
       plan,
@@ -1631,7 +1632,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const events: EvaluationEvent[] = [];
     const eventWriter = { async write(event: Readonly<EvaluationEvent>) { events.push(event); } };
-    const source = await executeRunPlan(plan, {
+    const source = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan)]]),
       clock: new FakeClock(),
       eventSequencer,

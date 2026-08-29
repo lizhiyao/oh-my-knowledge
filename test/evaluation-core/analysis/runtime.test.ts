@@ -3,6 +3,7 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   parseAnalysisBundle,
+  parseEvaluationBundle,
   parseEvaluationReport,
   schemaIdentityKey,
   type AnalysisBundle,
@@ -15,13 +16,13 @@ import {
   type PreparationRuntime,
 } from '../../../src/evaluation-core/compiler/index.js';
 import {
-  executeRunPlan,
+  executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
   type ExecutionClock,
   type ExecutionExecutor,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
-  evaluateExecutionBundle,
+  evaluateExecutionBundleSource,
   type EvaluationEvaluator,
 } from '../../../src/evaluation-core/evaluation/index.js';
 import {
@@ -202,12 +203,12 @@ async function makeAnalysisFixture(
   const plan = await makePlan(mutate);
   const clock = new FakeClock();
   const eventSequencer = new InMemoryRuntimeEventSequencer();
-  const execution = await executeRunPlan(plan, {
+  const execution = await executeRunPlanSource(plan, {
     executors: new Map([['executor-alias', executor(plan, 'control')]]),
     clock,
     eventSequencer,
   }, { runId: `run-${suffix}`, bundleId: `execution-${suffix}` });
-  const evaluation = await evaluateExecutionBundle(plan, execution, {
+  const evaluation = await evaluateExecutionBundleSource(plan, execution, {
     evaluators: new Map([['exact/v1', evaluator(plan)]]),
     clock,
     eventSequencer,
@@ -317,14 +318,14 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([
         ['executor-alias', executor(plan, 'control')],
       ]),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-1', bundleId: 'execution-analysis-1' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan)]]),
       clock,
       eventSequencer,
@@ -449,12 +450,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan, 'control')]]),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-forge', bundleId: 'execution-analysis-forge' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan)]]),
       clock,
       eventSequencer,
@@ -838,12 +839,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan, 'control')]]),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-source', bundleId: 'execution-analysis-source' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan)]]),
       clock,
       eventSequencer,
@@ -863,11 +864,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       ports,
       { runId: 'run-analysis-source', bundleId: 'analysis-source' },
     );
-    const replacement = resealEvaluationBundle(evaluation, (draft) => {
+    const replacement = resealEvaluationBundle(evaluation.bundle, (draft) => {
       draft.bundleId = 'evaluation-replacement';
     });
+    const replacementSource = parseEvaluationBundle(replacement, plan, execution);
 
-    expect(() => parseAnalysisBundle(analysis, plan, execution, replacement, {
+    expect(() => parseAnalysisBundle(analysis, plan, execution, replacementSource, {
       schemaValidators: ports.schemaValidators,
     })).toThrow(
       /parent identities/,
@@ -878,12 +880,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan, 'control')]]),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-missing', bundleId: 'execution-analysis-missing' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan, true)]]),
       clock,
       eventSequencer,
@@ -941,12 +943,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan, 'control')]]),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cancel', bundleId: 'execution-analysis-cancel' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan)]]),
       clock,
       eventSequencer,
@@ -1130,13 +1132,13 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const workingWriter = { write: async () => undefined };
-    const execution = await executeRunPlan(plan, {
+    const execution = await executeRunPlanSource(plan, {
       executors: new Map([['executor-alias', executor(plan, 'control')]]),
       clock,
       eventSequencer,
       eventWriter: workingWriter,
     }, { runId: 'run-analysis-writer', bundleId: 'execution-analysis-writer' });
-    const evaluation = await evaluateExecutionBundle(plan, execution, {
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
       evaluators: new Map([['exact/v1', evaluator(plan)]]),
       clock,
       eventSequencer,

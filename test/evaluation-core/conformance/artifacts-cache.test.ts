@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  digestArtifactPayload,
   digestCanonicalJson,
+  parseEvaluationBundle,
+  parseEvaluationReport,
   verifyExecutionBundle,
-  type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
+import { createBuiltinAnalysisSchemaValidators } from '../../../src/evaluation-core/analysis/index.js';
 import { ConformanceFaultInjector } from './fault-injector.js';
 import {
   InMemoryConformanceArtifactStore,
@@ -247,19 +250,15 @@ describe('Evaluation Core artifact and replay conformance', () => {
       record.executionStatus === 'completed'
       && record.cache.cacheStatus === 'transparent-hit'
     ))).toBe(true);
-    const sourceRecordDigests = new Set<Sha256Digest>(replay.execution.records.flatMap((record) => (
-      record.executionStatus === 'completed' && record.cache.sourceRecordDigest !== undefined
-        ? [record.cache.sourceRecordDigest as Sha256Digest]
-        : []
-    )));
-    expect(verifyExecutionBundle(replay.execution, replay.plan).planVerification).toMatchObject({
+    const transportedExecutionSource = verifyExecutionBundle(replay.execution, replay.plan);
+    expect(transportedExecutionSource.planVerification).toMatchObject({
+      provenanceTrustStatus: 'indeterminate',
       cacheReceiptStatus: 'indeterminate',
       minimumTargetInvocations: 0,
       maximumTargetInvocations: 4,
     });
-    expect(verifyExecutionBundle(replay.execution, replay.plan, {
-      verifiedCacheRecordDigests: sourceRecordDigests,
-    }).planVerification).toMatchObject({
+    expect(replay.executionSource.planVerification).toMatchObject({
+      provenanceTrustStatus: 'verified',
       cacheReceiptStatus: 'verified',
       minimumTargetInvocations: 0,
       maximumTargetInvocations: 0,
@@ -268,6 +267,55 @@ describe('Evaluation Core artifact and replay conformance', () => {
       analysisStatus: 'completed',
       coverage: { planned: 4, included: 4 },
     });
+
+    const transported = await runConformanceScenario('function', {
+      suffix: 'execution-cache-transported',
+      plan: replay.plan,
+      execution: structuredClone(replay.execution),
+    });
+    expect(transported.decision).toMatchObject({
+      decisionStatus: 'not-decided',
+      reasonCodes: expect.arrayContaining([
+        'decision-execution-cache-receipt-indeterminate',
+        'decision-execution-provenance-indeterminate',
+      ]),
+    });
+    expect(transported.report).toMatchObject({
+      status: { conclusionStatus: 'inconclusive' },
+      provenance: { trust: 'unknown' },
+    });
+    const forgedTransportedReport = structuredClone(transported.report);
+    forgedTransportedReport.provenance.trust = 'verified';
+    forgedTransportedReport.reportDigest = digestArtifactPayload(
+      forgedTransportedReport,
+      'reportDigest',
+    );
+    expect(() => parseEvaluationReport(
+      forgedTransportedReport,
+      transported.plan,
+      transported.executionSource,
+      transported.evaluationSource,
+      transported.analysis,
+      { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+    )).toThrowError(expect.objectContaining({
+      code: 'EVALUATION_REPORT_PROVENANCE_INVALID',
+    }));
+
+    const transportedEvaluationSource = parseEvaluationBundle(
+      structuredClone(replay.evaluation),
+      replay.plan,
+      transportedExecutionSource,
+    );
+    expect(() => parseEvaluationReport(
+      structuredClone(replay.report),
+      replay.plan,
+      transportedExecutionSource,
+      transportedEvaluationSource,
+      structuredClone(replay.analysis),
+      { schemaValidators: createBuiltinAnalysisSchemaValidators() },
+    )).toThrowError(expect.objectContaining({
+      code: 'DECISION_RESULT_VERIFICATION_GATE_FAILED',
+    }));
   });
 
   it('invalidates Execution cache when sealed output capture policy changes', async () => {
