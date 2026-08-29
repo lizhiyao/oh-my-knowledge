@@ -270,8 +270,8 @@ Records use canonical `(targetId, sampleId, trialIndex)` order. Each carries an 
 
 - completed output may be inline, a ContentDescriptor, digest-only, or omitted according to EvidencePolicy; omission does not change execution status;
 - source-neutral trace;
-- usage, provider-reported cost, and timing;
-- retry attempts;
+- trial-level aggregatable usage and timing;
+- retry attempts with exact per-invocation usage and provider-reported cost;
 - execution error;
 - RuntimeIdentity;
 - execution and cache/replay provenance;
@@ -385,11 +385,13 @@ Executors and Evaluators may use `openRun()` to return a run-scoped resource han
 
 Cancellation uses AbortSignal. User cancellation produces honest partial Bundles. Timeout and budget belong to sealed MeasurementPolicy because they affect missingness. Core does not provide cross-process resume; a host may start a new Evaluation stage from a complete ExecutionBundle.
 
-The Execution runtime is an in-memory interpreter of a sealed RunPlan. `startExecution()` synchronously verifies required ports and exact Executor Runtime identities before it exposes a Run. It derives coordinates only from the Plan, uses the sealed root seed for randomized admission, and applies global and per-Executor semaphores scoped to that Run. Paired scheduling blocks reserve their first real invocations atomically; cache hits consume no invocation, while each retry does.
+The Execution runtime is an in-memory interpreter of a sealed RunPlan. `startExecution()` synchronously verifies required ports and exact Executor Runtime identities before it exposes a Run, and captures those Executor references so later registry mutation cannot replace a sealed implementation. It derives coordinates only from the Plan, uses the sealed root seed for randomized admission, and applies global and per-Executor semaphores scoped to that Run. Paired scheduling blocks reserve their first real invocations atomically; cache hits consume no invocation, while each retry does. Failures before `trial.execute()` are run-level resource failures and never fabricate an attempt or consume invocation budget.
 
 Timeout is cooperative: Core aborts the attempt signal, waits for the Executor promise to settle so no late promise is abandoned, and records timeout as the single terminal fact even if the Executor returns success after observing abort. External cancellation has the same single-terminal rule. `maxDurationMs` is a monotonic soft admission deadline: already admitted work settles, while later blocks are censored. Provider-cost limits use only provider-reported facts; an admitted batch may overshoot, after which no new block is admitted and already observed usage is never rewritten.
 
-Execution cache and evidence storage are injected ports rather than filesystem services. `replay-only` misses and invalid cache entries fail closed; transparent hits require the deterministic, verified identity already sealed by prepare. Full, reference, digest-only, and omitted capture are materialized under the classification ceiling. Reference capture verifies the ContentStore descriptor digest before it enters a Bundle. Raw host exception text is not copied into events or Bundles.
+Execution cache and evidence storage are injected ports rather than filesystem services. `replay-only` misses and invalid cache entries fail closed; transparent hits require the deterministic, verified identity already sealed by prepare. Cache writes are deferred until resources tear down successfully and the run has no execution, cancellation, or budget terminal at commit time; only records whose cost audit, evidence materialization, and trial teardown succeeded are eligible. A later terminal-event delivery failure does not retroactively invalidate an already committed Target fact. Full, reference, digest-only, and omitted capture are materialized under the classification ceiling. Reference capture verifies the ContentStore descriptor digest before it enters a Bundle. Raw host exception text is not copied into events or Bundles.
+
+Every attempt retains its exact UsageRecord. The record-level UsageRecord is only an aggregate: token counts and same-currency costs may be summed, while mixed or partial currencies remain solely in the attempt facts and are marked non-comparable in aggregate details. Runtime never deletes an observed cost merely because it cannot produce one scalar total.
 
 ## 9. Event semantics
 
@@ -402,7 +404,7 @@ Execution cache and evidence storage are injected ports rather than filesystem s
 - when full, the journal drops the oldest retained notification; the terminal event is appended last and therefore remains in the final retained window;
 - observations, Bundles, and terminal data never exist only as events;
 - every Event has schemaVersion, eventId, runId, monotonic per-Run sequence, eventKind, time, subject, and data;
-- lossless persistence uses EventWriter. v1 supports blocking backpressure; writer enablement and failure behavior come from sealed EventDeliveryPolicy. A required writer failure stops future admission and changes the authoritative Bundle terminal state even when it occurs while delivering the originally completed terminal event.
+- lossless persistence uses EventWriter. v1 supports blocking backpressure; writer and notification delivery are serialized by per-Run sequence, while enablement and failure behavior come from sealed EventDeliveryPolicy. A required writer failure stops future admission and changes the authoritative Bundle terminal state even when it occurs while delivering the originally completed terminal event.
 
 Adapters may map Events losslessly to CloudEvents. Traces may map to OpenTelemetry/OpenInference and accept W3C Trace Context. Core depends on none of those SDKs.
 

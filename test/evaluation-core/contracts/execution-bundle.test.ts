@@ -274,6 +274,13 @@ describe('ExecutionBundle contract', () => {
       ...attempt,
       attemptStatus: 'failed',
     }).success).toBe(false);
+    expect(ExecutionAttemptSchema.safeParse({
+      ...attempt,
+      usage: {
+        inputTokens: 1,
+        providerCost: { amount: 0.01, currency: 'USD', reportedByProvider: true },
+      },
+    }).success).toBe(true);
   });
 
   it('rejects a scheduling block split between active and budget-censored records', () => {

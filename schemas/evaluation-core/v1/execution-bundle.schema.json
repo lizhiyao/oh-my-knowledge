@@ -154,6 +154,9 @@
             },
             "timing": {
               "$ref": "#/$defs/__schema17"
+            },
+            "usage": {
+              "$ref": "#/$defs/__schema19"
             }
           },
           "required": [
@@ -178,10 +181,13 @@
               "type": "string"
             },
             "error": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema21"
             },
             "timing": {
               "$ref": "#/$defs/__schema17"
+            },
+            "usage": {
+              "$ref": "#/$defs/__schema19"
             }
           },
           "required": [
@@ -207,10 +213,13 @@
               "type": "string"
             },
             "error": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema21"
             },
             "timing": {
               "$ref": "#/$defs/__schema17"
+            },
+            "usage": {
+              "$ref": "#/$defs/__schema19"
             }
           },
           "required": [
@@ -252,41 +261,7 @@
       "type": "string"
     },
     "__schema19": {
-      "additionalProperties": false,
-      "properties": {
-        "causes": {
-          "items": {
-            "$ref": "#/$defs/__schema19"
-          },
-          "type": "array"
-        },
-        "code": {
-          "$ref": "#/$defs/__schema1"
-        },
-        "details": {
-          "$ref": "#/$defs/__schema12"
-        },
-        "message": {
-          "$ref": "#/$defs/__schema11"
-        },
-        "stage": {
-          "enum": [
-            "configuration",
-            "infrastructure",
-            "execution",
-            "evaluation",
-            "analysis",
-            "internal"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "code",
-        "stage",
-        "message"
-      ],
-      "type": "object"
+      "$ref": "#/$defs/__schema20"
     },
     "__schema2": {
       "pattern": "^sha256:[0-9a-f]{64}$",
@@ -340,15 +315,55 @@
       "type": "object"
     },
     "__schema21": {
-      "$ref": "#/$defs/__schema22"
+      "additionalProperties": false,
+      "properties": {
+        "causes": {
+          "items": {
+            "$ref": "#/$defs/__schema21"
+          },
+          "type": "array"
+        },
+        "code": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "details": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "message": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "stage": {
+          "enum": [
+            "configuration",
+            "infrastructure",
+            "execution",
+            "evaluation",
+            "analysis",
+            "internal"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "message"
+      ],
+      "type": "object"
     },
     "__schema22": {
+      "$ref": "#/$defs/__schema20"
+    },
+    "__schema23": {
+      "$ref": "#/$defs/__schema24"
+    },
+    "__schema24": {
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema25"
             },
             "contentKind": {
               "const": "inline",
@@ -369,7 +384,7 @@
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema25"
             },
             "contentKind": {
               "const": "descriptor",
@@ -390,7 +405,7 @@
                   "type": "integer"
                 },
                 "uri": {
-                  "$ref": "#/$defs/__schema24"
+                  "$ref": "#/$defs/__schema26"
                 }
               },
               "required": [
@@ -411,7 +426,7 @@
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema25"
             },
             "contentKind": {
               "const": "digest-only",
@@ -430,7 +445,7 @@
         }
       ]
     },
-    "__schema23": {
+    "__schema25": {
       "enum": [
         "public",
         "sensitive",
@@ -439,11 +454,11 @@
       ],
       "type": "string"
     },
-    "__schema24": {
+    "__schema26": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
-    "__schema25": {
+    "__schema27": {
       "additionalProperties": false,
       "properties": {
         "cacheKeyDigest": {
@@ -467,7 +482,7 @@
       ],
       "type": "object"
     },
-    "__schema26": {
+    "__schema28": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -478,7 +493,7 @@
             "$ref": "#/$defs/__schema2"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema24"
+            "$ref": "#/$defs/__schema26"
           }
         },
         "required": [
@@ -489,7 +504,7 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema24"
+        "$ref": "#/$defs/__schema26"
       },
       "type": "object"
     },
@@ -573,14 +588,14 @@
                 "$ref": "#/$defs/__schema14"
               },
               "cache": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema27"
               },
               "executionStatus": {
                 "const": "completed",
                 "type": "string"
               },
               "output": {
-                "$ref": "#/$defs/__schema22"
+                "$ref": "#/$defs/__schema24"
               },
               "provenance": {
                 "$ref": "#/$defs/__schema13"
@@ -604,7 +619,7 @@
                 "$ref": "#/$defs/__schema17"
               },
               "trace": {
-                "$ref": "#/$defs/__schema21"
+                "$ref": "#/$defs/__schema23"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -616,7 +631,7 @@
                 "$ref": "#/$defs/__schema2"
               },
               "usage": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema22"
               }
             },
             "required": [
@@ -643,10 +658,10 @@
                 "$ref": "#/$defs/__schema14"
               },
               "cache": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema27"
               },
               "error": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema21"
               },
               "executionStatus": {
                 "const": "failed",
@@ -674,7 +689,7 @@
                 "$ref": "#/$defs/__schema17"
               },
               "trace": {
-                "$ref": "#/$defs/__schema21"
+                "$ref": "#/$defs/__schema23"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -686,7 +701,7 @@
                 "$ref": "#/$defs/__schema2"
               },
               "usage": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema22"
               }
             },
             "required": [
@@ -714,10 +729,10 @@
                 "$ref": "#/$defs/__schema14"
               },
               "cache": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema27"
               },
               "error": {
-                "$ref": "#/$defs/__schema19"
+                "$ref": "#/$defs/__schema21"
               },
               "executionStatus": {
                 "const": "cancelled",
@@ -745,7 +760,7 @@
                 "$ref": "#/$defs/__schema17"
               },
               "trace": {
-                "$ref": "#/$defs/__schema21"
+                "$ref": "#/$defs/__schema23"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -757,7 +772,7 @@
                 "$ref": "#/$defs/__schema2"
               },
               "usage": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema22"
               }
             },
             "required": [
@@ -885,7 +900,7 @@
       "$ref": "#/$defs/__schema2"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema26"
+      "$ref": "#/$defs/__schema28"
     },
     "provenance": {
       "$ref": "#/$defs/__schema13"

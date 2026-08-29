@@ -354,6 +354,62 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state.trialDisposals).toBe(1);
   });
 
+  it('retains exact per-attempt usage when retry costs cannot be aggregated', async () => {
+    const plan = await makePlan((definition) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+    });
+    let calls = 0;
+    const { ports } = portsFor(plan, () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new ExecutionPortFailure({
+          code: 'timeout',
+          stage: 'infrastructure',
+          message: 'retry me',
+        }, {
+          inputTokens: 1,
+          providerCost: { amount: 0.1, currency: 'EUR', reportedByProvider: true },
+          details: { requestId: 'first' },
+        });
+      }
+      return {
+        output: { value: { answer: 'ok' }, classification: 'public' },
+        usage: {
+          outputTokens: 2,
+          providerCost: { amount: 0.2, currency: 'USD', reportedByProvider: true },
+          details: { requestId: 'second' },
+        },
+      };
+    });
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: 'run-mixed-currency',
+      bundleId: 'bundle-mixed-currency',
+    });
+
+    const record = bundle.records[0];
+    if (record.executionStatus !== 'completed') throw new Error('expected completed record');
+    expect(record.attempts[0].usage).toMatchObject({
+      providerCost: { amount: 0.1, currency: 'EUR' },
+      details: { requestId: 'first' },
+    });
+    expect(record.attempts[1].usage).toMatchObject({
+      providerCost: { amount: 0.2, currency: 'USD' },
+      details: { requestId: 'second' },
+    });
+    expect(record.usage).toMatchObject({
+      inputTokens: 1,
+      outputTokens: 2,
+      details: {
+        aggregationKind: 'omk.execution-usage-summary/v1',
+        attemptCount: 2,
+        reportedAttemptCount: 2,
+        providerCostAggregation: 'mixed-currency',
+      },
+    });
+    expect(record.usage?.providerCost).toBeUndefined();
+  });
+
   it('reuses one isolated omk.session/v1 trial across retry attempts', async () => {
     const plan = await makePlan((definition) => {
       definition.targets = [{
@@ -617,6 +673,36 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state.attempts).toBe(1);
     expect(cache.puts).toBe(1);
     expect(cache.gets).toBe(2);
+  });
+
+  it('does not cache a completed record when sealed provider-cost auditing fails', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'transparent-deterministic';
+      policy.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+    });
+    const { ports, state } = portsFor(plan, (trial) => ({
+      output: { value: { answer: trial.targetId }, classification: 'public' },
+      usage: { inputTokens: 1 },
+    }), { cache });
+    const first = await executeRunPlan(plan, ports, {
+      runId: 'run-cache-ineligible-1',
+      bundleId: 'bundle-cache-ineligible-1',
+    });
+    const second = await executeRunPlan(plan, ports, {
+      runId: 'run-cache-ineligible-2',
+      bundleId: 'bundle-cache-ineligible-2',
+    });
+
+    expect(first.executionBundleStatus).toBe('failed');
+    expect(second.executionBundleStatus).toBe('failed');
+    expect(first.terminationReasonCode).toBe('provider-cost-unreported');
+    expect(second.terminationReasonCode).toBe('provider-cost-unreported');
+    expect(cache.puts).toBe(0);
+    expect(cache.entries.size).toBe(0);
+    expect(state.attempts).toBe(2);
   });
 
   it('fails closed on a corrupt cache entry before opening an Executor', async () => {
@@ -966,10 +1052,146 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state.attempts).toBe(1);
   });
 
-  it('reports disposer failure after exactly-once trial and run teardown', async () => {
-    const plan = await makePlan((definition) => {
+  it('serializes concurrent EventWriter delivery in strict sequence order', async () => {
+    let ready = 0;
+    let releaseAttempts: (() => void) | undefined;
+    const attemptsReady = new Promise<void>((resolve) => {
+      releaseAttempts = resolve;
+    });
+    let releaseFirstCompletion: (() => void) | undefined;
+    const firstCompletionGate = new Promise<void>((resolve) => {
+      releaseFirstCompletion = resolve;
+    });
+    let observeFirstCompletion: (() => void) | undefined;
+    const firstCompletionStarted = new Promise<void>((resolve) => {
+      observeFirstCompletion = resolve;
+    });
+    let blockedFirstCompletion = false;
+    let activeWriters = 0;
+    let maxActiveWriters = 0;
+    const writtenSequences: number[] = [];
+    const plan = await makePlan((_definition, policy) => {
+      policy.eventDelivery.writerMode = 'required';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      policy.execution.maxConcurrency = 2;
+    });
+    const { ports } = portsFor(plan, async (trial) => {
+      ready += 1;
+      if (ready === 2) releaseAttempts?.();
+      await attemptsReady;
+      return {
+        output: { value: { answer: trial.targetId }, classification: 'public' },
+      };
+    }, {
+      eventWriter: {
+        async write(event) {
+          activeWriters += 1;
+          maxActiveWriters = Math.max(maxActiveWriters, activeWriters);
+          try {
+            if (event.eventKind === 'execution.attempt.completed'
+                && !blockedFirstCompletion) {
+              blockedFirstCompletion = true;
+              observeFirstCompletion?.();
+              await firstCompletionGate;
+            }
+            writtenSequences.push(event.sequence);
+          } finally {
+            activeWriters -= 1;
+          }
+        },
+      },
+    });
+    const run = startExecution(plan, ports, {
+      runId: 'run-writer-sequence',
+      bundleId: 'bundle-writer-sequence',
+    });
+    await firstCompletionStarted;
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    expect(maxActiveWriters).toBe(1);
+    releaseFirstCompletion?.();
+    const bundle = await run.result;
+
+    expect(bundle.executionBundleStatus).toBe('completed');
+    expect(writtenSequences).toEqual([...writtenSequences].sort((left, right) => left - right));
+    expect(new Set(writtenSequences).size).toBe(writtenSequences.length);
+  });
+
+  it.each(['open-run', 'open-trial'] as const)(
+    'reports %s failure without fabricating an attempt',
+    async (failurePoint) => {
+    const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
+      policy.budget.maxTargetInvocations = 1;
+    });
+    let runDisposals = 0;
+    const executor: ExecutionExecutor = {
+      identity: expectedExecutorIdentity(plan),
+      async openRun() {
+        if (failurePoint === 'open-run') throw new Error('run bootstrap failed');
+        return {
+          async openTrial(): Promise<ExecutionExecutorTrial> {
+            throw new Error('session bootstrap failed');
+          },
+          async dispose() {
+            runDisposals += 1;
+          },
+        };
+      },
+    };
+    const ports: ExecutionRuntimePorts = {
+      executors: new Map([['executor-alias', executor]]),
+      clock: new FakeClock(),
+      contentStore,
+    };
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: `run-resource-${failurePoint}-failure`,
+      bundleId: `bundle-resource-${failurePoint}-failure`,
+    });
+
+    expect(bundle.executionBundleStatus).toBe('failed');
+    expect(bundle.terminationReasonCode).toBe('executor-resource-open-failed');
+    expect(bundle.coverage).toMatchObject({ started: 0, notStarted: 1 });
+    expect(bundle.records).toHaveLength(0);
+    expect(runDisposals).toBe(failurePoint === 'open-trial' ? 1 : 0);
+    },
+  );
+
+  it('records one consumed attempt when an invoked Executor returns invalid usage', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.budget.maxTargetInvocations = 1;
+    });
+    const { ports, state } = portsFor(plan, () => ({
+      output: { value: { answer: 'invalid usage' }, classification: 'public' },
+      usage: { inputTokens: -1 },
+    }));
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: 'run-invalid-executor-result',
+      bundleId: 'bundle-invalid-executor-result',
+    });
+
+    expect(bundle.executionBundleStatus).toBe('failed');
+    expect(bundle.terminationReasonCode).toBe('executor-result-invalid');
+    expect(bundle.coverage).toMatchObject({ started: 1, failed: 1, notStarted: 0 });
+    expect(state.attempts).toBe(1);
+    expect(bundle.records[0]).toMatchObject({
+      executionStatus: 'failed',
+      attempts: [{
+        attemptNumber: 1,
+        attemptStatus: 'failed',
+        error: { code: 'executor-result-invalid' },
+      }],
+    });
+  });
+
+  it('reports disposer failure after exactly-once trial and run teardown', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'transparent-deterministic';
     });
     const base = fakeExecutor(expectedExecutorIdentity(plan));
     const executor: ExecutionExecutor = {
@@ -989,6 +1211,7 @@ describe('Evaluation Core Execution runtime', () => {
       executors: new Map([['executor-alias', executor]]),
       clock: new FakeClock(),
       contentStore,
+      cache,
     };
     const bundle = await executeRunPlan(plan, ports, {
       runId: 'run-dispose-failure',
@@ -998,6 +1221,7 @@ describe('Evaluation Core Execution runtime', () => {
     expect(bundle.executionBundleStatus).toBe('failed');
     expect(bundle.terminationReasonCode).toBe('executor-run-dispose-failed');
     expect(bundle.coverage.succeeded).toBe(1);
+    expect(cache.puts).toBe(0);
     expect(base.state).toMatchObject({
       runOpens: 1,
       runDisposals: 1,
@@ -1032,5 +1256,37 @@ describe('Evaluation Core Execution runtime', () => {
       code: 'EXECUTION_RUNTIME_IDENTITY_MISMATCH',
     }));
     expect(state.runOpens).toBe(0);
+  });
+
+  it('keeps the preflight Executor binding when the host mutates its registry after start', async () => {
+    const plan = await makePlan((definition) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+    });
+    const identity = expectedExecutorIdentity(plan);
+    const original = fakeExecutor(identity, () => ({
+      output: { value: { source: 'sealed' }, classification: 'public' },
+    }));
+    const replacement = fakeExecutor(identity, () => ({
+      output: { value: { source: 'replacement' }, classification: 'public' },
+    }));
+    const registry = new Map([['executor-alias', original.executor]]);
+    const run = startExecution(plan, {
+      executors: registry,
+      clock: new FakeClock(),
+      contentStore,
+    }, {
+      runId: 'run-registry-snapshot',
+      bundleId: 'bundle-registry-snapshot',
+    });
+    registry.set('executor-alias', replacement.executor);
+    const bundle = await run.result;
+
+    const record = bundle.records[0];
+    if (record.executionStatus !== 'completed'
+        || record.output?.contentKind !== 'inline') throw new Error('expected inline output');
+    expect(record.output.value).toEqual({ source: 'sealed' });
+    expect(original.state.attempts).toBe(1);
+    expect(replacement.state.attempts).toBe(0);
   });
 });

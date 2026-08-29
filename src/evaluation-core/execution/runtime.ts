@@ -17,6 +17,7 @@ import {
   type CacheProvenance,
   type CapturedContent,
   type EvaluationError,
+  type EvaluationEvent,
   type ExecutionAttempt,
   type ExecutionBundle,
   type ExecutionRecord,
@@ -90,7 +91,15 @@ interface PreparedBlock {
 
 interface CoordinateResult {
   record?: ActiveExecutionRecord;
+  cacheEntry?: ExecutionCacheEntry;
   failed: boolean;
+}
+
+interface InFlightAttempt {
+  attemptId: Sha256Digest;
+  attemptNumber: number;
+  startedAt: string;
+  startedMonotonic: number;
 }
 
 const CLASSIFICATION_LEVEL = {
@@ -288,31 +297,46 @@ function durationMs(started: number, completed: number): number {
   return Math.max(0, completed - started);
 }
 
-function addUsage(left: UsageRecord | undefined, right: UsageRecord | undefined): UsageRecord | undefined {
-  if (left === undefined) return right === undefined ? undefined : snapshotJson(right);
-  if (right === undefined) return left;
-  const providerCost = left.providerCost === undefined
-    ? right.providerCost
-    : right.providerCost === undefined
-      ? left.providerCost
-      : left.providerCost.currency === right.providerCost.currency
-        ? {
-          amount: left.providerCost.amount + right.providerCost.amount,
-          currency: left.providerCost.currency,
-          reportedByProvider: true as const,
-        }
-        : undefined;
+function aggregateUsage(
+  attempts: readonly (UsageRecord | undefined)[],
+): UsageRecord | undefined {
+  const reported = attempts.filter((usage): usage is UsageRecord => usage !== undefined);
+  if (reported.length === 0) return undefined;
+  if (attempts.length === 1) return snapshotJson(reported[0]);
+  const costs = reported.flatMap((usage) => (
+    usage.providerCost === undefined ? [] : [usage.providerCost]
+  ));
+  const currencies = new Set(costs.map((cost) => cost.currency));
+  const providerCost = costs.length === attempts.length && currencies.size === 1
+    ? {
+      amount: costs.reduce((sum, cost) => sum + cost.amount, 0),
+      currency: costs[0].currency,
+      reportedByProvider: true as const,
+    }
+    : undefined;
   return {
-    ...(left.inputTokens !== undefined || right.inputTokens !== undefined
-      ? { inputTokens: (left.inputTokens ?? 0) + (right.inputTokens ?? 0) }
+    ...(reported.some((usage) => usage.inputTokens !== undefined)
+      ? { inputTokens: reported.reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0) }
       : {}),
-    ...(left.outputTokens !== undefined || right.outputTokens !== undefined
-      ? { outputTokens: (left.outputTokens ?? 0) + (right.outputTokens ?? 0) }
+    ...(reported.some((usage) => usage.outputTokens !== undefined)
+      ? { outputTokens: reported.reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0) }
       : {}),
-    ...(left.totalTokens !== undefined || right.totalTokens !== undefined
-      ? { totalTokens: (left.totalTokens ?? 0) + (right.totalTokens ?? 0) }
+    ...(reported.some((usage) => usage.totalTokens !== undefined)
+      ? { totalTokens: reported.reduce((sum, usage) => sum + (usage.totalTokens ?? 0), 0) }
       : {}),
     ...(providerCost !== undefined ? { providerCost } : {}),
+    details: {
+      aggregationKind: 'omk.execution-usage-summary/v1',
+      attemptCount: attempts.length,
+      reportedAttemptCount: reported.length,
+      providerCostAggregation: costs.length === 0
+        ? 'unreported'
+        : costs.length !== attempts.length
+          ? 'partial'
+          : currencies.size === 1
+            ? 'summed'
+            : 'mixed-currency',
+    },
   };
 }
 
@@ -345,13 +369,6 @@ class BudgetTracker {
     if (this.#reserved > 0) this.#reserved -= 1;
   }
 
-  consumeRetry(): boolean {
-    if (this.#maxInvocations !== undefined
-        && this.#invocations + this.#reserved + 1 > this.#maxInvocations) return false;
-    this.#invocations += 1;
-    return true;
-  }
-
   recordUsage(usage: UsageRecord | undefined): EvaluationError | undefined {
     if (this.#maxProviderCost === undefined) return undefined;
     const cost = usage?.providerCost;
@@ -380,26 +397,21 @@ class BudgetTracker {
 }
 
 class RunSessions {
-  readonly #ports: ExecutionRuntimePorts;
   readonly #options: ExecutionRunOptions;
   readonly #plan: SealedRunPlan;
   readonly #sessions = new Map<string, Promise<ExecutionExecutorRun>>();
 
   constructor(
     plan: SealedRunPlan,
-    ports: ExecutionRuntimePorts,
     options: ExecutionRunOptions,
   ) {
     this.#plan = plan;
-    this.#ports = ports;
     this.#options = options;
   }
 
-  get(executorId: string): Promise<ExecutionExecutorRun> {
+  get(executorId: string, executor: ExecutionExecutor): Promise<ExecutionExecutorRun> {
     const current = this.#sessions.get(executorId);
     if (current !== undefined) return current;
-    const executor = this.#ports.executors.get(executorId);
-    if (executor === undefined) throw new Error('Executor disappeared after preflight');
     const context = deepFreeze(snapshotJson({
       runId: this.#options.runId,
       executionPlanDigest: this.#plan.execution.executionPlanDigest as Sha256Digest,
@@ -435,6 +447,7 @@ class EventEmitter {
   readonly #onFatal: (reason: string, error: EvaluationError) => void;
   #sequence = 0;
   #writerEnabled: boolean;
+  #deliveryTail: Promise<void> = Promise.resolve();
 
   constructor(
     plan: SealedRunPlan,
@@ -474,21 +487,25 @@ class EventEmitter {
       subject: { subjectKind, subjectId },
       data,
     }));
-    if (!this.#writerEnabled) {
-      this.#stream.push(event);
-      return true;
-    }
-    try {
-      await this.#ports.eventWriter?.write(event);
-    } catch {
-      this.#writerEnabled = false;
-      if (this.#plan.measurementPolicy.eventDelivery.writerFailureMode === 'fail-run') {
-        this.#onFatal('event-writer-failed', {
-          code: 'event-writer-failed',
-          stage: 'infrastructure',
-          message: 'Required EventWriter delivery failed.',
-        });
-        return false;
+    const delivery = this.#deliveryTail.then(() => this.#deliver(event));
+    this.#deliveryTail = delivery.then(() => undefined, () => undefined);
+    return delivery;
+  }
+
+  async #deliver(event: EvaluationEvent): Promise<boolean> {
+    if (this.#writerEnabled) {
+      try {
+        await this.#ports.eventWriter?.write(event);
+      } catch {
+        this.#writerEnabled = false;
+        if (this.#plan.measurementPolicy.eventDelivery.writerFailureMode === 'fail-run') {
+          this.#onFatal('event-writer-failed', {
+            code: 'event-writer-failed',
+            stage: 'infrastructure',
+            message: 'Required EventWriter delivery failed.',
+          });
+          return false;
+        }
       }
     }
     this.#stream.push(event);
@@ -748,8 +765,9 @@ async function executeCoordinate(
   }
 
   const attempts: ExecutionAttempt[] = [];
-  let usage: UsageRecord | undefined;
+  const attemptUsages: Array<UsageRecord | undefined> = [];
   let trial: ExecutionExecutorTrial | undefined;
+  let inFlightAttempt: InFlightAttempt | undefined;
   const trialStartedAt = ports.clock.timestamp();
   const trialStartedMonotonic = ports.clock.monotonicNow();
   let output: CapturedContent | undefined;
@@ -757,6 +775,7 @@ async function executeCoordinate(
   let terminalError: EvaluationError | undefined;
   let terminalStatus: 'completed' | 'failed' | 'cancelled' = 'failed';
   let initialReservationPending = coordinate.reservedInvocation;
+  let cacheEligible = true;
   const key = cacheKey(plan, coordinate.coordinate);
   try {
     const trialEventDelivered = await events.emit(
@@ -771,13 +790,16 @@ async function executeCoordinate(
       },
     );
     if (!trialEventDelivered || runSignal.aborted) return { failed: false };
-    const runSession = await sessions.get(binding.target.executorId);
+    const runSession = await sessions.get(binding.target.executorId, binding.executor);
     trial = await runSession.openTrial(trialContext(plan, binding, coordinate.coordinate));
     const retryPolicy = plan.execution.policy.retry;
     for (let attemptNumber = 1; attemptNumber <= retryPolicy.maxAttempts; attemptNumber += 1) {
-      if (attemptNumber > 1 && !budget.consumeRetry()) {
-        setStop('budget-exhausted', 'target-invocation-budget-exhausted');
-        break;
+      if (attemptNumber > 1) {
+        if (!budget.reserveInitial(1)) {
+          setStop('budget-exhausted', 'target-invocation-budget-exhausted');
+          break;
+        }
+        initialReservationPending = true;
       }
       const attemptId = deriveAttemptId({
         trialId: coordinate.coordinate.trialId,
@@ -790,10 +812,16 @@ async function executeCoordinate(
         attemptNumber,
       });
       if (!attemptEventDelivered || runSignal.aborted) break;
-      if (attemptNumber === 1 && initialReservationPending) {
+      if (initialReservationPending) {
         budget.consumeReserved();
         initialReservationPending = false;
       }
+      inFlightAttempt = {
+        attemptId,
+        attemptNumber,
+        startedAt,
+        startedMonotonic,
+      };
       const outcome = runSignal.aborted
         ? { error: abortError(), timedOut: false }
         : await executeWithTimeout(
@@ -809,9 +837,12 @@ async function executeCoordinate(
       if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
         snapshotJson(outcome.result);
         const attemptUsage = validatedUsage(outcome.result.usage);
-        usage = addUsage(usage, attemptUsage);
+        attemptUsages.push(attemptUsage);
         const costError = budget.recordUsage(attemptUsage);
-        if (costError !== undefined) setStop('failed', costError.code, costError);
+        if (costError !== undefined) {
+          cacheEligible = false;
+          setStop('failed', costError.code, costError);
+        }
         attempts.push({
           attemptId,
           attemptNumber,
@@ -821,7 +852,9 @@ async function executeCoordinate(
             completedAt,
             durationMs: durationMs(startedMonotonic, completedMonotonic),
           },
+          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
         });
+        inFlightAttempt = undefined;
         terminalStatus = 'completed';
         try {
           output = await captureContent(
@@ -837,6 +870,7 @@ async function executeCoordinate(
             ports,
           );
         } catch {
+          cacheEligible = false;
           setStop('failed', 'content-materialization-failed', {
             code: 'content-materialization-failed',
             stage: 'infrastructure',
@@ -853,9 +887,12 @@ async function executeCoordinate(
 
       const failure = attemptError(outcome, runSignal);
       const attemptUsage = validatedUsage(failure.usage);
-      usage = addUsage(usage, attemptUsage);
+      attemptUsages.push(attemptUsage);
       const costError = budget.recordUsage(attemptUsage);
-      if (costError !== undefined) setStop('failed', costError.code, costError);
+      if (costError !== undefined) {
+        cacheEligible = false;
+        setStop('failed', costError.code, costError);
+      }
       terminalError = failure.error;
       terminalStatus = failure.status;
       attempts.push(failure.status === 'cancelled'
@@ -869,6 +906,7 @@ async function executeCoordinate(
             durationMs: durationMs(startedMonotonic, completedMonotonic),
           },
           error: failure.error,
+          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
         }
         : {
           attemptId,
@@ -880,7 +918,9 @@ async function executeCoordinate(
             durationMs: durationMs(startedMonotonic, completedMonotonic),
           },
           error: failure.error,
+          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
         });
+      inFlightAttempt = undefined;
       await events.emit('execution.attempt.completed', 'attempt', attemptId, {
         trialId: coordinate.coordinate.trialId,
         attemptNumber,
@@ -912,26 +952,43 @@ async function executeCoordinate(
       }
     }
   } catch (error) {
-    if (attempts.length === 0) {
-      const attemptId = deriveAttemptId({
-        trialId: coordinate.coordinate.trialId,
-        attemptNumber: 1,
-      });
-      const evaluationError = safeError(error);
+    if (inFlightAttempt !== undefined) {
+      const evaluationError: EvaluationError = {
+        code: 'executor-result-invalid',
+        stage: 'infrastructure',
+        message: 'Executor returned a result that could not be materialized safely.',
+      };
       attempts.push({
-        attemptId,
-        attemptNumber: 1,
+        attemptId: inFlightAttempt.attemptId,
+        attemptNumber: inFlightAttempt.attemptNumber,
         attemptStatus: 'failed',
         timing: {
-          startedAt: trialStartedAt,
+          startedAt: inFlightAttempt.startedAt,
           completedAt: ports.clock.timestamp(),
-          durationMs: durationMs(trialStartedMonotonic, ports.clock.monotonicNow()),
+          durationMs: durationMs(
+            inFlightAttempt.startedMonotonic,
+            ports.clock.monotonicNow(),
+          ),
         },
         error: evaluationError,
       });
+      attemptUsages.push(undefined);
+      inFlightAttempt = undefined;
       terminalError = evaluationError;
       terminalStatus = 'failed';
+      cacheEligible = false;
+      setStop('failed', evaluationError.code, evaluationError);
+    } else if (attempts.length === 0) {
+      const evaluationError = safeError(error);
+      cacheEligible = false;
+      setStop('failed', 'executor-resource-open-failed', {
+        code: 'executor-resource-open-failed',
+        stage: 'infrastructure',
+        message: 'Executor run or trial resource could not be opened.',
+        causes: [evaluationError],
+      });
     } else {
+      cacheEligible = false;
       setStop('failed', 'execution-runtime-internal-failed', {
         code: 'execution-runtime-internal-failed',
         stage: 'internal',
@@ -944,6 +1001,7 @@ async function executeCoordinate(
       try {
         await trial.dispose();
       } catch {
+        cacheEligible = false;
         setStop('failed', 'executor-trial-dispose-failed', {
           code: 'executor-trial-dispose-failed',
           stage: 'infrastructure',
@@ -957,6 +1015,7 @@ async function executeCoordinate(
 
   if (attempts.length === 0) return { failed: false };
 
+  const usage = aggregateUsage(attemptUsages);
   const completedAt = ports.clock.timestamp();
   const recordBase = {
     ...coordinate.coordinate,
@@ -998,30 +1057,26 @@ async function executeCoordinate(
         },
       };
 
-  if (record.executionStatus === 'completed'
-      && plan.execution.policy.executionCacheMode === 'transparent-deterministic') {
-    const entry: ExecutionCacheEntry = {
+  const cacheEntry = record.executionStatus === 'completed'
+      && cacheEligible
+      && plan.execution.policy.executionCacheMode === 'transparent-deterministic'
+    ? {
       cacheKeyDigest: key,
       sourceRecordDigest: digestCanonicalJson(record),
       record: snapshotJson(record),
-    };
-    try {
-      await ports.cache?.put(entry);
-    } catch {
-      setStop('failed', 'execution-cache-write-failed', {
-        code: 'execution-cache-write-failed',
-        stage: 'infrastructure',
-        message: 'Execution cache write failed.',
-      });
-    }
-  }
+    } satisfies ExecutionCacheEntry
+    : undefined;
   await events.emit('execution.trial.completed', 'trial', coordinate.coordinate.trialId, {
     targetId: coordinate.coordinate.targetId,
     sampleId: coordinate.coordinate.sampleId,
     trialIndex: coordinate.coordinate.trialIndex,
     executionStatus: record.executionStatus,
   });
-  return { record, failed: record.executionStatus === 'failed' };
+  return {
+    record,
+    ...(cacheEntry !== undefined ? { cacheEntry } : {}),
+    failed: record.executionStatus === 'failed',
+  };
 }
 
 async function prepareBlock(
@@ -1227,9 +1282,10 @@ async function runExecution(
   const events = new EventEmitter(plan, ports, options, stream, (reason, error) => {
     setStop('failed', reason, error);
   });
-  const sessions = new RunSessions(plan, ports, options);
+  const sessions = new RunSessions(plan, options);
   const budget = new BudgetTracker(plan);
   const records = new Map<string, ExecutionRecord>();
+  const pendingCacheEntries = new Map<Sha256Digest, ExecutionCacheEntry>();
   const durationController = new AbortController();
   const durationTimer = plan.execution.policy.budget.maxDurationMs === undefined
     ? undefined
@@ -1284,6 +1340,9 @@ async function runExecution(
           if (result.record !== undefined) {
             records.set(coordinateKey(result.record), result.record);
           }
+          if (result.cacheEntry !== undefined) {
+            pendingCacheEntries.set(result.cacheEntry.cacheKeyDigest, result.cacheEntry);
+          }
         }
         await events.emit('execution.block.completed', 'scheduling-block', preparedBlock.block.schedulingBlockId, {
           coordinateCount: preparedBlock.coordinates.length,
@@ -1322,6 +1381,22 @@ async function runExecution(
     const disposeErrors = await sessions.dispose();
     if (disposeErrors.length > 0) {
       setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
+    }
+    if (disposeErrors.length === 0 && stop.stopKind === undefined) {
+      for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
+        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+      ))) {
+        try {
+          await ports.cache?.put(entry);
+        } catch {
+          setStop('failed', 'execution-cache-write-failed', {
+            code: 'execution-cache-write-failed',
+            stage: 'infrastructure',
+            message: 'Execution cache write failed.',
+          });
+          break;
+        }
+      }
     }
   }
 

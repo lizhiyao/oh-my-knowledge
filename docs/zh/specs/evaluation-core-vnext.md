@@ -270,8 +270,8 @@ interface MeasurementPolicy {
 
 - completed output 可按 EvidencePolicy 内联、保存 ContentDescriptor、仅保存 digest 或省略；是否省略不改变 executionStatus；
 - source-neutral trace；
-- usage、provider-reported cost、timing；
-- retry attempt 记录；
+- trial 级可聚合 usage 与 timing；
+- 携带每次真实调用精确 usage 和 provider-reported cost 的 retry attempt；
 - execution error；
 - RuntimeIdentity；
 - execution、cache／replay provenance；
@@ -385,11 +385,13 @@ Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped resource handle 
 
 取消统一使用 AbortSignal。用户取消产生诚实的部分 Bundle；timeout 和 budget 因为影响缺失机制，属于 sealed MeasurementPolicy。Core 不提供跨进程 resume；宿主可以从完整 ExecutionBundle 启动新的 Evaluation 阶段。
 
-Execution runtime 是 sealed RunPlan 的纯内存解释器。`startExecution()` 在暴露 Run 前同步检查所需端口和 Executor Runtime identity 是否与 Plan 完全一致。坐标只从 Plan 派生；randomized admission 只使用 sealed root seed；全局与每个 Executor 的 semaphore 均归当前 Run 所有。paired scheduling block 在 admission 时原子预留首次真实调用；cache hit 不消耗调用预算，每次 retry 则单独消耗。
+Execution runtime 是 sealed RunPlan 的纯内存解释器。`startExecution()` 在暴露 Run 前同步检查所需端口和 Executor Runtime identity 是否与 Plan 完全一致，并捕获对应 Executor 引用，后续 registry 变化不能替换 sealed implementation。坐标只从 Plan 派生；randomized admission 只使用 sealed root seed；全局与每个 Executor 的 semaphore 均归当前 Run 所有。paired scheduling block 在 admission 时原子预留首次真实调用；cache hit 不消耗调用预算，每次 retry 则单独消耗。发生在 `trial.execute()` 之前的错误属于 run-level resource failure，不能伪造 attempt 或消耗调用预算。
 
 timeout 采用协作式取消：Core abort attempt signal 后仍等待 Executor promise settle，避免遗留晚到 promise；即使 Executor 在观察到 abort 后返回成功，也只记录一次 timeout terminal fact。外部取消遵循同样的单终态规则。`maxDurationMs` 是基于 monotonic clock 的软 admission deadline：已经获准的工作继续 settle，后续 block 才进入删失。provider cost 上限只使用供应商报告的可审计事实；已获准 batch 可能 overshoot，此后停止新 block admission，但不会回写或删除已经发生的 usage。
 
-Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
+Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。cache write 推迟到 resource teardown 成功、且 commit 时尚未出现 execution、cancellation 或 budget terminal 之后；只有 cost audit、evidence materialization 和 trial teardown 全部成功的 record 才 eligible。随后发生的 terminal-event delivery failure 不会追溯作废已经提交的 Target fact。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
+
+每个 attempt 保留自己的精确 UsageRecord；record 级 UsageRecord 只负责可聚合摘要。token 与同币种 cost 可以求和；混合币种或部分上报的 cost 只保留在 attempt facts 中，并在 aggregate details 标记为不可直接比较。Runtime 不得因为无法形成一个标量总额而删除已经观察到的 cost。
 
 ## 九、Event 语义
 
@@ -402,7 +404,7 @@ Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文�
 - 缓冲满时丢弃最旧的 retained notification；terminal event 最后追加，因此始终保留在最终窗口中；
 - observation、Bundle 和 terminal data 不得只存在于事件中；
 - 每个 Event 带 schemaVersion、eventId、runId、单 Run 单调 sequence、eventKind、time、subject 和 data；
-- 需要无损持久化时使用 EventWriter。v1 只支持 blocking backpressure；是否启用 writer 及失败策略由 sealed EventDeliveryPolicy 决定。required writer 失败会停止后续 admission，并改变权威 Bundle 的 terminal state；即使失败发生在最初 completed terminal event 的投递阶段也是如此。
+- 需要无损持久化时使用 EventWriter。v1 只支持 blocking backpressure；writer 与 notification delivery 按单 Run sequence 串行化，是否启用 writer 及失败策略由 sealed EventDeliveryPolicy 决定。required writer 失败会停止后续 admission，并改变权威 Bundle 的 terminal state；即使失败发生在最初 completed terminal event 的投递阶段也是如此。
 
 Event 可以在 adapter 层无损映射到 CloudEvents。Trace 可以映射到 OpenTelemetry／OpenInference，并可接收 W3C Trace Context；Core 不依赖这些 SDK。
 
