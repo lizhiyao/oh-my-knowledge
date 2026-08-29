@@ -25,6 +25,7 @@ import {
   type ExecutionCache,
   type ExecutionCacheEntry,
   type ExecutionContentStoreRequest,
+  type ExecutorAttemptResult,
   type ExecutorTrialContext,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
@@ -399,7 +400,10 @@ function stringArray(value: JsonValue): string[] {
   return value as string[];
 }
 
-function executorOutput(target: ConformanceTarget, context: ExecutorTrialContext) {
+function executorOutput(
+  target: ConformanceTarget,
+  context: ExecutorTrialContext,
+): ExecutorAttemptResult {
   const input = objectValue(context.input);
   if (target === 'function') {
     const answer = String(input.answerHint);

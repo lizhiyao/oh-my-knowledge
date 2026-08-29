@@ -22,7 +22,9 @@ describe('Evaluation Core artifact and replay conformance', () => {
 
     expect(result.execution.replayability).toBe('resolvable');
     expect(result.execution.records.every((record) => (
-      record.executionStatus === 'completed' && record.output.contentKind === 'descriptor'
+      record.executionStatus === 'completed'
+      && record.output !== undefined
+      && record.output.contentKind === 'descriptor'
     ))).toBe(true);
     expect(result.evaluation.evaluationBundleStatus).toBe('completed');
     expect(faults.count('content-put')).toBe(4);
