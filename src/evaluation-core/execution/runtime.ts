@@ -1258,7 +1258,8 @@ async function runExecution(
       setStop('budget-exhausted', 'duration-budget-exhausted');
     }).catch(() => undefined);
   try {
-    await events.emit('execution.run.started', 'run', options.runId, {
+    try {
+      await events.emit('execution.run.started', 'run', options.runId, {
       runContractDigest: plan.digests.runContractDigest,
       executionPlanDigest: plan.execution.executionPlanDigest,
       planned: plannedCoordinates.length,
@@ -1333,76 +1334,57 @@ async function runExecution(
         setStop('budget-exhausted', 'provider-cost-budget-exhausted');
       }
     }
-  } catch (error) {
-    if (!(error instanceof Error
-        && error.name === 'AbortError'
-        && stop.stopKind !== undefined)) {
-      setStop('failed', 'execution-runtime-internal-failed', {
-        code: 'execution-runtime-internal-failed',
-        stage: 'internal',
-        message: 'Execution runtime encountered an internal failure.',
-      });
-    }
-  } finally {
-    durationController.abort();
-    await durationTimer;
-    options.signal?.removeEventListener('abort', onExternalAbort);
-    const disposeErrors = await sessions.dispose();
-    if (disposeErrors.length > 0) {
-      setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
-    }
-    if (disposeErrors.length === 0 && stop.stopKind === undefined) {
-      for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
-        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
-      ))) {
-        try {
-          await ports.cache?.put(entry);
-        } catch {
-          setStop('failed', 'execution-cache-write-failed', {
-            code: 'execution-cache-write-failed',
-            stage: 'infrastructure',
-            message: 'Execution cache write failed.',
-          });
-          break;
+    } catch (error) {
+      if (!(error instanceof Error
+          && error.name === 'AbortError'
+          && stop.stopKind !== undefined)) {
+        setStop('failed', 'execution-runtime-internal-failed', {
+          code: 'execution-runtime-internal-failed',
+          stage: 'internal',
+          message: 'Execution runtime encountered an internal failure.',
+        });
+      }
+    } finally {
+      durationController.abort();
+      await durationTimer;
+      options.signal?.removeEventListener('abort', onExternalAbort);
+      const disposeErrors = await sessions.dispose();
+      if (disposeErrors.length > 0) {
+        setStop('failed', 'executor-run-dispose-failed', disposeErrors[0]);
+      }
+      if (disposeErrors.length === 0 && stop.stopKind === undefined) {
+        for (const entry of [...pendingCacheEntries.values()].sort((left, right) => (
+          compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+        ))) {
+          try {
+            await ports.cache?.put(entry);
+          } catch {
+            setStop('failed', 'execution-cache-write-failed', {
+              code: 'execution-cache-write-failed',
+              stage: 'infrastructure',
+              message: 'Execution cache write failed.',
+            });
+            break;
+          }
         }
       }
     }
-  }
 
-  if (stop.stopKind === 'budget-exhausted') {
-    const censoredAt = ports.clock.timestamp();
-    for (const coordinate of plannedCoordinates) {
-      if (!records.has(coordinateKey(coordinate))) {
-        records.set(coordinateKey(coordinate), censoredRecord(
-          plan,
-          prepared,
-          coordinate,
-          censoredAt,
-          stop.reason ?? 'budget-exhausted',
-        ));
+    if (stop.stopKind === 'budget-exhausted') {
+      const censoredAt = ports.clock.timestamp();
+      for (const coordinate of plannedCoordinates) {
+        if (!records.has(coordinateKey(coordinate))) {
+          records.set(coordinateKey(coordinate), censoredRecord(
+            plan,
+            prepared,
+            coordinate,
+            censoredAt,
+            stop.reason ?? 'budget-exhausted',
+          ));
+        }
       }
     }
-  }
-  let source = makeBundle(
-    plan,
-    options,
-    [...records.values()],
-    plannedCoordinates.length,
-    stop,
-    verifiedCacheRecordDigests,
-  );
-  const terminalDelivered = await events.emit(
-    terminalEventKind(source.bundle.executionBundleStatus),
-    'run',
-    options.runId,
-    {
-      bundleDigest: source.bundle.bundleDigest,
-      executionBundleStatus: source.bundle.executionBundleStatus,
-      coverage: source.bundle.coverage,
-    },
-  );
-  if (!terminalDelivered) {
-    source = makeBundle(
+    let source = makeBundle(
       plan,
       options,
       [...records.values()],
@@ -1410,7 +1392,7 @@ async function runExecution(
       stop,
       verifiedCacheRecordDigests,
     );
-    await events.emitRecovery(
+    const terminalDelivered = await events.emit(
       terminalEventKind(source.bundle.executionBundleStatus),
       'run',
       options.runId,
@@ -1420,9 +1402,30 @@ async function runExecution(
         coverage: source.bundle.coverage,
       },
     );
+    if (!terminalDelivered) {
+      source = makeBundle(
+        plan,
+        options,
+        [...records.values()],
+        plannedCoordinates.length,
+        stop,
+        verifiedCacheRecordDigests,
+      );
+      await events.emitRecovery(
+        terminalEventKind(source.bundle.executionBundleStatus),
+        'run',
+        options.runId,
+        {
+          bundleDigest: source.bundle.bundleDigest,
+          executionBundleStatus: source.bundle.executionBundleStatus,
+          coverage: source.bundle.coverage,
+        },
+      );
+    }
+    return source;
+  } finally {
+    events.close();
   }
-  events.close();
-  return source;
 }
 
 export function startExecution(

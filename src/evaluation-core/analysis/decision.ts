@@ -3,7 +3,7 @@ import {
   DecisionResultSchema,
   EvaluationReportSchema,
   IdentifierSchema,
-  assertAnalysisBundleSourceChain,
+  assertAnalysisBundleSourceMatchesPlan,
   canonicalizeJson,
   computeDecisionPolicyDigest,
   deriveEvaluationStatus,
@@ -291,7 +291,12 @@ function prepareDecision(
       'Required EventWriter mode needs an injected EventWriter.',
     );
   }
-  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertAnalysisBundleSourceMatchesPlan(
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+  );
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
   const analysis = analysisSource.bundle;
@@ -605,7 +610,12 @@ export function materializeEvaluationReport(
       'reportId must be a valid Evaluation Core identifier.',
     );
   }
-  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertAnalysisBundleSourceMatchesPlan(
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+  );
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
   const analysis = analysisSource.bundle;

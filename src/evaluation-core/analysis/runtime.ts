@@ -5,8 +5,7 @@ import {
   AssumptionCheckSchema,
   IdentifierSchema,
   SchemaIdentitySchema,
-  assertEvaluationBundleSource,
-  assertExecutionBundleSource,
+  assertEvaluationBundleSourceMatchesPlan,
   canonicalizeJson,
   countAnalysisResamplingUnits,
   derivePlannedEvaluationCoordinates,
@@ -120,8 +119,7 @@ function prepareRuntime(
   options: AnalysisRunOptions,
 ): PreparedAnalysisRuntime {
   validateOptions(options);
-  assertExecutionBundleSource(executionSource);
-  assertEvaluationBundleSource(evaluationSource);
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
   if (ports.eventSequencer === undefined) {
     configurationError(
       'ANALYSIS_RUNTIME_EVENT_SEQUENCER_REQUIRED',

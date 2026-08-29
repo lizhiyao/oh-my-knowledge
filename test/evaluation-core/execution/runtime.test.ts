@@ -1418,6 +1418,27 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state.runOpens).toBe(0);
   });
 
+  it('closes the Event stream when terminal event sequencing throws', async () => {
+    const plan = await makePlan();
+    const { ports } = portsFor(plan, undefined, {
+      eventSequencer: {
+        next() { throw new Error('sequencer unavailable'); },
+      },
+    });
+    const run = startExecution(plan, ports, {
+      runId: 'run-sequencer-failure',
+      bundleId: 'bundle-sequencer-failure',
+    });
+    const events = (async () => {
+      const collected: EvaluationEvent[] = [];
+      for await (const event of run.events) collected.push(event);
+      return collected;
+    })();
+
+    await expect(run.source).rejects.toThrow('sequencer unavailable');
+    await expect(events).resolves.toEqual([]);
+  });
+
   it('keeps the preflight Executor binding when the host mutates its registry after start', async () => {
     const plan = await makePlan((definition) => {
       definition.targets = [definition.targets[0]];

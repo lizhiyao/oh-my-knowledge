@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   digestArtifactPayload,
   digestCanonicalJson,
+  effectiveExecutionBundleTrust,
   parseAnalysisBundle,
   parseEvaluationBundle,
   parseEvaluationReport,
   schemaIdentityKey,
+  verifyAnalysisBundle,
   verifyDecisionResult,
+  verifyEvaluationBundle,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationBundle,
   type RuntimeIdentity,
+  type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 import {
   prepareEvaluationPlan,
@@ -454,6 +458,20 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       decisionSource,
     )).toEqual(withUris);
 
+    const foreignRoot = structuredClone(report);
+    foreignRoot.runContractDigest = `sha256:${'f'.repeat(64)}`;
+    foreignRoot.reportDigest = digestArtifactPayload(foreignRoot, 'reportDigest');
+    expect(() => parseEvaluationReport(
+      foreignRoot,
+      plan,
+      execution,
+      evaluation,
+      analysisSource,
+      decisionSource,
+    )).toThrowError(expect.objectContaining({
+      code: 'EVALUATION_REPORT_PLAN_MISMATCH',
+    }));
+
     const builtinPolicy = ports.decisionPolicies.get('progress/v1');
     if (builtinPolicy === undefined) throw new Error('missing DecisionPolicy');
     const failedDecision = await decideAnalysis(
@@ -568,6 +586,95 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.analysisSource,
     )).toThrowError(expect.objectContaining({
       code: 'DECISION_RESULT_VERIFICATION_GATE_FAILED',
+    }));
+  });
+
+  it('reuses durable upstream stages only while their stage Plans remain current', async () => {
+    const fixture = await makeAnalysisFixture('stage-scoped-reuse');
+    const decisionOnlyPlan = await makePlan((definition) => {
+      definition.decisionPolicy = {
+        ...definition.decisionPolicy!,
+        parameters: { threshold: 0.6 },
+      };
+    });
+
+    expect(decisionOnlyPlan.execution.executionPlanDigest)
+      .toBe(fixture.plan.execution.executionPlanDigest);
+    expect(decisionOnlyPlan.evaluation.evaluationPlanDigest)
+      .toBe(fixture.plan.evaluation.evaluationPlanDigest);
+    expect(decisionOnlyPlan.analysis.analysisPlanDigest)
+      .toBe(fixture.plan.analysis.analysisPlanDigest);
+    expect(decisionOnlyPlan.decision.decisionPlanDigest)
+      .not.toBe(fixture.plan.decision.decisionPlanDigest);
+    expect(decisionOnlyPlan.digests.runContractDigest)
+      .not.toBe(fixture.plan.digests.runContractDigest);
+
+    const transportedEvaluation = verifyEvaluationBundle(
+      structuredClone(fixture.evaluation.bundle),
+      decisionOnlyPlan,
+      fixture.execution,
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          fixture.evaluation.bundle.bundleDigest as Sha256Digest,
+        ]),
+        executionSourceTrust: effectiveExecutionBundleTrust(fixture.execution),
+      },
+    );
+    const transportedAnalysis = verifyAnalysisBundle(
+      structuredClone(fixture.analysis),
+      decisionOnlyPlan,
+      fixture.execution,
+      transportedEvaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          fixture.analysis.bundleDigest as Sha256Digest,
+        ]),
+      },
+    );
+    const decision = await decideAnalysisSource(
+      decisionOnlyPlan,
+      fixture.execution,
+      transportedEvaluation,
+      transportedAnalysis,
+      fixture.ports,
+      { runId: 'run-stage-scoped-reuse' },
+    );
+    expect(decision?.result.decisionStatus).toBe('decided');
+
+    const analysisOnlyPlan = await makePlan((definition) => {
+      definition.analysisGraph.analysisMode = 'exploratory';
+    });
+    const reusableEvaluation = verifyEvaluationBundle(
+      structuredClone(fixture.evaluation.bundle),
+      analysisOnlyPlan,
+      fixture.execution,
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          fixture.evaluation.bundle.bundleDigest as Sha256Digest,
+        ]),
+        executionSourceTrust: effectiveExecutionBundleTrust(fixture.execution),
+      },
+    );
+    expect(reusableEvaluation.bundle.bundleDigest).toBe(fixture.evaluation.bundle.bundleDigest);
+    expect(() => verifyAnalysisBundle(
+      structuredClone(fixture.analysis),
+      analysisOnlyPlan,
+      fixture.execution,
+      reusableEvaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+    )).toThrowError(expect.objectContaining({
+      code: 'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+    }));
+    expect(() => startDecision(
+      analysisOnlyPlan,
+      fixture.execution,
+      reusableEvaluation,
+      fixture.analysisSource,
+      fixture.ports,
+      { runId: 'run-stale-analysis' },
+    )).toThrowError(expect.objectContaining({
+      code: 'ANALYSIS_BUNDLE_PLAN_MISMATCH',
     }));
   });
 

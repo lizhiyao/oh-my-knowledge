@@ -18,6 +18,7 @@ import {
 import { derivePlannedExecutionCoordinates } from './execution-identities.js';
 import {
   assertEvaluationBundleSourceChain,
+  assertEvaluationBundleSourceMatchesPlan,
   type EvaluationBundlePlanContext,
   type EvaluationBundleSource,
 } from './evaluation-bundle.js';
@@ -311,6 +312,22 @@ export function assertAnalysisBundleSourceChain(
   }
 }
 
+export function assertAnalysisBundleSourceMatchesPlan(
+  plan: AnalysisBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+  analysisSource: AnalysisBundleSource,
+): void {
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
+  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  if (analysisSource.bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+      'Analysis source does not match the current AnalysisPlan.',
+    );
+  }
+}
+
 export function effectiveAnalysisBundleTrust(
   source: AnalysisBundleSource,
 ): AnalysisBundle['provenance']['trust'] {
@@ -515,12 +532,16 @@ function assertMatchesPlan(
   source: EvaluationBundle,
   validation: AnalysisBundleValidationContext,
 ): void {
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest
-      || bundle.evaluationBundleDigest !== source.bundleDigest) {
+  if (bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest) {
+    throw new AnalysisBundleValidationError(
+      'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+      'AnalysisBundle does not match the current AnalysisPlan.',
+    );
+  }
+  if (bundle.evaluationBundleDigest !== source.bundleDigest) {
     throw new AnalysisBundleValidationError(
       'ANALYSIS_BUNDLE_SOURCE_MISMATCH',
-      'AnalysisBundle parent identities do not match the sealed plan and source bundle.',
+      'AnalysisBundle parent identities do not match the source EvaluationBundle.',
     );
   }
   const nodeById = new Map(plan.analysis.analysisGraph.nodes.map((node) => [node.nodeId, node]));
@@ -683,7 +704,7 @@ export function verifyAnalysisBundle(
   validation: AnalysisBundleValidationContext,
   verification?: AnalysisBundleVerificationContext,
 ): AnalysisBundleSource {
-  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
+  assertEvaluationBundleSourceMatchesPlan(plan, executionSource, evaluationSource);
   const execution = executionSource.bundle;
   const source = evaluationSource.bundle;
   const bundle = parseAnalysisBundleDocument(value);

@@ -11,6 +11,7 @@ import {
 import type { Provenance } from './common.js';
 import {
   assertAnalysisBundleSourceChain,
+  assertAnalysisBundleSourceMatchesPlan,
   effectiveAnalysisBundleTrust,
   type AnalysisBundleSource,
   type AnalysisBundlePlanContext,
@@ -37,6 +38,7 @@ export type EvaluationReportValidationErrorCode =
   | 'DECISION_RESULT_PLAN_MISMATCH'
   | 'DECISION_RESULT_VERIFICATION_GATE_FAILED'
   | 'EVALUATION_REPORT_DIGEST_MISMATCH'
+  | 'EVALUATION_REPORT_PLAN_MISMATCH'
   | 'EVALUATION_REPORT_BUNDLE_REFERENCE_INVALID'
   | 'EVALUATION_REPORT_STATUS_INVALID'
   | 'EVALUATION_REPORT_PROVENANCE_INVALID';
@@ -289,7 +291,12 @@ export function verifyDecisionResult(
   analysisSource: AnalysisBundleSource,
   verification?: DecisionResultVerificationContext,
 ): DecisionResultSource {
-  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertAnalysisBundleSourceMatchesPlan(
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+  );
   const result = parseDecisionResultDocument(value);
   const provisional = {
     result,
@@ -323,11 +330,22 @@ export function parseEvaluationReport(
   analysisSource: AnalysisBundleSource,
   decisionSource: DecisionResultSource | undefined,
 ): EvaluationReport {
-  assertAnalysisBundleSourceChain(executionSource, evaluationSource, analysisSource);
+  assertAnalysisBundleSourceMatchesPlan(
+    plan,
+    executionSource,
+    evaluationSource,
+    analysisSource,
+  );
   const execution = executionSource.bundle;
   const evaluation = evaluationSource.bundle;
   const analysis = analysisSource.bundle;
   const report = parseEvaluationReportDocument(value);
+  if (report.runContractDigest !== plan.digests.runContractDigest) {
+    throw new EvaluationReportValidationError(
+      'EVALUATION_REPORT_PLAN_MISMATCH',
+      'EvaluationReport does not match the current RunContract.',
+    );
+  }
   if ((report.decision === undefined) !== (decisionSource === undefined)) {
     throw new EvaluationReportValidationError(
       'DECISION_RESULT_PLAN_MISMATCH',

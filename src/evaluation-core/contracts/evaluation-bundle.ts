@@ -18,6 +18,7 @@ import {
 } from './evaluation-identities.js';
 import {
   assertExecutionBundleSource,
+  assertExecutionBundleSourceMatchesPlan,
   type ExecutionBundlePlanContext,
   type ExecutionBundleSource,
 } from './execution-bundle.js';
@@ -424,6 +425,28 @@ export function assertEvaluationBundleSourceChain(
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_SOURCE_MISMATCH',
       'Evaluation source is not bound to the supplied Execution source.',
+    );
+  }
+}
+
+export function assertEvaluationBundleSourceMatchesPlan(
+  plan: EvaluationBundlePlanContext,
+  executionSource: ExecutionBundleSource,
+  evaluationSource: EvaluationBundleSource,
+): void {
+  assertExecutionBundleSourceMatchesPlan(executionSource, plan);
+  assertEvaluationBundleSourceChain(executionSource, evaluationSource);
+  if (evaluationSource.bundle.evaluationPlanDigest
+        !== plan.evaluation.evaluationPlanDigest
+      || evaluationSource.bundle.evaluationPlanDigest
+        !== plan.digests.evaluationPlanDigest
+      || evaluationSource.bundle.evaluationInputDigest
+        !== plan.evaluation.evaluationInputDigest
+      || evaluationSource.bundle.evaluationInputDigest
+        !== plan.digests.evaluationInputDigest) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PLAN_MISMATCH',
+      'Evaluation source does not match the current EvaluationPlan.',
     );
   }
 }
@@ -931,8 +954,7 @@ export function assertEvaluationBundleMatchesPlan(
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundlePlanVerification {
   const sourceTrust = verification?.executionSourceTrust ?? source.provenance.trust;
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
+  if (bundle.evaluationPlanDigest !== plan.digests.evaluationPlanDigest
       || bundle.evaluationPlanDigest !== plan.evaluation.evaluationPlanDigest
       || bundle.evaluationInputDigest !== plan.digests.evaluationInputDigest
       || bundle.evaluationInputDigest !== plan.evaluation.evaluationInputDigest
@@ -1145,7 +1167,7 @@ export function verifyEvaluationBundle(
   source: ExecutionBundleSource,
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundleVerificationResult {
-  assertExecutionBundleSource(source);
+  assertExecutionBundleSourceMatchesPlan(source, plan);
   const bundle = parseEvaluationBundleDocument(value);
   const planVerification = assertEvaluationBundleMatchesPlan(
     bundle,

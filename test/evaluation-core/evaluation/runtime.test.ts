@@ -1700,4 +1700,26 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(events.find((event) => event.eventKind === 'evaluation.run.started')?.sequence)
       .toBeGreaterThan(events.find((event) => event.eventKind === 'execution.run.completed')?.sequence ?? -1);
   });
+
+  it('closes the Event stream when terminal event sequencing throws', async () => {
+    const plan = await makePlan();
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const run = startEvaluation(plan, source, ports(plan, fake.port, {
+      eventSequencer: {
+        next() { throw new Error('sequencer unavailable'); },
+      },
+    }), {
+      runId: 'evaluation-sequencer-failure',
+      bundleId: 'evaluation-sequencer-failure-bundle',
+    });
+    const events = (async () => {
+      const collected: EvaluationEvent[] = [];
+      for await (const event of run.events) collected.push(event);
+      return collected;
+    })();
+
+    await expect(run.source).rejects.toThrow('sequencer unavailable');
+    await expect(events).resolves.toEqual([]);
+  });
 });

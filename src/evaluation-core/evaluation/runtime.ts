@@ -16,6 +16,7 @@ import {
   evaluationRecordMatchesEvidencePolicy,
   evaluationRecordSatisfiesCacheCostPolicy,
   evaluationRecordUsageMatchesAttempts,
+  assertExecutionBundleSourceMatchesPlan,
   effectiveExecutionBundleTrust,
   parseWireDocument,
   verifyEvaluationBundle,
@@ -162,7 +163,7 @@ function prepareRuntime(
       'Evaluation runtime requires a shared per-Run EventSequencer.',
     );
   }
-  effectiveExecutionBundleTrust(source);
+  assertExecutionBundleSourceMatchesPlan(source, plan);
   if (plan.evaluation.policy.evaluationCacheMode !== 'disabled' && ports.cache === undefined) {
     configurationError(
       'EVALUATION_RUNTIME_CACHE_REQUIRED',
@@ -1324,7 +1325,8 @@ async function runEvaluation(
     ).then(() => setStop('budget-exhausted', 'evaluation-duration-budget-exhausted'))
       .catch(() => undefined);
   try {
-    const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
+    try {
+      const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
       evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
       executionBundleDigest: prepared.source.bundle.bundleDigest,
       planned: coordinates.length,
@@ -1407,58 +1409,38 @@ async function runEvaluation(
         setStop('budget-exhausted', 'evaluation-provider-cost-budget-exhausted');
       }
     }
-  } catch (error) {
-    if (!(error instanceof EvaluationAttemptCancelledError
-        && stop.stopKind !== undefined)) {
-      setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
-    }
-  } finally {
-    durationController.abort();
-    await duration;
-    options.signal?.removeEventListener('abort', externalAbort);
-    if (await sessions.dispose()) {
-      setStop('failed', 'evaluator-run-dispose-failed', {
-        code: 'evaluator-run-dispose-failed',
-        stage: 'infrastructure',
-        message: 'Evaluator run resource disposal failed.',
-      });
-    }
-    if (stop.stopKind === undefined) {
-      for (const entry of pendingCache.sort((left, right) => (
-        compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
-      ))) {
-        try { await ports.cache?.put(entry); } catch {
-          setStop('failed', 'evaluation-cache-write-failed', {
-            code: 'evaluation-cache-write-failed',
-            stage: 'infrastructure',
-            message: 'Evaluation cache write failed.',
-          });
-          break;
+    } catch (error) {
+      if (!(error instanceof EvaluationAttemptCancelledError
+          && stop.stopKind !== undefined)) {
+        setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
+      }
+    } finally {
+      durationController.abort();
+      await duration;
+      options.signal?.removeEventListener('abort', externalAbort);
+      if (await sessions.dispose()) {
+        setStop('failed', 'evaluator-run-dispose-failed', {
+          code: 'evaluator-run-dispose-failed',
+          stage: 'infrastructure',
+          message: 'Evaluator run resource disposal failed.',
+        });
+      }
+      if (stop.stopKind === undefined) {
+        for (const entry of pendingCache.sort((left, right) => (
+          compareStrings(left.cacheKeyDigest, right.cacheKeyDigest)
+        ))) {
+          try { await ports.cache?.put(entry); } catch {
+            setStop('failed', 'evaluation-cache-write-failed', {
+              code: 'evaluation-cache-write-failed',
+              stage: 'infrastructure',
+              message: 'Evaluation cache write failed.',
+            });
+            break;
+          }
         }
       }
     }
-  }
-  let source = makeBundle(
-    plan,
-    prepared.source,
-    options,
-    [...records.values()],
-    coordinates.length,
-    stop,
-    verifiedCacheRecordDigests,
-  );
-  const terminalDelivered = await events.emit(
-    terminalKind(source.bundle.evaluationBundleStatus),
-    'run',
-    options.runId,
-    {
-    bundleDigest: source.bundle.bundleDigest,
-    evaluationBundleStatus: source.bundle.evaluationBundleStatus,
-    coverage: source.bundle.coverage,
-    },
-  );
-  if (!terminalDelivered) {
-    source = makeBundle(
+    let source = makeBundle(
       plan,
       prepared.source,
       options,
@@ -1467,14 +1449,41 @@ async function runEvaluation(
       stop,
       verifiedCacheRecordDigests,
     );
-    await events.emitRecovery(terminalKind(source.bundle.evaluationBundleStatus), 'run', options.runId, {
+    const terminalDelivered = await events.emit(
+      terminalKind(source.bundle.evaluationBundleStatus),
+      'run',
+      options.runId,
+      {
       bundleDigest: source.bundle.bundleDigest,
       evaluationBundleStatus: source.bundle.evaluationBundleStatus,
       coverage: source.bundle.coverage,
-    });
+      },
+    );
+    if (!terminalDelivered) {
+      source = makeBundle(
+        plan,
+        prepared.source,
+        options,
+        [...records.values()],
+        coordinates.length,
+        stop,
+        verifiedCacheRecordDigests,
+      );
+      await events.emitRecovery(
+        terminalKind(source.bundle.evaluationBundleStatus),
+        'run',
+        options.runId,
+        {
+          bundleDigest: source.bundle.bundleDigest,
+          evaluationBundleStatus: source.bundle.evaluationBundleStatus,
+          coverage: source.bundle.coverage,
+        },
+      );
+    }
+    return source;
+  } finally {
+    events.close();
   }
-  events.close();
-  return source;
 }
 
 export function startEvaluation(

@@ -401,6 +401,22 @@ export function assertExecutionBundleSource(
   }
 }
 
+export function assertExecutionBundleSourceMatchesPlan(
+  source: ExecutionBundleSource,
+  plan: ExecutionBundlePlanContext,
+): void {
+  assertExecutionBundleSource(source);
+  if (source.bundle.executionPlanDigest !== plan.execution.executionPlanDigest
+      || source.bundle.executionPlanDigest !== plan.digests.executionPlanDigest
+      || source.bundle.executionInputDigest !== plan.execution.executionInputDigest
+      || source.bundle.executionInputDigest !== plan.digests.executionInputDigest) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PLAN_MISMATCH',
+      'Execution source does not match the current ExecutionPlan.',
+    );
+  }
+}
+
 export function effectiveExecutionBundleTrust(
   source: ExecutionBundleSource,
 ): Provenance['trust'] {
