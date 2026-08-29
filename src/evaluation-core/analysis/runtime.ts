@@ -15,6 +15,7 @@ import {
   parseExecutionBundle,
   parseWireDocument,
   type AnalysisBundle,
+  type AnalysisOutputSchemaValidator,
   type AnalysisObservationCoverage,
   type AnalysisRecord,
   type EvaluationBundle,
@@ -50,6 +51,7 @@ interface NodeBinding {
   port: AnalysisNodeImplementation;
   runtime: RuntimeIdentity;
   outputSchema: SchemaIdentity;
+  validator: AnalysisOutputSchemaValidator;
 }
 
 interface PreparedAnalysisRuntime {
@@ -144,8 +146,11 @@ function prepareRuntime(
         `No sealed Analysis implementation is registered for ${node.nodeId}.`,
       );
     }
+    const validator = ports.outputValidators.get(parsedCapabilities.data.schemaDigest);
     if (canonicalizeJson(port.identity) !== canonicalizeJson(runtime.identity)
-        || canonicalizeJson(port.outputSchema) !== canonicalizeJson(parsedCapabilities.data)) {
+        || canonicalizeJson(port.outputSchema) !== canonicalizeJson(parsedCapabilities.data)
+        || validator === undefined
+        || canonicalizeJson(validator.schema) !== canonicalizeJson(parsedCapabilities.data)) {
       configurationError(
         'ANALYSIS_RUNTIME_IDENTITY_MISMATCH',
         `Analysis implementation identity for ${node.nodeId} differs from the sealed plan.`,
@@ -156,6 +161,7 @@ function prepareRuntime(
       port,
       runtime: runtime.identity as RuntimeIdentity,
       outputSchema: parsedCapabilities.data,
+      validator,
     });
   }
   const missingRuntimeById = new Map(plan.analysis.runtimes
@@ -568,6 +574,7 @@ function makeBundle(
   evaluation: EvaluationBundle,
   options: AnalysisRunOptions,
   records: readonly AnalysisRecord[],
+  outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>,
   stop: StopState,
 ): AnalysisBundle {
   const ordered = [...records].sort((left, right) => compareStrings(left.nodeId, right.nodeId));
@@ -608,6 +615,7 @@ function makeBundle(
     plan,
     execution,
     evaluation,
+    { outputValidators },
   ));
 }
 
@@ -666,6 +674,7 @@ async function runAnalysis(
   if (options.signal?.aborted === true) externalAbort();
   else options.signal?.addEventListener('abort', externalAbort, { once: true });
 
+  try {
   const rowsByMetric = materializeRows(plan, prepared.execution, prepared.evaluation);
   const records: AnalysisRecord[] = [];
   const recordsByResultId = new Map<string, AnalysisRecord>();
@@ -897,7 +906,7 @@ async function runAnalysis(
       let value: JsonValue;
       try {
         value = snapshotJson(output.value);
-        if (!binding.port.validateOutput(value)) {
+        if (!binding.validator.validate(value)) {
           throw new TypeError('Analysis output does not match the sealed schema.');
         }
       } catch (error) {
@@ -951,13 +960,13 @@ async function runAnalysis(
     }
   }
 
-  options.signal?.removeEventListener('abort', externalAbort);
   let bundle = makeBundle(
     plan,
     prepared.execution,
     prepared.evaluation,
     options,
     records,
+    ports.outputValidators,
     stop,
   );
   const delivered = await events.emit(
@@ -977,6 +986,7 @@ async function runAnalysis(
       prepared.evaluation,
       options,
       records,
+      ports.outputValidators,
       stop,
     );
     await events.emitRecovery(
@@ -990,8 +1000,11 @@ async function runAnalysis(
       },
     );
   }
-  events.close();
   return bundle;
+  } finally {
+    options.signal?.removeEventListener('abort', externalAbort);
+    events.close();
+  }
 }
 
 export function startAnalysis(

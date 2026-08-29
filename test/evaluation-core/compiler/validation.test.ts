@@ -279,6 +279,80 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('rejects an Analysis node that exceeds its sealed Metric input cardinality', async () => {
+    const definition = validDefinition();
+    definition.metrics.push({
+      ...structuredClone(definition.metrics[0]),
+      metricId: 'correct-secondary',
+    });
+    definition.evaluators[0].metricIds.push('correct-secondary');
+    definition.analysisGraph.nodes[0].inputs.push({
+      inputKind: 'metric-observations',
+      referenceId: 'correct-secondary',
+    });
+
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+    );
+  });
+
+  it('requires an explicit and internally consistent multiple-comparison family', async () => {
+    const missingContrast = validDefinition();
+    missingContrast.decisionPolicy!.comparisonFamily = [{
+      hypothesisId: 'hypothesis-1',
+      comparisonId: 'missing-comparison',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+    }];
+    await expectCode(
+      missingContrast,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
+    const uncorrectedFamily = validDefinition();
+    uncorrectedFamily.targets.push({
+      ...structuredClone(uncorrectedFamily.targets[1]),
+      targetId: 'treatment-secondary',
+    });
+    uncorrectedFamily.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+    uncorrectedFamily.decisionPolicy!.comparisonFamily = [
+      {
+        hypothesisId: 'hypothesis-1',
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'correct',
+      },
+      {
+        hypothesisId: 'hypothesis-2',
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment-secondary',
+        metricId: 'correct',
+      },
+    ];
+    await expectCode(
+      uncorrectedFamily,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
+    const disguisedSingleTest = validDefinition();
+    disguisedSingleTest.decisionPolicy!.comparisonFamily = [{
+      hypothesisId: 'hypothesis-1',
+      comparisonId: 'control-vs-treatment',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+    }];
+    disguisedSingleTest.decisionPolicy!.multipleComparisonPolicyId = 'bonferroni/v1';
+    await expectCode(
+      disguisedSingleTest,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+  });
+
   it('keeps evaluator output record-scoped and delegates aggregation to AnalysisGraph', async () => {
     const definition = validDefinition();
     definition.metrics[0].scope = 'target';

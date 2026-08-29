@@ -78,7 +78,8 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'analysisMode', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
-  'decisionPolicy', 'decisionPolicyId', 'analysisResultIds',
+  'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
+  'hypothesisId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
   'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'maxTargetInvocations',
@@ -262,6 +263,9 @@ function normalizeAnalysisCapabilities(
     ) as AnalysisNodeCapabilities['analysisNodeKinds'],
     inputDomains,
     outputSchema: capabilities.outputSchema,
+    ...(capabilities.metricInputCardinality !== undefined
+      ? { metricInputCardinality: capabilities.metricInputCardinality }
+      : {}),
     ...(capabilities.sampling !== undefined ? {
       sampling: {
         experimentalUnits: sortedUniqueStrings(

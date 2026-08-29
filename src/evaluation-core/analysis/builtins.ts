@@ -1,5 +1,6 @@
 import {
   digestCanonicalJson,
+  type AnalysisOutputSchemaValidator,
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
@@ -125,16 +126,19 @@ function runtimeIdentity(
   implementationId: string,
   capabilities: JsonValue,
 ): RuntimeIdentity {
+  const version = '1.0.0';
   return {
     implementationId,
-    version: '1.0.0',
+    version,
     fingerprint: digestCanonicalJson({
-      implementation: implementationId,
-      algorithmRevision: 1,
+      implementationId,
+      version,
       capabilities,
     }),
-    fingerprintBasis: 'content-derived',
-    assuranceLevel: 'verified',
+    // A builtin can declare its release identity, but it cannot independently
+    // attest that the executing code matches that declaration.
+    fingerprintBasis: 'self-reported',
+    assuranceLevel: 'declared',
     capabilities,
   };
 }
@@ -174,6 +178,9 @@ function nodeCapabilities(input: {
     analysisNodeKinds: [input.analysisNodeKind],
     inputDomains,
     outputSchema: input.outputSchema,
+    ...(input.valueTypes !== undefined ? {
+      metricInputCardinality: { min: 1, max: 1 },
+    } : {}),
     ...(input.sampling !== undefined ? { sampling: input.sampling } : {}),
     schemas: [],
   };
@@ -222,7 +229,11 @@ function metricInputs(context: AnalysisNodeExecutionContext): Array<Extract<
 }
 
 function observedRows(context: AnalysisNodeExecutionContext): AnalysisMetricRow[] {
-  return metricInputs(context).flatMap((input) => input.rows.filter(
+  const inputs = metricInputs(context);
+  if (inputs.length !== 1) {
+    throw new TypeError('Built-in Analysis implementations require exactly one Metric input.');
+  }
+  return inputs.flatMap((input) => input.rows.filter(
     (row) => row.rowStatus === 'observed',
   ));
 }
@@ -488,6 +499,12 @@ function executePairedBootstrap(context: AnalysisNodeExecutionContext): Analysis
   if (comparisonInput.comparison.treatmentTargetIds.length !== 1) {
     return incomplete('analysis-paired-bootstrap-requires-one-treatment');
   }
+  const metricInput = metricInputs(context)[0];
+  if (comparisonInput.comparison.metricIds.length !== 1
+      || metricInput === undefined
+      || comparisonInput.comparison.metricIds[0] !== metricInput.referenceId) {
+    return incomplete('analysis-paired-bootstrap-requires-one-matching-metric');
+  }
   const controlId = comparisonInput.comparison.controlTargetId;
   const treatmentId = comparisonInput.comparison.treatmentTargetIds[0];
   const rows = observedRows(context);
@@ -748,15 +765,25 @@ class BuiltinNodeImplementation implements AnalysisNodeImplementation {
     this.outputSchema = definition.outputSchema;
   }
 
-  validateOutput(value: JsonValue): boolean {
-    return this.#definition.validateOutput(value);
-  }
-
   async openRun(): Promise<AnalysisNodeRun> {
     return {
       execute: async (context) => this.#definition.execute(context),
       dispose: () => undefined,
     };
+  }
+}
+
+class BuiltinOutputValidator implements AnalysisOutputSchemaValidator {
+  readonly schema: SchemaIdentity;
+  readonly #validate: (value: JsonValue) => boolean;
+
+  constructor(definition: BuiltinDefinition) {
+    this.schema = definition.outputSchema;
+    this.#validate = definition.validateOutput;
+  }
+
+  validate(value: JsonValue): boolean {
+    return this.#validate(value);
   }
 }
 
@@ -806,6 +833,18 @@ export function createBuiltinAnalysisNodes(): ReadonlyMap<string, AnalysisNodeIm
     implementationId,
     new BuiltinNodeImplementation(definition),
   ]));
+}
+
+export function createBuiltinAnalysisOutputValidators(): ReadonlyMap<
+  string,
+  AnalysisOutputSchemaValidator
+> {
+  const validators = new Map<string, AnalysisOutputSchemaValidator>();
+  for (const definition of BUILTIN_DEFINITIONS.values()) {
+    const key = definition.outputSchema.schemaDigest;
+    if (!validators.has(key)) validators.set(key, new BuiltinOutputValidator(definition));
+  }
+  return validators;
 }
 
 export function createBuiltinMissingPolicies() {

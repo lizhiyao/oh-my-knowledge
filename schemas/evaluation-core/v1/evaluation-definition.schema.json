@@ -396,6 +396,13 @@
           "minItems": 1,
           "type": "array"
         },
+        "comparisonFamily": {
+          "items": {
+            "$ref": "#/$defs/__schema19"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "decisionPolicyId": {
           "$ref": "#/$defs/__schema2"
         },
@@ -429,6 +436,35 @@
       "type": "object"
     },
     "__schema19": {
+      "additionalProperties": false,
+      "properties": {
+        "comparisonId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "hypothesisId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "metricId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "treatmentTargetId": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "hypothesisId",
+        "comparisonId",
+        "treatmentTargetId",
+        "metricId"
+      ],
+      "type": "object"
+    },
+    "__schema2": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema20": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -440,7 +476,7 @@
             "type": "string"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema20"
+            "$ref": "#/$defs/__schema21"
           }
         },
         "required": [
@@ -451,16 +487,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema20"
+        "$ref": "#/$defs/__schema21"
       },
       "type": "object"
     },
-    "__schema2": {
-      "maxLength": 256,
-      "minLength": 1,
-      "type": "string"
-    },
-    "__schema20": {
+    "__schema21": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -663,7 +694,7 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema19"
+      "$ref": "#/$defs/__schema20"
     },
     "metrics": {
       "$ref": "#/$defs/__schema10"

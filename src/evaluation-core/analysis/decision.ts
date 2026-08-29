@@ -65,6 +65,15 @@ function validateDecisionOptions(options: DecisionOptions): void {
   }
 }
 
+function validateEventSequencer(ports: AnalysisRuntimePorts): void {
+  if (ports.eventSequencer === undefined) {
+    configurationError(
+      'ANALYSIS_RUNTIME_EVENT_SEQUENCER_REQUIRED',
+      'Decision and Report runtime require a shared per-Run EventSequencer.',
+    );
+  }
+}
+
 function minimumTrust(values: readonly Provenance['trust'][]): Provenance['trust'] {
   return [...values].sort((left, right) => TRUST_LEVEL[left] - TRUST_LEVEL[right])[0];
 }
@@ -92,11 +101,8 @@ function gateReasons(
       reasons.add('decision-assumption-gate-failed');
     }
   }
-  const familySize = plan.analysis.comparisons.reduce(
-    (total, comparison) => total
-      + comparison.treatmentTargetIds.length * comparison.metricIds.length,
-    0,
-  );
+  const family = policy.comparisonFamily ?? [];
+  const familySize = family.length;
   if (familySize > 1 && policy.multipleComparisonPolicyId === undefined) {
     reasons.add('decision-multiple-comparison-policy-required');
   }
@@ -111,6 +117,25 @@ function gateReasons(
     if (correctionRecord?.analysisStatus !== 'completed'
         || !policy.analysisResultIds.includes(correctionRecord.resultId)) {
       reasons.add('decision-multiple-comparison-result-unavailable');
+    } else {
+      const value = correctionRecord.value;
+      const valueObject = value !== null && !Array.isArray(value) && typeof value === 'object'
+        ? value as Record<string, JsonValue>
+        : undefined;
+      const hypotheses = valueObject?.hypotheses;
+      const hypothesisIds = Array.isArray(hypotheses)
+        ? hypotheses.flatMap((entry) => (
+          entry !== null && !Array.isArray(entry) && typeof entry === 'object'
+            && typeof (entry as Record<string, JsonValue>).hypothesisId === 'string'
+            ? [(entry as Record<string, JsonValue>).hypothesisId as string]
+            : []
+        )).sort()
+        : [];
+      const expectedIds = family.map((member) => member.hypothesisId).sort();
+      if (valueObject?.familySize !== familySize
+          || canonicalizeJson(hypothesisIds) !== canonicalizeJson(expectedIds)) {
+        reasons.add('decision-multiple-comparison-family-mismatch');
+      }
     }
   }
   return [...reasons].sort();
@@ -184,6 +209,7 @@ function prepareDecision(
   validateDecisionOptions(options);
   const policy = plan.decision.decisionPolicy;
   if (policy === undefined) return undefined;
+  validateEventSequencer(ports);
   if (plan.measurementPolicy.eventDelivery.writerMode === 'required'
       && ports.eventWriter === undefined) {
     configurationError(
@@ -193,7 +219,13 @@ function prepareDecision(
   }
   const execution = parseExecutionBundle(executionValue, plan);
   const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
-  const analysis = parseAnalysisBundle(analysisValue, plan, execution, evaluation);
+  const analysis = parseAnalysisBundle(
+    analysisValue,
+    plan,
+    execution,
+    evaluation,
+    { outputValidators: ports.outputValidators },
+  );
   const runtime = plan.decision.runtimes.find((candidate) => (
     candidate.runtimeKind === 'decision-policy'
     && candidate.referenceId === policy.decisionPolicyId
@@ -273,6 +305,7 @@ async function runDecision(
     stream,
     (_reasonCode, error) => { fatalError = error; },
   );
+  try {
   const { execution, evaluation, analysis, policy, runtime, port } = prepared;
   await events.emit('decision.started', 'decision-policy', policy.decisionPolicyId, {
     analysisBundleDigest: analysis.bundleDigest,
@@ -299,6 +332,9 @@ async function runDecision(
       AnalysisRecord,
       { analysisStatus: 'completed' }
     > => record?.analysisStatus === 'completed');
+    const comparisonIds = new Set(
+      (policy.comparisonFamily ?? []).map((member) => member.comparisonId),
+    );
     try {
       output = parseWireDocument(DecisionPolicyOutputSchema, await port.decide(deepFreeze({
         runId: options.runId,
@@ -306,7 +342,9 @@ async function runDecision(
         analysisBundleDigest: analysis.bundleDigest as Sha256Digest,
         analysisCoverage: analysis.coverage,
         results,
-        comparisons: plan.analysis.comparisons,
+        comparisons: plan.analysis.comparisons.filter(
+          (comparison) => comparisonIds.has(comparison.comparisonId),
+        ),
         evidenceStatus,
       })));
     } catch {
@@ -352,8 +390,10 @@ async function runDecision(
       { decisionDigest: result.decisionDigest, errorCode: fatalError.code },
     );
   }
-  events.close();
   return result;
+  } finally {
+    events.close();
+  }
 }
 
 export function startDecision(
@@ -407,7 +447,7 @@ export function materializeEvaluationReport(
   evaluationValue: unknown,
   analysisValue: unknown,
   decisionValue: unknown | undefined,
-  ports: Pick<AnalysisRuntimePorts, 'clock'>,
+  ports: Pick<AnalysisRuntimePorts, 'clock' | 'outputValidators'>,
   options: EvaluationReportMaterializationOptions,
 ): EvaluationReport {
   if (!IdentifierSchema.safeParse(options.reportId).success) {
@@ -418,7 +458,13 @@ export function materializeEvaluationReport(
   }
   const execution = parseExecutionBundle(executionValue, plan);
   const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
-  const analysis = parseAnalysisBundle(analysisValue, plan, execution, evaluation);
+  const analysis = parseAnalysisBundle(
+    analysisValue,
+    plan,
+    execution,
+    evaluation,
+    { outputValidators: ports.outputValidators },
+  );
   const decision = decisionValue === undefined
     ? undefined
     : parseDecisionResultDocument(decisionValue);
@@ -487,6 +533,7 @@ export function materializeEvaluationReport(
     execution,
     evaluation,
     analysis,
+    { outputValidators: ports.outputValidators },
   ));
 }
 
@@ -500,6 +547,7 @@ export function startReportMaterialization(
   options: EvaluationReportRunOptions,
 ): EvaluationReportRun {
   validateDecisionOptions(options);
+  validateEventSequencer(ports);
   if (plan.measurementPolicy.eventDelivery.writerMode === 'required'
       && ports.eventWriter === undefined) {
     configurationError(
@@ -542,6 +590,7 @@ export function startReportMaterialization(
       stream,
       (_reasonCode, error) => { fatalError = error; },
     );
+    try {
     const delivered = await events.emit(
       'report.materialized',
       'report',
@@ -558,11 +607,12 @@ export function startReportMaterialization(
         report.reportId,
         { errorCode: fatalError.code },
       );
-      events.close();
       throw new AnalysisPortFailure(fatalError);
     }
-    events.close();
     return report;
+    } finally {
+      events.close();
+    }
   })();
   return { events: stream, result };
 }

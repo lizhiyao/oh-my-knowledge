@@ -142,11 +142,19 @@ export const ComparisonDefinitionSchema = z.object({
   metricIds: z.array(IdentifierSchema).min(1),
 }).strict();
 
+export const ComparisonFamilyMemberSchema = z.object({
+  hypothesisId: IdentifierSchema,
+  comparisonId: IdentifierSchema,
+  treatmentTargetId: IdentifierSchema,
+  metricId: IdentifierSchema,
+}).strict();
+
 export const DecisionPolicyDefinitionSchema = z.object({
   decisionPolicyId: IdentifierSchema,
   implementationId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
   analysisResultIds: z.array(IdentifierSchema).min(1),
+  comparisonFamily: z.array(ComparisonFamilyMemberSchema).min(1).optional(),
   multipleComparisonPolicyId: IdentifierSchema.optional(),
   minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']),
   parameters: JsonValueSchema.optional(),
@@ -259,6 +267,7 @@ export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;
 export type AnalysisNodeDefinition = z.infer<typeof AnalysisNodeDefinitionSchema>;
 export type AnalysisGraphDefinition = z.infer<typeof AnalysisGraphDefinitionSchema>;
 export type ComparisonDefinition = z.infer<typeof ComparisonDefinitionSchema>;
+export type ComparisonFamilyMember = z.infer<typeof ComparisonFamilyMemberSchema>;
 export type DecisionPolicyDefinition = z.infer<typeof DecisionPolicyDefinitionSchema>;
 export type EvaluationDefinition = z.infer<typeof EvaluationDefinitionSchema>;
 export type EvaluationRuntimePolicy = z.infer<typeof EvaluationRuntimePolicySchema>;

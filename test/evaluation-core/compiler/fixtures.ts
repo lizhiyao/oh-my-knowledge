@@ -315,6 +315,7 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
               missingPolicyIds: ['exclude/v1'],
             }],
             outputSchema: schemaIdentity(isSampling ? 'estimator-output' : 'analysis-output'),
+            ...(!isSampling ? { metricInputCardinality: { min: 1, max: 1 } } : {}),
             ...(isSampling ? {
               sampling: {
                 experimentalUnits: ['sample'],

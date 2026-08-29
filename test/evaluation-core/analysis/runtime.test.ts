@@ -26,6 +26,7 @@ import {
 import {
   analyzeEvaluationBundle,
   createBuiltinAnalysisNodes,
+  createBuiltinAnalysisOutputValidators,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
   decideAnalysis,
@@ -181,6 +182,44 @@ function resealEvaluationBundle(
   return draft;
 }
 
+async function makeAnalysisFixture(
+  suffix: string,
+  mutate?: Parameters<typeof makePlan>[0],
+) {
+  const plan = await makePlan(mutate);
+  const clock = new FakeClock();
+  const eventSequencer = new InMemoryRuntimeEventSequencer();
+  const execution = await executeRunPlan(plan, {
+    executors: new Map([['executor-alias', executor(plan, 'control')]]),
+    clock,
+    eventSequencer,
+  }, { runId: `run-${suffix}`, bundleId: `execution-${suffix}` });
+  const evaluation = await evaluateExecutionBundle(plan, execution, {
+    evaluators: new Map([['exact/v1', evaluator(plan)]]),
+    clock,
+    eventSequencer,
+  }, { runId: `run-${suffix}`, bundleId: `evaluation-${suffix}` });
+  const ports = {
+    analysisNodes: createBuiltinAnalysisNodes(),
+    outputValidators: createBuiltinAnalysisOutputValidators(),
+    missingPolicies: createBuiltinMissingPolicies(),
+    decisionPolicies: createBuiltinDecisionPolicies(),
+    clock,
+    eventSequencer,
+  };
+  const analysis = await analyzeEvaluationBundle(plan, execution, evaluation, ports, {
+    runId: `run-${suffix}`,
+    bundleId: `analysis-${suffix}`,
+  });
+  return { plan, clock, eventSequencer, execution, evaluation, ports, analysis };
+}
+
+async function collectEvents(events: AsyncIterable<unknown>): Promise<unknown[]> {
+  const collected: unknown[] = [];
+  for await (const event of events) collected.push(event);
+  return collected;
+}
+
 describe('Evaluation Core Analysis and Decision Runtime', () => {
   it('derives a validated AnalysisBundle, decision, and materialized Report', async () => {
     const plan = await makePlan();
@@ -200,6 +239,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-1', bundleId: 'evaluation-analysis-1' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -222,7 +262,9 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       value: 0.5,
       coverage: { planned: 2, observed: 2, included: 2 },
     });
-    expect(parseAnalysisBundle(analysis, plan, execution, evaluation)).toEqual(analysis);
+    expect(parseAnalysisBundle(analysis, plan, execution, evaluation, {
+      outputValidators: ports.outputValidators,
+    })).toEqual(analysis);
 
     const decisionRun = startDecision(
       plan,
@@ -268,6 +310,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       execution,
       evaluation,
       analysis,
+      { outputValidators: ports.outputValidators },
     )).toEqual(report);
     expect(reportEvents.map((event) => event.eventKind)).toEqual(['report.materialized']);
     expect(reportEvents[0].sequence).toBeGreaterThan(
@@ -283,6 +326,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       execution,
       evaluation,
       analysis,
+      { outputValidators: ports.outputValidators },
     )).toEqual(withUris);
 
     const builtinPolicy = ports.decisionPolicies.get('progress/v1');
@@ -323,6 +367,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-forge', bundleId: 'evaluation-analysis-forge' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -339,9 +384,172 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       draft.records[0].implementation.fingerprint = 'forged-analysis-runtime';
     });
 
-    expect(() => parseAnalysisBundle(forged, plan, execution, evaluation)).toThrow(
+    expect(() => parseAnalysisBundle(forged, plan, execution, evaluation, {
+      outputValidators: ports.outputValidators,
+    })).toThrow(
       /sealed node and Runtime binding/,
     );
+  });
+
+  it('validates completed outputs with an independent Core validator', async () => {
+    const fixture = await makeAnalysisFixture('independent-validator');
+    const original = fixture.ports.analysisNodes.get('descriptive.rate/v1');
+    if (original === undefined) throw new Error('missing builtin Analysis Runtime');
+    expect(original.identity).toMatchObject({
+      fingerprintBasis: 'self-reported',
+      assuranceLevel: 'declared',
+    });
+    const malicious = {
+      identity: original.identity,
+      outputSchema: original.outputSchema,
+      async openRun() {
+        return {
+          async execute() {
+            return {
+              analysisStatus: 'completed' as const,
+              resultType: 'scalar' as const,
+              value: { forged: true },
+            };
+          },
+          dispose() {},
+        };
+      },
+    };
+    const analysis = await analyzeEvaluationBundle(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodes: new Map([['descriptive.rate/v1', malicious]]),
+      },
+      { runId: 'run-malicious-validator', bundleId: 'analysis-malicious-validator' },
+    );
+
+    expect(analysis).toMatchObject({
+      analysisBundleStatus: 'failed',
+      records: [{
+        analysisStatus: 'failed',
+        error: { code: 'analysis-runtime-failed' },
+      }],
+    });
+
+    const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
+      const record = draft.records[0];
+      if (record.analysisStatus !== 'completed') throw new Error('expected completed record');
+      record.value = { forged: true };
+    });
+    expect(() => parseAnalysisBundle(
+      forged,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { outputValidators: fixture.ports.outputValidators },
+    )).toThrow(/sealed output schema/);
+  });
+
+  it('rejects extra provenance parents even when the bundle is fully resealed', async () => {
+    const fixture = await makeAnalysisFixture('provenance-parent');
+    const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
+      draft.provenance.parentDigests.push(`sha256:${'f'.repeat(64)}`);
+    });
+
+    expect(() => parseAnalysisBundle(
+      forged,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { outputValidators: fixture.ports.outputValidators },
+    )).toThrow(/exactly one source EvaluationBundle/);
+  });
+
+  it('closes Analysis, Decision, and Report streams when event sequencing throws', async () => {
+    const fixture = await makeAnalysisFixture('event-boundary');
+    const throwingSequencer = {
+      next(): number { throw new Error('sequencer unavailable'); },
+    };
+
+    const analysisRun = startAnalysis(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { ...fixture.ports, eventSequencer: throwingSequencer },
+      { runId: 'run-analysis-event-fault', bundleId: 'analysis-event-fault' },
+    );
+    const analysisEvents = collectEvents(analysisRun.events);
+    await expect(analysisRun.result).rejects.toThrow(/sequencer unavailable/);
+    await expect(analysisEvents).resolves.toEqual([]);
+
+    const decisionRun = startDecision(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysis,
+      { ...fixture.ports, eventSequencer: throwingSequencer },
+      { runId: 'run-decision-event-fault' },
+    );
+    const decisionEvents = collectEvents(decisionRun.events);
+    await expect(decisionRun.result).rejects.toThrow(/sequencer unavailable/);
+    await expect(decisionEvents).resolves.toEqual([]);
+
+    const reportRun = startReportMaterialization(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysis,
+      undefined,
+      { ...fixture.ports, eventSequencer: throwingSequencer },
+      { runId: 'run-report-event-fault', reportId: 'report-event-fault' },
+    );
+    const reportEvents = collectEvents(reportRun.events);
+    await expect(reportRun.result).rejects.toThrow(/sequencer unavailable/);
+    await expect(reportEvents).resolves.toEqual([]);
+  });
+
+  it('passes only the explicitly sealed comparison family to DecisionPolicy', async () => {
+    const fixture = await makeAnalysisFixture('comparison-family', (definition) => {
+      definition.targets.push({
+        ...structuredClone(definition.targets[1]),
+        targetId: 'unrelated-treatment',
+      });
+      definition.comparisons.push({
+        comparisonId: 'unrelated-comparison',
+        controlTargetId: 'control',
+        treatmentTargetIds: ['unrelated-treatment'],
+        metricIds: ['correct'],
+      });
+      definition.decisionPolicy!.comparisonFamily = [{
+        hypothesisId: 'control-treatment-correct',
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'correct',
+      }];
+    });
+    const builtinPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    if (builtinPolicy === undefined) throw new Error('missing builtin DecisionPolicy');
+    let receivedComparisonIds: string[] = [];
+    const decision = await decideAnalysis(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysis,
+      {
+        ...fixture.ports,
+        decisionPolicies: new Map([['progress/v1', {
+          identity: builtinPolicy.identity,
+          async decide(context) {
+            receivedComparisonIds = context.comparisons.map(
+              (comparison) => comparison.comparisonId,
+            );
+            return { decisionStatus: 'decided' as const, verdict: 'PROGRESS' };
+          },
+        }]]),
+      },
+      { runId: 'run-comparison-family-decision' },
+    );
+
+    expect(decision?.decisionStatus).toBe('decided');
+    expect(receivedComparisonIds).toEqual(['control-vs-treatment']);
   });
 
   it('binds AnalysisBundle to the exact EvaluationBundle content', async () => {
@@ -360,6 +568,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-source', bundleId: 'evaluation-analysis-source' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -376,7 +585,9 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       draft.bundleId = 'evaluation-replacement';
     });
 
-    expect(() => parseAnalysisBundle(analysis, plan, execution, replacement)).toThrow(
+    expect(() => parseAnalysisBundle(analysis, plan, execution, replacement, {
+      outputValidators: ports.outputValidators,
+    })).toThrow(
       /parent identities/,
     );
   });
@@ -397,6 +608,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-missing', bundleId: 'evaluation-analysis-missing' });
     const ports = {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -435,6 +647,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       plan,
       execution,
       evaluation,
+      { outputValidators: ports.outputValidators },
     )).toThrow(/source observation universe/);
     expect(decision).toMatchObject({
       decisionStatus: 'not-decided',
@@ -460,6 +673,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     controller.abort();
     const run = startAnalysis(plan, execution, evaluation, {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -501,6 +715,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     }, { runId: 'run-analysis-writer', bundleId: 'evaluation-analysis-writer' });
     const analysis = await analyzeEvaluationBundle(plan, execution, evaluation, {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,
@@ -515,6 +730,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
     const failedPorts = {
       analysisNodes: createBuiltinAnalysisNodes(),
+      outputValidators: createBuiltinAnalysisOutputValidators(),
       missingPolicies: createBuiltinMissingPolicies(),
       decisionPolicies: createBuiltinDecisionPolicies(),
       clock,

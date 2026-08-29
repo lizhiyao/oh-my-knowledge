@@ -6,7 +6,10 @@ import {
   type EvaluationBundle,
   type ExecutionBundle,
 } from './artifacts.js';
-import { SchemaIdentitySchema } from './common.js';
+import {
+  SchemaIdentitySchema,
+  type SchemaIdentity,
+} from './common.js';
 import { derivePlannedEvaluationCoordinates } from './evaluation-identities.js';
 import {
   parseEvaluationBundle,
@@ -14,7 +17,12 @@ import {
 } from './evaluation-bundle.js';
 import { digestArtifactPayload } from './digests.js';
 import { parseExecutionBundle } from './execution-bundle.js';
-import { canonicalizeJson, digestCanonicalJson, parseWireDocument } from './json.js';
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+  parseWireDocument,
+  type JsonValue,
+} from './json.js';
 
 export type AnalysisBundleValidationErrorCode =
   | 'ANALYSIS_BUNDLE_DUPLICATE_RECORD'
@@ -236,6 +244,15 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
   };
 }
 
+export interface AnalysisOutputSchemaValidator {
+  readonly schema: SchemaIdentity;
+  validate(value: JsonValue): boolean;
+}
+
+export interface AnalysisBundleValidationContext {
+  readonly outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>;
+}
+
 interface ExpectedAnalysisRow {
   rowId: string;
   rowStatus: 'observed' | 'missing' | 'invalid' | 'evaluation-failed'
@@ -408,6 +425,7 @@ function assertMatchesPlan(
   plan: AnalysisBundlePlanContext,
   execution: ExecutionBundle,
   source: EvaluationBundle,
+  validation: AnalysisBundleValidationContext,
 ): void {
   if (bundle.runContractDigest !== plan.digests.runContractDigest
       || bundle.analysisPlanDigest !== plan.analysis.analysisPlanDigest
@@ -454,6 +472,28 @@ function assertMatchesPlan(
         'Analysis record does not match its sealed node and Runtime binding.',
       );
     }
+    const validator = validation.outputValidators.get(record.outputSchema.schemaDigest);
+    if (validator === undefined
+        || canonicalizeJson(validator.schema) !== canonicalizeJson(record.outputSchema)) {
+      throw new AnalysisBundleValidationError(
+        'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+        'Analysis output schema has no independently bound Core validator.',
+      );
+    }
+    if (record.analysisStatus === 'completed') {
+      let valid = false;
+      try {
+        valid = validator.validate(record.value);
+      } catch {
+        valid = false;
+      }
+      if (!valid) {
+        throw new AnalysisBundleValidationError(
+          'ANALYSIS_BUNDLE_PLAN_MISMATCH',
+          'Analysis result value does not match its sealed output schema.',
+        );
+      }
+    }
     assertSourceCoverage(record, expectedRows(plan, execution, source, node));
     const parents = new Set<string>();
     for (const input of node.inputs) {
@@ -478,11 +518,12 @@ function assertMatchesPlan(
       );
     }
   }
-  if (!bundle.provenance.parentDigests.includes(source.bundleDigest)
+  if (canonicalizeJson(bundle.provenance.parentDigests)
+        !== canonicalizeJson([source.bundleDigest])
       || TRUST_LEVEL[bundle.provenance.trust] > TRUST_LEVEL[source.provenance.trust]) {
     throw new AnalysisBundleValidationError(
       'ANALYSIS_BUNDLE_PROVENANCE_INVALID',
-      'Analysis provenance must bind and cannot upgrade the source EvaluationBundle trust.',
+      'Analysis provenance must bind exactly one source EvaluationBundle and cannot upgrade trust.',
     );
   }
 }
@@ -492,10 +533,11 @@ export function parseAnalysisBundle(
   plan: AnalysisBundlePlanContext,
   executionSource: unknown,
   evaluationSource: unknown,
+  validation: AnalysisBundleValidationContext,
 ): AnalysisBundle {
   const execution = parseExecutionBundle(executionSource, plan);
   const source = parseEvaluationBundle(evaluationSource, plan, execution);
   const bundle = parseAnalysisBundleDocument(value);
-  assertMatchesPlan(bundle, plan, execution, source);
+  assertMatchesPlan(bundle, plan, execution, source, validation);
   return bundle;
 }

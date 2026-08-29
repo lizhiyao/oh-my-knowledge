@@ -88,6 +88,13 @@ export const AnalysisNodeCapabilitiesSchema = z.object({
     ComparisonInputDomainSchema,
   ])),
   outputSchema: SchemaIdentitySchema,
+  metricInputCardinality: z.object({
+    min: z.number().int().nonnegative(),
+    max: z.number().int().nonnegative(),
+  }).strict().refine(
+    (cardinality) => cardinality.min <= cardinality.max,
+    { message: 'metricInputCardinality.min must not exceed max.' },
+  ).optional(),
   sampling: SamplingCapabilitiesSchema.optional(),
   schemas: z.array(SchemaIdentitySchema),
 }).strict();

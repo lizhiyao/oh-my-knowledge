@@ -2,6 +2,7 @@ import type {
   AnalysisNodeCapabilities,
 } from './types.js';
 import {
+  canonicalizeJson,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
   type AnalysisNodeDefinition,
@@ -494,7 +495,38 @@ export function validateDefinitionSemantics(
         'AnalysisResult',
       );
     }
+    const family = definition.decisionPolicy.comparisonFamily ?? [];
+    assertUnique(family.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
+    assertUnique(
+      family.map((member) => canonicalizeJson([
+        member.comparisonId,
+        member.treatmentTargetId,
+        member.metricId,
+      ])),
+      'decision-policy:comparison-family-member',
+    );
+    const comparisonById = new Map(definition.comparisons.map(
+      (comparison) => [comparison.comparisonId, comparison],
+    ));
+    for (const member of family) {
+      const comparison = comparisonById.get(member.comparisonId);
+      if (comparison === undefined
+          || !comparison.treatmentTargetIds.includes(member.treatmentTargetId)
+          || !comparison.metricIds.includes(member.metricId)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'DecisionPolicy comparison family 引用了不存在的 contrast。',
+          { hypothesisId: member.hypothesisId },
+        );
+      }
+    }
     const correctionId = definition.decisionPolicy.multipleComparisonPolicyId;
+    if ((family.length > 1) !== (correctionId !== undefined)) {
+      throw definitionError(
+        'EVAL_DEFINITION_MISSING_REFERENCE',
+        '多个 comparison family member 必须声明 correction，单个或空 family 不得伪装成多重比较。',
+      );
+    }
     if (correctionId !== undefined) {
       const correctionNodes = definition.analysisGraph.nodes.filter((node) => (
         node.analysisNodeKind === 'correction'
@@ -529,6 +561,18 @@ export function validateAnalysisInputs(
   metricsById: ReadonlyMap<string, MetricDefinition>,
   outputSchemasByResultId: ReadonlyMap<string, string>,
 ): void {
+  const metricInputCount = node.inputs.filter(
+    (input) => input.inputKind === 'metric-observations',
+  ).length;
+  if (capabilities.metricInputCardinality !== undefined
+      && (metricInputCount < capabilities.metricInputCardinality.min
+        || metricInputCount > capabilities.metricInputCardinality.max)) {
+    throw definitionError(
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      'Analysis Runtime 不支持声明的 Metric 输入数量。',
+      { nodeId: node.nodeId, metricInputCount },
+    );
+  }
   for (const input of node.inputs) {
     if (input.inputKind === 'metric-observations') {
       const metric = metricsById.get(input.referenceId);

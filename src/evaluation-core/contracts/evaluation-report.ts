@@ -9,7 +9,11 @@ import {
   type EvaluationStatus,
 } from './artifacts.js';
 import type { Provenance } from './common.js';
-import { parseAnalysisBundle, type AnalysisBundlePlanContext } from './analysis-bundle.js';
+import {
+  parseAnalysisBundle,
+  type AnalysisBundlePlanContext,
+  type AnalysisBundleValidationContext,
+} from './analysis-bundle.js';
 import { digestArtifactPayload } from './digests.js';
 import { parseEvaluationBundle } from './evaluation-bundle.js';
 import { parseExecutionBundle } from './execution-bundle.js';
@@ -210,6 +214,7 @@ export function parseEvaluationReport(
   executionValue: unknown,
   evaluationValue: unknown,
   analysisValue: unknown,
+  validation: AnalysisBundleValidationContext,
 ): EvaluationReport {
   const execution = parseExecutionBundle(executionValue, plan);
   const evaluation = parseEvaluationBundle(evaluationValue, plan, execution);
@@ -218,6 +223,7 @@ export function parseEvaluationReport(
     plan,
     execution,
     evaluation,
+    validation,
   );
   const report = parseEvaluationReportDocument(value);
   assertBundleReferences(report, execution, evaluation, analysis);

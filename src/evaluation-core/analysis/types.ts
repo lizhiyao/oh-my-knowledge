@@ -17,6 +17,7 @@ import type {
   EvaluationReport,
   JsonValue,
   RuntimeIdentity,
+  AnalysisOutputSchemaValidator,
   SamplingUnitIds,
   SchemaIdentity,
   Sha256Digest,
@@ -147,7 +148,6 @@ export interface AnalysisNodeRun {
 export interface AnalysisNodeImplementation {
   readonly identity: RuntimeIdentity;
   readonly outputSchema: SchemaIdentity;
-  validateOutput(value: JsonValue): boolean;
   openRun(context: Readonly<AnalysisNodeRunContext>): Promise<AnalysisNodeRun>;
 }
 
@@ -205,6 +205,7 @@ export interface AnalysisEventWriter {
 
 export interface AnalysisRuntimePorts {
   analysisNodes: ReadonlyMap<string, AnalysisNodeImplementation>;
+  outputValidators: ReadonlyMap<string, AnalysisOutputSchemaValidator>;
   missingPolicies: ReadonlyMap<string, AnalysisMissingPolicy>;
   decisionPolicies: ReadonlyMap<string, AnalysisDecisionPolicy>;
   clock: AnalysisClock;
