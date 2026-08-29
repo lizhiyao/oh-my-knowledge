@@ -11,6 +11,7 @@ import {
   derivePlannedEvaluationCoordinates,
   digestArtifactPayload,
   digestCanonicalJson,
+  evaluationRecordMatchesEvidencePolicy,
   parseEvaluationBundle,
   parseExecutionBundle,
   parseWireDocument,
@@ -92,6 +93,13 @@ class EvaluationAttemptTimeoutError extends Error {
   constructor() {
     super('Evaluation attempt timed out.');
     this.name = 'EvaluationAttemptTimeoutError';
+  }
+}
+
+class EvaluationAttemptCancelledError extends Error {
+  constructor() {
+    super('Evaluation attempt was cancelled.');
+    this.name = 'AbortError';
   }
 }
 
@@ -338,11 +346,13 @@ async function materializeBindings(
   record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
   evaluator: SealedRunPlan['evaluation']['evaluators'][number],
   ports: EvaluationRuntimePorts,
+  signal: AbortSignal,
 ): Promise<EvaluatorBindingValue[] | undefined> {
   const sample = plan.evaluation.samples.find((candidate) => candidate.sampleId === record.sampleId);
   if (sample === undefined) throw new Error('Sealed evaluation sample disappeared');
   const result: EvaluatorBindingValue[] = [];
   for (const input of evaluator.inputs) {
+    if (signal.aborted) throw new EvaluationAttemptCancelledError();
     let source: EvaluationContent | undefined;
     if (input.sourceKind === 'output') {
       source = record.executionStatus === 'completed'
@@ -359,6 +369,7 @@ async function materializeBindings(
         classification: 'gold',
       };
     }
+    if (signal.aborted) throw new EvaluationAttemptCancelledError();
     if (source === undefined) return undefined;
     try {
       result.push({
@@ -535,7 +546,16 @@ async function withTimeout<T>(
   const timerController = new AbortController();
   const operationResult = Promise.resolve().then(() => operation(controller.signal));
   try {
-    if (timeoutMs === undefined) return await operationResult;
+    if (timeoutMs === undefined) {
+      try {
+        const value = await operationResult;
+        if (parent.aborted) throw new EvaluationAttemptCancelledError();
+        return value;
+      } catch (error) {
+        if (parent.aborted) throw new EvaluationAttemptCancelledError();
+        throw error;
+      }
+    }
     const winner = await Promise.race([
       operationResult.then(
         (value) => ({ resultKind: 'value' as const, value }),
@@ -545,6 +565,7 @@ async function withTimeout<T>(
         resultKind: 'timeout' as const,
       })),
     ]);
+    if (parent.aborted) throw new EvaluationAttemptCancelledError();
     if (winner.resultKind === 'value') return winner.value;
     if (winner.resultKind === 'error') throw winner.error;
     controller.abort('timeout');
@@ -731,6 +752,7 @@ function replayRecord(
     || record.sourceRecordDigest !== sourceRecordDigest
     || canonicalizeJson(record.runtime) !== canonicalizeJson(binding.runtime)
     || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
+    || !evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)
     || record.attempts.at(-1)?.attemptStatus !== 'completed'
     || record.attempts.some((attempt, index) => (
       attempt.attemptNumber !== index + 1
@@ -797,10 +819,12 @@ async function evaluateCoordinate(
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
 ): Promise<{ record?: EvaluationRecord; cacheEntry?: EvaluationCacheEntry }> {
   const { binding, coordinate, sourceRecordDigest, sourceTrust, inputs } = prepared;
+  if (signal.aborted) return {};
   const key = cacheKey(plan, coordinate, binding, sourceRecordDigest, inputs);
   if (plan.evaluation.policy.evaluationCacheMode === 'reuse') {
     try {
       const entry = await ports.cache?.get(key);
+      if (signal.aborted) return {};
       if (entry !== undefined) {
         const record = replayRecord(
           entry,
@@ -811,14 +835,16 @@ async function evaluateCoordinate(
           sourceTrust,
           plan,
         );
-        await events.emit('evaluation.cache.hit', 'evaluation', coordinate.evaluationId, {
+        const delivered = await events.emit('evaluation.cache.hit', 'evaluation', coordinate.evaluationId, {
           cacheKeyDigest: key,
         });
+        if (!delivered || signal.aborted) return {};
         return { record };
       }
-      await events.emit('evaluation.cache.miss', 'evaluation', coordinate.evaluationId, {
+      const delivered = await events.emit('evaluation.cache.miss', 'evaluation', coordinate.evaluationId, {
         cacheKeyDigest: key,
       });
+      if (!delivered || signal.aborted) return {};
     } catch (error) {
       setStop('failed', 'evaluation-cache-read-failed', safeError(error));
       return {};
@@ -833,12 +859,18 @@ async function evaluateCoordinate(
   let evidence: CapturedContent | undefined;
   let evaluatorRecord: Awaited<ReturnType<EvaluationEvaluatorRun['openRecord']>> | undefined;
   let resourceClean = true;
-  await events.emit('evaluation.record.started', 'evaluation', coordinate.evaluationId, {
-    targetId: coordinate.targetId,
-    sampleId: coordinate.sampleId,
-    trialIndex: coordinate.trialIndex,
-    evaluatorId: coordinate.evaluatorId,
-  });
+  const recordStarted = await events.emit(
+    'evaluation.record.started',
+    'evaluation',
+    coordinate.evaluationId,
+    {
+      targetId: coordinate.targetId,
+      sampleId: coordinate.sampleId,
+      trialIndex: coordinate.trialIndex,
+      evaluatorId: coordinate.evaluatorId,
+    },
+  );
+  if (!recordStarted || signal.aborted) return {};
   try {
     const session = await sessions.get(binding);
     evaluatorRecord = await session.openRecord(deepFreeze(snapshotJson({
@@ -887,6 +919,7 @@ async function evaluateCoordinate(
           ports.clock,
           signal,
         );
+        if (signal.aborted) throw new EvaluationAttemptCancelledError();
         attemptUsage = validatedUsage(result.usage);
         observations = await normalizeObservations(
           result.observations,
@@ -896,6 +929,7 @@ async function evaluateCoordinate(
           ports,
         );
         evidence = await capture(result.evidence, plan, ports);
+        if (signal.aborted) throw new EvaluationAttemptCancelledError();
         const completedAt = ports.clock.timestamp();
         attempts.push({
           attemptId,
@@ -1122,12 +1156,14 @@ async function prepareEvaluationCoordinates(
   ports: EvaluationRuntimePorts,
   prepared: PreparedRuntime,
   coordinates: readonly PlannedEvaluationCoordinate[],
+  signal: AbortSignal,
 ): Promise<PreparedCoordinate[]> {
   const sourceByTrial = new Map(
     prepared.source.records.map((record) => [trialKey(record), record]),
   );
   const result: PreparedCoordinate[] = [];
   for (const coordinate of coordinates) {
+    if (signal.aborted) break;
     const binding = prepared.bindings.get(coordinate.evaluatorId);
     if (binding === undefined) throw new Error('Evaluator binding disappeared');
     const source = sourceByTrial.get(trialKey(coordinate));
@@ -1142,7 +1178,14 @@ async function prepareEvaluationCoordinates(
       });
       continue;
     }
-    const inputs = await materializeBindings(plan, source, binding.evaluator, ports);
+    const inputs = await materializeBindings(
+      plan,
+      source,
+      binding.evaluator,
+      ports,
+      signal,
+    );
+    if (signal.aborted) break;
     if (inputs === undefined) {
       result.push({ coordinate, binding, source, reasonCode: 'evaluator-input-unavailable' });
       continue;
@@ -1223,18 +1266,23 @@ async function runEvaluation(
     ).then(() => setStop('budget-exhausted', 'evaluation-duration-budget-exhausted'))
       .catch(() => undefined);
   try {
-    await events.emit('evaluation.run.started', 'run', options.runId, {
+    const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
       evaluationPlanDigest: plan.evaluation.evaluationPlanDigest,
       executionBundleDigest: prepared.source.bundleDigest,
       planned: coordinates.length,
     });
+    if (!runStarted || stop.stopKind !== undefined) {
+      throw new EvaluationAttemptCancelledError();
+    }
     const preparedCoordinates = await prepareEvaluationCoordinates(
       plan,
       ports,
       prepared,
       coordinates,
+      controller.signal,
     );
     for (const item of preparedCoordinates) {
+      if (stop.stopKind !== undefined) break;
       if (!('reasonCode' in item)) continue;
       const record = notEvaluatedRecord(
         plan,
@@ -1249,9 +1297,15 @@ async function runEvaluation(
         item.source,
       );
       records.set(record.evaluationId, record);
-      await events.emit('evaluation.record.not-evaluated', 'evaluation', item.coordinate.evaluationId, {
-        reasonCode: record.notEvaluatedReasonCode,
-      });
+      const delivered = await events.emit(
+        'evaluation.record.not-evaluated',
+        'evaluation',
+        item.coordinate.evaluationId,
+        {
+          reasonCode: record.notEvaluatedReasonCode,
+        },
+      );
+      if (!delivered) break;
     }
     const eligibleCoordinates = preparedCoordinates.filter(
       (item): item is EligibleCoordinate => !('reasonCode' in item),

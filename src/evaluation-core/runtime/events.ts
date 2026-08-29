@@ -51,7 +51,6 @@ export class RuntimeEventEmitter<
   readonly #stream: BoundedEventStream;
   readonly #onFatal: (reason: string, error: EvaluationError) => void;
   #writerEnabled: boolean;
-  #fatal = false;
   #lastSequence = -1;
   #deliveryTail: Promise<void> = Promise.resolve();
 
@@ -97,6 +96,7 @@ export class RuntimeEventEmitter<
       subject: { subjectKind, subjectId },
       data,
     }));
+    let published = true;
     const delivery = this.#deliveryTail.then(async () => {
       if (this.#writerEnabled) {
         try {
@@ -104,7 +104,7 @@ export class RuntimeEventEmitter<
         } catch {
           this.#writerEnabled = false;
           if (this.#options.writerFailureMode === 'fail-run') {
-            this.#fatal = true;
+            published = false;
             this.#onFatal(
               this.#options.writerFailureReason,
               this.#options.writerFailureError,
@@ -112,11 +112,11 @@ export class RuntimeEventEmitter<
           }
         }
       }
-      this.#stream.push(event);
+      if (published) this.#stream.push(event);
     });
     this.#deliveryTail = delivery.catch(() => undefined);
     await delivery;
-    return !this.#fatal;
+    return published;
   }
 
   close(): void {

@@ -3,6 +3,7 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   parseEvaluationBundle,
+  type EvaluationBundle,
   type EvaluationEvent,
   type ExecutionBundle,
   type RuntimeIdentity,
@@ -80,6 +81,17 @@ function resealExecutionBundle(
   return draft;
 }
 
+function resealEvaluationBundle(
+  bundle: EvaluationBundle,
+  mutate: (draft: EvaluationBundle) => void,
+): EvaluationBundle {
+  const draft = structuredClone(bundle);
+  mutate(draft);
+  draft.bundleDigest = `sha256:${'0'.repeat(64)}`;
+  draft.bundleDigest = digestArtifactPayload(draft, 'bundleDigest');
+  return draft;
+}
+
 function identity(
   plan: Plan,
   runtimeKind: 'executor' | 'evaluator',
@@ -124,6 +136,7 @@ async function sourceBundle(plan: Plan, fail = false) {
     executors: new Map([['executor-alias', executor(plan, fail)]]),
     clock: new FakeClock(),
     eventSequencer: new InMemoryRuntimeEventSequencer(),
+    eventWriter: { async write() {} },
     contentStore: {
       async put(request) {
         return {
@@ -350,6 +363,47 @@ describe('Evaluation Core Evaluation runtime', () => {
     ))).toBe(true);
   });
 
+  it('discards a late evaluator success after external cancellation', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evaluation.maxConcurrency = 1;
+      policy.evaluation.retry.maxAttempts = 1;
+    });
+    const source = await sourceBundle(plan);
+    const controller = new AbortController();
+    let started: (() => void) | undefined;
+    let finish: (() => void) | undefined;
+    const attemptStarted = new Promise<void>((resolve) => { started = resolve; });
+    const allowSuccess = new Promise<void>((resolve) => { finish = resolve; });
+    const fake = evaluator(plan, async () => {
+      started?.();
+      await allowSuccess;
+      return {
+        observations: [{
+          metricId: 'correct',
+          observationStatus: 'observed',
+          valueType: 'boolean',
+          value: true,
+        }],
+      };
+    });
+    const run = startEvaluation(plan, source, ports(plan, fake.port), {
+      runId: 'late-cancel-run',
+      bundleId: 'late-cancel-bundle',
+      signal: controller.signal,
+    });
+    await attemptStarted;
+    controller.abort();
+    finish?.();
+    const bundle = await run.result;
+
+    expect(bundle.evaluationBundleStatus).toBe('cancelled');
+    expect(bundle.records).toHaveLength(1);
+    expect(bundle.records[0].evaluationStatus).toBe('cancelled');
+    expect(bundle.coverage.completed).toBe(0);
+  });
+
   it('reuses cache by source digest and commits only after clean resource teardown', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
@@ -357,11 +411,22 @@ describe('Evaluation Core Evaluation runtime', () => {
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
     const first = evaluator(plan);
-    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
+    const firstBundle = await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache }), {
       runId: 'cache-first',
       bundleId: 'cache-first-bundle',
     });
     expect(cache.puts).toBe(2);
+    const selfReportedHit = resealEvaluationBundle(firstBundle, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
+      record.cache = {
+        ...record.cache,
+        cacheStatus: 'transparent-hit',
+        sourceRecordDigest: digestCanonicalJson(record),
+      };
+    });
+    expect(() => parseEvaluationBundle(selfReportedHit, plan, source))
+      .toThrowError(/sealed reuse policy/);
 
     const second = evaluator(plan);
     const replay = await evaluateExecutionBundle(plan, source, ports(plan, second.port, { cache }), {
@@ -373,6 +438,13 @@ describe('Evaluation Core Evaluation runtime', () => {
       record.evaluationStatus === 'completed'
       && record.cache.cacheStatus === 'transparent-hit'
     ))).toBe(true);
+    const forgedHit = resealEvaluationBundle(replay, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
+      delete record.cache.sourceRecordDigest;
+    });
+    expect(() => parseEvaluationBundle(forgedHit, plan, source))
+      .toThrowError(/sealed reuse policy/);
 
     const dirtyCache = new MemoryCache();
     const dirty = evaluator(plan, undefined, true);
@@ -398,6 +470,81 @@ describe('Evaluation Core Evaluation runtime', () => {
     })).toThrowError(EvaluationRuntimeConfigurationError);
   });
 
+  it('does not resolve content or open evaluator resources when cancelled before start', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.evidence.output = 'reference';
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const controller = new AbortController();
+    controller.abort();
+    let resolves = 0;
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      contentResolver: {
+        async resolve() {
+          resolves += 1;
+          throw new Error('resolver must not open');
+        },
+      },
+    }), {
+      runId: 'cancel-before-start-run',
+      bundleId: 'cancel-before-start-bundle',
+      signal: controller.signal,
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'cancelled',
+      coverage: { started: 0, notStarted: 1 },
+    });
+    expect(resolves).toBe(0);
+    expect(fake.state).toMatchObject({ attempts: 0, recordContexts: [], runDisposals: 0 });
+  });
+
+  it.each([
+    'evaluation.run.started',
+    'evaluation.record.started',
+    'evaluation.cache.miss',
+  ] as const)('does not open evaluator resources when %s cannot be written', async (eventKind) => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.eventDelivery.writerMode = 'required';
+      policy.eventDelivery.writerFailureMode = 'fail-run';
+      if (eventKind === 'evaluation.run.started') policy.evidence.output = 'reference';
+      if (eventKind === 'evaluation.cache.miss') policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const cache = eventKind === 'evaluation.cache.miss' ? new MemoryCache() : undefined;
+    let resolves = 0;
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+      ...(cache === undefined ? {} : { cache }),
+      contentResolver: {
+        async resolve() {
+          resolves += 1;
+          throw new Error('resolver must not open before durable run start');
+        },
+      },
+      eventWriter: {
+        async write(event) {
+          if (event.eventKind === eventKind) throw new Error('writer failed');
+        },
+      },
+    }), {
+      runId: `writer-admission-${eventKind}`,
+      bundleId: `writer-admission-bundle-${eventKind}`,
+    });
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      coverage: { started: 0, notStarted: 1 },
+    });
+    expect(fake.state).toMatchObject({ attempts: 0, recordContexts: [], runDisposals: 0 });
+    if (eventKind === 'evaluation.run.started') expect(resolves).toBe(0);
+  });
+
   it('re-seals terminal status when EventWriter fails on terminal delivery', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.eventDelivery.writerMode = 'optional';
@@ -405,7 +552,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
-    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port, {
+    const run = startEvaluation(plan, source, ports(plan, fake.port, {
       eventWriter: {
         async write(event) {
           if (event.eventKind === 'evaluation.run.completed') throw new Error('writer failed');
@@ -415,11 +562,20 @@ describe('Evaluation Core Evaluation runtime', () => {
       runId: 'writer-run',
       bundleId: 'writer-bundle',
     });
+    const bundle = await run.result;
+    const journal: EvaluationEvent[] = [];
+    for await (const event of run.events) journal.push(event);
     expect(bundle).toMatchObject({
       evaluationBundleStatus: 'failed',
       terminationReasonCode: 'evaluation-event-writer-failed',
     });
     expect(parseEvaluationBundle(bundle, plan, source)).toEqual(bundle);
+    const terminals = journal.filter((event) => event.eventKind.startsWith('evaluation.run.')
+      && event.eventKind !== 'evaluation.run.started');
+    expect(terminals).toEqual([expect.objectContaining({
+      eventKind: 'evaluation.run.failed',
+      data: expect.objectContaining({ bundleDigest: bundle.bundleDigest }),
+    })]);
   });
 
   it('binds cache identity to the exact source ExecutionRecord digest', async () => {
@@ -561,6 +717,120 @@ describe('Evaluation Core Evaluation runtime', () => {
       .not.toHaveProperty('sourceRecordDigest');
   });
 
+  it('rejects a forged not-evaluated record when sealed bindings are available', async () => {
+    const plan = await makePlan();
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'forge-not-evaluated-seed',
+      bundleId: 'forge-not-evaluated-seed-bundle',
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus !== 'completed') throw new Error('unexpected record');
+      draft.records[0] = {
+        targetId: record.targetId,
+        sampleId: record.sampleId,
+        trialIndex: record.trialIndex,
+        trialId: record.trialId,
+        evaluatorId: record.evaluatorId,
+        evaluationId: record.evaluationId,
+        runtime: record.runtime,
+        provenance: record.provenance,
+        evaluationStatus: 'not-evaluated',
+        notEvaluatedReasonCode: 'evaluator-input-unavailable',
+        notEvaluatedAt: record.timing.completedAt ?? record.timing.startedAt,
+        sourceRecordDigest: record.sourceRecordDigest,
+      };
+      draft.coverage = {
+        ...draft.coverage,
+        eligible: draft.coverage.eligible - 1,
+        sourceUnavailable: draft.coverage.sourceUnavailable + 1,
+        started: draft.coverage.started - 1,
+        completed: draft.coverage.completed - 1,
+      };
+    });
+
+    expect(() => parseEvaluationBundle(forged, plan, source))
+      .toThrowError(/unavailable evaluator bindings/);
+  });
+
+  it('rejects an active record when an output-only binding has no source output', async () => {
+    const plan = await makePlan((definition) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      definition.evaluators[0].inputs = [{
+        bindingId: 'actual',
+        sourceKind: 'output',
+        pointer: '/answer',
+      }];
+    });
+    const completedSource = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const valid = await evaluateExecutionBundle(
+      plan,
+      completedSource,
+      ports(plan, fake.port),
+      { runId: 'active-binding-seed', bundleId: 'active-binding-seed-bundle' },
+    );
+    const failedSource = resealExecutionBundle(completedSource, (draft) => {
+      const record = draft.records[0];
+      if (record.executionStatus !== 'completed') throw new Error('unexpected source');
+      const last = record.attempts.at(-1);
+      if (last === undefined) throw new Error('missing attempt');
+      const withoutOutput = structuredClone(record);
+      delete withoutOutput.output;
+      draft.records[0] = {
+        ...withoutOutput,
+        executionStatus: 'failed',
+        attempts: [
+          ...record.attempts.slice(0, -1),
+          {
+            ...last,
+            attemptStatus: 'failed',
+            error: { code: 'target-failed', stage: 'execution', message: 'Target failed.' },
+          },
+        ],
+        error: { code: 'target-failed', stage: 'execution', message: 'Target failed.' },
+      };
+      draft.coverage = { ...draft.coverage, succeeded: 0, failed: 1 };
+      draft.replayability = 'summary-only';
+      draft.executionBundleStatus = 'failed';
+      draft.terminationReasonCode = 'target-failed';
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      const record = draft.records[0];
+      draft.executionBundleDigest = failedSource.bundleDigest;
+      if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
+      record.sourceRecordDigest = digestCanonicalJson(failedSource.records[0]);
+    });
+
+    expect(() => parseEvaluationBundle(forged, plan, failedSource))
+      .toThrowError(/requires every statically checkable binding/);
+  });
+
+  it('rejects cache-hit claims when the sealed evaluation cache is disabled', async () => {
+    const plan = await makePlan();
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
+    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'forge-cache-seed',
+      bundleId: 'forge-cache-seed-bundle',
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
+      record.cache = {
+        cacheStatus: 'transparent-hit',
+        cacheKeyDigest: digestCanonicalJson({ forged: 'key' }),
+        sourceRecordDigest: digestCanonicalJson(record),
+      };
+    });
+
+    expect(() => parseEvaluationBundle(forged, plan, source))
+      .toThrowError(/disabled cache policy/);
+  });
+
   it('charges failed attempts and stops retries at the provider-cost boundary', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evaluation.maxConcurrency = 1;
@@ -658,6 +928,50 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(second.state.attempts).toBe(0);
   });
 
+  it.each([
+    ['secret metadata', 'secret'],
+    ['wrong capture kind', 'public'],
+  ] as const)('rejects cache records with poisoned %s', async (_label, classification) => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.cache.evaluationMode = 'reuse';
+      policy.evidence.evidence = 'none';
+      policy.evidence.maximumClassification = 'public';
+    });
+    const source = await sourceBundle(plan);
+    const seeded = new MemoryCache();
+    const first = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, first.port, { cache: seeded }), {
+      runId: `poison-evidence-seed-${classification}`,
+      bundleId: `poison-evidence-seed-bundle-${classification}`,
+    });
+    const poisoned = new MemoryCache();
+    for (const [key, value] of seeded.entries) poisoned.entries.set(key, structuredClone(value));
+    const entry = poisoned.entries.values().next().value;
+    if (entry === undefined) throw new Error('missing cache entry');
+    entry.record.observations[0].metadata = {
+      contentKind: 'inline',
+      classification,
+      value: { forged: true },
+    };
+    entry.cachedRecordDigest = digestCanonicalJson(entry.record);
+    const second = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(
+      plan,
+      source,
+      ports(plan, second.port, { cache: poisoned }),
+      {
+        runId: `poison-evidence-${classification}`,
+        bundleId: `poison-evidence-bundle-${classification}`,
+      },
+    );
+
+    expect(bundle).toMatchObject({
+      evaluationBundleStatus: 'failed',
+      terminationReasonCode: 'evaluation-cache-read-failed',
+    });
+    expect(second.state.attempts).toBe(0);
+  });
+
   it('does not upgrade imported source trust in native or replayed evaluation facts', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
@@ -685,6 +999,13 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(native.provenance.trust).toBe('declared');
     expect(native.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
     expect(replay.records.every((record) => record.provenance.trust === 'declared')).toBe(true);
+
+    const forged = resealEvaluationBundle(native, (draft) => {
+      draft.provenance.trust = 'verified';
+      for (const record of draft.records) record.provenance.trust = 'verified';
+    });
+    expect(() => parseEvaluationBundle(forged, plan, source))
+      .toThrowError(/trust exceeds/);
   });
 
   it('captures observation metadata under the same classification policy as evidence', async () => {

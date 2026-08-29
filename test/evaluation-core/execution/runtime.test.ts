@@ -961,16 +961,25 @@ describe('Evaluation Core Execution runtime', () => {
         },
       },
     });
-    const bundle = await executeRunPlan(plan, ports, {
+    const run = startExecution(plan, ports, {
       runId: 'run-writer-failure',
       bundleId: 'bundle-writer-failure',
     });
+    const bundle = await run.result;
+    const journal: EvaluationEvent[] = [];
+    for await (const event of run.events) journal.push(event);
 
     expect(bundle.executionBundleStatus).toBe('failed');
     expect(bundle.terminationReasonCode).toBe('event-writer-failed');
     expect(bundle.coverage.succeeded).toBe(1);
     expect(bundle.coverage.notStarted).toBe(0);
     expect(written.length).toBeGreaterThan(0);
+    const terminals = journal.filter((event) => event.eventKind.startsWith('execution.run.')
+      && event.eventKind !== 'execution.run.started');
+    expect(terminals).toEqual([expect.objectContaining({
+      eventKind: 'execution.run.failed',
+      data: expect.objectContaining({ bundleDigest: bundle.bundleDigest }),
+    })]);
   });
 
   it('does not open Target resources when the required EventWriter fails at run start', async () => {

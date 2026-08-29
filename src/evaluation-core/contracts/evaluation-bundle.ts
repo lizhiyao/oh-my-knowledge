@@ -38,7 +38,11 @@ export type EvaluationBundleValidationErrorCode =
   | 'EVALUATION_BUNDLE_DIGEST_MISMATCH'
   | 'EVALUATION_BUNDLE_PLAN_MISMATCH'
   | 'EVALUATION_BUNDLE_SOURCE_MISMATCH'
-  | 'EVALUATION_BUNDLE_RETRY_POLICY_INVALID';
+  | 'EVALUATION_BUNDLE_RETRY_POLICY_INVALID'
+  | 'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID'
+  | 'EVALUATION_BUNDLE_CACHE_POLICY_INVALID'
+  | 'EVALUATION_BUNDLE_EVIDENCE_POLICY_INVALID'
+  | 'EVALUATION_BUNDLE_PROVENANCE_INVALID';
 
 export class EvaluationBundleValidationError extends TypeError {
   readonly code: EvaluationBundleValidationErrorCode;
@@ -244,7 +248,9 @@ function assertStatus(bundle: EvaluationBundle): void {
   }
 }
 
-function contents(record: EvaluationRecord): CapturedContent[] {
+export function evaluationRecordCapturedContents(
+  record: EvaluationRecord,
+): CapturedContent[] {
   if (record.evaluationStatus !== 'completed') {
     return record.evaluationStatus === 'not-evaluated' || record.evidence === undefined
       ? []
@@ -268,7 +274,7 @@ function contents(record: EvaluationRecord): CapturedContent[] {
 
 function assertReplayability(bundle: EvaluationBundle): void {
   if (bundle.replayability === 'summary-only') return;
-  const captured = bundle.records.flatMap(contents);
+  const captured = bundle.records.flatMap(evaluationRecordCapturedContents);
   if (bundle.replayability === 'self-contained') {
     if (captured.some((content) => content.contentKind !== 'inline')) {
       throw new EvaluationBundleValidationError(
@@ -311,6 +317,11 @@ export interface EvaluationBundlePlanContext
     evaluators: readonly {
       evaluatorId: string;
       metricIds: readonly string[];
+      inputs: readonly {
+        bindingId: string;
+        sourceKind: 'output' | 'trace' | 'expected' | 'evaluation-context';
+        pointer: string;
+      }[];
     }[];
     metrics: readonly {
       metricId: string;
@@ -321,9 +332,16 @@ export interface EvaluationBundlePlanContext
     runtimes: readonly {
       runtimeKind: 'executor' | 'evaluator' | 'analysis';
       referenceId: string;
-      identity: unknown;
+      identity: {
+        assuranceLevel: 'verified' | 'declared' | 'unknown';
+      };
     }[];
     policy: {
+      evaluationCacheMode: 'disabled' | 'reuse';
+      evidence: {
+        evidence: 'full' | 'reference' | 'digest' | 'none';
+        maximumClassification: 'public' | 'sensitive' | 'secret' | 'gold';
+      };
       runtime: {
         retry: {
           maxAttempts: number;
@@ -365,12 +383,158 @@ function assertObservation(
   }
 }
 
+const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+const TRUST_LEVEL = { untrusted: 0, unknown: 1, declared: 2, verified: 3 } as const;
+
+type EvaluationEvidencePolicy = EvaluationBundlePlanContext['evaluation']['policy']['evidence'];
+
+export function evaluationRecordMatchesEvidencePolicy(
+  record: EvaluationRecord,
+  policy: EvaluationEvidencePolicy,
+): boolean {
+  const captured = evaluationRecordCapturedContents(record);
+  if (captured.some((content) => (
+    CLASSIFICATION_LEVEL[content.classification]
+      > CLASSIFICATION_LEVEL[policy.maximumClassification]
+  ))) return false;
+  if (policy.evidence === 'none') return captured.length === 0;
+  const expectedKind = policy.evidence === 'full'
+    ? 'inline'
+    : policy.evidence === 'reference'
+      ? 'descriptor'
+      : 'digest-only';
+  return captured.every((content) => content.contentKind === expectedKind);
+}
+
+function runtimeTrust(
+  runtime: EvaluationBundlePlanContext['evaluation']['runtimes'][number]['identity'],
+): 'verified' | 'declared' | 'unknown' {
+  return runtime.assuranceLevel;
+}
+
+function minimumTrust(
+  ...values: readonly ('verified' | 'declared' | 'untrusted' | 'unknown')[]
+): 'verified' | 'declared' | 'untrusted' | 'unknown' {
+  return values.reduce((minimum, value) => (
+    TRUST_LEVEL[value] < TRUST_LEVEL[minimum] ? value : minimum
+  ), 'verified');
+}
+
+function assertTrustAtMost(
+  actual: 'verified' | 'declared' | 'untrusted' | 'unknown',
+  ceiling: 'verified' | 'declared' | 'untrusted' | 'unknown',
+  message: string,
+): void {
+  if (TRUST_LEVEL[actual] > TRUST_LEVEL[ceiling]) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PROVENANCE_INVALID',
+      message,
+    );
+  }
+}
+
+function pointerResolves(value: unknown, pointer: string): boolean {
+  let current = value;
+  if (pointer === '') return true;
+  for (const encoded of pointer.slice(1).split('/')) {
+    const token = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
+    if (current === null || typeof current !== 'object') return false;
+    if (Array.isArray(current)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(token) || Number(token) >= current.length) return false;
+      current = current[Number(token)];
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(current, token)) return false;
+      current = (current as Record<string, unknown>)[token];
+    }
+  }
+  return true;
+}
+
+type BindingAvailability = 'available' | 'unavailable' | 'indeterminate';
+
+function capturedBindingAvailability(
+  content: CapturedContent | undefined,
+  pointer: string,
+): BindingAvailability {
+  if (content === undefined || content.contentKind === 'digest-only') return 'unavailable';
+  if (content.contentKind === 'descriptor') return 'indeterminate';
+  return pointerResolves(content.value, pointer) ? 'available' : 'unavailable';
+}
+
+function bindingClosureAvailability(
+  plan: EvaluationBundlePlanContext,
+  evaluator: EvaluationBundlePlanContext['evaluation']['evaluators'][number],
+  executionRecord: ExecutionRecord,
+): BindingAvailability {
+  const sample = plan.evaluation.samples.find(
+    (candidate) => candidate.sampleId === executionRecord.sampleId,
+  );
+  if (sample === undefined) planMismatch('EvaluationRecord refers to an unknown sample.');
+  let availability: BindingAvailability = 'available';
+  for (const input of evaluator.inputs) {
+    let binding: BindingAvailability;
+    if (input.sourceKind === 'output') {
+      binding = executionRecord.executionStatus === 'completed'
+        ? capturedBindingAvailability(executionRecord.output, input.pointer)
+        : 'unavailable';
+    } else if (input.sourceKind === 'trace') {
+      binding = executionRecord.executionStatus === 'budget-censored'
+        ? 'unavailable'
+        : capturedBindingAvailability(executionRecord.trace, input.pointer);
+    } else {
+      const value = input.sourceKind === 'expected'
+        ? sample.expected
+        : sample.evaluationContext;
+      binding = value !== undefined && pointerResolves(value, input.pointer)
+        ? 'available'
+        : 'unavailable';
+    }
+    if (binding === 'unavailable') return 'unavailable';
+    if (binding === 'indeterminate') availability = 'indeterminate';
+  }
+  return availability;
+}
+
+function assertCachePolicy(
+  record: Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>,
+  mode: EvaluationBundlePlanContext['evaluation']['policy']['evaluationCacheMode'],
+): boolean {
+  const { cache } = record;
+  const noDigests = cache.cacheKeyDigest === undefined && cache.sourceRecordDigest === undefined;
+  if (mode === 'disabled') {
+    if (cache.cacheStatus !== 'not-used'
+        || !noDigests
+        || record.provenance.provenanceKind === 'replay') {
+      throw new EvaluationBundleValidationError(
+        'EVALUATION_BUNDLE_CACHE_POLICY_INVALID',
+        'EvaluationRecord cache facts contradict the sealed disabled cache policy.',
+      );
+    }
+    return false;
+  }
+  if (cache.cacheStatus === 'miss'
+      && cache.cacheKeyDigest !== undefined
+      && cache.sourceRecordDigest === undefined
+      && record.provenance.provenanceKind !== 'replay') return false;
+  if ((cache.cacheStatus === 'replay' || cache.cacheStatus === 'transparent-hit')
+      && cache.cacheKeyDigest !== undefined
+      && cache.sourceRecordDigest !== undefined
+      && record.provenance.provenanceKind === 'replay'
+      && record.provenance.parentDigests.length === 1
+      && record.provenance.parentDigests[0] === cache.sourceRecordDigest) return true;
+  throw new EvaluationBundleValidationError(
+    'EVALUATION_BUNDLE_CACHE_POLICY_INVALID',
+    'EvaluationRecord cache facts do not satisfy the sealed reuse policy.',
+  );
+}
+
 function assertRecordAgainstPlan(
   record: EvaluationRecord,
   expected: PlannedEvaluationCoordinate,
   plan: EvaluationBundlePlanContext,
   executionRecord: ExecutionRecord,
-  runtime: unknown,
+  runtime: EvaluationBundlePlanContext['evaluation']['runtimes'][number]['identity'],
+  sourceTrust: ExecutionBundle['provenance']['trust'],
 ): number {
   if (record.trialId !== expected.trialId
       || record.evaluationId !== expected.evaluationId) {
@@ -386,19 +550,56 @@ function assertRecordAgainstPlan(
       'EvaluationRecord source digest does not match its ExecutionRecord.',
     );
   }
-  if (executionRecord.executionStatus === 'budget-censored'
-      && record.evaluationStatus !== 'not-evaluated') {
-    throw new EvaluationBundleValidationError(
-      'EVALUATION_BUNDLE_SOURCE_MISMATCH',
-      'A budget-censored ExecutionRecord cannot produce an active evaluation.',
-    );
-  }
-  if (record.evaluationStatus === 'not-evaluated') return 0;
-
   const evaluator = plan.evaluation.evaluators.find(
     (candidate) => candidate.evaluatorId === record.evaluatorId,
   );
   if (evaluator === undefined) planMismatch('EvaluationRecord refers to an unknown Evaluator.');
+  assertTrustAtMost(
+    record.provenance.trust,
+    minimumTrust(
+      sourceTrust,
+      executionRecord.provenance.trust,
+      runtimeTrust(runtime),
+    ),
+    'EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
+  );
+  if (executionRecord.executionStatus === 'budget-censored') {
+    if (record.evaluationStatus !== 'not-evaluated'
+        || record.notEvaluatedReasonCode !== 'execution-budget-censored') {
+      throw new EvaluationBundleValidationError(
+        'EVALUATION_BUNDLE_SOURCE_MISMATCH',
+        'A budget-censored ExecutionRecord requires its canonical not-evaluated fact.',
+      );
+    }
+    return 0;
+  }
+  const closure = bindingClosureAvailability(plan, evaluator, executionRecord);
+  if (record.evaluationStatus === 'not-evaluated') {
+    if (record.notEvaluatedReasonCode !== 'evaluator-input-unavailable'
+        || closure === 'available') {
+      throw new EvaluationBundleValidationError(
+        'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID',
+        'A source-backed not-evaluated record requires unavailable evaluator bindings.',
+      );
+    }
+    return 0;
+  }
+  if (closure === 'unavailable') {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_BINDING_CLOSURE_INVALID',
+      'An active EvaluationRecord requires every statically checkable binding.',
+    );
+  }
+  if (!evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_EVIDENCE_POLICY_INVALID',
+      'EvaluationRecord evidence contradicts the sealed capture or classification policy.',
+    );
+  }
+  const cacheHit = assertCachePolicy(
+    record,
+    plan.evaluation.policy.evaluationCacheMode,
+  );
   if (record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_RETRY_POLICY_INVALID',
@@ -432,10 +633,7 @@ function assertRecordAgainstPlan(
       assertObservation(observation, metric);
     }
   }
-  return record.cache.cacheStatus === 'replay'
-    || record.cache.cacheStatus === 'transparent-hit'
-    ? 0
-    : record.attempts.length;
+  return cacheHit ? 0 : record.attempts.length;
 }
 
 export function assertEvaluationBundleMatchesPlan(
@@ -466,7 +664,10 @@ export function assertEvaluationBundleMatchesPlan(
   const executionByTrial = new Map(
     source.records.map((record) => [trialKey(record), record]),
   );
-  const runtimesByEvaluator = new Map<string, unknown>();
+  const runtimesByEvaluator = new Map<
+    string,
+    EvaluationBundlePlanContext['evaluation']['runtimes'][number]['identity']
+  >();
   for (const runtime of plan.evaluation.runtimes) {
     if (runtime.runtimeKind !== 'evaluator') continue;
     if (runtimesByEvaluator.has(runtime.referenceId)) {
@@ -482,10 +683,11 @@ export function assertEvaluationBundleMatchesPlan(
     const executionRecord = executionByTrial.get(trialKey(record));
     if (executionRecord === undefined) {
       if (record.evaluationStatus !== 'not-evaluated'
-          || record.sourceRecordDigest !== undefined) {
+          || record.sourceRecordDigest !== undefined
+          || record.notEvaluatedReasonCode !== 'execution-record-unavailable') {
         throw new EvaluationBundleValidationError(
           'EVALUATION_BUNDLE_SOURCE_MISMATCH',
-          'Only a source-less not-evaluated record may omit its ExecutionRecord.',
+          'A missing ExecutionRecord requires its canonical source-less not-evaluated fact.',
         );
       }
       const runtime = runtimesByEvaluator.get(record.evaluatorId);
@@ -495,6 +697,11 @@ export function assertEvaluationBundleMatchesPlan(
           || canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {
         planMismatch('Source-less EvaluationRecord does not match its sealed coordinate.');
       }
+      assertTrustAtMost(
+        record.provenance.trust,
+        minimumTrust(source.provenance.trust, runtimeTrust(runtime)),
+        'Source-less EvaluationRecord trust exceeds its source or sealed Runtime assurance.',
+      );
       continue;
     }
     const runtime = runtimesByEvaluator.get(record.evaluatorId);
@@ -505,6 +712,7 @@ export function assertEvaluationBundleMatchesPlan(
       plan,
       executionRecord,
       runtime,
+      source.provenance.trust,
     );
   }
   const maxInvocations = plan.evaluation.policy.runtime.budget.maxEvaluatorInvocations;
@@ -525,6 +733,14 @@ export function assertEvaluationBundleMatchesPlan(
       );
     }
   }
+  assertTrustAtMost(
+    bundle.provenance.trust,
+    minimumTrust(
+      source.provenance.trust,
+      ...bundle.records.map((record) => record.provenance.trust),
+    ),
+    'EvaluationBundle trust exceeds its source or record provenance.',
+  );
 }
 
 export function parseEvaluationBundleDocument(value: unknown): EvaluationBundle {
