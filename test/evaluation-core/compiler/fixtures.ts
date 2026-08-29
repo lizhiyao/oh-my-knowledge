@@ -99,6 +99,7 @@ export function validDefinition(): EvaluationDefinition {
       scheduling: { schedulingKind: 'interleaved' },
     },
     analysisGraph: {
+      analysisMode: 'preregistered',
       nodes: [{
         analysisNodeKind: 'reducer',
         nodeId: 'mean-correct',
@@ -271,12 +272,42 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
     resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
       calls.analysis += 1;
       if (!Object.isFrozen(requirement)) throw new Error('requirement is mutable');
+      if (requirement.requirementKind === 'missing-policy') {
+        return {
+          identity: remember(identity(
+            'exclude/v1',
+            'missing-policy-fingerprint-1',
+            {
+              capabilityKind: 'missing-policy',
+              valueTypes: ['numeric', 'boolean', 'categorical', 'text', 'ranking'],
+              schemas: [],
+            },
+          )),
+          satisfiesVersionConstraint: options.versionSatisfied ?? true,
+        };
+      }
+      if (requirement.requirementKind === 'decision-policy') {
+        return {
+          identity: remember(identity(
+            'progress/v1',
+            'decision-policy-fingerprint-1',
+            {
+              capabilityKind: 'decision-policy',
+              analysisResultSchemaUris: [schemaIdentity('analysis-output').schemaUri],
+              multipleComparisonPolicyIds: ['bonferroni/v1'],
+              schemas: [],
+            },
+          )),
+          satisfiesVersionConstraint: options.versionSatisfied ?? true,
+        };
+      }
       const isSampling = requirement.requirementKind === 'sampling-estimator';
       return {
         identity: remember(identity(
           `actual-${isSampling ? 'estimator' : 'analysis'}/v1`,
           `${isSampling ? 'estimator' : 'analysis'}-fingerprint-1`,
           {
+            capabilityKind: 'analysis-node',
             analysisNodeKinds: [isSampling ? 'estimator' : requirement.analysisNodeKind],
             inputDomains: isSampling ? [] : [{
               inputKind: 'metric-observations',

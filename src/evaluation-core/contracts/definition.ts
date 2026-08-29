@@ -99,13 +99,14 @@ export const ExperimentDesignSchema = z.object({
 }).strict();
 
 export const AnalysisInputReferenceSchema = z.object({
-  inputKind: z.enum(['metric-observations', 'analysis-result']),
+  inputKind: z.enum(['metric-observations', 'analysis-result', 'comparison']),
   referenceId: IdentifierSchema,
 }).strict();
 
 const AnalysisNodeBaseSchema = z.object({
   nodeId: IdentifierSchema,
   implementationId: IdentifierSchema,
+  versionConstraint: NonEmptyStringSchema.optional(),
   inputs: z.array(AnalysisInputReferenceSchema).min(1),
   outputResultId: IdentifierSchema,
   parameters: JsonValueSchema.optional(),
@@ -130,6 +131,7 @@ export const AnalysisNodeDefinitionSchema = z.discriminatedUnion('analysisNodeKi
 ]);
 
 export const AnalysisGraphDefinitionSchema = z.object({
+  analysisMode: z.enum(['preregistered', 'exploratory']),
   nodes: z.array(AnalysisNodeDefinitionSchema),
 }).strict();
 
@@ -143,6 +145,7 @@ export const ComparisonDefinitionSchema = z.object({
 export const DecisionPolicyDefinitionSchema = z.object({
   decisionPolicyId: IdentifierSchema,
   implementationId: IdentifierSchema,
+  versionConstraint: NonEmptyStringSchema.optional(),
   analysisResultIds: z.array(IdentifierSchema).min(1),
   multipleComparisonPolicyId: IdentifierSchema.optional(),
   minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']),

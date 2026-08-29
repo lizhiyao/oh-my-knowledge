@@ -9,6 +9,171 @@
       "type": "string"
     },
     "__schema10": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema10"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema10"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "sampling": {
+          "additionalProperties": false,
+          "properties": {
+            "clusterKey": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "estimatorId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "experimentalUnit": {
+              "enum": [
+                "sample",
+                "run",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "pairingKey": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "repeatedMeasures": {
+              "type": "boolean"
+            },
+            "resamplingUnit": {
+              "enum": [
+                "sample",
+                "paired-block",
+                "cluster",
+                "run"
+              ],
+              "type": "string"
+            },
+            "seedCoupling": {
+              "enum": [
+                "shared-within-block",
+                "independent-by-target",
+                "uncontrolled"
+              ],
+              "type": "string"
+            },
+            "stratumKey": {
+              "$ref": "#/$defs/__schema12"
+            }
+          },
+          "required": [
+            "experimentalUnit",
+            "repeatedMeasures",
+            "resamplingUnit",
+            "estimatorId",
+            "seedCoupling"
+          ],
+          "type": "object"
+        },
+        "scheduling": {
+          "additionalProperties": false,
+          "properties": {
+            "blockSize": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "schedulingKind": {
+              "enum": [
+                "sequential",
+                "interleaved",
+                "randomized-block"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedulingKind"
+          ],
+          "type": "object"
+        },
+        "seed": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "trials": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trials",
+        "seed",
+        "sampling",
+        "scheduling"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    },
+    "__schema13": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisonId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "controlTargetId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "metricIds": {
+            "items": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "treatmentTargetIds": {
+            "items": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "comparisonId",
+          "controlTargetId",
+          "treatmentTargetIds",
+          "metricIds"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema14": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -24,10 +189,10 @@
                 "type": "string"
               },
               "capabilities": {
-                "$ref": "#/$defs/__schema7"
+                "$ref": "#/$defs/__schema10"
               },
               "fingerprint": {
-                "$ref": "#/$defs/__schema11"
+                "$ref": "#/$defs/__schema4"
               },
               "fingerprintBasis": {
                 "enum": [
@@ -42,10 +207,10 @@
                 "$ref": "#/$defs/__schema3"
               },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema7"
+                "$ref": "#/$defs/__schema10"
               },
               "version": {
-                "$ref": "#/$defs/__schema11"
+                "$ref": "#/$defs/__schema4"
               }
             },
             "required": [
@@ -64,7 +229,9 @@
             "enum": [
               "executor",
               "evaluator",
-              "analysis"
+              "analysis-node",
+              "missing-policy",
+              "decision-policy"
             ],
             "type": "string"
           }
@@ -78,22 +245,18 @@
       },
       "type": "array"
     },
-    "__schema11": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "__schema12": {
+    "__schema15": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
           "data": {
-            "$ref": "#/$defs/__schema7"
+            "$ref": "#/$defs/__schema10"
           },
           "schemaDigest": {
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema13"
+            "$ref": "#/$defs/__schema16"
           }
         },
         "required": [
@@ -104,17 +267,99 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema13"
+        "$ref": "#/$defs/__schema16"
       },
       "type": "object"
     },
-    "__schema13": {
+    "__schema16": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
     "__schema2": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "higher-is-better",
+              "lower-is-better",
+              "target-is-best"
+            ],
+            "type": "string"
+          },
+          "metricId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "missingPolicyId": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "scale": {
+            "additionalProperties": false,
+            "properties": {
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "target": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "scope": {
+            "enum": [
+              "sample",
+              "target",
+              "comparison",
+              "run"
+            ],
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "valueType": {
+            "enum": [
+              "numeric",
+              "boolean",
+              "categorical",
+              "text",
+              "ranking"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "metricId",
+          "valueType",
+          "scope",
+          "missingPolicyId"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema3": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema4": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema5": {
       "additionalProperties": false,
       "properties": {
+        "analysisMode": {
+          "enum": [
+            "preregistered",
+            "exploratory"
+          ],
+          "type": "string"
+        },
         "nodes": {
           "items": {
             "oneOf": [
@@ -129,7 +374,7 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema4"
+                    "$ref": "#/$defs/__schema7"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema3"
@@ -138,6 +383,9 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "parameters": {
+                    "$ref": "#/$defs/__schema9"
+                  },
+                  "versionConstraint": {
                     "$ref": "#/$defs/__schema6"
                   }
                 },
@@ -161,7 +409,7 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema4"
+                    "$ref": "#/$defs/__schema7"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema3"
@@ -170,6 +418,9 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "parameters": {
+                    "$ref": "#/$defs/__schema9"
+                  },
+                  "versionConstraint": {
                     "$ref": "#/$defs/__schema6"
                   }
                 },
@@ -193,7 +444,7 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema4"
+                    "$ref": "#/$defs/__schema7"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema3"
@@ -202,6 +453,9 @@
                     "$ref": "#/$defs/__schema3"
                   },
                   "parameters": {
+                    "$ref": "#/$defs/__schema9"
+                  },
+                  "versionConstraint": {
                     "$ref": "#/$defs/__schema6"
                   }
                 },
@@ -220,29 +474,29 @@
         }
       },
       "required": [
+        "analysisMode",
         "nodes"
       ],
       "type": "object"
     },
-    "__schema3": {
-      "maxLength": 256,
-      "minLength": 1,
-      "type": "string"
+    "__schema6": {
+      "$ref": "#/$defs/__schema4"
     },
-    "__schema4": {
+    "__schema7": {
       "items": {
-        "$ref": "#/$defs/__schema5"
+        "$ref": "#/$defs/__schema8"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema5": {
+    "__schema8": {
       "additionalProperties": false,
       "properties": {
         "inputKind": {
           "enum": [
             "metric-observations",
-            "analysis-result"
+            "analysis-result",
+            "comparison"
           ],
           "type": "string"
         },
@@ -256,96 +510,8 @@
       ],
       "type": "object"
     },
-    "__schema6": {
-      "$ref": "#/$defs/__schema7"
-    },
-    "__schema7": {
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "type": "string"
-        },
-        {
-          "items": {
-            "$ref": "#/$defs/__schema7"
-          },
-          "type": "array"
-        },
-        {
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema7"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        }
-      ]
-    },
-    "__schema8": {
-      "additionalProperties": false,
-      "properties": {
-        "clusterKey": {
-          "$ref": "#/$defs/__schema9"
-        },
-        "estimatorId": {
-          "$ref": "#/$defs/__schema3"
-        },
-        "experimentalUnit": {
-          "enum": [
-            "sample",
-            "run",
-            "cluster"
-          ],
-          "type": "string"
-        },
-        "pairingKey": {
-          "$ref": "#/$defs/__schema9"
-        },
-        "repeatedMeasures": {
-          "type": "boolean"
-        },
-        "resamplingUnit": {
-          "enum": [
-            "sample",
-            "paired-block",
-            "cluster",
-            "run"
-          ],
-          "type": "string"
-        },
-        "seedCoupling": {
-          "enum": [
-            "shared-within-block",
-            "independent-by-target",
-            "uncontrolled"
-          ],
-          "type": "string"
-        },
-        "stratumKey": {
-          "$ref": "#/$defs/__schema9"
-        }
-      },
-      "required": [
-        "experimentalUnit",
-        "repeatedMeasures",
-        "resamplingUnit",
-        "estimatorId",
-        "seedCoupling"
-      ],
-      "type": "object"
-    },
     "__schema9": {
-      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
-      "type": "string"
+      "$ref": "#/$defs/__schema10"
     }
   },
   "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/analysis-plan.schema.json",
@@ -353,22 +519,28 @@
   "additionalProperties": false,
   "properties": {
     "analysisGraph": {
-      "$ref": "#/$defs/__schema2"
+      "$ref": "#/$defs/__schema5"
     },
     "analysisPlanDigest": {
       "$ref": "#/$defs/__schema1"
     },
+    "comparisons": {
+      "$ref": "#/$defs/__schema13"
+    },
     "evaluationPlanDigest": {
       "$ref": "#/$defs/__schema1"
     },
+    "experiment": {
+      "$ref": "#/$defs/__schema11"
+    },
     "extensions": {
-      "$ref": "#/$defs/__schema12"
+      "$ref": "#/$defs/__schema15"
+    },
+    "metrics": {
+      "$ref": "#/$defs/__schema2"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema10"
-    },
-    "sampling": {
-      "$ref": "#/$defs/__schema8"
+      "$ref": "#/$defs/__schema14"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
@@ -377,8 +549,10 @@
   "required": [
     "schemaVersion",
     "evaluationPlanDigest",
+    "metrics",
     "analysisGraph",
-    "sampling",
+    "experiment",
+    "comparisons",
     "runtimes",
     "analysisPlanDigest"
   ],

@@ -1,5 +1,5 @@
 import type {
-  AnalysisCapabilities,
+  AnalysisNodeCapabilities,
 } from './types.js';
 import {
   deriveSchedulingTargetGroups,
@@ -344,11 +344,16 @@ function validatePolicy(
 function validateGraph(
   nodes: readonly AnalysisNodeDefinition[],
   metricIds: ReadonlySet<string>,
+  comparisonIds: ReadonlySet<string>,
 ): void {
   const resultProducer = new Map<string, string>();
   for (const node of nodes) resultProducer.set(node.outputResultId, node.nodeId);
   const dependencies = new Map<string, Set<string>>();
   for (const node of nodes) {
+    assertUnique(
+      node.inputs.map((input) => `${input.inputKind}:${input.referenceId}`),
+      `analysis-node:${node.nodeId}:input`,
+    );
     const nodeDependencies = new Set<string>();
     for (const input of node.inputs) {
       if (input.inputKind === 'metric-observations') {
@@ -358,7 +363,7 @@ function validateGraph(
           `analysisGraph.nodes.${node.nodeId}.inputs`,
           'Metric',
         );
-      } else {
+      } else if (input.inputKind === 'analysis-result') {
         const producer = resultProducer.get(input.referenceId);
         if (producer === undefined) {
           throw definitionError(
@@ -372,6 +377,13 @@ function validateGraph(
           );
         }
         nodeDependencies.add(producer);
+      } else {
+        assertReference(
+          comparisonIds,
+          input.referenceId,
+          `analysisGraph.nodes.${node.nodeId}.inputs`,
+          'Comparison',
+        );
       }
     }
     dependencies.set(node.nodeId, nodeDependencies);
@@ -482,17 +494,38 @@ export function validateDefinitionSemantics(
         'AnalysisResult',
       );
     }
+    const correctionId = definition.decisionPolicy.multipleComparisonPolicyId;
+    if (correctionId !== undefined) {
+      const correctionNodes = definition.analysisGraph.nodes.filter((node) => (
+        node.analysisNodeKind === 'correction'
+        && node.implementationId === correctionId
+      ));
+      if (correctionNodes.length !== 1
+          || !definition.decisionPolicy.analysisResultIds.includes(
+            correctionNodes[0].outputResultId,
+          )) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'DecisionPolicy 的 multiple-comparison policy 必须绑定唯一 correction result。',
+          { referenceId: correctionId },
+        );
+      }
+    }
   }
   for (const metric of definition.metrics) validateMetric(metric);
   validateEvaluatorBindings(definition);
   validateSamplingDesign(definition);
-  validateGraph(definition.analysisGraph.nodes, metricIds);
+  validateGraph(
+    definition.analysisGraph.nodes,
+    metricIds,
+    new Set(definition.comparisons.map((comparison) => comparison.comparisonId)),
+  );
   validatePolicy(definition, policy);
 }
 
 export function validateAnalysisInputs(
   node: AnalysisNodeDefinition,
-  capabilities: AnalysisCapabilities,
+  capabilities: AnalysisNodeCapabilities,
   metricsById: ReadonlyMap<string, MetricDefinition>,
   outputSchemasByResultId: ReadonlyMap<string, string>,
 ): void {
@@ -508,6 +541,12 @@ export function validateAnalysisInputs(
       ));
       if (compatible) continue;
     } else {
+      if (input.inputKind === 'comparison') {
+        const compatible = capabilities.inputDomains.some(
+          (domain) => domain.inputKind === 'comparison',
+        );
+        if (compatible) continue;
+      }
       const schemaUri = outputSchemasByResultId.get(input.referenceId);
       const compatible = capabilities.inputDomains.some((domain) => (
         domain.inputKind === 'analysis-result'

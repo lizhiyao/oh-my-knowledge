@@ -291,7 +291,7 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
   execution: ExecutionIdentityPlanContext['execution'] & {
     executionInputDigest: string;
     runtimes: readonly {
-      runtimeKind: 'executor' | 'evaluator' | 'analysis';
+      runtimeKind: 'executor' | 'evaluator' | 'analysis-node' | 'missing-policy' | 'decision-policy';
       referenceId: string;
       identity: unknown;
     }[];

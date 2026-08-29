@@ -47,7 +47,13 @@ export const EvaluationInputSampleSchema = EvaluationSampleSchema.pick({
 }).strict();
 
 export const ResolvedRuntimeSchema = z.object({
-  runtimeKind: z.enum(['executor', 'evaluator', 'analysis']),
+  runtimeKind: z.enum([
+    'executor',
+    'evaluator',
+    'analysis-node',
+    'missing-policy',
+    'decision-policy',
+  ]),
   referenceId: IdentifierSchema,
   identity: RuntimeIdentitySchema,
 }).strict();
@@ -102,8 +108,10 @@ export const EvaluationPlanSchema = z.object({
 export const AnalysisPlanSchema = z.object({
   schemaVersion: z.literal(ANALYSIS_PLAN_SCHEMA_VERSION),
   evaluationPlanDigest: Sha256DigestSchema,
+  metrics: z.array(MetricDefinitionSchema),
   analysisGraph: AnalysisGraphDefinitionSchema,
-  sampling: ExperimentDesignSchema.shape.sampling,
+  experiment: ExperimentDesignSchema,
+  comparisons: z.array(ComparisonDefinitionSchema),
   runtimes: z.array(ResolvedRuntimeSchema),
   analysisPlanDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
@@ -114,8 +122,8 @@ export const AnalysisPlanSchema = z.object({
 export const DecisionPlanSchema = z.object({
   schemaVersion: z.literal(DECISION_PLAN_SCHEMA_VERSION),
   analysisPlanDigest: Sha256DigestSchema,
-  comparisons: z.array(ComparisonDefinitionSchema),
   decisionPolicy: DecisionPolicyDefinitionSchema.optional(),
+  runtimes: z.array(ResolvedRuntimeSchema),
   decisionPlanDigest: Sha256DigestSchema,
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({

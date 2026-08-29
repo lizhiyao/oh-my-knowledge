@@ -191,6 +191,13 @@
     "__schema12": {
       "additionalProperties": false,
       "properties": {
+        "analysisMode": {
+          "enum": [
+            "preregistered",
+            "exploratory"
+          ],
+          "type": "string"
+        },
         "nodes": {
           "items": {
             "oneOf": [
@@ -205,7 +212,7 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema13"
+                    "$ref": "#/$defs/__schema14"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -214,7 +221,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema13"
                   }
                 },
                 "required": [
@@ -237,7 +247,7 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema13"
+                    "$ref": "#/$defs/__schema14"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -246,7 +256,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema13"
                   }
                 },
                 "required": [
@@ -269,7 +282,7 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema13"
+                    "$ref": "#/$defs/__schema14"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -278,7 +291,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema13"
                   }
                 },
                 "required": [
@@ -296,24 +312,29 @@
         }
       },
       "required": [
+        "analysisMode",
         "nodes"
       ],
       "type": "object"
     },
     "__schema13": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "__schema14": {
       "items": {
-        "$ref": "#/$defs/__schema14"
+        "$ref": "#/$defs/__schema15"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema14": {
+    "__schema15": {
       "additionalProperties": false,
       "properties": {
         "inputKind": {
           "enum": [
             "metric-observations",
-            "analysis-result"
+            "analysis-result",
+            "comparison"
           ],
           "type": "string"
         },
@@ -327,10 +348,10 @@
       ],
       "type": "object"
     },
-    "__schema15": {
+    "__schema16": {
       "$ref": "#/$defs/__schema4"
     },
-    "__schema16": {
+    "__schema17": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -365,7 +386,7 @@
       },
       "type": "array"
     },
-    "__schema17": {
+    "__schema18": {
       "additionalProperties": false,
       "properties": {
         "analysisResultIds": {
@@ -394,6 +415,9 @@
         },
         "parameters": {
           "$ref": "#/$defs/__schema4"
+        },
+        "versionConstraint": {
+          "$ref": "#/$defs/__schema7"
         }
       },
       "required": [
@@ -404,7 +428,7 @@
       ],
       "type": "object"
     },
-    "__schema18": {
+    "__schema19": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -416,7 +440,7 @@
             "type": "string"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema19"
+            "$ref": "#/$defs/__schema20"
           }
         },
         "required": [
@@ -427,17 +451,17 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema19"
+        "$ref": "#/$defs/__schema20"
       },
       "type": "object"
-    },
-    "__schema19": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
     },
     "__schema2": {
       "maxLength": 256,
       "minLength": 1,
+      "type": "string"
+    },
+    "__schema20": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
     "__schema3": {
@@ -624,13 +648,13 @@
       "$ref": "#/$defs/__schema12"
     },
     "comparisons": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema17"
     },
     "dataset": {
       "$ref": "#/$defs/__schema1"
     },
     "decisionPolicy": {
-      "$ref": "#/$defs/__schema17"
+      "$ref": "#/$defs/__schema18"
     },
     "evaluators": {
       "$ref": "#/$defs/__schema8"
@@ -639,7 +663,7 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema18"
+      "$ref": "#/$defs/__schema19"
     },
     "metrics": {
       "$ref": "#/$defs/__schema10"

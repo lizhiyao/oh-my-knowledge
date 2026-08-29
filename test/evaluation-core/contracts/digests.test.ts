@@ -101,7 +101,7 @@ const definition: EvaluationDefinition = {
     },
     scheduling: { schedulingKind: 'sequential' },
   },
-  analysisGraph: { nodes: [] },
+  analysisGraph: { analysisMode: 'preregistered', nodes: [] },
   comparisons: [],
 };
 
@@ -119,6 +119,7 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
     executorRuntimes: [],
     evaluatorRuntimes: [],
     analysisRuntimes: [],
+    decisionRuntimes: [],
     schemaIdentities: generateWireSchemaIdentities(),
   });
 }
@@ -244,6 +245,7 @@ describe('Evaluation Core layered digests', () => {
       measurementPolicy: policy,
       evaluatorRuntimes: [],
       analysisRuntimes: [],
+      decisionRuntimes: [],
       schemaIdentities: identities,
     };
     const runtime = {
@@ -277,6 +279,7 @@ describe('Evaluation Core layered digests', () => {
     const changed: EvaluationDefinition = {
       ...definition,
       analysisGraph: {
+        analysisMode: 'preregistered',
         nodes: [{
           analysisNodeKind: 'reducer',
           nodeId: 'mean-correct',
@@ -294,7 +297,7 @@ describe('Evaluation Core layered digests', () => {
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
-  it('invalidates only Decision when a comparison changes', () => {
+  it('invalidates Analysis and Decision when a comparison changes', () => {
     const first = planDigests(definition);
     const changed: EvaluationDefinition = {
       ...definition,
@@ -309,7 +312,7 @@ describe('Evaluation Core layered digests', () => {
 
     expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
     expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
-    expect(second.analysisPlanDigest).toBe(first.analysisPlanDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
@@ -352,7 +355,7 @@ describe('Evaluation Core layered digests', () => {
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
-  it('keeps paired Decision-only comparison fields out of Execution identity', () => {
+  it('keeps comparison labels out of Execution and Evaluation identities', () => {
     const paired: EvaluationDefinition = {
       ...definition,
       targets: [
@@ -385,7 +388,7 @@ describe('Evaluation Core layered digests', () => {
 
     expect(changed.executionPlanDigest).toBe(first.executionPlanDigest);
     expect(changed.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
-    expect(changed.analysisPlanDigest).toBe(first.analysisPlanDigest);
+    expect(changed.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
     expect(changed.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 

@@ -139,8 +139,10 @@ export function computeEvaluationPlanDigest(
 
 export interface AnalysisPlanIdentityInput {
   evaluationPlanDigest: Sha256Digest;
+  metrics: MetricDefinition[];
   analysisGraph: AnalysisGraphDefinition;
-  sampling: ExperimentDesign['sampling'];
+  experiment: ExperimentDesign;
+  comparisons: ComparisonDefinition[];
   analysisRuntimes: ResolvedRuntime[];
   extensions?: Extensions;
 }
@@ -151,8 +153,10 @@ export function computeAnalysisPlanDigest(
   return digestCanonicalJson({
     schemaVersion: ANALYSIS_PLAN_SCHEMA_VERSION,
     evaluationPlanDigest: input.evaluationPlanDigest,
+    metrics: input.metrics,
     analysisGraph: input.analysisGraph,
-    sampling: input.sampling,
+    experiment: input.experiment,
+    comparisons: input.comparisons,
     analysisRuntimes: input.analysisRuntimes,
     ...(input.extensions !== undefined ? { extensions: input.extensions } : {}),
   });
@@ -160,8 +164,8 @@ export function computeAnalysisPlanDigest(
 
 export interface DecisionPlanIdentityInput {
   analysisPlanDigest: Sha256Digest;
-  comparisons: ComparisonDefinition[];
   decisionPolicy?: DecisionPolicyDefinition;
+  decisionRuntimes: ResolvedRuntime[];
   extensions?: Extensions;
 }
 
@@ -171,10 +175,10 @@ export function computeDecisionPlanDigest(
   return digestCanonicalJson({
     schemaVersion: DECISION_PLAN_SCHEMA_VERSION,
     analysisPlanDigest: input.analysisPlanDigest,
-    comparisons: input.comparisons,
     ...(input.decisionPolicy !== undefined
       ? { decisionPolicy: input.decisionPolicy }
       : {}),
+    decisionRuntimes: input.decisionRuntimes,
     ...(input.extensions !== undefined ? { extensions: input.extensions } : {}),
   });
 }
@@ -225,6 +229,7 @@ export interface PlanDigestInput {
   executorRuntimes: ResolvedRuntime[];
   evaluatorRuntimes: ResolvedRuntime[];
   analysisRuntimes: ResolvedRuntime[];
+  decisionRuntimes: ResolvedRuntime[];
   schemaIdentities: SchemaIdentity[];
   stageExtensions?: {
     execution?: Extensions;
@@ -277,8 +282,10 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
   });
   const analysisPlanDigest = computeAnalysisPlanDigest({
     evaluationPlanDigest,
+    metrics: input.metrics,
     analysisGraph: input.analysisGraph,
-    sampling: input.experiment.sampling,
+    experiment: input.experiment,
+    comparisons: input.comparisons,
     analysisRuntimes: input.analysisRuntimes,
     ...(input.stageExtensions?.analysis !== undefined
       ? { extensions: input.stageExtensions.analysis }
@@ -286,10 +293,10 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
   });
   const decisionPlanDigest = computeDecisionPlanDigest({
     analysisPlanDigest,
-    comparisons: input.comparisons,
     ...(input.decisionPolicy !== undefined
       ? { decisionPolicy: input.decisionPolicy }
       : {}),
+    decisionRuntimes: input.decisionRuntimes,
     ...(input.stageExtensions?.decision !== undefined
       ? { extensions: input.stageExtensions.decision }
       : {}),

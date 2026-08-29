@@ -34,6 +34,10 @@ import {
   ExtensionResolutionSchema,
   RuntimeResolutionSchema,
   type AnalysisCapabilities,
+  type AnalysisNodeCapabilities,
+  type AnalysisRuntimeRequirement,
+  type DecisionPolicyCapabilities,
+  type MissingPolicyCapabilities,
   type EvaluatorCapabilities,
   type ExecutorCapabilities,
   type ExtensionImpactStage,
@@ -58,7 +62,7 @@ interface StageExtensions {
 
 interface ResolvedAnalysisRuntime {
   runtime: ResolvedRuntime;
-  capabilities: AnalysisCapabilities;
+  capabilities: AnalysisNodeCapabilities;
 }
 
 const CONTRACT_PATH_SEGMENTS = new Set([
@@ -71,7 +75,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
   'seedCoupling', 'schedulingTargetGroups',
-  'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'nodes', 'nodeId',
+  'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'analysisMode', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
   'decisionPolicy', 'decisionPolicyId', 'analysisResultIds',
@@ -173,6 +177,33 @@ function normalizeAnalysisCapabilities(
   capabilities: AnalysisCapabilities,
   referenceId: string,
 ): AnalysisCapabilities {
+  if (capabilities.capabilityKind === 'missing-policy') {
+    return {
+      capabilityKind: 'missing-policy',
+      valueTypes: sortedUniqueStrings(
+        capabilities.valueTypes,
+        referenceId,
+        'valueTypes',
+      ) as MissingPolicyCapabilities['valueTypes'],
+      schemas: sortedSchemas(capabilities.schemas),
+    };
+  }
+  if (capabilities.capabilityKind === 'decision-policy') {
+    return {
+      capabilityKind: 'decision-policy',
+      analysisResultSchemaUris: sortedUniqueStrings(
+        capabilities.analysisResultSchemaUris,
+        referenceId,
+        'analysisResultSchemaUris',
+      ),
+      multipleComparisonPolicyIds: sortedUniqueStrings(
+        capabilities.multipleComparisonPolicyIds,
+        referenceId,
+        'multipleComparisonPolicyIds',
+      ),
+      schemas: sortedSchemas(capabilities.schemas),
+    } as DecisionPolicyCapabilities;
+  }
   const inputDomains = capabilities.inputDomains.map((domain) => (
     domain.inputKind === 'metric-observations'
       ? {
@@ -190,14 +221,14 @@ function normalizeAnalysisCapabilities(
           ),
         } : {}),
       }
-      : {
+      : domain.inputKind === 'analysis-result' ? {
         ...domain,
         schemaUris: sortedUniqueStrings(
           domain.schemaUris,
           referenceId,
           'inputDomains.schemaUris',
         ),
-      }
+      } : domain
   )).sort((left, right) => (
     compareStrings(canonicalizeJson(left), canonicalizeJson(right))
   ));
@@ -223,11 +254,12 @@ function normalizeAnalysisCapabilities(
     });
   }
   return {
+    capabilityKind: 'analysis-node',
     analysisNodeKinds: sortedUniqueStrings(
       capabilities.analysisNodeKinds,
       referenceId,
       'analysisNodeKinds',
-    ) as AnalysisCapabilities['analysisNodeKinds'],
+    ) as AnalysisNodeCapabilities['analysisNodeKinds'],
     inputDomains,
     outputSchema: capabilities.outputSchema,
     ...(capabilities.sampling !== undefined ? {
@@ -236,7 +268,7 @@ function normalizeAnalysisCapabilities(
           capabilities.sampling.experimentalUnits,
           referenceId,
           'sampling.experimentalUnits',
-        ) as NonNullable<AnalysisCapabilities['sampling']>['experimentalUnits'],
+        ) as NonNullable<AnalysisNodeCapabilities['sampling']>['experimentalUnits'],
         repeatedMeasures: [...capabilities.sampling.repeatedMeasures].sort(
           (left, right) => Number(left) - Number(right),
         ),
@@ -244,7 +276,7 @@ function normalizeAnalysisCapabilities(
           capabilities.sampling.resamplingUnits,
           referenceId,
           'sampling.resamplingUnits',
-        ) as NonNullable<AnalysisCapabilities['sampling']>['resamplingUnits'],
+        ) as NonNullable<AnalysisNodeCapabilities['sampling']>['resamplingUnits'],
       },
     } : {}),
     schemas: sortedSchemas(capabilities.schemas),
@@ -589,19 +621,20 @@ async function resolveEvaluators(
 
 async function resolveAnalysisRequirement(
   runtime: PreparationRuntime,
-  requirement: {
-    referenceId: string;
-    implementationId: string;
-    analysisNodeKind: 'reducer' | 'estimator' | 'correction';
+  requirement: Extract<AnalysisRuntimeRequirement, {
     requirementKind: 'analysis-node' | 'sampling-estimator';
-  },
+  }>,
   identitiesByUri: Map<string, SchemaIdentity>,
 ): Promise<ResolvedAnalysisRuntime> {
   const resolution = await resolveRuntime(
     requirement.referenceId,
     () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
   );
-  assertVersionSatisfied(requirement.referenceId, undefined, resolution.satisfiesVersionConstraint);
+  assertVersionSatisfied(
+    requirement.referenceId,
+    requirement.versionConstraint,
+    resolution.satisfiesVersionConstraint,
+  );
   const capabilities = normalizeAnalysisCapabilities(
     parseCapabilities(
       AnalysisCapabilitiesSchema,
@@ -610,6 +643,15 @@ async function resolveAnalysisRequirement(
     ),
     requirement.referenceId,
   );
+  if (capabilities.capabilityKind !== 'analysis-node') {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'Analysis node Runtime 返回了错误的 capability kind。',
+      details: { referenceId: requirement.referenceId },
+    });
+  }
   if (!capabilities.analysisNodeKinds.includes(requirement.analysisNodeKind)) {
     throw new EvaluationDefinitionError({
       code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
@@ -629,7 +671,7 @@ async function resolveAnalysisRequirement(
   );
   return {
     runtime: {
-      runtimeKind: 'analysis',
+      runtimeKind: 'analysis-node',
       referenceId: requirement.referenceId,
       identity: bindCapabilities(resolution.identity, capabilities),
     },
@@ -647,6 +689,9 @@ async function resolveAnalysisRuntimes(
     byNodeId.set(node.nodeId, await resolveAnalysisRequirement(runtime, {
       referenceId: node.nodeId,
       implementationId: node.implementationId,
+      ...(node.versionConstraint !== undefined
+        ? { versionConstraint: node.versionConstraint }
+        : {}),
       analysisNodeKind: node.analysisNodeKind,
       requirementKind: 'analysis-node',
     }, identitiesByUri));
@@ -692,11 +737,148 @@ async function resolveAnalysisRuntimes(
     }
   }
 
+  const missingPolicyRuntimes: ResolvedRuntime[] = [];
+  const valueTypesByPolicy = new Map<string, Set<string>>();
+  for (const metric of definition.metrics) {
+    const valueTypes = valueTypesByPolicy.get(metric.missingPolicyId) ?? new Set<string>();
+    valueTypes.add(metric.valueType);
+    valueTypesByPolicy.set(metric.missingPolicyId, valueTypes);
+  }
+  for (const missingPolicyId of [...valueTypesByPolicy.keys()].sort(compareStrings)) {
+    const requirement = {
+      referenceId: missingPolicyId,
+      implementationId: missingPolicyId,
+      requirementKind: 'missing-policy' as const,
+    };
+    const resolution = await resolveRuntime(
+      missingPolicyId,
+      () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
+    );
+    assertVersionSatisfied(missingPolicyId, undefined, resolution.satisfiesVersionConstraint);
+    const capabilities = normalizeAnalysisCapabilities(
+      parseCapabilities(
+        AnalysisCapabilitiesSchema,
+        resolution.identity.capabilities,
+        missingPolicyId,
+      ),
+      missingPolicyId,
+    );
+    if (capabilities.capabilityKind !== 'missing-policy'
+        || [...(valueTypesByPolicy.get(missingPolicyId) ?? [])].some(
+          (valueType) => !capabilities.valueTypes.includes(
+            valueType as MissingPolicyCapabilities['valueTypes'][number],
+          ),
+        )) {
+      throw new EvaluationDefinitionError({
+        code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+        message: 'MissingPolicy Runtime 不支持声明的 Metric 值域。',
+        details: { referenceId: missingPolicyId },
+      });
+    }
+    addCapabilitySchemas(identitiesByUri, capabilities.schemas, missingPolicyId);
+    missingPolicyRuntimes.push({
+      runtimeKind: 'missing-policy',
+      referenceId: missingPolicyId,
+      identity: bindCapabilities(resolution.identity, capabilities),
+    });
+  }
+
   return [
     ...definition.analysisGraph.nodes.map((node) => byNodeId.get(node.nodeId)?.runtime)
       .filter((entry): entry is ResolvedRuntime => entry !== undefined),
     samplingEstimator.runtime,
+    ...missingPolicyRuntimes,
   ];
+}
+
+async function resolveDecisionRuntimes(
+  definition: z.infer<typeof EvaluationDefinitionSchema>,
+  runtime: PreparationRuntime,
+  analysisRuntimes: readonly ResolvedRuntime[],
+  identitiesByUri: Map<string, SchemaIdentity>,
+): Promise<ResolvedRuntime[]> {
+  const policy = definition.decisionPolicy;
+  if (policy === undefined) return [];
+  const requirement = {
+    referenceId: policy.decisionPolicyId,
+    implementationId: policy.implementationId,
+    ...(policy.versionConstraint !== undefined
+      ? { versionConstraint: policy.versionConstraint }
+      : {}),
+    requirementKind: 'decision-policy' as const,
+  };
+  const resolution = await resolveRuntime(
+    policy.decisionPolicyId,
+    () => runtime.resolveAnalysis(deepFreeze(snapshotJson(requirement))),
+  );
+  assertVersionSatisfied(
+    policy.decisionPolicyId,
+    policy.versionConstraint,
+    resolution.satisfiesVersionConstraint,
+  );
+  const capabilities = normalizeAnalysisCapabilities(
+    parseCapabilities(
+      AnalysisCapabilitiesSchema,
+      resolution.identity.capabilities,
+      policy.decisionPolicyId,
+    ),
+    policy.decisionPolicyId,
+  );
+  if (capabilities.capabilityKind !== 'decision-policy') {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 返回了错误的 capability kind。',
+      details: { referenceId: policy.decisionPolicyId },
+    });
+  }
+  if (policy.multipleComparisonPolicyId !== undefined
+      && !capabilities.multipleComparisonPolicyIds.includes(
+        policy.multipleComparisonPolicyId,
+      )) {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 不支持声明的 multiple-comparison policy。',
+      details: { referenceId: policy.decisionPolicyId },
+    });
+  }
+  const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
+    (node) => [node.outputResultId, node.nodeId],
+  ));
+  const runtimeByNodeId = new Map(analysisRuntimes
+    .filter((entry) => entry.runtimeKind === 'analysis-node')
+    .map((entry) => [entry.referenceId, entry]));
+  for (const resultId of policy.analysisResultIds) {
+    const nodeId = nodeByResultId.get(resultId);
+    const nodeRuntime = nodeId === undefined ? undefined : runtimeByNodeId.get(nodeId);
+    const parsed = nodeRuntime === undefined ? undefined : AnalysisCapabilitiesSchema.safeParse(
+      nodeRuntime.identity.capabilities,
+    );
+    const schemaUri = parsed?.success === true
+      && parsed.data.capabilityKind === 'analysis-node'
+      ? parsed.data.outputSchema.schemaUri
+      : undefined;
+    if (schemaUri !== undefined
+        && capabilities.analysisResultSchemaUris.includes(schemaUri)) continue;
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'DecisionPolicy Runtime 不接受声明的 AnalysisResult schema。',
+      details: { referenceId: policy.decisionPolicyId, resultId },
+    });
+  }
+  addCapabilitySchemas(identitiesByUri, capabilities.schemas, policy.decisionPolicyId);
+  return [{
+    runtimeKind: 'decision-policy',
+    referenceId: policy.decisionPolicyId,
+    identity: bindCapabilities(resolution.identity, capabilities),
+  }];
 }
 
 function appendExtension(
@@ -822,6 +1004,12 @@ export async function prepareEvaluationPlan(
   );
   const evaluatorRuntimes = await resolveEvaluators(definition, runtime, identitiesByUri);
   const analysisRuntimes = await resolveAnalysisRuntimes(definition, runtime, identitiesByUri);
+  const decisionRuntimes = await resolveDecisionRuntimes(
+    definition,
+    runtime,
+    analysisRuntimes,
+    identitiesByUri,
+  );
   const stageExtensions = await resolveExtensions(
     definition.extensions,
     measurementPolicy.extensions,
@@ -848,6 +1036,7 @@ export async function prepareEvaluationPlan(
     executorRuntimes,
     evaluatorRuntimes,
     analysisRuntimes,
+    decisionRuntimes,
     schemaIdentities,
     stageExtensions,
   });
@@ -894,8 +1083,10 @@ export async function prepareEvaluationPlan(
   const analysis = {
     schemaVersion: ANALYSIS_PLAN_SCHEMA_VERSION,
     evaluationPlanDigest: digests.evaluationPlanDigest,
+    metrics: definition.metrics,
     analysisGraph: definition.analysisGraph,
-    sampling: definition.experiment.sampling,
+    experiment: definition.experiment,
+    comparisons: definition.comparisons,
     runtimes: analysisRuntimes,
     analysisPlanDigest: digests.analysisPlanDigest,
     ...(stageExtensions.analysis !== undefined
@@ -905,10 +1096,10 @@ export async function prepareEvaluationPlan(
   const decision = {
     schemaVersion: DECISION_PLAN_SCHEMA_VERSION,
     analysisPlanDigest: digests.analysisPlanDigest,
-    comparisons: definition.comparisons,
     ...(definition.decisionPolicy !== undefined
       ? { decisionPolicy: definition.decisionPolicy }
       : {}),
+    runtimes: decisionRuntimes,
     decisionPlanDigest: digests.decisionPlanDigest,
     ...(stageExtensions.decision !== undefined
       ? { extensions: stageExtensions.decision }

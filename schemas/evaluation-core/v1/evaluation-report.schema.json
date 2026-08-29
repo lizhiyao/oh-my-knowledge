@@ -10,9 +10,60 @@
       "type": "string"
     },
     "__schema10": {
-      "$ref": "#/$defs/__schema9"
+      "items": {
+        "$ref": "#/$defs/__schema1"
+      },
+      "minItems": 1,
+      "type": "array"
     },
     "__schema11": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "causes": {
+          "items": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "type": "array"
+        },
+        "code": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "details": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "message": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "stage": {
+          "enum": [
+            "configuration",
+            "infrastructure",
+            "execution",
+            "evaluation",
+            "analysis",
+            "internal"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "message"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema14": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "__schema15": {
       "additionalProperties": false,
       "properties": {
         "facets": {
@@ -53,7 +104,7 @@
       ],
       "type": "object"
     },
-    "__schema12": {
+    "__schema16": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -163,16 +214,30 @@
         {
           "additionalProperties": false,
           "properties": {
+            "analysisBundleDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
             "analysisResultIds": {
-              "items": {
-                "$ref": "#/$defs/__schema1"
-              },
-              "minItems": 1,
-              "type": "array"
+              "$ref": "#/$defs/__schema10"
+            },
+            "decidedAt": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "decisionDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPlanDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPolicyId": {
+              "$ref": "#/$defs/__schema1"
             },
             "decisionStatus": {
               "const": "decided",
               "type": "string"
+            },
+            "implementation": {
+              "$ref": "#/$defs/__schema8"
             },
             "policyDigest": {
               "$ref": "#/$defs/__schema2"
@@ -182,19 +247,49 @@
             }
           },
           "required": [
+            "decisionPolicyId",
+            "implementation",
+            "analysisBundleDigest",
+            "decisionPlanDigest",
+            "policyDigest",
+            "analysisResultIds",
+            "decidedAt",
             "decisionStatus",
             "verdict",
-            "policyDigest",
-            "analysisResultIds"
+            "decisionDigest"
           ],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
+            "analysisBundleDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "analysisResultIds": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "decidedAt": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "decisionDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPlanDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPolicyId": {
+              "$ref": "#/$defs/__schema1"
+            },
             "decisionStatus": {
               "const": "not-decided",
               "type": "string"
+            },
+            "implementation": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "policyDigest": {
+              "$ref": "#/$defs/__schema2"
             },
             "reasonCodes": {
               "items": {
@@ -205,15 +300,114 @@
             }
           },
           "required": [
+            "decisionPolicyId",
+            "implementation",
+            "analysisBundleDigest",
+            "decisionPlanDigest",
+            "policyDigest",
+            "analysisResultIds",
+            "decidedAt",
             "decisionStatus",
-            "reasonCodes"
+            "reasonCodes",
+            "decisionDigest"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "analysisBundleDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "analysisResultIds": {
+              "$ref": "#/$defs/__schema10"
+            },
+            "decidedAt": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "decisionDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPlanDigest": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "decisionPolicyId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "decisionStatus": {
+              "const": "failed",
+              "type": "string"
+            },
+            "error": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "implementation": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "policyDigest": {
+              "$ref": "#/$defs/__schema2"
+            }
+          },
+          "required": [
+            "decisionPolicyId",
+            "implementation",
+            "analysisBundleDigest",
+            "decisionPlanDigest",
+            "policyDigest",
+            "analysisResultIds",
+            "decidedAt",
+            "decisionStatus",
+            "error",
+            "decisionDigest"
           ],
           "type": "object"
         }
       ]
     },
     "__schema8": {
-      "$ref": "#/$defs/__schema9"
+      "additionalProperties": false,
+      "properties": {
+        "assuranceLevel": {
+          "enum": [
+            "verified",
+            "declared",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "fingerprintBasis": {
+          "enum": [
+            "content-derived",
+            "environment-derived",
+            "self-reported",
+            "opaque"
+          ],
+          "type": "string"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "provenanceFacets": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "version": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "implementationId",
+        "fingerprint",
+        "fingerprintBasis",
+        "assuranceLevel",
+        "capabilities"
+      ],
+      "type": "object"
     },
     "__schema9": {
       "anyOf": [
@@ -252,7 +446,7 @@
   "additionalProperties": false,
   "properties": {
     "annotations": {
-      "$ref": "#/$defs/__schema10"
+      "$ref": "#/$defs/__schema14"
     },
     "bundles": {
       "$ref": "#/$defs/__schema4"
@@ -261,10 +455,10 @@
       "$ref": "#/$defs/__schema7"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema12"
+      "$ref": "#/$defs/__schema16"
     },
     "provenance": {
-      "$ref": "#/$defs/__schema11"
+      "$ref": "#/$defs/__schema15"
     },
     "reportDigest": {
       "$ref": "#/$defs/__schema2"
@@ -282,7 +476,7 @@
       "$ref": "#/$defs/__schema3"
     },
     "summaries": {
-      "$ref": "#/$defs/__schema8"
+      "$ref": "#/$defs/__schema13"
     }
   },
   "required": [

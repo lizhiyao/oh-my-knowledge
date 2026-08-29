@@ -72,12 +72,20 @@ describe('Compiler digest invalidation boundaries', () => {
     expectStages(before, after, ['analysis', 'decision', 'run']);
   });
 
-  it('invalidates only Decision and root for Comparison or DecisionPolicy changes', async () => {
+  it('invalidates only Decision and root for DecisionPolicy changes', async () => {
     const before = await compile();
     const after = await compile((definition) => {
       definition.decisionPolicy!.parameters = { threshold: 0.1 };
     });
     expectStages(before, after, ['decision', 'run']);
+  });
+
+  it('invalidates Analysis and downstream for non-scheduling Comparison changes', async () => {
+    const before = await compile();
+    const after = await compile((definition) => {
+      definition.comparisons[0].comparisonId = 'renamed-comparison';
+    });
+    expectStages(before, after, ['analysis', 'decision', 'run']);
   });
 
   it('keeps evaluation cache out of Execution identity', async () => {

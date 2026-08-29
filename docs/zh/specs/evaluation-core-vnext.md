@@ -208,7 +208,7 @@ interface ExperimentDesign {
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
-配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`；改变配对连通性会产生新的 Execution 身份，而只影响决策的比较元数据不会。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
 
 `pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
 
@@ -299,11 +299,13 @@ Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输
 
 ### 4．AnalysisBundle
 
-保存 AnalysisGraph 各节点的结果、前提检查、coverage、置信区间、分布、表格或曲线，以及 parent EvaluationBundle digest。
+为 AnalysisGraph 的每个节点保存一条 canonical 事实：completed、inconclusive、failed 或 not evaluated。每条事实绑定已解析的 RuntimeIdentity、输出 SchemaIdentity、声明的输入引用、对应 estimand 的 observation coverage、前提检查、父结果 digest、analysis mode、生成时间与 record digest。Bundle 另行记录 terminal status、graph coverage、EvaluationBundle 与 AnalysisPlan digest、provenance 和自身 digest。missing、invalid、evaluation-failed、source-unavailable、not-started 与 censored observation 保持独立计数；included 与 comparable 集合不能超过 observed evidence。
+
+`parseAnalysisBundleDocument()` 校验独立 wire、canonical result 顺序、coverage 算术、record digest 和 Bundle digest。`parseAnalysisBundle()` 再绑定 sealed RunPlan、ExecutionBundle 与 EvaluationBundle，核对完整 graph universe、Runtime／schema identity、声明输入、parent lineage、analysis mode 与 source trust ceiling。
 
 ### 5．EvaluationReport
 
-Report 是为人和产品消费构造的物化视图。它可以内联 Bundle 摘要或引用 Bundle，但不能成为重评分和审计的唯一数据源。
+Report 是为人和产品消费构造的物化视图。它可以内联稳定摘要，也可以按 digest 引用 Bundle 并附带可选 retrieval URI，但不能成为重评分和审计的唯一数据源。DecisionResult 单独进行内容寻址，并绑定 DecisionPlan、policy、已解析 runtime、AnalysisBundle 与命名 AnalysisResult。Report materializer 不执行 Analysis node 或 DecisionPolicy。
 
 Report 使用三个正交状态：
 
@@ -591,7 +593,21 @@ Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider 
 
 `parseEvaluationBundleDocument()` 校验独立 wire shape、状态转换、identity、coverage、replayability 和 digest。`parseEvaluationBundle()` 再绑定 sealed RunPlan 与已验证的 ExecutionBundle，并检查全部可由 artifact 结构判定的不变量；缺少外部 runtime evidence 时，durable Bundle 仍保持有效。`verifyEvaluationBundle()` 另行返回 `planVerification`：已知 native invocation 给出下界，未验证的 cache claim 给出上界；当 Bundle JSON 本身无法证明 lookup 时，cache receipt 或调用预算状态标记为 `indeterminate`，而不是把 Bundle 判为 invalid。调用方传入从可信 cache 边界独立取得的 `verifiedCacheRecordDigests` 后才能闭合该证明；Evaluation Runtime 返回自身 Bundle 前要求两项状态均为 `verified`。仅从 hit 重建 claimed native miss 永远不构成 receipt。Coverage 满足 `planned = eligible + sourceUnavailable`、`eligible = started + notStarted` 和 `started = completed + failed + cancelled`。
 
-## 十九、行业参考
+## 十九、Analysis 与 Decision Runtime v1 实现基线
+
+[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。AnalysisPlan 封存 Metric contract、包含 trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 变化会使 Analysis 及下游 identity 失效；仅 policy 变化只使 Decision 与 root contract 失效。
+
+Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或 Comparison 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出同时经过 wire result contract 与 sealed output schema 校验。
+
+内建 registry 提供三个 descriptive reducer、三个确定性的 percentile-bootstrap estimator、Bonferroni correction、显式 exclusion MissingPolicy 与最小 progress DecisionPolicy。Bootstrap draw 从 sealed root seed、AnalysisPlan digest、node identity 与 replicate index 做 domain-separated 派生。重复 trial 先在声明的 sampling unit 内归约；paired contrast 先在完整 pairing block 内形成，再进行重采样；cluster bootstrap 按整簇重采样。有效单位不足或前提失败时产生 inconclusive result，绝不自动选择 fallback estimator。
+
+Decision 只消费 policy 命名的 AnalysisResult，以及 coverage、assumption check、evidence status 与 sealed multiplicity metadata。gate 未通过时产生稳定的 `not-decided` reason；policy 或基础设施失败与统计结论保持分离。EvaluationReport 随后物化 Bundle reference、内容寻址的 DecisionResult、provenance 与派生的 run／evidence／conclusion 三轴状态，不重算统计量或 verdict。Host annotation 属于展示元数据：它可以改变 report artifact digest，但不能改变任何 stage Plan 或 source Bundle digest。
+
+AnalysisBundle 与 EvaluationReport 同时提供独立 document validator 和绑定 plan／source 的 validator。后者要求准确的 source Bundle chain、完整 graph／runtime／schema binding、parent digest、policy digest，以及不高于最不可信 source 的 provenance trust。Bundle reference 的可选 URI 只负责定位内容；来源身份仍由 sealed digest 决定。
+
+Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
+
+## 二十、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；
