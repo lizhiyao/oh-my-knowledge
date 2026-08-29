@@ -4,6 +4,7 @@ import {
   digestCanonicalJson,
   schemaIdentityKey,
   type CoreSchemaValidator,
+  type CoreSchemaValidationContext,
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
@@ -58,7 +59,16 @@ const IntervalEnvelopeSchema = z.object({
     unitCount: z.number().int().positive().safe(),
     method: z.literal('percentile'),
   }).strict(),
-}).strict();
+}).strict().superRefine((envelope, context) => {
+  const { estimate, lower, upper } = envelope.value;
+  if (lower > estimate || estimate > upper) {
+    context.addIssue({
+      code: 'custom',
+      path: ['value'],
+      message: 'Interval bounds must satisfy lower <= estimate <= upper',
+    });
+  }
+});
 const HypothesisInputEnvelopeSchema = z.object({
   resultType: z.literal('table'),
   value: z.object({
@@ -129,7 +139,11 @@ export const BUILTIN_SCALAR_RESULT_SCHEMA = schemaIdentity(
 export const BUILTIN_INTERVAL_RESULT_SCHEMA = schemaIdentity(
   'omk.analysis-result.percentile-interval/v1',
   'urn:omk:analysis-result:percentile-interval:v1',
-  jsonSchema(IntervalEnvelopeSchema),
+  jsonSchema(IntervalEnvelopeSchema, [
+    'lower<=estimate<=upper',
+    'resamples equals the sealed node parameter resamples',
+    'confidenceLevel equals 1 minus the sealed node parameter alpha',
+  ]),
 );
 
 export const BUILTIN_HYPOTHESIS_TABLE_SCHEMA = schemaIdentity(
@@ -140,6 +154,7 @@ export const BUILTIN_HYPOTHESIS_TABLE_SCHEMA = schemaIdentity(
     'hypothesisId values are unique and lexicographically sorted',
     'adjustedPValue=min(1,rawPValue*familySize)',
     'rejected=(rawPValue<=alpha/familySize)',
+    'alpha equals the sealed node parameter alpha',
   ]),
 );
 
@@ -204,19 +219,24 @@ function nodeCapabilities(input: {
   if (input.valueTypes !== undefined) {
     inputDomains.push({
       inputKind: 'metric-observations',
-      valueTypes: input.valueTypes,
+      valueTypes: [...input.valueTypes].sort(),
       ...(input.missingPolicyIds !== undefined
-        ? { missingPolicyIds: input.missingPolicyIds }
+        ? { missingPolicyIds: [...input.missingPolicyIds].sort() }
         : {}),
     });
   }
   if (input.analysisResultSchemaUris !== undefined) {
     inputDomains.push({
       inputKind: 'analysis-result',
-      schemaUris: input.analysisResultSchemaUris,
+      schemaUris: [...input.analysisResultSchemaUris].sort(),
     });
   }
   if (input.comparison === true) inputDomains.push({ inputKind: 'comparison' });
+  inputDomains.sort((left, right) => {
+    const leftCanonical = canonicalizeJson(left);
+    const rightCanonical = canonicalizeJson(right);
+    return leftCanonical < rightCanonical ? -1 : leftCanonical > rightCanonical ? 1 : 0;
+  });
   return {
     capabilityKind: 'analysis-node',
     analysisNodeKinds: [input.analysisNodeKind],
@@ -228,7 +248,15 @@ function nodeCapabilities(input: {
       analysisResults: input.analysisResultSchemaUris !== undefined ? { min: 1 } : { min: 0, max: 0 },
       comparisons: input.comparison === true ? { min: 1, max: 1 } : { min: 0, max: 0 },
     },
-    ...(input.sampling !== undefined ? { sampling: input.sampling } : {}),
+    ...(input.sampling !== undefined ? {
+      sampling: {
+        experimentalUnits: [...input.sampling.experimentalUnits].sort(),
+        repeatedMeasures: [...input.sampling.repeatedMeasures].sort(
+          (left, right) => Number(left) - Number(right),
+        ),
+        resamplingUnits: [...input.sampling.resamplingUnits].sort(),
+      },
+    } : {}),
     schemas: [],
   };
 }
@@ -785,14 +813,60 @@ class BuiltinNodeImplementation implements AnalysisNodeImplementation {
 class BuiltinSchemaValidator implements CoreSchemaValidator {
   readonly schema: SchemaIdentity;
   readonly #zod: z.ZodType;
+  readonly #validateContext?: (
+    value: JsonValue,
+    context?: Readonly<CoreSchemaValidationContext>,
+  ) => void;
 
-  constructor(schema: SchemaIdentity, zodSchema: z.ZodType) {
+  constructor(
+    schema: SchemaIdentity,
+    zodSchema: z.ZodType,
+    validateContext?: (
+      value: JsonValue,
+      context?: Readonly<CoreSchemaValidationContext>,
+    ) => void,
+  ) {
     this.schema = schema;
     this.#zod = zodSchema;
+    this.#validateContext = validateContext;
   }
 
-  parse(value: unknown): JsonValue {
-    return this.#zod.parse(value) as JsonValue;
+  parse(value: unknown, context?: Readonly<CoreSchemaValidationContext>): JsonValue {
+    const parsed = this.#zod.parse(value) as JsonValue;
+    this.#validateContext?.(parsed, context);
+    return parsed;
+  }
+}
+
+function requireAnalysisOutputContext(
+  context: Readonly<CoreSchemaValidationContext> | undefined,
+): Readonly<CoreSchemaValidationContext> {
+  if (context?.validationKind !== 'analysis-output') {
+    throw new TypeError('Analysis output validation requires sealed node parameters.');
+  }
+  return context;
+}
+
+function validateIntervalContext(
+  value: JsonValue,
+  context?: Readonly<CoreSchemaValidationContext>,
+): void {
+  const sealed = BootstrapParametersSchema.parse(requireAnalysisOutputContext(context).parameters);
+  const envelope = IntervalEnvelopeSchema.parse(value);
+  if (envelope.value.resamples !== sealed.resamples
+      || envelope.value.confidenceLevel !== 1 - sealed.alpha) {
+    throw new TypeError('Interval metadata does not match the sealed node parameters.');
+  }
+}
+
+function validateBonferroniContext(
+  value: JsonValue,
+  context?: Readonly<CoreSchemaValidationContext>,
+): void {
+  const sealed = BonferroniParametersSchema.parse(requireAnalysisOutputContext(context).parameters);
+  const envelope = HypothesisTableEnvelopeSchema.parse(value);
+  if (envelope.value.alpha !== sealed.alpha) {
+    throw new TypeError('Bonferroni alpha does not match the sealed node parameters.');
   }
 }
 
@@ -846,19 +920,26 @@ export function createBuiltinAnalysisNodes(): ReadonlyMap<string, AnalysisNodeIm
 
 export function createBuiltinAnalysisSchemaValidators(): ReadonlyMap<string, CoreSchemaValidator> {
   const validators = new Map<string, CoreSchemaValidator>();
-  const entries: Array<[SchemaIdentity, z.ZodType]> = [
+  const entries: Array<[
+    SchemaIdentity,
+    z.ZodType,
+    ((value: JsonValue, context?: Readonly<CoreSchemaValidationContext>) => void)?,
+  ]> = [
     [BUILTIN_SCALAR_RESULT_SCHEMA, ScalarEnvelopeSchema],
-    [BUILTIN_INTERVAL_RESULT_SCHEMA, IntervalEnvelopeSchema],
+    [BUILTIN_INTERVAL_RESULT_SCHEMA, IntervalEnvelopeSchema, validateIntervalContext],
     [BUILTIN_HYPOTHESIS_INPUT_SCHEMA, HypothesisInputEnvelopeSchema],
-    [BUILTIN_HYPOTHESIS_TABLE_SCHEMA, HypothesisTableEnvelopeSchema],
+    [BUILTIN_HYPOTHESIS_TABLE_SCHEMA, HypothesisTableEnvelopeSchema, validateBonferroniContext],
     [EMPTY_PARAMETERS_SCHEMA, StrictEmptyParametersSchema],
     [QUANTILE_PARAMETERS_SCHEMA, QuantileParametersSchema],
     [BOOTSTRAP_PARAMETERS_SCHEMA, BootstrapParametersSchema],
     [BONFERRONI_PARAMETERS_SCHEMA, BonferroniParametersSchema],
     [PROGRESS_PARAMETERS_SCHEMA, ProgressParametersSchema],
   ];
-  for (const [schema, zodSchema] of entries) {
-    validators.set(schemaIdentityKey(schema), new BuiltinSchemaValidator(schema, zodSchema));
+  for (const [schema, zodSchema, validateContext] of entries) {
+    validators.set(
+      schemaIdentityKey(schema),
+      new BuiltinSchemaValidator(schema, zodSchema, validateContext),
+    );
   }
   return validators;
 }

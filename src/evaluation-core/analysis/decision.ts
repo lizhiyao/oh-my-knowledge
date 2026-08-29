@@ -132,7 +132,7 @@ function gateReasons(
         )).sort()
         : [];
       const hypothesisMembers = family.filter(
-        (member): member is typeof member & { hypothesisId: string; hypothesisResultId: string } => (
+        (member): member is typeof member & { hypothesisId: string } => (
           'hypothesisId' in member
         ),
       );
@@ -150,7 +150,7 @@ function gateReasons(
           : [];
       }) : []);
       for (const member of hypothesisMembers) {
-        const source = recordByResultId.get(member.hypothesisResultId);
+        const source = recordByResultId.get(member.analysisResultId);
         const sourceHypotheses = source?.analysisStatus === 'completed'
           && source.value !== null && !Array.isArray(source.value) && typeof source.value === 'object'
           ? (source.value as Record<string, JsonValue>).hypotheses
@@ -380,6 +380,8 @@ async function runDecision(
           const comparison = comparisonById.get(member.comparisonId);
           if (comparison === undefined) throw new TypeError('Decision contrast is missing.');
           return {
+            analysisResultId: member.analysisResultId,
+            ...('hypothesisId' in member ? { hypothesisId: member.hypothesisId } : {}),
             comparisonId: member.comparisonId,
             controlTargetId: comparison.controlTargetId,
             treatmentTargetId: member.treatmentTargetId,

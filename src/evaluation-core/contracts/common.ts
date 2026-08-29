@@ -16,9 +16,14 @@ export const SchemaIdentitySchema = z.object({
   schemaDigest: Sha256DigestSchema,
 }).strict();
 
+export interface CoreSchemaValidationContext {
+  readonly validationKind: 'analysis-output';
+  readonly parameters: unknown;
+}
+
 export interface CoreSchemaValidator {
   readonly schema: SchemaIdentity;
-  parse(value: unknown): JsonValue;
+  parse(value: unknown, context?: Readonly<CoreSchemaValidationContext>): JsonValue;
 }
 
 export function schemaIdentityKey(identity: SchemaIdentity): string {

@@ -72,25 +72,67 @@
       "type": "array"
     },
     "__schema14": {
-      "additionalProperties": false,
-      "properties": {
-        "inputKind": {
-          "enum": [
-            "metric-observations",
-            "analysis-result",
-            "comparison"
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "metric-observations",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
           ],
-          "type": "string"
+          "type": "object"
         },
-        "referenceId": {
-          "$ref": "#/$defs/__schema1"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "analysis-result",
+              "type": "string"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputKind": {
+              "const": "comparison",
+              "type": "string"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "referenceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "required": [
+            "inputKind",
+            "referenceId",
+            "treatmentTargetId",
+            "metricId"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "inputKind",
-        "referenceId"
-      ],
-      "type": "object"
+      ]
     },
     "__schema15": {
       "additionalProperties": false,

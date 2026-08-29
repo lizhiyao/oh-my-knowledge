@@ -224,6 +224,7 @@ export interface AnalysisBundlePlanContext extends EvaluationBundlePlanContext {
         nodeId: string;
         analysisNodeKind: 'reducer' | 'estimator' | 'correction';
         outputResultId: string;
+        parameters?: unknown;
         inputs: readonly ({
           inputKind: 'metric-observations' | 'analysis-result';
           referenceId: string;
@@ -486,7 +487,10 @@ function assertMatchesPlan(
       let valid = false;
       try {
         const envelope = { resultType: record.resultType, value: record.value } as const;
-        valid = canonicalizeJson(validator.parse(envelope)) === canonicalizeJson(envelope);
+        valid = canonicalizeJson(validator.parse(envelope, {
+          validationKind: 'analysis-output',
+          parameters: node.parameters ?? {},
+        })) === canonicalizeJson(envelope);
       } catch {
         valid = false;
       }

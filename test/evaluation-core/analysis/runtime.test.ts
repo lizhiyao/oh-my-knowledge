@@ -55,6 +55,12 @@ class FakeClock implements ExecutionClock {
   }
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 function analysisAwareRuntime(): PreparationRuntime {
   const base = testRuntime();
   const schemaValidators = new Map([
@@ -464,6 +470,88 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     )).toThrow(/sealed output schema/);
   });
 
+  it('binds completed output metadata to sealed Analysis parameters', async () => {
+    const fixture = await makeAnalysisFixture('contextual-validator', (definition) => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+        input: { question: 'Q2', cohort: 'b' },
+      });
+      definition.analysisGraph.nodes = [{
+        analysisNodeKind: 'estimator',
+        nodeId: 'bootstrap-correct',
+        implementationId: 'bootstrap.mean-percentile/v1',
+        inputs: [{ inputKind: 'metric-observations', referenceId: 'correct' }],
+        outputResultId: 'correct-interval',
+        parameters: { resamples: 64, alpha: 0.1 },
+      }];
+      definition.decisionPolicy!.analysisResultIds = ['correct-interval'];
+    });
+    const original = fixture.ports.analysisNodes.get('bootstrap.mean-percentile/v1');
+    if (original === undefined) throw new Error('missing builtin Analysis Runtime');
+    const malicious = {
+      identity: original.identity,
+      outputSchema: original.outputSchema,
+      async openRun() {
+        return {
+          async execute() {
+            return {
+              analysisStatus: 'completed' as const,
+              resultType: 'interval' as const,
+              value: {
+                estimate: 0.5,
+                lower: 0,
+                upper: 1,
+                confidenceLevel: 0.95,
+                resamples: 1_000,
+                unitCount: 2,
+                method: 'percentile',
+              },
+            };
+          },
+          dispose() {},
+        };
+      },
+    };
+    const analysis = await analyzeEvaluationBundle(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodes: new Map([['bootstrap.mean-percentile/v1', malicious]]),
+      },
+      { runId: 'run-contextual-validator', bundleId: 'analysis-contextual-validator' },
+    );
+
+    expect(analysis).toMatchObject({
+      analysisBundleStatus: 'failed',
+      records: [{
+        analysisStatus: 'failed',
+        error: { code: 'analysis-runtime-failed' },
+      }],
+    });
+
+    const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
+      const record = draft.records[0];
+      if (record.analysisStatus !== 'completed'
+          || record.value === null
+          || Array.isArray(record.value)
+          || typeof record.value !== 'object') {
+        throw new Error('expected completed interval record');
+      }
+      record.value.resamples = 1_000;
+      record.value.confidenceLevel = 0.95;
+    });
+    expect(() => parseAnalysisBundle(
+      forged,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      { schemaValidators: fixture.ports.schemaValidators },
+    )).toThrow(/sealed output schema/);
+  });
+
   it('rejects extra provenance parents even when the bundle is fully resealed', async () => {
     const fixture = await makeAnalysisFixture('provenance-parent');
     const forged = resealAnalysisBundle(fixture.analysis, (draft) => {
@@ -535,6 +623,11 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
   it('passes only the explicitly sealed comparison family to DecisionPolicy', async () => {
     const fixture = await makeAnalysisFixture('comparison-family', (definition) => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+        input: { question: 'Q2', cohort: 'b' },
+      });
       definition.targets.push({
         ...structuredClone(definition.targets[1]),
         targetId: 'unrelated-treatment',
@@ -546,10 +639,36 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         metricIds: ['correct'],
       });
       definition.comparisons[0].treatmentTargetIds.push('unrelated-treatment');
+      definition.experiment.sampling = {
+        experimentalUnit: 'sample',
+        repeatedMeasures: false,
+        resamplingUnit: 'paired-block',
+        estimatorId: 'bootstrap.paired-difference-percentile/v1',
+        seedCoupling: 'shared-within-block',
+        pairingKey: '/input/cohort',
+      };
+      definition.analysisGraph.nodes = [{
+        analysisNodeKind: 'estimator',
+        nodeId: 'treatment-effect',
+        implementationId: 'bootstrap.paired-difference-percentile/v1',
+        inputs: [
+          { inputKind: 'metric-observations', referenceId: 'correct' },
+          {
+            inputKind: 'comparison',
+            referenceId: 'control-vs-treatment',
+            treatmentTargetId: 'treatment',
+            metricId: 'correct',
+          },
+        ],
+        outputResultId: 'treatment-effect-result',
+        parameters: { resamples: 64, alpha: 0.1 },
+      }];
+      definition.decisionPolicy!.analysisResultIds = ['treatment-effect-result'];
       definition.decisionPolicy!.comparisonFamily = [{
         comparisonId: 'control-vs-treatment',
         treatmentTargetId: 'treatment',
         metricId: 'correct',
+        analysisResultId: 'treatment-effect-result',
       }];
     });
     const builtinPolicy = fixture.ports.decisionPolicies.get('progress/v1');
@@ -575,6 +694,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
     expect(decision?.decisionStatus).toBe('decided');
     expect(receivedContrasts).toEqual([{
+      analysisResultId: 'treatment-effect-result',
       comparisonId: 'control-vs-treatment',
       controlTargetId: 'control',
       treatmentTargetId: 'treatment',
@@ -727,6 +847,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     if (originalNode === undefined || originalPolicy === undefined) throw new Error('missing builtin');
 
     const analysisController = new AbortController();
+    const analysisEntered = deferred();
     const analysisRun = startAnalysis(
       fixture.plan,
       fixture.execution,
@@ -738,9 +859,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
           outputSchema: originalNode.outputSchema,
           async openRun() {
             return {
-              execute: async ({ signal }) => new Promise((_, reject) => {
-                signal.addEventListener('abort', () => reject(new Error('port aborted')), { once: true });
-              }),
+              execute: async ({ signal }) => {
+                analysisEntered.resolve();
+                return new Promise((_, reject) => {
+                  signal.addEventListener('abort', () => reject(new Error('port aborted')), { once: true });
+                });
+              },
               dispose() {},
             };
           },
@@ -752,8 +876,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         signal: analysisController.signal,
       },
     );
-    await Promise.resolve();
-    analysisController.abort();
+    await analysisEntered.promise;
+    expect(() => analysisController.abort()).not.toThrow();
     const cancelledAnalysis = await analysisRun.result;
     expect(cancelledAnalysis).toMatchObject({
       analysisBundleStatus: 'cancelled',
@@ -761,6 +885,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     });
 
     const decisionController = new AbortController();
+    const decisionEntered = deferred();
     const decisionRun = startDecision(
       fixture.plan,
       fixture.execution,
@@ -770,15 +895,92 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         ...fixture.ports,
         decisionPolicies: new Map([['progress/v1', {
           identity: originalPolicy.identity,
-          decide: async ({ signal }) => new Promise((_, reject) => {
-            signal.addEventListener('abort', () => reject(new Error('policy aborted')), { once: true });
-          }),
+          decide: async ({ signal }) => {
+            decisionEntered.resolve();
+            return new Promise((_, reject) => {
+              signal.addEventListener('abort', () => reject(new Error('policy aborted')), { once: true });
+            });
+          },
         }]]),
       },
       { runId: 'run-in-flight-decision-cancel', signal: decisionController.signal },
     );
-    await Promise.resolve();
-    decisionController.abort();
+    await decisionEntered.promise;
+    expect(() => decisionController.abort()).not.toThrow();
+    await expect(decisionRun.result).resolves.toMatchObject({
+      decisionStatus: 'not-decided',
+      reasonCodes: ['decision-cancelled'],
+    });
+  });
+
+  it('discards successful port results that arrive after cancellation', async () => {
+    const fixture = await makeAnalysisFixture('late-success-cancel');
+    const originalNode = fixture.ports.analysisNodes.get('descriptive.rate/v1');
+    const originalPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    if (originalNode === undefined || originalPolicy === undefined) throw new Error('missing builtin');
+
+    const analysisController = new AbortController();
+    const analysisEntered = deferred();
+    const releaseAnalysis = deferred();
+    const analysisRun = startAnalysis(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodes: new Map([['descriptive.rate/v1', {
+          identity: originalNode.identity,
+          outputSchema: originalNode.outputSchema,
+          async openRun() {
+            return {
+              async execute() {
+                analysisEntered.resolve();
+                await releaseAnalysis.promise;
+                return { analysisStatus: 'completed' as const, resultType: 'scalar' as const, value: 1 };
+              },
+              dispose() {},
+            };
+          },
+        }]]),
+      },
+      {
+        runId: 'run-late-analysis-cancel',
+        bundleId: 'analysis-late-cancel',
+        signal: analysisController.signal,
+      },
+    );
+    await analysisEntered.promise;
+    expect(() => analysisController.abort()).not.toThrow();
+    releaseAnalysis.resolve();
+    await expect(analysisRun.result).resolves.toMatchObject({
+      analysisBundleStatus: 'cancelled',
+      records: [{ analysisStatus: 'not-evaluated' }],
+    });
+
+    const decisionController = new AbortController();
+    const decisionEntered = deferred();
+    const releaseDecision = deferred();
+    const decisionRun = startDecision(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysis,
+      {
+        ...fixture.ports,
+        decisionPolicies: new Map([['progress/v1', {
+          identity: originalPolicy.identity,
+          async decide() {
+            decisionEntered.resolve();
+            await releaseDecision.promise;
+            return { decisionStatus: 'decided' as const, verdict: 'PROGRESS' };
+          },
+        }]]),
+      },
+      { runId: 'run-late-decision-cancel', signal: decisionController.signal },
+    );
+    await decisionEntered.promise;
+    expect(() => decisionController.abort()).not.toThrow();
+    releaseDecision.resolve();
     await expect(decisionRun.result).resolves.toMatchObject({
       decisionStatus: 'not-decided',
       reasonCodes: ['decision-cancelled'],

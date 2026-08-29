@@ -173,6 +173,8 @@ export interface DecisionPolicyContext {
   analysisCoverage: AnalysisBundle['coverage'];
   results: readonly Extract<AnalysisRecord, { analysisStatus: 'completed' }>[];
   contrasts: readonly {
+    analysisResultId: string;
+    hypothesisId?: string;
     comparisonId: string;
     controlTargetId: string;
     treatmentTargetId: string;

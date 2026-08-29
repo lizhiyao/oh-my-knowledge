@@ -81,7 +81,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
   'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
-  'hypothesisId', 'hypothesisResultId', 'treatmentTargetId',
+  'hypothesisId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
   'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'maxTargetInvocations',

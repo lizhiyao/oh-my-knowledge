@@ -71,33 +71,10 @@
         {
           "additionalProperties": false,
           "properties": {
+            "analysisResultId": {
+              "$ref": "#/$defs/__schema3"
+            },
             "comparisonId": {
-              "$ref": "#/$defs/__schema3"
-            },
-            "metricId": {
-              "$ref": "#/$defs/__schema3"
-            },
-            "treatmentTargetId": {
-              "$ref": "#/$defs/__schema3"
-            }
-          },
-          "required": [
-            "comparisonId",
-            "treatmentTargetId",
-            "metricId"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "comparisonId": {
-              "$ref": "#/$defs/__schema3"
-            },
-            "hypothesisId": {
-              "$ref": "#/$defs/__schema3"
-            },
-            "hypothesisResultId": {
               "$ref": "#/$defs/__schema3"
             },
             "metricId": {
@@ -111,8 +88,35 @@
             "comparisonId",
             "treatmentTargetId",
             "metricId",
-            "hypothesisId",
-            "hypothesisResultId"
+            "analysisResultId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "analysisResultId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "comparisonId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "hypothesisId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "metricId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "treatmentTargetId": {
+              "$ref": "#/$defs/__schema3"
+            }
+          },
+          "required": [
+            "comparisonId",
+            "treatmentTargetId",
+            "metricId",
+            "analysisResultId",
+            "hypothesisId"
           ],
           "type": "object"
         }

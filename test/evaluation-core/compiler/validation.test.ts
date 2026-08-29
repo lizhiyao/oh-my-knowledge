@@ -303,11 +303,25 @@ describe('Compiler definition validation', () => {
   });
 
   it('requires an explicit and internally consistent multiple-comparison family', async () => {
+    const unboundSingleton = validDefinition();
+    unboundSingleton.decisionPolicy!.comparisonFamily = [{
+      comparisonId: 'control-vs-treatment',
+      treatmentTargetId: 'treatment',
+      metricId: 'correct',
+      analysisResultId: 'correct-rate',
+    }];
+    await expectCode(
+      unboundSingleton,
+      validPolicy(),
+      'EVAL_DEFINITION_MISSING_REFERENCE',
+    );
+
     const missingContrast = validDefinition();
     missingContrast.decisionPolicy!.comparisonFamily = [{
       comparisonId: 'missing-comparison',
       treatmentTargetId: 'treatment',
       metricId: 'correct',
+      analysisResultId: 'correct-rate',
     }];
     await expectCode(
       missingContrast,
@@ -326,11 +340,13 @@ describe('Compiler definition validation', () => {
         comparisonId: 'control-vs-treatment',
         treatmentTargetId: 'treatment',
         metricId: 'correct',
+        analysisResultId: 'correct-rate',
       },
       {
         comparisonId: 'control-vs-treatment',
         treatmentTargetId: 'treatment-secondary',
         metricId: 'correct',
+        analysisResultId: 'missing-result',
       },
     ];
     await expectCode(
@@ -344,6 +360,7 @@ describe('Compiler definition validation', () => {
       comparisonId: 'control-vs-treatment',
       treatmentTargetId: 'treatment',
       metricId: 'correct',
+      analysisResultId: 'correct-rate',
     }];
     disguisedSingleTest.decisionPolicy!.multipleComparisonPolicyId = 'bonferroni/v1';
     await expectCode(
@@ -353,7 +370,7 @@ describe('Compiler definition validation', () => {
     );
   });
 
-  it('binds corrected families to exact raw hypothesis producers', () => {
+  it('binds every family member to an exact and exclusive contrast producer', () => {
     const definition = validDefinition();
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
@@ -365,13 +382,13 @@ describe('Compiler definition validation', () => {
         analysisNodeKind: 'estimator',
         nodeId: 'raw-primary',
         implementationId: 'hypothesis/v1',
-        inputs: [
-          { inputKind: 'metric-observations', referenceId: 'correct' },
-          {
-            inputKind: 'comparison',
-            referenceId: 'control-vs-treatment',
-            treatmentTargetId: 'treatment',
-            metricId: 'correct',
+          inputs: [
+            { inputKind: 'metric-observations', referenceId: 'correct' },
+            {
+              inputKind: 'comparison',
+              referenceId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
           },
         ],
         outputResultId: 'raw-primary-result',
@@ -385,7 +402,7 @@ describe('Compiler definition validation', () => {
           {
             inputKind: 'comparison',
             referenceId: 'control-vs-treatment',
-            treatmentTargetId: 'treatment',
+            treatmentTargetId: 'treatment-secondary',
             metricId: 'correct',
           },
         ],
@@ -409,14 +426,14 @@ describe('Compiler definition validation', () => {
       comparisonFamily: [
         {
           hypothesisId: 'h-primary',
-          hypothesisResultId: 'raw-primary-result',
+          analysisResultId: 'raw-primary-result',
           comparisonId: 'control-vs-treatment',
           treatmentTargetId: 'treatment',
           metricId: 'correct',
         },
         {
           hypothesisId: 'h-secondary',
-          hypothesisResultId: 'raw-secondary-result',
+          analysisResultId: 'raw-secondary-result',
           comparisonId: 'control-vs-treatment',
           treatmentTargetId: 'treatment-secondary',
           metricId: 'correct',
@@ -426,6 +443,12 @@ describe('Compiler definition validation', () => {
       minimumEvidenceStatus: 'complete',
     };
 
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
+
+    definition.analysisGraph.nodes[0].inputs.push({
+      inputKind: 'analysis-result',
+      referenceId: 'raw-secondary-result',
+    });
     expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
       expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
     );

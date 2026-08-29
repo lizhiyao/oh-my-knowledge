@@ -3,6 +3,7 @@ import {
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
   BUILTIN_HYPOTHESIS_TABLE_SCHEMA,
+  BUILTIN_INTERVAL_RESULT_SCHEMA,
   BUILTIN_SCALAR_RESULT_SCHEMA,
   type AnalysisMetricRow,
   type AnalysisNodeExecutionContext,
@@ -124,6 +125,7 @@ describe('Evaluation Core built-in estimators', () => {
   it('validates the complete result envelope and Bonferroni invariants', () => {
     const validators = createBuiltinAnalysisSchemaValidators();
     const scalar = validators.get(schemaIdentityKey(BUILTIN_SCALAR_RESULT_SCHEMA));
+    const interval = validators.get(schemaIdentityKey(BUILTIN_INTERVAL_RESULT_SCHEMA));
     const bonferroni = validators.get(schemaIdentityKey(BUILTIN_HYPOTHESIS_TABLE_SCHEMA));
     expect(() => scalar?.parse({ resultType: 'table', value: 1 })).toThrow();
     expect(() => scalar?.parse({ resultType: 'scalar', value: 1, extra: true })).toThrow();
@@ -140,6 +142,55 @@ describe('Evaluation Core built-in estimators', () => {
         }],
       },
     })).toThrow();
+    const intervalEnvelope = {
+      resultType: 'interval',
+      value: {
+        estimate: 1,
+        lower: 0,
+        upper: 2,
+        confidenceLevel: 0.9,
+        resamples: 64,
+        unitCount: 2,
+        method: 'percentile',
+      },
+    };
+    expect(interval?.parse(intervalEnvelope, {
+      validationKind: 'analysis-output',
+      parameters: { resamples: 64, alpha: 0.1 },
+    })).toEqual(intervalEnvelope);
+    expect(() => interval?.parse(intervalEnvelope, {
+      validationKind: 'analysis-output',
+      parameters: { resamples: 1_000, alpha: 0.05 },
+    })).toThrow(/sealed node parameters/);
+    expect(() => interval?.parse({
+      ...intervalEnvelope,
+      value: { ...intervalEnvelope.value, estimate: 3 },
+    }, {
+      validationKind: 'analysis-output',
+      parameters: { resamples: 64, alpha: 0.1 },
+    })).toThrow(/lower <= estimate <= upper/);
+
+    const hypothesisEnvelope = {
+      resultType: 'table',
+      value: {
+        familySize: 1,
+        alpha: 0.05,
+        hypotheses: [{
+          hypothesisId: 'h1',
+          rawPValue: 0.01,
+          adjustedPValue: 0.01,
+          rejected: true,
+        }],
+      },
+    };
+    expect(bonferroni?.parse(hypothesisEnvelope, {
+      validationKind: 'analysis-output',
+      parameters: { alpha: 0.05 },
+    })).toEqual(hypothesisEnvelope);
+    expect(() => bonferroni?.parse(hypothesisEnvelope, {
+      validationKind: 'analysis-output',
+      parameters: { alpha: 0.1 },
+    })).toThrow(/sealed node parameters/);
   });
 
   it('resamples sample units rather than repeated trials', async () => {

@@ -946,7 +946,10 @@ async function runAnalysis(
       try {
         value = snapshotJson(output.value);
         const envelope = { resultType: output.resultType, value } as const;
-        if (canonicalizeJson(binding.validator.parse(envelope)) !== canonicalizeJson(envelope)) {
+        if (canonicalizeJson(binding.validator.parse(envelope, {
+          validationKind: 'analysis-output',
+          parameters: binding.node.parameters ?? {},
+        })) !== canonicalizeJson(envelope)) {
           throw new TypeError('Analysis output does not match the sealed schema.');
         }
       } catch (error) {

@@ -507,11 +507,12 @@ export function validateDefinitionSemantics(
     }
     const family = definition.decisionPolicy.comparisonFamily ?? [];
     const hypothesisMembers = family.filter(
-      (member): member is typeof member & { hypothesisId: string; hypothesisResultId: string } => (
+      (member): member is typeof member & { hypothesisId: string } => (
         'hypothesisId' in member
       ),
     );
     assertUnique(hypothesisMembers.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
+    assertUnique(family.map((member) => member.analysisResultId), 'decision-policy:family-analysis-result');
     assertUnique(
       family.map((member) => canonicalizeJson([
         member.comparisonId,
@@ -523,6 +524,9 @@ export function validateDefinitionSemantics(
     const comparisonById = new Map(definition.comparisons.map(
       (comparison) => [comparison.comparisonId, comparison],
     ));
+    const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
+      (node) => [node.outputResultId, node],
+    ));
     for (const member of family) {
       const comparison = comparisonById.get(member.comparisonId);
       if (comparison === undefined
@@ -532,6 +536,28 @@ export function validateDefinitionSemantics(
           'EVAL_DEFINITION_MISSING_REFERENCE',
           'DecisionPolicy comparison family 引用了不存在的 contrast。',
           { comparisonId: member.comparisonId },
+        );
+      }
+      const producer = nodeByResultId.get(member.analysisResultId);
+      const expectedInputs = [
+        canonicalizeJson({
+          inputKind: 'metric-observations',
+          referenceId: member.metricId,
+        }),
+        canonicalizeJson({
+          inputKind: 'comparison',
+          referenceId: member.comparisonId,
+          treatmentTargetId: member.treatmentTargetId,
+          metricId: member.metricId,
+        }),
+      ].sort();
+      const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
+      if (producer === undefined
+          || canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs)) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          'Comparison family member 必须精确绑定只消费该 contrast 的 AnalysisResult。',
+          { referenceId: member.analysisResultId },
         );
       }
     }
@@ -563,39 +589,13 @@ export function validateDefinitionSemantics(
           '多重比较 family 的每个 member 都必须绑定原始 hypothesis result。',
         );
       }
-      assertUnique(
-        hypothesisMembers.map((member) => member.hypothesisResultId),
-        'decision-policy:hypothesis-result',
-      );
-      const nodeByResultId = new Map(definition.analysisGraph.nodes.map(
-        (node) => [node.outputResultId, node],
-      ));
-      for (const member of hypothesisMembers) {
-        const producer = nodeByResultId.get(member.hypothesisResultId);
-        const exactContrast = producer?.inputs.some((input) => (
-          input.inputKind === 'comparison'
-          && input.referenceId === member.comparisonId
-          && input.treatmentTargetId === member.treatmentTargetId
-          && input.metricId === member.metricId
-        ));
-        const exactMetric = producer?.inputs.some((input) => (
-          input.inputKind === 'metric-observations' && input.referenceId === member.metricId
-        ));
-        if (producer === undefined || !exactContrast || !exactMetric) {
-          throw definitionError(
-            'EVAL_DEFINITION_MISSING_REFERENCE',
-            'Comparison family member 未绑定产生该 contrast hypothesis 的 AnalysisResult。',
-            { hypothesisId: member.hypothesisId, referenceId: member.hypothesisResultId },
-          );
-        }
-      }
       const correctionInputs = correctionNodes[0].inputs;
       const correctionResultIds = correctionInputs
         .filter((input) => input.inputKind === 'analysis-result')
         .map((input) => input.referenceId)
         .sort();
       const expectedResultIds = hypothesisMembers.map(
-        (member) => member.hypothesisResultId,
+        (member) => member.analysisResultId,
       ).sort();
       if (correctionInputs.some((input) => input.inputKind !== 'analysis-result')
           || canonicalizeJson(correctionResultIds) !== canonicalizeJson(expectedResultIds)) {
@@ -604,6 +604,16 @@ export function validateDefinitionSemantics(
           'Correction node inputs 必须精确等于 comparison family 的原始 hypothesis results。',
           { referenceId: correctionId },
         );
+      }
+    } else {
+      for (const member of family) {
+        if (!definition.decisionPolicy.analysisResultIds.includes(member.analysisResultId)) {
+          throw definitionError(
+            'EVAL_DEFINITION_MISSING_REFERENCE',
+            '未校正的 comparison family member 必须直接绑定 DecisionPolicy 消费的 AnalysisResult。',
+            { referenceId: member.analysisResultId },
+          );
+        }
       }
     }
   }

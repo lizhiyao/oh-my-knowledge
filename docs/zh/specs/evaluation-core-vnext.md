@@ -232,9 +232,9 @@ interface MetricDefinition {
 - DecisionPolicy 消费命名的 AnalysisResult，产生 verdict；
 - weight 只属于明确的 composite reducer，不是 Metric 的通用属性。
 
-复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 会分别封存 parameter schema，以及 Metric、上游 result、Comparison 三类输入基数。Core 在计算 plan digest 前校验 parameter 并物化默认值，因此缺省、非法或被实现静默忽略的选项不会折叠成相同 runtime 行为。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
+复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 会分别封存 parameter schema，以及 Metric、上游 result、Comparison 三类输入基数。Core 在计算 plan digest 前校验 parameter 并物化默认值，因此缺省、非法或被实现静默忽略的选项不会折叠成相同 runtime 行为。completed result 校验还会接收这些 sealed parameter 作为上下文：estimator 回显的区间置信度、重采样次数，以及 correction 回显的 alpha，都必须在在线执行和 Bundle 重验时与 plan 一致。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
 
-DecisionPolicy 通过 `(comparisonId, treatmentTargetId, metricId)` 声明单个精确 contrast。需要校正的 family 还必须为每个 member 声明 `(hypothesisId, hypothesisResultId)`，绑定实际产生该原始 hypothesis 的 Analysis node；correction node 的输入必须精确等于这些 result。超过一个 member 的 family 必须绑定唯一 correction result；空或单 member family 不能伪装成多重比较。Decision 只能收到投影后的精确 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。correction table 的 canonical hypothesis ID、family size 和 raw p-value 必须全部一致，才能产生 verdict。
+DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, treatmentTargetId, metricId, analysisResultId)`。该 AnalysisResult 的 producer 必须精确且仅消费这个 member 的 Metric 与 Comparison selector，不能混入 family 外输入。未校正的 singleton result 必须由 DecisionPolicy 直接消费。需要校正的 family 还要为每个 member 声明 canonical `hypothesisId`；correction node 必须精确消费全部 member 的 `analysisResultId`，DecisionPolicy 则消费唯一 correction result。超过一个 member 的 family 必须绑定 correction；空或单 member family 不能伪装成多重比较。Decision 只能收到带 result identity 和可选 hypothesis identity 的投影 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。correction table 的 canonical hypothesis ID、family size 和 raw p-value 必须全部一致，才能产生 verdict。
 
 v1 内建的 reducer／estimator 保持最小：
 

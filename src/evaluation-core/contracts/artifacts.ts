@@ -352,10 +352,22 @@ const AnalysisRecordBaseSchema = z.object({
     schemaUri: UriSchema,
     schemaDigest: Sha256DigestSchema,
   }).strict(),
-  inputReferences: z.array(z.object({
-    inputKind: z.enum(['metric-observations', 'analysis-result', 'comparison']),
-    referenceId: IdentifierSchema,
-  }).strict()).min(1),
+  inputReferences: z.array(z.discriminatedUnion('inputKind', [
+    z.object({
+      inputKind: z.literal('metric-observations'),
+      referenceId: IdentifierSchema,
+    }).strict(),
+    z.object({
+      inputKind: z.literal('analysis-result'),
+      referenceId: IdentifierSchema,
+    }).strict(),
+    z.object({
+      inputKind: z.literal('comparison'),
+      referenceId: IdentifierSchema,
+      treatmentTargetId: IdentifierSchema,
+      metricId: IdentifierSchema,
+    }).strict(),
+  ])).min(1),
   coverage: AnalysisObservationCoverageSchema,
   exclusions: z.array(AnalysisExclusionSchema),
   assumptionChecks: z.array(AssumptionCheckSchema),

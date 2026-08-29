@@ -164,13 +164,13 @@ const ComparisonFamilyMemberBaseSchema = z.object({
   comparisonId: IdentifierSchema,
   treatmentTargetId: IdentifierSchema,
   metricId: IdentifierSchema,
+  analysisResultId: IdentifierSchema,
 }).strict();
 
 export const ComparisonFamilyMemberSchema = z.union([
   ComparisonFamilyMemberBaseSchema,
   ComparisonFamilyMemberBaseSchema.extend({
     hypothesisId: IdentifierSchema,
-    hypothesisResultId: IdentifierSchema,
   }).strict(),
 ]);
 
