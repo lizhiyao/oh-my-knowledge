@@ -206,7 +206,9 @@ function resealDecisionResult(
 ): DecisionResult {
   const draft = structuredClone(source);
   mutate(draft);
-  draft.decisionDigest = digestArtifactPayload(draft, 'decisionDigest');
+  const payload: Record<string, unknown> = { ...draft };
+  delete payload.decisionDigest;
+  draft.decisionDigest = digestCanonicalJson(payload);
   return draft;
 }
 
