@@ -30,6 +30,12 @@ const provenance = {
   parentDigests: [executionPlanDigest],
 };
 
+const bundleProvenance = {
+  provenanceKind: 'native' as const,
+  trust: 'verified' as const,
+  parentDigests: [runContractDigest, executionPlanDigest],
+};
+
 const runtime = {
   implementationId: 'executor-a',
   fingerprint: 'executor-a@1',
@@ -106,7 +112,7 @@ function finalizeBundle(
     },
     replayability: 'self-contained',
     records: [makeCompletedRecord()],
-    provenance,
+    provenance: bundleProvenance,
     bundleDigest: placeholderDigest,
     ...overrides,
   };

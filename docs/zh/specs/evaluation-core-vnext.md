@@ -503,6 +503,12 @@ const result = await run.result;
 - secret／gold 不进入未授权 Event、Report 或 error；
 - partial evidence 无法越过 coverage gate 产生方向性 verdict。
 
+ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出它的 RunPlan，作为
+来源血缘。重评分时，另一个 RunPlan 只按 `executionPlanDigest` 与 `executionInputDigest`
+接纳该 Bundle，不要求仅描述来源的 digest 相同。这个阶段化接纳规则保证 Gold 或 Evaluator
+变化时可以复用执行结果，而不再次调用 Target。provenance 仍必须绑定所记录的来源 contract，
+因此放宽接纳并不允许静默改写来源声明。
+
 统计实现还要使用已知参考向量和 simulation 检查 coverage、I 型错误率、配对和 cluster resampling，而不只锁 snapshot。
 
 ## 十四、被否决的方案
@@ -609,7 +615,34 @@ AnalysisBundle 与 EvaluationReport 同时提供独立 document validator 和绑
 
 Analysis、Decision 与带事件的 Report materialization 复用同一个注入的 per-Run EventSequencer 和 sealed EventDeliveryPolicy。Event 只包含 identity、status、coverage summary 与 reason code。Bounded stream 不会反压权威计算；需要无损持久化时交给 EventWriter。所有异步终态路径都会关闭 event stream，Analysis 还会移除外部 AbortSignal listener，包括非预期的 clock、sequencer、validation 或 materialization failure。Analysis cancellation 在 node boundary 协作发生，保留已完成事实，并把全部剩余节点物化为 not evaluated。同一个 AbortSignal 会传入执行中的 Analysis 与 Decision port；signal 一旦 abort，port 后续 reject 或迟到的成功结果都不能覆盖 cancelled 终态。Node resource exactly-once dispose，Core 不访问文件、网络、环境变量、process signal 或全局 registry。
 
-## 二十、行业参考
+## 二十、Conformance v1 实现基线
+
+[#439](https://github.com/lizhiyao/oh-my-knowledge/issues/439) 在
+`test/evaluation-core/conformance/` 建立确定性、宿主无关的共享 harness。纯函数、RAG top-K
+与 Agent trajectory 使用同一套阶段驱动器，从 prepare 一直执行到 report materialization；
+只有 protocol manifest、Runtime capability、结构化 adapter value 与 Evaluator 声明不同，
+Core 不包含 `targetKind` 分派。每个序列化 Bundle 与 Report 都会基于 sealed plan 和 parent
+facts 重新验证。
+
+该 suite 覆盖 Gold 隔离与只替换 Evaluator 的重评分、原生 Recall@K／Precision@K／MRR／NDCG
+observation、source-neutral trajectory evidence、output-only Evaluator 投影、session lifecycle、
+反向 Comparison 角色、paired-block 预算 censoring、重复 trial 的 unit count、evidence gate、
+classification 脱敏、reference 内容解析、cache replay、无实时 Event consumer、必需 EventWriter、
+外部取消、并发 Run 隔离，以及 resolve／open／execute／dispose 故障边界。全部 fixture 只使用
+确定性 clock、seed、deferred gate 与内存 store，不读取文件、网络、用户配置，也不依赖
+wall-clock delay。已知统计参考向量与确定性 simulation 共同守护 bootstrap unit 语义、宽松的
+区间 coverage 校准带，以及零 paired effect 的宽松 I 型错误率上界。
+
+#425 对 Contracts、Compiler、Execution、Evaluation、Analysis／Decision 与跨阶段 conformance
+的验收审计至此完成。包根 façade、公开 export 白名单和独立 Node.js 宿主验收仍明确归 #424；
+CLI／Studio 迁移是后续消费者，不构成 Evaluation Core 验收前置条件。
+
+Conformance 暴露并修复了一个跨阶段缺口：ExecutionBundle 接纳曾要求来源 root contract 与
+完整 Dataset revision 等于当前 RunPlan。现在这些来源血缘仍被封存并受 provenance 绑定，
+但接纳只按 `executionPlanDigest` 与 `executionInputDigest` 做阶段化校验，因此 Gold 或
+Evaluator 变化可以重评分既有 ExecutionBundle，同时不削弱来源完整性。
+
+## 二十一、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；

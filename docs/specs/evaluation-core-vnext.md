@@ -503,6 +503,13 @@ Required property tests include:
 - Secret/gold data never reaches unauthorized Events, Reports, or errors.
 - Partial evidence cannot pass a coverage gate and produce a directional verdict.
 
+An ExecutionBundle records the `runContractDigest` and `datasetRevisionDigest` of the RunPlan
+that produced it as origin lineage. Re-scoring admits that Bundle against another RunPlan by its
+`executionPlanDigest` and `executionInputDigest`; it must not require origin-only digests to match.
+This stage-scoped admission rule is what makes Gold or Evaluator changes reusable without invoking
+the Target again. Provenance still binds the recorded origin contract, so relaxing admission does
+not permit an origin claim to be rewritten silently.
+
 Statistical implementations also use known reference vectors and simulations to test coverage, type-I error, pairing, and cluster resampling rather than relying only on snapshots.
 
 ## 14. Rejected alternatives
@@ -609,7 +616,37 @@ AnalysisBundle and EvaluationReport expose standalone document validators and pl
 
 Analysis, Decision, and eventful Report materialization reuse the same injected per-Run EventSequencer and sealed EventDeliveryPolicy. Events contain identities, status, coverage summaries, and reason codes only. Bounded streams never backpressure authoritative work; required durable delivery is delegated to EventWriter. Every asynchronous terminal path closes its event stream and Analysis removes its external AbortSignal listener, including unexpected clock, sequencer, validation, or materialization failures. Analysis cancellation is cooperative at node boundaries, preserves completed facts, and materializes every remaining node as not evaluated. The same AbortSignal is passed into in-flight Analysis and Decision ports; once aborted, a port rejection or late success cannot overwrite the cancelled terminal fact. Node resources are disposed exactly once, and Core performs no file, network, environment, process-signal, or global-registry access.
 
-## 20. Industry references
+## 20. Conformance v1 implementation baseline
+
+[#439](https://github.com/lizhiyao/oh-my-knowledge/issues/439) adds a deterministic,
+host-independent harness under `test/evaluation-core/conformance/`. Pure function, RAG top-K,
+and Agent trajectory fixtures share one stage driver from preparation through report
+materialization. Only protocol manifests, Runtime capabilities, structured adapter values, and
+Evaluator declarations vary; Core contains no `targetKind` dispatch. Every serialized Bundle and
+Report is revalidated against its sealed plan and parent facts.
+
+The suite exercises Gold isolation and evaluator-only re-scoring, native Recall@K, Precision@K,
+MRR, and NDCG observations, source-neutral trajectory evidence, output-only evaluator projection,
+session lifecycle, reversed Comparison roles, paired-block budget censoring, repeated-trial unit
+counts, evidence gates, classification redaction, reference content resolution, cache replay,
+absent live Event consumers, required EventWriter behavior, external cancellation, concurrent Run
+isolation, and resolve/open/execute/dispose fault boundaries. All fixtures use deterministic clocks,
+seeds, deferred gates, and in-memory stores; they do not read files, networks, user configuration,
+or wall-clock delays. Known statistical vectors and deterministic simulations guard bootstrap
+unit semantics, broad interval coverage, and a broad null paired-effect type-I error bound.
+
+The #425 acceptance audit is now complete for Contracts, Compiler, Execution, Evaluation,
+Analysis/Decision, and cross-stage conformance. The package-root façade, public export allowlist,
+and independent Node.js host acceptance remain intentionally assigned to #424. CLI and Studio
+migration remain later consumers and are not Evaluation Core acceptance dependencies.
+
+Conformance exposed one cross-stage defect: ExecutionBundle admission previously compared the
+originating root contract and complete Dataset revision with the current RunPlan. Those lineage
+facts still remain sealed and provenance-bound, but admission is now stage-scoped to
+`executionPlanDigest` and `executionInputDigest`, enabling Gold or Evaluator changes to re-score an
+existing ExecutionBundle without weakening origin integrity.
+
+## 21. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)

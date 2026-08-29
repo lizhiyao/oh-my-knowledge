@@ -86,7 +86,10 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
     provenance: {
       provenanceKind: 'native',
       trust: 'verified',
-      parentDigests: [plan.digests.runContractDigest],
+      parentDigests: [
+        plan.digests.runContractDigest,
+        plan.digests.executionPlanDigest,
+      ],
     },
     bundleDigest: placeholderDigest,
   };
@@ -121,15 +124,17 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(parseExecutionBundle(bundle, plan)).toEqual(bundle);
   });
 
-  it('rejects self-consistent documents with foreign parents or coordinates', async () => {
+  it('accepts a foreign origin with the same ExecutionPlan but rejects foreign coordinates', async () => {
     const plan = await makePlan();
     const foreignParent = mutableJson(makeBundle(plan));
     foreignParent.runContractDigest = `sha256:${'f'.repeat(64)}`;
+    foreignParent.provenance.parentDigests = [
+      foreignParent.runContractDigest,
+      foreignParent.executionPlanDigest,
+    ];
     resign(foreignParent);
     expect(parseExecutionBundleDocument(foreignParent)).toEqual(foreignParent);
-    expect(() => parseExecutionBundle(foreignParent, plan)).toThrowError(
-      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PLAN_MISMATCH' }),
-    );
+    expect(parseExecutionBundle(foreignParent, plan)).toEqual(foreignParent);
 
     const foreignCoordinate = mutableJson(makeBundle(plan));
     const record = foreignCoordinate.records[0];
@@ -148,6 +153,17 @@ describe('ExecutionBundle RunPlan binding', () => {
     resign(foreignCoordinate);
     expect(parseExecutionBundleDocument(foreignCoordinate)).toEqual(foreignCoordinate);
     expect(() => parseExecutionBundle(foreignCoordinate, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PLAN_MISMATCH' }),
+    );
+  });
+
+  it('rejects an origin claim that is not bound by provenance', async () => {
+    const plan = await makePlan();
+    const bundle = mutableJson(makeBundle(plan));
+    bundle.runContractDigest = `sha256:${'f'.repeat(64)}`;
+    resign(bundle);
+
+    expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
       expect.objectContaining({ code: 'EXECUTION_BUNDLE_PLAN_MISMATCH' }),
     );
   });

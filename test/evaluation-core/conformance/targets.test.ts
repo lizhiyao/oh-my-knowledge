@@ -1,0 +1,155 @@
+import { describe, expect, it } from 'vitest';
+import {
+  parseAnalysisBundle,
+  parseEvaluationBundle,
+  parseEvaluationReport,
+  parseExecutionBundle,
+} from '../../../src/evaluation-core/contracts/index.js';
+import { createBuiltinAnalysisSchemaValidators } from '../../../src/evaluation-core/analysis/index.js';
+import {
+  runConformanceScenario,
+  type ConformanceTarget,
+} from './harness.js';
+import { ConformanceFaultInjector } from './fault-injector.js';
+
+const targets: ConformanceTarget[] = ['function', 'rag', 'agent'];
+
+describe.each(targets)('Evaluation Core %s target conformance', (target) => {
+  it('completes prepare, execute, evaluate, analyze, decide, and report', async () => {
+    const result = await runConformanceScenario(target);
+
+    expect(result.execution.executionBundleStatus).toBe('completed');
+    expect(result.evaluation.evaluationBundleStatus).toBe('completed');
+    expect(result.analysis.analysisBundleStatus).toBe('completed');
+    expect(result.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+    });
+    expect(result.report.status).toEqual({
+      runStatus: 'completed',
+      evidenceStatus: 'complete',
+      conclusionStatus: 'conclusive',
+    });
+    expect(result.report.provenance.parentDigests).toEqual([
+      result.execution.bundleDigest,
+      result.evaluation.bundleDigest,
+      result.analysis.bundleDigest,
+      result.decision?.decisionDigest,
+    ]);
+  });
+
+  it('uses the same lifecycle and event protocol without exposing gold to executors', async () => {
+    const result = await runConformanceScenario(target, { suffix: `${target}-protocol` });
+
+    expect(result.state).toMatchObject({
+      executorRunOpens: 1,
+      executorRunDisposals: 1,
+      trialOpens: 4,
+      trialDisposals: 4,
+      executorAttempts: 4,
+      evaluatorRunOpens: target === 'agent' ? 2 : 1,
+      evaluatorRunDisposals: target === 'agent' ? 2 : 1,
+      recordOpens: target === 'agent' ? 8 : 4,
+      recordDisposals: target === 'agent' ? 8 : 4,
+      evaluatorAttempts: target === 'agent' ? 8 : 4,
+    });
+    expect(result.state.trialContexts.every((context) => (
+      !('expected' in context) && !('evaluationContext' in context)
+    ))).toBe(true);
+    expect(result.events.map((event) => event.sequence)).toEqual(
+      result.events.map((_, index) => index),
+    );
+    expect(result.events.at(-1)?.eventKind).toBe('report.materialized');
+  });
+
+  it('revalidates every serialized artifact from sealed parent facts', async () => {
+    const result = await runConformanceScenario(target, { suffix: `${target}-import` });
+    const execution = JSON.parse(JSON.stringify(result.execution)) as unknown;
+    const evaluation = JSON.parse(JSON.stringify(result.evaluation)) as unknown;
+    const analysis = JSON.parse(JSON.stringify(result.analysis)) as unknown;
+    const report = JSON.parse(JSON.stringify(result.report)) as unknown;
+    const validators = createBuiltinAnalysisSchemaValidators();
+
+    expect(parseExecutionBundle(execution, result.plan)).toEqual(result.execution);
+    expect(parseEvaluationBundle(evaluation, result.plan, execution)).toEqual(result.evaluation);
+    expect(parseAnalysisBundle(analysis, result.plan, execution, evaluation, {
+      schemaValidators: validators,
+    })).toEqual(result.analysis);
+    expect(parseEvaluationReport(
+      report,
+      result.plan,
+      execution,
+      evaluation,
+      analysis,
+      { schemaValidators: validators },
+    )).toEqual(result.report);
+  });
+});
+
+describe('Target-specific evidence conformance', () => {
+  it('evaluates RAG top-K with Recall, Precision, MRR, and NDCG evidence', async () => {
+    const result = await runConformanceScenario('rag');
+    const observations = result.evaluation.records.flatMap((record) => (
+      record.evaluationStatus === 'completed' ? record.observations : []
+    ));
+
+    expect(new Set(observations.map((observation) => observation.metricId))).toEqual(new Set([
+      'recall-at-k',
+      'precision-at-k',
+      'mrr',
+      'ndcg',
+    ]));
+    expect(observations.every((observation) => (
+      observation.observationStatus === 'observed'
+      && observation.valueType === 'numeric'
+      && observation.value >= 0
+      && observation.value <= 1
+    ))).toBe(true);
+    expect(result.analysis.records).toHaveLength(4);
+  });
+
+  it('evaluates an agent trajectory from output, trace, and gold bindings', async () => {
+    const result = await runConformanceScenario('agent', {
+      faults: new ConformanceFaultInjector(),
+      mutate(_definition, policy) {
+        policy.eventDelivery.writerMode = 'required';
+        policy.eventDelivery.writerFailureMode = 'fail-run';
+      },
+    });
+
+    expect(result.state.trialContexts.every((context) => (
+      context.protocolId === 'omk.session/v1'
+    ))).toBe(true);
+    const trajectory = result.state.recordContexts.filter((context) => (
+      context.evaluatorId === 'trajectory'
+    ));
+    const outputOnly = result.state.recordContexts.filter((context) => (
+      context.evaluatorId === 'answer-shape'
+    ));
+    expect(trajectory.every((context) => (
+      context.bindings.map((entry) => entry.sourceKind).join(',')
+        === 'output,trace,expected'
+    ))).toBe(true);
+    expect(outputOnly.every((context) => (
+      context.bindings.map((entry) => entry.sourceKind).join(',') === 'output'
+    ))).toBe(true);
+    expect(result.execution.records.every((record) => (
+      record.executionStatus === 'completed' && record.trace !== undefined
+    ))).toBe(true);
+    expect(JSON.stringify(result.execution)).toContain('working');
+    expect(JSON.stringify(result.events)).not.toContain('working');
+    expect(JSON.stringify(result.state.writtenEvents)).not.toContain('working');
+    expect(JSON.stringify(result.report)).not.toContain('working');
+  });
+
+  it('keeps the function fixture trace-free', async () => {
+    const result = await runConformanceScenario('function');
+
+    expect(result.state.trialContexts.every((context) => (
+      context.protocolId === 'omk.invoke/v1'
+    ))).toBe(true);
+    expect(result.execution.records.every((record) => (
+      record.executionStatus === 'completed' && record.trace === undefined
+    ))).toBe(true);
+  });
+});

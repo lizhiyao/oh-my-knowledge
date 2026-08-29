@@ -1172,7 +1172,10 @@ function makeBundle(
     provenance: {
       provenanceKind: 'native',
       trust: 'verified',
-      parentDigests: [plan.digests.runContractDigest],
+      parentDigests: [
+        plan.digests.runContractDigest,
+        plan.digests.executionPlanDigest,
+      ],
       ...(stop.error !== undefined
         ? { facets: snapshotJson({ terminalError: stop.error }) as unknown as JsonValue }
         : {}),

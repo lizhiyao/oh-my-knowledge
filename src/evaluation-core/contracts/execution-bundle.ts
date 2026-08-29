@@ -285,6 +285,13 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
   assertCoverage(bundle);
   assertStatus(bundle);
   assertReplayability(bundle);
+  if (canonicalizeJson(bundle.provenance.parentDigests)
+      !== canonicalizeJson([bundle.runContractDigest, bundle.executionPlanDigest])) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_PLAN_MISMATCH',
+      'ExecutionBundle provenance must bind its originating RunPlan and ExecutionPlan.',
+    );
+  }
 }
 
 export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext {
@@ -331,13 +338,11 @@ export function assertExecutionBundleMatchesPlan(
   bundle: ExecutionBundle,
   plan: ExecutionBundlePlanContext,
 ): void {
-  if (bundle.runContractDigest !== plan.digests.runContractDigest
-      || bundle.executionPlanDigest !== plan.digests.executionPlanDigest
+  if (bundle.executionPlanDigest !== plan.digests.executionPlanDigest
       || bundle.executionPlanDigest !== plan.execution.executionPlanDigest
-      || bundle.datasetRevisionDigest !== plan.digests.datasetRevisionDigest
       || bundle.executionInputDigest !== plan.digests.executionInputDigest
       || bundle.executionInputDigest !== plan.execution.executionInputDigest) {
-    planMismatch('ExecutionBundle parent digests do not match the sealed RunPlan.');
+    planMismatch('ExecutionBundle execution-stage digests do not match the sealed RunPlan.');
   }
 
   const planned = derivePlannedExecutionCoordinates(plan);
