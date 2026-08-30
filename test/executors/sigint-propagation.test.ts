@@ -132,6 +132,30 @@ describe('spawnWithSigintPropagation', () => {
     });
   });
 
+  it('abort remains authoritative when child traps SIGTERM and exits 0', async () => {
+    const ac = new AbortController();
+    const { child, done } = spawnWithSigintPropagation(
+      'node',
+      [
+        '-e',
+        'process.on("SIGTERM",()=>{process.stdout.write("done");process.exit(0)}); process.stdout.write("ready\\n"); setInterval(()=>{},1000)',
+      ],
+      { abortSignal: ac.signal },
+    );
+    const rejected = assert.rejects(done, (err: SpawnHelperError) => {
+      assert.equal(err.code, 0);
+      assert.equal(err.stdout, 'ready\ndone');
+      assert.equal(err.killedBySignal, 'SIGTERM');
+      assert.equal(err.failureKind, 'abort');
+      return true;
+    });
+    await new Promise<void>((resolve) => {
+      child.stdout?.once('data', () => resolve());
+    });
+    ac.abort();
+    await rejected;
+  });
+
   it('maxBuffer:stdout 超限时 reject + kill', async () => {
     // 写 200KB 到 stdout,maxBuffer 设 10KB
     const { done } = spawnWithSigintPropagation(

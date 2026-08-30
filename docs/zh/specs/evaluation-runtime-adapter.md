@@ -66,7 +66,19 @@ Core attempt 的 `AbortSignal`、trial seed、Target／Evaluator 配置、已验
 
 Composition root conformance 使用 `test.*` 命名空间下、根据输入和 binding 动态生成结果的实现。它们会经过真实 Core prepare 与 run 路径，但不会被导出或伪装成生产 Executor／Evaluator 算法。
 
-## 五、资源需求
+## 五、Custom-command Runtime adapter
+
+`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它只接受绝对 executable path、显式 argument vector、完整且逐项分类的 child environment，以及 ephemeral-run 或 workspace overlay 两种工作目录策略。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory；没有 workspace lease 时，它会创建并最终删除 run 私有目录，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
+
+每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-command-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、内容寻址的 isolation key，以及当前 binding 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。若工作目录要求 workspace，则必须解析到当前 binding 的精确 copy-on-write overlay。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
+
+这版 process-per-attempt contract 只支持 `omk.invoke/v1`，不声明 `omk.session/v1`。Session adapter 必须真正持有 per-trial 隔离 session 的生命周期，不能把互相独立的子进程伪装成保留了对话状态。
+
+Adapter 把 Core attempt 的原始 `AbortSignal` 直接交给进程协调器；协调器先发 SIGTERM，再以有界 SIGKILL 兜底，并等待 child 真正 settle。即使 child 捕获 SIGTERM 后以零码退出，取消仍是权威结果。Adapter 不拥有 timeout、retry、budget 或 cache。每条输出流另有显式 byte limit 作为宿主内存保护；该限制进入 Runtime implementation facet，不属于 measurement Policy。
+
+Custom-command identity 采用保守模型。每个 assembly 周期都重新解析，不使用进程级缓存。若宿主明确提供本地实现文件，adapter 会对实际字节计算 hash，记录 canonical role／digest／size 证据，并在每次 spawn 前复核；由于 adapter 无法证明调用方列出的文件覆盖完整，assurance 仍为 `declared`。没有内容证据时，basis 是 `opaque`，assurance 是 `unknown`。Argument、executable path digest、分类后的 environment identity、工作目录策略、输出限制、exchange version、进程组合与 identity coverage 都作为不泄露 secret 的 implementation facet 捕获。因此，command string 或 path 本身绝不可能产生 `verified` identity。Capability 是 factory 持有的固定 manifest，不根据 Target requirement 动态补齐，并且必须诚实声明本 adapter 的 best-effort cancellation 与 per-invocation stateless lifecycle。
+
+## 六、资源需求
 
 RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 locator 或内容：
 
@@ -85,7 +97,7 @@ Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 
 
 Composition root 在 Core 能调用任何 `openRun()` 前取得完整的 active-binding run lease。它验证 binding／resource 精确覆盖，捕获不可变 map 与 descriptor 快照，然后才注册 binding-scoped access。所有 Core port teardown settle 后先撤销注册，再执行一次 lease disposal。Acquisition、Core start 前取消、EventWriter 创建、Core start、正常完成与失败路径共享同一个幂等 cleanup promise。重复 active `runId` 会在第二次 acquisition 前被拒绝。用于 exploratory post-hoc comparison 的 Gold 不会被 single-run Core composition 提前物化；独立 analysis-host workflow 在存在真实消费者时再请求对应 lease。
 
-## 六、Core Composition 与 Support Ports
+## 七、Core Composition 与 Support Ports
 
 `createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，并调用真实的 `createEvaluationEngine(...).prepare(...)`。独立 Series assembly 单独暴露，不进入 single-run engine。
 
@@ -101,7 +113,7 @@ Clock 与 SchemaValidator contract 在 factory assembly 前校验。Core-owned A
 
 EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required delivery 会在 resource acquisition 后、Core start 前创建 writer，并通过 `PreparedEvaluation.start()` 注入；disabled mode 绝不调用 factory。Policy 要求的 port 缺失或形状错误时，在任何 Runtime factory 或 run port 调用前失败。因此不存在 Judge binding 时，也不会构造 Judge factory、读取凭证、执行 connectivity probe 或物化对应资源。
 
-## 七、错误归属
+## 八、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
 - compiled input、support port、cache source、schema conflict、writer construction、active run 与 host cleanup failure 使用稳定 `OmkEvaluationRuntimeError` code；
