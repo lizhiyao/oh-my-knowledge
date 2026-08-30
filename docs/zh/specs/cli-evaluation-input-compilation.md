@@ -79,6 +79,22 @@ Dataset 投影保护 Gold 边界：Executor 只看到 `input + executionContext`
 
 当 `--repeat > 1` 时，orchestrator 在 Resolve 前分配唯一的 `seriesInstanceId`。Compile 把这份宿主持有的实例身份与完整 Series 设计绑定，包括 measurement design、repeat count、comparison scope 和 minimum status，并由此派生 Core 最终使用的 `seriesId`。编译器不会从时钟或随机源创造身份；同一实例 ID 被错误复用于不同设计时，也不会映射成同一个 Series。
 
+### 4.1 Cache 与 replay
+
+Fresh measurement 是默认语义。规范 policy 始终分别携带两个字段：
+
+```yaml
+cache:
+  executionMode: disabled # disabled | replay-only | transparent-deterministic
+  evaluationMode: disabled # disabled | reuse
+```
+
+`executionMode` 和 `evaluationMode` 分别进入对应的 Core contract digest。任何非 disabled 模式还必须在宿主持有的 `orchestration.cacheSources` 中声明对应阶段的 source locator；locator 不进入 Core canonical JSON。Runtime adapter 必须把这份指定 source 装配为对应 cache port，不得换成环境选择或全局默认 source。
+
+`replay-only` 是 fail-closed 只读路径。coordinate 缺失、source 不可用、entry 损坏或 identity 不匹配都会终止运行，绝不回退为实时 Target 调用。Replay record 沿用原 trial identity、Runtime identity、usage、cost 和 provenance；既不新增 native invocation，也不增加独立 replicate。在 Series 具备显式 effective-independent-sample 模型前，Compile 会拒绝任何非 disabled cache mode 与独立 Series repeat 组合，也会拒绝在同一请求中混用 cache reuse 与 resume。只有 Core prepare 验证 execution 为 deterministic 且 Runtime identity 为 verified 时，才能使用 `transparent-deterministic`。Evaluation `reuse` 与 Execution 独立，并继续绑定完整 evaluation contract，包括 evaluator／model／prompt variant、replicate identity、Gold-facing input、metric 和 evidence policy。
+
+正式 CLI 切换预留名称为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source`；`eval.yaml` 使用 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。Resolve 把 source 输入映射为 `orchestration.cacheSources.executionSourceLocator` 和 `evaluationSourceLocator`。这些暂时不是正式生产 flag，旧 pipeline 的运行行为保持不变。迁移层 Parse 中，省略 cache 输入和旧 disable-only 输入都会规范化为 fresh 双 disabled policy；显式请求旧 cache enable 则直接失败，不猜测成透明复用。
+
 ## 五、确定性与校验
 
 `parseCliEvaluationRequest()` 是 raw CLI／config 输入的纯规范化边界。宿主只传入用户显式提供的 flag、已完成语法校验的 `EvalConfig`，以及带来源信息的环境选择默认值。CLI 和 config 候选值必须先经过同一组规范字段校验，再应用优先级。只有本阶段真实存在的值才能产生 provenance；后续派生值只在实际派生时记录来源。不得把 Oclif 自动注入的默认值冒充用户显式 CLI 输入。Judge 开关必须先于 judge-model 解析确定，因此 no-judge 请求不会因一份不再使用的错误评委来源而失败。
@@ -90,6 +106,8 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 ## 六、迁移边界
 
 本层是增量架构。正式 `omk eval` 仍走 `RunConfig → runEvaluation → executeEvaluationPipeline`；不双跑、不 shadow run、不持久化 Core Bundle，也不改变旧 Report。后续 Runtime adapter 只能消费这里产出的 contract，不能重新解析 CLI 输入。
+
+旧 `--no-cache`／`noCache` boolean 没有忠实的 Core 等价语义：它的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。Registry 因此把它标记为 replace，不再映射成 `transparent-deterministic` 或 `reuse`。最终切换可以直接删除旧 cache 文件与旧行为，不保留 compatibility reader。
 
 ## 七、完整输入 registry
 
@@ -120,7 +138,7 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-cache` | `policy.cache` | 300 | `"enabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| CLI | `--no-cache` | `policy.cache.executionMode` | 300 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → --execution-cache-mode / --evaluation-cache-mode |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
@@ -162,7 +180,7 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | eval.yaml | `lengthDebias` | `definition.judges.lengthDebias` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `mcpConfig` | `resources.mcpConfigLocator` | 200 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `model` | `definition.targetRuntime.model` | 200 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| eval.yaml | `noCache` | `policy.cache` | 200 | `"enabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `noCache` | `policy.cache.executionMode` | 200 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → cache.executionMode / cache.evaluationMode |
 | eval.yaml | `noDiagnostic` | `orchestration.diagnostic` | 200 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `noJudge` | `definition.judges.enabled` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `repeat` | `orchestration.independentSeries.repeatCount` | 200 | `1` (documented) | Orchestration | run | — | `CLI_INPUT_INVALID`<br>retain |

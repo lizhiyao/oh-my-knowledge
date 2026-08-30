@@ -59,9 +59,89 @@ describe('compileCliEvaluationInput', () => {
     });
     expect(result.policy.retry.maxAttempts).toBe(3);
     expect(result.policy.cache).toEqual({
-      executionMode: 'transparent-deterministic',
+      executionMode: 'disabled',
+      evaluationMode: 'disabled',
+    });
+  });
+
+  it('keeps execution replay and evaluation reuse independent and host-sourced', () => {
+    const input = deepClone(validResolvedCliInput());
+    delete input.orchestration.independentSeries;
+    delete input.orchestration.resumeSourceLocator;
+    input.policy.cache = {
+      executionMode: 'replay-only',
+      evaluationMode: 'reuse',
+    };
+    input.orchestration.cacheSources = {
+      executionSourceLocator: 'cache://execution/snapshot-a',
+      evaluationSourceLocator: 'cache://evaluation/snapshot-b',
+    };
+
+    const result = compileCliEvaluationInput(input);
+
+    expect(result.policy.cache).toEqual({
+      executionMode: 'replay-only',
       evaluationMode: 'reuse',
     });
+    expect(result.orchestration.cacheSources).toEqual({
+      executionSourceLocator: 'cache://execution/snapshot-a',
+      evaluationSourceLocator: 'cache://evaluation/snapshot-b',
+    });
+    expect(canonicalizeJson(result.policy)).not.toContain('snapshot-a');
+    expect(canonicalizeJson(result.policy)).not.toContain('snapshot-b');
+
+    const moved = deepClone(input);
+    moved.orchestration.cacheSources = {
+      executionSourceLocator: 'cache://other-host/execution',
+      evaluationSourceLocator: 'cache://other-host/evaluation',
+    };
+    expect(compileCliEvaluationInput(moved).canonicalDigests).toEqual(result.canonicalDigests);
+  });
+
+  it.each([
+    ['execution replay', 'replay-only', 'disabled', 'executionSourceLocator'],
+    ['execution transparent cache', 'transparent-deterministic', 'disabled', 'executionSourceLocator'],
+    ['evaluation reuse', 'disabled', 'reuse', 'evaluationSourceLocator'],
+  ] as const)(
+    'requires an explicit cache source for %s',
+    (_label, executionMode, evaluationMode, field) => {
+      const input = deepClone(validResolvedCliInput());
+      delete input.orchestration.independentSeries;
+      delete input.orchestration.resumeSourceLocator;
+      input.policy.cache = { executionMode, evaluationMode };
+
+      expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({
+        code: 'CLI_INPUT_CACHE_SOURCE_REQUIRED',
+        fieldPath: `orchestration.cacheSources.${field}`,
+      }));
+    },
+  );
+
+  it('rejects a cache source when its stage is disabled', () => {
+    const input = deepClone(validResolvedCliInput());
+    input.orchestration.cacheSources = {
+      executionSourceLocator: 'cache://execution/unused',
+    };
+
+    expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_CACHE_SOURCE_UNUSED',
+      fieldPath: 'orchestration.cacheSources.executionSourceLocator',
+    }));
+  });
+
+  it.each([
+    ['independent Series', 'CLI_INPUT_CACHE_SERIES_CONFLICT'],
+    ['resume', 'CLI_INPUT_RESUME_CACHE_CONFLICT'],
+  ] as const)('does not let replay masquerade as %s evidence', (flow, code) => {
+    const input = deepClone(validResolvedCliInput());
+    input.policy.cache.executionMode = 'replay-only';
+    input.orchestration.cacheSources = {
+      executionSourceLocator: 'cache://execution/snapshot',
+    };
+    if (flow === 'independent Series') delete input.orchestration.resumeSourceLocator;
+    else delete input.orchestration.independentSeries;
+
+    expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({ code }));
   });
 
   it('keeps expected, evaluation context and analysis-only membership out of target execution', () => {

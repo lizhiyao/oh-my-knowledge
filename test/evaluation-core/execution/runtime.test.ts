@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveAttemptId,
   digestCanonicalJson,
   parseExecutionBundleDocument,
   verifyExecutionBundle,
@@ -954,6 +955,91 @@ describe('Evaluation Core Execution runtime', () => {
     expect(bundle.terminationReasonCode).toBe('execution-cache-miss');
     expect(bundle.coverage).toMatchObject({ started: 0, notStarted: 1 });
     expect(state.attempts).toBe(0);
+  });
+
+  it('replays an imported native fact with its original identity and no incremental cost', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'replay-only';
+    });
+    const coordinate = deriveExecutionSchedule(plan)[0].coordinates[0];
+    const runtime = expectedExecutorIdentity(plan);
+    const cacheKeyDigest = digestCanonicalJson({
+      derivation: 'omk.execution-cache-key/v1',
+      executionPlanDigest: plan.execution.executionPlanDigest,
+      trialId: coordinate.trialId,
+    });
+    const usage = {
+      providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+    } as const;
+    const sourceRecord: ExecutionCacheEntry['record'] = {
+      targetId: coordinate.targetId,
+      randomizationSlotId: coordinate.randomizationSlotId,
+      sampleId: coordinate.sampleId,
+      trialIndex: coordinate.trialIndex,
+      trialId: coordinate.trialId,
+      trialSeed: coordinate.trialSeed,
+      schedulingBlockId: coordinate.schedulingBlockId,
+      samplingUnitIds: coordinate.samplingUnitIds,
+      runtime,
+      provenance: {
+        provenanceKind: 'native',
+        trust: runtime.assuranceLevel,
+        parentDigests: [plan.execution.executionPlanDigest],
+      },
+      attempts: [{
+        attemptId: deriveAttemptId({ trialId: coordinate.trialId, attemptNumber: 1 }),
+        attemptNumber: 1,
+        attemptStatus: 'completed',
+        timing: {
+          startedAt: '2026-08-29T00:00:00.000Z',
+          completedAt: '2026-08-29T00:00:01.000Z',
+          durationMs: 1_000,
+        },
+        usage,
+      }],
+      timing: {
+        startedAt: '2026-08-29T00:00:00.000Z',
+        completedAt: '2026-08-29T00:00:01.000Z',
+        durationMs: 1_000,
+      },
+      usage,
+      cache: { cacheStatus: 'miss', cacheKeyDigest },
+      executionStatus: 'completed',
+      output: { contentKind: 'inline', classification: 'public', value: { answer: 'replayed' } },
+    };
+    cache.entries.set(cacheKeyDigest, {
+      cacheKeyDigest,
+      sourceRecordDigest: digestCanonicalJson(sourceRecord),
+      record: sourceRecord,
+    });
+    const { ports, state } = portsFor(plan, undefined, { cache });
+
+    const bundle = await executeRunPlan(plan, ports, {
+      runId: 'run-replay-hit',
+      bundleId: 'bundle-replay-hit',
+    });
+
+    expect(bundle.executionBundleStatus).toBe('completed');
+    expect(bundle.records[0]).toMatchObject({
+      trialId: sourceRecord.trialId,
+      runtime: sourceRecord.runtime,
+      usage,
+      cache: {
+        cacheStatus: 'replay',
+        cacheKeyDigest,
+        sourceRecordDigest: digestCanonicalJson(sourceRecord),
+      },
+      provenance: {
+        provenanceKind: 'replay',
+        sourceId: sourceRecord.trialId,
+        parentDigests: [digestCanonicalJson(sourceRecord)],
+      },
+    });
+    expect(bundle.budgetSummary.entries).toEqual([]);
+    expect(state).toMatchObject({ runOpens: 0, trialOpens: 0, attempts: 0 });
   });
 
   it('stops new admission after auditable provider-cost overshoot', async () => {
