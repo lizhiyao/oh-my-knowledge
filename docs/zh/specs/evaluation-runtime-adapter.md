@@ -1,23 +1,24 @@
 # Evaluation Runtime Adapter 规范
 
-> **状态**：作为 [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457) 的 binding assembly 基础。本层是增量架构，不切换正式 `omk eval` pipeline。
+> **状态**：已建立 [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457) 的 binding assembly、verified resource lease 与 Core composition root。本层是增量架构，不切换正式 `omk eval` pipeline。
 
 ## 一、边界
 
 OMK 宿主完整消费 `compileCliEvaluationInput()` 的输出，并在 Evaluation Core 外执行 effect。Binding assembly 不创建第二套 plan、不重新解释 CLI 输入，也不把 registry 声明当成 Runtime 实际身份。
 
 ```text
-EvaluationDefinition + RuntimeBindingRequest
-                    │ exact coverage／immutable snapshot
+       compileCliEvaluationInput()
+                    │ 完整不可变产物
                     ▼
-        assembleOmkRuntimeBindings()
-                    │ implementation factory resolution
-                    ▼
-  immutable binding entries + Core Runtime ports
-                    │ actual identity／capabilities
+       createOmkEvaluationRuntime()
+                    │
+        ┌───────────┼────────────────┐
+        ▼           ▼                ▼
+ binding entries  support ports  run lease registry
+        └───────────┼────────────────┘
                     ▼
        createEvaluationEngine().prepare()
-                    │
+                    │ actual identity／capabilities
                     ▼
               SealedRunPlan
 ```
@@ -51,6 +52,7 @@ Factory 返回实际 port identity 和 version resolution。Assembly 校验 port
 - 捕获后的 port；
 - 显式 resource lease requirement；
 - 由完整 binding 派生并传给对应 factory 的 binding-local `sessionIsolationKey`。
+- 仅向 Executor／Evaluator factory 提供 binding-scoped resource access view；它按当前 Core `runId` 取 lease，不能枚举其它 binding 或 analysis-only resource。
 
 Adapter 必须把 `sessionIsolationKey` 与 Core `runId`、`trialId` 组合使用；它不允许跨 run 或 binding 复用有状态 session。
 
@@ -71,11 +73,30 @@ Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 
 
 单资源和整个 run 的字节／条目上限都包含可写 overlay。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
 
-## 五、错误归属
+Composition root 在 Core 能调用任何 `openRun()` 前取得完整的 active-binding run lease。它验证 binding／resource 精确覆盖，捕获不可变 map 与 descriptor 快照，然后才注册 binding-scoped access。所有 Core port teardown settle 后先撤销注册，再执行一次 lease disposal。Acquisition、Core start 前取消、EventWriter 创建、Core start、正常完成与失败路径共享同一个幂等 cleanup promise。重复 active `runId` 会在第二次 acquisition 前被拒绝。用于 exploratory post-hoc comparison 的 Gold 不会被 single-run Core composition 提前物化；独立 analysis-host workflow 在存在真实消费者时再请求对应 lease。
+
+## 五、Core Composition 与 Support Ports
+
+`createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，并调用真实的 `createEvaluationEngine(...).prepare(...)`。独立 Series assembly 单独暴露，不进入 single-run engine。
+
+Support port 被捕获为绑定原实例方法的不可变 view。是否必需完全由 sealed Policy 推导，且不会改写 Policy：
+
+- execution／evaluation cache mode 非 disabled 时，必须提供对应 cache port，并精确绑定 `orchestration.cacheSources` 编译出的分阶段 source locator；
+- output／trace 使用 reference capture 时，必须提供 Execution ContentStore；
+- evaluator evidence 使用 reference capture 时，必须提供 Evaluation ContentStore；
+- Evaluator 消费 reference-captured output／trace 时，必须提供 ContentResolver；
+- required EventWriter mode 必须提供 run-scoped writer factory。
+
+Clock 与 SchemaValidator contract 在 factory assembly 前校验。Core-owned Analysis validator 恒定合入。Validator key 必须等于完整 schema identity；同一 schema URI 出现另一 version、digest 或 validator 时 fail closed。Built-in Analysis、MissingPolicy 与 Decision factory 按 implementation ID 合并，宿主 factory 不能覆盖 Core-owned implementation。
+
+EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required delivery 会在 resource acquisition 后、Core start 前创建 writer，并通过 `PreparedEvaluation.start()` 注入；disabled mode 绝不调用 factory。Policy 要求的 port 缺失或形状错误时，在任何 Runtime factory 或 run port 调用前失败。因此不存在 Judge binding 时，也不会构造 Judge factory、读取凭证、执行 connectivity probe 或物化对应资源。
+
+## 六、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
+- compiled input、support port、cache source、schema conflict、writer construction、active run 与 host cleanup failure 使用稳定 `OmkEvaluationRuntimeError` code；
 - capability、schema、protocol support、identity assurance 和 version satisfaction 仍由 Core preparation 报错；
-- credential、connectivity、filesystem readiness 和资源物化属于后续 adapter preflight／lease 层；
+- credential、connectivity 与 physical readiness 仍属于独立 adapter preflight；verified resource materialization 是 Core start 前的 run-scoped host failure；
 - provider、session、attempt、cancellation 和 dispose failure 在 Run 开始后属于 Runtime port。
 
 本层不修改冻结 prompt、五层评分、统计公式、cache 语义、Bundle／Report schema 或旧 pipeline。
