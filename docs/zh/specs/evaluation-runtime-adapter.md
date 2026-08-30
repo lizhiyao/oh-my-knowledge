@@ -65,6 +65,12 @@ RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 loca
 
 这些只是 acquisition requirement。后续 Verified HostResource lease 层仍须在 port 打开 run 前验证 kind、classification、size、digest、实际字节／目录树、隔离和 exactly-once release。Gold resource 不得出现在 executor 或 evaluator binding requirement 中。
 
+Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。每个 workspace binding 在当前 run 内获得共享只读 base 上的独立可写 overlay；不同 run 绝不共享可写状态。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
+
+文件身份是实际消费字节的 SHA-256。目录树身份使用 `omk.tree-sha256/v1`：条目按相对路径排序，并将条目类型、UTF-8 路径、文件大小、executable／non-executable mode 和文件字节纳入 framing。空目录参与身份；symlink 和特殊文件 fail closed。Pinned Git 还会验证精确的 `HEAD` commit 和干净的常规文件 checkout；dirty、untracked、ignored 或 submodule 内容不能冒充 commit 内容。根 `.git` metadata 在 resolve 与 lease 两个阶段的目录树身份中都会被排除。只有 snapshot 的实际 size 和 digest 都与 v2 descriptor 一致才会被接受。Acquisition 失败会清理部分创建的 run root；成功的 lease 暴露同一个幂等 `dispose()` promise，底层只尝试一次清理。
+
+单资源和整个 run 的字节／条目上限都包含可写 overlay。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
+
 ## 五、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；

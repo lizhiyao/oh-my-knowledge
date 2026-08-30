@@ -368,6 +368,31 @@ describe('compileCliEvaluationInput', () => {
     }
   });
 
+  it('requires HostResource v2 size and verification identity invariants', () => {
+    const missingSize = deepClone(validResolvedCliInput());
+    delete (missingSize.hostResources.resources[0].descriptor as { size?: number }).size;
+    expect(() => compileCliEvaluationInput(missingSize)).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: expect.stringContaining('hostResources.'),
+    }));
+
+    const invalidVerification = deepClone(validResolvedCliInput());
+    const content = invalidVerification.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'content'
+    ));
+    if (content === undefined) throw new Error('fixture is incomplete');
+    content.verification = {
+      verificationKind: 'tree-digest',
+      verifiedDigest: content.descriptor.digest,
+    };
+    expect(() => compileCliEvaluationInput(invalidVerification)).toThrowError(
+      expect.objectContaining({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `hostResources.${content.descriptor.resourceId}`,
+      }),
+    );
+  });
+
   it.each([
     ['artifact-control', 'workspace', 'targets.control.behavior.artifact'],
     ['workspace-tree', 'artifact', 'targets.treatment.behavior.workspace'],

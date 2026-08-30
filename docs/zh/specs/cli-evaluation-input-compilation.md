@@ -54,6 +54,8 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 Mock match rule 和 strict mode 进入 Target 行为。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。
 
+`ResolvedHostResources` v2 要求 `descriptor.size` 必填，并把 pinned Git verification 表达为 `{verificationKind, verifiedDigest, commitId}`。`commitId` 必须是规范化的 40–64 位小写十六进制对象身份，branch 或 tag 名不是 pin。仅文件的 MCP、mock 和 evaluator content 资源必须使用 `content-digest`；workspace 必须使用 `tree-digest` 或 `pinned-git`；pinned Git 仅适用于 artifact 和 workspace。`gold` classification 与 `gold-dataset` kind 必须同时成立。不完整的 v1 结构会被直接拒绝，不提供 compatibility reader。
+
 Dataset 投影保护 Gold 边界：Executor 只看到 `input + executionContext`；evaluator 可以读取 `expected + evaluationContext`；analysis 只读取显式 membership 和 analysis context。Gold locator 只留在宿主资源中。Post-hoc gold compare 标记为 exploratory，不能冒充 preregistered decision。
 
 ## 四、测量映射

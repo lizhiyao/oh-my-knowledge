@@ -127,7 +127,7 @@ function descriptorSnapshot(descriptor: ResolvedResourceDescriptor): JsonValue {
     digest: descriptor.digest,
     mediaType: descriptor.mediaType,
     classification: descriptor.classification,
-    ...(descriptor.size === undefined ? {} : { size: descriptor.size }),
+    size: descriptor.size,
   });
 }
 
@@ -178,8 +178,10 @@ function normalizeHostResources(
           || !/^sha256:[0-9a-f]{64}$/.test(resource.descriptor.digest)
           || !resource.descriptor.mediaType
           || !resource.locator
-          || (resource.descriptor.size !== undefined
-            && (!Number.isInteger(resource.descriptor.size) || resource.descriptor.size < 0))) {
+          || !Number.isSafeInteger(resource.descriptor.size)
+          || resource.descriptor.size < 0
+          || (resource.verification.verificationKind === 'pinned-git'
+            && !/^[0-9a-f]{40,64}$/.test(resource.verification.commitId))) {
         fail({
           code: 'CLI_INPUT_INVALID',
           sourcePath: resource.locator,
@@ -201,6 +203,9 @@ function normalizeHostResources(
         verification: {
           verificationKind: resource.verification.verificationKind,
           verifiedDigest: resource.verification.verifiedDigest,
+          ...(resource.verification.verificationKind === 'pinned-git'
+            ? { commitId: resource.verification.commitId }
+            : {}),
         },
       };
     });
@@ -208,6 +213,27 @@ function normalizeHostResources(
     schemaVersion: RESOLVED_HOST_RESOURCES_SCHEMA_VERSION,
     resources,
   })) as unknown as ResolvedHostResources;
+}
+
+function validateHostResourceMaterializationSemantics(
+  hostResources: ResolvedHostResources,
+): void {
+  for (const resource of hostResources.resources) {
+    const fileOnly = ['mcp-config', 'mock-payload', 'content'].includes(resource.resourceKind);
+    const gitAllowed = resource.resourceKind === 'artifact'
+      || resource.resourceKind === 'workspace';
+    if ((fileOnly && resource.verification.verificationKind !== 'content-digest')
+        || (resource.resourceKind === 'workspace'
+          && resource.verification.verificationKind === 'content-digest')
+        || (resource.verification.verificationKind === 'pinned-git' && !gitAllowed)
+        || ((resource.resourceKind === 'gold-dataset')
+          !== (resource.descriptor.classification === 'gold'))) fail({
+      code: 'CLI_INPUT_INVALID',
+      sourcePath: resource.locator,
+      fieldPath: `hostResources.${resource.descriptor.resourceId}`,
+      message: '宿主资源的 kind、classification 与 verification kind 不匹配。',
+    });
+  }
 }
 
 function validateHostOptions(input: ResolvedCliEvaluationInput): void {
@@ -1030,6 +1056,7 @@ export function compileCliEvaluationInput(
   validateHostOptions(resolvedInput);
   const hostResources = normalizeHostResources(resolvedInput.hostResources);
   validateResourceReferences(resolvedInput, hostResources);
+  validateHostResourceMaterializationSemantics(hostResources);
   const definition = compileDefinition(resolvedInput);
   const policy = compilePolicy(resolvedInput);
   validateCompiledCoreSemantics(definition, policy);
