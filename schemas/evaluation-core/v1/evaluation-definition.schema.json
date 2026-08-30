@@ -835,6 +835,66 @@
         "config": {
           "$ref": "#/$defs/__schema4"
         },
+        "executionRequirements": {
+          "additionalProperties": false,
+          "properties": {
+            "mcp": {
+              "enum": [
+                "not-required",
+                "native-config"
+              ],
+              "type": "string"
+            },
+            "mockInterception": {
+              "enum": [
+                "not-required",
+                "pre-tool-call"
+              ],
+              "type": "string"
+            },
+            "sandboxId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "skillDiscovery": {
+              "enum": [
+                "runtime-default",
+                "disabled",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "systemInstructions": {
+              "enum": [
+                "required",
+                "not-required"
+              ],
+              "type": "string"
+            },
+            "toolPolicy": {
+              "enum": [
+                "runtime-default",
+                "allow-list"
+              ],
+              "type": "string"
+            },
+            "workspace": {
+              "enum": [
+                "not-required",
+                "copy-on-write-overlay"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "systemInstructions",
+            "workspace",
+            "mcp",
+            "mockInterception",
+            "toolPolicy",
+            "skillDiscovery"
+          ],
+          "type": "object"
+        },
         "executorId": {
           "$ref": "#/$defs/__schema2"
         },
@@ -859,7 +919,8 @@
         "targetId",
         "targetKind",
         "protocolId",
-        "executorId"
+        "executorId",
+        "executionRequirements"
       ],
       "type": "object"
     },

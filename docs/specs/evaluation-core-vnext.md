@@ -160,6 +160,15 @@ interface TargetDefinition {
   protocolId: string;
   executorId: string;
   versionConstraint?: string;
+  executionRequirements: {
+    systemInstructions: 'required' | 'not-required';
+    workspace: 'copy-on-write-overlay' | 'not-required';
+    mcp: 'native-config' | 'not-required';
+    mockInterception: 'pre-tool-call' | 'not-required';
+    toolPolicy: 'runtime-default' | 'allow-list';
+    skillDiscovery: 'runtime-default' | 'disabled' | 'allow-list';
+    sandboxId?: string;
+  };
   config?: JsonValue;
 }
 ```
@@ -171,7 +180,11 @@ v1 defines only two built-in protocol families:
 - `omk.invoke/v1`: one structured request/response per trial with an optional source-neutral trace; covers pure functions, models, services, RAG, and stateless workflows.
 - `omk.session/v1`: an isolated session lifecycle per trial with multi-turn messages, tool calls, and partial trajectories; covers agents and stateful workflows.
 
-Every protocol manifest also declares structured execution capabilities: concurrency safety and limits, cancellation semantics, run resource lifecycle, trial state, seed control, determinism, and trace/usage telemetry. Run-scoped resources may reuse infrastructure such as connection pools and clients; business state remains isolated per trial for `omk.session/v1`, while `omk.invoke/v1` remains stateless. A runtime declaring `cancellation: unsupported` cannot be combined with a timeout policy. A stochastic Runtime without seed control can use only an `uncontrolled` seed design. Transparent Execution cache hits require both deterministic capability and verified Runtime assurance.
+Every protocol manifest also declares structured execution capabilities: concurrency safety and limits, cancellation semantics, run resource lifecycle, trial state, seed control, determinism, trace/usage telemetry, and a closed `features` object. `features` records the actual system-instruction delivery mode (`native`, `prepended`, or `unsupported`) plus canonical, duplicate-free sets for workspace lease modes, MCP modes, mock-interception modes, tool-policy modes, skill-discovery modes, and sandbox IDs. Empty sets and `unsupported` are explicit; absence is invalid.
+
+The complete manifest is the independently published `omk.executor-capabilities/v1` wire contract. Its JSON Schema identity is sealed into every Run contract, while each Runtime's concrete capability value remains sealed in `RuntimeIdentity`. Validator semantics and implementation claims therefore cannot change behind unchanged plan identity.
+
+Core matches `executionRequirements` only against the selected protocol during prepare. A mismatch fails with `EVAL_DEFINITION_CAPABILITY_UNSUPPORTED` before any Runtime `openRun()`. System-instruction `native` and `prepended` both satisfy `required`, but the actual mode remains sealed in `RuntimeIdentity`, so they are different execution designs. Model, effort, provider deployment, effective tool schemas, resource bytes, and locators are not capabilities: behavior facts remain in Target config or Runtime implementation identity, while verified resource acquisition remains host-owned. Run-scoped resources may reuse infrastructure such as connection pools and clients; business state remains isolated per trial for `omk.session/v1`, while `omk.invoke/v1` remains stateless. A runtime declaring `cancellation: unsupported` cannot be combined with a timeout policy. A stochastic Runtime without seed control can use only an `uncontrolled` seed design. Transparent Execution cache hits require both deterministic capability and verified Runtime assurance.
 
 Importing host-executed results is not a third execution protocol; Core validates and accepts an ExecutionBundle directly. Protocol IDs are immutable contracts. Incompatible changes use a new major path, while optional capabilities may only add behavior without changing existing field semantics.
 
@@ -854,7 +867,7 @@ These decisions close the architectural choices required before Contracts. Confo
 
 The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/evaluation-core/contracts/`; it does not import the historical `src/eval-core/`, CLI, executor, grading, renderer, or server layers.
 
-The catalog currently publishes fourteen JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, ComparabilityAssessment, Event, three Bundles, and EvaluationReport. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
+The catalog currently publishes twenty JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: ExecutorCapabilities, EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, ComparabilityAssessment, Event, BudgetSummary, three single-Run Bundles, EvaluationReport, and four Evaluation Series contracts. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
 
 Wire entry points use `parseWireDocument()` rather than a bare schema parse. It first rejects values that cannot be represented as I-JSON or JCS input, including non-finite numbers, functions, symbols, cycles, sparse arrays, accessor properties, class instances, and unpaired Unicode surrogates, and then applies the Zod schema. Hosts accepting raw JSON text must additionally reject duplicate property names before constructing a JavaScript value because duplicates are no longer observable after ordinary `JSON.parse()`.
 

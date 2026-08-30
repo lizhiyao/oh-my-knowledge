@@ -309,6 +309,7 @@ describe('embedded Evaluation Engine', () => {
       executorId: 'executor-alias',
       versionConstraint: '^1.0.0',
       protocolId: 'omk.invoke/v1',
+      executionRequirements: fixture.definition.targets[0].executionRequirements,
     });
     const attempts: string[] = [];
     const port = (source: string): Executor => ({

@@ -1,0 +1,307 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.executor-capabilities/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "items": {
+        "$ref": "#/$defs/__schema2"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema2": {
+      "additionalProperties": false,
+      "properties": {
+        "execution": {
+          "additionalProperties": false,
+          "properties": {
+            "cancellation": {
+              "enum": [
+                "cooperative",
+                "best-effort",
+                "unsupported"
+              ],
+              "type": "string"
+            },
+            "concurrency": {
+              "additionalProperties": false,
+              "properties": {
+                "maxInFlight": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "safety": {
+                  "enum": [
+                    "serialized",
+                    "parallel-safe"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "safety"
+              ],
+              "type": "object"
+            },
+            "determinism": {
+              "enum": [
+                "deterministic",
+                "stochastic",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            "features": {
+              "additionalProperties": false,
+              "properties": {
+                "mcp": {
+                  "items": {
+                    "const": "native-config",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mockInterception": {
+                  "items": {
+                    "const": "pre-tool-call",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "sandboxIds": {
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "skillDiscovery": {
+                  "items": {
+                    "enum": [
+                      "runtime-default",
+                      "disabled",
+                      "allow-list"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "systemInstructions": {
+                  "enum": [
+                    "native",
+                    "prepended",
+                    "unsupported"
+                  ],
+                  "type": "string"
+                },
+                "toolPolicies": {
+                  "items": {
+                    "enum": [
+                      "runtime-default",
+                      "allow-list"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "workspace": {
+                  "items": {
+                    "const": "copy-on-write-overlay",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "systemInstructions",
+                "workspace",
+                "mcp",
+                "mockInterception",
+                "toolPolicies",
+                "skillDiscovery",
+                "sandboxIds"
+              ],
+              "type": "object"
+            },
+            "seedControl": {
+              "enum": [
+                "unsupported",
+                "optional",
+                "required"
+              ],
+              "type": "string"
+            },
+            "state": {
+              "additionalProperties": false,
+              "properties": {
+                "resourceLifecycle": {
+                  "enum": [
+                    "per-invocation",
+                    "per-run"
+                  ],
+                  "type": "string"
+                },
+                "trialState": {
+                  "enum": [
+                    "stateless",
+                    "isolated"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceLifecycle",
+                "trialState"
+              ],
+              "type": "object"
+            },
+            "telemetry": {
+              "additionalProperties": false,
+              "properties": {
+                "providerCost": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reporting": {
+                      "$ref": "#/$defs/__schema4"
+                    },
+                    "trustedUpperBound": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "reporting"
+                  ],
+                  "type": "object"
+                },
+                "trace": {
+                  "enum": [
+                    "unsupported",
+                    "optional",
+                    "required"
+                  ],
+                  "type": "string"
+                },
+                "usage": {
+                  "enum": [
+                    "unsupported",
+                    "optional",
+                    "required"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "trace",
+                "usage"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "concurrency",
+            "cancellation",
+            "state",
+            "seedControl",
+            "determinism",
+            "features",
+            "telemetry"
+          ],
+          "type": "object"
+        },
+        "inputSchema": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "outputSchema": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "protocolId": {
+          "enum": [
+            "omk.invoke/v1",
+            "omk.session/v1"
+          ],
+          "type": "string"
+        },
+        "traceSchema": {
+          "$ref": "#/$defs/__schema3"
+        }
+      },
+      "required": [
+        "protocolId",
+        "inputSchema",
+        "outputSchema",
+        "execution"
+      ],
+      "type": "object"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schemaUri": {
+          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "schemaUri",
+        "schemaDigest"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "enum": [
+        "unsupported",
+        "optional",
+        "required"
+      ],
+      "type": "string"
+    },
+    "__schema5": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/executor-capabilities.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "protocols": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "protocols"
+  ],
+  "title": "OMK Executor Capabilities v1",
+  "type": "object"
+}

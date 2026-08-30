@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
@@ -36,6 +37,7 @@ function schema(name: string): SchemaIdentity {
 
 function executorIdentity(implementationId = 'test.omk.same-process-executor/v1'): RuntimeIdentity {
   const capabilities = {
+    schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
     protocols: [{
       protocolId: 'omk.invoke/v1' as const,
       inputSchema: schema('invoke-input'),
@@ -45,10 +47,19 @@ function executorIdentity(implementationId = 'test.omk.same-process-executor/v1'
         cancellation: 'cooperative' as const,
         state: {
           resourceLifecycle: 'per-run' as const,
-          trialState: 'isolated' as const,
+          trialState: 'stateless' as const,
         },
         seedControl: 'optional' as const,
         determinism: 'deterministic' as const,
+        features: {
+          systemInstructions: 'unsupported' as const,
+          workspace: [],
+          mcp: [],
+          mockInterception: [],
+          toolPolicies: ['runtime-default' as const],
+          skillDiscovery: ['runtime-default' as const],
+          sandboxIds: [],
+        },
         telemetry: {
           trace: 'optional' as const,
           usage: 'optional' as const,

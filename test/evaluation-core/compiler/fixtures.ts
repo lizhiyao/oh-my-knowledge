@@ -1,5 +1,6 @@
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   digestCanonicalJson,
   schemaIdentityKey,
@@ -64,6 +65,14 @@ export function validDefinition(): EvaluationDefinition {
         protocolId: 'omk.invoke/v1',
         executorId: 'executor-alias',
         versionConstraint: '^1.0.0',
+        executionRequirements: {
+          systemInstructions: 'not-required',
+          workspace: 'not-required',
+          mcp: 'not-required',
+          mockInterception: 'not-required',
+          toolPolicy: 'runtime-default',
+          skillDiscovery: 'runtime-default',
+        },
       },
       {
         targetId: 'treatment',
@@ -71,6 +80,14 @@ export function validDefinition(): EvaluationDefinition {
         protocolId: 'omk.invoke/v1',
         executorId: 'executor-alias',
         versionConstraint: '^1.0.0',
+        executionRequirements: {
+          systemInstructions: 'not-required',
+          workspace: 'not-required',
+          mcp: 'not-required',
+          mockInterception: 'not-required',
+          toolPolicy: 'runtime-default',
+          skillDiscovery: 'runtime-default',
+        },
       },
     ],
     evaluators: [{
@@ -212,6 +229,14 @@ interface RuntimeOptions {
     reporting: 'unsupported' | 'optional' | 'required';
     trustedUpperBound?: { amount: number; currency: string };
   };
+  systemInstructions?: 'native' | 'prepended' | 'unsupported';
+  workspace?: Array<'copy-on-write-overlay'>;
+  mcp?: Array<'native-config'>;
+  mockInterception?: Array<'pre-tool-call'>;
+  toolPolicies?: Array<'runtime-default' | 'allow-list'>;
+  skillDiscovery?: Array<'runtime-default' | 'disabled' | 'allow-list'>;
+  sandboxIds?: string[];
+  omitExecutorCapabilitySchemaVersion?: boolean;
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   evaluatorProviderCost?: {
     reporting: 'unsupported' | 'optional' | 'required';
@@ -269,6 +294,9 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
           'actual-executor/v1',
           options.executorFingerprint ?? 'executor-fingerprint-1',
           {
+            ...(options.omitExecutorCapabilitySchemaVersion
+              ? {}
+              : { schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION }),
             protocols: protocols.map((protocolId) => ({
               protocolId,
               inputSchema: schemaIdentity(`${protocolId}:input`),
@@ -293,6 +321,16 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
                 determinism: (options.deterministic ?? true)
                   ? 'deterministic'
                   : 'stochastic',
+                features: {
+                  systemInstructions: options.systemInstructions ?? 'native',
+                  workspace: options.workspace ?? ['copy-on-write-overlay'],
+                  mcp: options.mcp ?? ['native-config'],
+                  mockInterception: options.mockInterception ?? ['pre-tool-call'],
+                  toolPolicies: options.toolPolicies ?? ['allow-list', 'runtime-default'],
+                  skillDiscovery: options.skillDiscovery
+                    ?? ['allow-list', 'disabled', 'runtime-default'],
+                  sandboxIds: options.sandboxIds ?? ['omk.local-sandbox/v1'],
+                },
                 telemetry: {
                   trace: options.traceCapability ?? 'unsupported',
                   usage: 'optional',

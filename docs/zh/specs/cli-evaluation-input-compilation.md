@@ -36,7 +36,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 - `EvaluationDefinition` 负责数据投影、Target 行为、evaluator instrument、metric、实验设计、分析、比较和决策策略；
 - `MeasurementPolicy` 负责 execution／evaluation concurrency、timeout、retry、cache、evidence、failure、event delivery 和共享 Run 预算账本；
-- `RuntimeBindingRequest` v2 只保存从 Definition／已解析宿主资源派生的 implementation 和 resource lease requirement。宿主 registry 可以解析实现，但不能覆盖 model、effort、prompt variant、protocol、evaluator identity 或行为配置。完整装配契约见 [Evaluation Runtime Adapter 规范](./evaluation-runtime-adapter.md)；
+- `RuntimeBindingRequest` v3 只保存从 Definition／已解析宿主资源派生的 implementation 和 resource lease requirement。Executor qualification 直接复用 canonical `TargetDefinition.executionRequirements`，不维护第二份近似语义。宿主 registry 可以解析 binding，但不能覆盖 execution requirement、model、effort、prompt variant、protocol、evaluator identity 或行为配置。完整装配契约见 [Evaluation Runtime Adapter 规范](./evaluation-runtime-adapter.md)；
 - `ResolvedHostResources` 用稳定 resource ID 和 digest 绑定 effect locator。它不是 Core schema，也不进入 canonical measurement JSON；
 - `EvaluationOrchestrationOptions` 负责 dry-run、resume locator、batch、独立 Series repeat、preflight 开关、diagnostic 后处理、gold post-hoc workflow 和受管证据追加；
 - `EvaluationPresentationOptions` 负责输出 locator、索引范围、语言、server、verbose、layered view 和 CLI exit 展示。这些字段都不能改变 `DecisionResult`；
@@ -49,6 +49,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 行为身份和来源 lineage 是两条不同轴：
 
 - Target config 通过 `{resourceId, digest, mediaType, classification}` descriptor 保存会影响行为的字节／配置，并包含规范化的 workspace、tool、mock、sandbox、model 和 effort 事实；
+- Target `executionRequirements` 从 resolved behavior 纯确定地派生：显式 system instruction 使用、copy-on-write workspace、native MCP config、pre-tool-call mock interception、tool allow-list、skill discovery policy 和 sandbox ID。它进入 Definition 与 ExecutionPlan identity，只有 Core prepare 可以把它与 Runtime feature 做匹配；
 - Host resources 保存 locator、resolved commit、仓库来源和 materialization 证据。同一内容在绝对／相对路径或不同机器间移动，不会让 execution identity 失效；
 - 行为变化会改变 Definition digest。只有 lineage 变化时，后续由显式 comparability／provenance policy 判断，不能偷偷塞进 Target config。
 
@@ -108,6 +109,8 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 ## 六、迁移边界
 
 本层是增量架构。正式 `omk eval` 仍走 `RunConfig → runEvaluation → executeEvaluationPipeline`；不双跑、不 shadow run、不持久化 Core Bundle，也不改变旧 Report。后续 Runtime adapter 只能消费这里产出的 contract，不能重新解析 CLI 输入。
+
+Target execution requirement 会让迁移 contract 有意不兼容：resolved compiler input 升级为 `omk.resolved-cli-evaluation-input/v2`，binding output 升级为 `omk.runtime-binding-request/v3`。旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。Core v1 Definition／Plan JSON Schema 增加 Target 必填字段，本次改动按 `BREAKING-SCHEMA` 发布；评分与统计可比性不变量不变。
 
 旧 `--no-cache`／`noCache` boolean 没有忠实的 Core 等价语义：它的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。Registry 因此把它标记为 replace，不再映射成 `transparent-deterministic` 或 `reuse`。最终切换可以直接删除旧 cache 文件与旧行为，不保留 compatibility reader。
 

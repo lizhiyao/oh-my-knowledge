@@ -60,12 +60,23 @@ export const EvaluationSeriesMembershipSchema = z.object({
   replicateIndex: z.number().int().nonnegative(),
 }).strict();
 
+export const TargetExecutionRequirementsSchema = z.object({
+  systemInstructions: z.enum(['required', 'not-required']),
+  workspace: z.enum(['not-required', 'copy-on-write-overlay']),
+  mcp: z.enum(['not-required', 'native-config']),
+  mockInterception: z.enum(['not-required', 'pre-tool-call']),
+  toolPolicy: z.enum(['runtime-default', 'allow-list']),
+  skillDiscovery: z.enum(['runtime-default', 'disabled', 'allow-list']),
+  sandboxId: IdentifierSchema.optional(),
+}).strict();
+
 export const TargetDefinitionSchema = z.object({
   targetId: IdentifierSchema,
   targetKind: IdentifierSchema,
   protocolId: z.enum(['omk.invoke/v1', 'omk.session/v1']),
   executorId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
+  executionRequirements: TargetExecutionRequirementsSchema,
   config: JsonValueSchema.optional(),
 }).strict();
 
@@ -368,6 +379,7 @@ export type EvaluationSample = z.infer<typeof EvaluationSampleSchema>;
 export type AnalysisCohortDefinition = z.infer<typeof AnalysisCohortDefinitionSchema>;
 export type AnalysisSampleInput = z.infer<typeof AnalysisSampleInputSchema>;
 export type EvaluationDataset = z.infer<typeof EvaluationDatasetSchema>;
+export type TargetExecutionRequirements = z.infer<typeof TargetExecutionRequirementsSchema>;
 export type TargetDefinition = z.infer<typeof TargetDefinitionSchema>;
 export type EvaluatorDefinition = z.infer<typeof EvaluatorDefinitionSchema>;
 export type MetricDefinition = z.infer<typeof MetricDefinitionSchema>;

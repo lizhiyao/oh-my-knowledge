@@ -160,6 +160,15 @@ interface TargetDefinition {
   protocolId: string;
   executorId: string;
   versionConstraint?: string;
+  executionRequirements: {
+    systemInstructions: 'required' | 'not-required';
+    workspace: 'copy-on-write-overlay' | 'not-required';
+    mcp: 'native-config' | 'not-required';
+    mockInterception: 'pre-tool-call' | 'not-required';
+    toolPolicy: 'runtime-default' | 'allow-list';
+    skillDiscovery: 'runtime-default' | 'disabled' | 'allow-list';
+    sandboxId?: string;
+  };
   config?: JsonValue;
 }
 ```
@@ -171,7 +180,11 @@ v1 只内建两个 protocol family：
 - `omk.invoke/v1`：一个 trial 对应一次结构化 request／response，可附 source-neutral trace；覆盖纯函数、模型、服务、RAG 和无会话 Workflow；
 - `omk.session/v1`：一个 trial 拥有独立 session lifecycle，支持多轮消息、工具调用和部分 trajectory；覆盖 Agent 和有状态 Workflow。
 
-每个 protocol manifest 还必须声明结构化 execution capability：并发安全性与上限、取消语义、run resource lifecycle、trial state、seed control、determinism，以及 trace／usage telemetry。run-scoped resource 只允许连接池、客户端等基础设施复用；`omk.session/v1` 的业务状态始终按 trial 隔离，`omk.invoke/v1` 的 trial state 始终 stateless。声明 `cancellation: unsupported` 的实现不能与 timeout policy 组合；随机 Runtime 若不支持 seed，只能使用 `uncontrolled` seed design；只有 determinism 与 Runtime assurance 都为 verified 的实现才能透明命中 Execution cache。
+每个 protocol manifest 还必须声明结构化 execution capability：并发安全性与上限、取消语义、run resource lifecycle、trial state、seed control、determinism、trace／usage telemetry，以及封闭的 `features` object。`features` 保存实际 system instruction 投递模式（`native`、`prepended` 或 `unsupported`），以及 workspace lease mode、MCP mode、mock interception mode、tool policy mode、skill discovery mode 和 sandbox ID 的 canonical、无重复集合。空集合与 `unsupported` 必须显式表达，字段缺失属于非法。
+
+完整 manifest 是独立发布的 `omk.executor-capabilities/v1` wire contract。它的 JSON Schema identity 会进入每份 Run contract，而各 Runtime 的实际 capability value 仍封存在 `RuntimeIdentity` 中。因此，validator 语义与实现声明都不能藏在未变化的 plan identity 背后漂移。
+
+Core 只在 prepare 阶段把 `executionRequirements` 与选中的 protocol 做匹配。任何不满足都以 `EVAL_DEFINITION_CAPABILITY_UNSUPPORTED` 在 Runtime `openRun()` 前 fail closed。System instruction 的 `native` 与 `prepended` 都能满足 `required`，但实际 mode 会进入 sealed `RuntimeIdentity`，因此仍属于不同 execution design。Model、effort、provider deployment、effective tool schema、资源字节和 locator 都不能伪装成 capability：行为事实留在 Target config 或 Runtime implementation identity，verified resource acquisition 继续由宿主持有。run-scoped resource 只允许连接池、客户端等基础设施复用；`omk.session/v1` 的业务状态始终按 trial 隔离，`omk.invoke/v1` 的 trial state 始终 stateless。声明 `cancellation: unsupported` 的实现不能与 timeout policy 组合；随机 Runtime 若不支持 seed，只能使用 `uncontrolled` seed design；只有 determinism 与 Runtime assurance 都为 verified 的实现才能透明命中 Execution cache。
 
 导入宿主已经执行好的结果不属于第三个执行协议，而是直接校验并接收 ExecutionBundle。protocol ID 是不可变契约；不兼容修改发布新 major path，可选能力只能做不改变既有字段语义的追加。
 
@@ -853,7 +866,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入历史 `src/eval-core/`、CLI、executor、grading、renderer 或 server 层。
 
-Catalog 当前在 `schemas/evaluation-core/v1/` 发布十四个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
+Catalog 当前在 `schemas/evaluation-core/v1/` 发布二十个 JSON Schema 2020-12 根契约：ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、BudgetSummary、三个单 Run Bundle、EvaluationReport，以及四个 Evaluation Series 契约。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 
