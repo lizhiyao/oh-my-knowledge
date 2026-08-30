@@ -392,7 +392,7 @@ decisionPlanDigest = H(
 runContractDigest = H(all plan digests + schema identities)
 ```
 
-Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Output/trace capture mode and their classification ceiling enter ExecutionPlan identity because they change the durable Execution facts and cache key; the complete EvidencePolicy also enters EvaluationPlan because it determines evaluator bindings and evaluation evidence. Evaluation-only input/expected/evidence capture does not invalidate Execution.
+Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Output/trace capture mode and their classification ceiling enter ExecutionPlan identity because they change the durable Execution facts and cache key. The complete v1 EvidencePolicy also enters EvaluationPlan because evaluator-produced evidence is an Evaluation fact. Dataset input and expected values are sealed stage inputs rather than EvidencePolicy capture targets: `executionInputDigest` binds executor-visible input, while `evaluationInputDigest` additionally binds expected and evaluation context. Evaluator-evidence capture does not invalidate Execution.
 
 ### 7.1 ADR: compare a declared subject under an invariant measurement system
 
@@ -710,7 +710,17 @@ Core never dereferences a URI directly. ContentResolver enforces access control,
 
 Content is classified at least as public, sensitive, secret, or gold. EventWriter, Report materializer, ContentStore, and error serializer each declare their maximum accepted classification. Evaluator evidence and errors pass through the same classification and redaction rules.
 
-EvidencePolicy controls full/reference/digest/none capture independently for input, output, trace, expected, and evidence and reports how each choice affects replayability or evidenceStatus.
+EvidencePolicy v1 controls full/reference/digest/none capture independently for executor output, execution trace, and evaluator-produced evidence. Dataset input and expected values are sealed plan inputs, not capture envelopes.
+
+### 11.1 ADR: keep Dataset inputs out of EvidencePolicy v1
+
+**Status:** accepted for v1; tracked by [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441).
+
+EvidencePolicy v1 does not expose `input` or `expected` capture modes. Earlier drafts included both fields, but changing them only changed EvaluationPlan identity: no Runtime captured a corresponding artifact, no Bundle recorded the choice, and durable import could not revalidate it. v1 therefore rejects those fields as unknown instead of retaining aliases, deprecation paths, or no-op compatibility behavior.
+
+Dataset input remains bound by `executionInputDigest`; expected and evaluation context remain bound by `evaluationInputDigest`. The sealed EvaluationPlan supplies the requested bindings to Evaluators, while Gold stays absent from Executor contexts and execution artifacts. This preserves measurement identity and Gold isolation without pretending that plan-resident values are durable evidence captures.
+
+A future full/reference/digest/none policy for Dataset content requires a separate, content-addressed artifact model that avoids per-trial and per-Evaluator duplication. It must define ContentStore/ContentResolver authorization, digest and media-type verification, classification and redaction, replayability and evidence-status consequences, and durable-import revalidation. Dataset/Gold persistence and presentation are therefore deferred to an explicit artifact or host policy; adding them requires a new wire-schema revision rather than silently restoring v1 fields.
 
 ## 12. Public API sketch
 

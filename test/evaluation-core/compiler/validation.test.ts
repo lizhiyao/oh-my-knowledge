@@ -49,6 +49,25 @@ describe('Compiler definition validation', () => {
     expect(semanticRuntime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
   });
 
+  it.each(['input', 'expected'] as const)(
+    'rejects the removed EvidencePolicy.%s field without compatibility parsing',
+    async (field) => {
+      const policy = structuredClone(validPolicy()) as unknown as {
+        evidence: Record<string, unknown>;
+      };
+      policy.evidence[field] = 'full';
+      const runtime = testRuntime();
+
+      await expectCode(
+        validDefinition(),
+        policy,
+        'EVAL_DEFINITION_SCHEMA_INVALID',
+        runtime,
+      );
+      expect(runtime.calls).toEqual({ executor: 0, evaluator: 0, analysis: 0, extension: 0 });
+    },
+  );
+
   it('rejects missing references and invalid Metric value domains', async () => {
     const missing = validDefinition();
     missing.evaluators[0].metricIds = ['missing'];

@@ -392,7 +392,7 @@ decisionPlanDigest = H(
 runContractDigest = H(all plan digests + schema identities)
 ```
 
-`project`、`owner`、`tags` 等 annotations 不进入测量 digest。output／trace 的捕获方式及其 classification ceiling 会改变持久化 Execution 事实和 cache key，因此进入 ExecutionPlan 身份；完整 EvidencePolicy 同时进入 EvaluationPlan，因为它决定 Evaluator binding 与评测 evidence。仅影响 Evaluation 的 input／expected／evidence 捕获不失效 Execution。
+`project`、`owner`、`tags` 等 annotations 不进入测量 digest。output／trace 的捕获方式及其 classification ceiling 会改变持久化 Execution 事实和 cache key，因此进入 ExecutionPlan 身份。完整的 v1 EvidencePolicy 同时进入 EvaluationPlan，因为 Evaluator 产生的 evidence 属于 Evaluation 事实。Dataset 的 input 和 expected 是 sealed stage input，不是 EvidencePolicy 捕获目标：`executionInputDigest` 绑定 Executor 可见的 input，`evaluationInputDigest` 进一步绑定 expected 和 evaluation context。Evaluator evidence 的捕获方式不失效 Execution。
 
 ### 1．ADR：在不变测量系统下比较显式声明的研究对象
 
@@ -710,7 +710,17 @@ Core 不直接解引用 URI。ContentResolver 负责访问控制、大小限制�
 
 内容至少分为 public、sensitive、secret、gold。EventWriter、Report materializer、ContentStore 和 error serializer 各自声明允许接收的最高分类。Evaluator 产生的 evidence 和错误信息也经过相同分类与 redaction。
 
-EvidencePolicy 分别控制 input、output、trace、expected 和 evidence 的 full／reference／digest／none 捕获方式，并清楚报告这会不会降低 replayability 或 evidenceStatus。
+EvidencePolicy v1 分别控制 Executor output、execution trace 和 Evaluator 产生的 evidence 的 full／reference／digest／none 捕获方式。Dataset 的 input 和 expected 是 sealed plan input，不是 capture envelope。
+
+### 十一．一 ADR：v1 EvidencePolicy 不承载 Dataset input
+
+**状态**：v1 已接受，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
+
+EvidencePolicy v1 不暴露 `input` 或 `expected` 捕获方式。早期草案包含这两个字段，但改变它们只会改变 EvaluationPlan identity：Runtime 不捕获对应 artifact，Bundle 不记录该选择，durable import 也无法重验。v1 因此把这些字段作为未知字段拒绝，不保留 alias、deprecated path 或无行为的兼容逻辑。
+
+Dataset input 继续由 `executionInputDigest` 绑定；expected 和 evaluation context 继续由 `evaluationInputDigest` 绑定。sealed EvaluationPlan 向 Evaluator 提供其声明的 binding，同时 Gold 不进入 Executor context 和 execution artifact。这样既保持测量身份与 Gold 隔离，也不会把 plan 内的数据伪装成持久化 evidence capture。
+
+未来若要为 Dataset 内容提供 full／reference／digest／none policy，需要单独设计内容寻址 artifact model，并避免按 trial 和 Evaluator 重复放大数据。该模型必须定义 ContentStore／ContentResolver 授权、digest 与 media type 校验、classification 与 redaction、replayability 与 evidence status 后果，以及 durable import 重验。Dataset／Gold 的持久化与展示因此留给显式 artifact 或 host policy；若要增加这项能力，必须发布新的 wire schema revision，不能静默恢复 v1 字段。
 
 ## 十二、公共 API 草案
 

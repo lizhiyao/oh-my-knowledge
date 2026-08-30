@@ -118,12 +118,20 @@ describe('Compiler digest invalidation boundaries', () => {
     expectStages(before, after, ['execution', 'evaluation', 'analysis', 'decision', 'run']);
   });
 
-  it('keeps Evaluation-only evidence capture out of Execution identity', async () => {
+  it('keeps evaluator-produced evidence capture out of Execution identity', async () => {
     const before = await compile();
     const after = await compile(undefined, (policy) => {
-      policy.evidence.expected = 'digest';
       policy.evidence.evidence = 'digest';
     });
+
+    expect(before.evaluation.policy.evidence).toEqual({
+      output: 'full',
+      trace: 'reference',
+      evidence: 'full',
+      maximumClassification: 'gold',
+    });
+    expect(before.evaluation.policy.evidence).not.toHaveProperty('input');
+    expect(before.evaluation.policy.evidence).not.toHaveProperty('expected');
     expectStages(before, after, ['evaluation', 'analysis', 'decision', 'run']);
   });
 

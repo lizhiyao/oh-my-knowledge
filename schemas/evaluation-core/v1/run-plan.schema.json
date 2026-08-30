@@ -1086,12 +1086,6 @@
         "evidence": {
           "$ref": "#/$defs/__schema54"
         },
-        "expected": {
-          "$ref": "#/$defs/__schema54"
-        },
-        "input": {
-          "$ref": "#/$defs/__schema54"
-        },
         "maximumClassification": {
           "$ref": "#/$defs/__schema55"
         },
@@ -1103,10 +1097,8 @@
         }
       },
       "required": [
-        "input",
         "output",
         "trace",
-        "expected",
         "evidence",
         "maximumClassification"
       ],

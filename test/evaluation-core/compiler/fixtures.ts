@@ -164,10 +164,8 @@ export function validPolicy(): MeasurementPolicy {
     },
     cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
     evidence: {
-      input: 'digest',
       output: 'full',
       trace: 'reference',
-      expected: 'digest',
       evidence: 'full',
       maximumClassification: 'gold',
     },
