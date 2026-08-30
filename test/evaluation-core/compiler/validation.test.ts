@@ -230,13 +230,45 @@ describe('Compiler definition validation', () => {
 
     definition.experiment.scheduling = { schedulingKind: 'interleaved' };
     const policy = validPolicy();
-    policy.budget.maxTargetInvocations = 2;
+    policy.budget.stages.execution.maxInvocations = 2;
     await expectCode(
       definition,
       policy,
       'EVAL_DEFINITION_POLICY_INVALID',
       testRuntime({ samplingResamplingUnits: ['paired-block'] }),
     );
+
+    const stricterRunPolicy = validPolicy();
+    stricterRunPolicy.budget.run.maxInvocations = 2;
+    stricterRunPolicy.budget.stages.execution.maxInvocations = 100;
+    await expectCode(
+      definition,
+      stricterRunPolicy,
+      'EVAL_DEFINITION_POLICY_INVALID',
+      testRuntime({ samplingResamplingUnits: ['paired-block'] }),
+    );
+  });
+
+  it('retains normalized provider-cost capabilities in the sealed runtime identity', async () => {
+    const plan = await prepareEvaluationPlan(
+      validDefinition(),
+      validPolicy(),
+      testRuntime({
+        evaluatorProviderCost: {
+          reporting: 'required',
+          trustedUpperBound: { amount: 0.5, currency: 'USD' },
+        },
+      }),
+    );
+    const runtime = plan.evaluation.runtimes.find((candidate) => (
+      candidate.runtimeKind === 'evaluator'
+    ));
+    expect(runtime?.identity.capabilities).toMatchObject({
+      providerCost: {
+        reporting: 'required',
+        trustedUpperBound: { amount: 0.5, currency: 'USD' },
+      },
+    });
   });
 
   it('rejects unsupported protocol, deterministic cache, and evaluator capabilities', async () => {

@@ -332,7 +332,7 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
         definition.experiment.sampling.resamplingUnit = 'paired-block';
         definition.experiment.sampling.estimatorId = 'bootstrap.paired-difference-percentile/v1';
         definition.experiment.sampling.seedCoupling = 'shared-within-block';
-        policy.budget.maxTargetInvocations = 3;
+        policy.budget.stages.execution.maxInvocations = 3;
       },
     });
 
@@ -398,7 +398,7 @@ describe('Evaluation Core cross-stage conformance invariants', () => {
     const result = await runConformanceScenario('function', {
       suffix: 'partial-evidence',
       mutate(_definition, policy) {
-        policy.evaluation.budget.maxEvaluatorInvocations = 1;
+        policy.budget.stages.evaluation.maxInvocations = 1;
       },
     });
 

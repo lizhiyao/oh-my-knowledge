@@ -24,18 +24,207 @@
       "type": "object"
     },
     "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema6"
+        }
+      },
+      "type": "object"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema7"
+        }
+      },
+      "type": "object"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "admissionMode": {
+          "enum": [
+            "strict-reservation",
+            "bounded-overshoot"
+          ],
+          "type": "string"
+        },
+        "unknownCostMode": {
+          "enum": [
+            "fail-run",
+            "mark-unverifiable"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "admissionMode",
+        "unknownCostMode"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrency": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "retry": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "timeoutMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxConcurrency",
+        "retry"
+      ],
+      "type": "object"
+    },
+    "__schema14": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluationMode": {
+          "enum": [
+            "disabled",
+            "reuse"
+          ],
+          "type": "string"
+        },
+        "executionMode": {
+          "enum": [
+            "disabled",
+            "replay-only",
+            "transparent-deterministic"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "executionMode",
+        "evaluationMode"
+      ],
+      "type": "object"
+    },
+    "__schema15": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "maximumClassification": {
+          "enum": [
+            "public",
+            "sensitive",
+            "secret",
+            "gold"
+          ],
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "trace": {
+          "$ref": "#/$defs/__schema16"
+        }
+      },
+      "required": [
+        "output",
+        "trace",
+        "evidence",
+        "maximumClassification"
+      ],
+      "type": "object"
+    },
+    "__schema16": {
+      "enum": [
+        "full",
+        "reference",
+        "digest",
+        "none"
+      ],
+      "type": "string"
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "failureMode": {
+          "enum": [
+            "continue",
+            "fail-fast",
+            "failure-threshold"
+          ],
+          "type": "string"
+        },
+        "maxFailures": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "failureMode"
+      ],
+      "type": "object"
+    },
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "backpressureMode": {
+          "enum": [
+            "block"
+          ],
+          "type": "string"
+        },
+        "writerFailureMode": {
+          "enum": [
+            "ignore",
+            "fail-run"
+          ],
+          "type": "string"
+        },
+        "writerMode": {
+          "enum": [
+            "disabled",
+            "optional",
+            "required"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "writerMode",
+        "backpressureMode",
+        "writerFailureMode"
+      ],
+      "type": "object"
+    },
+    "__schema19": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
           "data": {
-            "$ref": "#/$defs/__schema12"
+            "$ref": "#/$defs/__schema21"
           },
           "schemaDigest": {
             "pattern": "^sha256:[0-9a-f]{64}$",
             "type": "string"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema20"
           }
         },
         "required": [
@@ -46,44 +235,9 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema11"
+        "$ref": "#/$defs/__schema20"
       },
       "type": "object"
-    },
-    "__schema11": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
-    },
-    "__schema12": {
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "type": "string"
-        },
-        {
-          "items": {
-            "$ref": "#/$defs/__schema12"
-          },
-          "type": "array"
-        },
-        {
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema12"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        }
-      ]
     },
     "__schema2": {
       "additionalProperties": false,
@@ -137,213 +291,133 @@
       ],
       "type": "object"
     },
+    "__schema20": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema21": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema21"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema21"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
     "__schema3": {
       "additionalProperties": false,
       "properties": {
-        "maxDurationMs": {
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
+        "attempt": {
+          "$ref": "#/$defs/__schema11"
         },
-        "maxProviderCost": {
-          "additionalProperties": false,
-          "properties": {
-            "amount": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "currency": {
-              "pattern": "^[A-Z]{3}$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "amount",
-            "currency"
-          ],
-          "type": "object"
+        "coordinate": {
+          "$ref": "#/$defs/__schema10"
         },
-        "maxTargetInvocations": {
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
+        "providerCostAdmission": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "run": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "stages": {
+          "$ref": "#/$defs/__schema9"
         }
       },
+      "required": [
+        "run",
+        "stages",
+        "coordinate",
+        "attempt",
+        "providerCostAdmission"
+      ],
       "type": "object"
     },
     "__schema4": {
       "additionalProperties": false,
       "properties": {
-        "budget": {
-          "additionalProperties": false,
-          "properties": {
-            "maxDurationMs": {
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "type": "integer"
-            },
-            "maxEvaluatorInvocations": {
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "type": "integer"
-            },
-            "maxProviderCost": {
-              "additionalProperties": false,
-              "properties": {
-                "amount": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "currency": {
-                  "pattern": "^[A-Z]{3}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "amount",
-                "currency"
-              ],
-              "type": "object"
-            }
-          },
-          "type": "object"
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema8"
         },
-        "maxConcurrency": {
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer"
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema5"
         },
-        "retry": {
-          "$ref": "#/$defs/__schema2"
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema6"
         },
-        "timeoutMs": {
+        "maxWallClockMs": {
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
           "type": "integer"
         }
       },
-      "required": [
-        "maxConcurrency",
-        "retry",
-        "budget"
-      ],
       "type": "object"
     },
     "__schema5": {
-      "additionalProperties": false,
-      "properties": {
-        "evaluationMode": {
-          "enum": [
-            "disabled",
-            "reuse"
-          ],
-          "type": "string"
-        },
-        "executionMode": {
-          "enum": [
-            "disabled",
-            "replay-only",
-            "transparent-deterministic"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "executionMode",
-        "evaluationMode"
-      ],
-      "type": "object"
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
     },
     "__schema6": {
-      "additionalProperties": false,
-      "properties": {
-        "evidence": {
-          "$ref": "#/$defs/__schema7"
-        },
-        "maximumClassification": {
-          "enum": [
-            "public",
-            "sensitive",
-            "secret",
-            "gold"
-          ],
-          "type": "string"
-        },
-        "output": {
-          "$ref": "#/$defs/__schema7"
-        },
-        "trace": {
-          "$ref": "#/$defs/__schema7"
-        }
-      },
-      "required": [
-        "output",
-        "trace",
-        "evidence",
-        "maximumClassification"
-      ],
-      "type": "object"
+      "$ref": "#/$defs/__schema7"
     },
     "__schema7": {
-      "enum": [
-        "full",
-        "reference",
-        "digest",
-        "none"
-      ],
-      "type": "string"
-    },
-    "__schema8": {
       "additionalProperties": false,
       "properties": {
-        "failureMode": {
-          "enum": [
-            "continue",
-            "fail-fast",
-            "failure-threshold"
-          ],
-          "type": "string"
-        },
-        "maxFailures": {
-          "maximum": 9007199254740991,
+        "amount": {
           "minimum": 0,
-          "type": "integer"
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
         }
       },
       "required": [
-        "failureMode"
+        "amount",
+        "currency"
       ],
       "type": "object"
+    },
+    "__schema8": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
     },
     "__schema9": {
       "additionalProperties": false,
       "properties": {
-        "backpressureMode": {
-          "enum": [
-            "block"
-          ],
-          "type": "string"
+        "evaluation": {
+          "$ref": "#/$defs/__schema10"
         },
-        "writerFailureMode": {
-          "enum": [
-            "ignore",
-            "fail-run"
-          ],
-          "type": "string"
-        },
-        "writerMode": {
-          "enum": [
-            "disabled",
-            "optional",
-            "required"
-          ],
-          "type": "string"
+        "execution": {
+          "$ref": "#/$defs/__schema10"
         }
       },
       "required": [
-        "writerMode",
-        "backpressureMode",
-        "writerFailureMode"
+        "execution",
+        "evaluation"
       ],
       "type": "object"
     }
@@ -356,25 +430,25 @@
       "$ref": "#/$defs/__schema3"
     },
     "cache": {
-      "$ref": "#/$defs/__schema5"
+      "$ref": "#/$defs/__schema14"
     },
     "evaluation": {
-      "$ref": "#/$defs/__schema4"
+      "$ref": "#/$defs/__schema13"
     },
     "eventDelivery": {
-      "$ref": "#/$defs/__schema9"
+      "$ref": "#/$defs/__schema18"
     },
     "evidence": {
-      "$ref": "#/$defs/__schema6"
+      "$ref": "#/$defs/__schema15"
     },
     "execution": {
       "$ref": "#/$defs/__schema1"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema10"
+      "$ref": "#/$defs/__schema19"
     },
     "failure": {
-      "$ref": "#/$defs/__schema8"
+      "$ref": "#/$defs/__schema17"
     },
     "retry": {
       "$ref": "#/$defs/__schema2"

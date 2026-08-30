@@ -665,7 +665,7 @@ Executor／Evaluator 可以通过 `openRun()` 返回 run-scoped resource handle 
 
 Execution runtime 是 sealed RunPlan 的纯内存解释器。`startExecution()` 在暴露 Run 前同步检查所需端口和 Executor Runtime identity 是否与 Plan 完全一致，并捕获对应 Executor 引用，后续 registry 变化不能替换 sealed implementation。坐标只从 Plan 派生；randomized admission 只使用 sealed root seed；全局与每个 Executor 的 semaphore 均归当前 Run 所有。paired scheduling block 在 admission 时原子预留首次真实调用；cache hit 不消耗调用预算，每次 retry 则单独消耗。发生在 `trial.execute()` 之前的错误属于 run-level resource failure，不能伪造 attempt 或消耗调用预算。
 
-timeout 采用协作式取消：Core abort attempt signal 后仍等待 Executor promise settle，避免遗留晚到 promise；即使 Executor 在观察到 abort 后返回成功，也只记录一次 timeout terminal fact。外部取消遵循同样的单终态规则。`maxDurationMs` 是基于 monotonic clock 的软 admission deadline：已经获准的工作继续 settle，后续 block 才进入删失。provider cost 上限只使用供应商报告的可审计事实；已获准 batch 可能 overshoot，此后停止新 block admission，但不会回写或删除已经发生的 usage。
+timeout 采用协作式取消：Core abort attempt signal 后仍等待 Executor promise settle，避免遗留晚到 promise；即使 Executor 在观察到 abort 后返回成功，也只记录一次 timeout terminal fact。外部取消遵循同样的单终态规则。共享 Run budget 区分 monotonic wall-clock deadline 与累计 active attempt duration：已经获准的工作继续 settle，后续 block 才进入删失。provider cost 上限只使用供应商报告的可审计事实；strict mode 预留可信上界，bounded-overshoot mode 则在观测到耗尽后停止后续 admission。已经发生的 usage 不会被回写或删除。
 
 Execution cache 与 evidence storage 都是注入端口，不是 Core 内建文件服务。`replay-only` miss 和损坏的 cache entry 均 fail closed；transparent hit 只能使用 prepare 已封存的 deterministic、verified identity。任一 cached record 成为 replay fact 前，接纳层会重验 coordinate／runtime identity、native provenance、原始 miss receipt、output／trace capture mode、classification ceiling、完整 attempt／retry chain、从 attempt 推导的 usage 与 provider-cost eligibility。durable validation 执行相同的 sealed cache envelope 与 cost 规则，但只有独立可信 cache 边界提供 receipt 时才标记为 verified；transport 后的自报 claim 保持 `indeterminate`。native invocation cost 按当前 Bundle 聚合；replay 的历史 cost 只证明 cache eligibility，不计入当前运行消费。cache write 推迟到 resource teardown 成功、且 commit 时尚未出现 execution、cancellation 或 budget terminal 之后；只有 cost audit、evidence materialization 和 trial teardown 全部成功的 record 才 eligible。随后发生的 terminal-event delivery failure 不会追溯作废已经提交的 Target fact。full、reference、digest-only 与省略四种 capture 都服从 classification ceiling；reference 写入 Bundle 前必须核对 ContentStore descriptor digest。宿主原始异常文本不会复制进事件或 Bundle。
 
@@ -877,7 +877,7 @@ Digest 边界是可执行契约：
 
 Evaluation coordinate 使用 canonical `(targetId, sampleId, trialIndex, evaluatorId)` 顺序，并绑定 Evaluator 显式的 instrument、ensemble-member、replicate-group 与 replicate-index identity。`evaluationId`、attempt ID 和 observation ID 使用 domain-separated digest 派生。每条 active EvaluationRecord 都绑定准确的 canonical ExecutionRecord digest、评委测量坐标和已解析的 Evaluator RuntimeIdentity。cache key 还绑定 EvaluationPlan、物化后的输入、source record 与 effective source trust，因此 Gold、Evaluator identity、binding、execution evidence 或 source trust ceiling 任一变化都不能静默复用旧评分。cache replay 必须先完整校验 record schema、retry identity、有序 metric contract、scale、source digest、runtime identity、attempt 到 record 的确定性 usage 聚合与 provider-cost eligibility；replay provenance 不得提升 source trust。
 
-Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider cost 预算统一封存在 `MeasurementPolicy.evaluation`，start-time options 不得覆盖。invocation reservation 只在进入 `evaluate()` 前一刻核销，因此 `openRun()`／`openRecord()` 失败不消耗调用额度。失败与重试调用同成功调用一样保留并计入 provider-reported usage。timeout 采用协作式取消：Core 发出 abort 后等待 evaluator promise settle，丢弃晚到结果，再进入 retry 或 record dispose。只有 evaluator record／run 资源全部正常关闭后才提交 cache。Event delivery 复用阶段中立的 sealed EventDeliveryPolicy，并使用 Execution／Evaluation 共享的单 Run EventSequencer。
+Evaluation 的 retry、timeout 与 concurrency 封存在 `MeasurementPolicy.evaluation`；调用次数、active duration、wall-clock 与 provider cost 上限只在共享的 `MeasurementPolicy.budget` 封存一次。start-time options 不得覆盖任一契约。invocation reservation 只在进入 `evaluate()` 前一刻核销，因此 `openRun()`／`openRecord()` 失败不消耗调用额度。失败与重试调用同成功调用一样保留并计入 provider-reported usage。timeout 采用协作式取消：Core 发出 abort 后等待 evaluator promise settle，丢弃晚到结果，再进入 retry 或 record dispose。只有 evaluator record／run 资源全部正常关闭后才提交 cache。Event delivery 复用阶段中立的 sealed EventDeliveryPolicy，并使用 Execution／Evaluation 共享的单 Run EventSequencer。
 
 缺失必须保留来源并以 binding 为判断依据。Evaluator admission 前，Core 先冻结完整 coordinate universe 的 binding closure。ExecutionRecord 缺失、被 budget-censored，或任一必要 binding 无法解析时，产生 `not-evaluated`，绝不伪造零分或默认分；failed／cancelled ExecutionRecord 若仍能物化全部声明输入，例如只依赖 trace，则仍可进入评测。reference content 的 descriptor 会与 value digest、classification 一起封存 media type：Resolver 只负责提供 value，不能改写这部分 identity；ContentStore 返回的 descriptor 也必须保留请求中的 media type。Evaluator 省略 metric 时生成显式 missing observation；未知／重复 metric 属于 Evaluator failure；value type 不匹配和数值越界产生 invalid observation，不做 coercion 或 clamp。Evaluator 只能看到自己声明的 sealed MetricDefinition。Observation metadata 属于分类内容，与 evidence 使用相同的 capture policy 和 classification ceiling。Evaluator 只能产生 sample-scoped metric，聚合仍由 AnalysisGraph 负责。
 
@@ -981,7 +981,23 @@ Series Analysis Runtime 只能收到 sealed plan 与认证过的 member capabili
 
 Series 固定使用 `experimentalUnit = run`。Run 内 trial、evaluator replicate 与 retry attempt 永远不能作为独立 Run 重采样。既有 Bootstrap、Krippendorff alpha、五层评分与发布公式保持不变；新增 Series 公式必须作为单独版本化 Runtime standard 引入并声明其适用前提。
 
-## 二十二、行业参考
+## 二十二、共享 Run 预算契约与权威账本
+
+[#453](https://github.com/lizhiyao/oh-my-knowledge/issues/453) 用一个由 Core 持有的 `RunBudgetSource`，替代 Execution 与 Evaluation 各自维护的计数器。这是没有旧格式 reader 或迁移路径的 `BREAKING-SCHEMA` 变更。预算 policy 只在 `MeasurementPolicy.budget` 封存一次；两个 stage Plan 都携带同一份完整 policy，脱离 Engine 运行的 stage 也不能静默改写 Run 上限。
+
+policy 有四个类型化 scope。`run` 限制调用次数、provider cost、所有活跃 attempt 时长之和与 wall-clock 时长；`stages.execution` 和 `stages.evaluation` 在同一账本上限制各 stage 消耗，而不是另建局部账本；`coordinate` 绑定跨 Target execution、全部 Evaluator 及其 retry 共用的 `(targetId, sampleId, trialId)`；`attempt` 负责单次调用的 provider-cost 上限，`MeasurementPolicy.execution.timeoutMs` 与 `MeasurementPolicy.evaluation.timeoutMs` 则继续表示协作式 attempt timeout。所有适用 scope 必须同时成立：admission 与离线验证检查每个已配置 limit，累计 scope 使用最严格的适用聚合上限，单次 attempt 上限则独立检查，不能错误套用到 retry 聚合值；Evaluation 的 Run 级验证还必须计入已认证的 Execution ledger prefix。wall-clock 与活跃时长刻意分离：排队、binding resolution 和 backoff 消耗 wall time，只有已接纳的 native invocation 才累计 active duration；并发 attempt 的 active duration 分别相加，不能伪装成经过的墙上时间。
+
+`RunBudgetSource` 是由 Core 认证、同时绑定 `runId` 与 `runContractDigest` 的内存 capability。宿主只能看到一个没有 reservation、settlement 或 snapshot 方法的冻结 opaque handle；可变 ledger authority 留在 Core 私有的 `WeakMap` 中。它不能从 JSON 重建、被宿主改账、跨 Run 复用，也不能被 stage 局部计数器替换。Engine 创建唯一 source，并贯穿 Execution 与 Evaluation。高级 detached Evaluation 只能从已认证的 `ExecutionBundleSource` 启动；Core 使用其已验证 ledger prefix 创建新的 capability，并把新 summary 绑定到当前下游 Run contract。持久化的 `BudgetSummary` 是 evidence，不是 authority。
+
+admission 采用 reservation。一个 scheduling block 会在一次操作中提交全部首次 attempt，因此 paired block 只能整体接纳或整体 censor；retry 则逐次预留。invocation limit 做精确预留。`strict-reservation` 下，只要存在适用的 provider-cost 上限，Runtime identity 就必须为 `verified`，必须声明 required cost reporting，并在 Runtime capability 中封存可信的单次调用上界；缺失上界或币种不一致会在调用前失败。`bounded-overshoot` 下，Core 在观测到耗尽后停止后续 admission，并持久化没有 cost reservation 的最大并发调用数，使超支包络显式可见，而不是把后付费 cost 伪装成调用前硬保证。
+
+每个已消费的 native attempt 只结算一次，canonical ledger 记录 stage、共享 coordinate、attempt identity、调用次数、active duration、已报告 cost 或显式 unreported 状态、admission mode，以及 `completed`、`failed`、`cancelled` 或 `attempt-timeout` outcome。未知 cost 永远不能折算成零；封存 policy 明确选择 `fail-run` 或 `mark-unverifiable`，后者通过既有 provider-cost verification gate 阻断方向性 decision。币种不匹配和可信 reservation bound 被突破都 fail closed。
+
+`BudgetSummary` 同时进入 ExecutionBundle、EvaluationBundle 与 EvaluationReport。它把封存的 limit 与各 scope 实际 totals、显式 overshoot、未报告 cost 覆盖、未结清 reservation、累计 wall-clock usage，以及每次 strict provider-cost reservation 的 honored、violated 或 not-assessable 状态一起持久化。连续 sequence、唯一 attempt identity、各 scope totals、多币种汇总、overshoot 和 `ledgerDigest` 都可以独立重算。Evaluation ledger 必须扩展已认证的 Execution ledger prefix；当前每个 native record attempt 必须精确对应一个 ledger entry，cache replay 则不能新增 entry。Report 必须原样保留最终 Evaluation summary。terminal semantics 区分 budget censoring、active-budget exhaustion、wall-clock exhaustion、attempt timeout、cancellation 与 failure。cache hit 的历史 usage 只用于资格审计，不生成当前 native invocation entry。
+
+该设计采用 resource-quota admission 的思路，而不是 billing dashboard 的思路：开工前预留、settle 后记实际消耗，并把 limit、usage 与 uncertainty 分开。它也采用结构化 deadline／cancellation：Run deadline 是父边界，attempt timeout 是更窄的子边界。GenAI telemetry convention 只定义 usage observation；带明确信任与 reporting status 的 provider telemetry 仍然不是授权 budget admission 的 authority。
+
+## 二十三、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；
@@ -989,6 +1005,7 @@ Series 固定使用 `experimentalUnit = run`。Run 内 trial、evaluator replica
 - [Pydantic Evals](https://pydantic.dev/docs/ai/evals/evals/)、[Report Evaluators](https://pydantic.dev/docs/ai/evals/evaluators/report-evaluators/)；
 - [lm-evaluation-harness Task Guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md)；
 - [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)、[OpenInference Semantic Conventions](https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md)；
+- [Kubernetes Resource Quotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/)、[Go context deadline／cancellation](https://pkg.go.dev/context)；
 - [CloudEvents](https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md)、[W3C Trace Context](https://www.w3.org/TR/trace-context/)；
 - [W3C PROV Overview](https://www.w3.org/TR/prov-overview/)、[PROV-AQ](https://www.w3.org/TR/prov-aq/)；
 - [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)、[RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785.html)、[RFC 6901 JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901)。

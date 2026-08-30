@@ -7,6 +7,10 @@ import {
 } from './artifacts.js';
 import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
 import {
+  budgetSummaryMatchesPolicy,
+  mostRestrictiveProviderCostLimit,
+} from './budget.js';
+import {
   deriveAttemptId,
   derivePlannedExecutionCoordinates,
   deriveTrialId,
@@ -34,6 +38,7 @@ export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_REPLAYABILITY_INVALID'
   | 'EXECUTION_BUNDLE_EVIDENCE_POLICY_INVALID'
   | 'EXECUTION_BUNDLE_USAGE_INVALID'
+  | 'EXECUTION_BUNDLE_BUDGET_SUMMARY_INVALID'
   | 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID'
   | 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID'
   | 'EXECUTION_BUNDLE_PROVENANCE_INVALID'
@@ -190,6 +195,44 @@ function assertSchedulingBlockAtomicity(records: readonly ExecutionRecord[]): vo
   }
 }
 
+function expectedBudgetOutcome(attempt: ExecutionAttempt): 'completed' | 'failed' | 'cancelled' | 'attempt-timeout' {
+  if (attempt.attemptStatus === 'completed') return 'completed';
+  if (attempt.attemptStatus === 'cancelled') return 'cancelled';
+  return attempt.error.code === 'timeout' ? 'attempt-timeout' : 'failed';
+}
+
+function assertBudgetLedgerMatchesRecords(bundle: ExecutionBundle): void {
+  const entries = new Map(bundle.budgetSummary.entries.map((entry) => [entry.attemptId, entry]));
+  let expectedEntries = 0;
+  for (const record of bundle.records) {
+    if (record.executionStatus === 'budget-censored'
+        || (record.cache.cacheStatus !== 'miss'
+          && record.cache.cacheStatus !== 'not-used')) continue;
+    for (const attempt of record.attempts) {
+      expectedEntries += 1;
+      const entry = entries.get(attempt.attemptId);
+      if (entry === undefined
+          || entry.stage !== 'execution'
+          || entry.coordinateId !== record.trialId
+          || entry.activeDurationMs !== attempt.timing.durationMs
+          || entry.outcomeKind !== expectedBudgetOutcome(attempt)
+          || canonicalizeJson(entry.providerCost ?? null)
+            !== canonicalizeJson(attempt.usage?.providerCost ?? null)) {
+        throw new ExecutionBundleValidationError(
+          'EXECUTION_BUNDLE_BUDGET_SUMMARY_INVALID',
+          'Execution budget ledger must exactly account for every current native attempt.',
+        );
+      }
+    }
+  }
+  if (entries.size !== expectedEntries) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_BUDGET_SUMMARY_INVALID',
+      'Execution budget ledger contains an attempt absent from current native records.',
+    );
+  }
+}
+
 function assertCoverage(bundle: ExecutionBundle): void {
   const { coverage } = bundle;
   if (coverage.planned === 0
@@ -324,6 +367,13 @@ export function assertExecutionBundleSemantics(bundle: ExecutionBundle): void {
   assertCoverage(bundle);
   assertStatus(bundle);
   assertReplayability(bundle);
+  if (bundle.budgetSummary.runContractDigest !== bundle.runContractDigest
+      || bundle.budgetSummary.entries.some((entry) => entry.stage !== 'execution')) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_BUDGET_SUMMARY_INVALID',
+      'ExecutionBundle budget summary must bind the Run and contain only execution entries.',
+    );
+  }
   for (const record of bundle.records) {
     if (record.executionStatus !== 'budget-censored'
         && !executionRecordUsageMatchesAttempts(record)) {
@@ -357,10 +407,35 @@ export interface ExecutionBundlePlanContext extends ExecutionIdentityPlanContext
         retryableErrorCodes: readonly string[];
       };
       budget: {
-        maxTargetInvocations?: number;
-        maxProviderCost?: {
-          amount: number;
-          currency: string;
+        run: {
+          maxInvocations?: number;
+          maxProviderCost?: { amount: number; currency: string };
+          maxActiveDurationMs?: number;
+          maxWallClockMs?: number;
+        };
+        stages: {
+          execution: {
+            maxInvocations?: number;
+            maxProviderCost?: { amount: number; currency: string };
+            maxActiveDurationMs?: number;
+          };
+          evaluation: {
+            maxInvocations?: number;
+            maxProviderCost?: { amount: number; currency: string };
+            maxActiveDurationMs?: number;
+          };
+        };
+        coordinate: {
+          maxInvocations?: number;
+          maxProviderCost?: { amount: number; currency: string };
+          maxActiveDurationMs?: number;
+        };
+        attempt: {
+          maxProviderCost?: { amount: number; currency: string };
+        };
+        providerCostAdmission: {
+          admissionMode: 'strict-reservation' | 'bounded-overshoot';
+          unknownCostMode: 'fail-run' | 'mark-unverifiable';
         };
       };
       evidence: {
@@ -577,11 +652,17 @@ export function assertExecutionRecordMatchesAttemptPolicy(
 
 export function executionRecordSatisfiesCacheCostPolicy(
   record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
-  maximum: { amount: number; currency: string } | undefined,
+  aggregateMaximum: { amount: number; currency: string } | undefined,
+  attemptMaximum?: { amount: number; currency: string },
 ): boolean {
-  if (maximum === undefined) return true;
-  const amount = executionRecordProviderCost(record, maximum.currency);
-  return amount !== undefined && amount < maximum.amount;
+  if (aggregateMaximum !== undefined) {
+    const amount = executionRecordProviderCost(record, aggregateMaximum.currency);
+    if (amount === undefined || amount >= aggregateMaximum.amount) return false;
+  }
+  return attemptMaximum === undefined || record.attempts.every((attempt) => (
+    attempt.usage?.providerCost?.currency === attemptMaximum.currency
+      && attempt.usage.providerCost.amount < attemptMaximum.amount
+  ));
 }
 
 function executionRecordProviderCost(
@@ -685,7 +766,12 @@ function assertExecutionCachePolicy(
     if (digestCanonicalJson(nativeRecord) === cache.sourceRecordDigest
         && executionRecordSatisfiesCacheCostPolicy(
           record,
-          plan.execution.policy.budget.maxProviderCost,
+          mostRestrictiveProviderCostLimit(
+            plan.execution.policy.budget.run.maxProviderCost,
+            plan.execution.policy.budget.stages.execution.maxProviderCost,
+            plan.execution.policy.budget.coordinate.maxProviderCost,
+          ),
+          plan.execution.policy.budget.attempt.maxProviderCost,
         )) return true;
   }
 
@@ -700,6 +786,12 @@ export function assertExecutionBundleMatchesPlan(
   plan: ExecutionBundlePlanContext,
   verification?: ExecutionBundleVerificationContext,
 ): ExecutionBundlePlanVerification {
+  if (!budgetSummaryMatchesPolicy(bundle.budgetSummary, plan.execution.policy.budget)) {
+    throw new ExecutionBundleValidationError(
+      'EXECUTION_BUNDLE_BUDGET_SUMMARY_INVALID',
+      'ExecutionBundle budget summary does not match the sealed budget policy.',
+    );
+  }
   if (bundle.executionPlanDigest !== plan.digests.executionPlanDigest
       || bundle.executionPlanDigest !== plan.execution.executionPlanDigest
       || bundle.executionInputDigest !== plan.digests.executionInputDigest
@@ -732,7 +824,15 @@ export function assertExecutionBundleMatchesPlan(
   let maximumProviderCostAmount = 0;
   let providerCostUpperBoundKnown = true;
   const unverifiedCacheRecordDigests: Sha256Digest[] = [];
-  const providerCostBudget = plan.execution.policy.budget.maxProviderCost;
+  const aggregateProviderCostBudget = mostRestrictiveProviderCostLimit(
+    plan.execution.policy.budget.run.maxProviderCost,
+    plan.execution.policy.budget.stages.execution.maxProviderCost,
+  );
+  const providerCostAuditLimit = mostRestrictiveProviderCostLimit(
+    aggregateProviderCostBudget,
+    plan.execution.policy.budget.coordinate.maxProviderCost,
+    plan.execution.policy.budget.attempt.maxProviderCost,
+  );
   for (const record of bundle.records) {
     const expected = plannedByCoordinate.get(coordinateKey(record));
     if (expected === undefined) {
@@ -772,20 +872,46 @@ export function assertExecutionBundleMatchesPlan(
       unverifiedCacheRecordDigests.push(sourceRecordDigest as Sha256Digest);
     }
 
-    if (providerCostBudget !== undefined) {
-      const amount = executionRecordProviderCost(record, providerCostBudget.currency);
+    if (providerCostAuditLimit !== undefined) {
+      const amount = executionRecordProviderCost(record, providerCostAuditLimit.currency);
       if (amount === undefined) {
-        if (bundle.executionBundleStatus === 'completed') {
+        if (bundle.executionBundleStatus === 'completed'
+            && plan.execution.policy.budget.providerCostAdmission.unknownCostMode
+              === 'fail-run') {
           throw new ExecutionBundleValidationError(
             'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
             'A completed ExecutionBundle must report sealed-currency provider cost for every native invocation.',
           );
         }
-        if (!cacheHit) providerCostUpperBoundKnown = false;
+        if (!cacheHit && aggregateProviderCostBudget !== undefined) {
+          providerCostUpperBoundKnown = false;
+        }
       } else if (!cacheHit) {
-        minimumProviderCostAmount += amount;
-        maximumProviderCostAmount += amount;
-      } else if (!verifiedCacheHit) {
+        const attemptProviderCostLimit = plan.execution.policy.budget.attempt.maxProviderCost;
+        if (bundle.executionBundleStatus === 'completed'
+            && plan.execution.policy.budget.coordinate.maxProviderCost !== undefined
+            && amount >= plan.execution.policy.budget.coordinate.maxProviderCost.amount) {
+          throw new ExecutionBundleValidationError(
+            'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
+            'A completed ExecutionRecord cannot exhaust its coordinate provider-cost budget.',
+          );
+        }
+        if (bundle.executionBundleStatus === 'completed'
+            && attemptProviderCostLimit !== undefined
+            && record.attempts.some((attempt) => (
+              (attempt.usage?.providerCost?.amount ?? Number.POSITIVE_INFINITY)
+                >= attemptProviderCostLimit.amount
+            ))) {
+          throw new ExecutionBundleValidationError(
+            'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
+            'A completed ExecutionAttempt cannot exhaust its provider-cost budget.',
+          );
+        }
+        if (aggregateProviderCostBudget !== undefined) {
+          minimumProviderCostAmount += amount;
+          maximumProviderCostAmount += amount;
+        }
+      } else if (!verifiedCacheHit && aggregateProviderCostBudget !== undefined) {
         maximumProviderCostAmount += amount;
       }
     }
@@ -795,25 +921,31 @@ export function assertExecutionBundleMatchesPlan(
     minimumTrust(...bundle.records.map((record) => record.provenance.trust)),
     'ExecutionBundle trust exceeds its record provenance.',
   );
-  const maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
+  const invocationLimits = [
+    plan.execution.policy.budget.run.maxInvocations,
+    plan.execution.policy.budget.stages.execution.maxInvocations,
+  ].filter((limit): limit is number => limit !== undefined);
+  const maxInvocations = invocationLimits.length === 0
+    ? undefined
+    : Math.min(...invocationLimits);
   if (maxInvocations !== undefined && minimumTargetInvocations > maxInvocations) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_RETRY_POLICY_INVALID',
       'ExecutionBundle exceeds the sealed target invocation budget.',
     );
   }
-  if (providerCostBudget !== undefined
+  if (aggregateProviderCostBudget !== undefined
       && bundle.executionBundleStatus === 'completed'
-      && minimumProviderCostAmount >= providerCostBudget.amount) {
+      && minimumProviderCostAmount >= aggregateProviderCostBudget.amount) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
       'A completed ExecutionBundle cannot exhaust the sealed provider-cost budget.',
     );
   }
-  if (providerCostBudget !== undefined
-      && bundle.terminationReasonCode === 'provider-cost-budget-exhausted'
+  if (aggregateProviderCostBudget !== undefined
+      && bundle.terminationReasonCode?.endsWith('provider-cost-budget-exhausted') === true
       && (!providerCostUpperBoundKnown
-        || minimumProviderCostAmount < providerCostBudget.amount)) {
+        || minimumProviderCostAmount < aggregateProviderCostBudget.amount)) {
     throw new ExecutionBundleValidationError(
       'EXECUTION_BUNDLE_PROVIDER_COST_INVALID',
       'Provider-cost exhaustion requires enough reported native invocation cost.',
@@ -839,12 +971,13 @@ export function assertExecutionBundleMatchesPlan(
       );
     }
   }
-  const providerCostBudgetStatus = providerCostBudget === undefined
-    || minimumProviderCostAmount >= providerCostBudget.amount
+  const providerCostBudgetStatus = aggregateProviderCostBudget === undefined
+    || minimumProviderCostAmount >= aggregateProviderCostBudget.amount
     || (providerCostUpperBoundKnown
-      && maximumProviderCostAmount < providerCostBudget.amount)
+      && maximumProviderCostAmount < aggregateProviderCostBudget.amount)
     ? 'verified'
     : 'indeterminate';
+  assertBudgetLedgerMatchesRecords(bundle);
   return {
     provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
       bundle.bundleDigest as Sha256Digest,
@@ -861,18 +994,18 @@ export function assertExecutionBundleMatchesPlan(
     providerCostBudgetStatus,
     minimumTargetInvocations,
     maximumTargetInvocations,
-    ...(providerCostBudget === undefined
+    ...(aggregateProviderCostBudget === undefined
       ? {}
       : {
         minimumProviderCost: {
           amount: minimumProviderCostAmount,
-          currency: providerCostBudget.currency,
+          currency: aggregateProviderCostBudget.currency,
         },
         ...(providerCostUpperBoundKnown
           ? {
             maximumProviderCost: {
               amount: maximumProviderCostAmount,
-              currency: providerCostBudget.currency,
+              currency: aggregateProviderCostBudget.currency,
             },
           }
           : {}),

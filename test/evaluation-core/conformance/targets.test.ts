@@ -179,7 +179,7 @@ describe('Evaluation Core provenance conformance', () => {
     const result = await runConformanceScenario('function', {
       suffix: 'transported-decision-trust',
       mutate(_definition, policy) {
-        policy.evaluation.budget.maxEvaluatorInvocations = 1;
+        policy.budget.stages.evaluation.maxInvocations = 1;
       },
     });
     if (result.decision === undefined || result.decisionSource === undefined) {

@@ -49,7 +49,16 @@ const policy: MeasurementPolicy = {
     retryableErrorCodes: [],
     backoff: { backoffKind: 'none', initialDelayMs: 0 },
   },
-  budget: {},
+  budget: {
+    run: {},
+    stages: { execution: {}, evaluation: {} },
+    coordinate: {},
+    attempt: {},
+    providerCostAdmission: {
+      admissionMode: 'bounded-overshoot',
+      unknownCostMode: 'fail-run',
+    },
+  },
   evaluation: {
     maxConcurrency: 2,
     retry: {
@@ -57,7 +66,6 @@ const policy: MeasurementPolicy = {
       retryableErrorCodes: [],
       backoff: { backoffKind: 'none', initialDelayMs: 0 },
     },
-    budget: {},
   },
   cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
   evidence: {

@@ -569,7 +569,7 @@ describe('Evaluation Core Execution runtime', () => {
       });
       definition.experiment.sampling.pairingKey = '/input/cohort';
       definition.experiment.sampling.resamplingUnit = 'paired-block';
-      policy.budget.maxTargetInvocations = 3;
+      policy.budget.stages.execution.maxInvocations = 3;
     }, testRuntime({ samplingResamplingUnits: ['paired-block'] }));
     const { ports, state } = portsFor(plan);
     const bundle = await executeRunPlan(plan, ports, {
@@ -823,7 +823,7 @@ describe('Evaluation Core Execution runtime', () => {
         definition.targets = [definition.targets[0]];
         definition.comparisons = [];
         policy.cache.executionMode = 'transparent-deterministic';
-        policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+        policy.budget.stages.execution.maxProviderCost = { amount: 10, currency: 'USD' };
       });
       const seeded = portsFor(plan, () => ({
         output: { value: { answer: 'seed' }, classification: 'public' },
@@ -876,7 +876,7 @@ describe('Evaluation Core Execution runtime', () => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
       policy.cache.executionMode = 'transparent-deterministic';
-      policy.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 1, currency: 'USD' };
     });
     const { ports, state } = portsFor(plan, (trial) => ({
       output: { value: { answer: trial.targetId }, classification: 'public' },
@@ -955,7 +955,7 @@ describe('Evaluation Core Execution runtime', () => {
         ...structuredClone(definition.dataset.samples[0]),
         sampleId: 'sample-2',
       });
-      policy.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 1, currency: 'USD' };
       policy.execution.maxConcurrency = 2;
     });
     const { ports, state } = portsFor(plan, (trial) => ({
@@ -991,7 +991,7 @@ describe('Evaluation Core Execution runtime', () => {
         ...structuredClone(definition.dataset.samples[0]),
         sampleId: 'sample-2',
       });
-      policy.budget.maxDurationMs = 50;
+      policy.budget.stages.execution.maxActiveDurationMs = 50;
       policy.execution.maxConcurrency = 1;
     });
     let advanced = false;
@@ -1010,7 +1010,7 @@ describe('Evaluation Core Execution runtime', () => {
     });
 
     expect(bundle.executionBundleStatus).toBe('budget-exhausted');
-    expect(bundle.terminationReasonCode).toBe('duration-budget-exhausted');
+    expect(bundle.terminationReasonCode).toBe('stage-active-duration-budget-exhausted');
     expect(bundle.coverage).toMatchObject({ started: 1, budgetCensored: 3 });
     expect(state.attempts).toBe(1);
     expect(clock.sleepers).toHaveLength(0);
@@ -1192,7 +1192,7 @@ describe('Evaluation Core Execution runtime', () => {
       policy.eventDelivery.writerMode = 'optional';
       policy.eventDelivery.writerFailureMode = 'fail-run';
       if (stopStatus === 'budget-exhausted') {
-        policy.budget.maxDurationMs = 1;
+        policy.budget.run.maxWallClockMs = 1;
       }
     });
     const controller = new AbortController();
@@ -1368,7 +1368,7 @@ describe('Evaluation Core Execution runtime', () => {
     const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
-      policy.budget.maxTargetInvocations = 1;
+      policy.budget.stages.execution.maxInvocations = 1;
     });
     let runDisposals = 0;
     const executor: ExecutionExecutor = {
@@ -1408,7 +1408,7 @@ describe('Evaluation Core Execution runtime', () => {
     const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
-      policy.budget.maxTargetInvocations = 1;
+      policy.budget.stages.execution.maxInvocations = 1;
     });
     const { ports, state } = portsFor(plan, () => ({
       output: { value: { answer: 'invalid usage' }, classification: 'public' },

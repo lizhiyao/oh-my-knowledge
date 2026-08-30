@@ -18,6 +18,7 @@ export type {
 
 export {
   ANALYSIS_BUNDLE_SCHEMA_VERSION,
+  BUDGET_SUMMARY_SCHEMA_VERSION,
   EVALUATION_BUNDLE_SCHEMA_VERSION,
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EVALUATION_EVENT_SCHEMA_VERSION,
@@ -40,6 +41,11 @@ export {
 } from './evaluation-core/contracts/index.js';
 export type {
   AnalysisBundle,
+  BudgetLedgerEntry,
+  BudgetScopeSummary,
+  BudgetSummary,
+  BudgetTermination,
+  BudgetUsageTotals,
   AnalysisCohortDefinition,
   AnalysisCoverage,
   AnalysisRecord,

@@ -81,6 +81,7 @@ export const ExecutionPlanPolicySchema = z.object({
 
 export const EvaluationPlanPolicySchema = z.object({
   runtime: EvaluationRuntimePolicySchema,
+  budget: BudgetPolicySchema,
   evaluationCacheMode: CachePolicySchema.shape.evaluationMode,
   evidence: EvidencePolicySchema,
   failure: FailurePolicySchema,

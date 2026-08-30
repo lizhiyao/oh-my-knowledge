@@ -27,6 +27,16 @@ export const ProtocolManifestSchema = z.object({
     telemetry: z.object({
       trace: z.enum(['unsupported', 'optional', 'required']),
       usage: z.enum(['unsupported', 'optional', 'required']),
+      providerCost: z.object({
+        reporting: z.enum(['unsupported', 'optional', 'required']),
+        trustedUpperBound: z.object({
+          amount: z.number().nonnegative(),
+          currency: z.string().regex(/^[A-Z]{3}$/),
+        }).strict().optional(),
+      }).strict().refine(
+        (value) => value.trustedUpperBound === undefined || value.reporting === 'required',
+        { message: 'A trusted provider-cost bound requires required reporting.' },
+      ).optional(),
     }).strict(),
   }).strict(),
 }).strict();
@@ -50,6 +60,16 @@ export const EvaluatorCapabilitiesSchema = z.object({
     'ranking',
   ])).min(1),
   schemas: z.array(SchemaIdentitySchema),
+  providerCost: z.object({
+    reporting: z.enum(['unsupported', 'optional', 'required']),
+    trustedUpperBound: z.object({
+      amount: z.number().nonnegative(),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+    }).strict().optional(),
+  }).strict().refine(
+    (value) => value.trustedUpperBound === undefined || value.reporting === 'required',
+    { message: 'A trusted provider-cost bound requires required reporting.' },
+  ).optional(),
 }).strict();
 
 const SamplingCapabilitiesSchema = z.object({

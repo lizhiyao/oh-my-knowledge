@@ -93,8 +93,10 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'hypothesisId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
-  'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'maxTargetInvocations',
-  'maxDurationMs', 'maxProviderCost', 'amount', 'currency', 'cache', 'executionMode',
+  'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'run', 'stages',
+  'coordinate', 'attempt', 'maxInvocations', 'maxWallClockMs', 'maxActiveDurationMs',
+  'maxProviderCost', 'providerCostAdmission', 'admissionMode', 'unknownCostMode',
+  'amount', 'currency', 'cache', 'executionMode',
   'evaluationMode', 'evidence', 'output', 'trace', 'maximumClassification', 'failure',
   'failureMode', 'maxFailures', 'eventDelivery', 'writerMode', 'backpressureMode',
   'writerFailureMode', 'extensions', 'schemaUri', 'schemaDigest', 'data',
@@ -183,6 +185,9 @@ function normalizeEvaluatorCapabilities(
       'metricValueTypes',
     ) as EvaluatorCapabilities['metricValueTypes'],
     schemas: sortedSchemas(capabilities.schemas),
+    ...(capabilities.providerCost === undefined
+      ? {}
+      : { providerCost: snapshotJson(capabilities.providerCost) }),
   };
 }
 
@@ -1220,6 +1225,7 @@ export async function prepareEvaluationPlan(
     runtimes: evaluatorRuntimes,
     policy: {
       runtime: measurementPolicy.evaluation,
+      budget: measurementPolicy.budget,
       evaluationCacheMode: measurementPolicy.cache.evaluationMode,
       evidence: measurementPolicy.evidence,
       failure: measurementPolicy.failure,

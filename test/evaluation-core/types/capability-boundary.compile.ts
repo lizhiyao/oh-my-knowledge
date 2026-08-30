@@ -12,12 +12,16 @@ import type {
 } from '../../../src/evaluation-core/evaluation/index.js';
 
 declare const executorContext: ExecutorTrialContext;
+declare const budgetSource: NonNullable<ExecutionRunOptions['budgetSource']>;
 
 // @ts-expect-error Executor 只能看到执行输入，不能获得 Gold。
 void executorContext.expected;
 
 // @ts-expect-error Executor 不能获得只供评测阶段使用的上下文。
 void executorContext.evaluationContext;
+
+// @ts-expect-error 宿主只能转交 opaque budget capability，不能直接改写账本。
+void budgetSource.reserve;
 
 type KeysOfUnion<Value> = Value extends unknown ? keyof Value : never;
 
@@ -35,7 +39,8 @@ type AllowedRunOptionKey =
   | 'signal'
   | 'eventBufferCapacity'
   | 'annotations'
-  | 'summaries';
+  | 'summaries'
+  | 'budgetSource';
 
 type AssertNever<Value extends never> = Value;
 
