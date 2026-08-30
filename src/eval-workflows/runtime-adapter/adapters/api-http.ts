@@ -60,10 +60,46 @@ export class ApiResponseBodyError extends Error {
   }
 }
 
+export function requiredApiHeaderValue(value: string, label: string): string {
+  if (
+    typeof value !== 'string'
+    || value.trim() === ''
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) throw new TypeError(`${label} must be a non-empty header-safe string.`);
+  return value;
+}
+
+export function normalizeCoreApiEndpoint(value: string, label: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${label} must be an absolute HTTP(S) URL.`);
+  }
+  let endpoint: URL;
+  try {
+    endpoint = new URL(value);
+  } catch {
+    throw new TypeError(`${label} must be an absolute HTTP(S) URL.`);
+  }
+  if (
+    !['http:', 'https:'].includes(endpoint.protocol)
+    || endpoint.username !== ''
+    || endpoint.password !== ''
+    || endpoint.hash !== ''
+    || endpoint.search !== ''
+  ) throw new TypeError(`${label} must be an absolute credential-free HTTP(S) URL.`);
+  const loopback = endpoint.hostname === 'localhost'
+    || endpoint.hostname === '127.0.0.1'
+    || endpoint.hostname === '[::1]';
+  if (endpoint.protocol !== 'https:' && !loopback) {
+    throw new TypeError(`${label} must use HTTPS unless it is loopback-only.`);
+  }
+  return endpoint.toString();
+}
+
 function defaultTransport(): CoreApiTransport {
   if (typeof globalThis.fetch !== 'function') {
     throw new TypeError('API Core adapters require a global fetch implementation.');
   }
+  const fetchImplementation = globalThis.fetch.bind(globalThis);
   const nodeVersion = process.versions.node;
   return {
     identity: {
@@ -80,7 +116,7 @@ function defaultTransport(): CoreApiTransport {
       retrySemantics: 'none',
     },
     request(input) {
-      return globalThis.fetch(input.endpoint, {
+      return fetchImplementation(input.endpoint, {
         method: 'POST',
         headers: { ...input.headers },
         body: input.body,
