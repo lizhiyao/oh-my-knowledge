@@ -30,6 +30,8 @@ import {
   assembleOmkRuntimeBindings,
   createBuiltinOmkAnalysisBindingFactories,
   createOmkEvaluationRuntime,
+  createSameProcessEvaluatorAdapter,
+  createSameProcessExecutorAdapter,
   resourceLeaseRequestsFromBindingEntries,
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseRequest,
@@ -347,34 +349,41 @@ function runnableFactoriesFor(
       const resolved = await factory(context);
       return {
         ...resolved,
-        port: {
+        port: createSameProcessExecutorAdapter({
           identity: resolved.port.identity,
-          async openRun(runContext) {
-            const lease = context.resourceLeases.forRun(runContext.runId);
-            lifecycle.push(`executor.open:${runContext.runId}:${lease.bindingId}`);
-            return {
-              async openTrial() {
-                return {
-                  async execute() {
-                    if (executeGate !== undefined) await executeGate;
-                    return {
-                      output: {
-                        value: { answer: 'A' },
-                        classification: 'public' as const,
-                      },
-                      trace: {
-                        value: { source: 'test-runtime' },
-                        classification: 'public' as const,
-                      },
-                    };
-                  },
-                  dispose() { lifecycle.push(`executor.trial.dispose:${runContext.runId}`); },
-                };
-              },
-              dispose() { lifecycle.push(`executor.run.dispose:${runContext.runId}`); },
-            };
+          sessionIsolationKey: context.sessionIsolationKey,
+          resourceLeases: context.resourceLeases,
+          implementation: {
+            openRun({ run, resources }) {
+              lifecycle.push(`executor.open:${run.runId}:${resources.bindingId}`);
+              return { runId: run.runId };
+            },
+            openTrial({ trial }) { return { trialId: trial.trialId }; },
+            async execute({ trial, attempt }) {
+              if (attempt.signal.aborted) throw attempt.signal.reason;
+              if (executeGate !== undefined) await executeGate;
+              if (attempt.signal.aborted) throw attempt.signal.reason;
+              const trialInput = trial.input as Readonly<Record<string, JsonValue>>;
+              const answer = typeof trialInput.question === 'string'
+                ? trialInput.question.replace(/^Q/, 'A')
+                : 'test-output';
+              return {
+                output: {
+                  value: { answer },
+                  classification: 'public' as const,
+                },
+                trace: {
+                  value: { source: 'test.omk.same-process-executor/v1' },
+                  classification: 'public' as const,
+                },
+              };
+            },
+            disposeTrial({ run }) {
+              lifecycle.push(`executor.trial.dispose:${run.runId}`);
+            },
+            disposeRun({ run }) { lifecycle.push(`executor.run.dispose:${run.runId}`); },
           },
-        },
+        }),
       };
     });
   }
@@ -384,51 +393,60 @@ function runnableFactoriesFor(
       const resolved = await factory(context);
       return {
         ...resolved,
-        port: {
+        port: createSameProcessEvaluatorAdapter({
           identity: resolved.port.identity,
-          async openRun(runContext) {
-            const lease = context.resourceLeases.forRun(runContext.runId);
-            lifecycle.push(`evaluator.open:${runContext.runId}:${lease.bindingId}`);
-            return {
-              async openRecord(recordContext) {
-                return {
-                  async evaluate() {
-                    return {
-                      observations: recordContext.metrics.map((metric) => {
-                        if (metric.valueType === 'numeric') return {
-                          metricId: metric.metricId,
-                          observationStatus: 'observed' as const,
-                          valueType: metric.valueType,
-                          value: 1,
-                        };
-                        if (metric.valueType === 'boolean') return {
-                          metricId: metric.metricId,
-                          observationStatus: 'observed' as const,
-                          valueType: metric.valueType,
-                          value: true,
-                        };
-                        if (metric.valueType === 'ranking') return {
-                          metricId: metric.metricId,
-                          observationStatus: 'observed' as const,
-                          valueType: metric.valueType,
-                          value: ['A'],
-                        };
-                        return {
-                          metricId: metric.metricId,
-                          observationStatus: 'observed' as const,
-                          valueType: metric.valueType,
-                          value: 'A',
-                        };
-                      }),
-                    };
-                  },
-                  dispose() { lifecycle.push(`evaluator.record.dispose:${runContext.runId}`); },
-                };
-              },
-              dispose() { lifecycle.push(`evaluator.run.dispose:${runContext.runId}`); },
-            };
+          sessionIsolationKey: context.sessionIsolationKey,
+          resourceLeases: context.resourceLeases,
+          implementation: {
+            openRun({ run, resources }) {
+              lifecycle.push(`evaluator.open:${run.runId}:${resources.bindingId}`);
+              return { runId: run.runId };
+            },
+            openRecord({ record }) { return { evaluationId: record.evaluationId }; },
+            async evaluate({ record, attempt }) {
+              if (attempt.signal.aborted) throw attempt.signal.reason;
+              const actual = record.bindings.find((binding) => binding.bindingId === 'actual')?.value;
+              const expected = record.bindings.find((binding) => (
+                binding.bindingId === 'expected'
+              ))?.value;
+              const equivalent = actual === undefined || expected === undefined
+                ? record.bindings.length > 0
+                : JSON.stringify(actual) === JSON.stringify(expected);
+              return {
+                observations: record.metrics.map((metric) => {
+                  if (metric.valueType === 'numeric') return {
+                    metricId: metric.metricId,
+                    observationStatus: 'observed' as const,
+                    valueType: metric.valueType,
+                    value: equivalent ? (metric.scale?.max ?? 1) : (metric.scale?.min ?? 0),
+                  };
+                  if (metric.valueType === 'boolean') return {
+                    metricId: metric.metricId,
+                    observationStatus: 'observed' as const,
+                    valueType: metric.valueType,
+                    value: equivalent,
+                  };
+                  if (metric.valueType === 'ranking') return {
+                    metricId: metric.metricId,
+                    observationStatus: 'observed' as const,
+                    valueType: metric.valueType,
+                    value: record.bindings.map((binding) => binding.bindingId),
+                  };
+                  return {
+                    metricId: metric.metricId,
+                    observationStatus: 'observed' as const,
+                    valueType: metric.valueType,
+                    value: equivalent ? 'equivalent' : 'different',
+                  };
+                }),
+              };
+            },
+            disposeRecord({ run }) {
+              lifecycle.push(`evaluator.record.dispose:${run.runId}`);
+            },
+            disposeRun({ run }) { lifecycle.push(`evaluator.run.dispose:${run.runId}`); },
           },
-        },
+        }),
       };
     });
   }

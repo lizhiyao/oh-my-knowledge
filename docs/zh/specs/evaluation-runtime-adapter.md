@@ -56,7 +56,17 @@ Factory 返回实际 port identity 和 version resolution。Assembly 校验 port
 
 Adapter 必须把 `sessionIsolationKey` 与 Core `runId`、`trialId` 组合使用；它不允许跨 run 或 binding 复用有状态 session。
 
-## 四、资源需求
+## 四、Same-process Runtime adapter
+
+`createSameProcessExecutorAdapter()` 与 `createSameProcessEvaluatorAdapter()` 是 binding-local 同进程实现的基准桥接层。宿主必须显式提供 `RuntimeIdentity` 和全部生命周期回调；adapter 不从 Definition 推断 capability，也不提供评分算法。
+
+桥接层会在构造时校验并冻结 identity，捕获 lease resolver 与回调函数，并为每个 run、trial／evaluation record 派生独立的内容寻址隔离键。因此，工厂对象后续发生变更，也不能在已封存的 identity 背后替换实际执行实现。重复的 active run 与 operation identity 会 fail closed；即使调用方并发或重试清理，每个 dispose 回调也至多执行一次。
+
+Core attempt 的 `AbortSignal`、trial seed、Target／Evaluator 配置、已验证的 binding lease 与可选 usage 会原样转交。未报告 usage 时仍保持缺失。桥接层不拥有独立 timeout、retry、budget、cache 或 cancellation race；这些行为只由 sealed Core Policy 驱动。Cooperative implementation 收到转交 signal 的 abort 后，必须让底层操作真正收敛。
+
+Composition root conformance 使用 `test.*` 命名空间下、根据输入和 binding 动态生成结果的实现。它们会经过真实 Core prepare 与 run 路径，但不会被导出或伪装成生产 Executor／Evaluator 算法。
+
+## 五、资源需求
 
 RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 locator 或内容：
 
@@ -75,7 +85,7 @@ Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 
 
 Composition root 在 Core 能调用任何 `openRun()` 前取得完整的 active-binding run lease。它验证 binding／resource 精确覆盖，捕获不可变 map 与 descriptor 快照，然后才注册 binding-scoped access。所有 Core port teardown settle 后先撤销注册，再执行一次 lease disposal。Acquisition、Core start 前取消、EventWriter 创建、Core start、正常完成与失败路径共享同一个幂等 cleanup promise。重复 active `runId` 会在第二次 acquisition 前被拒绝。用于 exploratory post-hoc comparison 的 Gold 不会被 single-run Core composition 提前物化；独立 analysis-host workflow 在存在真实消费者时再请求对应 lease。
 
-## 五、Core Composition 与 Support Ports
+## 六、Core Composition 与 Support Ports
 
 `createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，并调用真实的 `createEvaluationEngine(...).prepare(...)`。独立 Series assembly 单独暴露，不进入 single-run engine。
 
@@ -91,7 +101,7 @@ Clock 与 SchemaValidator contract 在 factory assembly 前校验。Core-owned A
 
 EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required delivery 会在 resource acquisition 后、Core start 前创建 writer，并通过 `PreparedEvaluation.start()` 注入；disabled mode 绝不调用 factory。Policy 要求的 port 缺失或形状错误时，在任何 Runtime factory 或 run port 调用前失败。因此不存在 Judge binding 时，也不会构造 Judge factory、读取凭证、执行 connectivity probe 或物化对应资源。
 
-## 六、错误归属
+## 七、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
 - compiled input、support port、cache source、schema conflict、writer construction、active run 与 host cleanup failure 使用稳定 `OmkEvaluationRuntimeError` code；
