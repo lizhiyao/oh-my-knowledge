@@ -20,7 +20,7 @@ export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
   'omk.resolved-host-resources/v1' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
-  'omk.runtime-binding-request/v1' as const;
+  'omk.runtime-binding-request/v2' as const;
 
 export type CliEvaluationFieldSource = { readonly normalizedField: string } & (
   | {
@@ -317,6 +317,32 @@ export interface ResolvedCliEvaluationInput {
   };
 }
 
+export interface RuntimeResourceLeaseRequirement {
+  readonly resourceId: string;
+  readonly resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-payload' | 'content';
+  readonly leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
+}
+
+export type AnalysisRuntimeBinding =
+  | {
+      readonly runtimeKind: 'analysis-node';
+      readonly bindingId: string;
+      readonly referenceId: string;
+      readonly requirementKind: 'analysis-node';
+      readonly analysisNodeKind: 'reducer' | 'estimator' | 'correction';
+      readonly implementationId: string;
+      readonly versionConstraint?: string;
+    }
+  | {
+      readonly runtimeKind: 'analysis-node';
+      readonly bindingId: string;
+      readonly referenceId: string;
+      readonly requirementKind: 'sampling-estimator';
+      readonly analysisNodeKind: 'estimator';
+      readonly implementationId: string;
+      readonly versionConstraint?: string;
+    };
+
 export type RuntimeBinding =
   | {
       readonly runtimeKind: 'executor';
@@ -326,7 +352,7 @@ export type RuntimeBinding =
       readonly versionConstraint?: string;
       readonly protocolId: ResolvedCliTarget['protocolId'];
       readonly behaviorConfigDigest: Sha256Digest;
-      readonly resourceIds: readonly string[];
+      readonly resourceLeaseRequirements: readonly RuntimeResourceLeaseRequirement[];
       readonly qualification: {
         readonly model: string;
         readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -347,7 +373,7 @@ export type RuntimeBinding =
       readonly versionConstraint?: string;
       readonly measurement: EvaluatorDefinition['measurement'];
       readonly configDigest?: Sha256Digest;
-      readonly resourceIds: readonly string[];
+      readonly resourceLeaseRequirements: readonly RuntimeResourceLeaseRequirement[];
       readonly qualification?: {
         readonly executorId: string;
         readonly model: string;
@@ -356,12 +382,12 @@ export type RuntimeBinding =
         readonly resourceIntegrity: 'digest-before-use';
       };
     }
+  | AnalysisRuntimeBinding
   | {
-      readonly runtimeKind: 'analysis-node';
+      readonly runtimeKind: 'missing-policy';
       readonly bindingId: string;
-      readonly nodeId: string;
+      readonly policyId: string;
       readonly implementationId: string;
-      readonly versionConstraint?: string;
     }
   | {
       readonly runtimeKind: 'decision-policy';
@@ -374,6 +400,12 @@ export type RuntimeBinding =
       readonly runtimeKind: 'series-analysis-node';
       readonly bindingId: string;
       readonly nodeId: string;
+      readonly implementationId: string;
+    }
+  | {
+      readonly runtimeKind: 'series-decision-policy';
+      readonly bindingId: string;
+      readonly decisionPolicyId: string;
       readonly implementationId: string;
     };
 

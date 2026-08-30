@@ -297,15 +297,6 @@ function validateHostOptions(input: ResolvedCliEvaluationInput): void {
   );
 }
 
-function allBehaviorDescriptors(behavior: ResolvedTargetBehavior): ResolvedResourceDescriptor[] {
-  return [
-    behavior.artifact,
-    ...(behavior.workspace === undefined ? [] : [behavior.workspace]),
-    ...(behavior.mcpConfig === undefined ? [] : [behavior.mcpConfig]),
-    ...(behavior.mocks ?? []).flatMap((mock) => mock.payloads),
-  ];
-}
-
 function validateResourceReferences(
   input: ResolvedCliEvaluationInput,
   hostResources: ResolvedHostResources,
@@ -777,8 +768,38 @@ function compilePolicy(input: ResolvedCliEvaluationInput): MeasurementPolicy {
   }
 }
 
-function resourceIdsForBehavior(behavior: ResolvedTargetBehavior): string[] {
-  return allBehaviorDescriptors(behavior).map((descriptor) => descriptor.resourceId).sort(compareStrings);
+function resourceLeaseRequirementsForBehavior(
+  behavior: ResolvedTargetBehavior,
+): Extract<RuntimeBinding, { runtimeKind: 'executor' }>['resourceLeaseRequirements'] {
+  const requirements = [
+    {
+      resourceId: behavior.artifact.resourceId,
+      resourceRole: 'artifact' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    },
+    ...(behavior.workspace === undefined ? [] : [{
+      resourceId: behavior.workspace.resourceId,
+      resourceRole: 'workspace' as const,
+      leaseMode: 'copy-on-write-overlay' as const,
+    }]),
+    ...(behavior.mcpConfig === undefined ? [] : [{
+      resourceId: behavior.mcpConfig.resourceId,
+      resourceRole: 'mcp-config' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }]),
+    ...(behavior.mocks ?? []).flatMap((mock) => mock.payloads.map((payload) => ({
+      resourceId: payload.resourceId,
+      resourceRole: 'mock-payload' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }))),
+  ];
+  return [...new Map(requirements.map((requirement) => [
+    `${requirement.resourceRole}\u0000${requirement.resourceId}`,
+    requirement,
+  ])).values()].sort((left, right) => (
+    compareStrings(left.resourceRole, right.resourceRole)
+    || compareStrings(left.resourceId, right.resourceId)
+  ));
 }
 
 function compileSeries(
@@ -879,7 +900,7 @@ function compileRuntimeBinding(
       ...(target.versionConstraint === undefined ? {} : { versionConstraint: target.versionConstraint }),
       protocolId: target.protocolId,
       behaviorConfigDigest: digestCanonicalJson(target.config ?? null),
-      resourceIds: resourceIdsForBehavior(resolved.behavior),
+      resourceLeaseRequirements: resourceLeaseRequirementsForBehavior(resolved.behavior),
       qualification: {
         model: resolved.executor.model,
         ...(resolved.executor.effort === undefined ? {} : { effort: resolved.executor.effort }),
@@ -912,9 +933,14 @@ function compileRuntimeBinding(
       ...(evaluator.versionConstraint === undefined ? {} : { versionConstraint: evaluator.versionConstraint }),
       measurement: evaluator.measurement,
       ...(evaluator.config === undefined ? {} : { configDigest: digestCanonicalJson(evaluator.config) }),
-      resourceIds: [...(template?.resources ?? [])]
-        .map((descriptor) => descriptor.resourceId)
-        .sort(compareStrings),
+      resourceLeaseRequirements: [...new Map([...(template?.resources ?? [])]
+        .map((descriptor) => [descriptor.resourceId, descriptor])).values()]
+        .map((descriptor) => ({
+          resourceId: descriptor.resourceId,
+          resourceRole: 'content' as const,
+          leaseMode: 'immutable-snapshot' as const,
+        }))
+        .sort((left, right) => compareStrings(left.resourceId, right.resourceId)),
       ...(judgeMember === undefined ? {} : {
         qualification: {
           executorId: judgeMember.executorId,
@@ -930,9 +956,29 @@ function compileRuntimeBinding(
     bindings.push({
       runtimeKind: 'analysis-node',
       bindingId: `analysis-${node.nodeId}`,
-      nodeId: node.nodeId,
+      referenceId: node.nodeId,
+      requirementKind: 'analysis-node',
+      analysisNodeKind: node.analysisNodeKind,
       implementationId: node.implementationId,
       ...(node.versionConstraint === undefined ? {} : { versionConstraint: node.versionConstraint }),
+    });
+  }
+  bindings.push({
+    runtimeKind: 'analysis-node',
+    bindingId: `sampling-estimator-${definition.experiment.sampling.estimatorId}`,
+    referenceId: definition.experiment.sampling.estimatorId,
+    requirementKind: 'sampling-estimator',
+    analysisNodeKind: 'estimator',
+    implementationId: definition.experiment.sampling.estimatorId,
+  });
+  for (const policyId of [...new Set(definition.metrics.map((metric) => (
+    metric.missingPolicyId
+  )))].sort(compareStrings)) {
+    bindings.push({
+      runtimeKind: 'missing-policy',
+      bindingId: `missing-policy-${policyId}`,
+      policyId,
+      implementationId: policyId,
     });
   }
   if (definition.decisionPolicy !== undefined) {
@@ -952,6 +998,14 @@ function compileRuntimeBinding(
       bindingId: `series-analysis-${node.nodeId}`,
       nodeId: node.nodeId,
       implementationId: node.implementationId,
+    });
+  }
+  if (series?.definition.decisionPolicy !== undefined) {
+    bindings.push({
+      runtimeKind: 'series-decision-policy',
+      bindingId: `series-decision-${series.definition.decisionPolicy.decisionPolicyId}`,
+      decisionPolicyId: series.definition.decisionPolicy.decisionPolicyId,
+      implementationId: series.definition.decisionPolicy.implementationId,
     });
   }
   return deepFreezeCanonicalJson(canonicalSnapshot({

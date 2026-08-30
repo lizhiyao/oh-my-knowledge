@@ -449,9 +449,24 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const bindingJson = canonicalizeJson(result.runtimeBinding);
+    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v2');
     expect(bindingJson).not.toContain('capabilities');
     expect(bindingJson).not.toContain('fingerprint');
     expect(bindingJson).not.toContain('assuranceLevel');
+    expect(result.runtimeBinding.bindings).toContainEqual({
+      runtimeKind: 'missing-policy',
+      bindingId: 'missing-policy-exclude/v1',
+      policyId: 'exclude/v1',
+      implementationId: 'exclude/v1',
+    });
+    expect(result.runtimeBinding.bindings).toContainEqual({
+      runtimeKind: 'analysis-node',
+      bindingId: 'sampling-estimator-bootstrap.mean-difference/v1',
+      referenceId: 'bootstrap.mean-difference/v1',
+      requirementKind: 'sampling-estimator',
+      analysisNodeKind: 'estimator',
+      implementationId: 'bootstrap.mean-difference/v1',
+    });
   });
 
   it('rejects inline secret evaluator or target configuration', () => {
