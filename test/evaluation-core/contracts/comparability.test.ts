@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   COMPARABILITY_POLICY_SCHEMA_VERSION,
@@ -238,6 +239,9 @@ describe('Evaluation Core comparability contract', () => {
       if (definition.decisionPolicy === undefined) throw new Error('missing policy');
       definition.decisionPolicy.parameters = { threshold: 0.2 };
     });
+    const estimatorChanged = await preparePlan((definition) => {
+      definition.experiment.sampling.estimatorId = 'bootstrap.other-estimator/v1';
+    });
 
     expect(assessComparability(
       policy('evaluation'), baseline, analysisChanged,
@@ -251,6 +255,12 @@ describe('Evaluation Core comparability contract', () => {
     expect(assessComparability(
       policy('analysis'), baseline, decisionChanged,
     ).assessment.designStatus).toBe('compatible');
+    expect(assessComparability(
+      policy('evaluation'), baseline, estimatorChanged,
+    ).assessment.designStatus).toBe('compatible');
+    expect(reasonCodes(assessComparability(
+      policy('analysis'), baseline, estimatorChanged,
+    ))).toContain('comparability-design-analysis-mismatch');
     expect(reasonCodes(assessComparability(
       policy('decision'), baseline, decisionChanged,
     ))).toContain('comparability-design-decision-mismatch');
@@ -286,6 +296,101 @@ describe('Evaluation Core comparability contract', () => {
     ).assessment.designStatus).toBe('compatible');
   });
 
+  it('treats comparison-family identity as Analysis design rather than Decision policy', async () => {
+    const scenario = (primaryHypothesisId: string) => runConformanceScenario('function', {
+      suffix: `comparability-${primaryHypothesisId}`,
+      mutate(definition) {
+        definition.comparisons.push({
+          ...structuredClone(definition.comparisons[0]),
+          comparisonId: 'secondary-comparison',
+        });
+        definition.analysisGraph.nodes = [
+          {
+            analysisNodeKind: 'estimator',
+            nodeId: 'hypothesis-primary',
+            implementationId: 'conformance.hypothesis/v1',
+            inputs: [
+              { inputKind: 'metric-observations', referenceId: 'correct' },
+              {
+                inputKind: 'comparison',
+                referenceId: 'control-vs-treatment',
+                treatmentTargetId: 'treatment',
+                metricId: 'correct',
+              },
+            ],
+            outputResultId: 'hypothesis-primary-result',
+            parameters: {},
+          },
+          {
+            analysisNodeKind: 'estimator',
+            nodeId: 'hypothesis-secondary',
+            implementationId: 'conformance.hypothesis/v1',
+            inputs: [
+              { inputKind: 'metric-observations', referenceId: 'correct' },
+              {
+                inputKind: 'comparison',
+                referenceId: 'secondary-comparison',
+                treatmentTargetId: 'treatment',
+                metricId: 'correct',
+              },
+            ],
+            outputResultId: 'hypothesis-secondary-result',
+            parameters: {},
+          },
+          {
+            analysisNodeKind: 'correction',
+            nodeId: 'bonferroni-family',
+            implementationId: 'bonferroni/v1',
+            inputs: [
+              { inputKind: 'analysis-result', referenceId: 'hypothesis-primary-result' },
+              { inputKind: 'analysis-result', referenceId: 'hypothesis-secondary-result' },
+            ],
+            outputResultId: 'corrected-family',
+            parameters: { alpha: 0.05 },
+          },
+        ];
+        definition.decisionPolicy = {
+          decisionPolicyId: 'family-gate',
+          implementationId: 'conformance.family-gate/v1',
+          analysisResultIds: ['corrected-family'],
+          comparisonFamily: [
+            {
+              comparisonId: 'control-vs-treatment',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+              analysisResultId: 'hypothesis-primary-result',
+              hypothesisId: primaryHypothesisId,
+            },
+            {
+              comparisonId: 'secondary-comparison',
+              treatmentTargetId: 'treatment',
+              metricId: 'correct',
+              analysisResultId: 'hypothesis-secondary-result',
+              hypothesisId: 'hypothesis-secondary',
+            },
+          ],
+          multipleComparisonPolicyId: 'bonferroni/v1',
+          minimumEvidenceStatus: 'complete',
+          parameters: {},
+        };
+      },
+    });
+    const [left, right] = await Promise.all([
+      scenario('hypothesis-primary'),
+      scenario('hypothesis-primary-v2'),
+    ]);
+
+    expect(assessComparability(
+      policy('evaluation'), left.plan, right.plan,
+    ).assessment.designStatus).toBe('compatible');
+    const analysis = assessComparability(policy('analysis'), left.plan, right.plan);
+    expect(analysis.assessment.designStatus).toBe('incompatible');
+    expect(reasonCodes(analysis)).toContain('comparability-design-comparison-mismatch');
+    const decision = assessComparability(policy('decision'), left.plan, right.plan);
+    expect(reasonCodes(decision)).toContain('comparability-design-comparison-mismatch');
+    expect(reasonCodes(decision)).not.toContain('comparability-design-decision-mismatch');
+  });
+
   it('upgrades Runtime assurance only through an exact trusted attestation map', async () => {
     const plan = await preparePlan(undefined, { executorAssurance: 'declared' });
     const unverified = assessComparability(policy(), plan, plan);
@@ -318,6 +423,34 @@ describe('Evaluation Core comparability contract', () => {
     );
     expect(verified.assessment.left.runtimeQualification[0]).toMatchObject({
       effectiveAssuranceLevel: 'verified',
+    });
+
+    const attestationDigest = digestCanonicalJson({ identityDigest, verifier: 'other-realm' });
+    const crossRealmMap = runInNewContext(
+      'new Map([[identityDigest, attestation]])',
+      {
+        identityDigest,
+        attestation: {
+          attestationDigest,
+          verifiedAssuranceLevel: 'verified',
+        },
+      },
+    ) as ReadonlyMap<Sha256Digest, {
+      attestationDigest: Sha256Digest;
+      verifiedAssuranceLevel: 'verified';
+    }>;
+    expect(crossRealmMap).not.toBeInstanceOf(Map);
+    const crossRealmVerified = assessComparability(
+      policy(),
+      plan,
+      plan,
+      undefined,
+      undefined,
+      { verifiedRuntimeAttestations: crossRealmMap },
+    );
+    expect(crossRealmVerified.assessment.left.runtimeQualification[0]).toMatchObject({
+      effectiveAssuranceLevel: 'verified',
+      verifiedByAttestationDigest: attestationDigest,
     });
   });
 

@@ -266,6 +266,23 @@ describe('Evaluation Core layered digests', () => {
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
+  it('keeps the Analysis estimator out of execution randomization identity', () => {
+    const first = planDigests(definition);
+    const second = planDigests({
+      ...definition,
+      experiment: {
+        ...definition.experiment,
+        sampling: {
+          ...definition.experiment.sampling,
+          estimatorId: 'bootstrap.other-estimator/v1',
+        },
+      },
+    });
+
+    expect(second.randomizationDesignDigest).toBe(first.randomizationDesignDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+  });
+
   it('keeps EventWriter delivery policy out of stage identities but binds the root contract', () => {
     const first = planDigests(definition);
     const changedPolicy: MeasurementPolicy = {

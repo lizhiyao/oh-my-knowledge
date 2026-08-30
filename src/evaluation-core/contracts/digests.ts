@@ -214,7 +214,21 @@ export function computeRandomizationDesignDigest(
       return slotId;
     }).sort(compareStrings)
   )).sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
-  const { sampling } = input.experiment;
+  const sampling = {
+    experimentalUnit: input.experiment.sampling.experimentalUnit,
+    ...(input.experiment.sampling.pairingKey === undefined ? {} : {
+      pairingKey: input.experiment.sampling.pairingKey,
+    }),
+    ...(input.experiment.sampling.clusterKey === undefined ? {} : {
+      clusterKey: input.experiment.sampling.clusterKey,
+    }),
+    ...(input.experiment.sampling.stratumKey === undefined ? {} : {
+      stratumKey: input.experiment.sampling.stratumKey,
+    }),
+    repeatedMeasures: input.experiment.sampling.repeatedMeasures,
+    resamplingUnit: input.experiment.sampling.resamplingUnit,
+    seedCoupling: input.experiment.sampling.seedCoupling,
+  };
   return digestCanonicalJson({
     derivation: 'omk.randomization-design/v1',
     executionInputDigest: input.executionInputDigest,

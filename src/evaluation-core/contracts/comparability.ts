@@ -844,24 +844,30 @@ function normalizeAnalysisGraph(
   } as unknown as JsonValue;
 }
 
-function normalizeDecisionPolicy(
+function normalizeComparisonFamily(
   plan: SealedRunPlan,
   side: SideProjection,
-): JsonValue | undefined {
+): JsonValue {
+  const policy = plan.decision.decisionPolicy;
+  if (policy?.comparisonFamily === undefined) return null;
+  return {
+    comparisonFamily: policy.comparisonFamily.map((member) => {
+      const { treatmentTargetId, ...reference } = member;
+      return {
+        ...reference,
+        treatmentTargetReference: targetReference(side, treatmentTargetId),
+      };
+    }),
+    multipleComparisonPolicyId: policy.multipleComparisonPolicyId ?? null,
+  } as unknown as JsonValue;
+}
+
+function normalizeDecisionPolicy(plan: SealedRunPlan): JsonValue | undefined {
   const policy = plan.decision.decisionPolicy;
   if (policy === undefined) return undefined;
-  return {
-    ...policy,
-    ...(policy.comparisonFamily === undefined ? {} : {
-      comparisonFamily: policy.comparisonFamily.map((member) => {
-        const { treatmentTargetId, ...reference } = member;
-        return {
-          ...reference,
-          treatmentTargetReference: targetReference(side, treatmentTargetId),
-        };
-      }),
-    }),
-  } as unknown as JsonValue;
+  return Object.fromEntries(Object.entries(policy).filter(([key]) => (
+    key !== 'comparisonFamily' && key !== 'multipleComparisonPolicyId'
+  ))) as JsonValue;
 }
 
 function normalizedRandomizationCoordinates(
@@ -1081,20 +1087,25 @@ function designReasons(
     if (!equalJson(leftAnalysis, rightAnalysis)) {
       addReason(codes, 'comparability-design-analysis-mismatch');
     }
-    if (!equalJson(
-      normalizeComparisons(leftPlan, left),
-      normalizeComparisons(rightPlan, right),
-    )) {
+    const leftComparison = {
+      definitions: normalizeComparisons(leftPlan, left),
+      family: normalizeComparisonFamily(leftPlan, left),
+    };
+    const rightComparison = {
+      definitions: normalizeComparisons(rightPlan, right),
+      family: normalizeComparisonFamily(rightPlan, right),
+    };
+    if (!equalJson(leftComparison, rightComparison)) {
       addReason(codes, 'comparability-design-comparison-mismatch');
     }
   }
   if (policy.comparisonScope === 'decision') {
     const leftDecision = {
-      policy: normalizeDecisionPolicy(leftPlan, left) ?? null,
+      policy: normalizeDecisionPolicy(leftPlan) ?? null,
       runtimes: runtimeImplementationProjection(leftPlan.decision.runtimes),
     };
     const rightDecision = {
-      policy: normalizeDecisionPolicy(rightPlan, right) ?? null,
+      policy: normalizeDecisionPolicy(rightPlan) ?? null,
       runtimes: runtimeImplementationProjection(rightPlan.decision.runtimes),
     };
     if (!equalJson(leftDecision, rightDecision)) {
@@ -1111,24 +1122,61 @@ function digestIsValid(value: unknown): value is Sha256Digest {
 function validateVerificationContext(
   verification: ComparabilityVerificationContext | undefined,
 ): ReadonlyMap<Sha256Digest, ComparabilityRuntimeAttestation> {
-  const attestations = verification?.verifiedRuntimeAttestations ?? new Map();
-  if (!(attestations instanceof Map)) {
+  const input = verification?.verifiedRuntimeAttestations;
+  if (input === undefined) return new Map();
+  const mapLike = input as {
+    get?: unknown;
+    has?: unknown;
+    [Symbol.iterator]?: unknown;
+  };
+  if (input === null
+      || typeof input !== 'object'
+      || typeof mapLike.get !== 'function'
+      || typeof mapLike.has !== 'function'
+      || typeof mapLike[Symbol.iterator] !== 'function') {
     throw new ComparabilityValidationError(
       'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
-      'Comparability Runtime attestations must use a trusted Map capability.',
+      'Comparability Runtime attestations must be a ReadonlyMap-compatible iterable.',
     );
   }
-  for (const [identityDigest, attestation] of attestations) {
-    if (!digestIsValid(identityDigest)
-        || attestation === null
-        || typeof attestation !== 'object'
-        || !digestIsValid(attestation.attestationDigest)
-        || attestation.verifiedAssuranceLevel !== 'verified') {
-      throw new ComparabilityValidationError(
-        'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
-        'Comparability verification context contains an invalid Runtime attestation.',
-      );
+  const attestations = new Map<Sha256Digest, ComparabilityRuntimeAttestation>();
+  try {
+    for (const entry of input as unknown as Iterable<unknown>) {
+      if (!Array.isArray(entry) || entry.length !== 2) {
+        throw new ComparabilityValidationError(
+          'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+          'Comparability verification context contains a malformed Runtime attestation entry.',
+        );
+      }
+      const [identityDigest, value] = entry;
+      if (!digestIsValid(identityDigest)
+          || value === null
+          || typeof value !== 'object') {
+        throw new ComparabilityValidationError(
+          'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+          'Comparability verification context contains an invalid Runtime attestation.',
+        );
+      }
+      const attestation = value as Record<string, unknown>;
+      if (!digestIsValid(attestation.attestationDigest)
+          || attestation.verifiedAssuranceLevel !== 'verified'
+          || attestations.has(identityDigest)) {
+        throw new ComparabilityValidationError(
+          'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+          'Comparability verification context contains an invalid Runtime attestation.',
+        );
+      }
+      attestations.set(identityDigest, {
+        attestationDigest: attestation.attestationDigest,
+        verifiedAssuranceLevel: 'verified',
+      });
     }
+  } catch (error) {
+    if (error instanceof ComparabilityValidationError) throw error;
+    throw new ComparabilityValidationError(
+      'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+      'Comparability Runtime attestations could not be read as a stable snapshot.',
+    );
   }
   return attestations;
 }
