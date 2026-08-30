@@ -1,23 +1,24 @@
 # Evaluation Runtime Adapter
 
-> **Status**: binding-assembly foundation for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
+> **Status**: binding assembly, verified resource leases, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
 
 ## Boundary
 
 The OMK host consumes the complete output of `compileCliEvaluationInput()` and performs effects outside Evaluation Core. Binding assembly does not create a second plan, reinterpret CLI input, or trust a registry declaration as actual Runtime identity.
 
 ```text
-EvaluationDefinition + RuntimeBindingRequest
-                    │ exact coverage and immutable snapshot
+       compileCliEvaluationInput()
+                    │ complete immutable result
                     ▼
-        assembleOmkRuntimeBindings()
-                    │ implementation factory resolution
-                    ▼
-  immutable binding entries + Core Runtime ports
-                    │ actual identity and capabilities
+       createOmkEvaluationRuntime()
+                    │
+        ┌───────────┼────────────────┐
+        ▼           ▼                ▼
+ binding entries  support ports  run lease registry
+        └───────────┼────────────────┘
                     ▼
        createEvaluationEngine().prepare()
-                    │
+                    │ actual identity and capabilities
                     ▼
               SealedRunPlan
 ```
@@ -51,6 +52,7 @@ Every entry records:
 - the captured port;
 - explicit resource lease requirements;
 - a binding-local `sessionIsolationKey` derived from the complete binding and passed to its factory.
+- for Executor and Evaluator factories only, a binding-scoped resource access view that resolves the current Core `runId` and cannot enumerate another binding or analysis-only resources.
 
 Adapters combine `sessionIsolationKey` with Core's `runId` and `trialId`; it is not permission to pool state across runs or bindings.
 
@@ -71,11 +73,30 @@ File identity is SHA-256 over the consumed bytes. Tree identity uses `omk.tree-s
 
 Per-resource and whole-run byte／entry limits include writable overlays. Planned logical bytes are rejected before copying; entry limits are enforced while bounded resources are materialized. Errors carry stable codes and resource／binding identity but never include locator strings, secret bytes, or Gold content. Structurally valid inventory entries that no active binding requests are not opened, hashed, Git-probed, or copied; this preserves the no-Judge side-effect boundary.
 
+The composition root acquires the complete active-binding lease before Core can call any `openRun()`. It validates exact binding and resource coverage, captures immutable map and descriptor snapshots, and only then registers binding-scoped access. Registration is removed after all Core port teardown has settled, followed by one lease-disposal attempt. Acquisition, cancellation-before-start, EventWriter construction, Core start, Core completion, and failure paths share the same idempotent cleanup promise. Duplicate active `runId` values are rejected before a second acquisition. Gold declared for exploratory post-hoc comparison is not materialized by the single-run Core composition; the separate analysis-host workflow requests that lease when it has an actual consumer.
+
+## Core composition and support ports
+
+`createOmkEvaluationRuntime()` consumes one complete `CliEvaluationCompileResult`; callers cannot pass a replacement Definition or Policy to `prepare()` or `start()`. The composition root validates the compiled canonical digests, snapshots all host-owned configuration, merges Core-owned Analysis schema validators and Runtime factories, assembles bindings, and invokes the real `createEvaluationEngine(...).prepare(...)`. It exposes the independent Series assembly separately rather than placing Series ports in the single-run engine.
+
+Support ports are captured as bound immutable method views. Their presence is derived from the sealed Policy without changing it:
+
+- non-disabled execution or evaluation cache mode requires the corresponding cache port and the exact stage-specific source locator compiled under `orchestration.cacheSources`;
+- reference output or trace capture requires an Execution ContentStore;
+- reference evaluator evidence requires an Evaluation ContentStore;
+- an Evaluator that consumes reference-captured output or trace requires a ContentResolver;
+- required EventWriter mode requires a run-scoped writer factory.
+
+Clock and SchemaValidator contracts are checked before factory assembly. Core-owned Analysis validators are always present. A validator key must equal its complete schema identity; reusing one schema URI with another version, digest, or validator fails closed. Built-in Analysis, MissingPolicy, and Decision factories are merged by implementation ID, and a host factory cannot shadow a Core-owned implementation.
+
+EventWriter is deliberately not stored in the static `EvaluationEngineRuntime`. For optional or required delivery, it is created after resource acquisition and before Core start, then passed through `PreparedEvaluation.start()`. Disabled mode never invokes the factory. Missing or malformed Policy-required ports fail before any Runtime factory or run port is invoked. An absent Judge binding therefore causes no Judge factory construction, credential read, connectivity probe, or resource materialization.
+
 ## Failure ownership
 
 - malformed input, coverage, duplicate, Definition mismatch, missing factory, factory failure, and invalid port use stable `OmkRuntimeAssemblyError` codes before a Run starts;
+- compiled-input, support-port, cache-source, schema conflict, writer construction, active-run, and host cleanup failures use stable `OmkEvaluationRuntimeError` codes;
 - capability, schema, protocol support, identity assurance, and version satisfaction remain Core preparation errors;
-- credentials, connectivity, filesystem readiness, and resource materialization belong to later adapter preflight／lease layers;
+- credentials, connectivity, and physical readiness remain separate adapter preflight concerns; verified resource materialization is a run-scoped host failure before Core starts;
 - provider, session, attempt, cancellation, and dispose failures belong to Runtime ports after the Run starts.
 
 This layer does not modify frozen prompts, scoring stages, statistical formulas, cache semantics, Bundle／Report schemas, or the legacy pipeline.

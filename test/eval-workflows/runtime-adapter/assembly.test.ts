@@ -1,9 +1,14 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createEvaluationSeriesDefinition,
   createEvaluationEngine,
   digestCanonicalJson,
   prepareEvaluationSeriesPlan,
+  schemaIdentityKey,
+  type CoreSchemaValidator,
   type JsonValue,
   type RuntimeIdentity,
   type SchemaIdentity,
@@ -24,11 +29,19 @@ import type { SeriesAnalysisNodeRuntime } from '../../../src/evaluation-core/ser
 import {
   assembleOmkRuntimeBindings,
   createBuiltinOmkAnalysisBindingFactories,
+  createOmkEvaluationRuntime,
   resourceLeaseRequestsFromBindingEntries,
+  type OmkBindingResourceLease,
+  type OmkBindingResourceLeaseRequest,
+  type OmkEvaluationRuntimeSupportPorts,
+  type OmkRunResourceLeases,
   type OmkRuntimeBindingFactories,
   type RuntimeBindingOf,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
-import { compileCliEvaluationInput } from '../../../src/eval-workflows/input-compilation/index.js';
+import {
+  compileCliEvaluationInput,
+  type ResolvedHostResources,
+} from '../../../src/eval-workflows/input-compilation/index.js';
 import { testRuntime } from '../../evaluation-core/compiler/fixtures.js';
 import { validResolvedCliInput } from '../input-compilation/fixtures.js';
 
@@ -322,6 +335,110 @@ function factoriesFor(
   };
 }
 
+function runnableFactoriesFor(
+  compiled: ReturnType<typeof compileCliEvaluationInput>,
+  lifecycle: string[],
+  executeGate?: Promise<void>,
+): OmkRuntimeBindingFactories {
+  const base = factoriesFor(compiled, []);
+  const executors = new Map(base.executorsByImplementationId);
+  for (const [implementationId, factory] of executors) {
+    executors.set(implementationId, async (context) => {
+      const resolved = await factory(context);
+      return {
+        ...resolved,
+        port: {
+          identity: resolved.port.identity,
+          async openRun(runContext) {
+            const lease = context.resourceLeases.forRun(runContext.runId);
+            lifecycle.push(`executor.open:${runContext.runId}:${lease.bindingId}`);
+            return {
+              async openTrial() {
+                return {
+                  async execute() {
+                    if (executeGate !== undefined) await executeGate;
+                    return {
+                      output: {
+                        value: { answer: 'A' },
+                        classification: 'public' as const,
+                      },
+                      trace: {
+                        value: { source: 'test-runtime' },
+                        classification: 'public' as const,
+                      },
+                    };
+                  },
+                  dispose() { lifecycle.push(`executor.trial.dispose:${runContext.runId}`); },
+                };
+              },
+              dispose() { lifecycle.push(`executor.run.dispose:${runContext.runId}`); },
+            };
+          },
+        },
+      };
+    });
+  }
+  const evaluators = new Map(base.evaluatorsByImplementationId);
+  for (const [implementationId, factory] of evaluators) {
+    evaluators.set(implementationId, async (context) => {
+      const resolved = await factory(context);
+      return {
+        ...resolved,
+        port: {
+          identity: resolved.port.identity,
+          async openRun(runContext) {
+            const lease = context.resourceLeases.forRun(runContext.runId);
+            lifecycle.push(`evaluator.open:${runContext.runId}:${lease.bindingId}`);
+            return {
+              async openRecord(recordContext) {
+                return {
+                  async evaluate() {
+                    return {
+                      observations: recordContext.metrics.map((metric) => {
+                        if (metric.valueType === 'numeric') return {
+                          metricId: metric.metricId,
+                          observationStatus: 'observed' as const,
+                          valueType: metric.valueType,
+                          value: 1,
+                        };
+                        if (metric.valueType === 'boolean') return {
+                          metricId: metric.metricId,
+                          observationStatus: 'observed' as const,
+                          valueType: metric.valueType,
+                          value: true,
+                        };
+                        if (metric.valueType === 'ranking') return {
+                          metricId: metric.metricId,
+                          observationStatus: 'observed' as const,
+                          valueType: metric.valueType,
+                          value: ['A'],
+                        };
+                        return {
+                          metricId: metric.metricId,
+                          observationStatus: 'observed' as const,
+                          valueType: metric.valueType,
+                          value: 'A',
+                        };
+                      }),
+                    };
+                  },
+                  dispose() { lifecycle.push(`evaluator.record.dispose:${runContext.runId}`); },
+                };
+              },
+              dispose() { lifecycle.push(`evaluator.run.dispose:${runContext.runId}`); },
+            };
+          },
+        },
+      };
+    });
+  }
+  return {
+    ...base,
+    executorsByImplementationId: executors,
+    evaluatorsByImplementationId: evaluators,
+  };
+}
+
 const clock = {
   monotonicNow: () => 0,
   timestamp: () => '2026-08-30T00:00:00.000Z',
@@ -329,6 +446,79 @@ const clock = {
     if (signal.aborted) throw new Error('aborted');
   },
 };
+
+function compositionInput(options: {
+  judges?: boolean;
+  referenceOutput?: boolean;
+  referenceTrace?: boolean;
+  referenceEvaluationEvidence?: boolean;
+} = {}) {
+  const input = runtimeAssemblyInput();
+  delete input.orchestration.independentSeries;
+  delete input.orchestration.gold;
+  input.judges.enabled = options.judges ?? true;
+  input.policy.evidence = {
+    output: options.referenceOutput === true ? 'reference' : 'full',
+    trace: options.referenceTrace === true ? 'reference' : 'full',
+    evidence: options.referenceEvaluationEvidence === true ? 'reference' : 'full',
+    maximumClassification: 'gold',
+  };
+  return compileCliEvaluationInput(input);
+}
+
+function compositionSupport(): OmkEvaluationRuntimeSupportPorts {
+  return {
+    clock,
+    schemaValidators: testRuntime({
+      evaluatorValueTypes: ['numeric', 'boolean', 'categorical', 'text', 'ranking'],
+    }).schemaValidators,
+  };
+}
+
+function fakeLeases(
+  runId: string,
+  bindings: readonly OmkBindingResourceLeaseRequest[],
+  hostResources: ResolvedHostResources,
+  dispose: () => void,
+): OmkRunResourceLeases {
+  const byBinding = new Map<string, OmkBindingResourceLease>(bindings.map((binding) => [
+    binding.bindingId,
+    Object.freeze({
+      bindingId: binding.bindingId,
+      consumerKind: binding.consumerKind,
+      resourcesByResourceId: new Map(binding.requirements.map((requirement) => {
+        const resolved = hostResources.resources.find((resource) => (
+          resource.descriptor.resourceId === requirement.resourceId
+        ));
+        if (resolved === undefined) throw new Error('missing HostResource fixture');
+        return [requirement.resourceId, requirement.leaseMode === 'copy-on-write-overlay'
+          ? {
+              resourceId: requirement.resourceId,
+              resourceKind: 'workspace' as const,
+              descriptor: resolved.descriptor,
+              snapshotKind: 'directory' as const,
+              leaseMode: requirement.leaseMode,
+              baseSnapshotPath: `/lease/${runId}/${requirement.resourceId}/base`,
+              overlayPath: `/lease/${runId}/${binding.bindingId}/${requirement.resourceId}/overlay`,
+            }
+          : {
+              resourceId: requirement.resourceId,
+              resourceKind: resolved.resourceKind,
+              descriptor: resolved.descriptor,
+              snapshotKind: 'file' as const,
+              leaseMode: requirement.leaseMode,
+              snapshotPath: `/lease/${runId}/${requirement.resourceId}`,
+            }];
+      })),
+    }),
+  ]));
+  return Object.freeze({
+    runId,
+    bindingsByBindingId: byBinding,
+    analysisOnlyResourcesByResourceId: new Map(),
+    async dispose() { dispose(); },
+  });
+}
 
 describe('OMK Evaluation Runtime binding assembly', () => {
   it('assembles exact reference bindings and passes a real Core prepare', async () => {
@@ -709,5 +899,586 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(builtins.analysisNodesByImplementationId.has('bootstrap.mean-percentile/v1')).toBe(true);
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
+  });
+});
+
+describe('OMK Evaluation Runtime composition root', () => {
+  it('uses the verified Node materializer by default and fails closed on missing sources', async () => {
+    const compiled = compositionInput();
+    const lifecycle: string[] = [];
+    const leaseRoot = await mkdtemp(join(tmpdir(), 'omk-composition-test-'));
+    try {
+      const runtime = await createOmkEvaluationRuntime({
+        compiled,
+        factories: runnableFactoriesFor(compiled, lifecycle),
+        support: compositionSupport(),
+        resources: { leaseRoot },
+      });
+      const prepared = await runtime.prepare();
+
+      await expect(prepared.start({ runId: 'node-materializer' })).rejects.toMatchObject({
+        code: 'OMK_RESOURCE_LEASE_SOURCE_INVALID',
+      });
+      expect(lifecycle.some((entry) => entry.startsWith('executor.open:'))).toBe(false);
+    } finally {
+      await rm(leaseRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('runs real Core prepare and acquires leases before any Runtime port opens', async () => {
+    const compiled = compositionInput();
+    const lifecycle: string[] = [];
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          lifecycle.push(`lease.acquire:${request.runId}`);
+          return fakeLeases(request.runId, request.bindings, request.hostResources, () => {
+            disposeCalls += 1;
+            lifecycle.push(`lease.dispose:${request.runId}`);
+          });
+        },
+      },
+    });
+
+    const prepared = await runtime.prepare();
+    expect(digestCanonicalJson(prepared.plan.definition)).toBe(compiled.canonicalDigests.definition);
+    expect(lifecycle).toEqual([]);
+    const run = await prepared.start({ runId: 'composition-run' });
+    const result = await run.result;
+
+    expect(result.status).toBe('failed');
+    expect(lifecycle[0]).toBe('lease.acquire:composition-run');
+    expect(lifecycle.findIndex((entry) => entry.startsWith('executor.open:composition-run:')))
+      .toBeGreaterThan(0);
+    expect(lifecycle.at(-1)).toBe('lease.dispose:composition-run');
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('fails missing Policy-required support ports before invoking any Runtime factory', async () => {
+    const compiled = compositionInput({ referenceTrace: true });
+    const factoryCalls: string[] = [];
+
+    await expect(createOmkEvaluationRuntime({
+      compiled,
+      factories: factoriesFor(compiled, factoryCalls),
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_SUPPORT_PORT_REQUIRED',
+      fieldPath: 'support.executionContentStore',
+    });
+    expect(factoryCalls).toEqual([]);
+    expect(compiled.policy.evidence.trace).toBe('reference');
+  });
+
+  it.each([
+    {
+      evidence: { referenceOutput: true },
+      support: { executionContentStore: { async put() { throw new Error('unused'); } } },
+      fieldPath: 'support.contentResolver',
+    },
+    {
+      evidence: { referenceEvaluationEvidence: true },
+      support: {},
+      fieldPath: 'support.evaluationContentStore',
+    },
+  ])('fails $fieldPath before factory assembly', async ({ evidence, support, fieldPath }) => {
+    const compiled = compositionInput(evidence);
+    const calls: string[] = [];
+
+    await expect(createOmkEvaluationRuntime({
+      compiled,
+      factories: factoriesFor(compiled, calls),
+      support: { ...compositionSupport(), ...support },
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_SUPPORT_PORT_REQUIRED',
+      fieldPath,
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it.each(['execution-cache', 'required-writer'] as const)(
+    'fails a missing %s port before factory assembly',
+    async (scenario) => {
+      const input = runtimeAssemblyInput();
+      delete input.orchestration.independentSeries;
+      delete input.orchestration.resumeSourceLocator;
+      delete input.orchestration.gold;
+      input.policy.evidence = {
+        output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+      };
+      if (scenario === 'execution-cache') {
+        input.policy.cache.executionMode = 'replay-only';
+        input.orchestration.cacheSources = { executionSourceLocator: '/cache/source' };
+      } else {
+        input.policy.eventDelivery = {
+          writerMode: 'required', backpressureMode: 'block', writerFailureMode: 'fail-run',
+        };
+      }
+      const compiled = compileCliEvaluationInput(input);
+      const calls: string[] = [];
+
+      await expect(createOmkEvaluationRuntime({
+        compiled,
+        factories: factoriesFor(compiled, calls),
+        support: compositionSupport(),
+        resources: { leaseRoot: '/unused-test-lease-root' },
+      })).rejects.toMatchObject({
+        code: 'OMK_EVALUATION_RUNTIME_SUPPORT_PORT_REQUIRED',
+        fieldPath: scenario === 'execution-cache'
+          ? 'support.executionCache'
+          : 'support.createEventWriter',
+      });
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it('does not construct or probe Judge Runtime when no Judge binding exists', async () => {
+    const compiled = compositionInput({ judges: false });
+    const lifecycle: string[] = [];
+    const factories = runnableFactoriesFor(compiled, lifecycle);
+    let judgeSideEffects = 0;
+    const evaluators = new Map(factories.evaluatorsByImplementationId);
+    evaluators.set('test.unbound-judge/v1', () => {
+      judgeSideEffects += 1;
+      throw new Error('credential and connectivity side effect must stay unreachable');
+    });
+
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...factories, evaluatorsByImplementationId: evaluators },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+    await runtime.prepare();
+
+    expect(compiled.runtimeBinding.bindings.some((binding) => (
+      binding.runtimeKind === 'evaluator' && binding.qualification !== undefined
+    ))).toBe(false);
+    expect(judgeSideEffects).toBe(0);
+    expect(lifecycle).toEqual([]);
+  });
+
+  it('does not materialize post-hoc Gold for the single-run Core pipeline', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.independentSeries;
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    let materializeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          materializeCalls += 1;
+          expect(request.analysisOnly).toEqual([]);
+          expect(JSON.stringify(request.bindings)).not.toContain('gold-dataset');
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => {},
+          );
+        },
+      },
+    });
+    const run = await (await runtime.prepare()).start({ runId: 'no-core-gold' });
+    await run.result;
+
+    expect(compiled.orchestration.gold?.comparisonMode).toBe('exploratory-post-hoc');
+    expect(materializeCalls).toBe(1);
+  });
+
+  it('rejects duplicate active runId before acquiring a second lease and isolates cleanup', async () => {
+    const compiled = compositionInput();
+    let releaseExecution: (() => void) | undefined;
+    const executeGate = new Promise<void>((resolve) => { releaseExecution = resolve; });
+    const lifecycle: string[] = [];
+    let acquireCalls = 0;
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle, executeGate),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          acquireCalls += 1;
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => { disposeCalls += 1; },
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+    const first = await prepared.start({ runId: 'same-run' });
+    await expect(prepared.start({ runId: 'same-run' })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_RUN_ACTIVE',
+    });
+    expect(acquireCalls).toBe(1);
+
+    releaseExecution?.();
+    await first.result;
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('rejects invalid run options before resource acquisition', async () => {
+    const compiled = compositionInput();
+    let acquireCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          acquireCalls += 1;
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => {},
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+
+    await expect(prepared.start({
+      runId: 'invalid-options',
+      eventBufferCapacity: 0,
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+      fieldPath: 'eventBufferCapacity',
+    });
+    expect(acquireCalls).toBe(0);
+  });
+
+  it('keeps two concurrent run lease projections and teardown independent', async () => {
+    const compiled = compositionInput();
+    let releaseExecution: (() => void) | undefined;
+    const executeGate = new Promise<void>((resolve) => { releaseExecution = resolve; });
+    const lifecycle: string[] = [];
+    const disposed: string[] = [];
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle, executeGate),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          lifecycle.push(`lease.acquire:${request.runId}`);
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => disposed.push(request.runId),
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+    const first = await prepared.start({ runId: 'parallel-a' });
+    const second = await prepared.start({ runId: 'parallel-b' });
+
+    releaseExecution?.();
+    await Promise.all([first.result, second.result]);
+    expect(lifecycle.filter((entry) => entry.startsWith('lease.acquire:')).sort()).toEqual([
+      'lease.acquire:parallel-a',
+      'lease.acquire:parallel-b',
+    ]);
+    expect(lifecycle.some((entry) => entry.startsWith('executor.open:parallel-a:'))).toBe(true);
+    expect(lifecycle.some((entry) => entry.startsWith('executor.open:parallel-b:'))).toBe(true);
+    expect(disposed.sort()).toEqual(['parallel-a', 'parallel-b']);
+  });
+
+  it('rejects writable overlay reuse across active runs before opening the second run', async () => {
+    const compiled = compositionInput();
+    let releaseExecution: (() => void) | undefined;
+    const executeGate = new Promise<void>((resolve) => { releaseExecution = resolve; });
+    const disposed: string[] = [];
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, [], executeGate),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          const leases = fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => disposed.push(request.runId),
+          );
+          for (const binding of leases.bindingsByBindingId.values()) {
+            for (const resource of binding.resourcesByResourceId.values()) {
+              if (resource.leaseMode === 'copy-on-write-overlay') {
+                (resource as { overlayPath: string }).overlayPath =
+                  `/lease/shared-overlay/${binding.bindingId}`;
+              }
+            }
+          }
+          return leases;
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+    const first = await prepared.start({ runId: 'overlay-a' });
+
+    await expect(prepared.start({ runId: 'overlay-b' })).rejects.toMatchObject({
+      code: 'OMK_RESOURCE_LEASE_ISOLATION_MISMATCH',
+    });
+    releaseExecution?.();
+    await first.result;
+    expect(disposed.sort()).toEqual(['overlay-a', 'overlay-b']);
+  });
+
+  it('cleans an acquired lease without opening a port when cancellation wins acquisition', async () => {
+    const compiled = compositionInput();
+    const lifecycle: string[] = [];
+    const controller = new AbortController();
+    let finishAcquisition: (() => void) | undefined;
+    const acquisitionGate = new Promise<void>((resolve) => { finishAcquisition = resolve; });
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          lifecycle.push(`lease.acquire:${request.runId}`);
+          await acquisitionGate;
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => { disposeCalls += 1; },
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+    const start = prepared.start({ runId: 'cancel-acquisition', signal: controller.signal });
+    controller.abort();
+    finishAcquisition?.();
+
+    await expect(start).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_RUN_ABORTED_BEFORE_START',
+    });
+    expect(lifecycle.some((entry) => entry.startsWith('executor.open:'))).toBe(false);
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('rejects incomplete binding resource coverage before opening any Runtime port', async () => {
+    const compiled = compositionInput();
+    const lifecycle: string[] = [];
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          const leases = fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => { disposeCalls += 1; },
+          );
+          const first = [...leases.bindingsByBindingId.values()].find((lease) => (
+            lease.resourcesByResourceId.size > 0
+          ));
+          if (first === undefined) throw new Error('missing resource lease fixture');
+          const resources = first.resourcesByResourceId as Map<string, unknown>;
+          resources.delete(resources.keys().next().value as string);
+          return leases;
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+
+    await expect(prepared.start({ runId: 'incomplete-resources' })).rejects.toMatchObject({
+      code: 'OMK_RESOURCE_LEASE_BINDING_COVERAGE_MISMATCH',
+    });
+    expect(lifecycle.some((entry) => entry.startsWith('executor.open:'))).toBe(false);
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('normalizes an unknown materializer exception without exposing sensitive details', async () => {
+    const compiled = compositionInput();
+    const lifecycle: string[] = [];
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize() {
+          throw new Error('secret locator and credential details');
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+
+    const error = await prepared.start({ runId: 'materializer-failure' }).catch((cause) => cause);
+    expect(error).toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_RESOURCE_LEASE_FAILED' });
+    expect(error.message).not.toContain('secret');
+    expect(error.cause).toBeUndefined();
+    expect(lifecycle.some((entry) => entry.startsWith('executor.open:'))).toBe(false);
+  });
+
+  it('cleans an acquired lease exactly once when EventWriter creation fails', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.independentSeries;
+    delete input.orchestration.gold;
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    input.policy.eventDelivery = {
+      writerMode: 'required', backpressureMode: 'block', writerFailureMode: 'fail-run',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: {
+        ...compositionSupport(),
+        createEventWriter() { throw new Error('writer unavailable'); },
+      },
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => { disposeCalls += 1; },
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+
+    await expect(prepared.start({ runId: 'writer-failure' })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_EVENT_WRITER_FAILED',
+    });
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('does not create an EventWriter when sealed writerMode is disabled', async () => {
+    const compiled = compositionInput();
+    let writerCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: {
+        ...compositionSupport(),
+        createEventWriter() {
+          writerCalls += 1;
+          return { async write() {} };
+        },
+      },
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => {},
+          );
+        },
+      },
+    });
+    const run = await (await runtime.prepare()).start({ runId: 'writer-disabled' });
+    await run.result;
+
+    expect(compiled.policy.eventDelivery.writerMode).toBe('disabled');
+    expect(writerCalls).toBe(0);
+  });
+
+  it('reports lease disposal failure without retrying destructive cleanup', async () => {
+    const compiled = compositionInput();
+    let disposeCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          return fakeLeases(request.runId, request.bindings, request.hostResources, () => {
+            disposeCalls += 1;
+            throw new Error('cannot remove lease');
+          });
+        },
+      },
+    });
+    const run = await (await runtime.prepare()).start({ runId: 'dispose-failure' });
+
+    await expect(run.result).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_CLEANUP_FAILED',
+    });
+    expect(disposeCalls).toBe(1);
+  });
+
+  it('fails conflicting SchemaValidator identities and cache sources without rewriting Policy', async () => {
+    const compiled = compositionInput();
+    const support = compositionSupport();
+    const validators = new Map(support.schemaValidators);
+    const first = validators.values().next().value as CoreSchemaValidator;
+    validators.set(schemaIdentityKey({
+      ...first.schema,
+      schemaVersion: `${first.schema.schemaVersion}.conflict`,
+    }), {
+      schema: { ...first.schema, schemaVersion: `${first.schema.schemaVersion}.conflict` },
+      parse: first.parse,
+    });
+
+    await expect(createOmkEvaluationRuntime({
+      compiled,
+      factories: factoriesFor(compiled, []),
+      support: { ...support, schemaValidators: validators },
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_SCHEMA_VALIDATOR_CONFLICT' });
+
+    const cacheInput = runtimeAssemblyInput();
+    delete cacheInput.orchestration.independentSeries;
+    delete cacheInput.orchestration.resumeSourceLocator;
+    cacheInput.policy.cache.executionMode = 'replay-only';
+    cacheInput.orchestration.cacheSources = { executionSourceLocator: '/cache/source-a' };
+    cacheInput.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const cacheCompiled = compileCliEvaluationInput(cacheInput);
+    await expect(createOmkEvaluationRuntime({
+      compiled: cacheCompiled,
+      factories: factoriesFor(cacheCompiled, []),
+      support: {
+        ...compositionSupport(),
+        executionCache: {
+          sourceLocator: '/cache/source-b',
+          port: { async get() { return undefined; }, async put() {} },
+        },
+      },
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_CACHE_SOURCE_MISMATCH' });
+    expect(cacheCompiled.policy.cache.executionMode).toBe('replay-only');
   });
 });

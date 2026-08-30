@@ -78,6 +78,11 @@ export interface OmkBindingResourceLease {
   readonly resourcesByResourceId: ReadonlyMap<string, OmkLeasedHostResource>;
 }
 
+/** Binding-scoped view captured by one Runtime factory. */
+export interface OmkBindingResourceLeaseAccess {
+  forRun(runId: string): OmkBindingResourceLease;
+}
+
 export interface OmkRunResourceLeases {
   readonly runId: string;
   readonly bindingsByBindingId: ReadonlyMap<string, OmkBindingResourceLease>;
@@ -85,6 +90,37 @@ export interface OmkRunResourceLeases {
   readonly analysisOnlyResourcesByResourceId: ReadonlyMap<string, OmkLeasedHostResource>;
   /** Idempotent API with exactly one underlying cleanup attempt. */
   dispose(): Promise<void>;
+}
+
+/** Host-only lifecycle controller; Runtime factories receive only the scoped access view. */
+export interface OmkRunResourceLeaseRegistry {
+  register(leases: OmkRunResourceLeases): void;
+  unregister(runId: string): void;
+}
+
+export type OmkResourceLeaseAccessErrorCode =
+  | 'OMK_RESOURCE_LEASE_RUN_ACTIVE'
+  | 'OMK_RESOURCE_LEASE_RUN_INACTIVE'
+  | 'OMK_RESOURCE_LEASE_BINDING_COVERAGE_MISMATCH'
+  | 'OMK_RESOURCE_LEASE_ISOLATION_MISMATCH';
+
+export class OmkResourceLeaseAccessError extends Error {
+  readonly code: OmkResourceLeaseAccessErrorCode;
+  readonly runId?: string;
+  readonly bindingId?: string;
+
+  constructor(input: {
+    code: OmkResourceLeaseAccessErrorCode;
+    message: string;
+    runId?: string;
+    bindingId?: string;
+  }) {
+    super(input.message);
+    this.name = 'OmkResourceLeaseAccessError';
+    this.code = input.code;
+    this.runId = input.runId;
+    this.bindingId = input.bindingId;
+  }
 }
 
 export interface MaterializeNodeRunResourceLeasesInput {

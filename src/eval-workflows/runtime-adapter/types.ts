@@ -25,6 +25,10 @@ import type {
   RuntimeBindingRequest,
   RuntimeResourceLeaseRequirement,
 } from '../input-compilation/index.js';
+import type {
+  OmkBindingResourceLeaseAccess,
+  OmkRunResourceLeaseRegistry,
+} from './resource-leases/types.js';
 
 export type RuntimeBindingOf<RuntimeKind extends RuntimeBinding['runtimeKind']> = Extract<
   RuntimeBinding,
@@ -51,11 +55,13 @@ interface OmkBindingFactoryContext {
 export interface OmkExecutorBindingContext extends OmkBindingFactoryContext {
   readonly binding: RuntimeBindingOf<'executor'>;
   readonly target: EvaluationDefinition['targets'][number];
+  readonly resourceLeases: OmkBindingResourceLeaseAccess;
 }
 
 export interface OmkEvaluatorBindingContext extends OmkBindingFactoryContext {
   readonly binding: RuntimeBindingOf<'evaluator'>;
   readonly evaluator: EvaluationDefinition['evaluators'][number];
+  readonly resourceLeases: OmkBindingResourceLeaseAccess;
 }
 
 export type OmkAnalysisNodeBindingContext =
@@ -159,6 +165,7 @@ export type OmkEvaluationSeriesRuntimeBindingEntry =
 export interface OmkEvaluationRuntimeBindingAssembly {
   readonly entries: readonly OmkEvaluationRuntimeBindingEntry[];
   readonly bindings: EvaluationEngineRuntimeBindings;
+  readonly resourceLeaseRegistry: OmkRunResourceLeaseRegistry;
 }
 
 export interface OmkEvaluationSeriesRuntimeBindingAssembly {

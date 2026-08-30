@@ -29,6 +29,10 @@ import {
   type OmkRuntimePortBinding,
   type RuntimeBindingOf,
 } from './types.js';
+import {
+  createOmkResourceLeaseAccessRegistry,
+  type OmkResourceLeaseAccessRegistry,
+} from './resource-leases/access.js';
 
 type EvaluationBindingKind = Exclude<
   RuntimeBinding['runtimeKind'],
@@ -500,13 +504,20 @@ function contextFor(
   binding: RuntimeBinding,
   expected: ExpectedBinding,
   isolationKey: string,
+  resourceLeaseAccess: OmkResourceLeaseAccessRegistry,
 ): unknown {
   switch (binding.runtimeKind) {
     case 'executor': return Object.freeze({
-      binding, target: expected.subject, sessionIsolationKey: isolationKey,
+      binding,
+      target: expected.subject,
+      sessionIsolationKey: isolationKey,
+      resourceLeases: resourceLeaseAccess.accessFor(binding),
     });
     case 'evaluator': return Object.freeze({
-      binding, evaluator: expected.subject, sessionIsolationKey: isolationKey,
+      binding,
+      evaluator: expected.subject,
+      sessionIsolationKey: isolationKey,
+      resourceLeases: resourceLeaseAccess.accessFor(binding),
     });
     case 'analysis-node': return Object.freeze({
       binding,
@@ -608,6 +619,7 @@ async function materializeEntry(
   binding: RuntimeBinding,
   expected: ExpectedBinding,
   factories: OmkRuntimeBindingFactories,
+  resourceLeaseAccess: OmkResourceLeaseAccessRegistry,
 ): Promise<OmkEvaluationRuntimeBindingEntry | OmkEvaluationSeriesRuntimeBindingEntry> {
   const factory = factoryFor(factories, binding);
   if (factory === undefined) fail({
@@ -620,7 +632,7 @@ async function materializeEntry(
   const isolationKey = sessionIsolationKey(binding);
   try {
     result = await factory(
-      contextFor(binding, expected, isolationKey) as never,
+      contextFor(binding, expected, isolationKey, resourceLeaseAccess) as never,
     ) as OmkRuntimePortBinding<unknown>;
   } catch (cause) {
     fail({
@@ -843,6 +855,11 @@ export async function assembleOmkRuntimeBindings(
     compareStrings(left.bindingId, right.bindingId)
   ));
   assertFactoriesAvailable(ordered, snapshotInput.factories);
+  const resourceLeaseAccess = createOmkResourceLeaseAccessRegistry(
+    ordered.filter((binding): binding is Extract<RuntimeBinding, {
+      runtimeKind: 'executor' | 'evaluator';
+    }> => binding.runtimeKind === 'executor' || binding.runtimeKind === 'evaluator'),
+  );
   const entries: Array<
     OmkEvaluationRuntimeBindingEntry | OmkEvaluationSeriesRuntimeBindingEntry
   > = [];
@@ -851,6 +868,7 @@ export async function assembleOmkRuntimeBindings(
       binding,
       expected.get(keyForBinding(binding)) as ExpectedBinding,
       snapshotInput.factories,
+      resourceLeaseAccess,
     ));
   }
   const evaluationEntries = entries.filter((entry): entry is OmkEvaluationRuntimeBindingEntry => (
@@ -865,6 +883,7 @@ export async function assembleOmkRuntimeBindings(
     evaluation: Object.freeze({
       entries: Object.freeze(evaluationEntries),
       bindings: evaluationResolvers(evaluationEntries),
+      resourceLeaseRegistry: resourceLeaseAccess.lifecycle,
     }),
     ...(snapshotInput.seriesDefinition === undefined ? {} : { series: seriesAssembly(seriesEntries) }),
   });
