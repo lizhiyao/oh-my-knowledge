@@ -12,6 +12,50 @@ import type {
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 
 /**
+ * Machine-enumerable public input surface accepted by the current eval config
+ * validator. Nested object containers are included because they are user-facing
+ * source keys too; #451's registry guard requires every path to be classified.
+ */
+export const EVAL_CONFIG_SCHEMA_SOURCE_PATHS = [
+  'samples',
+  'executor',
+  'model',
+  'effort',
+  'noDiagnostic',
+  'skipDoctor',
+  'judgeModels',
+  'judgeModels[].executor',
+  'judgeModels[].model',
+  'concurrency',
+  'timeoutMs',
+  'noCache',
+  'noJudge',
+  'mcpConfig',
+  'variants',
+  'variants[].name',
+  'variants[].role',
+  'variants[].artifact',
+  'variants[].git',
+  'variants[].git.url',
+  'variants[].git.ref',
+  'variants[].git.spec',
+  'variants[].cwd',
+  'variants[].allowedSkills',
+  'budget',
+  'budget.totalUSD',
+  'budget.perSampleUSD',
+  'budget.perSampleMs',
+  'repeat',
+  'holdoutRatio',
+  'judgeRepeat',
+  'bootstrap',
+  'bootstrapSamples',
+  'goldDir',
+  'lengthDebias',
+  'strictBaseline',
+] as const;
+
+/**
  * Load and validate an eval.yaml (or .json) config file.
  * All relative paths in the config are resolved against the config file's directory.
  */

@@ -8,6 +8,8 @@
 // - docs/reference/cli.md / docs/zh/reference/cli.md:per-command flags 模式,
 //   每个 H3 顶层命令独立 marker 对,内容只输出 flag list
 //   (cli.md 已经手写 bash 示例和 prose,不重复)。
+// - docs/(zh/)specs/cli-evaluation-input-compilation.md:从 #451 declarative
+//   registry 生成完整 input classification 表。
 //
 // 模式:
 // - `yarn build:docs`(--write)→ 覆盖所有 target 的 marker 区段
@@ -19,6 +21,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Config, type Command } from '@oclif/core';
 
 const REPO_ROOT = resolve(process.cwd());
@@ -245,7 +248,15 @@ interface PerCmdFlagsTarget {
   topLevelIds: readonly string[];
 }
 
-type Target = FullbodyTarget | PerCmdFlagsTarget;
+interface EvalInputRegistryTarget {
+  mode: 'eval-input-registry';
+  file: string;
+  lang: Lang;
+  markerStart: string;
+  markerEnd: string;
+}
+
+type Target = FullbodyTarget | PerCmdFlagsTarget | EvalInputRegistryTarget;
 
 /**
  * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(cli.md per-cmd-flags
@@ -278,6 +289,20 @@ export function buildTargets(topLevelIds: readonly string[]): Target[] {
       file: 'docs/zh/reference/cli.md',
       lang: 'zh',
       topLevelIds,
+    },
+    {
+      mode: 'eval-input-registry',
+      file: 'docs/specs/cli-evaluation-input-compilation.md',
+      lang: 'en',
+      markerStart: '<!-- omk:eval-input-registry:start -->',
+      markerEnd: '<!-- omk:eval-input-registry:end -->',
+    },
+    {
+      mode: 'eval-input-registry',
+      file: 'docs/zh/specs/cli-evaluation-input-compilation.md',
+      lang: 'zh',
+      markerStart: '<!-- omk:eval-input-registry:start -->',
+      markerEnd: '<!-- omk:eval-input-registry:end -->',
     },
   ];
 }
@@ -379,6 +404,13 @@ interface TargetResult {
 
 async function generateAll(): Promise<TargetResult[]> {
   const config = await Config.load({ root: REPO_ROOT });
+  const registryModuleUrl = pathToFileURL(resolve(
+    REPO_ROOT,
+    'dist/eval-workflows/input-compilation/registry.js',
+  )).href;
+  const registryModule = await import(registryModuleUrl) as {
+    renderCliEvaluationInputRegistryMarkdown(language: Lang): string;
+  };
   const topLevelIds = getTopLevelIds(config);
   const targets = buildTargets(topLevelIds);
   const results: TargetResult[] = [];
@@ -394,13 +426,24 @@ async function generateAll(): Promise<TargetResult[]> {
         next,
         missingMarkers: error ? [error] : [],
       });
-    } else {
+    } else if (target.mode === 'per-cmd-flags') {
       const { next, missing } = composePerCmdFlags(current, config, target);
       results.push({
         file: target.file,
         current,
         next,
         missingMarkers: missing,
+      });
+    } else {
+      const body = registryModule.renderCliEvaluationInputRegistryMarkdown(target.lang);
+      const split = splitOnMarker(current, target.markerStart, target.markerEnd);
+      results.push({
+        file: target.file,
+        current,
+        next: split === null ? current : `${split.pre}\n${body}\n${split.post}`,
+        missingMarkers: split === null
+          ? [`missing markers ${target.markerStart} / ${target.markerEnd}`]
+          : [],
       });
     }
   }
