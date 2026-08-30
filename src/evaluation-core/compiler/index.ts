@@ -15,6 +15,9 @@ import {
   parseWireDocument,
   projectExecutionExperimentDesign,
   projectEvaluationInputs,
+  projectAnalysisInputs,
+  projectAnalysisCohorts,
+  projectAnalysisGraph,
   projectExecutionInputs,
   schemaIdentityKey,
   type CoreSchemaValidator,
@@ -71,16 +74,20 @@ interface ResolvedAnalysisRuntime {
 
 const CONTRACT_PATH_SEGMENTS = new Set([
   'schemaVersion', 'dataset', 'datasetId', 'samples', 'sampleId', 'input',
-  'executionContext', 'expected', 'evaluationContext', 'annotations', 'targets',
+  'executionContext', 'expected', 'evaluationContext', 'analysis', 'analysisCohorts',
+  'cohortId', 'cohortSetId', 'cohortSetKind', 'classification', 'disclosure',
+  'derivation', 'algorithmId', 'membershipValue', 'context', 'annotations', 'targets',
   'targetId', 'targetKind', 'protocolId', 'executorId', 'versionConstraint', 'config',
-  'evaluators', 'evaluatorId', 'evaluatorKind', 'implementationId', 'metricIds',
+  'evaluators', 'evaluatorId', 'evaluatorKind', 'implementationId', 'measurement',
+  'instrumentId', 'ensembleMemberId', 'replicateGroupId', 'replicateIndex', 'metricIds',
   'inputs', 'bindingId', 'sourceKind', 'pointer', 'metrics', 'metricId', 'valueType',
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
   'seedCoupling', 'randomizationSlots', 'randomizationSlotId', 'schedulingTargetGroups',
   'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'analysisMode', 'nodes', 'nodeId',
-  'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
+  'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'cohortFilter',
+  'includeCohortIds', 'excludeCohortIds', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
   'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
   'hypothesisId', 'treatmentTargetId',
@@ -91,6 +98,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'evaluationMode', 'evidence', 'output', 'trace', 'maximumClassification', 'failure',
   'failureMode', 'maxFailures', 'eventDelivery', 'writerMode', 'backpressureMode',
   'writerFailureMode', 'extensions', 'schemaUri', 'schemaDigest', 'data',
+  'seriesMembership', 'seriesDesignDigest', 'memberId',
 ]);
 
 function compareStrings(left: string, right: string): number {
@@ -1090,6 +1098,27 @@ export async function prepareEvaluationPlan(
     definitionInput,
     'EvaluationDefinition',
   );
+  definition = {
+    ...definition,
+    dataset: {
+      ...definition.dataset,
+      samples: definition.dataset.samples.map((sample) => ({
+        ...sample,
+        ...(sample.analysis === undefined ? {} : {
+          analysis: {
+            ...sample.analysis,
+            memberships: [...sample.analysis.memberships].sort((left, right) => (
+              compareStrings(left.cohortId, right.cohortId)
+            )),
+          },
+        }),
+      })),
+      ...(definition.dataset.analysisCohorts === undefined ? {} : {
+        analysisCohorts: projectAnalysisCohorts(definition.dataset),
+      }),
+    },
+    analysisGraph: projectAnalysisGraph(definition.analysisGraph),
+  };
   const measurementPolicy = parseInput(
     MeasurementPolicySchema,
     measurementPolicyInput,
@@ -1149,6 +1178,9 @@ export async function prepareEvaluationPlan(
     analysisRuntimes,
     decisionRuntimes,
     schemaIdentities,
+    ...(definition.seriesMembership !== undefined
+      ? { seriesMembership: definition.seriesMembership }
+      : {}),
     stageExtensions,
   });
 
@@ -1200,6 +1232,9 @@ export async function prepareEvaluationPlan(
   const analysis = {
     schemaVersion: ANALYSIS_PLAN_SCHEMA_VERSION,
     evaluationPlanDigest: digests.evaluationPlanDigest,
+    analysisInputDigest: digests.analysisInputDigest,
+    samples: projectAnalysisInputs(definition.dataset),
+    cohorts: projectAnalysisCohorts(definition.dataset),
     metrics: definition.metrics,
     analysisGraph: definition.analysisGraph,
     experiment: definition.experiment,
@@ -1213,6 +1248,7 @@ export async function prepareEvaluationPlan(
   const decision = {
     schemaVersion: DECISION_PLAN_SCHEMA_VERSION,
     analysisPlanDigest: digests.analysisPlanDigest,
+    analysisInputDigest: digests.analysisInputDigest,
     ...(definition.decisionPolicy !== undefined
       ? { decisionPolicy: definition.decisionPolicy }
       : {}),

@@ -36,6 +36,13 @@ function row(input: {
     trialIndex,
     trialId,
     evaluatorId: 'score-evaluator',
+    measurement: {
+      instrumentId: 'score-instrument',
+      ensembleMemberId: 'score-member',
+      replicateGroupId: 'score-primary',
+      replicateIndex: 0,
+    },
+    cohortIds: [],
     metricId: 'score',
     valueType: 'numeric',
     samplingUnitIds: {
@@ -108,6 +115,8 @@ function context(input: {
       ...(input.resamplingUnit === 'cluster' ? { clusterKey: '/input/cluster' } : {}),
     },
     rootSeed: 'stable-seed',
+    samples: [],
+    cohorts: [],
     signal: new AbortController().signal,
   };
 }
@@ -350,6 +359,7 @@ describe('Evaluation Core built-in estimators', () => {
         seedCoupling: 'shared-within-block',
       },
       rootSeed: 'stable-seed',
+      cohorts: [],
       signal: new AbortController().signal,
     } as unknown as AnalysisNodeExecutionContext;
     const result = await execute(input);

@@ -11,6 +11,8 @@ import {
   digestCanonicalJson,
   generateRunContractSchemaIdentities,
   projectEvaluationInputs,
+  projectAnalysisInputs,
+  projectAnalysisCohorts,
   projectExecutionInputs,
   type EvaluationDataset,
   type EvaluationDefinition,
@@ -25,7 +27,16 @@ const dataset: EvaluationDataset = {
     executionContext: { locale: 'zh-CN' },
     expected: { answer: 'A' },
     evaluationContext: { rubric: 'correctness' },
+    analysis: { memberships: [{ cohortId: 'validation' }] },
     annotations: { owner: 'team-a' },
+  }],
+  analysisCohorts: [{
+    cohortId: 'validation',
+    cohortSetId: 'selection-split',
+    cohortSetKind: 'partition',
+    classification: 'sensitive',
+    disclosure: 'identity-only',
+    derivation: { algorithmId: 'seeded-hash/v1', seed: 'split-seed' },
   }],
   annotations: { project: 'omk' },
 };
@@ -76,6 +87,12 @@ const definition: EvaluationDefinition = {
     evaluatorId: 'exact',
     evaluatorKind: 'assertion',
     implementationId: 'exact/v1',
+    measurement: {
+      instrumentId: 'exact-assertion',
+      ensembleMemberId: 'exact-local',
+      replicateGroupId: 'exact-primary',
+      replicateIndex: 0,
+    },
     metricIds: ['correct'],
     inputs: [
       { bindingId: 'output', sourceKind: 'output', pointer: '' },
@@ -125,6 +142,9 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
     analysisRuntimes: [],
     decisionRuntimes: [],
     schemaIdentities: generateRunContractSchemaIdentities(),
+    ...(current.seriesMembership === undefined
+      ? {}
+      : { seriesMembership: current.seriesMembership }),
   });
 }
 
@@ -187,6 +207,70 @@ describe('Evaluation Core layered digests', () => {
       evaluationContext: { rubric: 'correctness' },
     });
     expect(projectEvaluationInputs(dataset)[0]).not.toHaveProperty('annotations');
+    expect(projectEvaluationInputs(dataset)[0]).not.toHaveProperty('analysis');
+    expect(projectAnalysisInputs(dataset)).toEqual([{
+      sampleId: 's1',
+      analysis: { memberships: [{ cohortId: 'validation' }] },
+    }]);
+    expect(projectAnalysisCohorts(dataset).map((cohort) => cohort.cohortId)).toEqual([
+      'validation',
+    ]);
+  });
+
+  it('invalidates only Analysis and downstream identity when cohort membership changes', () => {
+    const first = planDigests(definition);
+    const changed: EvaluationDefinition = {
+      ...definition,
+      dataset: {
+        ...definition.dataset,
+        samples: [{
+          ...definition.dataset.samples[0],
+          analysis: { memberships: [] },
+        }],
+      },
+    };
+    const second = planDigests(changed);
+
+    expect(second.executionInputDigest).toBe(first.executionInputDigest);
+    expect(second.evaluationInputDigest).toBe(first.evaluationInputDigest);
+    expect(second.analysisInputDigest).not.toBe(first.analysisInputDigest);
+    expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
+    expect(second.runContractDigest).not.toBe(first.runContractDigest);
+  });
+
+  it('canonicalizes cohort and membership set order', () => {
+    const training = {
+      cohortId: 'training',
+      cohortSetId: 'quality-tags',
+      cohortSetKind: 'cohort' as const,
+      classification: 'sensitive' as const,
+      disclosure: 'identity-only' as const,
+    };
+    const validation = definition.dataset.analysisCohorts?.[0];
+    if (validation === undefined) throw new Error('fixture cohort missing');
+    const left: EvaluationDataset = {
+      ...definition.dataset,
+      analysisCohorts: [validation, training],
+      samples: [{
+        ...definition.dataset.samples[0],
+        analysis: { memberships: [{ cohortId: 'validation' }, { cohortId: 'training' }] },
+      }],
+    };
+    const right: EvaluationDataset = {
+      ...left,
+      analysisCohorts: [training, validation],
+      samples: [{
+        ...left.samples[0],
+        analysis: { memberships: [{ cohortId: 'training' }, { cohortId: 'validation' }] },
+      }],
+    };
+
+    expect(computeDatasetDigests(right).analysisInputDigest).toBe(
+      computeDatasetDigests(left).analysisInputDigest,
+    );
   });
 
   it('changes lineage and evaluation identities for Gold without changing execution identity', () => {
@@ -295,6 +379,24 @@ describe('Evaluation Core layered digests', () => {
       },
     };
     const second = planDigests(definition, changedPolicy);
+
+    expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
+    expect(second.analysisPlanDigest).toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).toBe(first.decisionPlanDigest);
+    expect(second.runContractDigest).not.toBe(first.runContractDigest);
+  });
+
+  it('binds preregistered Series membership only at the Run contract root', () => {
+    const first = planDigests(definition);
+    const second = planDigests({
+      ...definition,
+      seriesMembership: {
+        seriesDesignDigest: digestCanonicalJson({ series: 'release-stability' }),
+        memberId: 'repeat-1',
+        replicateIndex: 0,
+      },
+    });
 
     expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
     expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);

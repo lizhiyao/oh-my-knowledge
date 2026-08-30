@@ -1,0 +1,573 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.evaluation-series-plan/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisGraph": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "analysisMode": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "comparabilityPolicy": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "decisionPolicy": {
+          "$ref": "#/$defs/__schema14"
+        },
+        "experimentalUnit": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "extensions": {
+          "$ref": "#/$defs/__schema15"
+        },
+        "members": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "schemaVersion": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "seriesDesignDigest": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "seriesId": {
+          "$ref": "#/$defs/__schema3"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "seriesId",
+        "seriesDesignDigest",
+        "analysisMode",
+        "experimentalUnit",
+        "members",
+        "comparabilityPolicy",
+        "analysisGraph"
+      ],
+      "title": "OMK Evaluation Series Definition v1",
+      "type": "object"
+    },
+    "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/__schema11"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisStandardId": {
+          "$ref": "#/$defs/__schema3",
+          "pattern": "(?:\\/|:)v[1-9]\\d*$"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "minimumMemberEvidenceStatus": {
+          "enum": [
+            "complete",
+            "partial"
+          ],
+          "type": "string"
+        },
+        "nodeId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "outputResultId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema13"
+        }
+      },
+      "required": [
+        "nodeId",
+        "implementationId",
+        "analysisStandardId",
+        "minimumMemberEvidenceStatus",
+        "inputs",
+        "outputResultId"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "referenceId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "seriesInputKind": {
+              "const": "members",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seriesInputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "referenceId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "seriesInputKind": {
+              "const": "analysis-result",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seriesInputKind",
+            "referenceId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema13": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema14": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisResultIds": {
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "decisionPolicyId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "minimumCoverageRatio": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "minimumMemberEvidenceStatus": {
+          "enum": [
+            "complete",
+            "partial"
+          ],
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/__schema13"
+        }
+      },
+      "required": [
+        "decisionPolicyId",
+        "implementationId",
+        "analysisResultIds",
+        "minimumCoverageRatio",
+        "minimumMemberEvidenceStatus"
+      ],
+      "type": "object"
+    },
+    "__schema15": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema16"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema16"
+      },
+      "type": "object"
+    },
+    "__schema16": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
+    "__schema17": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "identity": {
+                "$ref": "#/$defs/__schema18"
+              },
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "schemaDigest": {
+                    "$ref": "#/$defs/__schema4"
+                  },
+                  "schemaUri": {
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  "schemaVersion": {
+                    "$ref": "#/$defs/__schema19"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "schemaUri",
+                  "schemaDigest"
+                ],
+                "type": "object"
+              },
+              "referenceId": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "runtimeKind": {
+                "const": "series-analysis-node",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runtimeKind",
+              "referenceId",
+              "identity",
+              "outputSchema"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "identity": {
+                "$ref": "#/$defs/__schema18"
+              },
+              "referenceId": {
+                "$ref": "#/$defs/__schema3"
+              },
+              "runtimeKind": {
+                "const": "series-decision-policy",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runtimeKind",
+              "referenceId",
+              "identity"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "assuranceLevel": {
+          "enum": [
+            "verified",
+            "declared",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/__schema13"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "fingerprintBasis": {
+          "enum": [
+            "content-derived",
+            "environment-derived",
+            "self-reported",
+            "opaque"
+          ],
+          "type": "string"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "implementationManifest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/__schema20"
+            },
+            {
+              "$ref": "#/$defs/__schema21"
+            }
+          ]
+        },
+        "provenanceFacets": {
+          "additionalProperties": false,
+          "properties": {
+            "attestation": {
+              "additionalProperties": false,
+              "properties": {
+                "attestationDigest": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "attestorId": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              "required": [
+                "attestationDigest"
+              ],
+              "type": "object"
+            },
+            "observation": {
+              "additionalProperties": false,
+              "properties": {
+                "observedAt": {
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                  "type": "string"
+                },
+                "observerId": {
+                  "$ref": "#/$defs/__schema3"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "version": {
+          "$ref": "#/$defs/__schema19"
+        }
+      },
+      "required": [
+        "implementationId",
+        "fingerprint",
+        "fingerprintBasis",
+        "assuranceLevel",
+        "capabilities",
+        "implementationManifest"
+      ],
+      "type": "object"
+    },
+    "__schema19": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema2": {
+      "const": "omk.evaluation-series-definition/v1",
+      "type": "string"
+    },
+    "__schema20": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema21": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema22"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema22": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema13"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema3": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema4": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema5": {
+      "enum": [
+        "preregistered",
+        "exploratory"
+      ],
+      "type": "string"
+    },
+    "__schema6": {
+      "const": "run",
+      "type": "string"
+    },
+    "__schema7": {
+      "items": {
+        "$ref": "#/$defs/__schema8"
+      },
+      "minItems": 2,
+      "type": "array"
+    },
+    "__schema8": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRunContractDigest": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "memberId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "replicateIndex": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "memberId",
+        "replicateIndex"
+      ],
+      "type": "object"
+    },
+    "__schema9": {
+      "additionalProperties": false,
+      "properties": {
+        "comparisonScope": {
+          "enum": [
+            "evaluation",
+            "analysis",
+            "decision"
+          ],
+          "type": "string"
+        },
+        "designMode": {
+          "const": "exact-measurement-design",
+          "type": "string"
+        },
+        "minimumStatus": {
+          "enum": [
+            "compatible",
+            "conditional"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "designMode",
+        "comparisonScope",
+        "minimumStatus"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/evaluation-series-plan.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "definition": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "runtimes": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "seriesPlanDigest": {
+      "$ref": "#/$defs/__schema4"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "definition",
+    "runtimes",
+    "seriesPlanDigest"
+  ],
+  "title": "OMK Evaluation Series Plan v1",
+  "type": "object"
+}

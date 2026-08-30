@@ -99,6 +99,12 @@ export interface EvaluatorRecordContext {
   trialIndex: number;
   trialId: Sha256Digest;
   evaluatorId: string;
+  measurement: {
+    instrumentId: string;
+    ensembleMemberId: string;
+    replicateGroupId: string;
+    replicateIndex: number;
+  };
   evaluationId: Sha256Digest;
   evaluatorConfig?: JsonValue;
   bindings: readonly EvaluatorBindingValue[];

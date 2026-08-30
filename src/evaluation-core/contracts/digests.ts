@@ -3,6 +3,7 @@ import type {
   ComparisonDefinition,
   DecisionPolicyDefinition,
   EvaluationDataset,
+  EvaluationDefinition,
   EvaluatorDefinition,
   ExecutionExperimentDesign,
   ExperimentDesign,
@@ -17,6 +18,7 @@ import {
   EXECUTION_PLAN_SCHEMA_VERSION,
   RUN_PLAN_SCHEMA_VERSION,
   type EvaluationInputSample,
+  type AnalysisInputSample,
   type ExecutionInputSample,
   type PlanDigests,
   type ResolvedRuntime,
@@ -35,6 +37,7 @@ export interface DatasetDigests {
   datasetRevisionDigest: Sha256Digest;
   executionInputDigest: Sha256Digest;
   evaluationInputDigest: Sha256Digest;
+  analysisInputDigest: Sha256Digest;
 }
 
 export function computeRuntimeIdentityDigest(
@@ -87,6 +90,52 @@ export function projectEvaluationInputs(
   }));
 }
 
+export function projectAnalysisInputs(
+  dataset: EvaluationDataset,
+): AnalysisInputSample[] {
+  return dataset.samples.map((sample) => ({
+    sampleId: sample.sampleId,
+    ...(sample.analysis !== undefined ? {
+      analysis: {
+        memberships: [...sample.analysis.memberships].sort((left, right) => (
+          compareStrings(left.cohortId, right.cohortId)
+        )),
+        ...(sample.analysis.context !== undefined ? { context: sample.analysis.context } : {}),
+      },
+    } : {}),
+  }));
+}
+
+export function projectAnalysisCohorts(
+  dataset: EvaluationDataset,
+): NonNullable<EvaluationDataset['analysisCohorts']> {
+  return [...(dataset.analysisCohorts ?? [])].sort((left, right) => (
+    compareStrings(left.cohortSetId, right.cohortSetId)
+    || compareStrings(left.cohortId, right.cohortId)
+  ));
+}
+
+export function projectAnalysisGraph(
+  graph: AnalysisGraphDefinition,
+): AnalysisGraphDefinition {
+  return {
+    analysisMode: graph.analysisMode,
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      ...(node.cohortFilter === undefined ? {} : {
+        cohortFilter: {
+          ...(node.cohortFilter.includeCohortIds === undefined ? {} : {
+            includeCohortIds: [...node.cohortFilter.includeCohortIds].sort(compareStrings),
+          }),
+          ...(node.cohortFilter.excludeCohortIds === undefined ? {} : {
+            excludeCohortIds: [...node.cohortFilter.excludeCohortIds].sort(compareStrings),
+          }),
+        },
+      }),
+    })),
+  };
+}
+
 export function computeDatasetDigests(dataset: EvaluationDataset): DatasetDigests {
   return {
     datasetRevisionDigest: digestCanonicalJson(dataset),
@@ -97,6 +146,11 @@ export function computeDatasetDigests(dataset: EvaluationDataset): DatasetDigest
     evaluationInputDigest: digestCanonicalJson({
       datasetId: dataset.datasetId,
       samples: projectEvaluationInputs(dataset),
+    }),
+    analysisInputDigest: digestCanonicalJson({
+      datasetId: dataset.datasetId,
+      cohorts: projectAnalysisCohorts(dataset),
+      samples: projectAnalysisInputs(dataset),
     }),
   };
 }
@@ -300,6 +354,9 @@ export function computeEvaluationPlanDigest(
 
 export interface AnalysisPlanIdentityInput {
   evaluationPlanDigest: Sha256Digest;
+  analysisInputDigest: Sha256Digest;
+  samples: AnalysisInputSample[];
+  cohorts: NonNullable<EvaluationDataset['analysisCohorts']>;
   metrics: MetricDefinition[];
   analysisGraph: AnalysisGraphDefinition;
   experiment: ExperimentDesign;
@@ -314,8 +371,11 @@ export function computeAnalysisPlanDigest(
   return digestCanonicalJson({
     schemaVersion: ANALYSIS_PLAN_SCHEMA_VERSION,
     evaluationPlanDigest: input.evaluationPlanDigest,
+    analysisInputDigest: input.analysisInputDigest,
+    samples: input.samples,
+    cohorts: input.cohorts,
     metrics: input.metrics,
-    analysisGraph: input.analysisGraph,
+    analysisGraph: projectAnalysisGraph(input.analysisGraph),
     experiment: input.experiment,
     comparisons: input.comparisons,
     analysisRuntimes: input.analysisRuntimes,
@@ -325,6 +385,7 @@ export function computeAnalysisPlanDigest(
 
 export interface DecisionPlanIdentityInput {
   analysisPlanDigest: Sha256Digest;
+  analysisInputDigest: Sha256Digest;
   decisionPolicy?: DecisionPolicyDefinition;
   decisionRuntimes: ResolvedRuntime[];
   extensions?: Extensions;
@@ -336,6 +397,7 @@ export function computeDecisionPlanDigest(
   return digestCanonicalJson({
     schemaVersion: DECISION_PLAN_SCHEMA_VERSION,
     analysisPlanDigest: input.analysisPlanDigest,
+    analysisInputDigest: input.analysisInputDigest,
     ...(input.decisionPolicy !== undefined
       ? { decisionPolicy: input.decisionPolicy }
       : {}),
@@ -351,6 +413,7 @@ export interface RunContractIdentityInput {
   decisionPlanDigest: Sha256Digest;
   schemaIdentities: SchemaIdentity[];
   eventDeliveryPolicy: MeasurementPolicy['eventDelivery'];
+  seriesMembership?: EvaluationDefinition['seriesMembership'];
   extensions?: Extensions;
 }
 
@@ -373,6 +436,9 @@ export function computeRunContractDigest(
       return 0;
     }),
     eventDeliveryPolicy: input.eventDeliveryPolicy,
+    ...(input.seriesMembership !== undefined
+      ? { seriesMembership: input.seriesMembership }
+      : {}),
     ...(input.extensions !== undefined ? { extensions: input.extensions } : {}),
   });
 }
@@ -392,6 +458,7 @@ export interface PlanDigestInput {
   analysisRuntimes: ResolvedRuntime[];
   decisionRuntimes: ResolvedRuntime[];
   schemaIdentities: SchemaIdentity[];
+  seriesMembership?: EvaluationDefinition['seriesMembership'];
   stageExtensions?: {
     execution?: Extensions;
     evaluation?: Extensions;
@@ -456,6 +523,9 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
   });
   const analysisPlanDigest = computeAnalysisPlanDigest({
     evaluationPlanDigest,
+    analysisInputDigest: dataset.analysisInputDigest,
+    samples: projectAnalysisInputs(input.dataset),
+    cohorts: projectAnalysisCohorts(input.dataset),
     metrics: input.metrics,
     analysisGraph: input.analysisGraph,
     experiment: input.experiment,
@@ -467,6 +537,7 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
   });
   const decisionPlanDigest = computeDecisionPlanDigest({
     analysisPlanDigest,
+    analysisInputDigest: dataset.analysisInputDigest,
     ...(input.decisionPolicy !== undefined
       ? { decisionPolicy: input.decisionPolicy }
       : {}),
@@ -482,6 +553,9 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
     decisionPlanDigest,
     schemaIdentities: input.schemaIdentities,
     eventDeliveryPolicy: input.measurementPolicy.eventDelivery,
+    ...(input.seriesMembership !== undefined
+      ? { seriesMembership: input.seriesMembership }
+      : {}),
     ...(input.stageExtensions?.run !== undefined
       ? { extensions: input.stageExtensions.run }
       : {}),

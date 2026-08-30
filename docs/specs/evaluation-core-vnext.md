@@ -126,22 +126,28 @@ interface EvaluationSample {
   executionContext?: JsonValue;
   expected?: JsonValue;
   evaluationContext?: JsonValue;
+  analysis?: {
+    memberships: readonly { cohortId: string; membershipValue?: JsonValue }[];
+    context?: { value: JsonValue; classification: ContentClassification };
+  };
   annotations?: JsonValue;
 }
 ```
 
 - An Executor receives only a frozen projection of `input + executionContext`.
 - An Evaluator may declaratively read output/trace/expected/evaluationContext.
+- An Analysis Runtime receives stable analysis membership through AnalysisPlan only.
 - `annotations` are audit and presentation data and affect neither execution nor scoring.
 - Mappings use restricted JSON Pointer by default and select one value. Multi-value JSONPath is an adapter extension.
 
-A Dataset has three distinct digests:
+A Dataset has four distinct digests:
 
 | Digest | Coverage | Purpose |
 |---|---|---|
 | `datasetRevisionDigest` | complete Dataset | lineage and audit |
 | `executionInputDigest` | `input + executionContext` | ExecutionPlan identity |
 | `evaluationInputDigest` | execution projection plus `expected + evaluationContext` | EvaluationPlan identity |
+| `analysisInputDigest` | stable sample identity, analysis membership/context, and cohort definitions | AnalysisPlan identity |
 
 Changing Gold or evaluator-only metadata cannot change the ExecutionPlan, schedule, or anything observable by an Executor.
 
@@ -379,6 +385,8 @@ evaluationPlanDigest = H(
 
 analysisPlanDigest = H(
   evaluationPlanDigest,
+  analysisInputDigest,
+  analysis samples + cohort definitions,
   AnalysisGraph,
   estimator manifests
 )
@@ -389,7 +397,7 @@ decisionPlanDigest = H(
   DecisionPolicy
 )
 
-runContractDigest = H(all plan digests + schema identities)
+runContractDigest = H(all plan digests + schema identities + event delivery + optional Series membership)
 ```
 
 Annotations such as `project`, `owner`, and `tags` do not enter measurement digests. Output/trace capture mode and their classification ceiling enter ExecutionPlan identity because they change the durable Execution facts and cache key. The complete v1 EvidencePolicy also enters EvaluationPlan because evaluator-produced evidence is an Evaluation fact. Dataset input and expected values are sealed stage inputs rather than EvidencePolicy capture targets: `executionInputDigest` binds executor-visible input, while `evaluationInputDigest` additionally binds expected and evaluation context. Evaluator-evidence capture does not invalidate Execution.
@@ -868,7 +876,7 @@ Every digest is the full lowercase `sha256:<hex>` of RFC 8785 canonical UTF-8 by
 
 [#435](https://github.com/lizhiyao/oh-my-knowledge/issues/435) implements record-scoped re-evaluation as a separate stage. Its ports expose Evaluators, content resolution/storage, cache, clock, a shared EventSequencer, and EventWriter only; no Executor can be reached through the Evaluation API. `startEvaluation(plan, executionBundle, ports, options)` validates the sealed source bundle synchronously before starting asynchronous work.
 
-Evaluation coordinates use canonical `(targetId, sampleId, trialIndex, evaluatorId)` order. `evaluationId`, attempt IDs, and observation IDs use domain-separated digest derivation. Every active EvaluationRecord binds the exact canonical ExecutionRecord digest and resolved Evaluator RuntimeIdentity. The cache key additionally binds the EvaluationPlan, materialized inputs, source record, and effective source trust, so changing Gold, evaluator identity, bindings, execution evidence, or the source trust ceiling cannot silently reuse a score. Cache replay validates the full record schema, retry identities, ordered metric contract, scale, source digest, runtime identity, deterministic attempt-to-record usage aggregation, and provider-cost eligibility before accepting a hit; replay provenance never raises source trust.
+Evaluation coordinates use canonical `(targetId, sampleId, trialIndex, evaluatorId)` order and bind the Evaluator's explicit instrument, ensemble-member, replicate-group, and replicate-index identity. `evaluationId`, attempt IDs, and observation IDs use domain-separated digest derivation. Every active EvaluationRecord binds the exact canonical ExecutionRecord digest, evaluator measurement coordinate, and resolved Evaluator RuntimeIdentity. The cache key additionally binds the EvaluationPlan, materialized inputs, source record, and effective source trust, so changing Gold, evaluator identity, bindings, execution evidence, or the source trust ceiling cannot silently reuse a score. Cache replay validates the full record schema, retry identities, ordered metric contract, scale, source digest, runtime identity, deterministic attempt-to-record usage aggregation, and provider-cost eligibility before accepting a hit; replay provenance never raises source trust.
 
 Evaluation retry, timeout, concurrency, invocation/duration/provider-cost budgets are sealed under `MeasurementPolicy.evaluation`; start-time options cannot override them. An invocation reservation is consumed only immediately before `evaluate()`, so `openRun()` and `openRecord()` failures consume no quota. Failed and retried invocations retain and charge their provider-reported usage exactly like successful invocations. Timeout is cooperative: Core aborts, waits for the evaluator promise to settle, discards any late result, and only then retries or disposes the record resource. Cache entries are committed only after evaluator record/run resources close cleanly. Event delivery reuses the stage-neutral sealed EventDeliveryPolicy and an injected per-Run EventSequencer shared by Execution and Evaluation.
 
@@ -943,7 +951,44 @@ parent independently of child attestation, and Report provenance includes Decisi
 attestation for both directional and non-directional results. The conformance suite imports and
 fully revalidates these trust chains, cluster-resampling artifacts, and corrected comparison families.
 
-## 21. Industry references
+## 21. Analysis cohorts, evaluator replicates, and Evaluation Series
+
+[#452](https://github.com/lizhiyao/oh-my-knowledge/issues/452) corrects three v1 measurement-unit gaps. These changes are `BREAKING-SCHEMA`: v1 has no compatibility reader or data migration path.
+
+### 21.1 Analysis-only sample projection
+
+`EvaluationSample.analysis` contains only analysis membership and classified analysis context. `EvaluationDataset.analysisCohorts` defines every stable `cohortId`, its `cohortSetId`, whether the set is a mutually exclusive `partition` or overlapping `cohort`, its content classification, disclosure rule, and optional versioned seeded derivation. A sample may belong to at most one cohort in each partition set. An `identity-only` cohort cannot carry a raw membership value.
+
+The Compiler now seals four distinct projections:
+
+| Projection | Content | Visible to |
+|---|---|---|
+| Execution | `sampleId + input + executionContext` | Executor |
+| Evaluation | Execution projection plus `expected + evaluationContext` | Evaluator |
+| Analysis | stable `sampleId + analysis` and cohort definitions | Analysis Runtime |
+| Dataset revision | every Dataset fact and audit annotation | lineage and audit |
+
+`analysisInputDigest` covers the Analysis projection. It enters AnalysisPlan, DecisionPlan, and `runContractDigest`, but not ExecutionPlan or EvaluationPlan. Changing a holdout or cohort therefore cannot perturb Target execution, evaluator cache identity, or evaluator-visible Gold. AnalysisPlan materializes the analysis samples and cohort registry, and both are passed to Analysis Runtime as sealed execution context. Each metric row carries canonical `cohortIds`; a node applies its sealed `cohortFilter` without parsing sample IDs, array positions, or host closures. Report and Event contracts never copy raw analysis context automatically.
+
+### 21.2 Evaluator measurement identity
+
+Every EvaluatorDefinition declares a versioned measurement coordinate with `instrumentId`, `ensembleMemberId`, `replicateGroupId`, and zero-based `replicateIndex`. The Evaluator RuntimeIdentity still proves the actual implementation, model, prompt, and capability fingerprint; it cannot substitute for experimental identity. `evaluatorId` remains a stable definition reference and is no longer interpreted as an encoded repeat convention.
+
+Evaluation coordinates, `evaluationId`, EvaluationRecord, cache identity, and Analysis metric rows all bind the complete measurement coordinate. Retry `attemptNumber` remains infrastructure recovery inside one evaluator replicate. Target trial, evaluator replicate, ensemble member, retry attempt, independent Run, and batch item are consequently distinct typed levels. Analysis implementations can compute self-consistency by `replicateGroupId`, inter-rater agreement by `ensembleMemberId`, and sample-level estimates without treating repeated observations as independent experimental units.
+
+### 21.3 Evaluation Series
+
+An Evaluation Series is a separate offline Core workflow over independent Runs. `createEvaluationSeriesDefinition()` canonicalizes member slots, zero-based replicate indices, exact-design comparability policy, versioned Series analysis standards, and an optional Series decision policy into `seriesDesignDigest`. A preregistered slot cannot contain a post-execution expected Run digest. Instead, every member EvaluationDefinition binds `{ seriesDesignDigest, memberId, replicateIndex }` before execution; this membership changes only the root Run contract identity. `prepareEvaluationSeriesPlan()` resolves Series Runtime requirements into a content-addressed `EvaluationSeriesPlan`; member and Runtime order cannot change its identity. An exploratory Series may additionally bind already-known expected Run contract digests, but can never be upgraded to preregistered.
+
+Series never accepts a file, URI, unverified Report object, or host summary as evidence. `createEvaluationSeriesMemberSource()` requires a sealed RunPlan and the authenticated Execution, Evaluation, Analysis, optional Decision source chain, then revalidates the EvaluationReport before issuing a non-serializable member capability. Each durable `SeriesMemberReference` binds the Run contract, all stage Plan digests, all Bundle digests, optional Decision digest, Report digest, terminal three-axis status, and effective trust.
+
+`runEvaluationSeries()` first enforces member-slot uniqueness, any expected Run identity, and—when preregistered—the member Run's exact pre-execution Series binding. A post-hoc Run with no matching binding fails closed. Core then applies the explicit ComparabilityPolicy from an anchor Run to every candidate. The complete authenticated ComparabilityAssessment for every non-anchor member is persisted in SeriesAnalysisBundle, so design incompatibility, evidence conditionality, and identity change remain auditable rather than collapsing into a count. Design incompatibility is never accepted. Evidence-conditional comparability is admitted only when the preregistered policy allows `conditional`; an identity change cannot be hidden as a missing member. Missing, partial, cancelled, budget-exhausted, and failed Runs remain in `SeriesMemberCoverage` and are never dropped or converted to zero.
+
+Series Analysis Runtime receives only the sealed plan and authenticated member capabilities. Every node declares explicit member or upstream-result inputs plus its minimum member evidence status; design-comparable Runs that are failed, cancelled, budget-exhausted, or below that evidence threshold remain in coverage but are not passed to the estimator or counted as resampling units. Prepare rejects missing references, duplicate inputs, cycles, implementation mismatches, and any analysis Runtime that does not declare `experimentalUnit = run`. Runtime executes the canonical DAG topologically and binds each parent digest. A node declares a versioned `analysisStandardId`, such as a variance, coefficient-of-variation, or stability implementation; its RuntimeIdentity, complete output SchemaIdentity, and assumption checks enter the record digest. The Core-owned validator is independently injected by exact schema identity and must preserve the complete `{ resultType, value }` envelope; the producing Runtime cannot validate its own output. Fewer than two eligible Runs or a failed assumption produces an explicit inconclusive record. Records and decisions distinguish `executed` from `not-executed`; Runtime failures are persisted with a fixed, redacted Core error rather than reflecting host details. A Series decision is directional only after the sealed coverage ratio, minimum member evidence status, required-result, and assumption gates pass. Otherwise Core emits `not-decided` without invoking the directional policy. `SeriesAnalysisBundle` and `EvaluationSeriesReport` independently verify canonical order, uniqueness, coverage arithmetic, input lineage, and all content digests. Re-analysis creates new derivation artifacts and preserves the preregistered or exploratory mode; it does not mutate or re-execute member Runs.
+
+Series uses `experimentalUnit = run`. Within-Run trials, evaluator replicates, and retry attempts are never resampled as independent Runs. Existing Bootstrap, Krippendorff alpha, five-layer scoring, and release formulas are unchanged; a new Series formula must be introduced as a separately versioned Runtime standard and must declare its assumptions.
+
+## 22. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/) and [LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)

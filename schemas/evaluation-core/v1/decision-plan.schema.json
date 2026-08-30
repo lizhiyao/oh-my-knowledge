@@ -352,6 +352,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "analysisInputDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
     "analysisPlanDigest": {
       "$ref": "#/$defs/__schema1"
     },
@@ -374,6 +377,7 @@
   "required": [
     "schemaVersion",
     "analysisPlanDigest",
+    "analysisInputDigest",
     "runtimes",
     "decisionPlanDigest"
   ],

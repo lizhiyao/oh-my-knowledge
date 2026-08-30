@@ -37,6 +37,16 @@ import {
   ComparabilityAssessmentSchema,
   ComparabilityPolicySchema,
 } from './comparability.js';
+import {
+  EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
+  EVALUATION_SERIES_PLAN_SCHEMA_VERSION,
+  EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
+  EvaluationSeriesDefinitionSchema,
+  EvaluationSeriesPlanSchema,
+  EvaluationSeriesReportSchema,
+  SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
+  SeriesAnalysisBundleSchema,
+} from './series.js';
 
 export interface WireSchemaCatalogEntry {
   fileName: string;
@@ -117,6 +127,30 @@ export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
     fileName: 'evaluation-report.schema.json',
     schemaVersion: EVALUATION_REPORT_SCHEMA_VERSION,
     schema: EvaluationReportSchema,
+  },
+  {
+    fileName: 'evaluation-series-definition.schema.json',
+    schemaVersion: EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
+    schema: EvaluationSeriesDefinitionSchema,
+    includedInRunContract: false,
+  },
+  {
+    fileName: 'evaluation-series-plan.schema.json',
+    schemaVersion: EVALUATION_SERIES_PLAN_SCHEMA_VERSION,
+    schema: EvaluationSeriesPlanSchema,
+    includedInRunContract: false,
+  },
+  {
+    fileName: 'series-analysis-bundle.schema.json',
+    schemaVersion: SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
+    schema: SeriesAnalysisBundleSchema,
+    includedInRunContract: false,
+  },
+  {
+    fileName: 'evaluation-series-report.schema.json',
+    schemaVersion: EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
+    schema: EvaluationSeriesReportSchema,
+    includedInRunContract: false,
   },
 ] as const;
 

@@ -8,6 +8,8 @@ import {
 } from './common.js';
 import {
   AnalysisGraphDefinitionSchema,
+  AnalysisCohortDefinitionSchema,
+  AnalysisSampleInputSchema,
   BudgetPolicySchema,
   CachePolicySchema,
   ComparisonDefinitionSchema,
@@ -45,6 +47,11 @@ export const EvaluationInputSampleSchema = EvaluationSampleSchema.pick({
   executionContext: true,
   expected: true,
   evaluationContext: true,
+}).strict();
+
+export const AnalysisInputSampleSchema = z.object({
+  sampleId: IdentifierSchema,
+  analysis: AnalysisSampleInputSchema.optional(),
 }).strict();
 
 export const ResolvedRuntimeSchema = z.object({
@@ -115,6 +122,9 @@ export const EvaluationPlanSchema = z.object({
 export const AnalysisPlanSchema = z.object({
   schemaVersion: z.literal(ANALYSIS_PLAN_SCHEMA_VERSION),
   evaluationPlanDigest: Sha256DigestSchema,
+  analysisInputDigest: Sha256DigestSchema,
+  samples: z.array(AnalysisInputSampleSchema).min(1),
+  cohorts: z.array(AnalysisCohortDefinitionSchema),
   metrics: z.array(MetricDefinitionSchema),
   analysisGraph: AnalysisGraphDefinitionSchema,
   experiment: ExperimentDesignSchema,
@@ -129,6 +139,7 @@ export const AnalysisPlanSchema = z.object({
 export const DecisionPlanSchema = z.object({
   schemaVersion: z.literal(DECISION_PLAN_SCHEMA_VERSION),
   analysisPlanDigest: Sha256DigestSchema,
+  analysisInputDigest: Sha256DigestSchema,
   decisionPolicy: DecisionPolicyDefinitionSchema.optional(),
   runtimes: z.array(ResolvedRuntimeSchema),
   decisionPlanDigest: Sha256DigestSchema,
@@ -141,6 +152,7 @@ export const PlanDigestsSchema = z.object({
   datasetRevisionDigest: Sha256DigestSchema,
   executionInputDigest: Sha256DigestSchema,
   evaluationInputDigest: Sha256DigestSchema,
+  analysisInputDigest: Sha256DigestSchema,
   randomizationDesignDigest: Sha256DigestSchema,
   executionPlanDigest: Sha256DigestSchema,
   evaluationPlanDigest: Sha256DigestSchema,
@@ -166,6 +178,7 @@ export const RunPlanSchema = z.object({
 
 export type ExecutionInputSample = z.infer<typeof ExecutionInputSampleSchema>;
 export type EvaluationInputSample = z.infer<typeof EvaluationInputSampleSchema>;
+export type AnalysisInputSample = z.infer<typeof AnalysisInputSampleSchema>;
 export type ResolvedRuntime = z.infer<typeof ResolvedRuntimeSchema>;
 export type ExecutionPlan = z.infer<typeof ExecutionPlanSchema>;
 export type EvaluationPlan = z.infer<typeof EvaluationPlanSchema>;

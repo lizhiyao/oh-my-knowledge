@@ -126,22 +126,28 @@ interface EvaluationSample {
   executionContext?: JsonValue;
   expected?: JsonValue;
   evaluationContext?: JsonValue;
+  analysis?: {
+    memberships: readonly { cohortId: string; membershipValue?: JsonValue }[];
+    context?: { value: JsonValue; classification: ContentClassification };
+  };
   annotations?: JsonValue;
 }
 ```
 
 - Executor 只收到 `input + executionContext` 的冻结投影；
 - Evaluator 可以按声明读取 output／trace／expected／evaluationContext；
+- Analysis Runtime 只能通过 AnalysisPlan 读取稳定的分析 membership；
 - `annotations` 只用于审计和展示，不参与执行或评分；
 - 映射默认使用受限 JSON Pointer，只允许定位一个值；多值 JSONPath 属于 adapter 扩展。
 
-Dataset 具有三个不同 digest：
+Dataset 具有四个不同 digest：
 
 | Digest | 覆盖内容 | 用途 |
 |---|---|---|
 | `datasetRevisionDigest` | 完整 Dataset | lineage 和审计 |
 | `executionInputDigest` | `input + executionContext` | ExecutionPlan 身份 |
 | `evaluationInputDigest` | 执行投影 + `expected + evaluationContext` | EvaluationPlan 身份 |
+| `analysisInputDigest` | 稳定 Sample identity、分析 membership／context 与 cohort 定义 | AnalysisPlan 身份 |
 
 Gold 或 evaluator-only metadata 变化不得改变 ExecutionPlan、调度或 Executor 可观察状态。
 
@@ -379,6 +385,8 @@ evaluationPlanDigest = H(
 
 analysisPlanDigest = H(
   evaluationPlanDigest,
+  analysisInputDigest,
+  analysis samples + cohort definitions,
   AnalysisGraph,
   estimator manifests
 )
@@ -389,7 +397,7 @@ decisionPlanDigest = H(
   DecisionPolicy
 )
 
-runContractDigest = H(all plan digests + schema identities)
+runContractDigest = H(all plan digests + schema identities + event delivery + optional Series membership)
 ```
 
 `project`、`owner`、`tags` 等 annotations 不进入测量 digest。output／trace 的捕获方式及其 classification ceiling 会改变持久化 Execution 事实和 cache key，因此进入 ExecutionPlan 身份。完整的 v1 EvidencePolicy 同时进入 EvaluationPlan，因为 Evaluator 产生的 evidence 属于 Evaluation 事实。Dataset 的 input 和 expected 是 sealed stage input，不是 EvidencePolicy 捕获目标：`executionInputDigest` 绑定 Executor 可见的 input，`evaluationInputDigest` 进一步绑定 expected 和 evaluation context。Evaluator evidence 的捕获方式不失效 Execution。
@@ -867,7 +875,7 @@ Digest 边界是可执行契约：
 
 [#435](https://github.com/lizhiyao/oh-my-knowledge/issues/435) 把 record-scoped 重评分实现为独立阶段。其 ports 只暴露 Evaluator、内容解析／存储、cache、clock、共享 EventSequencer 和 EventWriter，Evaluation API 无法触达 Executor。`startEvaluation(plan, executionBundle, ports, options)` 会在异步工作开始前同步校验 sealed source bundle。
 
-Evaluation coordinate 使用 canonical `(targetId, sampleId, trialIndex, evaluatorId)` 顺序。`evaluationId`、attempt ID 和 observation ID 使用 domain-separated digest 派生。每条 active EvaluationRecord 都绑定准确的 canonical ExecutionRecord digest 和已解析的 Evaluator RuntimeIdentity。cache key 还绑定 EvaluationPlan、物化后的输入、source record 与 effective source trust，因此 Gold、Evaluator identity、binding、execution evidence 或 source trust ceiling 任一变化都不能静默复用旧评分。cache replay 必须先完整校验 record schema、retry identity、有序 metric contract、scale、source digest、runtime identity、attempt 到 record 的确定性 usage 聚合与 provider-cost eligibility；replay provenance 不得提升 source trust。
+Evaluation coordinate 使用 canonical `(targetId, sampleId, trialIndex, evaluatorId)` 顺序，并绑定 Evaluator 显式的 instrument、ensemble-member、replicate-group 与 replicate-index identity。`evaluationId`、attempt ID 和 observation ID 使用 domain-separated digest 派生。每条 active EvaluationRecord 都绑定准确的 canonical ExecutionRecord digest、评委测量坐标和已解析的 Evaluator RuntimeIdentity。cache key 还绑定 EvaluationPlan、物化后的输入、source record 与 effective source trust，因此 Gold、Evaluator identity、binding、execution evidence 或 source trust ceiling 任一变化都不能静默复用旧评分。cache replay 必须先完整校验 record schema、retry identity、有序 metric contract、scale、source digest、runtime identity、attempt 到 record 的确定性 usage 聚合与 provider-cost eligibility；replay provenance 不得提升 source trust。
 
 Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider cost 预算统一封存在 `MeasurementPolicy.evaluation`，start-time options 不得覆盖。invocation reservation 只在进入 `evaluate()` 前一刻核销，因此 `openRun()`／`openRecord()` 失败不消耗调用额度。失败与重试调用同成功调用一样保留并计入 provider-reported usage。timeout 采用协作式取消：Core 发出 abort 后等待 evaluator promise settle，丢弃晚到结果，再进入 retry 或 record dispose。只有 evaluator record／run 资源全部正常关闭后才提交 cache。Event delivery 复用阶段中立的 sealed EventDeliveryPolicy，并使用 Execution／Evaluation 共享的单 Run EventSequencer。
 
@@ -936,7 +944,44 @@ assurance 封顶。source envelope 还会独立保留直接父来源的 effectiv
 Conformance suite 会对这些 trust chain、cluster resampling artifact 与已校正 comparison family 进行
 序列化导入和完整重验。
 
-## 二十一、行业参考
+## 二十一、分析 cohort、评委重复测量与 Evaluation Series
+
+[#452](https://github.com/lizhiyao/oh-my-knowledge/issues/452) 直接修正 v1 中三个测量单位缺口。这些变化属于 `BREAKING-SCHEMA`：v1 不提供兼容 reader 或数据迁移路径。
+
+### 21.1 Analysis-only Sample 投影
+
+`EvaluationSample.analysis` 只保存分析 membership 与带分类的分析 context。`EvaluationDataset.analysisCohorts` 定义每个稳定 `cohortId`、所属 `cohortSetId`、该集合是互斥的 `partition` 还是可重叠的 `cohort`、内容 classification、disclosure 规则，以及可选的带版本 seeded derivation。同一 Sample 在每个 partition set 中最多属于一个 cohort。`identity-only` cohort 不能携带 raw membership value。
+
+Compiler 现在封存四种彼此独立的投影：
+
+| 投影 | 内容 | 可见方 |
+|---|---|---|
+| Execution | `sampleId + input + executionContext` | Executor |
+| Evaluation | Execution 投影加 `expected + evaluationContext` | Evaluator |
+| Analysis | 稳定的 `sampleId + analysis` 与 cohort 定义 | Analysis Runtime |
+| Dataset revision | 全部 Dataset 事实与审计 annotation | lineage 与审计 |
+
+`analysisInputDigest` 覆盖 Analysis 投影。它进入 AnalysisPlan、DecisionPlan 和 `runContractDigest`，但不进入 ExecutionPlan 或 EvaluationPlan。因此改变 holdout 或 cohort 不会扰动 Target 执行、评委 cache identity 或评委可见的 Gold。AnalysisPlan 物化分析 Sample 与 cohort registry，并将两者作为封存的执行上下文传给 Analysis Runtime；每条 metric row 携带 canonical `cohortIds`，节点按封存的 `cohortFilter` 过滤，不解析 sample ID、数组位置或宿主闭包。Report 和 Event contract 不会自动复制 raw analysis context。
+
+### 21.2 评委测量 identity
+
+每个 EvaluatorDefinition 都声明版本化测量坐标：`instrumentId`、`ensembleMemberId`、`replicateGroupId` 和从零开始的 `replicateIndex`。Evaluator RuntimeIdentity 仍负责证明实际 implementation、模型、prompt 和 capability fingerprint，不能代替实验 identity。`evaluatorId` 只保留为稳定定义引用，不再解释为编码过的重复约定。
+
+Evaluation coordinate、`evaluationId`、EvaluationRecord、cache identity 与 Analysis metric row 都绑定完整测量坐标。retry 的 `attemptNumber` 仍是一个 evaluator replicate 内部的基础设施恢复。Target trial、evaluator replicate、ensemble member、retry attempt、独立 Run 与 batch item 因而成为不同的类型层级。Analysis 实现可以按 `replicateGroupId` 计算 self-consistency，按 `ensembleMemberId` 计算 inter-rater agreement，并在 sample-level estimator 中避免把重复观测误当成独立实验单位。
+
+### 21.3 Evaluation Series
+
+Evaluation Series 是独立 Run 之上的离线 Core workflow。`createEvaluationSeriesDefinition()` 把 canonical member slot、从零开始的 replicate index、exact-design comparability policy、版本化 Series analysis standard 和可选 Series decision policy 规范化为 `seriesDesignDigest`。preregistered slot 不能包含执行后才知道的 expected Run digest；每个成员 EvaluationDefinition 必须在执行前绑定 `{ seriesDesignDigest, memberId, replicateIndex }`，这项 membership 只改变根 Run contract identity。`prepareEvaluationSeriesPlan()` 将 Series Runtime requirement 封存为 content-addressed `EvaluationSeriesPlan`；成员与 Runtime 的输入顺序不能改变其 identity。exploratory Series 可以额外绑定已知的 expected Run contract digest，但永远不能再升级为 preregistered。
+
+Series 不接受文件、URI、未经验证的 Report object 或宿主 summary 作为证据。`createEvaluationSeriesMemberSource()` 要求 sealed RunPlan 与认证过的 Execution、Evaluation、Analysis、可选 Decision source chain，并重新验证 EvaluationReport，随后才签发不可序列化的 member capability。每个持久化 `SeriesMemberReference` 绑定 Run contract、全部阶段 Plan digest、全部 Bundle digest、可选 Decision digest、Report digest、三轴终态和 effective trust。
+
+`runEvaluationSeries()` 先检查 member slot 唯一性、可选 expected Run identity，并在 preregistered 模式下校验成员 Run 精确的执行前 Series binding；没有匹配 binding 的 post-hoc Run 会 fail closed。随后 Core 按显式 ComparabilityPolicy 从 anchor Run 对每个候选执行比较，并把每个非 anchor 成员的完整认证 ComparabilityAssessment 持久化到 SeriesAnalysisBundle，使 design incompatible、evidence conditional 与 identity change 保持可审计，而不是塌缩成一个计数。design incompatible 永不接纳。evidence conditional 只有在预注册 policy 允许 `conditional` 时才能进入分析；identity change 不能伪装成 missing member。missing、partial、cancelled、budget-exhausted 和 failed Run 全部进入 `SeriesMemberCoverage`，不得静默丢弃或折算为零。
+
+Series Analysis Runtime 只能收到 sealed plan 与认证过的 member capability。每个节点显式声明 member 或上游 result 输入，以及最低 member evidence status；design-compatible 但 failed、cancelled、budget-exhausted 或低于该 evidence 阈值的 Run 仍保留在 coverage 中，但不会传给 estimator，也不会计作 resampling unit。prepare 会拒绝缺失引用、重复输入、cycle、implementation 不匹配，以及未声明 `experimentalUnit = run` 的 Analysis Runtime。Runtime 按 canonical DAG 拓扑执行并绑定每个 parent digest。节点声明版本化 `analysisStandardId`，例如 variance、coefficient-of-variation 或 stability 实现；RuntimeIdentity、完整 output SchemaIdentity 与 assumption check 一并进入 record digest。Core-owned validator 按精确 schema identity 独立注入，并且必须原样保留完整 `{ resultType, value }` envelope；结果生产 Runtime 不能自行证明输出合法。符合 evidence 条件的 Run 少于两个或 assumption 失败时产生显式 inconclusive record。Record 与 decision 明确区分 `executed` 和 `not-executed`；Runtime 失败只落盘固定、已脱敏的 Core error，不反射宿主 details。只有封存的 coverage ratio、minimum member evidence status、required-result 与 assumption gate 全部通过后，Series decision 才能产生方向性结论。否则 Core 输出 `not-decided`，且不调用方向性 policy。`SeriesAnalysisBundle` 与 `EvaluationSeriesReport` 分别验证 canonical order、唯一性、coverage 算术、输入 lineage 与全部内容 digest。重新分析会产生新的 derivation artifact，并保留 preregistered 或 exploratory mode；它不会修改或重新执行 member Run。
+
+Series 固定使用 `experimentalUnit = run`。Run 内 trial、evaluator replicate 与 retry attempt 永远不能作为独立 Run 重采样。既有 Bootstrap、Krippendorff alpha、五层评分与发布公式保持不变；新增 Series 公式必须作为单独版本化 Runtime standard 引入并声明其适用前提。
+
+## 二十二、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；

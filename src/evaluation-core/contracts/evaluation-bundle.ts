@@ -127,6 +127,7 @@ function assertRecordIdentities(bundle: EvaluationBundle): void {
       evaluationPlanDigest: bundle.evaluationPlanDigest as Sha256Digest,
       trialId: record.trialId as Sha256Digest,
       evaluatorId: record.evaluatorId,
+      measurement: record.measurement,
     });
     if (record.evaluationId !== expectedEvaluationId
         || evaluationIds.has(record.evaluationId)) {
@@ -325,6 +326,12 @@ export interface EvaluationBundlePlanContext
     }[];
     evaluators: readonly {
       evaluatorId: string;
+      measurement: {
+        instrumentId: string;
+        ensembleMemberId: string;
+        replicateGroupId: string;
+        replicateIndex: number;
+      };
       metricIds: readonly string[];
       inputs: readonly {
         bindingId: string;
@@ -801,7 +808,8 @@ function assertRecordAgainstPlan(
   unverifiedCacheRecordDigest?: Sha256Digest;
 } {
   if (record.trialId !== expected.trialId
-      || record.evaluationId !== expected.evaluationId) {
+      || record.evaluationId !== expected.evaluationId
+      || canonicalizeJson(record.measurement) !== canonicalizeJson(expected.measurement)) {
     planMismatch('EvaluationRecord identities do not match their sealed derivation.');
   }
   if (canonicalizeJson(record.runtime) !== canonicalizeJson(runtime)) {

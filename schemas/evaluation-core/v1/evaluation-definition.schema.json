@@ -7,6 +7,64 @@
     "__schema1": {
       "additionalProperties": false,
       "properties": {
+        "analysisCohorts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "$ref": "#/$defs/__schema5"
+              },
+              "cohortId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "cohortSetId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "cohortSetKind": {
+                "enum": [
+                  "partition",
+                  "cohort"
+                ],
+                "type": "string"
+              },
+              "derivation": {
+                "additionalProperties": false,
+                "properties": {
+                  "algorithmId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "seed": {
+                    "$ref": "#/$defs/__schema6"
+                  },
+                  "versionConstraint": {
+                    "$ref": "#/$defs/__schema6"
+                  }
+                },
+                "required": [
+                  "algorithmId",
+                  "seed"
+                ],
+                "type": "object"
+              },
+              "disclosure": {
+                "enum": [
+                  "identity-only",
+                  "full"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "cohortId",
+              "cohortSetId",
+              "cohortSetKind",
+              "classification",
+              "disclosure"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "annotations": {
           "$ref": "#/$defs/__schema4"
         },
@@ -28,6 +86,10 @@
       "type": "object"
     },
     "__schema10": {
+      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
+      "type": "string"
+    },
+    "__schema11": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -70,7 +132,7 @@
             "type": "string"
           },
           "unit": {
-            "$ref": "#/$defs/__schema7"
+            "$ref": "#/$defs/__schema6"
           },
           "valueType": {
             "enum": [
@@ -93,12 +155,12 @@
       },
       "type": "array"
     },
-    "__schema11": {
+    "__schema12": {
       "additionalProperties": false,
       "properties": {
         "randomizationSlots": {
           "items": {
-            "$ref": "#/$defs/__schema12"
+            "$ref": "#/$defs/__schema13"
           },
           "minItems": 1,
           "type": "array"
@@ -107,7 +169,7 @@
           "additionalProperties": false,
           "properties": {
             "clusterKey": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             },
             "estimatorId": {
               "$ref": "#/$defs/__schema2"
@@ -121,7 +183,7 @@
               "type": "string"
             },
             "pairingKey": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             },
             "repeatedMeasures": {
               "type": "boolean"
@@ -144,7 +206,7 @@
               "type": "string"
             },
             "stratumKey": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             }
           },
           "required": [
@@ -179,7 +241,7 @@
           "type": "object"
         },
         "seed": {
-          "$ref": "#/$defs/__schema7"
+          "$ref": "#/$defs/__schema6"
         },
         "trials": {
           "exclusiveMinimum": 0,
@@ -196,7 +258,7 @@
       ],
       "type": "object"
     },
-    "__schema12": {
+    "__schema13": {
       "additionalProperties": false,
       "properties": {
         "randomizationSlotId": {
@@ -212,7 +274,7 @@
       ],
       "type": "object"
     },
-    "__schema13": {
+    "__schema14": {
       "additionalProperties": false,
       "properties": {
         "analysisMode": {
@@ -232,11 +294,14 @@
                     "const": "reducer",
                     "type": "string"
                   },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema18"
+                  },
                   "implementationId": {
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -245,10 +310,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema17"
+                    "$ref": "#/$defs/__schema19"
                   },
                   "versionConstraint": {
-                    "$ref": "#/$defs/__schema14"
+                    "$ref": "#/$defs/__schema15"
                   }
                 },
                 "required": [
@@ -267,11 +332,14 @@
                     "const": "estimator",
                     "type": "string"
                   },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema18"
+                  },
                   "implementationId": {
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -280,10 +348,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema17"
+                    "$ref": "#/$defs/__schema19"
                   },
                   "versionConstraint": {
-                    "$ref": "#/$defs/__schema14"
+                    "$ref": "#/$defs/__schema15"
                   }
                 },
                 "required": [
@@ -302,11 +370,14 @@
                     "const": "correction",
                     "type": "string"
                   },
+                  "cohortFilter": {
+                    "$ref": "#/$defs/__schema18"
+                  },
                   "implementationId": {
                     "$ref": "#/$defs/__schema2"
                   },
                   "inputs": {
-                    "$ref": "#/$defs/__schema15"
+                    "$ref": "#/$defs/__schema16"
                   },
                   "nodeId": {
                     "$ref": "#/$defs/__schema2"
@@ -315,10 +386,10 @@
                     "$ref": "#/$defs/__schema2"
                   },
                   "parameters": {
-                    "$ref": "#/$defs/__schema17"
+                    "$ref": "#/$defs/__schema19"
                   },
                   "versionConstraint": {
-                    "$ref": "#/$defs/__schema14"
+                    "$ref": "#/$defs/__schema15"
                   }
                 },
                 "required": [
@@ -341,17 +412,17 @@
       ],
       "type": "object"
     },
-    "__schema14": {
-      "$ref": "#/$defs/__schema7"
-    },
     "__schema15": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "__schema16": {
       "items": {
-        "$ref": "#/$defs/__schema16"
+        "$ref": "#/$defs/__schema17"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema16": {
+    "__schema17": {
       "oneOf": [
         {
           "additionalProperties": false,
@@ -414,10 +485,35 @@
         }
       ]
     },
-    "__schema17": {
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "excludeCohortIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "includeCohortIds": {
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "__schema19": {
       "$ref": "#/$defs/__schema4"
     },
-    "__schema18": {
+    "__schema2": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema20": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -452,7 +548,7 @@
       },
       "type": "array"
     },
-    "__schema19": {
+    "__schema21": {
       "additionalProperties": false,
       "properties": {
         "analysisResultIds": {
@@ -464,7 +560,7 @@
         },
         "comparisonFamily": {
           "items": {
-            "$ref": "#/$defs/__schema20"
+            "$ref": "#/$defs/__schema22"
           },
           "minItems": 1,
           "type": "array"
@@ -490,7 +586,7 @@
           "$ref": "#/$defs/__schema4"
         },
         "versionConstraint": {
-          "$ref": "#/$defs/__schema7"
+          "$ref": "#/$defs/__schema6"
         }
       },
       "required": [
@@ -501,12 +597,7 @@
       ],
       "type": "object"
     },
-    "__schema2": {
-      "maxLength": 256,
-      "minLength": 1,
-      "type": "string"
-    },
-    "__schema20": {
+    "__schema22": {
       "anyOf": [
         {
           "additionalProperties": false,
@@ -562,7 +653,30 @@
         }
       ]
     },
-    "__schema21": {
+    "__schema23": {
+      "additionalProperties": false,
+      "properties": {
+        "memberId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "replicateIndex": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seriesDesignDigest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seriesDesignDigest",
+        "memberId",
+        "replicateIndex"
+      ],
+      "type": "object"
+    },
+    "__schema24": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -574,7 +688,7 @@
             "type": "string"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema22"
+            "$ref": "#/$defs/__schema25"
           }
         },
         "required": [
@@ -585,17 +699,60 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema22"
+        "$ref": "#/$defs/__schema25"
       },
       "type": "object"
     },
-    "__schema22": {
+    "__schema25": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
     "__schema3": {
       "additionalProperties": false,
       "properties": {
+        "analysis": {
+          "additionalProperties": false,
+          "properties": {
+            "context": {
+              "additionalProperties": false,
+              "properties": {
+                "classification": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "value": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              },
+              "required": [
+                "value",
+                "classification"
+              ],
+              "type": "object"
+            },
+            "memberships": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cohortId": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "membershipValue": {
+                    "$ref": "#/$defs/__schema4"
+                  }
+                },
+                "required": [
+                  "cohortId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "memberships"
+          ],
+          "type": "object"
+        },
         "annotations": {
           "$ref": "#/$defs/__schema4"
         },
@@ -653,13 +810,26 @@
       ]
     },
     "__schema5": {
+      "enum": [
+        "public",
+        "sensitive",
+        "secret",
+        "gold"
+      ],
+      "type": "string"
+    },
+    "__schema6": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema7": {
       "items": {
-        "$ref": "#/$defs/__schema6"
+        "$ref": "#/$defs/__schema8"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema6": {
+    "__schema8": {
       "additionalProperties": false,
       "properties": {
         "config": {
@@ -682,7 +852,7 @@
           "$ref": "#/$defs/__schema2"
         },
         "versionConstraint": {
-          "$ref": "#/$defs/__schema7"
+          "$ref": "#/$defs/__schema6"
         }
       },
       "required": [
@@ -693,11 +863,7 @@
       ],
       "type": "object"
     },
-    "__schema7": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "__schema8": {
+    "__schema9": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -721,7 +887,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "pointer": {
-                  "$ref": "#/$defs/__schema9"
+                  "$ref": "#/$defs/__schema10"
                 },
                 "sourceKind": {
                   "enum": [
@@ -742,6 +908,32 @@
             },
             "type": "array"
           },
+          "measurement": {
+            "additionalProperties": false,
+            "properties": {
+              "ensembleMemberId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "instrumentId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "replicateGroupId": {
+                "$ref": "#/$defs/__schema2"
+              },
+              "replicateIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "instrumentId",
+              "ensembleMemberId",
+              "replicateGroupId",
+              "replicateIndex"
+            ],
+            "type": "object"
+          },
           "metricIds": {
             "items": {
               "$ref": "#/$defs/__schema2"
@@ -750,23 +942,20 @@
             "type": "array"
           },
           "versionConstraint": {
-            "$ref": "#/$defs/__schema7"
+            "$ref": "#/$defs/__schema6"
           }
         },
         "required": [
           "evaluatorId",
           "evaluatorKind",
           "implementationId",
+          "measurement",
           "metricIds",
           "inputs"
         ],
         "type": "object"
       },
       "type": "array"
-    },
-    "__schema9": {
-      "pattern": "^(?:\\/(?:[^~/]|~[01])*)*$",
-      "type": "string"
     }
   },
   "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/evaluation-definition.schema.json",
@@ -774,34 +963,37 @@
   "additionalProperties": false,
   "properties": {
     "analysisGraph": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema14"
     },
     "comparisons": {
-      "$ref": "#/$defs/__schema18"
+      "$ref": "#/$defs/__schema20"
     },
     "dataset": {
       "$ref": "#/$defs/__schema1"
     },
     "decisionPolicy": {
-      "$ref": "#/$defs/__schema19"
-    },
-    "evaluators": {
-      "$ref": "#/$defs/__schema8"
-    },
-    "experiment": {
-      "$ref": "#/$defs/__schema11"
-    },
-    "extensions": {
       "$ref": "#/$defs/__schema21"
     },
+    "evaluators": {
+      "$ref": "#/$defs/__schema9"
+    },
+    "experiment": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "extensions": {
+      "$ref": "#/$defs/__schema24"
+    },
     "metrics": {
-      "$ref": "#/$defs/__schema10"
+      "$ref": "#/$defs/__schema11"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
     },
+    "seriesMembership": {
+      "$ref": "#/$defs/__schema23"
+    },
     "targets": {
-      "$ref": "#/$defs/__schema5"
+      "$ref": "#/$defs/__schema7"
     }
   },
   "required": [

@@ -256,6 +256,9 @@
     "__schema5": {
       "additionalProperties": false,
       "properties": {
+        "analysisInputDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
         "analysisPlanDigest": {
           "$ref": "#/$defs/__schema1"
         },
@@ -288,6 +291,7 @@
         "datasetRevisionDigest",
         "executionInputDigest",
         "evaluationInputDigest",
+        "analysisInputDigest",
         "randomizationDesignDigest",
         "executionPlanDigest",
         "evaluationPlanDigest",
