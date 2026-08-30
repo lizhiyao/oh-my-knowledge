@@ -82,7 +82,7 @@ class FakeDshHost implements DshHostContextLike {
         tools: {
           get: (name) => name === 'skill' ? {} : undefined,
           restrict: (filter) => {
-            this.deniedTools.push([...filter.deny]);
+            this.deniedTools.push([...(filter.deny ?? [])]);
             return () => undefined;
           },
         },

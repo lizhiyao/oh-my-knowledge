@@ -8,6 +8,14 @@ import {
   type DshAgentLike,
   type DshHostContextLike,
 } from './host-executor.js';
+
+export {
+  DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+  createDshHostCoreExecutorAdapter,
+  createDshHostCoreSchemaValidators,
+  type CreateDshHostCoreExecutorAdapterInput,
+  type DshHostCoreConfiguration,
+} from './core-adapter.js';
 import {
   createDshConversationCatalog,
   dshTraceIngestionSummary,
