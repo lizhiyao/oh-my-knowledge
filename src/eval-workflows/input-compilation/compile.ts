@@ -2,7 +2,6 @@ import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
-  EvaluationDefinitionSchema,
   MeasurementPolicySchema,
   createEvaluationSeriesDefinition,
   deepFreezeCanonicalJson,
@@ -14,6 +13,11 @@ import {
   type MeasurementPolicy,
   type Sha256Digest,
 } from '../../evaluation-core/contracts/index.js';
+import {
+  EvaluationDefinitionError,
+  normalizeEvaluationDefinition,
+  validateDefinitionSemantics,
+} from '../../evaluation-core/compiler/index.js';
 import { CliEvaluationInputError } from './error.js';
 import {
   RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION,
@@ -24,6 +28,7 @@ import {
   type EvaluationOrchestrationOptions,
   type ResolvedCliEvaluationInput,
   type ResolvedEvaluatorTemplate,
+  type ResolvedHostResource,
   type ResolvedHostResources,
   type ResolvedJudgeMember,
   type ResolvedResourceDescriptor,
@@ -253,32 +258,83 @@ function validateResourceReferences(
 ): void {
   const resourcesById = new Map(hostResources.resources.map((resource) => [
     resource.descriptor.resourceId,
-    resource.descriptor,
+    resource,
   ]));
-  const descriptors = [
-    ...input.targets.flatMap((target) => allBehaviorDescriptors(target.behavior)),
-    ...input.evaluatorTemplates.flatMap((evaluator) => evaluator.resources ?? []),
-  ];
+  const validateReference = (
+    descriptor: ResolvedResourceDescriptor,
+    expectedResourceKinds: readonly ResolvedHostResource['resourceKind'][],
+    fieldPath: string,
+  ): void => {
+    const resolved = resourcesById.get(descriptor.resourceId);
+    if (resolved === undefined) fail({
+      code: 'CLI_INPUT_RESOURCE_MISSING',
+      fieldPath,
+      message: `资源「${descriptor.resourceId}」没有宿主绑定。`,
+    });
+    if (!expectedResourceKinds.includes(resolved.resourceKind)) fail({
+      code: 'CLI_INPUT_RESOURCE_KIND_MISMATCH',
+      sourcePath: resolved.locator,
+      fieldPath,
+      details: {
+        resourceId: descriptor.resourceId,
+        actualResourceKind: resolved.resourceKind,
+        expectedResourceKinds: [...expectedResourceKinds],
+      },
+      message: `资源「${descriptor.resourceId}」的宿主类型与引用角色不一致。`,
+    });
+    if (!descriptorMatches(descriptor, resolved.descriptor)) fail({
+      code: 'CLI_INPUT_RESOURCE_DIGEST_MISMATCH',
+      sourcePath: resolved.locator,
+      fieldPath,
+      message: `资源「${descriptor.resourceId}」的行为描述与宿主绑定不一致。`,
+    });
+  };
   if (input.orchestration.gold !== undefined) {
     const gold = resourcesById.get(input.orchestration.gold.resourceId);
-    if (gold === undefined || gold.classification !== 'gold') fail({
+    if (gold === undefined || gold.descriptor.classification !== 'gold') fail({
       code: 'CLI_INPUT_RESOURCE_MISSING',
       fieldPath: 'orchestration.gold.resourceId',
       message: 'Gold 资源必须存在于宿主资源清单中，并标记为 gold。',
     });
+    if (gold.resourceKind !== 'gold-dataset') fail({
+      code: 'CLI_INPUT_RESOURCE_KIND_MISMATCH',
+      sourcePath: gold.locator,
+      fieldPath: 'orchestration.gold.resourceId',
+      details: {
+        resourceId: input.orchestration.gold.resourceId,
+        actualResourceKind: gold.resourceKind,
+        expectedResourceKinds: ['gold-dataset'],
+      },
+      message: 'Gold 资源的宿主类型必须是 gold-dataset。',
+    });
   }
-  for (const descriptor of descriptors) {
-    const resolved = resourcesById.get(descriptor.resourceId);
-    if (resolved === undefined) fail({
-      code: 'CLI_INPUT_RESOURCE_MISSING',
-      fieldPath: `resources.${descriptor.resourceId}`,
-      message: `资源「${descriptor.resourceId}」没有宿主绑定。`,
-    });
-    if (!descriptorMatches(descriptor, resolved)) fail({
-      code: 'CLI_INPUT_RESOURCE_DIGEST_MISMATCH',
-      fieldPath: `resources.${descriptor.resourceId}`,
-      message: `资源「${descriptor.resourceId}」的行为描述与宿主绑定不一致。`,
-    });
+  for (const target of input.targets) {
+    const prefix = `targets.${target.targetId}.behavior`;
+    validateReference(target.behavior.artifact, ['artifact'], `${prefix}.artifact`);
+    if (target.behavior.workspace !== undefined) {
+      validateReference(target.behavior.workspace, ['workspace'], `${prefix}.workspace`);
+    }
+    if (target.behavior.mcpConfig !== undefined) {
+      validateReference(target.behavior.mcpConfig, ['mcp-config'], `${prefix}.mcpConfig`);
+    }
+    for (const [mockIndex, mock] of (target.behavior.mocks ?? []).entries()) {
+      for (const [payloadIndex, payload] of mock.payloads.entries()) {
+        validateReference(
+          payload,
+          ['mock-payload'],
+          `${prefix}.mocks.${mockIndex}.payloads.${payloadIndex}`,
+        );
+      }
+    }
+  }
+  for (const template of input.evaluatorTemplates) {
+    for (const [resourceIndex, resource] of (template.resources ?? []).entries()) {
+      validateReference(
+        resource,
+        ['content'],
+        `evaluatorTemplates.${template.evaluatorId}.resources.${resourceIndex}`,
+      );
+    }
   }
 }
 
@@ -549,12 +605,35 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
     ...(decisionPolicy === undefined ? {} : { decisionPolicy }),
   });
   try {
-    return deepFreezeCanonicalJson(parseWireDocument(EvaluationDefinitionSchema, raw));
+    return deepFreezeCanonicalJson(normalizeEvaluationDefinition(raw));
   } catch (cause) {
     fail({
       code: 'CLI_INPUT_CORE_SCHEMA_INVALID',
       fieldPath: 'definition',
       message: '编译后的 EvaluationDefinition 不符合 Core schema。',
+      cause,
+    });
+  }
+}
+
+function validateCompiledCoreSemantics(
+  definition: EvaluationDefinition,
+  policy: MeasurementPolicy,
+): void {
+  try {
+    validateDefinitionSemantics(definition, policy);
+  } catch (cause) {
+    const coreError = cause instanceof EvaluationDefinitionError ? cause : undefined;
+    fail({
+      code: 'CLI_INPUT_CORE_SEMANTICS_INVALID',
+      fieldPath: 'definition',
+      message: '编译后的 EvaluationDefinition／MeasurementPolicy 未通过 Core 引用或静态语义校验。',
+      ...(coreError === undefined ? {} : {
+        details: canonicalSnapshot({
+          coreCode: coreError.code,
+          ...(coreError.details === undefined ? {} : { coreDetails: coreError.details }),
+        }),
+      }),
       cause,
     });
   }
@@ -661,8 +740,21 @@ function compileSeries(
     fieldPath: 'orchestration.independentSeries.repeatCount',
     message: '独立 Run repeat 数量必须是正整数。',
   });
-  const seriesId = series.seriesId
-    ?? `series-${designDigest.slice('sha256:'.length, 'sha256:'.length + 16)}`;
+  if (!series.seriesInstanceId || series.seriesInstanceId.length > 192) fail({
+    code: 'CLI_INPUT_SERIES_INVALID',
+    fieldPath: 'orchestration.independentSeries.seriesInstanceId',
+    message: '独立 Series 必须由 orchestrator 提供不超过 192 字符的实例标识。',
+  });
+  const seriesDesignIdentity = digestCanonicalJson({
+    measurementDesignDigest: designDigest,
+    repeatCount: series.repeatCount,
+    comparisonScope: series.comparisonScope ?? 'analysis',
+    minimumStatus: series.minimumStatus ?? 'compatible',
+  });
+  const seriesId = `${series.seriesInstanceId}-${seriesDesignIdentity.slice(
+    'sha256:'.length,
+    'sha256:'.length + 16,
+  )}`;
   const members = Array.from({ length: series.repeatCount }, (_, replicateIndex) => ({
     memberId: `${seriesId}-member-${replicateIndex}`,
     replicateIndex,
@@ -834,6 +926,7 @@ export function compileCliEvaluationInput(
   validateResourceReferences(resolvedInput, hostResources);
   const definition = compileDefinition(resolvedInput);
   const policy = compilePolicy(resolvedInput);
+  validateCompiledCoreSemantics(definition, policy);
   const definitionDigest = digestCanonicalJson(definition);
   const policyDigest = digestCanonicalJson(policy);
   const series = compileSeries(resolvedInput, digestCanonicalJson({ definition, policy }));

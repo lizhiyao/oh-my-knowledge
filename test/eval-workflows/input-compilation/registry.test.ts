@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Eval from '../../../src/cli/commands/eval/index.js';
+import { parseRunConfig } from '../../../src/cli/lib/parse-run-config.js';
+import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../src/eval-workflows/evaluation-defaults.js';
 import { EVAL_CONFIG_SCHEMA_SOURCE_PATHS } from '../../../src/inputs/eval-config.js';
 import {
   CLI_EVALUATION_INPUT_REGISTRY,
@@ -46,5 +48,28 @@ describe('CLI evaluation input registry', () => {
     expect(defaults.get('no-diagnostic')).toBe('enabled-outside-core');
     expect(defaults.get('no-evidence')).toBe('append');
     expect(defaults.get('report-only')).toBe('gate');
+  });
+
+  it('keeps registry defaults aligned with live parser and environment-selected language', () => {
+    const timeout = CLI_EVALUATION_INPUT_REGISTRY.find((entry) => (
+      entry.sourceKind === 'cli-flag' && entry.sourceKey === 'timeout'
+    ));
+    const language = CLI_EVALUATION_INPUT_REGISTRY.find((entry) => (
+      entry.sourceKind === 'cli-flag' && entry.sourceKey === 'lang'
+    ));
+    const { config } = parseRunConfig({
+      control: 'baseline',
+      treatment: 'candidate',
+      executor: 'codex',
+      model: 'gpt-example',
+    });
+
+    expect(config.timeoutMs).toBe(DEFAULT_EVALUATION_TIMEOUT_MS);
+    expect(timeout).toMatchObject({
+      defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS,
+      defaultSource: 'documented',
+    });
+    expect(Eval.flags.timeout.description).toContain(String(DEFAULT_EVALUATION_TIMEOUT_MS / 1000));
+    expect(language).toMatchObject({ defaultValue: 'zh', defaultSource: 'environment-selection' });
   });
 });

@@ -264,7 +264,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --skip-doctor                   Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.
   --strict-baseline               Force baseline isolation (default true)
   --threshold <value>             Verdict threshold, default 3.5
-  --timeout <value>               Per-sample timeout sec, default 600
+  --timeout <value>               Per-sample timeout sec, default 120
   --treatment <value>             Treatment variants, comma-separated (artifact identity only)
   --treatment-cwd <value>         Runtime context dirs for treatments, comma-separated, index-aligned with --treatment (blank = none)
   --trivial-diff <value>          Trivial diff tolerance; 0 disables tolerance

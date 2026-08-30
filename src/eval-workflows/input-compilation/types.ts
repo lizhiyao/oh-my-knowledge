@@ -223,7 +223,8 @@ export interface ResolvedJudgeMember {
 
 export interface ResolvedIndependentSeriesInput {
   readonly repeatCount: number;
-  readonly seriesId?: string;
+  /** Host-allocated identity for one independent Series execution. */
+  readonly seriesInstanceId: string;
   readonly comparisonScope?: 'evaluation' | 'analysis' | 'decision';
   readonly minimumStatus?: 'compatible' | 'conditional';
 }

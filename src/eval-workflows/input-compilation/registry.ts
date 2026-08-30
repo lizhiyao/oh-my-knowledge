@@ -1,4 +1,5 @@
 import type { JsonValue } from '../../evaluation-core/contracts/index.js';
+import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../evaluation-defaults.js';
 
 export type CliInputRegistryOwner =
   | 'Definition'
@@ -89,7 +90,7 @@ const config = (
  */
 export const CLI_EVALUATION_INPUT_REGISTRY = [
   cli('lang', 'presentation.language', 'Presentation', 'none', {
-    defaultValue: 'zh', defaultSource: 'documented',
+    defaultValue: 'zh', defaultSource: 'environment-selection',
   }),
   cli('control', 'definition.targets.control', 'Definition', 'execution'),
   cli('treatment', 'definition.targets.treatments', 'Definition', 'execution'),
@@ -129,7 +130,7 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultValue: 1, defaultSource: 'documented',
   }),
   cli('timeout', 'policy.executionTimeoutMs', 'MeasurementPolicy', 'execution', {
-    defaultValue: 120000, defaultSource: 'documented',
+    defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
   }),
   cli('batch', 'orchestration.batch', 'Orchestration', 'none', {
     defaultValue: false, defaultSource: 'documented',
@@ -244,7 +245,7 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultValue: 1, defaultSource: 'documented',
   }),
   config('timeoutMs', 'policy.executionTimeoutMs', 'MeasurementPolicy', 'execution', {
-    defaultValue: 120000, defaultSource: 'documented',
+    defaultValue: DEFAULT_EVALUATION_TIMEOUT_MS, defaultSource: 'documented',
   }),
   config('noCache', 'policy.cache', 'MeasurementPolicy', 'execution', {
     defaultValue: 'enabled', defaultSource: 'documented',

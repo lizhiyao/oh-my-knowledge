@@ -329,7 +329,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       diagnostic: 'enabled-outside-core',
       managedEvidence: 'append',
       gold: { resourceId: gold.resourceId, comparisonMode: 'exploratory-post-hoc' },
-      independentSeries: { repeatCount: 3, seriesId: 'repeat-series' },
+      independentSeries: { repeatCount: 3, seriesInstanceId: 'repeat-series-run-20260830' },
     },
     presentation: {
       outputDirectoryLocator: '/repo/.omk/reports',

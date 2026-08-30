@@ -26,10 +26,10 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 | 阶段 | 负责 | 禁止 |
 |---|---|---|
-| Parse | `CLI > eval.yaml > documented default`、语法、来源归因 | 读文件、创建 Runtime、计算测量 digest |
+| Parse | `parseCliEvaluationRequest()` 执行 `CLI > eval.yaml > explicit host default`、校验语法并记录来源归因 | 读取文件系统／环境／网络／时钟，把 parser 注入的默认值当成显式 flag，创建 Runtime，计算测量 digest |
 | Resolve | materialization、git pin、内容／目录树 digest、mock／workspace descriptor、locator 绑定 | 调用 Core prepare、相信自报能力、产出 sealed plan |
-| Compile | 纯映射到 schema-valid Core contract 和宿主请求 | 读取文件系统／环境／网络／时钟，创建 `AbortSignal`、writer、store 或 run ID |
-| Core prepare | 校验 schema／引用和已验证的 Runtime capability／identity，封存唯一 RunPlan | 做 connectivity 或 doctor 检查 |
+| Compile | 纯映射到 canonical、schema-valid、静态语义完整的 Core contract 和宿主请求 | 读取文件系统／环境／网络／时钟，创建 `AbortSignal`、writer、store 或 run ID |
+| Core prepare | 重新校验契约，确认已验证的 Runtime capability／identity，封存唯一 RunPlan | 做 connectivity 或 doctor 检查 |
 | Adapter preflight | credential、connectivity、路径权限、doctor、物理环境健康度 | 替代 Core capability 校验或改写 sealed measurement design |
 
 ## 二、输出归属
@@ -52,7 +52,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 - Host resources 保存 locator、resolved commit、仓库来源和 materialization 证据。同一内容在绝对／相对路径或不同机器间移动，不会让 execution identity 失效；
 - 行为变化会改变 Definition digest。只有 lineage 变化时，后续由显式 comparability／provenance policy 判断，不能偷偷塞进 Target config。
 
-Mock match rule 和 strict mode 进入 Target 行为。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。
+Mock match rule 和 strict mode 进入 Target 行为。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。
 
 Dataset 投影保护 Gold 边界：Executor 只看到 `input + executionContext`；evaluator 可以读取 `expected + evaluationContext`；analysis 只读取显式 membership 和 analysis context。Gold locator 只留在宿主资源中。Post-hoc gold compare 标记为 exploratory，不能冒充 preregistered decision。
 
@@ -77,11 +77,15 @@ Dataset 投影保护 Gold 边界：Executor 只看到 `input + executionContext`
 | `--repeat` | Evaluation Series 中的独立 Run |
 | Batch child | 不同 artifact workflow，不是 Series replicate |
 
+当 `--repeat > 1` 时，orchestrator 在 Resolve 前分配唯一的 `seriesInstanceId`。Compile 把这份宿主持有的实例身份与完整 Series 设计绑定，包括 measurement design、repeat count、comparison scope 和 minimum status，并由此派生 Core 最终使用的 `seriesId`。编译器不会从时钟或随机源创造身份；同一实例 ID 被错误复用于不同设计时，也不会映射成同一个 Series。
+
 ## 五、确定性与校验
 
-`compileCliEvaluationInput()` 只接收已解析、可序列化的 IR，不执行任何 I／O，并返回 deep-frozen 输出。它立即使用已发布的 Core schema 校验 Definition 和 Policy。对象属性顺序、宿主 locator 写法、CLI／YAML 来源和 lineage 不影响 Definition／Policy digest；实际行为字节变化则必须影响 digest。
+`parseCliEvaluationRequest()` 是 raw CLI／config 输入的纯规范化边界。宿主只传入用户显式提供的 flag、已完成语法校验的 `EvalConfig`，以及带来源信息的环境选择默认值。CLI 和 config 候选值必须先经过同一组规范字段校验，再应用优先级。只有本阶段真实存在的值才能产生 provenance；后续派生值只在实际派生时记录来源。不得把 Oclif 自动注入的默认值冒充用户显式 CLI 输入。Judge 开关必须先于 judge-model 解析确定，因此 no-judge 请求不会因一份不再使用的错误评委来源而失败。
 
-编译错误使用宿主 `CliEvaluationInputError`，包含稳定 code，以及可选的 source／field path。它不是 Core `EvaluationError`，因为 Run 尚未开始。Compile 不接受 Runtime 自报能力；只有 Core prepare 有权做 capability qualification。
+`compileCliEvaluationInput()` 只接收已解析、可序列化的 IR，不执行任何 I／O，并返回 deep-frozen 输出。它在产出前调用 Core 公开的 `normalizeEvaluationDefinition()` 和 `validateDefinitionSemantics()`：schema 校验、类集合字段的 canonical 排序、引用完整性和静态语义校验由同一个 owner 定义。Core 边界会在 Runtime qualification 前再次校验这些契约。对象属性顺序、嵌套 membership／cohort filter 顺序、宿主 locator 写法、CLI／YAML 来源和 lineage 不影响 Definition／Policy digest；实际行为字节变化则必须影响 digest。
+
+Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 code，以及可选的 source／field path。Core 静态校验失败会把原始 Core code／details 保留在宿主错误中，但不会让 Core Run 错误越过尚未开始 Run 的边界。它们不是 Core `EvaluationError`。Compile 不接受 Runtime 自报能力；只有 Core prepare 有权做 capability qualification。
 
 ## 六、迁移边界
 
@@ -112,7 +116,7 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | CLI | `--holdout-ratio` | `definition.dataset.analysisCohorts` | 300 | — | Definition | analysis | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--judge-models` | `definition.judges.members` | 300 | — (environment-selection) | Definition | evaluation | `evaluator-instrument`<br>`model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--judge-repeat` | `definition.judges.replicateCount` | 300 | `1` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--lang` | `presentation.language` | 300 | `"zh"` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
+| CLI | `--lang` | `presentation.language` | 300 | `"zh"` (environment-selection) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |

@@ -134,6 +134,35 @@ describe('compileCliEvaluationInput', () => {
     expect(result.policy.retry.maxAttempts).toBe(3);
   });
 
+  it('binds Series identity to both the host instance and the complete Series design', () => {
+    const twoRuns = deepClone(validResolvedCliInput());
+    const threeRuns = deepClone(validResolvedCliInput());
+    if (twoRuns.orchestration.independentSeries === undefined
+        || threeRuns.orchestration.independentSeries === undefined) {
+      throw new Error('fixture is incomplete');
+    }
+    twoRuns.orchestration.independentSeries.repeatCount = 2;
+    threeRuns.orchestration.independentSeries.repeatCount = 3;
+
+    const twoRunSeries = compileCliEvaluationInput(twoRuns).orchestration.independentSeries;
+    const threeRunSeries = compileCliEvaluationInput(threeRuns).orchestration.independentSeries;
+    expect(twoRunSeries?.definition.seriesId).not.toBe(threeRunSeries?.definition.seriesId);
+    expect(twoRunSeries?.definition.seriesId).toContain('repeat-series-run-20260830');
+  });
+
+  it('requires the host to allocate a Series instance identity before compilation', () => {
+    const input = deepClone(validResolvedCliInput());
+    if (input.orchestration.independentSeries === undefined) {
+      throw new Error('fixture is incomplete');
+    }
+    delete (input.orchestration.independentSeries as { seriesInstanceId?: string }).seriesInstanceId;
+
+    expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_SERIES_INVALID',
+      fieldPath: 'orchestration.independentSeries.seriesInstanceId',
+    }));
+  });
+
   it('keeps holdout, bootstrap, composite and gate semantics in explicit Core fields', () => {
     const result = compileCliEvaluationInput(validResolvedCliInput());
     expect(result.definition.dataset.analysisCohorts?.map((cohort) => cohort.cohortId))
@@ -183,6 +212,34 @@ describe('compileCliEvaluationInput', () => {
     expect(rightResult.hostResources).not.toEqual(leftResult.hostResources);
   });
 
+  it('canonicalizes nested analysis memberships and cohort filters with Core rules', () => {
+    const left = deepClone(validResolvedCliInput());
+    left.dataset.analysisCohorts?.push({
+      cohortId: 'tag-a',
+      cohortSetId: 'tags',
+      cohortSetKind: 'cohort',
+      classification: 'gold',
+      disclosure: 'identity-only',
+    });
+    left.dataset.samples[0].analysis?.memberships.push({ cohortId: 'tag-a' });
+    const bootstrap = left.analysisGraph.nodes.find((node) => node.nodeId === 'bootstrap-difference');
+    if (bootstrap?.cohortFilter?.includeCohortIds === undefined) {
+      throw new Error('fixture is incomplete');
+    }
+    bootstrap.cohortFilter.includeCohortIds.push('tag-a');
+    const right = deepClone(left);
+    right.dataset.samples[0].analysis?.memberships.reverse();
+    const rightBootstrap = right.analysisGraph.nodes.find((node) => (
+      node.nodeId === 'bootstrap-difference'
+    ));
+    rightBootstrap?.cohortFilter?.includeCohortIds?.reverse();
+
+    const leftResult = compileCliEvaluationInput(left);
+    const rightResult = compileCliEvaluationInput(right);
+    expect(rightResult.canonicalDigests).toEqual(leftResult.canonicalDigests);
+    expect(rightResult.definition).toEqual(leftResult.definition);
+  });
+
   it('changes behavior identity when injected artifact bytes change', () => {
     const left = validResolvedCliInput();
     const right = deepClone(left);
@@ -229,6 +286,42 @@ describe('compileCliEvaluationInput', () => {
       });
       expect((error as Error).message).toContain('验证摘要');
     }
+  });
+
+  it.each([
+    ['artifact-control', 'workspace', 'targets.control.behavior.artifact'],
+    ['workspace-tree', 'artifact', 'targets.treatment.behavior.workspace'],
+    ['mcp-config', 'artifact', 'targets.treatment.behavior.mcpConfig'],
+    ['mock-search-response', 'content', 'targets.treatment.behavior.mocks.0.payloads.0'],
+    ['rubric-correctness', 'artifact', 'evaluatorTemplates.rubric.resources.0'],
+    ['gold-dataset', 'content', 'orchestration.gold.resourceId'],
+  ] as const)(
+    'rejects a host resource kind that contradicts its reference role: %s',
+    (resourceId, resourceKind, fieldPath) => {
+      const input = deepClone(validResolvedCliInput());
+      const resource = input.hostResources.resources.find((candidate) => (
+        candidate.descriptor.resourceId === resourceId
+      ));
+      if (resource === undefined) throw new Error('fixture is incomplete');
+      resource.resourceKind = resourceKind;
+
+      expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({
+        code: 'CLI_INPUT_RESOURCE_KIND_MISMATCH',
+        fieldPath,
+        details: expect.objectContaining({ resourceId, actualResourceKind: resourceKind }),
+      }));
+    },
+  );
+
+  it('wraps Core reference and static semantic failures in a stable host error', () => {
+    const input = deepClone(validResolvedCliInput());
+    input.evaluatorTemplates[0].metricIds = ['missing-metric'];
+
+    expect(() => compileCliEvaluationInput(input)).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_CORE_SEMANTICS_INVALID',
+      fieldPath: 'definition',
+      details: expect.objectContaining({ coreCode: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    }));
   });
 
   it('derives Runtime bindings from Definition requirements without override fields', () => {

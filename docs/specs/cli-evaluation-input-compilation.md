@@ -26,10 +26,10 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 | Phase | Owns | Must not do |
 |---|---|---|
-| Parse | `CLI > eval.yaml > documented default`, syntax, source attribution | Read files, create a Runtime, calculate measurement digests |
+| Parse | `parseCliEvaluationRequest()` applies `CLI > eval.yaml > explicit host default`, validates syntax, and records source attribution | Read files/environment/network/clock, accept parser-injected defaults as explicit flags, create a Runtime, calculate measurement digests |
 | Resolve | Materialization, git pinning, content/tree digests, mock and workspace descriptors, locator binding | Call Core prepare, trust self-reported capabilities, emit a sealed plan |
-| Compile | Pure mapping to schema-valid Core contracts and host-side requests | Read filesystem/environment/network/clock, create `AbortSignal`, writer, store, or run ID |
-| Core prepare | Validate schema/references and verified Runtime capability/identity; seal the only RunPlan | Perform connectivity or doctor checks |
+| Compile | Pure mapping to canonical, schema-valid, statically coherent Core contracts and host-side requests | Read filesystem/environment/network/clock, create `AbortSignal`, writer, store, or run ID |
+| Core prepare | Revalidate the contract, qualify verified Runtime capability/identity, and seal the only RunPlan | Perform connectivity or doctor checks |
 | Adapter preflight | Credentials, connectivity, path permissions, doctor, physical health | Replace Core capability validation or rewrite sealed measurement design |
 
 ## 2. Output ownership
@@ -52,7 +52,7 @@ Behavior identity and source lineage are separate axes:
 - Host resources contain locator, resolved commit, repository origin, and materialization evidence. Moving the same content between absolute/relative paths or machines does not invalidate execution identity.
 - A behavior change changes the Definition digest. A lineage-only change is assessed later by explicit comparability and provenance policy, not smuggled into Target config.
 
-Mock rules and strict mode enter Target behavior. Every payload is a digest-bound descriptor; inline secret or gold content is forbidden. Runtime adapters must verify the digest immediately before use. Missing interception, allowed-tool, skill-discovery, MCP, cancellation, seed, or sandbox capability fails closed during Core prepare; adapters must never drop mocks or fall back to real external calls.
+Mock rules and strict mode enter Target behavior. Every payload is a digest-bound descriptor; inline secret or gold content is forbidden. Compile also requires every reference role to match its host resource kind: artifact, workspace, MCP config, mock payload, evaluator content, and gold dataset cannot be substituted for one another even when a descriptor happens to match. Runtime adapters must verify the digest immediately before use. Missing interception, allowed-tool, skill-discovery, MCP, cancellation, seed, or sandbox capability fails closed during Core prepare; adapters must never drop mocks or fall back to real external calls.
 
 Dataset projections preserve the Gold boundary: Executors see only `input + executionContext`; evaluators may receive `expected + evaluationContext`; analysis receives only explicit membership and analysis context. Gold locators remain host resources. Post-hoc gold comparison is exploratory and cannot masquerade as a preregistered decision.
 
@@ -77,11 +77,15 @@ The repetition hierarchy is explicit:
 | `--repeat` | Independent Runs in an Evaluation Series |
 | Batch child | A different artifact workflow, not a Series replicate |
 
+For `--repeat > 1`, the orchestrator allocates a unique `seriesInstanceId` before resolution. Compilation binds that host-owned instance identity to the complete Series design—measurement design, repeat count, comparison scope, and minimum status—to derive Core's final `seriesId`. The compiler never invents identity from a clock or random source, and reusing an instance ID with a different design cannot alias the same Series.
+
 ## 5. Determinism and validation
 
-`compileCliEvaluationInput()` accepts only resolved, serializable IR. It performs no I/O and returns deeply frozen output. It immediately validates Definition and Policy with their published Core schemas. Object property order, host locator spelling, CLI/YAML source, and lineage do not affect Definition or Policy digests; actual behavior bytes do.
+`parseCliEvaluationRequest()` is the pure normalization boundary for raw CLI/config inputs. The host passes only flags explicitly supplied by the user, an already syntax-validated `EvalConfig`, and any environment-selected defaults as explicit values with provenance. CLI and config candidates pass through the same canonical field validators before precedence is applied. Provenance is emitted only for a value that exists at this stage; later-derived values acquire provenance only when they are actually derived. Oclif-injected defaults must not be passed as explicit CLI values. Judge disablement is resolved before judge-model parsing, so an unused malformed judge source cannot fail a no-judge request.
 
-Compilation errors are host `CliEvaluationInputError` values with stable codes and optional source/field paths. They are not Core `EvaluationError` records, because a Run has not started. Runtime capability claims are not accepted by compile; only Core prepare can qualify them.
+`compileCliEvaluationInput()` accepts only resolved, serializable IR. It performs no I/O and returns deeply frozen output. It uses Core's public `normalizeEvaluationDefinition()` and `validateDefinitionSemantics()` contracts before emitting output: schema validation, canonical set-like ordering, reference integrity, and static semantic checks therefore have one owner. The Core boundary revalidates those contracts before runtime qualification. Object property order, nested membership/cohort-filter order, host locator spelling, CLI/YAML source, and lineage do not affect Definition or Policy digests; actual behavior bytes do.
+
+Parse and compilation errors are host `CliEvaluationInputError` values with stable codes and optional source/field paths. Core static-validation failures retain their Core code/details inside the host error without leaking Core Run errors across the pre-Run boundary. They are not Core `EvaluationError` records, because a Run has not started. Runtime capability claims are not accepted by compile; only Core prepare can qualify them.
 
 ## 6. Migration boundary
 
@@ -112,7 +116,7 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | CLI | `--holdout-ratio` | `definition.dataset.analysisCohorts` | 300 | — | Definition | analysis | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--judge-models` | `definition.judges.members` | 300 | — (environment-selection) | Definition | evaluation | `evaluator-instrument`<br>`model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--judge-repeat` | `definition.judges.replicateCount` | 300 | `1` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--lang` | `presentation.language` | 300 | `"zh"` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
+| CLI | `--lang` | `presentation.language` | 300 | `"zh"` (environment-selection) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |

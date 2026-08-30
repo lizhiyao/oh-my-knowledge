@@ -118,9 +118,12 @@ describe('oclif custom parsers', () => {
 
   it('distinguishes positive caps from zero-tolerance values', async () => {
     const parseBudget = parserFor(flagsOf(Eval.flags), 'budget-usd');
+    const parseDurationBudget = parserFor(flagsOf(Eval.flags), 'budget-per-sample-ms');
     const parseTrivialDiff = parserFor(flagsOf(Eval.flags), 'trivial-diff');
     assert.equal(await parseBudget('0.0001'), '0.0001');
     await assert.rejects(() => parseBudget('0'), /--budget-usd[\s\S]*大于 0/);
+    assert.equal(await parseDurationBudget('1'), '1');
+    await assert.rejects(() => parseDurationBudget('1.5'), /--budget-per-sample-ms/);
     assert.equal(await parseTrivialDiff('0'), '0');
   });
 

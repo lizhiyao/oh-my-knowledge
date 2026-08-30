@@ -264,7 +264,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --skip-doctor                   escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
   --strict-baseline               强制 baseline 隔离（default true）
   --threshold <value>             verdict 阈值，默认 3.5
-  --timeout <value>               单用例超时秒，默认 600
+  --timeout <value>               单用例超时秒，默认 120
   --treatment <value>             treatment variant 列表，逗号分隔（仅 artifact 身份）
   --treatment-cwd <value>         treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
   --trivial-diff <value>          可忽略 diff 容差，0 表示不启用容差

@@ -114,7 +114,7 @@ omk eval [flags]
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
 - `--threshold` `option`:verdict 阈值，默认 3.5
-- `--timeout` `option`:单用例超时秒，默认 600
+- `--timeout` `option`:单用例超时秒，默认 120
 - `--treatment` `option`:treatment variant 列表，逗号分隔（仅 artifact 身份）
 - `--treatment-cwd` `option`:treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差

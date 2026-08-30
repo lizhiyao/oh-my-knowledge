@@ -58,6 +58,7 @@ import { sealRunPlan } from '../internal/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';
+export { validateDefinitionSemantics } from './validation.js';
 
 interface StageExtensions {
   execution?: Extensions;
@@ -1093,17 +1094,15 @@ function sortSchemaIdentities(
   ));
 }
 
-export async function prepareEvaluationPlan(
+export function normalizeEvaluationDefinition(
   definitionInput: unknown,
-  measurementPolicyInput: unknown,
-  runtime: PreparationRuntime,
-): Promise<SealedRunPlan> {
-  let definition = parseInput(
+): z.infer<typeof EvaluationDefinitionSchema> {
+  const definition = parseInput(
     EvaluationDefinitionSchema,
     definitionInput,
     'EvaluationDefinition',
   );
-  definition = {
+  return parseInput(EvaluationDefinitionSchema, {
     ...definition,
     dataset: {
       ...definition.dataset,
@@ -1123,7 +1122,15 @@ export async function prepareEvaluationPlan(
       }),
     },
     analysisGraph: projectAnalysisGraph(definition.analysisGraph),
-  };
+  }, 'EvaluationDefinition');
+}
+
+export async function prepareEvaluationPlan(
+  definitionInput: unknown,
+  measurementPolicyInput: unknown,
+  runtime: PreparationRuntime,
+): Promise<SealedRunPlan> {
+  let definition = normalizeEvaluationDefinition(definitionInput);
   const measurementPolicy = parseInput(
     MeasurementPolicySchema,
     measurementPolicyInput,

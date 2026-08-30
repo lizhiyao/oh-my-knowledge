@@ -37,6 +37,7 @@ import {
   resolveRuntimeSelection,
   type RuntimeResolutionOptions,
 } from './runtime-defaults.js';
+import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../eval-workflows/evaluation-defaults.js';
 
 export { parseJudgeModelsArg, parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 
@@ -184,8 +185,11 @@ export function parseRunConfig(
       ? Number(values.timeout)
       : evalConfig?.timeoutMs
         ? evalConfig.timeoutMs / 1000
-        : 120;
-  const timeoutMs = Math.max(1, Number(timeoutSec) || 120) * 1000;
+        : DEFAULT_EVALUATION_TIMEOUT_MS / 1000;
+  const timeoutMs = Math.max(
+    1,
+    Number(timeoutSec) || DEFAULT_EVALUATION_TIMEOUT_MS / 1000,
+  ) * 1000;
   const noJudge = (values['no-judge'] as boolean | undefined) ?? evalConfig?.noJudge ?? false;
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
