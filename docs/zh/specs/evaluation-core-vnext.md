@@ -87,7 +87,7 @@ execution error、evaluation error、取消、预算截尾和无法解析的内�
 
 ### 5．可比性是显式关系
 
-两个 Bundle digest 不同不代表一定不可比较，相同也不代表实验设计有效。ComparabilityPolicy 根据 Dataset 投影、Target、Runtime、Evaluator、SamplingDesign 和 DecisionPolicy 的变化给出 compatible、conditional 或 incompatible，并解释理由。
+两个 Bundle digest 不同不代表一定不可比较，相同也不代表实验设计有效。ComparabilityPolicy 根据 Dataset 投影、Target、Runtime、Evaluator、SamplingDesign 和 DecisionPolicy 的变化给出 compatible、conditional 或 incompatible，并解释理由。第七节冻结 v1 判定契约。
 
 ### 6．标准兼容，不被标准绑架
 
@@ -179,10 +179,12 @@ interface RuntimeIdentity {
   fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
   assuranceLevel: 'verified' | 'declared' | 'unknown';
   capabilities: JsonValue;
+  implementationFacets?: JsonValue;
+  provenanceFacets?: JsonValue;
 }
 ```
 
-调用方声明的版本或 fingerprint 只是要求，Report 记录 Runtime 实际解析出的身份。远程模型 deployment、工具、sandbox、依赖和环境以 provenance facets 保存。
+调用方声明的版本或 fingerprint 只是要求，Report 记录 Runtime 实际解析出的身份。`implementationFacets` 保存尚未由 `fingerprint` 承诺、且能够改变行为的事实，例如远程模型 deployment、effective tool schema、sandbox policy、依赖和环境；`provenanceFacets` 只保存该身份如何被观测或认证的 evidence，不能隐藏任何会改变输出的事实。Runtime manifest 如果无法对行为相关 facet 完成分类，也无法证明 fingerprint 已经承诺该 facet，prepare 必须拒绝。
 
 ### 4．ExperimentDesign 与 SamplingDesign
 
@@ -203,14 +205,20 @@ interface ExperimentDesign {
   seed: string;
   sampling: SamplingDesign;
   scheduling: SchedulingPolicy;
+  randomizationSlots: readonly {
+    targetId: string;
+    randomizationSlotId: string;
+  }[];
 }
 ```
 
 trial 表示同一实验条件的一次重复测量；retry attempt 表示一次 trial 内的基础设施重试，两者不能互换。统计实现必须在 prepare 阶段验证自己支持当前 SamplingDesign，不能把重复 trial 自动视为独立样本。
 
-配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按 Target 派生独立随机条件，还是诚实声明 Target 随机性不可控；sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`randomizationSlots` 为每个 Target 分配唯一、稳定的实验 slot；该 slot 只标识随机化条件，绝不编码 control／treatment role。宿主比较 successive subject implementation 时，即使 Target ID 改变，也必须保持同一个 slot。
 
-`pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。scheduling identity hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。所有 ID 从 Plan digest 与规范化成员集合做 domain-separated 派生，不直接 hash 低熵的原始 pairing／cluster／stratum 值。
+`randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v1` domain，根据 execution-input projection、trial count、root seed、SamplingDesign、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+
+`pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。artifact identity 继续 hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。这些绑定 Plan 的 ID 负责 uniqueness、lineage 与 cache isolation，但不作为随机输入。随机化改用上文单独封存的 subject-neutral projection，避免有意改变 subject 时扰动其它对应 coordinate 已分配的实验条件。
 
 ### 5．Evaluator、Metric、Reducer 与 DecisionPolicy
 
@@ -342,6 +350,7 @@ Definition、Plan、Bundle、Event 和 Report 都带独立 `schemaVersion`，并
 ```text
 executionPlanDigest = H(
   executionInputDigest,
+  randomizationDesignDigest,
   target snapshots,
   executor manifests,
   SamplingDesign,
@@ -372,6 +381,247 @@ runContractDigest = H(all plan digests + schema identities)
 ```
 
 `project`、`owner`、`tags` 等 annotations 不进入测量 digest。output／trace 的捕获方式及其 classification ceiling 会改变持久化 Execution 事实和 cache key，因此进入 ExecutionPlan 身份；完整 EvidencePolicy 同时进入 EvaluationPlan，因为它决定 Evaluator binding 与评测 evidence。仅影响 Evaluation 的 input／expected／evidence 捕获不失效 Execution。
+
+### 1．ADR：在不变测量系统下比较显式声明的研究对象
+
+**状态**：已接受为 v1 实现决策，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
+
+可比性是两个候选对象针对一种明确用途的关系，不是任一 Run 自带的固有属性。v1 只支持一种刻意保守的设计模式：`exact-measurement-design`。调用方把一组一一对应的 Target 显式声明为研究对象；只有这些映射 Target 的定义及其 Executor Runtime 实现身份可以变化。观察、评分、抽样、分析这些研究对象，以及在请求时作出决策的全部测量系统保持不变。
+
+该决策把三个绝不能压缩成同一 Boolean 的命题分开：
+
+1. **内容身份**：canonical digest 相同，只表示对应阶段的 sealed content 相同；它不认证生产者，也不证明实验设计有效。
+2. **证据资格**：Runtime assurance、provenance trust、宿主 attestation 与 source verification axes，描述所声明内容和执行得到多强的认证；它不能让两个不同测量工具变得等价。
+3. **实验可比性**：只改变声明的研究对象，同时保持请求 scope 所需的测量投影不变。
+
+Replayability 与 reproducibility 继续作为独立 artifact 属性。一次比较可以有效，却不承诺逐 byte 复现；self-contained replay 也不能修复已经改变的 Evaluator 或 sampling unit。
+
+### 2．Policy 与 Assessment 契约
+
+v1 wire contract 的概念结构如下：
+
+```ts
+interface ComparabilityPolicy {
+  schemaVersion: 'omk.comparability-policy/v1';
+  designMode: 'exact-measurement-design';
+  comparisonScope: 'evaluation' | 'analysis' | 'decision';
+  subjects: readonly {
+    subjectId: string;
+    leftTargetId: string;
+    rightTargetId: string;
+  }[];
+  policyDigest: Sha256Digest;
+}
+
+type ComparabilitySourceVerificationFact =
+  | {
+      verificationFactKind: 'verification-axis';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      verificationAxis:
+        | 'provenance-attestation'
+        | 'cache-receipt'
+        | 'invocation-budget'
+        | 'provider-cost-budget'
+        | 'policy-execution';
+      verificationStatus: 'verified' | 'indeterminate';
+    }
+  | {
+      verificationFactKind: 'source-trust';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      trustRelation: 'parent' | 'effective';
+      trust: Provenance['trust'];
+    };
+
+interface RuntimeQualificationFact {
+  stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+  runtimeKind:
+    | 'executor'
+    | 'evaluator'
+    | 'analysis-node'
+    | 'missing-policy'
+    | 'decision-policy';
+  referenceId: string;
+  runtimeIdentityDigest: Sha256Digest;
+  runtimeImplementationDigest: Sha256Digest;
+  fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
+  sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  verifiedByAttestationDigest?: Sha256Digest;
+}
+
+interface ComparabilityCandidateIdentity {
+  runContractDigest: Sha256Digest;
+  planDigests: PlanDigests;
+  randomizationDesignDigest: Sha256Digest;
+  artifacts: readonly {
+    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+    artifactDigest: Sha256Digest;
+  }[];
+  sourceVerification: readonly ComparabilitySourceVerificationFact[];
+  runtimeQualification: readonly RuntimeQualificationFact[];
+  candidateDigest: Sha256Digest;
+}
+
+interface ComparabilityAssessment {
+  schemaVersion: 'omk.comparability-assessment/v1';
+  policyDigest: Sha256Digest;
+  designMode: 'exact-measurement-design';
+  comparisonScope: 'evaluation' | 'analysis' | 'decision';
+  left: ComparabilityCandidateIdentity;
+  right: ComparabilityCandidateIdentity;
+  designStatus: 'compatible' | 'incompatible';
+  evidenceQualificationStatus: 'verified' | 'conditional' | 'rejected';
+  comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
+  reasons: readonly ComparabilityReason[];
+  assessmentDigest: Sha256Digest;
+}
+
+type ComparabilityReasonCode =
+  | 'comparability-identity-declared-subject-change'
+  | 'comparability-design-subject-mapping-invalid'
+  | 'comparability-design-undeclared-subject-change'
+  | 'comparability-design-evaluation-input-mismatch'
+  | 'comparability-design-evaluation-instrument-mismatch'
+  | 'comparability-design-sampling-mismatch'
+  | 'comparability-design-randomization-mismatch'
+  | 'comparability-design-analysis-mismatch'
+  | 'comparability-design-comparison-mismatch'
+  | 'comparability-design-decision-mismatch'
+  | 'comparability-design-schema-mismatch'
+  | 'comparability-design-projection-mismatch'
+  | 'comparability-evidence-source-absent'
+  | 'comparability-evidence-verification-indeterminate'
+  | 'comparability-evidence-assurance-unverified'
+  | 'comparability-evidence-source-untrusted'
+  | 'comparability-evidence-runtime-identity-opaque';
+
+interface ComparabilityReason {
+  reasonCode: ComparabilityReasonCode;
+  axis: 'design' | 'evidence' | 'identity';
+  severity: 'info' | 'conditional' | 'incompatible';
+  scope: 'evaluation' | 'analysis' | 'decision';
+}
+
+interface ComparabilityVerificationContext {
+  /** 由独立宿主 verifier 产生，绝不能从 Assessment JSON 重建。 */
+  verifiedRuntimeAttestations?: ReadonlyMap<Sha256Digest, {
+    attestationDigest: Sha256Digest;
+    verifiedAssuranceLevel: 'verified';
+  }>;
+}
+
+interface ComparabilityAssessmentPlanVerification {
+  assessmentComputationStatus: 'verified';
+  policyDigest: Sha256Digest;
+  leftCandidateDigest: Sha256Digest;
+  rightCandidateDigest: Sha256Digest;
+}
+
+interface ComparabilityAssessmentSource {
+  assessment: ComparabilityAssessment;
+  planVerification: ComparabilityAssessmentPlanVerification;
+}
+```
+
+`ComparabilityCandidateIdentity` 为审计记录全部 stage Plan digest、subject-neutral `randomizationDesignDigest`、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。`ComparabilitySourceVerificationFact` 使用 discriminated union，因此 cache receipt 不能填写 provenance trust，parent trust fact 也不能填写 `indeterminate`。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
+
+Runtime 比较使用两个分别计算 digest 的投影。`runtimeIdentityDigest` 使用 `omk.runtime-identity/v1` domain 并覆盖完整 sealed RuntimeIdentity；`runtimeImplementationDigest` 使用 `omk.runtime-implementation-identity/v1` domain，且只覆盖 `implementationId`、`version`、`fingerprint`、`capabilities` 与 `implementationFacets`，只有该 digest 参与 design equality。Evidence qualification 包含 `fingerprintBasis`、sealed／effective assurance、`provenanceFacets`、effective source trust 与 source verification axes。`implementationFacets` 必须包含尚未由 `fingerprint` 承诺的全部行为相关依赖；`provenanceFacets` 只能包含 observation 与 attestation metadata。这样，只改变 basis 或 assurance 不会伪装成测量算法改变，effective dependency 变化不能藏进 evidence metadata，implementation digest 相同也不会伪装成执行已认证。
+
+`ComparabilityVerificationContext` 是不可序列化的 trusted-host 输入，与现有 Bundle verification context 平行。Map key 是完整 `runtimeIdentityDigest`，value 是已经由独立宿主边界验证过的 attestation material digest。Core 绝不把 raw attestation material、transported `verifiedByAttestationDigest` 或调用方自填的 effective level 当作证明。只有 context 精确匹配 Runtime identity 时，effective assurance 才能高于 sealed level；Core 随后把 verified attestation digest 记录到 candidate。畸形 context entry 会被拒绝；与本次 Runtime identity 无关的 entry 不授予任何信任，直接忽略。新增 attestation 会产生新的 candidate／Assessment digest，不能修改旧 artifact。
+
+Comparability 与其它 durable stage 使用同一套 document／source 分层：
+
+- `parseComparabilityAssessmentDocument()` 只校验 wire shape、canonical ordering、局部不变量和排除自身字段后的 digest；它只返回 document，绝不返回 authenticated source；
+- `assessComparability()` 消费 Policy、两个 sealed RunPlan、两侧可用的准确 authenticated stage-source prefix，以及可选 trusted verification context，返回 branded `ComparabilityAssessmentSource`；
+- `parseComparabilityAssessment()` 消费 transported document 及同一组 Plan、source、Policy 与 verification context，完整重算预期 Assessment，只有完全相等时才返回 branded source。
+
+`evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 v1 不允许签名绕过 plan／source-aware 重算。
+
+Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、candidate 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 candidate digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
+
+Subject mapping 必须非空，`subjectId` 必须唯一，左右两侧分别一一对应，并引用对应 sealed Plan 中真实存在的 Target。在比较 connectivity、Comparison reference 或其它以 Target 为 key 的结构前，Core 先把每个 Target alpha-rename 为带 tag 的 canonical reference：mapped Target 变为 `{ targetReferenceKind: 'subject', referenceId: subjectId }`，未映射 Target 变为 `{ targetReferenceKind: 'literal-target', referenceId: targetId }`。tag 属于 canonical identity，因此即使 `subjectId` 与无关的 literal Target ID 相同，也不会折叠成同一节点。每一侧在投影后仍须保持一一对应；重复的 tagged reference 属于非法。描述性的 `targetKind` 没有特殊语义。未声明的 Target 新增、删除、重映射、定义变化或 Executor 实现变化都属于测量系统漂移，结果为 incompatible。已声明的 subject change 会记录为 informational reason，而不是从审计轨迹中抹除。
+
+全部数组在 hashing 前使用以下 total order；document parser 遇到非 canonical input 时直接拒绝，不能静默重排：
+
+- string 严格按 RFC 8785／JCS property-name sorting 的未转义 UTF-16 code unit 做 lexicographic comparison；缺失 optional value 排在 present value 前；
+- stage 顺序是 `execution < evaluation < analysis < decision`；
+- Runtime kind 顺序是 `executor < evaluator < analysis-node < missing-policy < decision-policy`；
+- source fact 先按 stage，再按 `verification-axis < source-trust`；verification axis 顺序是 `provenance-attestation < cache-receipt < invocation-budget < provider-cost-budget < policy-execution`，trust relation 顺序是 `parent < effective`，最后比较 source digest；
+- tagged Target reference 先按 `targetReferenceKind` 的 `subject < literal-target` 排序，再按 `referenceId` 排序；subject 按 `(subjectId, leftTargetId, rightTargetId)` 排序，artifact 按 `(stage, artifactDigest)` 排序，Runtime qualification 按 `(stage, runtimeKind, referenceId, runtimeIdentityDigest)` 排序；
+- reason 先按 severity `incompatible < conditional < info`、axis `design < evidence < identity`、scope `evaluation < analysis < decision` 排序，最后按 `reasonCode` 排序。
+
+Uniqueness key 分别是 `subjectId`、左右两侧各自的 Target ID、每侧 tagged Target reference、artifact stage、source fact 的 `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)`、Runtime qualification 的 `(stage, runtimeKind, referenceId)`，以及 reason 的 `reasonCode`。即使其它 value 不同，semantic key 重复仍属于非法。每个 reason code 只有一个 normative `(axis, severity)` 组合，`scope` 必须等于 Assessment scope：identity-change code 映射到 `(identity, info)`；全部 `comparability-design-*` code 映射到 `(design, incompatible)`；`comparability-evidence-source-untrusted` 映射到 `(evidence, incompatible)`；其它 `comparability-evidence-*` code 映射到 `(evidence, conditional)`。同一类别无论由多少 component-level difference 触发，对应 code 最多输出一次。Canonical component diff、path 和 per-component digest pair 是根据两份 authenticated Plan 重新计算的 diagnostic view，不进入 content-addressed Assessment。跨语言和宿主的 `policyDigest`、`candidateDigest` 与 `assessmentDigest` 由这些规则决定，不能依赖实现遍历顺序或 diff 粒度。
+
+### 3．Scope 投影
+
+比较引擎不会根据 root 或下游 digest 是否相同来猜测等价关系。只要研究对象发生预期变化，`executionPlanDigest` 及全部下游 digest 必然失效，因此引擎必须比较 canonical component projection。
+
+| 请求 scope | 必须不变的测量投影 | 允许有意变化的投影 |
+| --- | --- | --- |
+| `evaluation` | Execution 与 Evaluation Dataset 投影；sample identity 与顺序；scheduling group；包含 trial、root seed、seed coupling、randomization slot、pairing、stratum、cluster 与 resampling unit 的完整 ExperimentDesign；`randomizationDesignDigest`；execution／retry／budget／cache／failure policy；Evaluator 与 Metric 定义；Evaluator implementation identity；evaluation policy 与 evidence capture | 仅限已声明的 Target 定义及其绑定 Executor implementation identity |
+| `analysis` | `evaluation` 的全部内容，加上 Comparison 定义与 family、AnalysisGraph、MissingPolicy 与 Analysis Runtime implementation identity、output schema identity 和 estimator parameter | 仅限已声明的 Target 定义及其绑定 Executor implementation identity |
+| `decision` | `analysis` 的全部内容，加上 DecisionPolicy 定义与 Decision Runtime implementation identity | 仅限已声明的 Target 定义及其绑定 Executor implementation identity |
+
+请求 scope 以外的字段不会污染有效的上游比较。例如，只改变 DecisionPolicy 时，`analysis` scope 为 compatible，`decision` scope 为 incompatible。反过来，Gold、evaluation context、Evaluator、Metric、evidence binding、trial count、seed coupling、randomization slot 或 digest、pairing、cluster、stratum、resampling unit 或 estimator 发生变化时，所有消费该字段的 scope 均为 incompatible。受控随机比较只有在 subject-neutral planned admission rank 和对应 trial seed 相同时才属于 exact；随机 subject 使用 `uncontrolled` 时不满足 `exact-measurement-design`，经过验证的 deterministic subject 因不存在 Target randomness 可以不携带 trial seed。v1 不会猜测两种不同 instrument、scale、random condition、sampling design 或 statistical model 是否「足够接近」。未来若要支持 calibration、bridge study、uncontrolled 或 independently randomized cross-Run design、Dataset overlap 或 schema migration，必须新增显式 design mode，并声明对应的 construct-specific assumption。
+
+JSON property order 与排除在测量 identity 外的 annotation 不会产生 incompatibility。Schema identity 变化会在第一个消费该 schema 的 scope 变为 incompatible。Extension data 遵循 compiler 声明的 impact stage：`audit` extension 被忽略，测量阶段 extension 则进入对应 projection。
+
+### 4．Status 推导与 fail-closed 规则
+
+只有全部 invariant projection 相同且所有 subject mapping 有效时，`designStatus` 才是 `compatible`。任一处不匹配都会使其成为 `incompatible`；全部适用 mismatch category 各输出一次并按确定顺序排列，diagnostic view 仍可枚举每个 changed component。
+
+`evidenceQualificationStatus` 与 EvaluationReport 表达完整性的 `evidenceStatus` 不同。只有请求 scope 所需的 source chain 得到独立认证、所有适用 verification axis 都是 `verified`，且实际使用的每个 Runtime 在应用独立宿主验证后都具有 verified effective assurance 时，它才是 `verified`。Plan-only preflight、缺少必要 source、`indeterminate` verification、unknown／declared effective provenance，或 declared／unknown effective Runtime assurance 都会产生带明确 reason code 的 `conditional`。invariant Runtime 使用 `fingerprintBasis: 'opaque'` 也会产生 condition，因为相等值无法说明究竟固定了哪份实现。effective source trust 为 `untrusted` 时，结果为 `rejected`：这是负面事实，不是尚未闭合的条件。Plan、artifact、parent chain 结构非法、digest 伪造或 verification context 畸形时，应先由各自 validator 拒绝；ComparabilityPolicy 不是另一条 artifact admission 旁路。
+
+Overall status 只能由 Core 推导，宿主不能自行填写：
+
+```text
+if designStatus == incompatible                                  => incompatible
+else if evidenceQualificationStatus == rejected                  => incompatible
+else if evidenceQualificationStatus == conditional               => conditional
+else                                                              => compatible
+```
+
+因此，`conditional` 的唯一含义是「实验设计匹配，但列出的认证条件尚未闭合」，绝不表示「设计大概相似」或「来源已经确认不可信」。`rejected` 会保留这项负面 evidence fact，独立的 `designStatus` 继续说明设计本身是否匹配。conditional 与 rejected evidence 都不能授权方向性发布决策。现有 Decision 与 Report evidence gate 继续对 indeterminate 或 untrusted source fail closed。
+
+以下初始变化矩阵是 normative。除显式标记 `conditional` 的行外，结果均假定其它证据已经 verified。「忽略」表示字段位于请求 scope 之外，不表示它未进入任一 Run 的 identity。
+
+| 变化 | `evaluation` | `analysis` | `decision` | 稳定 reason code |
+| --- | --- | --- | --- | --- |
+| 只改变 annotation 或 JSON property order | compatible | compatible | compatible | 无 |
+| Gold 或 evaluation context | incompatible | incompatible | incompatible | `comparability-design-evaluation-input-mismatch` |
+| Evaluator、Metric 或 evaluation evidence policy | incompatible | incompatible | incompatible | `comparability-design-evaluation-instrument-mismatch` |
+| 已声明 subject 的 Target 定义或绑定 Executor 实现 | compatible | compatible | compatible | `comparability-identity-declared-subject-change` |
+| 未声明的 Target 或 Executor 实现 | incompatible | incompatible | incompatible | `comparability-design-undeclared-subject-change` |
+| trial count、root seed、seed coupling、randomization slot、pairing、cluster、stratum、resampling unit 或 scheduling connectivity | incompatible | incompatible | incompatible | `comparability-design-sampling-mismatch` |
+| subject-neutral randomization digest／planned rank／受控 coordinate seed 不同，或随机 subject 使用 uncontrolled | incompatible | incompatible | incompatible | `comparability-design-randomization-mismatch` |
+| AnalysisGraph 或 estimator | 忽略 | incompatible | incompatible | `comparability-design-analysis-mismatch` |
+| Comparison 定义或 family | 忽略 | incompatible | incompatible | `comparability-design-comparison-mismatch` |
+| DecisionPolicy 或 Decision Runtime 实现 | 忽略 | 忽略 | incompatible | `comparability-design-decision-mismatch` |
+| 被消费的 schema 或测量阶段 extension | 从第一个消费 scope 起 incompatible | incompatible | incompatible | `comparability-design-schema-mismatch` |
+| 只比较 Plan，或缺少必要 source | conditional | conditional | conditional | `comparability-evidence-source-absent` |
+| transported source verification 为 `indeterminate` | conditional | conditional | conditional | `comparability-evidence-verification-indeterminate` |
+| effective provenance 为 unknown／declared，或 Runtime assurance 未 verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| effective source trust 为 `untrusted` | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | `comparability-evidence-source-untrusted` |
+| invariant Runtime 使用 opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
+
+无效 subject mapping 使用 `comparability-design-subject-mapping-invalid`；其它没有更具体 code 的 invariant component 使用 `comparability-design-projection-mismatch`。Stage／artifact digest 相同还是不同会记录在 candidate identity 中，不作为 verdict reason。Reason code 按类别唯一；需要 field-level explanation 的 adapter 根据 authenticated Plan 重算不具权威性的 diagnostic diff。自动发布消费者遇到未知 reason code 时必须 fail closed；reader 仍可保留并展示它。
+
+### 5．影响与否决方案
+
+该设计允许把新的 prompt、RAG 配置、skill、agent、workflow、model 或 service implementation 作为独立变量，而不削弱测量工具；也允许只改变后续 DecisionPolicy 时，Analysis result 继续保持可比。代价是刻意的严格：在某类假设被表达为带版本的 design mode 前，v1 会拒绝可能在特定条件下成立的比较。
+
+以下方案被否决：
+
+- **只比较 `runContractDigest`**：会拒绝每次预期 subject change，并混淆全部下游失效；
+- **把 stage digest 相同当作充分条件**：它只证明 content identity，忽略 provenance、subject declaration 与 construct validity；
+- **交给 CLI、Studio 或宿主临时判断**：会形成互不一致的发布门禁和无法审计的历史结果；
+- **用 `conditional` 容纳任意 design drift**：会把精确状态变成 waiver 机制，使自动决策失去安全性；
+- **把 ComparabilityPolicy 放入每个 RunPlan**：会因为一个事后关系改变 Run identity，也使同一 immutable Run 无法参与多种声明比较。
+- **根据绑定 Plan 的 artifact ID 派生 seed 或 admission rank**：会让预期的 subject change 扰动 random condition，因此 identity 与 randomization 使用不同 domain；
+- **把 Target alpha-rename 为不带 tag 的 string**：会允许 subject alias 与未映射 Target 碰撞，因此 canonical reference 使用带 tag 的 namespace；
+- **把 `fingerprintBasis` 或 diagnostic diff detail 放入 design identity**：会混淆 evidence／presentation 与行为；行为相关 facet 进入 implementation identity，reason identity 只保留类别。
 
 ## 八、运行时、资源与取消
 
@@ -665,11 +915,13 @@ Conformance suite 会对这些 trust chain、cluster resampling artifact 与已�
 ## 二十一、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
+- [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；
 - [Phoenix Experiments](https://arize.com/docs/ax/improve/experiment-in-code)；
 - [Pydantic Evals](https://pydantic.dev/docs/ai/evals/evals/)、[Report Evaluators](https://pydantic.dev/docs/ai/evals/evaluators/report-evaluators/)；
 - [lm-evaluation-harness Task Guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/task_guide.md)；
 - [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)、[OpenInference Semantic Conventions](https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md)；
 - [CloudEvents](https://github.com/cloudevents/spec/blob/main/cloudevents/spec.md)、[W3C Trace Context](https://www.w3.org/TR/trace-context/)；
+- [W3C PROV Overview](https://www.w3.org/TR/prov-overview/)、[PROV-AQ](https://www.w3.org/TR/prov-aq/)；
 - [JSON Schema 2020-12](https://json-schema.org/draft/2020-12)、[RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785.html)、[RFC 6901 JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901)。
 - [Zod 4 JSON Schema](https://zod.dev/json-schema)、[Node.js Events](https://nodejs.org/api/events.html)、[Sigstore Bundle specification](https://github.com/sigstore/protobuf-specs/blob/main/protos/sigstore_bundle.proto)。
 
