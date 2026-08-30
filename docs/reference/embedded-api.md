@@ -92,7 +92,7 @@ const result = await run.result;
 await collecting;
 ```
 
-`runId` is host-assigned and required. OMK derives Bundle and Report identifiers deterministically from it. Definitions, samples, policies, runtime identities, seeds, and fingerprints are sealed into the resulting evidence chain.
+`runId` is host-assigned and required. It must be unique among active runs on the same engine instance because OMK derives Event, Bundle, and Report identifiers deterministically from it. A concurrent duplicate ends immediately with `EVALUATION_ENGINE_RUN_ID_ACTIVE`; the identifier can be reused after the original run reaches any terminal state. Definitions, samples, policies, runtime identities, seeds, and fingerprints are sealed into the resulting evidence chain.
 
 Use `await engine.prepare(definition, policy)` when the host wants configuration and capability validation before scheduling. The returned `PreparedEvaluation` contains an opaque `SealedRunPlan` capability and can start multiple isolated runs with the same immutable plan.
 
@@ -105,7 +105,7 @@ Use `await engine.prepare(definition, policy)` when the host wants configuration
 - configuration, infrastructure, execution, evaluation, analysis, and internal failures remain distinct error stages;
 - a failed assertion, a quality regression, or a non-directional decision is report evidence, not a rejected Promise.
 
-`engine.prepare()` rejects invalid configuration because it is an explicit preflight API. `engine.start()` captures preparation and runtime failures in `run.result` so schedulers can use one terminal-result channel.
+`engine.prepare()` rejects invalid configuration because it is an explicit preflight API. `engine.start()` and `PreparedEvaluation.start()` capture façade option, preparation, and runtime failures in `run.result` so schedulers can use one terminal-result channel. In particular, `eventBufferCapacity` must be a positive safe integer; an invalid value produces `EVALUATION_ENGINE_EVENT_BUFFER_CAPACITY_INVALID` and an already-closed, empty event stream instead of a synchronous exception.
 
 ## Events and durable delivery
 

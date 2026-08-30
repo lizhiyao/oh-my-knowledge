@@ -92,7 +92,7 @@ const result = await run.result;
 await collecting;
 ```
 
-`runId` 由宿主分配且必填。OMK 会据此确定性派生 Bundle 与 Report identifier。Definition、Sample、Policy、Runtime identity、seed 与 fingerprint 都会封存进结果的证据链。
+`runId` 由宿主分配且必填。同一个 Engine 实例中，所有 active run 的 `runId` 必须唯一，因为 OMK 会据此确定性派生 Event、Bundle 与 Report identifier。并发重复会立即以 `EVALUATION_ENGINE_RUN_ID_ACTIVE` 结束；原 run 到达任意终态后可以复用该 identifier。Definition、Sample、Policy、Runtime identity、seed 与 fingerprint 都会封存进结果的证据链。
 
 如果宿主希望在调度前完成配置和 capability 校验，可以先调用 `await engine.prepare(definition, policy)`。返回的 `PreparedEvaluation` 持有不透明 `SealedRunPlan` capability，可以用同一个不可变计划启动多个相互隔离的 run。
 
@@ -105,7 +105,7 @@ await collecting;
 - configuration、infrastructure、execution、evaluation、analysis 与 internal failure 保持可区分；
 - assertion 不通过、质量回归或无方向性 decision 都是有效报告证据，不会导致 Promise reject。
 
-`engine.prepare()` 是显式 preflight API，配置无效时会 reject。`engine.start()` 会把 preparation 和 Runtime failure 收敛到 `run.result`，方便调度器只处理一个终态结果通道。
+`engine.prepare()` 是显式 preflight API，配置无效时会 reject。`engine.start()` 与 `PreparedEvaluation.start()` 会把 façade option、preparation 和 Runtime failure 收敛到 `run.result`，方便调度器只处理一个终态结果通道。`eventBufferCapacity` 必须是正安全整数；非法值会产生 `EVALUATION_ENGINE_EVENT_BUFFER_CAPACITY_INVALID` 以及一个已经关闭的空 event stream，而不是同步抛出异常。
 
 ## Event 与持久化投递
 

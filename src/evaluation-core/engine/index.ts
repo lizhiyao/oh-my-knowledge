@@ -55,6 +55,31 @@ export * from './types.js';
 
 const DEFAULT_EVENT_BUFFER_CAPACITY = 256;
 
+function configurationFailure(
+  code: string,
+  message: string,
+  details?: EvaluationError['details'],
+): EvaluationRun {
+  const events = new BoundedEventStream(DEFAULT_EVENT_BUFFER_CAPACITY);
+  events.close();
+  return {
+    events,
+    result: Promise.resolve({
+      status: 'failed',
+      error: {
+        code,
+        stage: 'configuration',
+        message,
+        ...(details === undefined ? {} : { details }),
+      },
+    }),
+  };
+}
+
+function isValidEventBufferCapacity(capacity: number): boolean {
+  return Number.isSafeInteger(capacity) && capacity >= 1;
+}
+
 interface StageRun<T> {
   events: AsyncIterable<EvaluationEvent>;
   source: Promise<T>;
@@ -310,15 +335,38 @@ async function executePipeline(
 
 function startPrepared(
   runtime: EvaluationEngineRuntime,
-  planPromise: Promise<SealedRunPlan>,
+  createPlan: () => Promise<SealedRunPlan>,
   options: PreparedEvaluationRunOptions,
+  activeRunIds: Set<string>,
 ): EvaluationRun {
-  const events = new BoundedEventStream(
-    options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY,
-  );
+  const eventBufferCapacity = options.eventBufferCapacity === undefined
+    ? DEFAULT_EVENT_BUFFER_CAPACITY
+    : options.eventBufferCapacity;
+  if (!isValidEventBufferCapacity(eventBufferCapacity)) {
+    return configurationFailure(
+      'EVALUATION_ENGINE_EVENT_BUFFER_CAPACITY_INVALID',
+      'eventBufferCapacity 必须是正安全整数。',
+      { eventBufferCapacity: String(eventBufferCapacity) },
+    );
+  }
+  if (activeRunIds.has(options.runId)) {
+    return configurationFailure(
+      'EVALUATION_ENGINE_RUN_ID_ACTIVE',
+      `runId "${options.runId}" 在当前 Evaluation Engine 中已有运行中的任务。`,
+      { runId: options.runId },
+    );
+  }
+
+  activeRunIds.add(options.runId);
+  const events = new BoundedEventStream(eventBufferCapacity);
+  const planPromise = Promise.resolve().then(createPlan);
+  const result = executePipeline(runtime, planPromise, options, events)
+    .finally(() => {
+      activeRunIds.delete(options.runId);
+    });
   return {
     events,
-    result: executePipeline(runtime, planPromise, options, events),
+    result,
   };
 }
 
@@ -333,20 +381,21 @@ function prepareRuntime(runtime: EvaluationEngineRuntime) {
 }
 
 export function createEvaluationEngine(runtime: EvaluationEngineRuntime): EvaluationEngine {
+  const activeRunIds = new Set<string>();
   return {
     async prepare(definition, policy): Promise<PreparedEvaluation> {
       const plan = await prepareEvaluationPlan(definition, policy, prepareRuntime(runtime));
       return {
         plan,
-        start: (options) => startPrepared(runtime, Promise.resolve(plan), options),
+        start: (options) => startPrepared(
+          runtime,
+          async () => plan,
+          options,
+          activeRunIds,
+        ),
       };
     },
     start(definition, options: EvaluationRunOptions): EvaluationRun {
-      const plan = prepareEvaluationPlan(
-        definition,
-        options.policy,
-        prepareRuntime(runtime),
-      );
       const runOptions: PreparedEvaluationRunOptions = {
         runId: options.runId,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -357,7 +406,16 @@ export function createEvaluationEngine(runtime: EvaluationEngineRuntime): Evalua
           ? {}
           : { eventBufferCapacity: options.eventBufferCapacity }),
       };
-      return startPrepared(runtime, plan, runOptions);
+      return startPrepared(
+        runtime,
+        () => prepareEvaluationPlan(
+          definition,
+          options.policy,
+          prepareRuntime(runtime),
+        ),
+        runOptions,
+        activeRunIds,
+      );
     },
   };
 }

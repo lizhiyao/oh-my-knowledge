@@ -3,6 +3,7 @@ import {
   createEvaluationEngine,
   type EvaluationEngineRuntime,
   type EvaluationEvent,
+  type EvaluationRun,
   type EvaluationRunResult,
   type Evaluator,
   type Executor,
@@ -203,6 +204,100 @@ describe('embedded Evaluation Engine', () => {
     expect(result.report).toBeUndefined();
   });
 
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'returns a structured failure for eventBufferCapacity %s',
+    async (eventBufferCapacity) => {
+      const fixture = await createRuntime();
+      const engine = createEvaluationEngine(fixture.runtime);
+      let run: EvaluationRun | undefined;
+
+      expect(() => {
+        run = engine.start(fixture.definition, {
+          policy: fixture.policy,
+          runId: `embedded-invalid-capacity-${eventBufferCapacity}`,
+          eventBufferCapacity,
+        });
+      }).not.toThrow();
+      if (run === undefined) throw new Error('Expected an EvaluationRun.');
+
+      const { events, result } = await consume(run);
+      expect(events).toEqual([]);
+      expect(result).toMatchObject({
+        status: 'failed',
+        error: {
+          code: 'EVALUATION_ENGINE_EVENT_BUFFER_CAPACITY_INVALID',
+          stage: 'configuration',
+        },
+      });
+    },
+  );
+
+  it('uses the structured failure channel for invalid prepared-run options', async () => {
+    const fixture = await createRuntime();
+    const engine = createEvaluationEngine(fixture.runtime);
+    const prepared = await engine.prepare(fixture.definition, fixture.policy);
+    const runId = 'embedded-prepared-invalid-capacity';
+    const invalid = await consume(prepared.start({
+      runId,
+      eventBufferCapacity: 0,
+    }));
+
+    expect(invalid.events).toEqual([]);
+    expect(invalid.result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'EVALUATION_ENGINE_EVENT_BUFFER_CAPACITY_INVALID',
+        stage: 'configuration',
+      },
+    });
+    expect((await consume(prepared.start({ runId }))).result.status).toBe('completed');
+  });
+
+  it('rejects concurrent duplicate runIds and permits reuse after termination', async () => {
+    const fixture = await createRuntime();
+    const engine = createEvaluationEngine(fixture.runtime);
+    const prepared = await engine.prepare(fixture.definition, fixture.policy);
+    const runId = 'embedded-active-run';
+    const first = prepared.start({ runId });
+    const duplicate = engine.start(fixture.definition, {
+      policy: fixture.policy,
+      runId,
+    });
+
+    const duplicateOutcome = await consume(duplicate);
+    expect(duplicateOutcome.events).toEqual([]);
+    expect(duplicateOutcome.result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'EVALUATION_ENGINE_RUN_ID_ACTIVE',
+        stage: 'configuration',
+      },
+    });
+    expect((await consume(first)).result.status).toBe('completed');
+    expect((await consume(engine.start(fixture.definition, {
+      policy: fixture.policy,
+      runId,
+    }))).result.status).toBe('completed');
+  });
+
+  it('releases runId ownership after preparation failure', async () => {
+    const fixture = await createRuntime();
+    const engine = createEvaluationEngine(fixture.runtime);
+    const invalidDefinition = structuredClone(fixture.definition);
+    invalidDefinition.targets = [];
+    const runId = 'embedded-preparation-failure';
+
+    const failed = await consume(engine.start(invalidDefinition, {
+      policy: fixture.policy,
+      runId,
+    }));
+    expect(failed.result.status).toBe('failed');
+    expect((await consume(engine.start(fixture.definition, {
+      policy: fixture.policy,
+      runId,
+    }))).result.status).toBe('completed');
+  });
+
   it('preserves completed upstream evidence when a later stage cannot start', async () => {
     const fixture = await createRuntime();
     const runtime = { ...fixture.runtime, evaluators: new Map() };
@@ -247,5 +342,9 @@ describe('embedded Evaluation Engine', () => {
     ))).toBe(true);
     expect(cancelledResult.events[0]?.sequence).toBe(0);
     expect(completedResult.events[0]?.sequence).toBe(0);
+    expect((await consume(engine.start(fixture.definition, {
+      policy: fixture.policy,
+      runId: 'embedded-cancelled',
+    }))).result.status).toBe('completed');
   });
 });
