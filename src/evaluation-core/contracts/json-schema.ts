@@ -51,6 +51,10 @@ import {
   SERIES_ANALYSIS_BUNDLE_SCHEMA_VERSION,
   SeriesAnalysisBundleSchema,
 } from './series.js';
+import {
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
+  ExecutorCapabilitiesSchema,
+} from './runtime-capabilities.js';
 
 export interface WireSchemaCatalogEntry {
   fileName: string;
@@ -60,6 +64,11 @@ export interface WireSchemaCatalogEntry {
 }
 
 export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
+  {
+    fileName: 'executor-capabilities.schema.json',
+    schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
+    schema: ExecutorCapabilitiesSchema,
+  },
   {
     fileName: 'evaluation-definition.schema.json',
     schemaVersion: EVALUATION_DEFINITION_SCHEMA_VERSION,

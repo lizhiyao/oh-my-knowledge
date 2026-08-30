@@ -271,6 +271,175 @@ describe('Compiler definition validation', () => {
     });
   });
 
+  it.each(['native', 'prepended'] as const)(
+    'accepts %s system-instruction delivery and seals the actual mode',
+    async (systemInstructions) => {
+      const definition = validDefinition();
+      definition.targets[0].executionRequirements.systemInstructions = 'required';
+      const plan = await prepareEvaluationPlan(
+        definition,
+        validPolicy(),
+        testRuntime({ systemInstructions }),
+      );
+      const runtime = plan.execution.runtimes.find((candidate) => (
+        candidate.runtimeKind === 'executor' && candidate.referenceId === 'control'
+      ));
+      expect(runtime?.identity.capabilities).toMatchObject({
+        protocols: [{ execution: { features: { systemInstructions } } }],
+      });
+    },
+  );
+
+  it('treats the actual system-instruction delivery mode as execution design identity', async () => {
+    const definition = validDefinition();
+    definition.targets[0].executionRequirements.systemInstructions = 'required';
+    const native = await prepareEvaluationPlan(
+      definition,
+      validPolicy(),
+      testRuntime({ systemInstructions: 'native' }),
+    );
+    const prepended = await prepareEvaluationPlan(
+      definition,
+      validPolicy(),
+      testRuntime({ systemInstructions: 'prepended' }),
+    );
+
+    expect(prepended.execution.executionPlanDigest)
+      .not.toBe(native.execution.executionPlanDigest);
+  });
+
+  it('matches every Target execution requirement against the selected protocol', async () => {
+    const required = validDefinition();
+    required.targets[0].executionRequirements = {
+      systemInstructions: 'required',
+      workspace: 'copy-on-write-overlay',
+      mcp: 'native-config',
+      mockInterception: 'pre-tool-call',
+      toolPolicy: 'allow-list',
+      skillDiscovery: 'disabled',
+      sandboxId: 'sandbox-required',
+    };
+
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ systemInstructions: 'unsupported', sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ workspace: [], sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ mcp: [], sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ mockInterception: [], sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ toolPolicies: ['runtime-default'], sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ skillDiscovery: ['runtime-default'], sandboxIds: ['sandbox-required'] }),
+    );
+    await expectCode(
+      required,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ sandboxIds: [] }),
+    );
+
+    await expect(prepareEvaluationPlan(
+      required,
+      validPolicy(),
+      testRuntime({ sandboxIds: ['sandbox-required'] }),
+    )).resolves.toBeDefined();
+
+    const skillAllowList = structuredClone(required);
+    skillAllowList.targets[0].executionRequirements.skillDiscovery = 'allow-list';
+    await expectCode(
+      skillAllowList,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({
+        skillDiscovery: ['disabled', 'runtime-default'],
+        sandboxIds: ['sandbox-required'],
+      }),
+    );
+    await expect(prepareEvaluationPlan(
+      skillAllowList,
+      validPolicy(),
+      testRuntime({ sandboxIds: ['sandbox-required'] }),
+    )).resolves.toBeDefined();
+  });
+
+  it('does not require optional features when the Target declares none', async () => {
+    await expect(prepareEvaluationPlan(
+      validDefinition(),
+      validPolicy(),
+      testRuntime({
+        systemInstructions: 'unsupported',
+        workspace: [],
+        mcp: [],
+        mockInterception: [],
+        toolPolicies: ['runtime-default'],
+        skillDiscovery: ['runtime-default'],
+        sandboxIds: [],
+      }),
+    )).resolves.toBeDefined();
+  });
+
+  it('rejects duplicate feature declarations and seals canonical capability order', async () => {
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ omitExecutorCapabilitySchemaVersion: true }),
+    );
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({ toolPolicies: ['runtime-default', 'runtime-default'] }),
+    );
+
+    const plan = await prepareEvaluationPlan(
+      validDefinition(),
+      validPolicy(),
+      testRuntime({
+        toolPolicies: ['runtime-default', 'allow-list'],
+        skillDiscovery: ['runtime-default', 'disabled', 'allow-list'],
+        sandboxIds: ['sandbox-z', 'sandbox-a'],
+      }),
+    );
+    const runtime = plan.execution.runtimes[0];
+    expect(runtime.identity.capabilities).toMatchObject({
+      protocols: [{
+        execution: {
+          features: {
+            toolPolicies: ['allow-list', 'runtime-default'],
+            skillDiscovery: ['allow-list', 'disabled', 'runtime-default'],
+            sandboxIds: ['sandbox-a', 'sandbox-z'],
+          },
+        },
+      }],
+    });
+  });
+
   it('rejects unsupported protocol, deterministic cache, and evaluator capabilities', async () => {
     const protocol = validDefinition();
     protocol.targets[0].protocolId = 'omk.session/v1';

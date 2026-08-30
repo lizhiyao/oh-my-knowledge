@@ -4,6 +4,7 @@ import _Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   EvaluationDefinitionSchema,
   EvaluationStatusSchema,
   MetricObservationSchema,
@@ -54,6 +55,7 @@ describe('Evaluation Core wire schemas', () => {
     );
     expect(versions).not.toContain('omk.comparability-policy/v1');
     expect(versions).not.toContain('omk.comparability-assessment/v1');
+    expect(versions).toContain(EXECUTOR_CAPABILITIES_SCHEMA_VERSION);
   });
 
   it('keeps opaque Runtime fingerprints distinct from OMK content digests', () => {
@@ -114,6 +116,14 @@ describe('Evaluation Core wire schemas', () => {
         targetKind: 'function',
         protocolId: 'omk.invoke/v1',
         executorId: 'e',
+        executionRequirements: {
+          systemInstructions: 'not-required',
+          workspace: 'not-required',
+          mcp: 'not-required',
+          mockInterception: 'not-required',
+          toolPolicy: 'runtime-default',
+          skillDiscovery: 'runtime-default',
+        },
       }],
       evaluators: [],
       metrics: [],
@@ -191,6 +201,14 @@ describe('Evaluation Core wire schemas', () => {
         targetKind: 'function',
         protocolId: 'omk.invoke/v1',
         executorId: 'e',
+        executionRequirements: {
+          systemInstructions: 'not-required',
+          workspace: 'not-required',
+          mcp: 'not-required',
+          mockInterception: 'not-required',
+          toolPolicy: 'runtime-default',
+          skillDiscovery: 'runtime-default',
+        },
       }],
       evaluators: [],
       metrics: [],
@@ -217,6 +235,9 @@ describe('Evaluation Core wire schemas', () => {
         },
       },
     });
-    expect(parsed.success).toBe(true);
+    expect(
+      parsed.success,
+      parsed.success ? undefined : JSON.stringify(parsed.error.issues),
+    ).toBe(true);
   });
 });

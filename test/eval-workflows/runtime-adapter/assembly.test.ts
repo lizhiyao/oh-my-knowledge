@@ -159,6 +159,7 @@ function factoriesFor(
             versionConstraint: request.versionConstraint,
           }),
           protocolId: request.protocolId,
+          executionRequirements: request.qualification.executionRequirements,
         })) as RuntimeResolution;
         const identity = bindingIdentity(
           request.implementationId,
@@ -613,7 +614,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(executors[0].port).not.toBe(executors[1].port);
   });
 
-  it.each(['missing', 'mismatched', 'resource-mismatched'] as const)(
+  it.each(['missing', 'mismatched', 'resource-mismatched', 'requirement-mismatched'] as const)(
     'fails before invoking factories for a %s Definition binding',
     async (scenario) => {
       const input = runtimeAssemblyInput();
@@ -627,10 +628,17 @@ describe('OMK Evaluation Runtime binding assembly', () => {
         executor.protocolId = executor.protocolId === 'omk.invoke/v1'
           ? 'omk.session/v1'
           : 'omk.invoke/v1';
-      } else {
+      } else if (scenario === 'resource-mismatched') {
         const executor = request.bindings.find((binding) => binding.runtimeKind === 'executor');
         if (executor?.runtimeKind !== 'executor') throw new Error('missing fixture binding');
         executor.resourceLeaseRequirements.pop();
+      } else {
+        const executor = request.bindings.find((binding) => binding.runtimeKind === 'executor');
+        if (executor?.runtimeKind !== 'executor') throw new Error('missing fixture binding');
+        executor.qualification.executionRequirements.systemInstructions =
+          executor.qualification.executionRequirements.systemInstructions === 'required'
+            ? 'not-required'
+            : 'required';
       }
       const calls: string[] = [];
 
@@ -663,12 +671,12 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(calls).toEqual([]);
   });
 
-  it('rejects the incomplete v1 binding request without compatibility inference', async () => {
+  it('rejects the superseded v2 binding request without compatibility inference', async () => {
     const input = runtimeAssemblyInput();
     delete input.orchestration.independentSeries;
     const compiled = compileCliEvaluationInput(input);
     const request = clone(compiled.runtimeBinding) as { schemaVersion: string };
-    request.schemaVersion = 'omk.runtime-binding-request/v1';
+    request.schemaVersion = 'omk.runtime-binding-request/v2';
     const calls: string[] = [];
 
     await expect(assembleOmkRuntimeBindings({
@@ -802,6 +810,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
         versionConstraint: compiled.definition.targets[0].versionConstraint,
       }),
       protocolId: compiled.definition.targets[0].protocolId,
+      executionRequirements: compiled.definition.targets[0].executionRequirements,
     });
     (factories.executorsByImplementationId as Map<string, unknown>).clear();
     const after = await assembly.evaluation.bindings.resolveExecutor({
@@ -811,6 +820,7 @@ describe('OMK Evaluation Runtime binding assembly', () => {
         versionConstraint: compiled.definition.targets[0].versionConstraint,
       }),
       protocolId: compiled.definition.targets[0].protocolId,
+      executionRequirements: compiled.definition.targets[0].executionRequirements,
     });
 
     expect(after.port).toBe(before.port);
@@ -921,6 +931,48 @@ describe('OMK Evaluation Runtime binding assembly', () => {
 });
 
 describe('OMK Evaluation Runtime composition root', () => {
+  it('fails capability mismatch during Core prepare before any Executor opens', async () => {
+    const compiled = compositionInput();
+    const factories = factoriesFor(compiled, []);
+    const executors = new Map(factories.executorsByImplementationId);
+    const implementationId = compiled.definition.targets[0].executorId;
+    const original = executors.get(implementationId);
+    if (original === undefined) throw new Error('missing fixture executor factory');
+    let opens = 0;
+    executors.set(implementationId, async (context) => {
+      const resolved = await original(context);
+      const capabilities = clone(resolved.port.identity.capabilities) as {
+        protocols: Array<{ execution: { features: { mcp: string[] } } }>;
+      };
+      for (const protocol of capabilities.protocols) protocol.execution.features.mcp = [];
+      const identity = RuntimeIdentitySchema.parse({
+        ...resolved.port.identity,
+        capabilities,
+      });
+      const port: ExecutionExecutor = {
+        ...resolved.port,
+        identity,
+        async openRun(runContext) {
+          opens += 1;
+          return resolved.port.openRun(runContext);
+        },
+      };
+      return { ...resolved, port };
+    });
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...factories, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    await expect(runtime.prepare()).rejects.toMatchObject({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      preparationStage: 'runtime-resolution',
+    });
+    expect(opens).toBe(0);
+  });
+
   it('uses the verified Node materializer by default and fails closed on missing sources', async () => {
     const compiled = compositionInput();
     const lifecycle: string[] = [];

@@ -90,6 +90,14 @@ const definition: EvaluationDefinition = {
     targetKind: 'function',
     protocolId: 'omk.invoke/v1',
     executorId: 'local',
+    executionRequirements: {
+      systemInstructions: 'not-required',
+      workspace: 'not-required',
+      mcp: 'not-required',
+      mockInterception: 'not-required',
+      toolPolicy: 'runtime-default',
+      skillDiscovery: 'runtime-default',
+    },
   }],
   evaluators: [{
     evaluatorId: 'exact',
@@ -157,6 +165,26 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
 }
 
 describe('Evaluation Core layered digests', () => {
+  it('binds Target execution requirements into Execution and downstream plan identity', () => {
+    const first = planDigests(definition);
+    const second = planDigests({
+      ...definition,
+      targets: definition.targets.map((target) => ({
+        ...target,
+        executionRequirements: {
+          ...target.executionRequirements,
+          systemInstructions: 'required',
+        },
+      })),
+    });
+
+    expect(second.executionPlanDigest).not.toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).not.toBe(first.evaluationPlanDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
+    expect(second.runContractDigest).not.toBe(first.runContractDigest);
+  });
+
   it('separates Runtime behavior identity from evidence qualification', () => {
     const runtime = {
       implementationId: 'remote-model/v1',

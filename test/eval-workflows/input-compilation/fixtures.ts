@@ -139,6 +139,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           effort: 'low',
         },
         behavior: {
+          systemInstructions: 'required',
           artifact: treatmentArtifact,
           workspace,
           mcpConfig: mcp,
@@ -166,6 +167,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           effort: 'low',
         },
         behavior: {
+          systemInstructions: 'not-required',
           artifact: controlArtifact,
           workspace,
           mcpConfig: mcp,

@@ -31,6 +31,18 @@ function expectDeepFrozen(value: unknown): void {
 }
 
 describe('compileCliEvaluationInput', () => {
+  it('rejects the superseded resolved-input v1 shape without inference', () => {
+    const input = deepClone(validResolvedCliInput()) as { schemaVersion: string };
+    input.schemaVersion = 'omk.resolved-cli-evaluation-input/v1';
+
+    expect(() => compileCliEvaluationInput(
+      input as ReturnType<typeof validResolvedCliInput>,
+    )).toThrowError(expect.objectContaining({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: 'schemaVersion',
+    }));
+  });
+
   it('produces schema-valid, immutable and independently owned contracts', () => {
     const result = compileCliEvaluationInput(validResolvedCliInput());
 
@@ -431,6 +443,25 @@ describe('compileCliEvaluationInput', () => {
 
   it('derives Runtime bindings from Definition requirements without override fields', () => {
     const result = compileCliEvaluationInput(validResolvedCliInput());
+    expect(result.definition.targets.find((target) => target.targetId === 'treatment')
+      ?.executionRequirements).toEqual({
+      systemInstructions: 'required',
+      workspace: 'copy-on-write-overlay',
+      mcp: 'native-config',
+      mockInterception: 'pre-tool-call',
+      toolPolicy: 'allow-list',
+      skillDiscovery: 'runtime-default',
+      sandboxId: 'omk.local-sandbox/v1',
+    });
+    expect(result.definition.targets.find((target) => target.targetId === 'control')
+      ?.executionRequirements).toEqual({
+      systemInstructions: 'not-required',
+      workspace: 'copy-on-write-overlay',
+      mcp: 'native-config',
+      mockInterception: 'pre-tool-call',
+      toolPolicy: 'allow-list',
+      skillDiscovery: 'disabled',
+    });
     for (const target of result.definition.targets) {
       const binding = result.runtimeBinding.bindings.find((candidate) => (
         candidate.runtimeKind === 'executor' && candidate.targetId === target.targetId
@@ -448,19 +479,25 @@ describe('compileCliEvaluationInput', () => {
         expect(binding.qualification).toMatchObject({
           model: 'gpt-example',
           effort: 'low',
-          workspace: 'required',
-          mcp: 'required',
-          mockInterception: 'required',
-          toolPolicy: 'allow-list',
+          executionRequirements: {
+            workspace: 'copy-on-write-overlay',
+            mcp: 'native-config',
+            mockInterception: 'pre-tool-call',
+            toolPolicy: 'allow-list',
+          },
           resourceIntegrity: 'digest-before-use',
         });
+        expect(binding.qualification.executionRequirements)
+          .toEqual(target.executionRequirements);
       }
     }
     const treatmentBinding = result.runtimeBinding.bindings.find((binding) => (
       binding.runtimeKind === 'executor' && binding.targetId === 'treatment'
     ));
     expect(treatmentBinding).toMatchObject({
-      qualification: { sandboxId: 'omk.local-sandbox/v1' },
+      qualification: {
+        executionRequirements: { sandboxId: 'omk.local-sandbox/v1' },
+      },
     });
     const judgeBinding = result.runtimeBinding.bindings.find((binding) => (
       binding.runtimeKind === 'evaluator' && binding.implementationId === 'anthropic-judge-adapter/v1'
@@ -474,7 +511,7 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const bindingJson = canonicalizeJson(result.runtimeBinding);
-    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v2');
+    expect(result.runtimeBinding.schemaVersion).toBe('omk.runtime-binding-request/v3');
     expect(bindingJson).not.toContain('capabilities');
     expect(bindingJson).not.toContain('fingerprint');
     expect(bindingJson).not.toContain('assuranceLevel');
@@ -492,6 +529,20 @@ describe('compileCliEvaluationInput', () => {
       analysisNodeKind: 'estimator',
       implementationId: 'bootstrap.mean-difference/v1',
     });
+  });
+
+  it('does not claim mock interception for an explicitly empty mock set', () => {
+    const input = deepClone(validResolvedCliInput());
+    for (const target of input.targets) target.behavior.mocks = [];
+    const result = compileCliEvaluationInput(input);
+
+    expect(result.definition.targets.every((target) => (
+      target.executionRequirements.mockInterception === 'not-required'
+    ))).toBe(true);
+    expect(result.runtimeBinding.bindings.filter((binding) => binding.runtimeKind === 'executor')
+      .every((binding) => (
+        binding.qualification.executionRequirements.mockInterception === 'not-required'
+      ))).toBe(true);
   });
 
   it('rejects inline secret evaluator or target configuration', () => {

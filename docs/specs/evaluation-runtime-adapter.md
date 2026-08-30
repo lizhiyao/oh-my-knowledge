@@ -36,7 +36,7 @@ Assembly requires one exact binding for every:
 
 An analysis binding carries both `referenceId` and Core's `requirementKind`. Sampling Estimator is therefore not inferred from an AnalysisGraph node or silently resolved from a fallback registry.
 
-This complete shape is `omk.runtime-binding-request/v2`. The incomplete migration-only v1 request is rejected rather than read through a compatibility branch.
+This complete shape is `omk.runtime-binding-request/v3`. The superseded v2 request lacks the canonical Target execution requirements and is rejected rather than read through a compatibility branch.
 
 Before invoking any factory, assembly validates unique binding IDs and reference keys, exact Definition／Series coverage, implementation and version constraints, executor protocol／model／effort／behavior digest, evaluator measurement／config digest, and resource lease requirements. A validation failure causes zero factory calls.
 
@@ -44,7 +44,7 @@ Before invoking any factory, assembly validates unique binding IDs and reference
 
 Assembly first clones and deep-freezes Definition, Series, and RuntimeBindingRequest. Each implementation factory is selected by `implementationId`, but it is called once per binding so two references using the same implementation receive distinct port instances.
 
-The factory returns the actual port identity and version-resolution result. Assembly validates the port shape and implementation identity, captures an immutable identity snapshot, and wraps the port methods around the original instance. The Core preparation resolver and the captured execution port are then projected from the same entry; later registry or request mutation cannot create split-brain resolution.
+The factory returns the actual port identity and version-resolution result. Assembly validates the port shape and implementation identity, captures an immutable identity snapshot, and wraps the port methods around the original instance. Executor binding validation also requires exact equality with `TargetDefinition.executionRequirements`; the qualification object reuses that canonical value rather than re-deriving feature semantics. The Core preparation resolver and the captured execution port are then projected from the same entry; later registry or request mutation cannot create split-brain resolution. Only Core compares those requirements with the actual port capability manifest.
 
 Every entry records:
 

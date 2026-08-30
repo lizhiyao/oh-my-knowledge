@@ -28,6 +28,7 @@ import {
   type ResolvedRuntime,
   type RuntimeIdentity,
   type SchemaIdentity,
+  type TargetExecutionRequirements,
 } from '../contracts/index.js';
 import {
   EvaluationDefinitionError,
@@ -79,6 +80,12 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'cohortId', 'cohortSetId', 'cohortSetKind', 'classification', 'disclosure',
   'derivation', 'algorithmId', 'membershipValue', 'context', 'annotations', 'targets',
   'targetId', 'targetKind', 'protocolId', 'executorId', 'versionConstraint', 'config',
+  'executionRequirements', 'systemInstructions', 'workspace', 'mcp',
+  'mockInterception', 'toolPolicy', 'toolPolicies', 'skillDiscovery',
+  'sandboxId', 'sandboxIds', 'protocols', 'inputSchema', 'outputSchema', 'traceSchema',
+  'concurrency', 'safety', 'maxInFlight', 'cancellation', 'state',
+  'resourceLifecycle', 'trialState', 'seedControl', 'determinism', 'features',
+  'telemetry', 'usage', 'providerCost', 'reporting', 'trustedUpperBound',
   'evaluators', 'evaluatorId', 'evaluatorKind', 'implementationId', 'measurement',
   'instrumentId', 'ensembleMemberId', 'replicateGroupId', 'replicateIndex', 'metricIds',
   'inputs', 'bindingId', 'sourceKind', 'pointer', 'metrics', 'metricId', 'valueType',
@@ -162,12 +169,99 @@ function bindCapabilities(
 
 function normalizeExecutorCapabilities(
   capabilities: ExecutorCapabilities,
+  referenceId: string,
 ): ExecutorCapabilities {
   return {
-    protocols: [...capabilities.protocols].sort((left, right) => (
-      compareStrings(left.protocolId, right.protocolId)
-    )),
+    schemaVersion: capabilities.schemaVersion,
+    protocols: capabilities.protocols.map((protocol) => ({
+      ...protocol,
+      execution: {
+        ...protocol.execution,
+        features: {
+          ...protocol.execution.features,
+          workspace: sortedUniqueStrings(
+            protocol.execution.features.workspace,
+            referenceId,
+            `${protocol.protocolId}.features.workspace`,
+          ) as typeof protocol.execution.features.workspace,
+          mcp: sortedUniqueStrings(
+            protocol.execution.features.mcp,
+            referenceId,
+            `${protocol.protocolId}.features.mcp`,
+          ) as typeof protocol.execution.features.mcp,
+          mockInterception: sortedUniqueStrings(
+            protocol.execution.features.mockInterception,
+            referenceId,
+            `${protocol.protocolId}.features.mockInterception`,
+          ) as typeof protocol.execution.features.mockInterception,
+          toolPolicies: sortedUniqueStrings(
+            protocol.execution.features.toolPolicies,
+            referenceId,
+            `${protocol.protocolId}.features.toolPolicies`,
+          ) as typeof protocol.execution.features.toolPolicies,
+          skillDiscovery: sortedUniqueStrings(
+            protocol.execution.features.skillDiscovery,
+            referenceId,
+            `${protocol.protocolId}.features.skillDiscovery`,
+          ) as typeof protocol.execution.features.skillDiscovery,
+          sandboxIds: sortedUniqueStrings(
+            protocol.execution.features.sandboxIds,
+            referenceId,
+            `${protocol.protocolId}.features.sandboxIds`,
+          ),
+        },
+      },
+    })).sort((left, right) => compareStrings(left.protocolId, right.protocolId)),
   };
+}
+
+function assertExecutionRequirementsSupported(
+  referenceId: string,
+  requirements: TargetExecutionRequirements,
+  features: ExecutorCapabilities['protocols'][number]['execution']['features'],
+): void {
+  const unsupported = (
+    field: keyof TargetExecutionRequirements,
+    required: string,
+    supported: readonly string[],
+  ): never => {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'Target execution requirement 不受 Runtime 支持。',
+      details: { referenceId, field, required, supported: [...supported] },
+    });
+  };
+  if (requirements.systemInstructions === 'required'
+      && features.systemInstructions === 'unsupported') {
+    unsupported('systemInstructions', 'required', [features.systemInstructions]);
+  }
+  if (requirements.workspace !== 'not-required'
+      && !features.workspace.includes(requirements.workspace)) {
+    unsupported('workspace', requirements.workspace, features.workspace);
+  }
+  if (requirements.mcp !== 'not-required' && !features.mcp.includes(requirements.mcp)) {
+    unsupported('mcp', requirements.mcp, features.mcp);
+  }
+  if (requirements.mockInterception !== 'not-required'
+      && !features.mockInterception.includes(requirements.mockInterception)) {
+    unsupported(
+      'mockInterception',
+      requirements.mockInterception,
+      features.mockInterception,
+    );
+  }
+  if (!features.toolPolicies.includes(requirements.toolPolicy)) {
+    unsupported('toolPolicy', requirements.toolPolicy, features.toolPolicies);
+  }
+  if (!features.skillDiscovery.includes(requirements.skillDiscovery)) {
+    unsupported('skillDiscovery', requirements.skillDiscovery, features.skillDiscovery);
+  }
+  if (requirements.sandboxId !== undefined
+      && !features.sandboxIds.includes(requirements.sandboxId)) {
+    unsupported('sandboxId', requirements.sandboxId, features.sandboxIds);
+  }
 }
 
 function normalizeEvaluatorCapabilities(
@@ -451,6 +545,7 @@ async function resolveExecutors(
           ? { versionConstraint: target.versionConstraint }
           : {}),
         protocolId: target.protocolId,
+        executionRequirements: target.executionRequirements,
       }))),
     );
     assertVersionSatisfied(
@@ -464,6 +559,7 @@ async function resolveExecutors(
         resolution.identity.capabilities,
         target.targetId,
       ),
+      target.targetId,
     );
     const protocolIds = capabilities.protocols.map((protocol) => protocol.protocolId);
     if (new Set(protocolIds).size !== protocolIds.length) {
@@ -487,6 +583,11 @@ async function resolveExecutors(
         details: { referenceId: target.targetId, protocolId: target.protocolId },
       });
     }
+    assertExecutionRequirementsSupported(
+      target.targetId,
+      target.executionRequirements,
+      protocol.execution.features,
+    );
     const expectedTrialState = target.protocolId === 'omk.session/v1'
       ? 'isolated'
       : 'stateless';

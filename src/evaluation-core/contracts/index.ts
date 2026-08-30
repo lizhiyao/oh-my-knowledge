@@ -14,4 +14,5 @@ export * from './evaluation-report.js';
 export * from './json-schema.js';
 export * from './json.js';
 export * from './plans.js';
+export * from './runtime-capabilities.js';
 export * from './series.js';

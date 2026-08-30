@@ -36,7 +36,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 - `EvaluationDefinition` owns data projections, Target behavior, evaluator instruments, metrics, experiment design, analysis, comparisons, and decision policy.
 - `MeasurementPolicy` owns execution/evaluation concurrency, timeout, retry, cache, evidence, failure, event delivery, and the shared Run budget ledger.
-- `RuntimeBindingRequest` v2 contains only implementation and resource-lease requirements derived from Definition／resolved host resources. A registry may resolve them, but cannot override model, effort, prompt variant, protocol, evaluator identity, or behavior config. Its complete assembly contract is specified in [Evaluation Runtime Adapter](./evaluation-runtime-adapter.md).
+- `RuntimeBindingRequest` v3 contains only implementation and resource-lease requirements derived from Definition／resolved host resources. Executor qualification reuses the exact canonical `TargetDefinition.executionRequirements`; it does not maintain a second approximation. A registry may resolve bindings, but cannot override execution requirements, model, effort, prompt variant, protocol, evaluator identity, or behavior config. Its complete assembly contract is specified in [Evaluation Runtime Adapter](./evaluation-runtime-adapter.md).
 - `ResolvedHostResources` binds a stable resource ID and digest to an effect locator. It is not a Core schema and never enters canonical measurement JSON.
 - `EvaluationOrchestrationOptions` owns dry-run, resume locator, batch, independent Series repeats, preflight switches, diagnostic post-processing, gold post-hoc workflows, and managed-evidence append behavior.
 - `EvaluationPresentationOptions` owns output locator, index scope, language, server, verbosity, layered view, and CLI exit presentation. None changes `DecisionResult`.
@@ -49,6 +49,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 Behavior identity and source lineage are separate axes:
 
 - Target config contains the bytes/configuration that affect behavior as `{resourceId, digest, mediaType, classification}` descriptors, plus normalized workspace, tool, mock, sandbox, model, and effort facts.
+- Target `executionRequirements` is derived purely from resolved behavior: explicit system-instruction use, copy-on-write workspace, native MCP config, pre-tool-call mock interception, tool allow-list, skill-discovery policy, and sandbox ID. It enters Definition and ExecutionPlan identity; only Core prepare may compare it with Runtime features.
 - Host resources contain locator, resolved commit, repository origin, and materialization evidence. Moving the same content between absolute/relative paths or machines does not invalidate execution identity.
 - A behavior change changes the Definition digest. A lineage-only change is assessed later by explicit comparability and provenance policy, not smuggled into Target config.
 
@@ -108,6 +109,8 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 ## 6. Migration boundary
 
 This layer is additive. The production `omk eval` command continues to use `RunConfig → runEvaluation → executeEvaluationPipeline`; it does not double-run, shadow-run, persist Core Bundles, or change legacy reports. A later Runtime-adapter change may consume only the contracts emitted here and may not parse CLI inputs again.
+
+Target execution requirements make the migration contracts intentionally incompatible: resolved compiler input is `omk.resolved-cli-evaluation-input/v2`, and binding output is `omk.runtime-binding-request/v3`. Earlier shapes are rejected without inference or a compatibility reader. The Core v1 Definition／Plan JSON Schemas gain a required Target field and this change is released as `BREAKING-SCHEMA`; no scoring or statistical comparability invariant changes.
 
 The legacy `--no-cache`／`noCache` boolean has no faithful Core equivalent: its enabled state meant stochastic read-through execution reuse and said nothing about Evaluation cache. The registry therefore marks it for replacement rather than mapping it to `transparent-deterministic` or `reuse`. The final cutover may remove the old cache files and behavior without a compatibility reader.
 

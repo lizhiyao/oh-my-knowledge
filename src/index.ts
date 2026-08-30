@@ -27,6 +27,7 @@ export {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
   EVALUATION_EVENT_SCHEMA_VERSION,
   EVALUATION_REPORT_SCHEMA_VERSION,
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   EVALUATION_SERIES_DEFINITION_SCHEMA_VERSION,
   EVALUATION_SERIES_PLAN_SCHEMA_VERSION,
   EVALUATION_SERIES_REPORT_SCHEMA_VERSION,
@@ -86,6 +87,7 @@ export type {
   SchemaIdentity,
   Sha256Digest,
   TargetDefinition,
+  TargetExecutionRequirements,
   UsageRecord,
   EvaluationSeriesDefinition,
   EvaluationSeriesDefinitionInput,
@@ -123,6 +125,7 @@ export type {
   ExecutorRuntimeRequirement,
   ExtensionResolution,
   PreparationRuntime,
+  ProtocolManifest,
   RuntimeResolution,
   SealedRunPlan,
 } from './evaluation-core/compiler/index.js';

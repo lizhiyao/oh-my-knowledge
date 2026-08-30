@@ -12,6 +12,7 @@ import {
   type JsonValue,
   type MeasurementPolicy,
   type Sha256Digest,
+  type TargetExecutionRequirements,
 } from '../../evaluation-core/contracts/index.js';
 import {
   EvaluationDefinitionError,
@@ -472,6 +473,26 @@ function behaviorConfig(
   });
 }
 
+function executionRequirementsForBehavior(
+  behavior: ResolvedTargetBehavior,
+): TargetExecutionRequirements {
+  return {
+    systemInstructions: behavior.systemInstructions,
+    workspace: behavior.workspace === undefined ? 'not-required' : 'copy-on-write-overlay',
+    mcp: behavior.mcpConfig === undefined ? 'not-required' : 'native-config',
+    mockInterception: (behavior.mocks?.length ?? 0) === 0
+      ? 'not-required'
+      : 'pre-tool-call',
+    toolPolicy: behavior.allowedTools === undefined ? 'runtime-default' : 'allow-list',
+    skillDiscovery: behavior.allowedSkills === undefined
+      ? 'runtime-default'
+      : behavior.allowedSkills.length === 0
+        ? 'disabled'
+        : 'allow-list',
+    ...(behavior.sandbox === undefined ? {} : { sandboxId: behavior.sandbox.sandboxId }),
+  };
+}
+
 function evaluatorConfig(
   template: ResolvedEvaluatorTemplate,
   member?: ResolvedJudgeMember,
@@ -621,6 +642,7 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
       ...(target.executor.versionConstraint === undefined
         ? {}
         : { versionConstraint: target.executor.versionConstraint }),
+      executionRequirements: executionRequirementsForBehavior(target.behavior),
       config: behaviorConfig(target.behavior, target.executor),
     }));
   const analysisNodes = [...input.analysisGraph.nodes]
@@ -930,18 +952,7 @@ function compileRuntimeBinding(
       qualification: {
         model: resolved.executor.model,
         ...(resolved.executor.effort === undefined ? {} : { effort: resolved.executor.effort }),
-        workspace: resolved.behavior.workspace === undefined ? 'not-required' : 'required',
-        mcp: resolved.behavior.mcpConfig === undefined ? 'not-required' : 'required',
-        mockInterception: resolved.behavior.mocks === undefined ? 'not-required' : 'required',
-        toolPolicy: resolved.behavior.allowedTools === undefined ? 'runtime-default' : 'allow-list',
-        skillDiscovery: resolved.behavior.allowedSkills === undefined
-          ? 'runtime-default'
-          : resolved.behavior.allowedSkills.length === 0
-            ? 'disabled'
-            : 'allow-list',
-        ...(resolved.behavior.sandbox === undefined
-          ? {}
-          : { sandboxId: resolved.behavior.sandbox.sandboxId }),
+        executionRequirements: target.executionRequirements,
         resourceIntegrity: 'digest-before-use',
       },
     });

@@ -36,7 +36,7 @@ Assembly 要求以下每个引用都有且只有一个 binding：
 
 Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Sampling Estimator 不再从 AnalysisGraph node 猜测，也不能由 fallback registry 静默解析。
 
-完整结构使用 `omk.runtime-binding-request/v2`。不完整的迁移期 v1 request 会被直接拒绝，不增加 compatibility 分支。
+完整结构使用 `omk.runtime-binding-request/v3`。已被取代的 v2 request 缺少 canonical Target execution requirement，会被直接拒绝，不增加 compatibility 分支。
 
 调用任何 factory 前，assembly 会验证 binding ID／reference key 唯一性、Definition／Series 精确覆盖、implementation／version、executor protocol／model／effort／behavior digest、evaluator measurement／config digest，以及 resource lease requirement。验证失败时 factory 调用次数必须为零。
 
@@ -44,7 +44,7 @@ Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Samplin
 
 Assembly 首先复制并深度冻结 Definition、Series 和 RuntimeBindingRequest。Factory 按 `implementationId` 查找，但按 binding 分别调用，因此共享同一实现的两个 reference 仍得到不同 port instance。
 
-Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。
+Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Executor binding 还必须与 `TargetDefinition.executionRequirements` 精确相等；qualification 直接复用该 canonical 值，不重新派生 feature 语义。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。只有 Core 能把 requirements 与实际 port capability manifest 做匹配。
 
 每个 entry 保存：
 

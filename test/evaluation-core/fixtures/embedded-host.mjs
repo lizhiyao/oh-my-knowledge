@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
@@ -34,6 +35,7 @@ function runtimeIdentity(implementationId, capabilities) {
 
 function executorIdentity() {
   return runtimeIdentity('host.same-process/v1', {
+    schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
     protocols: [{
       protocolId: 'omk.invoke/v1',
       inputSchema: schemaIdentity('invoke-input'),
@@ -45,6 +47,15 @@ function executorIdentity() {
         state: { resourceLifecycle: 'per-run', trialState: 'stateless' },
         seedControl: 'optional',
         determinism: 'deterministic',
+        features: {
+          systemInstructions: 'unsupported',
+          workspace: [],
+          mcp: [],
+          mockInterception: [],
+          toolPolicies: ['runtime-default'],
+          skillDiscovery: ['runtime-default'],
+          sandboxIds: [],
+        },
         telemetry: { trace: 'optional', usage: 'optional' },
       },
     }],
@@ -309,6 +320,14 @@ function definition(targetKind) {
       protocolId: 'omk.invoke/v1',
       executorId: 'same-process',
       versionConstraint: '^1.0.0',
+      executionRequirements: {
+        systemInstructions: 'not-required',
+        workspace: 'not-required',
+        mcp: 'not-required',
+        mockInterception: 'not-required',
+        toolPolicy: 'runtime-default',
+        skillDiscovery: 'runtime-default',
+      },
     })),
     evaluators: [{
       evaluatorId: 'deterministic',

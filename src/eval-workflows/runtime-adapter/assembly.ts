@@ -286,6 +286,8 @@ function assertExecutorBinding(
       || binding.behaviorConfigDigest !== digestCanonicalJson(target.config ?? null)
       || canonicalizeJson(binding.resourceLeaseRequirements)
         !== canonicalizeJson(expectedExecutorResourceRequirements(target))
+      || canonicalizeJson(binding.qualification.executionRequirements)
+        !== canonicalizeJson(target.executionRequirements)
       || binding.qualification.model !== runtime?.model
       || binding.qualification.effort !== expectedEffort) fail({
     code: 'OMK_RUNTIME_BINDING_DEFINITION_MISMATCH',
@@ -686,7 +688,10 @@ function sameRequirement(
         ? requirement.versionConstraint
         : undefined)) return false;
   if (binding.runtimeKind === 'executor') {
-    return 'protocolId' in requirement && binding.protocolId === requirement.protocolId;
+    return 'protocolId' in requirement
+      && binding.protocolId === requirement.protocolId
+      && canonicalizeJson(binding.qualification.executionRequirements)
+        === canonicalizeJson(requirement.executionRequirements);
   }
   if (binding.runtimeKind === 'analysis-node') {
     return 'requirementKind' in requirement

@@ -1,49 +1,19 @@
 import { z } from 'zod';
 import {
+  ExecutorCapabilitiesSchema,
+  ProtocolManifestSchema,
   RuntimeIdentitySchema,
   SchemaIdentitySchema,
   type CoreSchemaValidator,
+  type ExecutorCapabilities,
   type ExtensionEntry,
+  type ProtocolManifest,
+  type TargetExecutionRequirements,
 } from '../contracts/index.js';
 export type { DeepReadonly, SealedRunPlan } from '../internal/sealed-run-plan.js';
 
-export const ProtocolManifestSchema = z.object({
-  protocolId: z.enum(['omk.invoke/v1', 'omk.session/v1']),
-  inputSchema: SchemaIdentitySchema,
-  outputSchema: SchemaIdentitySchema,
-  traceSchema: SchemaIdentitySchema.optional(),
-  execution: z.object({
-    concurrency: z.object({
-      safety: z.enum(['serialized', 'parallel-safe']),
-      maxInFlight: z.number().int().positive().optional(),
-    }).strict(),
-    cancellation: z.enum(['cooperative', 'best-effort', 'unsupported']),
-    state: z.object({
-      resourceLifecycle: z.enum(['per-invocation', 'per-run']),
-      trialState: z.enum(['stateless', 'isolated']),
-    }).strict(),
-    seedControl: z.enum(['unsupported', 'optional', 'required']),
-    determinism: z.enum(['deterministic', 'stochastic', 'unknown']),
-    telemetry: z.object({
-      trace: z.enum(['unsupported', 'optional', 'required']),
-      usage: z.enum(['unsupported', 'optional', 'required']),
-      providerCost: z.object({
-        reporting: z.enum(['unsupported', 'optional', 'required']),
-        trustedUpperBound: z.object({
-          amount: z.number().nonnegative(),
-          currency: z.string().regex(/^[A-Z]{3}$/),
-        }).strict().optional(),
-      }).strict().refine(
-        (value) => value.trustedUpperBound === undefined || value.reporting === 'required',
-        { message: 'A trusted provider-cost bound requires required reporting.' },
-      ).optional(),
-    }).strict(),
-  }).strict(),
-}).strict();
-
-export const ExecutorCapabilitiesSchema = z.object({
-  protocols: z.array(ProtocolManifestSchema).min(1),
-}).strict();
+export { ExecutorCapabilitiesSchema, ProtocolManifestSchema };
+export type { ExecutorCapabilities, ProtocolManifest };
 
 export const EvaluatorCapabilitiesSchema = z.object({
   inputSourceKinds: z.array(z.enum([
@@ -172,8 +142,6 @@ export const ExtensionResolutionSchema = z.object({
   impactStage: ExtensionImpactStageSchema,
 }).strict();
 
-export type ProtocolManifest = z.infer<typeof ProtocolManifestSchema>;
-export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilitiesSchema>;
 export type EvaluatorCapabilities = z.infer<typeof EvaluatorCapabilitiesSchema>;
 export type AnalysisCapabilities = z.infer<typeof AnalysisCapabilitiesSchema>;
 export type AnalysisNodeCapabilities = z.infer<typeof AnalysisNodeCapabilitiesSchema>;
@@ -188,6 +156,7 @@ export interface ExecutorRuntimeRequirement {
   executorId: string;
   versionConstraint?: string;
   protocolId: 'omk.invoke/v1' | 'omk.session/v1';
+  executionRequirements: TargetExecutionRequirements;
 }
 
 export interface EvaluatorRuntimeRequirement {

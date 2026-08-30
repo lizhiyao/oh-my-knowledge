@@ -11,16 +11,17 @@ import type {
   MeasurementPolicy,
   MetricDefinition,
   Sha256Digest,
+  TargetExecutionRequirements,
 } from '../../evaluation-core/contracts/index.js';
 
 export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
   'omk.cli-evaluation-request/v1' as const;
 export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
-  'omk.resolved-cli-evaluation-input/v1' as const;
+  'omk.resolved-cli-evaluation-input/v2' as const;
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
   'omk.resolved-host-resources/v2' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
-  'omk.runtime-binding-request/v2' as const;
+  'omk.runtime-binding-request/v3' as const;
 
 export type CliEvaluationFieldSource = { readonly normalizedField: string } & (
   | {
@@ -179,6 +180,7 @@ export interface ResolvedInlineConfig {
 }
 
 export interface ResolvedTargetBehavior {
+  readonly systemInstructions: TargetExecutionRequirements['systemInstructions'];
   readonly artifact: ResolvedResourceDescriptor;
   readonly workspace?: ResolvedResourceDescriptor;
   readonly mcpConfig?: ResolvedResourceDescriptor;
@@ -362,12 +364,7 @@ export type RuntimeBinding =
       readonly qualification: {
         readonly model: string;
         readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-        readonly workspace: 'required' | 'not-required';
-        readonly mcp: 'required' | 'not-required';
-        readonly mockInterception: 'required' | 'not-required';
-        readonly toolPolicy: 'allow-list' | 'runtime-default';
-        readonly skillDiscovery: 'disabled' | 'allow-list' | 'runtime-default';
-        readonly sandboxId?: string;
+        readonly executionRequirements: TargetExecutionRequirements;
         readonly resourceIntegrity: 'digest-before-use';
       };
     }
