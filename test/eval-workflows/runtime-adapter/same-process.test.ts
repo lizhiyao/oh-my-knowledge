@@ -69,9 +69,9 @@ function executorIdentity(implementationId = 'test.omk.same-process-executor/v1'
 
 function evaluatorIdentity(): RuntimeIdentity {
   const implementationId = 'test.omk.same-process-evaluator/v1';
-  const capabilities = {
-    inputSourceKinds: ['output', 'expected'] as const,
-    metricValueTypes: ['boolean'] as const,
+  const capabilities: JsonValue = {
+    inputSourceKinds: ['output', 'expected'],
+    metricValueTypes: ['boolean'],
     schemas: [],
   };
   return {
