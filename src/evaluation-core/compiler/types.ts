@@ -5,7 +5,7 @@ import {
   type CoreSchemaValidator,
   type ExtensionEntry,
 } from '../contracts/index.js';
-export type { DeepReadonly, SealedRunPlan } from '../sealed-run-plan.js';
+export type { DeepReadonly, SealedRunPlan } from '../internal/sealed-run-plan.js';
 
 export const ProtocolManifestSchema = z.object({
   protocolId: z.enum(['omk.invoke/v1', 'omk.session/v1']),

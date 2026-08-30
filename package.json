@@ -9,6 +9,8 @@
       "types": "./dist/mcp/index.d.ts",
       "import": "./dist/mcp/index.js"
     },
+    "./dist/evaluation-core/internal/*": null,
+    "./dist/evaluation-core/sealed-run-plan*": null,
     "./dist/*": "./dist/*",
     "./package.json": "./package.json"
   },

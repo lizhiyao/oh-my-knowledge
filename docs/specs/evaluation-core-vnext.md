@@ -285,7 +285,7 @@ interface MeasurementPolicy {
 
 Every option that can change output, missingness, scheduling, evidence completeness, or conclusions belongs to MeasurementPolicy and enters the RunPlan and relevant digest during prepare. `start()` accepts only an external AbortSignal, annotations, EventWriter, and observer options that cannot affect measurement results; it cannot override measurement policy.
 
-`prepareEvaluationPlan()` is the sole issuer of the in-process `SealedRunPlan` capability accepted by Comparability. The RunPlan fields remain JSON-serializable for audit, but a clone or transported document is not a comparison authority: it must be prepared again through Runtime resolution before `assessComparability()` can consume it. This prevents a caller from retaining old digests and authenticated stage sources while substituting different Target, instrument, sampling, Analysis, or Decision projections.
+`prepareEvaluationPlan()` is the sole issuer of the in-process `SealedRunPlan` capability accepted by Comparability. The authority that registers and verifies this capability lives under an Evaluation Core internal module namespace that is denied by the package export map; the Compiler and Core consumers use relative internal imports rather than exposing that authority as a package-resolved consumer entry point. The RunPlan fields remain JSON-serializable for audit, but a clone or transported document is not a comparison authority: it must be prepared again through Runtime resolution before `assessComparability()` can consume it. This prevents a caller from retaining old digests and authenticated stage sources while substituting different Target, instrument, sampling, Analysis, or Decision projections.
 
 ### 6.2 ExecutionBundle
 

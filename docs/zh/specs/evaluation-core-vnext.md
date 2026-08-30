@@ -285,7 +285,7 @@ interface MeasurementPolicy {
 
 所有可能改变输出、缺失、调度、证据完整度或结论的配置都属于 MeasurementPolicy，并在 prepare 时进入 RunPlan 和对应 digest。`start()` 只能接收外部 `AbortSignal`、annotations、EventWriter 和不影响测量结果的 observer options，不能覆盖测量策略。
 
-`prepareEvaluationPlan()` 是 Comparability 接受的进程内 `SealedRunPlan` capability 唯一签发入口。RunPlan 字段仍可序列化为 JSON 供审计，但 clone 或 transported document 不具备比较权限；`assessComparability()` 再次消费前必须经过 Runtime resolution 重新 prepare。这样可以阻止调用方保留旧 digest 与 authenticated stage source，却替换 Target、instrument、sampling、Analysis 或 Decision projection。
+`prepareEvaluationPlan()` 是 Comparability 接受的进程内 `SealedRunPlan` capability 唯一签发入口。注册与验证该 capability 的 authority 位于 Evaluation Core internal module 命名空间，并由 package export map 阻断；Compiler 与 Core consumer 通过相对内部导入使用它，不把该 authority 暴露为包解析可达的 consumer 入口。RunPlan 字段仍可序列化为 JSON 供审计，但 clone 或 transported document 不具备比较权限；`assessComparability()` 再次消费前必须经过 Runtime resolution 重新 prepare。这样可以阻止调用方保留旧 digest 与 authenticated stage source，却替换 Target、instrument、sampling、Analysis 或 Decision projection。
 
 ### 2．ExecutionBundle
 

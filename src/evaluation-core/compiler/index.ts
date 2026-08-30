@@ -51,7 +51,7 @@ import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
 } from './validation.js';
-import { sealRunPlan } from '../sealed-run-plan.js';
+import { sealRunPlan } from '../internal/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';

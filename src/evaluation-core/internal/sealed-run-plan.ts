@@ -1,6 +1,6 @@
-import type { JsonValue } from './contracts/json.js';
-import { deepFreezeCanonicalJson } from './contracts/json.js';
-import type { RunPlan } from './contracts/plans.js';
+import type { JsonValue } from '../contracts/json.js';
+import { deepFreezeCanonicalJson } from '../contracts/json.js';
+import type { RunPlan } from '../contracts/plans.js';
 
 export type DeepReadonly<T> = T extends JsonValue
   ? T extends readonly (infer Item)[]
