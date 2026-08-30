@@ -25,6 +25,7 @@ import {
 } from '../../../inputs/sample-locator.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import { executorNamesForFamily } from '../../../executors/core/registry.js';
+import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../eval-workflows/evaluation-defaults.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -729,7 +730,10 @@ export default class Eval extends BaseCommand {
       parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
-      description: bilingual({ zh: '单用例超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
+      description: bilingual({
+        zh: `单用例超时秒，默认 ${DEFAULT_EVALUATION_TIMEOUT_MS / 1000}`,
+        en: `Per-sample timeout sec, default ${DEFAULT_EVALUATION_TIMEOUT_MS / 1000}`,
+      }),
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     batch: Flags.boolean({
@@ -827,7 +831,7 @@ export default class Eval extends BaseCommand {
     }),
     'budget-per-sample-ms': Flags.string({
       description: bilingual({ zh: '单 sample 时长上限 ms（必须 > 0，不传则无上限）', en: 'Per-sample time cap ms (must be > 0; omit for no cap)' }),
-      parse: numberStringParser('--budget-per-sample-ms', { minExclusive: 0 }),
+      parse: integerStringParser('--budget-per-sample-ms', { min: 1 }),
     }),
     threshold: Flags.string({
       description: bilingual({

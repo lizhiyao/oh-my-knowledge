@@ -12,6 +12,50 @@ import type {
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 
 /**
+ * Machine-enumerable public input surface accepted by the current eval config
+ * validator. Nested object containers are included because they are user-facing
+ * source keys too; #451's registry guard requires every path to be classified.
+ */
+export const EVAL_CONFIG_SCHEMA_SOURCE_PATHS = [
+  'samples',
+  'executor',
+  'model',
+  'effort',
+  'noDiagnostic',
+  'skipDoctor',
+  'judgeModels',
+  'judgeModels[].executor',
+  'judgeModels[].model',
+  'concurrency',
+  'timeoutMs',
+  'noCache',
+  'noJudge',
+  'mcpConfig',
+  'variants',
+  'variants[].name',
+  'variants[].role',
+  'variants[].artifact',
+  'variants[].git',
+  'variants[].git.url',
+  'variants[].git.ref',
+  'variants[].git.spec',
+  'variants[].cwd',
+  'variants[].allowedSkills',
+  'budget',
+  'budget.totalUSD',
+  'budget.perSampleUSD',
+  'budget.perSampleMs',
+  'repeat',
+  'holdoutRatio',
+  'judgeRepeat',
+  'bootstrap',
+  'bootstrapSamples',
+  'goldDir',
+  'lengthDebias',
+  'strictBaseline',
+] as const;
+
+/**
  * Load and validate an eval.yaml (or .json) config file.
  * All relative paths in the config are resolved against the config file's directory.
  */
@@ -156,11 +200,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       throw new Error(`${configPath}: ${key} must be a string`);
     }
   };
-  const assertNumberOpt = (key: string): void => {
-    if (obj[key] !== undefined && typeof obj[key] !== 'number') {
-      throw new Error(`${configPath}: ${key} must be a number`);
-    }
-  };
   const assertBoolOpt = (key: string): void => {
     if (obj[key] !== undefined && typeof obj[key] !== 'boolean') {
       throw new Error(`${configPath}: ${key} must be a boolean`);
@@ -179,8 +218,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       `${configPath}: \`blind\` (judge blind mode) was removed — delete it from your eval.yaml; reports are no longer blinded.`,
     );
   }
-  assertNumberOpt('concurrency');
-  assertNumberOpt('timeoutMs');
   assertBoolOpt('noCache');
   assertBoolOpt('noJudge');
   assertStringOpt('mcpConfig');
@@ -196,6 +233,8 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       throw new Error(`${configPath}: ${key} must be a positive integer (≥ 1)`);
     }
   };
+  assertPositiveIntOpt('concurrency');
+  assertPositiveIntOpt('timeoutMs');
   assertPositiveIntOpt('repeat');
   assertPositiveIntOpt('judgeRepeat');
   if (obj.holdoutRatio !== undefined) {
@@ -204,8 +243,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     }
   }
   if (obj.bootstrapSamples !== undefined) {
-    if (typeof obj.bootstrapSamples !== 'number' || !Number.isFinite(obj.bootstrapSamples) || obj.bootstrapSamples < 100) {
-      throw new Error(`${configPath}: bootstrapSamples must be a number ≥ 100`);
+    if (typeof obj.bootstrapSamples !== 'number'
+        || !Number.isFinite(obj.bootstrapSamples)
+        || obj.bootstrapSamples < 100
+        || !Number.isInteger(obj.bootstrapSamples)) {
+      throw new Error(`${configPath}: bootstrapSamples must be an integer ≥ 100`);
     }
   }
 
@@ -251,9 +293,13 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     }
     const b = obj.budget as Record<string, unknown>;
     for (const k of ['totalUSD', 'perSampleUSD', 'perSampleMs']) {
-      if (b[k] !== undefined && (typeof b[k] !== 'number' || b[k] as number < 0)) {
-        throw new Error(`${configPath}: budget.${k} must be a non-negative number`);
+      if (b[k] !== undefined
+          && (typeof b[k] !== 'number' || !Number.isFinite(b[k]) || b[k] as number <= 0)) {
+        throw new Error(`${configPath}: budget.${k} must be a finite number greater than 0`);
       }
+    }
+    if (b.perSampleMs !== undefined && !Number.isInteger(b.perSampleMs)) {
+      throw new Error(`${configPath}: budget.perSampleMs must be an integer`);
     }
     budget = {
       totalUSD: b.totalUSD as number | undefined,

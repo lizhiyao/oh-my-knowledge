@@ -324,6 +324,26 @@ budget: 5
         `,
       error: /budget must be an object/,
     },
+    {
+      name: 'zero budget value',
+      yaml: `
+samples: ./s.json
+${minimalVariants}
+budget:
+  totalUSD: 0
+        `,
+      error: /totalUSD must be a finite number greater than 0/,
+    },
+    {
+      name: 'fractional duration budget',
+      yaml: `
+samples: ./s.json
+${minimalVariants}
+budget:
+  perSampleMs: 1.5
+        `,
+      error: /perSampleMs must be an integer/,
+    },
   ];
 
   it.each(invalidBudgetCases)('rejects invalid budget value: $name', ({ yaml, error, name }) => {
@@ -428,7 +448,27 @@ judgeModels:
     {
       name: 'bootstrapSamples < 100',
       yaml: `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`,
-      error: /bootstrapSamples must be a number ≥ 100/,
+      error: /bootstrapSamples must be an integer ≥ 100/,
+    },
+    {
+      name: 'bootstrapSamples non-integer',
+      yaml: `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 100.5`,
+      error: /bootstrapSamples must be an integer ≥ 100/,
+    },
+    {
+      name: 'concurrency non-positive',
+      yaml: `samples: ./s.json\n${minimalVariants}\nconcurrency: 0`,
+      error: /concurrency must be a positive integer/,
+    },
+    {
+      name: 'concurrency non-integer',
+      yaml: `samples: ./s.json\n${minimalVariants}\nconcurrency: 1.5`,
+      error: /concurrency must be a positive integer/,
+    },
+    {
+      name: 'timeoutMs non-positive',
+      yaml: `samples: ./s.json\n${minimalVariants}\ntimeoutMs: 0`,
+      error: /timeoutMs must be a positive integer/,
     },
     {
       name: 'judgeModels non-array',
