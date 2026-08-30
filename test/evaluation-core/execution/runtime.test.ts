@@ -229,6 +229,13 @@ function expectedExecutorIdentity(plan: Plan): RuntimeIdentity {
   return structuredClone(runtime.identity) as RuntimeIdentity;
 }
 
+function targetExecutorBindings(
+  plan: Plan,
+  executor: ExecutionExecutor,
+): ReadonlyMap<string, ExecutionExecutor> {
+  return new Map(plan.execution.targets.map((target) => [target.targetId, executor]));
+}
+
 function portsFor(
   plan: Plan,
   handler?: AttemptHandler,
@@ -236,7 +243,7 @@ function portsFor(
 ) {
   const { executor, state } = fakeExecutor(expectedExecutorIdentity(plan), handler);
   const ports: ExecutionRuntimePorts = {
-    executors: new Map([['executor-alias', executor]]),
+    executorsByTargetId: targetExecutorBindings(plan, executor),
     clock: new FakeClock(),
     eventSequencer: new InMemoryRuntimeEventSequencer(),
     contentStore,
@@ -273,8 +280,8 @@ describe('Evaluation Core Execution runtime', () => {
     });
     expect(bundle.replayability).toBe('self-contained');
     expect(state).toMatchObject({
-      runOpens: 1,
-      runDisposals: 1,
+      runOpens: 2,
+      runDisposals: 2,
       trialOpens: 2,
       trialDisposals: 2,
       attempts: 2,
@@ -588,7 +595,7 @@ describe('Evaluation Core Execution runtime', () => {
       record.executionStatus === 'budget-censored'
     ));
     expect(new Set(censored.map((record) => record.schedulingBlockId)).size).toBe(1);
-    expect(state.runOpens).toBe(1);
+    expect(state.runOpens).toBe(2);
     expect(state.attempts).toBe(2);
   });
 
@@ -663,7 +670,7 @@ describe('Evaluation Core Execution runtime', () => {
     };
     const controller = new AbortController();
     const ports: ExecutionRuntimePorts = {
-      executors: new Map([['executor-alias', executor]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor),
       clock: new FakeClock(),
       eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
@@ -1386,7 +1393,7 @@ describe('Evaluation Core Execution runtime', () => {
       },
     };
     const ports: ExecutionRuntimePorts = {
-      executors: new Map([['executor-alias', executor]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor),
       clock: new FakeClock(),
       eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
@@ -1455,7 +1462,7 @@ describe('Evaluation Core Execution runtime', () => {
       },
     };
     const ports: ExecutionRuntimePorts = {
-      executors: new Map([['executor-alias', executor]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor),
       clock: new FakeClock(),
       eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
@@ -1490,13 +1497,25 @@ describe('Evaluation Core Execution runtime', () => {
       bundleId: 'bundle-missing-store',
     })).toThrow(ExecutionRuntimeConfigurationError);
 
+    const executor = ports.executorsByTargetId.get('control');
+    if (executor === undefined) throw new Error('missing test Executor binding');
+    expect(() => startExecution(plan, {
+      ...ports,
+      executorsByTargetId: new Map([['executor-alias', executor]]),
+    }, {
+      runId: 'run-implementation-keyed',
+      bundleId: 'bundle-implementation-keyed',
+    })).toThrowError(expect.objectContaining({
+      code: 'EXECUTION_RUNTIME_EXECUTOR_MISSING',
+    }));
+
     const drifted = fakeExecutor({
       ...expectedExecutorIdentity(plan),
       fingerprint: 'different-fingerprint',
     });
     expect(() => startExecution(plan, {
       ...ports,
-      executors: new Map([['executor-alias', drifted.executor]]),
+      executorsByTargetId: targetExecutorBindings(plan, drifted.executor),
     }, {
       runId: 'run-drifted',
       bundleId: 'bundle-drifted',
@@ -1539,9 +1558,9 @@ describe('Evaluation Core Execution runtime', () => {
     const replacement = fakeExecutor(identity, () => ({
       output: { value: { source: 'replacement' }, classification: 'public' },
     }));
-    const registry = new Map([['executor-alias', original.executor]]);
+    const registry = new Map([['control', original.executor]]);
     const run = startExecution(plan, {
-      executors: registry,
+      executorsByTargetId: registry,
       clock: new FakeClock(),
       eventSequencer: new InMemoryRuntimeEventSequencer(),
       contentStore,
@@ -1549,7 +1568,7 @@ describe('Evaluation Core Execution runtime', () => {
       runId: 'run-registry-snapshot',
       bundleId: 'bundle-registry-snapshot',
     });
-    registry.set('executor-alias', replacement.executor);
+    registry.set('control', replacement.executor);
     const bundle = await run.result;
 
     const record = bundle.records[0];

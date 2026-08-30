@@ -340,8 +340,11 @@ async function sourceBundle(plan: Plan, fail = false, providerCostAmount?: numbe
     if (signal.aborted) reject(abortError());
     else signal.addEventListener('abort', () => reject(abortError()), { once: true });
   });
+  const executionPort = executor(plan, fail, providerCostAmount);
   return executeRunPlanSource(plan, {
-    executors: new Map([['executor-alias', executor(plan, fail, providerCostAmount)]]),
+    executorsByTargetId: new Map(
+      plan.execution.targets.map((target) => [target.targetId, executionPort]),
+    ),
     clock,
     eventSequencer: new InMemoryRuntimeEventSequencer(),
     eventWriter: { async write() {} },
@@ -434,7 +437,7 @@ function ports(
   overrides: Partial<EvaluationRuntimePorts> = {},
 ): EvaluationRuntimePorts {
   return {
-    evaluators: new Map([['exact/v1', port]]),
+    evaluatorsByEvaluatorId: new Map([['exact', port]]),
     clock: new FakeClock(),
     eventSequencer: new InMemoryRuntimeEventSequencer(),
     ...overrides,
@@ -790,8 +793,9 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('rejects missing evaluator bindings synchronously', async () => {
     const plan = await makePlan();
     const source = await sourceBundle(plan);
+    const fake = evaluator(plan);
     expect(() => startEvaluation(plan, source, {
-      evaluators: new Map(),
+      evaluatorsByEvaluatorId: new Map([['exact/v1', fake.port]]),
       clock: new FakeClock(),
       eventSequencer: new InMemoryRuntimeEventSequencer(),
     }, {
@@ -1967,8 +1971,11 @@ describe('Evaluation Core Evaluation runtime', () => {
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const events: EvaluationEvent[] = [];
     const eventWriter = { async write(event: Readonly<EvaluationEvent>) { events.push(event); } };
+    const executionPort = executor(plan);
     const source = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan)]]),
+      executorsByTargetId: new Map(
+        plan.execution.targets.map((target) => [target.targetId, executionPort]),
+      ),
       clock: new FakeClock(),
       eventSequencer,
       eventWriter,

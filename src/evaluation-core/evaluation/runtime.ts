@@ -207,12 +207,12 @@ function prepareRuntime(
   }
   const bindings = new Map<string, EvaluatorBinding>();
   for (const evaluator of plan.evaluation.evaluators) {
-    const port = ports.evaluators.get(evaluator.implementationId);
+    const port = ports.evaluatorsByEvaluatorId.get(evaluator.evaluatorId);
     const runtime = runtimes.get(evaluator.evaluatorId);
     if (port === undefined) {
       configurationError(
         'EVALUATION_RUNTIME_EVALUATOR_MISSING',
-        `No Evaluator is registered for ${evaluator.implementationId}.`,
+        `No Evaluator binding is registered for ${evaluator.evaluatorId}.`,
       );
     }
     if (runtime === undefined
@@ -623,13 +623,13 @@ class Sessions {
   }
 
   get(binding: EvaluatorBinding): Promise<EvaluationEvaluatorRun> {
-    const current = this.#sessions.get(binding.evaluator.implementationId);
+    const current = this.#sessions.get(binding.evaluator.evaluatorId);
     if (current !== undefined) return current;
     const session = Promise.resolve(binding.port.openRun(deepFreeze(snapshotJson({
       runId: this.#options.runId,
       evaluationPlanDigest: this.#plan.evaluation.evaluationPlanDigest as Sha256Digest,
     }))));
-    this.#sessions.set(binding.evaluator.implementationId, session);
+    this.#sessions.set(binding.evaluator.evaluatorId, session);
     return session;
   }
 

@@ -228,8 +228,8 @@ describe('Evaluation Series Runtime', () => {
       },
     ]);
     const result = await runEvaluationSeries(plan, [], {
-      analysisNodes: new Map(),
-      decisionPolicies: new Map(),
+      analysisNodesByNodeId: new Map(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
       schemaValidators: new Map(),
     }, { bundleId: 'series-all-missing', reportId: 'series-all-missing' });
 
@@ -275,8 +275,8 @@ describe('Evaluation Series Runtime', () => {
       plan,
       [memberSource('repeat-1', 0, result)],
       {
-        analysisNodes: new Map(),
-        decisionPolicies: new Map(),
+        analysisNodesByNodeId: new Map(),
+        decisionPoliciesByDecisionPolicyId: new Map(),
         schemaValidators: seriesSchemaValidators,
       },
       { bundleId: 'series-unbound', reportId: 'series-unbound' },
@@ -317,7 +317,7 @@ describe('Evaluation Series Runtime', () => {
       plan,
       memberInputs,
       {
-        analysisNodes: new Map([['stability', {
+        analysisNodesByNodeId: new Map([['stability', {
           identity: analysisIdentity,
           outputSchema: seriesOutputSchema,
           async analyze(context) {
@@ -329,7 +329,7 @@ describe('Evaluation Series Runtime', () => {
             };
           },
         }]]),
-        decisionPolicies: new Map([['series-release-gate', {
+        decisionPoliciesByDecisionPolicyId: new Map([['series-release-gate', {
           identity: decisionIdentity,
           async decide() {
             return { decisionStatus: 'decided' as const, verdict: 'stable' };
@@ -394,8 +394,8 @@ describe('Evaluation Series Runtime', () => {
       plan,
       [memberSource('repeat-1', 0, first)],
       {
-        analysisNodes: new Map(),
-        decisionPolicies: new Map(),
+        analysisNodesByNodeId: new Map(),
+        decisionPoliciesByDecisionPolicyId: new Map(),
         schemaValidators: new Map(),
       },
       { bundleId: 'series-analysis-partial', reportId: 'series-report-partial' },
@@ -449,8 +449,8 @@ describe('Evaluation Series Runtime', () => {
       memberSource('repeat-1', 0, first),
       memberSource('repeat-2', 1, second),
     ], {
-      analysisNodes: new Map(),
-      decisionPolicies: new Map(),
+      analysisNodesByNodeId: new Map(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
       schemaValidators: new Map(),
     }, { bundleId: 'series-cancelled', reportId: 'series-cancelled' });
 
@@ -498,8 +498,8 @@ describe('Evaluation Series Runtime', () => {
       memberSource('repeat-1', 0, run),
       memberSource('repeat-2', 1, run),
     ], {
-      analysisNodes: new Map(),
-      decisionPolicies: new Map(),
+      analysisNodesByNodeId: new Map(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
       schemaValidators: seriesSchemaValidators,
     }, { bundleId: 'series-duplicate-run', reportId: 'series-duplicate-run' }))
       .rejects.toThrow('duplicate member identity');
@@ -536,7 +536,7 @@ describe('Evaluation Series Runtime', () => {
     ]);
     let decisionCalls = 0;
     const assumptionResult = await runEvaluationSeries(plan, sources, {
-      analysisNodes: new Map([['stability', {
+      analysisNodesByNodeId: new Map([['stability', {
         identity: analysisIdentity,
         outputSchema: seriesOutputSchema,
         async analyze() {
@@ -552,7 +552,7 @@ describe('Evaluation Series Runtime', () => {
           };
         },
       }]]),
-      decisionPolicies: new Map([['series-release-gate', {
+      decisionPoliciesByDecisionPolicyId: new Map([['series-release-gate', {
         identity: decisionIdentity,
         async decide() {
           decisionCalls += 1;
@@ -575,7 +575,7 @@ describe('Evaluation Series Runtime', () => {
 
     const secret = 'must-not-cross-series-error-boundary';
     const failedDecision = await runEvaluationSeries(plan, sources, {
-      analysisNodes: new Map([['stability', {
+      analysisNodesByNodeId: new Map([['stability', {
         identity: analysisIdentity,
         outputSchema: seriesOutputSchema,
         async analyze() {
@@ -586,7 +586,7 @@ describe('Evaluation Series Runtime', () => {
           };
         },
       }]]),
-      decisionPolicies: new Map([['series-release-gate', {
+      decisionPoliciesByDecisionPolicyId: new Map([['series-release-gate', {
         identity: decisionIdentity,
         async decide() {
           throw {

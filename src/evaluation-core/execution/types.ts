@@ -125,7 +125,7 @@ export interface ExecutionEventWriter {
 }
 
 export interface ExecutionRuntimePorts {
-  executors: ReadonlyMap<string, ExecutionExecutor>;
+  executorsByTargetId: ReadonlyMap<string, ExecutionExecutor>;
   clock: ExecutionClock;
   eventSequencer: RuntimeEventSequencer;
   cache?: ExecutionCache;

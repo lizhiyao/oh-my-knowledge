@@ -136,7 +136,7 @@ describe('Evaluation Core conformance fault matrix', () => {
     expect(result.report.status.evidenceStatus).toBe('unresolvable');
     expect(result.decision?.decisionStatus).toBe('not-decided');
     expect(result.state.trialDisposals).toBe(4);
-    expect(result.state.executorRunDisposals).toBe(1);
+    expect(result.state.executorRunDisposals).toBe(result.plan.execution.targets.length);
   });
 
   it.each([
@@ -446,8 +446,8 @@ describe('Evaluation Core conformance fault matrix', () => {
       evaluatorRunDisposals: 0,
     });
     expect(completed.state).toMatchObject({
-      executorRunOpens: 1,
-      executorRunDisposals: 1,
+      executorRunOpens: completed.plan.execution.targets.length,
+      executorRunDisposals: completed.plan.execution.targets.length,
       trialOpens: 4,
       trialDisposals: 4,
       evaluatorRunOpens: 2,
@@ -522,7 +522,7 @@ describe('Evaluation Core conformance fault matrix', () => {
           executionBundleStatus: 'failed',
           terminationReasonCode: reason,
         });
-        expect(result.state.executorRunDisposals).toBe(1);
+        expect(result.state.executorRunDisposals).toBe(result.plan.execution.targets.length);
         expect(result.state.trialDisposals).toBeGreaterThan(0);
       } else if (stage === 'evaluation') {
         expect(result.evaluation).toMatchObject({

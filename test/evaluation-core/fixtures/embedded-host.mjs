@@ -195,29 +195,47 @@ function createHostRuntime(targetKind) {
     },
   };
   const schemaValidators = createBuiltinAnalysisSchemaValidators();
+  const analysisNodes = createBuiltinAnalysisNodes();
+  const missingPolicies = createBuiltinMissingPolicies();
+  const decisionPolicies = createBuiltinDecisionPolicies();
   return {
     executorInputs,
     runtime: {
-      preparation: {
+      bindings: {
         resolveExecutor() {
-          return { identity: executorRuntime, satisfiesVersionConstraint: true };
+          return {
+            runtimeKind: 'executor',
+            resolution: { identity: executorRuntime, satisfiesVersionConstraint: true },
+            port: executor,
+          };
         },
         resolveEvaluator() {
-          return { identity: evaluatorRuntime, satisfiesVersionConstraint: true };
+          return {
+            runtimeKind: 'evaluator',
+            resolution: { identity: evaluatorRuntime, satisfiesVersionConstraint: true },
+            port: evaluator,
+          };
         },
         resolveAnalysis(requirement) {
           const resolution = resolveBuiltinAnalysisRuntime(requirement);
           if (resolution === undefined) throw new Error('Unknown built-in Analysis Runtime.');
-          return resolution;
+          if (requirement.requirementKind === 'missing-policy') {
+            const port = missingPolicies.get(requirement.implementationId);
+            if (port === undefined) throw new Error('Unknown built-in MissingPolicy.');
+            return { runtimeKind: 'missing-policy', resolution, port };
+          }
+          if (requirement.requirementKind === 'decision-policy') {
+            const port = decisionPolicies.get(requirement.implementationId);
+            if (port === undefined) throw new Error('Unknown built-in DecisionPolicy.');
+            return { runtimeKind: 'decision-policy', resolution, port };
+          }
+          const port = analysisNodes.get(requirement.implementationId);
+          if (port === undefined) throw new Error('Unknown built-in Analysis Runtime.');
+          return { runtimeKind: 'analysis-node', resolution, port };
         },
       },
-      executors: new Map([['same-process', executor]]),
-      evaluators: new Map([['deterministic/v1', evaluator]]),
       clock: new HostClock(),
       schemaValidators,
-      analysisNodes: createBuiltinAnalysisNodes(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
     },
   };
 }

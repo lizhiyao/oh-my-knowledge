@@ -326,7 +326,8 @@ async function resolveRuntime(
   let raw: unknown;
   try {
     raw = await resolver();
-  } catch {
+  } catch (error) {
+    if (error instanceof EvaluationDefinitionError) throw error;
     throw new EvaluationDefinitionError({
       code: 'EVAL_DEFINITION_RUNTIME_RESOLUTION_FAILED',
       stage: 'infrastructure',

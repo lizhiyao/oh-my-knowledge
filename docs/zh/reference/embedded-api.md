@@ -7,11 +7,7 @@
 ```ts
 import {
   createEvaluationEngine,
-  createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
-  createBuiltinDecisionPolicies,
-  createBuiltinMissingPolicies,
-  resolveBuiltinAnalysisRuntime,
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type MeasurementPolicy,
@@ -32,31 +28,32 @@ Engine 接收实现与基础设施 port。函数实现只存在于内存，不�
 
 ```ts
 const runtime: EvaluationEngineRuntime = {
-  preparation: {
-    resolveExecutor(requirement) {
-      return executorRegistry.resolve(requirement);
+  bindings: {
+    async resolveExecutor(requirement) {
+      const { port, satisfiesVersionConstraint } = await executorRegistry.bind(requirement);
+      return {
+        runtimeKind: 'executor',
+        resolution: { identity: port.identity, satisfiesVersionConstraint },
+        port,
+      };
     },
-    resolveEvaluator(requirement) {
-      return evaluatorRegistry.resolve(requirement);
+    async resolveEvaluator(requirement) {
+      const { port, satisfiesVersionConstraint } = await evaluatorRegistry.bind(requirement);
+      return {
+        runtimeKind: 'evaluator',
+        resolution: { identity: port.identity, satisfiesVersionConstraint },
+        port,
+      };
     },
     resolveAnalysis(requirement) {
-      return resolveBuiltinAnalysisRuntime(requirement)
-        ?? analysisRegistry.resolve(requirement);
+      return analysisRegistry.bind(requirement);
     },
   },
-  executors,
-  evaluators,
   clock,
   schemaValidators: new Map([
     ...createBuiltinAnalysisSchemaValidators(),
     ...hostSchemaValidators,
   ]),
-  analysisNodes: new Map([
-    ...createBuiltinAnalysisNodes(),
-    ...hostAnalysisNodes,
-  ]),
-  missingPolicies: createBuiltinMissingPolicies(),
-  decisionPolicies: createBuiltinDecisionPolicies(),
   executionCache,
   evaluationCache,
   executionContentStore,
@@ -67,7 +64,9 @@ const runtime: EvaluationEngineRuntime = {
 const engine = createEvaluationEngine(runtime);
 ```
 
-Preparation resolver 负责证明 Runtime identity 及其 capabilities 满足实现与版本约束。注册在 `executors`、`evaluators` 或 Analysis registry 中的实现，必须暴露与 preparation 阶段封存结果相同的 identity。这样可以避免 fingerprint、能力声明和实际代码静默漂移。
+每个 binding resolver 必须同时返回解析结果与已配置 port。OMK 会验证两者的 Runtime identity 完全一致，以 Definition 中的稳定 reference ID 捕获该 port，并让所有 prepared run 使用同一份 binding 快照。因此，两个 Target 或 Evaluator 可以复用同一个 implementation ID，同时保留不同的 model、fingerprint、配置、session 与取消边界。resolver／port split-brain 会在任何 Runtime 资源打开前于 preparation 阶段失败。
+
+这是一次有意的嵌入式 API 不兼容修正。仍使用旧 `preparation` 加 implementation-keyed `executors`、`evaluators` 和 Analysis map 的宿主，需要把装配迁入 `bindings`。低层阶段端口现分别命名为 `executorsByTargetId`、`evaluatorsByEvaluatorId`、`analysisNodesByNodeId`、`missingPoliciesByPolicyId` 与 `decisionPoliciesByDecisionPolicyId`；不提供旧 API adapter。
 
 长期存活的 registry、客户端、cache 和 store 由宿主持有。Executor、Evaluator 与 Analysis implementation 打开 run 级资源，OMK 在对应阶段边界释放这些资源。启动或取消一个 run 不会释放另一个 run 的资源。
 
@@ -94,7 +93,7 @@ await collecting;
 
 `runId` 由宿主分配且必填。同一个 Engine 实例中，所有 active run 的 `runId` 必须唯一，因为 OMK 会据此确定性派生 Event、Bundle 与 Report identifier。并发重复会立即以 `EVALUATION_ENGINE_RUN_ID_ACTIVE` 结束；原 run 到达任意终态后可以复用该 identifier。Definition、Sample、Policy、Runtime identity、seed 与 fingerprint 都会封存进结果的证据链。
 
-如果宿主希望在调度前完成配置和 capability 校验，可以先调用 `await engine.prepare(definition, policy)`。返回的 `PreparedEvaluation` 持有不透明 `SealedRunPlan` capability，可以用同一个不可变计划启动多个相互隔离的 run。
+如果宿主希望在调度前完成配置和 capability 校验，可以先调用 `await engine.prepare(definition, policy)`。返回的 `PreparedEvaluation` 持有不透明 `SealedRunPlan` capability 与捕获后的 binding 快照，可以用同一个不可变计划和同一组 port 启动多个相互隔离的 run。
 
 ## 结果与错误
 

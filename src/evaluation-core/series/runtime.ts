@@ -99,8 +99,8 @@ export interface SeriesDecisionRuntime {
 }
 
 export interface EvaluationSeriesRuntimePorts {
-  readonly analysisNodes: ReadonlyMap<string, SeriesAnalysisNodeRuntime>;
-  readonly decisionPolicies: ReadonlyMap<string, SeriesDecisionRuntime>;
+  readonly analysisNodesByNodeId: ReadonlyMap<string, SeriesAnalysisNodeRuntime>;
+  readonly decisionPoliciesByDecisionPolicyId: ReadonlyMap<string, SeriesDecisionRuntime>;
   readonly schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
 }
 
@@ -352,7 +352,7 @@ async function runAnalysisNodes(
       recordsByResult.set(record.resultId, record);
       continue;
     }
-    const runtime = ports.analysisNodes.get(node.nodeId);
+    const runtime = ports.analysisNodesByNodeId.get(node.nodeId);
     if (runtime === undefined
         || canonicalizeJson(runtime.identity) !== canonicalizeJson(candidateBinding.identity)
         || canonicalizeJson(runtime.outputSchema)
@@ -534,7 +534,7 @@ async function makeDecision(
       ),
     });
   }
-  const runtime = ports.decisionPolicies.get(policy.decisionPolicyId);
+  const runtime = ports.decisionPoliciesByDecisionPolicyId.get(policy.decisionPolicyId);
   if (runtime === undefined
       || canonicalizeJson(binding.identity) !== canonicalizeJson(runtime.identity)) {
     throw new TypeError('Series Decision Runtime does not match the sealed plan.');
