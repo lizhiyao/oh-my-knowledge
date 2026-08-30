@@ -11,7 +11,7 @@ import {
   canonicalizeJson,
   computePlanDigests,
   deriveSchedulingTargetGroups,
-  generateWireSchemaIdentities,
+  generateRunContractSchemaIdentities,
   parseWireDocument,
   projectEvaluationInputs,
   projectExecutionInputs,
@@ -1096,7 +1096,7 @@ export async function prepareEvaluationPlan(
   validateDefinitionSemantics(definition, measurementPolicy);
 
   const identitiesByUri = new Map<string, SchemaIdentity>();
-  for (const identity of generateWireSchemaIdentities()) {
+  for (const identity of generateRunContractSchemaIdentities()) {
     addSchemaIdentity(identitiesByUri, identity, identity.schemaVersion);
   }
   const executorRuntimes = await resolveExecutors(

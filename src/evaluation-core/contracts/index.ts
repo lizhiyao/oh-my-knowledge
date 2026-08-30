@@ -2,6 +2,7 @@ export * from './artifacts.js';
 export * from './analysis-identities.js';
 export * from './analysis-bundle.js';
 export * from './common.js';
+export * from './comparability.js';
 export * from './definition.js';
 export * from './digests.js';
 export * from './execution-identities.js';

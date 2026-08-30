@@ -9,7 +9,7 @@ import {
   computeRuntimeImplementationDigest,
   digestArtifactPayload,
   digestCanonicalJson,
-  generateWireSchemaIdentities,
+  generateRunContractSchemaIdentities,
   projectEvaluationInputs,
   projectExecutionInputs,
   type EvaluationDataset,
@@ -126,7 +126,7 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
     evaluatorRuntimes: [],
     analysisRuntimes: [],
     decisionRuntimes: [],
-    schemaIdentities: generateWireSchemaIdentities(),
+    schemaIdentities: generateRunContractSchemaIdentities(),
   });
 }
 
@@ -286,7 +286,7 @@ describe('Evaluation Core layered digests', () => {
   });
 
   it('invalidates Execution and every downstream plan when an executor fingerprint changes', () => {
-    const identities = generateWireSchemaIdentities();
+    const identities = generateRunContractSchemaIdentities();
     const base = {
       dataset: definition.dataset,
       targets: definition.targets,
@@ -469,7 +469,7 @@ describe('Evaluation Core layered digests', () => {
   });
 
   it('treats schema identities as an order-independent set in the root contract', () => {
-    const schemaIdentities = generateWireSchemaIdentities();
+    const schemaIdentities = generateRunContractSchemaIdentities();
     const digest = `sha256:${'a'.repeat(64)}` as const;
     const input = {
       executionPlanDigest: digest,

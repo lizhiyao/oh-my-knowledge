@@ -31,11 +31,18 @@ import {
   RunPlanSchema,
 } from './plans.js';
 import type { SchemaIdentity } from './common.js';
+import {
+  COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
+  COMPARABILITY_POLICY_SCHEMA_VERSION,
+  ComparabilityAssessmentSchema,
+  ComparabilityPolicySchema,
+} from './comparability.js';
 
 export interface WireSchemaCatalogEntry {
   fileName: string;
   schemaVersion: string;
   schema: z.ZodType;
+  includedInRunContract?: false;
 }
 
 export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
@@ -73,6 +80,18 @@ export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
     fileName: 'run-plan.schema.json',
     schemaVersion: RUN_PLAN_SCHEMA_VERSION,
     schema: RunPlanSchema,
+  },
+  {
+    fileName: 'comparability-policy.schema.json',
+    schemaVersion: COMPARABILITY_POLICY_SCHEMA_VERSION,
+    schema: ComparabilityPolicySchema,
+    includedInRunContract: false,
+  },
+  {
+    fileName: 'comparability-assessment.schema.json',
+    schemaVersion: COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
+    schema: ComparabilityAssessmentSchema,
+    includedInRunContract: false,
   },
   {
     fileName: 'evaluation-event.schema.json',
@@ -145,4 +164,20 @@ export function generateWireSchemaIdentities(): SchemaIdentity[] {
       schemaDigest: digestCanonicalJson(schema),
     };
   });
+}
+
+export function generateRunContractSchemaIdentities(): SchemaIdentity[] {
+  const identities = new Map(generateWireSchemaIdentities().map((identity) => [
+    identity.schemaVersion,
+    identity,
+  ]));
+  return WIRE_SCHEMA_CATALOG
+    .filter((entry) => entry.includedInRunContract !== false)
+    .map((entry) => {
+      const identity = identities.get(entry.schemaVersion);
+      if (identity === undefined) {
+        throw new Error(`Missing generated schema identity for ${entry.schemaVersion}`);
+      }
+      return identity;
+    });
 }

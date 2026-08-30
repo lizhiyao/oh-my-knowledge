@@ -392,7 +392,7 @@ runContractDigest = H(all plan digests + schema identities)
 
 ### 1．ADR：在不变测量系统下比较显式声明的研究对象
 
-**状态**：已接受为 v1 实现决策，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
+**状态**：v1 已接受并实现，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
 
 可比性是两个候选对象针对一种明确用途的关系，不是任一 Run 自带的固有属性。v1 只支持一种刻意保守的设计模式：`exact-measurement-design`。调用方把一组一一对应的 Target 显式声明为研究对象；只有这些映射 Target 的定义及其 Executor Runtime 实现身份可以变化。观察、评分、抽样、分析这些研究对象，以及在请求时作出决策的全部测量系统保持不变。
 
@@ -548,6 +548,8 @@ Comparability 与其它 durable stage 使用同一套 document／source 分层�
 `evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 v1 不允许签名绕过 plan／source-aware 重算。
 
 Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、candidate 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 candidate digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
+
+Policy 与 Assessment 发布各自独立的 JSON Schema，但这些事后比较 schema 刻意不进入每份 RunPlan 的 `schemaIdentities`。新增或修改比较机制不能反向扰动被比较测量本身的 identity；只有生产 Run 时实际消费的 schema 才进入 `runContractDigest`。
 
 Subject mapping 必须非空，`subjectId` 必须唯一，左右两侧分别一一对应，并引用对应 sealed Plan 中真实存在的 Target。在比较 connectivity、Comparison reference 或其它以 Target 为 key 的结构前，Core 先把每个 Target alpha-rename 为带 tag 的 canonical reference：mapped Target 变为 `{ targetReferenceKind: 'subject', referenceId: subjectId }`，未映射 Target 变为 `{ targetReferenceKind: 'literal-target', referenceId: targetId }`。tag 属于 canonical identity，因此即使 `subjectId` 与无关的 literal Target ID 相同，也不会折叠成同一节点。每一侧在投影后仍须保持一一对应；重复的 tagged reference 属于非法。描述性的 `targetKind` 没有特殊语义。未声明的 Target 新增、删除、重映射、定义变化或 Executor 实现变化都属于测量系统漂移，结果为 incompatible。已声明的 subject change 会记录为 informational reason，而不是从审计轨迹中抹除。
 
