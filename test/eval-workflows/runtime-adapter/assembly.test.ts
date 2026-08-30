@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalizeJson,
   createEvaluationSeriesDefinition,
   createEvaluationEngine,
   digestCanonicalJson,
@@ -103,6 +104,39 @@ function bindingIdentity(
       facets: [{ facetId: 'binding-reference', value: referenceId }],
     },
   });
+}
+
+function normalizedAnalysisCapabilities(input: RuntimeIdentity['capabilities']): JsonValue {
+  const capabilities = structuredClone(input) as unknown as Record<string, unknown>;
+  const sortStrings = (value: unknown): void => {
+    if (Array.isArray(value)) (value as string[]).sort();
+  };
+  sortStrings(capabilities.analysisNodeKinds);
+  sortStrings(capabilities.analysisResultSchemaUris);
+  sortStrings(capabilities.multipleComparisonPolicyIds);
+  sortStrings(capabilities.valueTypes);
+  const sampling = capabilities.sampling as Record<string, unknown> | undefined;
+  if (sampling !== undefined) {
+    sortStrings(sampling.experimentalUnits);
+    if (Array.isArray(sampling.repeatedMeasures)) sampling.repeatedMeasures.sort();
+    sortStrings(sampling.resamplingUnits);
+  }
+  if (Array.isArray(capabilities.inputDomains)) {
+    for (const domain of capabilities.inputDomains as Array<Record<string, unknown>>) {
+      sortStrings(domain.valueTypes);
+      sortStrings(domain.missingPolicyIds);
+      sortStrings(domain.schemaUris);
+    }
+    capabilities.inputDomains.sort((left, right) => (
+      canonicalizeJson(left as JsonValue).localeCompare(canonicalizeJson(right as JsonValue))
+    ));
+  }
+  if (Array.isArray(capabilities.schemas)) {
+    capabilities.schemas.sort((left, right) => (
+      canonicalizeJson(left as JsonValue).localeCompare(canonicalizeJson(right as JsonValue))
+    ));
+  }
+  return capabilities as JsonValue;
 }
 
 function analysisRequirement(
@@ -305,10 +339,19 @@ function factoriesFor(
             versionConstraint: request.versionConstraint,
           }),
         })) as RuntimeResolution;
+        const capabilities = structuredClone(resolved.identity.capabilities) as {
+          inputSourceKinds: string[];
+          metricValueTypes: string[];
+          schemas: SchemaIdentity[];
+        };
+        capabilities.inputSourceKinds.sort();
+        capabilities.metricValueTypes.sort();
+        capabilities.schemas.sort((left, right) => left.schemaUri.localeCompare(right.schemaUri));
         const identity = bindingIdentity(
           request.implementationId,
           request.evaluatorId,
           resolved.identity,
+          capabilities,
         );
         const port: EvaluationEvaluator = {
           identity,
@@ -375,7 +418,7 @@ function factoriesFor(
           request.implementationId,
           request.referenceId,
           resolved.identity,
-          capabilities,
+          normalizedAnalysisCapabilities(capabilities),
         );
         const port: AnalysisNodeImplementation = {
           identity,
@@ -398,6 +441,7 @@ function factoriesFor(
             request.implementationId,
             request.policyId,
             resolved.identity,
+            normalizedAnalysisCapabilities(resolved.identity.capabilities),
           ),
           decide: () => 'exclude',
         };
@@ -420,6 +464,7 @@ function factoriesFor(
             request.implementationId,
             request.decisionPolicyId,
             resolved.identity,
+            normalizedAnalysisCapabilities(resolved.identity.capabilities),
           ),
           async decide() {
             return { decisionStatus: 'not-decided', reasonCodes: ['test-only'] };
@@ -577,10 +622,31 @@ function runnableFactoriesFor(
       };
     });
   }
+  const analysisNodes = new Map(base.analysisNodesByImplementationId);
+  for (const [implementationId, factory] of analysisNodes) {
+    analysisNodes.set(implementationId, async (context) => {
+      const resolved = await factory(context);
+      return {
+        ...resolved,
+        port: {
+          ...resolved.port,
+          async openRun() {
+            return {
+              async execute() {
+                return { analysisStatus: 'inconclusive' as const, reasonCodes: ['test-only'] };
+              },
+              dispose() {},
+            };
+          },
+        },
+      };
+    });
+  }
   return {
     ...base,
     executorsByImplementationId: executors,
     evaluatorsByImplementationId: evaluators,
+    analysisNodesByImplementationId: analysisNodes,
   };
 }
 
@@ -597,6 +663,9 @@ function compositionInput(options: {
   referenceOutput?: boolean;
   referenceTrace?: boolean;
   referenceEvaluationEvidence?: boolean;
+  executionTimeout?: boolean;
+  evaluationTimeout?: boolean;
+  providerCostBudget?: boolean;
 } = {}) {
   const input = runtimeAssemblyInput();
   delete input.orchestration.independentSeries;
@@ -608,6 +677,13 @@ function compositionInput(options: {
     evidence: options.referenceEvaluationEvidence === true ? 'reference' : 'full',
     maximumClassification: 'gold',
   };
+  if (options.executionTimeout === false) delete input.policy.executionTimeoutMs;
+  if (options.evaluationTimeout === false) delete input.policy.evaluationTimeoutMs;
+  if (options.providerCostBudget === false) {
+    if (input.policy.budget === undefined) throw new Error('missing test budget');
+    delete input.policy.budget.totalProviderCostUSD;
+    delete input.policy.budget.perCoordinateProviderCostUSD;
+  }
   return compileCliEvaluationInput(input);
 }
 
@@ -1878,6 +1954,104 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(lifecycle.some((entry) => entry.startsWith('executor.open:parallel-a:'))).toBe(true);
     expect(lifecycle.some((entry) => entry.startsWith('executor.open:parallel-b:'))).toBe(true);
     expect(disposed.sort()).toEqual(['parallel-a', 'parallel-b']);
+  });
+
+  it('isolates cancellation, events, progress and teardown across concurrent runs', async () => {
+    const compiled = compositionInput({
+      executionTimeout: false,
+      evaluationTimeout: false,
+      providerCostBudget: false,
+    });
+    let releaseExecution: (() => void) | undefined;
+    const executeGate = new Promise<void>((resolve) => { releaseExecution = resolve; });
+    const lifecycle: string[] = [];
+    const disposed: string[] = [];
+    const controller = new AbortController();
+    const progress = { isolatedA: [] as string[], isolatedB: [] as string[] };
+    const closed = { isolatedA: false, isolatedB: false };
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, lifecycle, executeGate),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => disposed.push(request.runId),
+          );
+        },
+      },
+    });
+    const prepared = await runtime.prepare();
+    const first = await prepared.start({
+      runId: 'isolated-a',
+      signal: controller.signal,
+      progressSink: {
+        render(update) { progress.isolatedA.push(update.runId); },
+        close() { closed.isolatedA = true; },
+      },
+    });
+    const second = await prepared.start({
+      runId: 'isolated-b',
+      progressSink: {
+        render(update) { progress.isolatedB.push(update.runId); },
+        close() { closed.isolatedB = true; },
+      },
+    });
+    const firstEvents: Array<{ runId: string; eventKind: string }> = [];
+    const secondEvents: Array<{ runId: string; eventKind: string }> = [];
+    const firstDrain = (async () => {
+      for await (const event of first.events) firstEvents.push(event);
+    })();
+    const secondDrain = (async () => {
+      for await (const event of second.events) secondEvents.push(event);
+    })();
+
+    await expect.poll(() => lifecycle.some(
+      (entry) => entry.startsWith('executor.open:isolated-a:'),
+    )).toBe(true);
+    await expect.poll(() => lifecycle.some(
+      (entry) => entry.startsWith('executor.open:isolated-b:'),
+    )).toBe(true);
+    controller.abort();
+    releaseExecution?.();
+    const [firstResult, secondResult] = await Promise.all([first.result, second.result]);
+    await Promise.all([firstDrain, secondDrain]);
+    await expect.poll(() => closed.isolatedA && closed.isolatedB).toBe(true);
+
+    expect(firstResult.status).toBe('cancelled');
+    expect(secondResult.status).toBe('completed');
+    expect(firstEvents.length).toBeGreaterThan(0);
+    expect(secondEvents.length).toBeGreaterThan(0);
+    expect(firstEvents.every((event) => event.runId === 'isolated-a')).toBe(true);
+    expect(secondEvents.every((event) => event.runId === 'isolated-b')).toBe(true);
+    expect(firstEvents).toContainEqual(expect.objectContaining({
+      eventKind: 'execution.run.cancelled',
+    }));
+    expect(secondEvents.some((event) => event.eventKind === 'execution.run.cancelled')).toBe(false);
+    expect(secondEvents).toContainEqual(expect.objectContaining({
+      eventKind: 'execution.run.completed',
+    }));
+    expect(secondEvents).toContainEqual(expect.objectContaining({
+      eventKind: 'evaluation.run.completed',
+    }));
+    expect(progress.isolatedA.length).toBeGreaterThan(0);
+    expect(progress.isolatedB.length).toBeGreaterThan(0);
+    expect(progress.isolatedA.every((runId) => runId === 'isolated-a')).toBe(true);
+    expect(progress.isolatedB.every((runId) => runId === 'isolated-b')).toBe(true);
+    for (const runId of ['isolated-a', 'isolated-b']) {
+      for (const runtimeKind of ['executor', 'evaluator']) {
+        expect(lifecycle.filter((entry) => (
+          entry.startsWith(`${runtimeKind}.run.dispose:${runId}`)
+        ))).toHaveLength(lifecycle.filter((entry) => (
+          entry.startsWith(`${runtimeKind}.open:${runId}:`)
+        )).length);
+      }
+    }
+    expect(disposed.sort()).toEqual(['isolated-a', 'isolated-b']);
   });
 
   it('rejects writable overlay reuse across active runs before opening the second run', async () => {

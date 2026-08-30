@@ -190,3 +190,11 @@ EventWriter is deliberately not stored in the static `EvaluationEngineRuntime`. 
 - provider, session, attempt, cancellation, and dispose failures belong to Runtime ports after the Run starts.
 
 This layer does not modify frozen prompts, scoring stages, statistical formulas, cache semantics, Bundle／Report schemas, or the legacy pipeline.
+
+## Fault isolation and dependency boundary
+
+The composition root treats each `runId` as an independent failure domain. Concurrent runs have separate lease registrations, adapter sessions, raw-event mirrors, progress queues, cancellation signals, and teardown promises. Cancelling one in-flight run cannot cancel its peer, publish into the peer's event／progress channels, or release the peer's resources. Both the Runtime port lifecycle and the host lease are still disposed exactly once after their own run settles.
+
+Fault-injection coverage exercises failures before acquisition, during acquisition, while constructing EventWriter, during Core start／execution, in non-authoritative progress rendering, and during Runtime／lease disposal. Every path either performs no effect or joins the same idempotent cleanup promise; no rejected callback, cancellation race, or renderer promise is allowed to leave authoritative work running in the background.
+
+Evaluation Core is also protected by a source dependency guard. Core TypeScript may import only another file under `src/evaluation-core`, `zod`, or `node:crypto`; it may not import the CLI, host orchestration, filesystem APIs, provider SDKs, or ambient `process.env`／`process.cwd()` state. This makes the architectural boundary executable in CI instead of relying on convention.
