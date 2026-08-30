@@ -89,6 +89,7 @@ export interface SpawnHelperResult {
 }
 
 export interface SpawnHelperError extends Error {
+  failureKind?: 'spawn' | 'buffer-limit' | 'timeout' | 'abort' | 'nonzero-exit';
   stdout?: string;
   stderr?: string;
   code?: number | null;
@@ -201,6 +202,7 @@ export function spawnWithSigintPropagation(
     child.on('error', (err: Error) => {
       cleanup();
       const e = err as SpawnHelperError;
+      e.failureKind = 'spawn';
       e.stdout = stdout;
       e.stderr = stderr;
       reject(e);
@@ -220,6 +222,7 @@ export function spawnWithSigintPropagation(
         const e = Object.assign(
           new Error(`${bufferOverflowStream} maxBuffer (${maxBuffer} bytes) exceeded`),
           result,
+          { failureKind: 'buffer-limit' as const },
         ) as SpawnHelperError;
         reject(e);
         return;
@@ -229,7 +232,20 @@ export function spawnWithSigintPropagation(
       // turn an over-budget or cancelled evaluation into a successful sample.
       if (killedByTimeout) {
         const tSec = timeoutMs ? (timeoutMs / 1000).toFixed(0) : '?';
-        const e = Object.assign(new Error(`execution timed out after ${tSec}s`), result) as SpawnHelperError;
+        const e = Object.assign(
+          new Error(`execution timed out after ${tSec}s`),
+          result,
+          { failureKind: 'timeout' as const },
+        ) as SpawnHelperError;
+        reject(e);
+        return;
+      }
+      if (killedSig) {
+        const e = Object.assign(
+          new Error(`execution interrupted by signal ${killedSig}`),
+          result,
+          { failureKind: 'abort' as const },
+        ) as SpawnHelperError;
         reject(e);
         return;
       }
@@ -237,13 +253,12 @@ export function spawnWithSigintPropagation(
         resolve(result);
         return;
       }
-      if (killedSig) {
-        const e = Object.assign(new Error(`execution interrupted by signal ${killedSig}`), result) as SpawnHelperError;
-        reject(e);
-        return;
-      }
       if (code !== null) {
-        const e = Object.assign(new Error(`${command} exited with code ${code}`), result) as SpawnHelperError;
+        const e = Object.assign(
+          new Error(`${command} exited with code ${code}`),
+          result,
+          { failureKind: 'nonzero-exit' as const },
+        ) as SpawnHelperError;
         reject(e);
         return;
       }
