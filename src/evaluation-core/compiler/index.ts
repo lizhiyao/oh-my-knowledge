@@ -185,6 +185,9 @@ function normalizeEvaluatorCapabilities(
       'metricValueTypes',
     ) as EvaluatorCapabilities['metricValueTypes'],
     schemas: sortedSchemas(capabilities.schemas),
+    ...(capabilities.providerCost === undefined
+      ? {}
+      : { providerCost: snapshotJson(capabilities.providerCost) }),
   };
 }
 

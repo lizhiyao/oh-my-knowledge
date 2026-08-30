@@ -42,6 +42,30 @@ export type BudgetAdmission = {
   termination: BudgetTermination;
 };
 
+declare const runBudgetSourceBrand: unique symbol;
+
+/** Opaque, immutable capability handle. Mutable ledger authority remains Core-private. */
+export interface RunBudgetSource {
+  readonly runId: string;
+  readonly runContractDigest: Sha256Digest;
+  readonly [runBudgetSourceBrand]: true;
+}
+
+export interface RunBudgetController {
+  reserve(requests: readonly BudgetReservationRequest[]): BudgetAdmission;
+  consume(reservationId: string): void;
+  release(reservationId: string): void;
+  settle(
+    reservationId: string,
+    activeDurationMs: number,
+    usage: UsageRecord | undefined,
+    outcomeKind: BudgetLedgerEntry['outcomeKind'],
+  ): EvaluationError | undefined;
+  noteTermination(termination: BudgetTermination): void;
+  wallClockRemainingMs(): number | undefined;
+  snapshot(): BudgetSummary;
+}
+
 interface Reservation extends BudgetReservationRequest {
   reservationId: string;
   consumed: boolean;
@@ -54,8 +78,7 @@ interface MutableTotals {
   unreportedProviderCostInvocations: number;
 }
 
-const runBudgetSources = new WeakSet<object>();
-const RUN_BUDGET_AUTHORITY = Symbol('omk.run-budget-authority');
+const runBudgetSources = new WeakMap<object, RunBudgetAuthority>();
 
 function emptyTotals(): MutableTotals {
   return {
@@ -82,7 +105,7 @@ function scopeKey(kind: 'run' | 'stage' | 'coordinate', id: string): string {
   return `${kind}:${id}`;
 }
 
-export class RunBudgetSource {
+class RunBudgetAuthority implements RunBudgetController {
   readonly runId: string;
   readonly runContractDigest: Sha256Digest;
   readonly #plan: SealedRunPlan;
@@ -100,16 +123,12 @@ export class RunBudgetSource {
   #maximumUnreservedInFlight = 0;
 
   constructor(
-    authority: typeof RUN_BUDGET_AUTHORITY,
     plan: SealedRunPlan,
     runId: string,
     clock: RunBudgetClock,
     seed?: BudgetSummary,
     seedBindingMode: 'exact' | 'authenticated-stage-handoff' = 'exact',
   ) {
-    if (authority !== RUN_BUDGET_AUTHORITY) {
-      throw new TypeError('Run budget capabilities can only be created by Evaluation Core.');
-    }
     this.#plan = plan;
     this.runId = runId;
     this.runContractDigest = plan.digests.runContractDigest as Sha256Digest;
@@ -158,12 +177,10 @@ export class RunBudgetSource {
       this.#failed = seed.summaryStatus === 'failed';
       this.#unverifiable = seed.summaryStatus === 'unverifiable';
     }
-    runBudgetSources.add(this);
   }
 
   assertBinding(plan: SealedRunPlan, runId: string): void {
-    if (!runBudgetSources.has(this)
-        || runId !== this.runId
+    if (runId !== this.runId
         || plan.digests.runContractDigest !== this.runContractDigest) {
       throw new TypeError(
         'Run budget capability is not authentic or is bound to another runContractDigest.',
@@ -679,23 +696,39 @@ export function createRunBudgetSource(
   seed?: BudgetSummary,
   seedBindingMode: 'exact' | 'authenticated-stage-handoff' = 'exact',
 ): RunBudgetSource {
-  return new RunBudgetSource(
-    RUN_BUDGET_AUTHORITY,
+  const authority = new RunBudgetAuthority(
     plan,
     runId,
     clock,
     seed,
     seedBindingMode,
   );
+  const source = Object.freeze({
+    runId: authority.runId,
+    runContractDigest: authority.runContractDigest,
+  }) as RunBudgetSource;
+  runBudgetSources.set(source, authority);
+  return source;
 }
 
 export function assertRunBudgetSource(
+  source: unknown,
+  plan: SealedRunPlan,
+  runId: string,
+): asserts source is RunBudgetSource {
+  if (source === null || typeof source !== 'object') {
+    throw new TypeError('Run budget capability is not authentic.');
+  }
+  const authority = runBudgetSources.get(source);
+  if (authority === undefined) throw new TypeError('Run budget capability is not authentic.');
+  authority.assertBinding(plan, runId);
+}
+
+export function resolveRunBudgetSource(
   source: RunBudgetSource,
   plan: SealedRunPlan,
   runId: string,
-): void {
-  if (source === null || typeof source !== 'object' || !runBudgetSources.has(source)) {
-    throw new TypeError('Run budget capability is not authentic.');
-  }
-  source.assertBinding(plan, runId);
+): RunBudgetController {
+  assertRunBudgetSource(source, plan, runId);
+  return runBudgetSources.get(source) as RunBudgetAuthority;
 }

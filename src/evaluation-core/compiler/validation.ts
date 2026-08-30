@@ -371,8 +371,13 @@ function validatePolicy(
     const smallestBlock = Math.min(...schedulingTargetGroups.map(
       (targetIds) => targetIds.length,
     ));
-    const executionInvocationLimit = policy.budget.stages.execution.maxInvocations
-      ?? policy.budget.run.maxInvocations;
+    const executionInvocationLimits = [
+      policy.budget.run.maxInvocations,
+      policy.budget.stages.execution.maxInvocations,
+    ].filter((limit): limit is number => limit !== undefined);
+    const executionInvocationLimit = executionInvocationLimits.length === 0
+      ? undefined
+      : Math.min(...executionInvocationLimits);
     if (executionInvocationLimit !== undefined
         && executionInvocationLimit < smallestBlock) {
       throw definitionError(

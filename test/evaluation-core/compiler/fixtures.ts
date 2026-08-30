@@ -208,7 +208,15 @@ interface RuntimeOptions {
   concurrencySafety?: 'serialized' | 'parallel-safe';
   maxInFlight?: number;
   executorProtocols?: Array<'omk.invoke/v1' | 'omk.session/v1'>;
+  executorProviderCost?: {
+    reporting: 'unsupported' | 'optional' | 'required';
+    trustedUpperBound?: { amount: number; currency: string };
+  };
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
+  evaluatorProviderCost?: {
+    reporting: 'unsupported' | 'optional' | 'required';
+    trustedUpperBound?: { amount: number; currency: string };
+  };
   analysisValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
   samplingResamplingUnits?: Array<'sample' | 'paired-block' | 'cluster' | 'run'>;
   versionSatisfied?: boolean;
@@ -288,6 +296,9 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
                 telemetry: {
                   trace: options.traceCapability ?? 'unsupported',
                   usage: 'optional',
+                  ...(options.executorProviderCost === undefined
+                    ? {}
+                    : { providerCost: options.executorProviderCost }),
                 },
               },
             })),
@@ -309,6 +320,9 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
             inputSourceKinds: ['output', 'trace', 'expected', 'evaluation-context'],
             metricValueTypes: options.evaluatorValueTypes ?? ['boolean'],
             schemas: [schemaIdentity('evaluator-io')],
+            ...(options.evaluatorProviderCost === undefined
+              ? {}
+              : { providerCost: options.evaluatorProviderCost }),
           },
           'verified',
           options.evaluatorFingerprintBasis,

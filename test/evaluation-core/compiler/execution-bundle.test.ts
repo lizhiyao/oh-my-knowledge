@@ -15,7 +15,10 @@ import {
   type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
-import { createRunBudgetSource } from '../../../src/evaluation-core/budget/index.js';
+import {
+  createRunBudgetSource,
+  resolveRunBudgetSource,
+} from '../../../src/evaluation-core/budget/index.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
 type PreparedPlan = Awaited<ReturnType<typeof prepareEvaluationPlan>>;
@@ -50,10 +53,11 @@ function budgetSummary(plan: PreparedPlan, records: readonly ExecutionRecord[]) 
     delete limits.maxActiveDurationMs;
   }
   delete permissiveBudget.attempt.maxProviderCost;
-  const source = createRunBudgetSource(permissivePlan, 'plan-aware-run', {
+  const capability = createRunBudgetSource(permissivePlan, 'plan-aware-run', {
     monotonicNow: () => 0,
     timestamp: () => '2026-08-28T00:00:01Z',
   });
+  const source = resolveRunBudgetSource(capability, permissivePlan, 'plan-aware-run');
   for (const record of records) {
     if (record.executionStatus === 'budget-censored'
         || (record.cache.cacheStatus !== 'miss'
@@ -370,6 +374,30 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(parseExecutionBundle(valid, plan).bundle).toEqual(valid);
   });
 
+  it('applies coordinate and per-attempt cost limits to replay eligibility', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.cache.executionMode = 'transparent-deterministic';
+      policy.budget.run.maxProviderCost = { amount: 100, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 100, currency: 'USD' };
+      policy.budget.coordinate.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.attempt.maxProviderCost = { amount: 0.5, currency: 'USD' };
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    for (const candidate of bundle.records) {
+      if (candidate.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(candidate, candidate === bundle.records[0] ? 0.5 : 0.25);
+    }
+    const record = bundle.records[0];
+    if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+    turnIntoCacheHit(record);
+    bundle.budgetSummary = budgetSummary(plan, bundle.records);
+    resign(bundle);
+
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_CACHE_POLICY_INVALID' }),
+    );
+  });
+
   it('keeps unverified cache receipts and invocation budgets indeterminate', async () => {
     const plan = await makePlan(false, (policy) => {
       policy.cache.executionMode = 'transparent-deterministic';
@@ -403,6 +431,18 @@ describe('ExecutionBundle RunPlan binding', () => {
       maximumTargetInvocations: 0,
       unverifiedCacheRecordDigests: [],
     });
+  });
+
+  it('uses the stricter Run invocation limit when the stage limit is looser', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.budget.run.maxInvocations = 1;
+      policy.budget.stages.execution.maxInvocations = 100;
+    });
+    const bundle = makeBundle(plan);
+
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_RETRY_POLICY_INVALID' }),
+    );
   });
 
   it('rejects a resealed cache claim with contradictory provenance or key', async () => {
@@ -476,6 +516,47 @@ describe('ExecutionBundle RunPlan binding', () => {
       minimumProviderCost: { amount: 4 * valid.records.length, currency: 'USD' },
       maximumProviderCost: { amount: 4 * valid.records.length, currency: 'USD' },
     });
+  });
+
+  it('audits native cost when only a coordinate limit is configured', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.budget.coordinate.maxProviderCost = { amount: 1, currency: 'USD' };
+    });
+    const missing = mutableJson(makeBundle(plan));
+    resign(missing);
+
+    expect(() => parseExecutionBundle(missing, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
+
+    const exhausted = mutableJson(makeBundle(plan));
+    for (const record of exhausted.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 1);
+    }
+    exhausted.budgetSummary = budgetSummary(plan, exhausted.records);
+    resign(exhausted);
+    expect(() => parseExecutionBundle(exhausted, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
+  });
+
+  it('uses the stricter Run provider-cost limit when the stage limit is looser', async () => {
+    const plan = await makePlan(false, (policy) => {
+      policy.budget.run.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 10, currency: 'USD' };
+    });
+    const bundle = mutableJson(makeBundle(plan));
+    for (const record of bundle.records) {
+      if (record.executionStatus !== 'completed') throw new Error('unexpected record');
+      setAttemptCost(record, 0.6);
+    }
+    bundle.budgetSummary = budgetSummary(plan, bundle.records);
+    resign(bundle);
+
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PROVIDER_COST_INVALID' }),
+    );
   });
 
   it('uses replayed historical cost as eligibility evidence, not current spend', async () => {

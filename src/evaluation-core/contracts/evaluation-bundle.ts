@@ -9,7 +9,10 @@ import {
   type UsageRecord,
 } from './artifacts.js';
 import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
-import { budgetSummaryMatchesPolicy } from './budget.js';
+import {
+  budgetSummaryMatchesPolicy,
+  mostRestrictiveProviderCostLimit,
+} from './budget.js';
 import {
   deriveEvaluationAttemptId,
   deriveEvaluationId,
@@ -590,16 +593,22 @@ export function evaluationRecordUsageMatchesAttempts(
 
 export function evaluationRecordSatisfiesCacheCostPolicy(
   record: Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>,
-  maximum: { amount: number; currency: string } | undefined,
+  aggregateMaximum: { amount: number; currency: string } | undefined,
+  attemptMaximum?: { amount: number; currency: string },
 ): boolean {
-  if (maximum === undefined) return true;
-  let amount = 0;
-  for (const attempt of record.attempts) {
-    const cost = attempt.usage?.providerCost;
-    if (cost === undefined || cost.currency !== maximum.currency) return false;
-    amount += cost.amount;
+  if (aggregateMaximum !== undefined) {
+    let amount = 0;
+    for (const attempt of record.attempts) {
+      const cost = attempt.usage?.providerCost;
+      if (cost === undefined || cost.currency !== aggregateMaximum.currency) return false;
+      amount += cost.amount;
+    }
+    if (amount >= aggregateMaximum.amount) return false;
   }
-  return amount < maximum.amount;
+  return attemptMaximum === undefined || record.attempts.every((attempt) => (
+    attempt.usage?.providerCost?.currency === attemptMaximum.currency
+      && attempt.usage.providerCost.amount < attemptMaximum.amount
+  ));
 }
 
 function evaluationRecordProviderCost(
@@ -854,8 +863,12 @@ function assertCachePolicy(
         && evaluationRecordUsageMatchesAttempts(record)
         && evaluationRecordSatisfiesCacheCostPolicy(
           record,
-          plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
-            ?? plan.evaluation.policy.budget.run.maxProviderCost,
+          mostRestrictiveProviderCostLimit(
+            plan.evaluation.policy.budget.run.maxProviderCost,
+            plan.evaluation.policy.budget.stages.evaluation.maxProviderCost,
+            plan.evaluation.policy.budget.coordinate.maxProviderCost,
+          ),
+          plan.evaluation.policy.budget.attempt.maxProviderCost,
         )) return true;
   }
   throw new EvaluationBundleValidationError(
@@ -1093,8 +1106,15 @@ export function assertEvaluationBundleMatchesPlan(
   let maximumProviderCostAmount = 0;
   let providerCostUpperBoundKnown = true;
   const unverifiedCacheRecordDigests: Sha256Digest[] = [];
-  const providerCostBudget = plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
-    ?? plan.evaluation.policy.budget.run.maxProviderCost;
+  const aggregateProviderCostBudget = mostRestrictiveProviderCostLimit(
+    plan.evaluation.policy.budget.run.maxProviderCost,
+    plan.evaluation.policy.budget.stages.evaluation.maxProviderCost,
+  );
+  const providerCostAuditLimit = mostRestrictiveProviderCostLimit(
+    aggregateProviderCostBudget,
+    plan.evaluation.policy.budget.coordinate.maxProviderCost,
+    plan.evaluation.policy.budget.attempt.maxProviderCost,
+  );
   for (const record of bundle.records) {
     const expected = plannedByCoordinate.get(coordinateKey(record));
     if (expected === undefined) planMismatch('EvaluationBundle contains an unknown coordinate.');
@@ -1135,8 +1155,8 @@ export function assertEvaluationBundleMatchesPlan(
     );
     minimumEvaluatorInvocations += recordVerification.minimumInvocations;
     maximumEvaluatorInvocations += recordVerification.maximumInvocations;
-    if (providerCostBudget !== undefined && record.evaluationStatus !== 'not-evaluated') {
-      const amount = evaluationRecordProviderCost(record, providerCostBudget.currency);
+    if (providerCostAuditLimit !== undefined && record.evaluationStatus !== 'not-evaluated') {
+      const amount = evaluationRecordProviderCost(record, providerCostAuditLimit.currency);
       if (amount === undefined) {
         if (bundle.evaluationBundleStatus === 'completed'
             && plan.evaluation.policy.budget.providerCostAdmission.unknownCostMode
@@ -1146,11 +1166,28 @@ export function assertEvaluationBundleMatchesPlan(
             'A completed EvaluationBundle must report sealed-currency provider cost for every native invocation.',
           );
         }
-        if (!recordVerification.cacheHit) providerCostUpperBoundKnown = false;
+        if (!recordVerification.cacheHit && aggregateProviderCostBudget !== undefined) {
+          providerCostUpperBoundKnown = false;
+        }
       } else if (!recordVerification.cacheHit) {
-        minimumProviderCostAmount += amount;
-        maximumProviderCostAmount += amount;
-      } else if (!recordVerification.verifiedCacheHit) {
+        const attemptProviderCostLimit = plan.evaluation.policy.budget.attempt.maxProviderCost;
+        if (bundle.evaluationBundleStatus === 'completed'
+            && attemptProviderCostLimit !== undefined
+            && record.attempts.some((attempt) => (
+              (attempt.usage?.providerCost?.amount ?? Number.POSITIVE_INFINITY)
+                >= attemptProviderCostLimit.amount
+            ))) {
+          throw new EvaluationBundleValidationError(
+            'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+            'A completed EvaluationAttempt cannot exhaust its provider-cost budget.',
+          );
+        }
+        if (aggregateProviderCostBudget !== undefined) {
+          minimumProviderCostAmount += amount;
+          maximumProviderCostAmount += amount;
+        }
+      } else if (!recordVerification.verifiedCacheHit
+          && aggregateProviderCostBudget !== undefined) {
         maximumProviderCostAmount += amount;
       }
     }
@@ -1158,26 +1195,72 @@ export function assertEvaluationBundleMatchesPlan(
       unverifiedCacheRecordDigests.push(recordVerification.unverifiedCacheRecordDigest);
     }
   }
-  const maxInvocations = plan.evaluation.policy.budget.stages.evaluation.maxInvocations
-    ?? plan.evaluation.policy.budget.run.maxInvocations;
-  if (maxInvocations !== undefined && minimumEvaluatorInvocations > maxInvocations) {
+  const runScope = bundle.budgetSummary.scopes.find((scope) => scope.scopeKind === 'run');
+  if (runScope === undefined) planMismatch('EvaluationBundle budget ledger lacks its Run scope.');
+  const stageInvocationLimit = plan.evaluation.policy.budget.stages.evaluation.maxInvocations;
+  const runInvocationLimit = plan.evaluation.policy.budget.run.maxInvocations;
+  if ((stageInvocationLimit !== undefined
+        && minimumEvaluatorInvocations > stageInvocationLimit)
+      || (runInvocationLimit !== undefined
+        && runScope.totals.invocations > runInvocationLimit)) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_RETRY_POLICY_INVALID',
       'EvaluationBundle exceeds the sealed evaluator invocation budget.',
     );
   }
-  if (providerCostBudget !== undefined
+  const nativeEvaluationEntries = bundle.budgetSummary.entries.slice(
+    source.budgetSummary.entries.length,
+  );
+  const runProviderCostLimit = plan.evaluation.policy.budget.run.maxProviderCost;
+  const stageProviderCostLimit = plan.evaluation.policy.budget.stages.evaluation.maxProviderCost;
+  const reportedRunProviderCost = runProviderCostLimit === undefined
+    ? undefined
+    : runScope.totals.reportedProviderCosts?.find(
+      (cost) => cost.currency === runProviderCostLimit.currency,
+    )?.amount ?? 0;
+  if (bundle.evaluationBundleStatus === 'completed'
+      && nativeEvaluationEntries.length > 0
+      && runProviderCostLimit !== undefined
+      && (reportedRunProviderCost as number) >= runProviderCostLimit.amount) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      'A completed EvaluationBundle cannot exhaust the shared Run provider-cost budget.',
+    );
+  }
+  if (bundle.evaluationBundleStatus === 'completed'
+      && plan.evaluation.policy.budget.coordinate.maxProviderCost !== undefined) {
+    const coordinateLimit = plan.evaluation.policy.budget.coordinate.maxProviderCost;
+    for (const coordinateId of new Set(nativeEvaluationEntries.map((entry) => entry.coordinateId))) {
+      const scope = bundle.budgetSummary.scopes.find((candidate) => (
+        candidate.scopeKind === 'coordinate' && candidate.scopeId === coordinateId
+      ));
+      const amount = scope?.totals.reportedProviderCosts?.find(
+        (cost) => cost.currency === coordinateLimit.currency,
+      )?.amount ?? 0;
+      if (amount >= coordinateLimit.amount) {
+        throw new EvaluationBundleValidationError(
+          'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+          'A completed EvaluationRecord cannot exhaust its shared coordinate provider-cost budget.',
+        );
+      }
+    }
+  }
+  if (stageProviderCostLimit !== undefined
       && bundle.evaluationBundleStatus === 'completed'
-      && minimumProviderCostAmount >= providerCostBudget.amount) {
+      && minimumProviderCostAmount >= stageProviderCostLimit.amount) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
       'A completed EvaluationBundle cannot exhaust the sealed provider-cost budget.',
     );
   }
-  if (providerCostBudget !== undefined
+  if (aggregateProviderCostBudget !== undefined
       && bundle.terminationReasonCode?.endsWith('provider-cost-budget-exhausted') === true
       && (!providerCostUpperBoundKnown
-        || minimumProviderCostAmount < providerCostBudget.amount)) {
+        || (bundle.terminationReasonCode.startsWith('run-')
+          ? (reportedRunProviderCost ?? 0)
+            < (runProviderCostLimit?.amount ?? Number.POSITIVE_INFINITY)
+          : minimumProviderCostAmount
+            < (stageProviderCostLimit?.amount ?? Number.POSITIVE_INFINITY)))) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
       'Provider-cost exhaustion requires enough reported native evaluator cost.',
@@ -1202,10 +1285,17 @@ export function assertEvaluationBundleMatchesPlan(
     ),
     'EvaluationBundle trust exceeds its source or record provenance.',
   );
-  const providerCostBudgetStatus = providerCostBudget === undefined
-    || minimumProviderCostAmount >= providerCostBudget.amount
+  const runProviderCostBudgetVerified = runProviderCostLimit === undefined
+    || (executionSource.planVerification.providerCostBudgetStatus === 'verified'
+      && ((reportedRunProviderCost as number) >= runProviderCostLimit.amount
+        || (runScope.totals.unreportedProviderCostInvocations === 0
+          && (reportedRunProviderCost as number) < runProviderCostLimit.amount)));
+  const aggregateProviderCostBudgetVerified = aggregateProviderCostBudget === undefined
+    || minimumProviderCostAmount >= aggregateProviderCostBudget.amount
     || (providerCostUpperBoundKnown
-      && maximumProviderCostAmount < providerCostBudget.amount)
+      && maximumProviderCostAmount < aggregateProviderCostBudget.amount);
+  const providerCostBudgetStatus = runProviderCostBudgetVerified
+      && aggregateProviderCostBudgetVerified
     ? 'verified'
     : 'indeterminate';
   assertEvaluationBudgetLedgerMatchesRecords(bundle, source.budgetSummary.entries.length);
@@ -1219,25 +1309,28 @@ export function assertEvaluationBundleMatchesPlan(
     cacheReceiptStatus: unverifiedCacheRecordDigests.length === 0
       ? 'verified'
       : 'indeterminate',
-    invocationBudgetStatus: maxInvocations === undefined
-        || maximumEvaluatorInvocations <= maxInvocations
+    invocationBudgetStatus: (stageInvocationLimit === undefined
+        || maximumEvaluatorInvocations <= stageInvocationLimit)
+        && (runInvocationLimit === undefined
+          || (executionSource.planVerification.invocationBudgetStatus === 'verified'
+            && runScope.totals.invocations <= runInvocationLimit))
       ? 'verified'
       : 'indeterminate',
     providerCostBudgetStatus,
     minimumEvaluatorInvocations,
     maximumEvaluatorInvocations,
-    ...(providerCostBudget === undefined
+    ...(aggregateProviderCostBudget === undefined
       ? {}
       : {
         minimumProviderCost: {
           amount: minimumProviderCostAmount,
-          currency: providerCostBudget.currency,
+          currency: aggregateProviderCostBudget.currency,
         },
         ...(providerCostUpperBoundKnown
           ? {
             maximumProviderCost: {
               amount: maximumProviderCostAmount,
-              currency: providerCostBudget.currency,
+              currency: aggregateProviderCostBudget.currency,
             },
           }
           : {}),

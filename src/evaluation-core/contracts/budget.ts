@@ -16,6 +16,24 @@ const ProviderCostFactSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
 }).strict();
 
+export interface ProviderCostLimit {
+  readonly amount: number;
+  readonly currency: string;
+}
+
+export function mostRestrictiveProviderCostLimit(
+  ...limits: readonly (ProviderCostLimit | undefined)[]
+): ProviderCostLimit | undefined {
+  const defined = limits.filter((limit): limit is ProviderCostLimit => limit !== undefined);
+  if (defined.length === 0) return undefined;
+  if (defined.some((limit) => limit.currency !== defined[0].currency)) {
+    throw new TypeError('Provider-cost limits in one Run must use the same currency.');
+  }
+  return defined.reduce((minimum, limit) => (
+    limit.amount < minimum.amount ? limit : minimum
+  ));
+}
+
 export const BudgetScopeLimitSnapshotSchema = z.object({
   maxInvocations: z.number().int().positive().optional(),
   maxProviderCost: ProviderCostFactSchema.optional(),
@@ -157,6 +175,13 @@ export const BudgetSummarySchema = z.object({
       code: 'custom',
       path: ['entries'],
       message: 'A budget ledger cannot charge one attempt more than once.',
+    });
+  }
+  if (summary.entries.some((entry) => entry.admissionKind !== summary.admissionMode)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['entries'],
+      message: 'Every ledger entry must use the BudgetSummary admission mode.',
     });
   }
   if (summary.admissionMode === 'strict-reservation'
@@ -328,12 +353,17 @@ export function budgetSummaryMatchesPolicy(
   }
   if (policy.providerCostAdmission.admissionMode !== 'strict-reservation') return true;
   return summary.entries.every((entry) => {
-    const costLimit = policy.run.maxProviderCost
-      ?? policy.stages[entry.stage].maxProviderCost
-      ?? policy.coordinate.maxProviderCost
-      ?? policy.attempt.maxProviderCost;
-    if (costLimit === undefined) return true;
-    return entry.providerCostReservation?.currency === costLimit.currency;
+    const costLimits = [
+      policy.run.maxProviderCost,
+      policy.stages[entry.stage].maxProviderCost,
+      policy.coordinate.maxProviderCost,
+      policy.attempt.maxProviderCost,
+    ].filter((limit): limit is ProviderCostLimit => limit !== undefined);
+    if (costLimits.length === 0) return true;
+    const reservation = entry.providerCostReservation;
+    return reservation !== undefined && costLimits.every((limit) => (
+      reservation.currency === limit.currency && reservation.amount <= limit.amount
+    ));
   });
 }
 

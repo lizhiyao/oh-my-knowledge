@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
 import {
   BudgetSummarySchema,
+  budgetSummaryMatchesPolicy,
   digestCanonicalJson,
   type MeasurementPolicy,
   type Sha256Digest,
@@ -9,6 +10,7 @@ import {
 import {
   createRunBudgetSource,
   assertRunBudgetSource,
+  resolveRunBudgetSource,
   type BudgetReservationRequest,
   type RunBudgetSource,
 } from '../../../src/evaluation-core/budget/index.js';
@@ -51,12 +53,16 @@ describe('shared Run budget ledger', () => {
     const plan = await planWith();
     const source = createRunBudgetSource(plan, 'run-a', new Clock());
 
-    expect(() => source.assertBinding(plan, 'run-b')).toThrow(/another runContractDigest/);
+    expect(Object.isFrozen(source)).toBe(true);
+    expect('reserve' in source).toBe(false);
+    expect(() => assertRunBudgetSource(source, plan, 'run-b'))
+      .toThrow(/another runContractDigest/);
     const otherPlan = await planWith((policy) => {
       policy.budget.run.maxInvocations = 199;
     });
-    expect(() => source.assertBinding(otherPlan, 'run-a')).toThrow(/another runContractDigest/);
-    expect(() => source.assertBinding(plan, 'run-a')).not.toThrow();
+    expect(() => assertRunBudgetSource(source, otherPlan, 'run-a'))
+      .toThrow(/another runContractDigest/);
+    expect(() => assertRunBudgetSource(source, plan, 'run-a')).not.toThrow();
     expect(() => assertRunBudgetSource({
       assertBinding() {},
     } as unknown as RunBudgetSource, plan, 'run-a')).toThrow(/not authentic/);
@@ -66,7 +72,11 @@ describe('shared Run budget ledger', () => {
     const plan = await planWith((policy) => {
       policy.budget.stages.execution.maxInvocations = 1;
     });
-    const source = createRunBudgetSource(plan, 'run-atomic', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-atomic', new Clock()),
+      plan,
+      'run-atomic',
+    );
     const admission = source.reserve([
       request('execution', 'pair-a', 1),
       request('execution', 'pair-b', 1),
@@ -88,7 +98,11 @@ describe('shared Run budget ledger', () => {
       policy.budget.run.maxInvocations = 3;
       policy.budget.coordinate.maxInvocations = 2;
     });
-    const source = createRunBudgetSource(plan, 'run-shared', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-shared', new Clock()),
+      plan,
+      'run-shared',
+    );
     const first = source.reserve([request('execution', 'trial-a', 1)]);
     if (!first.admitted) throw new Error('unexpected denial');
     source.consume(first.reservationIds[0]);
@@ -126,9 +140,14 @@ describe('shared Run budget ledger', () => {
   it('requires trusted monetary bounds for strict reservation', async () => {
     const plan = await planWith((policy) => {
       policy.budget.stages.execution.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.attempt.maxProviderCost = { amount: 0.5, currency: 'USD' };
       policy.budget.providerCostAdmission.admissionMode = 'strict-reservation';
     });
-    const source = createRunBudgetSource(plan, 'run-strict', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-strict', new Clock()),
+      plan,
+      'run-strict',
+    );
 
     expect(source.reserve([request('execution', 'trial-a', 1)])).toMatchObject({
       admitted: false,
@@ -167,6 +186,16 @@ describe('shared Run budget ledger', () => {
         },
       })],
     });
+
+    const forged = structuredClone(source.snapshot());
+    const reservation = forged.entries[0].providerCostReservation;
+    if (reservation === undefined) throw new Error('missing strict reservation');
+    reservation.amount = 0.75;
+    const { ledgerDigest: _ledgerDigest, ...payload } = forged;
+    void _ledgerDigest;
+    forged.ledgerDigest = digestCanonicalJson(payload);
+    expect(BudgetSummarySchema.parse(forged)).toEqual(forged);
+    expect(budgetSummaryMatchesPolicy(forged, plan.measurementPolicy.budget)).toBe(false);
   });
 
   it('exposes bounded overshoot and never treats unknown cost as zero', async () => {
@@ -174,7 +203,11 @@ describe('shared Run budget ledger', () => {
       policy.budget.stages.evaluation.maxProviderCost = { amount: 1, currency: 'USD' };
       policy.budget.providerCostAdmission.unknownCostMode = 'mark-unverifiable';
     });
-    const source = createRunBudgetSource(plan, 'run-overshoot', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-overshoot', new Clock()),
+      plan,
+      'run-overshoot',
+    );
     const admission = source.reserve([
       request('evaluation', 'trial-a', 1),
       request('evaluation', 'trial-b', 1),
@@ -212,15 +245,17 @@ describe('shared Run budget ledger', () => {
       policy.budget.run.maxWallClockMs = 10;
     });
     const executionClock = new Clock();
-    const execution = createRunBudgetSource(plan, 'run-deadline', executionClock);
+    const executionCapability = createRunBudgetSource(plan, 'run-deadline', executionClock);
+    const execution = resolveRunBudgetSource(executionCapability, plan, 'run-deadline');
     executionClock.now = 3;
     const evaluationClock = new Clock();
-    const evaluation = createRunBudgetSource(
+    const evaluationCapability = createRunBudgetSource(
       plan,
       'run-deadline',
       evaluationClock,
       execution.snapshot(),
     );
+    const evaluation = resolveRunBudgetSource(evaluationCapability, plan, 'run-deadline');
     evaluationClock.now = 4;
 
     expect(evaluation.wallClockRemainingMs()).toBe(3);
@@ -235,7 +270,11 @@ describe('shared Run budget ledger', () => {
     const plan = await planWith((policy) => {
       policy.budget.run.maxProviderCost = { amount: 10, currency: 'USD' };
     });
-    const source = createRunBudgetSource(plan, 'run-currency', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-currency', new Clock()),
+      plan,
+      'run-currency',
+    );
     const admission = source.reserve([
       request('execution', 'trial-a', 1, { amount: 1, currency: 'USD' }),
     ]);
@@ -250,7 +289,11 @@ describe('shared Run budget ledger', () => {
 
   it('rejects tampered summaries whose totals or digest are not recomputable', async () => {
     const plan = await planWith();
-    const source = createRunBudgetSource(plan, 'run-audit', new Clock());
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-audit', new Clock()),
+      plan,
+      'run-audit',
+    );
     const admission = source.reserve([request('execution', 'trial-a', 1)]);
     if (!admission.admitted) throw new Error('unexpected denial');
     source.consume(admission.reservationIds[0]);
@@ -259,5 +302,25 @@ describe('shared Run budget ledger', () => {
     summary.scopes[0].totals.invocations += 1;
 
     expect(() => BudgetSummarySchema.parse(summary)).toThrow(/recomputable/);
+  });
+
+  it('rejects ledger entries whose admission kind contradicts the summary', async () => {
+    const plan = await planWith();
+    const source = resolveRunBudgetSource(
+      createRunBudgetSource(plan, 'run-admission-mode', new Clock()),
+      plan,
+      'run-admission-mode',
+    );
+    const admission = source.reserve([request('execution', 'trial-a', 1)]);
+    if (!admission.admitted) throw new Error('unexpected denial');
+    source.consume(admission.reservationIds[0]);
+    source.settle(admission.reservationIds[0], 1, undefined, 'completed');
+    const summary = structuredClone(source.snapshot());
+    summary.entries[0].admissionKind = 'strict-reservation';
+    const { ledgerDigest: _ledgerDigest, ...payload } = summary;
+    void _ledgerDigest;
+    summary.ledgerDigest = digestCanonicalJson(payload);
+
+    expect(() => BudgetSummarySchema.parse(summary)).toThrow(/admission mode/);
   });
 });

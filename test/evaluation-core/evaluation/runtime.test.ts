@@ -296,7 +296,11 @@ function identity(
   return structuredClone(runtime.identity) as RuntimeIdentity;
 }
 
-function executor(plan: Plan, fail = false): ExecutionExecutor {
+function executor(
+  plan: Plan,
+  fail = false,
+  providerCostAmount?: number,
+): ExecutionExecutor {
   return {
     identity: identity(plan, 'executor', 'control'),
     async openRun() {
@@ -310,6 +314,15 @@ function executor(plan: Plan, fail = false): ExecutionExecutor {
                   value: { answer: context.targetId === 'control' ? 'A' : 'B' },
                   classification: 'public' as const,
                 },
+                ...(providerCostAmount === undefined ? {} : {
+                  usage: {
+                    providerCost: {
+                      amount: providerCostAmount,
+                      currency: 'USD',
+                      reportedByProvider: true as const,
+                    },
+                  },
+                }),
               };
             },
             dispose() {},
@@ -321,14 +334,14 @@ function executor(plan: Plan, fail = false): ExecutionExecutor {
   };
 }
 
-async function sourceBundle(plan: Plan, fail = false) {
+async function sourceBundle(plan: Plan, fail = false, providerCostAmount?: number) {
   const clock = new FakeClock();
   clock.sleep = async (_delayMs, signal) => new Promise<void>((_resolve, reject) => {
     if (signal.aborted) reject(abortError());
     else signal.addEventListener('abort', () => reject(abortError()), { once: true });
   });
   return executeRunPlanSource(plan, {
-    executors: new Map([['executor-alias', executor(plan, fail)]]),
+    executors: new Map([['executor-alias', executor(plan, fail, providerCostAmount)]]),
     clock,
     eventSequencer: new InMemoryRuntimeEventSequencer(),
     eventWriter: { async write() {} },
@@ -1272,6 +1285,48 @@ describe('Evaluation Core Evaluation runtime', () => {
     expect(record.attempts[0].usage?.providerCost?.amount).toBe(1);
   });
 
+  it('uses the sealed evaluator capability for strict provider-cost reservation', async () => {
+    const runtime = testRuntime({
+      evaluatorProviderCost: {
+        reporting: 'required',
+        trustedUpperBound: { amount: 0.5, currency: 'USD' },
+      },
+    });
+    const plan = await makePlan((_definition, policy) => {
+      policy.evaluation.maxConcurrency = 1;
+      policy.budget.stages.evaluation.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.budget.providerCostAdmission.admissionMode = 'strict-reservation';
+    }, runtime);
+    const source = await sourceBundle(plan);
+    const fake = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: {
+        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+      },
+    }));
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'strict-evaluator-cost-run',
+      bundleId: 'strict-evaluator-cost-bundle',
+    });
+
+    expect(bundle.evaluationBundleStatus).toBe('completed');
+    expect(bundle.budgetSummary.entries.filter((entry) => entry.stage === 'evaluation'))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          providerCostReservation: expect.objectContaining({
+            amount: 0.5,
+            currency: 'USD',
+            boundStatus: 'honored',
+          }),
+        }),
+      ]));
+  });
+
   it('rejects a resealed Bundle whose native evaluator cost exceeds the sealed budget', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evaluation.maxConcurrency = 1;
@@ -1304,6 +1359,50 @@ describe('Evaluation Core Evaluation runtime', () => {
         record.usage = aggregateEvaluationAttemptUsage(record.attempts);
       }
     });
+
+    expect(() => verifyEvaluationBundle(forged, plan, source))
+      .toThrowError(expect.objectContaining({
+        code: 'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
+      }));
+  });
+
+  it('includes Execution spend when auditing the shared Run provider-cost limit', async () => {
+    const plan = await makePlan((_definition, policy) => {
+      policy.evaluation.maxConcurrency = 1;
+      policy.budget.run.maxProviderCost = { amount: 2, currency: 'USD' };
+    });
+    const source = await sourceBundle(plan, false, 0.4);
+    const fake = evaluator(plan, () => ({
+      observations: [{
+        metricId: 'correct',
+        observationStatus: 'observed',
+        valueType: 'boolean',
+        value: true,
+      }],
+      usage: {
+        providerCost: { amount: 0.25, currency: 'USD', reportedByProvider: true },
+      },
+    }));
+    const valid = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'shared-run-cost-run',
+      bundleId: 'shared-run-cost-bundle',
+    });
+    const forged = resealEvaluationBundle(valid, (draft) => {
+      for (const record of draft.records) {
+        if (record.evaluationStatus === 'not-evaluated') continue;
+        for (const attempt of record.attempts) {
+          attempt.usage = {
+            providerCost: { amount: 0.75, currency: 'USD', reportedByProvider: true },
+          };
+        }
+        record.usage = aggregateEvaluationAttemptUsage(record.attempts);
+      }
+    });
+
+    expect(forged.budgetSummary.scopes.find((scope) => scope.scopeKind === 'run')?.totals)
+      .toMatchObject({
+        reportedProviderCosts: [{ amount: 2.3, currency: 'USD' }],
+      });
 
     expect(() => verifyEvaluationBundle(forged, plan, source))
       .toThrowError(expect.objectContaining({

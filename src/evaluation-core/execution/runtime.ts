@@ -15,6 +15,7 @@ import {
   executionRecordMatchesEvidencePolicy,
   executionRecordSatisfiesCacheCostPolicy,
   executionRecordUsageMatchesAttempts,
+  mostRestrictiveProviderCostLimit,
   parseWireDocument,
   verifyExecutionBundle,
   type CacheProvenance,
@@ -42,6 +43,8 @@ import { BoundedEventStream } from '../runtime/event-stream.js';
 import {
   assertRunBudgetSource,
   createRunBudgetSource,
+  resolveRunBudgetSource,
+  type RunBudgetController,
   type RunBudgetSource,
 } from '../budget/index.js';
 import { abortError, Semaphore } from './semaphore.js';
@@ -496,8 +499,12 @@ function assertCachedRecord(
       || !executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)
       || !executionRecordSatisfiesCacheCostPolicy(
         record,
-        plan.execution.policy.budget.stages.execution.maxProviderCost
-          ?? plan.execution.policy.budget.run.maxProviderCost,
+        mostRestrictiveProviderCostLimit(
+          plan.execution.policy.budget.run.maxProviderCost,
+          plan.execution.policy.budget.stages.execution.maxProviderCost,
+          plan.execution.policy.budget.coordinate.maxProviderCost,
+        ),
+        plan.execution.policy.budget.attempt.maxProviderCost,
       )
       || !executionRecordUsageMatchesAttempts(record)) {
     throw new ExecutionRuntimeConfigurationError(
@@ -650,7 +657,7 @@ async function executeCoordinate(
   prepared: PreparedRuntime,
   sessions: RunSessions,
   events: EventEmitter,
-  budget: RunBudgetSource,
+  budget: RunBudgetController,
   coordinate: PreparedCoordinate,
   runSignal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
@@ -1040,7 +1047,7 @@ async function prepareBlock(
   ports: ExecutionRuntimePorts,
   prepared: PreparedRuntime,
   events: EventEmitter,
-  budget: RunBudgetSource,
+  budget: RunBudgetController,
   block: ExecutionSchedulingBlock,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
 ): Promise<PreparedBlock | undefined> {
@@ -1206,7 +1213,11 @@ function makeBundle(
     ...(stop.reason !== undefined ? { terminationReasonCode: stop.reason } : {}),
     coverage: coverage(plannedCount, sortedRecords),
     replayability: replayability(sortedRecords),
-    budgetSummary: options.budgetSource.snapshot(),
+    budgetSummary: resolveRunBudgetSource(
+      options.budgetSource,
+      plan,
+      options.runId,
+    ).snapshot(),
     records: sortedRecords,
     provenance: {
       provenanceKind: 'native',
@@ -1259,7 +1270,7 @@ async function runExecution(
   const plannedCoordinates = schedule.flatMap((block) => block.coordinates);
   const stop: StopState = {};
   const controller = new AbortController();
-  const budget = options.budgetSource;
+  const budget = resolveRunBudgetSource(options.budgetSource, plan, options.runId);
   const setStop = (kind: StopKind, reason: string, error?: EvaluationError): void => {
     if (stop.stopKind === 'failed'
         || (stop.stopKind !== undefined && kind !== 'failed')) return;

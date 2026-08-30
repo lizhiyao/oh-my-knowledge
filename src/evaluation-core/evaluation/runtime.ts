@@ -16,6 +16,7 @@ import {
   evaluationRecordMatchesEvidencePolicy,
   evaluationRecordSatisfiesCacheCostPolicy,
   evaluationRecordUsageMatchesAttempts,
+  mostRestrictiveProviderCostLimit,
   assertExecutionBundleSourceMatchesPlan,
   effectiveExecutionBundleTrust,
   parseWireDocument,
@@ -44,6 +45,8 @@ import { RuntimeEventEmitter } from '../runtime/events.js';
 import {
   assertRunBudgetSource,
   createRunBudgetSource,
+  resolveRunBudgetSource,
+  type RunBudgetController,
   type RunBudgetSource,
 } from '../budget/index.js';
 import {
@@ -754,8 +757,12 @@ function replayRecord(
     || !evaluationRecordUsageMatchesAttempts(record)
     || !evaluationRecordSatisfiesCacheCostPolicy(
       record,
-      plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
-        ?? plan.evaluation.policy.budget.run.maxProviderCost,
+      mostRestrictiveProviderCostLimit(
+        plan.evaluation.policy.budget.run.maxProviderCost,
+        plan.evaluation.policy.budget.stages.evaluation.maxProviderCost,
+        plan.evaluation.policy.budget.coordinate.maxProviderCost,
+      ),
+      plan.evaluation.policy.budget.attempt.maxProviderCost,
     )
     || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
     || !evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)
@@ -816,7 +823,7 @@ async function evaluateCoordinate(
   ports: EvaluationRuntimePorts,
   sessions: Sessions,
   events: RuntimeEvents,
-  budget: RunBudgetSource,
+  budget: RunBudgetController,
   prepared: EligibleCoordinate,
   signal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
@@ -1188,7 +1195,11 @@ function makeBundle(
       notStarted: eligible - started,
     },
     replayability: replayability(records),
-    budgetSummary: options.budgetSource.snapshot(),
+    budgetSummary: resolveRunBudgetSource(
+      options.budgetSource,
+      plan,
+      options.runId,
+    ).snapshot(),
     records,
     provenance: {
       provenanceKind: 'native',
@@ -1303,7 +1314,7 @@ async function runEvaluation(
   const verifiedCacheRecordDigests = new Set<Sha256Digest>();
   const stop: StopState = {};
   const controller = new AbortController();
-  const budget = options.budgetSource;
+  const budget = resolveRunBudgetSource(options.budgetSource, plan, options.runId);
   const setStop = (stopKind: StopKind, reason: string, error?: EvaluationError): void => {
     if (stop.stopKind === 'failed'
         || (stop.stopKind !== undefined && stopKind !== 'failed')) return;
