@@ -16,6 +16,7 @@ import {
   type RuntimeIdentity,
   type SchemaIdentity,
   type Sha256Digest,
+  type UsageRecord,
   digestCanonicalJson,
   effectiveExecutionBundleTrust,
   parseEvaluationReport,
@@ -180,6 +181,7 @@ export interface ConformanceHarnessOptions {
   evaluationCache?: InMemoryConformanceEvaluationCache;
   runtimeRegistry?: ConformanceRuntimeRegistry;
   executorAssurance?: RuntimeIdentity['assuranceLevel'];
+  evaluatorUsage?: UsageRecord;
 }
 
 export class InMemoryConformanceArtifactStore {
@@ -799,6 +801,7 @@ function makeEvaluator(
   target: ConformanceTarget,
   plan: SealedRunPlan,
   resolveRun: ConformanceRunBindingResolver,
+  usage?: UsageRecord,
 ): EvaluationEvaluator {
   const referenceId = target === 'function'
     ? 'exact'
@@ -828,6 +831,7 @@ function makeEvaluator(
                     valueType: 'boolean' as const,
                     value: binding(context, 'actual') === binding(context, 'gold'),
                   }],
+                  ...(usage === undefined ? {} : { usage: structuredClone(usage) }),
                 };
               }
               if (target === 'rag') {
@@ -846,6 +850,7 @@ function makeEvaluator(
                       classification: 'public' as const,
                     },
                   })),
+                  ...(usage === undefined ? {} : { usage: structuredClone(usage) }),
                 };
               }
               const calls = binding(context, 'tool-calls');
@@ -862,6 +867,7 @@ function makeEvaluator(
                   valueType: 'boolean' as const,
                   value: required.every((name) => calledNames.has(name)),
                 }],
+                ...(usage === undefined ? {} : { usage: structuredClone(usage) }),
               };
             },
             async dispose() {
@@ -882,6 +888,7 @@ function makeEvaluator(
 function makeOutputOnlyAgentEvaluator(
   plan: SealedRunPlan,
   resolveRun: ConformanceRunBindingResolver,
+  usage?: UsageRecord,
 ): EvaluationEvaluator {
   return {
     identity: runtimeIdentity(plan, 'evaluator', 'answer-shape'),
@@ -906,6 +913,7 @@ function makeOutputOnlyAgentEvaluator(
                   valueType: 'boolean' as const,
                   value: Array.isArray(answer) && answer.length > 0,
                 }],
+                ...(usage === undefined ? {} : { usage: structuredClone(usage) }),
               };
             },
             async dispose() {
@@ -971,15 +979,22 @@ function makeEvaluatorRegistry(
   target: ConformanceTarget,
   plan: SealedRunPlan,
   resolveRun: ConformanceRunBindingResolver,
+  usage?: UsageRecord,
 ): Map<string, EvaluationEvaluator> {
   const evaluatorId = target === 'function'
     ? 'exact/v1'
     : target === 'rag'
       ? 'retrieval/v1'
       : 'trajectory/v1';
-  const evaluators = new Map([[evaluatorId, makeEvaluator(target, plan, resolveRun)]]);
+  const evaluators = new Map([[
+    evaluatorId,
+    makeEvaluator(target, plan, resolveRun, usage),
+  ]]);
   if (target === 'agent') {
-    evaluators.set('answer-shape/v1', makeOutputOnlyAgentEvaluator(plan, resolveRun));
+    evaluators.set(
+      'answer-shape/v1',
+      makeOutputOnlyAgentEvaluator(plan, resolveRun, usage),
+    );
   }
   return evaluators;
 }
@@ -1129,7 +1144,7 @@ export async function runConformanceScenario(
   const executors = registry?.executors
     ?? new Map([['executor-alias', makeExecutor(target, plan, localBinding)]]);
   const evaluators = registry?.evaluators
-    ?? makeEvaluatorRegistry(target, plan, localBinding);
+    ?? makeEvaluatorRegistry(target, plan, localBinding, options.evaluatorUsage);
   const eventSequencer = registry?.eventSequencer ?? new InMemoryRuntimeEventSequencer();
   const eventWriter = registry?.eventWriter ?? (options.faults === undefined
     ? undefined
