@@ -171,6 +171,46 @@ function validateMetric(metric: MetricDefinition): void {
 function validateSamplingDesign(definition: EvaluationDefinition): void {
   const { experiment } = definition;
   const { sampling, scheduling } = experiment;
+  const targetIds = definition.targets.map((target) => target.targetId);
+  assertUnique(
+    experiment.randomizationSlots.map((slot) => slot.targetId),
+    'experiment:randomization-slot-target',
+  );
+  assertUnique(
+    experiment.randomizationSlots.map((slot) => slot.randomizationSlotId),
+    'experiment:randomization-slot',
+  );
+  const targetIdSet = new Set(targetIds);
+  for (const slot of experiment.randomizationSlots) {
+    assertReference(
+      targetIdSet,
+      slot.targetId,
+      'experiment.randomizationSlots',
+      'Target',
+    );
+  }
+  const mappedTargetIds = new Set(experiment.randomizationSlots.map((slot) => slot.targetId));
+  if (mappedTargetIds.size !== targetIds.length) {
+    throw definitionError(
+      'EVAL_DEFINITION_POLICY_INVALID',
+      '每个 Target 必须恰好声明一个 randomization slot。',
+      { location: 'experiment.randomizationSlots' },
+    );
+  }
+  const canonicalSlots = [...experiment.randomizationSlots].sort((left, right) => (
+    left.randomizationSlotId < right.randomizationSlotId ? -1
+      : left.randomizationSlotId > right.randomizationSlotId ? 1
+        : left.targetId < right.targetId ? -1
+          : left.targetId > right.targetId ? 1
+            : 0
+  ));
+  if (canonicalizeJson(canonicalSlots) !== canonicalizeJson(experiment.randomizationSlots)) {
+    throw definitionError(
+      'EVAL_DEFINITION_POLICY_INVALID',
+      'randomizationSlots 必须按 randomizationSlotId、targetId 的 canonical 顺序排列。',
+      { location: 'experiment.randomizationSlots' },
+    );
+  }
   if (experiment.trials > 1 && !sampling.repeatedMeasures) {
     throw definitionError(
       'EVAL_DEFINITION_POLICY_INVALID',

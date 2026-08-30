@@ -179,12 +179,20 @@ interface RuntimeIdentity {
   fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
   assuranceLevel: 'verified' | 'declared' | 'unknown';
   capabilities: JsonValue;
-  implementationFacets?: JsonValue;
-  provenanceFacets?: JsonValue;
+  implementationManifest:
+    | { coverageKind: 'fingerprint-complete' }
+    | { coverageKind: 'fingerprint-plus-facets'; facets: Array<{
+        facetId: string;
+        value: JsonValue;
+      }> };
+  provenanceFacets?: {
+    observation?: { observerId?: string; observedAt?: string };
+    attestation?: { attestationDigest: Sha256Digest; attestorId?: string };
+  };
 }
 ```
 
-Caller-supplied versions and fingerprints are requirements, not facts. The Report records the identity resolved by Runtime. `implementationFacets` contains behavior-affecting facts not already committed by `fingerprint`, such as remote model deployment, effective tool schemas, sandbox policy, dependencies, and environment. `provenanceFacets` contains only evidence about how the identity was observed or attested; it must not hide a fact that can change outputs. Prepare rejects a Runtime whose manifest cannot classify a behavior-affecting facet or prove that its fingerprint commits that facet.
+Caller-supplied versions and fingerprints are requirements, not facts. The Report records the identity resolved by Runtime. `implementationManifest.facets` contains behavior-affecting facts not already committed by `fingerprint`, such as remote model deployment, effective tool schemas, sandbox policy, dependencies, and environment. The discriminated manifest makes ambiguous sibling states unrepresentable: `fingerprint-complete` has no facet payload, while `fingerprint-plus-facets` requires a non-empty facet array whose IDs are unique and canonical. `provenanceFacets` is a closed evidence-only shape for observation and attestation metadata, so arbitrary behavior facts cannot be placed there. Prepare rejects missing, ambiguous, non-canonical, or incomplete coverage. The manifest makes classification structurally decidable; assurance and independent host verification still determine whether the Runtime's claims are trustworthy.
 
 ### 5.4 ExperimentDesign and SamplingDesign
 
@@ -527,7 +535,7 @@ interface ComparabilityAssessmentSource {
 
 `ComparabilityCandidateIdentity` records all stage Plan digests for audit, the subject-neutral `randomizationDesignDigest`, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. `ComparabilitySourceVerificationFact` is a discriminated union so a cache receipt cannot claim a provenance trust value and a parent trust fact cannot claim `indeterminate`. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
 
-Runtime comparison uses two separately digested projections. `runtimeIdentityDigest` uses domain `omk.runtime-identity/v1` and covers the complete sealed RuntimeIdentity. `runtimeImplementationDigest` uses domain `omk.runtime-implementation-identity/v1` and covers exactly `implementationId`, `version`, `fingerprint`, `capabilities`, and `implementationFacets`; only this digest participates in design equality. Evidence qualification contains `fingerprintBasis`, sealed/effective assurance, `provenanceFacets`, effective source trust, and source-verification axes. `implementationFacets` is required to contain every behavior-affecting dependency not already committed by `fingerprint`; `provenanceFacets` may contain observation and attestation metadata only. A basis- or assurance-only change therefore cannot masquerade as a changed measurement algorithm, a changed effective dependency cannot hide as evidence metadata, and an equal implementation digest cannot masquerade as authenticated execution.
+Runtime comparison uses two separately digested projections. `runtimeIdentityDigest` uses domain `omk.runtime-identity/v1` and covers the complete sealed RuntimeIdentity. `runtimeImplementationDigest` uses domain `omk.runtime-implementation-identity/v1` and covers exactly `implementationId`, `version`, `fingerprint`, `capabilities`, and the complete `implementationManifest`; only this digest participates in design equality. Evidence qualification contains `fingerprintBasis`, sealed/effective assurance, the closed `provenanceFacets`, effective source trust, and source-verification axes. The implementation manifest must prove structurally that every behavior-affecting dependency is either committed by `fingerprint` or present as a canonical implementation facet; provenance may contain observation and attestation metadata only. A basis- or assurance-only change therefore cannot masquerade as a changed measurement algorithm, a changed effective dependency cannot hide as evidence metadata, and an equal implementation digest cannot masquerade as authenticated execution.
 
 `ComparabilityVerificationContext` is a non-serializable trusted-host input, parallel to existing Bundle verification contexts. Its map key is the complete `runtimeIdentityDigest`; its value is the digest of attestation material already verified by an independent host boundary. Core never accepts raw attestation material, a transported `verifiedByAttestationDigest`, or a caller-supplied effective level as proof. A Runtime may rise above its sealed assurance only when the context contains an exact identity match; Core then records the verified attestation digest in the candidate. Malformed context entries are rejected, while entries for unrelated identities grant no trust and are ignored. New attestation produces a new candidate and Assessment digest rather than mutating an existing artifact.
 

@@ -206,6 +206,18 @@ async function makePlan(
   const policy = validPolicy();
   delete policy.execution.timeoutMs;
   mutate?.(definition, policy);
+  const targetIds = new Set(definition.targets.map((target) => target.targetId));
+  const slotTargetIds = new Set(
+    definition.experiment.randomizationSlots.map((slot) => slot.targetId),
+  );
+  if (targetIds.size !== slotTargetIds.size
+      || [...targetIds].some((targetId) => !slotTargetIds.has(targetId))) {
+    definition.experiment.randomizationSlots = definition.targets
+      .map((target, index) => ({
+        targetId: target.targetId,
+        randomizationSlotId: `slot-${String(index).padStart(4, '0')}`,
+      }));
+  }
   return prepareEvaluationPlan(definition, policy, runtime);
 }
 
@@ -322,6 +334,52 @@ describe('Evaluation Core Execution runtime', () => {
     expect(new Set(deriveExecutionSchedule(randomized).flatMap((block) => (
       block.coordinates.map((coordinate) => coordinate.trialId)
     ))).size).toBe(4);
+  });
+
+  it('keeps controlled seeds and admission order stable across a declared subject rename', async () => {
+    const configure = (definition: ReturnType<typeof validDefinition>): void => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+      });
+      definition.experiment.scheduling = {
+        schedulingKind: 'randomized-block',
+        blockSize: 2,
+      };
+    };
+    const original = await makePlan(configure);
+    const renamed = await makePlan((definition) => {
+      configure(definition);
+      definition.targets[1] = {
+        ...definition.targets[1],
+        targetId: 'candidate-v2',
+        config: { revision: 2 },
+      };
+      definition.comparisons[0] = {
+        ...definition.comparisons[0],
+        treatmentTargetIds: ['candidate-v2'],
+      };
+      definition.experiment.randomizationSlots[1] = {
+        targetId: 'candidate-v2',
+        randomizationSlotId: 'slot-treatment',
+      };
+    });
+    const randomizationProjection = (plan: Plan) => deriveExecutionSchedule(plan).flatMap(
+      (block) => block.coordinates.map((coordinate) => ({
+        trialIndex: coordinate.trialIndex,
+        sampleId: coordinate.sampleId,
+        randomizationSlotId: coordinate.randomizationSlotId,
+        trialSeed: coordinate.trialSeed,
+      })),
+    );
+
+    expect(renamed.execution.executionPlanDigest).not.toBe(
+      original.execution.executionPlanDigest,
+    );
+    expect(renamed.execution.randomizationDesignDigest).toBe(
+      original.execution.randomizationDesignDigest,
+    );
+    expect(randomizationProjection(renamed)).toEqual(randomizationProjection(original));
   });
 
   it('retries only within one trial identity and disposes one trial session', async () => {
@@ -695,6 +753,36 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state.attempts).toBe(1);
     expect(cache.puts).toBe(1);
     expect(cache.gets).toBe(2);
+  });
+
+  it('fails closed when a cached record claims a different randomization slot', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'transparent-deterministic';
+    });
+    const seeded = portsFor(plan, undefined, { cache });
+    await executeRunPlan(plan, seeded.ports, {
+      runId: 'run-cache-slot-seed',
+      bundleId: 'bundle-cache-slot-seed',
+    });
+    const entry = cache.entries.values().next().value;
+    if (entry === undefined) throw new Error('missing cache entry');
+    entry.record.randomizationSlotId = 'slot-forged';
+    entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+
+    const replayed = portsFor(plan, undefined, { cache });
+    const bundle = await executeRunPlan(plan, replayed.ports, {
+      runId: 'run-cache-slot-replay',
+      bundleId: 'bundle-cache-slot-replay',
+    });
+
+    expect(bundle).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'execution-cache-read-failed',
+    });
+    expect(replayed.state.attempts).toBe(0);
   });
 
   it('fails closed on a cached attempt chain that violates the sealed retry policy', async () => {

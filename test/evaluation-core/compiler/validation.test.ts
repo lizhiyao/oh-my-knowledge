@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   EvaluationDefinitionError,
   prepareEvaluationPlan,
+  type PreparationRuntime,
 } from '../../../src/evaluation-core/compiler/index.js';
+import type { RuntimeIdentity } from '../../../src/evaluation-core/contracts/index.js';
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
@@ -13,7 +15,7 @@ async function expectCode(
   definition: unknown,
   policy: unknown,
   code: string,
-  runtime = testRuntime(),
+  runtime: PreparationRuntime = testRuntime(),
 ): Promise<void> {
   try {
     await prepareEvaluationPlan(definition, policy, runtime);
@@ -120,6 +122,50 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('requires a canonical one-to-one randomization slot for every Target', async () => {
+    const missing = validDefinition();
+    missing.experiment.randomizationSlots.pop();
+    await expectCode(missing, validPolicy(), 'EVAL_DEFINITION_POLICY_INVALID');
+
+    const duplicate = validDefinition();
+    duplicate.experiment.randomizationSlots[1] = {
+      ...duplicate.experiment.randomizationSlots[1],
+      randomizationSlotId: duplicate.experiment.randomizationSlots[0].randomizationSlotId,
+    };
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const nonCanonical = validDefinition();
+    nonCanonical.experiment.randomizationSlots.reverse();
+    await expectCode(nonCanonical, validPolicy(), 'EVAL_DEFINITION_POLICY_INVALID');
+  });
+
+  it('rejects a Runtime that hides behavior-affecting facts in provenance facets', async () => {
+    const base = testRuntime();
+    const runtime: PreparationRuntime = {
+      ...base,
+      async resolveExecutor(requirement) {
+        const resolution = await base.resolveExecutor(requirement) as {
+          identity: RuntimeIdentity;
+          satisfiesVersionConstraint: boolean;
+        };
+        return {
+          ...resolution,
+          identity: {
+            ...resolution.identity,
+            provenanceFacets: { deployment: 'hidden-behavior-change' },
+          },
+        };
+      },
+    };
+
+    await expectCode(
+      validDefinition(),
+      validPolicy(),
+      'EVAL_DEFINITION_RUNTIME_RESOLUTION_FAILED',
+      runtime,
+    );
+  });
+
   it('keeps scheduling pointers inside the execution-visible projection', async () => {
     const definition = validDefinition();
     definition.experiment.sampling = {
@@ -139,6 +185,10 @@ describe('Compiler definition validation', () => {
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
       targetId: 'treatment-b',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-b',
+      randomizationSlotId: 'slot-treatment-b',
     });
     definition.comparisons.push({
       comparisonId: 'treatment-vs-treatment-b',
@@ -375,6 +425,10 @@ describe('Compiler definition validation', () => {
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
       targetId: 'treatment-secondary',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-secondary',
+      randomizationSlotId: 'slot-treatment-secondary',
     });
     definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
     definition.analysisGraph.nodes = [

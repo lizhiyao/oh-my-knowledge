@@ -179,12 +179,20 @@ interface RuntimeIdentity {
   fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
   assuranceLevel: 'verified' | 'declared' | 'unknown';
   capabilities: JsonValue;
-  implementationFacets?: JsonValue;
-  provenanceFacets?: JsonValue;
+  implementationManifest:
+    | { coverageKind: 'fingerprint-complete' }
+    | { coverageKind: 'fingerprint-plus-facets'; facets: Array<{
+        facetId: string;
+        value: JsonValue;
+      }> };
+  provenanceFacets?: {
+    observation?: { observerId?: string; observedAt?: string };
+    attestation?: { attestationDigest: Sha256Digest; attestorId?: string };
+  };
 }
 ```
 
-调用方声明的版本或 fingerprint 只是要求，Report 记录 Runtime 实际解析出的身份。`implementationFacets` 保存尚未由 `fingerprint` 承诺、且能够改变行为的事实，例如远程模型 deployment、effective tool schema、sandbox policy、依赖和环境；`provenanceFacets` 只保存该身份如何被观测或认证的 evidence，不能隐藏任何会改变输出的事实。Runtime manifest 如果无法对行为相关 facet 完成分类，也无法证明 fingerprint 已经承诺该 facet，prepare 必须拒绝。
+调用方声明的版本或 fingerprint 只是要求，Report 记录 Runtime 实际解析出的身份。`implementationManifest.facets` 保存尚未由 `fingerprint` 承诺、且能够改变行为的事实，例如远程模型 deployment、effective tool schema、sandbox policy、依赖和环境。discriminated manifest 从结构上消除歧义 sibling state：`fingerprint-complete` 不携带 facet payload；`fingerprint-plus-facets` 必须提供非空 facet array，且 ID 唯一、canonical。`provenanceFacets` 是封闭的 evidence-only 结构，只允许 observation 与 attestation metadata，因此不能放入任意行为事实。coverage 缺失、歧义、非 canonical 或不完整时，prepare 必须拒绝。manifest 负责让分类在结构上可判定；Runtime 声明是否可信，仍由 assurance 与独立宿主验证决定。
 
 ### 4．ExperimentDesign 与 SamplingDesign
 
@@ -527,7 +535,7 @@ interface ComparabilityAssessmentSource {
 
 `ComparabilityCandidateIdentity` 为审计记录全部 stage Plan digest、subject-neutral `randomizationDesignDigest`、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。`ComparabilitySourceVerificationFact` 使用 discriminated union，因此 cache receipt 不能填写 provenance trust，parent trust fact 也不能填写 `indeterminate`。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
 
-Runtime 比较使用两个分别计算 digest 的投影。`runtimeIdentityDigest` 使用 `omk.runtime-identity/v1` domain 并覆盖完整 sealed RuntimeIdentity；`runtimeImplementationDigest` 使用 `omk.runtime-implementation-identity/v1` domain，且只覆盖 `implementationId`、`version`、`fingerprint`、`capabilities` 与 `implementationFacets`，只有该 digest 参与 design equality。Evidence qualification 包含 `fingerprintBasis`、sealed／effective assurance、`provenanceFacets`、effective source trust 与 source verification axes。`implementationFacets` 必须包含尚未由 `fingerprint` 承诺的全部行为相关依赖；`provenanceFacets` 只能包含 observation 与 attestation metadata。这样，只改变 basis 或 assurance 不会伪装成测量算法改变，effective dependency 变化不能藏进 evidence metadata，implementation digest 相同也不会伪装成执行已认证。
+Runtime 比较使用两个分别计算 digest 的投影。`runtimeIdentityDigest` 使用 `omk.runtime-identity/v1` domain 并覆盖完整 sealed RuntimeIdentity；`runtimeImplementationDigest` 使用 `omk.runtime-implementation-identity/v1` domain，且只覆盖 `implementationId`、`version`、`fingerprint`、`capabilities` 与完整 `implementationManifest`，只有该 digest 参与 design equality。Evidence qualification 包含 `fingerprintBasis`、sealed／effective assurance、封闭的 `provenanceFacets`、effective source trust 与 source verification axes。implementation manifest 必须在结构上证明每个行为相关依赖已经由 `fingerprint` 承诺，或作为 canonical implementation facet 存在；provenance 只能包含 observation 与 attestation metadata。这样，只改变 basis 或 assurance 不会伪装成测量算法改变，effective dependency 变化不能藏进 evidence metadata，implementation digest 相同也不会伪装成执行已认证。
 
 `ComparabilityVerificationContext` 是不可序列化的 trusted-host 输入，与现有 Bundle verification context 平行。Map key 是完整 `runtimeIdentityDigest`，value 是已经由独立宿主边界验证过的 attestation material digest。Core 绝不把 raw attestation material、transported `verifiedByAttestationDigest` 或调用方自填的 effective level 当作证明。只有 context 精确匹配 Runtime identity 时，effective assurance 才能高于 sealed level；Core 随后把 verified attestation digest 记录到 candidate。畸形 context entry 会被拒绝；与本次 Runtime identity 无关的 entry 不授予任何信任，直接忽略。新增 attestation 会产生新的 candidate／Assessment digest，不能修改旧 artifact。
 

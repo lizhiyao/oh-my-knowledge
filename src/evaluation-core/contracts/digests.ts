@@ -20,10 +20,12 @@ import {
   type PlanDigests,
   type ResolvedRuntime,
 } from './plans.js';
-import type { Extensions, SchemaIdentity } from './common.js';
+import type { Extensions, RuntimeIdentity, SchemaIdentity } from './common.js';
 import {
   assertCanonicalJson,
+  canonicalizeJson,
   digestCanonicalJson,
+  type JsonValue,
   type Sha256Digest,
 } from './json.js';
 import { deriveSchedulingTargetGroups } from './execution-identities.js';
@@ -32,6 +34,28 @@ export interface DatasetDigests {
   datasetRevisionDigest: Sha256Digest;
   executionInputDigest: Sha256Digest;
   evaluationInputDigest: Sha256Digest;
+}
+
+export function computeRuntimeIdentityDigest(
+  identity: RuntimeIdentity,
+): Sha256Digest {
+  return digestCanonicalJson({
+    derivation: 'omk.runtime-identity/v1',
+    identity,
+  });
+}
+
+export function computeRuntimeImplementationDigest(
+  identity: RuntimeIdentity,
+): Sha256Digest {
+  return digestCanonicalJson({
+    derivation: 'omk.runtime-implementation-identity/v1',
+    implementationId: identity.implementationId,
+    ...(identity.version !== undefined ? { version: identity.version } : {}),
+    fingerprint: identity.fingerprint,
+    capabilities: identity.capabilities,
+    implementationManifest: identity.implementationManifest,
+  });
 }
 
 export function projectExecutionInputs(
@@ -78,6 +102,7 @@ export function computeDatasetDigests(dataset: EvaluationDataset): DatasetDigest
 
 export interface ExecutionPlanIdentityInput {
   executionInputDigest: Sha256Digest;
+  randomizationDesignDigest: Sha256Digest;
   targets: TargetDefinition[];
   schedulingTargetGroups: string[][];
   executorRuntimes: ResolvedRuntime[];
@@ -99,12 +124,111 @@ export function computeExecutionPlanDigest(
   return digestCanonicalJson({
     schemaVersion: EXECUTION_PLAN_SCHEMA_VERSION,
     executionInputDigest: input.executionInputDigest,
+    randomizationDesignDigest: input.randomizationDesignDigest,
     targets: input.targets,
     schedulingTargetGroups: input.schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
     experiment: input.experiment,
     policy: input.policy,
     ...(input.extensions !== undefined ? { extensions: input.extensions } : {}),
+  });
+}
+
+function compareStrings(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function resolveSamplingPointer(value: unknown, pointer: string): JsonValue {
+  let current = value;
+  if (pointer !== '') {
+    for (const encodedToken of pointer.slice(1).split('/')) {
+      const token = encodedToken.replaceAll('~1', '/').replaceAll('~0', '~');
+      if (current === null || typeof current !== 'object') {
+        throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
+      }
+      if (Array.isArray(current)) {
+        if (!/^(?:0|[1-9]\d*)$/.test(token)) {
+          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
+        }
+        current = current[Number(token)];
+      } else {
+        if (!Object.prototype.hasOwnProperty.call(current, token)) {
+          throw new TypeError(`Sampling pointer ${pointer} does not resolve`);
+        }
+        current = (current as Record<string, unknown>)[token];
+      }
+    }
+  }
+  assertCanonicalJson(current);
+  return current as JsonValue;
+}
+
+function projectSamplingMemberships(
+  samples: readonly ExecutionInputSample[],
+  pointer: string | undefined,
+): string[][] {
+  if (pointer === undefined) return [];
+  const groups = new Map<string, string[]>();
+  for (const sample of samples) {
+    const key = canonicalizeJson(resolveSamplingPointer(sample, pointer));
+    const members = groups.get(key) ?? [];
+    members.push(sample.sampleId);
+    groups.set(key, members);
+  }
+  return [...groups.values()]
+    .map((members) => [...members].sort(compareStrings))
+    .sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
+}
+
+export interface RandomizationDesignIdentityInput {
+  executionInputDigest: Sha256Digest;
+  samples: readonly ExecutionInputSample[];
+  schedulingTargetGroups: readonly (readonly string[])[];
+  experiment: ExperimentDesign;
+}
+
+export function computeRandomizationDesignDigest(
+  input: RandomizationDesignIdentityInput,
+): Sha256Digest {
+  const targetToSlot = new Map(input.experiment.randomizationSlots.map((slot) => [
+    slot.targetId,
+    slot.randomizationSlotId,
+  ]));
+  if (targetToSlot.size !== input.experiment.randomizationSlots.length) {
+    throw new TypeError('randomizationSlots must map every Target at most once');
+  }
+  const slotIds = input.experiment.randomizationSlots
+    .map((slot) => slot.randomizationSlotId)
+    .sort(compareStrings);
+  if (new Set(slotIds).size !== slotIds.length) {
+    throw new TypeError('randomizationSlots must use unique randomizationSlotId values');
+  }
+  const schedulingSlotGroups = input.schedulingTargetGroups.map((group) => (
+    group.map((targetId) => {
+      const slotId = targetToSlot.get(targetId);
+      if (slotId === undefined) {
+        throw new TypeError(`Missing randomization slot for Target ${targetId}`);
+      }
+      return slotId;
+    }).sort(compareStrings)
+  )).sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
+  const { sampling } = input.experiment;
+  return digestCanonicalJson({
+    derivation: 'omk.randomization-design/v1',
+    executionInputDigest: input.executionInputDigest,
+    trials: input.experiment.trials,
+    rootSeed: input.experiment.seed,
+    sampling,
+    scheduling: input.experiment.scheduling,
+    randomizationSlotIds: slotIds,
+    schedulingSlotGroups,
+    samplingMemberships: {
+      pairing: projectSamplingMemberships(input.samples, sampling.pairingKey),
+      cluster: projectSamplingMemberships(input.samples, sampling.clusterKey),
+      stratum: projectSamplingMemberships(input.samples, sampling.stratumKey),
+    },
   });
 }
 
@@ -248,8 +372,16 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
     comparisons: input.comparisons,
     paired: input.experiment.sampling.resamplingUnit === 'paired-block',
   });
+  const executionSamples = projectExecutionInputs(input.dataset);
+  const randomizationDesignDigest = computeRandomizationDesignDigest({
+    executionInputDigest: dataset.executionInputDigest,
+    samples: executionSamples,
+    schedulingTargetGroups,
+    experiment: input.experiment,
+  });
   const executionPlanDigest = computeExecutionPlanDigest({
     executionInputDigest: dataset.executionInputDigest,
+    randomizationDesignDigest,
     targets: input.targets,
     schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
@@ -321,6 +453,7 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
 
   return {
     ...dataset,
+    randomizationDesignDigest,
     executionPlanDigest,
     evaluationPlanDigest,
     analysisPlanDigest,

@@ -121,38 +121,38 @@ export function deriveTrialId(input: TrialIdentityInput): Sha256Digest {
 }
 
 export type TrialSeedIdentityInput = {
-  rootSeed: string;
+  randomizationDesignDigest: Sha256Digest;
   seedCoupling: 'shared-within-block';
-  schedulingBlockId: Sha256Digest;
+  trialIndex: number;
   sampleId: string;
 } | {
-  rootSeed: string;
+  randomizationDesignDigest: Sha256Digest;
   seedCoupling: 'independent-by-target';
-  schedulingBlockId: Sha256Digest;
+  trialIndex: number;
   sampleId: string;
-  targetId: string;
+  randomizationSlotId: string;
 } | {
-  rootSeed: string;
+  randomizationDesignDigest: Sha256Digest;
   seedCoupling: 'uncontrolled';
-  schedulingBlockId: Sha256Digest;
+  trialIndex: number;
   sampleId: string;
-  targetId: string;
+  randomizationSlotId: string;
 };
 
 export function deriveTrialSeed(input: TrialSeedIdentityInput): Sha256Digest {
-  assertNonEmpty(input.rootSeed, 'rootSeed');
+  assertTrialIndex(input.trialIndex);
   assertNonEmpty(input.sampleId, 'sampleId');
   if (input.seedCoupling !== 'shared-within-block') {
-    assertNonEmpty(input.targetId, 'targetId');
+    assertNonEmpty(input.randomizationSlotId, 'randomizationSlotId');
   }
   return digestCanonicalJson({
     derivation: 'omk.trial-seed/v1',
-    rootSeed: input.rootSeed,
+    randomizationDesignDigest: input.randomizationDesignDigest,
     seedCoupling: input.seedCoupling,
-    schedulingBlockId: input.schedulingBlockId,
+    trialIndex: input.trialIndex,
     sampleId: input.sampleId,
     ...(input.seedCoupling !== 'shared-within-block'
-      ? { targetId: input.targetId }
+      ? { randomizationSlotId: input.randomizationSlotId }
       : {}),
   });
 }
@@ -176,6 +176,7 @@ export function deriveAttemptId(input: AttemptIdentityInput): Sha256Digest {
 export interface ExecutionIdentityPlanContext {
   execution: {
     executionPlanDigest: string;
+    randomizationDesignDigest: string;
     samples: readonly {
       sampleId: string;
       input: unknown;
@@ -186,6 +187,10 @@ export interface ExecutionIdentityPlanContext {
     experiment: {
       trials: number;
       seed: string;
+      randomizationSlots: readonly {
+        targetId: string;
+        randomizationSlotId: string;
+      }[];
       sampling: {
         pairingKey?: string;
         clusterKey?: string;
@@ -199,6 +204,7 @@ export interface ExecutionIdentityPlanContext {
 
 export interface PlannedExecutionCoordinate {
   targetId: string;
+  randomizationSlotId: string;
   sampleId: string;
   trialIndex: number;
   trialId: Sha256Digest;
@@ -358,11 +364,12 @@ function comparePlannedCoordinates(
   left: PlannedExecutionCoordinate,
   right: PlannedExecutionCoordinate,
 ): number {
-  if (left.targetId < right.targetId) return -1;
-  if (left.targetId > right.targetId) return 1;
+  if (left.randomizationSlotId < right.randomizationSlotId) return -1;
+  if (left.randomizationSlotId > right.randomizationSlotId) return 1;
   if (left.sampleId < right.sampleId) return -1;
   if (left.sampleId > right.sampleId) return 1;
-  return left.trialIndex - right.trialIndex;
+  return left.trialIndex - right.trialIndex
+    || (left.targetId < right.targetId ? -1 : left.targetId > right.targetId ? 1 : 0);
 }
 
 export function derivePlannedExecutionCoordinates(
@@ -378,6 +385,9 @@ export function derivePlannedExecutionCoordinates(
   const clusterBySample = deriveMembershipBySample(plan, 'cluster', sampling.clusterKey);
   const stratumBySample = deriveMembershipBySample(plan, 'stratum', sampling.stratumKey);
   const targetGroups = validateSchedulingTargetGroups(plan);
+  const randomizationSlotByTarget = new Map(execution.experiment.randomizationSlots.map(
+    (slot) => [slot.targetId, slot.randomizationSlotId],
+  ));
   const coordinates: PlannedExecutionCoordinate[] = [];
 
   for (let trialIndex = 0; trialIndex < execution.experiment.trials; trialIndex += 1) {
@@ -405,6 +415,10 @@ export function derivePlannedExecutionCoordinates(
           ...samplingUnitIds,
         });
         for (const { targetId, sampleId } of blockCoordinates) {
+          const randomizationSlotId = randomizationSlotByTarget.get(targetId);
+          if (randomizationSlotId === undefined) {
+            throw new TypeError(`Missing randomization slot for Target ${targetId}`);
+          }
           const trialId = deriveTrialId({
             executionPlanDigest: execution.executionPlanDigest as Sha256Digest,
             targetId,
@@ -413,20 +427,21 @@ export function derivePlannedExecutionCoordinates(
           });
           const trialSeed = sampling.seedCoupling === 'shared-within-block'
             ? deriveTrialSeed({
-              rootSeed: execution.experiment.seed,
+              randomizationDesignDigest: execution.randomizationDesignDigest as Sha256Digest,
               seedCoupling: sampling.seedCoupling,
-              schedulingBlockId,
+              trialIndex,
               sampleId,
             })
             : deriveTrialSeed({
-              rootSeed: execution.experiment.seed,
+              randomizationDesignDigest: execution.randomizationDesignDigest as Sha256Digest,
               seedCoupling: sampling.seedCoupling,
-              schedulingBlockId,
+              trialIndex,
               sampleId,
-              targetId,
+              randomizationSlotId,
             });
           coordinates.push({
             targetId,
+            randomizationSlotId,
             sampleId,
             trialIndex,
             trialId,

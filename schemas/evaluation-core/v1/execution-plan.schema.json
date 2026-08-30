@@ -18,6 +18,13 @@
     "__schema11": {
       "additionalProperties": false,
       "properties": {
+        "randomizationSlots": {
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "sampling": {
           "additionalProperties": false,
           "properties": {
@@ -106,7 +113,8 @@
         "trials",
         "seed",
         "sampling",
-        "scheduling"
+        "scheduling",
+        "randomizationSlots"
       ],
       "type": "object"
     },
@@ -115,6 +123,22 @@
       "type": "string"
     },
     "__schema13": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema14": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -147,8 +171,49 @@
               "implementationId": {
                 "$ref": "#/$defs/__schema4"
               },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema15"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema16"
+                  }
+                ]
+              },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema5"
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
               },
               "version": {
                 "$ref": "#/$defs/__schema8"
@@ -159,7 +224,8 @@
               "fingerprint",
               "fingerprintBasis",
               "assuranceLevel",
-              "capabilities"
+              "capabilities",
+              "implementationManifest"
             ],
             "type": "object"
           },
@@ -186,7 +252,57 @@
       },
       "type": "array"
     },
-    "__schema14": {
+    "__schema15": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema16": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema17"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema18": {
       "additionalProperties": false,
       "properties": {
         "budget": {
@@ -236,10 +352,10 @@
               "type": "string"
             },
             "output": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema19"
             },
             "trace": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema19"
             }
           },
           "required": [
@@ -359,7 +475,7 @@
       ],
       "type": "object"
     },
-    "__schema15": {
+    "__schema19": {
       "enum": [
         "full",
         "reference",
@@ -368,7 +484,14 @@
       ],
       "type": "string"
     },
-    "__schema16": {
+    "__schema2": {
+      "items": {
+        "$ref": "#/$defs/__schema3"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema20": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -379,7 +502,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema17"
+            "$ref": "#/$defs/__schema21"
           }
         },
         "required": [
@@ -390,20 +513,13 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema17"
+        "$ref": "#/$defs/__schema21"
       },
       "type": "object"
     },
-    "__schema17": {
+    "__schema21": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
-    },
-    "__schema2": {
-      "items": {
-        "$ref": "#/$defs/__schema3"
-      },
-      "minItems": 1,
-      "type": "array"
     },
     "__schema3": {
       "additionalProperties": false,
@@ -527,13 +643,16 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema20"
     },
     "policy": {
-      "$ref": "#/$defs/__schema14"
+      "$ref": "#/$defs/__schema18"
+    },
+    "randomizationDesignDigest": {
+      "$ref": "#/$defs/__schema1"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema14"
     },
     "samples": {
       "$ref": "#/$defs/__schema2"
@@ -551,6 +670,7 @@
   "required": [
     "schemaVersion",
     "executionInputDigest",
+    "randomizationDesignDigest",
     "samples",
     "targets",
     "schedulingTargetGroups",

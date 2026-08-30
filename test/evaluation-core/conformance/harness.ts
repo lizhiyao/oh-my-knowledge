@@ -352,6 +352,7 @@ function conformanceRuntimeIdentity(
     fingerprintBasis: 'self-reported',
     assuranceLevel: 'declared',
     capabilities,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
   };
 }
 

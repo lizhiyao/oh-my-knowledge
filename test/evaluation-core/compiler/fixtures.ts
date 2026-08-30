@@ -37,6 +37,7 @@ function identity(
     fingerprintBasis: 'content-derived',
     assuranceLevel,
     capabilities,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
   };
 }
 
@@ -92,6 +93,10 @@ export function validDefinition(): EvaluationDefinition {
     experiment: {
       trials: 1,
       seed: 'seed-1',
+      randomizationSlots: [
+        { targetId: 'control', randomizationSlotId: 'slot-control' },
+        { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },
+      ],
       sampling: {
         experimentalUnit: 'sample',
         repeatedMeasures: false,

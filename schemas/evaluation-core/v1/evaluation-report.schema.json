@@ -10,22 +10,72 @@
       "type": "string"
     },
     "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema9"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "__schema14": {
       "items": {
         "$ref": "#/$defs/__schema1"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema11": {
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
-      "type": "string"
-    },
-    "__schema12": {
+    "__schema15": {
       "additionalProperties": false,
       "properties": {
         "causes": {
           "items": {
-            "$ref": "#/$defs/__schema12"
+            "$ref": "#/$defs/__schema15"
           },
           "type": "array"
         },
@@ -57,13 +107,13 @@
       ],
       "type": "object"
     },
-    "__schema13": {
+    "__schema16": {
       "$ref": "#/$defs/__schema9"
     },
-    "__schema14": {
+    "__schema17": {
       "$ref": "#/$defs/__schema9"
     },
-    "__schema15": {
+    "__schema18": {
       "additionalProperties": false,
       "properties": {
         "facets": {
@@ -104,7 +154,7 @@
       ],
       "type": "object"
     },
-    "__schema16": {
+    "__schema19": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -218,10 +268,10 @@
               "$ref": "#/$defs/__schema2"
             },
             "analysisResultIds": {
-              "$ref": "#/$defs/__schema10"
+              "$ref": "#/$defs/__schema14"
             },
             "decidedAt": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema13"
             },
             "decisionDigest": {
               "$ref": "#/$defs/__schema2"
@@ -267,10 +317,10 @@
               "$ref": "#/$defs/__schema2"
             },
             "analysisResultIds": {
-              "$ref": "#/$defs/__schema10"
+              "$ref": "#/$defs/__schema14"
             },
             "decidedAt": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema13"
             },
             "decisionDigest": {
               "$ref": "#/$defs/__schema2"
@@ -320,10 +370,10 @@
               "$ref": "#/$defs/__schema2"
             },
             "analysisResultIds": {
-              "$ref": "#/$defs/__schema10"
+              "$ref": "#/$defs/__schema14"
             },
             "decidedAt": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema13"
             },
             "decisionDigest": {
               "$ref": "#/$defs/__schema2"
@@ -339,7 +389,7 @@
               "type": "string"
             },
             "error": {
-              "$ref": "#/$defs/__schema12"
+              "$ref": "#/$defs/__schema15"
             },
             "implementation": {
               "$ref": "#/$defs/__schema8"
@@ -393,8 +443,48 @@
         "implementationId": {
           "$ref": "#/$defs/__schema1"
         },
+        "implementationManifest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/__schema10"
+            },
+            {
+              "$ref": "#/$defs/__schema11"
+            }
+          ]
+        },
         "provenanceFacets": {
-          "$ref": "#/$defs/__schema9"
+          "additionalProperties": false,
+          "properties": {
+            "attestation": {
+              "additionalProperties": false,
+              "properties": {
+                "attestationDigest": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "attestorId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "required": [
+                "attestationDigest"
+              ],
+              "type": "object"
+            },
+            "observation": {
+              "additionalProperties": false,
+              "properties": {
+                "observedAt": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "observerId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
         },
         "version": {
           "$ref": "#/$defs/__schema5"
@@ -405,7 +495,8 @@
         "fingerprint",
         "fingerprintBasis",
         "assuranceLevel",
-        "capabilities"
+        "capabilities",
+        "implementationManifest"
       ],
       "type": "object"
     },
@@ -446,7 +537,7 @@
   "additionalProperties": false,
   "properties": {
     "annotations": {
-      "$ref": "#/$defs/__schema14"
+      "$ref": "#/$defs/__schema17"
     },
     "bundles": {
       "$ref": "#/$defs/__schema4"
@@ -455,10 +546,10 @@
       "$ref": "#/$defs/__schema7"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema19"
     },
     "provenance": {
-      "$ref": "#/$defs/__schema15"
+      "$ref": "#/$defs/__schema18"
     },
     "reportDigest": {
       "$ref": "#/$defs/__schema2"
@@ -476,7 +567,7 @@
       "$ref": "#/$defs/__schema3"
     },
     "summaries": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema16"
     }
   },
   "required": [

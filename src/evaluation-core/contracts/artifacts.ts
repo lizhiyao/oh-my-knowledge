@@ -70,6 +70,7 @@ export const SamplingUnitIdsSchema = z.object({
 
 const ExecutionRecordIdentitySchema = z.object({
   targetId: IdentifierSchema,
+  randomizationSlotId: IdentifierSchema,
   sampleId: IdentifierSchema,
   trialIndex: z.number().int().nonnegative(),
   trialId: Sha256DigestSchema,

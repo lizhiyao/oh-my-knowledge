@@ -4,7 +4,6 @@ import {
   deriveAttemptId,
   derivePlannedExecutionCoordinates,
   deriveTrialId,
-  deriveTrialSeed,
   digestArtifactPayload,
   digestCanonicalJson,
   parseExecutionBundle,
@@ -189,6 +188,18 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(source.bundle).toEqual(bundle);
     expect(Object.isFrozen(source.bundle.records[0])).toBe(true);
     expect(Object.isFrozen(source.planVerification)).toBe(true);
+  });
+
+  it('rejects a re-signed Bundle whose randomization slot contradicts the Plan', async () => {
+    const plan = await makePlan();
+    const bundle = mutableJson(makeBundle(plan));
+    bundle.records[0].randomizationSlotId = 'slot-forged';
+    resign(bundle);
+
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PLAN_MISMATCH' }),
+    );
   });
 
   it('rejects provenance above the sealed Executor Runtime assurance', async () => {
@@ -450,13 +461,6 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(bundle.records[0].schedulingBlockId).toBe(bundle.records[1].schedulingBlockId);
     const record = bundle.records[1];
     record.schedulingBlockId = `sha256:${'e'.repeat(64)}`;
-    record.trialSeed = deriveTrialSeed({
-      rootSeed: plan.execution.experiment.seed,
-      seedCoupling: 'independent-by-target',
-      schedulingBlockId: record.schedulingBlockId as Sha256Digest,
-      sampleId: record.sampleId,
-      targetId: record.targetId,
-    });
     resign(bundle);
     expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
     expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
@@ -525,6 +529,7 @@ describe('ExecutionBundle RunPlan binding', () => {
     const first = original.records[0];
     const censored: ExecutionRecord = {
       targetId: first.targetId,
+      randomizationSlotId: first.randomizationSlotId,
       sampleId: first.sampleId,
       trialIndex: first.trialIndex,
       trialId: first.trialId,

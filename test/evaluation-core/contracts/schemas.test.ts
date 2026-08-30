@@ -54,7 +54,46 @@ describe('Evaluation Core wire schemas', () => {
       fingerprintBasis: 'opaque',
       assuranceLevel: 'declared',
       capabilities: {},
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets',
+        facets: [{
+          facetId: 'deployment',
+          value: 'provider-deployment:2026-08-28',
+        }],
+      },
     }).fingerprint).toBe('provider-deployment:2026-08-28');
+  });
+
+  it('requires complete and unambiguous Runtime implementation facet coverage', () => {
+    const base = {
+      implementationId: 'remote-model',
+      fingerprint: 'provider-deployment:2026-08-28',
+      fingerprintBasis: 'self-reported' as const,
+      assuranceLevel: 'declared' as const,
+      capabilities: {},
+    };
+
+    expect(() => RuntimeIdentitySchema.parse(base)).toThrow();
+    expect(() => RuntimeIdentitySchema.parse({
+      ...base,
+      implementationManifest: { coverageKind: 'fingerprint-complete' },
+      implementationFacets: { deployment: 'primary' },
+    })).toThrow();
+    expect(() => RuntimeIdentitySchema.parse({
+      ...base,
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets',
+        facets: [
+          { facetId: 'tools', value: 'v1' },
+          { facetId: 'deployment', value: 'primary' },
+        ],
+      },
+    })).toThrow();
+    expect(() => RuntimeIdentitySchema.parse({
+      ...base,
+      implementationManifest: { coverageKind: 'fingerprint-complete' },
+      provenanceFacets: { deployment: 'hidden-behavior-change' },
+    })).toThrow();
   });
 
   it('rejects unknown Definition fields and non-JSON values', () => {
@@ -72,6 +111,7 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',
           repeatedMeasures: false,
@@ -148,6 +188,7 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',
           repeatedMeasures: false,

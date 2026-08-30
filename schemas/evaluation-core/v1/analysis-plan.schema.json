@@ -42,6 +42,13 @@
     "__schema11": {
       "additionalProperties": false,
       "properties": {
+        "randomizationSlots": {
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "sampling": {
           "additionalProperties": false,
           "properties": {
@@ -130,7 +137,8 @@
         "trials",
         "seed",
         "sampling",
-        "scheduling"
+        "scheduling",
+        "randomizationSlots"
       ],
       "type": "object"
     },
@@ -139,6 +147,22 @@
       "type": "string"
     },
     "__schema13": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema3"
+        }
+      },
+      "required": [
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema14": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -173,7 +197,7 @@
       },
       "type": "array"
     },
-    "__schema14": {
+    "__schema15": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -206,8 +230,49 @@
               "implementationId": {
                 "$ref": "#/$defs/__schema3"
               },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema17"
+                  }
+                ]
+              },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema10"
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
               },
               "version": {
                 "$ref": "#/$defs/__schema4"
@@ -218,7 +283,8 @@
               "fingerprint",
               "fingerprintBasis",
               "assuranceLevel",
-              "capabilities"
+              "capabilities",
+              "implementationManifest"
             ],
             "type": "object"
           },
@@ -245,7 +311,57 @@
       },
       "type": "array"
     },
-    "__schema15": {
+    "__schema16": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema18"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema10"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema19": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -256,7 +372,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema16"
+            "$ref": "#/$defs/__schema20"
           }
         },
         "required": [
@@ -267,13 +383,9 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema16"
+        "$ref": "#/$defs/__schema20"
       },
       "type": "object"
-    },
-    "__schema16": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
     },
     "__schema2": {
       "items": {
@@ -340,6 +452,10 @@
         "type": "object"
       },
       "type": "array"
+    },
+    "__schema20": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
     },
     "__schema3": {
       "maxLength": 256,
@@ -567,7 +683,7 @@
       "$ref": "#/$defs/__schema1"
     },
     "comparisons": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema14"
     },
     "evaluationPlanDigest": {
       "$ref": "#/$defs/__schema1"
@@ -576,13 +692,13 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema15"
+      "$ref": "#/$defs/__schema19"
     },
     "metrics": {
       "$ref": "#/$defs/__schema2"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema14"
+      "$ref": "#/$defs/__schema15"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"
