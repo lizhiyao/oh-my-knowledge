@@ -50,6 +50,11 @@ import type {
   OmkEvaluationSeriesRuntimeBindingAssembly,
   OmkRuntimeBindingFactories,
 } from './types.js';
+import {
+  runOmkEvaluationPreflight,
+  type OmkEvaluationPreflightOptions,
+  type OmkEvaluationPreflightResult,
+} from './preflight.js';
 
 export interface OmkCachePortBinding<Port> {
   readonly sourceLocator: string;
@@ -104,11 +109,13 @@ export interface OmkEvaluationRunOptions {
 
 export interface OmkPreparedEvaluation {
   readonly plan: SealedRunPlan;
+  /** Host-only physical readiness evidence; it does not enter or modify the Core Plan. */
+  readonly preflight: OmkEvaluationPreflightResult;
   start(options: Readonly<OmkEvaluationRunOptions>): Promise<EvaluationRun>;
 }
 
 export interface OmkEvaluationRuntime {
-  prepare(): Promise<OmkPreparedEvaluation>;
+  prepare(options?: Readonly<OmkEvaluationPreflightOptions>): Promise<OmkPreparedEvaluation>;
   readonly series?: OmkEvaluationSeriesRuntimeBindingAssembly;
 }
 
@@ -642,6 +649,21 @@ function signalIsAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
+function capturePreflightOptions(
+  options: Readonly<OmkEvaluationPreflightOptions> | undefined,
+): OmkEvaluationPreflightOptions {
+  if (options === undefined) return Object.freeze({});
+  if (record(options) === undefined || (options.signal !== undefined
+      && (typeof options.signal.aborted !== 'boolean'
+        || typeof options.signal.addEventListener !== 'function'
+        || typeof options.signal.removeEventListener !== 'function'))) fail({
+    code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+    fieldPath: 'prepare.signal',
+    message: 'Evaluation preflight signal 不符合 AbortSignal contract。',
+  });
+  return Object.freeze(options.signal === undefined ? {} : { signal: options.signal });
+}
+
 async function eventWriterForRun(input: {
   factory: OmkEvaluationEventWriterFactory | undefined;
   writerMode: CliEvaluationCompileResult['policy']['eventDelivery']['writerMode'];
@@ -757,16 +779,30 @@ export async function createOmkEvaluationRuntime(
   // Gold is consumed by the separate exploratory post-hoc workflow, never by a Core run.
   const analysisOnly: readonly OmkAnalysisOnlyResourceLeaseRequest[] = Object.freeze([]);
   const activeRunIds = new Set<string>();
+  const preflightEntries = Object.freeze([
+    ...assembly.evaluation.entries,
+    ...(assembly.series?.entries ?? []),
+  ]);
 
   return Object.freeze({
     ...(assembly.series === undefined ? {} : { series: assembly.series }),
-    async prepare(): Promise<OmkPreparedEvaluation> {
+    async prepare(
+      options?: Readonly<OmkEvaluationPreflightOptions>,
+    ): Promise<OmkPreparedEvaluation> {
+      const preflightOptions = capturePreflightOptions(options);
+      // Core qualification is always authoritative and runs before physical probes.
       const corePrepared: PreparedEvaluation = await engine.prepare(
         compiled.definition,
         compiled.policy,
       );
+      const preflight = await runOmkEvaluationPreflight({
+        entries: preflightEntries,
+        modes: compiled.orchestration.preflight,
+        options: preflightOptions,
+      });
       return Object.freeze({
         plan: corePrepared.plan,
+        preflight,
         async start(options: Readonly<OmkEvaluationRunOptions>): Promise<EvaluationRun> {
           if (record(options) === undefined || !IdentifierSchema.safeParse(options.runId).success) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',

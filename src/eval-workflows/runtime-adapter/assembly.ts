@@ -27,12 +27,14 @@ import {
   type OmkRuntimeBindingAssembly,
   type OmkRuntimeBindingFactories,
   type OmkRuntimePortBinding,
+  type OmkRuntimePreflightDeclaration,
   type RuntimeBindingOf,
 } from './types.js';
 import {
   createOmkResourceLeaseAccessRegistry,
   type OmkResourceLeaseAccessRegistry,
 } from './resource-leases/access.js';
+import { captureOmkRuntimePreflightDeclarations } from './preflight.js';
 
 type EvaluationBindingKind = Exclude<
   RuntimeBinding['runtimeKind'],
@@ -658,6 +660,21 @@ async function materializeEntry(
   assertPortShape(binding, port, identity.data);
   const capturedIdentity = deepFreezeCanonicalJson(identity.data);
   const capturedPort = capturePort(binding, port, capturedIdentity);
+  let preflightDeclarations: readonly OmkRuntimePreflightDeclaration[];
+  try {
+    preflightDeclarations = captureOmkRuntimePreflightDeclarations(
+      binding,
+      result.preflightDeclarations,
+    );
+  } catch (cause) {
+    if (cause instanceof OmkRuntimeAssemblyError) throw cause;
+    fail({
+      code: 'OMK_RUNTIME_BINDING_PREFLIGHT_INVALID',
+      bindingId: binding.bindingId,
+      referenceId: bindingReferenceId(binding),
+      message: 'Runtime binding factory 的 preflight declaration 无法安全捕获。',
+    });
+  }
   const resolution: RuntimeResolution = Object.freeze({
     identity: capturedIdentity,
     satisfiesVersionConstraint: result.satisfiesVersionConstraint,
@@ -667,11 +684,13 @@ async function materializeEntry(
     : Object.freeze([]);
   return Object.freeze({
     runtimeKind: binding.runtimeKind,
+    referenceId: bindingReferenceId(binding),
     binding,
     resolution,
     port: capturedPort,
     resourceLeaseRequirements,
     sessionIsolationKey: isolationKey,
+    preflightDeclarations,
   }) as OmkEvaluationRuntimeBindingEntry | OmkEvaluationSeriesRuntimeBindingEntry;
 }
 

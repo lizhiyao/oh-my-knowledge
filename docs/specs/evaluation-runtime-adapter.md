@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter
 
-> **Status**: binding assembly, verified resource leases, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
+> **Status**: binding assembly, verified resource leases, adapter preflight, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
 
 ## Boundary
 
@@ -21,6 +21,12 @@ The OMK host consumes the complete output of `compileCliEvaluationInput()` and p
                     │ actual identity and capabilities
                     ▼
               SealedRunPlan
+                    │ Core qualification cannot be skipped
+                    ▼
+      active-binding adapter preflight
+                    │ host-only readiness records
+                    ▼
+            Prepared Evaluation
 ```
 
 Independent Series analysis is assembled as `EvaluationSeriesRuntimePorts`; it never enters `EvaluationEngineRuntimeBindings`.
@@ -55,6 +61,23 @@ Every entry records:
 - for Executor and Evaluator factories only, a binding-scoped resource access view that resolves the current Core `runId` and cannot enumerate another binding or analysis-only resources.
 
 Adapters combine `sessionIsolationKey` with Core's `runId` and `trialId`; it is not permission to pool state across runs or bindings.
+
+## Adapter preflight
+
+Preflight is a host-only physical-readiness phase after authoritative Core preparation. It is not part of Evaluation Core, does not create a host plan, and cannot qualify a Runtime that Core rejected. A factory must return an explicit preflight declaration array together with the port, actual Runtime identity, and version result. An empty array is intentional; omission is an invalid factory result. Capturing all four values from the same factory result prevents a separate check registry from resolving a different implementation or binding.
+
+Each declaration has a stable identifier, one of `doctor`, `credential`, `connectivity`, `filesystem`, `mcp-readiness`, or `mock-readiness`, and exactly one disposition:
+
+- `check` captures a callback whose only input is frozen, non-secret binding metadata plus the caller's optional `AbortSignal`;
+- `not-required` captures a stable, non-sensitive reason code and has no callback.
+
+Executor bindings must declare an executable doctor check plus credential and connectivity dispositions. Qualified Evaluators must declare credential and connectivity dispositions. Any binding with resource requirements must declare a filesystem check; MCP and mock roles additionally require their matching physical-readiness checks. These coverage rules are validated for every active binding before the first callback, including when doctor or connectivity execution is skipped. A skip therefore suppresses only a declared callback. It does not make an incomplete adapter valid, and it does not turn a truthful `not-required` record into `skipped`.
+
+The runner consumes the compiled orchestration modes, never CLI flags. It first calls `EvaluationEngine.prepare()`, so schema, reference, capability, identity, and sealed-policy checks remain authoritative under every skip mode. It then orders active binding entries by `bindingId`, uses the captured declaration order, and runs checks sequentially. A failure stops later effects and exposes only stable binding／check metadata; callback errors and returned diagnostics are not propagated. Checks return only `void`, because arbitrary diagnostic payloads would create an unclassified evidence channel.
+
+The exact caller signal is forwarded. On cancellation, the active check must settle before preflight rejects; the runner does not use a race that leaves a credential, network, or filesystem operation in the background. The resulting immutable records stay on `OmkPreparedEvaluation.preflight`. Definition, MeasurementPolicy, RuntimeBinding, immutable binding entries, and `SealedRunPlan` remain unchanged and are never passed to a check.
+
+Preflight proves readiness only at the time of the probe. It does not turn a locator into content identity and does not reserve a resource for a later run. Run start therefore still acquires and revalidates verified resource leases against the actual bytes or tree. Similarly, the absence of a Judge binding means its factory is never invoked, so no Judge declaration, credential read, or connectivity probe can occur.
 
 ## Same-process Runtime adapter
 

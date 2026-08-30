@@ -36,6 +36,8 @@ import {
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseRequest,
   type OmkEvaluationRuntimeSupportPorts,
+  type OmkRuntimePreflightDeclaration,
+  type OmkRuntimePreflightContext,
   type OmkRunResourceLeases,
   type OmkRuntimeBindingFactories,
   type RuntimeBindingOf,
@@ -43,6 +45,7 @@ import {
 import {
   compileCliEvaluationInput,
   type ResolvedHostResources,
+  type RuntimeBinding,
 } from '../../../src/eval-workflows/input-compilation/index.js';
 import { testRuntime } from '../../evaluation-core/compiler/fixtures.js';
 import { validResolvedCliInput } from '../input-compilation/fixtures.js';
@@ -122,6 +125,121 @@ function outputSchema(identity: RuntimeIdentity): SchemaIdentity {
   return capabilities.outputSchema;
 }
 
+function testPreflightDeclarations(
+  binding: RuntimeBinding,
+): readonly OmkRuntimePreflightDeclaration[] {
+  if (binding.runtimeKind !== 'executor' && binding.runtimeKind !== 'evaluator') return [];
+  const declarations: OmkRuntimePreflightDeclaration[] = [];
+  if (binding.runtimeKind === 'executor') {
+    declarations.push({
+      preflightKind: 'doctor',
+      checkId: 'test-doctor',
+      preflightDisposition: 'check',
+      run() {},
+    });
+  }
+  if (binding.runtimeKind === 'executor' || binding.qualification !== undefined) {
+    declarations.push({
+      preflightKind: 'credential',
+      checkId: 'test-credential',
+      preflightDisposition: 'not-required',
+      reasonCode: 'test-runtime-has-no-credential',
+    }, {
+      preflightKind: 'connectivity',
+      checkId: 'test-connectivity',
+      preflightDisposition: 'check',
+      run() {},
+    });
+  }
+  if (binding.resourceLeaseRequirements.length > 0) declarations.push({
+    preflightKind: 'filesystem',
+    checkId: 'test-filesystem',
+    preflightDisposition: 'check',
+    run() {},
+  });
+  if (binding.resourceLeaseRequirements.some((requirement) => (
+    requirement.resourceRole === 'mcp-config'
+  ))) declarations.push({
+    preflightKind: 'mcp-readiness',
+    checkId: 'test-mcp',
+    preflightDisposition: 'check',
+    run() {},
+  });
+  if (binding.resourceLeaseRequirements.some((requirement) => (
+    requirement.resourceRole === 'mock-payload'
+  ))) declarations.push({
+    preflightKind: 'mock-readiness',
+    checkId: 'test-mock',
+    preflightDisposition: 'check',
+    run() {},
+  });
+  return declarations;
+}
+
+type PreflightObserver = (input: Readonly<{
+  bindingId: string;
+  declaration: Extract<OmkRuntimePreflightDeclaration, {
+    preflightDisposition: 'check';
+  }>;
+  context: Readonly<OmkRuntimePreflightContext>;
+  next: () => void | Promise<void>;
+}>) => void | Promise<void>;
+
+function observePreflight(
+  factories: OmkRuntimeBindingFactories,
+  observer: PreflightObserver,
+): OmkRuntimeBindingFactories {
+  const wrapDeclarations = (
+    bindingId: string,
+    declarations: readonly OmkRuntimePreflightDeclaration[],
+  ): readonly OmkRuntimePreflightDeclaration[] => declarations.map((candidate) => {
+    if (candidate.preflightDisposition === 'not-required') return candidate;
+    const run = candidate.run;
+    return {
+      ...candidate,
+      async run(context: Readonly<OmkRuntimePreflightContext>) {
+        await observer({
+          bindingId,
+          declaration: candidate,
+          context,
+          next: () => run(context),
+        });
+      },
+    };
+  });
+  const executors = new Map(factories.executorsByImplementationId);
+  for (const [implementationId, factory] of executors) {
+    executors.set(implementationId, async (context) => {
+      const result = await factory(context);
+      return {
+        ...result,
+        preflightDeclarations: wrapDeclarations(
+          context.binding.bindingId,
+          result.preflightDeclarations,
+        ),
+      };
+    });
+  }
+  const evaluators = new Map(factories.evaluatorsByImplementationId);
+  for (const [implementationId, factory] of evaluators) {
+    evaluators.set(implementationId, async (context) => {
+      const result = await factory(context);
+      return {
+        ...result,
+        preflightDeclarations: wrapDeclarations(
+          context.binding.bindingId,
+          result.preflightDeclarations,
+        ),
+      };
+    });
+  }
+  return {
+    ...factories,
+    executorsByImplementationId: executors,
+    evaluatorsByImplementationId: evaluators,
+  };
+}
+
 function factoriesFor(
   compiled: ReturnType<typeof compileCliEvaluationInput>,
   calls: string[],
@@ -170,7 +288,11 @@ function factoriesFor(
           identity,
           async openRun() { throw new Error('test prepare must not open an Executor'); },
         };
-        return { port, satisfiesVersionConstraint: true };
+        return {
+          port,
+          satisfiesVersionConstraint: true,
+          preflightDeclarations: testPreflightDeclarations(request),
+        };
       });
     } else if (binding.runtimeKind === 'evaluator'
         && !evaluators.has(binding.implementationId)) {
@@ -192,7 +314,11 @@ function factoriesFor(
           identity,
           async openRun() { throw new Error('test prepare must not open an Evaluator'); },
         };
-        return { port, satisfiesVersionConstraint: true };
+        return {
+          port,
+          satisfiesVersionConstraint: true,
+          preflightDeclarations: testPreflightDeclarations(request),
+        };
       });
     } else if (binding.runtimeKind === 'analysis-node'
         && !analysisNodes.has(binding.implementationId)) {
@@ -256,7 +382,7 @@ function factoriesFor(
           outputSchema: outputSchema(identity),
           async openRun() { throw new Error('test prepare must not open Analysis'); },
         };
-        return { port, satisfiesVersionConstraint: true };
+        return { port, satisfiesVersionConstraint: true, preflightDeclarations: [] };
       });
     } else if (binding.runtimeKind === 'missing-policy'
         && !missingPolicies.has(binding.implementationId)) {
@@ -275,7 +401,7 @@ function factoriesFor(
           ),
           decide: () => 'exclude',
         };
-        return { port, satisfiesVersionConstraint: true };
+        return { port, satisfiesVersionConstraint: true, preflightDeclarations: [] };
       });
     } else if (binding.runtimeKind === 'decision-policy'
         && !decisionPolicies.has(binding.implementationId)) {
@@ -299,7 +425,7 @@ function factoriesFor(
             return { decisionStatus: 'not-decided', reasonCodes: ['test-only'] };
           },
         };
-        return { port, satisfiesVersionConstraint: true };
+        return { port, satisfiesVersionConstraint: true, preflightDeclarations: [] };
       });
     } else if (binding.runtimeKind === 'series-analysis-node'
         && !seriesAnalysisNodes.has(binding.implementationId)) {
@@ -323,7 +449,7 @@ function factoriesFor(
           outputSchema: schema,
           async analyze() { return { analysisStatus: 'inconclusive', reasonCodes: ['test-only'] }; },
         };
-        return { port, satisfiesVersionConstraint: true };
+        return { port, satisfiesVersionConstraint: true, preflightDeclarations: [] };
       });
     }
   }
@@ -709,7 +835,11 @@ describe('OMK Evaluation Runtime binding assembly', () => {
       async openRun() { throw new Error('must not run'); },
     };
     const executors = new Map(factories.executorsByImplementationId);
-    executors.set(implementationId, () => ({ port, satisfiesVersionConstraint: true }));
+    executors.set(implementationId, () => ({
+      port,
+      satisfiesVersionConstraint: true,
+      preflightDeclarations: [],
+    }));
 
     await expect(assembleOmkRuntimeBindings({
       definition: compiled.definition,
@@ -939,6 +1069,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     const original = executors.get(implementationId);
     if (original === undefined) throw new Error('missing fixture executor factory');
     let opens = 0;
+    let preflightCalls = 0;
     executors.set(implementationId, async (context) => {
       const resolved = await original(context);
       const capabilities = clone(resolved.port.identity.capabilities) as {
@@ -961,7 +1092,13 @@ describe('OMK Evaluation Runtime composition root', () => {
     });
     const runtime = await createOmkEvaluationRuntime({
       compiled,
-      factories: { ...factories, executorsByImplementationId: executors },
+      factories: observePreflight(
+        { ...factories, executorsByImplementationId: executors },
+        async ({ next }) => {
+          preflightCalls += 1;
+          await next();
+        },
+      ),
       support: compositionSupport(),
       resources: { leaseRoot: '/unused-test-lease-root' },
     });
@@ -971,6 +1108,428 @@ describe('OMK Evaluation Runtime composition root', () => {
       preparationStage: 'runtime-resolution',
     });
     expect(opens).toBe(0);
+    expect(preflightCalls).toBe(0);
+  });
+
+  it('runs active-binding preflight in canonical order without exposing or changing the Plan', async () => {
+    const compiled = compositionInput();
+    const calls: string[] = [];
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: observePreflight(factoriesFor(compiled, []), async ({
+        bindingId,
+        declaration,
+        context,
+        next,
+      }) => {
+        expect(Object.isFrozen(context)).toBe(true);
+        expect(context.bindingId).toBe(bindingId);
+        expect(context).not.toHaveProperty('plan');
+        expect(context).not.toHaveProperty('definition');
+        expect(context).not.toHaveProperty('policy');
+        calls.push(`${bindingId}:${declaration.preflightKind}:${declaration.checkId}`);
+        await next();
+      }),
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    const prepared = await runtime.prepare();
+    const passed = prepared.preflight.records.filter((record) => (
+      record.preflightStatus === 'passed'
+    ));
+    expect(calls).toEqual(passed.map((record) => (
+      `${record.bindingId}:${record.preflightKind}:${record.checkId}`
+    )));
+    expect(Object.isFrozen(prepared.preflight)).toBe(true);
+    expect(Object.isFrozen(prepared.preflight.records)).toBe(true);
+    expect(digestCanonicalJson(prepared.plan.definition)).toBe(
+      compiled.canonicalDigests.definition,
+    );
+    expect(digestCanonicalJson(prepared.plan.measurementPolicy)).toBe(
+      compiled.canonicalDigests.policy,
+    );
+  });
+
+  it('uses compiled skip modes only to suppress doctor and connectivity effects', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.independentSeries;
+    delete input.orchestration.gold;
+    input.orchestration.preflight = { doctor: 'skip', connectivity: 'skip' };
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    const calls: string[] = [];
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: observePreflight(
+        factoriesFor(compiled, []),
+        async ({ bindingId, declaration, next }) => {
+          calls.push(`${bindingId}:${declaration.preflightKind}`);
+          await next();
+        },
+      ),
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    const prepared = await runtime.prepare();
+    expect(calls.some((call) => call.endsWith(':doctor'))).toBe(false);
+    expect(calls.some((call) => call.endsWith(':connectivity'))).toBe(false);
+    expect(prepared.preflight.records.filter((record) => (
+      record.preflightKind === 'doctor' || record.preflightKind === 'connectivity'
+    )).every((record) => record.preflightStatus === 'skipped')).toBe(true);
+    expect(prepared.preflight.records.some((record) => (
+      record.preflightKind === 'filesystem' && record.preflightStatus === 'passed'
+    ))).toBe(true);
+  });
+
+  it('preserves not-required truth when connectivity callbacks are skipped', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.independentSeries;
+    delete input.orchestration.gold;
+    input.orchestration.preflight = { doctor: 'required', connectivity: 'skip' };
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        return {
+          ...result,
+          preflightDeclarations: result.preflightDeclarations.map((candidate) => (
+            candidate.preflightKind !== 'connectivity'
+              ? candidate
+              : {
+                  preflightKind: 'connectivity' as const,
+                  checkId: candidate.checkId,
+                  preflightDisposition: 'not-required' as const,
+                  reasonCode: 'local-runtime-no-connectivity',
+                }
+          )),
+        };
+      });
+    }
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...base, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    const prepared = await runtime.prepare();
+    expect(prepared.preflight.records).toContainEqual(expect.objectContaining({
+      bindingId: 'executor-control',
+      preflightKind: 'connectivity',
+      preflightStatus: 'not-required',
+      reasonCode: 'local-runtime-no-connectivity',
+    }));
+  });
+
+  it('accepts a required check when an earlier declaration of the same kind is not required', async () => {
+    const compiled = compositionInput();
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        return {
+          ...result,
+          preflightDeclarations: [{
+            preflightKind: 'doctor' as const,
+            checkId: 'local-doctor-not-applicable',
+            preflightDisposition: 'not-required' as const,
+            reasonCode: 'local-doctor-not-applicable',
+          }, ...result.preflightDeclarations],
+        };
+      });
+    }
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...base, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    const prepared = await runtime.prepare();
+    expect(prepared.preflight.records.filter((record) => (
+      record.bindingId === 'executor-control' && record.preflightKind === 'doctor'
+    )).map((record) => record.preflightStatus)).toEqual(['not-required', 'passed']);
+  });
+
+  it('fails missing required declarations before effects even when the callback is skipped', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.independentSeries;
+    delete input.orchestration.gold;
+    input.orchestration.preflight = { doctor: 'skip', connectivity: 'skip' };
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    const calls: string[] = [];
+    const observed = observePreflight(
+      factoriesFor(compiled, []),
+      async ({ bindingId, declaration, next }) => {
+        calls.push(`${bindingId}:${declaration.preflightKind}`);
+        await next();
+      },
+    );
+    const executors = new Map(observed.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        return context.binding.targetId !== 'control'
+          ? result
+          : {
+              ...result,
+              preflightDeclarations: result.preflightDeclarations?.filter((candidate) => (
+                candidate.preflightKind !== 'doctor'
+              )),
+            };
+      });
+    }
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...observed, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    await expect(runtime.prepare()).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_PREFLIGHT_DECLARATION_MISSING',
+      bindingId: 'executor-control',
+      preflightKind: 'doctor',
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('redacts check failures and stops before later physical effects', async () => {
+    const compiled = compositionInput();
+    const calls: string[] = [];
+    const factories = observePreflight(
+      factoriesFor(compiled, []),
+      async ({ bindingId, declaration, next }) => {
+        calls.push(`${bindingId}:${declaration.preflightKind}`);
+        if (
+          bindingId === 'evaluator-rubric--judge-a--r0'
+          && declaration.preflightKind === 'connectivity'
+        ) {
+          throw new Error('sensitive credential and locator detail');
+        }
+        await next();
+      },
+    );
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories,
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    let failure: unknown;
+    try {
+      await runtime.prepare();
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({
+      code: 'OMK_EVALUATION_PREFLIGHT_CHECK_FAILED',
+      bindingId: 'evaluator-rubric--judge-a--r0',
+      preflightKind: 'connectivity',
+    });
+    expect(String(failure)).not.toContain('sensitive credential');
+    expect(calls).toEqual(['evaluator-rubric--judge-a--r0:connectivity']);
+  });
+
+  it('rejects non-void check results instead of treating diagnostics as evidence', async () => {
+    const compiled = compositionInput();
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        return {
+          ...result,
+          preflightDeclarations: result.preflightDeclarations.map((candidate) => (
+            candidate.preflightKind !== 'doctor'
+              ? candidate
+              : { ...candidate, run: () => 'sensitive diagnostic' as never }
+          )),
+        };
+      });
+    }
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...base, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    await expect(runtime.prepare()).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_PREFLIGHT_CHECK_RESULT_INVALID',
+      bindingId: 'executor-control',
+      preflightKind: 'doctor',
+    });
+  });
+
+  it('forwards one caller signal and waits for an in-flight preflight check to settle', async () => {
+    const compiled = compositionInput();
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    let started = false;
+    let settled = false;
+    const factories = observePreflight(
+      factoriesFor(compiled, []),
+      async ({ bindingId, declaration, context, next }) => {
+        if (bindingId !== 'executor-control' || declaration.preflightKind !== 'doctor') {
+          await next();
+          return;
+        }
+        receivedSignal = context.signal;
+        started = true;
+        await new Promise<void>((_resolve, reject) => {
+          const onAbort = (): void => {
+            settled = true;
+            reject(new Error('sensitive cancellation detail'));
+          };
+          if (context.signal?.aborted === true) onAbort();
+          else context.signal?.addEventListener('abort', onAbort, { once: true });
+        });
+      },
+    );
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories,
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+    const preparing = runtime.prepare({ signal: controller.signal });
+    await expect.poll(() => started).toBe(true);
+    expect(receivedSignal).toBe(controller.signal);
+    controller.abort();
+
+    await expect(preparing).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_PREFLIGHT_CANCELLED',
+      bindingId: 'executor-control',
+      preflightKind: 'doctor',
+    });
+    expect(settled).toBe(true);
+  });
+
+  it('captures declaration metadata and callback identity during binding assembly', async () => {
+    const compiled = compositionInput();
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    let originalCalls = 0;
+    let replacementCalls = 0;
+    let mutableDeclarations: OmkRuntimePreflightDeclaration[] | undefined;
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        mutableDeclarations = [...(result.preflightDeclarations ?? [])];
+        const doctorIndex = mutableDeclarations.findIndex((candidate) => (
+          candidate.preflightKind === 'doctor'
+        ));
+        mutableDeclarations[doctorIndex] = {
+          preflightKind: 'doctor',
+          checkId: 'captured-doctor',
+          preflightDisposition: 'check',
+          run() { originalCalls += 1; },
+        };
+        return { ...result, preflightDeclarations: mutableDeclarations };
+      });
+    }
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...base, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+    const doctor = mutableDeclarations?.find((candidate) => (
+      candidate.preflightKind === 'doctor'
+    ));
+    if (doctor?.preflightDisposition !== 'check') throw new Error('missing doctor declaration');
+    (doctor as unknown as { run: () => void }).run = () => { replacementCalls += 1; };
+    mutableDeclarations?.splice(0);
+
+    const prepared = await runtime.prepare();
+    expect(originalCalls).toBe(1);
+    expect(replacementCalls).toBe(0);
+    expect(prepared.preflight.records).toContainEqual(expect.objectContaining({
+      bindingId: 'executor-control',
+      checkId: 'captured-doctor',
+      preflightStatus: 'passed',
+    }));
+  });
+
+  it('rejects free-form preflight identifiers at binding assembly', async () => {
+    const compiled = compositionInput();
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        return {
+          ...result,
+          preflightDeclarations: result.preflightDeclarations.map((candidate) => (
+            candidate.preflightKind !== 'doctor'
+              ? candidate
+              : { ...candidate, checkId: 'credential\nsecret' }
+          )),
+        };
+      });
+    }
+
+    await expect(createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...base, executorsByImplementationId: executors },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_RUNTIME_BINDING_PREFLIGHT_INVALID',
+      bindingId: 'executor-control',
+    });
+  });
+
+  it('redacts declaration access failures at binding assembly', async () => {
+    const compiled = compositionInput();
+    const base = factoriesFor(compiled, []);
+    const executors = new Map(base.executorsByImplementationId);
+    for (const [implementationId, factory] of executors) {
+      executors.set(implementationId, async (context) => {
+        const result = await factory(context);
+        if (context.binding.targetId !== 'control') return result;
+        return Object.defineProperty({ ...result }, 'preflightDeclarations', {
+          get() { throw new Error('sensitive declaration detail'); },
+        });
+      });
+    }
+
+    let failure: unknown;
+    try {
+      await createOmkEvaluationRuntime({
+        compiled,
+        factories: { ...base, executorsByImplementationId: executors },
+        support: compositionSupport(),
+        resources: { leaseRoot: '/unused-test-lease-root' },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({
+      code: 'OMK_RUNTIME_BINDING_PREFLIGHT_INVALID',
+      bindingId: 'executor-control',
+    });
+    expect(String(failure)).not.toContain('sensitive declaration detail');
   });
 
   it('uses the verified Node materializer by default and fails closed on missing sources', async () => {
