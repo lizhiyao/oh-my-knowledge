@@ -56,6 +56,12 @@ import {
   type OmkEvaluationPreflightOptions,
   type OmkEvaluationPreflightResult,
 } from './preflight.js';
+import {
+  attachOmkEvaluationProgressProjection,
+  captureOmkEvaluationProgressProjection,
+  type CapturedOmkEvaluationProgressProjection,
+  type OmkEvaluationProgressSink,
+} from './event-projection.js';
 
 export interface OmkCachePortBinding<Port> {
   readonly sourceLocator: string;
@@ -106,6 +112,8 @@ export interface OmkEvaluationRunOptions {
   readonly runId: string;
   readonly signal?: AbortSignal;
   readonly eventBufferCapacity?: number;
+  readonly progressSink?: OmkEvaluationProgressSink;
+  readonly progressBufferCapacity?: number;
 }
 
 export interface OmkPreparedEvaluation {
@@ -812,32 +820,85 @@ export async function createOmkEvaluationRuntime(
         plan: corePrepared.plan,
         preflight,
         async start(options: Readonly<OmkEvaluationRunOptions>): Promise<EvaluationRun> {
-          if (record(options) === undefined || !IdentifierSchema.safeParse(options.runId).success) fail({
+          if (record(options) === undefined) fail({
+            code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+            message: 'Evaluation run options 不合法。',
+          });
+          let capturedOptions: OmkEvaluationRunOptions;
+          try {
+            capturedOptions = Object.freeze({
+              runId: options.runId,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+              ...(options.eventBufferCapacity === undefined ? {} : {
+                eventBufferCapacity: options.eventBufferCapacity,
+              }),
+              ...(options.progressSink === undefined ? {} : {
+                progressSink: options.progressSink,
+              }),
+              ...(options.progressBufferCapacity === undefined ? {} : {
+                progressBufferCapacity: options.progressBufferCapacity,
+              }),
+            });
+          } catch {
+            return fail({
+              code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+              message: 'Evaluation run options 无法安全捕获。',
+            });
+          }
+          const {
+            runId,
+            signal,
+            eventBufferCapacity,
+            progressSink,
+            progressBufferCapacity,
+          } = capturedOptions;
+          if (!IdentifierSchema.safeParse(runId).success) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
             fieldPath: 'runId',
             message: 'runId 不符合 Core identifier contract。',
           });
-          if (options.eventBufferCapacity !== undefined
-              && (!Number.isSafeInteger(options.eventBufferCapacity)
-                || options.eventBufferCapacity <= 0)) fail({
+          if (eventBufferCapacity !== undefined
+              && (!Number.isSafeInteger(eventBufferCapacity)
+                || eventBufferCapacity <= 0)) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
             fieldPath: 'eventBufferCapacity',
             message: 'eventBufferCapacity 必须是正安全整数。',
           });
-          if (options.signal !== undefined
-              && (typeof options.signal.aborted !== 'boolean'
-                || typeof options.signal.addEventListener !== 'function')) fail({
+          if (signal !== undefined
+              && (typeof signal.aborted !== 'boolean'
+                || typeof signal.addEventListener !== 'function'
+                || typeof signal.removeEventListener !== 'function')) fail({
             code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
             fieldPath: 'signal',
             message: 'signal 不符合 AbortSignal contract。',
           });
-          const runId = options.runId;
+          let progressProjection: CapturedOmkEvaluationProgressProjection | undefined;
+          if (progressSink !== undefined) {
+            try {
+              progressProjection = captureOmkEvaluationProgressProjection(
+                progressSink,
+                progressBufferCapacity === undefined ? {} : {
+                  progressBufferCapacity,
+                },
+              );
+            } catch {
+              fail({
+                code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+                fieldPath: 'progressSink',
+                message: 'Evaluation progress sink 或 buffer capacity 不合法。',
+              });
+            }
+          } else if (progressBufferCapacity !== undefined) fail({
+            code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+            fieldPath: 'progressBufferCapacity',
+            message: '未提供 progress sink 时不能配置 progress buffer。',
+          });
           if (activeRunIds.has(runId)) fail({
             code: 'OMK_EVALUATION_RUNTIME_RUN_ACTIVE',
             runId,
             message: `runId "${runId}" 已有 active OMK evaluation run。`,
           });
-          if (signalIsAborted(options.signal)) return abortedBeforeStart(runId);
+          if (signalIsAborted(signal)) return abortedBeforeStart(runId);
           activeRunIds.add(runId);
           let leases: OmkRunResourceLeases | undefined;
           let registered = false;
@@ -903,7 +964,7 @@ export async function createOmkEvaluationRuntime(
             );
             assembly.evaluation.resourceLeaseRegistry.register(leases);
             registered = true;
-            if (signalIsAborted(options.signal)) {
+            if (signalIsAborted(signal)) {
               await cleanup();
               return abortedBeforeStart(runId);
             }
@@ -918,9 +979,9 @@ export async function createOmkEvaluationRuntime(
               coreRun = corePrepared.start({
                 runId,
                 ...staticRunMetadata(compiled),
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-                ...(options.eventBufferCapacity === undefined ? {} : {
-                  eventBufferCapacity: options.eventBufferCapacity,
+                ...(signal === undefined ? {} : { signal }),
+                ...(eventBufferCapacity === undefined ? {} : {
+                  eventBufferCapacity,
                 }),
                 ...(eventWriter === undefined ? {} : { eventWriter }),
               });
@@ -953,7 +1014,14 @@ export async function createOmkEvaluationRuntime(
             ).finally(() => {
               activeRunIds.delete(runId);
             });
-            return Object.freeze({ events: coreRun.events, result });
+            const hostRun = Object.freeze({ events: coreRun.events, result });
+            return progressProjection === undefined
+              ? hostRun
+              : attachOmkEvaluationProgressProjection(
+                  hostRun,
+                  progressProjection,
+                  eventBufferCapacity,
+                );
           } catch (cause) {
             try {
               await cleanup();
