@@ -36,7 +36,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 - `EvaluationDefinition` 负责数据投影、Target 行为、evaluator instrument、metric、实验设计、分析、比较和决策策略；
 - `MeasurementPolicy` 负责 execution／evaluation concurrency、timeout、retry、cache、evidence、failure、event delivery 和共享 Run 预算账本；
-- `RuntimeBindingRequest` 只保存从 Definition 派生的 implementation requirement。宿主 registry 可以解析实现，但不能覆盖 model、effort、prompt variant、protocol、evaluator identity 或行为配置；
+- `RuntimeBindingRequest` v2 只保存从 Definition／已解析宿主资源派生的 implementation 和 resource lease requirement。宿主 registry 可以解析实现，但不能覆盖 model、effort、prompt variant、protocol、evaluator identity 或行为配置。完整装配契约见 [Evaluation Runtime Adapter 规范](./evaluation-runtime-adapter.md)；
 - `ResolvedHostResources` 用稳定 resource ID 和 digest 绑定 effect locator。它不是 Core schema，也不进入 canonical measurement JSON；
 - `EvaluationOrchestrationOptions` 负责 dry-run、resume locator、batch、独立 Series repeat、preflight 开关、diagnostic 后处理、gold post-hoc workflow 和受管证据追加；
 - `EvaluationPresentationOptions` 负责输出 locator、索引范围、语言、server、verbose、layered view 和 CLI exit 展示。这些字段都不能改变 `DecisionResult`；

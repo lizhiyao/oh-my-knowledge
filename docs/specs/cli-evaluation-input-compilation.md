@@ -36,7 +36,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 - `EvaluationDefinition` owns data projections, Target behavior, evaluator instruments, metrics, experiment design, analysis, comparisons, and decision policy.
 - `MeasurementPolicy` owns execution/evaluation concurrency, timeout, retry, cache, evidence, failure, event delivery, and the shared Run budget ledger.
-- `RuntimeBindingRequest` contains only implementation requirements derived from Definition. A registry may resolve them, but cannot override model, effort, prompt variant, protocol, evaluator identity, or behavior config.
+- `RuntimeBindingRequest` v2 contains only implementation and resource-lease requirements derived from Definition／resolved host resources. A registry may resolve them, but cannot override model, effort, prompt variant, protocol, evaluator identity, or behavior config. Its complete assembly contract is specified in [Evaluation Runtime Adapter](./evaluation-runtime-adapter.md).
 - `ResolvedHostResources` binds a stable resource ID and digest to an effect locator. It is not a Core schema and never enters canonical measurement JSON.
 - `EvaluationOrchestrationOptions` owns dry-run, resume locator, batch, independent Series repeats, preflight switches, diagnostic post-processing, gold post-hoc workflows, and managed-evidence append behavior.
 - `EvaluationPresentationOptions` owns output locator, index scope, language, server, verbosity, layered view, and CLI exit presentation. None changes `DecisionResult`.
