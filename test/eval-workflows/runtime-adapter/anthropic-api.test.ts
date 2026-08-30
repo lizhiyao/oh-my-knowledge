@@ -305,6 +305,7 @@ describe('Anthropic API Core Executor adapter', () => {
     const request = value.observations.requests[0]!;
     expect(request.endpoint).toBe('https://api.anthropic.com/v1/messages');
     expect(request.headers).toEqual({
+      accept: 'application/json',
       'content-type': 'application/json',
       'x-api-key': 'fixture-secret-key',
       'anthropic-version': '2023-06-01',
@@ -401,6 +402,23 @@ describe('Anthropic API Core Executor adapter', () => {
       details: { uncachedInputTokens: 8 },
     });
     expect(nullableResult.usage).not.toHaveProperty('inputTokens');
+
+    const emptyGeo = await fixture({
+      response: async () => successResponse({
+        usage: {
+          input_tokens: 8,
+          output_tokens: 5,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          inference_geo: '',
+        },
+      }),
+    });
+    const emptyGeoResult = await execute(
+      await createAdapter(emptyGeo),
+      emptyGeo.target.config as JsonValue,
+    );
+    expect(emptyGeoResult.usage?.details).toMatchObject({ inferenceGeo: '' });
   });
 
   it('redacts provider bodies and exposes only stable retry classes', async () => {

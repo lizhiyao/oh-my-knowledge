@@ -126,7 +126,7 @@ function parseUsage(
       }
     }
     if (rawUsage.inference_geo !== undefined && rawUsage.inference_geo !== null) {
-      if (typeof rawUsage.inference_geo !== 'string' || rawUsage.inference_geo.trim() === '') {
+      if (typeof rawUsage.inference_geo !== 'string') {
         fail('Anthropic API reported invalid inference geography.');
       }
       inferenceGeo = rawUsage.inference_geo;

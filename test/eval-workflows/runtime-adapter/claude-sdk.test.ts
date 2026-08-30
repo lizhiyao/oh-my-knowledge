@@ -437,7 +437,12 @@ describe('Claude SDK Core Executor adapter', () => {
       outputTokens: 5,
       totalTokens: 16,
       providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
-      details: { uncachedInputTokens: 8, cacheReadInputTokens: 2, cacheCreationInputTokens: 1 },
+      details: {
+        tokenAccounting: 'exclusive-cache-input-buckets',
+        uncachedInputTokens: 8,
+        cacheReadInputTokens: 2,
+        cacheCreationInputTokens: 1,
+      },
     });
     value.observations.mode = 'failed';
     await expect(execute(

@@ -281,6 +281,7 @@ function usageFromResult(
         ? {}
         : {
             details: {
+              tokenAccounting: 'exclusive-cache-input-buckets',
               ...(uncachedInputTokens === undefined ? {} : { uncachedInputTokens }),
               ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
               ...(cacheCreationInputTokens === undefined

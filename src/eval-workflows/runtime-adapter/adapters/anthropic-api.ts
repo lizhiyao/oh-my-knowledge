@@ -334,6 +334,7 @@ async function executeAnthropic(
     response = await configuration.transport.request({
       endpoint: configuration.endpoint,
       headers: {
+        accept: 'application/json',
         'content-type': 'application/json',
         'x-api-key': configuration.apiKey,
         'anthropic-version': ANTHROPIC_API_VERSION,
