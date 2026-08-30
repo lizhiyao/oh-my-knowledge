@@ -272,6 +272,8 @@ export function buildSdkHookCallback(
 // ─── CLI config-dir factory(临时目录 + on-disk hook 脚本)──────────────
 
 export interface CliMockHandle {
+  /** Private materialization root, exposed so strict hosts can verify cleanup. */
+  rootDir: string;
   /** 临时 settings 文件路径,作为 `claude --settings <path>` 参数传入。
    *  Claude Code 会**追加**这个 settings 到 ~/.claude/settings.json,**不替换** —
    *  这样 OAuth 登录态 / 用户主配置都不动。 */
@@ -303,85 +305,103 @@ export interface CliMockHandle {
  *     └── mocks.json          (mocks 序列化 + baseDir + strict)
  *
  * cleanup 必删整个目录。executor 用 try / finally 保证执行。
+ *
+ * @param nodeExecutable hook／fake MCP 使用的 Node launcher；Core adapter 传绝对路径
  */
 export function materializeForCliConfigDir(
   mocks: Mock[] | undefined,
   baseDir?: string,
   strict = false,
+  nodeExecutable = 'node',
 ): CliMockHandle | null {
   if (!mocks || mocks.length === 0) return null;
 
   const configDir = mkdtempSync(join(tmpdir(), 'omk-mocks-'));
-  const mocksFile = join(configDir, 'mocks.json');
-  const settingsFile = join(configDir, 'settings.json');
-  const hookScript = join(configDir, 'mock-hook.cjs');
-  const mcpServerScript = join(configDir, 'fake-mcp-server.cjs');
-  const mcpConfigFile = join(configDir, 'mcp.json');
+  try {
+    const mocksFile = join(configDir, 'mocks.json');
+    const settingsFile = join(configDir, 'settings.json');
+    const hookScript = join(configDir, 'mock-hook.cjs');
+    const mcpServerScript = join(configDir, 'fake-mcp-server.cjs');
+    const mcpConfigFile = join(configDir, 'mcp.json');
 
-  const hookSource = readMockHookTemplate();
-  writeFileSync(hookScript, hookSource, 'utf8');
+    const hookSource = readMockHookTemplate();
+    writeFileSync(hookScript, hookSource, 'utf8');
 
-  writeFileSync(mocksFile, JSON.stringify({ mocks, baseDir, strict }, null, 2));
+    writeFileSync(mocksFile, JSON.stringify({ mocks, baseDir, strict }, null, 2));
 
-  const settings = {
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: '.*',
-          hooks: [
-            { type: 'command', command: `node ${hookScript}` },
-          ],
-        },
-      ],
-    },
-  };
-  writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    const shellQuote = (value: string): string => process.platform === 'win32'
+      ? `"${value.replaceAll('"', '""')}"`
+      : `'${value.replaceAll("'", "'\\''")}'`;
+    const settings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '.*',
+            hooks: [
+              {
+                type: 'command',
+                command: `${shellQuote(nodeExecutable)} ${shellQuote(hookScript)}`,
+              },
+            ],
+          },
+        ],
+      },
+    };
+    writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
 
-  const fakeMcpServers = collectFakeMcpServers(mocks);
-  const hasFakeMcp = fakeMcpServers.size > 0;
-  if (hasFakeMcp) {
-    writeFileSync(mcpServerScript, fakeMcpServerSource(), 'utf8');
-    const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {};
-    for (const serverName of fakeMcpServers.keys()) {
-      setOwnRecordValue(mcpServers, serverName, {
-        command: 'node',
-        args: [mcpServerScript, serverName],
-        env: { OMK_MOCKS_FILE: mocksFile },
-      });
+    const fakeMcpServers = collectFakeMcpServers(mocks);
+    const hasFakeMcp = fakeMcpServers.size > 0;
+    if (hasFakeMcp) {
+      writeFileSync(mcpServerScript, fakeMcpServerSource(), 'utf8');
+      const mcpServers: Record<
+        string,
+        { command: string; args: string[]; env: Record<string, string> }
+      > = {};
+      for (const serverName of fakeMcpServers.keys()) {
+        setOwnRecordValue(mcpServers, serverName, {
+          command: nodeExecutable,
+          args: [mcpServerScript, serverName],
+          env: { OMK_MOCKS_FILE: mocksFile },
+        });
+      }
+      writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers }, null, 2));
     }
-    writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers }, null, 2));
+
+    const statsFile = join(configDir, 'hits.json');
+    const readStats = (): { hits: number; misses: number; perMock: Record<string, number> } => {
+      if (!existsSync(statsFile)) {
+        return { hits: 0, misses: 0, perMock: {} };
+      }
+      try {
+        const raw = JSON.parse(readFileSync(statsFile, 'utf8'));
+        return {
+          hits: raw.hits_total || 0,
+          misses: raw.misses_total || 0,
+          perMock: raw.perMock || {},
+        };
+      } catch {
+        return { hits: 0, misses: 0, perMock: {} };
+      }
+    };
+
+    const cleanup = () => {
+      try {
+        rmSync(configDir, { recursive: true, force: true });
+      } catch { /* swallow — best effort */ }
+    };
+
+    return {
+      rootDir: configDir,
+      settingsFile,
+      ...(hasFakeMcp && { mcpConfigFile }),
+      env: { OMK_MOCKS_FILE: mocksFile },
+      readStats,
+      cleanup,
+    };
+  } catch (error) {
+    try { rmSync(configDir, { recursive: true, force: true }); } catch { /* preserve cause */ }
+    throw error;
   }
-
-  const statsFile = join(configDir, 'hits.json');
-  const readStats = (): { hits: number; misses: number; perMock: Record<string, number> } => {
-    if (!existsSync(statsFile)) {
-      return { hits: 0, misses: 0, perMock: {} };
-    }
-    try {
-      const raw = JSON.parse(readFileSync(statsFile, 'utf8'));
-      return {
-        hits: raw.hits_total || 0,
-        misses: raw.misses_total || 0,
-        perMock: raw.perMock || {},
-      };
-    } catch {
-      return { hits: 0, misses: 0, perMock: {} };
-    }
-  };
-
-  const cleanup = () => {
-    try {
-      rmSync(configDir, { recursive: true, force: true });
-    } catch { /* swallow — best effort */ }
-  };
-
-  return {
-    settingsFile,
-    ...(hasFakeMcp && { mcpConfigFile }),
-    env: { OMK_MOCKS_FILE: mocksFile },
-    readStats,
-    cleanup,
-  };
 }
 
 function parseMcpToolName(toolName: string): { serverName: string; toolName: string } | null {

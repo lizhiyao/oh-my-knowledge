@@ -34,6 +34,7 @@ import {
   captureCodexEnvironment,
   type CodexEnvironmentEntry,
 } from './codex-environment.js';
+import { mergeOutputClassification } from './classified-environment.js';
 import {
   codexCliExecutorCapabilities,
   parseCodexCliStream,
@@ -89,6 +90,7 @@ interface CapturedConfiguration {
   readonly executablePath: string;
   readonly environment: Readonly<Record<string, string>>;
   readonly environmentIdentity: JsonValue[];
+  readonly environmentOutputClassification: 'public' | 'sensitive' | 'secret';
   readonly maxOutputBytes: number;
   readonly maxPromptBytes: number;
   readonly identityProbeTimeoutMs: number;
@@ -125,6 +127,7 @@ function captureConfiguration(input: Readonly<CodexCliCoreConfiguration>): Captu
     executablePath: input.executablePath,
     environment: environment.values,
     environmentIdentity: environment.identity,
+    environmentOutputClassification: environment.outputClassification,
     maxOutputBytes,
     maxPromptBytes,
     identityProbeTimeoutMs,
@@ -462,18 +465,22 @@ export async function createCodexCliExecutorAdapter(
             parsed.usage,
           );
         }
+        const outputClassification = mergeOutputClassification(
+          runState.classification,
+          configuration.environmentOutputClassification,
+        );
         return {
           ...(parsed.output === undefined ? {} : {
             output: {
               value: parsed.output,
-              classification: runState.classification,
+              classification: outputClassification,
               mediaType: 'text/plain',
             },
           }),
           ...(parsed.trace === undefined ? {} : {
             trace: {
               value: parsed.trace,
-              classification: runState.classification,
+              classification: outputClassification,
               mediaType: 'application/vnd.omk.source-neutral-trace+json',
             },
           }),

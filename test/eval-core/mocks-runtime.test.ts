@@ -396,6 +396,22 @@ describe('materializeForCliConfigDir', () => {
     assert.deepEqual(cfg.mcpServers['clawdbot-dingtalk'].env, { OMK_MOCKS_FILE: join(dir, 'mocks.json') });
   });
 
+  it('pins hook and fake MCP launchers to an explicit Node executable', () => {
+    const nodeExecutable = join('/runtime with spaces', 'node');
+    const handle = materializeForCliConfigDir(
+      [{ tool: 'mcp__search__query', return: 'ok' }],
+      undefined,
+      false,
+      nodeExecutable,
+    )!;
+    const dir = dirname(handle.settingsFile);
+    createdDirs.push(dir);
+    const settings = JSON.parse(readFileSync(handle.settingsFile, 'utf8'));
+    assert.match(settings.hooks.PreToolUse[0].hooks[0].command, /runtime with spaces/);
+    const mcp = JSON.parse(readFileSync(handle.mcpConfigFile!, 'utf8'));
+    assert.equal(mcp.mcpServers.search.command, nodeExecutable);
+  });
+
   it('strict flag persists into mocks.json', () => {
     const handle = materializeForCliConfigDir([{ tool: 'Read', return: 'x' }], undefined, true)!;
     const dir = dirname(handle.settingsFile);
