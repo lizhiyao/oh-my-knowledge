@@ -6,6 +6,7 @@ import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
+  prepareEvaluationSeriesPlan,
   schemaIdentityKey,
   type CoreSchemaValidator,
   type JsonValue,
@@ -795,6 +796,13 @@ export async function createOmkEvaluationRuntime(
         compiled.definition,
         compiled.policy,
       );
+      if (compiled.orchestration.independentSeries !== undefined
+          && assembly.series !== undefined) {
+        prepareEvaluationSeriesPlan(
+          compiled.orchestration.independentSeries.definition,
+          assembly.series.runtimes,
+        );
+      }
       const preflight = await runOmkEvaluationPreflight({
         entries: preflightEntries,
         modes: compiled.orchestration.preflight,

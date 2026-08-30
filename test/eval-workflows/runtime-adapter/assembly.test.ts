@@ -1111,6 +1111,45 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(preflightCalls).toBe(0);
   });
 
+  it('qualifies Independent Series Runtime before any preflight effect', async () => {
+    const input = runtimeAssemblyInput();
+    delete input.orchestration.gold;
+    input.policy.evidence = {
+      output: 'full', trace: 'full', evidence: 'full', maximumClassification: 'gold',
+    };
+    const compiled = compileCliEvaluationInput(input);
+    const base = factoriesFor(compiled, []);
+    const seriesFactories = new Map(base.seriesAnalysisNodesByImplementationId);
+    for (const [implementationId, factory] of seriesFactories) {
+      seriesFactories.set(implementationId, async (context) => {
+        const result = await factory(context);
+        const identity = RuntimeIdentitySchema.parse({
+          ...result.port.identity,
+          capabilities: { experimentalUnit: 'sample' },
+        });
+        return { ...result, port: { ...result.port, identity } };
+      });
+    }
+    let preflightCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: observePreflight(
+        { ...base, seriesAnalysisNodesByImplementationId: seriesFactories },
+        async ({ next }) => {
+          preflightCalls += 1;
+          await next();
+        },
+      ),
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    });
+
+    await expect(runtime.prepare()).rejects.toThrow(
+      'Series Analysis Runtime must match the declared implementation and run unit.',
+    );
+    expect(preflightCalls).toBe(0);
+  });
+
   it('runs active-binding preflight in canonical order without exposing or changing the Plan', async () => {
     const compiled = compositionInput();
     const calls: string[] = [];
