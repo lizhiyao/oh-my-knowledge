@@ -51,8 +51,8 @@ describe.each(targets)('Evaluation Core %s target conformance', (target) => {
     const result = await runConformanceScenario(target, { suffix: `${target}-protocol` });
 
     expect(result.state).toMatchObject({
-      executorRunOpens: 1,
-      executorRunDisposals: 1,
+      executorRunOpens: result.plan.execution.targets.length,
+      executorRunDisposals: result.plan.execution.targets.length,
       trialOpens: 4,
       trialDisposals: 4,
       executorAttempts: 4,

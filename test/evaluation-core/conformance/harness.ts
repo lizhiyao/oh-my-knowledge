@@ -1021,34 +1021,60 @@ function makeEvaluatorRegistry(
   usage?: UsageRecord,
 ): Map<string, EvaluationEvaluator> {
   const evaluatorId = target === 'function'
-    ? 'exact/v1'
+    ? 'exact'
     : target === 'rag'
-      ? 'retrieval/v1'
-      : 'trajectory/v1';
+      ? 'retrieval'
+      : 'trajectory';
   const evaluators = new Map([[
     evaluatorId,
     makeEvaluator(target, plan, resolveRun, usage),
   ]]);
   if (target === 'agent') {
     evaluators.set(
-      'answer-shape/v1',
+      'answer-shape',
       makeOutputOnlyAgentEvaluator(plan, resolveRun, usage),
     );
   }
   return evaluators;
 }
 
+function bindAnalysisNodesByReference(
+  plan: SealedRunPlan,
+  implementations: ReadonlyMap<string, AnalysisNodeImplementation>,
+): ReadonlyMap<string, AnalysisNodeImplementation> {
+  return new Map(plan.analysis.analysisGraph.nodes.map((node) => {
+    const implementation = implementations.get(node.implementationId);
+    if (implementation === undefined) {
+      throw new TypeError(`Missing conformance Analysis implementation ${node.implementationId}.`);
+    }
+    return [node.nodeId, implementation] as const;
+  }));
+}
+
+function bindDecisionPoliciesByReference(
+  plan: SealedRunPlan,
+  implementations: ReadonlyMap<string, AnalysisDecisionPolicy>,
+): ReadonlyMap<string, AnalysisDecisionPolicy> {
+  const policy = plan.decision.decisionPolicy;
+  if (policy === undefined) return new Map();
+  const implementation = implementations.get(policy.implementationId);
+  if (implementation === undefined) {
+    throw new TypeError(`Missing conformance Decision implementation ${policy.implementationId}.`);
+  }
+  return new Map([[policy.decisionPolicyId, implementation]]);
+}
+
 export class ConformanceRuntimeRegistry {
   readonly target: ConformanceTarget;
   readonly planDigest: string;
-  readonly executors: ReadonlyMap<string, ExecutionExecutor>;
-  readonly evaluators: ReadonlyMap<string, EvaluationEvaluator>;
+  readonly executorsByTargetId: ReadonlyMap<string, ExecutionExecutor>;
+  readonly evaluatorsByEvaluatorId: ReadonlyMap<string, EvaluationEvaluator>;
   readonly eventSequencer = new InMemoryRuntimeEventSequencer();
   readonly executionCache = new InMemoryConformanceExecutionCache();
   readonly evaluationCache = new InMemoryConformanceEvaluationCache();
   readonly artifactStore = new InMemoryConformanceArtifactStore();
-  readonly analysisNodes = createConformanceAnalysisNodes();
-  readonly decisionPolicies = createConformanceDecisionPolicies();
+  readonly analysisNodesByNodeId: ReadonlyMap<string, AnalysisNodeImplementation>;
+  readonly decisionPoliciesByDecisionPolicyId: ReadonlyMap<string, AnalysisDecisionPolicy>;
   readonly eventWriter = {
     write: async (event: Readonly<EvaluationEvent>) => {
       const { state, faults } = this.#resolveRun(event.runId);
@@ -1063,11 +1089,19 @@ export class ConformanceRuntimeRegistry {
     this.target = target;
     this.planDigest = plan.digests.runContractDigest;
     const resolveRun = (runId: string) => this.#resolveRun(runId);
-    this.executors = new Map([[
-      'executor-alias',
-      makeExecutor(target, plan, resolveRun),
-    ]]);
-    this.evaluators = makeEvaluatorRegistry(target, plan, resolveRun);
+    const executor = makeExecutor(target, plan, resolveRun);
+    this.executorsByTargetId = new Map(
+      plan.execution.targets.map((entry) => [entry.targetId, executor]),
+    );
+    this.evaluatorsByEvaluatorId = makeEvaluatorRegistry(target, plan, resolveRun);
+    this.analysisNodesByNodeId = bindAnalysisNodesByReference(
+      plan,
+      createConformanceAnalysisNodes(),
+    );
+    this.decisionPoliciesByDecisionPolicyId = bindDecisionPoliciesByReference(
+      plan,
+      createConformanceDecisionPolicies(),
+    );
   }
 
   attach(
@@ -1180,9 +1214,10 @@ export async function runConformanceScenario(
     state,
     ...(options.faults === undefined ? {} : { faults: options.faults }),
   });
-  const executors = registry?.executors
-    ?? new Map([['executor-alias', makeExecutor(target, plan, localBinding)]]);
-  const evaluators = registry?.evaluators
+  const localExecutor = makeExecutor(target, plan, localBinding);
+  const executorsByTargetId = registry?.executorsByTargetId
+    ?? new Map(plan.execution.targets.map((entry) => [entry.targetId, localExecutor]));
+  const evaluatorsByEvaluatorId = registry?.evaluatorsByEvaluatorId
     ?? makeEvaluatorRegistry(target, plan, localBinding, options.evaluatorUsage);
   const eventSequencer = registry?.eventSequencer ?? new InMemoryRuntimeEventSequencer();
   const eventWriter = registry?.eventWriter ?? (options.faults === undefined
@@ -1201,10 +1236,14 @@ export async function runConformanceScenario(
   const executionCache = options.executionCache ?? registry?.executionCache;
   const evaluationCache = options.evaluationCache ?? registry?.evaluationCache;
   const analysisPorts: AnalysisRuntimePorts = {
-    analysisNodes: registry?.analysisNodes ?? faultableAnalysisNodes(options.faults),
+    analysisNodesByNodeId: registry?.analysisNodesByNodeId ?? bindAnalysisNodesByReference(
+      plan,
+      faultableAnalysisNodes(options.faults),
+    ),
     schemaValidators: createBuiltinAnalysisSchemaValidators(),
-    missingPolicies: createBuiltinMissingPolicies(),
-    decisionPolicies: registry?.decisionPolicies ?? faultableDecisionPolicies(options.faults),
+    missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+    decisionPoliciesByDecisionPolicyId: registry?.decisionPoliciesByDecisionPolicyId
+      ?? bindDecisionPoliciesByReference(plan, faultableDecisionPolicies(options.faults)),
     clock,
     eventSequencer,
     ...(eventWriter === undefined ? {} : { eventWriter }),
@@ -1215,7 +1254,7 @@ export async function runConformanceScenario(
     const executionRuntime = options.execution === undefined
         && options.executionSource === undefined
       ? startExecution(plan, {
-        executors,
+        executorsByTargetId,
         clock,
         eventSequencer,
         ...(eventWriter === undefined ? {} : { eventWriter }),
@@ -1242,7 +1281,7 @@ export async function runConformanceScenario(
     allEvents.push(...executionRun.events);
 
     const evaluationRuntime = startEvaluation(plan, executionRun.value, {
-      evaluators,
+      evaluatorsByEvaluatorId,
       clock,
       eventSequencer,
       ...(eventWriter === undefined ? {} : { eventWriter }),

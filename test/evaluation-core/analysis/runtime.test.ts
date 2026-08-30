@@ -51,6 +51,32 @@ import { testRuntime, validDefinition, validPolicy } from '../compiler/fixtures.
 
 type Plan = Awaited<ReturnType<typeof prepareEvaluationPlan>>;
 
+function targetExecutorBindings(plan: Plan, port: ExecutionExecutor) {
+  return new Map(plan.execution.targets.map((target) => [target.targetId, port]));
+}
+
+function evaluatorBindings(port: EvaluationEvaluator) {
+  return new Map([['exact', port]]);
+}
+
+function builtinAnalysisNodeBindings(plan: Plan) {
+  const implementations = createBuiltinAnalysisNodes();
+  return new Map(plan.analysis.analysisGraph.nodes.map((node) => {
+    const port = implementations.get(node.implementationId);
+    if (port === undefined) throw new Error(`missing Analysis implementation ${node.implementationId}`);
+    return [node.nodeId, port] as const;
+  }));
+}
+
+function builtinDecisionPolicyBindings(plan: Plan) {
+  const implementations = createBuiltinDecisionPolicies();
+  const policy = plan.decision.decisionPolicy;
+  if (policy === undefined) return new Map();
+  const port = implementations.get(policy.implementationId);
+  if (port === undefined) throw new Error(`missing Decision implementation ${policy.implementationId}`);
+  return new Map([[policy.decisionPolicyId, port]]);
+}
+
 class FakeClock implements ExecutionClock {
   now = 0;
 
@@ -237,20 +263,20 @@ async function makeAnalysisFixture(
   const clock = new FakeClock();
   const eventSequencer = new InMemoryRuntimeEventSequencer();
   const execution = await executeRunPlanSource(plan, {
-    executors: new Map([['executor-alias', executor(plan, 'control')]]),
+    executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
     clock,
     eventSequencer,
   }, { runId: `run-${suffix}`, bundleId: `execution-${suffix}` });
   const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-    evaluators: new Map([['exact/v1', evaluator(plan)]]),
+    evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
     clock,
     eventSequencer,
   }, { runId: `run-${suffix}`, bundleId: `evaluation-${suffix}` });
   const ports = {
-    analysisNodes: createBuiltinAnalysisNodes(),
+    analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
     schemaValidators: createBuiltinAnalysisSchemaValidators(),
-    missingPolicies: createBuiltinMissingPolicies(),
-    decisionPolicies: createBuiltinDecisionPolicies(),
+    missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+    decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
     clock,
     eventSequencer,
   };
@@ -277,6 +303,35 @@ async function collectEvents(events: AsyncIterable<unknown>): Promise<unknown[]>
 }
 
 describe('Evaluation Core Analysis and Decision Runtime', () => {
+  it('rejects implementation-keyed Analysis and Decision port maps', async () => {
+    const fixture = await makeAnalysisFixture('implementation-keyed-ports');
+    const node = fixture.ports.analysisNodesByNodeId.get('mean-correct');
+    const decision = fixture.ports.decisionPoliciesByDecisionPolicyId.get('release-gate');
+    if (node === undefined || decision === undefined) throw new Error('missing test bindings');
+
+    expect(() => startAnalysis(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      {
+        ...fixture.ports,
+        analysisNodesByNodeId: new Map([['descriptive.rate/v1', node]]),
+      },
+      { runId: 'run-wrong-node-key', bundleId: 'analysis-wrong-node-key' },
+    )).toThrowError(expect.objectContaining({ code: 'ANALYSIS_RUNTIME_NODE_MISSING' }));
+    expect(() => startDecision(
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysisSource,
+      {
+        ...fixture.ports,
+        decisionPoliciesByDecisionPolicyId: new Map([['progress/v1', decision]]),
+      },
+      { runId: 'run-wrong-decision-key' },
+    )).toThrowError(expect.objectContaining({ code: 'DECISION_RUNTIME_IDENTITY_MISMATCH' }));
+  });
+
   it('keeps cohort context out of Executor and Evaluator projections but exposes it to Analysis', async () => {
     const secretMarker = 'analysis-only-marker';
     const plan = await makePlan((definition) => {
@@ -306,12 +361,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cohort', bundleId: 'execution-analysis-cohort' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cohort', bundleId: 'evaluation-analysis-cohort' });
@@ -320,7 +375,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     if (original === undefined) throw new Error('missing builtin analysis node');
     let captured: Readonly<AnalysisNodeExecutionContext> | undefined;
     const analysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodes: new Map([['descriptive.rate/v1', {
+      analysisNodesByNodeId: new Map([['mean-correct', {
         identity: original.identity,
         outputSchema: original.outputSchema,
         async openRun(context) {
@@ -335,8 +390,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         },
       }]]),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cohort', bundleId: 'analysis-cohort' });
@@ -445,23 +500,22 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const plan = await makePlan();
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
+    const executionPort = executor(plan, 'control');
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([
-        ['executor-alias', executor(plan, 'control')],
-      ]),
+      executorsByTargetId: targetExecutorBindings(plan, executionPort),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-1', bundleId: 'execution-analysis-1' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-1', bundleId: 'evaluation-analysis-1' });
     const ports = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     };
@@ -574,7 +628,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       code: 'EVALUATION_REPORT_PLAN_MISMATCH',
     }));
 
-    const builtinPolicy = ports.decisionPolicies.get('progress/v1');
+    const builtinPolicy = ports.decisionPoliciesByDecisionPolicyId.get('release-gate');
     if (builtinPolicy === undefined) throw new Error('missing DecisionPolicy');
     const failedDecision = await decideAnalysis(
       plan,
@@ -583,7 +637,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       analysisSource,
       {
         ...ports,
-        decisionPolicies: new Map([['progress/v1', {
+        decisionPoliciesByDecisionPolicyId: new Map([['release-gate', {
           identity: builtinPolicy.identity,
           decide: async () => { throw new Error('policy failed'); },
         }]]),
@@ -617,17 +671,17 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-dependencies', bundleId: 'execution-analysis-dependencies' });
     const observedEvaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-observed', bundleId: 'evaluation-analysis-observed' });
     const missingEvaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan, true)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan, true)),
       clock,
       eventSequencer,
     }, {
@@ -635,13 +689,13 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       bundleId: 'evaluation-analysis-missing-dependency',
     });
     const ports = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: new Map([['exclude/v1', {
+      missingPoliciesByPolicyId: new Map([['exclude/v1', {
         ...builtinPolicy,
         identity: missingPolicyIdentity,
       }]]),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     };
@@ -677,20 +731,20 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-forge', bundleId: 'execution-analysis-forge' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-forge', bundleId: 'evaluation-analysis-forge' });
     const ports = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     };
@@ -858,7 +912,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
   it('validates completed outputs with an independent Core validator', async () => {
     const fixture = await makeAnalysisFixture('independent-validator');
-    const original = fixture.ports.analysisNodes.get('descriptive.rate/v1');
+    const original = fixture.ports.analysisNodesByNodeId.get('mean-correct');
     if (original === undefined) throw new Error('missing builtin Analysis Runtime');
     expect(original.identity).toMatchObject({
       fingerprintBasis: 'self-reported',
@@ -886,7 +940,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.evaluation,
       {
         ...fixture.ports,
-        analysisNodes: new Map([['descriptive.rate/v1', malicious]]),
+        analysisNodesByNodeId: new Map([['mean-correct', malicious]]),
       },
       { runId: 'run-malicious-validator', bundleId: 'analysis-malicious-validator' },
     );
@@ -931,7 +985,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       }];
       definition.decisionPolicy!.analysisResultIds = ['correct-interval'];
     });
-    const original = fixture.ports.analysisNodes.get('bootstrap.mean-percentile/v1');
+    const original = fixture.ports.analysisNodesByNodeId.get('bootstrap-correct');
     if (original === undefined) throw new Error('missing builtin Analysis Runtime');
     const malicious = {
       identity: original.identity,
@@ -963,7 +1017,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.evaluation,
       {
         ...fixture.ports,
-        analysisNodes: new Map([['bootstrap.mean-percentile/v1', malicious]]),
+        analysisNodesByNodeId: new Map([['bootstrap-correct', malicious]]),
       },
       { runId: 'run-contextual-validator', bundleId: 'analysis-contextual-validator' },
     );
@@ -1006,7 +1060,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.evaluation,
       {
         ...fixture.ports,
-        analysisNodes: new Map([['bootstrap.mean-percentile/v1', wrongUnitCount]]),
+        analysisNodesByNodeId: new Map([['bootstrap-correct', wrongUnitCount]]),
       },
       { runId: 'run-unit-count-validator', bundleId: 'analysis-unit-count-validator' },
     );
@@ -1175,7 +1229,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
         analysisResultId: 'treatment-effect-result',
       }];
     });
-    const builtinPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    const builtinPolicy = fixture.ports.decisionPoliciesByDecisionPolicyId.get('release-gate');
     if (builtinPolicy === undefined) throw new Error('missing builtin DecisionPolicy');
     let receivedContrasts: unknown[] = [];
     const decision = await decideAnalysis(
@@ -1185,7 +1239,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.analysisSource,
       {
         ...fixture.ports,
-        decisionPolicies: new Map([['progress/v1', {
+        decisionPoliciesByDecisionPolicyId: new Map([['release-gate', {
           identity: builtinPolicy.identity,
           async decide(context) {
             receivedContrasts = [...context.contrasts];
@@ -1211,20 +1265,20 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-source', bundleId: 'execution-analysis-source' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-source', bundleId: 'evaluation-analysis-source' });
     const ports = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     };
@@ -1247,12 +1301,12 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     );
 
     const foreignExecution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-foreign', bundleId: 'execution-analysis-foreign' });
     const foreignEvaluation = await evaluateExecutionBundleSource(plan, foreignExecution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-foreign', bundleId: 'evaluation-analysis-foreign' });
@@ -1268,20 +1322,20 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-missing', bundleId: 'execution-analysis-missing' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan, true)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan, true)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-missing', bundleId: 'evaluation-analysis-missing' });
     const ports = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     };
@@ -1360,22 +1414,22 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cancel', bundleId: 'execution-analysis-cancel' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
     }, { runId: 'run-analysis-cancel', bundleId: 'evaluation-analysis-cancel' });
     const controller = new AbortController();
     controller.abort();
     const run = startAnalysis(plan, execution, evaluation, {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
     }, {
@@ -1396,8 +1450,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
   it('keeps in-flight Analysis and Decision cancellation authoritative', async () => {
     const fixture = await makeAnalysisFixture('in-flight-cancel');
-    const originalNode = fixture.ports.analysisNodes.get('descriptive.rate/v1');
-    const originalPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    const originalNode = fixture.ports.analysisNodesByNodeId.get('mean-correct');
+    const originalPolicy = fixture.ports.decisionPoliciesByDecisionPolicyId.get('release-gate');
     if (originalNode === undefined || originalPolicy === undefined) throw new Error('missing builtin');
 
     const analysisController = new AbortController();
@@ -1408,7 +1462,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.evaluation,
       {
         ...fixture.ports,
-        analysisNodes: new Map([['descriptive.rate/v1', {
+        analysisNodesByNodeId: new Map([['mean-correct', {
           identity: originalNode.identity,
           outputSchema: originalNode.outputSchema,
           async openRun() {
@@ -1454,7 +1508,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.analysisSource,
       {
         ...fixture.ports,
-        decisionPolicies: new Map([['progress/v1', {
+        decisionPoliciesByDecisionPolicyId: new Map([['release-gate', {
           identity: originalPolicy.identity,
           decide: async ({ signal }) => {
             decisionEntered.resolve();
@@ -1476,8 +1530,8 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
 
   it('discards successful port results that arrive after cancellation', async () => {
     const fixture = await makeAnalysisFixture('late-success-cancel');
-    const originalNode = fixture.ports.analysisNodes.get('descriptive.rate/v1');
-    const originalPolicy = fixture.ports.decisionPolicies.get('progress/v1');
+    const originalNode = fixture.ports.analysisNodesByNodeId.get('mean-correct');
+    const originalPolicy = fixture.ports.decisionPoliciesByDecisionPolicyId.get('release-gate');
     if (originalNode === undefined || originalPolicy === undefined) throw new Error('missing builtin');
 
     const analysisController = new AbortController();
@@ -1489,7 +1543,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.evaluation,
       {
         ...fixture.ports,
-        analysisNodes: new Map([['descriptive.rate/v1', {
+        analysisNodesByNodeId: new Map([['mean-correct', {
           identity: originalNode.identity,
           outputSchema: originalNode.outputSchema,
           async openRun() {
@@ -1528,7 +1582,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fixture.analysisSource,
       {
         ...fixture.ports,
-        decisionPolicies: new Map([['progress/v1', {
+        decisionPoliciesByDecisionPolicyId: new Map([['release-gate', {
           identity: originalPolicy.identity,
           async decide() {
             decisionEntered.resolve();
@@ -1560,22 +1614,22 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const workingWriter = { write: async () => undefined };
     const execution = await executeRunPlanSource(plan, {
-      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      executorsByTargetId: targetExecutorBindings(plan, executor(plan, 'control')),
       clock,
       eventSequencer,
       eventWriter: workingWriter,
     }, { runId: 'run-analysis-writer', bundleId: 'execution-analysis-writer' });
     const evaluation = await evaluateExecutionBundleSource(plan, execution, {
-      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      evaluatorsByEvaluatorId: evaluatorBindings(evaluator(plan)),
       clock,
       eventSequencer,
       eventWriter: workingWriter,
     }, { runId: 'run-analysis-writer', bundleId: 'evaluation-analysis-writer' });
     const analysisSource = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
       eventWriter: { write: async () => { throw new Error('writer down'); } },
@@ -1588,10 +1642,10 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     expect(analysis.records[0].analysisStatus).toBe('not-evaluated');
 
     const failedPorts = {
-      analysisNodes: createBuiltinAnalysisNodes(),
+      analysisNodesByNodeId: builtinAnalysisNodeBindings(plan),
       schemaValidators: createBuiltinAnalysisSchemaValidators(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: builtinDecisionPolicyBindings(plan),
       clock,
       eventSequencer,
       eventWriter: { write: async () => { throw new Error('writer down'); } },

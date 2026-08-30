@@ -1,6 +1,8 @@
 import {
+  canonicalizeJson,
   digestCanonicalJson,
   EvaluationErrorSchema,
+  RuntimeIdentitySchema,
   type AnalysisBundle,
   type DecisionResult,
   type EvaluationError,
@@ -15,6 +17,11 @@ import {
 import {
   EvaluationDefinitionError,
   prepareEvaluationPlan,
+  RuntimeResolutionSchema,
+  type AnalysisRuntimeRequirement,
+  type ExecutorRuntimeRequirement,
+  type EvaluatorRuntimeRequirement,
+  type RuntimeResolution,
   type SealedRunPlan,
 } from '../compiler/index.js';
 import {
@@ -23,12 +30,16 @@ import {
   startAnalysis,
   startDecision,
   startReportMaterialization,
+  type AnalysisDecisionPolicy,
+  type AnalysisMissingPolicy,
+  type AnalysisNodeImplementation,
   type AnalysisRuntimePorts,
 } from '../analysis/index.js';
 import {
   EvaluationPortFailure,
   EvaluationRuntimeConfigurationError,
   startEvaluation,
+  type EvaluationEvaluator,
   type EvaluationRuntimePorts,
 } from '../evaluation/index.js';
 import {
@@ -36,6 +47,7 @@ import {
   ExecutionRuntimeConfigurationError,
   InMemoryRuntimeEventSequencer,
   startExecution,
+  type ExecutionExecutor,
   type ExecutionRuntimePorts,
 } from '../execution/index.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
@@ -84,6 +96,161 @@ function isValidEventBufferCapacity(capacity: number): boolean {
 interface StageRun<T> {
   events: AsyncIterable<EvaluationEvent>;
   source: Promise<T>;
+}
+
+interface PreparedRuntimeBindings {
+  readonly executorsByTargetId: ReadonlyMap<string, ExecutionExecutor>;
+  readonly evaluatorsByEvaluatorId: ReadonlyMap<string, EvaluationEvaluator>;
+  readonly analysisNodesByNodeId: ReadonlyMap<string, AnalysisNodeImplementation>;
+  readonly missingPoliciesByPolicyId: ReadonlyMap<string, AnalysisMissingPolicy>;
+  readonly decisionPoliciesByDecisionPolicyId: ReadonlyMap<string, AnalysisDecisionPolicy>;
+}
+
+interface PreparedEngineRun {
+  readonly plan: SealedRunPlan;
+  readonly bindings: PreparedRuntimeBindings;
+}
+
+type MutableRuntimeBindings = {
+  executorsByTargetId: Map<string, ExecutionExecutor>;
+  evaluatorsByEvaluatorId: Map<string, EvaluationEvaluator>;
+  analysisNodesByNodeId: Map<string, AnalysisNodeImplementation>;
+  missingPoliciesByPolicyId: Map<string, AnalysisMissingPolicy>;
+  decisionPoliciesByDecisionPolicyId: Map<string, AnalysisDecisionPolicy>;
+};
+
+function emptyRuntimeBindings(): MutableRuntimeBindings {
+  return {
+    executorsByTargetId: new Map(),
+    evaluatorsByEvaluatorId: new Map(),
+    analysisNodesByNodeId: new Map(),
+    missingPoliciesByPolicyId: new Map(),
+    decisionPoliciesByDecisionPolicyId: new Map(),
+  };
+}
+
+function captureBinding<T>(
+  bindings: Map<string, T>,
+  referenceId: string,
+  port: T,
+): void {
+  if (bindings.has(referenceId)) {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: '同一 referenceId 解析出了重复 Runtime binding。',
+      details: { referenceId },
+    });
+  }
+  bindings.set(referenceId, port);
+}
+
+function validatedResolution(
+  expectedRuntimeKind: 'executor' | 'evaluator' | 'analysis-node' | 'missing-policy'
+    | 'decision-policy',
+  actualRuntimeKind: unknown,
+  resolutionInput: unknown,
+  portIdentityInput: unknown,
+  referenceId: string,
+): RuntimeResolution {
+  const resolution = RuntimeResolutionSchema.safeParse(resolutionInput);
+  const portIdentity = RuntimeIdentitySchema.safeParse(portIdentityInput);
+  if (!resolution.success) {
+    throw new TypeError('Runtime binding resolver returned an invalid resolution.');
+  }
+  if (actualRuntimeKind !== expectedRuntimeKind || !portIdentity.success
+      || canonicalizeJson(resolution.data.identity) !== canonicalizeJson(portIdentity.data)) {
+    throw new EvaluationDefinitionError({
+      code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
+      stage: 'configuration',
+      preparationStage: 'runtime-resolution',
+      message: 'Runtime binding kind 或 port identity 与解析结果不一致。',
+      details: { referenceId, expectedRuntimeKind },
+    });
+  }
+  return resolution.data;
+}
+
+async function prepareEngineRun(
+  runtime: EvaluationEngineRuntime,
+  definition: Parameters<typeof prepareEvaluationPlan>[0],
+  policy: Parameters<typeof prepareEvaluationPlan>[1],
+): Promise<PreparedEngineRun> {
+  const captured = emptyRuntimeBindings();
+  const plan = await prepareEvaluationPlan(definition, policy, {
+    schemaValidators: runtime.schemaValidators,
+    async resolveExecutor(requirement: Readonly<ExecutorRuntimeRequirement>) {
+      const binding = await runtime.bindings.resolveExecutor(requirement);
+      const resolution = validatedResolution(
+        'executor',
+        binding?.runtimeKind,
+        binding?.resolution,
+        binding?.port?.identity,
+        requirement.referenceId,
+      );
+      captureBinding(captured.executorsByTargetId, requirement.referenceId, binding.port);
+      return resolution;
+    },
+    async resolveEvaluator(requirement: Readonly<EvaluatorRuntimeRequirement>) {
+      const binding = await runtime.bindings.resolveEvaluator(requirement);
+      const resolution = validatedResolution(
+        'evaluator',
+        binding?.runtimeKind,
+        binding?.resolution,
+        binding?.port?.identity,
+        requirement.referenceId,
+      );
+      captureBinding(captured.evaluatorsByEvaluatorId, requirement.referenceId, binding.port);
+      return resolution;
+    },
+    async resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
+      const binding = await runtime.bindings.resolveAnalysis(requirement);
+      const expectedRuntimeKind = requirement.requirementKind === 'missing-policy'
+        ? 'missing-policy'
+        : requirement.requirementKind === 'decision-policy'
+          ? 'decision-policy'
+          : 'analysis-node';
+      const resolution = validatedResolution(
+        expectedRuntimeKind,
+        binding?.runtimeKind,
+        binding?.resolution,
+        binding?.port?.identity,
+        requirement.referenceId,
+      );
+      if (binding.runtimeKind === 'missing-policy') {
+        captureBinding(
+          captured.missingPoliciesByPolicyId,
+          requirement.referenceId,
+          binding.port,
+        );
+      } else if (binding.runtimeKind === 'decision-policy') {
+        captureBinding(
+          captured.decisionPoliciesByDecisionPolicyId,
+          requirement.referenceId,
+          binding.port,
+        );
+      } else {
+        captureBinding(captured.analysisNodesByNodeId, requirement.referenceId, binding.port);
+      }
+      return resolution;
+    },
+    ...(runtime.validateExtension === undefined
+      ? {}
+      : { validateExtension: runtime.validateExtension }),
+  });
+  return {
+    plan,
+    bindings: {
+      executorsByTargetId: new Map(captured.executorsByTargetId),
+      evaluatorsByEvaluatorId: new Map(captured.evaluatorsByEvaluatorId),
+      analysisNodesByNodeId: new Map(captured.analysisNodesByNodeId),
+      missingPoliciesByPolicyId: new Map(captured.missingPoliciesByPolicyId),
+      decisionPoliciesByDecisionPolicyId: new Map(
+        captured.decisionPoliciesByDecisionPolicyId,
+      ),
+    },
+  };
 }
 
 function artifactId(runId: string, artifactKind: string): string {
@@ -159,11 +326,12 @@ function runtimeError(error: unknown): EvaluationError {
 
 function executionPorts(
   runtime: EvaluationEngineRuntime,
+  bindings: PreparedRuntimeBindings,
   sequencer: InMemoryRuntimeEventSequencer,
   options: PreparedEvaluationRunOptions,
 ): ExecutionRuntimePorts {
   return {
-    executors: runtime.executors,
+    executorsByTargetId: bindings.executorsByTargetId,
     clock: runtime.clock,
     eventSequencer: sequencer,
     ...(runtime.executionCache === undefined ? {} : { cache: runtime.executionCache }),
@@ -176,11 +344,12 @@ function executionPorts(
 
 function evaluationPorts(
   runtime: EvaluationEngineRuntime,
+  bindings: PreparedRuntimeBindings,
   sequencer: InMemoryRuntimeEventSequencer,
   options: PreparedEvaluationRunOptions,
 ): EvaluationRuntimePorts {
   return {
-    evaluators: runtime.evaluators,
+    evaluatorsByEvaluatorId: bindings.evaluatorsByEvaluatorId,
     clock: runtime.clock,
     eventSequencer: sequencer,
     ...(runtime.contentResolver === undefined
@@ -196,14 +365,15 @@ function evaluationPorts(
 
 function analysisPorts(
   runtime: EvaluationEngineRuntime,
+  bindings: PreparedRuntimeBindings,
   sequencer: InMemoryRuntimeEventSequencer,
   options: PreparedEvaluationRunOptions,
 ): AnalysisRuntimePorts {
   return {
-    analysisNodes: runtime.analysisNodes,
+    analysisNodesByNodeId: bindings.analysisNodesByNodeId,
     schemaValidators: runtime.schemaValidators,
-    missingPolicies: runtime.missingPolicies,
-    decisionPolicies: runtime.decisionPolicies,
+    missingPoliciesByPolicyId: bindings.missingPoliciesByPolicyId,
+    decisionPoliciesByDecisionPolicyId: bindings.decisionPoliciesByDecisionPolicyId,
     clock: runtime.clock,
     eventSequencer: sequencer,
     ...(options.eventWriter === undefined ? {} : { eventWriter: options.eventWriter }),
@@ -212,7 +382,7 @@ function analysisPorts(
 
 async function executePipeline(
   runtime: EvaluationEngineRuntime,
-  planPromise: Promise<SealedRunPlan>,
+  preparedPromise: Promise<PreparedEngineRun>,
   options: PreparedEvaluationRunOptions,
   events: BoundedEventStream,
 ): Promise<EvaluationRunResult> {
@@ -221,13 +391,13 @@ async function executePipeline(
   let analysisSource: AnalysisBundleSource | undefined;
   let decisionSource: DecisionResultSource | undefined;
   try {
-    const plan = await planPromise;
+    const { plan, bindings } = await preparedPromise;
     const sequencer = new InMemoryRuntimeEventSequencer();
     const budgetSource = createRunBudgetSource(plan, options.runId, runtime.clock);
     const stageCapacity = options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
     const execution = await settleStage(startExecution(
       plan,
-      executionPorts(runtime, sequencer, options),
+      executionPorts(runtime, bindings, sequencer, options),
       {
         runId: options.runId,
         bundleId: artifactId(options.runId, 'execution'),
@@ -240,7 +410,7 @@ async function executePipeline(
     const evaluation = await settleStage(startEvaluation(
       plan,
       execution,
-      evaluationPorts(runtime, sequencer, options),
+      evaluationPorts(runtime, bindings, sequencer, options),
       {
         runId: options.runId,
         bundleId: artifactId(options.runId, 'evaluation'),
@@ -250,7 +420,7 @@ async function executePipeline(
       },
     ), events);
     evaluationSource = evaluation;
-    const ports = analysisPorts(runtime, sequencer, options);
+    const ports = analysisPorts(runtime, bindings, sequencer, options);
     const analysis = await settleStage(startAnalysis(
       plan,
       execution,
@@ -339,7 +509,7 @@ async function executePipeline(
 
 function startPrepared(
   runtime: EvaluationEngineRuntime,
-  createPlan: () => Promise<SealedRunPlan>,
+  createPreparedRun: () => Promise<PreparedEngineRun>,
   options: PreparedEvaluationRunOptions,
   activeRunIds: Set<string>,
 ): EvaluationRun {
@@ -363,8 +533,8 @@ function startPrepared(
 
   activeRunIds.add(options.runId);
   const events = new BoundedEventStream(eventBufferCapacity);
-  const planPromise = Promise.resolve().then(createPlan);
-  const result = executePipeline(runtime, planPromise, options, events)
+  const preparedPromise = Promise.resolve().then(createPreparedRun);
+  const result = executePipeline(runtime, preparedPromise, options, events)
     .finally(() => {
       activeRunIds.delete(options.runId);
     });
@@ -374,26 +544,16 @@ function startPrepared(
   };
 }
 
-function prepareRuntime(runtime: EvaluationEngineRuntime) {
-  return {
-    ...runtime.preparation,
-    schemaValidators: runtime.schemaValidators,
-    ...(runtime.validateExtension === undefined
-      ? {}
-      : { validateExtension: runtime.validateExtension }),
-  };
-}
-
 export function createEvaluationEngine(runtime: EvaluationEngineRuntime): EvaluationEngine {
   const activeRunIds = new Set<string>();
   return {
     async prepare(definition, policy): Promise<PreparedEvaluation> {
-      const plan = await prepareEvaluationPlan(definition, policy, prepareRuntime(runtime));
+      const prepared = await prepareEngineRun(runtime, definition, policy);
       return {
-        plan,
+        plan: prepared.plan,
         start: (options) => startPrepared(
           runtime,
-          async () => plan,
+          async () => prepared,
           options,
           activeRunIds,
         ),
@@ -412,11 +572,7 @@ export function createEvaluationEngine(runtime: EvaluationEngineRuntime): Evalua
       };
       return startPrepared(
         runtime,
-        () => prepareEvaluationPlan(
-          definition,
-          options.policy,
-          prepareRuntime(runtime),
-        ),
+        () => prepareEngineRun(runtime, definition, options.policy),
         runOptions,
         activeRunIds,
       );

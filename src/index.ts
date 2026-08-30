@@ -2,8 +2,12 @@ export { createEvaluationEngine } from './evaluation-core/engine/index.js';
 export type {
   EvaluationEngine,
   EvaluationEngineClock,
+  EvaluationEngineAnalysisBinding,
+  EvaluationEngineEvaluatorBinding,
+  EvaluationEngineExecutorBinding,
   EvaluationEngineEventWriter,
   EvaluationEngineRuntime,
+  EvaluationEngineRuntimeBindings,
   EvaluationExtensionValidationRequest,
   EvaluationRun,
   EvaluationRunArtifacts,

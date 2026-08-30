@@ -12,8 +12,11 @@ import type {
   MeasurementPolicy,
 } from '../contracts/index.js';
 import type {
+  AnalysisRuntimeRequirement,
+  ExecutorRuntimeRequirement,
   ExtensionValidationRequest,
-  PreparationRuntime,
+  EvaluatorRuntimeRequirement,
+  RuntimeResolution,
   SealedRunPlan,
 } from '../compiler/index.js';
 import type {
@@ -41,16 +44,51 @@ export type Evaluator = EvaluationEvaluator;
 export interface EvaluationEngineClock
   extends ExecutionClock, EvaluationClock, AnalysisClock {}
 
+export interface EvaluationEngineExecutorBinding {
+  readonly runtimeKind: 'executor';
+  readonly resolution: RuntimeResolution;
+  readonly port: Executor;
+}
+
+export interface EvaluationEngineEvaluatorBinding {
+  readonly runtimeKind: 'evaluator';
+  readonly resolution: RuntimeResolution;
+  readonly port: Evaluator;
+}
+
+export type EvaluationEngineAnalysisBinding = {
+  readonly runtimeKind: 'analysis-node';
+  readonly resolution: RuntimeResolution;
+  readonly port: AnalysisNodeImplementation;
+} | {
+  readonly runtimeKind: 'missing-policy';
+  readonly resolution: RuntimeResolution;
+  readonly port: AnalysisMissingPolicy;
+} | {
+  readonly runtimeKind: 'decision-policy';
+  readonly resolution: RuntimeResolution;
+  readonly port: AnalysisDecisionPolicy;
+};
+
+export interface EvaluationEngineRuntimeBindings {
+  resolveExecutor(
+    requirement: Readonly<ExecutorRuntimeRequirement>,
+  ): EvaluationEngineExecutorBinding | Promise<EvaluationEngineExecutorBinding>;
+  resolveEvaluator(
+    requirement: Readonly<EvaluatorRuntimeRequirement>,
+  ): EvaluationEngineEvaluatorBinding | Promise<EvaluationEngineEvaluatorBinding>;
+  resolveAnalysis(
+    requirement: Readonly<AnalysisRuntimeRequirement>,
+  ): EvaluationEngineAnalysisBinding | Promise<EvaluationEngineAnalysisBinding>;
+}
+
 export interface EvaluationEngineRuntime {
-  preparation: Omit<PreparationRuntime, 'schemaValidators' | 'validateExtension'>;
-  executors: ReadonlyMap<string, Executor>;
-  evaluators: ReadonlyMap<string, Evaluator>;
+  bindings: EvaluationEngineRuntimeBindings;
   clock: EvaluationEngineClock;
   schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
-  analysisNodes: ReadonlyMap<string, AnalysisNodeImplementation>;
-  missingPolicies: ReadonlyMap<string, AnalysisMissingPolicy>;
-  decisionPolicies: ReadonlyMap<string, AnalysisDecisionPolicy>;
-  validateExtension?: PreparationRuntime['validateExtension'];
+  validateExtension?(
+    request: Readonly<ExtensionValidationRequest>,
+  ): unknown | Promise<unknown>;
   executionCache?: ExecutionCache;
   evaluationCache?: EvaluationCache;
   executionContentStore?: ExecutionContentStore;

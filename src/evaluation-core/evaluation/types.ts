@@ -174,7 +174,7 @@ export interface EvaluationEventWriter {
 }
 
 export interface EvaluationRuntimePorts {
-  evaluators: ReadonlyMap<string, EvaluationEvaluator>;
+  evaluatorsByEvaluatorId: ReadonlyMap<string, EvaluationEvaluator>;
   clock: EvaluationClock;
   eventSequencer: RuntimeEventSequencer;
   contentResolver?: EvaluationContentResolver;

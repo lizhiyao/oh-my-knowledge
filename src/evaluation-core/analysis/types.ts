@@ -232,10 +232,10 @@ export interface AnalysisEventWriter {
 }
 
 export interface AnalysisRuntimePorts {
-  analysisNodes: ReadonlyMap<string, AnalysisNodeImplementation>;
+  analysisNodesByNodeId: ReadonlyMap<string, AnalysisNodeImplementation>;
   schemaValidators: ReadonlyMap<string, CoreSchemaValidator>;
-  missingPolicies: ReadonlyMap<string, AnalysisMissingPolicy>;
-  decisionPolicies: ReadonlyMap<string, AnalysisDecisionPolicy>;
+  missingPoliciesByPolicyId: ReadonlyMap<string, AnalysisMissingPolicy>;
+  decisionPoliciesByDecisionPolicyId: ReadonlyMap<string, AnalysisDecisionPolicy>;
   clock: AnalysisClock;
   eventSequencer: RuntimeEventSequencer;
   eventWriter?: AnalysisEventWriter;

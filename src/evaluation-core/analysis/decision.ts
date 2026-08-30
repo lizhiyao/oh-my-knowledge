@@ -305,7 +305,7 @@ function prepareDecision(
     candidate.runtimeKind === 'decision-policy'
     && candidate.referenceId === policy.decisionPolicyId
   ));
-  const port = ports.decisionPolicies.get(policy.implementationId);
+  const port = ports.decisionPoliciesByDecisionPolicyId.get(policy.decisionPolicyId);
   if (runtime === undefined || port === undefined
       || canonicalizeJson(runtime.identity) !== canonicalizeJson(port.identity)) {
     configurationError(

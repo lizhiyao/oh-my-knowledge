@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEvaluationEngine,
+  digestCanonicalJson,
   type EvaluationEngineRuntime,
   type EvaluationEvent,
   type EvaluationRun,
@@ -135,18 +136,50 @@ async function createRuntime(): Promise<{
   };
   const plan = await (await import('../../../src/evaluation-core/compiler/index.js'))
     .prepareEvaluationPlan(definition, policy, { ...preparation, schemaValidators });
+  const executor = makeExecutor(plan);
+  const evaluator = makeEvaluator(plan);
+  const analysisNodes = createBuiltinAnalysisNodes();
+  const missingPolicies = createBuiltinMissingPolicies();
+  const decisionPolicies = createBuiltinDecisionPolicies();
   return {
     definition,
     policy,
     runtime: {
-      preparation,
-      executors: new Map([['executor-alias', makeExecutor(plan)]]),
-      evaluators: new Map([['exact/v1', makeEvaluator(plan)]]),
+      bindings: {
+        resolveExecutor() {
+          return {
+            runtimeKind: 'executor',
+            resolution: { identity: executor.identity, satisfiesVersionConstraint: true },
+            port: executor,
+          };
+        },
+        resolveEvaluator() {
+          return {
+            runtimeKind: 'evaluator',
+            resolution: { identity: evaluator.identity, satisfiesVersionConstraint: true },
+            port: evaluator,
+          };
+        },
+        resolveAnalysis(requirement) {
+          const resolution = resolveBuiltinAnalysisRuntime(requirement);
+          if (resolution === undefined) throw new Error('Missing built-in Analysis Runtime.');
+          if (requirement.requirementKind === 'missing-policy') {
+            const port = missingPolicies.get(requirement.implementationId);
+            if (port === undefined) throw new Error('Missing built-in MissingPolicy.');
+            return { runtimeKind: 'missing-policy', resolution, port };
+          }
+          if (requirement.requirementKind === 'decision-policy') {
+            const port = decisionPolicies.get(requirement.implementationId);
+            if (port === undefined) throw new Error('Missing built-in DecisionPolicy.');
+            return { runtimeKind: 'decision-policy', resolution, port };
+          }
+          const port = analysisNodes.get(requirement.implementationId);
+          if (port === undefined) throw new Error('Missing built-in Analysis node.');
+          return { runtimeKind: 'analysis-node', resolution, port };
+        },
+      },
       clock: new DeterministicClock(),
       schemaValidators,
-      analysisNodes: createBuiltinAnalysisNodes(),
-      missingPolicies: createBuiltinMissingPolicies(),
-      decisionPolicies: createBuiltinDecisionPolicies(),
     },
   };
 }
@@ -165,6 +198,244 @@ async function consume(run: {
 }
 
 describe('embedded Evaluation Engine', () => {
+  it('seals and runs distinct Target bindings that share one implementation', async () => {
+    const fixture = await createRuntime();
+    const opened: string[] = [];
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        async resolveExecutor(requirement) {
+          const base = await fixture.runtime.bindings.resolveExecutor(requirement);
+          const identity: RuntimeIdentity = {
+            ...structuredClone(base.port.identity),
+            fingerprint: digestCanonicalJson({
+              base: base.port.identity.fingerprint,
+              targetId: requirement.referenceId,
+            }),
+            implementationManifest: {
+              coverageKind: 'fingerprint-plus-facets',
+              facets: [{ facetId: 'target-binding', value: requirement.referenceId }],
+            },
+          };
+          const port: Executor = {
+            identity,
+            async openRun() {
+              opened.push(requirement.referenceId);
+              return {
+                async openTrial(context) {
+                  return {
+                    async execute() {
+                      const input = context.input as { answerHint?: string };
+                      return {
+                        output: {
+                          value: { answer: input.answerHint ?? 'A' },
+                          classification: 'public' as const,
+                        },
+                      };
+                    },
+                    dispose() {},
+                  };
+                },
+                dispose() {},
+              };
+            },
+          };
+          return {
+            runtimeKind: 'executor',
+            resolution: { identity, satisfiesVersionConstraint: true },
+            port,
+          };
+        },
+      },
+    };
+    const prepared = await createEvaluationEngine(runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    const identities = prepared.plan.execution.runtimes
+      .filter((entry) => entry.runtimeKind === 'executor')
+      .map((entry) => entry.identity);
+
+    expect(new Set(identities.map((identity) => identity.implementationId))).toEqual(
+      new Set(['actual-executor/v1']),
+    );
+    expect(new Set(identities.map((identity) => identity.fingerprint)).size).toBe(2);
+    expect((await prepared.start({ runId: 'embedded-distinct-target-bindings' }).result).status)
+      .toBe('completed');
+    expect(opened.sort()).toEqual(['control', 'treatment']);
+  });
+
+  it('rejects resolver and port split-brain before opening a Runtime resource', async () => {
+    const fixture = await createRuntime();
+    let opens = 0;
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        async resolveExecutor(requirement) {
+          const binding = await fixture.runtime.bindings.resolveExecutor(requirement);
+          return {
+            ...binding,
+            port: {
+              ...binding.port,
+              identity: {
+                ...binding.port.identity,
+                fingerprint: digestCanonicalJson({ drifted: requirement.referenceId }),
+              },
+              async openRun(context) {
+                opens += 1;
+                return binding.port.openRun(context);
+              },
+            },
+          };
+        },
+      },
+    };
+
+    await expect(createEvaluationEngine(runtime).prepare(fixture.definition, fixture.policy))
+      .rejects.toMatchObject({
+        code: 'EVAL_DEFINITION_RUNTIME_BINDING_INVALID',
+        stage: 'configuration',
+        preparationStage: 'runtime-resolution',
+      });
+    expect(opens).toBe(0);
+  });
+
+  it('captures prepared binding ports independently from later registry changes', async () => {
+    const fixture = await createRuntime();
+    const base = await fixture.runtime.bindings.resolveExecutor({
+      referenceId: 'control',
+      executorId: 'executor-alias',
+      versionConstraint: '^1.0.0',
+      protocolId: 'omk.invoke/v1',
+    });
+    const attempts: string[] = [];
+    const port = (source: string): Executor => ({
+      identity: base.port.identity,
+      async openRun() {
+        return {
+          async openTrial(context) {
+            return {
+              async execute() {
+                attempts.push(source);
+                const input = context.input as { answerHint?: string };
+                return {
+                  output: {
+                    value: { answer: input.answerHint ?? 'A', source },
+                    classification: 'public' as const,
+                  },
+                };
+              },
+              dispose() {},
+            };
+          },
+          dispose() {},
+        };
+      },
+    });
+    let current = port('prepared');
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        resolveExecutor() {
+          return {
+            runtimeKind: 'executor',
+            resolution: { identity: current.identity, satisfiesVersionConstraint: true },
+            port: current,
+          };
+        },
+      },
+    };
+    const prepared = await createEvaluationEngine(runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    current = port('replacement');
+    const result = await prepared.start({ runId: 'embedded-binding-snapshot' }).result;
+
+    expect(result.status).toBe('completed');
+    expect(attempts).toEqual(['prepared', 'prepared']);
+  });
+
+  it('isolates Evaluator sessions for multiple bindings of one implementation', async () => {
+    const fixture = await createRuntime();
+    delete fixture.policy.execution.timeoutMs;
+    delete fixture.policy.evaluation.timeoutMs;
+    fixture.definition.evaluators.push({
+      ...structuredClone(fixture.definition.evaluators[0]),
+      evaluatorId: 'exact-secondary',
+      measurement: {
+        instrumentId: 'exact-secondary-instrument',
+        ensembleMemberId: 'exact-secondary-member',
+        replicateGroupId: 'exact-secondary-group',
+        replicateIndex: 0,
+      },
+    });
+    const opened: string[] = [];
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        async resolveEvaluator(requirement) {
+          const base = await fixture.runtime.bindings.resolveEvaluator(requirement);
+          const identity: RuntimeIdentity = {
+            ...structuredClone(base.port.identity),
+            fingerprint: digestCanonicalJson({
+              base: base.port.identity.fingerprint,
+              evaluatorId: requirement.referenceId,
+            }),
+          };
+          const port: Evaluator = {
+            identity,
+            async openRun() {
+              opened.push(requirement.referenceId);
+              return {
+                async openRecord() {
+                  return {
+                    async evaluate() {
+                      return {
+                        observations: [{
+                          metricId: 'correct',
+                          observationStatus: 'observed' as const,
+                          valueType: 'boolean' as const,
+                          value: true,
+                        }],
+                      };
+                    },
+                    dispose() {},
+                  };
+                },
+                dispose() {},
+              };
+            },
+          };
+          return {
+            runtimeKind: 'evaluator',
+            resolution: { identity, satisfiesVersionConstraint: true },
+            port,
+          };
+        },
+      },
+    };
+    const prepared = await createEvaluationEngine(runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    const identities = prepared.plan.evaluation.runtimes
+      .filter((entry) => entry.runtimeKind === 'evaluator')
+      .map((entry) => entry.identity);
+    const result = await prepared.start({ runId: 'embedded-evaluator-bindings' }).result;
+
+    expect(result.status).toBe('completed');
+    expect(new Set(identities.map((identity) => identity.implementationId))).toEqual(
+      new Set(['actual-evaluator/v1']),
+    );
+    expect(new Set(identities.map((identity) => identity.fingerprint)).size).toBe(2);
+    expect(opened.sort()).toEqual(['exact', 'exact-secondary']);
+  });
+
   it('enforces one Run invocation budget across Execution and Evaluation', async () => {
     const fixture = await createRuntime();
     fixture.policy.budget.run.maxInvocations = 3;
@@ -217,15 +488,27 @@ describe('embedded Evaluation Engine', () => {
     const fixture = await createRuntime();
     const definition = structuredClone(fixture.definition);
     definition.targets[0].executorId = 'missing-executor';
-    const result = await createEvaluationEngine(fixture.runtime).start(definition, {
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        resolveExecutor(requirement) {
+          if (requirement.executorId === 'missing-executor') {
+            throw new Error('missing executor binding');
+          }
+          return fixture.runtime.bindings.resolveExecutor(requirement);
+        },
+      },
+    };
+    const result = await createEvaluationEngine(runtime).start(definition, {
       policy: fixture.policy,
       runId: 'embedded-invalid',
     }).result;
 
     expect(result.status).toBe('failed');
     if (result.status !== 'failed') throw new Error('Expected a failed result.');
-    expect(result.error.stage).toBe('configuration');
-    expect(result.error.code).toBe('EXECUTION_RUNTIME_EXECUTOR_MISSING');
+    expect(result.error.stage).toBe('infrastructure');
+    expect(result.error.code).toBe('EVAL_DEFINITION_RUNTIME_RESOLUTION_FAILED');
     expect(result.report).toBeUndefined();
   });
 
@@ -323,9 +606,15 @@ describe('embedded Evaluation Engine', () => {
     }))).result.status).toBe('completed');
   });
 
-  it('preserves completed upstream evidence when a later stage cannot start', async () => {
+  it('fails binding resolution before any stage starts', async () => {
     const fixture = await createRuntime();
-    const runtime = { ...fixture.runtime, evaluators: new Map() };
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        resolveEvaluator() { throw new Error('missing evaluator binding'); },
+      },
+    };
     const result = await createEvaluationEngine(runtime).start(fixture.definition, {
       policy: fixture.policy,
       runId: 'embedded-partial-failure',
@@ -333,9 +622,8 @@ describe('embedded Evaluation Engine', () => {
 
     expect(result.status).toBe('failed');
     if (result.status !== 'failed') throw new Error('Expected a failed result.');
-    expect(result.error.code).toBe('EVALUATION_RUNTIME_EVALUATOR_MISSING');
-    expect(result.artifacts?.execution?.executionBundleStatus).toBe('completed');
-    expect(result.artifacts?.evaluation).toBeUndefined();
+    expect(result.error.code).toBe('EVAL_DEFINITION_RUNTIME_RESOLUTION_FAILED');
+    expect(result.artifacts).toBeUndefined();
     expect(result.report).toBeUndefined();
   });
 

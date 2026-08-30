@@ -255,7 +255,7 @@ function prepareRuntime(
   }
 
   const expectedRuntimes = resolvedRuntimeByTarget(plan);
-  const executorLimits = new Map<string, number>();
+  const executorLimits = new Map<ExecutionExecutor, number>();
   const partialBindings: Array<{
     target: SealedRunPlan['execution']['targets'][number];
     executor: ExecutionExecutor;
@@ -263,11 +263,11 @@ function prepareRuntime(
     protocol: ProtocolManifest;
   }> = [];
   for (const target of plan.execution.targets) {
-    const executor = ports.executors.get(target.executorId);
+    const executor = ports.executorsByTargetId.get(target.targetId);
     if (executor === undefined) {
       configurationError(
         'EXECUTION_RUNTIME_EXECUTOR_MISSING',
-        `No Executor is registered for ${target.executorId}.`,
+        `No Executor binding is registered for Target ${target.targetId}.`,
       );
     }
     const expectedRuntime = expectedRuntimes.get(target.targetId);
@@ -298,20 +298,20 @@ function prepareRuntime(
       ? 1
       : (protocol.execution.concurrency.maxInFlight
         ?? plan.execution.policy.execution.maxConcurrency);
-    const currentLimit = executorLimits.get(target.executorId);
+    const currentLimit = executorLimits.get(executor);
     executorLimits.set(
-      target.executorId,
+      executor,
       currentLimit === undefined ? capabilityLimit : Math.min(currentLimit, capabilityLimit),
     );
     partialBindings.push({ target, executor, runtime: expectedRuntime, protocol });
   }
   const semaphores = new Map(
-    [...executorLimits].map(([executorId, limit]) => [executorId, new Semaphore(limit)]),
+    [...executorLimits].map(([executor, limit]) => [executor, new Semaphore(limit)]),
   );
   return {
     bindings: new Map(partialBindings.map((binding) => [binding.target.targetId, {
       ...binding,
-      semaphore: semaphores.get(binding.target.executorId) as Semaphore,
+      semaphore: semaphores.get(binding.executor) as Semaphore,
     }])),
     globalSemaphore: new Semaphore(plan.execution.policy.execution.maxConcurrency),
   };
@@ -363,15 +363,15 @@ class RunSessions {
     this.#options = options;
   }
 
-  get(executorId: string, executor: ExecutionExecutor): Promise<ExecutionExecutorRun> {
-    const current = this.#sessions.get(executorId);
+  get(targetId: string, executor: ExecutionExecutor): Promise<ExecutionExecutorRun> {
+    const current = this.#sessions.get(targetId);
     if (current !== undefined) return current;
     const context = deepFreeze(snapshotJson({
       runId: this.#options.runId,
       executionPlanDigest: this.#plan.execution.executionPlanDigest as Sha256Digest,
     }));
     const session = Promise.resolve(executor.openRun(context));
-    this.#sessions.set(executorId, session);
+    this.#sessions.set(targetId, session);
     return session;
   }
 
@@ -712,7 +712,7 @@ async function executeCoordinate(
       },
     );
     if (!trialEventDelivered || runSignal.aborted) return { failed: false };
-    const runSession = await sessions.get(binding.target.executorId, binding.executor);
+    const runSession = await sessions.get(binding.target.targetId, binding.executor);
     trial = await runSession.openTrial(trialContext(plan, binding, coordinate.coordinate));
     const retryPolicy = plan.execution.policy.retry;
     for (let attemptNumber = 1; attemptNumber <= retryPolicy.maxAttempts; attemptNumber += 1) {

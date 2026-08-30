@@ -7,11 +7,7 @@ The embedded API is ESM-only and requires Node.js 22 or newer:
 ```ts
 import {
   createEvaluationEngine,
-  createBuiltinAnalysisNodes,
   createBuiltinAnalysisSchemaValidators,
-  createBuiltinDecisionPolicies,
-  createBuiltinMissingPolicies,
-  resolveBuiltinAnalysisRuntime,
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type MeasurementPolicy,
@@ -32,31 +28,32 @@ An engine receives implementations and infrastructure ports. Functions stay in m
 
 ```ts
 const runtime: EvaluationEngineRuntime = {
-  preparation: {
-    resolveExecutor(requirement) {
-      return executorRegistry.resolve(requirement);
+  bindings: {
+    async resolveExecutor(requirement) {
+      const { port, satisfiesVersionConstraint } = await executorRegistry.bind(requirement);
+      return {
+        runtimeKind: 'executor',
+        resolution: { identity: port.identity, satisfiesVersionConstraint },
+        port,
+      };
     },
-    resolveEvaluator(requirement) {
-      return evaluatorRegistry.resolve(requirement);
+    async resolveEvaluator(requirement) {
+      const { port, satisfiesVersionConstraint } = await evaluatorRegistry.bind(requirement);
+      return {
+        runtimeKind: 'evaluator',
+        resolution: { identity: port.identity, satisfiesVersionConstraint },
+        port,
+      };
     },
     resolveAnalysis(requirement) {
-      return resolveBuiltinAnalysisRuntime(requirement)
-        ?? analysisRegistry.resolve(requirement);
+      return analysisRegistry.bind(requirement);
     },
   },
-  executors,
-  evaluators,
   clock,
   schemaValidators: new Map([
     ...createBuiltinAnalysisSchemaValidators(),
     ...hostSchemaValidators,
   ]),
-  analysisNodes: new Map([
-    ...createBuiltinAnalysisNodes(),
-    ...hostAnalysisNodes,
-  ]),
-  missingPolicies: createBuiltinMissingPolicies(),
-  decisionPolicies: createBuiltinDecisionPolicies(),
   executionCache,
   evaluationCache,
   executionContentStore,
@@ -67,7 +64,9 @@ const runtime: EvaluationEngineRuntime = {
 const engine = createEvaluationEngine(runtime);
 ```
 
-The preparation resolvers attest that a runtime identity and its capabilities satisfy the requested implementation and version constraint. The implementation registered in `executors`, `evaluators`, or the Analysis registries must expose the same identity sealed by preparation. This keeps fingerprints, capabilities, and actual code from silently diverging.
+Each binding resolver returns the resolution and the configured port together. OMK verifies that their Runtime identities are identical, captures the port under the Definition's stable reference ID, and uses that same captured binding for every prepared run. Two Targets or Evaluators may therefore share an implementation ID while retaining different models, fingerprints, configurations, sessions, and cancellation boundaries. A resolver/port split-brain fails during preparation before any runtime resource opens.
+
+This is a breaking embedded-API correction. Hosts using the former `preparation` plus implementation-keyed `executors`, `evaluators`, and Analysis maps must move assembly into `bindings`. Low-level stage ports are now named `executorsByTargetId`, `evaluatorsByEvaluatorId`, `analysisNodesByNodeId`, `missingPoliciesByPolicyId`, and `decisionPoliciesByDecisionPolicyId`; no legacy adapter is provided.
 
 The host owns long-lived registries, clients, caches, and stores. Each executor, evaluator, or Analysis implementation opens run-scoped resources and OMK disposes those resources at the matching stage boundary. Starting or cancelling one run never disposes another run's resources.
 
@@ -94,7 +93,7 @@ await collecting;
 
 `runId` is host-assigned and required. It must be unique among active runs on the same engine instance because OMK derives Event, Bundle, and Report identifiers deterministically from it. A concurrent duplicate ends immediately with `EVALUATION_ENGINE_RUN_ID_ACTIVE`; the identifier can be reused after the original run reaches any terminal state. Definitions, samples, policies, runtime identities, seeds, and fingerprints are sealed into the resulting evidence chain.
 
-Use `await engine.prepare(definition, policy)` when the host wants configuration and capability validation before scheduling. The returned `PreparedEvaluation` contains an opaque `SealedRunPlan` capability and can start multiple isolated runs with the same immutable plan.
+Use `await engine.prepare(definition, policy)` when the host wants configuration and capability validation before scheduling. The returned `PreparedEvaluation` contains an opaque `SealedRunPlan` capability and the captured binding snapshot, and can start multiple isolated runs with the same immutable plan and ports.
 
 ## Results and errors
 

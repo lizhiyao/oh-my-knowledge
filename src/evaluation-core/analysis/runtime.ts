@@ -143,7 +143,7 @@ function prepareRuntime(
   const nodeBindings = new Map<string, NodeBinding>();
   for (const node of plan.analysis.analysisGraph.nodes) {
     const runtime = runtimeByNodeId.get(node.nodeId);
-    const port = ports.analysisNodes.get(node.implementationId);
+    const port = ports.analysisNodesByNodeId.get(node.nodeId);
     const parsedCapabilities = runtime === undefined
       ? undefined
       : SchemaIdentitySchema.safeParse(
@@ -182,7 +182,7 @@ function prepareRuntime(
   const missingPolicies = new Map<string, AnalysisMissingPolicy>();
   for (const metric of plan.analysis.metrics) {
     const runtime = missingRuntimeById.get(metric.missingPolicyId);
-    const port = ports.missingPolicies.get(metric.missingPolicyId);
+    const port = ports.missingPoliciesByPolicyId.get(metric.missingPolicyId);
     if (runtime === undefined || port === undefined
         || canonicalizeJson(port.identity) !== canonicalizeJson(runtime.identity)) {
       configurationError(

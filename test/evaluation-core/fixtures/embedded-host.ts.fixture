@@ -17,8 +17,23 @@ declare const evaluator: Evaluator;
 
 const engine = createEvaluationEngine({
   ...runtime,
-  executors: new Map([['same-process', executor]]),
-  evaluators: new Map([['deterministic/v1', evaluator]]),
+  bindings: {
+    ...runtime.bindings,
+    resolveExecutor() {
+      return {
+        runtimeKind: 'executor',
+        resolution: { identity: executor.identity, satisfiesVersionConstraint: true },
+        port: executor,
+      };
+    },
+    resolveEvaluator() {
+      return {
+        runtimeKind: 'evaluator',
+        resolution: { identity: evaluator.identity, satisfiesVersionConstraint: true },
+        port: evaluator,
+      };
+    },
+  },
 });
 const run = engine.start(definition, { policy, runId: 'typescript-host' });
 
