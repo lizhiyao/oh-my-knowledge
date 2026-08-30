@@ -87,7 +87,10 @@ export interface CliEvaluationRequestValues {
     readonly executionConcurrency: number;
     readonly timeoutMs: number;
     readonly retryCount: number;
-    readonly cache: 'enabled' | 'disabled';
+    readonly cache: {
+      readonly executionMode: 'disabled';
+      readonly evaluationMode: 'disabled';
+    };
     readonly holdoutRatio?: number;
     readonly bootstrap: {
       readonly enabled: boolean;
@@ -239,6 +242,11 @@ export interface ResolvedEvaluationOrchestrationInput {
   };
   readonly diagnostic: 'enabled-outside-core' | 'disabled';
   readonly managedEvidence: 'append' | 'skip';
+  /** Effect locators used to assemble cache ports; never enter Core canonical JSON. */
+  readonly cacheSources?: {
+    readonly executionSourceLocator?: string;
+    readonly evaluationSourceLocator?: string;
+  };
   readonly gold?: {
     readonly resourceId: string;
     readonly comparisonMode: 'exploratory-post-hoc';
@@ -264,7 +272,10 @@ export interface ResolvedMeasurementPolicyInput {
   /** Infrastructure retries after the first attempt. */
   readonly retryCount: number;
   readonly retryableErrorCodes?: readonly string[];
-  readonly cache: 'disabled' | 'enabled';
+  readonly cache: {
+    readonly executionMode: MeasurementPolicy['cache']['executionMode'];
+    readonly evaluationMode: MeasurementPolicy['cache']['evaluationMode'];
+  };
   readonly budget?: {
     readonly totalProviderCostUSD?: number;
     readonly perCoordinateProviderCostUSD?: number;

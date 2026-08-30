@@ -307,7 +307,10 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       executionTimeoutMs: 120_000,
       evaluationTimeoutMs: 60_000,
       retryCount: 2,
-      cache: 'enabled',
+      cache: {
+        executionMode: 'disabled',
+        evaluationMode: 'disabled',
+      },
       budget: {
         totalProviderCostUSD: 10,
         perCoordinateProviderCostUSD: 1,

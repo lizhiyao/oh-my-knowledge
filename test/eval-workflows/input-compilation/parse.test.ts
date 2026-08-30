@@ -208,6 +208,7 @@ describe('parseCliEvaluationRequest', () => {
     ['fractional bootstrap samples', { bootstrapSamples: 100.5 }, 'bootstrapSamples'],
     ['non-finite budget', { budget: { totalUSD: Number.NaN } }, 'budget.totalUSD'],
     ['zero duration budget', { budget: { perSampleMs: 0 } }, 'budget.perSampleMs'],
+    ['non-boolean legacy cache toggle', { noCache: 'false' as unknown as boolean }, 'noCache'],
   ])('rejects invalid syntax-normalized eval config values: %s', (_name, override, fieldPath) => {
     expect(() => parseCliEvaluationRequest({
       explicitCliFlags: {},
@@ -234,5 +235,52 @@ describe('parseCliEvaluationRequest', () => {
       normalizedField: 'values.measurement.timeoutMs',
       sourceKind: 'documented-default',
     }));
+    expect(request.values.measurement.cache).toEqual({
+      executionMode: 'disabled',
+      evaluationMode: 'disabled',
+    });
+    expect(request.fieldSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        normalizedField: 'values.measurement.cache.executionMode',
+        sourceKind: 'documented-default',
+      }),
+      expect.objectContaining({
+        normalizedField: 'values.measurement.cache.evaluationMode',
+        sourceKind: 'documented-default',
+      }),
+    ]));
+  });
+
+  it('accepts legacy disable-only input without inferring a cache-enabled mode', () => {
+    const request = parseCliEvaluationRequest({
+      explicitCliFlags: {
+        control: 'control', treatment: 'treatment', 'no-cache': true,
+      },
+      defaults,
+    });
+
+    expect(request.values.measurement.cache).toEqual({
+      executionMode: 'disabled',
+      evaluationMode: 'disabled',
+    });
+    expect(request.fieldSources).toContainEqual({
+      normalizedField: 'values.measurement.cache.executionMode',
+      sourceKind: 'cli-flag',
+      sourceKey: 'no-cache',
+    });
+  });
+
+  it.each([
+    ['CLI', { explicitCliFlags: {
+      control: 'control', treatment: 'treatment', 'no-cache': false,
+    } }],
+    ['eval.yaml', { explicitCliFlags: {}, evalConfig: {
+      ...equivalentConfig, noCache: false,
+    } }],
+  ] as const)('rejects legacy cache enablement from %s', (_label, input) => {
+    expect(() => parseCliEvaluationRequest({ ...input, defaults }))
+      .toThrowError(expect.objectContaining({
+        code: 'CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED',
+      }));
   });
 });

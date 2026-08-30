@@ -79,6 +79,22 @@ The repetition hierarchy is explicit:
 
 For `--repeat > 1`, the orchestrator allocates a unique `seriesInstanceId` before resolution. Compilation binds that host-owned instance identity to the complete Series design—measurement design, repeat count, comparison scope, and minimum status—to derive Core's final `seriesId`. The compiler never invents identity from a clock or random source, and reusing an instance ID with a different design cannot alias the same Series.
 
+### 4.1 Cache and replay
+
+Fresh measurement is the default. The normalized policy always carries two independent fields:
+
+```yaml
+cache:
+  executionMode: disabled # disabled | replay-only | transparent-deterministic
+  evaluationMode: disabled # disabled | reuse
+```
+
+`executionMode` and `evaluationMode` enter their respective Core contract digests. A non-disabled mode also requires a stage-specific source locator in host-owned `orchestration.cacheSources`; the locator never enters Core canonical JSON. The Runtime adapter must assemble exactly that source into the corresponding cache port and must not substitute an environment-selected or global default.
+
+`replay-only` is a fail-closed read path. A missing, unavailable, corrupt, or identity-mismatched coordinate terminates the run and never falls back to a live Target call. Replayed records retain the original trial identity, Runtime identity, usage, cost, and provenance; they add neither a native invocation nor an independent replicate. Until Series has an explicit effective-independent-sample model, compilation rejects every non-disabled cache mode together with an independent Series repeat. It also rejects mixing cache reuse with resume in one request. `transparent-deterministic` is available only when Core prepare verifies deterministic execution and a verified Runtime identity. Evaluation `reuse` is independent and remains bound to the complete evaluation contract, including evaluator/model/prompt variant, replicate identity, Gold-facing inputs, metrics, and evidence policy.
+
+The names reserved for the final CLI cutover are `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` will use `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. Resolve maps the source inputs to `orchestration.cacheSources.executionSourceLocator` and `evaluationSourceLocator`. These are not live production flags yet: the legacy pipeline remains unchanged. In the migration-only parser, omitted cache input and legacy disable-only input both normalize to the fresh double-disabled policy; an explicit legacy cache-enable request fails instead of being guessed as transparent reuse.
+
 ## 5. Determinism and validation
 
 `parseCliEvaluationRequest()` is the pure normalization boundary for raw CLI/config inputs. The host passes only flags explicitly supplied by the user, an already syntax-validated `EvalConfig`, and any environment-selected defaults as explicit values with provenance. CLI and config candidates pass through the same canonical field validators before precedence is applied. Provenance is emitted only for a value that exists at this stage; later-derived values acquire provenance only when they are actually derived. Oclif-injected defaults must not be passed as explicit CLI values. Judge disablement is resolved before judge-model parsing, so an unused malformed judge source cannot fail a no-judge request.
@@ -90,6 +106,8 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 ## 6. Migration boundary
 
 This layer is additive. The production `omk eval` command continues to use `RunConfig → runEvaluation → executeEvaluationPipeline`; it does not double-run, shadow-run, persist Core Bundles, or change legacy reports. A later Runtime-adapter change may consume only the contracts emitted here and may not parse CLI inputs again.
+
+The legacy `--no-cache`／`noCache` boolean has no faithful Core equivalent: its enabled state meant stochastic read-through execution reuse and said nothing about Evaluation cache. The registry therefore marks it for replacement rather than mapping it to `transparent-deterministic` or `reuse`. The final cutover may remove the old cache files and behavior without a compatibility reader.
 
 ## 7. Exhaustive input registry
 
@@ -120,7 +138,7 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | CLI | `--layered-stats` | `presentation.layeredView` | 300 | `false` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--mcp-config` | `resources.mcpConfigLocator` | 300 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-cache` | `policy.cache` | 300 | `"enabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| CLI | `--no-cache` | `policy.cache.executionMode` | 300 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → --execution-cache-mode / --evaluation-cache-mode |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
@@ -162,7 +180,7 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | eval.yaml | `lengthDebias` | `definition.judges.lengthDebias` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `mcpConfig` | `resources.mcpConfigLocator` | 200 | — | Orchestration | none | `tool-mock-sandbox` | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `model` | `definition.targetRuntime.model` | 200 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
-| eval.yaml | `noCache` | `policy.cache` | 200 | `"enabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_INVALID`<br>retain |
+| eval.yaml | `noCache` | `policy.cache.executionMode` | 200 | `"disabled"` (documented) | MeasurementPolicy | execution | — | `CLI_INPUT_LEGACY_CACHE_ENABLE_UNSUPPORTED`<br>replace → cache.executionMode / cache.evaluationMode |
 | eval.yaml | `noDiagnostic` | `orchestration.diagnostic` | 200 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `noJudge` | `definition.judges.enabled` | 200 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | eval.yaml | `repeat` | `orchestration.independentSeries.repeatCount` | 200 | `1` (documented) | Orchestration | run | — | `CLI_INPUT_INVALID`<br>retain |

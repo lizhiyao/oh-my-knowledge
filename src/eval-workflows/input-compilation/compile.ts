@@ -236,11 +236,65 @@ function validateHostOptions(input: ResolvedCliEvaluationInput): void {
     fieldPath: 'presentation',
     message: 'EvaluationPresentationOptions 包含不合法的规范值。',
   });
-  if (!['enabled', 'disabled'].includes(input.policy.cache)) fail({
+  const cache = input.policy.cache;
+  if (cache === null || typeof cache !== 'object' || Array.isArray(cache)) fail({
     code: 'CLI_INPUT_INVALID',
     fieldPath: 'policy.cache',
-    message: 'cache policy 必须是 enabled 或 disabled。',
+    message: 'cache policy 必须分别声明 executionMode 与 evaluationMode。',
   });
+  if (!['disabled', 'replay-only', 'transparent-deterministic']
+    .includes(cache.executionMode)) fail({
+    code: 'CLI_INPUT_INVALID',
+    fieldPath: 'policy.cache.executionMode',
+    message: 'execution cache mode 不合法。',
+  });
+  if (!['disabled', 'reuse'].includes(cache.evaluationMode)) fail({
+    code: 'CLI_INPUT_INVALID',
+    fieldPath: 'policy.cache.evaluationMode',
+    message: 'evaluation cache mode 不合法。',
+  });
+  const cacheEnabled = cache.executionMode !== 'disabled'
+    || cache.evaluationMode !== 'disabled';
+  if (cacheEnabled
+      && (orchestration.independentSeries?.repeatCount ?? 1) > 1) fail({
+    code: 'CLI_INPUT_CACHE_SERIES_CONFLICT',
+    fieldPath: 'orchestration.independentSeries.repeatCount',
+    message: 'cache／replay fact 不得作为多个独立 Series member 重复计数。',
+  });
+  if (cacheEnabled && orchestration.resumeSourceLocator !== undefined) fail({
+    code: 'CLI_INPUT_RESUME_CACHE_CONFLICT',
+    fieldPath: 'orchestration.resumeSourceLocator',
+    message: 'resume 与 cache／replay 是不同事实复用流程，不得在同一请求中混用。',
+  });
+  const executionSource = orchestration.cacheSources?.executionSourceLocator;
+  const evaluationSource = orchestration.cacheSources?.evaluationSourceLocator;
+  const validateCacheSource = (
+    mode: string,
+    locator: string | undefined,
+    fieldPath: string,
+  ): void => {
+    if (mode !== 'disabled'
+        && (typeof locator !== 'string' || locator.trim() === '')) fail({
+      code: 'CLI_INPUT_CACHE_SOURCE_REQUIRED',
+      fieldPath,
+      message: `启用 cache／replay mode「${mode}」时必须声明显式 cache source。`,
+    });
+    if (mode === 'disabled' && locator !== undefined) fail({
+      code: 'CLI_INPUT_CACHE_SOURCE_UNUSED',
+      fieldPath,
+      message: 'cache mode 为 disabled 时不得声明 cache source。',
+    });
+  };
+  validateCacheSource(
+    cache.executionMode,
+    executionSource,
+    'orchestration.cacheSources.executionSourceLocator',
+  );
+  validateCacheSource(
+    cache.evaluationMode,
+    evaluationSource,
+    'orchestration.cacheSources.evaluationSourceLocator',
+  );
 }
 
 function allBehaviorDescriptors(behavior: ResolvedTargetBehavior): ResolvedResourceDescriptor[] {
@@ -697,9 +751,7 @@ function compilePolicy(input: ResolvedCliEvaluationInput): MeasurementPolicy {
       ...(policyInput.evaluationTimeoutMs === undefined ? {} : { timeoutMs: policyInput.evaluationTimeoutMs }),
       retry,
     },
-    cache: policyInput.cache === 'disabled'
-      ? { executionMode: 'disabled', evaluationMode: 'disabled' }
-      : { executionMode: 'transparent-deterministic', evaluationMode: 'reuse' },
+    cache: policyInput.cache,
     evidence: policyInput.evidence ?? {
       output: 'full',
       trace: 'reference',
@@ -939,6 +991,9 @@ export function compileCliEvaluationInput(
     preflight: resolvedInput.orchestration.preflight,
     diagnostic: resolvedInput.orchestration.diagnostic,
     managedEvidence: resolvedInput.orchestration.managedEvidence,
+    ...(resolvedInput.orchestration.cacheSources === undefined ? {} : {
+      cacheSources: resolvedInput.orchestration.cacheSources,
+    }),
     ...(resolvedInput.orchestration.gold === undefined ? {} : { gold: resolvedInput.orchestration.gold }),
     ...(series === undefined ? {} : { independentSeries: series }),
   })) as unknown as EvaluationOrchestrationOptions;

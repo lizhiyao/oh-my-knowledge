@@ -109,6 +109,14 @@ describe('Compiler digest invalidation boundaries', () => {
     expectStages(before, after, ['evaluation', 'analysis', 'decision', 'run']);
   });
 
+  it('invalidates Execution and downstream when execution cache mode changes', async () => {
+    const before = await compile();
+    const after = await compile(undefined, (policy) => {
+      policy.cache.executionMode = 'replay-only';
+    });
+    expectStages(before, after, ['execution', 'evaluation', 'analysis', 'decision', 'run']);
+  });
+
   it('binds Execution evidence capture and classification to Execution identity', async () => {
     const before = await compile();
     const after = await compile(undefined, (policy) => {
