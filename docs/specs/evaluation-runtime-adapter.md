@@ -56,6 +56,16 @@ Every entry records:
 
 Adapters combine `sessionIsolationKey` with Core's `runId` and `trialId`; it is not permission to pool state across runs or bindings.
 
+## Same-process Runtime adapter
+
+`createSameProcessExecutorAdapter()` and `createSameProcessEvaluatorAdapter()` are the reference bridge for binding-local in-process implementations. The host must supply an explicit `RuntimeIdentity` and every lifecycle callback; the adapter does not infer capabilities from the Definition or provide a scoring algorithm.
+
+At construction, the bridge validates and freezes the identity, captures the lease resolver and callback functions, and derives separate content-addressed isolation keys for each run and trial／evaluation record. Later mutation of a factory object therefore cannot change the executing implementation behind an already sealed identity. Duplicate active run and operation identities fail closed, and every disposal callback is invoked at most once even when callers race or retry cleanup.
+
+The Core attempt `AbortSignal`, trial seed, target／Evaluator configuration, verified binding lease, and optional result usage are forwarded without reinterpretation. Missing usage stays missing. The bridge has no timeout, retry, budget, cache, or cancellation race of its own; those remain exclusively owned by the sealed Core policy, and a cooperative implementation must settle its underlying operation after the forwarded signal aborts.
+
+Composition-root conformance uses implementations under the `test.*` namespace whose outputs are derived from their inputs and bindings. They exercise real Core prepare and run paths but are not exported or represented as production Executor／Evaluator algorithms.
+
 ## Resource requirements
 
 RuntimeBindingRequest records resource role and intended lease mode, not locators or content:
