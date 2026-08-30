@@ -97,6 +97,7 @@ export interface ClaudeCliRunState {
   readonly systemPromptBytes: number;
   readonly supportingFiles?: readonly { readonly path: string; readonly content: string }[];
   readonly mcpConfigFile?: string;
+  readonly mcpServers?: Readonly<Record<string, unknown>>;
   readonly mocks?: readonly Mock[];
   readonly mocksStrict: boolean;
   readonly classification: ExecutionContent['classification'];
@@ -109,6 +110,27 @@ export interface ClaudeCliTrialState {
   readonly prompt: string;
 }
 
+export interface ClaudeResourceProjectionProfile {
+  readonly adapterLabel: 'Claude CLI' | 'Claude SDK';
+  readonly errorPrefix: 'OMK_CLAUDE_CLI' | 'OMK_CLAUDE_SDK';
+  readonly mcpMockMode: 'synthetic-server' | 'hook-existing-tool';
+  readonly promptSchemaVersion: 'omk.claude-cli-prompt/v1' | 'omk.claude-sdk-prompt/v1';
+}
+
+export const CLAUDE_CLI_RESOURCE_PROFILE = Object.freeze({
+  adapterLabel: 'Claude CLI',
+  errorPrefix: 'OMK_CLAUDE_CLI',
+  mcpMockMode: 'synthetic-server',
+  promptSchemaVersion: 'omk.claude-cli-prompt/v1',
+}) satisfies ClaudeResourceProjectionProfile;
+
+export const CLAUDE_SDK_RESOURCE_PROFILE = Object.freeze({
+  adapterLabel: 'Claude SDK',
+  errorPrefix: 'OMK_CLAUDE_SDK',
+  mcpMockMode: 'hook-existing-tool',
+  promptSchemaVersion: 'omk.claude-sdk-prompt/v1',
+}) satisfies ClaudeResourceProjectionProfile;
+
 type KnowledgeArtifact =
   | { readonly artifactKind: 'file'; readonly instructions: string }
   | {
@@ -118,17 +140,22 @@ type KnowledgeArtifact =
       readonly files: readonly { readonly path: string; readonly content: string }[];
     };
 
-function fail(codeSuffix: string, message: string): never {
+function fail(
+  profile: ClaudeResourceProjectionProfile,
+  codeSuffix: string,
+  message: string,
+): never {
   throw new ExecutionPortFailure({
-    code: `OMK_CLAUDE_CLI_${codeSuffix}`,
+    code: `${profile.errorPrefix}_${codeSuffix}`,
     stage: 'infrastructure',
-    message: `Claude CLI ${message}`,
+    message: `${profile.adapterLabel} ${message}`,
   });
 }
 
 export function captureClaudeCliTarget(
   targetInput: EvaluationDefinition['targets'][number],
   bindingInput: RuntimeBindingOf<'executor'>,
+  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): CapturedClaudeCliTarget {
   const target = structuredClone(targetInput);
   const binding = structuredClone(bindingInput);
@@ -139,9 +166,9 @@ export function captureClaudeCliTarget(
     || canonicalizeJson(target.executionRequirements)
       !== canonicalizeJson(binding.qualification.executionRequirements)
     || digestCanonicalJson(target.config ?? null) !== binding.behaviorConfigDigest
-  ) throw new TypeError('Claude CLI Target and Runtime binding are inconsistent.');
+  ) throw new TypeError(`${profile.adapterLabel} Target and Runtime binding are inconsistent.`);
   if (target.protocolId !== 'omk.invoke/v1') {
-    throw new TypeError('Claude CLI Core adapter supports only omk.invoke/v1.');
+    throw new TypeError(`${profile.adapterLabel} Core adapter supports only omk.invoke/v1.`);
   }
   const config = ClaudeTargetConfigSchema.parse(target.config);
   const configuredDescriptors = [
@@ -151,7 +178,7 @@ export function captureClaudeCliTarget(
     ...(config.behavior.mocks ?? []).flatMap((mock) => mock.payloads),
   ];
   if (configuredDescriptors.some((descriptor) => descriptor.classification === 'gold')) {
-    throw new TypeError('Claude CLI Executor Target must not reference Gold resources.');
+    throw new TypeError(`${profile.adapterLabel} Executor Target must not reference Gold resources.`);
   }
   const expectedRequirements = new Map<string, {
     resourceId: string;
@@ -166,7 +193,7 @@ export function captureClaudeCliTarget(
     const next = { resourceId, resourceRole, leaseMode } as const;
     const existing = expectedRequirements.get(resourceId);
     if (existing !== undefined && canonicalizeJson(existing) !== canonicalizeJson(next)) {
-      throw new TypeError('Claude CLI Target assigns one resource to conflicting roles.');
+      throw new TypeError(`${profile.adapterLabel} Target assigns one resource to conflicting roles.`);
     }
     expectedRequirements.set(resourceId, next);
   };
@@ -193,34 +220,42 @@ export function captureClaudeCliTarget(
     left.resourceId < right.resourceId ? -1 : left.resourceId > right.resourceId ? 1 : 0
   ));
   if (canonicalizeJson(expectedRequirementList) !== canonicalizeJson(actualRequirementList)) {
-    throw new TypeError('Claude CLI Runtime binding has inconsistent resource requirements.');
+    throw new TypeError(`${profile.adapterLabel} Runtime binding has inconsistent resource requirements.`);
   }
   if (
     config.runtime.model !== binding.qualification.model
     || config.runtime.effort !== binding.qualification.effort
-  ) throw new TypeError('Claude CLI Runtime qualification does not match Target config.');
+  ) throw new TypeError(`${profile.adapterLabel} Runtime qualification does not match Target config.`);
   if ((config.behavior.allowedSkills?.length ?? 0) > 0) {
-    throw new TypeError('Claude CLI Core adapter cannot enforce a non-empty skill allow-list.');
+    throw new TypeError(`${profile.adapterLabel} Core adapter cannot enforce a non-empty skill allow-list.`);
   }
   if (config.behavior.sandbox !== undefined) {
-    throw new TypeError('Claude CLI Core adapter does not provide a verifiable sandbox.');
+    throw new TypeError(`${profile.adapterLabel} Core adapter does not provide a verifiable sandbox.`);
   }
   if (config.behavior.config !== undefined) {
-    throw new TypeError('Claude CLI Core adapter does not accept opaque provider config.');
+    throw new TypeError(`${profile.adapterLabel} Core adapter does not accept opaque provider config.`);
   }
   const mockBindings = config.behavior.mocks ?? [];
   if (new Set(mockBindings.map((mock) => mock.strict)).size > 1) {
-    throw new TypeError('Claude CLI mock bindings must use one strictness policy.');
+    throw new TypeError(`${profile.adapterLabel} mock bindings must use one strictness policy.`);
   }
   if (mockBindings.some((mock) => !ClaudeMockRulesSchema.safeParse(mock.matchRules).success)) {
-    throw new TypeError('Claude CLI mock matchRules do not satisfy the hook contract.');
+    throw new TypeError(`${profile.adapterLabel} mock matchRules do not satisfy the hook contract.`);
+  }
+  if (mockBindings.some((mock) => {
+    const rules = ClaudeMockRulesSchema.safeParse(mock.matchRules);
+    return rules.success
+      && rules.data.tool.startsWith('mcp__')
+      && mockMcpServerName(rules.data.tool) === undefined;
+  })) {
+    throw new TypeError(`${profile.adapterLabel} MCP mock tool names must identify one server and tool.`);
   }
   if (
     config.behavior.mcpConfig !== undefined
     && config.behavior.allowedTools !== undefined
   ) {
     throw new TypeError(
-      'Claude CLI cannot enforce one complete tool allow-list across built-in and dynamic MCP tools.',
+      `${profile.adapterLabel} cannot enforce one complete tool allow-list across built-in and dynamic MCP tools.`,
     );
   }
   if (
@@ -231,12 +266,21 @@ export function captureClaudeCliTarget(
     })
   ) {
     throw new TypeError(
-      'Claude CLI cannot combine a built-in tool allow-list with MCP tool mocks.',
+      `${profile.adapterLabel} cannot combine a built-in tool allow-list with MCP tool mocks.`,
     );
   }
   if (config.behavior.allowedTools !== undefined
       && new Set(config.behavior.allowedTools).size !== config.behavior.allowedTools.length) {
-    throw new TypeError('Claude CLI built-in tool allow-list must not contain duplicates.');
+    throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain duplicates.`);
+  }
+  if (config.behavior.allowedTools?.some((tool) => tool.startsWith('mcp__'))) {
+    throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain MCP tools.`);
+  }
+  if (
+    config.behavior.allowedSkills !== undefined
+    && config.behavior.allowedTools?.includes('Skill')
+  ) {
+    throw new TypeError(`${profile.adapterLabel} disabled skills conflict with the Skill tool.`);
   }
   return deepFreezeCanonicalJson({ target, binding, config });
 }
@@ -248,46 +292,57 @@ function sameDescriptor(
   return canonicalizeJson(resource.descriptor) === canonicalizeJson(expected);
 }
 
-async function readTextFile(path: string, codeSuffix: string, subject: string): Promise<string> {
+async function readTextFile(
+  profile: ClaudeResourceProjectionProfile,
+  path: string,
+  codeSuffix: string,
+  subject: string,
+): Promise<string> {
   let bytes: Uint8Array;
   try {
     bytes = await readFile(path);
   } catch {
-    fail(codeSuffix, `${subject} is unavailable.`);
+    fail(profile, codeSuffix, `${subject} is unavailable.`);
   }
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    fail(codeSuffix, `${subject} contains non-UTF-8 content.`);
+    fail(profile, codeSuffix, `${subject} contains non-UTF-8 content.`);
   }
 }
 
-async function directoryFiles(current: string): Promise<readonly string[]> {
+async function directoryFiles(
+  profile: ClaudeResourceProjectionProfile,
+  current: string,
+): Promise<readonly string[]> {
   const { readdir } = await import('node:fs/promises');
   let entries: Dirent<string>[];
   try {
     entries = await readdir(current, { withFileTypes: true });
   } catch {
-    fail('ARTIFACT_INVALID', 'artifact directory is unavailable.');
+    fail(profile, 'ARTIFACT_INVALID', 'artifact directory is unavailable.');
   }
   const paths: string[] = [];
   for (const entry of entries.sort((left, right) => (
     left.name < right.name ? -1 : left.name > right.name ? 1 : 0
   ))) {
     const path = join(current, entry.name);
-    if (entry.isDirectory()) paths.push(...await directoryFiles(path));
+    if (entry.isDirectory()) paths.push(...await directoryFiles(profile, path));
     else if (entry.isFile()) paths.push(path);
-    else fail('ARTIFACT_INVALID', 'artifact snapshot contains an unsupported entry.');
+    else fail(profile, 'ARTIFACT_INVALID', 'artifact snapshot contains an unsupported entry.');
   }
   return paths;
 }
 
-async function projectArtifact(resource: OmkLeasedHostResource): Promise<KnowledgeArtifact | undefined> {
+async function projectArtifact(
+  profile: ClaudeResourceProjectionProfile,
+  resource: OmkLeasedHostResource,
+): Promise<KnowledgeArtifact | undefined> {
   if (resource.leaseMode !== 'immutable-snapshot' || resource.resourceKind !== 'artifact') {
-    fail('ARTIFACT_INVALID', 'artifact must be an immutable artifact snapshot.');
+    fail(profile, 'ARTIFACT_INVALID', 'artifact must be an immutable artifact snapshot.');
   }
   if (resource.snapshotKind === 'file') {
-    const text = await readTextFile(resource.snapshotPath, 'ARTIFACT_INVALID', 'artifact');
+    const text = await readTextFile(profile, resource.snapshotPath, 'ARTIFACT_INVALID', 'artifact');
     if (resource.descriptor.mediaType === 'application/json') {
       try {
         const parsed = JsonValueSchema.parse(JSON.parse(text) as unknown);
@@ -300,22 +355,22 @@ async function projectArtifact(resource: OmkLeasedHostResource): Promise<Knowled
         const instructions = canonicalizeJson(parsed);
         return instructions === '' ? undefined : { artifactKind: 'file', instructions };
       } catch {
-        fail('ARTIFACT_INVALID', 'JSON artifact is invalid.');
+        fail(profile, 'ARTIFACT_INVALID', 'JSON artifact is invalid.');
       }
     }
     return text === '' ? undefined : { artifactKind: 'file', instructions: text };
   }
-  const files = await directoryFiles(resource.snapshotPath);
+  const files = await directoryFiles(profile, resource.snapshotPath);
   if (files.length === 0) return undefined;
   const sections = (await Promise.all(files.map(async (path) => ({
     path: relative(resource.snapshotPath, path).replaceAll('\\', '/'),
-    content: await readTextFile(path, 'ARTIFACT_INVALID', 'artifact'),
+    content: await readTextFile(profile, path, 'ARTIFACT_INVALID', 'artifact'),
   })))).sort((left, right) => (
     left.path < right.path ? -1 : left.path > right.path ? 1 : 0
   ));
   const entrypoint = sections.find((section) => section.path === 'SKILL.md');
   if (entrypoint === undefined) {
-    fail('ARTIFACT_INVALID', 'directory artifact must contain a root SKILL.md entrypoint.');
+    fail(profile, 'ARTIFACT_INVALID', 'directory artifact must contain a root SKILL.md entrypoint.');
   }
   return {
     artifactKind: 'directory',
@@ -337,30 +392,46 @@ function maxClassification(
 }
 
 async function validateMcpConfig(
+  profile: ClaudeResourceProjectionProfile,
   resource: OmkLeasedHostResource,
   expected: z.infer<typeof DescriptorSchema>,
-): Promise<{ readonly path: string; readonly serverNames: readonly string[] }> {
+): Promise<{
+  readonly path: string;
+  readonly serverNames: readonly string[];
+  readonly servers: Readonly<Record<string, unknown>>;
+}> {
   if (
     resource.resourceKind !== 'mcp-config'
     || resource.leaseMode !== 'immutable-snapshot'
     || resource.snapshotKind !== 'file'
     || !sameDescriptor(resource, expected)
-  ) fail('MCP_CONFIG_INVALID', 'MCP config lease does not match the sealed Target.');
-  const text = await readTextFile(resource.snapshotPath, 'MCP_CONFIG_INVALID', 'MCP config');
+  ) fail(profile, 'MCP_CONFIG_INVALID', 'MCP config lease does not match the sealed Target.');
+  const text = await readTextFile(
+    profile,
+    resource.snapshotPath,
+    'MCP_CONFIG_INVALID',
+    'MCP config',
+  );
   try {
     const value: unknown = JSON.parse(text);
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error();
-    const servers = (value as Record<string, unknown>).mcpServers;
-    if (servers !== undefined
-        && (servers === null || typeof servers !== 'object' || Array.isArray(servers))) {
+    if (
+      profile.mcpMockMode === 'hook-existing-tool'
+      && Object.keys(value).some((key) => key !== 'mcpServers')
+    ) throw new Error();
+    const rawServers = (value as Record<string, unknown>).mcpServers;
+    if (rawServers !== undefined
+        && (rawServers === null || typeof rawServers !== 'object' || Array.isArray(rawServers))) {
       throw new Error();
     }
+    const servers = structuredClone((rawServers ?? {}) as Record<string, unknown>);
     return {
       path: resource.snapshotPath,
-      serverNames: Object.freeze(Object.keys(servers ?? {}).sort()),
+      serverNames: Object.freeze(Object.keys(servers).sort()),
+      servers: Object.freeze(servers),
     };
   } catch {
-    fail('MCP_CONFIG_INVALID', 'MCP config is not a JSON object.');
+    fail(profile, 'MCP_CONFIG_INVALID', 'MCP config is not a JSON object.');
   }
 }
 
@@ -373,33 +444,42 @@ function mockMcpServerName(tool: string): string | undefined {
     : rest.slice(0, separator);
 }
 
-function mockReturn(value: unknown): MockReturn {
+function mockReturn(profile: ClaudeResourceProjectionProfile, value: unknown): MockReturn {
   if (typeof value === 'string') return value;
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return value as MockReturn;
   }
-  fail('MOCK_PAYLOAD_INVALID', 'mock payload must be a string or JSON object.');
+  fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload must be a string or JSON object.');
 }
 
-async function readMockPayload(resource: OmkLeasedHostResource): Promise<MockReturn> {
+async function readMockPayload(
+  profile: ClaudeResourceProjectionProfile,
+  resource: OmkLeasedHostResource,
+): Promise<MockReturn> {
   if (
     resource.resourceKind !== 'mock-payload'
     || resource.leaseMode !== 'immutable-snapshot'
     || resource.snapshotKind !== 'file'
-  ) fail('MOCK_PAYLOAD_INVALID', 'mock payload must be an immutable file snapshot.');
-  const text = await readTextFile(resource.snapshotPath, 'MOCK_PAYLOAD_INVALID', 'mock payload');
+  ) fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload must be an immutable file snapshot.');
+  const text = await readTextFile(
+    profile,
+    resource.snapshotPath,
+    'MOCK_PAYLOAD_INVALID',
+    'mock payload',
+  );
   if (resource.descriptor.mediaType === 'application/json') {
     try {
-      return mockReturn(JSON.parse(text) as unknown);
+      return mockReturn(profile, JSON.parse(text) as unknown);
     } catch (error) {
       if (error instanceof ExecutionPortFailure) throw error;
-      fail('MOCK_PAYLOAD_INVALID', 'mock payload contains invalid JSON.');
+      fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload contains invalid JSON.');
     }
   }
   return text;
 }
 
 async function projectMocks(
+  profile: ClaudeResourceProjectionProfile,
   lease: OmkBindingResourceLease,
   config: ClaudeCliTargetConfig,
 ): Promise<{
@@ -411,14 +491,14 @@ async function projectMocks(
   if (bindings.length === 0) return { strict: false, mcpServerNames: [] };
   const strictValues = new Set(bindings.map((binding) => binding.strict));
   if (strictValues.size !== 1) {
-    fail('MOCK_CONFIG_INVALID', 'mock bindings must agree on one strictness policy.');
+    fail(profile, 'MOCK_CONFIG_INVALID', 'mock bindings must agree on one strictness policy.');
   }
   const mocks: Mock[] = [];
   const mcpServerNames = new Set<string>();
   for (const binding of bindings) {
     const rules = ClaudeMockRulesSchema.safeParse(binding.matchRules);
     if (!rules.success) {
-      fail('MOCK_CONFIG_INVALID', 'mock matchRules do not satisfy the Claude hook contract.');
+      fail(profile, 'MOCK_CONFIG_INVALID', 'mock matchRules do not satisfy the Claude hook contract.');
     }
     const returns: MockReturn[] = [];
     const mcpServerName = mockMcpServerName(rules.data.tool);
@@ -426,9 +506,9 @@ async function projectMocks(
     for (const descriptor of binding.payloads) {
       const resource = lease.resourcesByResourceId.get(descriptor.resourceId);
       if (resource === undefined || !sameDescriptor(resource, descriptor)) {
-        fail('MOCK_PAYLOAD_INVALID', 'mock payload lease does not match the sealed Target.');
+        fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload lease does not match the sealed Target.');
       }
-      returns.push(await readMockPayload(resource));
+      returns.push(await readMockPayload(profile, resource));
     }
     const mock: Mock = {
       tool: rules.data.tool,
@@ -461,20 +541,21 @@ export async function captureClaudeCliRunState(
   lease: OmkBindingResourceLease,
   target: CapturedClaudeCliTarget,
   maxInputBytes: number,
+  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): Promise<ClaudeCliRunState> {
   if (lease.consumerKind !== 'executor' || lease.bindingId !== target.binding.bindingId) {
-    fail('RESOURCE_FORBIDDEN', 'received a resource lease for another consumer.');
+    fail(profile, 'RESOURCE_FORBIDDEN', 'received a resource lease for another consumer.');
   }
   const entries = [...lease.resourcesByResourceId.entries()];
   if (entries.some(([resourceId, resource]) => (
     resourceId !== resource.resourceId || resource.resourceId !== resource.descriptor.resourceId
-  ))) fail('RESOURCE_INVALID', 'resource lease identity is inconsistent.');
+  ))) fail(profile, 'RESOURCE_INVALID', 'resource lease identity is inconsistent.');
   const resources = entries.map(([, resource]) => resource);
   let projectedInputBytes = 0;
   for (const resource of resources) {
     if (resource.resourceKind === 'workspace') continue;
     if (resource.descriptor.size > maxInputBytes - projectedInputBytes) {
-      fail('INPUT_LIMIT_EXCEEDED', 'leased control resources exceed the adapter input limit.');
+      fail(profile, 'INPUT_LIMIT_EXCEEDED', 'leased control resources exceed the adapter input limit.');
     }
     projectedInputBytes += resource.descriptor.size;
   }
@@ -483,38 +564,45 @@ export async function captureClaudeCliRunState(
     .sort();
   const actualIds = [...lease.resourcesByResourceId.keys()].sort();
   if (canonicalizeJson(actualIds) !== canonicalizeJson(expectedIds)) {
-    fail('RESOURCE_INVALID', 'resource lease coverage does not match the sealed binding.');
+    fail(profile, 'RESOURCE_INVALID', 'resource lease coverage does not match the sealed binding.');
   }
   if (resources.some((resource) => (
     resource.resourceKind === 'gold-dataset' || resource.descriptor.classification === 'gold'
-  ))) fail('RESOURCE_FORBIDDEN', 'Executor received an analysis-only resource.');
+  ))) fail(profile, 'RESOURCE_FORBIDDEN', 'Executor received an analysis-only resource.');
   const artifact = lease.resourcesByResourceId.get(target.config.behavior.artifact.resourceId);
   if (artifact === undefined || !sameDescriptor(artifact, target.config.behavior.artifact)) {
-    fail('ARTIFACT_INVALID', 'artifact lease does not match the sealed Target.');
+    fail(profile, 'ARTIFACT_INVALID', 'artifact lease does not match the sealed Target.');
   }
-  const projectedArtifact = await projectArtifact(artifact);
+  const projectedArtifact = await projectArtifact(profile, artifact);
   const requiresInstructions = target.target.executionRequirements.systemInstructions === 'required';
   if (requiresInstructions && projectedArtifact?.instructions.trim() === '') {
-    fail('ARTIFACT_INVALID', 'Target requires non-empty artifact instructions.');
+    fail(profile, 'ARTIFACT_INVALID', 'Target requires non-empty artifact instructions.');
   }
   if (requiresInstructions && projectedArtifact === undefined) {
-    fail('ARTIFACT_INVALID', 'Target requires non-empty artifact instructions.');
+    fail(profile, 'ARTIFACT_INVALID', 'Target requires non-empty artifact instructions.');
   }
   if (!requiresInstructions && projectedArtifact !== undefined) {
-    fail('ARTIFACT_INVALID', 'Target forbids system instructions but has a non-empty artifact.');
+    fail(profile, 'ARTIFACT_INVALID', 'Target forbids system instructions but has a non-empty artifact.');
   }
   const mcpDescriptor = target.config.behavior.mcpConfig;
   const mcpConfig = mcpDescriptor === undefined
     ? undefined
     : await validateMcpConfig(
+        profile,
         lease.resourcesByResourceId.get(mcpDescriptor.resourceId)
-          ?? fail('MCP_CONFIG_INVALID', 'MCP config resource is missing.'),
+          ?? fail(profile, 'MCP_CONFIG_INVALID', 'MCP config resource is missing.'),
         mcpDescriptor,
       );
-  const mockProjection = await projectMocks(lease, target.config);
-  if (mcpConfig !== undefined && mockProjection.mcpServerNames.some((serverName) => (
-    mcpConfig.serverNames.includes(serverName)
-  ))) fail('MCP_CONFIG_INVALID', 'MCP config and mock controls define the same server name.');
+  const mockProjection = await projectMocks(profile, lease, target.config);
+  if (profile.mcpMockMode === 'synthetic-server') {
+    if (mcpConfig !== undefined && mockProjection.mcpServerNames.some((serverName) => (
+      mcpConfig.serverNames.includes(serverName)
+    ))) fail(profile, 'MCP_CONFIG_INVALID', 'MCP config and mock controls define the same server name.');
+  } else if (mockProjection.mcpServerNames.some((serverName) => (
+    mcpConfig === undefined || !mcpConfig.serverNames.includes(serverName)
+  ))) {
+    fail(profile, 'MCP_CONFIG_INVALID', 'SDK MCP mocks require the matching sealed MCP server config.');
+  }
   let workingDirectory: string | undefined;
   let privateWorkingDirectory = false;
   try {
@@ -528,14 +616,14 @@ export async function captureClaudeCliRunState(
         workspace?.resourceKind !== 'workspace'
         || workspace.leaseMode !== 'copy-on-write-overlay'
         || !sameDescriptor(workspace, workspaceDescriptor)
-      ) fail('WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
+      ) fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
       workingDirectory = workspace.overlayPath;
     }
     let systemPromptBytes = 0;
     if (requiresInstructions && projectedArtifact !== undefined) {
       systemPromptBytes = Buffer.byteLength(projectedArtifact.instructions);
       if (systemPromptBytes > maxInputBytes) {
-        fail('INPUT_LIMIT_EXCEEDED', 'system instructions exceed the adapter input limit.');
+        fail(profile, 'INPUT_LIMIT_EXCEEDED', 'system instructions exceed the adapter input limit.');
       }
     }
     let activeTrials = 0;
@@ -548,7 +636,7 @@ export async function captureClaudeCliRunState(
           rm(path, { recursive: true, force: true })
         )));
         if (results.some((result) => result.status === 'rejected')) {
-          fail('RUN_DISPOSE_FAILED', 'run-owned directories could not be disposed.');
+          fail(profile, 'RUN_DISPOSE_FAILED', 'run-owned directories could not be disposed.');
         }
       })();
       return disposeResult;
@@ -565,15 +653,18 @@ export async function captureClaudeCliRunState(
           : { supportingFiles: projectedArtifact.files }
       ),
       ...(mcpConfig === undefined ? {} : { mcpConfigFile: mcpConfig.path }),
+      ...(mcpConfig === undefined ? {} : { mcpServers: mcpConfig.servers }),
       ...(mockProjection.mocks === undefined ? {} : { mocks: mockProjection.mocks }),
       mocksStrict: mockProjection.strict,
       classification: maxClassification(resources),
       acquireTrial() {
-        if (disposeRequested) fail('RUN_DISPOSED', 'run is disposing.');
+        if (disposeRequested) fail(profile, 'RUN_DISPOSED', 'run is disposing.');
         activeTrials += 1;
       },
       async releaseTrial() {
-        if (activeTrials <= 0) fail('TRIAL_LIFECYCLE_INVALID', 'trial lifecycle is inconsistent.');
+        if (activeTrials <= 0) {
+          fail(profile, 'TRIAL_LIFECYCLE_INVALID', 'trial lifecycle is inconsistent.');
+        }
         activeTrials -= 1;
         if (disposeRequested && activeTrials === 0) await startDispose();
       },
@@ -590,10 +681,10 @@ export async function captureClaudeCliRunState(
       paths.map((path) => rm(path, { recursive: true, force: true })),
     );
     if (cleanup.some((result) => result.status === 'rejected')) {
-      fail('RUN_DISPOSE_FAILED', 'partially materialized run state could not be disposed.');
+      fail(profile, 'RUN_DISPOSE_FAILED', 'partially materialized run state could not be disposed.');
     }
     if (error instanceof ExecutionPortFailure) throw error;
-    fail('RUN_MATERIALIZATION_FAILED', 'run state could not be materialized.');
+    fail(profile, 'RUN_MATERIALIZATION_FAILED', 'run state could not be materialized.');
   }
 }
 
@@ -601,9 +692,10 @@ export function openClaudeCliTrial(
   trial: Readonly<ExecutorTrialContext>,
   runState: ClaudeCliRunState,
   maxInputBytes: number,
+  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): ClaudeCliTrialState {
   const envelope = {
-    schemaVersion: 'omk.claude-cli-prompt/v1',
+    schemaVersion: profile.promptSchemaVersion,
     ...(runState.supportingFiles === undefined
       ? {}
       : {
@@ -620,24 +712,28 @@ export function openClaudeCliTrial(
     + 'when the system instructions or task call for them. Then perform the task. '
     + `The input envelope is canonical JSON:\n${canonicalizeJson(envelope)}`;
   if (Buffer.byteLength(prompt) + runState.systemPromptBytes > maxInputBytes) {
-    fail('INPUT_LIMIT_EXCEEDED', 'prompt exceeds the adapter input limit.');
+    fail(profile, 'INPUT_LIMIT_EXCEEDED', 'prompt exceeds the adapter input limit.');
   }
   return Object.freeze({ prompt });
 }
 
 export async function disposeClaudeCliTrial(
   runState: ClaudeCliRunState,
+  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): Promise<void> {
   try {
     await runState.releaseTrial();
   } catch {
-    fail('TRIAL_DISPOSE_FAILED', 'trial state could not be released.');
+    fail(profile, 'TRIAL_DISPOSE_FAILED', 'trial state could not be released.');
   }
 }
 
-export async function disposeClaudeCliMockHandle(handle: CliMockHandle): Promise<void> {
+export async function disposeClaudeCliMockHandle(
+  handle: CliMockHandle,
+  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
+): Promise<void> {
   handle.cleanup();
   if (!(await pathAbsent(handle.rootDir))) {
-    fail('ATTEMPT_DISPOSE_FAILED', 'mock materialization could not be disposed.');
+    fail(profile, 'ATTEMPT_DISPOSE_FAILED', 'mock materialization could not be disposed.');
   }
 }

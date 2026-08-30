@@ -54,9 +54,23 @@ const CLAUDE_SCHEMA_DESCRIPTORS = {
   },
 } as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
 
-function fail(message: string, usage?: UsageRecord): never {
+export interface ClaudeMessageProtocolProfile {
+  readonly adapterLabel: string;
+  readonly errorCode: string;
+}
+
+const CLAUDE_CLI_MESSAGE_PROFILE = Object.freeze({
+  adapterLabel: 'Claude CLI',
+  errorCode: 'OMK_CLAUDE_CLI_PROTOCOL_INVALID',
+}) satisfies ClaudeMessageProtocolProfile;
+
+function fail(
+  profile: ClaudeMessageProtocolProfile,
+  message: string,
+  usage?: UsageRecord,
+): never {
   throw new ExecutionPortFailure({
-    code: 'OMK_CLAUDE_CLI_PROTOCOL_INVALID',
+    code: profile.errorCode,
     stage: 'execution',
     message,
   }, usage);
@@ -154,7 +168,10 @@ function checkedSum(values: readonly number[]): number | undefined {
   return total;
 }
 
-function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
+function usageFromResult(
+  result: ClaudeResultMessage,
+  profile: ClaudeMessageProtocolProfile,
+): UsageRecord | undefined {
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
   let cacheReadInputTokens: number | undefined;
@@ -165,12 +182,12 @@ function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
       rawModelUsage === null
       || typeof rawModelUsage !== 'object'
       || Array.isArray(rawModelUsage)
-    ) fail('Claude CLI reported invalid model usage.');
+    ) fail(profile, `${profile.adapterLabel} reported invalid model usage.`);
     const values = Object.values(rawModelUsage);
     const buckets: number[][] = [[], [], [], []];
     for (const value of values) {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-        fail('Claude CLI reported invalid model usage.');
+        fail(profile, `${profile.adapterLabel} reported invalid model usage.`);
       }
       const entry = value as Record<string, unknown>;
       const counts = [
@@ -180,14 +197,14 @@ function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
         safeInteger(entry.cacheCreationInputTokens),
       ];
       if (counts.some((count) => count === undefined)) {
-        fail('Claude CLI reported invalid model usage.');
+        fail(profile, `${profile.adapterLabel} reported invalid model usage.`);
       }
       counts.forEach((count, index) => buckets[index]!.push(count!));
     }
     if (values.length > 0) {
       const totals = buckets.map(checkedSum);
       if (totals.some((total) => total === undefined)) {
-        fail('Claude CLI reported overflowing model usage.');
+        fail(profile, `${profile.adapterLabel} reported overflowing model usage.`);
       }
       [inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens] = totals;
     }
@@ -196,7 +213,7 @@ function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
     const rawUsage = result.usage;
     if (rawUsage !== undefined) {
       if (rawUsage === null || typeof rawUsage !== 'object' || Array.isArray(rawUsage)) {
-        fail('Claude CLI reported invalid token usage.');
+        fail(profile, `${profile.adapterLabel} reported invalid token usage.`);
       }
       const record = rawUsage as Record<string, unknown>;
       inputTokens = safeInteger(record.input_tokens);
@@ -215,21 +232,21 @@ function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
           record.cache_creation_input_tokens !== undefined
           && cacheCreationInputTokens === undefined
         )
-      ) fail('Claude CLI reported invalid token usage.');
+      ) fail(profile, `${profile.adapterLabel} reported invalid token usage.`);
     }
   }
   const totalTokens = inputTokens === undefined || outputTokens === undefined
     ? undefined
     : checkedSum([inputTokens, outputTokens]);
   if (inputTokens !== undefined && outputTokens !== undefined && totalTokens === undefined) {
-    fail('Claude CLI reported overflowing token usage.');
+    fail(profile, `${profile.adapterLabel} reported overflowing token usage.`);
   }
   const rawCost = result.total_cost_usd;
   const providerCost = rawCost === undefined
     ? undefined
     : safeMetric(rawCost);
   if (rawCost !== undefined && providerCost === undefined) {
-    fail('Claude CLI reported invalid provider cost.');
+    fail(profile, `${profile.adapterLabel} reported invalid provider cost.`);
   }
   const usage = UsageRecordSchema.parse({
     ...(inputTokens === undefined ? {} : { inputTokens }),
@@ -254,17 +271,12 @@ function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
   return Object.keys(usage).length === 0 ? undefined : usage;
 }
 
-export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
+export function parseClaudeMessageSequence(
+  input: readonly unknown[],
+  profile: ClaudeMessageProtocolProfile,
+): ParsedClaudeCliStream {
   const messages: ClaudeMessage[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed === '') continue;
-    let value: unknown;
-    try {
-      value = JSON.parse(trimmed) as unknown;
-    } catch {
-      fail('Claude CLI returned malformed JSONL.');
-    }
+  for (const value of input) {
     const captured = JsonValueSchema.safeParse(value);
     if (
       !captured.success
@@ -273,14 +285,14 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
       || Array.isArray(captured.data)
       || typeof captured.data.type !== 'string'
       || captured.data.type.trim() === ''
-    ) fail('Claude CLI returned an invalid stream message.');
+    ) fail(profile, `${profile.adapterLabel} returned an invalid stream message.`);
     if (captured.data.type === 'assistant' || captured.data.type === 'user') {
       const message = captured.data.message;
       if (message === null
           || typeof message !== 'object'
           || Array.isArray(message)
           || !Array.isArray((message as Record<string, unknown>).content)) {
-        fail('Claude CLI returned an invalid conversational message.');
+        fail(profile, `${profile.adapterLabel} returned an invalid conversational message.`);
       }
     }
     messages.push(captured.data as unknown as ClaudeMessage);
@@ -289,14 +301,14 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
     .map((message, index) => isClaudeResultMessage(message) ? index : -1)
     .filter((index) => index >= 0);
   if (resultIndexes.length !== 1) {
-    fail(resultIndexes.length === 0
-      ? 'Claude CLI stream has no terminal result.'
-      : 'Claude CLI stream has multiple terminal results.');
+    fail(profile, resultIndexes.length === 0
+      ? `${profile.adapterLabel} stream has no terminal result.`
+      : `${profile.adapterLabel} stream has multiple terminal results.`);
   }
   const terminalIndex = resultIndexes[0]!;
   if (messages.slice(terminalIndex + 1).some((message) => (
     message.type === 'assistant' || message.type === 'user' || message.type === 'result'
-  ))) fail('Claude CLI emitted conversational messages after its terminal result.');
+  ))) fail(profile, `${profile.adapterLabel} emitted conversational messages after its terminal result.`);
   const result = messages[terminalIndex] as ClaudeResultMessage;
   const resultRecord = result as unknown as Record<string, unknown>;
   if (
@@ -309,8 +321,8 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
       || resultRecord.errors.some((message) => typeof message !== 'string')
     ))
     || (resultRecord.subtype === 'success') === resultRecord.is_error
-  ) fail('Claude CLI returned an invalid terminal result.');
-  const usage = usageFromResult(result);
+  ) fail(profile, `${profile.adapterLabel} returned an invalid terminal result.`);
+  const usage = usageFromResult(result, profile);
   let trace: JsonValue;
   try {
     const neutral = extractClaudeTrace(messages);
@@ -323,7 +335,7 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
     }) as JsonValue;
   } catch (error) {
     if (error instanceof ExecutionPortFailure) throw error;
-    fail('Claude CLI trace could not be projected.', usage);
+    fail(profile, `${profile.adapterLabel} trace could not be projected.`, usage);
   }
   const output = typeof result.result === 'string' && result.result.trim() !== ''
     ? result.result
@@ -332,7 +344,7 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
     ? 'completed' as const
     : 'failed' as const;
   if (terminalStatus === 'completed' && output === undefined) {
-    fail('Claude CLI completed without an assistant response.', usage);
+    fail(profile, `${profile.adapterLabel} completed without an assistant response.`, usage);
   }
   return {
     messages: Object.freeze(messages),
@@ -341,4 +353,20 @@ export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
     ...(usage === undefined ? {} : { usage }),
     terminalStatus,
   };
+}
+
+export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
+  const messages: unknown[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '') continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(trimmed) as unknown;
+    } catch {
+      fail(CLAUDE_CLI_MESSAGE_PROFILE, 'Claude CLI returned malformed JSONL.');
+    }
+    messages.push(value);
+  }
+  return parseClaudeMessageSequence(messages, CLAUDE_CLI_MESSAGE_PROFILE);
 }
