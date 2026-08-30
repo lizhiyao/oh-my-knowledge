@@ -139,18 +139,32 @@ describe('Evaluation Core layered digests', () => {
       fingerprintBasis: 'self-reported' as const,
       assuranceLevel: 'declared' as const,
       capabilities: { protocol: 'omk.invoke/v1' },
-      implementationFacets: { toolSchemaDigest: `sha256:${'1'.repeat(64)}` },
-      provenanceFacets: { attestation: 'pending' },
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets' as const,
+        facets: [{
+          facetId: 'toolSchemaDigest',
+          value: `sha256:${'1'.repeat(64)}`,
+        }],
+      },
+      provenanceFacets: { observation: { observerId: 'runtime-resolver' } },
     };
     const requalified = {
       ...runtime,
       fingerprintBasis: 'content-derived' as const,
       assuranceLevel: 'verified' as const,
-      provenanceFacets: { attestation: 'verified' },
+      provenanceFacets: {
+        attestation: { attestationDigest: `sha256:${'3'.repeat(64)}` },
+      },
     };
     const changedBehavior = {
       ...runtime,
-      implementationFacets: { toolSchemaDigest: `sha256:${'2'.repeat(64)}` },
+      implementationManifest: {
+        coverageKind: 'fingerprint-plus-facets' as const,
+        facets: [{
+          facetId: 'toolSchemaDigest',
+          value: `sha256:${'2'.repeat(64)}`,
+        }],
+      },
     };
 
     expect(computeRuntimeIdentityDigest(requalified)).not.toBe(
@@ -296,6 +310,7 @@ describe('Evaluation Core layered digests', () => {
         fingerprintBasis: 'content-derived' as const,
         assuranceLevel: 'verified' as const,
         capabilities: {},
+        implementationManifest: { coverageKind: 'fingerprint-complete' as const },
       },
     };
     const first = computePlanDigests({ ...base, executorRuntimes: [runtime] });

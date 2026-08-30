@@ -227,14 +227,52 @@
                 ],
                 "type": "string"
               },
-              "implementationFacets": {
-                "$ref": "#/$defs/__schema10"
-              },
               "implementationId": {
                 "$ref": "#/$defs/__schema3"
               },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema16"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema17"
+                  }
+                ]
+              },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema10"
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
               },
               "version": {
                 "$ref": "#/$defs/__schema4"
@@ -245,7 +283,8 @@
               "fingerprint",
               "fingerprintBasis",
               "assuranceLevel",
-              "capabilities"
+              "capabilities",
+              "implementationManifest"
             ],
             "type": "object"
           },
@@ -273,6 +312,56 @@
       "type": "array"
     },
     "__schema16": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema18"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema10"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema19": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -283,7 +372,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema17"
+            "$ref": "#/$defs/__schema20"
           }
         },
         "required": [
@@ -294,13 +383,9 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema17"
+        "$ref": "#/$defs/__schema20"
       },
       "type": "object"
-    },
-    "__schema17": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
     },
     "__schema2": {
       "items": {
@@ -367,6 +452,10 @@
         "type": "object"
       },
       "type": "array"
+    },
+    "__schema20": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
     },
     "__schema3": {
       "maxLength": 256,
@@ -603,7 +692,7 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema19"
     },
     "metrics": {
       "$ref": "#/$defs/__schema2"

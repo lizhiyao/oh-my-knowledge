@@ -309,6 +309,7 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       fingerprint: digestCanonicalJson({ implementationId: 'test.hypothesis-table/v1' }),
       fingerprintBasis: 'content-derived',
       assuranceLevel: 'verified',
+      implementationManifest: { coverageKind: 'fingerprint-complete' },
       capabilities: {
         capabilityKind: 'analysis-node',
         analysisNodeKinds: ['reducer'],

@@ -190,6 +190,18 @@ describe('ExecutionBundle RunPlan binding', () => {
     expect(Object.isFrozen(source.planVerification)).toBe(true);
   });
 
+  it('rejects a re-signed Bundle whose randomization slot contradicts the Plan', async () => {
+    const plan = await makePlan();
+    const bundle = mutableJson(makeBundle(plan));
+    bundle.records[0].randomizationSlotId = 'slot-forged';
+    resign(bundle);
+
+    expect(parseExecutionBundleDocument(bundle)).toEqual(bundle);
+    expect(() => parseExecutionBundle(bundle, plan)).toThrowError(
+      expect.objectContaining({ code: 'EXECUTION_BUNDLE_PLAN_MISMATCH' }),
+    );
+  });
+
   it('rejects provenance above the sealed Executor Runtime assurance', async () => {
     const definition = validDefinition();
     const policy = validPolicy();

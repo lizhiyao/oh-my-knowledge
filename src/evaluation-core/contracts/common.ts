@@ -44,6 +44,43 @@ export const ExtensionsSchema = z.record(
   ExtensionEntrySchema,
 );
 
+export const RuntimeImplementationFacetSchema = z.object({
+  facetId: IdentifierSchema,
+  value: JsonValueSchema,
+}).strict();
+
+export const RuntimeImplementationManifestSchema = z.discriminatedUnion('coverageKind', [
+  z.object({
+    coverageKind: z.literal('fingerprint-complete'),
+  }).strict(),
+  z.object({
+    coverageKind: z.literal('fingerprint-plus-facets'),
+    facets: z.array(RuntimeImplementationFacetSchema).min(1),
+  }).strict(),
+]).superRefine((manifest, context) => {
+  if (manifest.coverageKind === 'fingerprint-complete') return;
+  const facetIds = manifest.facets.map((facet) => facet.facetId);
+  const canonicalFacetIds = [...new Set(facetIds)].sort();
+  if (canonicalizeJson(facetIds) !== canonicalizeJson(canonicalFacetIds)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['facets'],
+      message: 'Runtime implementation facets must be unique and canonical by facetId',
+    });
+  }
+});
+
+export const RuntimeProvenanceFacetsSchema = z.object({
+  observation: z.object({
+    observerId: IdentifierSchema.optional(),
+    observedAt: TimestampSchema.optional(),
+  }).strict().optional(),
+  attestation: z.object({
+    attestationDigest: Sha256DigestSchema,
+    attestorId: IdentifierSchema.optional(),
+  }).strict().optional(),
+}).strict();
+
 export const RuntimeIdentitySchema = z.object({
   implementationId: IdentifierSchema,
   version: NonEmptyStringSchema.optional(),
@@ -56,8 +93,8 @@ export const RuntimeIdentitySchema = z.object({
   ]),
   assuranceLevel: z.enum(['verified', 'declared', 'unknown']),
   capabilities: JsonValueSchema,
-  implementationFacets: JsonValueSchema.optional(),
-  provenanceFacets: JsonValueSchema.optional(),
+  implementationManifest: RuntimeImplementationManifestSchema,
+  provenanceFacets: RuntimeProvenanceFacetsSchema.optional(),
 }).strict();
 
 export const ProvenanceSchema = z.object({
@@ -138,6 +175,9 @@ export const EvaluationErrorSchema: z.ZodType<EvaluationError> = z.lazy(() => z.
 export type SchemaIdentity = z.infer<typeof SchemaIdentitySchema>;
 export type ExtensionEntry = z.infer<typeof ExtensionEntrySchema>;
 export type Extensions = z.infer<typeof ExtensionsSchema>;
+export type RuntimeImplementationFacet = z.infer<typeof RuntimeImplementationFacetSchema>;
+export type RuntimeImplementationManifest = z.infer<typeof RuntimeImplementationManifestSchema>;
+export type RuntimeProvenanceFacets = z.infer<typeof RuntimeProvenanceFacetsSchema>;
 export type RuntimeIdentity = z.infer<typeof RuntimeIdentitySchema>;
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type CacheProvenance = z.infer<typeof CacheProvenanceSchema>;

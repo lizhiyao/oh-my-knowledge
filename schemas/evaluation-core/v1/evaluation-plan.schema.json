@@ -11,6 +11,56 @@
     "__schema10": {
       "additionalProperties": false,
       "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "additionalProperties": false,
+      "properties": {
         "evaluationCacheMode": {
           "enum": [
             "disabled",
@@ -22,13 +72,13 @@
           "additionalProperties": false,
           "properties": {
             "evidence": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema14"
             },
             "expected": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema14"
             },
             "input": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema14"
             },
             "maximumClassification": {
               "enum": [
@@ -40,10 +90,10 @@
               "type": "string"
             },
             "output": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema14"
             },
             "trace": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema14"
             }
           },
           "required": [
@@ -192,7 +242,7 @@
       ],
       "type": "object"
     },
-    "__schema11": {
+    "__schema14": {
       "enum": [
         "full",
         "reference",
@@ -201,7 +251,7 @@
       ],
       "type": "string"
     },
-    "__schema12": {
+    "__schema15": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -212,7 +262,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema13"
+            "$ref": "#/$defs/__schema16"
           }
         },
         "required": [
@@ -223,11 +273,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema13"
+        "$ref": "#/$defs/__schema16"
       },
       "type": "object"
     },
-    "__schema13": {
+    "__schema16": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -467,14 +517,52 @@
                 ],
                 "type": "string"
               },
-              "implementationFacets": {
-                "$ref": "#/$defs/__schema5"
-              },
               "implementationId": {
                 "$ref": "#/$defs/__schema4"
               },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema10"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema11"
+                  }
+                ]
+              },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema5"
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema4"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
               },
               "version": {
                 "$ref": "#/$defs/__schema7"
@@ -485,7 +573,8 @@
               "fingerprint",
               "fingerprintBasis",
               "assuranceLevel",
-              "capabilities"
+              "capabilities",
+              "implementationManifest"
             ],
             "type": "object"
           },
@@ -530,13 +619,13 @@
       "$ref": "#/$defs/__schema1"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema12"
+      "$ref": "#/$defs/__schema15"
     },
     "metrics": {
       "$ref": "#/$defs/__schema8"
     },
     "policy": {
-      "$ref": "#/$defs/__schema10"
+      "$ref": "#/$defs/__schema13"
     },
     "runtimes": {
       "$ref": "#/$defs/__schema9"

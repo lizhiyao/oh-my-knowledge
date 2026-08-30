@@ -54,9 +54,7 @@ export function computeRuntimeImplementationDigest(
     ...(identity.version !== undefined ? { version: identity.version } : {}),
     fingerprint: identity.fingerprint,
     capabilities: identity.capabilities,
-    ...(identity.implementationFacets !== undefined
-      ? { implementationFacets: identity.implementationFacets }
-      : {}),
+    implementationManifest: identity.implementationManifest,
   });
 }
 

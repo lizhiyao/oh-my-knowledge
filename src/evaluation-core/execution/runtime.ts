@@ -507,6 +507,7 @@ function assertCachedRecord(
   if (entry.cacheKeyDigest !== key
       || entry.sourceRecordDigest !== digestCanonicalJson(record)
       || record.targetId !== coordinate.targetId
+      || record.randomizationSlotId !== coordinate.randomizationSlotId
       || record.sampleId !== coordinate.sampleId
       || record.trialIndex !== coordinate.trialIndex
       || record.trialId !== coordinate.trialId

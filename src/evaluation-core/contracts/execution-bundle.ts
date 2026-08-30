@@ -25,6 +25,7 @@ import {
 export type ExecutionBundleValidationErrorCode =
   | 'EXECUTION_BUNDLE_DUPLICATE_COORDINATE'
   | 'EXECUTION_BUNDLE_IDENTITY_MISMATCH'
+  | 'EXECUTION_BUNDLE_RANDOMIZATION_SLOT_INVALID'
   | 'EXECUTION_BUNDLE_RECORD_ORDER_INVALID'
   | 'EXECUTION_BUNDLE_ATTEMPT_ORDER_INVALID'
   | 'EXECUTION_BUNDLE_BLOCK_ATOMICITY_INVALID'
@@ -81,7 +82,20 @@ function assertCanonicalRecordOrder(records: readonly ExecutionRecord[]): void {
 function assertRecordIdentities(bundle: ExecutionBundle): void {
   const trialIds = new Set<string>();
   const attemptIds = new Set<string>();
+  const slotsByTarget = new Map<string, string>();
+  const targetsBySlot = new Map<string, string>();
   for (const record of bundle.records) {
+    const targetSlot = slotsByTarget.get(record.targetId);
+    const slotTarget = targetsBySlot.get(record.randomizationSlotId);
+    if ((targetSlot !== undefined && targetSlot !== record.randomizationSlotId)
+        || (slotTarget !== undefined && slotTarget !== record.targetId)) {
+      throw new ExecutionBundleValidationError(
+        'EXECUTION_BUNDLE_RANDOMIZATION_SLOT_INVALID',
+        'ExecutionBundle must preserve a one-to-one Target and randomization slot mapping.',
+      );
+    }
+    slotsByTarget.set(record.targetId, record.randomizationSlotId);
+    targetsBySlot.set(record.randomizationSlotId, record.targetId);
     const expectedTrialId = deriveTrialId({
       executionPlanDigest: bundle.executionPlanDigest as Sha256Digest,
       targetId: record.targetId,
@@ -725,6 +739,7 @@ export function assertExecutionBundleMatchesPlan(
       planMismatch('ExecutionBundle contains a coordinate outside the sealed ExecutionPlan.');
     }
     if (record.trialId !== expected.trialId
+        || record.randomizationSlotId !== expected.randomizationSlotId
         || record.trialSeed !== expected.trialSeed
         || record.schedulingBlockId !== expected.schedulingBlockId
         || canonicalizeJson(record.samplingUnitIds)

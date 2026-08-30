@@ -37,6 +37,7 @@ function identity(
     fingerprintBasis: 'content-derived',
     assuranceLevel,
     capabilities,
+    implementationManifest: { coverageKind: 'fingerprint-complete' },
   };
 }
 

@@ -1142,10 +1142,10 @@
           "$ref": "#/$defs/__schema18"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema59"
+          "$ref": "#/$defs/__schema62"
         },
         "policy": {
-          "$ref": "#/$defs/__schema58"
+          "$ref": "#/$defs/__schema61"
         },
         "randomizationDesignDigest": {
           "$ref": "#/$defs/__schema33"
@@ -1295,14 +1295,52 @@
               ],
               "type": "string"
             },
-            "implementationFacets": {
-              "$ref": "#/$defs/__schema6"
-            },
             "implementationId": {
               "$ref": "#/$defs/__schema4"
             },
+            "implementationManifest": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/__schema58"
+                },
+                {
+                  "$ref": "#/$defs/__schema59"
+                }
+              ]
+            },
             "provenanceFacets": {
-              "$ref": "#/$defs/__schema6"
+              "additionalProperties": false,
+              "properties": {
+                "attestation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attestationDigest": {
+                      "$ref": "#/$defs/__schema33"
+                    },
+                    "attestorId": {
+                      "$ref": "#/$defs/__schema4"
+                    }
+                  },
+                  "required": [
+                    "attestationDigest"
+                  ],
+                  "type": "object"
+                },
+                "observation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "observedAt": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                      "type": "string"
+                    },
+                    "observerId": {
+                      "$ref": "#/$defs/__schema4"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
             },
             "version": {
               "$ref": "#/$defs/__schema12"
@@ -1313,7 +1351,8 @@
             "fingerprint",
             "fingerprintBasis",
             "assuranceLevel",
-            "capabilities"
+            "capabilities",
+            "implementationManifest"
           ],
           "type": "object"
         },
@@ -1339,6 +1378,87 @@
       "type": "object"
     },
     "__schema58": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coverageKind"
+      ],
+      "type": "object"
+    },
+    "__schema59": {
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema60"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
+    },
+    "__schema6": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/__schema6"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema6"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "__schema60": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema6"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema61": {
       "additionalProperties": false,
       "properties": {
         "budget": {
@@ -1387,41 +1507,10 @@
       ],
       "type": "object"
     },
-    "__schema59": {
+    "__schema62": {
       "$ref": "#/$defs/__schema31"
     },
-    "__schema6": {
-      "anyOf": [
-        {
-          "type": "null"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "number"
-        },
-        {
-          "type": "string"
-        },
-        {
-          "items": {
-            "$ref": "#/$defs/__schema6"
-          },
-          "type": "array"
-        },
-        {
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema6"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        }
-      ]
-    },
-    "__schema60": {
+    "__schema63": {
       "additionalProperties": false,
       "properties": {
         "evaluationInputDigest": {
@@ -1431,28 +1520,28 @@
           "$ref": "#/$defs/__schema33"
         },
         "evaluators": {
-          "$ref": "#/$defs/__schema64"
+          "$ref": "#/$defs/__schema67"
         },
         "executionPlanDigest": {
           "$ref": "#/$defs/__schema33"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema68"
+          "$ref": "#/$defs/__schema71"
         },
         "metrics": {
-          "$ref": "#/$defs/__schema65"
+          "$ref": "#/$defs/__schema68"
         },
         "policy": {
-          "$ref": "#/$defs/__schema67"
+          "$ref": "#/$defs/__schema70"
         },
         "runtimes": {
-          "$ref": "#/$defs/__schema66"
+          "$ref": "#/$defs/__schema69"
         },
         "samples": {
-          "$ref": "#/$defs/__schema62"
+          "$ref": "#/$defs/__schema65"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema61"
+          "$ref": "#/$defs/__schema64"
         }
       },
       "required": [
@@ -1469,18 +1558,18 @@
       "title": "OMK Evaluation Plan v1",
       "type": "object"
     },
-    "__schema61": {
+    "__schema64": {
       "const": "omk.evaluation-plan/v1",
       "type": "string"
     },
-    "__schema62": {
+    "__schema65": {
       "items": {
-        "$ref": "#/$defs/__schema63"
+        "$ref": "#/$defs/__schema66"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema63": {
+    "__schema66": {
       "additionalProperties": false,
       "properties": {
         "evaluationContext": {
@@ -1505,25 +1594,28 @@
       ],
       "type": "object"
     },
-    "__schema64": {
+    "__schema67": {
       "items": {
         "$ref": "#/$defs/__schema14"
       },
       "type": "array"
     },
-    "__schema65": {
+    "__schema68": {
       "items": {
         "$ref": "#/$defs/__schema17"
       },
       "type": "array"
     },
-    "__schema66": {
+    "__schema69": {
       "items": {
         "$ref": "#/$defs/__schema57"
       },
       "type": "array"
     },
-    "__schema67": {
+    "__schema7": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "__schema70": {
       "additionalProperties": false,
       "properties": {
         "evaluationCacheMode": {
@@ -1547,10 +1639,10 @@
       ],
       "type": "object"
     },
-    "__schema68": {
+    "__schema71": {
       "$ref": "#/$defs/__schema31"
     },
-    "__schema69": {
+    "__schema72": {
       "additionalProperties": false,
       "properties": {
         "analysisGraph": {
@@ -1560,7 +1652,7 @@
           "$ref": "#/$defs/__schema33"
         },
         "comparisons": {
-          "$ref": "#/$defs/__schema72"
+          "$ref": "#/$defs/__schema75"
         },
         "evaluationPlanDigest": {
           "$ref": "#/$defs/__schema33"
@@ -1569,16 +1661,16 @@
           "$ref": "#/$defs/__schema18"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema74"
+          "$ref": "#/$defs/__schema77"
         },
         "metrics": {
-          "$ref": "#/$defs/__schema71"
+          "$ref": "#/$defs/__schema74"
         },
         "runtimes": {
-          "$ref": "#/$defs/__schema73"
+          "$ref": "#/$defs/__schema76"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema70"
+          "$ref": "#/$defs/__schema73"
         }
       },
       "required": [
@@ -1594,35 +1686,32 @@
       "title": "OMK Analysis Plan v1",
       "type": "object"
     },
-    "__schema7": {
-      "$ref": "#/$defs/__schema6"
-    },
-    "__schema70": {
+    "__schema73": {
       "const": "omk.analysis-plan/v1",
       "type": "string"
     },
-    "__schema71": {
+    "__schema74": {
       "items": {
         "$ref": "#/$defs/__schema17"
       },
       "type": "array"
     },
-    "__schema72": {
+    "__schema75": {
       "items": {
         "$ref": "#/$defs/__schema26"
       },
       "type": "array"
     },
-    "__schema73": {
+    "__schema76": {
       "items": {
         "$ref": "#/$defs/__schema57"
       },
       "type": "array"
     },
-    "__schema74": {
+    "__schema77": {
       "$ref": "#/$defs/__schema31"
     },
-    "__schema75": {
+    "__schema78": {
       "additionalProperties": false,
       "properties": {
         "analysisPlanDigest": {
@@ -1632,16 +1721,16 @@
           "$ref": "#/$defs/__schema33"
         },
         "decisionPolicy": {
-          "$ref": "#/$defs/__schema77"
+          "$ref": "#/$defs/__schema80"
         },
         "extensions": {
-          "$ref": "#/$defs/__schema79"
+          "$ref": "#/$defs/__schema82"
         },
         "runtimes": {
-          "$ref": "#/$defs/__schema78"
+          "$ref": "#/$defs/__schema81"
         },
         "schemaVersion": {
-          "$ref": "#/$defs/__schema76"
+          "$ref": "#/$defs/__schema79"
         }
       },
       "required": [
@@ -1653,33 +1742,33 @@
       "title": "OMK Decision Plan v1",
       "type": "object"
     },
-    "__schema76": {
+    "__schema79": {
       "const": "omk.decision-plan/v1",
       "type": "string"
-    },
-    "__schema77": {
-      "$ref": "#/$defs/__schema28"
-    },
-    "__schema78": {
-      "items": {
-        "$ref": "#/$defs/__schema57"
-      },
-      "type": "array"
-    },
-    "__schema79": {
-      "$ref": "#/$defs/__schema31"
     },
     "__schema8": {
       "$ref": "#/$defs/__schema6"
     },
     "__schema80": {
+      "$ref": "#/$defs/__schema28"
+    },
+    "__schema81": {
       "items": {
-        "$ref": "#/$defs/__schema81"
+        "$ref": "#/$defs/__schema57"
+      },
+      "type": "array"
+    },
+    "__schema82": {
+      "$ref": "#/$defs/__schema31"
+    },
+    "__schema83": {
+      "items": {
+        "$ref": "#/$defs/__schema84"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema81": {
+    "__schema84": {
       "additionalProperties": false,
       "properties": {
         "schemaDigest": {
@@ -1699,7 +1788,7 @@
       ],
       "type": "object"
     },
-    "__schema82": {
+    "__schema85": {
       "additionalProperties": false,
       "properties": {
         "analysisPlanDigest": {
@@ -1743,7 +1832,7 @@
       ],
       "type": "object"
     },
-    "__schema83": {
+    "__schema86": {
       "$ref": "#/$defs/__schema31"
     },
     "__schema9": {
@@ -1755,31 +1844,31 @@
   "additionalProperties": false,
   "properties": {
     "analysis": {
-      "$ref": "#/$defs/__schema69"
+      "$ref": "#/$defs/__schema72"
     },
     "decision": {
-      "$ref": "#/$defs/__schema75"
+      "$ref": "#/$defs/__schema78"
     },
     "definition": {
       "$ref": "#/$defs/__schema1"
     },
     "digests": {
-      "$ref": "#/$defs/__schema82"
+      "$ref": "#/$defs/__schema85"
     },
     "evaluation": {
-      "$ref": "#/$defs/__schema60"
+      "$ref": "#/$defs/__schema63"
     },
     "execution": {
       "$ref": "#/$defs/__schema49"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema83"
+      "$ref": "#/$defs/__schema86"
     },
     "measurementPolicy": {
       "$ref": "#/$defs/__schema34"
     },
     "schemaIdentities": {
-      "$ref": "#/$defs/__schema80"
+      "$ref": "#/$defs/__schema83"
     },
     "schemaVersion": {
       "$ref": "#/$defs/__schema0"

@@ -8,6 +8,52 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "facetId": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "value": {
+          "$ref": "#/$defs/__schema6"
+        }
+      },
+      "required": [
+        "facetId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/__schema6"
+          },
+          "schemaDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "schemaUri": {
+            "$ref": "#/$defs/__schema12"
+          }
+        },
+        "required": [
+          "schemaUri",
+          "schemaDigest",
+          "data"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/__schema12"
+      },
+      "type": "object"
+    },
+    "__schema12": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
+    },
     "__schema2": {
       "additionalProperties": false,
       "properties": {
@@ -183,14 +229,52 @@
                 ],
                 "type": "string"
               },
-              "implementationFacets": {
-                "$ref": "#/$defs/__schema6"
-              },
               "implementationId": {
                 "$ref": "#/$defs/__schema3"
               },
+              "implementationManifest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/__schema8"
+                  },
+                  {
+                    "$ref": "#/$defs/__schema9"
+                  }
+                ]
+              },
               "provenanceFacets": {
-                "$ref": "#/$defs/__schema6"
+                "additionalProperties": false,
+                "properties": {
+                  "attestation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestationDigest": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "attestorId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "required": [
+                      "attestationDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "observation": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "observedAt": {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+                        "type": "string"
+                      },
+                      "observerId": {
+                        "$ref": "#/$defs/__schema3"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
               },
               "version": {
                 "$ref": "#/$defs/__schema4"
@@ -201,7 +285,8 @@
               "fingerprint",
               "fingerprintBasis",
               "assuranceLevel",
-              "capabilities"
+              "capabilities",
+              "implementationManifest"
             ],
             "type": "object"
           },
@@ -229,34 +314,38 @@
       "type": "array"
     },
     "__schema8": {
-      "additionalProperties": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/__schema6"
-          },
-          "schemaDigest": {
-            "$ref": "#/$defs/__schema1"
-          },
-          "schemaUri": {
-            "$ref": "#/$defs/__schema9"
-          }
-        },
-        "required": [
-          "schemaUri",
-          "schemaDigest",
-          "data"
-        ],
-        "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-complete",
+          "type": "string"
+        }
       },
-      "propertyNames": {
-        "$ref": "#/$defs/__schema9"
-      },
+      "required": [
+        "coverageKind"
+      ],
       "type": "object"
     },
     "__schema9": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
+      "additionalProperties": false,
+      "properties": {
+        "coverageKind": {
+          "const": "fingerprint-plus-facets",
+          "type": "string"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/__schema10"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "coverageKind",
+        "facets"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/decision-plan.schema.json",
@@ -273,7 +362,7 @@
       "$ref": "#/$defs/__schema2"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema8"
+      "$ref": "#/$defs/__schema11"
     },
     "runtimes": {
       "$ref": "#/$defs/__schema7"

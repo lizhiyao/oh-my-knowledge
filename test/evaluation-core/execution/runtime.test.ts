@@ -755,6 +755,36 @@ describe('Evaluation Core Execution runtime', () => {
     expect(cache.gets).toBe(2);
   });
 
+  it('fails closed when a cached record claims a different randomization slot', async () => {
+    const cache = new MemoryCache();
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      policy.cache.executionMode = 'transparent-deterministic';
+    });
+    const seeded = portsFor(plan, undefined, { cache });
+    await executeRunPlan(plan, seeded.ports, {
+      runId: 'run-cache-slot-seed',
+      bundleId: 'bundle-cache-slot-seed',
+    });
+    const entry = cache.entries.values().next().value;
+    if (entry === undefined) throw new Error('missing cache entry');
+    entry.record.randomizationSlotId = 'slot-forged';
+    entry.sourceRecordDigest = digestCanonicalJson(entry.record);
+
+    const replayed = portsFor(plan, undefined, { cache });
+    const bundle = await executeRunPlan(plan, replayed.ports, {
+      runId: 'run-cache-slot-replay',
+      bundleId: 'bundle-cache-slot-replay',
+    });
+
+    expect(bundle).toMatchObject({
+      executionBundleStatus: 'failed',
+      terminationReasonCode: 'execution-cache-read-failed',
+    });
+    expect(replayed.state.attempts).toBe(0);
+  });
+
   it('fails closed on a cached attempt chain that violates the sealed retry policy', async () => {
     const cache = new MemoryCache();
     const plan = await makePlan((definition, policy) => {

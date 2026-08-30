@@ -42,6 +42,7 @@ const runtime = {
   fingerprintBasis: 'content-derived' as const,
   assuranceLevel: 'verified' as const,
   capabilities: {},
+  implementationManifest: { coverageKind: 'fingerprint-complete' as const },
 };
 
 function makeCompletedRecord(
@@ -130,6 +131,32 @@ describe('ExecutionBundle contract', () => {
   it('accepts a canonical self-contained completed bundle', () => {
     const bundle = finalizeBundle();
     expect(parseExecutionBundleDocument(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+  });
+
+  it('requires a one-to-one Target and randomization slot mapping within the Bundle', () => {
+    const first = makeCompletedRecord('target-a', 'sample-a');
+    const conflictingTarget = makeCompletedRecord('target-a', 'sample-b');
+    conflictingTarget.randomizationSlotId = 'slot-forged';
+    const duplicateSlot = makeCompletedRecord('target-b', 'sample-a');
+    duplicateSlot.randomizationSlotId = first.randomizationSlotId;
+
+    for (const records of [[first, conflictingTarget], [first, duplicateSlot]]) {
+      const bundle = finalizeBundle({
+        coverage: {
+          planned: 2,
+          started: 2,
+          succeeded: 2,
+          failed: 0,
+          cancelled: 0,
+          budgetCensored: 0,
+          notStarted: 0,
+        },
+        records,
+      });
+      expect(() => parseExecutionBundleDocument(bundle)).toThrowError(
+        expect.objectContaining({ code: 'EXECUTION_BUNDLE_RANDOMIZATION_SLOT_INVALID' }),
+      );
+    }
   });
 
   it('keeps summary-only output omission distinct from execution failure', () => {
