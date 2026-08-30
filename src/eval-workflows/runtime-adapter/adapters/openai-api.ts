@@ -33,10 +33,10 @@ import {
   type CoreApiTransport,
 } from './api-http.js';
 import {
-  ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
-  anthropicApiExecutorCapabilities,
-  parseAnthropicApiMessage,
-} from './anthropic-api-protocol.js';
+  OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+  openAIApiExecutorCapabilities,
+  parseOpenAIApiResponse,
+} from './openai-api-protocol.js';
 import {
   captureStatelessApiRunState,
   captureStatelessApiTarget,
@@ -48,51 +48,42 @@ import {
 import { createSameProcessExecutorAdapter } from './same-process.js';
 
 export {
-  ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
-  createAnthropicApiCoreSchemaValidators,
-} from './anthropic-api-protocol.js';
-export type {
-  ApiTransportIdentity,
-  CoreApiTransport,
-  CoreApiTransportRequest,
-} from './api-http.js';
+  OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+  createOpenAIApiCoreSchemaValidators,
+} from './openai-api-protocol.js';
 
-export const DEFAULT_ANTHROPIC_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-export const DEFAULT_ANTHROPIC_API_MAX_REQUEST_BYTES = 2 * 1024 * 1024;
-export const DEFAULT_ANTHROPIC_API_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_ANTHROPIC_API_MAX_OUTPUT_TOKENS = 8192;
-export const ANTHROPIC_API_VERSION = '2023-06-01';
+export const DEFAULT_OPENAI_API_ENDPOINT = 'https://api.openai.com/v1/responses';
+export const DEFAULT_OPENAI_API_MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+export const DEFAULT_OPENAI_API_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+export const DEFAULT_OPENAI_API_MAX_OUTPUT_TOKENS = 8192;
 
 const RESOURCE_PROFILE = Object.freeze({
-  adapterLabel: 'Anthropic API',
-  errorPrefix: 'OMK_ANTHROPIC_API',
-  promptSchemaVersion: 'omk.anthropic-api-prompt/v1',
+  adapterLabel: 'OpenAI API',
+  errorPrefix: 'OMK_OPENAI_API',
+  promptSchemaVersion: 'omk.openai-api-prompt/v1',
 });
 
-const AnthropicRequestPolicySchema = z.object({
+const OpenAIRequestPolicySchema = z.object({
   maxOutputTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
-  stopSequences: z.array(z.string().min(1)).min(1).superRefine((values, context) => {
-    if (new Set(values).size !== values.length) {
-      context.addIssue({ code: 'custom', message: 'stopSequences must not contain duplicates.' });
-    }
-  }).optional(),
 }).strict();
 
-export interface AnthropicApiCoreConfiguration {
+export interface OpenAIApiCoreConfiguration {
   /** Explicit credential. The adapter never reads process.env. */
   readonly apiKey: string;
-  /** Complete Messages endpoint, not a mutable ambient base URL. */
+  /** Complete Responses endpoint, not a mutable ambient base URL. */
   readonly endpoint?: string;
+  readonly organization?: string;
+  readonly project?: string;
   readonly maxRequestBytes?: number;
   readonly maxResponseBytes?: number;
   /** Trusted host seam for offline conformance tests and custom transports. */
   readonly transport?: CoreApiTransport;
 }
 
-export interface CreateAnthropicApiExecutorAdapterInput {
+export interface CreateOpenAIApiExecutorAdapterInput {
   readonly target: EvaluationDefinition['targets'][number];
   readonly binding: RuntimeBindingOf<'executor'>;
-  readonly api: AnthropicApiCoreConfiguration;
+  readonly api: OpenAIApiCoreConfiguration;
   readonly sessionIsolationKey: string;
   readonly resourceLeases: OmkBindingResourceLeaseAccess;
 }
@@ -100,6 +91,8 @@ export interface CreateAnthropicApiExecutorAdapterInput {
 interface CapturedConfiguration {
   readonly apiKey: string;
   readonly endpoint: string;
+  readonly organization?: string;
+  readonly project?: string;
   readonly environmentIdentity: JsonValue[];
   readonly environmentOutputClassification: 'public' | 'sensitive' | 'secret';
   readonly maxRequestBytes: number;
@@ -107,9 +100,8 @@ interface CapturedConfiguration {
   readonly transport: CapturedCoreApiTransport;
 }
 
-interface AnthropicRequestPolicy {
+interface OpenAIRequestPolicy {
   readonly maxOutputTokens: number;
-  readonly stopSequences?: readonly string[];
 }
 
 function fail(
@@ -122,67 +114,76 @@ function fail(
 
 function positiveSafeInteger(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new TypeError(`Anthropic API ${label} must be a positive safe integer.`);
+    throw new TypeError(`OpenAI API ${label} must be a positive safe integer.`);
   }
   return value;
 }
 
-function captureConfiguration(input: AnthropicApiCoreConfiguration): CapturedConfiguration {
-  const apiKey = requiredApiHeaderValue(input.apiKey, 'Anthropic API apiKey');
+function captureConfiguration(input: OpenAIApiCoreConfiguration): CapturedConfiguration {
+  const apiKey = requiredApiHeaderValue(input.apiKey, 'OpenAI API apiKey');
   const endpoint = normalizeCoreApiEndpoint(
-    input.endpoint ?? DEFAULT_ANTHROPIC_API_ENDPOINT,
-    'Anthropic API endpoint',
+    input.endpoint ?? DEFAULT_OPENAI_API_ENDPOINT,
+    'OpenAI API endpoint',
   );
+  const organization = input.organization === undefined
+    ? undefined
+    : requiredApiHeaderValue(input.organization, 'OpenAI API organization');
+  const project = input.project === undefined
+    ? undefined
+    : requiredApiHeaderValue(input.project, 'OpenAI API project');
   const environment = captureClassifiedEnvironment({
-    ANTHROPIC_API_KEY: {
-      value: apiKey,
-      identity: { identityKind: 'credential' },
-    },
-    ANTHROPIC_API_ENDPOINT: {
-      value: endpoint,
-      identity: { identityKind: 'effect-locator' },
-    },
+    OPENAI_API_KEY: { value: apiKey, identity: { identityKind: 'credential' } },
+    OPENAI_API_ENDPOINT: { value: endpoint, identity: { identityKind: 'effect-locator' } },
+    ...(organization === undefined ? {} : {
+      OPENAI_ORGANIZATION: {
+        value: organization,
+        identity: { identityKind: 'effect-locator' as const },
+      },
+    }),
+    ...(project === undefined ? {} : {
+      OPENAI_PROJECT: {
+        value: project,
+        identity: { identityKind: 'effect-locator' as const },
+      },
+    }),
   });
   return Object.freeze({
-    apiKey: environment.values.ANTHROPIC_API_KEY!,
-    endpoint: environment.values.ANTHROPIC_API_ENDPOINT!,
+    apiKey: environment.values.OPENAI_API_KEY!,
+    endpoint: environment.values.OPENAI_API_ENDPOINT!,
+    ...(organization === undefined ? {} : { organization: environment.values.OPENAI_ORGANIZATION! }),
+    ...(project === undefined ? {} : { project: environment.values.OPENAI_PROJECT! }),
     environmentIdentity: environment.identity,
     environmentOutputClassification: environment.outputClassification,
     maxRequestBytes: positiveSafeInteger(
-      input.maxRequestBytes ?? DEFAULT_ANTHROPIC_API_MAX_REQUEST_BYTES,
+      input.maxRequestBytes ?? DEFAULT_OPENAI_API_MAX_REQUEST_BYTES,
       'maxRequestBytes',
     ),
     maxResponseBytes: positiveSafeInteger(
-      input.maxResponseBytes ?? DEFAULT_ANTHROPIC_API_MAX_RESPONSE_BYTES,
+      input.maxResponseBytes ?? DEFAULT_OPENAI_API_MAX_RESPONSE_BYTES,
       'maxResponseBytes',
     ),
     transport: captureCoreApiTransport(input.transport),
   });
 }
 
-function captureRequestPolicy(target: CapturedStatelessApiTarget): AnthropicRequestPolicy {
-  const parsed = AnthropicRequestPolicySchema.parse(
-    target.config.behavior.config?.value ?? {},
-  );
+function captureRequestPolicy(target: CapturedStatelessApiTarget): OpenAIRequestPolicy {
+  const parsed = OpenAIRequestPolicySchema.parse(target.config.behavior.config?.value ?? {});
   return Object.freeze({
-    maxOutputTokens: parsed.maxOutputTokens ?? DEFAULT_ANTHROPIC_API_MAX_OUTPUT_TOKENS,
-    ...(parsed.stopSequences === undefined
-      ? {}
-      : { stopSequences: Object.freeze([...parsed.stopSequences]) }),
+    maxOutputTokens: parsed.maxOutputTokens ?? DEFAULT_OPENAI_API_MAX_OUTPUT_TOKENS,
   });
 }
 
 function identityManifest(
   configuration: CapturedConfiguration,
   target: CapturedStatelessApiTarget,
-  policy: AnthropicRequestPolicy,
+  policy: OpenAIRequestPolicy,
 ): RuntimeIdentity['implementationManifest'] {
   const facets: RuntimeImplementationFacet[] = [{
     facetId: 'adapter.composition',
     value: {
-      adapterVersion: ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+      adapterVersion: OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
       cancellation: 'fetch-abort-signal',
-      sourceProtocol: 'Anthropic Messages API',
+      sourceProtocol: 'OpenAI Responses API',
     },
   }, {
     facetId: 'adapter.environment',
@@ -191,9 +192,9 @@ function identityManifest(
     facetId: 'adapter.input-projection',
     value: {
       directoryEntrypoint: 'SKILL.md',
-      promptTransport: 'messages-user-text',
+      promptTransport: 'responses-input-text',
       supportingFiles: 'canonical-user-envelope',
-      systemInstructions: 'top-level-system',
+      systemInstructions: 'top-level-instructions',
       version: RESOURCE_PROFILE.promptSchemaVersion,
     },
   }, {
@@ -203,13 +204,17 @@ function identityManifest(
       maxResponseBytes: configuration.maxResponseBytes,
     },
   }, {
-    facetId: 'anthropic.request',
+    facetId: 'openai.request',
     value: {
-      apiVersion: ANTHROPIC_API_VERSION,
+      background: false,
       effort: target.binding.qualification.effort ?? null,
       maxOutputTokens: policy.maxOutputTokens,
-      stopSequences: policy.stopSequences === undefined ? null : [...policy.stopSequences],
+      parallelToolCalls: false,
+      store: false,
       streaming: false,
+      toolChoice: 'none',
+      tools: 'none',
+      truncation: 'disabled',
     },
   }, {
     facetId: 'runtime.binding',
@@ -234,27 +239,22 @@ function identityManifest(
 function resolveIdentity(
   configuration: CapturedConfiguration,
   target: CapturedStatelessApiTarget,
-  policy: AnthropicRequestPolicy,
+  policy: OpenAIRequestPolicy,
 ): RuntimeIdentity {
-  const capabilities = anthropicApiExecutorCapabilities();
+  const capabilities = openAIApiExecutorCapabilities();
   return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
     implementationId: target.binding.implementationId,
-    version: ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+    version: OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
     fingerprint: digestCanonicalJson({
-      derivation: 'omk.anthropic-api-runtime-fingerprint/v1',
-      adapterVersion: ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
+      derivation: 'omk.openai-api-runtime-fingerprint/v1',
+      adapterVersion: OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
       capabilities,
       environmentIdentity: configuration.environmentIdentity,
       limits: {
         maxRequestBytes: configuration.maxRequestBytes,
         maxResponseBytes: configuration.maxResponseBytes,
       },
-      requestPolicy: {
-        maxOutputTokens: policy.maxOutputTokens,
-        ...(policy.stopSequences === undefined
-          ? {}
-          : { stopSequences: [...policy.stopSequences] }),
-      },
+      requestPolicy: { maxOutputTokens: policy.maxOutputTokens },
       targetBindingDigest: digestCanonicalJson(target.binding),
       transportIdentity: configuration.transport.identity,
     }),
@@ -267,44 +267,47 @@ function resolveIdentity(
 
 function requestBody(
   target: CapturedStatelessApiTarget,
-  policy: AnthropicRequestPolicy,
+  policy: OpenAIRequestPolicy,
   runState: StatelessApiRunState,
   trialState: StatelessApiTrialState,
 ): string {
   return JSON.stringify({
     model: target.binding.qualification.model,
-    max_tokens: policy.maxOutputTokens,
-    messages: [{ role: 'user', content: trialState.prompt }],
-    stream: false,
+    input: trialState.prompt,
     ...(runState.systemInstructions === undefined
       ? {}
-      : { system: runState.systemInstructions }),
+      : { instructions: runState.systemInstructions }),
+    max_output_tokens: policy.maxOutputTokens,
+    stream: false,
+    store: false,
+    background: false,
+    tools: [],
+    tool_choice: 'none',
+    parallel_tool_calls: false,
+    truncation: 'disabled',
     ...(target.binding.qualification.effort === undefined
       ? {}
-      : { output_config: { effort: target.binding.qualification.effort } }),
-    ...(policy.stopSequences === undefined
-      ? {}
-      : { stop_sequences: policy.stopSequences }),
+      : { reasoning: { effort: target.binding.qualification.effort } }),
   });
 }
 
-async function executeAnthropic(
+async function executeOpenAI(
   configuration: CapturedConfiguration,
   target: CapturedStatelessApiTarget,
-  policy: AnthropicRequestPolicy,
+  policy: OpenAIRequestPolicy,
   runState: StatelessApiRunState,
   trialState: StatelessApiTrialState,
   attempt: Readonly<ExecutorAttemptContext>,
 ): Promise<ExecutorAttemptResult> {
   if (attempt.signal.aborted) {
-    fail('OMK_ANTHROPIC_API_CANCELLED', 'execution', 'Anthropic API execution was cancelled.');
+    fail('OMK_OPENAI_API_CANCELLED', 'execution', 'OpenAI API execution was cancelled.');
   }
   const body = requestBody(target, policy, runState, trialState);
   if (Buffer.byteLength(body) > configuration.maxRequestBytes) {
     fail(
-      'OMK_ANTHROPIC_API_INPUT_LIMIT_EXCEEDED',
+      'OMK_OPENAI_API_INPUT_LIMIT_EXCEEDED',
       'infrastructure',
-      'Anthropic API request exceeded the adapter byte limit.',
+      'OpenAI API request exceeded the adapter byte limit.',
     );
   }
   let response: Response;
@@ -313,70 +316,71 @@ async function executeAnthropic(
       endpoint: configuration.endpoint,
       headers: {
         accept: 'application/json',
+        authorization: `Bearer ${configuration.apiKey}`,
         'content-type': 'application/json',
-        'x-api-key': configuration.apiKey,
-        'anthropic-version': ANTHROPIC_API_VERSION,
+        ...(configuration.organization === undefined
+          ? {}
+          : { 'openai-organization': configuration.organization }),
+        ...(configuration.project === undefined
+          ? {}
+          : { 'openai-project': configuration.project }),
       },
       body,
       signal: attempt.signal,
     });
   } catch {
     if (attempt.signal.aborted) {
-      fail('OMK_ANTHROPIC_API_CANCELLED', 'execution', 'Anthropic API execution was cancelled.');
+      fail('OMK_OPENAI_API_CANCELLED', 'execution', 'OpenAI API execution was cancelled.');
     }
-    fail('transport-error', 'infrastructure', 'Anthropic API transport failed.');
+    fail('transport-error', 'infrastructure', 'OpenAI API transport failed.');
   }
   if (!(response instanceof Response)) {
-    fail('OMK_ANTHROPIC_API_TRANSPORT_INVALID', 'infrastructure', 'Anthropic API transport returned an invalid response.');
+    fail('OMK_OPENAI_API_TRANSPORT_INVALID', 'infrastructure', 'OpenAI API transport returned an invalid response.');
   }
   if (!response.ok) {
     await discardApiResponse(response);
     if (response.status === 429 || response.status >= 500) {
-      fail('transport-error', 'infrastructure', 'Anthropic API transport is temporarily unavailable.');
+      fail('transport-error', 'infrastructure', 'OpenAI API transport is temporarily unavailable.');
     }
     if (response.status === 401 || response.status === 403) {
-      fail('OMK_ANTHROPIC_API_AUTH_FAILED', 'execution', 'Anthropic API rejected the configured credential.');
+      fail('OMK_OPENAI_API_AUTH_FAILED', 'execution', 'OpenAI API rejected the configured credential.');
     }
-    fail('OMK_ANTHROPIC_API_REQUEST_REJECTED', 'execution', 'Anthropic API rejected the request.');
+    fail('OMK_OPENAI_API_REQUEST_REJECTED', 'execution', 'OpenAI API rejected the request.');
   }
   const contentType = response.headers.get('content-type')?.toLowerCase();
   if (contentType === undefined || !contentType.startsWith('application/json')) {
     await discardApiResponse(response);
-    fail('OMK_ANTHROPIC_API_PROTOCOL_INVALID', 'execution', 'Anthropic API returned a non-JSON response.');
+    fail('OMK_OPENAI_API_PROTOCOL_INVALID', 'execution', 'OpenAI API returned a non-JSON response.');
   }
   let value;
   try {
     value = await readBoundedJsonResponse(response, configuration.maxResponseBytes);
   } catch (error) {
     if (attempt.signal.aborted) {
-      fail('OMK_ANTHROPIC_API_CANCELLED', 'execution', 'Anthropic API execution was cancelled.');
+      fail('OMK_OPENAI_API_CANCELLED', 'execution', 'OpenAI API execution was cancelled.');
     }
     if (error instanceof ApiResponseLimitError) {
       fail(
-        'OMK_ANTHROPIC_API_OUTPUT_LIMIT_EXCEEDED',
+        'OMK_OPENAI_API_OUTPUT_LIMIT_EXCEEDED',
         'infrastructure',
-        'Anthropic API response exceeded the adapter byte limit.',
+        'OpenAI API response exceeded the adapter byte limit.',
       );
     }
     if (error instanceof ApiResponseBodyError) {
-      fail('OMK_ANTHROPIC_API_PROTOCOL_INVALID', 'execution', 'Anthropic API returned invalid JSON.');
+      fail('OMK_OPENAI_API_PROTOCOL_INVALID', 'execution', 'OpenAI API returned invalid JSON.');
     }
-    fail('transport-error', 'infrastructure', 'Anthropic API response transport failed.');
+    fail('transport-error', 'infrastructure', 'OpenAI API response transport failed.');
   }
   if (value === null) {
-    fail('OMK_ANTHROPIC_API_PROTOCOL_INVALID', 'execution', 'Anthropic API returned an empty response.');
+    fail('OMK_OPENAI_API_PROTOCOL_INVALID', 'execution', 'OpenAI API returned an empty response.');
   }
-  const parsed = parseAnthropicApiMessage(value);
+  const parsed = parseOpenAIApiResponse(value, target.binding.qualification.effort);
   const classification = mergeOutputClassification(
     runState.classification,
     configuration.environmentOutputClassification,
   );
   return {
-    output: {
-      value: parsed.output,
-      classification,
-      mediaType: 'text/plain',
-    },
+    output: { value: parsed.output, classification, mediaType: 'text/plain' },
     trace: {
       value: parsed.trace,
       classification,
@@ -386,20 +390,18 @@ async function executeAnthropic(
   };
 }
 
-/** Creates a binding-local Anthropic Messages API Core Executor. */
-export async function createAnthropicApiExecutorAdapter(
-  input: Readonly<CreateAnthropicApiExecutorAdapterInput>,
+/** Creates a binding-local OpenAI Responses API Core Executor. */
+export async function createOpenAIApiExecutorAdapter(
+  input: Readonly<CreateOpenAIApiExecutorAdapterInput>,
 ): Promise<ExecutionExecutor> {
   if (typeof input.sessionIsolationKey !== 'string' || input.sessionIsolationKey.trim() === '') {
-    throw new TypeError('Anthropic API adapter requires a non-empty sessionIsolationKey.');
+    throw new TypeError('OpenAI API adapter requires a non-empty sessionIsolationKey.');
   }
   const target = captureStatelessApiTarget(input.target, input.binding, RESOURCE_PROFILE);
   const configuration = captureConfiguration(input.api);
   const policy = captureRequestPolicy(target);
   const identity = resolveIdentity(configuration, target, policy);
-  const resourceLeases = Object.freeze({
-    forRun: input.resourceLeases.forRun.bind(input.resourceLeases),
-  });
+  const resourceLeases = Object.freeze({ forRun: input.resourceLeases.forRun.bind(input.resourceLeases) });
   return createSameProcessExecutorAdapter({
     identity,
     sessionIsolationKey: input.sessionIsolationKey,
@@ -421,9 +423,9 @@ export async function createAnthropicApiExecutorAdapter(
             !== canonicalizeJson(target.target.config ?? null)
         ) {
           fail(
-            'OMK_ANTHROPIC_API_TRIAL_MISMATCH',
+            'OMK_OPENAI_API_TRIAL_MISMATCH',
             'infrastructure',
-            'Anthropic API trial does not match the sealed Target binding.',
+            'OpenAI API trial does not match the sealed Target binding.',
           );
         }
         return openStatelessApiTrial(
@@ -434,14 +436,7 @@ export async function createAnthropicApiExecutorAdapter(
         );
       },
       execute({ runState, trialState, attempt }) {
-        return executeAnthropic(
-          configuration,
-          target,
-          policy,
-          runState,
-          trialState,
-          attempt,
-        );
+        return executeOpenAI(configuration, target, policy, runState, trialState, attempt);
       },
       disposeTrial() {},
       disposeRun() {},
