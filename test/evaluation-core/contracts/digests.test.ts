@@ -9,7 +9,7 @@ import {
   computeRuntimeImplementationDigest,
   digestArtifactPayload,
   digestCanonicalJson,
-  generateWireSchemaIdentities,
+  generateRunContractSchemaIdentities,
   projectEvaluationInputs,
   projectExecutionInputs,
   type EvaluationDataset,
@@ -126,7 +126,7 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
     evaluatorRuntimes: [],
     analysisRuntimes: [],
     decisionRuntimes: [],
-    schemaIdentities: generateWireSchemaIdentities(),
+    schemaIdentities: generateRunContractSchemaIdentities(),
   });
 }
 
@@ -266,6 +266,26 @@ describe('Evaluation Core layered digests', () => {
     expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
+  it('keeps the Analysis estimator out of execution randomization identity', () => {
+    const first = planDigests(definition);
+    const second = planDigests({
+      ...definition,
+      experiment: {
+        ...definition.experiment,
+        sampling: {
+          ...definition.experiment.sampling,
+          estimatorId: 'bootstrap.other-estimator/v1',
+        },
+      },
+    });
+
+    expect(second.randomizationDesignDigest).toBe(first.randomizationDesignDigest);
+    expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
+    expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
+  });
+
   it('keeps EventWriter delivery policy out of stage identities but binds the root contract', () => {
     const first = planDigests(definition);
     const changedPolicy: MeasurementPolicy = {
@@ -286,7 +306,7 @@ describe('Evaluation Core layered digests', () => {
   });
 
   it('invalidates Execution and every downstream plan when an executor fingerprint changes', () => {
-    const identities = generateWireSchemaIdentities();
+    const identities = generateRunContractSchemaIdentities();
     const base = {
       dataset: definition.dataset,
       targets: definition.targets,
@@ -469,7 +489,7 @@ describe('Evaluation Core layered digests', () => {
   });
 
   it('treats schema identities as an order-independent set in the root contract', () => {
-    const schemaIdentities = generateWireSchemaIdentities();
+    const schemaIdentities = generateRunContractSchemaIdentities();
     const digest = `sha256:${'a'.repeat(64)}` as const;
     const input = {
       executionPlanDigest: digest,

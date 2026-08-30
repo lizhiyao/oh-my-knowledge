@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.comparability-policy/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "const": "exact-measurement-design",
+      "type": "string"
+    },
+    "__schema2": {
+      "enum": [
+        "evaluation",
+        "analysis",
+        "decision"
+      ],
+      "type": "string"
+    },
+    "__schema3": {
+      "items": {
+        "$ref": "#/$defs/__schema4"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "leftTargetId": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "rightTargetId": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/__schema5"
+        }
+      },
+      "required": [
+        "subjectId",
+        "leftTargetId",
+        "rightTargetId"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema6": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/comparability-policy.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "comparisonScope": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "designMode": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "policyDigest": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "subjects": {
+      "$ref": "#/$defs/__schema3"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "designMode",
+    "comparisonScope",
+    "subjects",
+    "policyDigest"
+  ],
+  "type": "object"
+}

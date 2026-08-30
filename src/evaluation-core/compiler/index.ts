@@ -11,8 +11,9 @@ import {
   canonicalizeJson,
   computePlanDigests,
   deriveSchedulingTargetGroups,
-  generateWireSchemaIdentities,
+  generateRunContractSchemaIdentities,
   parseWireDocument,
+  projectExecutionExperimentDesign,
   projectEvaluationInputs,
   projectExecutionInputs,
   schemaIdentityKey,
@@ -50,6 +51,7 @@ import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
 } from './validation.js';
+import { sealRunPlan } from '../internal/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';
@@ -1096,7 +1098,7 @@ export async function prepareEvaluationPlan(
   validateDefinitionSemantics(definition, measurementPolicy);
 
   const identitiesByUri = new Map<string, SchemaIdentity>();
-  for (const identity of generateWireSchemaIdentities()) {
+  for (const identity of generateRunContractSchemaIdentities()) {
     addSchemaIdentity(identitiesByUri, identity, identity.schemaVersion);
   }
   const executorRuntimes = await resolveExecutors(
@@ -1157,7 +1159,7 @@ export async function prepareEvaluationPlan(
     samples: projectExecutionInputs(definition.dataset),
     targets: definition.targets,
     schedulingTargetGroups,
-    experiment: definition.experiment,
+    experiment: projectExecutionExperimentDesign(definition.experiment),
     runtimes: executorRuntimes,
     policy: {
       execution: measurementPolicy.execution,
@@ -1235,7 +1237,7 @@ export async function prepareEvaluationPlan(
 
   try {
     const parsed = parseWireDocument(RunPlanSchema, plan);
-    return deepFreeze(snapshotJson(parsed)) as SealedRunPlan;
+    return sealRunPlan(parsed);
   } catch {
     throw new EvaluationDefinitionError({
       code: 'EVAL_DEFINITION_SCHEMA_INVALID',

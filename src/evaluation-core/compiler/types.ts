@@ -4,9 +4,8 @@ import {
   SchemaIdentitySchema,
   type CoreSchemaValidator,
   type ExtensionEntry,
-  type JsonValue,
-  type RunPlan,
 } from '../contracts/index.js';
+export type { DeepReadonly, SealedRunPlan } from '../internal/sealed-run-plan.js';
 
 export const ProtocolManifestSchema = z.object({
   protocolId: z.enum(['omk.invoke/v1', 'omk.session/v1']),
@@ -209,17 +208,3 @@ export interface PreparationRuntime {
     request: Readonly<ExtensionValidationRequest>,
   ): unknown | Promise<unknown>;
 }
-
-export type DeepReadonly<T> = T extends JsonValue
-  ? T extends readonly (infer Item)[]
-    ? readonly DeepReadonly<Item>[]
-    : T extends object
-      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-      : T
-  : T extends readonly (infer Item)[]
-    ? readonly DeepReadonly<Item>[]
-    : T extends object
-      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-      : T;
-
-export type SealedRunPlan = DeepReadonly<RunPlan>;

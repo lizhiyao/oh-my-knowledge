@@ -31,9 +31,6 @@
             "clusterKey": {
               "$ref": "#/$defs/__schema12"
             },
-            "estimatorId": {
-              "$ref": "#/$defs/__schema4"
-            },
             "experimentalUnit": {
               "enum": [
                 "sample",
@@ -73,7 +70,6 @@
             "experimentalUnit",
             "repeatedMeasures",
             "resamplingUnit",
-            "estimatorId",
             "seedCoupling"
           ],
           "type": "object"

@@ -11,6 +11,7 @@ import {
   WIRE_SCHEMA_CATALOG,
   canonicalizeJson,
   generateWireJsonSchemas,
+  generateRunContractSchemaIdentities,
   generateWireSchemaIdentities,
   parseWireDocument,
 } from '../../../src/evaluation-core/contracts/index.js';
@@ -45,6 +46,14 @@ describe('Evaluation Core wire schemas', () => {
     expect(identities).toHaveLength(WIRE_SCHEMA_CATALOG.length);
     expect(new Set(identities.map((identity) => identity.schemaVersion)).size).toBe(identities.length);
     expect(identities.every((identity) => /^sha256:[0-9a-f]{64}$/.test(identity.schemaDigest))).toBe(true);
+  });
+
+  it('keeps post-hoc comparability schemas outside sealed Run identity', () => {
+    const versions = generateRunContractSchemaIdentities().map(
+      (identity) => identity.schemaVersion,
+    );
+    expect(versions).not.toContain('omk.comparability-policy/v1');
+    expect(versions).not.toContain('omk.comparability-assessment/v1');
   });
 
   it('keeps opaque Runtime fingerprints distinct from OMK content digests', () => {

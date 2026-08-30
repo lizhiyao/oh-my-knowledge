@@ -224,7 +224,9 @@ trial 表示同一实验条件的一次重复测量；retry attempt 表示一次
 
 配对比较以 scheduling block 为调度原子。编译器会把比较关系的连通性固化为 canonical `ExecutionPlan.schedulingTargetGroups`：有重叠的比较合并为一个 Target 连通组，未参与比较的 Target 保持单元素组。该分组纳入 `executionPlanDigest`，因此改变配对连通性会产生新的 Execution 身份。comparison label、treatment role 与 metric projection 不改变 Execution 或 Evaluation 身份，但会改变 Analysis 身份及全部下游 digest。`randomizationSlots` 为每个 Target 分配唯一、稳定的实验 slot；该 slot 只标识随机化条件，绝不编码 control／treatment role。宿主比较 successive subject implementation 时，即使 Target ID 改变，也必须保持同一个 slot。
 
-`randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v1` domain，根据 execution-input projection、trial count、root seed、SamplingDesign、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+`randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v1` domain，根据 execution-input projection、trial count、root seed、会影响执行的 SamplingDesign projection、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含只属于 Analysis 的 `estimatorId`、原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
+
+ExecutionPlan 携带同一份 execution-affecting ExperimentDesign projection，因此不存在 `estimatorId`；包含 estimator identity 的完整 ExperimentDesign 从 AnalysisPlan 开始出现。只改变 estimator 时，ExecutionPlan 与 EvaluationPlan identity 保持不变，AnalysisPlan 及其全部下游 identity 失效。
 
 `pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。artifact identity 继续 hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。这些绑定 Plan 的 ID 负责 uniqueness、lineage 与 cache isolation，但不作为随机输入。随机化改用上文单独封存的 subject-neutral projection，避免有意改变 subject 时扰动其它对应 coordinate 已分配的实验条件。
 
@@ -282,6 +284,8 @@ interface MeasurementPolicy {
 ```
 
 所有可能改变输出、缺失、调度、证据完整度或结论的配置都属于 MeasurementPolicy，并在 prepare 时进入 RunPlan 和对应 digest。`start()` 只能接收外部 `AbortSignal`、annotations、EventWriter 和不影响测量结果的 observer options，不能覆盖测量策略。
+
+`prepareEvaluationPlan()` 是 Comparability 接受的进程内 `SealedRunPlan` capability 唯一签发入口。注册与验证该 capability 的 authority 位于 Evaluation Core internal module 命名空间，并由 package export map 阻断；Compiler 与 Core consumer 通过相对内部导入使用它，不把该 authority 暴露为包解析可达的 consumer 入口。RunPlan 字段仍可序列化为 JSON 供审计，但 clone 或 transported document 不具备比较权限；`assessComparability()` 再次消费前必须经过 Runtime resolution 重新 prepare。这样可以阻止调用方保留旧 digest 与 authenticated stage source，却替换 Target、instrument、sampling、Analysis 或 Decision projection。
 
 ### 2．ExecutionBundle
 
@@ -361,7 +365,7 @@ executionPlanDigest = H(
   randomizationDesignDigest,
   target snapshots,
   executor manifests,
-  SamplingDesign,
+  不含 estimatorId 的 execution-affecting ExperimentDesign projection,
   scheduling + execution policy
 )
 
@@ -392,7 +396,7 @@ runContractDigest = H(all plan digests + schema identities)
 
 ### 1．ADR：在不变测量系统下比较显式声明的研究对象
 
-**状态**：已接受为 v1 实现决策，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
+**状态**：v1 已接受并实现，由 [#441](https://github.com/lizhiyao/oh-my-knowledge/issues/441) 跟踪。
 
 可比性是两个候选对象针对一种明确用途的关系，不是任一 Run 自带的固有属性。v1 只支持一种刻意保守的设计模式：`exact-measurement-design`。调用方把一组一一对应的 Target 显式声明为研究对象；只有这些映射 Target 的定义及其 Executor Runtime 实现身份可以变化。观察、评分、抽样、分析这些研究对象，以及在请求时作出决策的全部测量系统保持不变。
 
@@ -548,6 +552,8 @@ Comparability 与其它 durable stage 使用同一套 document／source 分层�
 `evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 v1 不允许签名绕过 plan／source-aware 重算。
 
 Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、candidate 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 candidate digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
+
+Policy 与 Assessment 发布各自独立的 JSON Schema，但这些事后比较 schema 刻意不进入每份 RunPlan 的 `schemaIdentities`。新增或修改比较机制不能反向扰动被比较测量本身的 identity；只有生产 Run 时实际消费的 schema 才进入 `runContractDigest`。
 
 Subject mapping 必须非空，`subjectId` 必须唯一，左右两侧分别一一对应，并引用对应 sealed Plan 中真实存在的 Target。在比较 connectivity、Comparison reference 或其它以 Target 为 key 的结构前，Core 先把每个 Target alpha-rename 为带 tag 的 canonical reference：mapped Target 变为 `{ targetReferenceKind: 'subject', referenceId: subjectId }`，未映射 Target 变为 `{ targetReferenceKind: 'literal-target', referenceId: targetId }`。tag 属于 canonical identity，因此即使 `subjectId` 与无关的 literal Target ID 相同，也不会折叠成同一节点。每一侧在投影后仍须保持一一对应；重复的 tagged reference 属于非法。描述性的 `targetKind` 没有特殊语义。未声明的 Target 新增、删除、重映射、定义变化或 Executor 实现变化都属于测量系统漂移，结果为 incompatible。已声明的 subject change 会记录为 informational reason，而不是从审计轨迹中抹除。
 
@@ -829,7 +835,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入历史 `src/eval-core/`、CLI、executor、grading、renderer 或 server 层。
 
-Catalog 当前在 `schemas/evaluation-core/v1/` 发布十二个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
+Catalog 当前在 `schemas/evaluation-core/v1/` 发布十四个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 
@@ -861,7 +867,7 @@ Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider 
 
 ## 十九、Analysis 与 Decision Runtime v1 实现基线
 
-[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。AnalysisPlan 封存 Metric contract、包含 trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 变化会使 Analysis 及下游 identity 失效；仅 policy 变化只使 Decision 与 root contract 失效。
+[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。ExecutionPlan 只封存 execution-affecting ExperimentDesign projection；AnalysisPlan 封存 Metric contract、包含 estimator identity、trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 或 estimator 变化会使 Analysis 及下游 identity 失效，但不失效 Execution 或 Evaluation；仅 policy 变化只使 Decision 与 root contract 失效。
 
 Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或精确 Comparison contrast 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出以完整 `{ resultType, value }` envelope 同时经过 wire result contract，以及由完整 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。JSON Schema 无法表达的语义不变量，包括 Bonferroni 算术与 canonical family membership，也必须进入 validator 和 schema digest。
 

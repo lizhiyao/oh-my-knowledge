@@ -1,0 +1,448 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.comparability-assessment/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema10": {
+      "enum": [
+        "provenance-attestation",
+        "cache-receipt",
+        "invocation-budget",
+        "provider-cost-budget",
+        "policy-execution"
+      ],
+      "type": "string"
+    },
+    "__schema11": {
+      "enum": [
+        "verified",
+        "indeterminate"
+      ],
+      "type": "string"
+    },
+    "__schema12": {
+      "const": "source-trust",
+      "type": "string"
+    },
+    "__schema13": {
+      "enum": [
+        "parent",
+        "effective"
+      ],
+      "type": "string"
+    },
+    "__schema14": {
+      "enum": [
+        "verified",
+        "declared",
+        "untrusted",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "__schema15": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "effectiveAssuranceLevel": {
+            "$ref": "#/$defs/__schema19"
+          },
+          "fingerprintBasis": {
+            "$ref": "#/$defs/__schema18"
+          },
+          "referenceId": {
+            "$ref": "#/$defs/__schema17"
+          },
+          "runtimeIdentityDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "runtimeImplementationDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "runtimeKind": {
+            "$ref": "#/$defs/__schema16"
+          },
+          "sealedAssuranceLevel": {
+            "$ref": "#/$defs/__schema19"
+          },
+          "stage": {
+            "$ref": "#/$defs/__schema7"
+          },
+          "verifiedByAttestationDigest": {
+            "$ref": "#/$defs/__schema20"
+          }
+        },
+        "required": [
+          "stage",
+          "runtimeKind",
+          "referenceId",
+          "runtimeIdentityDigest",
+          "runtimeImplementationDigest",
+          "fingerprintBasis",
+          "sealedAssuranceLevel",
+          "effectiveAssuranceLevel"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema16": {
+      "enum": [
+        "executor",
+        "evaluator",
+        "analysis-node",
+        "missing-policy",
+        "decision-policy"
+      ],
+      "type": "string"
+    },
+    "__schema17": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema18": {
+      "enum": [
+        "content-derived",
+        "environment-derived",
+        "self-reported",
+        "opaque"
+      ],
+      "type": "string"
+    },
+    "__schema19": {
+      "enum": [
+        "verified",
+        "declared",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "__schema2": {
+      "const": "exact-measurement-design",
+      "type": "string"
+    },
+    "__schema20": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "__schema21": {
+      "enum": [
+        "compatible",
+        "incompatible"
+      ],
+      "type": "string"
+    },
+    "__schema22": {
+      "enum": [
+        "verified",
+        "conditional",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "__schema23": {
+      "enum": [
+        "compatible",
+        "conditional",
+        "incompatible"
+      ],
+      "type": "string"
+    },
+    "__schema24": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "axis": {
+            "enum": [
+              "design",
+              "evidence",
+              "identity"
+            ],
+            "type": "string"
+          },
+          "reasonCode": {
+            "enum": [
+              "comparability-identity-declared-subject-change",
+              "comparability-design-subject-mapping-invalid",
+              "comparability-design-undeclared-subject-change",
+              "comparability-design-evaluation-input-mismatch",
+              "comparability-design-evaluation-instrument-mismatch",
+              "comparability-design-sampling-mismatch",
+              "comparability-design-randomization-mismatch",
+              "comparability-design-analysis-mismatch",
+              "comparability-design-comparison-mismatch",
+              "comparability-design-decision-mismatch",
+              "comparability-design-schema-mismatch",
+              "comparability-design-projection-mismatch",
+              "comparability-evidence-source-absent",
+              "comparability-evidence-verification-indeterminate",
+              "comparability-evidence-assurance-unverified",
+              "comparability-evidence-source-untrusted",
+              "comparability-evidence-runtime-identity-opaque"
+            ],
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "conditional",
+              "incompatible"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reasonCode",
+          "axis",
+          "severity",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema3": {
+      "enum": [
+        "evaluation",
+        "analysis",
+        "decision"
+      ],
+      "type": "string"
+    },
+    "__schema4": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "planDigests": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "randomizationDesignDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "runContractDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "runtimeQualification": {
+          "$ref": "#/$defs/__schema15"
+        },
+        "sourceVerification": {
+          "$ref": "#/$defs/__schema8"
+        }
+      },
+      "required": [
+        "runContractDigest",
+        "planDigests",
+        "randomizationDesignDigest",
+        "artifacts",
+        "sourceVerification",
+        "runtimeQualification",
+        "candidateDigest"
+      ],
+      "type": "object"
+    },
+    "__schema5": {
+      "additionalProperties": false,
+      "properties": {
+        "analysisPlanDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "datasetRevisionDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "decisionPlanDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "evaluationInputDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "evaluationPlanDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "executionInputDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "executionPlanDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "randomizationDesignDigest": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "runContractDigest": {
+          "$ref": "#/$defs/__schema1"
+        }
+      },
+      "required": [
+        "datasetRevisionDigest",
+        "executionInputDigest",
+        "evaluationInputDigest",
+        "randomizationDesignDigest",
+        "executionPlanDigest",
+        "evaluationPlanDigest",
+        "analysisPlanDigest",
+        "decisionPlanDigest",
+        "runContractDigest"
+      ],
+      "type": "object"
+    },
+    "__schema6": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactDigest": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "stage": {
+            "$ref": "#/$defs/__schema7"
+          }
+        },
+        "required": [
+          "stage",
+          "artifactDigest"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema7": {
+      "enum": [
+        "execution",
+        "evaluation",
+        "analysis",
+        "decision"
+      ],
+      "type": "string"
+    },
+    "__schema8": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "sourceDigest": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "stage": {
+                "$ref": "#/$defs/__schema7"
+              },
+              "verificationAxis": {
+                "$ref": "#/$defs/__schema10"
+              },
+              "verificationFactKind": {
+                "$ref": "#/$defs/__schema9"
+              },
+              "verificationStatus": {
+                "$ref": "#/$defs/__schema11"
+              }
+            },
+            "required": [
+              "verificationFactKind",
+              "stage",
+              "sourceDigest",
+              "verificationAxis",
+              "verificationStatus"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "sourceDigest": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "stage": {
+                "$ref": "#/$defs/__schema7"
+              },
+              "trust": {
+                "$ref": "#/$defs/__schema14"
+              },
+              "trustRelation": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "verificationFactKind": {
+                "$ref": "#/$defs/__schema12"
+              }
+            },
+            "required": [
+              "verificationFactKind",
+              "stage",
+              "sourceDigest",
+              "trustRelation",
+              "trust"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "__schema9": {
+      "const": "verification-axis",
+      "type": "string"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/comparability-assessment.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assessmentDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "comparabilityStatus": {
+      "$ref": "#/$defs/__schema23"
+    },
+    "comparisonScope": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "designMode": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "designStatus": {
+      "$ref": "#/$defs/__schema21"
+    },
+    "evidenceQualificationStatus": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "left": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "policyDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "reasons": {
+      "$ref": "#/$defs/__schema24"
+    },
+    "right": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "policyDigest",
+    "designMode",
+    "comparisonScope",
+    "left",
+    "right",
+    "designStatus",
+    "evidenceQualificationStatus",
+    "comparabilityStatus",
+    "reasons",
+    "assessmentDigest"
+  ],
+  "type": "object"
+}

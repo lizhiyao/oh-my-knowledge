@@ -29,12 +29,13 @@ function identity(
   fingerprint: string,
   capabilities: RuntimeIdentity['capabilities'],
   assuranceLevel: RuntimeIdentity['assuranceLevel'] = 'verified',
+  fingerprintBasis: RuntimeIdentity['fingerprintBasis'] = 'content-derived',
 ): RuntimeIdentity {
   return {
     implementationId,
     version: '1.0.0',
     fingerprint,
-    fingerprintBasis: 'content-derived',
+    fingerprintBasis,
     assuranceLevel,
     capabilities,
     implementationManifest: { coverageKind: 'fingerprint-complete' },
@@ -181,6 +182,8 @@ export function validPolicy(): MeasurementPolicy {
 
 interface RuntimeOptions {
   executorFingerprint?: string;
+  executorFingerprintBasis?: RuntimeIdentity['fingerprintBasis'];
+  evaluatorFingerprintBasis?: RuntimeIdentity['fingerprintBasis'];
   deterministic?: boolean;
   executorAssurance?: RuntimeIdentity['assuranceLevel'];
   cancellation?: 'cooperative' | 'best-effort' | 'unsupported';
@@ -275,6 +278,7 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
             })),
           },
           options.executorAssurance,
+          options.executorFingerprintBasis,
         )),
         satisfiesVersionConstraint: options.versionSatisfied ?? true,
       };
@@ -283,11 +287,17 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
       calls.evaluator += 1;
       if (!Object.isFrozen(requirement)) throw new Error('requirement is mutable');
       return {
-        identity: remember(identity('actual-evaluator/v1', 'evaluator-fingerprint-1', {
-          inputSourceKinds: ['output', 'trace', 'expected', 'evaluation-context'],
-          metricValueTypes: options.evaluatorValueTypes ?? ['boolean'],
-          schemas: [schemaIdentity('evaluator-io')],
-        })),
+        identity: remember(identity(
+          'actual-evaluator/v1',
+          'evaluator-fingerprint-1',
+          {
+            inputSourceKinds: ['output', 'trace', 'expected', 'evaluation-context'],
+            metricValueTypes: options.evaluatorValueTypes ?? ['boolean'],
+            schemas: [schemaIdentity('evaluator-io')],
+          },
+          'verified',
+          options.evaluatorFingerprintBasis,
+        )),
         satisfiesVersionConstraint: options.versionSatisfied ?? true,
       };
     },
