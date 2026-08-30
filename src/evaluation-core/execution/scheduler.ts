@@ -1,4 +1,5 @@
 import {
+  canonicalizeJson,
   derivePlannedExecutionCoordinates,
   digestCanonicalJson,
   type PlannedExecutionCoordinate,
@@ -24,7 +25,7 @@ function interleavedOrder(
   const rightCoordinate = right.coordinates[0];
   return leftCoordinate.trialIndex - rightCoordinate.trialIndex
     || compareStrings(leftCoordinate.sampleId, rightCoordinate.sampleId)
-    || compareStrings(leftCoordinate.targetId, rightCoordinate.targetId);
+    || compareStrings(leftCoordinate.randomizationSlotId, rightCoordinate.randomizationSlotId);
 }
 
 function rotate<T>(values: readonly T[], offset: number): T[] {
@@ -33,10 +34,14 @@ function rotate<T>(values: readonly T[], offset: number): T[] {
   return [...values.slice(normalized), ...values.slice(0, normalized)];
 }
 
-function randomRank(seed: string, scope: string, identity: string): string {
+function randomRank(
+  randomizationDesignDigest: string,
+  scope: 'coordinate' | 'block',
+  identity: unknown,
+): string {
   return digestCanonicalJson({
     derivation: 'omk.execution-schedule-rank/v1',
-    seed,
+    randomizationDesignDigest,
     scope,
     identity,
   });
@@ -44,7 +49,7 @@ function randomRank(seed: string, scope: string, identity: string): string {
 
 function randomizedBlocks(
   blocks: readonly ExecutionSchedulingBlock[],
-  seed: string,
+  randomizationDesignDigest: string,
   blockSize: number,
 ): ExecutionSchedulingBlock[] {
   const batches: ExecutionSchedulingBlock[][] = [];
@@ -69,13 +74,41 @@ function randomizedBlocks(
       .map((block) => ({
         ...block,
         coordinates: [...block.coordinates].sort((left, right) => compareStrings(
-          randomRank(seed, block.schedulingBlockId, left.trialId),
-          randomRank(seed, block.schedulingBlockId, right.trialId),
+          randomRank(randomizationDesignDigest, 'coordinate', {
+            trialIndex: left.trialIndex,
+            sampleId: left.sampleId,
+            randomizationSlotId: left.randomizationSlotId,
+          }),
+          randomRank(randomizationDesignDigest, 'coordinate', {
+            trialIndex: right.trialIndex,
+            sampleId: right.sampleId,
+            randomizationSlotId: right.randomizationSlotId,
+          }),
         )),
       }))
       .sort((left, right) => compareStrings(
-        randomRank(seed, `batch:${batchIndex}`, left.schedulingBlockId),
-        randomRank(seed, `batch:${batchIndex}`, right.schedulingBlockId),
+        randomRank(randomizationDesignDigest, 'block', {
+          batchIndex,
+          coordinates: left.coordinates.map((coordinate) => ({
+            trialIndex: coordinate.trialIndex,
+            sampleId: coordinate.sampleId,
+            randomizationSlotId: coordinate.randomizationSlotId,
+          })).sort((first, second) => compareStrings(
+            canonicalizeJson(first),
+            canonicalizeJson(second),
+          )),
+        }),
+        randomRank(randomizationDesignDigest, 'block', {
+          batchIndex,
+          coordinates: right.coordinates.map((coordinate) => ({
+            trialIndex: coordinate.trialIndex,
+            sampleId: coordinate.sampleId,
+            randomizationSlotId: coordinate.randomizationSlotId,
+          })).sort((first, second) => compareStrings(
+            canonicalizeJson(first),
+            canonicalizeJson(second),
+          )),
+        }),
       ))
   ));
 }
@@ -103,5 +136,9 @@ export function deriveExecutionSchedule(plan: SealedRunPlan): ExecutionSchedulin
   if (scheduling.blockSize === undefined) {
     throw new TypeError('randomized-block scheduling requires blockSize');
   }
-  return randomizedBlocks(interleaved, plan.execution.experiment.seed, scheduling.blockSize);
+  return randomizedBlocks(
+    interleaved,
+    plan.execution.randomizationDesignDigest,
+    scheduling.blockSize,
+  );
 }

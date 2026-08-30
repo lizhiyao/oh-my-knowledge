@@ -120,6 +120,23 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('requires a canonical one-to-one randomization slot for every Target', async () => {
+    const missing = validDefinition();
+    missing.experiment.randomizationSlots.pop();
+    await expectCode(missing, validPolicy(), 'EVAL_DEFINITION_POLICY_INVALID');
+
+    const duplicate = validDefinition();
+    duplicate.experiment.randomizationSlots[1] = {
+      ...duplicate.experiment.randomizationSlots[1],
+      randomizationSlotId: duplicate.experiment.randomizationSlots[0].randomizationSlotId,
+    };
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const nonCanonical = validDefinition();
+    nonCanonical.experiment.randomizationSlots.reverse();
+    await expectCode(nonCanonical, validPolicy(), 'EVAL_DEFINITION_POLICY_INVALID');
+  });
+
   it('keeps scheduling pointers inside the execution-visible projection', async () => {
     const definition = validDefinition();
     definition.experiment.sampling = {
@@ -139,6 +156,10 @@ describe('Compiler definition validation', () => {
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
       targetId: 'treatment-b',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-b',
+      randomizationSlotId: 'slot-treatment-b',
     });
     definition.comparisons.push({
       comparisonId: 'treatment-vs-treatment-b',
@@ -375,6 +396,10 @@ describe('Compiler definition validation', () => {
     definition.targets.push({
       ...structuredClone(definition.targets[1]),
       targetId: 'treatment-secondary',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-secondary',
+      randomizationSlotId: 'slot-treatment-secondary',
     });
     definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
     definition.analysisGraph.nodes = [

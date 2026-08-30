@@ -390,6 +390,9 @@
           ],
           "type": "string"
         },
+        "implementationFacets": {
+          "$ref": "#/$defs/__schema9"
+        },
         "implementationId": {
           "$ref": "#/$defs/__schema1"
         },

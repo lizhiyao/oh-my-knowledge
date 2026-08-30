@@ -61,6 +61,7 @@ function makeCompletedRecord(
   });
   return {
     targetId,
+    randomizationSlotId: `slot-${targetId}`,
     sampleId,
     trialIndex: 0,
     trialId,
@@ -180,6 +181,7 @@ describe('ExecutionBundle contract', () => {
     const error = { code: 'provider-error', stage: 'execution' as const, message: 'failed' };
     const failed: ExecutionRecord = {
       targetId: 'target-b',
+      randomizationSlotId: 'slot-target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
       trialId,
@@ -231,6 +233,7 @@ describe('ExecutionBundle contract', () => {
     });
     const censored: ExecutionRecord = {
       targetId: 'target-a',
+      randomizationSlotId: 'slot-target-a',
       sampleId: 'sample-a',
       trialIndex: 0,
       trialId,
@@ -299,6 +302,7 @@ describe('ExecutionBundle contract', () => {
     });
     const censored: ExecutionRecord = {
       targetId: 'target-b',
+      randomizationSlotId: 'slot-target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
       trialId,

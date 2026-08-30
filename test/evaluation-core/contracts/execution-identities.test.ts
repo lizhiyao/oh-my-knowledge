@@ -10,6 +10,7 @@ import {
 } from '../../../src/evaluation-core/contracts/index.js';
 
 const executionPlanDigest = `sha256:${'1'.repeat(64)}` as Sha256Digest;
+const randomizationDesignDigest = `sha256:${'3'.repeat(64)}` as Sha256Digest;
 
 describe('Execution identity derivation', () => {
   it('matches the v1 domain-separated golden vector', () => {
@@ -44,30 +45,30 @@ describe('Execution identity derivation', () => {
       'sha256:6627fa21a900f74e3d5c6aa726ca5e5090595c0617d2385fff59afcf0b84dfa8',
     );
     expect(deriveTrialSeed({
-      rootSeed: 'seed-1',
+      randomizationDesignDigest,
       seedCoupling: 'shared-within-block',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 's1',
     })).toBe(
-      'sha256:e42e56fb54bfc0f8dd1351bc498c20aab65ae326a9461b406b23b60ed6f08d3d',
+      'sha256:5ebf2f47afac73711928a5bd7f079dcc500800f342d7bbf9e558d8bbecb2d2a7',
     );
     expect(deriveTrialSeed({
-      rootSeed: 'seed-1',
+      randomizationDesignDigest,
       seedCoupling: 'independent-by-target',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 's1',
-      targetId: 'control',
+      randomizationSlotId: 'slot-control',
     })).toBe(
-      'sha256:a626240acc0b900f5a9c3b8522b1a1f939eea1909b8504d56e1ce501e850c45f',
+      'sha256:d06893a19334e92784c221806803a724914f2108281b0b7641f3e6331826cb2c',
     );
     expect(deriveTrialSeed({
-      rootSeed: 'seed-1',
+      randomizationDesignDigest,
       seedCoupling: 'uncontrolled',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 's1',
-      targetId: 'control',
+      randomizationSlotId: 'slot-control',
     })).toBe(
-      'sha256:3da1ced0b792b5a67dc18d33e6dd7ccd37f1e1bd50232c9321fc870e0f26ad8c',
+      'sha256:f1b4f0911478ff68d7c94ad818dbb4ca145f69cfbbd7626d1e8fa46ff4c70b9d',
     );
     expect(deriveAttemptId({ trialId, attemptNumber: 1 })).toBe(
       'sha256:f664c308f4675c875006748ec0893aa279b47a2eb97d52e8845a13fcd27cc833',
@@ -145,26 +146,25 @@ describe('Execution identity derivation', () => {
   });
 
   it('makes seed coupling an explicit construct-validity choice', () => {
-    const schedulingBlockId = `sha256:${'2'.repeat(64)}` as Sha256Digest;
     const shared = deriveTrialSeed({
-      rootSeed: 'root',
+      randomizationDesignDigest,
       seedCoupling: 'shared-within-block',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 'sample',
     });
     const control = deriveTrialSeed({
-      rootSeed: 'root',
+      randomizationDesignDigest,
       seedCoupling: 'independent-by-target',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 'sample',
-      targetId: 'control',
+      randomizationSlotId: 'slot-control',
     });
     const treatment = deriveTrialSeed({
-      rootSeed: 'root',
+      randomizationDesignDigest,
       seedCoupling: 'independent-by-target',
-      schedulingBlockId,
+      trialIndex: 0,
       sampleId: 'sample',
-      targetId: 'treatment',
+      randomizationSlotId: 'slot-treatment',
     });
 
     expect(control).not.toBe(treatment);

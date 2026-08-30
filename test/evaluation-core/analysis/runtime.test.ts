@@ -106,6 +106,18 @@ async function makePlan(mutate?: (
   delete policy.evaluation.timeoutMs;
   policy.evidence.trace = 'full';
   mutate?.(definition, policy);
+  const targetIds = new Set(definition.targets.map((target) => target.targetId));
+  const slotTargetIds = new Set(
+    definition.experiment.randomizationSlots.map((slot) => slot.targetId),
+  );
+  if (targetIds.size !== slotTargetIds.size
+      || [...targetIds].some((targetId) => !slotTargetIds.has(targetId))) {
+    definition.experiment.randomizationSlots = definition.targets
+      .map((target, index) => ({
+        targetId: target.targetId,
+        randomizationSlotId: `slot-${String(index).padStart(4, '0')}`,
+      }));
+  }
   return prepareEvaluationPlan(definition, policy, runtime);
 }
 

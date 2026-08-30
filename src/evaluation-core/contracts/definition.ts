@@ -91,11 +91,17 @@ export const SchedulingPolicySchema = z.object({
   blockSize: z.number().int().positive().optional(),
 }).strict();
 
+export const RandomizationSlotSchema = z.object({
+  targetId: IdentifierSchema,
+  randomizationSlotId: IdentifierSchema,
+}).strict();
+
 export const ExperimentDesignSchema = z.object({
   trials: z.number().int().positive(),
   seed: NonEmptyStringSchema,
   sampling: SamplingDesignSchema,
   scheduling: SchedulingPolicySchema,
+  randomizationSlots: z.array(RandomizationSlotSchema).min(1),
 }).strict();
 
 const AnalysisMetricInputReferenceSchema = z.object({
@@ -287,6 +293,7 @@ export type EvaluatorDefinition = z.infer<typeof EvaluatorDefinitionSchema>;
 export type MetricDefinition = z.infer<typeof MetricDefinitionSchema>;
 export type SeedCoupling = z.infer<typeof SeedCouplingSchema>;
 export type SamplingDesign = z.infer<typeof SamplingDesignSchema>;
+export type RandomizationSlot = z.infer<typeof RandomizationSlotSchema>;
 export type ExperimentDesign = z.infer<typeof ExperimentDesignSchema>;
 export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;
 export type AnalysisNodeDefinition = z.infer<typeof AnalysisNodeDefinitionSchema>;

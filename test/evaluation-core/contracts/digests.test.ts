@@ -5,6 +5,8 @@ import {
   computeDatasetDigests,
   computePlanDigests,
   computeRunContractDigest,
+  computeRuntimeIdentityDigest,
+  computeRuntimeImplementationDigest,
   digestArtifactPayload,
   digestCanonicalJson,
   generateWireSchemaIdentities,
@@ -92,6 +94,10 @@ const definition: EvaluationDefinition = {
   experiment: {
     trials: 1,
     seed: 'seed-1',
+    randomizationSlots: [{
+      targetId: 'control',
+      randomizationSlotId: 'slot-control',
+    }],
     sampling: {
       experimentalUnit: 'sample',
       repeatedMeasures: false,
@@ -125,6 +131,39 @@ function planDigests(current: EvaluationDefinition, currentPolicy = policy) {
 }
 
 describe('Evaluation Core layered digests', () => {
+  it('separates Runtime behavior identity from evidence qualification', () => {
+    const runtime = {
+      implementationId: 'remote-model/v1',
+      version: '1.0.0',
+      fingerprint: 'deployment:primary',
+      fingerprintBasis: 'self-reported' as const,
+      assuranceLevel: 'declared' as const,
+      capabilities: { protocol: 'omk.invoke/v1' },
+      implementationFacets: { toolSchemaDigest: `sha256:${'1'.repeat(64)}` },
+      provenanceFacets: { attestation: 'pending' },
+    };
+    const requalified = {
+      ...runtime,
+      fingerprintBasis: 'content-derived' as const,
+      assuranceLevel: 'verified' as const,
+      provenanceFacets: { attestation: 'verified' },
+    };
+    const changedBehavior = {
+      ...runtime,
+      implementationFacets: { toolSchemaDigest: `sha256:${'2'.repeat(64)}` },
+    };
+
+    expect(computeRuntimeIdentityDigest(requalified)).not.toBe(
+      computeRuntimeIdentityDigest(runtime),
+    );
+    expect(computeRuntimeImplementationDigest(requalified)).toBe(
+      computeRuntimeImplementationDigest(runtime),
+    );
+    expect(computeRuntimeImplementationDigest(changedBehavior)).not.toBe(
+      computeRuntimeImplementationDigest(runtime),
+    );
+  });
+
   it('projects Gold away from executor-visible inputs', () => {
     expect(projectExecutionInputs(dataset)).toEqual([{
       sampleId: 's1',
@@ -326,9 +365,14 @@ describe('Evaluation Core layered digests', () => {
       ],
       experiment: {
         ...definition.experiment,
+        randomizationSlots: [
+          { targetId: 'control', randomizationSlotId: 'slot-control' },
+          { targetId: 'variant-a', randomizationSlotId: 'slot-variant-a' },
+          { targetId: 'variant-b', randomizationSlotId: 'slot-variant-b' },
+        ],
         sampling: {
           ...definition.experiment.sampling,
-          pairingKey: '/input/cohort',
+          pairingKey: '/sampleId',
           resamplingUnit: 'paired-block',
         },
       },
@@ -364,9 +408,13 @@ describe('Evaluation Core layered digests', () => {
       ],
       experiment: {
         ...definition.experiment,
+        randomizationSlots: [
+          { targetId: 'control', randomizationSlotId: 'slot-control' },
+          { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },
+        ],
         sampling: {
           ...definition.experiment.sampling,
-          pairingKey: '/input/cohort',
+          pairingKey: '/sampleId',
           resamplingUnit: 'paired-block',
         },
       },

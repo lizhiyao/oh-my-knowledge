@@ -83,6 +83,7 @@ export const SchedulingTargetGroupSchema = z.array(IdentifierSchema).min(1);
 export const ExecutionPlanSchema = z.object({
   schemaVersion: z.literal(EXECUTION_PLAN_SCHEMA_VERSION),
   executionInputDigest: Sha256DigestSchema,
+  randomizationDesignDigest: Sha256DigestSchema,
   samples: z.array(ExecutionInputSampleSchema).min(1),
   targets: z.array(TargetDefinitionSchema).min(1),
   schedulingTargetGroups: z.array(SchedulingTargetGroupSchema).min(1),
@@ -139,6 +140,7 @@ export const PlanDigestsSchema = z.object({
   datasetRevisionDigest: Sha256DigestSchema,
   executionInputDigest: Sha256DigestSchema,
   evaluationInputDigest: Sha256DigestSchema,
+  randomizationDesignDigest: Sha256DigestSchema,
   executionPlanDigest: Sha256DigestSchema,
   evaluationPlanDigest: Sha256DigestSchema,
   analysisPlanDigest: Sha256DigestSchema,

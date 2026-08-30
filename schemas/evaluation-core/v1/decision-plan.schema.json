@@ -183,6 +183,9 @@
                 ],
                 "type": "string"
               },
+              "implementationFacets": {
+                "$ref": "#/$defs/__schema6"
+              },
               "implementationId": {
                 "$ref": "#/$defs/__schema3"
               },

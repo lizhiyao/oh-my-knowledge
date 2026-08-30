@@ -1125,6 +1125,9 @@
           ],
           "type": "string"
         },
+        "implementationFacets": {
+          "$ref": "#/$defs/__schema11"
+        },
         "implementationId": {
           "$ref": "#/$defs/__schema1"
         },

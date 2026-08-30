@@ -206,6 +206,18 @@ async function makePlan(
   const policy = validPolicy();
   delete policy.execution.timeoutMs;
   mutate?.(definition, policy);
+  const targetIds = new Set(definition.targets.map((target) => target.targetId));
+  const slotTargetIds = new Set(
+    definition.experiment.randomizationSlots.map((slot) => slot.targetId),
+  );
+  if (targetIds.size !== slotTargetIds.size
+      || [...targetIds].some((targetId) => !slotTargetIds.has(targetId))) {
+    definition.experiment.randomizationSlots = definition.targets
+      .map((target, index) => ({
+        targetId: target.targetId,
+        randomizationSlotId: `slot-${String(index).padStart(4, '0')}`,
+      }));
+  }
   return prepareEvaluationPlan(definition, policy, runtime);
 }
 
@@ -322,6 +334,52 @@ describe('Evaluation Core Execution runtime', () => {
     expect(new Set(deriveExecutionSchedule(randomized).flatMap((block) => (
       block.coordinates.map((coordinate) => coordinate.trialId)
     ))).size).toBe(4);
+  });
+
+  it('keeps controlled seeds and admission order stable across a declared subject rename', async () => {
+    const configure = (definition: ReturnType<typeof validDefinition>): void => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+      });
+      definition.experiment.scheduling = {
+        schedulingKind: 'randomized-block',
+        blockSize: 2,
+      };
+    };
+    const original = await makePlan(configure);
+    const renamed = await makePlan((definition) => {
+      configure(definition);
+      definition.targets[1] = {
+        ...definition.targets[1],
+        targetId: 'candidate-v2',
+        config: { revision: 2 },
+      };
+      definition.comparisons[0] = {
+        ...definition.comparisons[0],
+        treatmentTargetIds: ['candidate-v2'],
+      };
+      definition.experiment.randomizationSlots[1] = {
+        targetId: 'candidate-v2',
+        randomizationSlotId: 'slot-treatment',
+      };
+    });
+    const randomizationProjection = (plan: Plan) => deriveExecutionSchedule(plan).flatMap(
+      (block) => block.coordinates.map((coordinate) => ({
+        trialIndex: coordinate.trialIndex,
+        sampleId: coordinate.sampleId,
+        randomizationSlotId: coordinate.randomizationSlotId,
+        trialSeed: coordinate.trialSeed,
+      })),
+    );
+
+    expect(renamed.execution.executionPlanDigest).not.toBe(
+      original.execution.executionPlanDigest,
+    );
+    expect(renamed.execution.randomizationDesignDigest).toBe(
+      original.execution.randomizationDesignDigest,
+    );
+    expect(randomizationProjection(renamed)).toEqual(randomizationProjection(original));
   });
 
   it('retries only within one trial identity and disposes one trial session', async () => {

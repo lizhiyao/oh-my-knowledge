@@ -35,6 +35,9 @@
           ],
           "type": "string"
         },
+        "implementationFacets": {
+          "$ref": "#/$defs/__schema12"
+        },
         "implementationId": {
           "$ref": "#/$defs/__schema1"
         },
@@ -600,6 +603,9 @@
               "provenance": {
                 "$ref": "#/$defs/__schema13"
               },
+              "randomizationSlotId": {
+                "$ref": "#/$defs/__schema1"
+              },
               "runtime": {
                 "$ref": "#/$defs/__schema10"
               },
@@ -636,6 +642,7 @@
             },
             "required": [
               "targetId",
+              "randomizationSlotId",
               "sampleId",
               "trialIndex",
               "trialId",
@@ -670,6 +677,9 @@
               "provenance": {
                 "$ref": "#/$defs/__schema13"
               },
+              "randomizationSlotId": {
+                "$ref": "#/$defs/__schema1"
+              },
               "runtime": {
                 "$ref": "#/$defs/__schema10"
               },
@@ -706,6 +716,7 @@
             },
             "required": [
               "targetId",
+              "randomizationSlotId",
               "sampleId",
               "trialIndex",
               "trialId",
@@ -741,6 +752,9 @@
               "provenance": {
                 "$ref": "#/$defs/__schema13"
               },
+              "randomizationSlotId": {
+                "$ref": "#/$defs/__schema1"
+              },
               "runtime": {
                 "$ref": "#/$defs/__schema10"
               },
@@ -777,6 +791,7 @@
             },
             "required": [
               "targetId",
+              "randomizationSlotId",
               "sampleId",
               "trialIndex",
               "trialId",
@@ -808,6 +823,9 @@
               "provenance": {
                 "$ref": "#/$defs/__schema13"
               },
+              "randomizationSlotId": {
+                "$ref": "#/$defs/__schema1"
+              },
               "runtime": {
                 "$ref": "#/$defs/__schema10"
               },
@@ -835,6 +853,7 @@
             },
             "required": [
               "targetId",
+              "randomizationSlotId",
               "sampleId",
               "trialIndex",
               "trialId",

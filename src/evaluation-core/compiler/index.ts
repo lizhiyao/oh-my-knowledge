@@ -76,7 +76,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
   'clusterKey', 'stratumKey', 'repeatedMeasures', 'resamplingUnit', 'estimatorId',
-  'seedCoupling', 'schedulingTargetGroups',
+  'seedCoupling', 'randomizationSlots', 'randomizationSlotId', 'schedulingTargetGroups',
   'scheduling', 'schedulingKind', 'blockSize', 'analysisGraph', 'analysisMode', 'nodes', 'nodeId',
   'analysisNodeKind', 'inputKind', 'referenceId', 'outputResultId', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
@@ -1153,6 +1153,7 @@ export async function prepareEvaluationPlan(
   const execution = {
     schemaVersion: EXECUTION_PLAN_SCHEMA_VERSION,
     executionInputDigest: digests.executionInputDigest,
+    randomizationDesignDigest: digests.randomizationDesignDigest,
     samples: projectExecutionInputs(definition.dataset),
     targets: definition.targets,
     schedulingTargetGroups,

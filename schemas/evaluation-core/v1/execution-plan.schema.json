@@ -18,6 +18,13 @@
     "__schema11": {
       "additionalProperties": false,
       "properties": {
+        "randomizationSlots": {
+          "items": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "sampling": {
           "additionalProperties": false,
           "properties": {
@@ -106,7 +113,8 @@
         "trials",
         "seed",
         "sampling",
-        "scheduling"
+        "scheduling",
+        "randomizationSlots"
       ],
       "type": "object"
     },
@@ -115,6 +123,22 @@
       "type": "string"
     },
     "__schema13": {
+      "additionalProperties": false,
+      "properties": {
+        "randomizationSlotId": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "targetId": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "targetId",
+        "randomizationSlotId"
+      ],
+      "type": "object"
+    },
+    "__schema14": {
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -143,6 +167,9 @@
                   "opaque"
                 ],
                 "type": "string"
+              },
+              "implementationFacets": {
+                "$ref": "#/$defs/__schema5"
               },
               "implementationId": {
                 "$ref": "#/$defs/__schema4"
@@ -186,7 +213,7 @@
       },
       "type": "array"
     },
-    "__schema14": {
+    "__schema15": {
       "additionalProperties": false,
       "properties": {
         "budget": {
@@ -236,10 +263,10 @@
               "type": "string"
             },
             "output": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema16"
             },
             "trace": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema16"
             }
           },
           "required": [
@@ -359,7 +386,7 @@
       ],
       "type": "object"
     },
-    "__schema15": {
+    "__schema16": {
       "enum": [
         "full",
         "reference",
@@ -368,7 +395,7 @@
       ],
       "type": "string"
     },
-    "__schema16": {
+    "__schema17": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -379,7 +406,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema17"
+            "$ref": "#/$defs/__schema18"
           }
         },
         "required": [
@@ -390,11 +417,11 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema17"
+        "$ref": "#/$defs/__schema18"
       },
       "type": "object"
     },
-    "__schema17": {
+    "__schema18": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
@@ -527,13 +554,16 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema17"
     },
     "policy": {
-      "$ref": "#/$defs/__schema14"
+      "$ref": "#/$defs/__schema15"
+    },
+    "randomizationDesignDigest": {
+      "$ref": "#/$defs/__schema1"
     },
     "runtimes": {
-      "$ref": "#/$defs/__schema13"
+      "$ref": "#/$defs/__schema14"
     },
     "samples": {
       "$ref": "#/$defs/__schema2"
@@ -551,6 +581,7 @@
   "required": [
     "schemaVersion",
     "executionInputDigest",
+    "randomizationDesignDigest",
     "samples",
     "targets",
     "schedulingTargetGroups",

@@ -467,6 +467,9 @@
                 ],
                 "type": "string"
               },
+              "implementationFacets": {
+                "$ref": "#/$defs/__schema5"
+              },
               "implementationId": {
                 "$ref": "#/$defs/__schema4"
               },

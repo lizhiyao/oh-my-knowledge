@@ -56,6 +56,7 @@ export const RuntimeIdentitySchema = z.object({
   ]),
   assuranceLevel: z.enum(['verified', 'declared', 'unknown']),
   capabilities: JsonValueSchema,
+  implementationFacets: JsonValueSchema.optional(),
   provenanceFacets: JsonValueSchema.optional(),
 }).strict();
 

@@ -72,6 +72,7 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',
           repeatedMeasures: false,
@@ -148,6 +149,7 @@ describe('Evaluation Core wire schemas', () => {
       experiment: {
         trials: 1,
         seed: 'seed',
+        randomizationSlots: [{ targetId: 't', randomizationSlotId: 'slot-t' }],
         sampling: {
           experimentalUnit: 'sample',
           repeatedMeasures: false,
