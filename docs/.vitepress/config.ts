@@ -38,6 +38,7 @@ export default defineConfig({
             items: [
               { text: 'Quickstart', link: '/quickstart-skill-eval' },
               { text: 'CLI reference', link: '/reference/cli' },
+              { text: 'Embedded API', link: '/reference/embedded-api' },
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
               { text: 'Executors', link: '/reference/executors' },
               { text: 'Artifact & variant layout', link: '/reference/artifact-layout' },
@@ -103,6 +104,7 @@ export default defineConfig({
             items: [
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
+              { text: '嵌入式 API', link: '/zh/reference/embedded-api' },
               { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
               { text: '执行器', link: '/zh/reference/executors' },
               { text: '指定被测对象(artifact / variant)', link: '/zh/reference/artifact-layout' },

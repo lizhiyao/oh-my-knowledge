@@ -342,7 +342,7 @@ describe('DSH bundle metadata', () => {
     }>;
     assert.deepEqual(patch[0]?.insert?.[0], {
       id: 'omk',
-      name: 'oh-my-knowledge/dist/dsh-plugin/index.js',
+      name: 'oh-my-knowledge/dsh-plugin',
     });
     assert.ok(inject.includes('agentPresets'));
     assert.ok(!inject.includes('systemPrompt'));

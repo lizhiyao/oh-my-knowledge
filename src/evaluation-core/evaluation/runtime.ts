@@ -1440,6 +1440,37 @@ async function runEvaluation(
         }
       }
     }
+    const sourceByTrial = new Map(
+      prepared.source.bundle.records.map((record) => [trialKey(record), record]),
+    );
+    for (const coordinate of coordinates) {
+      if (records.has(coordinate.evaluationId)) continue;
+      const source = sourceByTrial.get(trialKey(coordinate));
+      if (source !== undefined && source.executionStatus !== 'budget-censored') continue;
+      const binding = prepared.bindings.get(coordinate.evaluatorId);
+      if (binding === undefined) throw new Error('Evaluator binding disappeared');
+      const record = notEvaluatedRecord(
+        plan,
+        binding,
+        coordinate,
+        source === undefined
+          ? 'execution-record-unavailable'
+          : 'execution-budget-censored',
+        ports.clock.timestamp(),
+        minimumTrust(
+          effectiveExecutionBundleTrust(prepared.source),
+          source?.provenance.trust ?? effectiveExecutionBundleTrust(prepared.source),
+        ),
+        source,
+      );
+      records.set(record.evaluationId, record);
+      await events.emit(
+        'evaluation.record.not-evaluated',
+        'evaluation',
+        coordinate.evaluationId,
+        { reasonCode: record.notEvaluatedReasonCode },
+      );
+    }
     let source = makeBundle(
       plan,
       prepared.source,

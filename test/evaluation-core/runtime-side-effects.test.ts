@@ -16,7 +16,7 @@ const PROBE_PATH = join(
   REPO_ROOT,
   'test/evaluation-core/fixtures/core-side-effect-probe.mjs',
 );
-const CORE_DIST_ENTRY = join(REPO_ROOT, 'dist/evaluation-core/contracts/index.js');
+const CORE_DIST_ENTRY = join(REPO_ROOT, 'dist/index.js');
 
 function directorySnapshot(root: string): string[] {
   const snapshot: string[] = [];
@@ -34,9 +34,9 @@ function directorySnapshot(root: string): string[] {
 }
 
 describe('Evaluation Core 宿主副作用边界', () => {
-  it('在隔离进程导入内部入口并运行纯内存操作时零宿主副作用', () => {
+  it('在隔离进程导入包根并运行纯内存操作时零宿主副作用', () => {
     if (!existsSync(CORE_DIST_ENTRY)) {
-      throw new Error('缺少 dist/evaluation-core；请先运行 yarn build。');
+      throw new Error('缺少 dist/index.js；请先运行 yarn build。');
     }
 
     const sandboxRoot = mkdtempSync(join(tmpdir(), 'omk-core-side-effects-'));
