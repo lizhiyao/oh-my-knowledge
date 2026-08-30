@@ -404,6 +404,44 @@ interface ComparabilityPolicy {
   policyDigest: Sha256Digest;
 }
 
+type ComparabilitySourceVerificationFact =
+  | {
+      verificationFactKind: 'verification-axis';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      verificationAxis:
+        | 'provenance-attestation'
+        | 'cache-receipt'
+        | 'invocation-budget'
+        | 'provider-cost-budget'
+        | 'policy-execution';
+      verificationStatus: 'verified' | 'indeterminate';
+    }
+  | {
+      verificationFactKind: 'source-trust';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      trustRelation: 'parent' | 'effective';
+      trust: Provenance['trust'];
+    };
+
+interface RuntimeQualificationFact {
+  stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+  runtimeKind:
+    | 'executor'
+    | 'evaluator'
+    | 'analysis-node'
+    | 'missing-policy'
+    | 'decision-policy';
+  referenceId: string;
+  runtimeIdentityDigest: Sha256Digest;
+  runtimeImplementationDigest: Sha256Digest;
+  fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
+  sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  verifiedByAttestationDigest?: Sha256Digest;
+}
+
 interface ComparabilityCandidateIdentity {
   runContractDigest: Sha256Digest;
   planDigests: PlanDigests;
@@ -411,47 +449,20 @@ interface ComparabilityCandidateIdentity {
     stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
     artifactDigest: Sha256Digest;
   }[];
-  sourceVerification: readonly {
-    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
-    sourceDigest: Sha256Digest;
-    verificationAxis:
-      | 'provenance-trust'
-      | 'parent-source-trust'
-      | 'cache-receipt'
-      | 'invocation-budget'
-      | 'provider-cost-budget'
-      | 'policy-execution';
-    verificationStatus:
-      | 'verified'
-      | 'indeterminate'
-      | 'declared'
-      | 'untrusted'
-      | 'unknown';
-  }[];
-  runtimeQualification: readonly {
-    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
-    runtimeKind:
-      | 'executor'
-      | 'evaluator'
-      | 'analysis-node'
-      | 'missing-policy'
-      | 'decision-policy';
-    referenceId: string;
-    runtimeIdentityDigest: Sha256Digest;
-    fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
-    sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
-    effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
-  }[];
+  sourceVerification: readonly ComparabilitySourceVerificationFact[];
+  runtimeQualification: readonly RuntimeQualificationFact[];
   candidateDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessment {
   schemaVersion: 'omk.comparability-assessment/v1';
   policyDigest: Sha256Digest;
+  designMode: 'exact-measurement-design';
+  comparisonScope: 'evaluation' | 'analysis' | 'decision';
   left: ComparabilityCandidateIdentity;
   right: ComparabilityCandidateIdentity;
   designStatus: 'compatible' | 'incompatible';
-  evidenceStatus: 'verified' | 'conditional';
+  evidenceQualificationStatus: 'verified' | 'conditional' | 'rejected';
   comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
   reasons: readonly ComparabilityReason[];
   assessmentDigest: Sha256Digest;
@@ -466,15 +477,56 @@ interface ComparabilityReason {
   leftDigest?: Sha256Digest;
   rightDigest?: Sha256Digest;
 }
+
+interface ComparabilityVerificationContext {
+  /** 由独立宿主 verifier 产生，绝不能从 Assessment JSON 重建。 */
+  verifiedRuntimeAttestations?: ReadonlyMap<Sha256Digest, {
+    attestationDigest: Sha256Digest;
+    verifiedAssuranceLevel: 'verified';
+  }>;
+}
+
+interface ComparabilityAssessmentPlanVerification {
+  assessmentComputationStatus: 'verified';
+  policyDigest: Sha256Digest;
+  leftCandidateDigest: Sha256Digest;
+  rightCandidateDigest: Sha256Digest;
+}
+
+interface ComparabilityAssessmentSource {
+  assessment: ComparabilityAssessment;
+  planVerification: ComparabilityAssessmentPlanVerification;
+}
 ```
 
-`ComparabilityCandidateIdentity` 为审计记录全部 stage Plan digest、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。artifact、source verification 与 Runtime qualification 列表统一按 canonical stage／axis／reference 顺序排列。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
+`ComparabilityCandidateIdentity` 为审计记录全部 stage Plan digest、已提供的 source Bundle 或 Decision digest，以及本次判断实际使用的规范化 verification facts。`ComparabilitySourceVerificationFact` 使用 discriminated union，因此 cache receipt 不能填写 provenance trust，parent trust fact 也不能填写 `indeterminate`。缺少 artifact 时，通过 Assessment 中不存在对应条目并附带 reason 表达，绝不伪造 digest 或自报 verified fact。该 identity 不复制原始 Dataset、Gold、output、trace、attestation material、cost value 或 invocation count。
 
-Runtime 比较使用两个投影：implementation identity 包含 `implementationId`、`version`、`fingerprint`、`fingerprintBasis` 与 `capabilities`；evidence qualification 包含 sealed／effective assurance、`provenanceFacets`、effective source trust 与 source verification axes。因此，只改变 assurance 不会伪装成测量算法改变，fingerprint 相同也不会伪装成执行已认证。只有 authenticated source envelope 携带独立 host verifier evidence 时，`effectiveAssuranceLevel` 才能高于 sealed level；transported field 不能自行提升信任。
+Runtime 比较使用两个分别计算 digest 的投影。`runtimeIdentityDigest` 使用 `omk.runtime-identity/v1` domain 并覆盖完整 sealed RuntimeIdentity；`runtimeImplementationDigest` 使用 `omk.runtime-implementation-identity/v1` domain，且只覆盖 `implementationId`、`version`、`fingerprint`、`fingerprintBasis` 与 `capabilities`，只有该 digest 参与 design equality。Evidence qualification 包含 sealed／effective assurance、`provenanceFacets`、effective source trust 与 source verification axes。因此，只改变 assurance 不会伪装成测量算法改变，implementation digest 相同也不会伪装成执行已认证。
 
-Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯比较操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Assessment 绑定两个 candidate identity 与 Policy digest，其中不包含 clock time、本地化 message、宿主路径或无序 reason 集合。Reason 按 `(severity, axis, scope, path, reasonCode, leftDigest, rightDigest)` 做 canonical 排序；展示 adapter 再把稳定 reason code 映射为人类文案。后续取得新的独立 attestation 时，应生成新的 evidence-qualified Assessment，绝不静默修改旧结果。
+`ComparabilityVerificationContext` 是不可序列化的 trusted-host 输入，与现有 Bundle verification context 平行。Map key 是完整 `runtimeIdentityDigest`，value 是已经由独立宿主边界验证过的 attestation material digest。Core 绝不把 raw attestation material、transported `verifiedByAttestationDigest` 或调用方自填的 effective level 当作证明。只有 context 精确匹配 Runtime identity 时，effective assurance 才能高于 sealed level；Core 随后把 verified attestation digest 记录到 candidate。畸形 context entry 会被拒绝；与本次 Runtime identity 无关的 entry 不授予任何信任，直接忽略。新增 attestation 会产生新的 candidate／Assessment digest，不能修改旧 artifact。
 
-Subject mapping 必须非空、左右两侧分别一一对应，并引用对应 sealed Plan 中真实存在的 Target。在比较 connectivity、Comparison reference 或其它以 Target 为 key 的结构前，Core 先把每个 mapped Target alpha-rename 为 canonical `subjectId`；未映射 Target ID 保持原值。描述性的 `targetKind` 没有特殊语义。未声明的 Target 新增、删除、重映射、定义变化或 Executor 实现变化都属于测量系统漂移，结果为 incompatible。已声明的 subject change 会记录为 informational reason，而不是从审计轨迹中抹除。
+Comparability 与其它 durable stage 使用同一套 document／source 分层：
+
+- `parseComparabilityAssessmentDocument()` 只校验 wire shape、canonical ordering、局部不变量和排除自身字段后的 digest；它只返回 document，绝不返回 authenticated source；
+- `assessComparability()` 消费 Policy、两个 sealed RunPlan、两侧可用的准确 authenticated stage-source prefix，以及可选 trusted verification context，返回 branded `ComparabilityAssessmentSource`；
+- `parseComparabilityAssessment()` 消费 transported document 及同一组 Plan、source、Policy 与 verification context，完整重算预期 Assessment，只有完全相等时才返回 branded source。
+
+`evaluation` 所需 source prefix 是 Execution+Evaluation，`analysis` 再加 Analysis，`decision` 再加 Decision。plan-only diagnosis 可以提供更短但必须准确的 prefix，并产生显式 conditional reason；存在空洞、foreign parent、stale stage 或 unbranded source 时，在比较前直接拒绝。`ComparabilityAssessmentSource` 与现有 Bundle source 一样，是受保护的不可序列化 capability。自动发布消费者必须同时要求该 source 与 `comparabilityStatus: 'compatible'`；transported Assessment 即使自报 `verified` 也没有权限。宿主可以签名证明 document transport，但 v1 不允许签名绕过 plan／source-aware 重算。
+
+Policy 不可变、canonical 且内容寻址。它作为参数传给 Core 的纯操作，不进入 `MeasurementPolicy` 或任一 RunPlan：比较历史 Run 不会改变它们原本的生产方式。Policy、candidate 与 Assessment 计算 digest 时均排除自身 digest 字段。Assessment 绑定两个 candidate digest 与 Policy digest，并重复 Policy 的 `designMode` 与 `comparisonScope`，避免 standalone reader 把 Analysis comparability 误当成 Decision comparability；plan-aware validation 要求它们完全一致。Assessment 不包含 clock time、本地化 message、宿主路径或无序 reason 集合；展示 adapter 再把稳定 reason code 映射为人类文案。
+
+Subject mapping 必须非空，`subjectId` 必须唯一，左右两侧分别一一对应，并引用对应 sealed Plan 中真实存在的 Target。在比较 connectivity、Comparison reference 或其它以 Target 为 key 的结构前，Core 先把每个 mapped Target alpha-rename 为 canonical `subjectId`；未映射 Target ID 保持原值。描述性的 `targetKind` 没有特殊语义。未声明的 Target 新增、删除、重映射、定义变化或 Executor 实现变化都属于测量系统漂移，结果为 incompatible。已声明的 subject change 会记录为 informational reason，而不是从审计轨迹中抹除。
+
+全部数组在 hashing 前使用以下 total order；document parser 遇到非 canonical input 时直接拒绝，不能静默重排：
+
+- string 严格按 RFC 8785／JCS property-name sorting 的未转义 UTF-16 code unit 做 lexicographic comparison；缺失 optional value 排在 present value 前；
+- stage 顺序是 `execution < evaluation < analysis < decision`；
+- Runtime kind 顺序是 `executor < evaluator < analysis-node < missing-policy < decision-policy`；
+- source fact 先按 stage，再按 `verification-axis < source-trust`；verification axis 顺序是 `provenance-attestation < cache-receipt < invocation-budget < provider-cost-budget < policy-execution`，trust relation 顺序是 `parent < effective`，最后比较 source digest；
+- subject 按 `(subjectId, leftTargetId, rightTargetId)` 排序，artifact 按 `(stage, artifactDigest)` 排序，Runtime qualification 按 `(stage, runtimeKind, referenceId, runtimeIdentityDigest)` 排序；
+- reason 先按 severity `incompatible < conditional < info`、axis `design < evidence < identity`、scope `evaluation < analysis < decision`，再按 `(path, reasonCode, leftDigest, rightDigest)` 排序，且不得重复。
+
+Uniqueness key 分别是 `subjectId`、左右两侧各自的 Target ID、artifact stage、source fact 的 `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)`，以及 Runtime qualification 的 `(stage, runtimeKind, referenceId)`。即使其它 value 不同，semantic key 重复仍属于非法。跨语言和宿主的 `policyDigest`、`candidateDigest` 与 `assessmentDigest` 由这些规则决定，不能依赖实现遍历顺序。
 
 ### 3．Scope 投影
 
@@ -494,17 +546,18 @@ JSON property order 与排除在测量 identity 外的 annotation 不会产生 i
 
 只有全部 invariant projection 相同且所有 subject mapping 有效时，`designStatus` 才是 `compatible`。任一处不匹配都会使其成为 `incompatible`，并以确定顺序报告全部 mismatch。
 
-只有请求 scope 所需的 source chain 得到独立认证、所有适用 verification axis 都是 `verified`，且实际使用的每个 Runtime 在应用独立宿主验证后都具有 verified effective assurance 时，`evidenceStatus` 才是 `verified`。Plan-only preflight、transported JSON、缺少 attestation、`indeterminate` verification、unknown effective provenance，或 declared／unknown effective Runtime assurance 都会产生带明确 reason code 的 `conditional`。`fingerprintBasis: 'opaque'` 也会产生 condition，因为相等值无法说明究竟固定了哪份实现。Plan、artifact、parent chain 结构非法或 digest 伪造时，应先由各自 validator 拒绝；ComparabilityPolicy 不是另一条 artifact admission 旁路。
+`evidenceQualificationStatus` 与 EvaluationReport 表达完整性的 `evidenceStatus` 不同。只有请求 scope 所需的 source chain 得到独立认证、所有适用 verification axis 都是 `verified`，且实际使用的每个 Runtime 在应用独立宿主验证后都具有 verified effective assurance 时，它才是 `verified`。Plan-only preflight、缺少必要 source、`indeterminate` verification、unknown／declared effective provenance，或 declared／unknown effective Runtime assurance 都会产生带明确 reason code 的 `conditional`。invariant Runtime 使用 `fingerprintBasis: 'opaque'` 也会产生 condition，因为相等值无法说明究竟固定了哪份实现。effective source trust 为 `untrusted` 时，结果为 `rejected`：这是负面事实，不是尚未闭合的条件。Plan、artifact、parent chain 结构非法、digest 伪造或 verification context 畸形时，应先由各自 validator 拒绝；ComparabilityPolicy 不是另一条 artifact admission 旁路。
 
 Overall status 只能由 Core 推导，宿主不能自行填写：
 
 ```text
-if designStatus == incompatible                     => incompatible
-else if evidenceStatus == conditional               => conditional
-else                                                 => compatible
+if designStatus == incompatible                                  => incompatible
+else if evidenceQualificationStatus == rejected                  => incompatible
+else if evidenceQualificationStatus == conditional               => conditional
+else                                                              => compatible
 ```
 
-因此，`conditional` 的唯一含义是「实验设计匹配，但列出的认证条件尚未闭合」，绝不表示「设计大概相似」。conditional Assessment 可以用于诊断或继续收集证据，但不能单独授权方向性发布决策。现有 Decision 与 Report evidence gate 继续对 indeterminate source verification fail closed。
+因此，`conditional` 的唯一含义是「实验设计匹配，但列出的认证条件尚未闭合」，绝不表示「设计大概相似」或「来源已经确认不可信」。`rejected` 会保留这项负面 evidence fact，独立的 `designStatus` 继续说明设计本身是否匹配。conditional 与 rejected evidence 都不能授权方向性发布决策。现有 Decision 与 Report evidence gate 继续对 indeterminate 或 untrusted source fail closed。
 
 以下初始变化矩阵是 normative。除显式标记 `conditional` 的行外，结果均假定其它证据已经 verified。「忽略」表示字段位于请求 scope 之外，不表示它未进入任一 Run 的 identity。
 
@@ -522,7 +575,8 @@ else                                                 => compatible
 | 被消费的 schema 或测量阶段 extension | 从第一个消费 scope 起 incompatible | incompatible | incompatible | `comparability-design-schema-mismatch` |
 | 只比较 Plan，或缺少必要 source | conditional | conditional | conditional | `comparability-evidence-source-absent` |
 | transported source verification 为 `indeterminate` | conditional | conditional | conditional | `comparability-evidence-verification-indeterminate` |
-| effective provenance 或 Runtime assurance 未 verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| effective provenance 为 unknown／declared，或 Runtime assurance 未 verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| effective source trust 为 `untrusted` | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | incompatible（`evidenceQualificationStatus: rejected`） | `comparability-evidence-source-untrusted` |
 | invariant Runtime 使用 opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
 
 无效 subject mapping 使用 `comparability-design-subject-mapping-invalid`；其它没有更具体 code 的 invariant component 使用 `comparability-design-projection-mismatch`。Stage／artifact digest 相同还是不同会记录在 candidate identity 中，不作为 verdict reason。自动发布消费者遇到未知 reason code 时必须 fail closed；reader 仍可保留并展示它。

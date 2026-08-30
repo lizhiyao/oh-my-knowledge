@@ -404,6 +404,44 @@ interface ComparabilityPolicy {
   policyDigest: Sha256Digest;
 }
 
+type ComparabilitySourceVerificationFact =
+  | {
+      verificationFactKind: 'verification-axis';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      verificationAxis:
+        | 'provenance-attestation'
+        | 'cache-receipt'
+        | 'invocation-budget'
+        | 'provider-cost-budget'
+        | 'policy-execution';
+      verificationStatus: 'verified' | 'indeterminate';
+    }
+  | {
+      verificationFactKind: 'source-trust';
+      stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+      sourceDigest: Sha256Digest;
+      trustRelation: 'parent' | 'effective';
+      trust: Provenance['trust'];
+    };
+
+interface RuntimeQualificationFact {
+  stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+  runtimeKind:
+    | 'executor'
+    | 'evaluator'
+    | 'analysis-node'
+    | 'missing-policy'
+    | 'decision-policy';
+  referenceId: string;
+  runtimeIdentityDigest: Sha256Digest;
+  runtimeImplementationDigest: Sha256Digest;
+  fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
+  sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
+  verifiedByAttestationDigest?: Sha256Digest;
+}
+
 interface ComparabilityCandidateIdentity {
   runContractDigest: Sha256Digest;
   planDigests: PlanDigests;
@@ -411,47 +449,20 @@ interface ComparabilityCandidateIdentity {
     stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
     artifactDigest: Sha256Digest;
   }[];
-  sourceVerification: readonly {
-    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
-    sourceDigest: Sha256Digest;
-    verificationAxis:
-      | 'provenance-trust'
-      | 'parent-source-trust'
-      | 'cache-receipt'
-      | 'invocation-budget'
-      | 'provider-cost-budget'
-      | 'policy-execution';
-    verificationStatus:
-      | 'verified'
-      | 'indeterminate'
-      | 'declared'
-      | 'untrusted'
-      | 'unknown';
-  }[];
-  runtimeQualification: readonly {
-    stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
-    runtimeKind:
-      | 'executor'
-      | 'evaluator'
-      | 'analysis-node'
-      | 'missing-policy'
-      | 'decision-policy';
-    referenceId: string;
-    runtimeIdentityDigest: Sha256Digest;
-    fingerprintBasis: RuntimeIdentity['fingerprintBasis'];
-    sealedAssuranceLevel: RuntimeIdentity['assuranceLevel'];
-    effectiveAssuranceLevel: RuntimeIdentity['assuranceLevel'];
-  }[];
+  sourceVerification: readonly ComparabilitySourceVerificationFact[];
+  runtimeQualification: readonly RuntimeQualificationFact[];
   candidateDigest: Sha256Digest;
 }
 
 interface ComparabilityAssessment {
   schemaVersion: 'omk.comparability-assessment/v1';
   policyDigest: Sha256Digest;
+  designMode: 'exact-measurement-design';
+  comparisonScope: 'evaluation' | 'analysis' | 'decision';
   left: ComparabilityCandidateIdentity;
   right: ComparabilityCandidateIdentity;
   designStatus: 'compatible' | 'incompatible';
-  evidenceStatus: 'verified' | 'conditional';
+  evidenceQualificationStatus: 'verified' | 'conditional' | 'rejected';
   comparabilityStatus: 'compatible' | 'conditional' | 'incompatible';
   reasons: readonly ComparabilityReason[];
   assessmentDigest: Sha256Digest;
@@ -466,15 +477,56 @@ interface ComparabilityReason {
   leftDigest?: Sha256Digest;
   rightDigest?: Sha256Digest;
 }
+
+interface ComparabilityVerificationContext {
+  /** Produced by an independent host verifier; never reconstructed from Assessment JSON. */
+  verifiedRuntimeAttestations?: ReadonlyMap<Sha256Digest, {
+    attestationDigest: Sha256Digest;
+    verifiedAssuranceLevel: 'verified';
+  }>;
+}
+
+interface ComparabilityAssessmentPlanVerification {
+  assessmentComputationStatus: 'verified';
+  policyDigest: Sha256Digest;
+  leftCandidateDigest: Sha256Digest;
+  rightCandidateDigest: Sha256Digest;
+}
+
+interface ComparabilityAssessmentSource {
+  assessment: ComparabilityAssessment;
+  planVerification: ComparabilityAssessmentPlanVerification;
+}
 ```
 
-`ComparabilityCandidateIdentity` records all stage Plan digests for audit, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. Its artifact, source-verification, and Runtime-qualification lists use canonical stage/axis/reference order. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
+`ComparabilityCandidateIdentity` records all stage Plan digests for audit, the source Bundle or Decision digest when supplied, and only the normalized verification facts actually used. `ComparabilitySourceVerificationFact` is a discriminated union so a cache receipt cannot claim a provenance trust value and a parent trust fact cannot claim `indeterminate`. A missing artifact is represented by absence plus a reason in the Assessment, never by a fake digest or a self-reported verified fact. The identity never copies raw Dataset, Gold, output, trace, attestation material, cost values, or invocation counts.
 
-Runtime comparison uses two projections: implementation identity contains `implementationId`, `version`, `fingerprint`, `fingerprintBasis`, and `capabilities`; evidence qualification contains sealed/effective assurance, `provenanceFacets`, effective source trust, and source-verification axes. An assurance-only change therefore cannot masquerade as a changed measurement algorithm, and an equal fingerprint cannot masquerade as authenticated execution. `effectiveAssuranceLevel` may only exceed the sealed level when the authenticated source envelope carries independent host-verifier evidence; transported fields cannot promote themselves.
+Runtime comparison uses two separately digested projections. `runtimeIdentityDigest` uses domain `omk.runtime-identity/v1` and covers the complete sealed RuntimeIdentity. `runtimeImplementationDigest` uses domain `omk.runtime-implementation-identity/v1` and covers exactly `implementationId`, `version`, `fingerprint`, `fingerprintBasis`, and `capabilities`; only this digest participates in design equality. Evidence qualification contains sealed/effective assurance, `provenanceFacets`, effective source trust, and source-verification axes. An assurance-only change therefore cannot masquerade as a changed measurement algorithm, and an equal implementation digest cannot masquerade as authenticated execution.
 
-The Policy is immutable, canonical, and content-addressed. It is supplied to a pure Core comparison operation rather than embedded in `MeasurementPolicy` or either RunPlan: comparing historical Runs does not change how either Run was produced. The Assessment binds both candidate identities and the Policy digest. It contains no clock time, localized message, host path, or unordered reason collection. Reasons sort canonically by `(severity, axis, scope, path, reasonCode, leftDigest, rightDigest)`; presentation adapters map stable reason codes to human text. Re-running with newly obtained independent attestation produces a new evidence-qualified Assessment, never a silent mutation of the old one.
+`ComparabilityVerificationContext` is a non-serializable trusted-host input, parallel to existing Bundle verification contexts. Its map key is the complete `runtimeIdentityDigest`; its value is the digest of attestation material already verified by an independent host boundary. Core never accepts raw attestation material, a transported `verifiedByAttestationDigest`, or a caller-supplied effective level as proof. A Runtime may rise above its sealed assurance only when the context contains an exact identity match; Core then records the verified attestation digest in the candidate. Malformed context entries are rejected, while entries for unrelated identities grant no trust and are ignored. New attestation produces a new candidate and Assessment digest rather than mutating an existing artifact.
 
-Subject mappings must be non-empty, one-to-one on each side, and reference Targets present in the corresponding sealed Plan. Before comparing connectivity, Comparison references, or any other Target-keyed structure, Core alpha-renames each mapped Target to its canonical `subjectId`; unmapped Target IDs remain literal. A descriptive `targetKind` has no special semantics. An undeclared Target addition, removal, remapping, definition change, or Executor implementation change is measurement-system drift and is incompatible. A declared subject change is recorded as an informational reason rather than erased from the audit trail.
+Comparability follows the same document/source split as every other durable stage:
+
+- `parseComparabilityAssessmentDocument()` validates wire shape, canonical ordering, local invariants, and self-excluding digests only. It returns a document, never an authenticated source.
+- `assessComparability()` consumes the Policy, two sealed RunPlans, an exact authenticated stage-source prefix for each side when available, and an optional trusted verification context. It returns a branded `ComparabilityAssessmentSource`.
+- `parseComparabilityAssessment()` consumes a transported document plus the same Plans, sources, Policy, and verification context; it recomputes the complete expected Assessment and returns a branded source only on exact equality.
+
+Required source prefixes are Execution+Evaluation for `evaluation`, plus Analysis for `analysis`, and plus Decision for `decision`. A shorter exact prefix is allowed for plan-only diagnosis and yields explicit conditional reasons; a hole, foreign parent, stale stage, or unbranded source is rejected before comparison. `ComparabilityAssessmentSource` is a non-serializable capability guarded like the existing Bundle sources. Automated release consumers must require that source and `comparabilityStatus: 'compatible'`; a transported Assessment that merely claims `verified` has no authority. Host signing may attest a document for transport, but v1 never lets signing bypass plan/source-aware recomputation.
+
+The Policy is immutable, canonical, and content-addressed. It is supplied to the pure Core operation rather than embedded in `MeasurementPolicy` or either RunPlan: comparing historical Runs does not change how either Run was produced. Policy, candidate, and Assessment digests omit their own digest field. The Assessment binds both candidate digests and the Policy digest, and repeats the Policy's `designMode` and `comparisonScope` so a standalone reader cannot mistake Analysis comparability for Decision comparability; plan-aware validation requires exact equality. It contains no clock time, localized message, host path, or unordered reason collection; presentation adapters map stable reason codes to human text.
+
+Subject mappings must be non-empty, use a unique `subjectId`, be one-to-one on each side, and reference Targets present in the corresponding sealed Plan. Before comparing connectivity, Comparison references, or any other Target-keyed structure, Core alpha-renames each mapped Target to its canonical `subjectId`; unmapped Target IDs remain literal. A descriptive `targetKind` has no special semantics. An undeclared Target addition, removal, remapping, definition change, or Executor implementation change is measurement-system drift and is incompatible. A declared subject change is recorded as an informational reason rather than erased from the audit trail.
+
+All arrays use the following total order before hashing; non-canonical input is rejected rather than silently reordered during document parsing:
+
+- strings compare lexicographically by unescaped UTF-16 code units exactly as RFC 8785/JCS property-name sorting; absent optional values sort before present values;
+- stages: `execution < evaluation < analysis < decision`;
+- Runtime kinds: `executor < evaluator < analysis-node < missing-policy < decision-policy`;
+- source facts: stage, then `verification-axis < source-trust`; verification axes use `provenance-attestation < cache-receipt < invocation-budget < provider-cost-budget < policy-execution`, trust relations use `parent < effective`, followed by source digest;
+- subjects sort by `(subjectId, leftTargetId, rightTargetId)`, artifacts by `(stage, artifactDigest)`, and Runtime qualifications by `(stage, runtimeKind, referenceId, runtimeIdentityDigest)`;
+- reasons sort by severity `incompatible < conditional < info`, axis `design < evidence < identity`, scope `evaluation < analysis < decision`, then `(path, reasonCode, leftDigest, rightDigest)` and must be unique.
+
+Uniqueness keys are `subjectId`, each side's Target ID, artifact stage, `(stage, sourceDigest, verificationFactKind, verificationAxis/trustRelation)` for source facts, and `(stage, runtimeKind, referenceId)` for Runtime qualifications. A duplicate semantic key is invalid even when the remaining values differ. These rules, rather than implementation traversal order, define `policyDigest`, `candidateDigest`, and `assessmentDigest` across languages and hosts.
 
 ### 7.3 Scope projections
 
@@ -494,17 +546,18 @@ JSON property order and annotations excluded from measurement identity produce n
 
 `designStatus` is `compatible` only when every invariant projection matches and every subject mapping is valid. Any mismatch makes it `incompatible`; multiple mismatches are all reported in deterministic order.
 
-`evidenceStatus` is `verified` only when the supplied source chain required by the scope is independently authenticated, every applicable verification axis is `verified`, and every actually used Runtime has verified effective assurance after applying any independent host verification. Plan-only preflight, transported JSON, absent attestation, `indeterminate` verification, unknown effective provenance, or declared/unknown effective Runtime assurance yields `conditional` with explicit reason codes. `fingerprintBasis: 'opaque'` also yields a condition because equality does not establish what implementation was held fixed. Structurally invalid Plans, artifacts, parent chains, or forged digests are rejected by their validators before comparison; ComparabilityPolicy is not an alternate artifact-admission path.
+`evidenceQualificationStatus` is distinct from EvaluationReport's completeness-oriented `evidenceStatus`. It is `verified` only when the supplied source chain required by the scope is independently authenticated, every applicable verification axis is `verified`, and every actually used Runtime has verified effective assurance after applying independent host verification. Plan-only preflight, a required source that is absent, `indeterminate` verification, unknown/declared effective provenance, or declared/unknown effective Runtime assurance yields `conditional` with explicit reason codes. An invariant Runtime with `fingerprintBasis: 'opaque'` also yields a condition because equality does not establish what implementation was held fixed. An effective source trust of `untrusted` yields `rejected`: this is a negative fact, not an unresolved condition. Structurally invalid Plans, artifacts, parent chains, forged digests, or malformed verification context are rejected by their validators before comparison; ComparabilityPolicy is not an alternate artifact-admission path.
 
 The overall status is derived, never supplied by a host:
 
 ```text
-if designStatus == incompatible                     => incompatible
-else if evidenceStatus == conditional               => conditional
-else                                                 => compatible
+if designStatus == incompatible                                  => incompatible
+else if evidenceQualificationStatus == rejected                  => incompatible
+else if evidenceQualificationStatus == conditional               => conditional
+else                                                              => compatible
 ```
 
-`conditional` therefore means “the experimental design matches, but listed authentication conditions remain unresolved.” It never means “the design is probably similar.” A conditional Assessment may support diagnostics or evidence collection, but cannot by itself authorize a directional release decision. Existing Decision and Report evidence gates continue to fail closed on indeterminate source verification.
+`conditional` therefore means “the experimental design matches, but listed authentication conditions remain unresolved.” It never means “the design is probably similar” or “the source is known to be untrusted.” `rejected` preserves that negative evidence fact; the separate `designStatus` shows whether the design itself still matched. Neither conditional nor rejected evidence may authorize a directional release decision. Existing Decision and Report evidence gates continue to fail closed on indeterminate or untrusted sources.
 
 The initial change matrix below is normative. Outcomes assume otherwise verified evidence; `conditional` rows override that assumption. “Ignored” means outside the requested scope, not omitted from either Run's identity.
 
@@ -522,7 +575,8 @@ The initial change matrix below is normative. Outcomes assume otherwise verified
 | consumed schema or measurement-stage extension | incompatible at first consuming scope | incompatible | incompatible | `comparability-design-schema-mismatch` |
 | plan-only comparison or required source absent | conditional | conditional | conditional | `comparability-evidence-source-absent` |
 | transported source verification is `indeterminate` | conditional | conditional | conditional | `comparability-evidence-verification-indeterminate` |
-| effective provenance or Runtime assurance is not verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| effective provenance is unknown/declared, or Runtime assurance is not verified | conditional | conditional | conditional | `comparability-evidence-assurance-unverified` |
+| effective source trust is `untrusted` | incompatible (`evidenceQualificationStatus: rejected`) | incompatible (`evidenceQualificationStatus: rejected`) | incompatible (`evidenceQualificationStatus: rejected`) | `comparability-evidence-source-untrusted` |
 | an invariant Runtime uses an opaque fingerprint | conditional | conditional | conditional | `comparability-evidence-runtime-identity-opaque` |
 
 Invalid subject mappings use `comparability-design-subject-mapping-invalid`; any invariant component not covered by a more specific code uses `comparability-design-projection-mismatch`. Equal versus different stage and artifact digests are recorded in candidate identities, not emitted as verdict reasons. Unknown reason codes fail closed for automated release consumers; readers may still preserve and display them.
