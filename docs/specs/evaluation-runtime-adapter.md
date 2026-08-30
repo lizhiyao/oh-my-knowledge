@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter
 
-> **Status**: binding assembly, verified resource leases, adapter preflight, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
+> **Status**: binding assembly, verified resource leases, adapter preflight, non-blocking event projection, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
 
 ## Boundary
 
@@ -78,6 +78,21 @@ The runner consumes the compiled orchestration modes, never CLI flags. The compo
 The exact caller signal is forwarded. On cancellation, the active check must settle before preflight rejects; the runner does not use a race that leaves a credential, network, or filesystem operation in the background. The resulting immutable records stay on `OmkPreparedEvaluation.preflight`. Definition, MeasurementPolicy, RuntimeBinding, immutable binding entries, and `SealedRunPlan` remain unchanged and are never passed to a check.
 
 Preflight proves readiness only at the time of the probe. It does not turn a locator into content identity and does not reserve a resource for a later run. Run start therefore still acquires and revalidates verified resource leases against the actual bytes or tree. Similarly, the absence of a Judge binding means its factory is never invoked, so no Judge declaration, credential read, or connectivity probe can occur.
+
+## Event projection
+
+CLI progress is not an `EventWriter`. EventWriter delivery is part of the sealed MeasurementPolicy: it may apply blocking backpressure and a configured writer failure may fail the run. Presentation must never acquire either authority. The host instead drains Core's bounded `EvaluationRun.events` stream and projects those already-published events into an independent display path.
+
+The projection preserves `eventId`, `sequence`, `runId`, `eventKind`, time, and subject so output remains traceable to the Core event. It derives only a source-neutral stage and status from `eventKind`. Arbitrary event `data` is deliberately excluded: provider errors, evidence, coverage payloads, and future extension content do not become an unclassified UI channel. Subject and run identifiers remain the canonical non-secret identifiers defined by the Core event contract.
+
+When a progress sink is attached, the host immediately drains the single-consumer Core stream into two bounded, non-authoritative paths:
+
+- a raw-event mirror with the same drop-oldest behavior for callers;
+- a detached renderer queue with its own capacity.
+
+A slow or never-settling renderer can fill and overwrite only its display queue. A caller that never consumes the raw mirror can lose only old presentation history. Renderer rejection, synchronous exception, close failure, event-consumer failure, or an already closed sink cannot alter `EvaluationRunResult`, resource cleanup, cancellation, budgets, retries, EventWriter policy, or terminal artifacts. Sink method identity is captured before run-start effects, so later object mutation cannot replace the renderer behind an active run.
+
+Same-process JavaScript cannot isolate a callback that deliberately blocks the event loop with synchronous CPU work. The sink contract therefore requires `render()` to return promptly and place expensive rendering behind its own asynchronous boundary. Promise latency and failure are isolated by the host queue; CPU isolation would require a worker or process and is outside this adapter boundary.
 
 ## Same-process Runtime adapter
 

@@ -1832,6 +1832,13 @@ describe('OMK Evaluation Runtime composition root', () => {
       code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
       fieldPath: 'eventBufferCapacity',
     });
+    await expect(prepared.start({
+      runId: 'invalid-progress-options',
+      progressBufferCapacity: 1,
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_INPUT_INVALID',
+      fieldPath: 'progressBufferCapacity',
+    });
     expect(acquireCalls).toBe(0);
   });
 
@@ -2079,6 +2086,51 @@ describe('OMK Evaluation Runtime composition root', () => {
 
     expect(compiled.policy.eventDelivery.writerMode).toBe('disabled');
     expect(writerCalls).toBe(0);
+  });
+
+  it('keeps a never-settling progress renderer outside Core result and lease cleanup', async () => {
+    const compiled = compositionInput();
+    let disposeCalls = 0;
+    let renderCalls = 0;
+    const runtime = await createOmkEvaluationRuntime({
+      compiled,
+      factories: runnableFactoriesFor(compiled, []),
+      support: compositionSupport(),
+      resources: {
+        leaseRoot: '/unused-test-lease-root',
+        async materialize(request) {
+          return fakeLeases(
+            request.runId,
+            request.bindings,
+            request.hostResources,
+            () => { disposeCalls += 1; },
+          );
+        },
+      },
+    });
+    const run = await (await runtime.prepare()).start({
+      runId: 'detached-progress',
+      progressBufferCapacity: 1,
+      progressSink: {
+        render() {
+          renderCalls += 1;
+          return new Promise<void>(() => {});
+        },
+      },
+    });
+    const observedEvents: string[] = [];
+    const drainEvents = (async () => {
+      for await (const candidate of run.events) observedEvents.push(candidate.eventKind);
+    })();
+
+    await expect(run.result).resolves.toHaveProperty('status');
+    await drainEvents;
+    expect(renderCalls).toBe(1);
+    expect(observedEvents).toContain('execution.run.started');
+    expect(observedEvents.some((eventKind) => (
+      eventKind.startsWith('execution.run.') && eventKind !== 'execution.run.started'
+    ))).toBe(true);
+    expect(disposeCalls).toBe(1);
   });
 
   it('reports lease disposal failure without retrying destructive cleanup', async () => {

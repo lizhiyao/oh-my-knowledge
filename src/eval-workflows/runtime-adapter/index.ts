@@ -3,6 +3,13 @@ export * from './adapters/index.js';
 export * from './builtins.js';
 export * from './composition.js';
 export {
+  projectOmkEvaluationEvent,
+  type OmkEvaluationProgressSink,
+  type OmkEvaluationProgressStage,
+  type OmkEvaluationProgressStatus,
+  type OmkEvaluationProgressUpdate,
+} from './event-projection.js';
+export {
   OmkEvaluationPreflightError,
   type OmkEvaluationPreflightErrorCode,
   type OmkEvaluationPreflightOptions,
