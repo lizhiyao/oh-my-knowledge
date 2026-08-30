@@ -313,7 +313,7 @@ describe('Codex CLI Core Executor adapter', () => {
 
     expect(result.output).toEqual({
       value: 'fixture answer',
-      classification: 'public',
+      classification: 'sensitive',
       mediaType: 'text/plain',
     });
     expect(result.usage).toBeUndefined();

@@ -1,0 +1,344 @@
+import { z } from 'zod';
+import {
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
+  ExecutorCapabilitiesSchema,
+  JsonValueSchema,
+  UsageRecordSchema,
+  deepFreezeCanonicalJson,
+  digestCanonicalJson,
+  type CoreSchemaValidator,
+  type ExecutorCapabilities,
+  type JsonValue,
+  type SchemaIdentity,
+  type UsageRecord,
+} from '../../../evaluation-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../evaluation-core/execution/index.js';
+import {
+  extractClaudeTrace,
+  isClaudeResultMessage,
+} from '../../../executors/anthropic/claude/trace.js';
+import type {
+  ClaudeMessage,
+  ClaudeResultMessage,
+} from '../../../executors/anthropic/claude/protocol.js';
+import {
+  isValidToolCallInfo,
+  isValidTurnInfo,
+} from '../../../shared/executor-result.js';
+
+export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+
+export interface ParsedClaudeCliStream {
+  readonly messages: readonly ClaudeMessage[];
+  readonly output?: string;
+  readonly trace: JsonValue;
+  readonly usage?: UsageRecord;
+  readonly terminalStatus: 'completed' | 'failed';
+}
+
+const ClaudeTraceSchema = z.object({
+  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
+  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
+  toolCalls: z.array(z.custom<JsonValue>(isValidToolCallInfo)),
+  fullNumTurns: z.number().int().nonnegative(),
+  numSubAgents: z.number().int().nonnegative(),
+}).strict();
+
+const CLAUDE_SCHEMA_DESCRIPTORS = {
+  input: { valueKind: 'json-value' },
+  output: { valueKind: 'string' },
+  trace: {
+    schemaVersion: 'omk.source-neutral-trace/v1',
+    fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
+    turnAndToolCallItems: 'source-neutral-executor-trace/v1',
+  },
+} as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
+
+function fail(message: string, usage?: UsageRecord): never {
+  throw new ExecutionPortFailure({
+    code: 'OMK_CLAUDE_CLI_PROTOCOL_INVALID',
+    stage: 'execution',
+    message,
+  }, usage);
+}
+
+function schemaIdentity(name: 'input' | 'output' | 'trace'): SchemaIdentity {
+  const schemaVersion = `omk.claude-cli-${name}/v1`;
+  return {
+    schemaVersion,
+    schemaUri: `urn:omk:runtime:claude-cli:${name}:v1`,
+    schemaDigest: digestCanonicalJson({
+      schemaVersion,
+      sourceProtocol: 'claude --print --output-format stream-json',
+      contract: CLAUDE_SCHEMA_DESCRIPTORS[name],
+    }),
+  };
+}
+
+/** Validators matching the schema identities advertised by this adapter. */
+export function createClaudeCliCoreSchemaValidators(): readonly CoreSchemaValidator[] {
+  return Object.freeze([
+    Object.freeze({
+      schema: deepFreezeCanonicalJson(schemaIdentity('input')),
+      parse(value: unknown): JsonValue {
+        return JsonValueSchema.parse(value);
+      },
+    }),
+    Object.freeze({
+      schema: deepFreezeCanonicalJson(schemaIdentity('output')),
+      parse(value: unknown): JsonValue {
+        return z.string().parse(value);
+      },
+    }),
+    Object.freeze({
+      schema: deepFreezeCanonicalJson(schemaIdentity('trace')),
+      parse(value: unknown): JsonValue {
+        return ClaudeTraceSchema.parse(value) as JsonValue;
+      },
+    }),
+  ]);
+}
+
+export function claudeCliExecutorCapabilities(): ExecutorCapabilities {
+  return deepFreezeCanonicalJson(ExecutorCapabilitiesSchema.parse({
+    schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
+    protocols: [{
+      protocolId: 'omk.invoke/v1',
+      inputSchema: schemaIdentity('input'),
+      outputSchema: schemaIdentity('output'),
+      traceSchema: schemaIdentity('trace'),
+      execution: {
+        concurrency: { safety: 'serialized', maxInFlight: 1 },
+        cancellation: 'best-effort',
+        state: { resourceLifecycle: 'per-invocation', trialState: 'stateless' },
+        seedControl: 'unsupported',
+        determinism: 'stochastic',
+        features: {
+          systemInstructions: 'native',
+          workspace: ['copy-on-write-overlay'],
+          mcp: ['native-config'],
+          mockInterception: ['pre-tool-call'],
+          toolPolicies: ['allow-list', 'runtime-default'],
+          skillDiscovery: ['disabled', 'runtime-default'],
+          sandboxIds: [],
+        },
+        telemetry: {
+          trace: 'required',
+          usage: 'optional',
+          providerCost: { reporting: 'optional' },
+        },
+      },
+    }],
+  })) as ExecutorCapabilities;
+}
+
+function safeInteger(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : undefined;
+}
+
+function safeMetric(value: unknown): number | undefined {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && value <= Number.MAX_SAFE_INTEGER
+    ? value
+    : undefined;
+}
+
+function checkedSum(values: readonly number[]): number | undefined {
+  let total = 0;
+  for (const value of values) {
+    total += value;
+    if (!Number.isSafeInteger(total)) return undefined;
+  }
+  return total;
+}
+
+function usageFromResult(result: ClaudeResultMessage): UsageRecord | undefined {
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  let cacheReadInputTokens: number | undefined;
+  let cacheCreationInputTokens: number | undefined;
+  const rawModelUsage = result.modelUsage;
+  if (rawModelUsage !== undefined) {
+    if (
+      rawModelUsage === null
+      || typeof rawModelUsage !== 'object'
+      || Array.isArray(rawModelUsage)
+    ) fail('Claude CLI reported invalid model usage.');
+    const values = Object.values(rawModelUsage);
+    const buckets: number[][] = [[], [], [], []];
+    for (const value of values) {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        fail('Claude CLI reported invalid model usage.');
+      }
+      const entry = value as Record<string, unknown>;
+      const counts = [
+        safeInteger(entry.inputTokens),
+        safeInteger(entry.outputTokens),
+        safeInteger(entry.cacheReadInputTokens),
+        safeInteger(entry.cacheCreationInputTokens),
+      ];
+      if (counts.some((count) => count === undefined)) {
+        fail('Claude CLI reported invalid model usage.');
+      }
+      counts.forEach((count, index) => buckets[index]!.push(count!));
+    }
+    if (values.length > 0) {
+      const totals = buckets.map(checkedSum);
+      if (totals.some((total) => total === undefined)) {
+        fail('Claude CLI reported overflowing model usage.');
+      }
+      [inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens] = totals;
+    }
+  }
+  if (inputTokens === undefined && outputTokens === undefined) {
+    const rawUsage = result.usage;
+    if (rawUsage !== undefined) {
+      if (rawUsage === null || typeof rawUsage !== 'object' || Array.isArray(rawUsage)) {
+        fail('Claude CLI reported invalid token usage.');
+      }
+      const record = rawUsage as Record<string, unknown>;
+      inputTokens = safeInteger(record.input_tokens);
+      outputTokens = safeInteger(record.output_tokens);
+      cacheReadInputTokens = record.cache_read_input_tokens === undefined
+        ? undefined
+        : safeInteger(record.cache_read_input_tokens);
+      cacheCreationInputTokens = record.cache_creation_input_tokens === undefined
+        ? undefined
+        : safeInteger(record.cache_creation_input_tokens);
+      if (
+        inputTokens === undefined
+        || outputTokens === undefined
+        || (record.cache_read_input_tokens !== undefined && cacheReadInputTokens === undefined)
+        || (
+          record.cache_creation_input_tokens !== undefined
+          && cacheCreationInputTokens === undefined
+        )
+      ) fail('Claude CLI reported invalid token usage.');
+    }
+  }
+  const totalTokens = inputTokens === undefined || outputTokens === undefined
+    ? undefined
+    : checkedSum([inputTokens, outputTokens]);
+  if (inputTokens !== undefined && outputTokens !== undefined && totalTokens === undefined) {
+    fail('Claude CLI reported overflowing token usage.');
+  }
+  const rawCost = result.total_cost_usd;
+  const providerCost = rawCost === undefined
+    ? undefined
+    : safeMetric(rawCost);
+  if (rawCost !== undefined && providerCost === undefined) {
+    fail('Claude CLI reported invalid provider cost.');
+  }
+  const usage = UsageRecordSchema.parse({
+    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(providerCost === undefined ? {} : {
+      providerCost: { amount: providerCost, currency: 'USD', reportedByProvider: true },
+    }),
+    ...(
+      cacheReadInputTokens === undefined && cacheCreationInputTokens === undefined
+        ? {}
+        : {
+            details: {
+              ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
+              ...(cacheCreationInputTokens === undefined
+                ? {}
+                : { cacheCreationInputTokens }),
+            },
+          }
+    ),
+  });
+  return Object.keys(usage).length === 0 ? undefined : usage;
+}
+
+export function parseClaudeCliStream(stdout: string): ParsedClaudeCliStream {
+  const messages: ClaudeMessage[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '') continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(trimmed) as unknown;
+    } catch {
+      fail('Claude CLI returned malformed JSONL.');
+    }
+    const captured = JsonValueSchema.safeParse(value);
+    if (
+      !captured.success
+      || captured.data === null
+      || typeof captured.data !== 'object'
+      || Array.isArray(captured.data)
+      || typeof captured.data.type !== 'string'
+      || captured.data.type.trim() === ''
+    ) fail('Claude CLI returned an invalid stream message.');
+    if (captured.data.type === 'assistant' || captured.data.type === 'user') {
+      const message = captured.data.message;
+      if (message === null
+          || typeof message !== 'object'
+          || Array.isArray(message)
+          || !Array.isArray((message as Record<string, unknown>).content)) {
+        fail('Claude CLI returned an invalid conversational message.');
+      }
+    }
+    messages.push(captured.data as unknown as ClaudeMessage);
+  }
+  const resultIndexes = messages
+    .map((message, index) => isClaudeResultMessage(message) ? index : -1)
+    .filter((index) => index >= 0);
+  if (resultIndexes.length !== 1) {
+    fail(resultIndexes.length === 0
+      ? 'Claude CLI stream has no terminal result.'
+      : 'Claude CLI stream has multiple terminal results.');
+  }
+  const terminalIndex = resultIndexes[0]!;
+  if (messages.slice(terminalIndex + 1).some((message) => (
+    message.type === 'assistant' || message.type === 'user' || message.type === 'result'
+  ))) fail('Claude CLI emitted conversational messages after its terminal result.');
+  const result = messages[terminalIndex] as ClaudeResultMessage;
+  const resultRecord = result as unknown as Record<string, unknown>;
+  if (
+    typeof resultRecord.subtype !== 'string'
+    || resultRecord.subtype.trim() === ''
+    || typeof resultRecord.is_error !== 'boolean'
+    || (resultRecord.result !== undefined && typeof resultRecord.result !== 'string')
+    || (resultRecord.errors !== undefined && (
+      !Array.isArray(resultRecord.errors)
+      || resultRecord.errors.some((message) => typeof message !== 'string')
+    ))
+    || (resultRecord.subtype === 'success') === resultRecord.is_error
+  ) fail('Claude CLI returned an invalid terminal result.');
+  const usage = usageFromResult(result);
+  let trace: JsonValue;
+  try {
+    const neutral = extractClaudeTrace(messages);
+    trace = ClaudeTraceSchema.parse({
+      schemaVersion: 'omk.source-neutral-trace/v1',
+      turns: neutral.turns,
+      toolCalls: neutral.toolCalls,
+      fullNumTurns: neutral.fullNumTurns,
+      numSubAgents: neutral.numSubAgents,
+    }) as JsonValue;
+  } catch (error) {
+    if (error instanceof ExecutionPortFailure) throw error;
+    fail('Claude CLI trace could not be projected.', usage);
+  }
+  const output = typeof result.result === 'string' && result.result.trim() !== ''
+    ? result.result
+    : undefined;
+  const terminalStatus = result.subtype === 'success' && result.is_error !== true
+    ? 'completed' as const
+    : 'failed' as const;
+  if (terminalStatus === 'completed' && output === undefined) {
+    fail('Claude CLI completed without an assistant response.', usage);
+  }
+  return {
+    messages: Object.freeze(messages),
+    ...(output === undefined ? {} : { output }),
+    trace,
+    ...(usage === undefined ? {} : { usage }),
+    terminalStatus,
+  };
+}
