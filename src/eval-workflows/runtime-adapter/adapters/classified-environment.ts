@@ -59,6 +59,9 @@ export function captureClassifiedEnvironment(
       keyDigest: digestCanonicalJson(key),
       identityKind: entry.identity.identityKind,
       ...(entry.identity.identityKind === 'behavior' ? { value: entry.identity.value } : {}),
+      ...(entry.identity.identityKind === 'effect-locator'
+        ? { valueDigest: digestCanonicalJson(entry.value) }
+        : {}),
     }))),
     outputClassification: entries.some(([, entry]) => entry.identity.identityKind === 'credential')
       ? 'secret'

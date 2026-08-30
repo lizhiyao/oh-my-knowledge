@@ -19,7 +19,7 @@ import {
   isValidTurnInfo,
 } from '../../../shared/executor-result.js';
 
-export const CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 export type ParsedClaudeSdkStream = ParsedClaudeCliStream;
 
 const CLAUDE_SDK_MESSAGE_PROFILE = Object.freeze({

@@ -433,11 +433,11 @@ describe('Claude SDK Core Executor adapter', () => {
     const value = await fixture();
     const reported = await execute(await createAdapter(value), value.target.config as JsonValue);
     expect(reported.usage).toEqual({
-      inputTokens: 8,
+      inputTokens: 11,
       outputTokens: 5,
-      totalTokens: 13,
+      totalTokens: 16,
       providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
-      details: { cacheReadInputTokens: 2, cacheCreationInputTokens: 1 },
+      details: { uncachedInputTokens: 8, cacheReadInputTokens: 2, cacheCreationInputTokens: 1 },
     });
     value.observations.mode = 'failed';
     await expect(execute(
@@ -445,7 +445,7 @@ describe('Claude SDK Core Executor adapter', () => {
       value.target.config as JsonValue,
     )).rejects.toMatchObject({
       evaluationError: { code: 'OMK_CLAUDE_SDK_TURN_FAILED' },
-      usage: { inputTokens: 8, outputTokens: 5 },
+      usage: { inputTokens: 11, outputTokens: 5 },
     });
   });
 

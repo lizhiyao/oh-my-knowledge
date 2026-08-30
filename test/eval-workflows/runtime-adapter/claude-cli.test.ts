@@ -427,11 +427,11 @@ describe('Claude CLI Core Executor adapter', () => {
       fixture.target.config as JsonValue,
     );
     expect(reported.usage).toEqual({
-      inputTokens: 8,
+      inputTokens: 11,
       outputTokens: 5,
-      totalTokens: 13,
+      totalTokens: 16,
       providerCost: { amount: 0.002, currency: 'USD', reportedByProvider: true },
-      details: { cacheReadInputTokens: 2, cacheCreationInputTokens: 1 },
+      details: { uncachedInputTokens: 8, cacheReadInputTokens: 2, cacheCreationInputTokens: 1 },
     });
     const unreported = await execute(
       await createAdapter(fixture, { OMK_TEST_MODE: 'no-usage' }),
@@ -469,7 +469,7 @@ describe('Claude CLI Core Executor adapter', () => {
       fixture.target.config as JsonValue,
     )).rejects.toMatchObject({
       evaluationError: { code: 'OMK_CLAUDE_CLI_TURN_FAILED', stage: 'execution' },
-      usage: { inputTokens: 8, outputTokens: 5, totalTokens: 13 },
+      usage: { inputTokens: 11, outputTokens: 5, totalTokens: 16 },
     });
   });
 
@@ -483,7 +483,7 @@ describe('Claude CLI Core Executor adapter', () => {
         code: 'OMK_CLAUDE_CLI_EXIT_NONZERO',
         message: 'Claude CLI exited unsuccessfully.',
       },
-      usage: { inputTokens: 8, outputTokens: 5 },
+      usage: { inputTokens: 11, outputTokens: 5 },
     });
   });
 
