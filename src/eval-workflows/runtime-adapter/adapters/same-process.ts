@@ -266,8 +266,17 @@ export function createSameProcessExecutorAdapter<RunState, TrialState>(
             throw error;
           }
           let trialDisposed = false;
+          let activeExecutions = 0;
+          let resolveExecutionIdle: (() => void) | undefined;
+          const waitForExecutionIdle = (): Promise<void> => {
+            if (activeExecutions === 0) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+              resolveExecutionIdle = resolve;
+            });
+          };
           const disposeTrial = once(async () => {
             trialDisposed = true;
+            await waitForExecutionIdle();
             try {
               await implementation.disposeTrial(Object.freeze({
                 run,
@@ -287,15 +296,24 @@ export function createSameProcessExecutorAdapter<RunState, TrialState>(
               if (runDisposed || trialDisposed) {
                 throw new TypeError('Same-process Executor trial is already disposed.');
               }
-              return implementation.execute(Object.freeze({
-                run,
-                runState,
-                trial,
-                trialState,
-                attempt,
-                scope: trialScope,
-                resources,
-              }));
+              activeExecutions += 1;
+              try {
+                return await implementation.execute(Object.freeze({
+                  run,
+                  runState,
+                  trial,
+                  trialState,
+                  attempt,
+                  scope: trialScope,
+                  resources,
+                }));
+              } finally {
+                activeExecutions -= 1;
+                if (activeExecutions === 0) {
+                  resolveExecutionIdle?.();
+                  resolveExecutionIdle = undefined;
+                }
+              }
             },
             dispose: disposeTrial,
           });
@@ -390,8 +408,17 @@ export function createSameProcessEvaluatorAdapter<RunState, RecordState>(
             throw error;
           }
           let recordDisposed = false;
+          let activeEvaluations = 0;
+          let resolveEvaluationIdle: (() => void) | undefined;
+          const waitForEvaluationIdle = (): Promise<void> => {
+            if (activeEvaluations === 0) return Promise.resolve();
+            return new Promise<void>((resolve) => {
+              resolveEvaluationIdle = resolve;
+            });
+          };
           const disposeRecord = once(async () => {
             recordDisposed = true;
+            await waitForEvaluationIdle();
             try {
               await implementation.disposeRecord(Object.freeze({
                 run,
@@ -411,15 +438,24 @@ export function createSameProcessEvaluatorAdapter<RunState, RecordState>(
               if (runDisposed || recordDisposed) {
                 throw new TypeError('Same-process Evaluator record is already disposed.');
               }
-              return implementation.evaluate(Object.freeze({
-                run,
-                runState,
-                record,
-                recordState,
-                attempt,
-                scope: recordScope,
-                resources,
-              }));
+              activeEvaluations += 1;
+              try {
+                return await implementation.evaluate(Object.freeze({
+                  run,
+                  runState,
+                  record,
+                  recordState,
+                  attempt,
+                  scope: recordScope,
+                  resources,
+                }));
+              } finally {
+                activeEvaluations -= 1;
+                if (activeEvaluations === 0) {
+                  resolveEvaluationIdle?.();
+                  resolveEvaluationIdle = undefined;
+                }
+              }
             },
             dispose: disposeRecord,
           });

@@ -1,10 +1,7 @@
-import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
-import { z } from 'zod';
 import {
-  JsonValueSchema,
   RuntimeIdentitySchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -13,7 +10,6 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
-  type Sha256Digest,
   type UsageRecord,
 } from '../../../evaluation-core/contracts/index.js';
 import {
@@ -28,6 +24,16 @@ import {
 } from '../../../executors/core/subprocess.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+import {
+  assertCodexIdentityFilesUnchanged,
+  captureCodexIdentityFiles,
+  type CapturedCodexIdentityFile,
+  type CodexContentIdentityFile,
+} from './codex-content-identity.js';
+import {
+  captureCodexEnvironment,
+  type CodexEnvironmentEntry,
+} from './codex-environment.js';
 import {
   codexCliExecutorCapabilities,
   parseCodexCliStream,
@@ -49,23 +55,14 @@ export {
   createCodexCliCoreSchemaValidators,
 } from './codex-cli-protocol.js';
 
-export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_IDENTITY_PROBE_TIMEOUT_MS = 5_000;
 
-export type CodexCliEnvironmentEntry = {
-  readonly value: string;
-  readonly identity:
-    | { readonly identityKind: 'behavior'; readonly value: JsonValue }
-    | { readonly identityKind: 'credential' }
-    | { readonly identityKind: 'effect-locator' };
-};
+export type CodexCliEnvironmentEntry = CodexEnvironmentEntry;
 
-export interface CodexCliContentIdentityFile {
-  readonly facetId: string;
-  readonly path: string;
-}
+export type CodexCliContentIdentityFile = CodexContentIdentityFile;
 
 export interface CodexCliCoreConfiguration {
   /** Absolute Codex executable. PATH lookup is intentionally unsupported. */
@@ -88,13 +85,6 @@ export interface CreateCodexCliExecutorAdapterInput {
   readonly resourceLeases: OmkBindingResourceLeaseAccess;
 }
 
-interface CapturedIdentityFile {
-  readonly facetId: string;
-  readonly path: string;
-  readonly digest: Sha256Digest;
-  readonly size: number;
-}
-
 interface CapturedConfiguration {
   readonly executablePath: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -103,21 +93,6 @@ interface CapturedConfiguration {
   readonly maxPromptBytes: number;
   readonly identityProbeTimeoutMs: number;
 }
-
-const EnvironmentSchema = z.record(
-  z.string().min(1).refine((value) => !value.includes('\0')),
-  z.object({
-    value: z.string().refine((value) => !value.includes('\0')),
-    identity: z.discriminatedUnion('identityKind', [
-      z.object({
-        identityKind: z.literal('behavior'),
-        value: JsonValueSchema,
-      }).strict(),
-      z.object({ identityKind: z.literal('credential') }).strict(),
-      z.object({ identityKind: z.literal('effect-locator') }).strict(),
-    ]),
-  }).strict(),
-);
 
 function fail(
   code: string,
@@ -128,18 +103,11 @@ function fail(
   throw new ExecutionPortFailure({ code, stage, message }, usage);
 }
 
-function sha256Bytes(bytes: Uint8Array): Sha256Digest {
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-}
-
 function captureConfiguration(input: Readonly<CodexCliCoreConfiguration>): CapturedConfiguration {
   if (!isAbsolute(input.executablePath) || input.executablePath.includes('\0')) {
     throw new TypeError('Codex CLI executablePath must be an absolute path.');
   }
-  const environment = EnvironmentSchema.parse(structuredClone(input.environment ?? {}));
-  const entries = Object.entries(environment).sort(([left], [right]) => (
-    left < right ? -1 : left > right ? 1 : 0
-  ));
+  const environment = captureCodexEnvironment(input.environment);
   const maxOutputBytes = input.maxOutputBytes ?? DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES;
   const maxPromptBytes = input.maxPromptBytes ?? DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES;
   const identityProbeTimeoutMs = input.identityProbeTimeoutMs
@@ -155,49 +123,12 @@ function captureConfiguration(input: Readonly<CodexCliCoreConfiguration>): Captu
   }
   return Object.freeze({
     executablePath: input.executablePath,
-    environment: Object.freeze(Object.fromEntries(entries.map(([key, entry]) => [
-      key,
-      entry.value,
-    ]))),
-    environmentIdentity: deepFreezeCanonicalJson(entries.map(([key, entry]) => ({
-      keyDigest: digestCanonicalJson(key),
-      identityKind: entry.identity.identityKind,
-      ...(entry.identity.identityKind === 'behavior' ? { value: entry.identity.value } : {}),
-    }))),
+    environment: environment.values,
+    environmentIdentity: environment.identity,
     maxOutputBytes,
     maxPromptBytes,
     identityProbeTimeoutMs,
   });
-}
-
-async function captureIdentityFiles(
-  executablePath: string,
-  additional: readonly CodexCliContentIdentityFile[],
-): Promise<readonly CapturedIdentityFile[]> {
-  const requested = [
-    { facetId: 'codex-executable', path: executablePath },
-    ...structuredClone(additional),
-  ].sort((left, right) => left.facetId < right.facetId ? -1 : left.facetId > right.facetId ? 1 : 0);
-  if (new Set(requested.map((file) => file.facetId)).size !== requested.length) {
-    throw new TypeError('Codex CLI content identity facetIds must be unique.');
-  }
-  return Promise.all(requested.map(async (file) => {
-    if (!isAbsolute(file.path)) {
-      throw new TypeError(`Codex CLI identity file "${file.facetId}" must be absolute.`);
-    }
-    let bytes: Uint8Array;
-    try {
-      bytes = await readFile(file.path);
-    } catch {
-      throw new TypeError(`Codex CLI identity file "${file.facetId}" is unavailable.`);
-    }
-    return Object.freeze({
-      facetId: z.string().min(1).max(256).parse(file.facetId),
-      path: file.path,
-      digest: sha256Bytes(bytes),
-      size: bytes.byteLength,
-    });
-  }));
 }
 
 async function runVersionProbe(
@@ -244,43 +175,21 @@ async function runVersionProbe(
 }
 
 async function assertIdentityFilesUnchanged(
-  files: readonly CapturedIdentityFile[],
+  files: readonly CapturedCodexIdentityFile[],
   signal?: AbortSignal,
 ): Promise<void> {
-  for (const file of files) {
-    let bytes: Uint8Array;
-    try {
-      bytes = await readFile(file.path, signal === undefined ? undefined : { signal });
-    } catch {
-      if (signal?.aborted) {
-        fail('OMK_CODEX_CLI_CANCELLED', 'execution', 'Codex CLI execution was cancelled.');
-      }
-      if (signal === undefined) {
-        throw new TypeError('Codex CLI implementation identity could not be reverified.');
-      }
-      fail(
-        'OMK_CODEX_CLI_IDENTITY_CHANGED',
-        'infrastructure',
-        'Codex CLI implementation identity could not be reverified.',
-      );
-    }
-    if (bytes.byteLength !== file.size || sha256Bytes(bytes) !== file.digest) {
-      if (signal === undefined) {
-        throw new TypeError('Codex CLI implementation changed during identity resolution.');
-      }
-      fail(
-        'OMK_CODEX_CLI_IDENTITY_CHANGED',
-        'infrastructure',
-        'Codex CLI implementation changed after adapter assembly.',
-      );
-    }
-  }
+  await assertCodexIdentityFilesUnchanged(files, {
+    adapterLabel: 'Codex CLI',
+    cancellationCode: 'OMK_CODEX_CLI_CANCELLED',
+    identityChangedCode: 'OMK_CODEX_CLI_IDENTITY_CHANGED',
+    ...(signal === undefined ? {} : { signal }),
+  });
 }
 
 function identityManifest(
   configuration: CapturedConfiguration,
   target: CapturedCodexCliTarget,
-  files: readonly CapturedIdentityFile[],
+  files: readonly CapturedCodexIdentityFile[],
 ): RuntimeIdentity['implementationManifest'] {
   const facets: RuntimeImplementationFacet[] = [{
     facetId: 'adapter.composition',
@@ -354,12 +263,12 @@ async function resolveIdentity(
   configuration: CapturedConfiguration,
   target: CapturedCodexCliTarget,
   additionalIdentityFiles: readonly CodexCliContentIdentityFile[],
-): Promise<{ identity: RuntimeIdentity; files: readonly CapturedIdentityFile[] }> {
+): Promise<{ identity: RuntimeIdentity; files: readonly CapturedCodexIdentityFile[] }> {
   const runtimeCapabilities = codexCliExecutorCapabilities();
-  const files = await captureIdentityFiles(
-    configuration.executablePath,
-    additionalIdentityFiles,
-  );
+  const files = await captureCodexIdentityFiles([
+    { facetId: 'codex-executable', path: configuration.executablePath },
+    ...additionalIdentityFiles,
+  ], 'Codex CLI');
   const version = await runVersionProbe(configuration);
   await assertIdentityFilesUnchanged(files);
   const evidence = files.map(({ facetId, digest, size }) => ({ facetId, digest, size }));

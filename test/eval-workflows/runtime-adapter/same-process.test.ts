@@ -438,6 +438,44 @@ describe('same-process Runtime adapters', () => {
     await reopened.dispose();
   });
 
+  it('waits for an in-flight Executor attempt before disposing its trial state', async () => {
+    let releaseExecution: (() => void) | undefined;
+    let executionStarted = false;
+    let trialDisposed = false;
+    const port = createSameProcessExecutorAdapter({
+      identity: executorIdentity(),
+      sessionIsolationKey: 'binding-scope-a',
+      resourceLeases: resourceAccess('executor-a', 'executor'),
+      implementation: {
+        openRun() { return {}; },
+        openTrial() { return {}; },
+        async execute() {
+          executionStarted = true;
+          await new Promise<void>((resolve) => { releaseExecution = resolve; });
+          return {};
+        },
+        disposeTrial() { trialDisposed = true; },
+        disposeRun() {},
+      },
+    });
+    const run = await port.openRun(executorRun());
+    const trial = await run.openTrial(executorTrial());
+    const execution = trial.execute({
+      attemptId: digest({ attempt: 'in-flight' }),
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+    await expect.poll(() => executionStarted).toBe(true);
+    const disposal = trial.dispose();
+    await Promise.resolve();
+    expect(trialDisposed).toBe(false);
+    releaseExecution?.();
+    await execution;
+    await disposal;
+    expect(trialDisposed).toBe(true);
+    await run.dispose();
+  });
+
   it('forwards Evaluator records and signal without manufacturing usage or scores', async () => {
     const callbacks: string[] = [];
     let observedSignal: AbortSignal | undefined;
@@ -494,6 +532,44 @@ describe('same-process Runtime adapters', () => {
       'record.dispose',
       'run.dispose',
     ]);
+  });
+
+  it('waits for an in-flight Evaluator attempt before disposing its record state', async () => {
+    let releaseEvaluation: (() => void) | undefined;
+    let evaluationStarted = false;
+    let recordDisposed = false;
+    const port = createSameProcessEvaluatorAdapter({
+      identity: evaluatorIdentity(),
+      sessionIsolationKey: 'evaluator-scope-a',
+      resourceLeases: resourceAccess('evaluator-a', 'evaluator'),
+      implementation: {
+        openRun() { return {}; },
+        openRecord() { return {}; },
+        async evaluate() {
+          evaluationStarted = true;
+          await new Promise<void>((resolve) => { releaseEvaluation = resolve; });
+          return { observations: [] };
+        },
+        disposeRecord() { recordDisposed = true; },
+        disposeRun() {},
+      },
+    });
+    const run = await port.openRun(evaluatorRun());
+    const record = await run.openRecord(evaluatorRecord());
+    const evaluation = record.evaluate({
+      attemptId: digest({ attempt: 'in-flight' }),
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+    await expect.poll(() => evaluationStarted).toBe(true);
+    const disposal = record.dispose();
+    await Promise.resolve();
+    expect(recordDisposed).toBe(false);
+    releaseEvaluation?.();
+    await evaluation;
+    await disposal;
+    expect(recordDisposed).toBe(true);
+    await run.dispose();
   });
 
   it('closes Evaluator lifecycle boundaries and releases failed record opens', async () => {
