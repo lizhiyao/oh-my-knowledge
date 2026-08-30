@@ -21,7 +21,7 @@ const HOST_FIXTURE = join(
 );
 const TYPESCRIPT_HOST_FIXTURE = join(
   REPO_ROOT,
-  'test/evaluation-core/fixtures/embedded-host.ts',
+  'test/evaluation-core/fixtures/embedded-host.ts.fixture',
 );
 
 describe('published embedded Evaluation Core API', () => {
