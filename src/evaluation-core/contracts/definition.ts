@@ -260,10 +260,8 @@ export const CachePolicySchema = z.object({
 export const CaptureModeSchema = z.enum(['full', 'reference', 'digest', 'none']);
 
 export const EvidencePolicySchema = z.object({
-  input: CaptureModeSchema,
   output: CaptureModeSchema,
   trace: CaptureModeSchema,
-  expected: CaptureModeSchema,
   evidence: CaptureModeSchema,
   maximumClassification: ContentClassificationSchema,
 }).strict();

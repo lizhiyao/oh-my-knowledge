@@ -658,10 +658,8 @@ function scenarioPolicy(target: ConformanceTarget): MeasurementPolicy {
   delete policy.evaluation.timeoutMs;
   policy.retry.maxAttempts = 1;
   policy.evaluation.retry.maxAttempts = 1;
-  policy.evidence.input = 'full';
   policy.evidence.output = 'full';
   policy.evidence.trace = target === 'agent' ? 'full' : 'none';
-  policy.evidence.expected = 'full';
   policy.evidence.evidence = 'full';
   return policy;
 }

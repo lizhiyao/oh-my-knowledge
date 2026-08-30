@@ -74,12 +74,6 @@
             "evidence": {
               "$ref": "#/$defs/__schema14"
             },
-            "expected": {
-              "$ref": "#/$defs/__schema14"
-            },
-            "input": {
-              "$ref": "#/$defs/__schema14"
-            },
             "maximumClassification": {
               "enum": [
                 "public",
@@ -97,10 +91,8 @@
             }
           },
           "required": [
-            "input",
             "output",
             "trace",
-            "expected",
             "evidence",
             "maximumClassification"
           ],

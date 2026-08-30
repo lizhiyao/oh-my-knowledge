@@ -260,12 +260,6 @@
         "evidence": {
           "$ref": "#/$defs/__schema7"
         },
-        "expected": {
-          "$ref": "#/$defs/__schema7"
-        },
-        "input": {
-          "$ref": "#/$defs/__schema7"
-        },
         "maximumClassification": {
           "enum": [
             "public",
@@ -283,10 +277,8 @@
         }
       },
       "required": [
-        "input",
         "output",
         "trace",
-        "expected",
         "evidence",
         "maximumClassification"
       ],
