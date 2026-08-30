@@ -24,6 +24,7 @@ import type { SeriesAnalysisNodeRuntime } from '../../../src/evaluation-core/ser
 import {
   assembleOmkRuntimeBindings,
   createBuiltinOmkAnalysisBindingFactories,
+  resourceLeaseRequestsFromBindingEntries,
   type OmkRuntimeBindingFactories,
   type RuntimeBindingOf,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
@@ -370,6 +371,13 @@ describe('OMK Evaluation Runtime binding assembly', () => {
       'mock-payload:immutable-snapshot',
       'workspace:copy-on-write-overlay',
     ]);
+    const leaseRequests = resourceLeaseRequestsFromBindingEntries(
+      assembly.evaluation.entries,
+    );
+    expect(leaseRequests).toHaveLength(compiled.definition.targets.length
+      + compiled.definition.evaluators.length);
+    expect(JSON.stringify(leaseRequests)).not.toContain('gold-dataset');
+    expect(Object.isFrozen(leaseRequests)).toBe(true);
     expect(assembly.evaluation.entries.some((entry) => (
       entry.runtimeKind === 'missing-policy'
       && entry.binding.policyId === 'test.missing.exclude/v1'

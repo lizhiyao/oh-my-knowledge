@@ -54,6 +54,8 @@ Behavior identity and source lineage are separate axes:
 
 Mock rules and strict mode enter Target behavior. Every payload is a digest-bound descriptor; inline secret or gold content is forbidden. Compile also requires every reference role to match its host resource kind: artifact, workspace, MCP config, mock payload, evaluator content, and gold dataset cannot be substituted for one another even when a descriptor happens to match. Runtime adapters must verify the digest immediately before use. Missing interception, allowed-tool, skill-discovery, MCP, cancellation, seed, or sandbox capability fails closed during Core prepare; adapters must never drop mocks or fall back to real external calls.
 
+`ResolvedHostResources` v2 makes `descriptor.size` mandatory and represents pinned Git verification as `{verificationKind, verifiedDigest, commitId}`. The commit ID is a normalized 40–64 character lowercase hexadecimal object identity; a branch or tag name is not a pin. File-only MCP, mock, and evaluator-content resources require `content-digest`; workspaces require `tree-digest` or `pinned-git`; pinned Git is limited to artifacts and workspaces. `gold` classification and `gold-dataset` kind are mutually required. The incomplete v1 shape is rejected without a compatibility reader.
+
 Dataset projections preserve the Gold boundary: Executors see only `input + executionContext`; evaluators may receive `expected + evaluationContext`; analysis receives only explicit membership and analysis context. Gold locators remain host resources. Post-hoc gold comparison is exploratory and cannot masquerade as a preregistered decision.
 
 ## 4. Measurement mapping

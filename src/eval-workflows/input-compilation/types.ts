@@ -18,7 +18,7 @@ export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
 export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
   'omk.resolved-cli-evaluation-input/v1' as const;
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
-  'omk.resolved-host-resources/v1' as const;
+  'omk.resolved-host-resources/v2' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
   'omk.runtime-binding-request/v2' as const;
 
@@ -135,7 +135,7 @@ export interface ResolvedResourceDescriptor {
   readonly digest: Sha256Digest;
   readonly mediaType: string;
   readonly classification: ResourceClassification;
-  readonly size?: number;
+  readonly size: number;
 }
 
 export interface ResolvedHostResource {
@@ -149,10 +149,16 @@ export interface ResolvedHostResource {
   readonly descriptor: ResolvedResourceDescriptor;
   readonly locator: string;
   readonly lineage?: JsonValue;
-  readonly verification: {
-    readonly verificationKind: 'content-digest' | 'tree-digest' | 'pinned-git';
-    readonly verifiedDigest: Sha256Digest;
-  };
+  readonly verification:
+    | {
+        readonly verificationKind: 'content-digest' | 'tree-digest';
+        readonly verifiedDigest: Sha256Digest;
+      }
+    | {
+        readonly verificationKind: 'pinned-git';
+        readonly verifiedDigest: Sha256Digest;
+        readonly commitId: string;
+      };
 }
 
 /** Effect locators stay here and never enter Core canonical measurement JSON. */

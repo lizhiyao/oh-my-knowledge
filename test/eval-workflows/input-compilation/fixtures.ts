@@ -1,4 +1,5 @@
 import {
+  canonicalizeJson,
   digestCanonicalJson,
   type JsonValue,
 } from '../../../src/evaluation-core/contracts/index.js';
@@ -21,6 +22,7 @@ function descriptor(
     digest: digestCanonicalJson(value),
     mediaType,
     classification,
+    size: Buffer.byteLength(canonicalizeJson(value)),
   };
 }
 
