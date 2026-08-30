@@ -35,6 +35,47 @@ export type RuntimeBindingOf<RuntimeKind extends RuntimeBinding['runtimeKind']> 
   { runtimeKind: RuntimeKind }
 >;
 
+export type OmkRuntimePreflightKind =
+  | 'doctor'
+  | 'credential'
+  | 'connectivity'
+  | 'filesystem'
+  | 'mcp-readiness'
+  | 'mock-readiness';
+
+export interface OmkRuntimePreflightContext {
+  readonly runtimeKind: RuntimeBinding['runtimeKind'];
+  readonly bindingId: string;
+  readonly referenceId: string;
+  readonly implementationId: string;
+  /** Caller-owned cancellation; checks must settle their effects before returning. */
+  readonly signal?: AbortSignal;
+}
+
+interface OmkRuntimePreflightDeclarationBase {
+  readonly preflightKind: OmkRuntimePreflightKind;
+  readonly checkId: string;
+}
+
+export interface OmkRuntimePreflightCheck
+  extends OmkRuntimePreflightDeclarationBase {
+  readonly preflightDisposition: 'check';
+  readonly run: (
+    context: Readonly<OmkRuntimePreflightContext>,
+  ) => void | Promise<void>;
+}
+
+export interface OmkRuntimePreflightNotRequired
+  extends OmkRuntimePreflightDeclarationBase {
+  readonly preflightDisposition: 'not-required';
+  /** Stable, non-sensitive adapter-owned reason; this is not free-form diagnostic text. */
+  readonly reasonCode: string;
+}
+
+export type OmkRuntimePreflightDeclaration =
+  | OmkRuntimePreflightCheck
+  | OmkRuntimePreflightNotRequired;
+
 type AnalysisRuntimeBindingOf<RequirementKind extends 'analysis-node' | 'sampling-estimator'> =
   Extract<RuntimeBinding, {
     runtimeKind: 'analysis-node';
@@ -45,6 +86,8 @@ export interface OmkRuntimePortBinding<Port> {
   readonly port: Port;
   /** Resolved by the implementation that owns the actual Runtime version. */
   readonly satisfiesVersionConstraint: boolean;
+  /** Binding-owned physical checks; use an explicit empty array when none apply. */
+  readonly preflightDeclarations: readonly OmkRuntimePreflightDeclaration[];
 }
 
 interface OmkBindingFactoryContext {
@@ -142,6 +185,7 @@ interface OmkRuntimeBindingEntryBase<
   Port,
 > {
   readonly runtimeKind: RuntimeKind;
+  readonly referenceId: string;
   readonly binding: RuntimeBindingOf<RuntimeKind>;
   readonly resolution: RuntimeResolution;
   readonly port: Port;
@@ -149,6 +193,8 @@ interface OmkRuntimeBindingEntryBase<
   readonly resourceLeaseRequirements: readonly RuntimeResourceLeaseRequirement[];
   /** Binding-local session scope; adapters combine it with Core's runId and trialId. */
   readonly sessionIsolationKey: string;
+  /** Captured together with the port and Runtime identity from the same factory result. */
+  readonly preflightDeclarations: readonly OmkRuntimePreflightDeclaration[];
 }
 
 export type OmkEvaluationRuntimeBindingEntry =
@@ -209,7 +255,8 @@ export type OmkRuntimeAssemblyErrorCode =
   | 'OMK_RUNTIME_BINDING_DEFINITION_MISMATCH'
   | 'OMK_RUNTIME_BINDING_FACTORY_MISSING'
   | 'OMK_RUNTIME_BINDING_FACTORY_FAILED'
-  | 'OMK_RUNTIME_BINDING_PORT_INVALID';
+  | 'OMK_RUNTIME_BINDING_PORT_INVALID'
+  | 'OMK_RUNTIME_BINDING_PREFLIGHT_INVALID';
 
 export class OmkRuntimeAssemblyError extends TypeError {
   readonly code: OmkRuntimeAssemblyErrorCode;

@@ -20,15 +20,23 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
   return {
     analysisNodesByImplementationId: new Map([...analysisNodes].map(([implementationId, port]) => [
       implementationId,
-      () => ({ port, satisfiesVersionConstraint: true }),
+      () => ({ port, satisfiesVersionConstraint: true, preflightDeclarations: [] }),
     ])),
     missingPoliciesByImplementationId: new Map([...missingPolicies].map(([
       implementationId,
       port,
-    ]) => [implementationId, () => ({ port, satisfiesVersionConstraint: true })])),
+    ]) => [implementationId, () => ({
+      port,
+      satisfiesVersionConstraint: true,
+      preflightDeclarations: [],
+    })])),
     decisionPoliciesByImplementationId: new Map([...decisionPolicies].map(([
       implementationId,
       port,
-    ]) => [implementationId, () => ({ port, satisfiesVersionConstraint: true })])),
+    ]) => [implementationId, () => ({
+      port,
+      satisfiesVersionConstraint: true,
+      preflightDeclarations: [],
+    })])),
   };
 }
