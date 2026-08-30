@@ -35,7 +35,8 @@ type AllowedRunOptionKey =
   | 'signal'
   | 'eventBufferCapacity'
   | 'annotations'
-  | 'summaries';
+  | 'summaries'
+  | 'budgetSource';
 
 type AssertNever<Value extends never> = Value;
 

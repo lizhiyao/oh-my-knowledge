@@ -371,12 +371,14 @@ function validatePolicy(
     const smallestBlock = Math.min(...schedulingTargetGroups.map(
       (targetIds) => targetIds.length,
     ));
-    if (policy.budget.maxTargetInvocations !== undefined
-        && policy.budget.maxTargetInvocations < smallestBlock) {
+    const executionInvocationLimit = policy.budget.stages.execution.maxInvocations
+      ?? policy.budget.run.maxInvocations;
+    if (executionInvocationLimit !== undefined
+        && executionInvocationLimit < smallestBlock) {
       throw definitionError(
         'EVAL_DEFINITION_POLICY_INVALID',
         'Target invocation budget 不足以启动一个完整的 paired block。',
-        { location: 'budget.maxTargetInvocations', requiredMinimum: smallestBlock },
+        { location: 'budget.stages.execution.maxInvocations', requiredMinimum: smallestBlock },
       );
     }
   }

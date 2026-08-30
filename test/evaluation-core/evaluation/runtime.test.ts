@@ -7,6 +7,9 @@ import {
   parseExecutionBundle,
   parseEvaluationBundle,
   verifyEvaluationBundle,
+  type BudgetLedgerEntry,
+  type BudgetScopeSummary,
+  type BudgetSummary,
   type EvaluationBundle,
   type EvaluationEvent,
   type ExecutionBundle,
@@ -35,6 +38,175 @@ import {
 import { testRuntime, validDefinition, validPolicy } from '../compiler/fixtures.js';
 
 type Plan = Awaited<ReturnType<typeof prepareEvaluationPlan>>;
+
+function reconcileBudgetSummary(
+  summary: BudgetSummary,
+  stage: 'execution' | 'evaluation',
+  stageEntries: BudgetLedgerEntry[],
+): void {
+  summary.entries = [
+    ...summary.entries.filter((entry) => entry.stage !== stage),
+    ...stageEntries,
+  ].map((entry, sequence) => ({ ...entry, sequence }));
+  const previousLimits = new Map(summary.scopes.map((scope) => [
+    `${scope.scopeKind}:${scope.scopeId}`,
+    scope.limits,
+  ]));
+  const coordinateLimits = summary.scopes.find(
+    (scope) => scope.scopeKind === 'coordinate',
+  )?.limits ?? {};
+  const totals = new Map<string, {
+    invocations: number;
+    activeDurationMs: number;
+    costs: Map<string, number>;
+    unreported: number;
+  }>();
+  for (const key of [
+    `run:${summary.runId}`,
+    'stage:evaluation',
+    'stage:execution',
+  ]) totals.set(key, {
+    invocations: 0,
+    activeDurationMs: 0,
+    costs: new Map(),
+    unreported: 0,
+  });
+  for (const entry of summary.entries) {
+    for (const key of [
+      `run:${summary.runId}`,
+      `stage:${entry.stage}`,
+      `coordinate:${entry.coordinateId}`,
+    ]) {
+      const value = totals.get(key) ?? {
+        invocations: 0,
+        activeDurationMs: 0,
+        costs: new Map<string, number>(),
+        unreported: 0,
+      };
+      value.invocations += 1;
+      value.activeDurationMs += entry.activeDurationMs;
+      if (entry.providerCost === undefined) value.unreported += 1;
+      else value.costs.set(
+        entry.providerCost.currency,
+        (value.costs.get(entry.providerCost.currency) ?? 0) + entry.providerCost.amount,
+      );
+      totals.set(key, value);
+    }
+  }
+  summary.scopes = [...totals.entries()].map(([key, value]): BudgetScopeSummary => {
+    const separator = key.indexOf(':');
+    const scopeKind = key.slice(0, separator) as BudgetScopeSummary['scopeKind'];
+    const scopeId = key.slice(separator + 1);
+    const limits = previousLimits.get(key)
+      ?? (scopeKind === 'coordinate' ? coordinateLimits : {});
+    const cost = limits.maxProviderCost === undefined
+      ? undefined
+      : value.costs.get(limits.maxProviderCost.currency) ?? 0;
+    return {
+      scopeKind,
+      scopeId,
+      limits,
+      totals: {
+        invocations: value.invocations,
+        activeDurationMs: value.activeDurationMs,
+        ...(value.costs.size === 0 ? {} : {
+          reportedProviderCosts: [...value.costs.entries()]
+            .map(([currency, amount]) => ({ amount, currency }))
+            .sort((left, right) => left.currency.localeCompare(right.currency)),
+        }),
+        unreportedProviderCostInvocations: value.unreported,
+      },
+      overshoot: {
+        invocations: limits.maxInvocations === undefined
+          ? 0
+          : Math.max(0, value.invocations - limits.maxInvocations),
+        activeDurationMs: limits.maxActiveDurationMs === undefined
+          ? 0
+          : Math.max(0, value.activeDurationMs - limits.maxActiveDurationMs),
+        ...(limits.maxProviderCost === undefined ? {} : {
+          providerCost: {
+            amount: Math.max(0, (cost as number) - limits.maxProviderCost.amount),
+            currency: limits.maxProviderCost.currency,
+          },
+        }),
+      },
+    };
+  }).sort((left, right) => `${left.scopeKind}:${left.scopeId}`
+    .localeCompare(`${right.scopeKind}:${right.scopeId}`));
+  const { ledgerDigest: _ledgerDigest, ...payload } = summary;
+  void _ledgerDigest;
+  summary.ledgerDigest = digestCanonicalJson(payload);
+}
+
+function reconcileExecutionBudget(bundle: ExecutionBundle): void {
+  const oldEntries = new Map(bundle.budgetSummary.entries.map((entry) => [entry.attemptId, entry]));
+  const entries = bundle.records.flatMap((record): BudgetLedgerEntry[] => {
+    if (record.executionStatus === 'budget-censored'
+        || (record.cache.cacheStatus !== 'miss'
+          && record.cache.cacheStatus !== 'not-used')) return [];
+    return record.attempts.map((attempt) => ({
+      ...(oldEntries.get(attempt.attemptId) ?? {
+        sequence: 0,
+        stage: 'execution' as const,
+        coordinateId: record.trialId,
+        attemptId: attempt.attemptId,
+        invocationCount: 1 as const,
+        admissionKind: bundle.budgetSummary.admissionMode,
+      }),
+      activeDurationMs: attempt.timing.durationMs ?? 0,
+      providerCostStatus: attempt.usage?.providerCost === undefined
+        ? 'unreported' as const
+        : 'reported' as const,
+      ...(attempt.usage?.providerCost === undefined
+        ? { providerCost: undefined }
+        : { providerCost: attempt.usage.providerCost }),
+      outcomeKind: attempt.attemptStatus === 'completed'
+        ? 'completed' as const
+        : attempt.attemptStatus === 'cancelled'
+          ? 'cancelled' as const
+          : attempt.error.code === 'timeout' ? 'attempt-timeout' as const : 'failed' as const,
+    }));
+  });
+  for (const entry of entries) {
+    if (entry.providerCost === undefined) delete entry.providerCost;
+  }
+  reconcileBudgetSummary(bundle.budgetSummary, 'execution', entries);
+}
+
+function reconcileEvaluationBudget(bundle: EvaluationBundle): void {
+  const oldEntries = new Map(bundle.budgetSummary.entries.map((entry) => [entry.attemptId, entry]));
+  const entries = bundle.records.flatMap((record): BudgetLedgerEntry[] => {
+    if (record.evaluationStatus === 'not-evaluated'
+        || (record.cache.cacheStatus !== 'miss'
+          && record.cache.cacheStatus !== 'not-used')) return [];
+    return record.attempts.map((attempt) => ({
+      ...(oldEntries.get(attempt.attemptId) ?? {
+        sequence: 0,
+        stage: 'evaluation' as const,
+        coordinateId: record.trialId,
+        attemptId: attempt.attemptId,
+        invocationCount: 1 as const,
+        admissionKind: bundle.budgetSummary.admissionMode,
+      }),
+      activeDurationMs: attempt.timing.durationMs ?? 0,
+      providerCostStatus: attempt.usage?.providerCost === undefined
+        ? 'unreported' as const
+        : 'reported' as const,
+      ...(attempt.usage?.providerCost === undefined
+        ? { providerCost: undefined }
+        : { providerCost: attempt.usage.providerCost }),
+      outcomeKind: attempt.attemptStatus === 'completed'
+        ? 'completed' as const
+        : attempt.attemptStatus === 'cancelled'
+          ? 'cancelled' as const
+          : attempt.error.code === 'timeout' ? 'attempt-timeout' as const : 'failed' as const,
+    }));
+  });
+  for (const entry of entries) {
+    if (entry.providerCost === undefined) delete entry.providerCost;
+  }
+  reconcileBudgetSummary(bundle.budgetSummary, 'evaluation', entries);
+}
 
 function abortError(): Error {
   const error = new Error('aborted');
@@ -92,6 +264,7 @@ function resealExecutionBundle(
 ): ExecutionBundle {
   const draft = structuredClone(source);
   mutate(draft);
+  reconcileExecutionBudget(draft);
   draft.bundleDigest = `sha256:${'0'.repeat(64)}`;
   draft.bundleDigest = digestArtifactPayload(draft, 'bundleDigest');
   return draft;
@@ -103,6 +276,7 @@ function resealEvaluationBundle(
 ): EvaluationBundle {
   const draft = structuredClone(bundle);
   mutate(draft);
+  reconcileEvaluationBudget(draft);
   draft.bundleDigest = `sha256:${'0'.repeat(64)}`;
   draft.bundleDigest = digestArtifactPayload(draft, 'bundleDigest');
   return draft;
@@ -148,9 +322,14 @@ function executor(plan: Plan, fail = false): ExecutionExecutor {
 }
 
 async function sourceBundle(plan: Plan, fail = false) {
+  const clock = new FakeClock();
+  clock.sleep = async (_delayMs, signal) => new Promise<void>((_resolve, reject) => {
+    if (signal.aborted) reject(abortError());
+    else signal.addEventListener('abort', () => reject(abortError()), { once: true });
+  });
   return executeRunPlanSource(plan, {
     executors: new Map([['executor-alias', executor(plan, fail)]]),
-    clock: new FakeClock(),
+    clock,
     eventSequencer: new InMemoryRuntimeEventSequencer(),
     eventWriter: { async write() {} },
     contentStore: {
@@ -476,7 +655,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('does not exempt a structurally valid but externally unverified cache-hit claim', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
-      policy.evaluation.budget.maxEvaluatorInvocations = 2;
+      policy.budget.stages.evaluation.maxInvocations = 2;
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
@@ -536,7 +715,7 @@ describe('Evaluation Core Evaluation runtime', () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
       policy.evaluation.maxConcurrency = 1;
-      policy.evaluation.budget.maxEvaluatorInvocations = 2;
+      policy.budget.stages.evaluation.maxInvocations = 2;
     });
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();
@@ -729,7 +908,7 @@ describe('Evaluation Core Evaluation runtime', () => {
       policy.eventDelivery.writerMode = 'optional';
       policy.eventDelivery.writerFailureMode = 'fail-run';
       if (stopStatus === 'budget-exhausted') {
-        policy.evaluation.budget.maxDurationMs = 1;
+        policy.budget.run.maxWallClockMs = 1;
       }
     });
     const source = await sourceBundle(plan);
@@ -1032,6 +1211,10 @@ describe('Evaluation Core Evaluation runtime', () => {
     const forged = resealEvaluationBundle(valid, (draft) => {
       const record = draft.records[0];
       draft.executionBundleDigest = failedSource.bundle.bundleDigest;
+      draft.budgetSummary.entries = [
+        ...failedSource.bundle.budgetSummary.entries,
+        ...draft.budgetSummary.entries.filter((entry) => entry.stage === 'evaluation'),
+      ];
       if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
       record.sourceRecordDigest = digestCanonicalJson(failedSource.bundle.records[0]);
     });
@@ -1065,7 +1248,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('charges failed attempts and stops retries at the provider-cost boundary', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evaluation.maxConcurrency = 1;
-      policy.evaluation.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.stages.evaluation.maxProviderCost = { amount: 1, currency: 'USD' };
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan, () => {
@@ -1092,7 +1275,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('rejects a resealed Bundle whose native evaluator cost exceeds the sealed budget', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evaluation.maxConcurrency = 1;
-      policy.evaluation.budget.maxProviderCost = { amount: 1, currency: 'USD' };
+      policy.budget.stages.evaluation.maxProviderCost = { amount: 1, currency: 'USD' };
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan, () => ({
@@ -1234,7 +1417,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('stops binding resolution immediately when the evaluation duration budget expires', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.evidence.output = 'reference';
-      policy.evaluation.budget.maxDurationMs = 5;
+      policy.budget.run.maxWallClockMs = 5;
     });
     const source = await sourceBundle(plan);
     const fake = evaluator(plan);
@@ -1265,7 +1448,7 @@ describe('Evaluation Core Evaluation runtime', () => {
 
     expect(bundle).toMatchObject({
       evaluationBundleStatus: 'budget-exhausted',
-      terminationReasonCode: 'evaluation-duration-budget-exhausted',
+      terminationReasonCode: 'run-wall-clock-budget-exhausted',
       coverage: { started: 0, notStarted: 2 },
     });
     expect(resolves).toBe(1);
@@ -1438,7 +1621,7 @@ describe('Evaluation Core Evaluation runtime', () => {
   it('rejects a cache record that could not pass the sealed provider-cost audit', async () => {
     const plan = await makePlan((_definition, policy) => {
       policy.cache.evaluationMode = 'reuse';
-      policy.evaluation.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.budget.stages.evaluation.maxProviderCost = { amount: 10, currency: 'USD' };
     });
     const source = await sourceBundle(plan);
     const cache = new MemoryCache();

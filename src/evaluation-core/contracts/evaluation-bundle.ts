@@ -9,6 +9,7 @@ import {
   type UsageRecord,
 } from './artifacts.js';
 import type { CapturedContent, Provenance, RuntimeIdentity } from './common.js';
+import { budgetSummaryMatchesPolicy } from './budget.js';
 import {
   deriveEvaluationAttemptId,
   deriveEvaluationId,
@@ -115,6 +116,48 @@ function assertCanonicalRecordOrder(records: readonly EvaluationRecord[]): void 
           : 'EvaluationBundle records must use canonical target/sample/trial/evaluator order.',
       );
     }
+  }
+}
+
+function expectedBudgetOutcome(attempt: EvaluationAttempt): 'completed' | 'failed' | 'cancelled' | 'attempt-timeout' {
+  if (attempt.attemptStatus === 'completed') return 'completed';
+  if (attempt.attemptStatus === 'cancelled') return 'cancelled';
+  return attempt.error.code === 'timeout' ? 'attempt-timeout' : 'failed';
+}
+
+function assertEvaluationBudgetLedgerMatchesRecords(
+  bundle: EvaluationBundle,
+  executionEntryCount: number,
+): void {
+  const evaluationEntries = bundle.budgetSummary.entries.slice(executionEntryCount);
+  const entries = new Map(evaluationEntries.map((entry) => [entry.attemptId, entry]));
+  let expectedEntries = 0;
+  for (const record of bundle.records) {
+    if (record.evaluationStatus === 'not-evaluated'
+        || (record.cache.cacheStatus !== 'miss'
+          && record.cache.cacheStatus !== 'not-used')) continue;
+    for (const attempt of record.attempts) {
+      expectedEntries += 1;
+      const entry = entries.get(attempt.attemptId);
+      if (entry === undefined
+          || entry.stage !== 'evaluation'
+          || entry.coordinateId !== record.trialId
+          || entry.activeDurationMs !== attempt.timing.durationMs
+          || entry.outcomeKind !== expectedBudgetOutcome(attempt)
+          || canonicalizeJson(entry.providerCost ?? null)
+            !== canonicalizeJson(attempt.usage?.providerCost ?? null)) {
+        throw new EvaluationBundleValidationError(
+          'EVALUATION_BUNDLE_SOURCE_MISMATCH',
+          'Evaluation budget ledger must exactly account for every current native attempt.',
+        );
+      }
+    }
+  }
+  if (entries.size !== expectedEntries) {
+    throw new EvaluationBundleValidationError(
+      'EVALUATION_BUNDLE_SOURCE_MISMATCH',
+      'Evaluation budget ledger contains an attempt absent from current native records.',
+    );
   }
 }
 
@@ -361,9 +404,37 @@ export interface EvaluationBundlePlanContext
           maxAttempts: number;
           retryableErrorCodes: readonly string[];
         };
-        budget: {
-          maxEvaluatorInvocations?: number;
+      };
+      budget: {
+        run: {
+          maxInvocations?: number;
           maxProviderCost?: { amount: number; currency: string };
+          maxActiveDurationMs?: number;
+          maxWallClockMs?: number;
+        };
+        stages: {
+          execution: {
+            maxInvocations?: number;
+            maxProviderCost?: { amount: number; currency: string };
+            maxActiveDurationMs?: number;
+          };
+          evaluation: {
+            maxInvocations?: number;
+            maxProviderCost?: { amount: number; currency: string };
+            maxActiveDurationMs?: number;
+          };
+        };
+        coordinate: {
+          maxInvocations?: number;
+          maxProviderCost?: { amount: number; currency: string };
+          maxActiveDurationMs?: number;
+        };
+        attempt: {
+          maxProviderCost?: { amount: number; currency: string };
+        };
+        providerCostAdmission: {
+          admissionMode: 'strict-reservation' | 'bounded-overshoot';
+          unknownCostMode: 'fail-run' | 'mark-unverifiable';
         };
       };
     };
@@ -783,7 +854,8 @@ function assertCachePolicy(
         && evaluationRecordUsageMatchesAttempts(record)
         && evaluationRecordSatisfiesCacheCostPolicy(
           record,
-          plan.evaluation.policy.runtime.budget.maxProviderCost,
+          plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
+            ?? plan.evaluation.policy.budget.run.maxProviderCost,
         )) return true;
   }
   throw new EvaluationBundleValidationError(
@@ -965,6 +1037,9 @@ export function assertEvaluationBundleMatchesPlan(
   verification?: EvaluationBundleVerificationContext,
 ): EvaluationBundlePlanVerification {
   assertExecutionBundleSourceMatchesPlan(executionSource, plan);
+  if (!budgetSummaryMatchesPolicy(bundle.budgetSummary, plan.evaluation.policy.budget)) {
+    planMismatch('EvaluationBundle budget summary does not match the sealed budget policy.');
+  }
   const source = executionSource.bundle;
   const sourceTrust = verification?.executionSourceTrust ?? source.provenance.trust;
   const effectiveSourceTrust = verification?.executionSourceTrust
@@ -976,6 +1051,15 @@ export function assertEvaluationBundleMatchesPlan(
       || plan.evaluation.executionPlanDigest !== source.executionPlanDigest
       || bundle.executionBundleDigest !== source.bundleDigest) {
     planMismatch('EvaluationBundle parent digests do not match its sealed inputs.');
+  }
+  if (bundle.budgetSummary.runContractDigest !== bundle.runContractDigest
+      || canonicalizeJson(bundle.budgetSummary.entries.slice(
+        0,
+        source.budgetSummary.entries.length,
+      )) !== canonicalizeJson(source.budgetSummary.entries)
+      || bundle.budgetSummary.entries.slice(source.budgetSummary.entries.length)
+        .some((entry) => entry.stage !== 'evaluation')) {
+    planMismatch('EvaluationBundle budget ledger does not extend its Execution source ledger.');
   }
 
   const planned = derivePlannedEvaluationCoordinates(plan);
@@ -1009,7 +1093,8 @@ export function assertEvaluationBundleMatchesPlan(
   let maximumProviderCostAmount = 0;
   let providerCostUpperBoundKnown = true;
   const unverifiedCacheRecordDigests: Sha256Digest[] = [];
-  const providerCostBudget = plan.evaluation.policy.runtime.budget.maxProviderCost;
+  const providerCostBudget = plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
+    ?? plan.evaluation.policy.budget.run.maxProviderCost;
   for (const record of bundle.records) {
     const expected = plannedByCoordinate.get(coordinateKey(record));
     if (expected === undefined) planMismatch('EvaluationBundle contains an unknown coordinate.');
@@ -1053,7 +1138,9 @@ export function assertEvaluationBundleMatchesPlan(
     if (providerCostBudget !== undefined && record.evaluationStatus !== 'not-evaluated') {
       const amount = evaluationRecordProviderCost(record, providerCostBudget.currency);
       if (amount === undefined) {
-        if (bundle.evaluationBundleStatus === 'completed') {
+        if (bundle.evaluationBundleStatus === 'completed'
+            && plan.evaluation.policy.budget.providerCostAdmission.unknownCostMode
+              === 'fail-run') {
           throw new EvaluationBundleValidationError(
             'EVALUATION_BUNDLE_PROVIDER_COST_INVALID',
             'A completed EvaluationBundle must report sealed-currency provider cost for every native invocation.',
@@ -1071,7 +1158,8 @@ export function assertEvaluationBundleMatchesPlan(
       unverifiedCacheRecordDigests.push(recordVerification.unverifiedCacheRecordDigest);
     }
   }
-  const maxInvocations = plan.evaluation.policy.runtime.budget.maxEvaluatorInvocations;
+  const maxInvocations = plan.evaluation.policy.budget.stages.evaluation.maxInvocations
+    ?? plan.evaluation.policy.budget.run.maxInvocations;
   if (maxInvocations !== undefined && minimumEvaluatorInvocations > maxInvocations) {
     throw new EvaluationBundleValidationError(
       'EVALUATION_BUNDLE_RETRY_POLICY_INVALID',
@@ -1087,7 +1175,7 @@ export function assertEvaluationBundleMatchesPlan(
     );
   }
   if (providerCostBudget !== undefined
-      && bundle.terminationReasonCode === 'evaluation-provider-cost-budget-exhausted'
+      && bundle.terminationReasonCode?.endsWith('provider-cost-budget-exhausted') === true
       && (!providerCostUpperBoundKnown
         || minimumProviderCostAmount < providerCostBudget.amount)) {
     throw new EvaluationBundleValidationError(
@@ -1120,6 +1208,7 @@ export function assertEvaluationBundleMatchesPlan(
       && maximumProviderCostAmount < providerCostBudget.amount)
     ? 'verified'
     : 'indeterminate';
+  assertEvaluationBudgetLedgerMatchesRecords(bundle, source.budgetSummary.entries.length);
   return {
     provenanceTrustStatus: verification?.verifiedProvenanceBundleDigests?.has(
       bundle.bundleDigest as Sha256Digest,

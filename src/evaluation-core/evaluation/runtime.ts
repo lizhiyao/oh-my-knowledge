@@ -38,8 +38,14 @@ import {
 } from '../contracts/index.js';
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import type { SealedRunPlan } from '../compiler/index.js';
+import { EvaluatorCapabilitiesSchema } from '../compiler/index.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
+import {
+  assertRunBudgetSource,
+  createRunBudgetSource,
+  type RunBudgetSource,
+} from '../budget/index.js';
 import {
   EvaluationPortFailure,
   EvaluationRuntimeConfigurationError,
@@ -58,6 +64,7 @@ import {
 
 type ActiveRecord = Exclude<EvaluationRecord, { evaluationStatus: 'not-evaluated' }>;
 type CompletedRecord = Extract<EvaluationRecord, { evaluationStatus: 'completed' }>;
+type ResolvedEvaluationRunOptions = EvaluationRunOptions & { budgetSource: RunBudgetSource };
 type StopKind = 'cancelled' | 'budget-exhausted' | 'failed';
 
 interface StopState {
@@ -210,6 +217,23 @@ function prepareRuntime(
       configurationError(
         'EVALUATION_RUNTIME_IDENTITY_MISMATCH',
         `Evaluator identity for ${evaluator.evaluatorId} differs from the sealed plan.`,
+      );
+    }
+    const capabilities = EvaluatorCapabilitiesSchema.safeParse(runtime.capabilities);
+    const budgetPolicy = plan.measurementPolicy.budget;
+    const evaluationCostBudgetConfigured = budgetPolicy.run.maxProviderCost !== undefined
+      || budgetPolicy.stages.evaluation.maxProviderCost !== undefined
+      || budgetPolicy.coordinate.maxProviderCost !== undefined
+      || budgetPolicy.attempt.maxProviderCost !== undefined;
+    if (evaluationCostBudgetConfigured
+        && budgetPolicy.providerCostAdmission.admissionMode === 'strict-reservation'
+        && (runtime.assuranceLevel !== 'verified'
+          || !capabilities.success
+          || capabilities.data.providerCost?.reporting !== 'required'
+          || capabilities.data.providerCost.trustedUpperBound === undefined)) {
+      configurationError(
+        'EVALUATION_RUNTIME_PROVIDER_COST_BOUND_REQUIRED',
+        `Strict provider-cost admission requires a verified upper bound for ${evaluator.evaluatorId}.`,
       );
     }
     bindings.set(evaluator.evaluatorId, { evaluator, port, runtime });
@@ -615,56 +639,6 @@ class Sessions {
   }
 }
 
-class Budget {
-  readonly #max?: number;
-  readonly #cost?: { amount: number; currency: string };
-  #used = 0;
-  #reserved = 0;
-  #providerCost = 0;
-
-  constructor(plan: SealedRunPlan) {
-    this.#max = plan.evaluation.policy.runtime.budget.maxEvaluatorInvocations;
-    this.#cost = plan.evaluation.policy.runtime.budget.maxProviderCost;
-  }
-
-  reserveInvocation(): boolean {
-    if (this.#max !== undefined && this.#used + this.#reserved >= this.#max) return false;
-    this.#reserved += 1;
-    return true;
-  }
-
-  consumeReservation(): void {
-    if (this.#reserved < 1) throw new Error('Evaluator invocation reservation disappeared.');
-    this.#reserved -= 1;
-    this.#used += 1;
-  }
-
-  releaseReservation(): void {
-    if (this.#reserved < 1) throw new Error('Evaluator invocation reservation disappeared.');
-    this.#reserved -= 1;
-  }
-
-  record(usage: UsageRecord | undefined): EvaluationError | undefined {
-    if (this.#cost === undefined) return undefined;
-    if (usage?.providerCost === undefined) return {
-      code: 'provider-cost-unreported',
-      stage: 'infrastructure',
-      message: 'Provider cost budget requires every evaluator invocation to report cost.',
-    };
-    if (usage.providerCost.currency !== this.#cost.currency) return {
-      code: 'provider-cost-currency-mismatch',
-      stage: 'infrastructure',
-      message: 'Evaluator cost currency differs from the sealed budget currency.',
-    };
-    this.#providerCost += usage.providerCost.amount;
-    return undefined;
-  }
-
-  get exhausted(): boolean {
-    return this.#cost !== undefined && this.#providerCost >= this.#cost.amount;
-  }
-}
-
 const TRUST_LEVEL: Record<Provenance['trust'], number> = {
   untrusted: 0,
   unknown: 1,
@@ -680,6 +654,16 @@ function minimumTrust(...values: readonly Provenance['trust'][]): Provenance['tr
 
 function runtimeTrust(runtime: RuntimeIdentity): Provenance['trust'] {
   return runtime.assuranceLevel;
+}
+
+function providerCostUpperBound(
+  binding: EvaluatorBinding,
+): { amount: number; currency: string } | undefined {
+  if (binding.runtime.assuranceLevel !== 'verified') return undefined;
+  const capabilities = EvaluatorCapabilitiesSchema.safeParse(binding.runtime.capabilities);
+  return capabilities.success
+    ? capabilities.data.providerCost?.trustedUpperBound
+    : undefined;
 }
 
 function notEvaluatedRecord(
@@ -770,7 +754,8 @@ function replayRecord(
     || !evaluationRecordUsageMatchesAttempts(record)
     || !evaluationRecordSatisfiesCacheCostPolicy(
       record,
-      plan.evaluation.policy.runtime.budget.maxProviderCost,
+      plan.evaluation.policy.budget.stages.evaluation.maxProviderCost
+        ?? plan.evaluation.policy.budget.run.maxProviderCost,
     )
     || record.attempts.length > plan.evaluation.policy.runtime.retry.maxAttempts
     || !evaluationRecordMatchesEvidencePolicy(record, plan.evaluation.policy.evidence)
@@ -831,7 +816,7 @@ async function evaluateCoordinate(
   ports: EvaluationRuntimePorts,
   sessions: Sessions,
   events: RuntimeEvents,
-  budget: Budget,
+  budget: RunBudgetSource,
   prepared: EligibleCoordinate,
   signal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
@@ -916,14 +901,27 @@ async function evaluateCoordinate(
     const activeEvaluatorRecord = evaluatorRecord;
     const retry = plan.evaluation.policy.runtime.retry;
     for (let attemptNumber = 1; attemptNumber <= retry.maxAttempts; attemptNumber += 1) {
-      if (!budget.reserveInvocation()) {
-        setStop('budget-exhausted', 'evaluator-invocation-budget-exhausted');
-        break;
-      }
       const attemptId = deriveEvaluationAttemptId({
         evaluationId: coordinate.evaluationId,
         attemptNumber,
       });
+      const admission = budget.reserve([{
+        stage: 'evaluation',
+        coordinateId: coordinate.trialId,
+        attemptId,
+        ...(providerCostUpperBound(binding) === undefined
+          ? {}
+          : { providerCostUpperBound: providerCostUpperBound(binding) }),
+      }]);
+      if (!admission.admitted) {
+        budget.noteTermination(admission.termination);
+        setStop(
+          admission.termination.terminationKind === 'failed' ? 'failed' : 'budget-exhausted',
+          admission.termination.reasonCode,
+        );
+        break;
+      }
+      const [reservationId] = admission.reservationIds;
       const attemptStartedAt = ports.clock.timestamp();
       const attemptStartedMono = ports.clock.monotonicNow();
       const attemptDelivery = await events.emit('evaluation.attempt.started', 'attempt', attemptId, {
@@ -931,10 +929,10 @@ async function evaluateCoordinate(
         attemptNumber,
       });
       if (!attemptDelivery || signal.aborted) {
-        budget.releaseReservation();
+        budget.release(reservationId);
         break;
       }
-      budget.consumeReservation();
+      budget.consume(reservationId);
       let attemptUsage: UsageRecord | undefined;
       try {
         const result = await withTimeout(
@@ -959,6 +957,7 @@ async function evaluateCoordinate(
         evidence = await capture(result.evidence, plan, ports);
         if (signal.aborted) throw new EvaluationAttemptCancelledError();
         const completedAt = ports.clock.timestamp();
+        const completedMono = ports.clock.monotonicNow();
         attempts.push({
           attemptId,
           attemptNumber,
@@ -966,12 +965,24 @@ async function evaluateCoordinate(
           timing: {
             startedAt: attemptStartedAt,
             completedAt,
-            durationMs: durationMs(attemptStartedMono, ports.clock.monotonicNow()),
+            durationMs: durationMs(attemptStartedMono, completedMono),
           },
           ...(attemptUsage === undefined ? {} : { usage: snapshotJson(attemptUsage) }),
         });
-        const budgetError = budget.record(attemptUsage);
-        if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
+        const budgetError = budget.settle(
+          reservationId,
+          durationMs(attemptStartedMono, completedMono),
+          attemptUsage,
+          'completed',
+        );
+        if (budgetError !== undefined) {
+          const summary = budget.snapshot();
+          setStop(
+            summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
+            budgetError.code,
+            summary.summaryStatus === 'failed' ? budgetError : undefined,
+          );
+        }
         await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
           attemptNumber,
           attemptStatus: 'completed',
@@ -981,6 +992,7 @@ async function evaluateCoordinate(
         let failure = safeError(error);
         const cancelled = signal.aborted;
         const completedAt = ports.clock.timestamp();
+        const completedMono = ports.clock.monotonicNow();
         let usage = attemptUsage;
         if (usage === undefined && error instanceof EvaluationPortFailure
             && error.usage !== undefined) {
@@ -997,20 +1009,34 @@ async function evaluateCoordinate(
           timing: {
             startedAt: attemptStartedAt,
             completedAt,
-            durationMs: durationMs(attemptStartedMono, ports.clock.monotonicNow()),
+            durationMs: durationMs(attemptStartedMono, completedMono),
           },
           error: failure,
           ...(usage === undefined ? {} : { usage: snapshotJson(usage) }),
         });
-        const budgetError = budget.record(usage);
-        if (budgetError !== undefined) setStop('failed', budgetError.code, budgetError);
+        const budgetError = budget.settle(
+          reservationId,
+          durationMs(attemptStartedMono, completedMono),
+          usage,
+          failure.code === 'timeout'
+            ? 'attempt-timeout'
+            : cancelled ? 'cancelled' : 'failed',
+        );
+        if (budgetError !== undefined) {
+          const summary = budget.snapshot();
+          setStop(
+            summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
+            budgetError.code,
+            summary.summaryStatus === 'failed' ? budgetError : undefined,
+          );
+        }
         terminalError = failure;
         await events.emit('evaluation.attempt.completed', 'attempt', attemptId, {
           attemptNumber,
           attemptStatus: cancelled ? 'cancelled' : 'failed',
           errorCode: failure.code,
         });
-        if (signal.aborted || budget.exhausted
+        if (signal.aborted || budget.snapshot().summaryStatus === 'exhausted'
             || cancelled || !retry.retryableErrorCodes.includes(failure.code)
             || attemptNumber === retry.maxAttempts) break;
         const delay = retry.backoff.backoffKind === 'none'
@@ -1126,7 +1152,7 @@ function replayability(records: readonly EvaluationRecord[]): EvaluationBundle['
 function makeBundle(
   plan: SealedRunPlan,
   source: ExecutionBundleSource,
-  options: EvaluationRunOptions,
+  options: ResolvedEvaluationRunOptions,
   records: EvaluationRecord[],
   planned: number,
   stop: StopState,
@@ -1162,6 +1188,7 @@ function makeBundle(
       notStarted: eligible - started,
     },
     replayability: replayability(records),
+    budgetSummary: options.budgetSource.snapshot(),
     records,
     provenance: {
       provenanceKind: 'native',
@@ -1191,7 +1218,8 @@ function makeBundle(
       || verified.planVerification.cacheReceiptStatus !== 'verified'
       || verified.planVerification.invocationBudgetStatus !== 'verified'
       || (bundle.evaluationBundleStatus === 'completed'
-        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
+        && verified.planVerification.providerCostBudgetStatus !== 'verified'
+        && bundle.budgetSummary.summaryStatus !== 'unverifiable')) {
     throw new TypeError('Evaluation Runtime produced an unverifiable Bundle.');
   }
   return verified;
@@ -1265,7 +1293,7 @@ function terminalKind(
 async function runEvaluation(
   plan: SealedRunPlan,
   ports: EvaluationRuntimePorts,
-  options: EvaluationRunOptions,
+  options: ResolvedEvaluationRunOptions,
   prepared: PreparedRuntime,
   stream: BoundedEventStream,
 ): Promise<EvaluationBundleSource> {
@@ -1275,12 +1303,19 @@ async function runEvaluation(
   const verifiedCacheRecordDigests = new Set<Sha256Digest>();
   const stop: StopState = {};
   const controller = new AbortController();
+  const budget = options.budgetSource;
   const setStop = (stopKind: StopKind, reason: string, error?: EvaluationError): void => {
     if (stop.stopKind === 'failed'
         || (stop.stopKind !== undefined && stopKind !== 'failed')) return;
     stop.stopKind = stopKind;
     stop.reason = reason;
     if (error !== undefined) stop.error = error;
+    if (stopKind === 'cancelled' || stopKind === 'failed') {
+      budget.noteTermination({
+        terminationKind: stopKind,
+        reasonCode: reason,
+      });
+    }
     if (stopKind !== 'budget-exhausted') controller.abort(reason);
   };
   const externalAbort = (): void => setStop('cancelled', 'external-cancellation');
@@ -1315,15 +1350,21 @@ async function runEvaluation(
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),
   );
   const sessions = new Sessions(plan, options);
-  const budget = new Budget(plan);
-  const durationController = new AbortController();
-  const duration = plan.evaluation.policy.runtime.budget.maxDurationMs === undefined
+  const wallClockController = new AbortController();
+  const wallClockRemainingMs = budget.wallClockRemainingMs();
+  const wallClockTimer = wallClockRemainingMs === undefined
     ? undefined
-    : ports.clock.sleep(
-      plan.evaluation.policy.runtime.budget.maxDurationMs,
-      durationController.signal,
-    ).then(() => setStop('budget-exhausted', 'evaluation-duration-budget-exhausted'))
-      .catch(() => undefined);
+    : ports.clock.sleep(wallClockRemainingMs, wallClockController.signal).then(() => {
+      const termination = {
+        terminationKind: 'wall-clock-exhausted' as const,
+        resourceKind: 'wall-clock' as const,
+        scopeKind: 'run' as const,
+        scopeId: options.runId,
+        reasonCode: 'run-wall-clock-budget-exhausted',
+      };
+      budget.noteTermination(termination);
+      setStop('budget-exhausted', termination.reasonCode);
+    }).catch(() => undefined);
   try {
     try {
       const runStarted = await events.emit('evaluation.run.started', 'run', options.runId, {
@@ -1405,8 +1446,6 @@ async function runEvaluation(
           && policy.failureMode === 'failure-threshold'
           && totalFailures > (policy.maxFailures ?? 0)) {
         setStop('failed', 'evaluation-failure-policy-threshold');
-      } else if (stop.stopKind === undefined && budget.exhausted) {
-        setStop('budget-exhausted', 'evaluation-provider-cost-budget-exhausted');
       }
     }
     } catch (error) {
@@ -1415,8 +1454,8 @@ async function runEvaluation(
         setStop('failed', 'evaluation-runtime-internal-failed', safeError(error));
       }
     } finally {
-      durationController.abort();
-      await duration;
+      wallClockController.abort();
+      await wallClockTimer;
       options.signal?.removeEventListener('abort', externalAbort);
       if (await sessions.dispose()) {
         setStop('failed', 'evaluator-run-dispose-failed', {
@@ -1523,13 +1562,27 @@ export function startEvaluation(
   ports: EvaluationRuntimePorts,
   options: EvaluationRunOptions,
 ): EvaluationRun {
-  const prepared = prepareRuntime(plan, source, ports, options);
+  const runtimeOptions: ResolvedEvaluationRunOptions = options.budgetSource === undefined
+    ? {
+      ...options,
+      budgetSource: createRunBudgetSource(
+        plan,
+        options.runId,
+        ports.clock,
+        source.bundle.budgetSummary,
+        'authenticated-stage-handoff',
+      ),
+    }
+    : { ...options, budgetSource: options.budgetSource };
+  assertRunBudgetSource(runtimeOptions.budgetSource, plan, runtimeOptions.runId);
+  const prepared = prepareRuntime(plan, source, ports, runtimeOptions);
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
-  const verified = runEvaluation(plan, ports, options, prepared, stream);
+  const verified = runEvaluation(plan, ports, runtimeOptions, prepared, stream);
   let result: Promise<EvaluationBundle> | undefined;
   return {
     events: stream,
     source: verified,
+    budgetSource: runtimeOptions.budgetSource,
     get result() {
       result ??= verified.then((sourceResult) => sourceResult.bundle);
       return result;

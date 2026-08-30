@@ -1,0 +1,462 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.budget-summary/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "__schema10": {
+      "pattern": "^[A-Z]{3}$",
+      "type": "string"
+    },
+    "__schema11": {
+      "additionalProperties": false,
+      "properties": {
+        "elapsedMs": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "limitMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "overshootMs": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "elapsedMs",
+        "overshootMs"
+      ],
+      "type": "object"
+    },
+    "__schema12": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeDurationMs": {
+            "$ref": "#/$defs/__schema16"
+          },
+          "admissionKind": {
+            "$ref": "#/$defs/__schema20"
+          },
+          "attemptId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "coordinateId": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "invocationCount": {
+            "$ref": "#/$defs/__schema15"
+          },
+          "outcomeKind": {
+            "$ref": "#/$defs/__schema21"
+          },
+          "providerCost": {
+            "$ref": "#/$defs/__schema18"
+          },
+          "providerCostReservation": {
+            "$ref": "#/$defs/__schema19"
+          },
+          "providerCostStatus": {
+            "$ref": "#/$defs/__schema17"
+          },
+          "sequence": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "stage": {
+            "$ref": "#/$defs/__schema14"
+          }
+        },
+        "required": [
+          "sequence",
+          "stage",
+          "coordinateId",
+          "attemptId",
+          "invocationCount",
+          "activeDurationMs",
+          "providerCostStatus",
+          "admissionKind",
+          "outcomeKind"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema13": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "__schema14": {
+      "enum": [
+        "execution",
+        "evaluation"
+      ],
+      "type": "string"
+    },
+    "__schema15": {
+      "const": 1,
+      "type": "number"
+    },
+    "__schema16": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "__schema17": {
+      "enum": [
+        "reported",
+        "unreported"
+      ],
+      "type": "string"
+    },
+    "__schema18": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        },
+        "reportedByProvider": {
+          "const": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "amount",
+        "currency",
+        "reportedByProvider"
+      ],
+      "type": "object"
+    },
+    "__schema19": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "boundSource": {
+          "const": "verified-runtime-capability",
+          "type": "string"
+        },
+        "boundStatus": {
+          "enum": [
+            "honored",
+            "violated",
+            "not-assessable"
+          ],
+          "type": "string"
+        },
+        "currency": {
+          "$ref": "#/$defs/__schema10"
+        }
+      },
+      "required": [
+        "amount",
+        "currency",
+        "boundSource",
+        "boundStatus"
+      ],
+      "type": "object"
+    },
+    "__schema2": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema20": {
+      "enum": [
+        "strict-reservation",
+        "bounded-overshoot"
+      ],
+      "type": "string"
+    },
+    "__schema21": {
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled",
+        "attempt-timeout"
+      ],
+      "type": "string"
+    },
+    "__schema22": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "limits": {
+            "additionalProperties": false,
+            "properties": {
+              "maxActiveDurationMs": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "maxInvocations": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "maxProviderCost": {
+                "$ref": "#/$defs/__schema8"
+              }
+            },
+            "type": "object"
+          },
+          "overshoot": {
+            "additionalProperties": false,
+            "properties": {
+              "activeDurationMs": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "invocations": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "providerCost": {
+                "$ref": "#/$defs/__schema8"
+              }
+            },
+            "required": [
+              "invocations",
+              "activeDurationMs"
+            ],
+            "type": "object"
+          },
+          "scopeId": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "scopeKind": {
+            "enum": [
+              "run",
+              "stage",
+              "coordinate"
+            ],
+            "type": "string"
+          },
+          "totals": {
+            "additionalProperties": false,
+            "properties": {
+              "activeDurationMs": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "invocations": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reportedProviderCosts": {
+                "items": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "type": "array"
+              },
+              "unreportedProviderCostInvocations": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "invocations",
+              "activeDurationMs",
+              "unreportedProviderCostInvocations"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scopeKind",
+          "scopeId",
+          "limits",
+          "totals",
+          "overshoot"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema23": {
+      "additionalProperties": false,
+      "properties": {
+        "reasonCode": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "resourceKind": {
+          "enum": [
+            "invocations",
+            "provider-cost",
+            "active-duration",
+            "wall-clock"
+          ],
+          "type": "string"
+        },
+        "scopeId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "scopeKind": {
+          "enum": [
+            "run",
+            "stage",
+            "coordinate",
+            "attempt"
+          ],
+          "type": "string"
+        },
+        "terminationKind": {
+          "enum": [
+            "budget-censored",
+            "active-budget-exhausted",
+            "wall-clock-exhausted",
+            "attempt-timeout",
+            "cancelled",
+            "failed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminationKind",
+        "reasonCode"
+      ],
+      "type": "object"
+    },
+    "__schema3": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "type": "string"
+    },
+    "__schema4": {
+      "enum": [
+        "within-budget",
+        "exhausted",
+        "unverifiable",
+        "cancelled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "__schema5": {
+      "enum": [
+        "strict-reservation",
+        "bounded-overshoot"
+      ],
+      "type": "string"
+    },
+    "__schema6": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "__schema7": {
+      "additionalProperties": false,
+      "properties": {
+        "outstandingInvocations": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outstandingProviderCosts": {
+          "items": {
+            "$ref": "#/$defs/__schema8"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "outstandingInvocations"
+      ],
+      "type": "object"
+    },
+    "__schema8": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "currency": {
+          "$ref": "#/$defs/__schema10"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "type": "object"
+    },
+    "__schema9": {
+      "minimum": 0,
+      "type": "number"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/budget-summary.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "admissionMode": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "capturedAt": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "entries": {
+      "$ref": "#/$defs/__schema12"
+    },
+    "ledgerDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "maximumUnreservedInFlightInvocations": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "reservations": {
+      "$ref": "#/$defs/__schema7"
+    },
+    "runContractDigest": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "runId": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "scopes": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "summaryStatus": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "termination": {
+      "$ref": "#/$defs/__schema23"
+    },
+    "wallClock": {
+      "$ref": "#/$defs/__schema11"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "runId",
+    "runContractDigest",
+    "capturedAt",
+    "summaryStatus",
+    "admissionMode",
+    "maximumUnreservedInFlightInvocations",
+    "reservations",
+    "wallClock",
+    "entries",
+    "scopes",
+    "ledgerDigest"
+  ],
+  "type": "object"
+}

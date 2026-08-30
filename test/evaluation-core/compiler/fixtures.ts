@@ -153,7 +153,19 @@ export function validPolicy(): MeasurementPolicy {
         maxDelayMs: 100,
       },
     },
-    budget: { maxTargetInvocations: 100 },
+    budget: {
+      run: { maxInvocations: 200 },
+      stages: {
+        execution: { maxInvocations: 100 },
+        evaluation: { maxInvocations: 100 },
+      },
+      coordinate: {},
+      attempt: {},
+      providerCostAdmission: {
+        admissionMode: 'bounded-overshoot',
+        unknownCostMode: 'fail-run',
+      },
+    },
     evaluation: {
       maxConcurrency: 2,
       timeoutMs: 10_000,
@@ -166,7 +178,6 @@ export function validPolicy(): MeasurementPolicy {
           maxDelayMs: 100,
         },
       },
-      budget: { maxEvaluatorInvocations: 100 },
     },
     cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
     evidence: {

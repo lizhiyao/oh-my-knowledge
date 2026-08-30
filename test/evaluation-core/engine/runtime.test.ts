@@ -65,7 +65,7 @@ function makeExecutor(plan: SealedRunPlan): Executor {
               const input = context.input as { answerHint: string };
               return {
                 output: {
-                  value: { answer: input.answerHint },
+                  value: { answer: input.answerHint ?? 'A' },
                   classification: 'public' as const,
                 },
               };
@@ -165,6 +165,31 @@ async function consume(run: {
 }
 
 describe('embedded Evaluation Engine', () => {
+  it('enforces one Run invocation budget across Execution and Evaluation', async () => {
+    const fixture = await createRuntime();
+    fixture.policy.budget.run.maxInvocations = 3;
+    delete fixture.policy.execution.timeoutMs;
+    delete fixture.policy.evaluation.timeoutMs;
+    fixture.definition.dataset.samples[0].input = { answerHint: 'A' };
+    const result = await createEvaluationEngine(fixture.runtime).start(fixture.definition, {
+      policy: fixture.policy,
+      runId: 'embedded-shared-budget',
+    }).result;
+
+    if (result.status === 'failed') throw new Error('Expected materialized partial artifacts.');
+    const executionEntries = result.artifacts.execution.budgetSummary.entries;
+    const finalEntries = result.artifacts.evaluation.budgetSummary.entries;
+    expect(executionEntries).toHaveLength(2);
+    expect(finalEntries).toHaveLength(3);
+    expect(result.status).toBe('budget-exhausted');
+    expect(finalEntries.slice(0, executionEntries.length)).toEqual(executionEntries);
+    expect(result.report.budgetSummary).toEqual(result.artifacts.evaluation.budgetSummary);
+    expect(result.artifacts.evaluation).toMatchObject({
+      evaluationBundleStatus: 'budget-exhausted',
+      coverage: { started: 1, notStarted: 1 },
+    });
+  });
+
   it('runs an in-memory multi-target evaluation through the public façade', async () => {
     const fixture = await createRuntime();
     const engine = createEvaluationEngine(fixture.runtime);

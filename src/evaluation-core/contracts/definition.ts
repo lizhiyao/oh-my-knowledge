@@ -274,27 +274,54 @@ export const RetryPolicySchema = z.object({
   }).strict(),
 }).strict();
 
-export const BudgetPolicySchema = z.object({
-  maxTargetInvocations: z.number().int().positive().optional(),
-  maxDurationMs: z.number().int().positive().optional(),
-  maxProviderCost: z.object({
-    amount: z.number().nonnegative(),
-    currency: z.string().regex(/^[A-Z]{3}$/),
-  }).strict().optional(),
+export const ProviderCostLimitSchema = z.object({
+  amount: z.number().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
 }).strict();
+
+export const BudgetScopeLimitsSchema = z.object({
+  maxInvocations: z.number().int().positive().optional(),
+  maxProviderCost: ProviderCostLimitSchema.optional(),
+  maxActiveDurationMs: z.number().int().positive().optional(),
+}).strict();
+
+export const BudgetPolicySchema = z.object({
+  run: BudgetScopeLimitsSchema.extend({
+    maxWallClockMs: z.number().int().positive().optional(),
+  }).strict(),
+  stages: z.object({
+    execution: BudgetScopeLimitsSchema,
+    evaluation: BudgetScopeLimitsSchema,
+  }).strict(),
+  coordinate: BudgetScopeLimitsSchema,
+  attempt: z.object({
+    maxProviderCost: ProviderCostLimitSchema.optional(),
+  }).strict(),
+  providerCostAdmission: z.object({
+    admissionMode: z.enum(['strict-reservation', 'bounded-overshoot']),
+    unknownCostMode: z.enum(['fail-run', 'mark-unverifiable']),
+  }).strict(),
+}).strict().superRefine((policy, context) => {
+  const currencies = [
+    policy.run.maxProviderCost,
+    policy.stages.execution.maxProviderCost,
+    policy.stages.evaluation.maxProviderCost,
+    policy.coordinate.maxProviderCost,
+    policy.attempt.maxProviderCost,
+  ].flatMap((limit) => limit === undefined ? [] : [limit.currency]);
+  if (new Set(currencies).size > 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['run', 'maxProviderCost'],
+      message: 'All provider-cost limits in one Run must use the same currency.',
+    });
+  }
+});
 
 export const EvaluationRuntimePolicySchema = z.object({
   timeoutMs: z.number().int().positive().optional(),
   maxConcurrency: z.number().int().positive(),
   retry: RetryPolicySchema,
-  budget: z.object({
-    maxEvaluatorInvocations: z.number().int().positive().optional(),
-    maxDurationMs: z.number().int().positive().optional(),
-    maxProviderCost: z.object({
-      amount: z.number().nonnegative(),
-      currency: z.string().regex(/^[A-Z]{3}$/),
-    }).strict().optional(),
-  }).strict(),
 }).strict();
 
 export const CachePolicySchema = z.object({

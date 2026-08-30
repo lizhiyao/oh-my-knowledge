@@ -39,6 +39,11 @@ import {
 import { deepFreeze, snapshotJson } from '../compiler/immutability.js';
 import { RuntimeEventEmitter } from '../runtime/events.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
+import {
+  assertRunBudgetSource,
+  createRunBudgetSource,
+  type RunBudgetSource,
+} from '../budget/index.js';
 import { abortError, Semaphore } from './semaphore.js';
 import { deriveExecutionSchedule, type ExecutionSchedulingBlock } from './scheduler.js';
 import {
@@ -61,6 +66,7 @@ import {
 
 type ActiveExecutionRecord = Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>;
 type CompletedExecutionRecord = Extract<ExecutionRecord, { executionStatus: 'completed' }>;
+type ResolvedExecutionRunOptions = ExecutionRunOptions & { budgetSource: RunBudgetSource };
 
 const PROVENANCE_TRUST_LEVEL = {
   untrusted: 0,
@@ -103,7 +109,7 @@ interface StopState {
 interface PreparedCoordinate {
   coordinate: PlannedExecutionCoordinate;
   cached?: CompletedExecutionRecord;
-  reservedInvocation: boolean;
+  reservationId?: string;
 }
 
 interface PreparedBlock {
@@ -270,6 +276,21 @@ function prepareRuntime(
       );
     }
     const protocol = protocolForTarget(target.targetId, target.protocolId, expectedRuntime);
+    const budgetPolicy = plan.measurementPolicy.budget;
+    const executionCostBudgetConfigured = budgetPolicy.run.maxProviderCost !== undefined
+      || budgetPolicy.stages.execution.maxProviderCost !== undefined
+      || budgetPolicy.coordinate.maxProviderCost !== undefined
+      || budgetPolicy.attempt.maxProviderCost !== undefined;
+    if (executionCostBudgetConfigured
+        && budgetPolicy.providerCostAdmission.admissionMode === 'strict-reservation'
+        && (expectedRuntime.assuranceLevel !== 'verified'
+          || protocol.execution.telemetry.providerCost?.reporting !== 'required'
+          || protocol.execution.telemetry.providerCost.trustedUpperBound === undefined)) {
+      configurationError(
+        'EXECUTION_RUNTIME_PROVIDER_COST_BOUND_REQUIRED',
+        `Strict provider-cost admission requires a verified upper bound for ${target.targetId}.`,
+      );
+    }
     const capabilityLimit = protocol.execution.concurrency.safety === 'serialized'
       ? 1
       : (protocol.execution.concurrency.maxInFlight
@@ -324,62 +345,6 @@ function safeError(error: unknown): EvaluationError {
 
 function durationMs(started: number, completed: number): number {
   return Math.max(0, completed - started);
-}
-
-class BudgetTracker {
-  readonly #maxInvocations?: number;
-  readonly #maxProviderCost?: { amount: number; currency: string };
-  #invocations = 0;
-  #reserved = 0;
-  #providerCost = 0;
-
-  constructor(plan: SealedRunPlan) {
-    this.#maxInvocations = plan.execution.policy.budget.maxTargetInvocations;
-    this.#maxProviderCost = plan.execution.policy.budget.maxProviderCost;
-  }
-
-  reserveInitial(count: number): boolean {
-    if (this.#maxInvocations !== undefined
-        && this.#invocations + this.#reserved + count > this.#maxInvocations) return false;
-    this.#reserved += count;
-    return true;
-  }
-
-  consumeReserved(): void {
-    if (this.#reserved < 1) throw new Error('Missing invocation reservation');
-    this.#reserved -= 1;
-    this.#invocations += 1;
-  }
-
-  releaseReserved(): void {
-    if (this.#reserved > 0) this.#reserved -= 1;
-  }
-
-  recordUsage(usage: UsageRecord | undefined): EvaluationError | undefined {
-    if (this.#maxProviderCost === undefined) return undefined;
-    const cost = usage?.providerCost;
-    if (cost === undefined) {
-      return {
-        code: 'provider-cost-unreported',
-        stage: 'infrastructure',
-        message: 'Provider cost budget requires every invocation to report provider cost.',
-      };
-    }
-    if (cost.currency !== this.#maxProviderCost.currency) {
-      return {
-        code: 'provider-cost-currency-mismatch',
-        stage: 'infrastructure',
-        message: 'Provider-reported cost currency differs from the sealed budget currency.',
-      };
-    }
-    this.#providerCost += cost.amount;
-    return undefined;
-  }
-
-  get providerCostExhausted(): boolean {
-    return this.#maxProviderCost !== undefined
-      && this.#providerCost >= this.#maxProviderCost.amount;
-  }
 }
 
 class RunSessions {
@@ -490,6 +455,13 @@ function cacheKey(plan: SealedRunPlan, coordinate: PlannedExecutionCoordinate): 
   });
 }
 
+function providerCostUpperBound(
+  binding: TargetRuntimeBinding,
+): { amount: number; currency: string } | undefined {
+  if (binding.runtime.assuranceLevel !== 'verified') return undefined;
+  return binding.protocol.execution.telemetry.providerCost?.trustedUpperBound;
+}
+
 function assertCachedRecord(
   entry: ExecutionCacheEntry,
   key: Sha256Digest,
@@ -524,7 +496,8 @@ function assertCachedRecord(
       || !executionRecordMatchesEvidencePolicy(record, plan.execution.policy.evidence)
       || !executionRecordSatisfiesCacheCostPolicy(
         record,
-        plan.execution.policy.budget.maxProviderCost,
+        plan.execution.policy.budget.stages.execution.maxProviderCost
+          ?? plan.execution.policy.budget.run.maxProviderCost,
       )
       || !executionRecordUsageMatchesAttempts(record)) {
     throw new ExecutionRuntimeConfigurationError(
@@ -677,7 +650,7 @@ async function executeCoordinate(
   prepared: PreparedRuntime,
   sessions: RunSessions,
   events: EventEmitter,
-  budget: BudgetTracker,
+  budget: RunBudgetSource,
   coordinate: PreparedCoordinate,
   runSignal: AbortSignal,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
@@ -697,13 +670,13 @@ async function executeCoordinate(
   if (binding === undefined) throw new Error('Target binding disappeared');
   const releaseGlobal = await prepared.globalSemaphore.acquire(runSignal).catch(() => undefined);
   if (releaseGlobal === undefined) {
-    if (coordinate.reservedInvocation) budget.releaseReserved();
+    if (coordinate.reservationId !== undefined) budget.release(coordinate.reservationId);
     return { failed: false };
   }
   const releaseRuntime = await binding.semaphore.acquire(runSignal).catch(() => undefined);
   if (releaseRuntime === undefined) {
     releaseGlobal();
-    if (coordinate.reservedInvocation) budget.releaseReserved();
+    if (coordinate.reservationId !== undefined) budget.release(coordinate.reservationId);
     return { failed: false };
   }
 
@@ -716,7 +689,7 @@ async function executeCoordinate(
   let trace: CapturedContent | undefined;
   let terminalError: EvaluationError | undefined;
   let terminalStatus: 'completed' | 'failed' | 'cancelled' = 'failed';
-  let initialReservationPending = coordinate.reservedInvocation;
+  let reservationId = coordinate.reservationId;
   let cacheEligible = true;
   const key = cacheKey(plan, coordinate.coordinate);
   try {
@@ -736,17 +709,29 @@ async function executeCoordinate(
     trial = await runSession.openTrial(trialContext(plan, binding, coordinate.coordinate));
     const retryPolicy = plan.execution.policy.retry;
     for (let attemptNumber = 1; attemptNumber <= retryPolicy.maxAttempts; attemptNumber += 1) {
-      if (attemptNumber > 1) {
-        if (!budget.reserveInitial(1)) {
-          setStop('budget-exhausted', 'target-invocation-budget-exhausted');
-          break;
-        }
-        initialReservationPending = true;
-      }
       const attemptId = deriveAttemptId({
         trialId: coordinate.coordinate.trialId,
         attemptNumber,
       });
+      if (attemptNumber > 1) {
+        const admission = budget.reserve([{
+          stage: 'execution',
+          coordinateId: coordinate.coordinate.trialId,
+          attemptId,
+          ...(providerCostUpperBound(binding) === undefined
+            ? {}
+            : { providerCostUpperBound: providerCostUpperBound(binding) }),
+        }]);
+        if (!admission.admitted) {
+          budget.noteTermination(admission.termination);
+          setStop(
+            admission.termination.terminationKind === 'failed' ? 'failed' : 'budget-exhausted',
+            admission.termination.reasonCode,
+          );
+          break;
+        }
+        [reservationId] = admission.reservationIds;
+      }
       const startedAt = ports.clock.timestamp();
       const startedMonotonic = ports.clock.monotonicNow();
       const attemptEventDelivered = await events.emit('execution.attempt.started', 'attempt', attemptId, {
@@ -754,10 +739,8 @@ async function executeCoordinate(
         attemptNumber,
       });
       if (!attemptEventDelivered || runSignal.aborted) break;
-      if (initialReservationPending) {
-        budget.consumeReserved();
-        initialReservationPending = false;
-      }
+      if (reservationId === undefined) throw new Error('Missing invocation reservation');
+      budget.consume(reservationId);
       inFlightAttempt = {
         attemptId,
         attemptNumber,
@@ -779,10 +762,21 @@ async function executeCoordinate(
       if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
         snapshotJson(outcome.result);
         const attemptUsage = validatedUsage(outcome.result.usage);
-        const costError = budget.recordUsage(attemptUsage);
-        if (costError !== undefined) {
+        const budgetError = budget.settle(
+          reservationId,
+          durationMs(startedMonotonic, completedMonotonic),
+          attemptUsage,
+          'completed',
+        );
+        reservationId = undefined;
+        if (budgetError !== undefined) {
           cacheEligible = false;
-          setStop('failed', costError.code, costError);
+          const summary = budget.snapshot();
+          setStop(
+            summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
+            budgetError.code,
+            summary.summaryStatus === 'failed' ? budgetError : undefined,
+          );
         }
         attempts.push({
           attemptId,
@@ -828,10 +822,23 @@ async function executeCoordinate(
 
       const failure = attemptError(outcome, runSignal);
       const attemptUsage = validatedUsage(failure.usage);
-      const costError = budget.recordUsage(attemptUsage);
-      if (costError !== undefined) {
+      const budgetError = budget.settle(
+        reservationId,
+        durationMs(startedMonotonic, completedMonotonic),
+        attemptUsage,
+        failure.error.code === 'timeout'
+          ? 'attempt-timeout'
+          : failure.status === 'cancelled' ? 'cancelled' : 'failed',
+      );
+      reservationId = undefined;
+      if (budgetError !== undefined) {
         cacheEligible = false;
-        setStop('failed', costError.code, costError);
+        const summary = budget.snapshot();
+        setStop(
+          summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
+          budgetError.code,
+          summary.summaryStatus === 'failed' ? budgetError : undefined,
+        );
       }
       terminalError = failure.error;
       terminalStatus = failure.status;
@@ -898,16 +905,26 @@ async function executeCoordinate(
         stage: 'infrastructure',
         message: 'Executor returned a result that could not be materialized safely.',
       };
+      const completedAt = ports.clock.timestamp();
+      const completedMonotonic = ports.clock.monotonicNow();
+      if (reservationId === undefined) throw new Error('Missing invocation reservation');
+      budget.settle(
+        reservationId,
+        durationMs(inFlightAttempt.startedMonotonic, completedMonotonic),
+        undefined,
+        'failed',
+      );
+      reservationId = undefined;
       attempts.push({
         attemptId: inFlightAttempt.attemptId,
         attemptNumber: inFlightAttempt.attemptNumber,
         attemptStatus: 'failed',
         timing: {
           startedAt: inFlightAttempt.startedAt,
-          completedAt: ports.clock.timestamp(),
+          completedAt,
           durationMs: durationMs(
             inFlightAttempt.startedMonotonic,
-            ports.clock.monotonicNow(),
+            completedMonotonic,
           ),
         },
         error: evaluationError,
@@ -935,7 +952,7 @@ async function executeCoordinate(
       });
     }
   } finally {
-    if (initialReservationPending) budget.releaseReserved();
+    if (reservationId !== undefined) budget.release(reservationId);
     if (trial !== undefined) {
       try {
         await trial.dispose();
@@ -1023,17 +1040,15 @@ async function prepareBlock(
   ports: ExecutionRuntimePorts,
   prepared: PreparedRuntime,
   events: EventEmitter,
-  budget: BudgetTracker,
+  budget: RunBudgetSource,
   block: ExecutionSchedulingBlock,
   setStop: (kind: StopKind, reason: string, error?: EvaluationError) => void,
 ): Promise<PreparedBlock | undefined> {
   const mode = plan.execution.policy.executionCacheMode;
   const coordinates: PreparedCoordinate[] = [];
-  let misses = 0;
   for (const coordinate of block.coordinates) {
     if (mode === 'disabled') {
-      coordinates.push({ coordinate, reservedInvocation: true });
-      misses += 1;
+      coordinates.push({ coordinate });
       continue;
     }
     const binding = prepared.bindings.get(coordinate.targetId);
@@ -1050,7 +1065,6 @@ async function prepareBlock(
             sourceRecord,
             mode === 'replay-only' ? 'replay' : 'transparent-hit',
           ),
-          reservedInvocation: false,
         });
         continue;
       }
@@ -1074,12 +1088,34 @@ async function prepareBlock(
       trialId: coordinate.trialId,
       cacheKeyDigest: key,
     });
-    coordinates.push({ coordinate, reservedInvocation: true });
-    misses += 1;
+    coordinates.push({ coordinate });
   }
-  if (!budget.reserveInitial(misses)) {
-    setStop('budget-exhausted', 'target-invocation-budget-exhausted');
+  const missesToReserve = coordinates.filter((coordinate) => coordinate.cached === undefined);
+  const admission = budget.reserve(missesToReserve.map(({ coordinate }) => {
+    const binding = prepared.bindings.get(coordinate.targetId);
+    if (binding === undefined) throw new Error('Target binding disappeared');
+    return {
+      stage: 'execution' as const,
+      coordinateId: coordinate.trialId as Sha256Digest,
+      attemptId: deriveAttemptId({ trialId: coordinate.trialId, attemptNumber: 1 }),
+      ...(providerCostUpperBound(binding) === undefined
+        ? {}
+        : { providerCostUpperBound: providerCostUpperBound(binding) }),
+    };
+  }));
+  if (!admission.admitted) {
+    budget.noteTermination(admission.termination);
+    setStop(
+      admission.termination.terminationKind === 'failed' ? 'failed' : 'budget-exhausted',
+      admission.termination.reasonCode,
+    );
     return undefined;
+  }
+  let reservationIndex = 0;
+  for (const coordinate of coordinates) {
+    if (coordinate.cached !== undefined) continue;
+    coordinate.reservationId = admission.reservationIds[reservationIndex];
+    reservationIndex += 1;
   }
   return { block, coordinates };
 }
@@ -1151,7 +1187,7 @@ function coverage(
 
 function makeBundle(
   plan: SealedRunPlan,
-  options: ExecutionRunOptions,
+  options: ResolvedExecutionRunOptions,
   records: ExecutionRecord[],
   plannedCount: number,
   stop: StopState,
@@ -1170,6 +1206,7 @@ function makeBundle(
     ...(stop.reason !== undefined ? { terminationReasonCode: stop.reason } : {}),
     coverage: coverage(plannedCount, sortedRecords),
     replayability: replayability(sortedRecords),
+    budgetSummary: options.budgetSource.snapshot(),
     records: sortedRecords,
     provenance: {
       provenanceKind: 'native',
@@ -1193,7 +1230,8 @@ function makeBundle(
       || verified.planVerification.cacheReceiptStatus !== 'verified'
       || verified.planVerification.invocationBudgetStatus !== 'verified'
       || (bundle.executionBundleStatus === 'completed'
-        && verified.planVerification.providerCostBudgetStatus !== 'verified')) {
+        && verified.planVerification.providerCostBudgetStatus !== 'verified'
+        && bundle.budgetSummary.summaryStatus !== 'unverifiable')) {
     throw new TypeError('Execution Runtime produced an unverifiable Bundle.');
   }
   return verified;
@@ -1213,7 +1251,7 @@ function terminalEventKind(
 async function runExecution(
   plan: SealedRunPlan,
   ports: ExecutionRuntimePorts,
-  options: ExecutionRunOptions,
+  options: ResolvedExecutionRunOptions,
   prepared: PreparedRuntime,
   stream: BoundedEventStream,
 ): Promise<ExecutionBundleSource> {
@@ -1221,12 +1259,19 @@ async function runExecution(
   const plannedCoordinates = schedule.flatMap((block) => block.coordinates);
   const stop: StopState = {};
   const controller = new AbortController();
+  const budget = options.budgetSource;
   const setStop = (kind: StopKind, reason: string, error?: EvaluationError): void => {
     if (stop.stopKind === 'failed'
         || (stop.stopKind !== undefined && kind !== 'failed')) return;
     stop.stopKind = kind;
     stop.reason = reason;
     if (error !== undefined) stop.error = error;
+    if (kind === 'cancelled' || kind === 'failed') {
+      budget.noteTermination({
+        terminationKind: kind,
+        reasonCode: reason,
+      });
+    }
     if (kind !== 'budget-exhausted') controller.abort(reason);
   };
   const onExternalAbort = (): void => {
@@ -1263,18 +1308,23 @@ async function runExecution(
     (reason: string, error: EvaluationError) => setStop('failed', reason, error),
   );
   const sessions = new RunSessions(plan, options);
-  const budget = new BudgetTracker(plan);
   const records = new Map<string, ExecutionRecord>();
   const pendingCacheEntries = new Map<Sha256Digest, ExecutionCacheEntry>();
   const verifiedCacheRecordDigests = new Set<Sha256Digest>();
-  const durationController = new AbortController();
-  const durationTimer = plan.execution.policy.budget.maxDurationMs === undefined
+  const wallClockController = new AbortController();
+  const wallClockRemainingMs = budget.wallClockRemainingMs();
+  const wallClockTimer = wallClockRemainingMs === undefined
     ? undefined
-    : ports.clock.sleep(
-      plan.execution.policy.budget.maxDurationMs,
-      durationController.signal,
-    ).then(() => {
-      setStop('budget-exhausted', 'duration-budget-exhausted');
+    : ports.clock.sleep(wallClockRemainingMs, wallClockController.signal).then(() => {
+      const termination = {
+        terminationKind: 'wall-clock-exhausted' as const,
+        resourceKind: 'wall-clock' as const,
+        scopeKind: 'run' as const,
+        scopeId: options.runId,
+        reasonCode: 'run-wall-clock-budget-exhausted',
+      };
+      budget.noteTermination(termination);
+      setStop('budget-exhausted', termination.reasonCode);
     }).catch(() => undefined);
   try {
     try {
@@ -1349,8 +1399,6 @@ async function runExecution(
           && failurePolicy.failureMode === 'failure-threshold'
           && totalFailed > (failurePolicy.maxFailures ?? 0)) {
         setStop('failed', 'failure-policy-threshold');
-      } else if (stop.stopKind === undefined && budget.providerCostExhausted) {
-        setStop('budget-exhausted', 'provider-cost-budget-exhausted');
       }
     }
     } catch (error) {
@@ -1364,8 +1412,8 @@ async function runExecution(
         });
       }
     } finally {
-      durationController.abort();
-      await durationTimer;
+      wallClockController.abort();
+      await wallClockTimer;
       options.signal?.removeEventListener('abort', onExternalAbort);
       const disposeErrors = await sessions.dispose();
       if (disposeErrors.length > 0) {
@@ -1452,13 +1500,18 @@ export function startExecution(
   ports: ExecutionRuntimePorts,
   options: ExecutionRunOptions,
 ): ExecutionRun {
-  const prepared = prepareRuntime(plan, ports, options);
+  const runtimeOptions: ResolvedExecutionRunOptions = options.budgetSource === undefined
+    ? { ...options, budgetSource: createRunBudgetSource(plan, options.runId, ports.clock) }
+    : { ...options, budgetSource: options.budgetSource };
+  assertRunBudgetSource(runtimeOptions.budgetSource, plan, runtimeOptions.runId);
+  const prepared = prepareRuntime(plan, ports, runtimeOptions);
   const stream = new BoundedEventStream(options.eventBufferCapacity ?? 256);
-  const source = runExecution(plan, ports, options, prepared, stream);
+  const source = runExecution(plan, ports, runtimeOptions, prepared, stream);
   let result: Promise<ExecutionBundle> | undefined;
   return {
     events: stream,
     source,
+    budgetSource: runtimeOptions.budgetSource,
     get result() {
       result ??= source.then((verified) => verified.bundle);
       return result;

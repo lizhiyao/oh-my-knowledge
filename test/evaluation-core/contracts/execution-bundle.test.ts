@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   EXECUTION_BUNDLE_SCHEMA_VERSION,
+  BUDGET_SUMMARY_SCHEMA_VERSION,
   CensoredExecutionRecordSchema,
   CompletedExecutionRecordSchema,
   ExecutionAttemptSchema,
@@ -8,6 +9,7 @@ import {
   deriveAttemptId,
   deriveTrialId,
   digestArtifactPayload,
+  digestCanonicalJson,
   parseExecutionBundleDocument,
   type CapturedContent,
   type ExecutionBundle,
@@ -23,6 +25,46 @@ const trialSeed = `sha256:${'5'.repeat(64)}` as Sha256Digest;
 const schedulingBlockId = `sha256:${'6'.repeat(64)}` as Sha256Digest;
 const contentDigest = `sha256:${'7'.repeat(64)}` as Sha256Digest;
 const placeholderDigest = `sha256:${'0'.repeat(64)}` as Sha256Digest;
+
+function emptyBudgetSummary() {
+  const payload = {
+    schemaVersion: BUDGET_SUMMARY_SCHEMA_VERSION,
+    runId: 'run-a',
+    runContractDigest,
+    capturedAt: '2026-08-28T00:00:01Z',
+    summaryStatus: 'within-budget' as const,
+    admissionMode: 'bounded-overshoot' as const,
+    maximumUnreservedInFlightInvocations: 0,
+    reservations: { outstandingInvocations: 0 },
+    wallClock: { elapsedMs: 0, overshootMs: 0 },
+    entries: [],
+    scopes: [
+      {
+        scopeKind: 'run' as const,
+        scopeId: 'run-a',
+        limits: {},
+        totals: {
+          invocations: 0,
+          activeDurationMs: 0,
+          unreportedProviderCostInvocations: 0,
+        },
+        overshoot: { invocations: 0, activeDurationMs: 0 },
+      },
+      ...(['evaluation', 'execution'] as const).map((stage) => ({
+        scopeKind: 'stage' as const,
+        scopeId: stage,
+        limits: {},
+        totals: {
+          invocations: 0,
+          activeDurationMs: 0,
+          unreportedProviderCostInvocations: 0,
+        },
+        overshoot: { invocations: 0, activeDurationMs: 0 },
+      })),
+    ],
+  };
+  return { ...payload, ledgerDigest: digestCanonicalJson(payload) };
+}
 
 const provenance = {
   provenanceKind: 'native' as const,
@@ -113,6 +155,7 @@ function finalizeBundle(
       notStarted: 0,
     },
     replayability: 'self-contained',
+    budgetSummary: emptyBudgetSummary(),
     records: [makeCompletedRecord()],
     provenance: bundleProvenance,
     bundleDigest: placeholderDigest,

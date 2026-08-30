@@ -39,6 +39,7 @@ import {
   type ExecutionRuntimePorts,
 } from '../execution/index.js';
 import { BoundedEventStream } from '../runtime/event-stream.js';
+import { createRunBudgetSource } from '../budget/index.js';
 import type {
   EvaluationEngine,
   EvaluationEngineRuntime,
@@ -222,6 +223,7 @@ async function executePipeline(
   try {
     const plan = await planPromise;
     const sequencer = new InMemoryRuntimeEventSequencer();
+    const budgetSource = createRunBudgetSource(plan, options.runId, runtime.clock);
     const stageCapacity = options.eventBufferCapacity ?? DEFAULT_EVENT_BUFFER_CAPACITY;
     const execution = await settleStage(startExecution(
       plan,
@@ -229,6 +231,7 @@ async function executePipeline(
       {
         runId: options.runId,
         bundleId: artifactId(options.runId, 'execution'),
+        budgetSource,
         eventBufferCapacity: stageCapacity,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
@@ -241,6 +244,7 @@ async function executePipeline(
       {
         runId: options.runId,
         bundleId: artifactId(options.runId, 'evaluation'),
+        budgetSource,
         eventBufferCapacity: stageCapacity,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },

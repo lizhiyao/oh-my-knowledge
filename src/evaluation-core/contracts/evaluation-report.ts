@@ -41,6 +41,7 @@ export type EvaluationReportValidationErrorCode =
   | 'EVALUATION_REPORT_PLAN_MISMATCH'
   | 'EVALUATION_REPORT_BUNDLE_REFERENCE_INVALID'
   | 'EVALUATION_REPORT_STATUS_INVALID'
+  | 'EVALUATION_REPORT_BUDGET_SUMMARY_INVALID'
   | 'EVALUATION_REPORT_PROVENANCE_INVALID';
 
 export class EvaluationReportValidationError extends TypeError {
@@ -384,6 +385,13 @@ export function parseEvaluationReport(
     }
   }
   assertBundleReferences(report, execution, evaluation, analysis);
+  if (canonicalizeJson(report.budgetSummary)
+      !== canonicalizeJson(evaluation.budgetSummary)) {
+    throw new EvaluationReportValidationError(
+      'EVALUATION_REPORT_BUDGET_SUMMARY_INVALID',
+      'EvaluationReport must retain the final authenticated Run budget summary.',
+    );
+  }
   const expectedStatus = deriveEvaluationStatus({
     execution,
     evaluation,

@@ -15,6 +15,7 @@ import {
   type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+import { createRunBudgetSource } from '../../../src/evaluation-core/budget/index.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
 type PreparedPlan = Awaited<ReturnType<typeof prepareEvaluationPlan>>;
@@ -23,6 +24,99 @@ const placeholderDigest = `sha256:${'0'.repeat(64)}` as Sha256Digest;
 
 function mutableJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function budgetSummary(plan: PreparedPlan, records: readonly ExecutionRecord[]) {
+  const permissivePlan = mutableJson(plan);
+  type MutableLimits = {
+    maxInvocations?: number;
+    maxProviderCost?: { amount: number; currency: string };
+    maxActiveDurationMs?: number;
+  };
+  const permissiveBudget = permissivePlan.measurementPolicy.budget as unknown as {
+    run: MutableLimits;
+    stages: { execution: MutableLimits; evaluation: MutableLimits };
+    coordinate: MutableLimits;
+    attempt: { maxProviderCost?: { amount: number; currency: string } };
+  };
+  for (const limits of [
+    permissiveBudget.run,
+    permissiveBudget.stages.execution,
+    permissiveBudget.stages.evaluation,
+    permissiveBudget.coordinate,
+  ]) {
+    delete limits.maxInvocations;
+    delete limits.maxProviderCost;
+    delete limits.maxActiveDurationMs;
+  }
+  delete permissiveBudget.attempt.maxProviderCost;
+  const source = createRunBudgetSource(permissivePlan, 'plan-aware-run', {
+    monotonicNow: () => 0,
+    timestamp: () => '2026-08-28T00:00:01Z',
+  });
+  for (const record of records) {
+    if (record.executionStatus === 'budget-censored'
+        || (record.cache.cacheStatus !== 'miss'
+          && record.cache.cacheStatus !== 'not-used')) continue;
+    for (const attempt of record.attempts) {
+      const admission = source.reserve([{
+        stage: 'execution',
+        coordinateId: record.trialId as Sha256Digest,
+        attemptId: attempt.attemptId as Sha256Digest,
+      }]);
+      if (!admission.admitted) throw new Error('test budget admission failed');
+      source.consume(admission.reservationIds[0]);
+      source.settle(
+        admission.reservationIds[0],
+        attempt.timing.durationMs ?? 0,
+        attempt.usage,
+        attempt.attemptStatus === 'completed'
+          ? 'completed'
+          : attempt.attemptStatus === 'cancelled'
+            ? 'cancelled'
+            : attempt.error.code === 'timeout' ? 'attempt-timeout' : 'failed',
+      );
+    }
+  }
+  const summary = mutableJson(source.snapshot());
+  const { maxWallClockMs, ...runLimits } = plan.measurementPolicy.budget.run;
+  summary.wallClock = {
+    elapsedMs: summary.wallClock.elapsedMs,
+    ...(maxWallClockMs === undefined ? {} : { limitMs: maxWallClockMs }),
+    overshootMs: maxWallClockMs === undefined
+      ? 0
+      : Math.max(0, summary.wallClock.elapsedMs - maxWallClockMs),
+  };
+  for (const scope of summary.scopes) {
+    const limits = scope.scopeKind === 'run'
+      ? runLimits
+      : scope.scopeKind === 'stage'
+        ? plan.measurementPolicy.budget.stages[scope.scopeId as 'execution' | 'evaluation']
+        : plan.measurementPolicy.budget.coordinate;
+    scope.limits = mutableJson(limits);
+    scope.overshoot = {
+      invocations: limits.maxInvocations === undefined
+        ? 0
+        : Math.max(0, scope.totals.invocations - limits.maxInvocations),
+      activeDurationMs: limits.maxActiveDurationMs === undefined
+        ? 0
+        : Math.max(0, scope.totals.activeDurationMs - limits.maxActiveDurationMs),
+      ...(limits.maxProviderCost === undefined
+        ? {}
+        : {
+          providerCost: {
+            amount: Math.max(0, (scope.totals.reportedProviderCosts?.find(
+              (cost) => cost.currency === limits.maxProviderCost?.currency,
+            )?.amount ?? 0) - limits.maxProviderCost.amount),
+            currency: limits.maxProviderCost.currency,
+          },
+        }),
+    };
+  }
+  const { ledgerDigest: _ledgerDigest, ...payload } = summary;
+  void _ledgerDigest;
+  summary.ledgerDigest = digestCanonicalJson(payload);
+  return summary;
 }
 
 function makeBundle(plan: PreparedPlan): ExecutionBundle {
@@ -92,6 +186,7 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
       notStarted: 0,
     },
     replayability: 'self-contained',
+    budgetSummary: budgetSummary(plan, records),
     records,
     provenance: {
       provenanceKind: 'native',
@@ -244,7 +339,7 @@ describe('ExecutionBundle RunPlan binding', () => {
 
   it('rejects replayed records that could not pass the sealed provider-cost audit', async () => {
     const plan = await makePlan(false, (policy) => {
-      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 10, currency: 'USD' };
       policy.cache.executionMode = 'transparent-deterministic';
     });
     const bundle = mutableJson(makeBundle(plan));
@@ -270,6 +365,7 @@ describe('ExecutionBundle RunPlan binding', () => {
     const validRecord = valid.records[0];
     if (validRecord.executionStatus !== 'completed') throw new Error('unexpected record');
     turnIntoCacheHit(validRecord);
+    valid.budgetSummary = budgetSummary(plan, valid.records);
     resign(valid);
     expect(parseExecutionBundle(valid, plan).bundle).toEqual(valid);
   });
@@ -277,7 +373,7 @@ describe('ExecutionBundle RunPlan binding', () => {
   it('keeps unverified cache receipts and invocation budgets indeterminate', async () => {
     const plan = await makePlan(false, (policy) => {
       policy.cache.executionMode = 'transparent-deterministic';
-      policy.budget.maxTargetInvocations = 1;
+      policy.budget.stages.execution.maxInvocations = 1;
     });
     const bundle = mutableJson(makeBundle(plan));
     const sourceDigests = new Set<Sha256Digest>();
@@ -285,6 +381,7 @@ describe('ExecutionBundle RunPlan binding', () => {
       if (record.executionStatus !== 'completed') throw new Error('unexpected record');
       sourceDigests.add(turnIntoCacheHit(record));
     }
+    bundle.budgetSummary = budgetSummary(plan, bundle.records);
     resign(bundle);
 
     const transported = verifyExecutionBundle(bundle, plan);
@@ -339,7 +436,7 @@ describe('ExecutionBundle RunPlan binding', () => {
 
   it('audits native provider cost across the completed Bundle', async () => {
     const plan = await makePlan(false, (policy) => {
-      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 10, currency: 'USD' };
     });
     const missing = mutableJson(makeBundle(plan));
     resign(missing);
@@ -372,6 +469,7 @@ describe('ExecutionBundle RunPlan binding', () => {
       if (record.executionStatus !== 'completed') throw new Error('unexpected record');
       setAttemptCost(record, 4);
     }
+    valid.budgetSummary = budgetSummary(plan, valid.records);
     resign(valid);
     expect(verifyExecutionBundle(valid, plan).planVerification).toMatchObject({
       providerCostBudgetStatus: 'verified',
@@ -383,7 +481,7 @@ describe('ExecutionBundle RunPlan binding', () => {
   it('uses replayed historical cost as eligibility evidence, not current spend', async () => {
     const plan = await makePlan(false, (policy) => {
       policy.cache.executionMode = 'transparent-deterministic';
-      policy.budget.maxProviderCost = { amount: 10, currency: 'USD' };
+      policy.budget.stages.execution.maxProviderCost = { amount: 10, currency: 'USD' };
     });
     const bundle = mutableJson(makeBundle(plan));
     const sourceDigests = new Set<Sha256Digest>();
@@ -392,6 +490,7 @@ describe('ExecutionBundle RunPlan binding', () => {
       setAttemptCost(record, 6);
       sourceDigests.add(turnIntoCacheHit(record));
     }
+    bundle.budgetSummary = budgetSummary(plan, bundle.records);
     resign(bundle);
 
     expect(verifyExecutionBundle(bundle, plan).planVerification).toMatchObject({
@@ -415,6 +514,11 @@ describe('ExecutionBundle RunPlan binding', () => {
     const plan = await makePlan();
     const foreignParent = mutableJson(makeBundle(plan));
     foreignParent.runContractDigest = `sha256:${'f'.repeat(64)}`;
+    foreignParent.budgetSummary.runContractDigest = foreignParent.runContractDigest;
+    const { ledgerDigest: _foreignLedgerDigest, ...foreignBudgetPayload } =
+      foreignParent.budgetSummary;
+    void _foreignLedgerDigest;
+    foreignParent.budgetSummary.ledgerDigest = digestCanonicalJson(foreignBudgetPayload);
     foreignParent.provenance.parentDigests = [
       foreignParent.runContractDigest,
       foreignParent.executionPlanDigest,
@@ -448,6 +552,10 @@ describe('ExecutionBundle RunPlan binding', () => {
     const plan = await makePlan();
     const bundle = mutableJson(makeBundle(plan));
     bundle.runContractDigest = `sha256:${'f'.repeat(64)}`;
+    bundle.budgetSummary.runContractDigest = bundle.runContractDigest;
+    const { ledgerDigest: _ledgerDigest, ...budgetPayload } = bundle.budgetSummary;
+    void _ledgerDigest;
+    bundle.budgetSummary.ledgerDigest = digestCanonicalJson(budgetPayload);
     resign(bundle);
 
     expect(() => parseExecutionBundleDocument(bundle)).toThrowError(

@@ -304,35 +304,29 @@
         "budget": {
           "additionalProperties": false,
           "properties": {
-            "maxDurationMs": {
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "type": "integer"
+            "attempt": {
+              "$ref": "#/$defs/__schema26"
             },
-            "maxProviderCost": {
-              "additionalProperties": false,
-              "properties": {
-                "amount": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "currency": {
-                  "pattern": "^[A-Z]{3}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "amount",
-                "currency"
-              ],
-              "type": "object"
+            "coordinate": {
+              "$ref": "#/$defs/__schema25"
             },
-            "maxTargetInvocations": {
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "type": "integer"
+            "providerCostAdmission": {
+              "$ref": "#/$defs/__schema27"
+            },
+            "run": {
+              "$ref": "#/$defs/__schema19"
+            },
+            "stages": {
+              "$ref": "#/$defs/__schema24"
             }
           },
+          "required": [
+            "run",
+            "stages",
+            "coordinate",
+            "attempt",
+            "providerCostAdmission"
+          ],
           "type": "object"
         },
         "evidence": {
@@ -348,10 +342,10 @@
               "type": "string"
             },
             "output": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema28"
             },
             "trace": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema28"
             }
           },
           "required": [
@@ -472,13 +466,24 @@
       "type": "object"
     },
     "__schema19": {
-      "enum": [
-        "full",
-        "reference",
-        "digest",
-        "none"
-      ],
-      "type": "string"
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema21"
+        },
+        "maxWallClockMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "type": "object"
     },
     "__schema2": {
       "items": {
@@ -488,6 +493,110 @@
       "type": "array"
     },
     "__schema20": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema21": {
+      "$ref": "#/$defs/__schema22"
+    },
+    "__schema22": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "type": "object"
+    },
+    "__schema23": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema24": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "$ref": "#/$defs/__schema25"
+        },
+        "execution": {
+          "$ref": "#/$defs/__schema25"
+        }
+      },
+      "required": [
+        "execution",
+        "evaluation"
+      ],
+      "type": "object"
+    },
+    "__schema25": {
+      "additionalProperties": false,
+      "properties": {
+        "maxActiveDurationMs": {
+          "$ref": "#/$defs/__schema23"
+        },
+        "maxInvocations": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema21"
+        }
+      },
+      "type": "object"
+    },
+    "__schema26": {
+      "additionalProperties": false,
+      "properties": {
+        "maxProviderCost": {
+          "$ref": "#/$defs/__schema22"
+        }
+      },
+      "type": "object"
+    },
+    "__schema27": {
+      "additionalProperties": false,
+      "properties": {
+        "admissionMode": {
+          "enum": [
+            "strict-reservation",
+            "bounded-overshoot"
+          ],
+          "type": "string"
+        },
+        "unknownCostMode": {
+          "enum": [
+            "fail-run",
+            "mark-unverifiable"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "admissionMode",
+        "unknownCostMode"
+      ],
+      "type": "object"
+    },
+    "__schema28": {
+      "enum": [
+        "full",
+        "reference",
+        "digest",
+        "none"
+      ],
+      "type": "string"
+    },
+    "__schema29": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
@@ -498,7 +607,7 @@
             "$ref": "#/$defs/__schema1"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema21"
+            "$ref": "#/$defs/__schema30"
           }
         },
         "required": [
@@ -509,13 +618,9 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema21"
+        "$ref": "#/$defs/__schema30"
       },
       "type": "object"
-    },
-    "__schema21": {
-      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-      "type": "string"
     },
     "__schema3": {
       "additionalProperties": false,
@@ -535,6 +640,10 @@
         "input"
       ],
       "type": "object"
+    },
+    "__schema30": {
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+      "type": "string"
     },
     "__schema4": {
       "maxLength": 256,
@@ -639,7 +748,7 @@
       "$ref": "#/$defs/__schema11"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema20"
+      "$ref": "#/$defs/__schema29"
     },
     "policy": {
       "$ref": "#/$defs/__schema18"

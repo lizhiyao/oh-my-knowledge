@@ -13,6 +13,7 @@ import type {
 } from '../contracts/index.js';
 import type { SealedRunPlan } from '../compiler/index.js';
 import type { RuntimeEventSequencer } from '../runtime/events.js';
+import type { RunBudgetSource } from '../budget/index.js';
 
 export const EVALUATION_RUNTIME_EVENT_KINDS = [
   'evaluation.run.started',
@@ -185,6 +186,7 @@ export interface EvaluationRuntimePorts {
 export interface EvaluationRunOptions {
   runId: string;
   bundleId: string;
+  budgetSource?: RunBudgetSource;
   signal?: AbortSignal;
   eventBufferCapacity?: number;
 }
@@ -193,6 +195,7 @@ export interface EvaluationRun {
   events: AsyncIterable<EvaluationEvent>;
   result: Promise<EvaluationBundle>;
   source: Promise<EvaluationBundleSource>;
+  budgetSource: RunBudgetSource;
 }
 
 export class EvaluationPortFailure extends Error {

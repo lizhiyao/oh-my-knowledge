@@ -655,6 +655,7 @@ export function materializeEvaluationReport(
         bundleDigest: analysis.bundleDigest,
       },
     ],
+    budgetSummary: evaluation.budgetSummary,
     ...(decision !== undefined ? { decision } : {}),
     ...(options.summaries !== undefined
       ? { summaries: snapshotJson(options.summaries) as JsonValue }

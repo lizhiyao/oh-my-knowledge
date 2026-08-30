@@ -231,7 +231,19 @@ function policy() {
       retryableErrorCodes: [],
       backoff: { backoffKind: 'fixed', initialDelayMs: 0, maxDelayMs: 0 },
     },
-    budget: { maxTargetInvocations: 100 },
+    budget: {
+      run: { maxInvocations: 200 },
+      stages: {
+        execution: { maxInvocations: 100 },
+        evaluation: { maxInvocations: 100 },
+      },
+      coordinate: {},
+      attempt: {},
+      providerCostAdmission: {
+        admissionMode: 'bounded-overshoot',
+        unknownCostMode: 'fail-run',
+      },
+    },
     evaluation: {
       maxConcurrency: 2,
       retry: {
@@ -239,7 +251,6 @@ function policy() {
         retryableErrorCodes: [],
         backoff: { backoffKind: 'fixed', initialDelayMs: 0, maxDelayMs: 0 },
       },
-      budget: { maxEvaluatorInvocations: 100 },
     },
     cache: { executionMode: 'disabled', evaluationMode: 'disabled' },
     evidence: {

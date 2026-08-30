@@ -230,7 +230,7 @@ describe('Compiler definition validation', () => {
 
     definition.experiment.scheduling = { schedulingKind: 'interleaved' };
     const policy = validPolicy();
-    policy.budget.maxTargetInvocations = 2;
+    policy.budget.stages.execution.maxInvocations = 2;
     await expectCode(
       definition,
       policy,

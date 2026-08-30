@@ -14,6 +14,7 @@ import {
   UriSchema,
 } from './common.js';
 import { JsonValueSchema } from './json.js';
+import { BudgetSummarySchema } from './budget.js';
 
 export const EVALUATION_EVENT_SCHEMA_VERSION = 'omk.evaluation-event/v1' as const;
 export const EXECUTION_BUNDLE_SCHEMA_VERSION = 'omk.execution-bundle/v1' as const;
@@ -143,6 +144,7 @@ export const ExecutionBundleSchema = z.object({
   terminationReasonCode: IdentifierSchema.optional(),
   coverage: ExecutionCoverageSchema,
   replayability: ReplayabilitySchema,
+  budgetSummary: BudgetSummarySchema,
   records: z.array(ExecutionRecordSchema),
   provenance: ProvenanceSchema,
   bundleDigest: Sha256DigestSchema,
@@ -314,6 +316,7 @@ export const EvaluationBundleSchema = z.object({
   terminationReasonCode: IdentifierSchema.optional(),
   coverage: EvaluationCoverageSchema,
   replayability: ReplayabilitySchema,
+  budgetSummary: BudgetSummarySchema,
   records: z.array(EvaluationRecordSchema),
   provenance: ProvenanceSchema,
   bundleDigest: Sha256DigestSchema,
@@ -501,6 +504,7 @@ export const EvaluationReportSchema = z.object({
   runContractDigest: Sha256DigestSchema,
   status: EvaluationStatusSchema,
   bundles: z.array(BundleReferenceSchema),
+  budgetSummary: BudgetSummarySchema,
   decision: DecisionResultSchema.optional(),
   summaries: JsonValueSchema.optional(),
   annotations: JsonValueSchema.optional(),

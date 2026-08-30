@@ -32,6 +32,10 @@ import {
 } from './plans.js';
 import type { SchemaIdentity } from './common.js';
 import {
+  BUDGET_SUMMARY_SCHEMA_VERSION,
+  BudgetSummarySchema,
+} from './budget.js';
+import {
   COMPARABILITY_ASSESSMENT_SCHEMA_VERSION,
   COMPARABILITY_POLICY_SCHEMA_VERSION,
   ComparabilityAssessmentSchema,
@@ -107,6 +111,11 @@ export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
     fileName: 'evaluation-event.schema.json',
     schemaVersion: EVALUATION_EVENT_SCHEMA_VERSION,
     schema: EvaluationEventSchema,
+  },
+  {
+    fileName: 'budget-summary.schema.json',
+    schemaVersion: BUDGET_SUMMARY_SCHEMA_VERSION,
+    schema: BudgetSummarySchema,
   },
   {
     fileName: 'execution-bundle.schema.json',
