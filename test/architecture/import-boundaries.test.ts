@@ -14,9 +14,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, normalize, sep, dirname } from 'node:path';
+import ts from 'typescript';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SRC_DIR = join(REPO_ROOT, 'src');
+const EVALUATION_CORE_DIR = join(SRC_DIR, 'evaluation-core');
+const EVALUATION_CORE_DIR_NORMALIZED = EVALUATION_CORE_DIR.replace(/\\/g, '/');
 
 interface ForbiddenRule {
   /** 源 layer 前缀(src-relative,以 `/` 结尾的目录或具体文件路径前缀)。 */
@@ -214,6 +217,149 @@ function collectViolations(): Violation[] {
   return violations;
 }
 
+interface CoreCapabilityViolation {
+  file: string;
+  detail: string;
+}
+
+const ALLOWED_CORE_EXTERNAL_IMPORTS = new Set(['zod', 'node:crypto']);
+const FORBIDDEN_HOST_GLOBALS = new Set([
+  'process',
+  'console',
+  'globalThis',
+  'window',
+  'document',
+  'navigator',
+  'localStorage',
+  'sessionStorage',
+  'fetch',
+  'WebSocket',
+  'EventSource',
+  'XMLHttpRequest',
+  'setTimeout',
+  'setInterval',
+  'setImmediate',
+  'queueMicrotask',
+  'require',
+  'eval',
+  'Function',
+  'Deno',
+  'Bun',
+]);
+
+function moduleSpecifier(node: ts.Node): ts.Expression | undefined {
+  if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+    return node.moduleSpecifier;
+  }
+  if (ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    return node.arguments[0];
+  }
+  return undefined;
+}
+
+function isPropertyName(identifier: ts.Identifier): boolean {
+  const parent = identifier.parent;
+  return (ts.isPropertyAccessExpression(parent) && parent.name === identifier)
+    || ((ts.isPropertyAssignment(parent)
+      || ts.isMethodDeclaration(parent)
+      || ts.isPropertyDeclaration(parent)
+      || ts.isPropertySignature(parent)) && parent.name === identifier);
+}
+
+function isLocallyDeclared(
+  identifier: ts.Identifier,
+  checker: ts.TypeChecker,
+  source: ts.SourceFile,
+): boolean {
+  return checker.getSymbolAtLocation(identifier)?.declarations?.some(
+    (declaration) => declaration.getSourceFile() === source,
+  ) ?? false;
+}
+
+function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] {
+  const violations: CoreCapabilityViolation[] = [];
+  const files = listTsFiles(EVALUATION_CORE_DIR);
+  const program = ts.createProgram(files, {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.Node16,
+    moduleResolution: ts.ModuleResolutionKind.Node16,
+    types: ['node'],
+    skipLibCheck: true,
+  });
+  const checker = program.getTypeChecker();
+  for (const file of files) {
+    const fileName = toSrcRelative(file);
+    const source = program.getSourceFile(file);
+    if (source === undefined) throw new Error(`无法解析 Evaluation Core 源文件：${fileName}`);
+    const report = (detail: string): void => {
+      violations.push({ file: fileName, detail });
+    };
+    const visit = (node: ts.Node): void => {
+      const specifier = moduleSpecifier(node);
+      if (specifier !== undefined) {
+        if (!ts.isStringLiteralLike(specifier)) {
+          report('使用了非字面量 dynamic import，无法证明依赖闭包。');
+        } else if (specifier.text.startsWith('.')) {
+          const resolved = resolveSpecifier(file, specifier.text);
+          if (resolved === null
+              || (!resolved.startsWith(`${EVALUATION_CORE_DIR_NORMALIZED}/`)
+                && resolved !== EVALUATION_CORE_DIR_NORMALIZED)) {
+            report(`跨出 Evaluation Core 的依赖：${specifier.text}`);
+          }
+        } else if (!ALLOWED_CORE_EXTERNAL_IMPORTS.has(specifier.text)) {
+          report(`未获准的外部依赖：${specifier.text}`);
+        } else if (specifier.text === 'node:crypto') {
+          if (!ts.isImportDeclaration(node)
+              || node.importClause?.name !== undefined
+              || node.importClause?.namedBindings === undefined
+              || !ts.isNamedImports(node.importClause.namedBindings)
+              || node.importClause.namedBindings.elements.some((element) => (
+                (element.propertyName?.text ?? element.name.text) !== 'createHash'
+              ))) {
+            report('node:crypto 只允许具名导入确定性的 createHash。');
+          }
+        }
+      }
+
+      if (ts.isIdentifier(node)
+          && FORBIDDEN_HOST_GLOBALS.has(node.text)
+          && !isPropertyName(node)
+          && !isLocallyDeclared(node, checker, source)) {
+        report(`访问了宿主全局能力：${node.text}`);
+      }
+      if (ts.isPropertyAccessExpression(node)) {
+        const owner = node.expression.getText(source);
+        const member = node.name.text;
+        if ((owner === 'Date' && member === 'now')
+            || (owner === 'Math' && member === 'random')
+            || (owner === 'performance' && member === 'now')
+            || (owner === 'crypto' && ['getRandomValues', 'randomUUID'].includes(member))) {
+          report(`访问了非确定性宿主能力：${owner}.${member}`);
+        }
+      }
+      if (ts.isCallExpression(node)
+          && ts.isIdentifier(node.expression)
+          && node.expression.text === 'Date') {
+        report('访问了隐式 wall clock：Date()');
+      }
+      if (ts.isNewExpression(node)
+          && ts.isIdentifier(node.expression)
+          && node.expression.text === 'Date'
+          && (node.arguments === undefined || node.arguments.length === 0)) {
+        report('访问了隐式 wall clock：new Date()');
+      }
+      if (ts.isMetaProperty(node)
+          && node.keywordToken === ts.SyntaxKind.ImportKeyword) {
+        report('访问了宿主模块位置：import.meta');
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return violations;
+}
+
 describe('架构边界守门', () => {
   it('禁止反向 / 跨层 import(规则集见本文件 RULES)', () => {
     const violations = collectViolations();
@@ -256,5 +402,18 @@ describe('架构边界守门', () => {
       throw new Error(`whitelist 中有 ${dead.length} 条不再对应真实 import,请清理:\n${dead.join('\n')}`);
     }
     expect(dead).toEqual([]);
+  });
+
+  it('Evaluation Core 只依赖内部模块、Zod 和确定性哈希', () => {
+    const violations = collectEvaluationCoreCapabilityViolations();
+    if (violations.length > 0) {
+      throw new Error([
+        `发现 ${violations.length} 处 Evaluation Core 宿主能力越界：`,
+        ...violations.map((violation) => `  ${violation.file}：${violation.detail}`),
+        '',
+        'Core 必须通过显式注入的 port 获得时间、文件、网络、环境和外部 Runtime 能力。',
+      ].join('\n'));
+    }
+    expect(violations).toEqual([]);
   });
 });
