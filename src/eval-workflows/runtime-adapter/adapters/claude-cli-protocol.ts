@@ -26,7 +26,7 @@ import {
   isValidTurnInfo,
 } from '../../../shared/executor-result.js';
 
-export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 
 export interface ParsedClaudeCliStream {
   readonly messages: readonly ClaudeMessage[];
@@ -219,26 +219,45 @@ function usageFromResult(
       inputTokens = safeInteger(record.input_tokens);
       outputTokens = safeInteger(record.output_tokens);
       cacheReadInputTokens = record.cache_read_input_tokens === undefined
+        || record.cache_read_input_tokens === null
         ? undefined
         : safeInteger(record.cache_read_input_tokens);
       cacheCreationInputTokens = record.cache_creation_input_tokens === undefined
+        || record.cache_creation_input_tokens === null
         ? undefined
         : safeInteger(record.cache_creation_input_tokens);
       if (
         inputTokens === undefined
         || outputTokens === undefined
-        || (record.cache_read_input_tokens !== undefined && cacheReadInputTokens === undefined)
+        || (
+          record.cache_read_input_tokens !== undefined
+          && record.cache_read_input_tokens !== null
+          && cacheReadInputTokens === undefined
+        )
         || (
           record.cache_creation_input_tokens !== undefined
+          && record.cache_creation_input_tokens !== null
           && cacheCreationInputTokens === undefined
         )
       ) fail(profile, `${profile.adapterLabel} reported invalid token usage.`);
     }
   }
-  const totalTokens = inputTokens === undefined || outputTokens === undefined
+  const uncachedInputTokens = inputTokens;
+  const normalizedInputTokens = uncachedInputTokens === undefined
+    || cacheReadInputTokens === undefined
+    || cacheCreationInputTokens === undefined
     ? undefined
-    : checkedSum([inputTokens, outputTokens]);
-  if (inputTokens !== undefined && outputTokens !== undefined && totalTokens === undefined) {
+    : checkedSum([uncachedInputTokens, cacheReadInputTokens, cacheCreationInputTokens]);
+  if (
+    uncachedInputTokens !== undefined
+    && cacheReadInputTokens !== undefined
+    && cacheCreationInputTokens !== undefined
+    && normalizedInputTokens === undefined
+  ) fail(profile, `${profile.adapterLabel} reported overflowing token usage.`);
+  const totalTokens = normalizedInputTokens === undefined || outputTokens === undefined
+    ? undefined
+    : checkedSum([normalizedInputTokens, outputTokens]);
+  if (normalizedInputTokens !== undefined && outputTokens !== undefined && totalTokens === undefined) {
     fail(profile, `${profile.adapterLabel} reported overflowing token usage.`);
   }
   const rawCost = result.total_cost_usd;
@@ -249,17 +268,21 @@ function usageFromResult(
     fail(profile, `${profile.adapterLabel} reported invalid provider cost.`);
   }
   const usage = UsageRecordSchema.parse({
-    ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(normalizedInputTokens === undefined ? {} : { inputTokens: normalizedInputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
     ...(totalTokens === undefined ? {} : { totalTokens }),
     ...(providerCost === undefined ? {} : {
       providerCost: { amount: providerCost, currency: 'USD', reportedByProvider: true },
     }),
     ...(
-      cacheReadInputTokens === undefined && cacheCreationInputTokens === undefined
+      uncachedInputTokens === undefined
+      && cacheReadInputTokens === undefined
+      && cacheCreationInputTokens === undefined
         ? {}
         : {
             details: {
+              tokenAccounting: 'exclusive-cache-input-buckets',
+              ...(uncachedInputTokens === undefined ? {} : { uncachedInputTokens }),
               ...(cacheReadInputTokens === undefined ? {} : { cacheReadInputTokens }),
               ...(cacheCreationInputTokens === undefined
                 ? {}
