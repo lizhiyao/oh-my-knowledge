@@ -4,6 +4,7 @@ import type {
   DecisionPolicyDefinition,
   EvaluationDataset,
   EvaluatorDefinition,
+  ExecutionExperimentDesign,
   ExperimentDesign,
   MeasurementPolicy,
   MetricDefinition,
@@ -106,7 +107,7 @@ export interface ExecutionPlanIdentityInput {
   targets: TargetDefinition[];
   schedulingTargetGroups: string[][];
   executorRuntimes: ResolvedRuntime[];
-  experiment: ExperimentDesign;
+  experiment: ExecutionExperimentDesign;
   policy: {
     execution: MeasurementPolicy['execution'];
     retry: MeasurementPolicy['retry'];
@@ -128,7 +129,7 @@ export function computeExecutionPlanDigest(
     targets: input.targets,
     schedulingTargetGroups: input.schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
-    experiment: input.experiment,
+    experiment: projectExecutionExperimentDesign(input.experiment),
     policy: input.policy,
     ...(input.extensions !== undefined ? { extensions: input.extensions } : {}),
   });
@@ -189,17 +190,52 @@ export interface RandomizationDesignIdentityInput {
   experiment: ExperimentDesign;
 }
 
+export function projectExecutionExperimentDesign(
+  experiment: ExecutionExperimentDesign,
+): ExecutionExperimentDesign {
+  return {
+    trials: experiment.trials,
+    seed: experiment.seed,
+    sampling: {
+      experimentalUnit: experiment.sampling.experimentalUnit,
+      ...(experiment.sampling.pairingKey === undefined ? {} : {
+        pairingKey: experiment.sampling.pairingKey,
+      }),
+      ...(experiment.sampling.clusterKey === undefined ? {} : {
+        clusterKey: experiment.sampling.clusterKey,
+      }),
+      ...(experiment.sampling.stratumKey === undefined ? {} : {
+        stratumKey: experiment.sampling.stratumKey,
+      }),
+      repeatedMeasures: experiment.sampling.repeatedMeasures,
+      resamplingUnit: experiment.sampling.resamplingUnit,
+      seedCoupling: experiment.sampling.seedCoupling,
+    },
+    scheduling: {
+      schedulingKind: experiment.scheduling.schedulingKind,
+      ...(experiment.scheduling.blockSize === undefined ? {} : {
+        blockSize: experiment.scheduling.blockSize,
+      }),
+    },
+    randomizationSlots: experiment.randomizationSlots.map((slot) => ({
+      targetId: slot.targetId,
+      randomizationSlotId: slot.randomizationSlotId,
+    })),
+  };
+}
+
 export function computeRandomizationDesignDigest(
   input: RandomizationDesignIdentityInput,
 ): Sha256Digest {
-  const targetToSlot = new Map(input.experiment.randomizationSlots.map((slot) => [
+  const experiment = projectExecutionExperimentDesign(input.experiment);
+  const targetToSlot = new Map(experiment.randomizationSlots.map((slot) => [
     slot.targetId,
     slot.randomizationSlotId,
   ]));
-  if (targetToSlot.size !== input.experiment.randomizationSlots.length) {
+  if (targetToSlot.size !== experiment.randomizationSlots.length) {
     throw new TypeError('randomizationSlots must map every Target at most once');
   }
-  const slotIds = input.experiment.randomizationSlots
+  const slotIds = experiment.randomizationSlots
     .map((slot) => slot.randomizationSlotId)
     .sort(compareStrings);
   if (new Set(slotIds).size !== slotIds.length) {
@@ -214,28 +250,14 @@ export function computeRandomizationDesignDigest(
       return slotId;
     }).sort(compareStrings)
   )).sort((left, right) => compareStrings(canonicalizeJson(left), canonicalizeJson(right)));
-  const sampling = {
-    experimentalUnit: input.experiment.sampling.experimentalUnit,
-    ...(input.experiment.sampling.pairingKey === undefined ? {} : {
-      pairingKey: input.experiment.sampling.pairingKey,
-    }),
-    ...(input.experiment.sampling.clusterKey === undefined ? {} : {
-      clusterKey: input.experiment.sampling.clusterKey,
-    }),
-    ...(input.experiment.sampling.stratumKey === undefined ? {} : {
-      stratumKey: input.experiment.sampling.stratumKey,
-    }),
-    repeatedMeasures: input.experiment.sampling.repeatedMeasures,
-    resamplingUnit: input.experiment.sampling.resamplingUnit,
-    seedCoupling: input.experiment.sampling.seedCoupling,
-  };
+  const { sampling } = experiment;
   return digestCanonicalJson({
     derivation: 'omk.randomization-design/v1',
     executionInputDigest: input.executionInputDigest,
-    trials: input.experiment.trials,
-    rootSeed: input.experiment.seed,
+    trials: experiment.trials,
+    rootSeed: experiment.seed,
     sampling,
-    scheduling: input.experiment.scheduling,
+    scheduling: experiment.scheduling,
     randomizationSlotIds: slotIds,
     schedulingSlotGroups,
     samplingMemberships: {
@@ -399,7 +421,7 @@ export function computePlanDigests(input: PlanDigestInput): PlanDigests {
     targets: input.targets,
     schedulingTargetGroups,
     executorRuntimes: input.executorRuntimes,
-    experiment: input.experiment,
+    experiment: projectExecutionExperimentDesign(input.experiment),
     policy: {
       execution: input.measurementPolicy.execution,
       retry: input.measurementPolicy.retry,

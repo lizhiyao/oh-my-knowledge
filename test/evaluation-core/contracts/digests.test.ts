@@ -280,7 +280,10 @@ describe('Evaluation Core layered digests', () => {
     });
 
     expect(second.randomizationDesignDigest).toBe(first.randomizationDesignDigest);
+    expect(second.executionPlanDigest).toBe(first.executionPlanDigest);
+    expect(second.evaluationPlanDigest).toBe(first.evaluationPlanDigest);
     expect(second.analysisPlanDigest).not.toBe(first.analysisPlanDigest);
+    expect(second.decisionPlanDigest).not.toBe(first.decisionPlanDigest);
   });
 
   it('keeps EventWriter delivery policy out of stage identities but binds the root contract', () => {

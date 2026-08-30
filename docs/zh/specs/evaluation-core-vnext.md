@@ -226,6 +226,8 @@ trial 表示同一实验条件的一次重复测量；retry attempt 表示一次
 
 `randomizationSlots` 按 `(randomizationSlotId, targetId)` canonical 排序，并在两个字段上分别保持一一对应。`seedCoupling` 显式决定同一 block、同一 sample 的各 Target 共享随机条件、按稳定 slot 派生独立随机条件，还是诚实声明 Target 随机性不可控；Executor 不能自行猜测。Core 使用 `omk.randomization-design/v1` domain，根据 execution-input projection、trial count、root seed、会影响执行的 SamplingDesign projection、SchedulingPolicy、sampling membership，以及只使用 `randomizationSlotId` 表达的 scheduling connectivity，封存 `randomizationDesignDigest`；其中不包含只属于 Analysis 的 `estimatorId`、原始 Target ID、Target definition、Runtime identity 或绑定 Plan 的 artifact ID。计划 admission rank 与受控 trial seed 只能根据该 digest、trial index、sample identity，以及仅在独立 coupling 下使用的稳定 slot 派生；不得依赖 `executionPlanDigest`、`schedulingBlockId`、`trialId`、Runtime fingerprint 或 Target implementation content。sample coordinate 始终进入 seed 派生，避免一个大 block 内不同 sample 意外复用 seed。预算不足时不得只启动 block 的一侧；未启动的坐标标记为 budget-censored，不伪造 attempt，也不进入主要配对估计。
 
+ExecutionPlan 携带同一份 execution-affecting ExperimentDesign projection，因此不存在 `estimatorId`；包含 estimator identity 的完整 ExperimentDesign 从 AnalysisPlan 开始出现。只改变 estimator 时，ExecutionPlan 与 EvaluationPlan identity 保持不变，AnalysisPlan 及其全部下游 identity 失效。
+
 `pairingBlockId`、`clusterId`、`stratumId` 分别表达统计归属，`schedulingBlockId` 只表达调度原子；它们不能复用一个含义模糊的 ID。artifact identity 继续 hash 规范化后的完整 `(targetId, sampleId)` coordinate 集和影响调度的 sampling-unit IDs，不能拆成会丢失对应关系的 Target／sample 两个集合。这些绑定 Plan 的 ID 负责 uniqueness、lineage 与 cache isolation，但不作为随机输入。随机化改用上文单独封存的 subject-neutral projection，避免有意改变 subject 时扰动其它对应 coordinate 已分配的实验条件。
 
 ### 5．Evaluator、Metric、Reducer 与 DecisionPolicy
@@ -282,6 +284,8 @@ interface MeasurementPolicy {
 ```
 
 所有可能改变输出、缺失、调度、证据完整度或结论的配置都属于 MeasurementPolicy，并在 prepare 时进入 RunPlan 和对应 digest。`start()` 只能接收外部 `AbortSignal`、annotations、EventWriter 和不影响测量结果的 observer options，不能覆盖测量策略。
+
+`prepareEvaluationPlan()` 是 Comparability 接受的进程内 `SealedRunPlan` capability 唯一签发入口。RunPlan 字段仍可序列化为 JSON 供审计，但 clone 或 transported document 不具备比较权限；`assessComparability()` 再次消费前必须经过 Runtime resolution 重新 prepare。这样可以阻止调用方保留旧 digest 与 authenticated stage source，却替换 Target、instrument、sampling、Analysis 或 Decision projection。
 
 ### 2．ExecutionBundle
 
@@ -361,7 +365,7 @@ executionPlanDigest = H(
   randomizationDesignDigest,
   target snapshots,
   executor manifests,
-  SamplingDesign,
+  不含 estimatorId 的 execution-affecting ExperimentDesign projection,
   scheduling + execution policy
 )
 
@@ -831,7 +835,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入历史 `src/eval-core/`、CLI、executor、grading、renderer 或 server 层。
 
-Catalog 当前在 `schemas/evaluation-core/v1/` 发布十二个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
+Catalog 当前在 `schemas/evaluation-core/v1/` 发布十四个 JSON Schema 2020-12 根契约：EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、三个 Bundle、EvaluationReport。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
 
 Wire 入口使用 `parseWireDocument()`，不直接裸调 schema parse。它先拒绝不能表示为 I-JSON 或 JCS 输入的值，包括非有限数、函数、symbol、循环引用、稀疏数组、accessor property、class instance 和未配对 Unicode surrogate，再执行 Zod schema 校验。宿主若接收原始 JSON 文本，还必须在构造 JavaScript 值前拒绝重复属性名，因为普通 `JSON.parse()` 完成后已无法观测重复键。
 
@@ -863,7 +867,7 @@ Evaluation 的 retry、timeout、concurrency、调用次数／时长／provider 
 
 ## 十九、Analysis 与 Decision Runtime v1 实现基线
 
-[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。AnalysisPlan 封存 Metric contract、包含 trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 变化会使 Analysis 及下游 identity 失效；仅 policy 变化只使 Decision 与 root contract 失效。
+[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) 把 Analysis 与 Decision 实现为彼此分离、可以重算的阶段。ExecutionPlan 只封存 execution-affecting ExperimentDesign projection；AnalysisPlan 封存 Metric contract、包含 estimator identity、trial count 与 root seed 的完整 ExperimentDesign、Comparison、AnalysisGraph、MissingPolicy identity、Analysis Runtime identity 与输出 schema。DecisionPlan 单独封存 DecisionPolicy 及其已解析的 RuntimeIdentity。Comparison 或 estimator 变化会使 Analysis 及下游 identity 失效，但不失效 Execution 或 Evaluation；仅 policy 变化只使 Decision 与 root contract 失效。
 
 Analysis 在完整 planned metric-coordinate universe 上物化不可变 typed relation。每行保留 Target、sample、trial、Evaluator、Metric、sampling-unit identity、censoring 与 source status。observed、missing、invalid、evaluation-failed、source-unavailable 和 not-started 保持不同事实；v1 只有 observed row 可以进入统计。节点按稳定拓扑顺序执行，只能收到声明的 Metric、上游 result 或精确 Comparison contrast 输入。result identity、RuntimeIdentity、schema、coverage、lineage、mode 与 digest 由 Core 分配，不能由实现自报。Runtime 输出以完整 `{ resultType, value }` envelope 同时经过 wire result contract，以及由完整 sealed SchemaIdentity 从独立注入 registry 选择的 Core-owned validator 校验；Analysis 实现不能校验自己的输出。JSON Schema 无法表达的语义不变量，包括 Bonferroni 算术与 canonical family membership，也必须进入 validator 和 schema digest。
 

@@ -104,6 +104,14 @@ export const ExperimentDesignSchema = z.object({
   randomizationSlots: z.array(RandomizationSlotSchema).min(1),
 }).strict();
 
+export const ExecutionSamplingDesignSchema = SamplingDesignSchema.omit({
+  estimatorId: true,
+}).strict();
+
+export const ExecutionExperimentDesignSchema = ExperimentDesignSchema.extend({
+  sampling: ExecutionSamplingDesignSchema,
+}).strict();
+
 const AnalysisMetricInputReferenceSchema = z.object({
   inputKind: z.literal('metric-observations'),
   referenceId: IdentifierSchema,
@@ -293,8 +301,10 @@ export type EvaluatorDefinition = z.infer<typeof EvaluatorDefinitionSchema>;
 export type MetricDefinition = z.infer<typeof MetricDefinitionSchema>;
 export type SeedCoupling = z.infer<typeof SeedCouplingSchema>;
 export type SamplingDesign = z.infer<typeof SamplingDesignSchema>;
+export type ExecutionSamplingDesign = z.infer<typeof ExecutionSamplingDesignSchema>;
 export type RandomizationSlot = z.infer<typeof RandomizationSlotSchema>;
 export type ExperimentDesign = z.infer<typeof ExperimentDesignSchema>;
+export type ExecutionExperimentDesign = z.infer<typeof ExecutionExperimentDesignSchema>;
 export type ReducerDefinition = z.infer<typeof ReducerDefinitionSchema>;
 export type AnalysisNodeDefinition = z.infer<typeof AnalysisNodeDefinitionSchema>;
 export type AnalysisGraphDefinition = z.infer<typeof AnalysisGraphDefinitionSchema>;

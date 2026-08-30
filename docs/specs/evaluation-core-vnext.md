@@ -226,6 +226,8 @@ Paired comparisons use a scheduling block as the dispatch atom. The compiler mat
 
 `randomizationSlots` is canonical by `(randomizationSlotId, targetId)` and is one-to-one on both fields. `seedCoupling` explicitly chooses whether Targets for the same sample in a block share a random condition, derive independent per-slot conditions, or honestly declare Target randomness uncontrolled; an Executor cannot infer this choice. Core seals `randomizationDesignDigest` with domain `omk.randomization-design/v1` from the execution-input projection, trials, root seed, the execution-affecting SamplingDesign projection, SchedulingPolicy, sampling memberships, and scheduling connectivity expressed only with `randomizationSlotId` values. The analysis-only `estimatorId`, raw Target IDs, Target definitions, Runtime identities, and plan-bound artifact IDs are excluded. Planned admission ranks and controlled trial seeds derive from this digest, trial index, sample identity, and—only for independent coupling—the stable slot. They never derive from `executionPlanDigest`, `schedulingBlockId`, `trialId`, a Runtime fingerprint, or Target implementation content. The sample coordinate always enters seed derivation so that distinct samples in a larger block never reuse a seed accidentally. A block is not started unless budget exists for all arms. Coordinates that never start are budget-censored, create no attempt, and are excluded from the primary paired estimator.
 
+ExecutionPlan carries that same execution-affecting ExperimentDesign projection and therefore has no `estimatorId`; the full ExperimentDesign, including estimator identity, begins at AnalysisPlan. An estimator-only change preserves ExecutionPlan and EvaluationPlan identities and invalidates AnalysisPlan plus every downstream identity.
+
 `pairingBlockId`, `clusterId`, and `stratumId` express distinct statistical membership, while `schedulingBlockId` identifies only the dispatch atom. They never share one ambiguous ID. Artifact identities continue to hash the canonical full set of `(targetId, sampleId)` coordinates plus sampling-unit IDs that affect dispatch; splitting membership into independent Target and sample sets would lose incidence. Those plan-bound IDs provide uniqueness, lineage, and cache isolation, but are not random inputs. Randomization instead uses the separately sealed subject-neutral projection above so an intentional subject change cannot perturb the condition assigned to an otherwise corresponding coordinate.
 
 ### 5.5 Evaluator, Metric, Reducer, and DecisionPolicy
@@ -282,6 +284,8 @@ interface MeasurementPolicy {
 ```
 
 Every option that can change output, missingness, scheduling, evidence completeness, or conclusions belongs to MeasurementPolicy and enters the RunPlan and relevant digest during prepare. `start()` accepts only an external AbortSignal, annotations, EventWriter, and observer options that cannot affect measurement results; it cannot override measurement policy.
+
+`prepareEvaluationPlan()` is the sole issuer of the in-process `SealedRunPlan` capability accepted by Comparability. The RunPlan fields remain JSON-serializable for audit, but a clone or transported document is not a comparison authority: it must be prepared again through Runtime resolution before `assessComparability()` can consume it. This prevents a caller from retaining old digests and authenticated stage sources while substituting different Target, instrument, sampling, Analysis, or Decision projections.
 
 ### 6.2 ExecutionBundle
 
@@ -361,7 +365,7 @@ executionPlanDigest = H(
   randomizationDesignDigest,
   target snapshots,
   executor manifests,
-  SamplingDesign,
+  execution-affecting ExperimentDesign projection without estimatorId,
   scheduling + execution policy
 )
 
@@ -832,7 +836,7 @@ These decisions close the architectural choices required before Contracts. Confo
 
 The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/evaluation-core/contracts/`; it does not import the historical `src/eval-core/`, CLI, executor, grading, renderer, or server layers.
 
-The catalog currently publishes twelve JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, Event, three Bundles, and EvaluationReport. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
+The catalog currently publishes fourteen JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, ComparabilityAssessment, Event, three Bundles, and EvaluationReport. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
 
 Wire entry points use `parseWireDocument()` rather than a bare schema parse. It first rejects values that cannot be represented as I-JSON or JCS input, including non-finite numbers, functions, symbols, cycles, sparse arrays, accessor properties, class instances, and unpaired Unicode surrogates, and then applies the Zod schema. Hosts accepting raw JSON text must additionally reject duplicate property names before constructing a JavaScript value because duplicates are no longer observable after ordinary `JSON.parse()`.
 
@@ -864,7 +868,7 @@ Missingness is source-aware and binding-based. Before evaluator admission, Core 
 
 ## 19. Analysis and Decision Runtime v1 implementation baseline
 
-[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) implements Analysis and Decision as separate, reproducible stages. AnalysisPlan seals the metric contracts, full ExperimentDesign including trial count and root seed, Comparisons, AnalysisGraph, MissingPolicy identities, Analysis Runtime identities, and output schemas. DecisionPlan separately seals DecisionPolicy and its resolved RuntimeIdentity. A Comparison change invalidates Analysis and downstream identity; a policy-only change invalidates Decision and the root contract.
+[#437](https://github.com/lizhiyao/oh-my-knowledge/issues/437) implements Analysis and Decision as separate, reproducible stages. ExecutionPlan seals only the execution-affecting ExperimentDesign projection. AnalysisPlan seals the metric contracts, full ExperimentDesign including estimator identity, trial count and root seed, Comparisons, AnalysisGraph, MissingPolicy identities, Analysis Runtime identities, and output schemas. DecisionPlan separately seals DecisionPolicy and its resolved RuntimeIdentity. A Comparison or estimator change invalidates Analysis and downstream identity without invalidating Execution or Evaluation; a policy-only change invalidates Decision and the root contract.
 
 Analysis materializes an immutable typed relation over the complete planned metric-coordinate universe. Rows retain Target, sample, trial, evaluator, Metric, sampling-unit identities, censoring, and source status. Observed, missing, invalid, evaluation-failed, source-unavailable, and not-started values remain distinct; only observed rows may be included in v1. Nodes execute in stable topological order and receive only declared Metric, upstream result, or exact Comparison-contrast inputs. Core, rather than an implementation, assigns result identity, RuntimeIdentity, schema, coverage, lineage, mode, and digest. Runtime output is checked as the complete `{ resultType, value }` envelope against both the wire result contract and a Core-owned validator selected from an independently injected registry by the full sealed SchemaIdentity; an Analysis implementation cannot validate its own output. Semantic invariants that JSON Schema cannot express, including Bonferroni arithmetic and canonical family membership, are part of the validator and schema digest.
 

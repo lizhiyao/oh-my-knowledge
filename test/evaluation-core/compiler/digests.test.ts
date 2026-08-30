@@ -72,6 +72,19 @@ describe('Compiler digest invalidation boundaries', () => {
     expectStages(before, after, ['analysis', 'decision', 'run']);
   });
 
+  it('keeps the Analysis estimator out of the Execution plan and identity', async () => {
+    const before = await compile();
+    const after = await compile((definition) => {
+      definition.experiment.sampling.estimatorId = 'bootstrap.other-estimator/v1';
+    });
+
+    expect(before.execution.experiment.sampling).not.toHaveProperty('estimatorId');
+    expect(before.analysis.experiment.sampling.estimatorId).toBe(
+      'bootstrap.mean-percentile/v1',
+    );
+    expectStages(before, after, ['analysis', 'decision', 'run']);
+  });
+
   it('invalidates only Decision and root for DecisionPolicy changes', async () => {
     const before = await compile();
     const after = await compile((definition) => {

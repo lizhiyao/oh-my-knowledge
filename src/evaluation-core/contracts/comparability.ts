@@ -57,17 +57,13 @@ import {
   EXECUTION_PLAN_SCHEMA_VERSION,
   PlanDigestsSchema,
   RUN_PLAN_SCHEMA_VERSION,
-  type RunPlan,
 } from './plans.js';
+import {
+  assertSealedRunPlan,
+  type SealedRunPlan,
+} from '../sealed-run-plan.js';
 
-type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
-  ? readonly DeepReadonlyValue<Item>[]
-  : T extends object
-    ? { readonly [Key in keyof T]: DeepReadonlyValue<T[Key]> }
-    : T;
-
-export type ComparabilityRunPlan = DeepReadonlyValue<RunPlan>;
-type SealedRunPlan = ComparabilityRunPlan;
+export type ComparabilityRunPlan = SealedRunPlan;
 
 export const COMPARABILITY_POLICY_SCHEMA_VERSION = 'omk.comparability-policy/v1' as const;
 export const COMPARABILITY_ASSESSMENT_SCHEMA_VERSION = 'omk.comparability-assessment/v1' as const;
@@ -781,16 +777,11 @@ function declaredSubjectChanged(
 function normalizeExperiment(
   plan: SealedRunPlan,
   side: SideProjection,
-  includeEstimator: boolean,
 ): JsonValue {
-  const sampling = includeEstimator
-    ? plan.execution.experiment.sampling
-    : Object.fromEntries(Object.entries(plan.execution.experiment.sampling)
-      .filter(([key]) => key !== 'estimatorId'));
   return {
     trials: plan.execution.experiment.trials,
     seed: plan.execution.experiment.seed,
-    sampling,
+    sampling: plan.execution.experiment.sampling,
     scheduling: plan.execution.experiment.scheduling,
     randomizationSlots: sortedJsonValues(plan.execution.experiment.randomizationSlots.map(
       (slot) => ({
@@ -1014,11 +1005,11 @@ function designReasons(
     addReason(codes, 'comparability-design-evaluation-instrument-mismatch');
   }
   const leftSampling = {
-    experiment: normalizeExperiment(leftPlan, left, false),
+    experiment: normalizeExperiment(leftPlan, left),
     schedulingTargetGroups: normalizeSchedulingGroups(leftPlan, left),
   };
   const rightSampling = {
-    experiment: normalizeExperiment(rightPlan, right, false),
+    experiment: normalizeExperiment(rightPlan, right),
     schedulingTargetGroups: normalizeSchedulingGroups(rightPlan, right),
   };
   if (!equalJson(leftSampling, rightSampling)) {
@@ -1124,24 +1115,60 @@ function validateVerificationContext(
 ): ReadonlyMap<Sha256Digest, ComparabilityRuntimeAttestation> {
   const input = verification?.verifiedRuntimeAttestations;
   if (input === undefined) return new Map();
-  const mapLike = input as {
-    get?: unknown;
-    has?: unknown;
-    [Symbol.iterator]?: unknown;
-  };
-  if (input === null
-      || typeof input !== 'object'
-      || typeof mapLike.get !== 'function'
-      || typeof mapLike.has !== 'function'
-      || typeof mapLike[Symbol.iterator] !== 'function') {
-    throw new ComparabilityValidationError(
-      'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
-      'Comparability Runtime attestations must be a ReadonlyMap-compatible iterable.',
-    );
-  }
   const attestations = new Map<Sha256Digest, ComparabilityRuntimeAttestation>();
   try {
-    for (const entry of input as unknown as Iterable<unknown>) {
+    if (input === null || typeof input !== 'object') {
+      throw new ComparabilityValidationError(
+        'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+        'Comparability Runtime attestations must be a ReadonlyMap-compatible iterable.',
+      );
+    }
+    const mapLike = input as {
+      get?: unknown;
+      has?: unknown;
+      [Symbol.iterator]?: unknown;
+    };
+    const get = mapLike.get;
+    const has = mapLike.has;
+    const iteratorMethod = mapLike[Symbol.iterator];
+    if (typeof get !== 'function'
+        || typeof has !== 'function'
+        || typeof iteratorMethod !== 'function') {
+      throw new ComparabilityValidationError(
+        'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+        'Comparability Runtime attestations must be a ReadonlyMap-compatible iterable.',
+      );
+    }
+    const iterator = Reflect.apply(iteratorMethod, input, []) as unknown;
+    if (iterator === null || typeof iterator !== 'object') {
+      throw new ComparabilityValidationError(
+        'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+        'Comparability Runtime attestations must provide a valid iterator.',
+      );
+    }
+    const next = (iterator as { next?: unknown }).next;
+    if (typeof next !== 'function') {
+      throw new ComparabilityValidationError(
+        'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+        'Comparability Runtime attestations must provide a valid iterator.',
+      );
+    }
+    while (true) {
+      const step = Reflect.apply(next, iterator, []) as unknown;
+      if (step === null || typeof step !== 'object') {
+        throw new ComparabilityValidationError(
+          'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+          'Comparability verification context contains a malformed iterator result.',
+        );
+      }
+      const { done, value: entry } = step as { done?: unknown; value?: unknown };
+      if (done === true) break;
+      if (done !== false) {
+        throw new ComparabilityValidationError(
+          'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+          'Comparability verification context contains a malformed iterator result.',
+        );
+      }
       if (!Array.isArray(entry) || entry.length !== 2) {
         throw new ComparabilityValidationError(
           'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
@@ -1560,6 +1587,8 @@ export function assessComparability(
   rightSource?: ComparabilitySourcePrefix,
   verification?: ComparabilityVerificationContext,
 ): ComparabilityAssessmentSource {
+  assertSealedRunPlan(leftPlan);
+  assertSealedRunPlan(rightPlan);
   const policy = parseComparabilityPolicyDocument(policyInput);
   const attestations = validateVerificationContext(verification);
   const normalizedLeftSource = validateSourcePrefix(

@@ -14,6 +14,7 @@ import {
   parseEvaluationBundle,
   parseExecutionBundle,
   type ComparabilityPolicy,
+  type ComparabilityRuntimeAttestation,
   type ComparabilitySourcePrefix,
   type ExecutionBundle,
   type Sha256Digest,
@@ -109,6 +110,26 @@ describe('Evaluation Core comparability contract', () => {
         { subjectId: 'same', leftTargetId: 'left-z', rightTargetId: 'right-z' },
       ],
     }).success).toBe(false);
+  });
+
+  it('rejects structurally forged RunPlans even when authenticated sources match retained digests', async () => {
+    const result = await runConformanceScenario('function', { suffix: 'forged-plan' });
+    const forged = structuredClone(result.plan) as unknown as {
+      evaluation: { metrics: Array<{ direction?: string }> };
+    };
+    forged.evaluation.metrics[0].direction = 'lower-is-better';
+    const sources = {
+      execution: result.executionSource,
+      evaluation: result.evaluationSource,
+    };
+
+    expect(() => assessComparability(
+      policy(),
+      result.plan,
+      forged as unknown as SealedRunPlan,
+      sources,
+      sources,
+    )).toThrow(/sealed RunPlan returned by prepareEvaluationPlan/);
   });
 
   it('keeps declared subject change compatible while rejecting undeclared drift', async () => {
@@ -452,6 +473,60 @@ describe('Evaluation Core comparability contract', () => {
       effectiveAssuranceLevel: 'verified',
       verifiedByAttestationDigest: attestationDigest,
     });
+
+    const throwingGetter = {};
+    Object.defineProperty(throwingGetter, 'get', {
+      enumerable: true,
+      get() {
+        throw new Error('host getter failed');
+      },
+    });
+    expect(() => assessComparability(
+      policy(),
+      plan,
+      plan,
+      undefined,
+      undefined,
+      {
+        verifiedRuntimeAttestations: throwingGetter as unknown as ReadonlyMap<
+          Sha256Digest,
+          ComparabilityRuntimeAttestation
+        >,
+      },
+    )).toThrowError(expect.objectContaining({
+      code: 'COMPARABILITY_VERIFICATION_CONTEXT_INVALID',
+    }));
+
+    let iteratorReads = 0;
+    const changingIterator = {
+      get() {
+        return undefined;
+      },
+      has() {
+        return false;
+      },
+      get [Symbol.iterator]() {
+        iteratorReads += 1;
+        if (iteratorReads > 1) throw new Error('iterator getter read twice');
+        return function iterator() {
+          return new Map()[Symbol.iterator]();
+        };
+      },
+    };
+    expect(() => assessComparability(
+      policy(),
+      plan,
+      plan,
+      undefined,
+      undefined,
+      {
+        verifiedRuntimeAttestations: changingIterator as unknown as ReadonlyMap<
+          Sha256Digest,
+          ComparabilityRuntimeAttestation
+        >,
+      },
+    )).not.toThrow();
+    expect(iteratorReads).toBe(1);
   });
 
   it('conditions only on opaque invariant Runtime identities', async () => {
