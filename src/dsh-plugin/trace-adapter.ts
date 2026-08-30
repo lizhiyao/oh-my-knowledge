@@ -112,7 +112,7 @@ const PROJECTED_EVENT_TYPES = new Set([
   'user/message',
 ]);
 
-function supportsEventType(eventType: string): boolean {
+export function supportsDshTraceEventType(eventType: string): boolean {
   return PROJECTED_EVENT_TYPES.has(eventType)
     || AUXILIARY_EVENT_TYPES.has(eventType)
     || eventType.startsWith('compaction/');
@@ -397,7 +397,7 @@ export function adaptDshSession(
   }
 
   inputEvents.slice(0, seedLength).forEach((event) => {
-    if (event.ignorable !== true && !supportsEventType(event.type)) {
+    if (event.ignorable !== true && !supportsDshTraceEventType(event.type)) {
       throw new DshTraceUnsupportedEventError(event.type, event.seq);
     }
   });

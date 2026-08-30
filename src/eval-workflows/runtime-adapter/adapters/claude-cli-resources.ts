@@ -111,10 +111,13 @@ export interface ClaudeCliTrialState {
 }
 
 export interface ClaudeResourceProjectionProfile {
-  readonly adapterLabel: 'Claude CLI' | 'Claude SDK';
-  readonly errorPrefix: 'OMK_CLAUDE_CLI' | 'OMK_CLAUDE_SDK';
+  readonly adapterLabel: 'Claude CLI' | 'Claude SDK' | 'DSH Host';
+  readonly errorPrefix: 'OMK_CLAUDE_CLI' | 'OMK_CLAUDE_SDK' | 'OMK_DSH_HOST';
   readonly mcpMockMode: 'synthetic-server' | 'hook-existing-tool';
-  readonly promptSchemaVersion: 'omk.claude-cli-prompt/v1' | 'omk.claude-sdk-prompt/v1';
+  readonly promptSchemaVersion:
+    | 'omk.claude-cli-prompt/v1'
+    | 'omk.claude-sdk-prompt/v1'
+    | 'omk.dsh-host-prompt/v1';
 }
 
 export const CLAUDE_CLI_RESOURCE_PROFILE = Object.freeze({

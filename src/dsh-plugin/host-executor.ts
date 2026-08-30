@@ -43,7 +43,11 @@ interface DshAgentScopeLike {
   };
   readonly tools?: {
     get(name: string, agent?: DshAgentLike): unknown;
-    restrict(filter: { readonly deny: readonly string[] }): () => void;
+    restrict(filter: {
+      readonly allow?: readonly string[];
+      readonly deny?: readonly string[];
+    }): () => void;
+    guard?(guard: (execution: Readonly<{ name: string }>) => string | undefined): () => void;
   };
 }
 
@@ -71,6 +75,7 @@ export interface DshHostContextLike {
         readonly provider?: string;
         readonly model: string;
       };
+      readonly signal?: AbortSignal;
       readonly setup: (ctx: DshAgentScopeLike) => void;
     }): Promise<DshAgentHandleLike>;
   };
