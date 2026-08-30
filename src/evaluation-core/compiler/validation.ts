@@ -464,6 +464,8 @@ export function validateDefinitionSemantics(
   policy: MeasurementPolicy,
 ): void {
   assertUnique(definition.dataset.samples.map((sample) => sample.sampleId), 'sample');
+  const cohorts = definition.dataset.analysisCohorts ?? [];
+  assertUnique(cohorts.map((cohort) => cohort.cohortId), 'analysis-cohort');
   assertUnique(definition.targets.map((target) => target.targetId), 'target');
   assertUnique(definition.evaluators.map((evaluator) => evaluator.evaluatorId), 'evaluator');
   assertUnique(definition.metrics.map((metric) => metric.metricId), 'metric');
@@ -480,6 +482,87 @@ export function validateDefinitionSemantics(
   const resultIds = new Set(
     definition.analysisGraph.nodes.map((node) => node.outputResultId),
   );
+  const cohortIds = new Set(cohorts.map((cohort) => cohort.cohortId));
+  const cohortById = new Map(cohorts.map((cohort) => [cohort.cohortId, cohort]));
+  const cohortSetKinds = new Map<string, string>();
+  const partitionDerivations = new Map<string, string>();
+  for (const cohort of cohorts) {
+    const existingKind = cohortSetKinds.get(cohort.cohortSetId);
+    if (existingKind !== undefined && existingKind !== cohort.cohortSetKind) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        '同一 Analysis cohort set 必须使用一致的集合语义。',
+        { cohortSetId: cohort.cohortSetId },
+      );
+    }
+    cohortSetKinds.set(cohort.cohortSetId, cohort.cohortSetKind);
+    if (cohort.cohortSetKind === 'partition') {
+      const derivation = canonicalizeJson(cohort.derivation ?? null);
+      const existingDerivation = partitionDerivations.get(cohort.cohortSetId);
+      if (existingDerivation !== undefined && existingDerivation !== derivation) {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          '同一 Analysis partition 必须使用一致的 membership derivation。',
+          { cohortSetId: cohort.cohortSetId },
+        );
+      }
+      partitionDerivations.set(cohort.cohortSetId, derivation);
+    }
+  }
+
+  for (const sample of definition.dataset.samples) {
+    const memberships = sample.analysis?.memberships ?? [];
+    assertUnique(memberships.map((membership) => membership.cohortId), `sample:${sample.sampleId}:cohort`);
+    const cohortSets = new Set<string>();
+    for (const membership of memberships) {
+      assertReference(
+        cohortIds,
+        membership.cohortId,
+        `dataset.samples.${sample.sampleId}.analysis.memberships`,
+        'AnalysisCohort',
+      );
+      const cohort = cohortById.get(membership.cohortId);
+      if (cohort?.cohortSetKind === 'partition') {
+        if (cohortSets.has(cohort.cohortSetId)) {
+          throw definitionError(
+            'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+            '同一 Sample 在一个 partition 中只能属于一个 cohort。',
+            { sampleId: sample.sampleId, cohortSetId: cohort.cohortSetId },
+          );
+        }
+        cohortSets.add(cohort.cohortSetId);
+      }
+      if (membership.membershipValue !== undefined && cohort?.disclosure !== 'full') {
+        throw definitionError(
+          'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+          'identity-only cohort 不能携带 raw membership value。',
+          { sampleId: sample.sampleId, cohortId: membership.cohortId },
+        );
+      }
+    }
+  }
+
+  for (const node of definition.analysisGraph.nodes) {
+    const include = node.cohortFilter?.includeCohortIds ?? [];
+    const exclude = node.cohortFilter?.excludeCohortIds ?? [];
+    assertUnique(include, `analysis-node:${node.nodeId}:include-cohort`);
+    assertUnique(exclude, `analysis-node:${node.nodeId}:exclude-cohort`);
+    for (const cohortId of [...include, ...exclude]) {
+      assertReference(
+        cohortIds,
+        cohortId,
+        `analysisGraph.nodes.${node.nodeId}.cohortFilter`,
+        'AnalysisCohort',
+      );
+    }
+    if (include.some((cohortId) => exclude.includes(cohortId))) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Analysis cohort filter 不能同时包含并排除同一个 cohort。',
+        { nodeId: node.nodeId },
+      );
+    }
+  }
 
   for (const evaluator of definition.evaluators) {
     assertUnique(evaluator.metricIds, `evaluator:${evaluator.evaluatorId}:metric`);
@@ -499,6 +582,13 @@ export function validateDefinitionSemantics(
       }
     }
   }
+  const measurementCoordinates = definition.evaluators.map((evaluator) => canonicalizeJson({
+    instrumentId: evaluator.measurement.instrumentId,
+    ensembleMemberId: evaluator.measurement.ensembleMemberId,
+    replicateGroupId: evaluator.measurement.replicateGroupId,
+    replicateIndex: evaluator.measurement.replicateIndex,
+  }));
+  assertUnique(measurementCoordinates, 'evaluator-measurement-coordinate');
   for (const comparison of definition.comparisons) {
     assertReference(
       targetIds,

@@ -24,7 +24,7 @@ import type {
   SchemaIdentity,
   Sha256Digest,
 } from '../contracts/index.js';
-import type { SealedRunPlan } from '../compiler/index.js';
+import type { DeepReadonly, SealedRunPlan } from '../compiler/index.js';
 import type { RuntimeEventSequencer } from '../runtime/events.js';
 
 export const ANALYSIS_RUNTIME_EVENT_KINDS = [
@@ -62,6 +62,17 @@ interface AnalysisMetricRowBase {
   trialIndex: number;
   trialId: Sha256Digest;
   evaluatorId: string;
+  measurement: {
+    instrumentId: string;
+    ensembleMemberId: string;
+    replicateGroupId: string;
+    replicateIndex: number;
+  };
+  cohortIds: readonly string[];
+  analysisContext?: {
+    value: DeepReadonly<JsonValue>;
+    classification: 'public' | 'sensitive' | 'secret' | 'gold';
+  };
   metricId: string;
   valueType: SealedRunPlan['analysis']['metrics'][number]['valueType'];
   samplingUnitIds: SamplingUnitIds;
@@ -109,6 +120,8 @@ export interface AnalysisNodeExecutionContext {
   analysisPlanDigest: Sha256Digest;
   sampling: SealedRunPlan['analysis']['experiment']['sampling'];
   rootSeed: string;
+  samples: SealedRunPlan['analysis']['samples'];
+  cohorts: SealedRunPlan['analysis']['cohorts'];
   signal: AbortSignal;
 }
 

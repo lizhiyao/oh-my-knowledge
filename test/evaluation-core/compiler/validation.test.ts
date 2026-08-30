@@ -639,4 +639,34 @@ describe('Compiler definition validation', () => {
     expect(errors[1].code).toBe(errors[0].code);
     expect(errors[1].details).toEqual(errors[0].details);
   });
+
+  it('requires a coherent analysis partition definition', () => {
+    const definition = validDefinition();
+    definition.dataset.analysisCohorts = [
+      {
+        cohortId: 'train',
+        cohortSetId: 'split',
+        cohortSetKind: 'partition',
+        classification: 'sensitive',
+        disclosure: 'identity-only',
+        derivation: { algorithmId: 'seeded-hash/v1', seed: 'split-seed' },
+      },
+      {
+        cohortId: 'holdout',
+        cohortSetId: 'split',
+        cohortSetKind: 'cohort',
+        classification: 'secret',
+        disclosure: 'identity-only',
+      },
+    ];
+
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+
+    definition.dataset.analysisCohorts[1].cohortSetKind = 'partition';
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_VALUE_DOMAIN_INVALID' }),
+    );
+  });
 });

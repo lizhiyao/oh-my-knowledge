@@ -10,10 +10,96 @@
       "type": "string"
     },
     "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "assuranceLevel": {
+          "enum": [
+            "verified",
+            "declared",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "fingerprintBasis": {
+          "enum": [
+            "content-derived",
+            "environment-derived",
+            "self-reported",
+            "opaque"
+          ],
+          "type": "string"
+        },
+        "implementationId": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "implementationManifest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/__schema13"
+            },
+            {
+              "$ref": "#/$defs/__schema14"
+            }
+          ]
+        },
+        "provenanceFacets": {
+          "additionalProperties": false,
+          "properties": {
+            "attestation": {
+              "additionalProperties": false,
+              "properties": {
+                "attestationDigest": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "attestorId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "required": [
+                "attestationDigest"
+              ],
+              "type": "object"
+            },
+            "observation": {
+              "additionalProperties": false,
+              "properties": {
+                "observedAt": {
+                  "$ref": "#/$defs/__schema16"
+                },
+                "observerId": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "version": {
+          "$ref": "#/$defs/__schema11"
+        }
+      },
+      "required": [
+        "implementationId",
+        "fingerprint",
+        "fingerprintBasis",
+        "assuranceLevel",
+        "capabilities",
+        "implementationManifest"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
       "minLength": 1,
       "type": "string"
     },
-    "__schema11": {
+    "__schema12": {
       "anyOf": [
         {
           "type": "null"
@@ -29,13 +115,13 @@
         },
         {
           "items": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema12"
           },
           "type": "array"
         },
         {
           "additionalProperties": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema12"
           },
           "propertyNames": {
             "type": "string"
@@ -44,7 +130,7 @@
         }
       ]
     },
-    "__schema12": {
+    "__schema13": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -57,7 +143,7 @@
       ],
       "type": "object"
     },
-    "__schema13": {
+    "__schema14": {
       "additionalProperties": false,
       "properties": {
         "coverageKind": {
@@ -66,7 +152,7 @@
         },
         "facets": {
           "items": {
-            "$ref": "#/$defs/__schema14"
+            "$ref": "#/$defs/__schema15"
           },
           "minItems": 1,
           "type": "array"
@@ -78,14 +164,14 @@
       ],
       "type": "object"
     },
-    "__schema14": {
+    "__schema15": {
       "additionalProperties": false,
       "properties": {
         "facetId": {
           "$ref": "#/$defs/__schema1"
         },
         "value": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         }
       },
       "required": [
@@ -94,15 +180,15 @@
       ],
       "type": "object"
     },
-    "__schema15": {
+    "__schema16": {
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
       "type": "string"
     },
-    "__schema16": {
+    "__schema17": {
       "additionalProperties": false,
       "properties": {
         "facets": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         },
         "parentDigests": {
           "items": {
@@ -120,7 +206,7 @@
           "type": "string"
         },
         "sourceId": {
-          "$ref": "#/$defs/__schema10"
+          "$ref": "#/$defs/__schema11"
         },
         "trust": {
           "enum": [
@@ -139,14 +225,14 @@
       ],
       "type": "object"
     },
-    "__schema17": {
+    "__schema18": {
       "items": {
-        "$ref": "#/$defs/__schema18"
+        "$ref": "#/$defs/__schema19"
       },
       "minItems": 1,
       "type": "array"
     },
-    "__schema18": {
+    "__schema19": {
       "oneOf": [
         {
           "additionalProperties": false,
@@ -155,17 +241,17 @@
               "$ref": "#/$defs/__schema2"
             },
             "attemptNumber": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema20"
             },
             "attemptStatus": {
               "const": "completed",
               "type": "string"
             },
             "timing": {
-              "$ref": "#/$defs/__schema20"
+              "$ref": "#/$defs/__schema21"
             },
             "usage": {
-              "$ref": "#/$defs/__schema21"
+              "$ref": "#/$defs/__schema22"
             }
           },
           "required": [
@@ -183,20 +269,20 @@
               "$ref": "#/$defs/__schema2"
             },
             "attemptNumber": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema20"
             },
             "attemptStatus": {
               "const": "failed",
               "type": "string"
             },
             "error": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema24"
             },
             "timing": {
-              "$ref": "#/$defs/__schema20"
+              "$ref": "#/$defs/__schema21"
             },
             "usage": {
-              "$ref": "#/$defs/__schema21"
+              "$ref": "#/$defs/__schema22"
             }
           },
           "required": [
@@ -215,20 +301,20 @@
               "$ref": "#/$defs/__schema2"
             },
             "attemptNumber": {
-              "$ref": "#/$defs/__schema19"
+              "$ref": "#/$defs/__schema20"
             },
             "attemptStatus": {
               "const": "cancelled",
               "type": "string"
             },
             "error": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema24"
             },
             "timing": {
-              "$ref": "#/$defs/__schema20"
+              "$ref": "#/$defs/__schema21"
             },
             "usage": {
-              "$ref": "#/$defs/__schema21"
+              "$ref": "#/$defs/__schema22"
             }
           },
           "required": [
@@ -241,27 +327,27 @@
         }
       ]
     },
-    "__schema19": {
-      "exclusiveMinimum": 0,
-      "maximum": 9007199254740991,
-      "type": "integer"
-    },
     "__schema2": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
     "__schema20": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "type": "integer"
+    },
+    "__schema21": {
       "additionalProperties": false,
       "properties": {
         "completedAt": {
-          "$ref": "#/$defs/__schema15"
+          "$ref": "#/$defs/__schema16"
         },
         "durationMs": {
           "minimum": 0,
           "type": "number"
         },
         "startedAt": {
-          "$ref": "#/$defs/__schema15"
+          "$ref": "#/$defs/__schema16"
         }
       },
       "required": [
@@ -269,14 +355,14 @@
       ],
       "type": "object"
     },
-    "__schema21": {
-      "$ref": "#/$defs/__schema22"
-    },
     "__schema22": {
+      "$ref": "#/$defs/__schema23"
+    },
+    "__schema23": {
       "additionalProperties": false,
       "properties": {
         "details": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         },
         "inputTokens": {
           "maximum": 9007199254740991,
@@ -319,12 +405,12 @@
       },
       "type": "object"
     },
-    "__schema23": {
+    "__schema24": {
       "additionalProperties": false,
       "properties": {
         "causes": {
           "items": {
-            "$ref": "#/$defs/__schema23"
+            "$ref": "#/$defs/__schema24"
           },
           "type": "array"
         },
@@ -332,10 +418,10 @@
           "$ref": "#/$defs/__schema1"
         },
         "details": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         },
         "message": {
-          "$ref": "#/$defs/__schema10"
+          "$ref": "#/$defs/__schema11"
         },
         "stage": {
           "enum": [
@@ -356,26 +442,26 @@
       ],
       "type": "object"
     },
-    "__schema24": {
-      "$ref": "#/$defs/__schema22"
-    },
     "__schema25": {
-      "$ref": "#/$defs/__schema26"
+      "$ref": "#/$defs/__schema23"
     },
     "__schema26": {
+      "$ref": "#/$defs/__schema27"
+    },
+    "__schema27": {
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema27"
+              "$ref": "#/$defs/__schema28"
             },
             "contentKind": {
               "const": "inline",
               "type": "string"
             },
             "value": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema12"
             }
           },
           "required": [
@@ -389,7 +475,7 @@
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema27"
+              "$ref": "#/$defs/__schema28"
             },
             "contentKind": {
               "const": "descriptor",
@@ -402,7 +488,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "mediaType": {
-                  "$ref": "#/$defs/__schema10"
+                  "$ref": "#/$defs/__schema11"
                 },
                 "size": {
                   "maximum": 9007199254740991,
@@ -410,7 +496,7 @@
                   "type": "integer"
                 },
                 "uri": {
-                  "$ref": "#/$defs/__schema28"
+                  "$ref": "#/$defs/__schema29"
                 }
               },
               "required": [
@@ -431,7 +517,7 @@
           "additionalProperties": false,
           "properties": {
             "classification": {
-              "$ref": "#/$defs/__schema27"
+              "$ref": "#/$defs/__schema28"
             },
             "contentKind": {
               "const": "digest-only",
@@ -450,7 +536,7 @@
         }
       ]
     },
-    "__schema27": {
+    "__schema28": {
       "enum": [
         "public",
         "sensitive",
@@ -459,11 +545,20 @@
       ],
       "type": "string"
     },
-    "__schema28": {
+    "__schema29": {
       "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
       "type": "string"
     },
-    "__schema29": {
+    "__schema3": {
+      "enum": [
+        "completed",
+        "cancelled",
+        "budget-exhausted",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "__schema30": {
       "additionalProperties": false,
       "properties": {
         "cacheKeyDigest": {
@@ -487,33 +582,24 @@
       ],
       "type": "object"
     },
-    "__schema3": {
-      "enum": [
-        "completed",
-        "cancelled",
-        "budget-exhausted",
-        "failed"
-      ],
-      "type": "string"
-    },
-    "__schema30": {
-      "$ref": "#/$defs/__schema26"
-    },
     "__schema31": {
-      "$ref": "#/$defs/__schema26"
+      "$ref": "#/$defs/__schema27"
     },
     "__schema32": {
+      "$ref": "#/$defs/__schema27"
+    },
+    "__schema33": {
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
           "data": {
-            "$ref": "#/$defs/__schema11"
+            "$ref": "#/$defs/__schema12"
           },
           "schemaDigest": {
             "$ref": "#/$defs/__schema2"
           },
           "schemaUri": {
-            "$ref": "#/$defs/__schema28"
+            "$ref": "#/$defs/__schema29"
           }
         },
         "required": [
@@ -524,7 +610,7 @@
         "type": "object"
       },
       "propertyNames": {
-        "$ref": "#/$defs/__schema28"
+        "$ref": "#/$defs/__schema29"
       },
       "type": "object"
     },
@@ -602,10 +688,10 @@
             "additionalProperties": false,
             "properties": {
               "attempts": {
-                "$ref": "#/$defs/__schema17"
+                "$ref": "#/$defs/__schema18"
               },
               "cache": {
-                "$ref": "#/$defs/__schema29"
+                "$ref": "#/$defs/__schema30"
               },
               "evaluationId": {
                 "$ref": "#/$defs/__schema2"
@@ -618,7 +704,10 @@
                 "$ref": "#/$defs/__schema1"
               },
               "evidence": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema26"
+              },
+              "measurement": {
+                "$ref": "#/$defs/__schema9"
               },
               "observations": {
                 "items": {
@@ -627,10 +716,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -663,10 +752,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -699,10 +788,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -735,10 +824,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -771,10 +860,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -810,10 +899,10 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -852,13 +941,13 @@
                       "additionalProperties": false,
                       "properties": {
                         "evidence": {
-                          "$ref": "#/$defs/__schema30"
+                          "$ref": "#/$defs/__schema31"
                         },
                         "invalidValue": {
-                          "$ref": "#/$defs/__schema26"
+                          "$ref": "#/$defs/__schema27"
                         },
                         "metadata": {
-                          "$ref": "#/$defs/__schema31"
+                          "$ref": "#/$defs/__schema32"
                         },
                         "metricId": {
                           "$ref": "#/$defs/__schema1"
@@ -898,10 +987,10 @@
                 "type": "array"
               },
               "provenance": {
-                "$ref": "#/$defs/__schema16"
+                "$ref": "#/$defs/__schema17"
               },
               "runtime": {
-                "$ref": "#/$defs/__schema9"
+                "$ref": "#/$defs/__schema10"
               },
               "sampleId": {
                 "$ref": "#/$defs/__schema1"
@@ -913,7 +1002,7 @@
                 "$ref": "#/$defs/__schema1"
               },
               "timing": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -922,7 +1011,7 @@
                 "$ref": "#/$defs/__schema8"
               },
               "usage": {
-                "$ref": "#/$defs/__schema24"
+                "$ref": "#/$defs/__schema25"
               }
             },
             "required": [
@@ -931,6 +1020,7 @@
               "trialIndex",
               "trialId",
               "evaluatorId",
+              "measurement",
               "evaluationId",
               "runtime",
               "provenance",
@@ -947,13 +1037,13 @@
             "additionalProperties": false,
             "properties": {
               "attempts": {
-                "$ref": "#/$defs/__schema17"
+                "$ref": "#/$defs/__schema18"
               },
               "cache": {
-                "$ref": "#/$defs/__schema29"
+                "$ref": "#/$defs/__schema30"
               },
               "error": {
-                "$ref": "#/$defs/__schema23"
+                "$ref": "#/$defs/__schema24"
               },
               "evaluationId": {
                 "$ref": "#/$defs/__schema2"
@@ -966,13 +1056,16 @@
                 "$ref": "#/$defs/__schema1"
               },
               "evidence": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema26"
+              },
+              "measurement": {
+                "$ref": "#/$defs/__schema9"
               },
               "provenance": {
-                "$ref": "#/$defs/__schema16"
+                "$ref": "#/$defs/__schema17"
               },
               "runtime": {
-                "$ref": "#/$defs/__schema9"
+                "$ref": "#/$defs/__schema10"
               },
               "sampleId": {
                 "$ref": "#/$defs/__schema1"
@@ -984,7 +1077,7 @@
                 "$ref": "#/$defs/__schema1"
               },
               "timing": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -993,7 +1086,7 @@
                 "$ref": "#/$defs/__schema8"
               },
               "usage": {
-                "$ref": "#/$defs/__schema24"
+                "$ref": "#/$defs/__schema25"
               }
             },
             "required": [
@@ -1002,6 +1095,7 @@
               "trialIndex",
               "trialId",
               "evaluatorId",
+              "measurement",
               "evaluationId",
               "runtime",
               "provenance",
@@ -1018,13 +1112,13 @@
             "additionalProperties": false,
             "properties": {
               "attempts": {
-                "$ref": "#/$defs/__schema17"
+                "$ref": "#/$defs/__schema18"
               },
               "cache": {
-                "$ref": "#/$defs/__schema29"
+                "$ref": "#/$defs/__schema30"
               },
               "error": {
-                "$ref": "#/$defs/__schema23"
+                "$ref": "#/$defs/__schema24"
               },
               "evaluationId": {
                 "$ref": "#/$defs/__schema2"
@@ -1037,13 +1131,16 @@
                 "$ref": "#/$defs/__schema1"
               },
               "evidence": {
-                "$ref": "#/$defs/__schema25"
+                "$ref": "#/$defs/__schema26"
+              },
+              "measurement": {
+                "$ref": "#/$defs/__schema9"
               },
               "provenance": {
-                "$ref": "#/$defs/__schema16"
+                "$ref": "#/$defs/__schema17"
               },
               "runtime": {
-                "$ref": "#/$defs/__schema9"
+                "$ref": "#/$defs/__schema10"
               },
               "sampleId": {
                 "$ref": "#/$defs/__schema1"
@@ -1055,7 +1152,7 @@
                 "$ref": "#/$defs/__schema1"
               },
               "timing": {
-                "$ref": "#/$defs/__schema20"
+                "$ref": "#/$defs/__schema21"
               },
               "trialId": {
                 "$ref": "#/$defs/__schema2"
@@ -1064,7 +1161,7 @@
                 "$ref": "#/$defs/__schema8"
               },
               "usage": {
-                "$ref": "#/$defs/__schema24"
+                "$ref": "#/$defs/__schema25"
               }
             },
             "required": [
@@ -1073,6 +1170,7 @@
               "trialIndex",
               "trialId",
               "evaluatorId",
+              "measurement",
               "evaluationId",
               "runtime",
               "provenance",
@@ -1097,17 +1195,20 @@
               "evaluatorId": {
                 "$ref": "#/$defs/__schema1"
               },
+              "measurement": {
+                "$ref": "#/$defs/__schema9"
+              },
               "notEvaluatedAt": {
-                "$ref": "#/$defs/__schema15"
+                "$ref": "#/$defs/__schema16"
               },
               "notEvaluatedReasonCode": {
                 "$ref": "#/$defs/__schema1"
               },
               "provenance": {
-                "$ref": "#/$defs/__schema16"
+                "$ref": "#/$defs/__schema17"
               },
               "runtime": {
-                "$ref": "#/$defs/__schema9"
+                "$ref": "#/$defs/__schema10"
               },
               "sampleId": {
                 "$ref": "#/$defs/__schema1"
@@ -1131,6 +1232,7 @@
               "trialIndex",
               "trialId",
               "evaluatorId",
+              "measurement",
               "evaluationId",
               "runtime",
               "provenance",
@@ -1152,86 +1254,26 @@
     "__schema9": {
       "additionalProperties": false,
       "properties": {
-        "assuranceLevel": {
-          "enum": [
-            "verified",
-            "declared",
-            "unknown"
-          ],
-          "type": "string"
-        },
-        "capabilities": {
-          "$ref": "#/$defs/__schema11"
-        },
-        "fingerprint": {
-          "$ref": "#/$defs/__schema10"
-        },
-        "fingerprintBasis": {
-          "enum": [
-            "content-derived",
-            "environment-derived",
-            "self-reported",
-            "opaque"
-          ],
-          "type": "string"
-        },
-        "implementationId": {
+        "ensembleMemberId": {
           "$ref": "#/$defs/__schema1"
         },
-        "implementationManifest": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/__schema12"
-            },
-            {
-              "$ref": "#/$defs/__schema13"
-            }
-          ]
+        "instrumentId": {
+          "$ref": "#/$defs/__schema1"
         },
-        "provenanceFacets": {
-          "additionalProperties": false,
-          "properties": {
-            "attestation": {
-              "additionalProperties": false,
-              "properties": {
-                "attestationDigest": {
-                  "$ref": "#/$defs/__schema2"
-                },
-                "attestorId": {
-                  "$ref": "#/$defs/__schema1"
-                }
-              },
-              "required": [
-                "attestationDigest"
-              ],
-              "type": "object"
-            },
-            "observation": {
-              "additionalProperties": false,
-              "properties": {
-                "observedAt": {
-                  "$ref": "#/$defs/__schema15"
-                },
-                "observerId": {
-                  "$ref": "#/$defs/__schema1"
-                }
-              },
-              "type": "object"
-            }
-          },
-          "type": "object"
+        "replicateGroupId": {
+          "$ref": "#/$defs/__schema1"
         },
-        "version": {
-          "$ref": "#/$defs/__schema10"
+        "replicateIndex": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
-        "implementationId",
-        "fingerprint",
-        "fingerprintBasis",
-        "assuranceLevel",
-        "capabilities",
-        "implementationManifest"
+        "instrumentId",
+        "ensembleMemberId",
+        "replicateGroupId",
+        "replicateIndex"
       ],
       "type": "object"
     }
@@ -1262,10 +1304,10 @@
       "$ref": "#/$defs/__schema2"
     },
     "extensions": {
-      "$ref": "#/$defs/__schema32"
+      "$ref": "#/$defs/__schema33"
     },
     "provenance": {
-      "$ref": "#/$defs/__schema16"
+      "$ref": "#/$defs/__schema17"
     },
     "records": {
       "$ref": "#/$defs/__schema7"

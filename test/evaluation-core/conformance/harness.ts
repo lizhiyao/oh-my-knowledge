@@ -103,9 +103,17 @@ export interface ConformanceResult {
   state: ConformanceState;
 }
 
-export function revalidateConformanceResult(
+export interface ImportedConformanceResult {
+  executionSource: ExecutionBundleSource;
+  evaluationSource: EvaluationBundleSource;
+  analysisSource: AnalysisBundleSource;
+  decisionSource: DecisionResultSource;
+  report: EvaluationReport;
+}
+
+export function importConformanceResult(
   result: Readonly<ConformanceResult>,
-): EvaluationReport {
+): ImportedConformanceResult {
   if (result.decision === undefined) {
     throw new TypeError('Conformance result does not contain a Decision artifact.');
   }
@@ -153,7 +161,7 @@ export function revalidateConformanceResult(
       ]),
     },
   );
-  return parseEvaluationReport(
+  const report = parseEvaluationReport(
     JSON.parse(JSON.stringify(result.report)) as unknown,
     result.plan,
     executionSource,
@@ -161,6 +169,19 @@ export function revalidateConformanceResult(
     analysisSource,
     decisionSource,
   );
+  return {
+    executionSource,
+    evaluationSource,
+    analysisSource,
+    decisionSource,
+    report,
+  };
+}
+
+export function revalidateConformanceResult(
+  result: Readonly<ConformanceResult>,
+): EvaluationReport {
+  return importConformanceResult(result).report;
 }
 
 export interface ConformanceHarnessOptions {
@@ -570,6 +591,12 @@ function scenarioDefinition(target: ConformanceTarget): EvaluationDefinition {
       evaluatorId: 'retrieval',
       evaluatorKind: 'assertion',
       implementationId: 'retrieval/v1',
+      measurement: {
+        instrumentId: 'retrieval-metrics',
+        ensembleMemberId: 'retrieval-local',
+        replicateGroupId: 'retrieval-primary',
+        replicateIndex: 0,
+      },
       metricIds,
       inputs: [
         { bindingId: 'ranking', sourceKind: 'output', pointer: '/documents' },
@@ -605,6 +632,12 @@ function scenarioDefinition(target: ConformanceTarget): EvaluationDefinition {
         evaluatorId: 'trajectory',
         evaluatorKind: 'assertion',
         implementationId: 'trajectory/v1',
+        measurement: {
+          instrumentId: 'trajectory-assertion',
+          ensembleMemberId: 'trajectory-local',
+          replicateGroupId: 'trajectory-primary',
+          replicateIndex: 0,
+        },
         metricIds: ['trajectory-valid'],
         inputs: [
           { bindingId: 'answer', sourceKind: 'output', pointer: '/messages' },
@@ -616,6 +649,12 @@ function scenarioDefinition(target: ConformanceTarget): EvaluationDefinition {
         evaluatorId: 'answer-shape',
         evaluatorKind: 'assertion',
         implementationId: 'answer-shape/v1',
+        measurement: {
+          instrumentId: 'answer-shape-assertion',
+          ensembleMemberId: 'answer-shape-local',
+          replicateGroupId: 'answer-shape-primary',
+          replicateIndex: 0,
+        },
         metricIds: ['answer-present'],
         inputs: [
           { bindingId: 'answer', sourceKind: 'output', pointer: '/messages' },

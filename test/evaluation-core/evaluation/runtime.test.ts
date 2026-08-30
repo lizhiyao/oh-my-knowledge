@@ -964,6 +964,7 @@ describe('Evaluation Core Evaluation runtime', () => {
         trialIndex: record.trialIndex,
         trialId: record.trialId,
         evaluatorId: record.evaluatorId,
+        measurement: record.measurement,
         evaluationId: record.evaluationId,
         runtime: record.runtime,
         provenance: record.provenance,

@@ -286,6 +286,12 @@ function definition(targetKind) {
       evaluatorKind: 'assertion',
       implementationId: 'deterministic/v1',
       versionConstraint: '^1.0.0',
+      measurement: {
+        instrumentId: 'deterministic-assertion',
+        ensembleMemberId: 'deterministic-local',
+        replicateGroupId: 'deterministic-primary',
+        replicateIndex: 0,
+      },
       metricIds,
       inputs: rag
         ? [

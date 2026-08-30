@@ -45,6 +45,7 @@ import {
   startAnalysis,
   startDecision,
   startReportMaterialization,
+  type AnalysisNodeExecutionContext,
 } from '../../../src/evaluation-core/analysis/index.js';
 import { testRuntime, validDefinition, validPolicy } from '../compiler/fixtures.js';
 
@@ -276,6 +277,90 @@ async function collectEvents(events: AsyncIterable<unknown>): Promise<unknown[]>
 }
 
 describe('Evaluation Core Analysis and Decision Runtime', () => {
+  it('keeps cohort context out of Executor and Evaluator projections but exposes it to Analysis', async () => {
+    const secretMarker = 'analysis-only-marker';
+    const plan = await makePlan((definition) => {
+      definition.dataset.analysisCohorts = [{
+        cohortId: 'validation',
+        cohortSetId: 'selection-split',
+        cohortSetKind: 'partition',
+        classification: 'secret',
+        disclosure: 'identity-only',
+      }];
+      definition.dataset.samples[0].analysis = {
+        memberships: [{ cohortId: 'validation' }],
+        context: {
+          value: { marker: secretMarker },
+          classification: 'secret',
+        },
+      };
+      definition.analysisGraph.nodes[0].cohortFilter = {
+        includeCohortIds: ['validation'],
+      };
+    });
+    expect(plan.execution.samples[0]).not.toHaveProperty('analysis');
+    expect(plan.evaluation.samples[0]).not.toHaveProperty('analysis');
+    expect(plan.analysis.samples[0]).toHaveProperty('analysis');
+    expect(plan.decision.analysisInputDigest).toBe(plan.analysis.analysisInputDigest);
+
+    const clock = new FakeClock();
+    const eventSequencer = new InMemoryRuntimeEventSequencer();
+    const execution = await executeRunPlanSource(plan, {
+      executors: new Map([['executor-alias', executor(plan, 'control')]]),
+      clock,
+      eventSequencer,
+    }, { runId: 'run-analysis-cohort', bundleId: 'execution-analysis-cohort' });
+    const evaluation = await evaluateExecutionBundleSource(plan, execution, {
+      evaluators: new Map([['exact/v1', evaluator(plan)]]),
+      clock,
+      eventSequencer,
+    }, { runId: 'run-analysis-cohort', bundleId: 'evaluation-analysis-cohort' });
+    const nodes = createBuiltinAnalysisNodes();
+    const original = nodes.get('descriptive.rate/v1');
+    if (original === undefined) throw new Error('missing builtin analysis node');
+    let captured: Readonly<AnalysisNodeExecutionContext> | undefined;
+    const analysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
+      analysisNodes: new Map([['descriptive.rate/v1', {
+        identity: original.identity,
+        outputSchema: original.outputSchema,
+        async openRun(context) {
+          const run = await original.openRun(context);
+          return {
+            async execute(executionContext) {
+              captured = executionContext;
+              return run.execute(executionContext);
+            },
+            dispose: () => run.dispose(),
+          };
+        },
+      }]]),
+      schemaValidators: createBuiltinAnalysisSchemaValidators(),
+      missingPolicies: createBuiltinMissingPolicies(),
+      decisionPolicies: createBuiltinDecisionPolicies(),
+      clock,
+      eventSequencer,
+    }, { runId: 'run-analysis-cohort', bundleId: 'analysis-cohort' });
+
+    const metricInput = captured?.inputs.find((input) => input.inputKind === 'metric-observations');
+    expect(metricInput?.inputKind).toBe('metric-observations');
+    if (metricInput?.inputKind !== 'metric-observations') throw new Error('metric input missing');
+    expect(metricInput.rows[0]).toMatchObject({
+      cohortIds: ['validation'],
+      analysisContext: {
+        value: { marker: secretMarker },
+        classification: 'secret',
+      },
+    });
+    expect(captured?.samples[0]).toMatchObject({
+      sampleId: plan.analysis.samples[0].sampleId,
+      analysis: {
+        memberships: [{ cohortId: 'validation' }],
+        context: { value: { marker: secretMarker }, classification: 'secret' },
+      },
+    });
+    expect(JSON.stringify(analysis.bundle)).not.toContain(secretMarker);
+  });
+
   it('seals parameter defaults and rejects unknown measurement parameters', async () => {
     const plan = await makePlan();
     expect(plan.analysis.analysisGraph.nodes[0].parameters).toEqual({});

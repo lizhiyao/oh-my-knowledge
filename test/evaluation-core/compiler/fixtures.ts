@@ -78,6 +78,12 @@ export function validDefinition(): EvaluationDefinition {
       evaluatorKind: 'assertion',
       implementationId: 'exact/v1',
       versionConstraint: '^1.0.0',
+      measurement: {
+        instrumentId: 'exact-assertion',
+        ensembleMemberId: 'exact-local',
+        replicateGroupId: 'exact-primary',
+        replicateIndex: 0,
+      },
       metricIds: ['correct'],
       inputs: [
         { bindingId: 'actual', sourceKind: 'output', pointer: '/answer' },

@@ -243,12 +243,17 @@ function materializeRows(
   ));
   const metricById = new Map(plan.analysis.metrics.map((metric) => [metric.metricId, metric]));
   const rowsByMetric = new Map<string, AnalysisMetricRow[]>();
+  const analysisSampleById = new Map(plan.analysis.samples.map((sample) => [
+    sample.sampleId,
+    sample,
+  ]));
 
   for (const coordinate of derivePlannedEvaluationCoordinates(plan)) {
     const executionCoordinate = executionCoordinates.get(coordinateKey(coordinate));
     const executionRecord = executionRecords.get(coordinateKey(coordinate));
     const evaluationRecord = evaluationRecords.get(evaluationKey(coordinate));
     const evaluator = evaluatorById.get(coordinate.evaluatorId);
+    const analysisSample = analysisSampleById.get(coordinate.sampleId);
     if (executionCoordinate === undefined || evaluator === undefined) {
       throw new TypeError('Sealed evaluation coordinate is incomplete.');
     }
@@ -266,6 +271,13 @@ function materializeRows(
         trialIndex: coordinate.trialIndex,
         trialId: coordinate.trialId,
         evaluatorId: coordinate.evaluatorId,
+        measurement: coordinate.measurement,
+        cohortIds: [...(analysisSample?.analysis?.memberships ?? [])]
+          .map((membership) => membership.cohortId)
+          .sort(compareStrings),
+        ...(analysisSample?.analysis?.context === undefined ? {} : {
+          analysisContext: snapshotJson(analysisSample.analysis.context),
+        }),
         metricId,
         valueType: metric.valueType,
         samplingUnitIds: executionCoordinate.samplingUnitIds,
@@ -520,6 +532,16 @@ function materializeNodeInputs(
 ): { inputs: AnalysisNodeInput[]; blockedReasonCodes: string[] } {
   const inputs: AnalysisNodeInput[] = [];
   const blockedReasonCodes: string[] = [];
+  const includeCohortIds = new Set(binding.node.cohortFilter?.includeCohortIds ?? []);
+  const excludeCohortIds = new Set(binding.node.cohortFilter?.excludeCohortIds ?? []);
+  const filterRows = (rows: readonly AnalysisMetricRow[]): readonly AnalysisMetricRow[] => (
+    rows.filter((row) => {
+      const included = includeCohortIds.size === 0
+        || row.cohortIds.some((cohortId) => includeCohortIds.has(cohortId));
+      const excluded = row.cohortIds.some((cohortId) => excludeCohortIds.has(cohortId));
+      return included && !excluded;
+    })
+  );
   for (const input of binding.node.inputs) {
     if (input.inputKind === 'metric-observations') {
       const metric = plan.analysis.metrics.find((candidate) => (
@@ -530,7 +552,7 @@ function materializeNodeInputs(
         inputKind: 'metric-observations',
         referenceId: input.referenceId,
         metric,
-        rows: rowsByMetric.get(input.referenceId) ?? [],
+        rows: filterRows(rowsByMetric.get(input.referenceId) ?? []),
       });
     } else if (input.inputKind === 'comparison') {
       const comparison = plan.analysis.comparisons.find((candidate) => (
@@ -884,6 +906,8 @@ async function runAnalysis(
         analysisPlanDigest: plan.analysis.analysisPlanDigest as Sha256Digest,
         sampling: plan.analysis.experiment.sampling,
         rootSeed: plan.analysis.experiment.seed,
+        samples: plan.analysis.samples,
+        cohorts: plan.analysis.cohorts,
         signal: controller.signal,
       }));
       output = parseWireDocument(

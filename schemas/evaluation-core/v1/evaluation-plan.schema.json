@@ -387,6 +387,32 @@
             },
             "type": "array"
           },
+          "measurement": {
+            "additionalProperties": false,
+            "properties": {
+              "ensembleMemberId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "instrumentId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "replicateGroupId": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "replicateIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "instrumentId",
+              "ensembleMemberId",
+              "replicateGroupId",
+              "replicateIndex"
+            ],
+            "type": "object"
+          },
           "metricIds": {
             "items": {
               "$ref": "#/$defs/__schema4"
@@ -402,6 +428,7 @@
           "evaluatorId",
           "evaluatorKind",
           "implementationId",
+          "measurement",
           "metricIds",
           "inputs"
         ],

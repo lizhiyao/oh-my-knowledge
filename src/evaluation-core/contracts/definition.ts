@@ -11,19 +11,53 @@ import { JsonValueSchema } from './json.js';
 export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v1' as const;
 export const MEASUREMENT_POLICY_SCHEMA_VERSION = 'omk.measurement-policy/v1' as const;
 
+export const AnalysisCohortDefinitionSchema = z.object({
+  cohortId: IdentifierSchema,
+  cohortSetId: IdentifierSchema,
+  cohortSetKind: z.enum(['partition', 'cohort']),
+  classification: ContentClassificationSchema,
+  disclosure: z.enum(['identity-only', 'full']),
+  derivation: z.object({
+    algorithmId: IdentifierSchema,
+    versionConstraint: NonEmptyStringSchema.optional(),
+    seed: NonEmptyStringSchema,
+  }).strict().optional(),
+}).strict();
+
+export const AnalysisSampleMembershipSchema = z.object({
+  cohortId: IdentifierSchema,
+  membershipValue: JsonValueSchema.optional(),
+}).strict();
+
+export const AnalysisSampleInputSchema = z.object({
+  memberships: z.array(AnalysisSampleMembershipSchema),
+  context: z.object({
+    value: JsonValueSchema,
+    classification: ContentClassificationSchema,
+  }).strict().optional(),
+}).strict();
+
 export const EvaluationSampleSchema = z.object({
   sampleId: IdentifierSchema,
   input: JsonValueSchema,
   executionContext: JsonValueSchema.optional(),
   expected: JsonValueSchema.optional(),
   evaluationContext: JsonValueSchema.optional(),
+  analysis: AnalysisSampleInputSchema.optional(),
   annotations: JsonValueSchema.optional(),
 }).strict();
 
 export const EvaluationDatasetSchema = z.object({
   datasetId: IdentifierSchema,
   samples: z.array(EvaluationSampleSchema).min(1),
+  analysisCohorts: z.array(AnalysisCohortDefinitionSchema).optional(),
   annotations: JsonValueSchema.optional(),
+}).strict();
+
+export const EvaluationSeriesMembershipSchema = z.object({
+  seriesDesignDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  memberId: IdentifierSchema,
+  replicateIndex: z.number().int().nonnegative(),
 }).strict();
 
 export const TargetDefinitionSchema = z.object({
@@ -46,6 +80,12 @@ export const EvaluatorDefinitionSchema = z.object({
   evaluatorKind: IdentifierSchema,
   implementationId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
+  measurement: z.object({
+    instrumentId: IdentifierSchema,
+    ensembleMemberId: IdentifierSchema,
+    replicateGroupId: IdentifierSchema,
+    replicateIndex: z.number().int().nonnegative(),
+  }).strict(),
   metricIds: z.array(IdentifierSchema).min(1),
   inputs: z.array(EvaluatorInputBindingSchema),
   config: JsonValueSchema.optional(),
@@ -141,6 +181,10 @@ const AnalysisNodeBaseSchema = z.object({
   versionConstraint: NonEmptyStringSchema.optional(),
   inputs: z.array(AnalysisInputReferenceSchema).min(1),
   outputResultId: IdentifierSchema,
+  cohortFilter: z.object({
+    includeCohortIds: z.array(IdentifierSchema).min(1).optional(),
+    excludeCohortIds: z.array(IdentifierSchema).min(1).optional(),
+  }).strict().optional(),
   parameters: JsonValueSchema.optional(),
 }).strict();
 
@@ -209,6 +253,7 @@ export const EvaluationDefinitionSchema = z.object({
   analysisGraph: AnalysisGraphDefinitionSchema,
   comparisons: z.array(ComparisonDefinitionSchema),
   decisionPolicy: DecisionPolicyDefinitionSchema.optional(),
+  seriesMembership: EvaluationSeriesMembershipSchema.optional(),
   extensions: ExtensionsSchema.optional(),
 }).strict().meta({
   title: 'OMK Evaluation Definition v1',
@@ -293,6 +338,8 @@ export const MeasurementPolicySchema = z.object({
 });
 
 export type EvaluationSample = z.infer<typeof EvaluationSampleSchema>;
+export type AnalysisCohortDefinition = z.infer<typeof AnalysisCohortDefinitionSchema>;
+export type AnalysisSampleInput = z.infer<typeof AnalysisSampleInputSchema>;
 export type EvaluationDataset = z.infer<typeof EvaluationDatasetSchema>;
 export type TargetDefinition = z.infer<typeof TargetDefinitionSchema>;
 export type EvaluatorDefinition = z.infer<typeof EvaluatorDefinitionSchema>;
@@ -310,5 +357,6 @@ export type ComparisonDefinition = z.infer<typeof ComparisonDefinitionSchema>;
 export type ComparisonFamilyMember = z.infer<typeof ComparisonFamilyMemberSchema>;
 export type DecisionPolicyDefinition = z.infer<typeof DecisionPolicyDefinitionSchema>;
 export type EvaluationDefinition = z.infer<typeof EvaluationDefinitionSchema>;
+export type EvaluationSeriesMembership = z.infer<typeof EvaluationSeriesMembershipSchema>;
 export type EvaluationRuntimePolicy = z.infer<typeof EvaluationRuntimePolicySchema>;
 export type MeasurementPolicy = z.infer<typeof MeasurementPolicySchema>;

@@ -15,15 +15,31 @@ export interface EvaluationIdentityInput {
   evaluationPlanDigest: Sha256Digest;
   trialId: Sha256Digest;
   evaluatorId: string;
+  measurement: EvaluatorMeasurementIdentity;
+}
+
+export interface EvaluatorMeasurementIdentity {
+  instrumentId: string;
+  ensembleMemberId: string;
+  replicateGroupId: string;
+  replicateIndex: number;
 }
 
 export function deriveEvaluationId(input: EvaluationIdentityInput): Sha256Digest {
   assertNonEmpty(input.evaluatorId, 'evaluatorId');
+  assertNonEmpty(input.measurement.instrumentId, 'measurement.instrumentId');
+  assertNonEmpty(input.measurement.ensembleMemberId, 'measurement.ensembleMemberId');
+  assertNonEmpty(input.measurement.replicateGroupId, 'measurement.replicateGroupId');
+  if (!Number.isSafeInteger(input.measurement.replicateIndex)
+      || input.measurement.replicateIndex < 0) {
+    throw new TypeError('measurement.replicateIndex must be a non-negative safe integer');
+  }
   return digestCanonicalJson({
     derivation: 'omk.evaluation-id/v1',
     evaluationPlanDigest: input.evaluationPlanDigest,
     trialId: input.trialId,
     evaluatorId: input.evaluatorId,
+    measurement: input.measurement,
   });
 }
 
@@ -63,7 +79,7 @@ export interface EvaluationIdentityPlanContext {
   execution: Parameters<typeof derivePlannedExecutionCoordinates>[0]['execution'];
   evaluation: {
     evaluationPlanDigest: string;
-    evaluators: readonly { evaluatorId: string }[];
+    evaluators: readonly { evaluatorId: string; measurement: EvaluatorMeasurementIdentity }[];
   };
 }
 
@@ -73,6 +89,7 @@ export interface PlannedEvaluationCoordinate {
   trialIndex: number;
   trialId: Sha256Digest;
   evaluatorId: string;
+  measurement: EvaluatorMeasurementIdentity;
   evaluationId: Sha256Digest;
 }
 
@@ -90,23 +107,25 @@ function compareCoordinates(
 export function derivePlannedEvaluationCoordinates(
   plan: EvaluationIdentityPlanContext,
 ): PlannedEvaluationCoordinate[] {
-  const evaluatorIds = plan.evaluation.evaluators
-    .map((evaluator) => evaluator.evaluatorId)
-    .sort();
+  const evaluators = [...plan.evaluation.evaluators]
+    .sort((left, right) => left.evaluatorId < right.evaluatorId ? -1 : 1);
+  const evaluatorIds = evaluators.map((evaluator) => evaluator.evaluatorId);
   if (new Set(evaluatorIds).size !== evaluatorIds.length) {
     throw new TypeError('evaluation.evaluators must not contain duplicate identifiers');
   }
   return derivePlannedExecutionCoordinates(plan)
-    .flatMap((execution) => evaluatorIds.map((evaluatorId) => ({
+    .flatMap((execution) => evaluators.map((evaluator) => ({
       targetId: execution.targetId,
       sampleId: execution.sampleId,
       trialIndex: execution.trialIndex,
       trialId: execution.trialId,
-      evaluatorId,
+      evaluatorId: evaluator.evaluatorId,
+      measurement: evaluator.measurement,
       evaluationId: deriveEvaluationId({
         evaluationPlanDigest: plan.evaluation.evaluationPlanDigest as Sha256Digest,
         trialId: execution.trialId,
-        evaluatorId,
+        evaluatorId: evaluator.evaluatorId,
+        measurement: evaluator.measurement,
       }),
     })))
     .sort(compareCoordinates);

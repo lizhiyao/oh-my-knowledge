@@ -34,6 +34,13 @@ function metricRow(input: {
     trialIndex: 0,
     trialId,
     evaluatorId: 'score-evaluator',
+    measurement: {
+      instrumentId: 'score-instrument',
+      ensembleMemberId: 'score-member',
+      replicateGroupId: 'score-primary',
+      replicateIndex: 0,
+    },
+    cohortIds: [],
     metricId: 'score',
     valueType: 'numeric',
     samplingUnitIds: input.pairingBlockId === undefined
@@ -108,6 +115,8 @@ async function interval(input: {
       ...(input.paired ? { pairingKey: '/input/pair' } : {}),
     },
     rootSeed: `simulation-seed-${input.simulation}`,
+    samples: [],
+    cohorts: [],
     signal: new AbortController().signal,
   };
   const result = await run.execute(context);

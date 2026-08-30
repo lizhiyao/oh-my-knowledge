@@ -238,6 +238,12 @@ const EvaluationRecordIdentitySchema = z.object({
   trialIndex: z.number().int().nonnegative(),
   trialId: Sha256DigestSchema,
   evaluatorId: IdentifierSchema,
+  measurement: z.object({
+    instrumentId: IdentifierSchema,
+    ensembleMemberId: IdentifierSchema,
+    replicateGroupId: IdentifierSchema,
+    replicateIndex: z.number().int().nonnegative(),
+  }).strict(),
   evaluationId: Sha256DigestSchema,
   runtime: RuntimeIdentitySchema,
   provenance: ProvenanceSchema,
