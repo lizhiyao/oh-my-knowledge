@@ -5,13 +5,18 @@
   "description": "OMK — Observe. Measure. Know. Evidence-backed knowledge changes for AI applications.",
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
       "import": "./dist/mcp/index.js"
     },
-    "./dist/evaluation-core/internal/*": null,
-    "./dist/evaluation-core/sealed-run-plan*": null,
-    "./dist/*": "./dist/*",
+    "./dsh-plugin": {
+      "types": "./dist/dsh-plugin/index.d.ts",
+      "import": "./dist/dsh-plugin/index.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

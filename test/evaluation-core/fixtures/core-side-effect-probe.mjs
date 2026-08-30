@@ -1,21 +1,3 @@
-import { pathToFileURL } from 'node:url';
-import { resolve } from 'node:path';
-
-const [repositoryRoot] = process.argv.slice(2);
-if (repositoryRoot === undefined) throw new Error('repository root is required');
-
-const moduleUrls = [
-  'contracts/index.js',
-  'compiler/index.js',
-  'execution/index.js',
-  'evaluation/index.js',
-  'analysis/index.js',
-].map((entry) => pathToFileURL(resolve(
-  repositoryRoot,
-  'dist/evaluation-core',
-  entry,
-)).href);
-
 const watchedSignals = [
   'beforeExit',
   'exit',
@@ -37,12 +19,10 @@ function restoreHostCapabilities() {
 }
 
 try {
-  const [contracts, compiler, execution] = await Promise.all(
-    moduleUrls.map((url) => import(url)),
-  );
+  const core = await import('oh-my-knowledge');
 
-  // Node 的 ESM loader 自身会读取环境变量；Core 源码的导入期环境访问由静态
-  // dependency-closure guard 证明不存在。加载完成后再封锁宿主能力，验证运行期。
+  // Node 的 ESM loader 自身会读取环境变量；外层测试以隔离 HOME 和目录快照检查
+  // 导入期副作用。加载完成后再封锁宿主能力，验证公开纯内存操作的运行期边界。
   process.cwd = () => {
     throw new Error('Evaluation Core accessed process.cwd()');
   };
@@ -58,38 +38,12 @@ try {
     },
   });
 
-  const canonical = contracts.canonicalizeJson({ z: 1, a: ['memory-only'] });
-  const digest = contracts.digestCanonicalJson({ z: 1, a: ['memory-only'] });
+  const canonical = core.canonicalizeJson({ z: 1, a: ['memory-only'] });
+  const digest = core.digestCanonicalJson({ z: 1, a: ['memory-only'] });
   if (canonical !== '{"a":["memory-only"],"z":1}'
-      || !digest.startsWith('sha256:')) {
+      || !digest.startsWith('sha256:')
+      || typeof core.createEvaluationEngine !== 'function') {
     throw new Error('Evaluation Core pure-memory contract operation failed');
-  }
-
-  const sequencer = new execution.InMemoryRuntimeEventSequencer();
-  if (sequencer.next('isolated-run') !== 0
-      || sequencer.next('isolated-run') !== 1) {
-    throw new Error('Evaluation Core pure-memory runtime operation failed');
-  }
-
-  let rejectedInvalidDefinition = false;
-  try {
-    await compiler.prepareEvaluationPlan({}, {}, {
-      schemaValidators: new Map(),
-      resolveExecutor() {
-        throw new Error('invalid input must fail before Runtime resolution');
-      },
-      resolveEvaluator() {
-        throw new Error('invalid input must fail before Runtime resolution');
-      },
-      resolveAnalysis() {
-        throw new Error('invalid input must fail before Runtime resolution');
-      },
-    });
-  } catch (error) {
-    rejectedInvalidDefinition = error instanceof compiler.EvaluationDefinitionError;
-  }
-  if (!rejectedInvalidDefinition) {
-    throw new Error('Evaluation Core compiler did not run its in-memory validation');
   }
 
   for (const signal of watchedSignals) {
