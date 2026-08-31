@@ -263,6 +263,27 @@ function validateHostOptions(input: ResolvedCliEvaluationInput): void {
     fieldPath: 'presentation',
     message: 'EvaluationPresentationOptions 包含不合法的规范值。',
   });
+  const dependencyRequirements = orchestration.dependencyRequirements;
+  if (dependencyRequirements !== undefined
+      && (typeof dependencyRequirements.baseDirectoryLocator !== 'string'
+        || dependencyRequirements.baseDirectoryLocator.trim() === '')) fail({
+    code: 'CLI_INPUT_INVALID',
+    fieldPath: 'orchestration.dependencyRequirements.baseDirectoryLocator',
+    message: 'Dependency requirement 必须声明非空的宿主 base directory locator。',
+  });
+  for (const [requirementKind, values] of Object.entries(
+    dependencyRequirements ?? {},
+  ).filter(([key]) => key !== 'baseDirectoryLocator')) {
+    if (!['tools', 'files', 'env', 'preflight'].includes(requirementKind)
+        || !Array.isArray(values)
+        || values.length === 0
+        || values.some((value) => typeof value !== 'string' || value.trim() === '')
+        || new Set(values).size !== values.length) fail({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: `orchestration.dependencyRequirements.${requirementKind}`,
+      message: 'Dependency requirement 必须是非空、无重复的字符串数组。',
+    });
+  }
   const cache = input.policy.cache;
   if (cache === null || typeof cache !== 'object' || Array.isArray(cache)) fail({
     code: 'CLI_INPUT_INVALID',
@@ -1105,6 +1126,16 @@ export function compileCliEvaluationInput(
     preflight: resolvedInput.orchestration.preflight,
     diagnostic: resolvedInput.orchestration.diagnostic,
     managedEvidence: resolvedInput.orchestration.managedEvidence,
+    ...(resolvedInput.orchestration.dependencyRequirements === undefined ? {} : {
+      dependencyRequirements: {
+        baseDirectoryLocator:
+          resolvedInput.orchestration.dependencyRequirements.baseDirectoryLocator,
+        ...Object.fromEntries(Object.entries(
+          resolvedInput.orchestration.dependencyRequirements,
+        ).filter(([key]) => key !== 'baseDirectoryLocator')
+          .map(([key, values]) => [key, [...values].sort(compareStrings)])),
+      },
+    }),
     ...(resolvedInput.orchestration.cacheSources === undefined ? {} : {
       cacheSources: resolvedInput.orchestration.cacheSources,
     }),
