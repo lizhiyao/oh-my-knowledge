@@ -32,9 +32,9 @@ export type ArtifactGraphLayer = 'definition' | 'measurement' | 'production';
 
 export type ArtifactGraphNodeRole = 'entity' | 'observation' | 'aggregate';
 
-// Schema v1 intentionally reserves eval/observe node and edge kinds. The first
-// doctor producer emits only definition-layer nodes plus doctor_rule_result; eval
-// and observe producers will populate the measurement/production kinds later.
+// Schema v1 intentionally reserves eval/observe node and edge kinds. Enum
+// expansion is additive: Core-native projections use qualified measurement
+// entities instead of overloading legacy variant/result semantics.
 export type ArtifactGraphNodeKind =
   | 'skill'
   | 'skill_file'
@@ -57,7 +57,15 @@ export type ArtifactGraphNodeKind =
   | 'trace_session'
   | 'skill_invocation'
   | 'tool_call'
-  | 'gap_signal';
+  | 'gap_signal'
+  | 'evaluation_run'
+  | 'target'
+  | 'evaluator'
+  | 'metric'
+  | 'execution_result'
+  | 'evaluation_result'
+  | 'analysis_result'
+  | 'decision';
 
 export type ArtifactGraphStatus =
   | 'ok'
@@ -134,6 +142,7 @@ export type ArtifactGraphEvidenceSourceKind =
   | 'observe-report'
   | 'trace'
   | 'sample'
+  | 'evaluation-core-document'
   | 'managed-record';
 
 export type ArtifactGraphEvidenceSelectorKind =

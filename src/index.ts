@@ -174,6 +174,30 @@ export {
   createBuiltinMissingPolicies,
   resolveBuiltinAnalysisRuntime,
 } from './evaluation-core/analysis/index.js';
+
+export {
+  CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
+  CORE_GOLD_COMPARISON_SCHEMA_VERSION,
+  CoreDownstreamProjectionError,
+  compareGoldToCoreRun,
+  projectCoreArtifactGraph,
+  projectCoreEvolutionEvidence,
+} from './eval-workflows/downstream-projections/index.js';
+export type {
+  CompareGoldToCoreRunInput,
+  CoreGoldDatasetInput,
+  CoreDownstreamProjectionErrorCode,
+  CoreEvolutionAnalysisEvidence,
+  CoreEvolutionDecisionEvidence,
+  CoreEvolutionEvidence,
+  CoreEvolutionMemberEvidence,
+  CoreGoldComparisonResult,
+  CoreGoldAgreementResult,
+  CoreGoldComparisonRow,
+  CoreGoldMetricSelector,
+  ProjectCoreArtifactGraphInput,
+  ProjectCoreEvolutionEvidenceInput,
+} from './eval-workflows/downstream-projections/index.js';
 export type {
   AnalysisDecisionPolicy,
   AnalysisMetricRow,

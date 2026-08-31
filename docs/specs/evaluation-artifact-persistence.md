@@ -1,6 +1,6 @@
 # Evaluation Core artifact persistence
 
-> Status: host persistence and reuse contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), slices 1–2. It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
+> Status: host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), slices 1–3. It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
 
 ## 1. Boundary
 
@@ -65,12 +65,23 @@ An overlay writes only to its primary store and reads primary before fallback la
 
 Publication resolves and fully verifies every child before atomically publishing the private batch manifest. A missing, corrupt, duplicate, or identity-changed child fails. Full batch reads revalidate child locators; batch listing validates only the manifest and therefore does not claim child evidence availability. Interrupted staging directories remain invisible.
 
-## 9. Non-goals
+## 9. Core-native downstream projections
+
+Downstream consumers read immutable Core facts through pure, side-effect-free projections. These APIs do not import the legacy Report or result-row types and are deliberately not wired into the production consumers before the final CLI cutover.
+
+The artifact graph projection consumes one validated stored run. It emits qualified Core node kinds for Run, Target, Evaluator, Metric, Execution result, Evaluation result, Analysis result, and Decision. Node status comes only from explicit stage state. Numeric observations may appear as view metrics, but no score band or display threshold becomes a verdict. Evidence references bind exact Core document hashes and JSON pointers; raw input, expected value, output, trace, evidence, and error text are omitted.
+
+Gold comparison requires the caller to select one sealed Target, Evaluator, and numeric Metric. Optional trial and measurement coordinates refine that identity, but must match the Plan. Gold and Metric scales must match exactly. A sample resolving to multiple observations fails instead of averaging across trials, ensemble members, or replicates; a scale transformation belongs in a preregistered Analysis. The projection binds a canonical Gold dataset digest and uses `null`, not non-JSON `NaN`, for undefined statistics. The existing Krippendorff alpha, weighted kappa, Pearson, and paired-unit bootstrap formulas remain unchanged.
+
+Evolution evidence consumes one exact Evaluation Series Plan → SeriesAnalysisBundle → EvaluationSeriesReport chain. Series fixes `experimentalUnit = run`; the projection preserves member status, trust, comparability, analysis standards, assumptions, coverage, and registered Decision. It never ranks member runs or infers a winner from display scores. Only a `decided` Series Decision makes the view `decision-ready`; completed analysis without a Decision remains `analysis-only`.
+
+## 10. Non-goals
 
 - legacy `EvaluationReport` readers, migration, or dual writes;
 - partial-record resume or a cross-process checkpoint engine;
-- evolve, gold compare, artifact graph, or Studio projections;
+- Studio projections;
+- wiring the Core projections into legacy evolve, gold, or artifact-graph CLI commands before cutover;
 - the production CLI cutover and old pipeline deletion;
 - artifact signatures or provenance attestation.
 
-Those consumers build on this transport boundary in later #531 slices. The final CLI switch remains a separate `BREAKING-SCHEMA` change under #450.
+These Core-native projections complete the #531 persistence consumer boundary. The final CLI switch remains a separate `BREAKING-SCHEMA` change under #450.
