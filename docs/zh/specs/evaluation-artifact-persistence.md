@@ -1,6 +1,6 @@
 # Evaluation Core 产物持久化
 
-> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 第一、二个切片的宿主持久化与复用契约。本阶段不切换 `omk eval`、不读取旧报告，也不会把传输来的 JSON 伪装成可信 Core capability。
+> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 第一至第三个切片的宿主持久化、复用与下游投影契约。本阶段不切换 `omk eval`、不读取旧报告，也不会把传输来的 JSON 伪装成可信 Core capability。
 
 ## 一、边界
 
@@ -65,12 +65,23 @@ overlay 只写 primary store，读取时 primary 优先于 fallback layer。索�
 
 发布前必须解析并完整校验全部 child，随后原子发布私有 batch manifest。child 缺失、损坏、重复或 identity 变化都会失败。完整 batch 读取会重新校验 child locator；batch 列表只校验 manifest，因此不声称 child evidence 可用。中断留下的 staging 目录不可见。
 
-## 九、非目标
+## 九、Core 原生下游投影
+
+下游 consumer 通过纯函数、无副作用的 projection 读取不可变 Core 事实。这些 API 不导入旧 Report 或结果行类型；在最终 CLI 切换前，也不会接入正式 consumer。
+
+artifact graph projection 消费一组已经校验的持久化 run，输出 Run、Target、Evaluator、Metric、Execution result、Evaluation result、Analysis result 与 Decision 等限定语义节点。节点状态只来自显式 stage 状态。数值 observation 可以作为视图 metric 展示，但分数档位和展示阈值不能变成 verdict。evidence reference 绑定 Core 文档的精确 hash 与 JSON pointer；原始 input、expected、output、trace、evidence 与 error text 一律不进入图。
+
+gold comparison 要求调用方显式选择一个已封存的 Target、Evaluator 与数值 Metric。可选 trial／measurement coordinate 用于进一步限定 identity，但必须与 Plan 一致。Gold 与 Metric 的 scale 必须完全相同。同一样本匹配到多个 observation 时显式失败，不会跨 trial、ensemble member 或 replicate 暗自平均；scale 变换必须进入预注册 Analysis。projection 绑定 canonical Gold dataset digest，并用 `null` 表示未定义统计量，不把非 JSON 的 `NaN` 写入版本化输出。现有 Krippendorff alpha、加权 kappa、Pearson 与配对单位 bootstrap 公式保持不变。
+
+evolution evidence 消费同一条 Evaluation Series Plan → SeriesAnalysisBundle → EvaluationSeriesReport 精确链。Series 固定 `experimentalUnit = run`；projection 保留 member 状态、trust、comparability、analysis standard、assumption、coverage 与已注册 Decision，绝不根据展示分数给 member run 排名或猜测 winner。只有 `decided` 的 Series Decision 才会得到 `decision-ready`；只有已完成 Analysis 而没有 Decision 时仍为 `analysis-only`。
+
+## 十、非目标
 
 - 旧 `EvaluationReport` reader、迁移或双写；
 - partial record resume 或跨进程 checkpoint engine；
-- evolve、gold compare、artifact graph 或 Studio projection；
+- Studio projection；
+- 最终切换前，把 Core projection 接入旧 evolve、gold 或 artifact-graph CLI 命令；
 - 正式 CLI 切换与旧 pipeline 删除；
 - artifact 签名或 provenance attestation。
 
-这些 consumer 在 #531 的后续切片中建立于本传输边界之上。最终 CLI 切换仍是 #450 下独立的 `BREAKING-SCHEMA` 变更。
+这些 Core 原生 projection 完成 #531 的持久化 consumer 边界。最终 CLI 切换仍是 #450 下独立的 `BREAKING-SCHEMA` 变更。
