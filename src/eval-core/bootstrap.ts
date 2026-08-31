@@ -43,6 +43,13 @@ export interface BootstrapDiffCI extends BootstrapCI {
   significant: boolean;
 }
 
+export interface BootstrapMetricDraws {
+  /** Point estimate over the original observations, before persistence rounding. */
+  estimate: number;
+  /** One metric value per requested pair-preserving bootstrap draw. */
+  draws: number[];
+}
+
 /**
  * Default number of bootstrap resamples. Every eval path uses this unless
  * `--bootstrap-samples` overrides it. Single source of truth: the docs cite
@@ -279,6 +286,28 @@ export function bootstrapWithMetric(
   seed?: number,
 ): BootstrapCI {
   if (scores.length === 0) return { low: 0, high: 0, estimate: 0, samples: 0 };
+  const distribution = drawBootstrapMetric(scores, metricFn, samples, seed);
+  return summarizeBootstrapMetric(
+    distribution.estimate,
+    distribution.draws,
+    alpha,
+    samples,
+  );
+}
+
+/**
+ * Generate the shared deterministic bootstrap draw stream without deciding how
+ * undefined metric draws should be represented. Existing callers summarize every
+ * draw unchanged; Core adapters may retain non-finite draw coverage as structured
+ * missing evidence before summarization.
+ */
+export function drawBootstrapMetric(
+  scores: number[],
+  metricFn: (resampled: number[]) => number,
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): BootstrapMetricDraws {
+  if (scores.length === 0) return { estimate: metricFn([]), draws: [] };
   const rng = makeRng(seed);
   const metricValues: number[] = new Array(samples);
   for (let b = 0; b < samples; b++) {
@@ -286,11 +315,21 @@ export function bootstrapWithMetric(
     const resampled = idx.map((i) => scores[i]);
     metricValues[b] = metricFn(resampled);
   }
-  metricValues.sort((a, b) => a - b);
+  return { estimate: metricFn(scores), draws: metricValues };
+}
+
+/** Summarize an explicit draw set using OMK's frozen percentile and rounding rules. */
+export function summarizeBootstrapMetric(
+  estimate: number,
+  draws: number[],
+  alpha = DEFAULT_BOOTSTRAP_ALPHA,
+  samples = draws.length,
+): BootstrapCI {
+  const metricValues = [...draws].sort((a, b) => a - b);
   return {
     low: round4(sortedQuantile(metricValues, alpha / 2)),
     high: round4(sortedQuantile(metricValues, 1 - alpha / 2)),
-    estimate: round4(metricFn(scores)),
+    estimate: round4(estimate),
     samples,
   };
 }
