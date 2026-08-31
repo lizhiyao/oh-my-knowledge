@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   IdentifierSchema,
   RuntimeIdentitySchema,
+  SamplingUnitIdsSchema,
   Sha256DigestSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -21,15 +22,15 @@ import type {
 } from '../../../evaluation-core/analysis/index.js';
 
 export const JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID =
-  'omk.judge-replicate-table/v1' as const;
+  'omk.judge-replicate-table/v2' as const;
 export const JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID =
-  'omk.judge-ensemble-table/v1' as const;
+  'omk.judge-ensemble-table/v2' as const;
 export const JUDGE_REPLICATE_TABLE_SCHEMA_VERSION =
-  'omk.judge-replicate-table/v1' as const;
+  'omk.judge-replicate-table/v2' as const;
 export const JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION =
-  'omk.judge-ensemble-table/v1' as const;
+  'omk.judge-ensemble-table/v2' as const;
 
-const ALGORITHM_VERSION = 'omk.judge-aggregation/v1' as const;
+const ALGORITHM_VERSION = 'omk.judge-aggregation/v2' as const;
 const MEAN_DECIMALS = 2;
 const STANDARD_DEVIATION_DECIMALS = 3;
 const AGREEMENT_DECIMALS = 3;
@@ -86,6 +87,7 @@ const ReplicateGroupBaseSchema = z.object({
   sampleId: IdentifierSchema,
   trialIndex: CountSchema,
   trialId: Sha256DigestSchema,
+  samplingUnitIds: SamplingUnitIdsSchema,
   metricId: IdentifierSchema,
   instrumentId: IdentifierSchema,
   ensembleMemberId: IdentifierSchema,
@@ -176,6 +178,7 @@ const EnsembleGroupBaseSchema = z.object({
   sampleId: IdentifierSchema,
   trialIndex: CountSchema,
   trialId: Sha256DigestSchema,
+  samplingUnitIds: SamplingUnitIdsSchema,
   metricId: IdentifierSchema,
   instrumentId: IdentifierSchema,
   replicateGroupId: IdentifierSchema,
@@ -257,6 +260,7 @@ function replicateGroupKey(value: Pick<ReplicateGroup,
   | 'sampleId'
   | 'trialIndex'
   | 'trialId'
+  | 'samplingUnitIds'
   | 'metricId'
   | 'instrumentId'
   | 'ensembleMemberId'
@@ -267,6 +271,7 @@ function replicateGroupKey(value: Pick<ReplicateGroup,
     value.sampleId,
     value.trialIndex,
     value.trialId,
+    value.samplingUnitIds,
     value.metricId,
     value.instrumentId,
     value.ensembleMemberId,
@@ -279,6 +284,7 @@ function ensembleGroupKey(value: Pick<EnsembleGroup,
   | 'sampleId'
   | 'trialIndex'
   | 'trialId'
+  | 'samplingUnitIds'
   | 'metricId'
   | 'instrumentId'
   | 'replicateGroupId'
@@ -288,6 +294,7 @@ function ensembleGroupKey(value: Pick<EnsembleGroup,
     value.sampleId,
     value.trialIndex,
     value.trialId,
+    value.samplingUnitIds,
     value.metricId,
     value.instrumentId,
     value.replicateGroupId,
@@ -449,9 +456,10 @@ function schemaIdentity(
 
 export const JUDGE_REPLICATE_TABLE_SCHEMA = schemaIdentity(
   JUDGE_REPLICATE_TABLE_SCHEMA_VERSION,
-  'urn:omk:analysis-result:judge-replicate-table:v1',
+  'urn:omk:analysis-result:judge-replicate-table:v2',
   jsonSchema(ReplicateEnvelopeSchema, [
     'groups are unique and canonically ordered by the full measurement unit key',
+    'sampling-unit lineage is identical across every replicate in a group',
     'replicate indices and source row identities are unique',
     'coverage exactly conserves every source row status',
     'groupId is content-derived from the unit key and source row lineage',
@@ -462,9 +470,10 @@ export const JUDGE_REPLICATE_TABLE_SCHEMA = schemaIdentity(
 
 export const JUDGE_ENSEMBLE_TABLE_SCHEMA = schemaIdentity(
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
-  'urn:omk:analysis-result:judge-ensemble-table:v1',
+  'urn:omk:analysis-result:judge-ensemble-table:v2',
   jsonSchema(EnsembleEnvelopeSchema, [
     'groups and members are unique and canonically ordered',
+    'sampling-unit lineage is identical across every ensemble member in a group',
     'coverage exactly conserves every member row',
     'groupId is content-derived from the unit key and replicate group lineage',
     'consensus is the equal mean of observed member means',
@@ -537,6 +546,7 @@ function runtimeIdentity(
         ensembleEstimator: 'equal-member-mean',
         agreementEstimator: 'pairwise-mean-absolute-difference',
         missingPolicyId: 'exclude/v1',
+        samplingUnitLineage: 'preserved-from-analysis-metric-rows',
       },
       declaredCapabilities,
     }),
@@ -596,6 +606,20 @@ function rowKey(row: AnalysisMetricRow): string {
   ]);
 }
 
+function replicateLineageKey(row: AnalysisMetricRow): JsonValue {
+  return [
+    row.targetId,
+    row.sampleId,
+    row.trialIndex,
+    row.trialId,
+    row.samplingUnitIds,
+    row.metricId,
+    row.measurement.instrumentId,
+    row.measurement.ensembleMemberId,
+    row.measurement.replicateGroupId,
+  ];
+}
+
 function replicateFromRow(row: AnalysisMetricRow): z.infer<typeof ReplicateSchema> {
   const base = {
     rowId: row.rowId,
@@ -632,6 +656,9 @@ function buildReplicateTable(
         || compareStrings(left.evaluatorId, right.evaluatorId)
       ));
       const first = orderedRows[0];
+      if (new Set(orderedRows.map((row) => canonicalizeJson(row.samplingUnitIds))).size !== 1) {
+        throw new TypeError('Judge replicate rows disagree on sealed sampling-unit lineage.');
+      }
       const replicates = orderedRows.map(replicateFromRow);
       const scores = replicates.flatMap((entry) => (
         entry.rowStatus === 'observed' ? [entry.score] : []
@@ -639,13 +666,14 @@ function buildReplicateTable(
       const common = {
         groupId: digestCanonicalJson({
           derivation: JUDGE_REPLICATE_TABLE_SCHEMA_VERSION,
-          key: JSON.parse(rowKey(first)) as JsonValue,
+          key: replicateLineageKey(first),
           sourceRowIds: replicates.map((entry) => entry.rowId),
         }),
         targetId: first.targetId,
         sampleId: first.sampleId,
         trialIndex: first.trialIndex,
         trialId: first.trialId,
+        samplingUnitIds: first.samplingUnitIds,
         metricId: first.metricId,
         instrumentId: first.measurement.instrumentId,
         ensembleMemberId: first.measurement.ensembleMemberId,
@@ -662,6 +690,7 @@ function buildReplicateTable(
             sampleStddev: round(sampleStddev(scores), STANDARD_DEVIATION_DECIMALS),
           };
     });
+  output.sort((left, right) => compareStrings(replicateGroupKey(left), replicateGroupKey(right)));
   return ReplicateTableValueSchema.parse({
     schemaVersion: JUDGE_REPLICATE_TABLE_SCHEMA_VERSION,
     groups: output,
@@ -699,6 +728,19 @@ function ensembleKey(group: ReplicateGroup): string {
   ]);
 }
 
+function ensembleLineageKey(group: ReplicateGroup): JsonValue {
+  return [
+    group.targetId,
+    group.sampleId,
+    group.trialIndex,
+    group.trialId,
+    group.samplingUnitIds,
+    group.metricId,
+    group.instrumentId,
+    group.replicateGroupId,
+  ];
+}
+
 function buildEnsembleTable(
   replicateTable: ReplicateTableValue,
   signal: AbortSignal,
@@ -717,6 +759,11 @@ function buildEnsembleTable(
         compareStrings(left.ensembleMemberId, right.ensembleMemberId)
       ));
       const first = orderedGroups[0];
+      if (new Set(orderedGroups.map((group) => (
+        canonicalizeJson(group.samplingUnitIds)
+      ))).size !== 1) {
+        throw new TypeError('Judge ensemble members disagree on sealed sampling-unit lineage.');
+      }
       const members = orderedGroups.map((group) => {
         const common = {
           ensembleMemberId: group.ensembleMemberId,
@@ -755,13 +802,14 @@ function buildEnsembleTable(
       const common = {
         groupId: digestCanonicalJson({
           derivation: JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
-          key: JSON.parse(ensembleKey(first)) as JsonValue,
+          key: ensembleLineageKey(first),
           sourceGroupIds: members.map((member) => member.sourceGroupId),
         }),
         targetId: first.targetId,
         sampleId: first.sampleId,
         trialIndex: first.trialIndex,
         trialId: first.trialId,
+        samplingUnitIds: first.samplingUnitIds,
         metricId: first.metricId,
         instrumentId: first.instrumentId,
         replicateGroupId: first.replicateGroupId,
@@ -781,6 +829,7 @@ function buildEnsembleTable(
             consensus: round(mean(memberMeans), MEAN_DECIMALS),
           };
     });
+  output.sort((left, right) => compareStrings(ensembleGroupKey(left), ensembleGroupKey(right)));
   return EnsembleTableValueSchema.parse({
     schemaVersion: JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
     groups: output,

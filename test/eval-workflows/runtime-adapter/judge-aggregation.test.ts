@@ -9,6 +9,7 @@ import {
   type AnalysisRecord,
   type JsonValue,
   type RuntimeIdentity,
+  type SamplingUnitIds,
 } from '../../../src/evaluation-core/contracts/index.js';
 import {
   AnalysisNodeCapabilitiesSchema,
@@ -59,6 +60,9 @@ import {
 const ANALYSIS_PLAN_DIGEST = digestCanonicalJson({ fixture: 'analysis-plan' });
 const EVALUATION_BUNDLE_DIGEST = digestCanonicalJson({ fixture: 'evaluation-bundle' });
 const TRIAL_ID = digestCanonicalJson({ fixture: 'trial-0' });
+const PAIRING_BLOCK_ID = digestCanonicalJson({ fixture: 'pairing-block' });
+const CLUSTER_ID = digestCanonicalJson({ fixture: 'cluster' });
+const STRATUM_ID = digestCanonicalJson({ fixture: 'stratum' });
 
 interface ScoringFixture {
   judgeRepeat: {
@@ -103,6 +107,7 @@ function row(input: Readonly<{
   rowStatus?: Exclude<AnalysisMetricRow['rowStatus'], 'observed'>;
   reasonCode?: string;
   censored?: boolean;
+  samplingUnitIds?: SamplingUnitIds;
 }>): AnalysisMetricRow {
   const common = {
     rowId: digestCanonicalJson({ member: input.member, replicateIndex: input.replicateIndex }),
@@ -120,7 +125,7 @@ function row(input: Readonly<{
     cohortIds: [],
     metricId: 'rubric-score',
     valueType: 'numeric' as const,
-    samplingUnitIds: {},
+    samplingUnitIds: input.samplingUnitIds ?? {},
     censored: input.censored ?? false,
   };
   if (input.rowStatus !== undefined) {
@@ -241,21 +246,40 @@ describe('judge aggregation Analysis nodes', () => {
     expect(JUDGE_REPLICATE_ANALYSIS_IDENTITY.fingerprint).not.toBe(
       JUDGE_ENSEMBLE_ANALYSIS_IDENTITY.fingerprint,
     );
+    const implementations = createJudgeAggregationAnalysisNodes();
+    expect(implementations.has('omk.judge-replicate-table/v1')).toBe(false);
+    expect(implementations.has('omk.judge-ensemble-table/v1')).toBe(false);
   });
 
   it('preserves failed replicates while aggregating only observed rubric readings', async () => {
     const fixture = scoringFixture.judgeRepeat;
+    const samplingUnitIds = {
+      pairingBlockId: PAIRING_BLOCK_ID,
+      clusterId: CLUSTER_ID,
+      stratumId: STRATUM_ID,
+    };
     expect(fixture.replayScores[1]).toBe(0);
     const result = await execute(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
       context(JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID, [metricInput([
-        row({ member: 'alpha', replicateIndex: 0, score: fixture.replayScores[0] }),
+        row({
+          member: 'alpha',
+          replicateIndex: 0,
+          score: fixture.replayScores[0],
+          samplingUnitIds,
+        }),
         row({
           member: 'alpha',
           replicateIndex: 2,
           rowStatus: 'evaluation-failed',
+          samplingUnitIds,
         }),
-        row({ member: 'alpha', replicateIndex: 5, score: fixture.replayScores[2] }),
+        row({
+          member: 'alpha',
+          replicateIndex: 5,
+          score: fixture.replayScores[2],
+          samplingUnitIds,
+        }),
       ])]),
     );
     expect(result.analysisStatus).toBe('completed');
@@ -265,6 +289,7 @@ describe('judge aggregation Analysis nodes', () => {
         aggregateStatus: 'observed',
         mean: fixture.expected.score,
         sampleStddev: fixture.expected.scoreStddev,
+        samplingUnitIds,
         coverage: {
           planned: 3,
           observed: 2,
@@ -435,6 +460,7 @@ describe('judge aggregation Analysis nodes', () => {
         groups: Array<{
           mean: number;
           sampleStddev: number;
+          samplingUnitIds: SamplingUnitIds;
           coverage: { observed: number };
           replicates: unknown[];
           groupId: string;
@@ -444,6 +470,9 @@ describe('judge aggregation Analysis nodes', () => {
     const mutations: Array<(candidate: MutableEnvelope) => void> = [
       (candidate) => { candidate.value.groups[0].mean = 1; },
       (candidate) => { candidate.value.groups[0].sampleStddev = 0; },
+      (candidate) => {
+        candidate.value.groups[0].samplingUnitIds = { clusterId: CLUSTER_ID };
+      },
       (candidate) => { candidate.value.groups[0].coverage.observed = 1; },
       (candidate) => { candidate.value.groups[0].replicates.reverse(); },
       (candidate) => { candidate.value.groups[0].groupId = digestCanonicalJson('tampered'); },
@@ -480,6 +509,7 @@ describe('judge aggregation Analysis nodes', () => {
       value: {
         groups: Array<{
           consensus: number;
+          samplingUnitIds: SamplingUnitIds;
           coverage: { observedMembers: number };
           agreement: { meanAbsDiff: number };
           members: Array<{ sourceRowIds: string[] }>;
@@ -490,6 +520,9 @@ describe('judge aggregation Analysis nodes', () => {
       (candidate) => { candidate.value.groups[0].consensus = 4; },
       (candidate) => { candidate.value.groups[0].agreement.meanAbsDiff = 1; },
       (candidate) => { candidate.value.groups[0].coverage.observedMembers = 1; },
+      (candidate) => {
+        candidate.value.groups[0].samplingUnitIds = { clusterId: CLUSTER_ID };
+      },
       (candidate) => {
         candidate.value.groups[0].members[1].sourceRowIds = [
           ...candidate.value.groups[0].members[0].sourceRowIds,
@@ -528,6 +561,50 @@ describe('judge aggregation Analysis nodes', () => {
         row({ member: 'alpha', replicateIndex: 0, score: 5 }),
       ])], controller.signal),
     )).rejects.toThrow('cancelled-by-test');
+  });
+
+  it('fails closed when replicate rows or ensemble members disagree on sampling lineage', async () => {
+    await expect(execute(
+      JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
+      context(JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID, [metricInput([
+        row({
+          member: 'alpha',
+          replicateIndex: 0,
+          score: 5,
+          samplingUnitIds: { pairingBlockId: PAIRING_BLOCK_ID },
+        }),
+        row({
+          member: 'alpha',
+          replicateIndex: 1,
+          score: 3,
+          samplingUnitIds: { pairingBlockId: digestCanonicalJson('other-pairing-block') },
+        }),
+      ])]),
+    )).rejects.toThrow('sampling-unit lineage');
+
+    const replicate = await execute(
+      JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
+      context(JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID, [metricInput([
+        row({
+          member: 'alpha',
+          replicateIndex: 0,
+          score: 5,
+          samplingUnitIds: { pairingBlockId: PAIRING_BLOCK_ID },
+        }),
+        row({
+          member: 'beta',
+          replicateIndex: 0,
+          score: 3,
+          samplingUnitIds: { pairingBlockId: digestCanonicalJson('other-pairing-block') },
+        }),
+      ])]),
+    );
+    await expect(execute(
+      JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
+      context(JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID, [
+        analysisInput(completedValue(replicate)),
+      ]),
+    )).rejects.toThrow('sampling-unit lineage');
   });
 
   it('rejects a same-URI Analysis input with a different schema digest', async () => {
@@ -616,6 +693,15 @@ describe('judge aggregation Analysis nodes', () => {
       outputResultId: 'ensemble-table',
     }];
     definition.comparisons[0].metricIds = ['rubric-score'];
+    definition.experiment.sampling = {
+      experimentalUnit: 'sample',
+      pairingKey: '/sampleId',
+      repeatedMeasures: true,
+      resamplingUnit: 'paired-block',
+      estimatorId: 'bootstrap.paired-difference-percentile/v1',
+      seedCoupling: 'shared-within-block',
+    };
+    definition.experiment.scheduling = { schedulingKind: 'randomized-block', blockSize: 2 };
     delete definition.decisionPolicy;
     const policy = validPolicy();
     delete policy.execution.timeoutMs;
@@ -774,6 +860,8 @@ describe('judge aggregation Analysis nodes', () => {
     ));
     expect(ensembleRecord?.analysisStatus).toBe('completed');
     if (ensembleRecord?.analysisStatus !== 'completed') throw new Error('missing ensemble result');
+    const executionPairingBlockId = execution.bundle.records[0]?.samplingUnitIds.pairingBlockId;
+    expect(executionPairingBlockId).toBeDefined();
     const completedEvaluations = evaluation.bundle.records.filter((record) => (
       record.evaluationStatus === 'completed'
     ));
@@ -785,6 +873,7 @@ describe('judge aggregation Analysis nodes', () => {
     expect(ensembleRecord.value).toMatchObject({
       groups: expect.arrayContaining([expect.objectContaining({
         consensus: 3.75,
+        samplingUnitIds: { pairingBlockId: executionPairingBlockId },
         agreement: { agreementStatus: 'observed', meanAbsDiff: 1.5, pairCount: 1 },
       })]),
     });
