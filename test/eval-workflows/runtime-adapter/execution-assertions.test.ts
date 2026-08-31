@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   EXECUTION_FACTS_SCHEMA_VERSION,
@@ -48,6 +50,19 @@ import {
   validDefinition,
   validPolicy,
 } from '../../evaluation-core/compiler/fixtures.js';
+
+interface ScoringFixture {
+  deterministicAssertions: {
+    output: string;
+    assertions: Assertion[];
+    expected: { details: JsonValue[] };
+  };
+}
+
+const scoringFixture = JSON.parse(readFileSync(fileURLToPath(new URL(
+  '../../fixtures/evaluation-core/scoring-equivalence-v1.json',
+  import.meta.url,
+)), 'utf8')) as ScoringFixture;
 
 const FACTS = ExecutionFactsSchema.parse({
   schemaVersion: EXECUTION_FACTS_SCHEMA_VERSION,
@@ -496,7 +511,7 @@ describe('execution-aware deterministic assertion Evaluator', () => {
   it('uses reported aggregate cost and trial wall-clock latency from execution facts', async () => {
     const criteria = [
       criterion('cost', { type: 'cost_max', value: 0.03 }),
-      criterion('latency', { type: 'latency_max', value: 150 }),
+      criterion('latency', { type: 'latency_max', value: 100 }),
     ];
     const result = await evaluateDirect(criteria, [contextBinding(criteria), factsBinding()]);
     expect(result.observations.map((value) => ({
@@ -505,7 +520,7 @@ describe('execution-aware deterministic assertion Evaluator', () => {
       observed: value.observationStatus === 'observed' ? value.value : undefined,
     }))).toEqual([
       { metricId: 'cost', status: 'observed', observed: true },
-      { metricId: 'latency', status: 'observed', observed: true },
+      { metricId: 'latency', status: 'observed', observed: false },
     ]);
     expect(result.observations[0].evidence?.classification).toBe('secret');
   });
@@ -557,6 +572,93 @@ describe('execution-aware deterministic assertion Evaluator', () => {
     });
   });
 
+  it('keeps partial and mixed-currency retries missing while using complete retry aggregate cost', async () => {
+    const criteria = [criterion('cost', { type: 'cost_max', value: 0.03 })];
+    const attempts = [{
+      attemptNumber: 1,
+      attemptStatus: 'failed' as const,
+      activeDurationMs: { reportingStatus: 'reported' as const, value: 80 },
+      usageReportingStatus: 'reported' as const,
+      providerCostReportingStatus: 'reported' as const,
+    }, {
+      attemptNumber: 2,
+      attemptStatus: 'completed' as const,
+      activeDurationMs: { reportingStatus: 'reported' as const, value: 90 },
+      usageReportingStatus: 'reported' as const,
+      providerCostReportingStatus: 'reported' as const,
+    }];
+    const base = {
+      ...FACTS,
+      attemptCount: 2,
+      retryCount: 1,
+      attempts,
+      timing: {
+        activeDurationMs: { reportingStatus: 'reported' as const, value: 170 },
+        wallClockDurationMs: { reportingStatus: 'reported' as const, value: 220 },
+      },
+    };
+    const complete = ExecutionFactsSchema.parse({
+      ...base,
+      usage: {
+        ...FACTS.usage,
+        providerCost: {
+          reportingStatus: 'reported',
+          amount: 0.04,
+          currency: 'USD',
+          reportedByProvider: true,
+        },
+      },
+    });
+    const completeResult = await evaluateDirect(criteria, [
+      contextBinding(criteria),
+      factsBinding(complete),
+    ]);
+    expect(completeResult.observations[0]).toMatchObject({
+      observationStatus: 'observed',
+      value: false,
+    });
+
+    const partial = ExecutionFactsSchema.parse({
+      ...base,
+      attempts: [attempts[0], {
+        ...attempts[1],
+        usageReportingStatus: 'unreported',
+        providerCostReportingStatus: 'unreported',
+      }],
+      usage: {
+        usageRecordStatus: 'partial',
+        inputTokens: { reportingStatus: 'partial', value: 10, reportedAttemptCount: 1 },
+        outputTokens: { reportingStatus: 'partial', value: 4, reportedAttemptCount: 1 },
+        totalTokens: { reportingStatus: 'partial', value: 14, reportedAttemptCount: 1 },
+        providerCost: { reportingStatus: 'partial', reportedAttemptCount: 1 },
+      },
+    });
+    const partialResult = await evaluateDirect(criteria, [
+      contextBinding(criteria),
+      factsBinding(partial),
+    ]);
+    expect(partialResult.observations[0]).toMatchObject({
+      observationStatus: 'missing',
+      reasonCode: 'provider-cost-unavailable',
+    });
+
+    const mixed = ExecutionFactsSchema.parse({
+      ...base,
+      usage: {
+        ...FACTS.usage,
+        providerCost: { reportingStatus: 'mixed-currency', currencies: ['EUR', 'USD'] },
+      },
+    });
+    const mixedResult = await evaluateDirect(criteria, [
+      contextBinding(criteria),
+      factsBinding(mixed),
+    ]);
+    expect(mixedResult.observations[0]).toMatchObject({
+      observationStatus: 'missing',
+      reasonCode: 'provider-cost-unavailable',
+    });
+  });
+
   it('uses independent numTurns and source-neutral tool/mock facts', async () => {
     expect(SourceNeutralTraceSchema.safeParse({
       ...TRACE,
@@ -569,13 +671,18 @@ describe('execution-aware deterministic assertion Evaluator', () => {
     const criteria = [
       criterion('turns', { type: 'turns_max', value: 1 }),
       criterion('called', { type: 'tools_called', values: ['Read'] }),
+      criterion('not-called', { type: 'tools_not_called', values: ['Bash'] }),
+      criterion('count-max', { type: 'tools_count_max', value: 1 }),
+      criterion('count-min', { type: 'tools_count_min', value: 1 }),
       criterion('tool-output', { type: 'tool_output_contains', value: 'Read:fixture' }),
+      criterion('tool-input', { type: 'tool_input_contains', value: 'Read:fixture' }),
+      criterion('tool-input-not', { type: 'tool_input_not_contains', value: 'Read:missing' }),
       criterion('mock', { type: 'mock_hit', value: 'Read:1', threshold: 2 }),
     ];
     const result = await evaluateDirect(criteria, [contextBinding(criteria), traceBinding()]);
     expect(result.observations.map((value) => (
       value.observationStatus === 'observed' ? value.value : value.reasonCode
-    ))).toEqual([true, true, true, true]);
+    ))).toEqual([true, true, true, true, true, true, true, true, true]);
 
     const withoutMocks = SourceNeutralTraceSchema.parse({
       ...TRACE,
@@ -590,22 +697,48 @@ describe('execution-aware deterministic assertion Evaluator', () => {
       observationStatus: 'missing',
       reasonCode: 'mock-stats-unavailable',
     });
+
+    const emptyTrace = SourceNeutralTraceSchema.parse({
+      ...TRACE,
+      turns: [],
+      toolCalls: [],
+      numTurns: 0,
+      fullNumTurns: 0,
+      numSubAgents: 0,
+      mockStats: undefined,
+    });
+    const emptyCriteria = [
+      criterion('not-called', { type: 'tools_not_called', values: ['Read'] }),
+      criterion('count-max', { type: 'tools_count_max', value: 0 }),
+      criterion('count-min', { type: 'tools_count_min', value: 1 }),
+    ];
+    const emptyResult = await evaluateDirect(emptyCriteria, [
+      contextBinding(emptyCriteria),
+      traceBinding(emptyTrace),
+    ]);
+    expect(emptyResult.observations.map((value) => (
+      value.observationStatus === 'observed' ? value.value : value.reasonCode
+    ))).toEqual([true, true, false]);
   });
 
   it('evaluates nested mixed assertions with the exact dependency union', async () => {
-    const mixed: Assertion = {
-      type: 'assert-set',
-      mode: 'all',
-      children: [
-        { type: 'contains', value: 'hello' },
-        { type: 'tools_called', values: ['Read'] },
-      ],
-    };
+    const mixed = scoringFixture.deterministicAssertions.assertions[4];
+    const fixtureTrace = SourceNeutralTraceSchema.parse({
+      ...TRACE,
+      toolCalls: [{
+        tool: 'Bash',
+        input: { command: 'true' },
+        output: '',
+        status: 'success',
+        statusSource: 'runtime',
+        success: true,
+      }],
+    });
     const criteria = [criterion('mixed', mixed)];
     const result = await evaluateDirect(criteria, [
       contextBinding(criteria),
-      outputBinding(),
-      traceBinding(),
+      outputBinding(scoringFixture.deterministicAssertions.output),
+      traceBinding(fixtureTrace),
     ], { extraMetricIds: ['not-applicable'] });
     expect(result.observations[0]).toMatchObject({
       metricId: 'mixed',
@@ -613,7 +746,7 @@ describe('execution-aware deterministic assertion Evaluator', () => {
       value: true,
       evidence: {
         classification: 'gold',
-        value: { detail: { type: 'assert-set', passed: true } },
+        value: { detail: scoringFixture.deterministicAssertions.expected.details[4] },
       },
     });
     expect(result.observations[1]).toMatchObject({
