@@ -1,13 +1,6 @@
 import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types/index.js';
 import { buildJudgePrompt, JUDGE_SYSTEM_PROMPT } from '../shared/llm-prompts/judge-prompts.js';
-import {
-  isToolCallCancelled,
-  isToolCallFailure,
-  isToolCallSuccess,
-  isToolCallUnknown,
-  toolCallStatus,
-} from '../shared/tool-call-status.js';
-import { incrementRecordCount } from '../shared/record-count.js';
+import { buildJudgeTraceSummary } from '../shared/llm-prompts/judge-trace.js';
 // 评分类 prompt 已收口到 shared/llm-prompts/judge-prompts.ts(单一来源 + prompt-registry 冻结)。
 // 这里 re-export 保对外 API 不破:既有消费方仍从 grading/judge.js import 这两个符号。
 export { buildJudgePrompt, getJudgePromptHash } from '../shared/llm-prompts/judge-prompts.js';
@@ -93,87 +86,8 @@ function getErrorMessage(err: unknown): string {
  * 编码在 Bash 命令字符串里(`mcporter --tool X` / `code-host pr show Y`),判官看不到
  * 就会下"没调指定工具"的错误结论。这个预览是判官识别这层语义的唯一通道。
  */
-const INPUT_PREVIEW_MAX = 280;
-const TOOL_DETAIL_MAX_CALLS = 12;
-function previewToolInput(tc: ToolCallInfo): string {
-  const inp = tc.input as unknown;
-  if (inp == null) return '';
-  // Bash 是 wrapper 大头,优先显示 command 字段
-  if (typeof inp === 'object' && 'command' in inp && typeof (inp as { command: unknown }).command === 'string') {
-    const cmd = (inp as { command: string }).command;
-    return cmd.length > INPUT_PREVIEW_MAX ? cmd.slice(0, INPUT_PREVIEW_MAX) + '…' : cmd;
-  }
-  const repr = typeof inp === 'string' ? inp : JSON.stringify(inp);
-  return repr.length > INPUT_PREVIEW_MAX ? repr.slice(0, INPUT_PREVIEW_MAX) + '…' : repr;
-}
-
 export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
-  if ((!turns || turns.length === 0) && (!toolCalls || toolCalls.length === 0)) return null;
-
-  const lines: string[] = [];
-
-  if (toolCalls && toolCalls.length > 0) {
-    lines.push(`共调用 ${toolCalls.length} 个工具：`);
-    const successCount = toolCalls.filter(isToolCallSuccess).length;
-    const failureCount = toolCalls.filter(isToolCallFailure).length;
-    const cancelledCount = toolCalls.filter(isToolCallCancelled).length;
-    const unknownCount = toolCalls.filter(isToolCallUnknown).length;
-    lines.push(`  成功 ${successCount}/${toolCalls.length}`);
-    if (failureCount > 0) lines.push(`  失败 ${failureCount}/${toolCalls.length}`);
-    if (cancelledCount > 0) lines.push(`  取消 ${cancelledCount}/${toolCalls.length}`);
-    if (unknownCount > 0) lines.push(`  状态未知 ${unknownCount}/${toolCalls.length}`);
-
-    const dist: Record<string, number> = {};
-    for (const tc of toolCalls) {
-      incrementRecordCount(dist, tc.tool);
-    }
-    lines.push(`  工具分布：${Object.entries(dist).map(([k, v]) => `${k}(${v})`).join(', ')}`);
-    const failedTools = toolCalls.filter(isToolCallFailure).map((tc) => tc.tool);
-    if (failedTools.length > 0) {
-      lines.push(`  失败工具：${[...new Set(failedTools)].join(', ')}`);
-    }
-
-    // Tool input 详情(critical for wrapper-style skill 的判官准确性,见 INPUT_PREVIEW_MAX 注释)。
-    // 截 TOOL_DETAIL_MAX_CALLS 条防止长 trace 膨胀 prompt。
-    lines.push(`  调用详情(注意:Bash 命令内的 \`mcporter --tool X\` / \`code-host Y\` 等才是真实语义调用):`);
-    const detailCap = Math.min(toolCalls.length, TOOL_DETAIL_MAX_CALLS);
-    for (let i = 0; i < detailCap; i++) {
-      const tc = toolCalls[i];
-      const resultStatus = toolCallStatus(tc);
-      const status = resultStatus === 'failure'
-        ? ' [失败]'
-        : resultStatus === 'cancelled' ? ' [取消]'
-        : resultStatus === 'unknown' ? ' [状态未知]' : '';
-      lines.push(`    [${i + 1}] ${tc.tool}${status} → ${previewToolInput(tc)}`);
-    }
-    if (toolCalls.length > TOOL_DETAIL_MAX_CALLS) {
-      lines.push(`    ... 还有 ${toolCalls.length - TOOL_DETAIL_MAX_CALLS} 次调用`);
-    }
-  }
-
-  if (turns && turns.length > 0) {
-    lines.push('');
-    lines.push('执行轨迹摘要：');
-    const userTurns = turns.filter((turn) => turn.role === 'user').length;
-    const assistantTurns = turns.filter((turn) => turn.role === 'assistant').length;
-    const toolTurns = turns.filter((turn) => turn.role === 'tool').length;
-    lines.push(`  共 ${turns.length} 步（user ${userTurns} / assistant ${assistantTurns} / tool ${toolTurns}）`);
-    const maxTurns = Math.min(turns.length, 10);
-    for (let i = 0; i < maxTurns; i++) {
-      const t = turns[i];
-      const preview = t.content.slice(0, 100) + (t.content.length > 100 ? '...' : '');
-      if (t.role === 'assistant' && t.toolCalls?.length) {
-        lines.push(`  [${i + 1}] assistant: 调用 ${t.toolCalls.map((tc) => tc.tool).join(', ')}`);
-      } else if (t.role === 'tool') {
-        lines.push(`  [${i + 1}] tool: ${preview}`);
-      } else {
-        lines.push(`  [${i + 1}] ${t.role}: ${preview}`);
-      }
-    }
-    if (turns.length > maxTurns) lines.push(`  ... 还有 ${turns.length - maxTurns} 步`);
-  }
-
-  return lines.join('\n');
+  return buildJudgeTraceSummary(turns, toolCalls);
 }
 
 export async function llmJudge({ output, rubric, prompt, executor, model, traceSummary, lengthDebias }: LlmJudgeOptions): Promise<DimensionResult> {

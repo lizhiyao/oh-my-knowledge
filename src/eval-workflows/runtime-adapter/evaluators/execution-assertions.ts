@@ -34,7 +34,7 @@ import {
 import {
   assertionDetail,
   assertionSchemaIdentity,
-  mostRestrictedAssertionClassification,
+  mostRestrictedEvaluatorClassification,
   parseAssertionCriteria,
   type AssertionCriterion,
 } from './assertion-common.js';
@@ -415,7 +415,7 @@ SameProcessEvaluatorImplementation<undefined, RecordState> {
         evaluateAssertion: createIsolatedDeterministicAssertionEvaluator(),
         criteriaByMetricId: new Map(criteria.map((criterion) => [criterion.metricId, criterion])),
         metricIds: record.metrics.map((metric) => metric.metricId),
-        evidenceClassification: mostRestrictedAssertionClassification(
+        evidenceClassification: mostRestrictedEvaluatorClassification(
           criteriaBinding.classification,
           ...sourceBindings.map((sourceBinding) => sourceBinding.classification),
         ),
