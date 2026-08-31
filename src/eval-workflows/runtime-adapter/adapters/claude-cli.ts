@@ -706,12 +706,12 @@ async function executeAttempt(
   const attemptState = await materializeAttemptState(runState);
   let mockHandle: CliMockHandle | undefined;
   try {
-    mockHandle = runState.mocks === undefined
+    mockHandle = trialState.mocks === undefined
       ? undefined
       : materializeForCliConfigDir(
-          [...runState.mocks],
+          [...trialState.mocks],
           undefined,
-          runState.mocksStrict,
+          trialState.mocksStrict,
           configuration.hookNodeExecutablePath,
         ) ?? undefined;
   } catch {
@@ -767,7 +767,7 @@ async function executeAttempt(
     );
   }
   const outputClassification = mergeOutputClassification(
-    runState.classification,
+    trialState.classification,
     configuration.environmentOutputClassification,
   );
   return {

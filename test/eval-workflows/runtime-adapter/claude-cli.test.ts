@@ -75,6 +75,7 @@ async function adapterFixture(options: Readonly<{
   workspace?: boolean;
   mcp?: boolean;
   mocks?: boolean;
+  mockSampleIds?: readonly string[];
   mockTool?: string;
   allowedTools?: readonly string[];
   allowedSkills?: readonly string[];
@@ -149,6 +150,7 @@ async function adapterFixture(options: Readonly<{
       ...(options.mcp ? { mcpConfig: mcpDescriptor } : {}),
       ...(options.mocks ? {
         mocks: [{
+          sampleIds: [...(options.mockSampleIds ?? ['sample-a'])],
           matchRules: { tool: options.mockTool ?? 'Bash', match: { command_glob: '*' } },
           strict: true,
           payloads: [mockDescriptor],
@@ -307,9 +309,11 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  sampleId = 'sample-a',
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    sampleId,
     targetId: 'target-a',
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
@@ -587,6 +591,7 @@ describe('Claude CLI Core Executor adapter', () => {
       executionPlanDigest: digest({ plan: 'a' }),
     });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
       protocolId: 'omk.invoke/v1',
       input: { question: 'Q' },
@@ -618,6 +623,24 @@ describe('Claude CLI Core Executor adapter', () => {
       await expect(realpath(capture.configDirectory)).rejects.toThrow();
       await expect(realpath(capture.mockFile)).rejects.toThrow();
     }
+  });
+
+  it('selects mock controls by sampleId without exposing another sample controls', async () => {
+    const fixture = await adapterFixture({ mocks: true, mockSampleIds: ['sample-a'] });
+    const capture = join(fixture.root, 'capture.json');
+    const result = await execute(
+      await createAdapter(fixture, { OMK_TEST_CAPTURE: capture }),
+      fixture.target.config as JsonValue,
+      new AbortController().signal,
+      'sample-b',
+    );
+    const observed = JSON.parse(await readFile(capture, 'utf8')) as {
+      mockFileExists: boolean;
+    };
+    expect(observed.mockFileExists).toBe(false);
+    expect(result.output?.classification).toBe('sensitive');
+    expect(result.output?.classification).not.toBe('secret');
+    expect(result.trace?.value).not.toMatchObject({ mockStats: expect.anything() });
   });
 
   it('enforces built-in tool allow-list and complete skill disablement', async () => {

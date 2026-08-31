@@ -149,6 +149,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
             config: { classification: 'public', value: { network: 'mock-only' } },
           },
           mocks: [{
+            sampleIds: ['sample-2'],
             strict: true,
             matchRules: { tool: 'search', query: { exact: 'Q' } },
             payloads: [mockPayload],
@@ -174,6 +175,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           allowedTools: ['search'],
           allowedSkills: [],
           mocks: [{
+            sampleIds: ['sample-2'],
             strict: true,
             matchRules: { query: { exact: 'Q' }, tool: 'search' },
             payloads: [mockPayload],
@@ -199,7 +201,9 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         evaluatorId: 'rubric',
         evaluatorKind: 'llm-rubric',
         runtimeBindingKind: 'judge',
+        implementationId: 'omk.rubric-judge/v1',
         instrumentId: 'rubric-correctness-v1',
+        runtimePromptVariant: 'rubric-length-debias-on/v1',
         replicateGroupId: 'rubric-primary',
         metricIds: ['rubric-score', 'dimension-score', 'rag-score'],
         inputs: [
@@ -223,17 +227,13 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       members: [
         {
           ensembleMemberId: 'judge-b',
-          implementationId: 'openai-judge-adapter/v1',
           executorId: 'openai-api',
           model: 'judge-b',
-          promptVariant: 'rubric-length-debias-on/v1',
         },
         {
           ensembleMemberId: 'judge-a',
-          implementationId: 'anthropic-judge-adapter/v1',
           executorId: 'anthropic-api',
           model: 'judge-a',
-          promptVariant: 'rubric-length-debias-on/v1',
         },
       ],
     },
@@ -288,7 +288,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           implementationId: 'bootstrap.mean-difference/v1',
           inputs: [{
             inputKind: 'comparison',
-            referenceId: 'control-vs-treatments',
+            referenceId: 'control-vs-treatment',
             treatmentTargetId: 'treatment',
             metricId: 'rubric-score',
           }],

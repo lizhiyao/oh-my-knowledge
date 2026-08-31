@@ -336,6 +336,7 @@ async function execute(
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    sampleId: 'sample-a',
     targetId: 'target-a',
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
@@ -425,6 +426,7 @@ describe('Codex SDK Core Executor adapter', () => {
     const port = await createAdapter(fixture);
     const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
       protocolId: 'omk.invoke/v1',
       input: 'Q',
@@ -574,6 +576,7 @@ describe('Codex SDK Core Executor adapter', () => {
     const port = await createAdapter(fixture);
     const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
       protocolId: 'omk.invoke/v1',
       input: 'Q',

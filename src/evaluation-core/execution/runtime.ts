@@ -635,6 +635,7 @@ function trialContext(
   if (sample === undefined) throw new Error('Planned sample disappeared');
   const controlled = plan.execution.experiment.sampling.seedCoupling !== 'uncontrolled';
   return deepFreeze(snapshotJson({
+    sampleId: coordinate.sampleId,
     targetId: coordinate.targetId,
     protocolId: binding.target.protocolId,
     input: sample.input,

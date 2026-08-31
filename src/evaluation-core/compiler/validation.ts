@@ -92,7 +92,23 @@ function validateDesignPointers(definition: EvaluationDefinition): void {
 }
 
 function validateEvaluatorBindings(definition: EvaluationDefinition): void {
+  const datasetSampleIds = new Set(definition.dataset.samples.map((sample) => sample.sampleId));
   for (const evaluator of definition.evaluators) {
+    const applicableSampleIds = evaluator.applicableSampleIds;
+    if (applicableSampleIds !== undefined) {
+      assertUnique(applicableSampleIds, `evaluator:${evaluator.evaluatorId}:applicable-sample`);
+      for (const sampleId of applicableSampleIds) {
+        assertReference(
+          datasetSampleIds,
+          sampleId,
+          `evaluators.${evaluator.evaluatorId}.applicableSampleIds`,
+          'EvaluationSample',
+        );
+      }
+    }
+    const applicableSampleIdSet = applicableSampleIds === undefined
+      ? undefined
+      : new Set(applicableSampleIds);
     assertUnique(
       evaluator.inputs.map((binding) => binding.bindingId),
       `evaluator:${evaluator.evaluatorId}:binding`,
@@ -116,21 +132,23 @@ function validateEvaluatorBindings(definition: EvaluationDefinition): void {
         continue;
       }
       const field = binding.sourceKind === 'expected' ? 'expected' : 'evaluationContext';
-      const samplesWithSource = definition.dataset.samples.filter(
-        (sample) => sample[field] !== undefined,
+      const applicableSamples = definition.dataset.samples.filter(
+        (sample) => applicableSampleIdSet === undefined
+          || applicableSampleIdSet.has(sample.sampleId),
       );
-      if (samplesWithSource.length === 0) {
-        throw definitionError(
-          'EVAL_DEFINITION_MISSING_REFERENCE',
-          `Evaluator binding 引用了 Dataset 中不存在的“${binding.sourceKind}”数据源。`,
-          {
-            evaluatorId: evaluator.evaluatorId,
-            bindingId: binding.bindingId,
-            sourceKind: binding.sourceKind,
-          },
-        );
-      }
-      for (const sample of samplesWithSource) {
+      for (const sample of applicableSamples) {
+        if (sample[field] === undefined) {
+          throw definitionError(
+            'EVAL_DEFINITION_MISSING_REFERENCE',
+            `Evaluator binding 的适用 sample 缺少“${binding.sourceKind}”数据源。`,
+            {
+              evaluatorId: evaluator.evaluatorId,
+              bindingId: binding.bindingId,
+              sourceKind: binding.sourceKind,
+              sampleId: sample.sampleId,
+            },
+          );
+        }
         if (resolvesPointer(sample[field], binding.pointer)) continue;
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
