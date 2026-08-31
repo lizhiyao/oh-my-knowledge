@@ -35,6 +35,7 @@ import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
+  DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -1143,6 +1144,9 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     )).toBe(true);
     expect(builtins.analysisNodesByImplementationId.has(
       JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
     )).toBe(true);
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
