@@ -300,6 +300,21 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(applicability).toEqual(expect.arrayContaining([
       ['sample-a'], ['sample-a'], ['sample-b'],
     ]));
+    expect(compiled.definition.decisionPolicy?.parameters).not.toMatchObject({
+      sources: { judgeEnsemble: expect.anything() },
+    });
+  });
+
+  it('uses only an explicit overall rubric for the release judge-agreement gate', async () => {
+    const root = await fixture('overall-agreement');
+    const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(
+      request(root),
+      { projectRoot: root, materializationRoot: join(root, '.omk', 'resolved') },
+    ));
+
+    expect(compiled.definition.decisionPolicy?.parameters).toMatchObject({
+      sources: { judgeEnsemble: { replicateGroupId: expect.stringContaining('rubric-') } },
+    });
   });
 
   it('keeps production sample validation strict despite the legacy ambient escape hatch', async () => {

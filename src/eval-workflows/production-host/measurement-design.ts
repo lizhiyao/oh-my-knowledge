@@ -547,11 +547,13 @@ export function buildProductionMeasurementDesign(
         seed: DEFAULT_BOOTSTRAP_SEED,
       },
     });
-    const firstJudge = [...rubricDimensions.values()][0];
+    // Legacy release gating only measured agreement for the top-level rubric.
+    // Choosing an arbitrary named dimension would make verdicts depend on lexical order.
+    const decisionJudge = rubricDimensions.get('overall');
     const analysisResultIds = [
       'composite-table',
       'bootstrap-family',
-      ...(firstJudge === undefined ? [] : [`judge-ensemble-${firstJudge.metricId}`]),
+      ...(decisionJudge === undefined ? [] : [`judge-ensemble-${decisionJudge.metricId}`]),
     ];
     const holdout = request.values.measurement.holdoutRatio === undefined
       ? null
@@ -563,7 +565,7 @@ export function buildProductionMeasurementDesign(
       comparisonFamily: treatments.map((target) => ({
         comparisonId: `control-vs-${target.targetId}`,
         treatmentTargetId: target.targetId,
-        metricId: firstJudge?.metricId ?? metrics[0]!.metricId,
+        metricId: decisionJudge?.metricId ?? metrics[0]!.metricId,
         analysisResultId: 'bootstrap-family',
       })),
       comparisonFamilyResultId: 'bootstrap-family',
@@ -572,12 +574,12 @@ export function buildProductionMeasurementDesign(
         sources: {
           compositeResultId: 'composite-table',
           bootstrapFamilyResultId: 'bootstrap-family',
-          ...(firstJudge === undefined ? {} : {
+          ...(decisionJudge === undefined ? {} : {
             judgeEnsemble: {
-              analysisResultId: `judge-ensemble-${firstJudge.metricId}`,
-              metricId: firstJudge.metricId,
+              analysisResultId: `judge-ensemble-${decisionJudge.metricId}`,
+              metricId: decisionJudge.metricId,
               instrumentId: rubricInstrumentId,
-              replicateGroupId: `rubric-${firstJudge.dimensionId}`,
+              replicateGroupId: `rubric-${decisionJudge.dimensionId}`,
             },
           }),
         },
