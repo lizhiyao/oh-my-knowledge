@@ -331,7 +331,12 @@ function captureClock(clock: EvaluationEngineClock): EvaluationEngineClock {
   return capturePort(clock, ['monotonicNow', 'timestamp', 'sleep'], 'support.clock');
 }
 
-function captureSchemaValidators(
+/**
+ * Build the exact validator registry shared by execution, resume admission,
+ * and Series verification. Keeping this merge in one place prevents a host
+ * workflow from accepting evidence that the executing Runtime would reject.
+ */
+export function createOmkEvaluationSchemaValidators(
   hostValidators: ReadonlyMap<string, CoreSchemaValidator> | undefined,
 ): ReadonlyMap<string, CoreSchemaValidator> {
   let hostEntries: Array<[string, CoreSchemaValidator]>;
@@ -778,7 +783,9 @@ export async function createOmkEvaluationRuntime(
   const compiled = snapshotCompiled(input.compiled);
   const resources = captureResourceOptions(input.resources);
   const clock = captureClock(input.support.clock);
-  const schemaValidators = captureSchemaValidators(input.support.schemaValidators);
+  const schemaValidators = createOmkEvaluationSchemaValidators(
+    input.support.schemaValidators,
+  );
   const executionCache = captureCachePort({
     binding: input.support.executionCache,
     expectedSource: compiled.orchestration.cacheSources?.executionSourceLocator,
