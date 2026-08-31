@@ -47,6 +47,10 @@ import {
   createDimensionAnalysisNodes,
   createDimensionParameterSchemaValidators,
   createDimensionTableSchemaValidators,
+  createCompositeAnalysisNodes,
+  createCompositeParameterSchemaValidators,
+  createCompositeTableSchemaValidators,
+  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
@@ -633,12 +637,15 @@ describe('judge aggregation Analysis nodes', () => {
     const implementations = new Map([
       ...createJudgeAggregationAnalysisNodes(),
       ...createDimensionAnalysisNodes(),
+      ...createCompositeAnalysisNodes(),
     ]);
     const base = testRuntime({ evaluatorValueTypes: ['numeric'] });
     const customValidators = new Map([
       ...createJudgeAggregationSchemaValidators(),
       ...createDimensionParameterSchemaValidators(),
       ...createDimensionTableSchemaValidators(),
+      ...createCompositeParameterSchemaValidators(),
+      ...createCompositeTableSchemaValidators(),
     ]);
     const schemaValidators = new Map([
       ...base.schemaValidators,
@@ -713,6 +720,18 @@ describe('judge aggregation Analysis nodes', () => {
           dimensionId: 'correctness',
           metricId: 'rubric-score',
           analysisResultId: 'ensemble-table',
+        }],
+      },
+    }, {
+      analysisNodeKind: 'reducer',
+      nodeId: 'composite-table',
+      implementationId: COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'dimension-table' }],
+      outputResultId: 'composite-table',
+      parameters: {
+        layers: [{
+          layerId: 'judge', analysisResultId: 'dimension-table',
+          sourceKind: 'dimension', selector: 'aggregate',
         }],
       },
     }];
@@ -870,13 +889,15 @@ describe('judge aggregation Analysis nodes', () => {
       { schemaValidators },
     )).not.toThrow();
     expect(analysis.bundle.analysisBundleStatus).toBe('completed');
-    expect(analysis.bundle.records).toHaveLength(3);
+    expect(analysis.bundle.records).toHaveLength(4);
     expect(analysis.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'completed',
       'completed',
       'completed',
       'completed',
     ]);
     expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
@@ -930,6 +951,20 @@ describe('judge aggregation Analysis nodes', () => {
     expect(dimensionGroups).toHaveLength(2);
     expect(dimensionGroups.every((group) => canonicalizeJson(group.aggregate)
       === canonicalizeJson({ aggregateStatus: 'observed', mean: 3.75 }))).toBe(true);
+    const compositeRecord = analysis.bundle.records.find((record) => (
+      record.resultId === 'composite-table'
+    ));
+    expect(compositeRecord?.analysisStatus).toBe('completed');
+    if (compositeRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing composite result');
+    }
+    expect(compositeRecord.coverage).toMatchObject({ planned: 0, included: 0, comparable: 0 });
+    expect(compositeRecord.value).toMatchObject({
+      groups: expect.arrayContaining([expect.objectContaining({
+        coverage: { plannedLayers: 1, observedLayers: 1, missingLayers: 0 },
+        aggregate: { aggregateStatus: 'observed', score: 3.75 },
+      })]),
+    });
 
     const replicateImplementation = implementations.get(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
@@ -938,14 +973,17 @@ describe('judge aggregation Analysis nodes', () => {
       JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
     );
     const dimensionImplementation = implementations.get(DIMENSION_ANALYSIS_IMPLEMENTATION_ID);
+    const compositeImplementation = implementations.get(COMPOSITE_ANALYSIS_IMPLEMENTATION_ID);
     if (replicateImplementation === undefined
         || ensembleImplementation === undefined
-        || dimensionImplementation === undefined) {
+        || dimensionImplementation === undefined
+        || compositeImplementation === undefined) {
       throw new Error('missing judge aggregation implementations');
     }
     let failedReplicateDisposed = 0;
     let blockedEnsembleOpened = 0;
     let blockedDimensionOpened = 0;
+    let blockedCompositeOpened = 0;
     const failure = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
       analysisNodesByNodeId: new Map([
         ['replicate-table', {
@@ -976,6 +1014,14 @@ describe('judge aggregation Analysis nodes', () => {
             return dimensionImplementation.openRun(runContext);
           },
         }],
+        ['composite-table', {
+          identity: compositeImplementation.identity,
+          outputSchema: compositeImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedCompositeOpened += 1;
+            return compositeImplementation.openRun(runContext);
+          },
+        }],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -991,10 +1037,12 @@ describe('judge aggregation Analysis nodes', () => {
       'replicate-table': 'failed',
       'ensemble-table': 'not-evaluated',
       'dimension-table': 'not-evaluated',
+      'composite-table': 'not-evaluated',
     });
     expect(failedReplicateDisposed).toBe(1);
     expect(blockedEnsembleOpened).toBe(0);
     expect(blockedDimensionOpened).toBe(0);
+    expect(blockedCompositeOpened).toBe(0);
 
     const cancellation = new AbortController();
     cancellation.abort(new Error('cancelled-before-analysis'));
@@ -1003,6 +1051,7 @@ describe('judge aggregation Analysis nodes', () => {
         ['replicate-table', replicateImplementation],
         ['ensemble-table', ensembleImplementation],
         ['dimension-table', dimensionImplementation],
+        ['composite-table', compositeImplementation],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -1016,6 +1065,7 @@ describe('judge aggregation Analysis nodes', () => {
     });
     expect(cancelled.bundle.analysisBundleStatus).toBe('cancelled');
     expect(cancelled.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'not-evaluated',
       'not-evaluated',
       'not-evaluated',
       'not-evaluated',
