@@ -1,0 +1,278 @@
+import { describe, expect, it } from 'vitest';
+import {
+  bootstrapWithMetric,
+  drawBootstrapMetric,
+  summarizeBootstrapMetric,
+} from '../../../src/eval-core/bootstrap.js';
+import {
+  computeAgreementWithCI,
+  computeKrippendorffAlpha,
+} from '../../../src/grading/human-gold.js';
+import {
+  digestCanonicalJson,
+  schemaIdentityKey,
+} from '../../../src/evaluation-core/contracts/index.js';
+import {
+  AGREEMENT_TABLE_SCHEMA,
+  buildAgreementTable,
+  createAgreementTableSchemaValidators,
+  parseAgreementTableEnvelope,
+  type AgreementPair,
+  type AgreementParameters,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/index.js';
+
+function parameters(
+  sampleIds: string[],
+  overrides: Partial<AgreementParameters> = {},
+): AgreementParameters {
+  return {
+    source: {
+      analysisResultId: 'dimension-table',
+      sourceKind: 'dimension',
+      selector: 'aggregate',
+      targetId: 'treatment',
+    },
+    gold: {
+      contextPointer: '/goldScore',
+      annotatorId: 'human-a',
+      annotationVersion: 'v1',
+      scale: { min: 1, max: 5 },
+    },
+    sampleIds,
+    resamples: 1_000,
+    alpha: 0.05,
+    seed: 7,
+    ...overrides,
+  };
+}
+
+function comparable(sampleId: string, gold: number, judge: number): AgreementPair {
+  return {
+    sampleId,
+    gold: { ratingStatus: 'observed', score: gold },
+    judge: {
+      ratingStatus: 'observed',
+      score: judge,
+      sourceGroupIds: [digestCanonicalJson({ sampleId, source: 'dimension' })],
+      coverage: { plannedGroups: 1, observedGroups: 1, missingGroups: 0 },
+    },
+  };
+}
+
+function comparablePairs(values: Array<[number, number]>): AgreementPair[] {
+  return values.map(([gold, judge], index) => comparable(`sample-${index}`, gold, judge));
+}
+
+describe('Agreement Analysis table', () => {
+  it('matches the frozen finite alpha, kappa, Pearson, and bootstrap vector', () => {
+    const values: Array<[number, number]> = [
+      [1, 2], [2, 2], [3, 3], [4, 4], [5, 4],
+      [1, 1], [2, 3], [3, 3], [4, 5], [5, 5],
+    ];
+    const pairs = comparablePairs(values).reverse();
+    const sealed = parameters(values.map((_, index) => `sample-${index}`));
+    const value = buildAgreementTable(sealed, pairs);
+
+    expect(value.pairs.map((pair) => pair.sampleId)).toEqual(sealed.sampleIds);
+    expect(value.coverage).toEqual({
+      plannedPairs: 10,
+      comparablePairs: 10,
+      goldObservedPairs: 10,
+      goldUnavailablePairs: 0,
+      judgeObservedPairs: 10,
+      judgeMissingPairs: 0,
+      judgeUnavailablePairs: 0,
+    });
+    expect(value.statistics).toEqual({
+      krippendorffAlpha: { statisticStatus: 'observed', value: 0.8939 },
+      alphaInterval: {
+        intervalStatus: 'observed',
+        lower: 0.7177,
+        upper: 0.9719,
+        estimate: 0.8939,
+        samples: 1_000,
+        confidenceLevel: 0.95,
+        drawCoverage: { plannedDraws: 1_000, observedDraws: 1_000, missingDraws: 0 },
+      },
+      weightedKappa: { statisticStatus: 'observed', value: 0.8889 },
+      pearson: { statisticStatus: 'observed', value: 0.9058 },
+    });
+
+    const legacy = computeAgreementWithCI(values.map(([coderA, coderB], index) => ({
+      unitId: `sample-${index}`, coderA, coderB,
+    })), { samples: 1_000, seed: 7, alpha: 0.05 });
+    expect(value.statistics).toMatchObject({
+      krippendorffAlpha: { value: legacy.alpha },
+      alphaInterval: {
+        lower: legacy.alphaCI.low,
+        upper: legacy.alphaCI.high,
+        estimate: legacy.alphaCI.estimate,
+      },
+      weightedKappa: { value: legacy.weightedKappa },
+      pearson: { value: legacy.pearson },
+    });
+  });
+
+  it('retains undefined bootstrap draws as coverage instead of NaN', () => {
+    const pairs = comparablePairs([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
+    const sealed = parameters(pairs.map((pair) => pair.sampleId), {
+      resamples: 100,
+      seed: 42,
+    });
+    const value = buildAgreementTable(sealed, pairs);
+    expect(value.statistics).toEqual({
+      krippendorffAlpha: { statisticStatus: 'observed', value: 1 },
+      alphaInterval: {
+        intervalStatus: 'observed',
+        lower: 1,
+        upper: 1,
+        estimate: 1,
+        samples: 99,
+        confidenceLevel: 0.95,
+        drawCoverage: { plannedDraws: 100, observedDraws: 99, missingDraws: 1 },
+      },
+      weightedKappa: { statisticStatus: 'observed', value: 1 },
+      pearson: { statisticStatus: 'observed', value: 1 },
+    });
+    expect(JSON.stringify(value)).not.toContain('NaN');
+  });
+
+  it('maps insufficient, zero-disagreement, and unavailable evidence to structured missing', () => {
+    const singleton = buildAgreementTable(parameters(['sample-0'], { resamples: 100 }), [
+      comparable('sample-0', 1, 2),
+    ]);
+    expect(singleton.statistics).toEqual({
+      krippendorffAlpha: {
+        statisticStatus: 'missing', reasonCode: 'agreement-insufficient-pairs',
+      },
+      alphaInterval: {
+        intervalStatus: 'missing',
+        reasonCode: 'agreement-point-unobserved',
+        drawCoverage: { plannedDraws: 100, observedDraws: 0, missingDraws: 100 },
+      },
+      weightedKappa: {
+        statisticStatus: 'missing', reasonCode: 'agreement-insufficient-pairs',
+      },
+      pearson: {
+        statisticStatus: 'missing', reasonCode: 'agreement-insufficient-pairs',
+      },
+    });
+
+    const constant = buildAgreementTable(parameters(['sample-0', 'sample-1'], {
+      resamples: 100,
+    }), [
+      comparable('sample-0', 3, 3),
+      comparable('sample-1', 3, 3),
+    ]);
+    expect(constant.statistics.krippendorffAlpha).toEqual({
+      statisticStatus: 'missing', reasonCode: 'agreement-zero-expected-disagreement',
+    });
+    expect(constant.statistics.alphaInterval).toMatchObject({
+      intervalStatus: 'missing', reasonCode: 'agreement-point-unobserved',
+    });
+
+    const unavailablePairs: AgreementPair[] = [{
+      sampleId: 'sample-0',
+      gold: { ratingStatus: 'unavailable', reasonCode: 'gold-rating-unavailable' },
+      judge: {
+        ratingStatus: 'missing',
+        reasonCode: 'dimension-unobserved',
+        sourceGroupIds: [
+          digestCanonicalJson('missing-dimension-0'),
+          digestCanonicalJson('missing-dimension-1'),
+        ],
+        coverage: { plannedGroups: 2, observedGroups: 0, missingGroups: 2 },
+      },
+    }, {
+      sampleId: 'sample-1',
+      gold: { ratingStatus: 'observed', score: 4 },
+      judge: {
+        ratingStatus: 'unavailable',
+        reasonCode: 'dimension-group-unavailable',
+        sourceGroupIds: [],
+        coverage: { plannedGroups: 0, observedGroups: 0, missingGroups: 0 },
+      },
+    }];
+    const unavailable = buildAgreementTable(
+      parameters(['sample-0', 'sample-1'], { resamples: 100 }),
+      unavailablePairs,
+    );
+    expect(unavailable.coverage).toEqual({
+      plannedPairs: 2,
+      comparablePairs: 0,
+      goldObservedPairs: 1,
+      goldUnavailablePairs: 1,
+      judgeObservedPairs: 0,
+      judgeMissingPairs: 1,
+      judgeUnavailablePairs: 1,
+    });
+    expect(JSON.stringify(unavailable)).not.toContain('NaN');
+  });
+
+  it('preserves the existing generic bootstrap API byte-for-byte after draw extraction', () => {
+    const scores = [0, 1, 2, 3, 4];
+    const metric = (values: number[]) => computeKrippendorffAlpha(values.map((value, index) => ({
+      unitId: String(index), coderA: value, coderB: 4 - value,
+    })));
+    const legacy = bootstrapWithMetric(scores, metric, 0.1, 128, 9);
+    const distribution = drawBootstrapMetric(scores, metric, 128, 9);
+    expect(summarizeBootstrapMetric(
+      distribution.estimate,
+      distribution.draws,
+      0.1,
+      128,
+    )).toEqual(legacy);
+  });
+
+  it('recomputes transported results and binds them to sealed configuration', () => {
+    const pairs = comparablePairs([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
+    const sealed = parameters(pairs.map((pair) => pair.sampleId), {
+      resamples: 100,
+      seed: 42,
+    });
+    const value = buildAgreementTable(sealed, pairs);
+    const envelope = { resultType: 'table' as const, value };
+    expect(parseAgreementTableEnvelope(envelope)).toEqual(envelope);
+    const validator = createAgreementTableSchemaValidators().get(
+      schemaIdentityKey(AGREEMENT_TABLE_SCHEMA),
+    );
+    const context = {
+      validationKind: 'analysis-output' as const,
+      parameters: sealed,
+      inputFacts: { resamplingUnitCount: 5 },
+    };
+    expect(validator?.parse(envelope, context)).toEqual(envelope);
+
+    const altered = structuredClone(envelope);
+    if (altered.value.statistics.alphaInterval.intervalStatus === 'observed') {
+      altered.value.statistics.alphaInterval.lower = 0.5;
+    }
+    expect(() => validator?.parse(altered, context)).toThrow(/recomputable/);
+    expect(() => validator?.parse(envelope, {
+      ...context,
+      parameters: { ...sealed, seed: 99 },
+    })).toThrow(/sealed node parameters/);
+  });
+
+  it('rejects duplicate samples, source lineage, scale drift, and invalid judge coverage', () => {
+    const pairs = comparablePairs([[1, 1], [2, 2]]);
+    expect(() => buildAgreementTable(parameters(['sample-0', 'sample-0']), pairs)).toThrow();
+    expect(() => buildAgreementTable(parameters(['sample-0', 'sample-1']), [
+      pairs[0], { ...pairs[1], judge: { ...pairs[0].judge } },
+    ])).toThrow(/globally unique/);
+    expect(() => buildAgreementTable(parameters(['sample-0', 'sample-1']), [
+      pairs[0], comparable('sample-1', 2, 6),
+    ])).toThrow(/sealed scale/);
+    expect(() => buildAgreementTable(parameters(['sample-0', 'sample-1']), [
+      pairs[0], {
+        ...pairs[1],
+        judge: {
+          ratingStatus: 'observed',
+          score: 2,
+          sourceGroupIds: [digestCanonicalJson('invalid-coverage')],
+          coverage: { plannedGroups: 2, observedGroups: 1, missingGroups: 0 },
+        },
+      },
+    ])).toThrow(/coverage/);
+  });
+});
