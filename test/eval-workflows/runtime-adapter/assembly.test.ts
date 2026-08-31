@@ -36,6 +36,9 @@ import {
   createSameProcessExecutorAdapter,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+  COMPOSITE_PARAMETERS_SCHEMA,
+  COMPOSITE_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -1147,6 +1150,9 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     )).toBe(true);
     expect(builtins.analysisNodesByImplementationId.has(
       DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
     )).toBe(true);
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
@@ -2411,4 +2417,27 @@ describe('OMK Evaluation Runtime composition root', () => {
     })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_CACHE_SOURCE_MISMATCH' });
     expect(cacheCompiled.policy.cache.executionMode).toBe('replay-only');
   });
+
+  it.each([COMPOSITE_PARAMETERS_SCHEMA, COMPOSITE_TABLE_SCHEMA])(
+    'reserves composite builtin SchemaValidator URI $schemaUri',
+    async (schema) => {
+      const compiled = compositionInput();
+      const support = compositionSupport();
+      const validators = new Map(support.schemaValidators);
+      const conflict = {
+        ...schema,
+        schemaVersion: `${schema.schemaVersion}.host-conflict`,
+      };
+      validators.set(schemaIdentityKey(conflict), {
+        schema: conflict,
+        parse: (value) => value as JsonValue,
+      });
+      await expect(createOmkEvaluationRuntime({
+        compiled,
+        factories: factoriesFor(compiled, []),
+        support: { ...support, schemaValidators: validators },
+        resources: { leaseRoot: '/unused-test-lease-root' },
+      })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_SCHEMA_VALIDATOR_CONFLICT' });
+    },
+  );
 });
