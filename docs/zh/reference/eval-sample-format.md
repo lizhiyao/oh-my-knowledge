@@ -55,7 +55,7 @@
 | `assertions[].threshold` | `number` | 否 | 通过阈值；默认值随类型而定 —— LLM 打分类为 `3`，`rouge_n_min` / `bleu_min` 为 `0.5`，`mock_hit` 为 `1` |
 | `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
 | `assertions[].weight` | `number` | 否 | 权重（默认 1） |
-| `assertions[].not` | `boolean` | 否 | 反转该断言的通过/失败，适用于任意类型 |
+| `assertions[].not` | `boolean` | 否 | 反转有效的通过／失败读数，适用于任意类型 |
 | `assertions[].n` | `number` | 否 | `rouge_n_min` 的 n-gram 阶数（默认 1） |
 | `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
 
@@ -213,6 +213,8 @@ Studio 的 Skill Map 节点详情也会读取这个声明：选中图中的节�
   pattern: "TODO|FIXME"
   not: true              # 必须不含 TODO/FIXME
 ```
+
+对于异步评委断言和 custom 断言，仅在得到有效的原始通过／失败读数后执行反转。Provider 失败、超时、取消、预算截断、缺少输入和无效输出仍是失败或缺失证据；`not: true` 绝不会把基础设施或协议失败变成通过。
 
 **断言组合（assert-set）：**
 

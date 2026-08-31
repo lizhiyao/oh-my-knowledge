@@ -49,13 +49,13 @@ export type {
 } from './llm-judge-invocation.js';
 
 export const LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID =
-  'omk.llm-assertions/v1' as const;
+  'omk.llm-assertions/v2' as const;
 export const LLM_ASSERTION_INSTRUMENT_SCHEMA_VERSION =
   'omk.llm-assertion-instrument/v1' as const;
 export const LLM_ASSERTION_CONTEXT_SCHEMA_VERSION =
-  'omk.llm-assertion-context/v1' as const;
+  'omk.llm-assertion-context/v2' as const;
 export const LLM_ASSERTION_EVIDENCE_SCHEMA_VERSION =
-  'omk.llm-assertion-evidence/v1' as const;
+  'omk.llm-assertion-evidence/v2' as const;
 export const LLM_ASSERTION_BINDINGS = Object.freeze({
   actual: 'actual',
   criterion: 'criterion',
@@ -95,6 +95,7 @@ interface LlmAssertionCriterion {
   readonly assertionType: LlmAssertionType;
   readonly threshold: number;
   readonly weight: number;
+  readonly negated: boolean;
   readonly reference?: string;
   readonly context?: string;
   readonly question?: string;
@@ -118,10 +119,17 @@ const INSTRUMENT_SCHEMA_DOCUMENT: JsonValue = {
 
 const CONTEXT_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'urn:omk:llm-assertion-context:v1',
+  $id: 'urn:omk:llm-assertion-context:v2',
   type: 'object',
   additionalProperties: false,
-  required: ['schemaVersion', 'criterionId', 'assertionType', 'threshold', 'weight'],
+  required: [
+    'schemaVersion',
+    'criterionId',
+    'assertionType',
+    'threshold',
+    'weight',
+    'negated',
+  ],
   properties: {
     schemaVersion: { const: LLM_ASSERTION_CONTEXT_SCHEMA_VERSION },
     criterionId: { type: 'string', minLength: 1, maxLength: 256 },
@@ -130,6 +138,7 @@ const CONTEXT_SCHEMA_DOCUMENT: JsonValue = {
     },
     threshold: { type: 'number', minimum: 1, maximum: 5 },
     weight: { type: 'number', exclusiveMinimum: 0 },
+    negated: { type: 'boolean' },
     reference: { type: 'string', minLength: 1 },
     context: { type: 'string', minLength: 1 },
     question: { type: 'string', minLength: 1 },
@@ -156,7 +165,7 @@ const CONTEXT_SCHEMA_DOCUMENT: JsonValue = {
 
 const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'urn:omk:llm-assertion-evidence:v1',
+  $id: 'urn:omk:llm-assertion-evidence:v2',
   type: 'object',
   additionalProperties: false,
   required: [
@@ -165,10 +174,12 @@ const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
     'assertionType',
     'threshold',
     'weight',
+    'negated',
     'layer',
     'promptId',
     'promptHash',
     'score',
+    'rawPassed',
     'reason',
   ],
   properties: {
@@ -177,10 +188,12 @@ const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
     assertionType: { type: 'string' },
     threshold: { type: 'number' },
     weight: { type: 'number', exclusiveMinimum: 0 },
+    negated: { type: 'boolean' },
     layer: { const: 'fact' },
     promptId: { type: 'string' },
     promptHash: { type: 'string' },
     score: { type: 'integer', minimum: 1, maximum: 5 },
+    rawPassed: { type: 'boolean' },
     reason: { type: 'string', minLength: 1 },
   },
 };
@@ -192,12 +205,12 @@ export const LLM_ASSERTION_INSTRUMENT_SCHEMA = assertionSchemaIdentity(
 );
 export const LLM_ASSERTION_CONTEXT_SCHEMA = assertionSchemaIdentity(
   LLM_ASSERTION_CONTEXT_SCHEMA_VERSION,
-  'urn:omk:llm-assertion-context:v1',
+  'urn:omk:llm-assertion-context:v2',
   CONTEXT_SCHEMA_DOCUMENT,
 );
 export const LLM_ASSERTION_EVIDENCE_SCHEMA = assertionSchemaIdentity(
   LLM_ASSERTION_EVIDENCE_SCHEMA_VERSION,
-  'urn:omk:llm-assertion-evidence:v1',
+  'urn:omk:llm-assertion-evidence:v2',
   EVIDENCE_SCHEMA_DOCUMENT,
 );
 
@@ -223,7 +236,7 @@ const INSTRUMENTS: Readonly<Record<LlmAssertionType, Readonly<{
   },
 });
 
-const ALGORITHM_VERSION = 'omk.llm-assertion-reading/v1' as const;
+const ALGORITHM_VERSION = 'omk.llm-assertion-reading/v2' as const;
 const LLM_ASSERTION_TYPES = new Set<LlmAssertionType>([
   'semantic_similarity',
   'faithfulness',
@@ -348,6 +361,7 @@ function parseCriterion(value: unknown): LlmAssertionCriterion {
         'assertionType',
         'threshold',
         'weight',
+        'negated',
         ...('reference' in value ? ['reference'] : []),
         ...('context' in value ? ['context'] : []),
         ...('question' in value ? ['question'] : []),
@@ -369,6 +383,12 @@ function parseCriterion(value: unknown): LlmAssertionCriterion {
     );
   }
   const assertionType = value.assertionType as LlmAssertionType;
+  if (typeof value.negated !== 'boolean') {
+    return failure(
+      'omk-llm-assertion-criterion-invalid',
+      'LLM assertion criterion negation must be explicit.',
+    );
+  }
   const expectedField = assertionType === 'faithfulness'
     ? 'context'
     : assertionType === 'answer_relevancy'
@@ -393,6 +413,7 @@ function parseCriterion(value: unknown): LlmAssertionCriterion {
     assertionType,
     threshold: value.threshold,
     weight: value.weight,
+    negated: value.negated,
     [expectedField]: value[expectedField],
   }) as unknown as LlmAssertionCriterion;
 }
@@ -474,11 +495,12 @@ function observed(
   state: RecordState,
   reading: JudgeReading,
 ): EvaluatorObservation {
+  const rawPassed = reading.score >= state.criterion.threshold;
   return {
     metricId: state.metricId,
     observationStatus: 'observed',
     valueType: 'boolean',
-    value: reading.score >= state.criterion.threshold,
+    value: state.criterion.negated ? !rawPassed : rawPassed,
     evidence: {
       value: {
         schemaVersion: LLM_ASSERTION_EVIDENCE_SCHEMA_VERSION,
@@ -486,10 +508,12 @@ function observed(
         assertionType: state.criterion.assertionType,
         threshold: state.criterion.threshold,
         weight: state.criterion.weight,
+        negated: state.criterion.negated,
         layer: 'fact',
         promptId: state.instrument.promptId,
         promptHash: state.instrument.promptHash,
         score: reading.score,
+        rawPassed,
         reason: reading.reason,
       },
       classification: state.evidenceClassification,

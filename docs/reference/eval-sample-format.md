@@ -55,7 +55,7 @@ Compatibility note: flat-skill sidecars such as `skills/<name>.eval-samples.json
 | `assertions[].threshold` | `number` | no | Pass threshold; default depends on type — `3` for LLM-scored types, `0.5` for `rouge_n_min` / `bleu_min`, `1` for `mock_hit` |
 | `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
 | `assertions[].weight` | `number` | no | Weight (default 1) |
-| `assertions[].not` | `boolean` | no | Invert this assertion's pass/fail; works with any type |
+| `assertions[].not` | `boolean` | no | Invert a valid pass/fail reading; works with any type |
 | `assertions[].n` | `number` | no | n-gram order for `rouge_n_min` (default 1) |
 | `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
 
@@ -213,6 +213,8 @@ Any assertion takes `not: true` to invert (replaces paired `not_contains` / `not
   pattern: "TODO|FIXME"
   not: true              # output must NOT contain TODO/FIXME
 ```
+
+For async judge-backed and custom assertions, inversion happens only after a valid raw pass/fail reading exists. Provider failure, timeout, cancellation, budget censoring, missing input, and invalid output remain failures or missing evidence; `not: true` never turns infrastructure or protocol failure into a pass.
 
 **Composition (assert-set):**
 

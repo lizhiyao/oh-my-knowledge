@@ -52,13 +52,13 @@ The host owns provider calls, prompt registry access, custom-module loading, and
 |---|---|---|---|
 | deterministic assertion | output and evaluation context; execution-aware leaves additionally require Core-owned execution facts | Boolean criterion result; assertion detail as evidence | assertion algorithm version and supported type registry |
 | custom assertion | output and evaluation context; verified resource lease | Boolean criterion result or structured evaluator failure | module content identity and sandbox/resource policy |
-| semantic similarity | output, expected/evaluation context | Boolean threshold result; fixed-response parse evidence | semantic prompt hash, model Runtime identity, threshold |
-| RAG metric | output and evaluation context | Boolean threshold result; fixed-response parse evidence | metric-specific prompt hash, model Runtime identity, threshold |
+| semantic similarity | output, expected/evaluation context | Boolean threshold result; fixed-response parse evidence | semantic prompt hash, model Runtime identity, threshold, negation |
+| RAG metric | output and evaluation context | Boolean threshold result; fixed-response parse evidence | metric-specific prompt hash, model Runtime identity, threshold, negation |
 | rubric judge | output, optional trace, evaluation context | Raw numeric reading on the 1–5 scale | rubric prompt hash, debias variant, ensemble member, replicate index, model Runtime identity |
 
 The Core never imports `PROMPT_REGISTRY`. The composition root resolves a frozen prompt and places its hash in the host Runtime identity. `lengthDebias=false` selects only the existing rubric debias-off instrument. Presentation and tone neutrality remain enabled. RAG and semantic prompts have no length-debias switch.
 
-Semantic and RAG assertions use `omk.llm-assertions/v1`. One Evaluator coordinate owns exactly one criterion and one Boolean Metric, so a provider failure cannot suppress or falsify an unrelated criterion. The sealed criterion retains threshold, positive weight, and fact-layer identity for downstream aggregation. The sealed instrument records the assertion type, registry prompt ID, and frozen prompt hash; the Runtime fingerprint additionally binds the selected model configuration and the host invocation Runtime identity. The host invocation port performs exactly one cooperative-cancellation-aware call. It has no retry, timeout, budget, or cache policy of its own.
+Semantic and RAG assertions use `omk.llm-assertions/v2`. One Evaluator coordinate owns exactly one criterion and one Boolean Metric, so a provider failure cannot suppress or falsify an unrelated criterion. The sealed criterion retains threshold, positive weight, explicit negation, and fact-layer identity for downstream aggregation. Negation is applied only after a valid raw score is compared with the threshold; evidence retains both `rawPassed` and `negated`, and provider failure, invalid response, timeout, cancellation, or budget censoring cannot become an observed pass. The sealed instrument records the assertion type, registry prompt ID, and frozen prompt hash; the Runtime fingerprint additionally binds the selected model configuration and the host invocation Runtime identity. The host invocation port performs exactly one cooperative-cancellation-aware call. It has no retry, timeout, budget, or cache policy of its own.
 
 A strict integer reading in `[1, 5]` with a non-empty explanation produces an observed Boolean threshold result. Non-JSON, malformed JSON, malformed score, out-of-range score, and missing explanation produce distinct invalid observations. Provider failure produces a failed Evaluation record with a redacted stable code. Core timeout and cancellation remain attempt states, and admission failure remains budget censoring. Unknown usage or provider cost stays absent. This is the intentional `BREAKING-COMPARABILITY` correction owned by [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481); no compatibility mode or legacy reader is provided.
 
@@ -110,7 +110,7 @@ Mixed-layer `assert-set` criteria remain visible assertion observations but are 
 
 The legacy RAG and semantic paths convert provider/parse failure into a failed Boolean assertion. That behavior remains frozen only as historical differential evidence. The Core deliberately does not reproduce it: invalid readings and failed attempts are excluded from assertion-layer pass ratios and reduce coverage instead. A valid reading below the threshold remains observed `false`, so negative content evidence is still counted.
 
-The legacy async path also ignores the otherwise-public `Assertion.not` contract. That independent Boolean-semantics defect is tracked by [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) and is not folded into the #481 failure-state correction.
+The legacy async path now applies the public `Assertion.not` contract only to valid semantic, RAG, or custom pass/fail readings. Provider failure, malformed or incomplete judge output, missing RAG input, custom exceptions, and invalid custom results remain failed under negation. The Core seals the same Boolean criterion rule into its v2 Definition and evidence contract. This independent `BREAKING-COMPARABILITY` correction is owned by [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489); it does not weaken the #481 rule that Core infrastructure and protocol failures remain structured missing evidence instead of observed Boolean false.
 
 ## 7. Statistical standards
 
@@ -175,7 +175,7 @@ The first baseline is `test/fixtures/evaluation-core/scoring-equivalence-v1.json
 
 Later migration tests consume the same fixture through the new Core path and compare observations, coverage, evidence, per-unit tables, interval results, usage provenance, and reason codes. Exact identity and status comparisons never use numeric tolerance. Floating-point tolerance is allowed only in formula property tests that are not artifact equality tests.
 
-The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate.
+The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, valid negation, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate. Legacy custom assertion vectors cover valid pass/fail, negation, thrown and timed-out modules, and invalid result objects.
 
 The final offline differential harness is
 `test/evaluation-core/scoring-equivalence-differential.test.ts`, delivered by
@@ -207,11 +207,11 @@ comparison.
 | [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) | accepted | Provider or parse failure remains failed/invalid/missing evidence instead of a Boolean content failure. The full-chain failure probe checks both projections and downstream coverage. |
 | [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) | accepted | `json_schema` validator sessions are isolated instead of sharing legacy process-global state. |
 | [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) | accepted | Malformed, coerced, out-of-range, empty-reason, and zero-sentinel rubric responses are not valid readings. |
-| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | **blocking** | The legacy async-assertion `not` defect is not an acceptable cutover baseline. Formal cutover stays blocked until its separately marked comparability change lands. |
+| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | accepted | Async assertion negation is sealed and applies only after a valid raw pass/fail reading; invalidity and infrastructure failure cannot become success. |
 
 This inventory is not a compatibility mode. Accepted entries describe the authoritative Core
-semantics, while the single blocking entry prevents the harness from declaring formal cutover
-ready. The production dependency direction remains Core contracts/runtime inward and host
+semantics, and the harness has no remaining differential exception blocking formal cutover.
+The production dependency direction remains Core contracts/runtime inward and host
 adapters outward: Evaluation Core does not import the legacy Report, CLI, provider SDK,
 environment, filesystem, or prompt-registry text. Provider invocation and prompt construction
 remain injected host ports; only sealed identities and captured artifacts cross the boundary.

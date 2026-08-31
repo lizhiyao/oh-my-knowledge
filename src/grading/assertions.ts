@@ -110,6 +110,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
     const weight = assertion.weight ?? 1;
     let passed = false;
     let message = '';
+    let hasValidRawReading = false;
 
     if (assertion.type === 'semantic_similarity') {
       const reference = assertion.reference || '';
@@ -130,6 +131,12 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
             const threshold = assertion.threshold ?? 3;
             passed = score >= threshold;
             message = parsed.reason || '';
+            hasValidRawReading = typeof parsed.score === 'number'
+              && Number.isInteger(parsed.score)
+              && parsed.score >= 1
+              && parsed.score <= 5
+              && typeof parsed.reason === 'string'
+              && parsed.reason.trim() !== '';
           } else {
             process.stderr.write(`[omk] semantic_similarity judge returned non-JSON: ${result.output!.slice(0, 100)}\n`);
           }
@@ -147,6 +154,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
       if (ragResult.costReportedByExecutor === false) anyCostUnreported = true;
       passed = ragResult.passed;
       message = ragResult.message;
+      hasValidRawReading = ragResult.hasValidRawReading;
     } else if (assertion.type === 'custom') {
       try {
         const fnPath = resolve(samplesDir, assertion.fn!);
@@ -159,10 +167,15 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
         ]);
         passed = Boolean(result.pass);
         message = result.message || '';
+        hasValidRawReading = typeof result.pass === 'boolean';
       } catch (err: unknown) {
         passed = false;
         message = `custom assertion error: ${getErrorMessage(err)}`;
       }
+    }
+
+    if (assertion.not === true) {
+      passed = hasValidRawReading ? !passed : false;
     }
 
     details.push({
@@ -221,6 +234,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 
 interface RagJudgeOutcome {
   passed: boolean;
+  hasValidRawReading: boolean;
   message: string;
   costUSD: number;
   /** False = judge executor 不报 cost(如 codex)→ costUSD 是占位 0。 */
@@ -242,7 +256,12 @@ async function runRagJudge(
   if (assertion.type === 'faithfulness') {
     const context = assertion.reference || sample.context || '';
     if (!context) {
-      return { passed: false, message: 'faithfulness: 缺少 sample.context 或 assertion.reference', costUSD: 0 };
+      return {
+        passed: false,
+        hasValidRawReading: false,
+        message: 'faithfulness: 缺少 sample.context 或 assertion.reference',
+        costUSD: 0,
+      };
     }
     ({ system, prompt } = buildRagJudgePrompt('faithfulness', { output, context }));
   } else if (assertion.type === 'answer_relevancy') {
@@ -251,7 +270,12 @@ async function runRagJudge(
     // context_recall
     const reference = assertion.reference || sample.context || '';
     if (!reference) {
-      return { passed: false, message: 'context_recall: 缺少 assertion.reference 或 sample.context', costUSD: 0 };
+      return {
+        passed: false,
+        hasValidRawReading: false,
+        message: 'context_recall: 缺少 assertion.reference 或 sample.context',
+        costUSD: 0,
+      };
     }
     ({ system, prompt } = buildRagJudgePrompt('context_recall', { output, reference }));
   }
@@ -261,6 +285,7 @@ async function runRagJudge(
   if (!result.ok) {
     return {
       passed: false,
+      hasValidRawReading: false,
       message: `${assertion.type} judge error: ${result.error}`,
       costUSD: result.costUSD || 0,
       ...reported,
@@ -272,18 +297,37 @@ async function runRagJudge(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       process.stderr.write(`[omk] ${assertion.type} judge returned non-JSON: ${text.slice(0, 100)}\n`);
-      return { passed: false, message: 'judge returned non-JSON', costUSD: result.costUSD || 0, ...reported };
+      return {
+        passed: false,
+        hasValidRawReading: false,
+        message: 'judge returned non-JSON',
+        costUSD: result.costUSD || 0,
+        ...reported,
+      };
     }
     const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
     const score = Number(parsed.score) || 0;
+    const hasValidRawReading = typeof parsed.score === 'number'
+      && Number.isInteger(parsed.score)
+      && parsed.score >= 1
+      && parsed.score <= 5
+      && typeof parsed.reason === 'string'
+      && parsed.reason.trim() !== '';
     return {
       passed: score >= threshold,
+      hasValidRawReading,
       message: parsed.reason ? String(parsed.reason) : '',
       costUSD: result.costUSD || 0,
       ...reported,
     };
   } catch (parseErr: unknown) {
     process.stderr.write(`[omk] ${assertion.type} judge parse error: ${getErrorMessage(parseErr)}\n`);
-    return { passed: false, message: 'failed to parse judge response', costUSD: result.costUSD || 0, ...reported };
+    return {
+      passed: false,
+      hasValidRawReading: false,
+      message: 'failed to parse judge response',
+      costUSD: result.costUSD || 0,
+      ...reported,
+    };
   }
 }

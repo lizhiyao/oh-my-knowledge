@@ -137,7 +137,7 @@ interface DifferentialException {
   readonly reason: string;
 }
 
-const DIFFERENTIAL_EXCEPTIONS = Object.freeze([
+const DIFFERENTIAL_EXCEPTIONS: readonly DifferentialException[] = Object.freeze([
   {
     exceptionId: 'issue-481',
     status: 'accepted',
@@ -152,9 +152,9 @@ const DIFFERENTIAL_EXCEPTIONS = Object.freeze([
   },
   {
     exceptionId: 'issue-489',
-    status: 'blocking',
+    status: 'accepted',
     owningIssue: 'https://github.com/lizhiyao/oh-my-knowledge/issues/489',
-    reason: 'Legacy async assertion not semantics are not accepted as the Core cutover baseline.',
+    reason: 'Async assertion negation applies only after a valid raw pass/fail reading.',
   },
   {
     exceptionId: 'issue-492',
@@ -162,7 +162,7 @@ const DIFFERENTIAL_EXCEPTIONS = Object.freeze([
     owningIssue: 'https://github.com/lizhiyao/oh-my-knowledge/issues/492',
     reason: 'Malformed, coerced, and zero-sentinel rubric responses are not valid readings.',
   },
-] as const satisfies readonly DifferentialException[]);
+]);
 
 class DeterministicClock implements EvaluationEngineClock {
   #now = 0;
@@ -249,6 +249,7 @@ function llmCriterion(type: LlmAssertionType, threshold: number): JsonValue {
     assertionType: type,
     threshold,
     weight: 1,
+    negated: false,
     ...source,
   } as unknown as JsonValue;
 }
@@ -1046,13 +1047,11 @@ async function runCore(failingPromptId?: string) {
 }
 
 describe('Evaluation Core complete legacy differential conformance', () => {
-  it('keeps every intentional difference typed, owned, and the unresolved not semantics blocking', () => {
+  it('keeps every intentional difference typed, owned, and accepted for cutover', () => {
     expect(DIFFERENTIAL_EXCEPTIONS.map((entry) => entry.exceptionId)).toEqual([
       'issue-481', 'issue-484', 'issue-489', 'issue-492',
     ]);
-    expect(DIFFERENTIAL_EXCEPTIONS.filter((entry) => entry.status === 'blocking')).toEqual([
-      expect.objectContaining({ exceptionId: 'issue-489' }),
-    ]);
+    expect(DIFFERENTIAL_EXCEPTIONS.filter((entry) => entry.status === 'blocking')).toEqual([]);
     expect(DIFFERENTIAL_EXCEPTIONS.every((entry) => entry.reason.length > 0)).toBe(true);
   });
 
@@ -1244,15 +1243,17 @@ describe('Evaluation Core complete legacy differential conformance', () => {
         .toEqual(expected.executionAssertions.details);
       LLM_CASES.forEach(([type, threshold, score], index) => {
         expect(evidenceValues(`llm-${type.replaceAll('_', '-')}`)).toEqual([{
-          schemaVersion: 'omk.llm-assertion-evidence/v1',
+          schemaVersion: 'omk.llm-assertion-evidence/v2',
           criterionId: `${type.replaceAll('_', '-')}-criterion`,
           assertionType: type,
           threshold,
           weight: 1,
+          negated: false,
           layer: 'fact',
           promptId: llmAssertionInstrument(type).promptId,
           promptHash: llmAssertionInstrument(type).promptHash,
           score,
+          rawPassed: score >= threshold,
           reason: expected.asyncAssertions.details[index].message,
         }]);
       });

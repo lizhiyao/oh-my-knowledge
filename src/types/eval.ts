@@ -11,9 +11,10 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
-  /** When true, the assertion's pass/fail is inverted. Works with any type,
-   *  including legacy `not_contains` (which becomes a redundant but still
-   *  supported double-negation). */
+  /** When true, a valid assertion pass/fail reading is inverted. Provider
+   *  failure, timeout, invalid output, and missing input remain failures.
+   *  Works with any type, including legacy `not_contains` (which becomes a
+   *  redundant but still supported double-negation). */
   not?: boolean;
   /** Only used by type='assert-set'. 'any' = at least one child must pass;
    *  'all' = every child must pass. Children may be any assertion type,
