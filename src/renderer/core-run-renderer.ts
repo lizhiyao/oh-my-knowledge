@@ -77,6 +77,8 @@ const COPY = {
     unit: '单位',
     scale: '量尺',
     bundle: '产物包',
+    bundleId: '产物包 ID',
+    bundleDigest: '产物包摘要',
     parent: '父产物',
     provenance: '来源',
     cache: '缓存',
@@ -91,6 +93,7 @@ const COPY = {
     identityDigest: '身份摘要',
     documentDigest: '文档摘要',
     digest: '摘要',
+    methodNotAllowed: '仅支持 GET 请求。',
     sourceUnavailable: 'Core 产物当前不可读取。',
   },
   en: {
@@ -157,6 +160,8 @@ const COPY = {
     unit: 'Unit',
     scale: 'Scale',
     bundle: 'Bundle',
+    bundleId: 'Bundle ID',
+    bundleDigest: 'Bundle digest',
     parent: 'Parent',
     provenance: 'Provenance',
     cache: 'Cache',
@@ -171,6 +176,7 @@ const COPY = {
     identityDigest: 'Identity digest',
     documentDigest: 'Document digest',
     digest: 'Digest',
+    methodNotAllowed: 'Only GET requests are supported.',
     sourceUnavailable: 'Core artifacts are currently unavailable.',
   },
 } as const;
@@ -189,6 +195,10 @@ function c(lang: Lang): Copy {
 function withLang(path: string, lang: Lang): string {
   if (lang !== 'en') return path;
   return `${path}${path.includes('?') ? '&' : '?'}lang=en`;
+}
+
+function separator(lang: Lang): string {
+  return lang === 'zh' ? '：' : ': ';
 }
 
 function tone(value: string): 'ok' | 'warn' | 'error' | 'neutral' {
@@ -241,9 +251,16 @@ function formatBudget(budget: CoreStudioBudget): string {
     `<code>active=${e(fmtDuration(budget.activeDurationMs))}</code>`,
     `<code>wall=${e(fmtDuration(budget.wallClock.elapsedMs))}</code>`,
     budget.wallClock.limitMs === undefined ? '' : `<code>limit=${e(fmtDuration(budget.wallClock.limitMs))}</code>`,
+    `<code>overshoot=${e(fmtDuration(budget.wallClock.overshootMs))}</code>`,
     costs ? `<code>cost=${e(costs)}</code>` : '',
     budget.unreportedProviderCostInvocations > 0 ? `<code>unreported-cost=${budget.unreportedProviderCostInvocations}</code>` : '',
-    budget.termination === undefined ? '' : `<code>termination=${e(budget.termination.terminationKind)}:${e(budget.termination.reasonCode)}</code>`,
+    budget.termination === undefined ? '' : `<code>termination=${e([
+      budget.termination.terminationKind,
+      budget.termination.resourceKind,
+      budget.termination.scopeKind,
+      budget.termination.reasonCode,
+    ].filter(Boolean).join(':'))}</code>`,
+    `<code>ledger=${e(budget.ledgerDigest)}</code>`,
   ].filter(Boolean).join(' ');
 }
 
@@ -274,12 +291,13 @@ function header(label: string): string {
 
 function runCard(card: CoreStudioRunCard, lang: Lang, routes: CoreStudioRenderRoutes, copy: Copy): string {
   const href = withLang(routes.detailPath(card.runId), lang);
+  const colon = separator(lang);
   return `<a class="core-run-card" href="${e(href)}">
     <div class="core-run-head"><span class="core-run-id">${e(card.runId)}</span><time class="core-date" datetime="${e(card.createdAt)}">${e(card.createdAt)}</time></div>
     ${statusAxes(card, copy)}
-    <div class="core-meta">${e(copy.replayability)}：${e(copy.execution)} ${chip(card.replayability.execution)} · ${e(copy.evaluation)} ${chip(card.replayability.evaluation)}</div>
-    <div class="core-meta">${e(copy.classification)}：${chip(card.maximumCapturedClassification)} · ${e(copy.reportId)}：${e(card.reportId)}</div>
-    <div class="core-meta core-digest">${e(copy.artifactSetDigest)}：${e(card.artifactSetDigest)}</div>
+    <div class="core-meta">${e(copy.replayability)}${colon}${e(copy.execution)} ${chip(card.replayability.execution)} · ${e(copy.evaluation)} ${chip(card.replayability.evaluation)}</div>
+    <div class="core-meta">${e(copy.classification)}${colon}${chip(card.maximumCapturedClassification)} · ${e(copy.reportId)}${colon}${e(card.reportId)}</div>
+    <div class="core-meta core-digest">${e(copy.artifactSetDigest)}${colon}${e(card.artifactSetDigest)}</div>
   </a>`;
 }
 
@@ -353,7 +371,8 @@ function renderStages(detail: CoreStudioRunDetail, copy: Copy): string {
       [copy.provenance, formatProvenance(stage.value.provenance, copy)],
       ...(stage.replayability ? [[copy.replayability, chip(stage.replayability)] as const] : []),
       ...(stage.budget ? [[copy.budget, `<span class="core-inline-list">${formatBudget(stage.budget)}</span>`] as const] : []),
-      [copy.bundle, `<span class="core-digest">${e(stage.value.bundleDigest)}</span>`],
+      [copy.bundleId, `<span class="core-table-code">${e(stage.value.bundleId)}</span>`],
+      [copy.bundleDigest, `<span class="core-digest">${e(stage.value.bundleDigest)}</span>`],
       ...(stage.parent ? [[copy.parent, `<span class="core-digest">${e(stage.parent)}</span>`] as const] : []),
     ])}</article>`
   )).join('')}</div></section>`;
@@ -377,9 +396,9 @@ function renderEvaluationRecords(detail: CoreStudioRunDetail, copy: Copy): strin
       return `<code>${e(observation.metricId)}:${e(observation.observationStatus)}${e(value)}${e(reason)}</code>`;
     }).join('');
     const measurement = record.measurement;
-    return `<tr><td>${e(record.evaluationId)}</td><td>${e(record.targetId)}</td><td>${e(record.sampleId)}</td><td>${record.trialIndex}</td><td>${e(record.trialId)}</td><td>${e(record.evaluatorId)}</td><td>${e(measurement.instrumentId)} / ${e(measurement.ensembleMemberId)} / ${e(measurement.replicateGroupId)} / ${measurement.replicateIndex}</td><td>${chip(record.evaluationStatus)}</td><td>${formatRuntime(record.runtime, copy)}</td><td>${formatProvenance(record.provenance, copy)}</td><td>${e(record.cacheStatus ?? copy.notAvailable)}</td><td><span class="core-observations">${observations}</span></td><td>${e(record.errorCode ?? record.notEvaluatedReasonCode ?? copy.notAvailable)}</td></tr>`;
+    return `<tr><td>${e(record.evaluationId)}</td><td>${e(record.targetId)}</td><td>${e(record.sampleId)}</td><td>${record.trialIndex}</td><td>${e(record.trialId)}</td><td>${e(record.evaluatorId)}</td><td>${e(measurement.instrumentId)} / ${e(measurement.ensembleMemberId)} / ${e(measurement.replicateGroupId)} / ${measurement.replicateIndex}</td><td>${chip(record.evaluationStatus)}</td><td>${formatRuntime(record.runtime, copy)}</td><td>${formatProvenance(record.provenance, copy)}</td><td>${e(record.cacheStatus ?? copy.notAvailable)}</td><td>${record.durationMs === undefined ? copy.notAvailable : e(fmtDuration(record.durationMs))}</td><td>${formatUsage(record.usage, copy)}</td><td><span class="core-observations">${observations}</span></td><td>${e(record.errorCode ?? record.notEvaluatedReasonCode ?? copy.notAvailable)}</td></tr>`;
   }).join('');
-  return `<section><h2>${e(copy.evaluationRecords)}</h2><div class="table-wrap"><table><caption class="core-table-caption">${e(copy.evaluationRecords)}</caption><thead><tr>${[copy.evaluationId, copy.target, copy.sample, copy.trial, copy.trialId, copy.evaluator, copy.measurement, copy.status, copy.runtime, copy.provenance, copy.cache, copy.observations, copy.reasons].map(header).join('')}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section><h2>${e(copy.evaluationRecords)}</h2><div class="table-wrap"><table><caption class="core-table-caption">${e(copy.evaluationRecords)}</caption><thead><tr>${[copy.evaluationId, copy.target, copy.sample, copy.trial, copy.trialId, copy.evaluator, copy.measurement, copy.status, copy.runtime, copy.provenance, copy.cache, copy.duration, copy.usage, copy.observations, copy.reasons].map(header).join('')}</tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function analysisResult(record: CoreStudioAnalysisRecord, copy: Copy): string {
@@ -455,4 +474,8 @@ export function renderCoreStudioError(
 
 export function coreStudioSourceUnavailableMessage(lang: Lang): string {
   return c(lang).sourceUnavailable;
+}
+
+export function coreStudioMethodNotAllowedMessage(lang: Lang): string {
+  return c(lang).methodNotAllowed;
 }

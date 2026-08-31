@@ -206,10 +206,8 @@ export type {
   CoreStudioUsage,
 } from './eval-workflows/studio-catalog/index.js';
 export {
-  coreStudioSourceUnavailableMessage,
   renderCoreRunDetail,
   renderCoreRunList,
-  renderCoreStudioError,
 } from './renderer/core-run-renderer.js';
 export type { CoreStudioRenderRoutes } from './renderer/core-run-renderer.js';
 export { createCoreStudioRouteHandler } from './server/core-studio-route-handler.js';

@@ -1,5 +1,6 @@
 import type { CoreStudioCatalog } from '../eval-workflows/studio-catalog/index.js';
 import {
+  coreStudioMethodNotAllowedMessage,
   coreStudioSourceUnavailableMessage,
   renderCoreRunDetail,
   renderCoreRunList,
@@ -125,16 +126,16 @@ export function createCoreStudioRouteHandler(
     const isMatched = path === htmlBasePath || path === apiBasePath || htmlRun.matched || apiRun.matched;
     if (!isMatched) return undefined;
 
-    if ((request.method ?? 'GET').toUpperCase() !== 'GET') {
-      return path === apiBasePath || apiRun.matched
-        ? json(405, { error: 'method_not_allowed' }, { Allow: 'GET' })
-        : html(405, 'Method Not Allowed', { Allow: 'GET' });
-    }
-
     const requestedLang = search.get('lang');
     const lang: Lang = requestedLang === 'en' || requestedLang === 'zh'
       ? requestedLang
       : defaultLang;
+    if ((request.method ?? 'GET').toUpperCase() !== 'GET') {
+      return path === apiBasePath || apiRun.matched
+        ? json(405, { error: 'method_not_allowed' }, { Allow: 'GET' })
+        : html(405, renderCoreStudioError(coreStudioMethodNotAllowedMessage(lang), routes, lang), { Allow: 'GET' });
+    }
+
     try {
       if (path === htmlBasePath) {
         return html(200, renderCoreRunList(await options.catalog.list(), routes, lang));

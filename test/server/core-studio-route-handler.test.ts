@@ -171,6 +171,7 @@ function detail(run: CoreStudioRunCard = card()): CoreStudioRunDetail {
           runtime,
           provenance,
           durationMs: 450,
+          usage: { inputTokens: 7, outputTokens: 8, totalTokens: 15 },
           observations: [{
             observationId: digest('observation'),
             metricId: 'quality',
@@ -286,12 +287,15 @@ describe('Core run renderer', () => {
       'Measurement plan',
       'Artifact lineage',
       'strict-reservation',
+      'overshoot=0ms',
+      'ledger=execution-ledger-',
       'sourceUnavailable=1',
       'executor-error',
       'quality:observed=4.25',
       'mean-quality',
       'PROGRESS',
       'threshold-satisfied',
+      'total 15',
     ]) {
       assert.ok(html.includes(value), `missing detail: ${value}`);
     }
@@ -326,6 +330,7 @@ describe('Core run renderer', () => {
     assert.ok(!html.includes('<script>alert(1)</script>'));
     assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
     assert.ok(!html.includes(sensitive));
+    assert.ok(!listHtml.includes('<script>alert(1)</script>'));
     assert.ok(listHtml.includes('/measurements/%3Cscript%3Ealert(1)%3C%2Fscript%3E'));
   });
 });
@@ -377,6 +382,23 @@ describe('Core Studio route handler', () => {
     const method = await handler({ method: 'POST', url: '/api/core-runs' });
     assert.equal(method?.status, 405);
     assert.equal(method?.headers.Allow, 'GET');
+    const htmlMethod = await handler({ method: 'POST', url: '/core-runs?lang=en' });
+    assert.equal(htmlMethod?.status, 405);
+    assert.ok(htmlMethod?.body.includes('Only GET requests are supported.'));
+  });
+
+  it('round-trips encoded run identifiers as a single route segment', async () => {
+    const encoded = detail(card({ runId: 'group/run?1' }));
+    const handler = createCoreStudioRouteHandler({
+      catalog: catalog(encoded),
+      htmlBasePath: '/core-runs',
+      apiBasePath: '/api/core-runs',
+    });
+
+    const list = await handler({ url: '/core-runs' });
+    assert.ok(list?.body.includes('/core-runs/group%2Frun%3F1'));
+    assert.equal((await handler({ url: '/core-runs/group%2Frun%3F1' }))?.status, 200);
+    assert.equal((await handler({ url: '/api/core-runs/group%2Frun%3F1' }))?.status, 200);
   });
 
   it('redacts source failures from both HTML and JSON responses', async () => {
