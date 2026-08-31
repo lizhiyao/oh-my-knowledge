@@ -58,19 +58,22 @@ function observation(input: Readonly<{
   targetId: string;
   sampleId: string;
   score?: number;
+  trialIndex?: number;
+  paired?: boolean;
 }>): BootstrapObservation {
+  const trialIndex = input.trialIndex ?? 0;
   const trialId = digestCanonicalJson({
     targetId: input.targetId,
     sampleId: input.sampleId,
-    trialIndex: 0,
+    trialIndex,
   });
   const base = {
     sourceGroupId: digestCanonicalJson({ source: 'composite', trialId }),
     targetId: input.targetId,
     sampleId: input.sampleId,
-    trialIndex: 0,
+    trialIndex,
     trialId,
-    samplingUnitIds: {
+    samplingUnitIds: input.paired === false ? {} : {
       pairingBlockId: digestCanonicalJson({ pair: input.sampleId }),
     },
   };
@@ -259,6 +262,53 @@ describe('Bootstrap family Analysis table', () => {
       reasonCode: 'bootstrap-no-complete-pairs',
     }]);
     expect(empty.family.effectiveAlpha).toBeNull();
+  });
+
+  it('averages repeated trials within units and never guesses a missing pair identity', () => {
+    const sealed = parameters({
+      targetIds: ['control', 'treatment'],
+      sampleIds: ['sample-1'],
+      comparisons: [{
+        comparisonId: 'paired',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment',
+        comparisonDesign: 'paired',
+      }],
+      resamples: 100,
+    });
+    const repeated = buildBootstrapFamilyTable(sealed, [
+      observation({ targetId: 'control', sampleId: 'sample-1', trialIndex: 0, score: 2 }),
+      observation({ targetId: 'control', sampleId: 'sample-1', trialIndex: 1, score: 4 }),
+      observation({ targetId: 'treatment', sampleId: 'sample-1', trialIndex: 0, score: 4 }),
+      observation({ targetId: 'treatment', sampleId: 'sample-1', trialIndex: 1, score: 4 }),
+    ]);
+    expect(repeated.targetIntervals).toMatchObject([{
+      unitCount: 1,
+      interval: { estimate: 3 },
+    }, {
+      unitCount: 1,
+      interval: { estimate: 4 },
+    }]);
+    expect(repeated.comparisons).toMatchObject([{
+      comparisonStatus: 'observed',
+      counts: { controlUnits: 1, treatmentUnits: 1, comparableUnits: 1 },
+      interval: { estimate: 1 },
+    }]);
+
+    const unpaired = buildBootstrapFamilyTable(sealed, [
+      observation({
+        targetId: 'control', sampleId: 'sample-1', score: 2, paired: false,
+      }),
+      observation({
+        targetId: 'treatment', sampleId: 'sample-1', score: 3, paired: false,
+      }),
+    ]);
+    expect(unpaired.targetIntervals.every((entry) => entry.intervalStatus === 'observed')).toBe(true);
+    expect(unpaired.comparisons).toMatchObject([{
+      comparisonStatus: 'missing',
+      counts: { controlUnits: 0, treatmentUnits: 0, comparableUnits: 0 },
+      reasonCode: 'bootstrap-no-complete-pairs',
+    }]);
   });
 
   it('recomputes transported output and binds it to sealed parameters', () => {
