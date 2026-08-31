@@ -50,6 +50,10 @@ import {
   createCompositeAnalysisNodes,
   createCompositeParameterSchemaValidators,
   createCompositeTableSchemaValidators,
+  createAgreementAnalysisNodes,
+  createAgreementParameterSchemaValidators,
+  createAgreementTableSchemaValidators,
+  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
@@ -638,6 +642,7 @@ describe('judge aggregation Analysis nodes', () => {
       ...createJudgeAggregationAnalysisNodes(),
       ...createDimensionAnalysisNodes(),
       ...createCompositeAnalysisNodes(),
+      ...createAgreementAnalysisNodes(),
     ]);
     const base = testRuntime({ evaluatorValueTypes: ['numeric'] });
     const customValidators = new Map([
@@ -646,6 +651,8 @@ describe('judge aggregation Analysis nodes', () => {
       ...createDimensionTableSchemaValidators(),
       ...createCompositeParameterSchemaValidators(),
       ...createCompositeTableSchemaValidators(),
+      ...createAgreementParameterSchemaValidators(),
+      ...createAgreementTableSchemaValidators(),
     ]);
     const schemaValidators = new Map([
       ...base.schemaValidators,
@@ -670,6 +677,10 @@ describe('judge aggregation Analysis nodes', () => {
       validateExtension: (request) => base.validateExtension?.(request),
     };
     const definition = validDefinition();
+    definition.dataset.samples[0].analysis = {
+      memberships: [],
+      context: { value: { goldScore: 4 }, classification: 'gold' },
+    };
     definition.evaluators = [
       ['alpha', 0],
       ['alpha', 1],
@@ -734,6 +745,30 @@ describe('judge aggregation Analysis nodes', () => {
           sourceKind: 'dimension', selector: 'aggregate',
         }],
       },
+    }, {
+      analysisNodeKind: 'estimator',
+      nodeId: 'agreement-table',
+      implementationId: AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'dimension-table' }],
+      outputResultId: 'agreement-table',
+      parameters: {
+        source: {
+          analysisResultId: 'dimension-table',
+          sourceKind: 'dimension',
+          selector: 'aggregate',
+          targetId: 'treatment',
+        },
+        gold: {
+          contextPointer: '/goldScore',
+          annotatorId: 'human-a',
+          annotationVersion: 'v1',
+          scale: { min: 1, max: 5 },
+        },
+        sampleIds: ['sample-1'],
+        resamples: 100,
+        alpha: 0.05,
+        seed: 42,
+      },
     }];
     definition.comparisons[0].metricIds = ['rubric-score'];
     definition.experiment.sampling = {
@@ -753,6 +788,9 @@ describe('judge aggregation Analysis nodes', () => {
     policy.retry.maxAttempts = 1;
     policy.evaluation.retry.maxAttempts = 1;
     const plan = await prepareEvaluationPlan(definition, policy, preparationRuntime);
+    expect(JSON.stringify(plan.execution)).not.toContain('goldScore');
+    expect(JSON.stringify(plan.evaluation)).not.toContain('goldScore');
+    expect(JSON.stringify(plan.analysis)).toContain('goldScore');
     const clock = new FakeClock();
     const eventSequencer = new InMemoryRuntimeEventSequencer();
     const executorRuntime = plan.execution.runtimes.find((runtime) => (
@@ -785,6 +823,7 @@ describe('judge aggregation Analysis nodes', () => {
       clock,
       eventSequencer,
     }, { runId: 'judge-analysis-run', bundleId: 'judge-execution' });
+    expect(JSON.stringify(execution.bundle)).not.toContain('goldScore');
     const evaluatorPorts = new Map(plan.evaluation.evaluators.map((plannedEvaluator) => {
       const evaluatorRuntime = plan.evaluation.runtimes.find((runtime) => (
         runtime.runtimeKind === 'evaluator'
@@ -846,6 +885,7 @@ describe('judge aggregation Analysis nodes', () => {
       clock,
       eventSequencer,
     }, { runId: 'judge-analysis-run', bundleId: 'judge-evaluation' });
+    expect(JSON.stringify(evaluation.bundle)).not.toContain('goldScore');
     const lifecycle = new Map<string, { opened: number; executed: number; disposed: number }>();
     const analysisNodesByNodeId = new Map(plan.analysis.analysisGraph.nodes.map((node) => {
       const implementation = implementations.get(node.implementationId);
@@ -889,14 +929,16 @@ describe('judge aggregation Analysis nodes', () => {
       { schemaValidators },
     )).not.toThrow();
     expect(analysis.bundle.analysisBundleStatus).toBe('completed');
-    expect(analysis.bundle.records).toHaveLength(4);
+    expect(analysis.bundle.records).toHaveLength(5);
     expect(analysis.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'completed',
       'completed',
       'completed',
       'completed',
       'completed',
     ]);
     expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
@@ -965,6 +1007,41 @@ describe('judge aggregation Analysis nodes', () => {
         aggregate: { aggregateStatus: 'observed', score: 3.75 },
       })]),
     });
+    const agreementRecord = analysis.bundle.records.find((record) => (
+      record.resultId === 'agreement-table'
+    ));
+    expect(agreementRecord?.analysisStatus).toBe('completed');
+    if (agreementRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing agreement result');
+    }
+    expect(agreementRecord.coverage).toMatchObject({ planned: 0, included: 0, comparable: 0 });
+    expect(agreementRecord.value).toMatchObject({
+      pairs: [{
+        sampleId: 'sample-1',
+        gold: { ratingStatus: 'observed', score: 4 },
+        judge: {
+          ratingStatus: 'observed',
+          score: 3.75,
+          coverage: { plannedGroups: 1, observedGroups: 1, missingGroups: 0 },
+        },
+      }],
+      coverage: {
+        plannedPairs: 1,
+        comparablePairs: 1,
+        goldObservedPairs: 1,
+        judgeObservedPairs: 1,
+      },
+      statistics: {
+        krippendorffAlpha: {
+          statisticStatus: 'missing',
+          reasonCode: 'agreement-insufficient-pairs',
+        },
+        alphaInterval: {
+          intervalStatus: 'missing',
+          reasonCode: 'agreement-point-unobserved',
+        },
+      },
+    });
 
     const replicateImplementation = implementations.get(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
@@ -974,16 +1051,19 @@ describe('judge aggregation Analysis nodes', () => {
     );
     const dimensionImplementation = implementations.get(DIMENSION_ANALYSIS_IMPLEMENTATION_ID);
     const compositeImplementation = implementations.get(COMPOSITE_ANALYSIS_IMPLEMENTATION_ID);
+    const agreementImplementation = implementations.get(AGREEMENT_ANALYSIS_IMPLEMENTATION_ID);
     if (replicateImplementation === undefined
         || ensembleImplementation === undefined
         || dimensionImplementation === undefined
-        || compositeImplementation === undefined) {
+        || compositeImplementation === undefined
+        || agreementImplementation === undefined) {
       throw new Error('missing judge aggregation implementations');
     }
     let failedReplicateDisposed = 0;
     let blockedEnsembleOpened = 0;
     let blockedDimensionOpened = 0;
     let blockedCompositeOpened = 0;
+    let blockedAgreementOpened = 0;
     const failure = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
       analysisNodesByNodeId: new Map([
         ['replicate-table', {
@@ -1022,6 +1102,14 @@ describe('judge aggregation Analysis nodes', () => {
             return compositeImplementation.openRun(runContext);
           },
         }],
+        ['agreement-table', {
+          identity: agreementImplementation.identity,
+          outputSchema: agreementImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedAgreementOpened += 1;
+            return agreementImplementation.openRun(runContext);
+          },
+        }],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -1038,11 +1126,13 @@ describe('judge aggregation Analysis nodes', () => {
       'ensemble-table': 'not-evaluated',
       'dimension-table': 'not-evaluated',
       'composite-table': 'not-evaluated',
+      'agreement-table': 'not-evaluated',
     });
     expect(failedReplicateDisposed).toBe(1);
     expect(blockedEnsembleOpened).toBe(0);
     expect(blockedDimensionOpened).toBe(0);
     expect(blockedCompositeOpened).toBe(0);
+    expect(blockedAgreementOpened).toBe(0);
 
     const cancellation = new AbortController();
     cancellation.abort(new Error('cancelled-before-analysis'));
@@ -1052,6 +1142,7 @@ describe('judge aggregation Analysis nodes', () => {
         ['ensemble-table', ensembleImplementation],
         ['dimension-table', dimensionImplementation],
         ['composite-table', compositeImplementation],
+        ['agreement-table', agreementImplementation],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -1065,6 +1156,7 @@ describe('judge aggregation Analysis nodes', () => {
     });
     expect(cancelled.bundle.analysisBundleStatus).toBe('cancelled');
     expect(cancelled.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'not-evaluated',
       'not-evaluated',
       'not-evaluated',
       'not-evaluated',

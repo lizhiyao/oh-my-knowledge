@@ -1,0 +1,228 @@
+import { describe, expect, it } from 'vitest';
+import {
+  canonicalizeJson,
+  digestCanonicalJson,
+  type JsonValue,
+  type SchemaIdentity,
+} from '../../../src/evaluation-core/contracts/index.js';
+import { AnalysisNodeCapabilitiesSchema } from '../../../src/evaluation-core/compiler/index.js';
+import type {
+  AnalysisNodeExecutionContext,
+  AnalysisNodeInput,
+} from '../../../src/evaluation-core/analysis/index.js';
+import {
+  AGREEMENT_ANALYSIS_IDENTITY,
+  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  createAgreementAnalysisNodes,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-node.js';
+import { AGREEMENT_PARAMETERS_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-parameters.js';
+import { AGREEMENT_SOURCE_SCHEMAS } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-source-adapter.js';
+import { AGREEMENT_TABLE_SCHEMA } from '../../../src/eval-workflows/runtime-adapter/analysis/agreement-table.js';
+import {
+  DIMENSION_TABLE_SCHEMA,
+  DIMENSION_TABLE_SCHEMA_VERSION,
+  compareDimensionGroups,
+  dimensionAggregate,
+  dimensionCoverage,
+  dimensionGroupId,
+  type DimensionEntry,
+  type DimensionGroup,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/dimension-table.js';
+
+const planDigest = digestCanonicalJson('agreement-plan');
+const bundleDigest = digestCanonicalJson('agreement-bundle');
+
+function dimensionGroup(
+  sampleId: string,
+  trialIndex: number,
+  score?: number,
+): DimensionGroup {
+  const trialId = digestCanonicalJson({ targetId: 'treatment', sampleId, trialIndex });
+  const entry: DimensionEntry = score === undefined ? {
+    dimensionId: 'quality',
+    metricId: 'rubric-quality',
+    sourceAnalysisResultId: 'judge-quality',
+    sourceGroupId: digestCanonicalJson({ sampleId, trialIndex, source: 'judge' }),
+    dimensionStatus: 'missing',
+    reasonCode: 'judge-ensemble-unobserved',
+  } : {
+    dimensionId: 'quality',
+    metricId: 'rubric-quality',
+    sourceAnalysisResultId: 'judge-quality',
+    sourceGroupId: digestCanonicalJson({ sampleId, trialIndex, source: 'judge' }),
+    dimensionStatus: 'observed',
+    consensus: score,
+  };
+  const withoutGroupId: Omit<DimensionGroup, 'groupId'> = {
+    targetId: 'treatment',
+    sampleId,
+    trialIndex,
+    trialId,
+    samplingUnitIds: {},
+    dimensions: [entry],
+    coverage: dimensionCoverage([entry]),
+    aggregate: dimensionAggregate([entry]),
+  };
+  return { groupId: dimensionGroupId(withoutGroupId), ...withoutGroupId };
+}
+
+function dimensionValue(): JsonValue {
+  return {
+    schemaVersion: DIMENSION_TABLE_SCHEMA_VERSION,
+    groups: [
+      dimensionGroup('sample-0', 1),
+      dimensionGroup('sample-1', 0, 2),
+      dimensionGroup('sample-0', 0, 1),
+    ].sort(compareDimensionGroups),
+  };
+}
+
+function input(
+  referenceId = 'dimension-table',
+  outputSchema: SchemaIdentity = DIMENSION_TABLE_SCHEMA,
+): Extract<AnalysisNodeInput, { inputKind: 'analysis-result' }> {
+  return {
+    inputKind: 'analysis-result',
+    referenceId,
+    record: {
+      analysisStatus: 'completed',
+      resultType: 'table',
+      value: dimensionValue(),
+      outputSchema,
+    } as Extract<AnalysisNodeInput, { inputKind: 'analysis-result' }>['record'],
+  };
+}
+
+function parameters() {
+  return {
+    source: {
+      analysisResultId: 'dimension-table',
+      sourceKind: 'dimension' as const,
+      selector: 'aggregate' as const,
+      targetId: 'treatment',
+    },
+    gold: {
+      contextPointer: '/goldScore',
+      annotatorId: 'human-a',
+      annotationVersion: 'v1',
+      scale: { min: 1, max: 5 },
+    },
+    sampleIds: ['sample-0', 'sample-1'],
+    resamples: 100,
+    alpha: 0.05,
+    seed: 42,
+  };
+}
+
+function samples(classification: 'gold' | 'sensitive' = 'gold') {
+  return [1, 2].map((goldScore, index) => ({
+    sampleId: `sample-${index}`,
+    analysis: {
+      memberships: [],
+      context: { value: { goldScore }, classification },
+    },
+  })) as AnalysisNodeExecutionContext['samples'];
+}
+
+function context(
+  inputs: readonly AnalysisNodeInput[] = [input()],
+  overrides: Partial<AnalysisNodeExecutionContext> = {},
+): AnalysisNodeExecutionContext {
+  return {
+    node: {
+      analysisNodeKind: 'estimator',
+      nodeId: 'agreement-table',
+      implementationId: AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'dimension-table' }],
+      outputResultId: 'agreement-table',
+      parameters: parameters(),
+    } as AnalysisNodeExecutionContext['node'],
+    inputs,
+    analysisPlanDigest: planDigest,
+    sampling: {
+      experimentalUnit: 'sample', repeatedMeasures: true,
+      resamplingUnit: 'sample', estimatorId: AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+      seedCoupling: 'independent-by-target',
+    },
+    rootSeed: 'agreement-root-seed',
+    samples: samples(),
+    cohorts: [],
+    signal: new AbortController().signal,
+    ...overrides,
+  };
+}
+
+async function execute(value: AnalysisNodeExecutionContext) {
+  const implementation = createAgreementAnalysisNodes().get(AGREEMENT_ANALYSIS_IMPLEMENTATION_ID);
+  if (implementation === undefined) throw new Error('missing Agreement implementation');
+  const run = await implementation.openRun({
+    runId: 'run-a', analysisPlanDigest: planDigest,
+    evaluationBundleDigest: bundleDigest, analysisMode: 'preregistered',
+  });
+  try {
+    return await run.execute(value);
+  } finally {
+    await run.dispose();
+  }
+}
+
+describe('Agreement Analysis node', () => {
+  it('declares canonical capabilities and aggregates Dimension trials by sealed sample', async () => {
+    const capabilities = AnalysisNodeCapabilitiesSchema.parse(AGREEMENT_ANALYSIS_IDENTITY.capabilities);
+    expect(capabilities.inputDomains).toEqual([{
+      inputKind: 'analysis-result',
+      schemaUris: AGREEMENT_SOURCE_SCHEMAS.map((schema) => schema.schemaUri),
+    }]);
+    expect(capabilities.outputSchema).toEqual(AGREEMENT_TABLE_SCHEMA);
+    expect(capabilities.parameterSchema).toEqual(AGREEMENT_PARAMETERS_SCHEMA);
+    expect(Object.isFrozen(AGREEMENT_ANALYSIS_IDENTITY)).toBe(true);
+
+    const result = await execute(context());
+    expect(result).toMatchObject({
+      analysisStatus: 'completed',
+      resultType: 'table',
+      includedRowIds: [],
+      comparableRowIds: [],
+      value: {
+        pairs: [{
+          sampleId: 'sample-0',
+          gold: { ratingStatus: 'observed', score: 1 },
+          judge: {
+            ratingStatus: 'observed', score: 1,
+            coverage: { plannedGroups: 2, observedGroups: 1, missingGroups: 1 },
+          },
+        }, {
+          sampleId: 'sample-1',
+          gold: { ratingStatus: 'observed', score: 2 },
+          judge: {
+            ratingStatus: 'observed', score: 2,
+            coverage: { plannedGroups: 1, observedGroups: 1, missingGroups: 0 },
+          },
+        }],
+        statistics: {
+          krippendorffAlpha: { statisticStatus: 'observed', value: 1 },
+          weightedKappa: { statisticStatus: 'observed', value: 1 },
+          pearson: { statisticStatus: 'observed', value: 1 },
+        },
+      },
+    });
+  });
+
+  it('rejects source, sample-order, Gold classification, and cancellation drift', async () => {
+    await expect(execute(context([input('wrong-result')]))).rejects.toThrow(/sealed parameter/);
+    await expect(execute(context([input('dimension-table', AGREEMENT_TABLE_SCHEMA)])))
+      .rejects.toThrow(/Dimension table schema/);
+    await expect(execute(context(undefined, {
+      samples: [...samples()].reverse() as AnalysisNodeExecutionContext['samples'],
+    }))).rejects.toThrow(/sample order/);
+    await expect(execute(context(undefined, { samples: samples('sensitive') })))
+      .rejects.toThrow(/gold classification/);
+
+    const controller = new AbortController();
+    controller.abort(new Error('cancel-agreement'));
+    await expect(execute(context(undefined, { signal: controller.signal })))
+      .rejects.toThrow('cancel-agreement');
+    expect(canonicalizeJson(AGREEMENT_SOURCE_SCHEMAS))
+      .toBe(canonicalizeJson([DIMENSION_TABLE_SCHEMA]));
+  });
+});
