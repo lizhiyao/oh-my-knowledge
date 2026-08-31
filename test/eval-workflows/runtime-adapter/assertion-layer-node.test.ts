@@ -36,6 +36,7 @@ interface Criterion extends AssertionLayerCriterionParameter {
   value?: boolean;
   rowStatus?: Exclude<AnalysisMetricRow['rowStatus'], 'observed'>;
   reasonCode?: string;
+  censored?: boolean;
 }
 
 const criteria: Criterion[] = [{
@@ -72,9 +73,12 @@ const criteria: Criterion[] = [{
 
 function parameters(source: readonly Criterion[] = criteria): JsonValue {
   return {
-    criteria: source.map(({ value: _value, rowStatus: _status, reasonCode: _reason, ...criterion }) => (
-      criterion
-    )),
+    criteria: source.map((criterion) => ({
+      criterionId: criterion.criterionId,
+      metricId: criterion.metricId,
+      layerDisposition: criterion.layerDisposition,
+      weight: criterion.weight,
+    })),
   };
 }
 
@@ -99,7 +103,7 @@ function row(
     metricId: criterion.metricId,
     valueType: 'boolean' as const,
     samplingUnitIds,
-    censored: false,
+    censored: criterion.censored ?? false,
   };
   return criterion.rowStatus === undefined
     ? { ...common, rowStatus: 'observed', value: criterion.value ?? false }
@@ -265,6 +269,83 @@ describe('assertion-layer Analysis node', () => {
       }],
     });
     expect(result.includedRowIds).toEqual([]);
+  });
+
+  it.each([{
+    name: 'all-pass fact-only',
+    source: [
+      { ...criteria[0], weight: 1, value: true },
+      { ...criteria[2], weight: 4, value: true },
+    ],
+    layer: 'fact' as const,
+    expected: {
+      layerStatus: 'observed',
+      score: 5,
+      coverage: { observedCriteria: 2, observedWeight: 5, passedWeight: 5 },
+    },
+    included: 2,
+  }, {
+    name: 'all-fail behavior-only',
+    source: [
+      { ...criteria[3], criterionId: 'behavior-a', metricId: 'behavior-a', weight: 1, value: false },
+      { ...criteria[3], criterionId: 'behavior-b', metricId: 'behavior-b', weight: 3, value: false },
+    ],
+    layer: 'behavior' as const,
+    expected: {
+      layerStatus: 'observed',
+      score: 1,
+      coverage: { observedCriteria: 2, observedWeight: 4, passedWeight: 0 },
+    },
+    included: 2,
+  }, {
+    name: 'missing fact-only',
+    source: [{
+      ...criteria[0],
+      value: undefined,
+      rowStatus: 'missing' as const,
+      reasonCode: 'assertion-input-missing',
+    }],
+    layer: 'fact' as const,
+    expected: {
+      layerStatus: 'missing',
+      reasonCode: 'assertion-layer-unobserved',
+      coverage: { missingCriteria: 1, missingWeight: 2, observedWeight: 0 },
+    },
+    included: 0,
+  }, {
+    name: 'invalid behavior-only',
+    source: [{
+      ...criteria[3],
+      value: undefined,
+      rowStatus: 'invalid' as const,
+      reasonCode: 'assertion-reading-invalid',
+    }],
+    layer: 'behavior' as const,
+    expected: {
+      layerStatus: 'missing',
+      reasonCode: 'assertion-layer-unobserved',
+      coverage: { invalidCriteria: 1, invalidWeight: 1, observedWeight: 0 },
+    },
+    included: 0,
+  }, {
+    name: 'budget-censored observed fact',
+    source: [{ ...criteria[0], value: true, censored: true }],
+    layer: 'fact' as const,
+    expected: {
+      layerStatus: 'observed',
+      score: 5,
+      coverage: { censoredCriteria: 1, censoredWeight: 2, observedWeight: 2 },
+    },
+    included: 1,
+  }])('covers the $name golden', async ({ source, layer, expected, included }) => {
+    const result = await execute(context(source));
+    const value = completedValue(result) as {
+      groups: Array<{ layers: Record<'fact' | 'behavior', JsonValue> }>;
+    };
+    expect(value.groups[0].layers[layer]).toMatchObject(expected);
+    const otherLayer = layer === 'fact' ? 'behavior' : 'fact';
+    expect(value.groups[0].layers[otherLayer]).toMatchObject({ layerStatus: 'missing' });
+    expect(result.includedRowIds).toHaveLength(included);
   });
 
   it('fails closed on mapping ambiguity, incomplete units, and sampling disagreement', async () => {

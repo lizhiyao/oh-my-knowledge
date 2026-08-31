@@ -323,5 +323,63 @@ describe('assertion-layer Evaluation Core integration', () => {
     expect(JSON.stringify(analysis.bundle)).not.toContain('assertion-secret-token');
     expect(JSON.stringify(analysis.bundle)).not.toContain('providerCost');
     expect(JSON.stringify(analysis.bundle)).not.toContain('inputTokens');
+
+    let failedDisposeCalls = 0;
+    const failedAnalysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
+      analysisNodesByNodeId: new Map([['assertion-layer-table', {
+        identity: implementation.identity,
+        outputSchema: implementation.outputSchema,
+        async openRun() {
+          return {
+            async execute() {
+              throw new Error('assertion-layer-private-failure');
+            },
+            dispose() { failedDisposeCalls += 1; },
+          };
+        },
+      }]]),
+      schemaValidators,
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
+      clock,
+      eventSequencer,
+    }, { runId: 'assertion-core-failure', bundleId: 'assertion-analysis-failure' });
+    expect(failedAnalysis.bundle).toMatchObject({
+      analysisBundleStatus: 'failed',
+      records: [{
+        analysisStatus: 'failed',
+        error: { code: 'analysis-runtime-failed' },
+      }],
+    });
+    expect(failedDisposeCalls).toBe(1);
+    expect(JSON.stringify(failedAnalysis.bundle)).not.toContain('assertion-layer-private-failure');
+
+    let cancelledOpenCalls = 0;
+    const controller = new AbortController();
+    controller.abort();
+    const cancelledAnalysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
+      analysisNodesByNodeId: new Map([['assertion-layer-table', {
+        identity: implementation.identity,
+        outputSchema: implementation.outputSchema,
+        async openRun(runContext) {
+          cancelledOpenCalls += 1;
+          return implementation.openRun(runContext);
+        },
+      }]]),
+      schemaValidators,
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
+      clock,
+      eventSequencer,
+    }, {
+      runId: 'assertion-core-cancelled',
+      bundleId: 'assertion-analysis-cancelled',
+      signal: controller.signal,
+    });
+    expect(cancelledAnalysis.bundle).toMatchObject({
+      analysisBundleStatus: 'cancelled',
+      records: [{ analysisStatus: 'not-evaluated', runtimeDependencies: [] }],
+    });
+    expect(cancelledOpenCalls).toBe(0);
   });
 });
