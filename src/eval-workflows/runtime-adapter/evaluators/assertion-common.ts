@@ -30,7 +30,7 @@ export function assertionSchemaIdentity(
 
 const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
 
-export function mostRestrictedAssertionClassification(
+export function mostRestrictedEvaluatorClassification(
   ...values: readonly EvaluatorBindingValue['classification'][]
 ): EvaluatorBindingValue['classification'] {
   return values.reduce((highest, candidate) => (

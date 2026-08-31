@@ -1,7 +1,6 @@
 import {
   IdentifierSchema,
   RuntimeIdentitySchema,
-  UsageRecordSchema,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type JsonValue,
@@ -26,12 +25,28 @@ import { createSameProcessEvaluatorAdapter } from '../adapters/same-process.js';
 import type {
   OmkEvaluatorBindingContext,
   OmkRuntimePortBinding,
-  OmkRuntimePreflightDeclaration,
 } from '../types.js';
 import {
   assertionSchemaIdentity,
-  mostRestrictedAssertionClassification,
+  mostRestrictedEvaluatorClassification,
 } from './assertion-common.js';
+import {
+  assertLlmJudgeInvocationResult,
+  captureLlmJudgeInvocationPort,
+  parseLlmJudgeUsage,
+  redactLlmJudgeFailureUsage,
+  type OmkLlmJudgeInvocationPort,
+  type OmkLlmJudgeInvocationResolver,
+  type OmkLlmJudgeInvocationResult,
+} from './llm-judge-invocation.js';
+
+export type {
+  OmkLlmJudgeInvocationBinding,
+  OmkLlmJudgeInvocationPort,
+  OmkLlmJudgeInvocationRequest,
+  OmkLlmJudgeInvocationResolver,
+  OmkLlmJudgeInvocationResult,
+} from './llm-judge-invocation.js';
 
 export const LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID =
   'omk.llm-assertions/v1' as const;
@@ -84,54 +99,6 @@ interface LlmAssertionCriterion {
   readonly context?: string;
   readonly question?: string;
 }
-
-export interface OmkLlmJudgeInvocationRequest {
-  readonly executorId: string;
-  readonly model: string;
-  readonly effort?: LlmAssertionRuntimeConfig['effort'];
-  readonly system: string;
-  readonly prompt: string;
-  readonly promptId: string;
-  readonly promptHash: string;
-  readonly signal: AbortSignal;
-}
-
-export type OmkLlmJudgeInvocationResult =
-  | {
-      readonly invocationStatus: 'completed';
-      readonly output: string;
-      readonly usage?: UsageRecord;
-    }
-  | {
-      readonly invocationStatus: 'failed';
-      /** Stable, non-sensitive provider failure category. */
-      readonly reasonCode: string;
-      readonly usage?: UsageRecord;
-    };
-
-/**
- * Host-owned provider boundary. It must perform exactly one invocation and honor
- * the supplied AbortSignal; retry, timeout, budget, and cache remain Core-owned.
- */
-export interface OmkLlmJudgeInvocationPort {
-  readonly identity: RuntimeIdentity;
-  readonly providerCost: {
-    readonly reporting: 'unsupported' | 'optional' | 'required';
-    readonly trustedUpperBound?: { readonly amount: number; readonly currency: string };
-  };
-  invoke(
-    request: Readonly<OmkLlmJudgeInvocationRequest>,
-  ): Promise<OmkLlmJudgeInvocationResult>;
-}
-
-export interface OmkLlmJudgeInvocationBinding {
-  readonly port: OmkLlmJudgeInvocationPort;
-  readonly preflightDeclarations: readonly OmkRuntimePreflightDeclaration[];
-}
-
-export type OmkLlmJudgeInvocationResolver = (
-  context: Readonly<OmkEvaluatorBindingContext>,
-) => OmkLlmJudgeInvocationBinding | Promise<OmkLlmJudgeInvocationBinding>;
 
 const INSTRUMENT_SCHEMA_DOCUMENT: JsonValue = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -503,81 +470,6 @@ function parseReading(
   return { score: value.score, reason: value.reason };
 }
 
-function usage(value: UsageRecord | undefined): UsageRecord | undefined {
-  if (value === undefined) return undefined;
-  const parsed = UsageRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    return failure(
-      'omk-llm-assertion-usage-invalid',
-      'LLM judge returned invalid usage telemetry.',
-    );
-  }
-  return parsed.data;
-}
-
-function failureUsage(value: UsageRecord | undefined): UsageRecord | undefined {
-  const measured = usage(value);
-  if (measured === undefined) return undefined;
-  return {
-    ...(measured.inputTokens === undefined ? {} : { inputTokens: measured.inputTokens }),
-    ...(measured.outputTokens === undefined ? {} : { outputTokens: measured.outputTokens }),
-    ...(measured.totalTokens === undefined ? {} : { totalTokens: measured.totalTokens }),
-    ...(measured.providerCost === undefined ? {} : { providerCost: measured.providerCost }),
-  };
-}
-
-function captureInvocationPort(
-  value: OmkLlmJudgeInvocationPort,
-): OmkLlmJudgeInvocationPort {
-  const identity = RuntimeIdentitySchema.safeParse(value?.identity);
-  const providerCost = value?.providerCost;
-  const trustedUpperBound = providerCost?.trustedUpperBound;
-  if (!identity.success
-      || typeof value?.invoke !== 'function'
-      || !['unsupported', 'optional', 'required'].includes(String(providerCost?.reporting))
-      || (trustedUpperBound !== undefined
-        && (providerCost.reporting !== 'required'
-          || !Number.isFinite(trustedUpperBound.amount)
-          || trustedUpperBound.amount < 0
-          || !/^[A-Z]{3}$/.test(trustedUpperBound.currency)))) {
-    return failure(
-      'omk-llm-assertion-provider-port-invalid',
-      'LLM judge invocation port is invalid.',
-    );
-  }
-  const invoke = value.invoke;
-  return Object.freeze({
-    identity: deepFreezeCanonicalJson(identity.data),
-    providerCost: Object.freeze({
-      reporting: providerCost.reporting,
-      ...(trustedUpperBound === undefined ? {} : {
-        trustedUpperBound: Object.freeze({ ...trustedUpperBound }),
-      }),
-    }),
-    invoke: (request: Readonly<OmkLlmJudgeInvocationRequest>) => Reflect.apply(
-      invoke,
-      value,
-      [request],
-    ) as Promise<
-      OmkLlmJudgeInvocationResult
-    >,
-  });
-}
-
-function assertInvocationResult(value: unknown): asserts value is OmkLlmJudgeInvocationResult {
-  if (!isRecord(value)
-      || !['completed', 'failed'].includes(String(value.invocationStatus))
-      || (value.invocationStatus === 'completed' && typeof value.output !== 'string')
-      || (value.invocationStatus === 'failed'
-        && (typeof value.reasonCode !== 'string'
-          || !IdentifierSchema.safeParse(value.reasonCode).success))) {
-    return failure(
-      'omk-llm-assertion-provider-result-invalid',
-      'LLM judge invocation port returned an invalid result.',
-    );
-  }
-}
-
 function observed(
   state: RecordState,
   reading: JudgeReading,
@@ -610,7 +502,7 @@ export function createLlmAssertionEvaluatorIdentity(input: Readonly<{
   runtime: LlmAssertionRuntimeConfig;
   invocation: OmkLlmJudgeInvocationPort;
 }>): RuntimeIdentity {
-  const invocation = captureInvocationPort(input.invocation);
+  const invocation = captureLlmJudgeInvocationPort(input.invocation);
   const capabilities: JsonValue = {
     inputSourceKinds: ['evaluation-context', 'output'],
     metricValueTypes: ['boolean'],
@@ -642,7 +534,7 @@ export function createLlmAssertionEvaluatorIdentity(input: Readonly<{
 export function createLlmAssertionEvaluatorImplementation(
   invocation: OmkLlmJudgeInvocationPort,
 ): SameProcessEvaluatorImplementation<undefined, RecordState> {
-  const capturedInvocation = captureInvocationPort(invocation);
+  const capturedInvocation = captureLlmJudgeInvocationPort(invocation);
   const implementation: SameProcessEvaluatorImplementation<undefined, RecordState> = {
     openRun: () => undefined,
     openRecord({ record }): RecordState {
@@ -661,6 +553,7 @@ export function createLlmAssertionEvaluatorImplementation(
       );
       const criterion = parseCriterion(criterionBinding.value);
       if (typeof actual.value !== 'string'
+          || record.measurement.instrumentId !== config.evaluator.value.promptId
           || criterion.assertionType !== config.evaluator.value.assertionType
           || record.metrics.length !== 1
           || record.metrics[0].valueType !== 'boolean'
@@ -676,7 +569,7 @@ export function createLlmAssertionEvaluatorImplementation(
         instrument: config.evaluator.value,
         runtime: config.runtime,
         metricId: record.metrics[0].metricId,
-        evidenceClassification: mostRestrictedAssertionClassification(
+        evidenceClassification: mostRestrictedEvaluatorClassification(
           actual.classification,
           criterionBinding.classification,
         ),
@@ -707,15 +600,15 @@ export function createLlmAssertionEvaluatorImplementation(
         );
       }
       if (attempt.signal.aborted) throw attempt.signal.reason;
-      assertInvocationResult(result);
+      assertLlmJudgeInvocationResult(result);
       if (result.invocationStatus === 'failed') {
         return failure(
           'judge-provider-failure',
           'LLM judge provider reported a structured failure.',
-          failureUsage(result.usage),
+          redactLlmJudgeFailureUsage(result.usage),
         );
       }
-      const measuredUsage = usage(result.usage);
+      const measuredUsage = parseLlmJudgeUsage(result.usage);
       const reading = parseReading(recordState, result.output);
       return {
         observations: ['observationStatus' in reading
@@ -739,7 +632,8 @@ export function createLlmAssertionEvaluatorBindingFactory(
   return async (context) => {
     const config = parseConfig(context.evaluator.config);
     const qualification = context.binding.qualification;
-    if (qualification === undefined
+    if (context.evaluator.measurement.instrumentId !== config.evaluator.value.promptId
+        || qualification === undefined
         || qualification.executorId !== config.runtime.executorId
         || qualification.model !== config.runtime.model
         || qualification.effort !== config.runtime.effort
@@ -750,7 +644,7 @@ export function createLlmAssertionEvaluatorBindingFactory(
       );
     }
     const resolved = await resolveInvocation(context);
-    const invocation = captureInvocationPort(resolved.port);
+    const invocation = captureLlmJudgeInvocationPort(resolved.port);
     if (invocation.identity.implementationId !== config.runtime.executorId) {
       return failure(
         'omk-llm-assertion-provider-identity-mismatch',

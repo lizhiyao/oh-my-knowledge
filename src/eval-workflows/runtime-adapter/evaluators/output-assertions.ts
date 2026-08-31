@@ -23,7 +23,7 @@ import type { SameProcessEvaluatorImplementation } from '../adapters/same-proces
 import {
   assertionDetail,
   assertionSchemaIdentity,
-  mostRestrictedAssertionClassification,
+  mostRestrictedEvaluatorClassification,
   parseAssertionCriteria,
   type AssertionCriterion,
 } from './assertion-common.js';
@@ -231,7 +231,7 @@ export function createOutputAssertionEvaluatorImplementation(): SameProcessEvalu
         evaluateAssertion: createIsolatedDeterministicAssertionEvaluator(),
         criteriaByMetricId: new Map(criteria.map((criterion) => [criterion.metricId, criterion])),
         metricIds: record.metrics.map((metric) => metric.metricId),
-        evidenceClassification: mostRestrictedAssertionClassification(
+        evidenceClassification: mostRestrictedEvaluatorClassification(
           actual.classification,
           criteriaBinding.classification,
         ),
