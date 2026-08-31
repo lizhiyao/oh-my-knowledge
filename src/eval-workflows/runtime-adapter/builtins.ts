@@ -15,6 +15,7 @@ import {
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
 } from './evaluators/output-assertions.js';
 import type { OmkRuntimeBindingFactories } from './types.js';
+import { createJudgeAggregationAnalysisNodes } from './analysis/judge-aggregation.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
@@ -82,9 +83,12 @@ export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBind
   };
 }
 
-/** Binds Core-owned analysis implementations without copying their algorithms into the host. */
+/** Binds Core built-ins together with versioned OMK host-owned Analysis implementations. */
 export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBindingFactories {
-  const analysisNodes = createBuiltinAnalysisNodes();
+  const analysisNodes = new Map([
+    ...createBuiltinAnalysisNodes(),
+    ...createJudgeAggregationAnalysisNodes(),
+  ]);
   const missingPolicies = createBuiltinMissingPolicies();
   const decisionPolicies = createBuiltinDecisionPolicies();
   return {
