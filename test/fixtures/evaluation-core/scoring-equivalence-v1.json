@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "omk.evaluation-scoring-equivalence-fixture/v1",
+  "legacyBaseline": {
+    "commit": "38648427",
+    "bootstrapSeed": 20260616,
+    "promptHashes": {
+      "rubric-judge-debias-on": "bb393197cd41",
+      "rubric-judge-debias-off": "74be4a6a2439",
+      "semantic-similarity": "e0d0931c6ee6",
+      "rag-faithfulness": "f1d37fd8e3d6",
+      "rag-answer-relevancy": "f776a5d12b5c",
+      "rag-context-recall": "a1ad34978824"
+    }
+  },
+  "deterministicAssertions": {
+    "output": "Hello world",
+    "context": {
+      "toolCalls": [
+        {
+          "tool": "Bash",
+          "input": { "command": "pwd" },
+          "output": "ok"
+        }
+      ]
+    },
+    "assertions": [
+      { "type": "contains", "value": "Hello", "weight": 2 },
+      { "type": "max_length", "value": 40 },
+      { "type": "contains", "value": "missing", "weight": 3 },
+      {
+        "type": "assert-set",
+        "mode": "all",
+        "weight": 2,
+        "children": [
+          { "type": "contains", "value": "hello" },
+          { "type": "not_contains", "value": "forbidden" }
+        ]
+      },
+      {
+        "type": "assert-set",
+        "mode": "any",
+        "weight": 4,
+        "children": [
+          { "type": "contains", "value": "missing" },
+          { "type": "tools_called", "values": ["Bash"] }
+        ]
+      }
+    ],
+    "expected": {
+      "passed": 4,
+      "total": 5,
+      "score": 4,
+      "details": [
+        { "type": "contains", "value": "Hello", "weight": 2, "passed": true },
+        { "type": "max_length", "value": 40, "weight": 1, "passed": true },
+        { "type": "contains", "value": "missing", "weight": 3, "passed": false },
+        { "type": "assert-set", "value": "", "weight": 2, "passed": true, "layer": "fact" },
+        { "type": "assert-set", "value": "", "weight": 4, "passed": true }
+      ]
+    },
+    "expectedLayered": {
+      "compositeScore": 4.1,
+      "layeredScores": {
+        "factScore": 3.29,
+        "behaviorScore": 5,
+        "judgeScore": 4
+      }
+    }
+  },
+  "fixedResponseAssertions": {
+    "output": "Hello world",
+    "sample": {
+      "sample_id": "s",
+      "prompt": "Say hello",
+      "context": "Hello world is grounded."
+    },
+    "assertions": [
+      { "type": "semantic_similarity", "reference": "Hello", "threshold": 4 },
+      { "type": "faithfulness" },
+      { "type": "answer_relevancy" },
+      { "type": "context_recall", "threshold": 4 }
+    ],
+    "replayScores": [4, 2, 5, 3],
+    "expected": {
+      "passed": 2,
+      "total": 4,
+      "score": 3,
+      "details": [
+        { "type": "semantic_similarity", "value": "Hello", "weight": 1, "passed": true, "message": "score 4" },
+        { "type": "faithfulness", "value": "", "weight": 1, "passed": false, "message": "score 2" },
+        { "type": "answer_relevancy", "value": "", "weight": 1, "passed": true, "message": "score 5" },
+        { "type": "context_recall", "value": "", "weight": 1, "passed": false, "message": "score 3" }
+      ],
+      "judgeCostUSD": 0.004
+    }
+  },
+  "judgeRepeat": {
+    "replayScores": [5, 0, 3],
+    "expected": {
+      "score": 4,
+      "reason": "score 5",
+      "reasoning": "reasoning 5",
+      "judgeCostUSD": 0.003,
+      "scoreSamples": [5, 0, 3],
+      "scoreStddev": 1.414,
+      "judgeFailureCount": 1
+    }
+  },
+  "judgeEnsemble": {
+    "members": [
+      { "executor": "alpha", "model": "a", "replayScores": [4, 5] },
+      { "executor": "beta", "model": "b", "replayScores": [2, 4] }
+    ],
+    "expected": {
+      "score": 3.75,
+      "reason": "consensus across 2 judges",
+      "reasoning": "reasoning 4",
+      "judgeCostUSD": 0.004,
+      "ensemble": [
+        {
+          "judge": "alpha:a",
+          "score": 4.5,
+          "scoreStddev": 0.707,
+          "scoreSamples": [4, 5],
+          "judgeFailureCount": 0,
+          "reasoning": "reasoning 4",
+          "costUSD": 0.002
+        },
+        {
+          "judge": "beta:b",
+          "score": 3,
+          "scoreStddev": 1.414,
+          "scoreSamples": [2, 4],
+          "judgeFailureCount": 0,
+          "reasoning": "reasoning 2",
+          "costUSD": 0.002
+        }
+      ],
+      "agreement": { "meanAbsDiff": 1.5, "pairCount": 1 }
+    }
+  },
+  "statistics": {
+    "control": [2, 3, 4, 5, 3],
+    "treatment": [3, 4, 4, 5, 5],
+    "resamples": 500,
+    "alpha": 0.05,
+    "mean": { "low": 3.6, "high": 4.8, "estimate": 4.2, "samples": 500 },
+    "independentDifference": { "low": -0.4, "high": 2, "estimate": 0.8, "samples": 500, "significant": false },
+    "pairedDifference": { "low": 0.2, "high": 1.4, "estimate": 0.8, "samples": 500, "significant": true },
+    "degenerate": {
+      "emptyMean": { "low": 0, "high": 0, "estimate": 0, "samples": 0 },
+      "singletonMean": { "low": 4, "high": 4, "estimate": 4, "samples": 0 },
+      "emptyDifference": { "low": 0, "high": 0, "estimate": 0, "samples": 0, "significant": false },
+      "singletonPairedDifference": { "low": 2, "high": 2, "estimate": 2, "samples": 500, "significant": true },
+      "constantAgreement": "NaN"
+    },
+    "ratings": [[1, 2], [2, 2], [3, 4], [4, 4], [5, 5], [2, 3]],
+    "agreement": {
+      "alpha": 0.8546,
+      "alphaCI": { "low": 0.3373, "high": 0.9651, "estimate": 0.8546, "samples": 500 },
+      "weightedKappa": 0.8475,
+      "pearson": 0.9349,
+      "sampleCount": 6
+    }
+  }
+}
