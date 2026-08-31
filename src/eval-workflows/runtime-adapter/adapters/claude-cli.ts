@@ -56,6 +56,7 @@ import {
   type ClaudeCliTrialState,
 } from './claude-cli-resources.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
+import { attachSourceNeutralMockStats } from '../source-neutral-trace.js';
 
 export {
   CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -722,6 +723,7 @@ async function executeAttempt(
     );
   }
   let result: ParsedClaudeCliStream | undefined;
+  let mockStats: ReturnType<CliMockHandle['readStats']> | undefined;
   let executionError: unknown;
   try {
     result = await executeClaude(
@@ -737,6 +739,7 @@ async function executeAttempt(
   } catch (error) {
     executionError = error;
   }
+  if (mockHandle !== undefined) mockStats = mockHandle.readStats();
   let disposeError: unknown;
   if (mockHandle !== undefined) {
     try {
@@ -776,7 +779,7 @@ async function executeAttempt(
       },
     }),
     trace: {
-      value: result.trace,
+      value: attachSourceNeutralMockStats(result.trace, mockStats),
       classification: outputClassification,
       mediaType: 'application/vnd.omk.source-neutral-trace+json',
     },

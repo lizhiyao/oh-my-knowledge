@@ -14,13 +14,14 @@ import {
 } from '../evaluation-core/contracts/index.js';
 import { ExecutionPortFailure } from '../evaluation-core/execution/index.js';
 import {
-  isValidToolCallInfo,
-  isValidTurnInfo,
-} from '../shared/executor-result.js';
+  SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
+  SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
+  SourceNeutralTraceWithoutMocksSchema,
+} from '../eval-workflows/runtime-adapter/source-neutral-trace.js';
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
 
-export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 
 export interface ParsedDshHostCoreResult {
   readonly output?: string;
@@ -30,29 +31,18 @@ export interface ParsedDshHostCoreResult {
   readonly stopReason: string;
 }
 
-const DshTraceSchema = z.object({
-  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
-  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
-  toolCalls: z.array(z.custom<JsonValue>(isValidToolCallInfo)),
-  fullNumTurns: z.number().int().nonnegative(),
-  numSubAgents: z.number().int().nonnegative(),
-}).strict();
-
 const SCHEMA_DESCRIPTORS = {
   input: { valueKind: 'json-value' },
   output: { valueKind: 'string' },
-  trace: {
-    schemaVersion: 'omk.source-neutral-trace/v1',
-    fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
-    turnAndToolCallItems: 'source-neutral-executor-trace/v1',
-  },
+  trace: SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
 } as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
 
 function schemaIdentity(name: 'input' | 'output' | 'trace'): SchemaIdentity {
-  const schemaVersion = `omk.dsh-host-${name}/v1`;
+  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const schemaVersion = `omk.dsh-host-${name}/${contractVersion}`;
   return {
     schemaVersion,
-    schemaUri: `urn:omk:runtime:dsh-host:${name}:v1`,
+    schemaUri: `urn:omk:runtime:dsh-host:${name}:${contractVersion}`,
     schemaDigest: digestCanonicalJson({
       schemaVersion,
       sourceProtocol: 'DeepSeek Harness host session events',
@@ -78,7 +68,7 @@ export function createDshHostCoreSchemaValidators(): readonly CoreSchemaValidato
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity('trace')),
       parse(value: unknown): JsonValue {
-        return DshTraceSchema.parse(value) as JsonValue;
+        return SourceNeutralTraceWithoutMocksSchema.parse(value) as JsonValue;
       },
     }),
   ]);
@@ -285,10 +275,11 @@ export function parseDshHostCoreResult(
   validateEvents(result);
   const projected = buildDshHostResult(result, 0);
   const usage = usageFromEvents(result, input.model, input.provider, projected.stopReason);
-  const trace = DshTraceSchema.parse({
-    schemaVersion: 'omk.source-neutral-trace/v1',
+  const trace = SourceNeutralTraceWithoutMocksSchema.parse({
+    schemaVersion: SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
     turns: projected.turns ?? [],
     toolCalls: projected.toolCalls ?? [],
+    numTurns: projected.numTurns,
     fullNumTurns: projected.fullNumTurns ?? 0,
     numSubAgents: projected.numSubAgents ?? 0,
   }) as JsonValue;

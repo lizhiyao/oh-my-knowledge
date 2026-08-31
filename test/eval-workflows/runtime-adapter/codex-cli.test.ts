@@ -267,6 +267,22 @@ async function execute(
 }
 
 describe('Codex CLI Core Executor adapter', () => {
+  it('advertises trace v2 without unsupported mock telemetry', () => {
+    const traceValidator = createCodexCliCoreSchemaValidators().find(
+      (validator) => validator.schema.schemaVersion === 'omk.codex-cli-trace/v2',
+    );
+    expect(traceValidator).toBeDefined();
+    expect(() => traceValidator!.parse({
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      turns: [{ role: 'assistant', content: 'answer' }],
+      toolCalls: [],
+      numTurns: 1,
+      fullNumTurns: 1,
+      numSubAgents: 0,
+      mockStats: { hits: 0, misses: 0, perMock: {} },
+    })).toThrow();
+  });
+
   it('derives declared content identity from the actual executable and version probe', async () => {
     const fixture = await adapterFixture();
     const first = await createAdapter(fixture, { OMK_TEST_SECRET: 'first-secret' });
@@ -403,7 +419,8 @@ describe('Codex CLI Core Executor adapter', () => {
     });
     expect(withUsage.usage).not.toHaveProperty('providerCost');
     expect(withUsage.trace?.value).toMatchObject({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      numTurns: 1,
       turns: [{ role: 'assistant', content: 'fixture answer' }],
     });
 

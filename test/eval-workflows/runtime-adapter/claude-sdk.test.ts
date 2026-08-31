@@ -94,6 +94,7 @@ function messages(mode: RuntimeMode): unknown[] {
     subtype: mode === 'failed' ? 'error_during_execution' : 'success',
     is_error: mode === 'failed',
     result: 'fixture answer',
+    num_turns: 1,
     ...(mode === 'no-usage' ? {} : {
       total_cost_usd: 0.002,
       modelUsage: {
@@ -529,9 +530,12 @@ describe('Claude SDK Core Executor adapter', () => {
 
   it('supports MCP hook mocks only when the sealed server exists', async () => {
     const valid = await fixture({ mcp: true, mocks: true, mockTool: 'mcp__search__query' });
-    await execute(await createAdapter(valid), valid.target.config as JsonValue);
+    const result = await execute(await createAdapter(valid), valid.target.config as JsonValue);
     expect(valid.observations.queries[0]!.options.mcpServers).toHaveProperty('search');
     expect(valid.observations.queries[0]!.options.hooks).toHaveProperty('PreToolUse');
+    expect(result.trace?.value).toMatchObject({
+      mockStats: { hits: 0, misses: 0, perMock: {} },
+    });
 
     const missing = await fixture({ mocks: true, mockTool: 'mcp__search__query' });
     await expect(execute(

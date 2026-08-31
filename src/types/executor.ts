@@ -71,7 +71,7 @@ export interface ExecResult {
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];
   /** Sample.mocks 命中统计。仅当 input.mocks 非空时有值。
-   *  perMock 的 key 格式:`<tool>:<mock-index>`(与 mocks 数组下标对应) */
+   *  perMock 的 key 格式:`<tool>:<ordinal>`(同一工具内从 1 开始计数) */
   mockStats?: {
     hits: number;
     misses: number;

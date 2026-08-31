@@ -18,7 +18,10 @@ import {
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
 } from '../../../evaluation-core/execution/index.js';
-import { buildSdkHookCallback } from '../../../eval-core/mocks-runtime.js';
+import {
+  buildSdkHookCallback,
+  type SdkHookHandle,
+} from '../../../eval-core/mocks-runtime.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
 import {
@@ -55,6 +58,7 @@ import {
   type ResolvedClaudeSdkRuntime,
 } from './claude-sdk-runtime.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
+import { attachSourceNeutralMockStats } from '../source-neutral-trace.js';
 
 export {
   CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -376,10 +380,8 @@ function sdkOptions(
   target: CapturedClaudeCliTarget,
   runState: ClaudeCliRunState,
   attemptDirectory: string,
+  hookHandle: SdkHookHandle | undefined,
 ): ClaudeSdkQueryOptions {
-  const hookHandle = runState.mocks === undefined
-    ? undefined
-    : buildSdkHookCallback([...runState.mocks], undefined, runState.mocksStrict);
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
   const disallowedTools = [
     ...(target.config.behavior.allowedTools === undefined ? [] : ['mcp__*']),
@@ -534,8 +536,11 @@ async function executeAttempt(
     );
   }
   let options: ClaudeSdkQueryOptions;
+  const hookHandle = runState.mocks === undefined
+    ? undefined
+    : buildSdkHookCallback([...runState.mocks], undefined, runState.mocksStrict);
   try {
-    options = sdkOptions(configuration, target, runState, attemptDirectory);
+    options = sdkOptions(configuration, target, runState, attemptDirectory, hookHandle);
   } catch {
     await disposeAttemptDirectory(attemptDirectory);
     fail(
@@ -628,7 +633,7 @@ async function executeAttempt(
       },
     }),
     trace: {
-      value: result.trace,
+      value: attachSourceNeutralMockStats(result.trace, hookHandle?.stats),
       classification: outputClassification,
       mediaType: 'application/vnd.omk.source-neutral-trace+json',
     },

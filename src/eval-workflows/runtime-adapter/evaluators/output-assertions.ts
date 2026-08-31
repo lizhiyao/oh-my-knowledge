@@ -1,12 +1,10 @@
 import { createRequire } from 'node:module';
 import {
-  IdentifierSchema,
   RuntimeIdentitySchema,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type JsonValue,
   type RuntimeIdentity,
-  type SchemaIdentity,
 } from '../../../evaluation-core/contracts/index.js';
 import {
   EvaluationPortFailure,
@@ -20,10 +18,15 @@ import {
   createIsolatedDeterministicAssertionEvaluator,
   type DeterministicAssertionContext,
 } from '../../../shared/assertions/deterministic.js';
-import { resolveAssertionLayer } from '../../../shared/assertions/layers.js';
-import { assertionContractValidationError } from '../../../shared/sample-contract.js';
 import type { Assertion } from '../../../types/index.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/same-process.js';
+import {
+  assertionDetail,
+  assertionSchemaIdentity,
+  mostRestrictedAssertionClassification,
+  parseAssertionCriteria,
+  type AssertionCriterion,
+} from './assertion-common.js';
 
 export const OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID =
   'omk.assertions.output/v1' as const;
@@ -82,25 +85,13 @@ const EVIDENCE_SCHEMA_DOCUMENT: JsonValue = {
   },
 };
 
-function schemaIdentity(
-  schemaVersion: string,
-  schemaUri: string,
-  schema: JsonValue,
-): SchemaIdentity {
-  return deepFreezeCanonicalJson({
-    schemaVersion,
-    schemaUri,
-    schemaDigest: digestCanonicalJson(schema),
-  });
-}
-
-export const OUTPUT_ASSERTION_CONTEXT_SCHEMA = schemaIdentity(
+export const OUTPUT_ASSERTION_CONTEXT_SCHEMA = assertionSchemaIdentity(
   OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION,
   'urn:omk:output-assertion-context:v1',
   CONTEXT_SCHEMA_DOCUMENT,
 );
 
-export const OUTPUT_ASSERTION_EVIDENCE_SCHEMA = schemaIdentity(
+export const OUTPUT_ASSERTION_EVIDENCE_SCHEMA = assertionSchemaIdentity(
   OUTPUT_ASSERTION_EVIDENCE_SCHEMA_VERSION,
   'urn:omk:output-assertion-evidence:v1',
   EVIDENCE_SCHEMA_DOCUMENT,
@@ -135,12 +126,6 @@ const OUTPUT_ASSERTION_RUNTIME_IDENTITY: RuntimeIdentity = deepFreezeCanonicalJs
 export const OUTPUT_ASSERTION_EVALUATOR_IDENTITY: RuntimeIdentity =
   OUTPUT_ASSERTION_RUNTIME_IDENTITY;
 
-interface Criterion {
-  readonly criterionId: string;
-  readonly metricId: string;
-  readonly assertion: Assertion;
-}
-
 interface RecordState {
   readonly output: string;
   readonly evaluateAssertion: (
@@ -148,19 +133,9 @@ interface RecordState {
     assertion: Assertion,
     context?: DeterministicAssertionContext,
   ) => boolean;
-  readonly criteriaByMetricId: ReadonlyMap<string, Criterion>;
+  readonly criteriaByMetricId: ReadonlyMap<string, AssertionCriterion>;
   readonly metricIds: readonly string[];
   readonly evidenceClassification: EvaluatorBindingValue['classification'];
-}
-
-const CLASSIFICATION_LEVEL = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
-
-function mostRestrictedClassification(
-  ...values: readonly EvaluatorBindingValue['classification'][]
-): EvaluatorBindingValue['classification'] {
-  return values.reduce((highest, candidate) => (
-    CLASSIFICATION_LEVEL[candidate] > CLASSIFICATION_LEVEL[highest] ? candidate : highest
-  ), 'public');
 }
 
 function fail(code: string, message: string, details?: JsonValue): never {
@@ -170,17 +145,6 @@ function fail(code: string, message: string, details?: JsonValue): never {
     message,
     ...(details === undefined ? {} : { details }),
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const canonical = [...expected].sort();
-  return actual.length === canonical.length
-    && actual.every((key, index) => key === canonical[index]);
 }
 
 function binding(
@@ -199,76 +163,9 @@ function binding(
   return candidates[0];
 }
 
-function parseCriteria(value: JsonValue): Criterion[] {
-  if (!isRecord(value)
-      || !hasExactKeys(value, ['schemaVersion', 'criteria'])
-      || value.schemaVersion !== OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION
-      || !Array.isArray(value.criteria)) {
-    return fail(
-      'omk-output-assertion-context-invalid',
-      'Output assertion criteria do not match the sealed context schema.',
-    );
-  }
-  const criteria: Criterion[] = [];
-  const criterionIds = new Set<string>();
-  const metricIds = new Set<string>();
-  for (const [index, candidate] of value.criteria.entries()) {
-    if (!isRecord(candidate)
-        || !hasExactKeys(candidate, ['criterionId', 'metricId', 'assertion'])
-        || typeof candidate.criterionId !== 'string'
-        || !IdentifierSchema.safeParse(candidate.criterionId).success
-        || typeof candidate.metricId !== 'string'
-        || !IdentifierSchema.safeParse(candidate.metricId).success) {
-      return fail(
-        'omk-output-assertion-criterion-invalid',
-        'Output assertion criterion is malformed.',
-        { index },
-      );
-    }
-    if (criterionIds.has(candidate.criterionId) || metricIds.has(candidate.metricId)) {
-      return fail(
-        'omk-output-assertion-criterion-duplicate',
-        'Output assertion criteria contain duplicate identities.',
-        { index },
-      );
-    }
-    const assertionError = assertionContractValidationError(candidate.assertion);
-    if (assertionError !== undefined
-        || !assertionUsesOnlyOutput(candidate.assertion as unknown as Assertion)) {
-      return fail(
-        'omk-output-assertion-contract-invalid',
-        'Output assertion criterion is unsupported by this Evaluator.',
-        { index },
-      );
-    }
-    criterionIds.add(candidate.criterionId);
-    metricIds.add(candidate.metricId);
-    criteria.push({
-      criterionId: candidate.criterionId,
-      metricId: candidate.metricId,
-      assertion: structuredClone(candidate.assertion) as unknown as Assertion,
-    });
-  }
-  return criteria;
-}
-
-function detail(criterion: Criterion, passed: boolean): JsonValue {
-  const assertion = criterion.assertion;
-  const layer = assertion.type === 'assert-set'
-    ? resolveAssertionLayer(assertion)
-    : undefined;
-  return {
-    type: assertion.type,
-    value: assertion.value ?? assertion.pattern ?? assertion.values?.join(', ') ?? '',
-    weight: assertion.weight ?? 1,
-    passed,
-    ...(layer === undefined ? {} : { layer }),
-  };
-}
-
 function observed(
   state: RecordState,
-  criterion: Criterion,
+  criterion: AssertionCriterion,
 ): EvaluatorObservation {
   const passed = state.evaluateAssertion(state.output, criterion.assertion);
   return {
@@ -281,7 +178,7 @@ function observed(
         schemaVersion: OUTPUT_ASSERTION_EVIDENCE_SCHEMA_VERSION,
         criterionId: criterion.criterionId,
         assertion: structuredClone(criterion.assertion) as unknown as JsonValue,
-        detail: detail(criterion, passed),
+        detail: assertionDetail(criterion.assertion, passed),
       },
       classification: state.evidenceClassification,
     },
@@ -313,7 +210,12 @@ export function createOutputAssertionEvaluatorImplementation(): SameProcessEvalu
           'Output assertion Evaluator requires a string output.',
         );
       }
-      const criteria = parseCriteria(criteriaBinding.value);
+      const criteria = parseAssertionCriteria(criteriaBinding.value, {
+        schemaVersion: OUTPUT_ASSERTION_CONTEXT_SCHEMA_VERSION,
+        supports: assertionUsesOnlyOutput,
+        fail,
+        errorPrefix: 'omk-output-assertion',
+      });
       const declaredMetricIds = new Set(record.metrics.map((metric) => metric.metricId));
       if (record.metrics.some((metric) => (
         metric.valueType !== 'boolean' || metric.direction !== 'higher-is-better'
@@ -329,7 +231,7 @@ export function createOutputAssertionEvaluatorImplementation(): SameProcessEvalu
         evaluateAssertion: createIsolatedDeterministicAssertionEvaluator(),
         criteriaByMetricId: new Map(criteria.map((criterion) => [criterion.metricId, criterion])),
         metricIds: record.metrics.map((metric) => metric.metricId),
-        evidenceClassification: mostRestrictedClassification(
+        evidenceClassification: mostRestrictedAssertionClassification(
           actual.classification,
           criteriaBinding.classification,
         ),

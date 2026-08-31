@@ -1,4 +1,9 @@
 import {
+  createExecutionAssertionEvaluatorImplementation,
+  EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
+  EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
+} from './evaluators/execution-assertions.js';
+import {
   createBuiltinAnalysisNodes,
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
@@ -26,9 +31,8 @@ export type OmkBuiltinScoringBindingFactories = Pick<
 /** OMK-owned production Evaluators; provider-backed families land in later #480 slices. */
 export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBindingFactories {
   return {
-    evaluatorsByImplementationId: new Map([[
-      OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
-      (context) => ({
+    evaluatorsByImplementationId: new Map([
+      [OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, (context) => ({
         port: createSameProcessEvaluatorAdapter({
           identity: OUTPUT_ASSERTION_EVALUATOR_IDENTITY,
           sessionIsolationKey: context.sessionIsolationKey,
@@ -50,8 +54,31 @@ export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBind
             reasonCode: 'local-deterministic-evaluator',
           },
         ],
-      }),
-    ]]),
+      })],
+      [EXECUTION_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, (context) => ({
+        port: createSameProcessEvaluatorAdapter({
+          identity: EXECUTION_ASSERTION_EVALUATOR_IDENTITY,
+          sessionIsolationKey: context.sessionIsolationKey,
+          resourceLeases: context.resourceLeases,
+          implementation: createExecutionAssertionEvaluatorImplementation(),
+        }),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [
+          {
+            preflightKind: 'credential',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-execution-assertion-credential',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+          {
+            preflightKind: 'connectivity',
+            preflightDisposition: 'not-required',
+            checkId: 'omk-execution-assertion-connectivity',
+            reasonCode: 'local-deterministic-evaluator',
+          },
+        ],
+      })],
+    ]),
   };
 }
 

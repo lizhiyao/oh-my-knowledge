@@ -503,7 +503,8 @@ describe('DSH host-only Core Executor adapter', () => {
       mediaType: 'text/plain',
     });
     expect(result.trace?.value).toMatchObject({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      numTurns: 1,
       fullNumTurns: 1,
       numSubAgents: 0,
       toolCalls: [],
