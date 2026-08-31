@@ -227,6 +227,8 @@ type ReplicateTableValue = z.infer<typeof ReplicateTableValueSchema>;
 type ReplicateGroup = z.infer<typeof ReplicateGroupSchema>;
 type EnsembleTableValue = z.infer<typeof EnsembleTableValueSchema>;
 type EnsembleGroup = z.infer<typeof EnsembleGroupSchema>;
+export type JudgeEnsembleTableValue = EnsembleTableValue;
+export type JudgeEnsembleGroup = EnsembleGroup;
 type Issue = (path: Array<string | number>, message: string) => void;
 
 function mean(values: readonly number[]): number {
@@ -905,4 +907,11 @@ export function createJudgeAggregationSchemaValidators(): ReadonlyMap<
     schemaIdentityKey(candidate.schema),
     candidate,
   ]));
+}
+
+export function parseJudgeEnsembleTableEnvelope(value: unknown): Readonly<{
+  resultType: 'table';
+  value: JudgeEnsembleTableValue;
+}> {
+  return EnsembleEnvelopeSchema.parse(value);
 }
