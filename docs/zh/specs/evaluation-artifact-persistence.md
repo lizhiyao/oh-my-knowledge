@@ -1,6 +1,6 @@
 # Evaluation Core 产物持久化
 
-> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 第一个切片的宿主持久化契约。本阶段不切换 `omk eval`、不读取旧报告，也不会把传输来的 JSON 伪装成可信 Core capability。
+> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 第一、二个切片的宿主持久化与复用契约。本阶段不切换 `omk eval`、不读取旧报告，也不会把传输来的 JSON 伪装成可信 Core capability。
 
 ## 一、边界
 
@@ -47,11 +47,29 @@ Node content store 实现现有 Execution／Evaluation content port。写入前�
 
 解析时重新校验 envelope digest、descriptor、canonical value digest、media type、byte size 与 classification。失败只返回稳定且脱敏的错误码；原始文件路径和内容不会进入 Core error。
 
-## 六、非目标
+## 六、Resume admission
+
+resume 是完整事实复用，不是复制结果行或跨进程续接 checkpoint。宿主先根据当前 Definition 与 MeasurementPolicy prepare，获得新的 `SealedRunPlan`。admission adapter 会拒绝只有相同 JSON 结构的 transported Plan，再按 Execution、Evaluation、Analysis、Decision、Report 的顺序调用 Core verifier。
+
+只有已完成且 evidence 完整的 run 可以复用。source 缺失、损坏、partial、contract 不匹配、信任不足，以及 cache receipt 或预算核算不确定时，都产生稳定原因码。调用方必须显式选择 `fail-closed` 或 `start-fresh`、最低 source trust，以及是否要求 cache receipt 与预算核算为 verified。拒绝不会复制成功结果行、创建新 trial 或改写旧 lineage。
+
+verification context 必须来自独立宿主证据，绝不能根据 Bundle claim 自行构造 provenance attestation 或 cache receipt。admission digest 只记录产物 identity、Core 规范化 verification fact 与显式 policy，不包含原始 Dataset、Gold、output、trace 或 receipt material。
+
+## 七、项目／全局 Overlay
+
+overlay 只写 primary store，读取时 primary 优先于 fallback layer。索引卡片增加根据五份文档引用重建的 artifact-set digest。同一 `runId` 仅可在多个 layer 中指向相同 digest；否则 `get`、`list` 与 `exists` 均显式失败。写入不会遮蔽 fallback 已有 ID，即使两边事实相同也不写，因此项目／全局 store 不会静默选择不同事实。
+
+## 八、Batch child run
+
+`omk.core-batch-manifest/v1` 是宿主索引，不是 Core Report。每个有序 item 只保存限定字段 `batchItemKind`、稳定 `itemId`、独立 child `runId` locator、artifact-set／Report identity、状态和最高 captured-content classification。child 继续拥有自己的 Plan、Bundle、Report、provenance 与统计单位。
+
+发布前必须解析并完整校验全部 child，随后原子发布私有 batch manifest。child 缺失、损坏、重复或 identity 变化都会失败。完整 batch 读取会重新校验 child locator；batch 列表只校验 manifest，因此不声称 child evidence 可用。中断留下的 staging 目录不可见。
+
+## 九、非目标
 
 - 旧 `EvaluationReport` reader、迁移或双写；
-- resume admission 或 cache 复用；
-- batch、evolve、gold compare、artifact graph 或 Studio projection；
+- partial record resume 或跨进程 checkpoint engine；
+- evolve、gold compare、artifact graph 或 Studio projection；
 - 正式 CLI 切换与旧 pipeline 删除；
 - artifact 签名或 provenance attestation。
 

@@ -24,9 +24,12 @@ import {
   CORE_RUN_ARTIFACT_MANIFEST_SCHEMA_VERSION,
   CORE_RUN_DOCUMENT_FILES,
   CoreRunArtifactStoreError,
+  CoreRunArtifactOverlayError,
   NodeCoreContentStoreError,
+  createOverlayCoreRunArtifactStore,
   createNodeCoreContentStore,
   createNodeCoreRunArtifactStore,
+  projectCoreRunArtifactIndexCard,
 } from '../../src/eval-workflows/artifact-store/index.js';
 import {
   InMemoryConformanceArtifactStore,
@@ -109,12 +112,17 @@ describe('Node Core run artifact store', () => {
         ],
       );
       assert.deepEqual(await store.get(runId), stored);
+      assert.deepEqual(
+        await store.inspect(runId),
+        projectCoreRunArtifactIndexCard(stored.manifest),
+      );
       assert.equal(await store.exists(runId), true);
       assert.deepEqual(await store.list(), [{
         runId,
         reportId: result.report.reportId,
         runContractDigest: result.plan.digests.runContractDigest,
         reportDigest: result.report.reportDigest,
+        artifactSetDigest: digestCanonicalJson(stored.manifest.documents),
         createdAt: '2026-08-31T12:00:00.000Z',
         status: result.report.status,
         replayability: {
@@ -288,6 +296,79 @@ describe('Node Core run artifact store', () => {
       indexOnly.get('resolvable-run'),
       expectStoreError('CORE_RUN_ARTIFACT_CONTENT_RESOLVER_REQUIRED'),
     );
+  });
+});
+
+describe('Core run artifact store overlay', () => {
+  it('uses primary precedence when layers contain the exact same artifact set', async () => {
+    const primaryRoot = await temporaryDirectory();
+    const fallbackRoot = await temporaryDirectory();
+    const primary = createNodeCoreRunArtifactStore(primaryRoot);
+    const fallback = createNodeCoreRunArtifactStore(fallbackRoot);
+    const runId = 'overlay-identical';
+    const result = await runConformanceScenario('function', { runId });
+    await fallback.save({
+      ...saveRequest(result, runId),
+      createdAt: '2026-08-31T11:00:00.000Z',
+    });
+    const primaryArtifacts = await primary.save({
+      ...saveRequest(result, runId),
+      createdAt: '2026-08-31T13:00:00.000Z',
+    });
+    const overlay = createOverlayCoreRunArtifactStore(primary, [fallback]);
+
+    assert.deepEqual(await overlay.get(runId), primaryArtifacts);
+    assert.deepEqual(
+      await overlay.inspect(runId),
+      projectCoreRunArtifactIndexCard(primaryArtifacts.manifest),
+    );
+    assert.deepEqual(await overlay.list(), [
+      projectCoreRunArtifactIndexCard(primaryArtifacts.manifest),
+    ]);
+    assert.equal(await overlay.exists(runId), true);
+  });
+
+  it('fails explicitly when one run id resolves to different artifact sets', async () => {
+    const primary = createNodeCoreRunArtifactStore(await temporaryDirectory());
+    const fallback = createNodeCoreRunArtifactStore(await temporaryDirectory());
+    const runId = 'overlay-conflict';
+    const [first, second] = await Promise.all([
+      runConformanceScenario('function', { runId, suffix: 'primary' }),
+      runConformanceScenario('rag', { runId, suffix: 'fallback' }),
+    ]);
+    await primary.save(saveRequest(first, runId));
+    await fallback.save(saveRequest(second, runId));
+    const overlay = createOverlayCoreRunArtifactStore(primary, [fallback]);
+
+    for (const operation of [
+      () => overlay.get(runId),
+      () => overlay.inspect(runId),
+      () => overlay.list(),
+      () => overlay.exists(runId),
+    ]) {
+      await assert.rejects(operation, (error: unknown) => (
+        error instanceof CoreRunArtifactOverlayError
+        && error.code === 'CORE_RUN_ARTIFACT_OVERLAY_ID_CONFLICT'
+      ));
+    }
+  });
+
+  it('never shadows an existing fallback run during writes', async () => {
+    const primary = createNodeCoreRunArtifactStore(await temporaryDirectory());
+    const fallback = createNodeCoreRunArtifactStore(await temporaryDirectory());
+    const runId = 'overlay-shadow';
+    const result = await runConformanceScenario('function', { runId });
+    await fallback.save(saveRequest(result, runId));
+    const overlay = createOverlayCoreRunArtifactStore(primary, [fallback]);
+
+    await assert.rejects(
+      overlay.save(saveRequest(result, runId)),
+      (error: unknown) => (
+        error instanceof CoreRunArtifactOverlayError
+        && error.code === 'CORE_RUN_ARTIFACT_OVERLAY_SHADOW_CONFLICT'
+      ),
+    );
+    assert.equal((await primary.list()).length, 0);
   });
 });
 

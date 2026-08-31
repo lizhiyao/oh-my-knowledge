@@ -706,12 +706,16 @@ export function createNodeCoreRunArtifactStore(
       ));
   }
 
-  async function exists(runId: string): Promise<boolean> {
+  async function inspect(runId: string): Promise<CoreRunArtifactIndexCard | undefined> {
     const directory = runDirectoryPath(rootDir, runId);
-    if (!await pathExists(directory)) return false;
-    await loadDirectory(directory, runId, false);
-    return true;
+    if (!await pathExists(directory)) return undefined;
+    const { manifest } = await loadDirectory(directory, runId, false);
+    return projectCoreRunArtifactIndexCard(manifest);
   }
 
-  return Object.freeze({ save, get, list, exists });
+  async function exists(runId: string): Promise<boolean> {
+    return (await inspect(runId)) !== undefined;
+  }
+
+  return Object.freeze({ save, get, inspect, list, exists });
 }

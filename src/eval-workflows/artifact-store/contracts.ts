@@ -128,6 +128,7 @@ export interface CoreRunArtifactIndexCard {
   readonly reportId: string;
   readonly runContractDigest: string;
   readonly reportDigest: string;
+  readonly artifactSetDigest: string;
   readonly createdAt: string;
   readonly status: EvaluationReport['status'];
   readonly replayability: CoreRunArtifactManifest['replayability'];
@@ -143,6 +144,7 @@ export interface SaveCoreRunArtifactsRequest extends CoreRunArtifactSet {
 export interface CoreRunArtifactStore {
   save(request: Readonly<SaveCoreRunArtifactsRequest>): Promise<StoredCoreRunArtifacts>;
   get(runId: string): Promise<StoredCoreRunArtifacts | undefined>;
+  inspect(runId: string): Promise<CoreRunArtifactIndexCard | undefined>;
   list(): Promise<CoreRunArtifactIndexCard[]>;
   exists(runId: string): Promise<boolean>;
 }
@@ -194,6 +196,7 @@ export function projectCoreRunArtifactIndexCard(
     reportId: manifest.reportId,
     runContractDigest: manifest.runContractDigest,
     reportDigest: report.identityDigest,
+    artifactSetDigest: digestCanonicalJson(manifest.documents),
     createdAt: manifest.createdAt,
     status: manifest.status,
     replayability: manifest.replayability,
