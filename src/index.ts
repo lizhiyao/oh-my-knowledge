@@ -183,6 +183,28 @@ export {
   projectCoreArtifactGraph,
   projectCoreEvolutionEvidence,
 } from './eval-workflows/downstream-projections/index.js';
+
+export {
+  CORE_STUDIO_RUN_CARD_SCHEMA_VERSION,
+  CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION,
+  createCoreStudioCatalog,
+  projectCoreStudioRunCard,
+  projectCoreStudioRunDetail,
+} from './eval-workflows/studio-catalog/index.js';
+export type {
+  CoreStudioAnalysisRecord,
+  CoreStudioBudget,
+  CoreStudioCatalog,
+  CoreStudioDecision,
+  CoreStudioEvaluationRecord,
+  CoreStudioExecutionRecord,
+  CoreStudioMetricObservation,
+  CoreStudioProvenance,
+  CoreStudioRunCard,
+  CoreStudioRunDetail,
+  CoreStudioRuntimeIdentity,
+  CoreStudioUsage,
+} from './eval-workflows/studio-catalog/index.js';
 export type {
   CompareGoldToCoreRunInput,
   CoreGoldDatasetInput,
