@@ -42,6 +42,11 @@ export interface LoadSamplesResult {
   sampleSourceById: Record<string, string>;
 }
 
+export interface LoadSamplesOptions {
+  /** Production measurement resolution must not depend on ambient compatibility switches. */
+  readonly assertionValidationMode?: 'environment-compatible' | 'strict';
+}
+
 /**
  * Load samples from a single file OR a directory of sample files.
  *
@@ -55,12 +60,15 @@ export interface LoadSamplesResult {
  * - Cross-file `sample_id` must be unique
  * - `requires` from each file unioned together
  */
-export function loadSamples(samplesPath: string): LoadSamplesResult {
+export function loadSamples(
+  samplesPath: string,
+  options: Readonly<LoadSamplesOptions> = {},
+): LoadSamplesResult {
   const abs = resolve(samplesPath);
   if (statSync(abs).isDirectory()) {
-    return loadSamplesFromDir(abs);
+    return loadSamplesFromDir(abs, options);
   }
-  const inner = loadSampleFile(abs);
+  const inner = loadSampleFile(abs, options);
   return {
     ...inner,
     baseDir: dirname(abs),
@@ -81,7 +89,10 @@ export function listSampleFilesInDir(dir: string): string[] {
     .sort();  // deterministic merge order
 }
 
-function loadSamplesFromDir(dir: string): LoadSamplesResult {
+function loadSamplesFromDir(
+  dir: string,
+  options: Readonly<LoadSamplesOptions>,
+): LoadSamplesResult {
   const files = listSampleFilesInDir(dir);
   if (files.length === 0) {
     throw new Error(
@@ -99,7 +110,7 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
   for (const f of files) {
     const path = join(dir, f);
     sourceFiles.push(path);
-    const single = loadSampleFile(path);
+    const single = loadSampleFile(path, options);
     for (const s of single.samples) {
       const prev = seenIds.get(s.sample_id);
       if (prev) {
@@ -142,7 +153,10 @@ function mergeRequires(
 
 interface LoadSamplesInner { samples: Sample[]; requires?: DependencyRequirements }
 
-export function validateSamples(samples: Sample[]): void {
+export function validateSamples(
+  samples: Sample[],
+  options: Readonly<LoadSamplesOptions> = {},
+): void {
   // sample design metadata enums (capability/difficulty/construct/provenance).
   // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
   const VALID_DIFFICULTY: ReadonlySet<string> = new Set(['easy', 'medium', 'hard']);
@@ -252,7 +266,8 @@ export function validateSamples(samples: Sample[]): void {
       'contains', 'not_contains', 'contains_all', 'contains_any', 'equals', 'not_equals',
     ]);
     const LOADER_CJK = /[　-〿一-鿿㐀-䶿＀-￯]/;
-    const isLenient = process.env.OMK_LENIENT_ASSERTIONS === '1';
+    const isLenient = options.assertionValidationMode !== 'strict'
+      && process.env.OMK_LENIENT_ASSERTIONS === '1';
     const checkAsciiTokenValue = (label: string, raw: unknown): string | null => {
       if (typeof raw !== 'string') return `${label} value 必须是字符串 (实际类型 ${typeof raw})`;
       const s = raw.trim();
@@ -330,7 +345,10 @@ export function validateSamples(samples: Sample[]): void {
   }
 }
 
-function loadSampleFile(samplesPath: string): LoadSamplesInner {
+function loadSampleFile(
+  samplesPath: string,
+  options: Readonly<LoadSamplesOptions>,
+): LoadSamplesInner {
   const rawContent = readFileSync(samplesPath, 'utf-8');
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
   const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
@@ -360,7 +378,7 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
     throw new Error(`invalid samples file: ${samplesPath}`);
   }
 
-  validateSamples(samples);
+  validateSamples(samples, options);
 
   return { samples, requires };
 }

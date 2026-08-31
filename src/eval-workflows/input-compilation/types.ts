@@ -254,6 +254,15 @@ export interface ResolvedEvaluationOrchestrationInput {
   };
   readonly diagnostic: 'enabled-outside-core' | 'disabled';
   readonly managedEvidence: 'append' | 'skip';
+  /** Normalized sample-bundle readiness requirements for the host doctor phase. */
+  readonly dependencyRequirements?: {
+    /** Host-only base for relative files and preflight commands. */
+    readonly baseDirectoryLocator: string;
+    readonly tools?: readonly string[];
+    readonly files?: readonly string[];
+    readonly env?: readonly string[];
+    readonly preflight?: readonly string[];
+  };
   /** Effect locators used to assemble cache ports; never enter Core canonical JSON. */
   readonly cacheSources?: {
     readonly executionSourceLocator?: string;
