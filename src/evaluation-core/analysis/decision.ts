@@ -146,66 +146,75 @@ function gateReasons(
     reasons.add('decision-multiple-comparison-policy-required');
   }
   if (policy.multipleComparisonPolicyId !== undefined) {
-    const correction = plan.analysis.analysisGraph.nodes.find((node) => (
-      node.analysisNodeKind === 'correction'
-      && node.implementationId === policy.multipleComparisonPolicyId
-    ));
-    const correctionRecord = correction === undefined
-      ? undefined
-      : recordByResultId.get(correction.outputResultId);
-    if (correctionRecord?.analysisStatus !== 'completed'
-        || !policy.analysisResultIds.includes(correctionRecord.resultId)) {
-      reasons.add('decision-multiple-comparison-result-unavailable');
-    } else {
-      const value = correctionRecord.value;
-      const valueObject = value !== null && !Array.isArray(value) && typeof value === 'object'
-        ? value as Record<string, JsonValue>
-        : undefined;
-      const hypotheses = valueObject?.hypotheses;
-      const hypothesisIds = Array.isArray(hypotheses)
-        ? hypotheses.flatMap((entry) => (
-          entry !== null && !Array.isArray(entry) && typeof entry === 'object'
-            && typeof (entry as Record<string, JsonValue>).hypothesisId === 'string'
-            ? [(entry as Record<string, JsonValue>).hypothesisId as string]
-            : []
-        )).sort()
-        : [];
-      const hypothesisMembers = family.filter(
-        (member): member is typeof member & { hypothesisId: string } => (
-          'hypothesisId' in member
-        ),
-      );
-      const expectedIds = hypothesisMembers.map((member) => member.hypothesisId).sort();
-      if (valueObject?.familySize !== familySize
-          || hypothesisMembers.length !== familySize
-          || canonicalizeJson(hypothesisIds) !== canonicalizeJson(expectedIds)) {
-        reasons.add('decision-multiple-comparison-family-mismatch');
-      }
-      const correctedById = new Map(Array.isArray(hypotheses) ? hypotheses.flatMap((entry) => {
-        if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
-        const object = entry as Record<string, JsonValue>;
-        return typeof object.hypothesisId === 'string' && typeof object.rawPValue === 'number'
-          ? [[object.hypothesisId, object.rawPValue] as const]
-          : [];
-      }) : []);
-      for (const member of hypothesisMembers) {
-        const source = recordByResultId.get(member.analysisResultId);
-        const sourceHypotheses = source?.analysisStatus === 'completed'
-          && source.value !== null && !Array.isArray(source.value) && typeof source.value === 'object'
-          ? (source.value as Record<string, JsonValue>).hypotheses
+    const correction = policy.comparisonFamilyResultId === undefined
+      ? plan.analysis.analysisGraph.nodes.find((node) => (
+          node.analysisNodeKind === 'correction'
+          && node.implementationId === policy.multipleComparisonPolicyId
+        ))
+      : undefined;
+    // A generic Core correction node exposes the hypothesis-table contract below.
+    // A host policy may instead declare an estimator-owned family standard whose
+    // output schema and family lineage are validated by that DecisionPolicy. The
+    // compiler still requires the policy Runtime capability to admit the declared
+    // standard; Core must not manufacture p-values to force it into this shape.
+    if (correction !== undefined) {
+      const correctionRecord = recordByResultId.get(correction.outputResultId);
+      if (correctionRecord?.analysisStatus !== 'completed'
+          || !policy.analysisResultIds.includes(correctionRecord.resultId)) {
+        reasons.add('decision-multiple-comparison-result-unavailable');
+      } else {
+        const value = correctionRecord.value;
+        const valueObject = value !== null && !Array.isArray(value) && typeof value === 'object'
+          ? value as Record<string, JsonValue>
           : undefined;
-        const sourcePValue = Array.isArray(sourceHypotheses)
-          ? sourceHypotheses.flatMap((entry) => {
-            if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
-            const object = entry as Record<string, JsonValue>;
-            return object.hypothesisId === member.hypothesisId && typeof object.pValue === 'number'
-              ? [object.pValue]
-              : [];
-          })
+        const hypotheses = valueObject?.hypotheses;
+        const hypothesisIds = Array.isArray(hypotheses)
+          ? hypotheses.flatMap((entry) => (
+            entry !== null && !Array.isArray(entry) && typeof entry === 'object'
+              && typeof (entry as Record<string, JsonValue>).hypothesisId === 'string'
+              ? [(entry as Record<string, JsonValue>).hypothesisId as string]
+              : []
+          )).sort()
           : [];
-        if (sourcePValue.length !== 1
-            || correctedById.get(member.hypothesisId) !== sourcePValue[0]) {
-          reasons.add('decision-multiple-comparison-lineage-mismatch');
+        const hypothesisMembers = family.filter(
+          (member): member is typeof member & { hypothesisId: string } => (
+            'hypothesisId' in member
+          ),
+        );
+        const expectedIds = hypothesisMembers.map((member) => member.hypothesisId).sort();
+        if (valueObject?.familySize !== familySize
+            || hypothesisMembers.length !== familySize
+            || canonicalizeJson(hypothesisIds) !== canonicalizeJson(expectedIds)) {
+          reasons.add('decision-multiple-comparison-family-mismatch');
+        }
+        const correctedById = new Map(Array.isArray(hypotheses) ? hypotheses.flatMap((entry) => {
+          if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
+          const object = entry as Record<string, JsonValue>;
+          return typeof object.hypothesisId === 'string' && typeof object.rawPValue === 'number'
+            ? [[object.hypothesisId, object.rawPValue] as const]
+            : [];
+        }) : []);
+        for (const member of hypothesisMembers) {
+          const source = recordByResultId.get(member.analysisResultId);
+          const sourceHypotheses = source?.analysisStatus === 'completed'
+            && source.value !== null && !Array.isArray(source.value)
+            && typeof source.value === 'object'
+            ? (source.value as Record<string, JsonValue>).hypotheses
+            : undefined;
+          const sourcePValue = Array.isArray(sourceHypotheses)
+            ? sourceHypotheses.flatMap((entry) => {
+              if (entry === null || Array.isArray(entry) || typeof entry !== 'object') return [];
+              const object = entry as Record<string, JsonValue>;
+              return object.hypothesisId === member.hypothesisId
+                && typeof object.pValue === 'number'
+                ? [object.pValue]
+                : [];
+            })
+            : [];
+          if (sourcePValue.length !== 1
+              || correctedById.get(member.hypothesisId) !== sourcePValue[0]) {
+            reasons.add('decision-multiple-comparison-lineage-mismatch');
+          }
         }
       }
     }

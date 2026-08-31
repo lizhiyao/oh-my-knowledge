@@ -142,6 +142,8 @@ Before a directional conclusion, it checks coverage, required results, assumptio
 
 `SOLO`, `UNDERPOWERED`, `NOISE`, `PROGRESS`, `CAUTIOUS`, and `REGRESSION` are conclusions, not run statuses. Infrastructure failure remains a failed or not-decided decision.
 
+The contract is implemented by the host-owned `omk.release-decision/v1` policy from [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525). Its parameters explicitly bind the Composite table, Bootstrap Family table, optional Judge Ensemble selector, sealed target and sample order, all gate thresholds, and an optional disjoint train／holdout partition. The policy validates the estimator-owned `comparisonFamilyResultId`, exact result/schema universe, Composite-to-Bootstrap observation lineage, comparison bindings, and configured Judge Ensemble coverage before applying the six-tier precedence. A missing comparison interval remains not-decided; the Core path never falls back to a point estimate. Cross-run stability remains a Series DecisionPolicy concern rather than being inferred from a single Run.
+
 ## 9. Field mapping and rejection rules
 
 | Legacy field/fact | Core artifact | Rejection rule |

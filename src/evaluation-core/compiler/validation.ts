@@ -663,7 +663,21 @@ export function validateDefinitionSemantics(
       ),
     );
     assertUnique(hypothesisMembers.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
-    assertUnique(family.map((member) => member.analysisResultId), 'decision-policy:family-analysis-result');
+    const familyResultId = definition.decisionPolicy.comparisonFamilyResultId;
+    if (familyResultId === undefined) {
+      assertUnique(
+        family.map((member) => member.analysisResultId),
+        'decision-policy:family-analysis-result',
+      );
+    } else if (family.length === 0
+        || !definition.decisionPolicy.analysisResultIds.includes(familyResultId)
+        || family.some((member) => member.analysisResultId !== familyResultId)) {
+      throw definitionError(
+        'EVAL_DEFINITION_MISSING_REFERENCE',
+        '权威 comparison family result 必须由每个 member 共同绑定并被 DecisionPolicy 消费。',
+        { referenceId: familyResultId },
+      );
+    }
     assertUnique(
       family.map((member) => canonicalizeJson([
         member.comparisonId,
@@ -704,7 +718,8 @@ export function validateDefinitionSemantics(
       ].sort();
       const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
       if (producer === undefined
-          || canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs)) {
+          || (familyResultId === undefined
+            && canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs))) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
           'Comparison family member 必须精确绑定只消费该 contrast 的 AnalysisResult。',
@@ -719,7 +734,7 @@ export function validateDefinitionSemantics(
         '多个 comparison family member 必须声明 correction，单个或空 family 不得伪装成多重比较。',
       );
     }
-    if (correctionId !== undefined) {
+    if (correctionId !== undefined && familyResultId === undefined) {
       const correctionNodes = definition.analysisGraph.nodes.filter((node) => (
         node.analysisNodeKind === 'correction'
         && node.implementationId === correctionId
@@ -756,7 +771,17 @@ export function validateDefinitionSemantics(
           { referenceId: correctionId },
         );
       }
-    } else {
+    } else if (correctionId !== undefined) {
+      const familyProducer = nodeByResultId.get(familyResultId as string);
+      if (familyProducer?.analysisNodeKind !== 'estimator'
+          || familyProducer.implementationId !== correctionId) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          '权威 comparison family result 必须由声明的 estimator-owned standard 产生。',
+          { referenceId: correctionId },
+        );
+      }
+    } else if (correctionId === undefined) {
       for (const member of family) {
         if (!definition.decisionPolicy.analysisResultIds.includes(member.analysisResultId)) {
           throw definitionError(
