@@ -55,6 +55,10 @@ import {
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   ExecutorCapabilitiesSchema,
 } from './runtime-capabilities.js';
+import {
+  EXECUTION_FACTS_SCHEMA_VERSION,
+  ExecutionFactsSchema,
+} from './execution-facts.js';
 
 export interface WireSchemaCatalogEntry {
   fileName: string;
@@ -64,6 +68,11 @@ export interface WireSchemaCatalogEntry {
 }
 
 export const WIRE_SCHEMA_CATALOG: readonly WireSchemaCatalogEntry[] = [
+  {
+    fileName: 'execution-facts.schema.json',
+    schemaVersion: EXECUTION_FACTS_SCHEMA_VERSION,
+    schema: ExecutionFactsSchema,
+  },
   {
     fileName: 'executor-capabilities.schema.json',
     schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,

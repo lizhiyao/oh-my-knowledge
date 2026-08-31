@@ -82,7 +82,13 @@ export const TargetDefinitionSchema = z.object({
 
 export const EvaluatorInputBindingSchema = z.object({
   bindingId: IdentifierSchema,
-  sourceKind: z.enum(['output', 'trace', 'expected', 'evaluation-context']),
+  sourceKind: z.enum([
+    'output',
+    'trace',
+    'expected',
+    'evaluation-context',
+    'execution-facts',
+  ]),
   pointer: JsonPointerSchema,
 }).strict();
 

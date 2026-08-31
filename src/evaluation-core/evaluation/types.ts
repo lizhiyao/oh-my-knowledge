@@ -41,7 +41,7 @@ export interface EvaluationContent {
 
 export interface EvaluatorBindingValue extends EvaluationContent {
   bindingId: string;
-  sourceKind: 'output' | 'trace' | 'expected' | 'evaluation-context';
+  sourceKind: 'output' | 'trace' | 'expected' | 'evaluation-context' | 'execution-facts';
 }
 
 export type EvaluatorObservation = {

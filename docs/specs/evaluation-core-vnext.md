@@ -135,7 +135,8 @@ interface EvaluationSample {
 ```
 
 - An Executor receives only a frozen projection of `input + executionContext`.
-- An Evaluator may declaratively read output/trace/expected/evaluationContext.
+- An Evaluator may declaratively read output/trace/expected/evaluationContext or the Core-owned
+  `execution-facts` projection.
 - An Analysis Runtime receives stable analysis membership through AnalysisPlan only.
 - `annotations` are audit and presentation data and affect neither execution nor scoring.
 - Mappings use restricted JSON Pointer by default and select one value. Multi-value JSONPath is an adapter extension.
@@ -322,6 +323,25 @@ Records use canonical `(targetId, sampleId, trialIndex)` order. Each carries an 
 Started records and budget-censored records are disjoint shapes. A censored record has no attempts, timing, output, trace, or usage because invocation never started. A completed attempt terminates its trial and can never be followed by a retry. The Bundle has orthogonal terminal status and coverage counters: `planned = started + budgetCensored + notStarted` and `started = succeeded + failed + cancelled`. A `budget-exhausted` Bundle classifies every coordinate that did not start as budget-censored rather than generic notStarted. Exhaustion may occur inside the final started trial—for example when a retry cannot be admitted or provider cost is known only after completion—so a valid budget-exhausted Bundle need not invent a censored coordinate.
 
 `parseExecutionBundleDocument()` validates only wire shape, local state-machine invariants, and the digest without external state. Import and materialization must call `parseExecutionBundle()` with the sealed RunPlan to verify parent digests, the complete coordinate universe, trial/seed/sampling/scheduling identities, Target Runtime bindings, retry policy, structurally decidable cache envelopes, provider-cost facts, and atomic paired-block censoring. Bundle-reported blocks, cache status, and coverage are never trusted on their own. `parseExecutionBundle()` and `verifyExecutionBundle()` return an `ExecutionBundleSource` containing the serializable Bundle and a separate `planVerification` envelope. Native record provenance cannot exceed the assurance of the sealed Executor Runtime that produced it, and Bundle provenance cannot exceed its least-trusted record. Native records establish invocation and provider-cost lower bounds, unverified replay claims establish upper bounds, and provenance, cache-receipt, invocation-budget, or provider-cost-budget status becomes `indeterminate` when Bundle JSON alone cannot prove it. Supplying independently obtained cache receipts or host attestation closes the corresponding proof; reconstructing digests from the Bundle itself validates structure but never authenticates provenance or a receipt. Execution Runtime exposes the same authenticated source through `ExecutionRun.source`, while `ExecutionRun.result` remains the serializable artifact convenience. Every later stage consumes the source rather than reparsing and discarding its verification envelope. A completed Bundle under a provider-cost budget requires every native attempt to report the sealed currency, and its aggregate native spend must remain below the limit.
+
+Evaluators that reason about execution outcomes bind the complete Core-owned
+`omk.execution-facts/v1` projection with `sourceKind: 'execution-facts'` and the root pointer `''`.
+Core rejects sub-pointers so every implementation receives one versioned semantic unit rather than
+creating an accidental field-level API. The projection contains the source record digest, terminal
+status, attempt and retry counts, per-attempt status and reporting state, active and wall-clock timing,
+token and provider-cost reporting state, cache status, content-capture summaries, and minimal effective source
+provenance. It never exposes output, trace, error messages, usage details, provenance facets, or parent
+digests. Reported, partial, mixed-currency, unreported, absent, and budget-censored states remain
+distinct; Core never fills missing telemetry with zero or derives catalog cost. The binding inherits the
+most restrictive classification of captured output and trace, and its value, media type, classification,
+source digest, Evaluator identity, and EvaluationPlan identity all participate in the Evaluation cache
+key. Offline EvaluationBundle verification reconstructs the same projection from the bound
+ExecutionRecord and the authenticated source trust envelope; effective trust can never exceed the
+record trust ceiling. Budget-censored records remain canonically not evaluated because no invocation
+occurred, although the pure projection is defined for conformance and future analysis adapters.
+Trial index, retry count, and trace turn count are never aliases. Turn count remains a separate,
+versioned, source-neutral trace binding: Core does not infer it from retries or parse provider-specific
+trace shapes into an apparently authoritative execution fact.
 
 If an Evaluator binds output or trace, prepare rejects any EvidencePolicy that removes that input. Execution may still produce a `summary-only` Bundle. Only `self-contained` requires every completed output and every active-record trace inline; `resolvable` permits those contents inline or as digest-verified descriptors.
 

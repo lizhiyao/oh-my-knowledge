@@ -8,6 +8,7 @@ export * from './definition.js';
 export * from './digests.js';
 export * from './execution-identities.js';
 export * from './execution-bundle.js';
+export * from './execution-facts.js';
 export * from './evaluation-identities.js';
 export * from './evaluation-bundle.js';
 export * from './evaluation-report.js';
