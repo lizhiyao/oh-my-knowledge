@@ -50,13 +50,17 @@ The host owns provider calls, prompt registry access, custom-module loading, and
 
 | Runtime family | Input bindings | Observation | Identity requirements |
 |---|---|---|---|
-| deterministic assertion | output and, when required, trace or evaluation context | Boolean criterion result; assertion detail as evidence | assertion algorithm version and supported type registry |
+| deterministic assertion | output and evaluation context; execution-aware leaves additionally require Core-owned execution facts | Boolean criterion result; assertion detail as evidence | assertion algorithm version and supported type registry |
 | custom assertion | output and evaluation context; verified resource lease | Boolean criterion result or structured evaluator failure | module content identity and sandbox/resource policy |
 | semantic similarity | output, expected/evaluation context | Boolean threshold result; fixed-response parse evidence | semantic prompt hash, model Runtime identity, threshold |
 | RAG metric | output and evaluation context | Boolean threshold result; fixed-response parse evidence | metric-specific prompt hash, model Runtime identity, threshold |
 | rubric judge | output, optional trace, evaluation context | Raw numeric reading on the 1–5 scale | rubric prompt hash, debias variant, ensemble member, replicate index, model Runtime identity |
 
 The Core never imports `PROMPT_REGISTRY`. The composition root resolves a frozen prompt and places its hash in the host Runtime identity. `lengthDebias=false` selects only the existing rubric debias-off instrument. Presentation and tone neutrality remain enabled. RAG and semantic prompts have no length-debias switch.
+
+The first deterministic family is deliberately output-only. Cost, latency, turn, tool-call, tool-input/output, and mock-hit assertions cannot treat provider trace as an authoritative substitute for Core timing and usage. [#483](https://github.com/lizhiyao/oh-my-knowledge/issues/483) adds a qualified `execution-facts` binding owned by Core; those leaves remain a fail-closed family boundary until that contract exists.
+
+Each Core `json_schema` criterion compiles in an isolated validator session. The legacy module-global Ajv registry can retain `$id` state across otherwise-independent criteria and make results depend on process history; reproducing that contamination would violate run and binding isolation. [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) owns the explicit `BREAKING-COMPARABILITY` inventory and formal-cutover treatment of this edge case.
 
 ## 5. Identity and statistical units
 
@@ -148,7 +152,7 @@ Later migration tests consume the same fixture through the new Core path and com
 ## 11. Delivery slices
 
 1. Baseline RFC and immutable legacy fixture.
-2. Deterministic and custom assertion Evaluators.
+2. Output-only deterministic assertion Evaluator, followed by execution-aware assertions after #483 and the custom assertion Evaluator.
 3. Semantic, RAG, and rubric Evaluators using fixed-response replay.
 4. Replicate, ensemble, dimension, assertion-layer, and composite Analysis nodes.
 5. Exact bootstrap and agreement Analysis standards.

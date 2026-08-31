@@ -31,6 +31,7 @@ import {
   assembleOmkRuntimeBindings,
   createBuiltinOmkAnalysisBindingFactories,
   createOmkEvaluationRuntime,
+  OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
   resourceLeaseRequestsFromBindingEntries,
@@ -1137,6 +1138,25 @@ describe('OMK Evaluation Runtime binding assembly', () => {
 });
 
 describe('OMK Evaluation Runtime composition root', () => {
+  it('reserves the built-in output assertion Evaluator identity', async () => {
+    const compiled = compositionInput();
+    const factories = factoriesFor(compiled, []);
+    const existingFactory = factories.evaluatorsByImplementationId.values().next().value;
+    if (existingFactory === undefined) throw new Error('missing fixture evaluator factory');
+    const evaluators = new Map(factories.evaluatorsByImplementationId);
+    evaluators.set(OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID, existingFactory);
+
+    await expect(createOmkEvaluationRuntime({
+      compiled,
+      factories: { ...factories, evaluatorsByImplementationId: evaluators },
+      support: compositionSupport(),
+      resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_FACTORY_CONFLICT',
+      fieldPath: 'factories.evaluatorsByImplementationId',
+    });
+  });
+
   it('fails capability mismatch during Core prepare before any Executor opens', async () => {
     const compiled = compositionInput();
     const factories = factoriesFor(compiled, []);
