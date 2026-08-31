@@ -12,6 +12,9 @@ import {
   type JsonValue,
 } from '../../evaluation-core/contracts/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../evaluation-core/analysis/index.js';
+import { createJudgeAggregationSchemaValidators } from './analysis/judge-aggregation.js';
+import { createAssertionLayerParameterSchemaValidators } from './analysis/assertion-layer-parameters.js';
+import { createAssertionLayerTableSchemaValidators } from './analysis/assertion-layer.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -34,7 +37,10 @@ import type {
   ResolvedHostResources,
 } from '../input-compilation/index.js';
 import { assembleOmkRuntimeBindings } from './assembly.js';
-import { createBuiltinOmkAnalysisBindingFactories } from './builtins.js';
+import {
+  createBuiltinOmkAnalysisBindingFactories,
+  createBuiltinOmkScoringBindingFactories,
+} from './builtins.js';
 import {
   OmkResourceLeaseError,
   materializeNodeRunResourceLeases,
@@ -328,6 +334,15 @@ function captureSchemaValidators(
     ...[...createBuiltinAnalysisSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
+    ...[...createAssertionLayerParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createAssertionLayerTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createJudgeAggregationSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
     ...hostEntries.map((entry) => (
       [entry[0], entry[1], 'host'] as const
     )),
@@ -424,7 +439,7 @@ function mergeFactoryMap<Factory>(
     if (merged.has(implementationId)) fail({
       code: 'OMK_EVALUATION_RUNTIME_FACTORY_CONFLICT',
       fieldPath,
-      message: `implementationId "${implementationId}" 与 Core-owned built-in factory 冲突。`,
+      message: `implementationId "${implementationId}" 与 OMK built-in factory 冲突。`,
     });
     merged.set(implementationId, factory);
   }
@@ -494,21 +509,27 @@ function withBuiltinFactories(
       'factories.seriesDecisionPoliciesByImplementationId',
     ),
   };
-  const builtin = createBuiltinOmkAnalysisBindingFactories();
+  const analysisBuiltin = createBuiltinOmkAnalysisBindingFactories();
+  const scoringBuiltin = createBuiltinOmkScoringBindingFactories();
   return Object.freeze({
     ...captured,
+    evaluatorsByImplementationId: mergeFactoryMap(
+      scoringBuiltin.evaluatorsByImplementationId,
+      captured.evaluatorsByImplementationId,
+      'factories.evaluatorsByImplementationId',
+    ),
     analysisNodesByImplementationId: mergeFactoryMap(
-      builtin.analysisNodesByImplementationId,
+      analysisBuiltin.analysisNodesByImplementationId,
       captured.analysisNodesByImplementationId,
       'factories.analysisNodesByImplementationId',
     ),
     missingPoliciesByImplementationId: mergeFactoryMap(
-      builtin.missingPoliciesByImplementationId,
+      analysisBuiltin.missingPoliciesByImplementationId,
       captured.missingPoliciesByImplementationId,
       'factories.missingPoliciesByImplementationId',
     ),
     decisionPoliciesByImplementationId: mergeFactoryMap(
-      builtin.decisionPoliciesByImplementationId,
+      analysisBuiltin.decisionPoliciesByImplementationId,
       captured.decisionPoliciesByImplementationId,
       'factories.decisionPoliciesByImplementationId',
     ),

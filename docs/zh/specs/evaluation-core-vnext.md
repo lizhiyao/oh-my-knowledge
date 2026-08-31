@@ -135,7 +135,8 @@ interface EvaluationSample {
 ```
 
 - Executor 只收到 `input + executionContext` 的冻结投影；
-- Evaluator 可以按声明读取 output／trace／expected／evaluationContext；
+- Evaluator 可以按声明读取 output／trace／expected／evaluationContext，或由 Core 定义的
+  `execution-facts` 投影；
 - Analysis Runtime 只能通过 AnalysisPlan 读取稳定的分析 membership；
 - `annotations` 只用于审计和展示，不参与执行或评分；
 - 映射默认使用受限 JSON Pointer，只允许定位一个值；多值 JSONPath 属于 adapter 扩展。
@@ -322,6 +323,22 @@ interface MeasurementPolicy {
 started record 与 budget-censored record 是互斥结构。后者没有 attempt、timing、output、trace 或 usage，因为对应调用从未开始。completed attempt 必须终止 trial，后续不能再伪造 retry。Bundle 另有正交的 terminal status 与 coverage counters：`planned = started + budgetCensored + notStarted`，`started = succeeded + failed + cancelled`；`budget-exhausted` 必须把所有尚未启动的坐标归类为 budget-censored，而不是笼统的 notStarted。预算也可能在最后一个已启动 trial 内耗尽，例如 retry 无法获准或 provider cost 只能在完成后得知；此时合法的 budget-exhausted Bundle 不需要伪造一个 censored coordinate。
 
 `parseExecutionBundleDocument()` 只做不依赖外部状态的 wire、局部状态机与 digest 校验。导入或物化必须调用绑定 sealed RunPlan 的 `parseExecutionBundle()`，进一步核对 parent digests、完整 coordinate universe、trial／seed／sampling／scheduling identities、Target Runtime、retry policy、结构可判定的 cache envelope、provider-cost 事实和 paired-block 原子删失；不能信任 Bundle 自报的 block、cache status 或 coverage。`parseExecutionBundle()` 与 `verifyExecutionBundle()` 返回 `ExecutionBundleSource`，其中包含可序列化 Bundle 与独立的 `planVerification` 信封。native record provenance 不能高于实际产出它的 sealed Executor Runtime assurance，Bundle provenance 也不能高于其中最不可信的 record。native record 给出调用次数与 provider cost 下界，尚未验证的 replay claim 给出上界；若只凭 Bundle JSON 无法证明，则 provenance、cache receipt、调用预算或 provider-cost 预算状态为 `indeterminate`。只有从可信 cache 边界独立取得的 receipt 或宿主 attestation 才能闭合相应证明；从 Bundle 自身重建 digest 只能验证结构，不能认证 provenance 或 receipt。Execution Runtime 通过 `ExecutionRun.source` 暴露同一份已认证 source，`ExecutionRun.result` 仅作为可序列化 artifact 的便利入口；后续阶段必须消费 source，不能重新解析后丢弃 verification 信封。配置 provider-cost 预算时，completed Bundle 的每次 native attempt 都必须报告封存币种，且 native 调用总成本必须低于上限。
+
+需要判断执行结果的 Evaluator，通过 `sourceKind: 'execution-facts'` 与根 pointer `''` 绑定 Core
+定义的完整 `omk.execution-facts/v1` 投影。Core 拒绝子 pointer，确保所有实现消费同一个有版本的
+语义单元，避免意外形成字段级公共 API。投影包含 source record digest、terminal status、attempt／retry
+数量、逐 attempt 状态与上报状态、active／wall-clock timing、token 与 provider-cost 上报状态、cache
+状态、内容捕获摘要和最小 effective source provenance；绝不暴露 output、trace、错误文案、usage details、
+provenance facets 或 parent digests。reported、partial、mixed-currency、unreported、absent 与
+budget-censored 必须保持可区分；Core 不把缺失 telemetry 填成零，也不推导价格目录成本。binding
+继承已捕获 output 与 trace 中最严格的 classification；其 value、media type、classification、source
+digest、Evaluator identity 与 EvaluationPlan identity 全部进入 Evaluation cache key。离线
+EvaluationBundle 校验根据绑定的 ExecutionRecord 与已认证 source trust 信封重建同一投影；effective
+trust 绝不能高于 record trust ceiling。budget-censored record 因未发生调用，
+仍按规范记为 not evaluated；纯投影仅用于一致性测试和未来 analysis adapter。
+trial index、retry count 与 trace turn count 绝不互相冒充。turn count 继续使用独立、有版本且
+source-neutral 的 trace binding；Core 不从 retry 推断 turn，也不把 provider-specific trace 解析成看似
+权威的 execution fact。
 
 Evaluator 若声明读取 output 或 trace，prepare 必须拒绝会移除该输入的 EvidencePolicy。Execution 阶段仍可只产生 `summary-only` Bundle；只有 `self-contained` 要求 completed output 以及所有 active record 的 trace 全部内联，`resolvable` 要求这些内容可内联或通过经 digest 校验的 descriptor 解析。
 

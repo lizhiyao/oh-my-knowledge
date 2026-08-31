@@ -1,10 +1,12 @@
 import {
   createEvaluationEngine,
+  EXECUTION_FACTS_SCHEMA_VERSION,
   type EvaluationDefinition,
   type EvaluationEngineRuntime,
   type EvaluationEvent,
   type EvaluationRunResult,
   type Evaluator,
+  type ExecutionFacts,
   type Executor,
   type MeasurementPolicy,
 } from 'oh-my-knowledge';
@@ -14,6 +16,10 @@ declare const definition: EvaluationDefinition;
 declare const policy: MeasurementPolicy;
 declare const executor: Executor;
 declare const evaluator: Evaluator;
+declare const executionFacts: ExecutionFacts;
+
+const executionFactsVersion: typeof EXECUTION_FACTS_SCHEMA_VERSION = executionFacts.schemaVersion;
+void executionFactsVersion;
 
 const engine = createEvaluationEngine({
   ...runtime,

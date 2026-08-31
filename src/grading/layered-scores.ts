@@ -1,4 +1,7 @@
 import type { AssertionDetail, LayeredScores } from '../types/index.js';
+import { ASSERTION_LAYER } from '../shared/assertions/layers.js';
+
+export { ASSERTION_LAYER } from '../shared/assertions/layers.js';
 
 /**
  * 每个 assertion 类型归到事实层 / 行为层。**单一来源**:`computeLayeredScores` 据此把 assertion 明细拆进
@@ -9,51 +12,10 @@ import type { AssertionDetail, LayeredScores } from '../types/index.js';
  * 不变量:**runner 支持的每个 assertion 类型都必须能被归层**,否则该类型的 pass/fail 会被 computeLayeredScores
  * 从 fact 与 behavior 同时漏掉 —— 既不报错也不进 composite,静默丢分(曾漏掉七类:mock_hit / rouge_n_min /
  * bleu_min / levenshtein_max + RAG 三件套 faithfulness / answer_relevancy / context_recall)。叶子断言在此静态
- * 分类;组合器 `assert-set` 没有静态层,由 `assertions.ts` 的 resolveAssertSetLayer 在 grading 期按其叶子 children
+ * 分类;组合器 `assert-set` 没有静态层,由共享 `resolveAssertionLayer` 在 grading 期按其叶子 children
  * 解析(同层→归层、混层→不计),结果落 detail.layer。共享注册表 `shared/assertion-types.ts` 是支持类型的真源；
- * `test/grading/layered-scores-exhaustiveness.test.ts` 守住新增类型必须在本映射或组合器集合中显式处理。
+ * `test/grading/layered-scores-exhaustiveness.test.ts` 守住新增类型必须在共享映射或组合器集合中显式处理。
  */
-export const ASSERTION_LAYER: Record<string, 'fact' | 'behavior'> = {
-  contains: 'fact',
-  not_contains: 'fact',
-  regex: 'fact',
-  json_valid: 'fact',
-  json_schema: 'fact',
-  equals: 'fact',
-  not_equals: 'fact',
-  contains_all: 'fact',
-  contains_any: 'fact',
-  semantic_similarity: 'fact',
-  tool_output_contains: 'fact',
-  tool_input_contains: 'fact',
-  tool_input_not_contains: 'fact',
-  // 文本相似度指标:衡量输出与参考答案的内容贴合度 = 内容保真 → 事实层。
-  rouge_n_min: 'fact',
-  bleu_min: 'fact',
-  levenshtein_max: 'fact',
-  // RAG 评委指标:都评输出内容质量(忠实度 / 答非所问 / 关键事实召回),= 内容正确性 → 事实层。
-  faithfulness: 'fact',
-  answer_relevancy: 'fact',
-  context_recall: 'fact',
-  starts_with: 'behavior',
-  ends_with: 'behavior',
-  min_length: 'behavior',
-  max_length: 'behavior',
-  word_count_min: 'behavior',
-  word_count_max: 'behavior',
-  cost_max: 'behavior',
-  latency_max: 'behavior',
-  turns_min: 'behavior',
-  turns_max: 'behavior',
-  tools_called: 'behavior',
-  tools_not_called: 'behavior',
-  tools_count_min: 'behavior',
-  tools_count_max: 'behavior',
-  custom: 'behavior',
-  // 必经工具 / 步骤里程碑(value 形如 "Tool:N"):测"有没有走到那一步" = 做事方式 → 行为层(类同 tools_called)。
-  mock_hit: 'behavior',
-};
-
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
 }

@@ -955,7 +955,8 @@
                     "output",
                     "trace",
                     "expected",
-                    "evaluation-context"
+                    "evaluation-context",
+                    "execution-facts"
                   ],
                   "type": "string"
                 }

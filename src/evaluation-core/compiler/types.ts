@@ -21,6 +21,7 @@ export const EvaluatorCapabilitiesSchema = z.object({
     'trace',
     'expected',
     'evaluation-context',
+    'execution-facts',
   ])).min(1),
   metricValueTypes: z.array(z.enum([
     'numeric',

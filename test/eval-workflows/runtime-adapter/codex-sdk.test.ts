@@ -467,7 +467,8 @@ describe('Codex SDK Core Executor adapter', () => {
     });
     expect(withUsage.usage).not.toHaveProperty('providerCost');
     expect(withUsage.trace?.value).toMatchObject({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      numTurns: 1,
       turns: [{ role: 'assistant', content: 'fixture answer' }],
     });
 

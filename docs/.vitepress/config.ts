@@ -74,6 +74,7 @@ export default defineConfig({
               { text: 'Sample design spec', link: '/specs/sample-design-spec' },
               { text: 'Knowledge gap signal spec', link: '/specs/knowledge-gap-signal-spec' },
               { text: 'RAG metrics spec', link: '/specs/rag-metrics-spec' },
+              { text: 'Scoring equivalence RFC', link: '/specs/evaluation-scoring-equivalence' },
               { text: 'Terminology spec', link: '/specs/terminology-spec' },
               { text: 'Storage layout spec', link: '/specs/storage-layout-spec' },
             ],

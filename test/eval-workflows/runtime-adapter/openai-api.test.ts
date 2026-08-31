@@ -263,6 +263,30 @@ async function execute(
 }
 
 describe('OpenAI API Core Executor adapter', () => {
+  it('advertises trace v2 and keeps stateless provider constraints fail-closed', () => {
+    const traceValidator = createOpenAIApiCoreSchemaValidators().find(
+      (validator) => validator.schema.schemaVersion === 'omk.openai-api-trace/v2',
+    );
+    expect(traceValidator).toBeDefined();
+    expect(() => traceValidator!.parse({
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      turns: [{ role: 'assistant', content: 'answer' }],
+      toolCalls: [],
+      numTurns: 2,
+      fullNumTurns: 1,
+      numSubAgents: 0,
+    })).toThrow();
+    expect(() => traceValidator!.parse({
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      turns: [{ role: 'assistant', content: 'answer' }],
+      toolCalls: [],
+      numTurns: 1,
+      fullNumTurns: 1,
+      numSubAgents: 0,
+      mockStats: { hits: 0, misses: 0, perMock: {} },
+    })).toThrow();
+  });
+
   it('keeps credentials identity-invariant while effect locators change identity', async () => {
     const value = await fixture();
     const first = await createAdapter(value, { apiKey: 'first-secret' });
@@ -280,7 +304,7 @@ describe('OpenAI API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toMatch(/proxy\.example|org-sensitive|proj-sensitive/);
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.openai-api/v1',
-      version: '1.0.0',
+      version: '1.1.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -308,9 +332,10 @@ describe('OpenAI API Core Executor adapter', () => {
       mediaType: 'text/plain',
     });
     expect(result.trace?.value).toEqual({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
       turns: [{ role: 'assistant', content: 'fixture answer' }],
       toolCalls: [],
+      numTurns: 1,
       fullNumTurns: 1,
       numSubAgents: 0,
     });

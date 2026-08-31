@@ -22,11 +22,12 @@ import type {
   ClaudeResultMessage,
 } from '../../../executors/anthropic/claude/protocol.js';
 import {
-  isValidToolCallInfo,
-  isValidTurnInfo,
-} from '../../../shared/executor-result.js';
+  SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
+  SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
+  SourceNeutralTraceSchema,
+} from '../source-neutral-trace.js';
 
-export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
+export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
 
 export interface ParsedClaudeCliStream {
   readonly messages: readonly ClaudeMessage[];
@@ -36,22 +37,10 @@ export interface ParsedClaudeCliStream {
   readonly terminalStatus: 'completed' | 'failed';
 }
 
-const ClaudeTraceSchema = z.object({
-  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
-  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
-  toolCalls: z.array(z.custom<JsonValue>(isValidToolCallInfo)),
-  fullNumTurns: z.number().int().nonnegative(),
-  numSubAgents: z.number().int().nonnegative(),
-}).strict();
-
 const CLAUDE_SCHEMA_DESCRIPTORS = {
   input: { valueKind: 'json-value' },
   output: { valueKind: 'string' },
-  trace: {
-    schemaVersion: 'omk.source-neutral-trace/v1',
-    fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
-    turnAndToolCallItems: 'source-neutral-executor-trace/v1',
-  },
+  trace: SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
 } as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
 
 export interface ClaudeMessageProtocolProfile {
@@ -77,10 +66,11 @@ function fail(
 }
 
 function schemaIdentity(name: 'input' | 'output' | 'trace'): SchemaIdentity {
-  const schemaVersion = `omk.claude-cli-${name}/v1`;
+  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const schemaVersion = `omk.claude-cli-${name}/${contractVersion}`;
   return {
     schemaVersion,
-    schemaUri: `urn:omk:runtime:claude-cli:${name}:v1`,
+    schemaUri: `urn:omk:runtime:claude-cli:${name}:${contractVersion}`,
     schemaDigest: digestCanonicalJson({
       schemaVersion,
       sourceProtocol: 'claude --print --output-format stream-json',
@@ -107,7 +97,7 @@ export function createClaudeCliCoreSchemaValidators(): readonly CoreSchemaValida
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity('trace')),
       parse(value: unknown): JsonValue {
-        return ClaudeTraceSchema.parse(value) as JsonValue;
+        return SourceNeutralTraceSchema.parse(value) as JsonValue;
       },
     }),
   ]);
@@ -346,13 +336,18 @@ export function parseClaudeMessageSequence(
     || (resultRecord.subtype === 'success') === resultRecord.is_error
   ) fail(profile, `${profile.adapterLabel} returned an invalid terminal result.`);
   const usage = usageFromResult(result, profile);
+  const numTurns = safeInteger(resultRecord.num_turns);
+  if (numTurns === undefined) {
+    fail(profile, `${profile.adapterLabel} reported an invalid root turn count.`, usage);
+  }
   let trace: JsonValue;
   try {
     const neutral = extractClaudeTrace(messages);
-    trace = ClaudeTraceSchema.parse({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+    trace = SourceNeutralTraceSchema.parse({
+      schemaVersion: SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
       turns: neutral.turns,
       toolCalls: neutral.toolCalls,
+      numTurns,
       fullNumTurns: neutral.fullNumTurns,
       numSubAgents: neutral.numSubAgents,
     }) as JsonValue;

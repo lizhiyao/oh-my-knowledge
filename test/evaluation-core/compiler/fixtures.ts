@@ -238,6 +238,9 @@ interface RuntimeOptions {
   sandboxIds?: string[];
   omitExecutorCapabilitySchemaVersion?: boolean;
   evaluatorValueTypes?: Array<'numeric' | 'boolean' | 'categorical' | 'text' | 'ranking'>;
+  evaluatorInputSourceKinds?: Array<
+    'output' | 'trace' | 'expected' | 'evaluation-context' | 'execution-facts'
+  >;
   evaluatorProviderCost?: {
     reporting: 'unsupported' | 'optional' | 'required';
     trustedUpperBound?: { amount: number; currency: string };
@@ -355,7 +358,13 @@ export function testRuntime(options: RuntimeOptions = {}): TestRuntime {
           'actual-evaluator/v1',
           'evaluator-fingerprint-1',
           {
-            inputSourceKinds: ['output', 'trace', 'expected', 'evaluation-context'],
+            inputSourceKinds: options.evaluatorInputSourceKinds ?? [
+              'output',
+              'trace',
+              'expected',
+              'evaluation-context',
+              'execution-facts',
+            ],
             metricValueTypes: options.evaluatorValueTypes ?? ['boolean'],
             schemas: [schemaIdentity('evaluator-io')],
             ...(options.evaluatorProviderCost === undefined

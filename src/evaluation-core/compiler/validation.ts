@@ -98,6 +98,20 @@ function validateEvaluatorBindings(definition: EvaluationDefinition): void {
       `evaluator:${evaluator.evaluatorId}:binding`,
     );
     for (const binding of evaluator.inputs) {
+      if (binding.sourceKind === 'execution-facts') {
+        if (binding.pointer !== '') {
+          throw definitionError(
+            'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+            'execution-facts binding 必须消费完整 canonical projection。',
+            {
+              evaluatorId: evaluator.evaluatorId,
+              bindingId: binding.bindingId,
+              pointer: binding.pointer,
+            },
+          );
+        }
+        continue;
+      }
       if (binding.sourceKind !== 'expected' && binding.sourceKind !== 'evaluation-context') {
         continue;
       }
