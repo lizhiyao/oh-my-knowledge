@@ -177,6 +177,45 @@ Later migration tests consume the same fixture through the new Core path and com
 
 The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate.
 
+The final offline differential harness is
+`test/evaluation-core/scoring-equivalence-differential.test.ts`, delivered by
+[#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528). It prepares and executes one
+real sealed plan across two Targets and four paired samples, then traverses
+`Execution -> Evaluation -> Analysis -> Decision` through the public engine facade. The plan
+contains output-only and execution-aware deterministic assertions, all four semantic/RAG
+instruments, two rubric ensemble members with two measurement replicates each, assertion-layer,
+replicate, ensemble, dimension, composite, Bootstrap-family, Agreement, and release-decision
+nodes. The legacy projection is generated independently from the same outputs, fixed provider
+readings, Gold ratings, thresholds, and seed.
+
+The harness compares exact criterion readings, structured failure states, coverage, usage and
+provider-cost provenance, prompt IDs and frozen hashes, sample/trial/member/replicate/pairing
+identities, layer and composite rows, Bootstrap source lineage, Gold lineage, agreement
+statistics, release conclusion, and stable reason codes. Runtime-produced schema validators and
+artifact digest checks remain active; the test does not construct final tables by calling their
+pure functions. No production CLI, Report reader/writer, Studio, resume, batch, evolve, or
+persistence path participates in the run.
+
+### 10.1 Typed differential exception inventory
+
+The differential harness admits only the following issue-owned differences. Each entry is a
+typed value with an explicit `accepted` or `blocking` status; an unlisted mismatch fails exact
+comparison.
+
+| Owning issue | Status | Deliberate difference |
+|---|---|---|
+| [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) | accepted | Provider or parse failure remains failed/invalid/missing evidence instead of a Boolean content failure. The full-chain failure probe checks both projections and downstream coverage. |
+| [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) | accepted | `json_schema` validator sessions are isolated instead of sharing legacy process-global state. |
+| [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) | accepted | Malformed, coerced, out-of-range, empty-reason, and zero-sentinel rubric responses are not valid readings. |
+| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | **blocking** | The legacy async-assertion `not` defect is not an acceptable cutover baseline. Formal cutover stays blocked until its separately marked comparability change lands. |
+
+This inventory is not a compatibility mode. Accepted entries describe the authoritative Core
+semantics, while the single blocking entry prevents the harness from declaring formal cutover
+ready. The production dependency direction remains Core contracts/runtime inward and host
+adapters outward: Evaluation Core does not import the legacy Report, CLI, provider SDK,
+environment, filesystem, or prompt-registry text. Provider invocation and prompt construction
+remain injected host ports; only sealed identities and captured artifacts cross the boundary.
+
 ## 11. Delivery slices
 
 1. Baseline RFC and immutable legacy fixture.
