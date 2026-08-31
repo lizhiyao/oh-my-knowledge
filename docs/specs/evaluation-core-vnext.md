@@ -1034,6 +1034,7 @@ This design follows resource-quota admission practice rather than billing dashbo
 ## Related documents
 
 - [Scoring pipeline](scoring.md)
+- [Scoring equivalence migration RFC](evaluation-scoring-equivalence.md)
 - [Statistical rigor](../explanation/statistical-rigor.md)
 - [Terminology spec](terminology-spec.md)
 - [RAG metrics spec](rag-metrics-spec.md)
