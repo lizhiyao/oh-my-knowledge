@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter
 
-> **Status**: binding assembly, verified resource leases, adapter preflight, non-blocking event projection, and the Core composition root for [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457). It is additive and does not switch the production `omk eval` pipeline.
+> **Status**: binding assembly, verified resource leases, adapter preflight, non-blocking event projection, the Core composition root, and the production factory registry/support ports are implemented. It is additive and does not switch the production `omk eval` pipeline.
 
 ## Boundary
 
@@ -49,6 +49,8 @@ Before invoking any factory, assembly validates unique binding IDs and reference
 ## Immutable entries and identity
 
 Assembly first clones and deep-freezes Definition, Series, and RuntimeBindingRequest. Each implementation factory is selected by `implementationId`, but it is called once per binding so two references using the same implementation receive distinct port instances.
+
+`createProductionRuntimeFactoryRegistry()` is the sole production mapping for Codex CLI／SDK, Claude CLI／SDK, OpenAI API, Anthropic API, custom command, and OMK-owned scoring／analysis implementations. It snapshots configurations and exposes immutable map views without invoking unused factories. Executor preflight declarations are mandatory host input and are captured with the same configuration; the registry does not invent successful doctor, credential, connectivity, filesystem, MCP, or mock checks. Node support ports share one digest-verifying content store instance and receive the clock explicitly.
 
 The factory returns the actual port identity and version-resolution result. Assembly validates the port shape and implementation identity, captures an immutable identity snapshot, and wraps the port methods around the original instance. Executor binding validation also requires exact equality with `TargetDefinition.executionRequirements`; the qualification object reuses that canonical value rather than re-deriving feature semantics. The Core preparation resolver and the captured execution port are then projected from the same entry; later registry or request mutation cannot create split-brain resolution. Only Core compares those requirements with the actual port capability manifest.
 
