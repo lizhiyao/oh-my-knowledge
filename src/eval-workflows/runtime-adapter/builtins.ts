@@ -16,6 +16,7 @@ import {
 } from './evaluators/output-assertions.js';
 import type { OmkRuntimeBindingFactories } from './types.js';
 import { createJudgeAggregationAnalysisNodes } from './analysis/judge-aggregation.js';
+import { createAssertionLayerAnalysisNodes } from './analysis/assertion-layer-node.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
@@ -87,6 +88,7 @@ export function createBuiltinOmkScoringBindingFactories(): OmkBuiltinScoringBind
 export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBindingFactories {
   const analysisNodes = new Map([
     ...createBuiltinAnalysisNodes(),
+    ...createAssertionLayerAnalysisNodes(),
     ...createJudgeAggregationAnalysisNodes(),
   ]);
   const missingPolicies = createBuiltinMissingPolicies();
