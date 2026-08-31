@@ -132,6 +132,8 @@ The exact mean／paired-difference／independent-difference standards and compar
 
 Krippendorff alpha uses interval distance `delta^2=(c-k)^2`; nominal or ordinal variants are not equivalent. Empty input, one total rating pair, or zero expected disagreement is inconclusive, not numeric zero. The alpha bootstrap resamples paired rating units.
 
+The standard is implemented by the host-owned `omk.agreement-table/v1` Analysis node from [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522). It consumes one schema-sealed Dimension table plus Gold ratings that exist only in Analysis sample context; Execution and Evaluation plans and Bundles never receive that context. The node seals one target, annotator identity, annotation version, numeric scale, JSON pointer, sample order, bootstrap configuration, and the interval-distance alpha definition. Repeated Dimension trials are averaged within each sample while retaining per-sample group coverage and lineage. The output reports Krippendorff alpha as the primary statistic, weighted kappa and Pearson as auxiliary diagnostics, finite-draw bootstrap coverage, and structured missing results for insufficient pairs, zero expected disagreement, undefined statistics, or invalid draws. The table is statistically recomputed during transported Bundle validation. Formal CLI and legacy Report projection remain separate work.
+
 ## 8. DecisionPolicy boundary
 
 The release DecisionPolicy consumes named, plan-bound Analysis results and explicit evidence gates. It must reproduce the legacy six verdicts and reason precedence without reading a legacy Report object.

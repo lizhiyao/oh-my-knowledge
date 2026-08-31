@@ -42,6 +42,9 @@ import {
   BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
   BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
   BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_PARAMETERS_SCHEMA,
+  AGREEMENT_TABLE_SCHEMA,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -1159,6 +1162,9 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     )).toBe(true);
     expect(builtins.analysisNodesByImplementationId.has(
       BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
     )).toBe(true);
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
@@ -2429,6 +2435,8 @@ describe('OMK Evaluation Runtime composition root', () => {
     COMPOSITE_TABLE_SCHEMA,
     BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
     BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+    AGREEMENT_PARAMETERS_SCHEMA,
+    AGREEMENT_TABLE_SCHEMA,
   ])(
     'reserves Analysis builtin SchemaValidator URI $schemaUri',
     async (schema) => {
