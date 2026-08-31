@@ -274,7 +274,14 @@ export function createCompositeTableSchemaValidators(): ReadonlyMap<
 > {
   const validator = createAnalysisSchemaValidator(
     COMPOSITE_TABLE_SCHEMA,
-    (value) => CompositeTableEnvelopeSchema.parse(value) as JsonValue,
+    (value) => parseCompositeTableEnvelope(value) as JsonValue,
   );
   return new Map([[schemaIdentityKey(validator.schema), validator]]);
+}
+
+export function parseCompositeTableEnvelope(value: unknown): Readonly<{
+  resultType: 'table';
+  value: CompositeTableValue;
+}> {
+  return CompositeTableEnvelopeSchema.parse(value);
 }
