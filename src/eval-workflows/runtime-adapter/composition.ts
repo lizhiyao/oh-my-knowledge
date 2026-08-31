@@ -17,6 +17,8 @@ import { createAssertionLayerParameterSchemaValidators } from './analysis/assert
 import { createAssertionLayerTableSchemaValidators } from './analysis/assertion-layer.js';
 import { createDimensionParameterSchemaValidators } from './analysis/dimension-parameters.js';
 import { createDimensionTableSchemaValidators } from './analysis/dimension-table.js';
+import { createCompositeParameterSchemaValidators } from './analysis/composite-parameters.js';
+import { createCompositeTableSchemaValidators } from './analysis/composite-table.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -349,6 +351,12 @@ function captureSchemaValidators(
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createDimensionTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createCompositeParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createCompositeTableSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...hostEntries.map((entry) => (

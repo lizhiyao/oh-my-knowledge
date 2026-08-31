@@ -18,6 +18,7 @@ import type { OmkRuntimeBindingFactories } from './types.js';
 import { createJudgeAggregationAnalysisNodes } from './analysis/judge-aggregation.js';
 import { createAssertionLayerAnalysisNodes } from './analysis/assertion-layer-node.js';
 import { createDimensionAnalysisNodes } from './analysis/dimension-node.js';
+import { createCompositeAnalysisNodes } from './analysis/composite-node.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
@@ -92,6 +93,7 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
     ...createAssertionLayerAnalysisNodes(),
     ...createJudgeAggregationAnalysisNodes(),
     ...createDimensionAnalysisNodes(),
+    ...createCompositeAnalysisNodes(),
   ]);
   const missingPolicies = createBuiltinMissingPolicies();
   const decisionPolicies = createBuiltinDecisionPolicies();
