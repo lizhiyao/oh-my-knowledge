@@ -19,6 +19,12 @@ import { createDimensionParameterSchemaValidators } from './analysis/dimension-p
 import { createDimensionTableSchemaValidators } from './analysis/dimension-table.js';
 import { createCompositeParameterSchemaValidators } from './analysis/composite-parameters.js';
 import { createCompositeTableSchemaValidators } from './analysis/composite-table.js';
+import {
+  createBootstrapFamilyParameterSchemaValidators,
+} from './analysis/bootstrap-family-parameters.js';
+import {
+  createBootstrapFamilyTableSchemaValidators,
+} from './analysis/bootstrap-family-table.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -357,6 +363,12 @@ function captureSchemaValidators(
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createCompositeTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createBootstrapFamilyParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createBootstrapFamilyTableSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...hostEntries.map((entry) => (
