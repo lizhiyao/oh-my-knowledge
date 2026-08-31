@@ -58,6 +58,10 @@ The host owns provider calls, prompt registry access, custom-module loading, and
 
 The Core never imports `PROMPT_REGISTRY`. The composition root resolves a frozen prompt and places its hash in the host Runtime identity. `lengthDebias=false` selects only the existing rubric debias-off instrument. Presentation and tone neutrality remain enabled. RAG and semantic prompts have no length-debias switch.
 
+Semantic and RAG assertions use `omk.llm-assertions/v1`. One Evaluator coordinate owns exactly one criterion and one Boolean Metric, so a provider failure cannot suppress or falsify an unrelated criterion. The sealed criterion retains threshold, positive weight, and fact-layer identity for downstream aggregation. The sealed instrument records the assertion type, registry prompt ID, and frozen prompt hash; the Runtime fingerprint additionally binds the selected model configuration and the host invocation Runtime identity. The host invocation port performs exactly one cooperative-cancellation-aware call. It has no retry, timeout, budget, or cache policy of its own.
+
+A strict integer reading in `[1, 5]` with a non-empty explanation produces an observed Boolean threshold result. Non-JSON, malformed JSON, malformed score, out-of-range score, and missing explanation produce distinct invalid observations. Provider failure produces a failed Evaluation record with a redacted stable code. Core timeout and cancellation remain attempt states, and admission failure remains budget censoring. Unknown usage or provider cost stays absent. This is the intentional `BREAKING-COMPARABILITY` correction owned by [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481); no compatibility mode or legacy reader is provided.
+
 Deterministic assertions are split into two independently identified families. The output-only family binds only output and evaluation context. The execution-aware family recursively computes each assertion tree's least-authority source union, then binds only the required subset of output, Core-owned `execution-facts`, source-neutral trace, and evaluation context. Criteria with different dependency signatures are separate Evaluator groups so unavailable trace cannot suppress a facts-only metric.
 
 Cost uses only a complete provider-reported USD aggregate from `ExecutionFacts.usage.providerCost`; unreported, partial, or mixed-currency cost is a missing observation, never zero. Latency uses trial wall-clock duration from `ExecutionFacts.timing.wallClockDurationMs`. Turn assertions use `omk.source-neutral-trace/v2`'s independent provider/runtime `numTurns` field, never transcript breadth (`fullNumTurns`), attempt count, or retry count. Tool assertions use source-neutral `toolCalls`; mock-hit assertions require source-neutral `mockStats` captured by the configured interception boundary. Missing telemetry remains missing rather than becoming a failed quality assertion. The v2 cutover is intentional and has no v1 compatibility reader: reusing the v1 identity for a different required-field set would make persisted evidence ambiguous.
@@ -92,7 +96,9 @@ Planned nodes are:
 
 Mixed-layer `assert-set` criteria remain visible assertion observations but are excluded from both fact and behavior. Zero total weight yields a missing layer. A failed rubric judge is missing, not score zero.
 
-The legacy RAG and semantic paths currently convert provider/parse failure into a failed Boolean assertion. That behavior is frozen by the equivalence fixture, but it is a measurement defect: infrastructure failure is not evidence that the answer failed the criterion. [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) owns the separate `BREAKING-COMPARABILITY` correction; the Core representation must retain enough failure provenance to make that future correction possible.
+The legacy RAG and semantic paths convert provider/parse failure into a failed Boolean assertion. That behavior remains frozen only as historical differential evidence. The Core deliberately does not reproduce it: invalid readings and failed attempts are excluded from assertion-layer pass ratios and reduce coverage instead. A valid reading below the threshold remains observed `false`, so negative content evidence is still counted.
+
+The legacy async path also ignores the otherwise-public `Assertion.not` contract. That independent Boolean-semantics defect is tracked by [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) and is not folded into the #481 failure-state correction.
 
 ## 7. Statistical standards
 
@@ -150,6 +156,8 @@ The first baseline is `test/fixtures/evaluation-core/scoring-equivalence-v1.json
 - interval Krippendorff alpha, weighted kappa, Pearson, and alpha bootstrap.
 
 Later migration tests consume the same fixture through the new Core path and compare observations, coverage, evidence, per-unit tables, interval results, usage provenance, and reason codes. Exact identity and status comparisons never use numeric tolerance. Floating-point tolerance is allowed only in formula property tests that are not artifact equality tests.
+
+The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate.
 
 ## 11. Delivery slices
 
