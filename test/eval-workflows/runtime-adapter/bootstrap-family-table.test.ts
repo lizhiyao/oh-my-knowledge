@@ -21,6 +21,7 @@ import {
 const sampleIds = ['sample-1', 'sample-2', 'sample-3', 'sample-4'];
 const controlScores = [1, 2, 3, 4];
 const treatmentScores = [2, 4, 4, 5];
+const secondTreatmentScores = [1, 3, 5, 5];
 
 function parameters(overrides: Partial<BootstrapFamilyParameters> = {}): BootstrapFamilyParameters {
   return {
@@ -29,18 +30,18 @@ function parameters(overrides: Partial<BootstrapFamilyParameters> = {}): Bootstr
       sourceKind: 'composite',
       selector: 'aggregate',
     },
-    targetIds: ['control', 'treatment', 'empty'],
+    targetIds: ['control', 'treatment', 'treatment-2', 'empty'],
     sampleIds,
     comparisons: [{
-      comparisonId: 'paired',
+      comparisonId: 'paired-1',
       controlTargetId: 'control',
       treatmentTargetId: 'treatment',
       comparisonDesign: 'paired',
     }, {
-      comparisonId: 'independent',
+      comparisonId: 'paired-2',
       controlTargetId: 'control',
-      treatmentTargetId: 'treatment',
-      comparisonDesign: 'independent',
+      treatmentTargetId: 'treatment-2',
+      comparisonDesign: 'paired',
     }, {
       comparisonId: 'missing',
       controlTargetId: 'control',
@@ -86,6 +87,9 @@ function observations(): BootstrapObservation[] {
   return sampleIds.flatMap((sampleId, index) => [
     observation({ targetId: 'control', sampleId, score: controlScores[index] }),
     observation({ targetId: 'treatment', sampleId, score: treatmentScores[index] }),
+    observation({
+      targetId: 'treatment-2', sampleId, score: secondTreatmentScores[index],
+    }),
     observation({ targetId: 'empty', sampleId }),
   ]).reverse();
 }
@@ -95,13 +99,14 @@ describe('Bootstrap family Analysis table', () => {
     const value = buildBootstrapFamilyTable(parameters(), observations());
 
     expect(value.configuration.comparisons.map((entry) => entry.comparisonId)).toEqual([
-      'independent',
       'missing',
-      'paired',
+      'paired-1',
+      'paired-2',
     ]);
     expect(value.observations.map((entry) => [entry.targetId, entry.sampleId])).toEqual([
       ...sampleIds.map((sampleId) => ['control', sampleId]),
       ...sampleIds.map((sampleId) => ['treatment', sampleId]),
+      ...sampleIds.map((sampleId) => ['treatment-2', sampleId]),
       ...sampleIds.map((sampleId) => ['empty', sampleId]),
     ]);
     expect(value.targetIntervals).toMatchObject([{
@@ -127,6 +132,17 @@ describe('Bootstrap family Analysis table', () => {
         confidenceLevel: 0.95,
       },
     }, {
+      targetId: 'treatment-2',
+      intervalStatus: 'observed',
+      unitCount: 4,
+      interval: {
+        lower: 2,
+        upper: 5,
+        estimate: 3.5,
+        samples: 1_000,
+        confidenceLevel: 0.95,
+      },
+    }, {
       targetId: 'empty',
       intervalStatus: 'missing',
       reasonCode: 'bootstrap-no-observed-units',
@@ -140,23 +156,11 @@ describe('Bootstrap family Analysis table', () => {
       effectiveAlpha: 0.025,
     });
     expect(value.comparisons).toMatchObject([{
-      binding: { comparisonId: 'independent' },
-      comparisonStatus: 'observed',
-      effectiveAlpha: 0.025,
-      interval: {
-        lower: -0.5,
-        upper: 3,
-        estimate: 1.25,
-        samples: 1_000,
-        confidenceLevel: 0.975,
-        significant: false,
-      },
-    }, {
       binding: { comparisonId: 'missing' },
       comparisonStatus: 'missing',
       reasonCode: 'bootstrap-no-complete-pairs',
     }, {
-      binding: { comparisonId: 'paired' },
+      binding: { comparisonId: 'paired-1' },
       comparisonStatus: 'observed',
       effectiveAlpha: 0.025,
       interval: {
@@ -167,16 +171,37 @@ describe('Bootstrap family Analysis table', () => {
         confidenceLevel: 0.975,
         significant: true,
       },
+    }, {
+      binding: { comparisonId: 'paired-2' },
+      comparisonStatus: 'observed',
+      effectiveAlpha: 0.025,
+      interval: {
+        lower: 0.25,
+        upper: 1.75,
+        estimate: 1,
+        samples: 1_000,
+        confidenceLevel: 0.975,
+        significant: true,
+      },
     }]);
   });
 
   it('uses the existing legacy estimators as the exact algorithm source', () => {
     const value = buildBootstrapFamilyTable(parameters(), observations());
     const control = value.targetIntervals.find((entry) => entry.targetId === 'control');
-    const independent = value.comparisons.find(
-      (entry) => entry.binding.comparisonId === 'independent',
-    );
-    const paired = value.comparisons.find((entry) => entry.binding.comparisonId === 'paired');
+    const paired = value.comparisons.find((entry) => entry.binding.comparisonId === 'paired-1');
+    const independentValue = buildBootstrapFamilyTable(parameters({
+      targetIds: ['control', 'treatment'],
+      comparisons: [{
+        comparisonId: 'independent',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment',
+        comparisonDesign: 'independent',
+      }],
+    }), observations().filter((entry) => (
+      entry.targetId === 'control' || entry.targetId === 'treatment'
+    )));
+    const independent = independentValue.comparisons[0];
     expect(control?.intervalStatus).toBe('observed');
     expect(independent?.comparisonStatus).toBe('observed');
     expect(paired?.comparisonStatus).toBe('observed');
@@ -203,7 +228,7 @@ describe('Bootstrap family Analysis table', () => {
     }).toEqual(bootstrapDiffCI(
       controlScores,
       treatmentScores,
-      0.025,
+      0.05,
       1_000,
       DEFAULT_BOOTSTRAP_SEED,
     ));
@@ -355,6 +380,20 @@ describe('Bootstrap family Analysis table', () => {
       ...parameters(),
       seed: 42,
     }, observations())).toThrow();
+    expect(() => buildBootstrapFamilyTable({
+      ...parameters(),
+      comparisons: [{
+        comparisonId: 'paired',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment',
+        comparisonDesign: 'paired',
+      }, {
+        comparisonId: 'independent',
+        controlTargetId: 'control',
+        treatmentTargetId: 'treatment-2',
+        comparisonDesign: 'independent',
+      }],
+    }, observations())).toThrow(/one comparison design/i);
     expect(() => buildBootstrapFamilyTable(parameters(), [
       ...observations(),
       observation({ targetId: 'unknown', sampleId: 'sample-1', score: 3 }),

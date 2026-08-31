@@ -66,6 +66,28 @@ export const BootstrapFamilyParametersSchema = z.object({
     });
   }
   const targets = new Set(parameters.targetIds);
+  const comparisonDesigns = new Set(
+    parameters.comparisons.map((comparison) => comparison.comparisonDesign),
+  );
+  if (comparisonDesigns.size > 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['comparisons'],
+      message: 'One Bootstrap comparison family must use one comparison design.',
+    });
+  }
+  const contrasts = parameters.comparisons.map((comparison) => JSON.stringify([
+    comparison.comparisonDesign,
+    comparison.controlTargetId,
+    comparison.treatmentTargetId,
+  ]));
+  if (new Set(contrasts).size !== contrasts.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['comparisons'],
+      message: 'Bootstrap comparison contrasts must be unique within one family.',
+    });
+  }
   for (const [index, comparison] of parameters.comparisons.entries()) {
     if (!targets.has(comparison.controlTargetId)
         || !targets.has(comparison.treatmentTargetId)) {
@@ -101,6 +123,7 @@ export const BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA = analysisSchemaIdentity(
     'the source explicitly selects aggregate values from one Composite Analysis result',
     'targetIds and sampleIds are unique and their sealed order defines the resampling order',
     'comparisonId values are unique and normalized into identifier order before plan sealing',
+    'one comparison family uses exactly one paired or independent design and has unique contrasts',
     'control and treatment targets are distinct members of the sealed target set',
     'comparison design is explicit and paired comparisons never fall back to independent sampling',
     'resamples and nominal alpha are sealed before Evaluation begins',
