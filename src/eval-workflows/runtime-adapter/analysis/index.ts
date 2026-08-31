@@ -17,3 +17,5 @@ export * from './dimension-parameters.js';
 export * from './dimension-table.js';
 export * from './dimension-node.js';
 export * from './judge-aggregation.js';
+export * from './release-decision-parameters.js';
+export * from './release-decision.js';

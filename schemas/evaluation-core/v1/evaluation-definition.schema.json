@@ -565,6 +565,9 @@
           "minItems": 1,
           "type": "array"
         },
+        "comparisonFamilyResultId": {
+          "$ref": "#/$defs/__schema2"
+        },
         "decisionPolicyId": {
           "$ref": "#/$defs/__schema2"
         },

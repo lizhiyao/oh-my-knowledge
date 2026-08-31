@@ -849,6 +849,7 @@ function normalizeComparisonFamily(
         treatmentTargetReference: targetReference(side, treatmentTargetId),
       };
     }),
+    comparisonFamilyResultId: policy.comparisonFamilyResultId ?? null,
     multipleComparisonPolicyId: policy.multipleComparisonPolicyId ?? null,
   } as unknown as JsonValue;
 }
@@ -857,7 +858,9 @@ function normalizeDecisionPolicy(plan: SealedRunPlan): JsonValue | undefined {
   const policy = plan.decision.decisionPolicy;
   if (policy === undefined) return undefined;
   return Object.fromEntries(Object.entries(policy).filter(([key]) => (
-    key !== 'comparisonFamily' && key !== 'multipleComparisonPolicyId'
+    key !== 'comparisonFamily'
+    && key !== 'comparisonFamilyResultId'
+    && key !== 'multipleComparisonPolicyId'
   ))) as JsonValue;
 }
 

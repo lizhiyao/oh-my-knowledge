@@ -758,6 +758,55 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('admits one authoritative estimator-owned result for an exact comparison family', () => {
+    const definition = validDefinition();
+    definition.targets.push({
+      ...structuredClone(definition.targets[1]),
+      targetId: 'treatment-secondary',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-secondary',
+      randomizationSlotId: 'slot-treatment-secondary',
+    });
+    definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+    definition.analysisGraph.nodes[0].analysisNodeKind = 'estimator';
+    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
+    definition.decisionPolicy = {
+      decisionPolicyId: 'release-gate',
+      implementationId: 'progress/v1',
+      analysisResultIds: ['correct-rate'],
+      comparisonFamily: [
+        {
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment',
+          metricId: 'correct',
+          analysisResultId: 'correct-rate',
+        },
+        {
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment-secondary',
+          metricId: 'correct',
+          analysisResultId: 'correct-rate',
+        },
+      ],
+      comparisonFamilyResultId: 'correct-rate',
+      multipleComparisonPolicyId: 'estimator-owned-family/v1',
+      minimumEvidenceStatus: 'complete',
+    };
+
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
+
+    definition.analysisGraph.nodes[0].implementationId = 'other-estimator/v1';
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
+    definition.decisionPolicy.comparisonFamily![1].analysisResultId = 'other-result';
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+  });
+
   it('enforces declared cardinality for every Analysis input kind', () => {
     const node = {
       analysisNodeKind: 'estimator' as const,

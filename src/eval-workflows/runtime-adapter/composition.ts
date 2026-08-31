@@ -27,6 +27,9 @@ import {
 } from './analysis/bootstrap-family-table.js';
 import { createAgreementParameterSchemaValidators } from './analysis/agreement-parameters.js';
 import { createAgreementTableSchemaValidators } from './analysis/agreement-table.js';
+import {
+  createReleaseDecisionParameterSchemaValidators,
+} from './analysis/release-decision-parameters.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -377,6 +380,9 @@ function captureSchemaValidators(
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createAgreementTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createReleaseDecisionParameterSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...hostEntries.map((entry) => (

@@ -29,8 +29,10 @@ import {
   analyzeEvaluationBundleSource,
   createBuiltinAnalysisSchemaValidators,
   createBuiltinMissingPolicies,
+  decideAnalysisSource,
   resolveBuiltinAnalysisRuntime,
 } from '../../../src/evaluation-core/analysis/index.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-core/bootstrap.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,
@@ -54,6 +56,13 @@ import {
   createAgreementParameterSchemaValidators,
   createAgreementTableSchemaValidators,
   AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  createBootstrapFamilyAnalysisNodes,
+  createBootstrapFamilyParameterSchemaValidators,
+  createBootstrapFamilyTableSchemaValidators,
+  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  createReleaseDecisionPolicies,
+  createReleaseDecisionParameterSchemaValidators,
+  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
@@ -643,7 +652,9 @@ describe('judge aggregation Analysis nodes', () => {
       ...createDimensionAnalysisNodes(),
       ...createCompositeAnalysisNodes(),
       ...createAgreementAnalysisNodes(),
+      ...createBootstrapFamilyAnalysisNodes(),
     ]);
+    const decisionPolicies = createReleaseDecisionPolicies();
     const base = testRuntime({ evaluatorValueTypes: ['numeric'] });
     const customValidators = new Map([
       ...createJudgeAggregationSchemaValidators(),
@@ -653,6 +664,9 @@ describe('judge aggregation Analysis nodes', () => {
       ...createCompositeTableSchemaValidators(),
       ...createAgreementParameterSchemaValidators(),
       ...createAgreementTableSchemaValidators(),
+      ...createBootstrapFamilyParameterSchemaValidators(),
+      ...createBootstrapFamilyTableSchemaValidators(),
+      ...createReleaseDecisionParameterSchemaValidators(),
     ]);
     const schemaValidators = new Map([
       ...base.schemaValidators,
@@ -666,6 +680,12 @@ describe('judge aggregation Analysis nodes', () => {
       resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
         if (requirement.requirementKind === 'analysis-node') {
           const implementation = implementations.get(requirement.implementationId);
+          if (implementation !== undefined) {
+            return { identity: implementation.identity, satisfiesVersionConstraint: true };
+          }
+        }
+        if (requirement.requirementKind === 'decision-policy') {
+          const implementation = decisionPolicies.get(requirement.implementationId);
           if (implementation !== undefined) {
             return { identity: implementation.identity, satisfiesVersionConstraint: true };
           }
@@ -686,7 +706,6 @@ describe('judge aggregation Analysis nodes', () => {
       ['alpha', 1],
       ['beta', 0],
       ['beta', 1],
-      ['failed', 0],
     ].map(([member, replicateIndex]) => ({
       evaluatorId: `rubric-${member}-${replicateIndex}`,
       evaluatorKind: 'llm-rubric' as const,
@@ -769,6 +788,30 @@ describe('judge aggregation Analysis nodes', () => {
         alpha: 0.05,
         seed: 42,
       },
+    }, {
+      analysisNodeKind: 'estimator',
+      nodeId: 'bootstrap-family',
+      implementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'composite-table' }],
+      outputResultId: 'bootstrap-family',
+      parameters: {
+        source: {
+          analysisResultId: 'composite-table',
+          sourceKind: 'composite',
+          selector: 'aggregate',
+        },
+        targetIds: ['control', 'treatment'],
+        sampleIds: ['sample-1'],
+        comparisons: [{
+          comparisonId: 'control-vs-treatment',
+          controlTargetId: 'control',
+          treatmentTargetId: 'treatment',
+          comparisonDesign: 'paired',
+        }],
+        resamples: 100,
+        alpha: 0.05,
+        seed: DEFAULT_BOOTSTRAP_SEED,
+      },
     }];
     definition.comparisons[0].metricIds = ['rubric-score'];
     definition.experiment.sampling = {
@@ -780,7 +823,40 @@ describe('judge aggregation Analysis nodes', () => {
       seedCoupling: 'shared-within-block',
     };
     definition.experiment.scheduling = { schedulingKind: 'randomized-block', blockSize: 2 };
-    delete definition.decisionPolicy;
+    definition.decisionPolicy = {
+      decisionPolicyId: 'release-decision',
+      implementationId: RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+      analysisResultIds: ['ensemble-table', 'composite-table', 'bootstrap-family'],
+      comparisonFamily: [{
+        comparisonId: 'control-vs-treatment',
+        treatmentTargetId: 'treatment',
+        metricId: 'rubric-score',
+        analysisResultId: 'bootstrap-family',
+      }],
+      comparisonFamilyResultId: 'bootstrap-family',
+      minimumEvidenceStatus: 'complete',
+      parameters: {
+        sources: {
+          compositeResultId: 'composite-table',
+          bootstrapFamilyResultId: 'bootstrap-family',
+          judgeEnsemble: {
+            analysisResultId: 'ensemble-table',
+            metricId: 'rubric-score',
+            instrumentId: 'rubric-correctness',
+            replicateGroupId: 'primary',
+          },
+        },
+        targetIds: ['control', 'treatment'],
+        sampleIds: ['sample-1'],
+        thresholds: {
+          layerScore: 3.5,
+          triviallySmallDifference: 0.1,
+          minimumSampleCount: 20,
+          judgeDissentPearson: 0.4,
+          holdoutGap: 0.5,
+        },
+      },
+    };
     const policy = validPolicy();
     delete policy.execution.timeoutMs;
     delete policy.evaluation.timeoutMs;
@@ -929,8 +1005,9 @@ describe('judge aggregation Analysis nodes', () => {
       { schemaValidators },
     )).not.toThrow();
     expect(analysis.bundle.analysisBundleStatus).toBe('completed');
-    expect(analysis.bundle.records).toHaveLength(5);
+    expect(analysis.bundle.records).toHaveLength(6);
     expect(analysis.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'completed',
       'completed',
       'completed',
       'completed',
@@ -938,6 +1015,7 @@ describe('judge aggregation Analysis nodes', () => {
       'completed',
     ]);
     expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
@@ -1042,6 +1120,47 @@ describe('judge aggregation Analysis nodes', () => {
         },
       },
     });
+    const bootstrapRecord = analysis.bundle.records.find((record) => (
+      record.resultId === 'bootstrap-family'
+    ));
+    expect(bootstrapRecord?.analysisStatus).toBe('completed');
+    if (bootstrapRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing Bootstrap family result');
+    }
+    expect(bootstrapRecord.value).toMatchObject({
+      family: { plannedComparisons: 1, observedComparisons: 1, missingComparisons: 0 },
+      comparisons: [{
+        binding: { comparisonId: 'control-vs-treatment', comparisonDesign: 'paired' },
+        comparisonStatus: 'observed',
+        counts: { controlUnits: 1, treatmentUnits: 1, comparableUnits: 1 },
+        interval: { estimate: 0, lower: 0, upper: 0, significant: false },
+      }],
+    });
+    const releasePolicy = decisionPolicies.get(RELEASE_DECISION_POLICY_IMPLEMENTATION_ID);
+    if (releasePolicy === undefined) throw new Error('missing Release DecisionPolicy');
+    const decision = await decideAnalysisSource(
+      plan,
+      execution,
+      evaluation,
+      analysis,
+      {
+        analysisNodesByNodeId,
+        schemaValidators,
+        missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+        decisionPoliciesByDecisionPolicyId: new Map([['release-decision', releasePolicy]]),
+        clock,
+        eventSequencer,
+      },
+      { runId: 'judge-analysis-run' },
+    );
+    expect(decision?.result).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'UNDERPOWERED',
+      reasonCodes: [
+        'comparison-interval-overlaps-zero',
+        'comparison-sample-size-below-minimum',
+      ],
+    });
 
     const replicateImplementation = implementations.get(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
@@ -1052,11 +1171,15 @@ describe('judge aggregation Analysis nodes', () => {
     const dimensionImplementation = implementations.get(DIMENSION_ANALYSIS_IMPLEMENTATION_ID);
     const compositeImplementation = implementations.get(COMPOSITE_ANALYSIS_IMPLEMENTATION_ID);
     const agreementImplementation = implementations.get(AGREEMENT_ANALYSIS_IMPLEMENTATION_ID);
+    const bootstrapImplementation = implementations.get(
+      BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    );
     if (replicateImplementation === undefined
         || ensembleImplementation === undefined
         || dimensionImplementation === undefined
         || compositeImplementation === undefined
-        || agreementImplementation === undefined) {
+        || agreementImplementation === undefined
+        || bootstrapImplementation === undefined) {
       throw new Error('missing judge aggregation implementations');
     }
     let failedReplicateDisposed = 0;
@@ -1064,6 +1187,7 @@ describe('judge aggregation Analysis nodes', () => {
     let blockedDimensionOpened = 0;
     let blockedCompositeOpened = 0;
     let blockedAgreementOpened = 0;
+    let blockedBootstrapOpened = 0;
     const failure = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
       analysisNodesByNodeId: new Map([
         ['replicate-table', {
@@ -1110,6 +1234,14 @@ describe('judge aggregation Analysis nodes', () => {
             return agreementImplementation.openRun(runContext);
           },
         }],
+        ['bootstrap-family', {
+          identity: bootstrapImplementation.identity,
+          outputSchema: bootstrapImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedBootstrapOpened += 1;
+            return bootstrapImplementation.openRun(runContext);
+          },
+        }],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -1127,12 +1259,14 @@ describe('judge aggregation Analysis nodes', () => {
       'dimension-table': 'not-evaluated',
       'composite-table': 'not-evaluated',
       'agreement-table': 'not-evaluated',
+      'bootstrap-family': 'not-evaluated',
     });
     expect(failedReplicateDisposed).toBe(1);
     expect(blockedEnsembleOpened).toBe(0);
     expect(blockedDimensionOpened).toBe(0);
     expect(blockedCompositeOpened).toBe(0);
     expect(blockedAgreementOpened).toBe(0);
+    expect(blockedBootstrapOpened).toBe(0);
 
     const cancellation = new AbortController();
     cancellation.abort(new Error('cancelled-before-analysis'));
@@ -1143,6 +1277,7 @@ describe('judge aggregation Analysis nodes', () => {
         ['dimension-table', dimensionImplementation],
         ['composite-table', compositeImplementation],
         ['agreement-table', agreementImplementation],
+        ['bootstrap-family', bootstrapImplementation],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -1156,6 +1291,7 @@ describe('judge aggregation Analysis nodes', () => {
     });
     expect(cancelled.bundle.analysisBundleStatus).toBe('cancelled');
     expect(cancelled.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'not-evaluated',
       'not-evaluated',
       'not-evaluated',
       'not-evaluated',

@@ -21,6 +21,7 @@ import { createDimensionAnalysisNodes } from './analysis/dimension-node.js';
 import { createCompositeAnalysisNodes } from './analysis/composite-node.js';
 import { createBootstrapFamilyAnalysisNodes } from './analysis/bootstrap-family-node.js';
 import { createAgreementAnalysisNodes } from './analysis/agreement-node.js';
+import { createReleaseDecisionPolicies } from './analysis/release-decision.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
@@ -100,7 +101,10 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
     ...createAgreementAnalysisNodes(),
   ]);
   const missingPolicies = createBuiltinMissingPolicies();
-  const decisionPolicies = createBuiltinDecisionPolicies();
+  const decisionPolicies = new Map([
+    ...createBuiltinDecisionPolicies(),
+    ...createReleaseDecisionPolicies(),
+  ]);
   return {
     analysisNodesByImplementationId: new Map([...analysisNodes].map(([implementationId, port]) => [
       implementationId,

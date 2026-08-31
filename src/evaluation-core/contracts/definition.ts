@@ -255,6 +255,7 @@ export const DecisionPolicyDefinitionSchema = z.object({
   versionConstraint: NonEmptyStringSchema.optional(),
   analysisResultIds: z.array(IdentifierSchema).min(1),
   comparisonFamily: z.array(ComparisonFamilyMemberSchema).min(1).optional(),
+  comparisonFamilyResultId: IdentifierSchema.optional(),
   multipleComparisonPolicyId: IdentifierSchema.optional(),
   minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']),
   parameters: JsonValueSchema.optional(),
