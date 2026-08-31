@@ -1,6 +1,6 @@
 # Evaluation Core Studio projection
 
-> Status: read-only catalog and view-model boundary for [#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535). It does not switch Studio routes or renderers and does not read legacy reports.
+> Status: read-only catalog/view-model boundary from [#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535), plus the isolated renderer/route adapter from [#537](https://github.com/lizhiyao/oh-my-knowledge/issues/537). It does not switch production Studio routes and does not read legacy reports.
 
 ## 1. Authority boundary
 
@@ -39,8 +39,16 @@ This is a semantic allow-list. A later renderer cannot treat uncaptured evidence
 
 View status never derives from score thresholds. Run status, evidence status, and conclusion status remain orthogonal. Stage failures, cancellation, budget exhaustion, missing observations, inconclusive Analysis, and not-decided Decision retain their Core states and reason codes.
 
-## 4. Migration boundary
+## 4. Renderer and route adapter
 
-The Core Studio modules do not import legacy `ReportStore`, `EvaluationReport`, `VariantResult`, or result rows. The current server, skill index, routes, and renderers remain unchanged in this slice. A later PR will switch those consumers to the versioned views in one direction; no legacy reader, adapter, shadow read, or dual view is introduced.
+`renderCoreRunList()` and `renderCoreRunDetail()` consume only the two versioned views. The list presents run, evidence, and conclusion status as three separate axes. The detail presents plan identity, stage coverage and budgets, safe records and numeric observations, Analysis, Decision, and the complete five-document lineage. It never infers an overall quality state from scores.
+
+The renderer escapes every projected value. All navigation paths come from a caller-provided `CoreStudioRenderRoutes`; it contains no host, port, or deployment assumption. Tables use captions and scoped column headers, status groups have accessible labels, and both Chinese and English views retain the same facts.
+
+`createCoreStudioRouteHandler()` is a pure HTTP-shaped adapter over `CoreStudioCatalog`. It returns an immutable response envelope instead of depending on Node request/response objects, so a later host can mount it without giving the catalog server authority. Separate caller-provided HTML/API base paths expose list and detail resources. Unmatched paths return `undefined`, invalid or missing identifiers return stable 404 responses, unsupported methods return 405, and source failures return a redacted `core_studio_source_unavailable` response without exception text or filesystem paths.
+
+## 5. Migration boundary
+
+The Core Studio modules do not import legacy `ReportStore`, `EvaluationReport`, `VariantResult`, or result rows. The current production server, skill index, routes, and legacy renderer remain unchanged in this slice. A later PR will mount the independent handler and switch consumers to the versioned views in one direction; no legacy reader, adapter, shadow read, or dual view is introduced.
 
 The final `omk eval` and report-wire cutover remains the separate `BREAKING-SCHEMA` step in [#450](https://github.com/lizhiyao/oh-my-knowledge/issues/450). This projection changes no evaluator, analysis formula, prompt, missing-data policy, or verdict semantics and is not `BREAKING-COMPARABILITY`.

@@ -392,13 +392,22 @@ function langToggleButton(lang: Lang): string {
   return `<button id="lang-toggle" onclick="switchLang()" class="lang-toggle">${t('switchLang', lang)}</button>`;
 }
 
-export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
+export interface LayoutOptions {
+  homeHref?: string;
+}
+
+export function layout(
+  title: string,
+  body: string,
+  lang: Lang = DEFAULT_LANG,
+  options: LayoutOptions = {},
+): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   const favicon = encodeURIComponent(BRAND_LOGO_RAW);
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
-  const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? '/')}"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
