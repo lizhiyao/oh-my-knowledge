@@ -12,6 +12,7 @@ import {
   type JsonValue,
 } from '../../evaluation-core/contracts/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../evaluation-core/analysis/index.js';
+import { createJudgeAggregationSchemaValidators } from './analysis/judge-aggregation.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -329,6 +330,9 @@ function captureSchemaValidators(
   }
   const candidates: Array<readonly [string, CoreSchemaValidator, 'builtin' | 'host']> = [
     ...[...createBuiltinAnalysisSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createJudgeAggregationSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...hostEntries.map((entry) => (
