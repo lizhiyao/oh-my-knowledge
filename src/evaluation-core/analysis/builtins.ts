@@ -183,6 +183,7 @@ const PROGRESS_PARAMETERS_SCHEMA = schemaIdentity(
 function runtimeIdentity(
   implementationId: string,
   capabilities: JsonValue,
+  fingerprintFacets?: JsonValue,
 ): RuntimeIdentity {
   const version = '1.0.0';
   return {
@@ -192,6 +193,7 @@ function runtimeIdentity(
       implementationId,
       version,
       capabilities,
+      ...(fingerprintFacets === undefined ? {} : { fingerprintFacets }),
     }),
     // A builtin can declare its release identity, but it cannot independently
     // attest that the executing code matches that declaration.
@@ -277,6 +279,16 @@ const DECISION_CAPABILITIES: JsonValue = {
   multipleComparisonPolicyIds: [],
   parameterSchema: PROGRESS_PARAMETERS_SCHEMA,
   schemas: [],
+};
+
+const PROGRESS_DECISION_FINGERPRINT_FACETS: JsonValue = {
+  decisionOutputContract: 'decided-verdict-with-reason-codes/v1',
+  reasonRules: {
+    progress: 'effect-above-progress-threshold',
+    regression: 'effect-below-regression-threshold',
+    noise: 'effect-within-equivalence-band',
+    notDecided: 'decision-effect-unavailable',
+  },
 };
 
 interface BuiltinDefinition {
@@ -896,7 +908,11 @@ function scalarEffect(context: DecisionPolicyContext): number | undefined {
 }
 
 export const BUILTIN_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy = {
-  identity: runtimeIdentity('progress/v1', DECISION_CAPABILITIES),
+  identity: runtimeIdentity(
+    'progress/v1',
+    DECISION_CAPABILITIES,
+    PROGRESS_DECISION_FINGERPRINT_FACETS,
+  ),
   decide: async (context): Promise<DecisionPolicyOutput> => {
     const effect = scalarEffect(context);
     if (effect === undefined) {
@@ -910,12 +926,24 @@ export const BUILTIN_PROGRESS_DECISION_POLICY: AnalysisDecisionPolicy = {
     const threshold = typeof object.threshold === 'number' ? object.threshold : 0;
     const equivalence = typeof object.equivalence === 'number' ? object.equivalence : 0;
     if (effect > threshold + equivalence) {
-      return { decisionStatus: 'decided', verdict: 'PROGRESS' };
+      return {
+        decisionStatus: 'decided',
+        verdict: 'PROGRESS',
+        reasonCodes: ['effect-above-progress-threshold'],
+      };
     }
     if (effect < threshold - equivalence) {
-      return { decisionStatus: 'decided', verdict: 'REGRESSION' };
+      return {
+        decisionStatus: 'decided',
+        verdict: 'REGRESSION',
+        reasonCodes: ['effect-below-regression-threshold'],
+      };
     }
-    return { decisionStatus: 'decided', verdict: 'NOISE' };
+    return {
+      decisionStatus: 'decided',
+      verdict: 'NOISE',
+      reasonCodes: ['effect-within-equivalence-band'],
+    };
   },
 };
 

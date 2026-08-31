@@ -35,6 +35,7 @@ import {
 
 export type EvaluationReportValidationErrorCode =
   | 'DECISION_RESULT_DIGEST_MISMATCH'
+  | 'DECISION_RESULT_REASON_CODES_NON_CANONICAL'
   | 'DECISION_RESULT_PLAN_MISMATCH'
   | 'DECISION_RESULT_VERIFICATION_GATE_FAILED'
   | 'EVALUATION_REPORT_DIGEST_MISMATCH'
@@ -69,6 +70,16 @@ export function computeDecisionPolicyDigest(input: {
 
 export function parseDecisionResultDocument(value: unknown): DecisionResult {
   const result = parseWireDocument(DecisionResultSchema, value);
+  if (result.decisionStatus === 'decided' || result.decisionStatus === 'not-decided') {
+    const canonicalReasons = [...result.reasonCodes].sort();
+    if (new Set(result.reasonCodes).size !== result.reasonCodes.length
+        || canonicalizeJson(result.reasonCodes) !== canonicalizeJson(canonicalReasons)) {
+      throw new EvaluationReportValidationError(
+        'DECISION_RESULT_REASON_CODES_NON_CANONICAL',
+        'DecisionResult reason codes must be unique and canonically ordered.',
+      );
+    }
+  }
   const { decisionDigest, ...payload } = result;
   if (digestCanonicalJson(payload) !== decisionDigest) {
     throw new EvaluationReportValidationError(

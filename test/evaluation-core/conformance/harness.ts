@@ -483,7 +483,11 @@ function createConformanceDecisionPolicies(): ReadonlyMap<string, AnalysisDecisi
           && (entry as Record<string, JsonValue>).rejected === true
         ));
         return rejected
-          ? { decisionStatus: 'decided' as const, verdict: 'PROGRESS' }
+          ? {
+            decisionStatus: 'decided' as const,
+            verdict: 'PROGRESS',
+            reasonCodes: ['comparison-family-rejected-hypothesis'],
+          }
           : { decisionStatus: 'not-decided' as const, reasonCodes: ['family-gate-not-met'] };
       },
     } satisfies AnalysisDecisionPolicy],

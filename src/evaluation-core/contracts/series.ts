@@ -228,6 +228,7 @@ export const SeriesDecisionResultSchema = z.discriminatedUnion('decisionStatus',
   SeriesDecisionResultBaseSchema.extend({
     decisionStatus: z.literal('decided'),
     verdict: IdentifierSchema,
+    reasonCodes: z.array(IdentifierSchema).min(1),
   }).strict(),
   SeriesDecisionResultBaseSchema.extend({
     decisionStatus: z.literal('not-decided'),
@@ -838,7 +839,8 @@ export function parseEvaluationSeriesReportDocument(value: unknown): EvaluationS
   const report = parseWireDocument(EvaluationSeriesReportSchema, value);
   if (report.decision !== undefined) {
     const resultIds = [...report.decision.analysisResultIds].sort(compareStrings);
-    const reasons = report.decision.decisionStatus === 'not-decided'
+    const reasons = report.decision.decisionStatus === 'decided'
+      || report.decision.decisionStatus === 'not-decided'
       ? [...report.decision.reasonCodes].sort(compareStrings)
       : [];
     if (report.decision.seriesPlanDigest !== report.seriesPlanDigest
@@ -846,7 +848,8 @@ export function parseEvaluationSeriesReportDocument(value: unknown): EvaluationS
         || canonicalizeJson(report.decision.analysisResultIds) !== canonicalizeJson(resultIds)
         || new Set(report.decision.analysisResultIds).size
           !== report.decision.analysisResultIds.length
-        || (report.decision.decisionStatus === 'not-decided'
+        || ((report.decision.decisionStatus === 'decided'
+          || report.decision.decisionStatus === 'not-decided')
           && (canonicalizeJson(report.decision.reasonCodes) !== canonicalizeJson(reasons)
             || new Set(reasons).size !== reasons.length))
         || ((report.decision.decisionStatus === 'decided'
