@@ -260,7 +260,14 @@ export function createDimensionTableSchemaValidators(): ReadonlyMap<
 > {
   const validator = createAnalysisSchemaValidator(
     DIMENSION_TABLE_SCHEMA,
-    (value) => DimensionTableEnvelopeSchema.parse(value) as JsonValue,
+    (value) => parseDimensionTableEnvelope(value) as JsonValue,
   );
   return new Map([[schemaIdentityKey(validator.schema), validator]]);
+}
+
+export function parseDimensionTableEnvelope(value: unknown): Readonly<{
+  resultType: 'table';
+  value: DimensionTableValue;
+}> {
+  return DimensionTableEnvelopeSchema.parse(value);
 }
