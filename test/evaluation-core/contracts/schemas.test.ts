@@ -4,6 +4,7 @@ import _Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EXECUTION_FACTS_SCHEMA_VERSION,
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   EvaluationDefinitionSchema,
   EvaluationStatusSchema,
@@ -56,6 +57,7 @@ describe('Evaluation Core wire schemas', () => {
     expect(versions).not.toContain('omk.comparability-policy/v1');
     expect(versions).not.toContain('omk.comparability-assessment/v1');
     expect(versions).toContain(EXECUTOR_CAPABILITIES_SCHEMA_VERSION);
+    expect(versions).toContain(EXECUTION_FACTS_SCHEMA_VERSION);
   });
 
   it('keeps opaque Runtime fingerprints distinct from OMK content digests', () => {

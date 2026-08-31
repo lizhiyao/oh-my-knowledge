@@ -90,6 +90,21 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('requires execution-facts bindings to consume the complete canonical projection', async () => {
+    const definition = validDefinition();
+    definition.evaluators[0].inputs = [{
+      bindingId: 'facts',
+      sourceKind: 'execution-facts',
+      pointer: '/usage',
+    }];
+
+    await expectCode(
+      definition,
+      validPolicy(),
+      'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+    );
+  });
+
   it('rejects AnalysisGraph cycles and duplicate outputs', async () => {
     const cycle = validDefinition();
     cycle.analysisGraph.nodes = [
@@ -470,6 +485,21 @@ describe('Compiler definition validation', () => {
       validPolicy(),
       'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
       testRuntime({ evaluatorValueTypes: ['numeric'] }),
+    );
+
+    const executionFacts = validDefinition();
+    executionFacts.evaluators[0].inputs = [{
+      bindingId: 'facts',
+      sourceKind: 'execution-facts',
+      pointer: '',
+    }];
+    await expectCode(
+      executionFacts,
+      validPolicy(),
+      'EVAL_DEFINITION_CAPABILITY_UNSUPPORTED',
+      testRuntime({
+        evaluatorInputSourceKinds: ['output', 'expected', 'evaluation-context'],
+      }),
     );
   });
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   EVALUATION_DEFINITION_SCHEMA_VERSION,
+  EXECUTION_FACTS_SCHEMA_VERSION,
   EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   MEASUREMENT_POLICY_SCHEMA_VERSION,
   createBuiltinAnalysisNodes,
@@ -11,6 +12,8 @@ import {
   digestCanonicalJson,
   resolveBuiltinAnalysisRuntime,
 } from 'oh-my-knowledge';
+
+assert.equal(EXECUTION_FACTS_SCHEMA_VERSION, 'omk.execution-facts/v1');
 
 function schemaIdentity(name) {
   return {

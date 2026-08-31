@@ -36,6 +36,7 @@ import {
   type JsonValue,
   type Sha256Digest,
 } from './json.js';
+import { projectExecutionFacts } from './execution-facts.js';
 
 export type EvaluationBundleValidationErrorCode =
   | 'EVALUATION_BUNDLE_DUPLICATE_COORDINATE'
@@ -381,7 +382,7 @@ export interface EvaluationBundlePlanContext
       metricIds: readonly string[];
       inputs: readonly {
         bindingId: string;
-        sourceKind: 'output' | 'trace' | 'expected' | 'evaluation-context';
+        sourceKind: 'output' | 'trace' | 'expected' | 'evaluation-context' | 'execution-facts';
         pointer: string;
       }[];
     }[];
@@ -743,6 +744,7 @@ function bindingClosure(
   plan: EvaluationBundlePlanContext,
   evaluator: EvaluationBundlePlanContext['evaluation']['evaluators'][number],
   executionRecord: ExecutionRecord,
+  sourceTrust: Provenance['trust'],
 ): BindingClosure {
   const sample = plan.evaluation.samples.find(
     (candidate) => candidate.sampleId === executionRecord.sampleId,
@@ -755,6 +757,7 @@ function bindingClosure(
       availability: BindingAvailability;
       value?: unknown;
       classification?: string;
+      mediaType?: string;
     };
     if (input.sourceKind === 'output') {
       binding = executionRecord.executionStatus === 'completed'
@@ -764,6 +767,20 @@ function bindingClosure(
       binding = executionRecord.executionStatus === 'budget-censored'
         ? { availability: 'unavailable' }
         : capturedBinding(executionRecord.trace, input.pointer);
+    } else if (input.sourceKind === 'execution-facts') {
+      const facts = projectExecutionFacts(
+        executionRecord,
+        minimumTrust(sourceTrust, executionRecord.provenance.trust),
+      );
+      const resolved = resolvePointer(facts.value, input.pointer);
+      binding = resolved.resolved
+        ? {
+            availability: 'available',
+            value: resolved.value,
+            classification: facts.classification,
+            mediaType: facts.mediaType,
+          }
+        : { availability: 'unavailable' };
     } else {
       const value = input.sourceKind === 'expected'
         ? sample.expected
@@ -785,6 +802,7 @@ function bindingClosure(
       sourceKind: input.sourceKind,
       value: binding.value as JsonValue,
       classification: binding.classification as 'public' | 'sensitive' | 'secret' | 'gold',
+      ...(binding.mediaType === undefined ? {} : { mediaType: binding.mediaType }),
     });
   }
   return availability === 'available'
@@ -935,7 +953,7 @@ function assertRecordAgainstPlan(
       verifiedCacheHit: false,
     };
   }
-  const closure = bindingClosure(plan, evaluator, executionRecord);
+  const closure = bindingClosure(plan, evaluator, executionRecord, sourceTrust);
   if (record.evaluationStatus === 'not-evaluated') {
     if (record.notEvaluatedReasonCode !== 'evaluator-input-unavailable'
         || closure.availability === 'available') {

@@ -20,6 +20,7 @@ import {
   assertExecutionBundleSourceMatchesPlan,
   effectiveExecutionBundleTrust,
   parseWireDocument,
+  projectExecutionFacts,
   verifyEvaluationBundle,
   type CapturedContent,
   type EvaluationAttempt,
@@ -355,6 +356,7 @@ async function resolveCaptured(
 async function materializeBindings(
   plan: SealedRunPlan,
   record: Exclude<ExecutionRecord, { executionStatus: 'budget-censored' }>,
+  sourceTrust: Provenance['trust'],
   evaluator: SealedRunPlan['evaluation']['evaluators'][number],
   ports: EvaluationRuntimePorts,
   signal: AbortSignal,
@@ -372,6 +374,9 @@ async function materializeBindings(
         : undefined;
     }
     else if (input.sourceKind === 'trace') source = await resolveCaptured(record.trace, ports);
+    else if (input.sourceKind === 'execution-facts') {
+      source = projectExecutionFacts(record, sourceTrust);
+    }
     else {
       const value = input.sourceKind === 'expected'
         ? sample.expected
@@ -1264,9 +1269,14 @@ async function prepareEvaluationCoordinates(
       });
       continue;
     }
+    const sourceTrust = minimumTrust(
+      effectiveExecutionBundleTrust(prepared.source),
+      source.provenance.trust,
+    );
     const inputs = await materializeBindings(
       plan,
       source,
+      sourceTrust,
       binding.evaluator,
       ports,
       signal,
@@ -1282,10 +1292,7 @@ async function prepareEvaluationCoordinates(
       binding,
       source,
       sourceRecordDigest: digestCanonicalJson(source),
-      sourceTrust: minimumTrust(
-        effectiveExecutionBundleTrust(prepared.source),
-        source.provenance.trust,
-      ),
+      sourceTrust,
       inputs,
     });
   }

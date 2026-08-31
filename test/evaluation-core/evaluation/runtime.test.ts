@@ -4,6 +4,7 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
+  effectiveExecutionBundleTrust,
   parseExecutionBundle,
   parseEvaluationBundle,
   verifyEvaluationBundle,
@@ -499,6 +500,138 @@ describe('Evaluation Core Evaluation runtime', () => {
     });
     expect(bundle.records.every((record) => record.evaluationStatus === 'not-evaluated')).toBe(true);
     expect(fake.state.attempts).toBe(0);
+  });
+
+  it('materializes source-bound execution facts and verifies their cache identity offline', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      definition.evaluators[0].inputs = [{
+        bindingId: 'facts',
+        sourceKind: 'execution-facts',
+        pointer: '',
+      }];
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan, false, 0.25);
+    const cache = new MemoryCache();
+    const fake = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(
+      plan,
+      source,
+      ports(plan, fake.port, { cache }),
+      { runId: 'facts-run', bundleId: 'facts-bundle' },
+    );
+    const sourceRecord = source.bundle.records[0];
+    const binding = fake.state.recordContexts[0].bindings[0];
+
+    expect(binding).toMatchObject({
+      bindingId: 'facts',
+      sourceKind: 'execution-facts',
+      classification: 'public',
+      mediaType: 'application/vnd.omk.execution-facts+json',
+      value: {
+        sourceRecordDigest: digestCanonicalJson(sourceRecord),
+        terminal: { executionStatus: 'completed' },
+        sourceProvenance: { provenanceKind: 'native', effectiveTrust: 'verified' },
+        usage: {
+          providerCost: {
+            reportingStatus: 'reported',
+            amount: 0.25,
+            currency: 'USD',
+            reportedByProvider: true,
+          },
+        },
+      },
+    });
+    expect(cache.puts).toBe(1);
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
+
+    const forged = resealEvaluationBundle(bundle, (draft) => {
+      const record = draft.records[0];
+      if (record.evaluationStatus === 'not-evaluated') throw new Error('unexpected record');
+      record.sourceRecordDigest = `sha256:${'f'.repeat(64)}`;
+    });
+    expect(() => parseEvaluationBundle(forged, plan, source)).toThrowError(
+      expect.objectContaining({ code: 'EVALUATION_BUNDLE_SOURCE_MISMATCH' }),
+    );
+  });
+
+  it('evaluates failed executions when the evaluator only requires execution facts', async () => {
+    const plan = await makePlan((definition) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      definition.evaluators[0].inputs = [{
+        bindingId: 'facts',
+        sourceKind: 'execution-facts',
+        pointer: '',
+      }];
+    });
+    const source = await sourceBundle(plan, true);
+    const fake = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(plan, source, ports(plan, fake.port), {
+      runId: 'failed-facts-run',
+      bundleId: 'failed-facts-bundle',
+    });
+
+    expect(bundle.coverage).toMatchObject({ eligible: 1, sourceUnavailable: 0, completed: 1 });
+    expect(fake.state.attempts).toBe(1);
+    const binding = fake.state.recordContexts[0].bindings[0];
+    expect(binding.value).toMatchObject({
+      terminal: { executionStatus: 'failed' },
+      content: { output: { captureStatus: 'absent' } },
+    });
+    expect(JSON.stringify(binding.value)).not.toContain('execution failed');
+    expect(parseEvaluationBundle(bundle, plan, source).bundle).toEqual(bundle);
+  });
+
+  it('propagates facts classification and invalidates cache when the source record changes', async () => {
+    const plan = await makePlan((definition, policy) => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      definition.evaluators[0].inputs = [{
+        bindingId: 'facts',
+        sourceKind: 'execution-facts',
+        pointer: '',
+      }];
+      policy.cache.evaluationMode = 'reuse';
+    });
+    const source = await sourceBundle(plan);
+    const cache = new MemoryCache();
+    const seed = evaluator(plan);
+    await evaluateExecutionBundle(plan, source, ports(plan, seed.port, { cache }), {
+      runId: 'facts-cache-seed-run',
+      bundleId: 'facts-cache-seed-bundle',
+    });
+    const changedSource = parseExecutionBundle(resealExecutionBundle(source.bundle, (draft) => {
+      const record = draft.records[0];
+      if (record.executionStatus !== 'completed' || record.output === undefined) {
+        throw new Error('unexpected source record');
+      }
+      record.output.classification = 'secret';
+    }), plan);
+    const changed = evaluator(plan);
+    const bundle = await evaluateExecutionBundle(
+      plan,
+      changedSource,
+      ports(plan, changed.port, { cache }),
+      { runId: 'facts-cache-changed-run', bundleId: 'facts-cache-changed-bundle' },
+    );
+
+    expect(changed.state.attempts).toBe(1);
+    expect(changed.state.recordContexts[0].bindings[0]).toMatchObject({
+      classification: 'secret',
+      value: {
+        sourceRecordDigest: digestCanonicalJson(changedSource.bundle.records[0]),
+        content: {
+          output: { captureStatus: 'inline', classification: 'secret' },
+        },
+        sourceProvenance: { provenanceKind: 'native', effectiveTrust: 'unknown' },
+      },
+    });
+    expect(verifyEvaluationBundle(bundle, plan, changedSource, {
+      executionSourceTrust: effectiveExecutionBundleTrust(changedSource),
+    }).bundle).toEqual(bundle);
   });
 
   it('fills omitted metrics as missing and never fabricates a default score', async () => {

@@ -1,0 +1,460 @@
+{
+  "$defs": {
+    "__schema0": {
+      "const": "omk.execution-facts/v1",
+      "type": "string"
+    },
+    "__schema1": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "__schema10": {
+      "additionalProperties": false,
+      "properties": {
+        "activeDurationMs": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "wallClockDurationMs": {
+          "$ref": "#/$defs/__schema7"
+        }
+      },
+      "required": [
+        "activeDurationMs",
+        "wallClockDurationMs"
+      ],
+      "type": "object"
+    },
+    "__schema11": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/__schema8"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "reportedAttemptCount": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "reportingStatus": {
+              "const": "partial",
+              "type": "string"
+            },
+            "value": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "reportingStatus",
+            "value",
+            "reportedAttemptCount"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/__schema9"
+        }
+      ]
+    },
+    "__schema12": {
+      "additionalProperties": false,
+      "properties": {
+        "inputTokens": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "outputTokens": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "providerCost": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/__schema8"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reportedAttemptCount": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "reportingStatus": {
+                  "const": "partial",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reportingStatus",
+                "reportedAttemptCount"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "currencies": {
+                  "items": {
+                    "$ref": "#/$defs/__schema13"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "reportingStatus": {
+                  "const": "mixed-currency",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reportingStatus",
+                "currencies"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "amount": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "currency": {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                "reportedByProvider": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "reportingStatus": {
+                  "const": "reported",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reportingStatus",
+                "amount",
+                "currency",
+                "reportedByProvider"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "totalTokens": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "usageRecordStatus": {
+          "enum": [
+            "absent",
+            "partial",
+            "complete"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "usageRecordStatus",
+        "inputTokens",
+        "outputTokens",
+        "totalTokens",
+        "providerCost"
+      ],
+      "type": "object"
+    },
+    "__schema13": {
+      "pattern": "^[A-Z]{3}$",
+      "type": "string"
+    },
+    "__schema14": {
+      "enum": [
+        "not-applicable",
+        "not-used",
+        "miss",
+        "replay",
+        "transparent-hit"
+      ],
+      "type": "string"
+    },
+    "__schema15": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "trace": {
+          "$ref": "#/$defs/__schema16"
+        }
+      },
+      "required": [
+        "output",
+        "trace"
+      ],
+      "type": "object"
+    },
+    "__schema16": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "captureStatus": {
+              "const": "absent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "captureStatus"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "captureStatus": {
+              "enum": [
+                "inline",
+                "descriptor",
+                "digest-only"
+              ],
+              "type": "string"
+            },
+            "classification": {
+              "enum": [
+                "public",
+                "sensitive",
+                "secret",
+                "gold"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "captureStatus",
+            "classification"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "__schema17": {
+      "additionalProperties": false,
+      "properties": {
+        "effectiveTrust": {
+          "enum": [
+            "verified",
+            "declared",
+            "untrusted",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "provenanceKind": {
+          "enum": [
+            "native",
+            "imported",
+            "replay",
+            "derived"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "provenanceKind",
+        "effectiveTrust"
+      ],
+      "type": "object"
+    },
+    "__schema2": {
+      "additionalProperties": false,
+      "properties": {
+        "trialIndex": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trialIndex"
+      ],
+      "type": "object"
+    },
+    "__schema3": {
+      "additionalProperties": false,
+      "properties": {
+        "censorReasonCode": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "executionStatus": {
+          "enum": [
+            "completed",
+            "failed",
+            "cancelled",
+            "budget-censored"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "executionStatus"
+      ],
+      "type": "object"
+    },
+    "__schema4": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "__schema5": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "__schema6": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeDurationMs": {
+            "$ref": "#/$defs/__schema7"
+          },
+          "attemptNumber": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "attemptStatus": {
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "providerCostReportingStatus": {
+            "enum": [
+              "unreported",
+              "reported"
+            ],
+            "type": "string"
+          },
+          "usageReportingStatus": {
+            "enum": [
+              "unreported",
+              "reported"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "attemptNumber",
+          "attemptStatus",
+          "activeDurationMs",
+          "usageReportingStatus",
+          "providerCostReportingStatus"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "__schema7": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/__schema8"
+        },
+        {
+          "$ref": "#/$defs/__schema9"
+        }
+      ]
+    },
+    "__schema8": {
+      "additionalProperties": false,
+      "properties": {
+        "reportingStatus": {
+          "const": "unreported",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reportingStatus"
+      ],
+      "type": "object"
+    },
+    "__schema9": {
+      "additionalProperties": false,
+      "properties": {
+        "reportingStatus": {
+          "const": "reported",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "reportingStatus",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/lizhiyao/oh-my-knowledge/main/schemas/evaluation-core/v1/execution-facts.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attemptCount": {
+      "$ref": "#/$defs/__schema4"
+    },
+    "attempts": {
+      "$ref": "#/$defs/__schema6"
+    },
+    "cacheStatus": {
+      "$ref": "#/$defs/__schema14"
+    },
+    "content": {
+      "$ref": "#/$defs/__schema15"
+    },
+    "coordinate": {
+      "$ref": "#/$defs/__schema2"
+    },
+    "retryCount": {
+      "$ref": "#/$defs/__schema5"
+    },
+    "schemaVersion": {
+      "$ref": "#/$defs/__schema0"
+    },
+    "sourceProvenance": {
+      "$ref": "#/$defs/__schema17"
+    },
+    "sourceRecordDigest": {
+      "$ref": "#/$defs/__schema1"
+    },
+    "terminal": {
+      "$ref": "#/$defs/__schema3"
+    },
+    "timing": {
+      "$ref": "#/$defs/__schema10"
+    },
+    "usage": {
+      "$ref": "#/$defs/__schema12"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "sourceRecordDigest",
+    "coordinate",
+    "terminal",
+    "attemptCount",
+    "retryCount",
+    "attempts",
+    "timing",
+    "usage",
+    "cacheStatus",
+    "content",
+    "sourceProvenance"
+  ],
+  "title": "OMK Execution Facts v1",
+  "type": "object"
+}

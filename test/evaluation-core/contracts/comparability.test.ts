@@ -220,6 +220,16 @@ describe('Evaluation Core comparability contract', () => {
       },
       {
         mutate: (definition) => {
+          definition.evaluators[0].inputs = [{
+            bindingId: 'facts',
+            sourceKind: 'execution-facts',
+            pointer: '',
+          }];
+        },
+        reasonCode: 'comparability-design-evaluation-instrument-mismatch',
+      },
+      {
+        mutate: (definition) => {
           definition.experiment.seed = 'different-root-seed';
         },
         reasonCode: 'comparability-design-sampling-mismatch',
