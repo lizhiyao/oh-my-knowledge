@@ -44,6 +44,10 @@ import {
 import {
   createJudgeAggregationAnalysisNodes,
   createJudgeAggregationSchemaValidators,
+  createDimensionAnalysisNodes,
+  createDimensionParameterSchemaValidators,
+  createDimensionTableSchemaValidators,
+  DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_TABLE_SCHEMA,
@@ -626,9 +630,16 @@ describe('judge aggregation Analysis nodes', () => {
   });
 
   it('runs through the sealed Evaluation Core Analysis DAG and emits verifiable artifacts', async () => {
-    const implementations = createJudgeAggregationAnalysisNodes();
+    const implementations = new Map([
+      ...createJudgeAggregationAnalysisNodes(),
+      ...createDimensionAnalysisNodes(),
+    ]);
     const base = testRuntime({ evaluatorValueTypes: ['numeric'] });
-    const customValidators = createJudgeAggregationSchemaValidators();
+    const customValidators = new Map([
+      ...createJudgeAggregationSchemaValidators(),
+      ...createDimensionParameterSchemaValidators(),
+      ...createDimensionTableSchemaValidators(),
+    ]);
     const schemaValidators = new Map([
       ...base.schemaValidators,
       ...createBuiltinAnalysisSchemaValidators(),
@@ -691,6 +702,19 @@ describe('judge aggregation Analysis nodes', () => {
       implementationId: JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
       inputs: [{ inputKind: 'analysis-result', referenceId: 'replicate-table' }],
       outputResultId: 'ensemble-table',
+    }, {
+      analysisNodeKind: 'reducer',
+      nodeId: 'dimension-table',
+      implementationId: DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'ensemble-table' }],
+      outputResultId: 'dimension-table',
+      parameters: {
+        dimensions: [{
+          dimensionId: 'correctness',
+          metricId: 'rubric-score',
+          analysisResultId: 'ensemble-table',
+        }],
+      },
     }];
     definition.comparisons[0].metricIds = ['rubric-score'];
     definition.experiment.sampling = {
@@ -846,12 +870,14 @@ describe('judge aggregation Analysis nodes', () => {
       { schemaValidators },
     )).not.toThrow();
     expect(analysis.bundle.analysisBundleStatus).toBe('completed');
-    expect(analysis.bundle.records).toHaveLength(2);
+    expect(analysis.bundle.records).toHaveLength(3);
     expect(analysis.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'completed',
       'completed',
       'completed',
     ]);
     expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
       { opened: 1, executed: 1, disposed: 1 },
     ]);
@@ -877,6 +903,33 @@ describe('judge aggregation Analysis nodes', () => {
         agreement: { agreementStatus: 'observed', meanAbsDiff: 1.5, pairCount: 1 },
       })]),
     });
+    const dimensionRecord = analysis.bundle.records.find((record) => (
+      record.resultId === 'dimension-table'
+    ));
+    expect(dimensionRecord?.analysisStatus).toBe('completed');
+    if (dimensionRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing dimension result');
+    }
+    expect(dimensionRecord.coverage).toMatchObject({
+      planned: 0,
+      included: 0,
+      comparable: 0,
+    });
+    expect(dimensionRecord.value).toMatchObject({
+      groups: expect.arrayContaining([expect.objectContaining({
+        samplingUnitIds: { pairingBlockId: executionPairingBlockId },
+        coverage: { plannedDimensions: 1, observedDimensions: 1, missingDimensions: 0 },
+        aggregate: { aggregateStatus: 'observed', mean: 3.75 },
+      })]),
+    });
+    const dimensionGroups = (dimensionRecord.value as { groups: Array<{
+      aggregate: unknown;
+      coverage: unknown;
+      samplingUnitIds: unknown;
+    }> }).groups;
+    expect(dimensionGroups).toHaveLength(2);
+    expect(dimensionGroups.every((group) => canonicalizeJson(group.aggregate)
+      === canonicalizeJson({ aggregateStatus: 'observed', mean: 3.75 }))).toBe(true);
 
     const replicateImplementation = implementations.get(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
@@ -884,11 +937,15 @@ describe('judge aggregation Analysis nodes', () => {
     const ensembleImplementation = implementations.get(
       JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
     );
-    if (replicateImplementation === undefined || ensembleImplementation === undefined) {
+    const dimensionImplementation = implementations.get(DIMENSION_ANALYSIS_IMPLEMENTATION_ID);
+    if (replicateImplementation === undefined
+        || ensembleImplementation === undefined
+        || dimensionImplementation === undefined) {
       throw new Error('missing judge aggregation implementations');
     }
     let failedReplicateDisposed = 0;
     let blockedEnsembleOpened = 0;
+    let blockedDimensionOpened = 0;
     const failure = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
       analysisNodesByNodeId: new Map([
         ['replicate-table', {
@@ -911,6 +968,14 @@ describe('judge aggregation Analysis nodes', () => {
             return ensembleImplementation.openRun(runContext);
           },
         }],
+        ['dimension-table', {
+          identity: dimensionImplementation.identity,
+          outputSchema: dimensionImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedDimensionOpened += 1;
+            return dimensionImplementation.openRun(runContext);
+          },
+        }],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -925,9 +990,11 @@ describe('judge aggregation Analysis nodes', () => {
     ]))).toEqual({
       'replicate-table': 'failed',
       'ensemble-table': 'not-evaluated',
+      'dimension-table': 'not-evaluated',
     });
     expect(failedReplicateDisposed).toBe(1);
     expect(blockedEnsembleOpened).toBe(0);
+    expect(blockedDimensionOpened).toBe(0);
 
     const cancellation = new AbortController();
     cancellation.abort(new Error('cancelled-before-analysis'));
@@ -935,6 +1002,7 @@ describe('judge aggregation Analysis nodes', () => {
       analysisNodesByNodeId: new Map([
         ['replicate-table', replicateImplementation],
         ['ensemble-table', ensembleImplementation],
+        ['dimension-table', dimensionImplementation],
       ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
@@ -948,6 +1016,7 @@ describe('judge aggregation Analysis nodes', () => {
     });
     expect(cancelled.bundle.analysisBundleStatus).toBe('cancelled');
     expect(cancelled.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'not-evaluated',
       'not-evaluated',
       'not-evaluated',
     ]);
