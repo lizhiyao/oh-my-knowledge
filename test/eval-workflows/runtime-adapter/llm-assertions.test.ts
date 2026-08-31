@@ -120,6 +120,7 @@ function invocationPort(
 function criterion(
   assertionType: LlmAssertionType,
   threshold = 3,
+  negated = false,
 ): JsonValue {
   let source: Record<string, JsonValue>;
   if (assertionType === 'faithfulness') {
@@ -135,6 +136,7 @@ function criterion(
     assertionType,
     threshold,
     weight: 1,
+    negated,
     ...source,
   };
 }
@@ -155,10 +157,13 @@ function evaluatorConfig(assertionType: LlmAssertionType): JsonValue {
   } as JsonValue;
 }
 
-function definition(assertionType: LlmAssertionType): EvaluationDefinition {
+function definition(
+  assertionType: LlmAssertionType,
+  negated = false,
+): EvaluationDefinition {
   const value = validDefinition();
   value.dataset.samples[0].evaluationContext = {
-    llmAssertion: criterion(assertionType),
+    llmAssertion: criterion(assertionType, 3, negated),
   };
   value.evaluators = [{
     evaluatorId: 'llm-assertion',
@@ -306,6 +311,7 @@ function executor(
 
 async function runCore(input: {
   assertionType?: LlmAssertionType;
+  negated?: boolean;
   handler: InvocationHandler;
   policy?: MeasurementPolicy;
   clock?: TestClock;
@@ -317,7 +323,7 @@ async function runCore(input: {
   const provider = invocationPort(input.handler, input.reporting);
   const identity = evaluatorIdentity(assertionType, provider);
   const sealed = await prepareEvaluationPlan(
-    definition(assertionType),
+    definition(assertionType, input.negated ?? false),
     input.policy ?? policy(),
     preparationRuntime(identity),
   );
@@ -442,8 +448,10 @@ describe('provider-neutral LLM assertion Evaluator', () => {
             promptId,
             promptHash,
             score: 4,
+            rawPassed: true,
             reason: 'valid reading',
             weight: 1,
+            negated: false,
             layer: 'fact',
           },
         },
@@ -469,13 +477,91 @@ describe('provider-neutral LLM assertion Evaluator', () => {
   });
 
   it.each([
+    'semantic_similarity',
+    'faithfulness',
+    'answer_relevancy',
+    'context_recall',
+  ] as const)('applies negation only after a valid %s reading', async (assertionType) => {
+    const rawPass = await runCore({
+      assertionType,
+      negated: true,
+      handler: async () => ({
+        invocationStatus: 'completed',
+        output: '{"score":5,"reason":"valid pass"}',
+      }),
+    });
+    expect(completedObservations(rawPass)).toEqual([
+      expect.objectContaining({
+        observationStatus: 'observed',
+        value: false,
+        evidence: expect.objectContaining({
+          value: expect.objectContaining({ negated: true, rawPassed: true }),
+        }),
+      }),
+      expect.objectContaining({
+        observationStatus: 'observed',
+        value: false,
+        evidence: expect.objectContaining({
+          value: expect.objectContaining({ negated: true, rawPassed: true }),
+        }),
+      }),
+    ]);
+
+    const rawFail = await runCore({
+      assertionType,
+      negated: true,
+      handler: async () => ({
+        invocationStatus: 'completed',
+        output: '{"score":2,"reason":"valid fail"}',
+      }),
+    });
+    expect(completedObservations(rawFail)).toEqual([
+      expect.objectContaining({
+        observationStatus: 'observed',
+        value: true,
+        evidence: expect.objectContaining({
+          value: expect.objectContaining({ negated: true, rawPassed: false }),
+        }),
+      }),
+      expect.objectContaining({
+        observationStatus: 'observed',
+        value: true,
+        evidence: expect.objectContaining({
+          value: expect.objectContaining({ negated: true, rawPassed: false }),
+        }),
+      }),
+    ]);
+  });
+
+  it('seals negation into the EvaluationPlan identity', async () => {
+    const provider = invocationPort(async () => ({
+      invocationStatus: 'completed',
+      output: '{"score":5,"reason":"valid"}',
+    }));
+    const identity = evaluatorIdentity('semantic_similarity', provider);
+    const positive = await prepareEvaluationPlan(
+      definition('semantic_similarity', false),
+      policy(),
+      preparationRuntime(identity),
+    );
+    const negated = await prepareEvaluationPlan(
+      definition('semantic_similarity', true),
+      policy(),
+      preparationRuntime(identity),
+    );
+    expect(positive.evaluation.evaluationPlanDigest)
+      .not.toBe(negated.evaluation.evaluationPlanDigest);
+  });
+
+  it.each([
     ['plain text', 'judge-response-non-json'],
     ['prefix {bad json} suffix', 'judge-response-malformed-json'],
     ['{"score":"4","reason":"wrong type"}', 'judge-score-malformed'],
     ['{"score":6,"reason":"out of range"}', 'judge-score-out-of-range'],
     ['{"score":4}', 'judge-reason-missing'],
-  ])('returns invalid, not false, for %s', async (output, reasonCode) => {
+  ])('returns invalid, not false, for %s even when negated', async (output, reasonCode) => {
     const result = await runCore({
+      negated: true,
       handler: async () => ({ invocationStatus: 'completed', output }),
     });
     expect(completedObservations(result)).toEqual([
@@ -487,8 +573,9 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(false);
   });
 
-  it('records provider failure separately, redacts raw errors, and retains known usage', async () => {
+  it('does not invert provider failure, redacts raw errors, and retains known usage', async () => {
     const result = await runCore({
+      negated: true,
       handler: async () => ({
         invocationStatus: 'failed',
         reasonCode: 'provider-overloaded',
@@ -633,7 +720,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(true);
   });
 
-  it('lets Core own timeout and waits for cooperative provider cancellation', async () => {
+  it('keeps negated timeout failed and waits for cooperative provider cancellation', async () => {
     let cancellations = 0;
     const result = await runCore({
       handler: async (request) => new Promise<OmkLlmJudgeInvocationResult>((_resolve, reject) => {
@@ -642,6 +729,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           reject(request.signal.reason);
         }, { once: true });
       }),
+      negated: true,
       policy: policy({ timeout: true }),
       clock: new TestClock(true),
     });
@@ -654,7 +742,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     }
   });
 
-  it('lets Core own cancellation and does not turn it into provider failure', async () => {
+  it('keeps negated cancellation cancelled instead of turning it into a pass', async () => {
     const controller = new AbortController();
     let cancellations = 0;
     const result = await runCore({
@@ -672,6 +760,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           }
         });
       },
+      negated: true,
       signal: controller.signal,
     });
     expect(cancellations).toBeGreaterThan(0);
@@ -681,7 +770,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
     ))).toBe(true);
   });
 
-  it('lets Core censor unstarted coordinates at the sealed evaluation budget', async () => {
+  it('keeps negated budget censoring as unstarted evidence', async () => {
     let calls = 0;
     const result = await runCore({
       handler: async () => {
@@ -691,6 +780,7 @@ describe('provider-neutral LLM assertion Evaluator', () => {
           output: '{"score":5,"reason":"valid"}',
         };
       },
+      negated: true,
       policy: policy({ evaluationInvocations: 1 }),
     });
     expect(calls).toBe(1);
