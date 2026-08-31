@@ -222,6 +222,7 @@ describe('compileCliEvaluationInput', () => {
     expect(series?.memberships.every((membership) => (
       membership.seriesDesignDigest === series.definition.seriesDesignDigest
     ))).toBe(true);
+    expect(series?.definition.comparabilityPolicy.minimumStatus).toBe('conditional');
     expect(result.definition.experiment.trials).toBe(1);
     expect(result.policy.retry.maxAttempts).toBe(3);
   });

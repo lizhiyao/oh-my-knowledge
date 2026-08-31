@@ -631,7 +631,7 @@ export async function resolveNodeCliEvaluationRequest(
           repeatCount,
           seriesInstanceId: options.seriesInstanceId!,
           comparisonScope: 'decision',
-          minimumStatus: 'compatible',
+          minimumStatus: 'conditional',
         },
       }),
     },

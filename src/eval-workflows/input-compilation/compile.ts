@@ -908,7 +908,7 @@ function compileSeries(
     measurementDesignDigest: designDigest,
     repeatCount: series.repeatCount,
     comparisonScope: series.comparisonScope ?? 'analysis',
-    minimumStatus: series.minimumStatus ?? 'compatible',
+    minimumStatus: series.minimumStatus ?? 'conditional',
   });
   const seriesId = `${series.seriesInstanceId}-${seriesDesignIdentity.slice(
     'sha256:'.length,
@@ -928,7 +928,7 @@ function compileSeries(
       comparabilityPolicy: {
         designMode: 'exact-measurement-design',
         comparisonScope: series.comparisonScope ?? 'analysis',
-        minimumStatus: series.minimumStatus ?? 'compatible',
+        minimumStatus: series.minimumStatus ?? 'conditional',
       },
       analysisGraph: {
         nodes: [{
