@@ -13,6 +13,8 @@ import {
 } from '../../evaluation-core/contracts/index.js';
 import { createBuiltinAnalysisSchemaValidators } from '../../evaluation-core/analysis/index.js';
 import { createJudgeAggregationSchemaValidators } from './analysis/judge-aggregation.js';
+import { createAssertionLayerParameterSchemaValidators } from './analysis/assertion-layer-parameters.js';
+import { createAssertionLayerTableSchemaValidators } from './analysis/assertion-layer.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -330,6 +332,12 @@ function captureSchemaValidators(
   }
   const candidates: Array<readonly [string, CoreSchemaValidator, 'builtin' | 'host']> = [
     ...[...createBuiltinAnalysisSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createAssertionLayerParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createAssertionLayerTableSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createJudgeAggregationSchemaValidators()].map((entry) => (

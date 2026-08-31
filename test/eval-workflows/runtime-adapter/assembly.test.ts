@@ -34,6 +34,7 @@ import {
   OUTPUT_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
+  ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -1134,6 +1135,9 @@ describe('OMK Evaluation Runtime binding assembly', () => {
   it('reuses Core built-in analysis ports without host algorithm copies', () => {
     const builtins = createBuiltinOmkAnalysisBindingFactories();
     expect(builtins.analysisNodesByImplementationId.has('bootstrap.mean-percentile/v1')).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
     expect(builtins.analysisNodesByImplementationId.has(
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
     )).toBe(true);
