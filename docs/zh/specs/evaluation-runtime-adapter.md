@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter 规范
 
-> **状态**：已建立 [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457) 的 binding assembly、verified resource lease 与 Core composition root。本层是增量架构，不切换正式 `omk eval` pipeline。
+> **状态**：binding assembly、verified resource lease、Core composition root，以及生产 factory registry／support port 已实现。本层是增量架构，不切换正式 `omk eval` pipeline。
 
 ## 一、边界
 
@@ -43,6 +43,8 @@ Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Samplin
 ## 三、不可变 Entry 与身份
 
 Assembly 首先复制并深度冻结 Definition、Series 和 RuntimeBindingRequest。Factory 按 `implementationId` 查找，但按 binding 分别调用，因此共享同一实现的两个 reference 仍得到不同 port instance。
+
+`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、Claude CLI／SDK、OpenAI API、Anthropic API、custom command，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
 
 Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Executor binding 还必须与 `TargetDefinition.executionRequirements` 精确相等；qualification 直接复用该 canonical 值，不重新派生 feature 语义。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。只有 Core 能把 requirements 与实际 port capability manifest 做匹配。
 
