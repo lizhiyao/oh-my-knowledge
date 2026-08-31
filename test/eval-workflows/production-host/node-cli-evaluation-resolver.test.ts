@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -141,6 +141,26 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(left.hostResources.resources.map((resource) => resource.locator)).not.toEqual(
       right.hostResources.resources.map((resource) => resource.locator),
     );
+  });
+
+  it('retains distinct target lineage when artifact bytes are identical', async () => {
+    const root = await fixture('duplicate-artifact-bytes');
+    await writeFile(
+      join(root, 'skills', 'treatment.md'),
+      await readFile(join(root, 'skills', 'control.md')),
+    );
+    const resolved = await resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    });
+    const artifacts = resolved.hostResources.resources.filter(
+      (resource) => resource.resourceKind === 'artifact',
+    );
+
+    expect(artifacts).toHaveLength(2);
+    expect(new Set(artifacts.map((resource) => resource.descriptor.digest)).size).toBe(1);
+    expect(new Set(artifacts.map((resource) => resource.descriptor.resourceId)).size).toBe(2);
+    expect(new Set(artifacts.map((resource) => resource.locator)).size).toBe(2);
   });
 
   it('compiles equivalent CLI and eval.yaml requests to the same measurement digests', async () => {

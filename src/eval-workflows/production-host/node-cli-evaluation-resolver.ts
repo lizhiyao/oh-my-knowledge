@@ -61,8 +61,12 @@ function mediaType(path: string): string {
 function resourceId(
   resourceKind: ResolvedHostResource['resourceKind'],
   digest: ResolvedResourceDescriptor['digest'],
+  identityScope?: string,
 ): string {
-  return `${resourceKind}-${digest.slice('sha256:'.length, 'sha256:'.length + 24)}`;
+  const contentId = digest.slice('sha256:'.length, 'sha256:'.length + 24);
+  return identityScope === undefined
+    ? `${resourceKind}-${contentId}`
+    : `${resourceKind}-${createHash('sha256').update(identityScope).digest('hex').slice(0, 16)}-${contentId}`;
 }
 
 function registry(): ResourceRegistry {
@@ -94,6 +98,7 @@ async function fileResource(
     readonly classification: ResolvedResourceDescriptor['classification'];
     readonly mediaType?: string;
     readonly lineage?: JsonValue;
+    readonly identityScope?: string;
   },
 ): Promise<ResolvedResourceDescriptor> {
   let measured: Awaited<ReturnType<typeof digestNodeFileResource>>;
@@ -108,7 +113,7 @@ async function fileResource(
     });
   }
   const descriptor: ResolvedResourceDescriptor = {
-    resourceId: resourceId(input.resourceKind, measured.digest),
+    resourceId: resourceId(input.resourceKind, measured.digest, input.identityScope),
     digest: measured.digest,
     mediaType: input.mediaType ?? mediaType(input.path),
     classification: input.classification,
@@ -134,6 +139,7 @@ async function treeResource(
     readonly classification: ResolvedResourceDescriptor['classification'];
     readonly mediaType: string;
     readonly lineage?: JsonValue;
+    readonly identityScope?: string;
   },
 ): Promise<ResolvedResourceDescriptor> {
   let measured: Awaited<ReturnType<typeof digestNodeTreeResource>>;
@@ -148,7 +154,7 @@ async function treeResource(
     });
   }
   const descriptor: ResolvedResourceDescriptor = {
-    resourceId: resourceId(input.resourceKind, measured.digest),
+    resourceId: resourceId(input.resourceKind, measured.digest, input.identityScope),
     digest: measured.digest,
     mediaType: input.mediaType,
     classification: input.classification,
@@ -234,6 +240,7 @@ async function materializeBytes(
 async function artifactResource(
   resources: ResourceRegistry,
   artifact: Readonly<Artifact>,
+  targetId: string,
   materializationRoot: string,
 ): Promise<ResolvedResourceDescriptor> {
   const lineage: JsonValue = {
@@ -263,12 +270,14 @@ async function artifactResource(
       classification: 'sensitive',
       mediaType: 'application/vnd.omk.knowledge-artifact-tree',
       lineage,
+      identityScope: targetId,
     });
     if (stat?.isFile()) return fileResource(resources, {
       resourceKind: 'artifact',
       path: candidate,
       classification: 'sensitive',
       lineage,
+      identityScope: targetId,
     });
     if (stat !== undefined) {
       fail({
@@ -286,6 +295,7 @@ async function artifactResource(
     classification: 'sensitive',
     mediaType: 'text/markdown',
     lineage,
+    identityScope: targetId,
   });
 }
 
@@ -512,6 +522,7 @@ export async function resolveNodeCliEvaluationRequest(
     const artifactDescriptor = await artifactResource(
       resources,
       artifact,
+      variant.targetId,
       options.materializationRoot,
     );
     const workspaceLocator = variant.workspaceLocator ?? sampleWorkspace;
