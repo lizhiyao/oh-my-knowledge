@@ -205,6 +205,20 @@ export type {
   CoreStudioRuntimeIdentity,
   CoreStudioUsage,
 } from './eval-workflows/studio-catalog/index.js';
+export {
+  coreStudioSourceUnavailableMessage,
+  renderCoreRunDetail,
+  renderCoreRunList,
+  renderCoreStudioError,
+} from './renderer/core-run-renderer.js';
+export type { CoreStudioRenderRoutes } from './renderer/core-run-renderer.js';
+export { createCoreStudioRouteHandler } from './server/core-studio-route-handler.js';
+export type {
+  CoreStudioRouteHandler,
+  CoreStudioRouteHandlerOptions,
+  CoreStudioRouteRequest,
+  CoreStudioRouteResponse,
+} from './server/core-studio-route-handler.js';
 export type {
   CompareGoldToCoreRunInput,
   CoreGoldDatasetInput,
