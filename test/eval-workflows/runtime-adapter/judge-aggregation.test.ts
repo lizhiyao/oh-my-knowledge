@@ -20,7 +20,9 @@ import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
   AnalysisNodeExecutionResult,
+  AnalysisNodeImplementation,
   AnalysisNodeInput,
+  AnalysisNodeRunContext,
 } from '../../../src/evaluation-core/analysis/index.js';
 import {
   analyzeEvaluationBundleSource,
@@ -358,15 +360,21 @@ describe('judge aggregation Analysis nodes', () => {
       JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
       context(JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID, [metricInput([
         row({ member: 'failed', replicateIndex: 0, rowStatus: 'evaluation-failed' }),
-        row({ member: 'failed', replicateIndex: 1, rowStatus: 'missing' }),
-        row({ member: 'failed', replicateIndex: 2, rowStatus: 'invalid' }),
         row({
           member: 'failed',
-          replicateIndex: 3,
+          replicateIndex: 1,
+          rowStatus: 'evaluation-failed',
+          reasonCode: 'evaluation-cancelled',
+        }),
+        row({ member: 'failed', replicateIndex: 2, rowStatus: 'missing' }),
+        row({ member: 'failed', replicateIndex: 3, rowStatus: 'invalid' }),
+        row({
+          member: 'failed',
+          replicateIndex: 4,
           rowStatus: 'source-unavailable',
           censored: true,
         }),
-        row({ member: 'failed', replicateIndex: 4, rowStatus: 'not-started' }),
+        row({ member: 'failed', replicateIndex: 5, rowStatus: 'not-started' }),
       ])]),
     );
     expect(completedValue(allFailed)).toMatchObject({
@@ -374,11 +382,11 @@ describe('judge aggregation Analysis nodes', () => {
         aggregateStatus: 'missing',
         reasonCode: 'judge-replicates-unobserved',
         coverage: {
-          planned: 5,
+          planned: 6,
           observed: 0,
           missing: 1,
           invalid: 1,
-          evaluationFailed: 1,
+          evaluationFailed: 2,
           sourceUnavailable: 1,
           notStarted: 1,
           censored: 1,
@@ -426,6 +434,7 @@ describe('judge aggregation Analysis nodes', () => {
       value: {
         groups: Array<{
           mean: number;
+          sampleStddev: number;
           coverage: { observed: number };
           replicates: unknown[];
           groupId: string;
@@ -434,6 +443,7 @@ describe('judge aggregation Analysis nodes', () => {
     };
     const mutations: Array<(candidate: MutableEnvelope) => void> = [
       (candidate) => { candidate.value.groups[0].mean = 1; },
+      (candidate) => { candidate.value.groups[0].sampleStddev = 0; },
       (candidate) => { candidate.value.groups[0].coverage.observed = 1; },
       (candidate) => { candidate.value.groups[0].replicates.reverse(); },
       (candidate) => { candidate.value.groups[0].groupId = digestCanonicalJson('tampered'); },
@@ -681,6 +691,16 @@ describe('judge aggregation Analysis nodes', () => {
                       valueType: 'numeric' as const,
                       value: score,
                     }],
+                    usage: {
+                      inputTokens: 10,
+                      outputTokens: 2,
+                      totalTokens: 12,
+                      providerCost: {
+                        amount: 0.001,
+                        currency: 'USD',
+                        reportedByProvider: true,
+                      },
+                    },
                   };
                 },
                 dispose() {},
@@ -697,12 +717,34 @@ describe('judge aggregation Analysis nodes', () => {
       clock,
       eventSequencer,
     }, { runId: 'judge-analysis-run', bundleId: 'judge-evaluation' });
+    const lifecycle = new Map<string, { opened: number; executed: number; disposed: number }>();
+    const analysisNodesByNodeId = new Map(plan.analysis.analysisGraph.nodes.map((node) => {
+      const implementation = implementations.get(node.implementationId);
+      if (implementation === undefined) throw new Error(`missing ${node.implementationId}`);
+      const counts = { opened: 0, executed: 0, disposed: 0 };
+      lifecycle.set(node.nodeId, counts);
+      const observed: AnalysisNodeImplementation = {
+        identity: implementation.identity,
+        outputSchema: implementation.outputSchema,
+        async openRun(runContext) {
+          counts.opened += 1;
+          const run = await implementation.openRun(runContext);
+          return {
+            async execute(executionContext) {
+              counts.executed += 1;
+              return run.execute(executionContext);
+            },
+            async dispose() {
+              counts.disposed += 1;
+              await run.dispose();
+            },
+          };
+        },
+      };
+      return [node.nodeId, observed] as const;
+    }));
     const analysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodesByNodeId: new Map(plan.analysis.analysisGraph.nodes.map((node) => {
-        const implementation = implementations.get(node.implementationId);
-        if (implementation === undefined) throw new Error(`missing ${node.implementationId}`);
-        return [node.nodeId, implementation] as const;
-      })),
+      analysisNodesByNodeId,
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
       decisionPoliciesByDecisionPolicyId: new Map(),
@@ -723,16 +765,102 @@ describe('judge aggregation Analysis nodes', () => {
       'completed',
       'completed',
     ]);
+    expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
+      { opened: 1, executed: 1, disposed: 1 },
+    ]);
     const ensembleRecord = analysis.bundle.records.find((record) => (
       record.resultId === 'ensemble-table'
     ));
     expect(ensembleRecord?.analysisStatus).toBe('completed');
     if (ensembleRecord?.analysisStatus !== 'completed') throw new Error('missing ensemble result');
+    const completedEvaluations = evaluation.bundle.records.filter((record) => (
+      record.evaluationStatus === 'completed'
+    ));
+    expect(completedEvaluations).not.toHaveLength(0);
+    expect(completedEvaluations.every((record) => record.usage?.providerCost?.amount === 0.001))
+      .toBe(true);
+    expect(JSON.stringify(analysis.bundle)).not.toContain('providerCost');
+    expect(JSON.stringify(analysis.bundle)).not.toContain('inputTokens');
     expect(ensembleRecord.value).toMatchObject({
       groups: expect.arrayContaining([expect.objectContaining({
         consensus: 3.75,
         agreement: { agreementStatus: 'observed', meanAbsDiff: 1.5, pairCount: 1 },
       })]),
     });
+
+    const replicateImplementation = implementations.get(
+      JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
+    );
+    const ensembleImplementation = implementations.get(
+      JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
+    );
+    if (replicateImplementation === undefined || ensembleImplementation === undefined) {
+      throw new Error('missing judge aggregation implementations');
+    }
+    let failedReplicateDisposed = 0;
+    let blockedEnsembleOpened = 0;
+    const failure = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
+      analysisNodesByNodeId: new Map([
+        ['replicate-table', {
+          identity: replicateImplementation.identity,
+          outputSchema: replicateImplementation.outputSchema,
+          async openRun() {
+            return {
+              async execute() {
+                throw new Error('replicate-analysis-fixture-failure');
+              },
+              dispose() { failedReplicateDisposed += 1; },
+            };
+          },
+        }],
+        ['ensemble-table', {
+          identity: ensembleImplementation.identity,
+          outputSchema: ensembleImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedEnsembleOpened += 1;
+            return ensembleImplementation.openRun(runContext);
+          },
+        }],
+      ]),
+      schemaValidators,
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
+      clock,
+      eventSequencer,
+    }, { runId: 'judge-analysis-failure', bundleId: 'judge-analysis-failure' });
+    expect(failure.bundle.analysisBundleStatus).toBe('failed');
+    expect(Object.fromEntries(failure.bundle.records.map((record) => [
+      record.resultId,
+      record.analysisStatus,
+    ]))).toEqual({
+      'replicate-table': 'failed',
+      'ensemble-table': 'not-evaluated',
+    });
+    expect(failedReplicateDisposed).toBe(1);
+    expect(blockedEnsembleOpened).toBe(0);
+
+    const cancellation = new AbortController();
+    cancellation.abort(new Error('cancelled-before-analysis'));
+    const cancelled = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
+      analysisNodesByNodeId: new Map([
+        ['replicate-table', replicateImplementation],
+        ['ensemble-table', ensembleImplementation],
+      ]),
+      schemaValidators,
+      missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
+      decisionPoliciesByDecisionPolicyId: new Map(),
+      clock,
+      eventSequencer,
+    }, {
+      runId: 'judge-analysis-cancelled',
+      bundleId: 'judge-analysis-cancelled',
+      signal: cancellation.signal,
+    });
+    expect(cancelled.bundle.analysisBundleStatus).toBe('cancelled');
+    expect(cancelled.bundle.records.map((record) => record.analysisStatus)).toEqual([
+      'not-evaluated',
+      'not-evaluated',
+    ]);
   });
 });
