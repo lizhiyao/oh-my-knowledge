@@ -484,6 +484,7 @@ export const DecisionResultSchema = z.discriminatedUnion('decisionStatus', [
   DecisionResultBaseSchema.extend({
     decisionStatus: z.literal('decided'),
     verdict: IdentifierSchema,
+    reasonCodes: z.array(IdentifierSchema).min(1),
     decisionDigest: Sha256DigestSchema,
   }).strict(),
   DecisionResultBaseSchema.extend({

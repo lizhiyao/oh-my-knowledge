@@ -561,11 +561,19 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     const decision = decisionSource?.result;
     const decisionEvents = [];
     for await (const event of decisionRun.events) decisionEvents.push(event);
-    expect(decision).toMatchObject({ decisionStatus: 'decided', verdict: 'PROGRESS' });
+    expect(decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['effect-above-progress-threshold'],
+    });
     expect(decisionEvents.map((event) => event.eventKind)).toEqual([
       'decision.started',
       'decision.completed',
     ]);
+    expect(decisionEvents[1]?.data).toMatchObject({
+      verdict: 'PROGRESS',
+      reasonCodes: ['effect-above-progress-threshold'],
+    });
 
     const reportRun = startReportMaterialization(
       plan,
@@ -587,6 +595,11 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
       runStatus: 'completed',
       evidenceStatus: 'complete',
       conclusionStatus: 'conclusive',
+    });
+    expect(report.decision).toMatchObject({
+      decisionStatus: 'decided',
+      verdict: 'PROGRESS',
+      reasonCodes: ['effect-above-progress-threshold'],
     });
     expect(report.provenance.trust).toBe('declared');
     expect(parseEvaluationReport(
@@ -819,6 +832,36 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
     )).toThrowError(expect.objectContaining({
       code: 'DECISION_RESULT_VERIFICATION_GATE_FAILED',
     }));
+
+    const duplicateReasons = resealDecisionResult(authenticDecision.result, (draft) => {
+      if (draft.decisionStatus !== 'decided') throw new Error('unexpected Decision status');
+      draft.reasonCodes = [draft.reasonCodes[0], draft.reasonCodes[0]];
+    });
+    expect(() => verifyDecisionResult(
+      duplicateReasons,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysisSource,
+    )).toThrowError(expect.objectContaining({
+      code: 'DECISION_RESULT_REASON_CODES_NON_CANONICAL',
+    }));
+
+    const legacyDecision = structuredClone(authenticDecision.result) as unknown as Record<
+      string,
+      unknown
+    >;
+    delete legacyDecision.reasonCodes;
+    const legacyPayload = { ...legacyDecision };
+    delete legacyPayload.decisionDigest;
+    legacyDecision.decisionDigest = digestCanonicalJson(legacyPayload);
+    expect(() => verifyDecisionResult(
+      legacyDecision,
+      fixture.plan,
+      fixture.execution,
+      fixture.evaluation,
+      fixture.analysisSource,
+    )).toThrow();
   });
 
   it('reuses durable upstream stages only while their stage Plans remain current', async () => {
@@ -1243,7 +1286,11 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
           identity: builtinPolicy.identity,
           async decide(context) {
             receivedContrasts = [...context.contrasts];
-            return { decisionStatus: 'decided' as const, verdict: 'PROGRESS' };
+            return {
+              decisionStatus: 'decided' as const,
+              verdict: 'PROGRESS',
+              reasonCodes: ['sealed-family-rejected-hypothesis'],
+            };
           },
         }]]),
       },
@@ -1587,7 +1634,11 @@ describe('Evaluation Core Analysis and Decision Runtime', () => {
           async decide() {
             decisionEntered.resolve();
             await releaseDecision.promise;
-            return { decisionStatus: 'decided' as const, verdict: 'PROGRESS' };
+            return {
+              decisionStatus: 'decided' as const,
+              verdict: 'PROGRESS',
+              reasonCodes: ['late-policy-completed'],
+            };
           },
         }]]),
       },

@@ -229,7 +229,7 @@ function decisionPayload(input: {
   analysis: AnalysisBundle;
   implementation: RuntimeIdentity;
   decidedAt: string;
-  output: { decisionStatus: 'decided'; verdict: string }
+  output: { decisionStatus: 'decided'; verdict: string; reasonCodes: readonly string[] }
     | { decisionStatus: 'not-decided'; reasonCodes: readonly string[] }
     | { decisionStatus: 'failed'; error: EvaluationError };
 }): DecisionPayload {
@@ -249,7 +249,12 @@ function decisionPayload(input: {
     decidedAt: input.decidedAt,
   };
   if (input.output.decisionStatus === 'decided') {
-    return { ...base, decisionStatus: 'decided', verdict: input.output.verdict };
+    return {
+      ...base,
+      decisionStatus: 'decided',
+      verdict: input.output.verdict,
+      reasonCodes: [...new Set(input.output.reasonCodes)].sort(),
+    };
   }
   if (input.output.decisionStatus === 'failed') {
     return { ...base, decisionStatus: 'failed', error: input.output.error };
@@ -331,7 +336,7 @@ function makeDecisionResult(input: {
   analysis: AnalysisBundle;
   runtime: RuntimeIdentity;
   decidedAt: string;
-  output: { decisionStatus: 'decided'; verdict: string }
+  output: { decisionStatus: 'decided'; verdict: string; reasonCodes: readonly string[] }
     | { decisionStatus: 'not-decided'; reasonCodes: readonly string[] }
     | { decisionStatus: 'failed'; error: EvaluationError };
 }): DecisionResult {
@@ -408,7 +413,7 @@ async function runDecision(
     evaluationSource,
     analysisSource,
   );
-  let output: { decisionStatus: 'decided'; verdict: string }
+  let output: { decisionStatus: 'decided'; verdict: string; reasonCodes: readonly string[] }
     | { decisionStatus: 'not-decided'; reasonCodes: readonly string[] }
     | { decisionStatus: 'failed'; error: EvaluationError };
   if (fatalError !== undefined) {
@@ -489,7 +494,11 @@ async function runDecision(
     'decision-policy',
     policy.decisionPolicyId,
     result.decisionStatus === 'decided'
-      ? { decisionDigest: result.decisionDigest, verdict: result.verdict }
+      ? {
+        decisionDigest: result.decisionDigest,
+        verdict: result.verdict,
+        reasonCodes: result.reasonCodes,
+      }
       : result.decisionStatus === 'not-decided'
         ? { decisionDigest: result.decisionDigest, reasonCodes: result.reasonCodes }
         : { decisionDigest: result.decisionDigest, errorCode: result.error.code },
