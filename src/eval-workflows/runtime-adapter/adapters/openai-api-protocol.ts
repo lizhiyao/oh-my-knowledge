@@ -9,8 +9,9 @@ import {
   statelessApiExecutorCapabilities,
   type StatelessApiProtocolProfile,
 } from './api-protocol-core.js';
+import { SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION } from '../source-neutral-trace.js';
 
-export const OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.0.0' as const;
+export const OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 
 export const OPENAI_API_PROTOCOL_PROFILE = Object.freeze({
   providerId: 'openai-api',
@@ -280,9 +281,10 @@ export function parseOpenAIApiResponse(
   return Object.freeze({
     output,
     trace: {
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
       turns: [{ role: 'assistant', content: output }],
       toolCalls: [],
+      numTurns: 1,
       fullNumTurns: 1,
       numSubAgents: 0,
     },

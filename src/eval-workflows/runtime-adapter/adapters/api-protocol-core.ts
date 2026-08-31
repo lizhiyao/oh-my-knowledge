@@ -10,39 +10,55 @@ import {
   type JsonValue,
   type SchemaIdentity,
 } from '../../../evaluation-core/contracts/index.js';
-import { isValidTurnInfo } from '../../../shared/executor-result.js';
+import {
+  SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
+  SourceNeutralTraceWithoutMocksSchema,
+} from '../source-neutral-trace.js';
 
 export interface StatelessApiProtocolProfile {
   readonly providerId: string;
   readonly sourceProtocol: string;
 }
 
-const SourceNeutralTraceSchema = z.object({
-  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
-  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
-  toolCalls: z.array(z.never()),
-  fullNumTurns: z.literal(1),
-  numSubAgents: z.literal(0),
-}).strict();
+const StatelessApiTraceSchema = SourceNeutralTraceWithoutMocksSchema.superRefine(
+  (trace, context) => {
+    if (trace.toolCalls.length > 0) {
+      context.addIssue({ code: 'custom', path: ['toolCalls'], message: 'Tool calls are unsupported.' });
+    }
+    if (trace.numTurns !== 1 || trace.fullNumTurns !== 1 || trace.numSubAgents !== 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['numTurns'],
+        message: 'A stateless API trace contains exactly one root turn and no subagents.',
+      });
+    }
+  },
+);
+
+const STATELESS_API_TRACE_SCHEMA_DESCRIPTOR: JsonValue = deepFreezeCanonicalJson({
+  base: SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
+  constraints: {
+    toolCalls: 'none',
+    numTurns: 1,
+    fullNumTurns: 1,
+    numSubAgents: 0,
+  },
+});
 
 function schemaIdentity(
   profile: StatelessApiProtocolProfile,
   name: 'input' | 'output' | 'trace',
 ): SchemaIdentity {
-  const schemaVersion = `omk.${profile.providerId}-${name}/v1`;
+  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const schemaVersion = `omk.${profile.providerId}-${name}/${contractVersion}`;
   const descriptor: JsonValue = name === 'input'
     ? { valueKind: 'json-value' }
     : name === 'output'
       ? { valueKind: 'string' }
-      : {
-          schemaVersion: 'omk.source-neutral-trace/v1',
-          fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
-          turnItems: 'source-neutral-executor-trace/v1',
-          toolCalls: 'none',
-        };
+      : STATELESS_API_TRACE_SCHEMA_DESCRIPTOR;
   return {
     schemaVersion,
-    schemaUri: `urn:omk:runtime:${profile.providerId}:${name}:v1`,
+    schemaUri: `urn:omk:runtime:${profile.providerId}:${name}:${contractVersion}`,
     schemaDigest: digestCanonicalJson({
       schemaVersion,
       sourceProtocol: profile.sourceProtocol,
@@ -70,7 +86,7 @@ export function createStatelessApiCoreSchemaValidators(
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity(profile, 'trace')),
       parse(value: unknown): JsonValue {
-        return SourceNeutralTraceSchema.parse(value) as JsonValue;
+        return StatelessApiTraceSchema.parse(value) as JsonValue;
       },
     }),
   ]);

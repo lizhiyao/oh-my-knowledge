@@ -15,11 +15,11 @@ import {
   type ParsedClaudeCliStream,
 } from './claude-cli-protocol.js';
 import {
-  isValidToolCallInfo,
-  isValidTurnInfo,
-} from '../../../shared/executor-result.js';
+  SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
+  SourceNeutralTraceSchema,
+} from '../source-neutral-trace.js';
 
-export const CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
+export const CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
 export type ParsedClaudeSdkStream = ParsedClaudeCliStream;
 
 const CLAUDE_SDK_MESSAGE_PROFILE = Object.freeze({
@@ -30,26 +30,15 @@ const CLAUDE_SDK_MESSAGE_PROFILE = Object.freeze({
 const CLAUDE_SDK_SCHEMA_DESCRIPTORS = {
   input: { valueKind: 'json-value' },
   output: { valueKind: 'string' },
-  trace: {
-    schemaVersion: 'omk.source-neutral-trace/v1',
-    fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
-    turnAndToolCallItems: 'source-neutral-executor-trace/v1',
-  },
+  trace: SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
 } as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
 
-const ClaudeSdkTraceSchema = z.object({
-  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
-  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
-  toolCalls: z.array(z.custom<JsonValue>(isValidToolCallInfo)),
-  fullNumTurns: z.number().int().nonnegative(),
-  numSubAgents: z.number().int().nonnegative(),
-}).strict();
-
 function schemaIdentity(name: 'input' | 'output' | 'trace'): SchemaIdentity {
-  const schemaVersion = `omk.claude-sdk-${name}/v1`;
+  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const schemaVersion = `omk.claude-sdk-${name}/${contractVersion}`;
   return {
     schemaVersion,
-    schemaUri: `urn:omk:runtime:claude-sdk:${name}:v1`,
+    schemaUri: `urn:omk:runtime:claude-sdk:${name}:${contractVersion}`,
     schemaDigest: digestCanonicalJson({
       schemaVersion,
       sourceProtocol: '@anthropic-ai/claude-agent-sdk query',
@@ -75,7 +64,7 @@ export function createClaudeSdkCoreSchemaValidators(): readonly CoreSchemaValida
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity('trace')),
       parse(value: unknown): JsonValue {
-        return ClaudeSdkTraceSchema.parse(value) as JsonValue;
+        return SourceNeutralTraceSchema.parse(value) as JsonValue;
       },
     }),
   ]);

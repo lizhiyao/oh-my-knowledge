@@ -19,9 +19,10 @@ import {
 } from '../../../executors/openai/codex/protocol.js';
 import { extractCodexTrace } from '../../../executors/openai/codex/trace.js';
 import {
-  isValidToolCallInfo,
-  isValidTurnInfo,
-} from '../../../shared/executor-result.js';
+  SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
+  SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
+  SourceNeutralTraceWithoutMocksSchema,
+} from '../source-neutral-trace.js';
 
 export const CODEX_READ_ONLY_SANDBOX_ID = 'omk.codex.read-only/v1' as const;
 export const CODEX_WORKSPACE_WRITE_SANDBOX_ID =
@@ -43,22 +44,10 @@ export interface ParsedCodexCoreStream {
   readonly terminalStatus: 'completed' | 'failed';
 }
 
-const CodexTraceSchema = z.object({
-  schemaVersion: z.literal('omk.source-neutral-trace/v1'),
-  turns: z.array(z.custom<JsonValue>(isValidTurnInfo)),
-  toolCalls: z.array(z.custom<JsonValue>(isValidToolCallInfo)),
-  fullNumTurns: z.number().int().nonnegative(),
-  numSubAgents: z.number().int().nonnegative(),
-}).strict();
-
 const CODEX_SCHEMA_DESCRIPTORS = {
   input: { valueKind: 'json-value' },
   output: { valueKind: 'string' },
-  trace: {
-    schemaVersion: 'omk.source-neutral-trace/v1',
-    fields: ['fullNumTurns', 'numSubAgents', 'schemaVersion', 'toolCalls', 'turns'],
-    turnAndToolCallItems: 'source-neutral-executor-trace/v1',
-  },
+  trace: SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR,
 } as const satisfies Readonly<Record<'input' | 'output' | 'trace', JsonValue>>;
 
 function fail(
@@ -77,10 +66,11 @@ function schemaIdentity(
   profile: CodexCoreProtocolProfile,
   name: 'input' | 'output' | 'trace',
 ): SchemaIdentity {
-  const schemaVersion = `${profile.schemaNamespace}-${name}/v1`;
+  const contractVersion = name === 'trace' ? 'v2' : 'v1';
+  const schemaVersion = `${profile.schemaNamespace}-${name}/${contractVersion}`;
   return {
     schemaVersion,
-    schemaUri: `${profile.schemaUriNamespace}:${name}:v1`,
+    schemaUri: `${profile.schemaUriNamespace}:${name}:${contractVersion}`,
     schemaDigest: digestCanonicalJson({
       schemaVersion,
       sourceProtocol: profile.sourceProtocol,
@@ -108,7 +98,7 @@ export function createCodexCoreSchemaValidators(
     Object.freeze({
       schema: deepFreezeCanonicalJson(schemaIdentity(profile, 'trace')),
       parse(value: unknown): JsonValue {
-        return CodexTraceSchema.parse(value) as JsonValue;
+        return SourceNeutralTraceWithoutMocksSchema.parse(value) as JsonValue;
       },
     }),
   ]);
@@ -278,10 +268,11 @@ export function parseCodexCoreEvents(
     && (typeof finalMessage !== 'string' || finalMessage.trim() === '')
   ) fail(profile, `${profile.adapterLabel} completed without an assistant response.`, usage);
   const neutral = extractCodexTrace(events);
-  const trace = CodexTraceSchema.parse({
-    schemaVersion: 'omk.source-neutral-trace/v1',
+  const trace = SourceNeutralTraceWithoutMocksSchema.parse({
+    schemaVersion: SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
     turns: neutral.turns,
     toolCalls: neutral.toolCalls,
+    numTurns: started,
     fullNumTurns: neutral.fullNumTurns,
     numSubAgents: neutral.numSubAgents,
   });

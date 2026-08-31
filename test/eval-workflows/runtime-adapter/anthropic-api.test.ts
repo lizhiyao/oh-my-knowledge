@@ -269,7 +269,7 @@ describe('Anthropic API Core Executor adapter', () => {
     expect(JSON.stringify(relocated.identity)).not.toContain('proxy.example.test');
     expect(first.identity).toMatchObject({
       implementationId: 'test.omk.anthropic-api/v1',
-      version: '1.0.0',
+      version: '1.1.0',
       fingerprintBasis: 'opaque',
       assuranceLevel: 'unknown',
       capabilities: {
@@ -296,9 +296,10 @@ describe('Anthropic API Core Executor adapter', () => {
       mediaType: 'text/plain',
     });
     expect(result.trace?.value).toEqual({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
       turns: [{ role: 'assistant', content: 'fixture answer' }],
       toolCalls: [],
+      numTurns: 1,
       fullNumTurns: 1,
       numSubAgents: 0,
     });

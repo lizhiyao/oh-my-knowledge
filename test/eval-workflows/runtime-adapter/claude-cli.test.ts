@@ -401,7 +401,8 @@ describe('Claude CLI Core Executor adapter', () => {
     expect(result.output?.value).toBe('fixture answer');
     expect(result.output?.classification).toBe('secret');
     expect(result.trace?.value).toMatchObject({
-      schemaVersion: 'omk.source-neutral-trace/v1',
+      schemaVersion: 'omk.source-neutral-trace/v2',
+      numTurns: 1,
       fullNumTurns: 1,
     });
     expect(observed.args).not.toContain(observed.prompt);
@@ -566,6 +567,9 @@ describe('Claude CLI Core Executor adapter', () => {
       mcpConfigs: Array<{ mcpServers?: Record<string, unknown> }>;
     };
     expect(result.output?.classification).toBe('secret');
+    expect(result.trace?.value).toMatchObject({
+      mockStats: { hits: 0, misses: 0, perMock: {} },
+    });
     expect(observed.settingsExists).toBe(true);
     expect(observed.mockFileExists).toBe(true);
     expect(observed.mcpConfigs).toHaveLength(1);

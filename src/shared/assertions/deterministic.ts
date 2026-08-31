@@ -70,6 +70,42 @@ export const EXECUTION_AWARE_SYNC_ASSERTION_TYPES: ReadonlySet<string> = new Set
   EXECUTION_AWARE_SYNC_ASSERTION_TYPE_NAMES,
 );
 
+export type DeterministicAssertionInputSourceKind =
+  | 'output'
+  | 'execution-facts'
+  | 'trace';
+
+const EXECUTION_FACT_ASSERTION_TYPES: ReadonlySet<string> = new Set([
+  'cost_max',
+  'latency_max',
+]);
+
+/** Returns the least-authority source union required by an assertion tree. */
+export function deterministicAssertionInputSourceKinds(
+  assertion: Assertion,
+): readonly DeterministicAssertionInputSourceKind[] {
+  const sources = new Set<DeterministicAssertionInputSourceKind>();
+  const collect = (candidate: Assertion): void => {
+    if (candidate.type === 'assert-set') {
+      for (const child of candidate.children ?? []) collect(child);
+      return;
+    }
+    if (OUTPUT_ONLY_SYNC_ASSERTION_TYPES.has(candidate.type)) {
+      sources.add('output');
+      return;
+    }
+    if (EXECUTION_FACT_ASSERTION_TYPES.has(candidate.type)) {
+      sources.add('execution-facts');
+      return;
+    }
+    if (EXECUTION_AWARE_SYNC_ASSERTION_TYPES.has(candidate.type)) sources.add('trace');
+  };
+  collect(assertion);
+  return Object.freeze([
+    ...(['output', 'execution-facts', 'trace'] as const).filter((source) => sources.has(source)),
+  ]);
+}
+
 export function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
 }
