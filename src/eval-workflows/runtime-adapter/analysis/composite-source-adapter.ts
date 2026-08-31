@@ -20,8 +20,8 @@ export type CompositeSourceLayerGroup = Readonly<Pick<CompositeGroup,
 
 export const COMPOSITE_SOURCE_SCHEMAS = Object.freeze([
   ASSERTION_LAYER_TABLE_SCHEMA,
-  JUDGE_ENSEMBLE_TABLE_SCHEMA,
   DIMENSION_TABLE_SCHEMA,
+  JUDGE_ENSEMBLE_TABLE_SCHEMA,
 ]);
 
 export function compositeSourceSchema(
