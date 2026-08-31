@@ -183,6 +183,7 @@ function runtimeIdentity(
 
 function executor(
   plan: Awaited<ReturnType<typeof prepareEvaluationPlan>>,
+  output = scoringFixture.deterministicAssertions.output,
 ): ExecutionExecutor {
   return {
     identity: runtimeIdentity(plan, 'executor', 'control'),
@@ -193,7 +194,7 @@ function executor(
             async execute() {
               return {
                 output: {
-                  value: { answer: scoringFixture.deterministicAssertions.output },
+                  value: { answer: output },
                   classification: 'public' as const,
                 },
               };
@@ -253,6 +254,7 @@ async function runCore(
   criteria: readonly JsonValue[],
   maximumClassification: 'public' | 'gold' = 'gold',
   lifecycleFaults: { recordDispose?: boolean } = {},
+  output = scoringFixture.deterministicAssertions.output,
 ) {
   const plan = await prepareEvaluationPlan(
     definitionWithCriteria(criteria),
@@ -261,7 +263,7 @@ async function runCore(
   );
   const clock = new DeterministicClock();
   const eventSequencer = new InMemoryRuntimeEventSequencer();
-  const executionPort = executor(plan);
+  const executionPort = executor(plan, output);
   const execution = await executeRunPlanSource(plan, {
     executorsByTargetId: new Map(plan.execution.targets.map((target) => [
       target.targetId,
@@ -494,6 +496,42 @@ describe('output-only deterministic assertion Evaluator', () => {
         required: ['value'],
       },
     })).toBe(true);
+  });
+
+  it('isolates duplicate schema IDs across concurrent Core runs and bindings', async () => {
+    const schemaId = 'https://example.com/omk/concurrent-output-assertion';
+    const makeCriterion = (
+      criterionId: string,
+      valueType: 'string' | 'number',
+    ): JsonValue => ({
+      criterionId,
+      metricId: 'contains-hello',
+      assertion: {
+        type: 'json_schema',
+        schema: {
+          $id: schemaId,
+          type: 'object',
+          properties: { value: { type: valueType } },
+          required: ['value'],
+        },
+      },
+    });
+    const [stringRun, numberRun] = await Promise.all([
+      runCore([makeCriterion('string-schema', 'string')], 'gold', {}, '{"value":"text"}'),
+      runCore([makeCriterion('number-schema', 'number')], 'gold', {}, '{"value":42}'),
+    ]);
+    for (const result of [stringRun, numberRun]) {
+      expect(result.evaluation.coverage).toMatchObject({ completed: 2, failed: 0 });
+      for (const record of result.evaluation.records) {
+        expect(record.evaluationStatus).toBe('completed');
+        if (record.evaluationStatus !== 'completed') continue;
+        expect(record.observations[0]).toMatchObject({
+          metricId: 'contains-hello',
+          observationStatus: 'observed',
+          value: true,
+        });
+      }
+    }
   });
 
   it('registers a production factory with explicit local preflight dispositions', async () => {
