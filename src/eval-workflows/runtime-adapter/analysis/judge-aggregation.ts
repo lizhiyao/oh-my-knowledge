@@ -16,10 +16,17 @@ import {
 import type {
   AnalysisMetricRow,
   AnalysisNodeExecutionContext,
-  AnalysisNodeExecutionResult,
   AnalysisNodeImplementation,
   AnalysisNodeInput,
 } from '../../../evaluation-core/analysis/index.js';
+import {
+  analysisJsonSchema,
+  analysisSchemaIdentity,
+  compareStrings,
+  createAnalysisSchemaValidator,
+  createStatelessAnalysisImplementation,
+  round,
+} from './analysis-support.js';
 
 export const JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID =
   'omk.judge-replicate-table/v2' as const;
@@ -222,10 +229,6 @@ type EnsembleTableValue = z.infer<typeof EnsembleTableValueSchema>;
 type EnsembleGroup = z.infer<typeof EnsembleGroupSchema>;
 type Issue = (path: Array<string | number>, message: string) => void;
 
-function round(value: number, decimals: number): number {
-  return Number(value.toFixed(decimals));
-}
-
 function mean(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -249,10 +252,6 @@ function meanAbsDiff(values: readonly number[]): { value: number; pairCount: num
     }
   }
   return { value: difference / pairCount, pairCount };
-}
-
-function compareStrings(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function replicateGroupKey(value: Pick<ReplicateGroup,
@@ -432,32 +431,10 @@ function validateEnsembleTable(value: EnsembleTableValue, issue: Issue): void {
   }
 }
 
-function jsonSchema(schema: z.ZodType, invariants: readonly string[]): JsonValue {
-  const generated = z.toJSONSchema(schema, {
-    target: 'draft-2020-12',
-    unrepresentable: 'throw',
-    cycles: 'ref',
-    reused: 'ref',
-  }) as unknown as Record<string, JsonValue>;
-  return { ...generated, 'x-omk-invariants': [...invariants] };
-}
-
-function schemaIdentity(
-  schemaVersion: string,
-  schemaUri: string,
-  schema: JsonValue,
-): SchemaIdentity {
-  return deepFreezeCanonicalJson({
-    schemaVersion,
-    schemaUri,
-    schemaDigest: digestCanonicalJson(schema),
-  });
-}
-
-export const JUDGE_REPLICATE_TABLE_SCHEMA = schemaIdentity(
+export const JUDGE_REPLICATE_TABLE_SCHEMA = analysisSchemaIdentity(
   JUDGE_REPLICATE_TABLE_SCHEMA_VERSION,
   'urn:omk:analysis-result:judge-replicate-table:v2',
-  jsonSchema(ReplicateEnvelopeSchema, [
+  analysisJsonSchema(ReplicateEnvelopeSchema, [
     'groups are unique and canonically ordered by the full measurement unit key',
     'sampling-unit lineage is identical across every replicate in a group',
     'replicate indices and source row identities are unique',
@@ -468,10 +445,10 @@ export const JUDGE_REPLICATE_TABLE_SCHEMA = schemaIdentity(
   ]),
 );
 
-export const JUDGE_ENSEMBLE_TABLE_SCHEMA = schemaIdentity(
+export const JUDGE_ENSEMBLE_TABLE_SCHEMA = analysisSchemaIdentity(
   JUDGE_ENSEMBLE_TABLE_SCHEMA_VERSION,
   'urn:omk:analysis-result:judge-ensemble-table:v2',
-  jsonSchema(EnsembleEnvelopeSchema, [
+  analysisJsonSchema(EnsembleEnvelopeSchema, [
     'groups and members are unique and canonically ordered',
     'sampling-unit lineage is identical across every ensemble member in a group',
     'coverage exactly conserves every member row',
@@ -482,10 +459,10 @@ export const JUDGE_ENSEMBLE_TABLE_SCHEMA = schemaIdentity(
   ]),
 );
 
-const PARAMETERS_SCHEMA = schemaIdentity(
+const PARAMETERS_SCHEMA = analysisSchemaIdentity(
   'omk.parameters.judge-aggregation-empty/v1',
   'urn:omk:parameters:judge-aggregation-empty:v1',
-  jsonSchema(EmptyParametersSchema, ['no ambient aggregation parameters']),
+  analysisJsonSchema(EmptyParametersSchema, ['no ambient aggregation parameters']),
 );
 
 function capabilities(input: Readonly<{
@@ -836,34 +813,14 @@ function buildEnsembleTable(
   });
 }
 
-function implementation(input: Readonly<{
-  identity: RuntimeIdentity;
-  outputSchema: SchemaIdentity;
-  execute(context: AnalysisNodeExecutionContext): AnalysisNodeExecutionResult;
-}>): AnalysisNodeImplementation {
-  return Object.freeze({
-    identity: input.identity,
-    outputSchema: input.outputSchema,
-    async openRun() {
-      return {
-        async execute(context: AnalysisNodeExecutionContext) {
-          if (context.signal.aborted) throw context.signal.reason;
-          EmptyParametersSchema.parse(context.node.parameters ?? {});
-          return input.execute(context);
-        },
-        dispose() {},
-      };
-    },
-  });
-}
-
 export function createJudgeAggregationAnalysisNodes(): ReadonlyMap<
   string,
   AnalysisNodeImplementation
 > {
-  const replicate = implementation({
+  const replicate = createStatelessAnalysisImplementation({
     identity: JUDGE_REPLICATE_ANALYSIS_IDENTITY,
     outputSchema: JUDGE_REPLICATE_TABLE_SCHEMA,
+    parseParameters: (parameters) => { EmptyParametersSchema.parse(parameters ?? {}); },
     execute(context) {
       const input = metricInput(context);
       if (input.rows.length === 0) {
@@ -896,9 +853,10 @@ export function createJudgeAggregationAnalysisNodes(): ReadonlyMap<
       };
     },
   });
-  const ensemble = implementation({
+  const ensemble = createStatelessAnalysisImplementation({
     identity: JUDGE_ENSEMBLE_ANALYSIS_IDENTITY,
     outputSchema: JUDGE_ENSEMBLE_TABLE_SCHEMA,
+    parseParameters: (parameters) => { EmptyParametersSchema.parse(parameters ?? {}); },
     execute(context) {
       const input = analysisResultInput(context);
       const parsed = ReplicateEnvelopeSchema.parse({
@@ -925,23 +883,23 @@ export function createJudgeAggregationAnalysisNodes(): ReadonlyMap<
   ]);
 }
 
-function validator(schema: SchemaIdentity, envelope: z.ZodType): CoreSchemaValidator {
-  return Object.freeze({
-    schema,
-    parse(value: unknown): JsonValue {
-      return envelope.parse(value) as JsonValue;
-    },
-  });
-}
-
 export function createJudgeAggregationSchemaValidators(): ReadonlyMap<
   string,
   CoreSchemaValidator
 > {
   const validators = [
-    validator(JUDGE_REPLICATE_TABLE_SCHEMA, ReplicateEnvelopeSchema),
-    validator(JUDGE_ENSEMBLE_TABLE_SCHEMA, EnsembleEnvelopeSchema),
-    validator(PARAMETERS_SCHEMA, EmptyParametersSchema),
+    createAnalysisSchemaValidator(
+      JUDGE_REPLICATE_TABLE_SCHEMA,
+      (value) => ReplicateEnvelopeSchema.parse(value) as JsonValue,
+    ),
+    createAnalysisSchemaValidator(
+      JUDGE_ENSEMBLE_TABLE_SCHEMA,
+      (value) => EnsembleEnvelopeSchema.parse(value) as JsonValue,
+    ),
+    createAnalysisSchemaValidator(
+      PARAMETERS_SCHEMA,
+      (value) => EmptyParametersSchema.parse(value) as JsonValue,
+    ),
   ];
   return new Map(validators.map((candidate) => [
     schemaIdentityKey(candidate.schema),
