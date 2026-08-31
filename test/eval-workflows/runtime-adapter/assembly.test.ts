@@ -81,12 +81,7 @@ function runtimeAssemblyInput(): Mutable<ReturnType<typeof validResolvedCliInput
   const input = clone(validResolvedCliInput());
   for (const target of input.targets) target.executor.implementationId = 'test.executor/v1';
   for (const template of input.evaluatorTemplates) {
-    if (template.implementationId !== undefined) {
-      template.implementationId = `test.evaluator.${template.evaluatorId}/v1`;
-    }
-  }
-  for (const member of input.judges.members) {
-    member.implementationId = `test.evaluator.${member.ensembleMemberId}/v1`;
+    template.implementationId = `test.evaluator.${template.evaluatorId}/v1`;
   }
   for (const metric of input.metrics) metric.missingPolicyId = 'test.missing.exclude/v1';
   for (const node of input.analysisGraph.nodes) {

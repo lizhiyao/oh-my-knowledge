@@ -122,6 +122,7 @@ function executorRun(runId = 'run-a'): ExecutorRunContext {
 
 function executorTrial(trialLabel = 'trial-a'): ExecutorTrialContext {
   return {
+    sampleId: 'sample-a',
     targetId: 'target-a',
     protocolId: 'omk.invoke/v1',
     input: { prompt: 'hello' },

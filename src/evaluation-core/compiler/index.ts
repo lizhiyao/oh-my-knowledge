@@ -88,7 +88,8 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'resourceLifecycle', 'trialState', 'seedControl', 'determinism', 'features',
   'telemetry', 'usage', 'providerCost', 'reporting', 'trustedUpperBound',
   'evaluators', 'evaluatorId', 'evaluatorKind', 'implementationId', 'measurement',
-  'instrumentId', 'ensembleMemberId', 'replicateGroupId', 'replicateIndex', 'metricIds',
+  'applicableSampleIds', 'instrumentId', 'ensembleMemberId', 'replicateGroupId',
+  'replicateIndex', 'metricIds',
   'inputs', 'bindingId', 'sourceKind', 'pointer', 'metrics', 'metricId', 'valueType',
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
@@ -1224,6 +1225,12 @@ export function normalizeEvaluationDefinition(
         analysisCohorts: projectAnalysisCohorts(definition.dataset),
       }),
     },
+    evaluators: definition.evaluators.map((evaluator) => ({
+      ...evaluator,
+      ...(evaluator.applicableSampleIds === undefined ? {} : {
+        applicableSampleIds: [...evaluator.applicableSampleIds].sort(compareStrings),
+      }),
+    })),
     analysisGraph: projectAnalysisGraph(definition.analysisGraph),
   }, 'EvaluationDefinition');
 }

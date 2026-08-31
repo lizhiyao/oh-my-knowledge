@@ -196,7 +196,7 @@ describe('compileCliEvaluationInput', () => {
     ]);
     const judgeBindings = result.runtimeBinding.bindings.filter((binding) => (
       binding.runtimeKind === 'evaluator'
-      && binding.implementationId.includes('judge-adapter')
+      && binding.implementationId === 'omk.rubric-judge/v1'
     ));
     expect(judgeBindings).toHaveLength(4);
   });
@@ -500,7 +500,9 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const judgeBinding = result.runtimeBinding.bindings.find((binding) => (
-      binding.runtimeKind === 'evaluator' && binding.implementationId === 'anthropic-judge-adapter/v1'
+      binding.runtimeKind === 'evaluator'
+      && binding.implementationId === 'omk.rubric-judge/v1'
+      && binding.measurement.ensembleMemberId === 'judge-a'
     ));
     expect(judgeBinding).toMatchObject({
       qualification: {
@@ -543,6 +545,30 @@ describe('compileCliEvaluationInput', () => {
       .every((binding) => (
         binding.qualification.executionRequirements.mockInterception === 'not-required'
       ))).toBe(true);
+  });
+
+  it('preserves mock return-sequence order as observable Target behavior', () => {
+    const input = deepClone(validResolvedCliInput());
+    const resource = input.hostResources.resources.find((candidate) => (
+      candidate.resourceKind === 'mock-payload'
+    ))!;
+    const second = {
+      ...structuredClone(resource),
+      descriptor: { ...structuredClone(resource.descriptor), resourceId: 'mock-second' },
+      locator: '/repo/mocks/second.json',
+    };
+    input.hostResources.resources.push(second);
+    const target = input.targets.find((candidate) => candidate.targetId === 'treatment')!;
+    target.behavior.mocks![0].payloads = [second.descriptor, resource.descriptor];
+
+    const compiled = compileCliEvaluationInput(input);
+    const behavior = compiled.definition.targets.find((candidate) => (
+      candidate.targetId === 'treatment'
+    ))!.config as { behavior: { mocks: Array<{ payloads: Array<{ resourceId: string }> }> } };
+
+    expect(behavior.behavior.mocks[0].payloads.map((payload) => payload.resourceId)).toEqual([
+      'mock-second', 'mock-search-response',
+    ]);
   });
 
   it('rejects inline secret evaluator or target configuration', () => {

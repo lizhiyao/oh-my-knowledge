@@ -97,6 +97,8 @@ export const EvaluatorDefinitionSchema = z.object({
   evaluatorKind: IdentifierSchema,
   implementationId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
+  /** Omitted means every Dataset sample; present values are a canonical non-empty subset. */
+  applicableSampleIds: z.array(IdentifierSchema).min(1).optional(),
   measurement: z.object({
     instrumentId: IdentifierSchema,
     ensembleMemberId: IdentifierSchema,

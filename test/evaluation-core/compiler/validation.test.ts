@@ -4,7 +4,10 @@ import {
   prepareEvaluationPlan,
   type PreparationRuntime,
 } from '../../../src/evaluation-core/compiler/index.js';
-import type { RuntimeIdentity } from '../../../src/evaluation-core/contracts/index.js';
+import {
+  derivePlannedEvaluationCoordinates,
+  type RuntimeIdentity,
+} from '../../../src/evaluation-core/contracts/index.js';
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
@@ -88,6 +91,43 @@ describe('Compiler definition validation', () => {
       validPolicy(),
       'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
     );
+  });
+
+  it('seals Evaluator applicability and omits non-applicable evaluation coordinates', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples.push({
+      sampleId: 'sample-2',
+      input: { question: 'Q2' },
+      expected: { incompatible: true },
+    });
+    definition.evaluators[0].applicableSampleIds = ['sample-1'];
+
+    const plan = await prepareEvaluationPlan(definition, validPolicy(), testRuntime());
+    const coordinates = derivePlannedEvaluationCoordinates(plan);
+
+    expect(coordinates).toHaveLength(2);
+    expect(coordinates.every((coordinate) => coordinate.sampleId === 'sample-1')).toBe(true);
+  });
+
+  it('rejects duplicate or unknown Evaluator applicability references', async () => {
+    const duplicate = validDefinition();
+    duplicate.evaluators[0].applicableSampleIds = ['sample-1', 'sample-1'];
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const unknown = validDefinition();
+    unknown.evaluators[0].applicableSampleIds = ['missing-sample'];
+    await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
+  });
+
+  it('requires every applicable sample to satisfy evaluator input bindings', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples.push({
+      sampleId: 'sample-2',
+      input: { question: 'Q2' },
+    });
+    definition.evaluators[0].applicableSampleIds = ['sample-1', 'sample-2'];
+
+    await expectCode(definition, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
   });
 
   it('requires execution-facts bindings to consume the complete canonical projection', async () => {

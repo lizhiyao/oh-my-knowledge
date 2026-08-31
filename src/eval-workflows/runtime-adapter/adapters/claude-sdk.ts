@@ -536,9 +536,9 @@ async function executeAttempt(
     );
   }
   let options: ClaudeSdkQueryOptions;
-  const hookHandle = runState.mocks === undefined
+  const hookHandle = trialState.mocks === undefined
     ? undefined
-    : buildSdkHookCallback([...runState.mocks], undefined, runState.mocksStrict);
+    : buildSdkHookCallback([...trialState.mocks], undefined, trialState.mocksStrict);
   try {
     options = sdkOptions(configuration, target, runState, attemptDirectory, hookHandle);
   } catch {
@@ -621,7 +621,7 @@ async function executeAttempt(
     );
   }
   const outputClassification = mergeOutputClassification(
-    runState.classification,
+    trialState.classification,
     configuration.environmentOutputClassification,
   );
   return {

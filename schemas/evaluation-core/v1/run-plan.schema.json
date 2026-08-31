@@ -432,6 +432,13 @@
     "__schema17": {
       "additionalProperties": false,
       "properties": {
+        "applicableSampleIds": {
+          "items": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "config": {
           "$ref": "#/$defs/__schema6"
         },

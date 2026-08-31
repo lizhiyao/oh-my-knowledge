@@ -231,6 +231,7 @@ async function execute(
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    sampleId: 'sample-a',
     targetId: 'target-a',
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },

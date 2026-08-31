@@ -642,8 +642,24 @@ function requestDocument(
       runIsolationKey: scope.runIsolationKey,
       trialIsolationKey: scope.operationIsolationKey,
     },
-    run,
-    trial,
+    run: {
+      runId: run.runId,
+      executionPlanDigest: run.executionPlanDigest,
+    },
+    trial: {
+      targetId: trial.targetId,
+      protocolId: trial.protocolId,
+      input: trial.input,
+      ...(trial.executionContext === undefined ? {} : {
+        executionContext: trial.executionContext,
+      }),
+      ...(trial.targetConfig === undefined ? {} : { targetConfig: trial.targetConfig }),
+      trialIndex: trial.trialIndex,
+      trialId: trial.trialId,
+      schedulingBlockId: trial.schedulingBlockId,
+      samplingUnitIds: trial.samplingUnitIds,
+      ...(trial.trialSeed === undefined ? {} : { trialSeed: trial.trialSeed }),
+    },
     attempt: {
       attemptId: attempt.attemptId,
       attemptNumber: attempt.attemptNumber,

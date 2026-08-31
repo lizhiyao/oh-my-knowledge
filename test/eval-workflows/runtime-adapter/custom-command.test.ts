@@ -161,6 +161,7 @@ async function execute(
     executionPlanDigest: digest({ plan: 'a' }),
   });
   const trial = await run.openTrial({
+    sampleId: 'sample-a',
     targetId: 'target-a',
     protocolId: 'omk.invoke/v1',
     input: { prompt: 'hello' },
@@ -457,6 +458,7 @@ describe('custom-command Core Executor adapter', () => {
       executionPlanDigest: digest({ plan: 'dispose-race' }),
     });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
       protocolId: 'omk.invoke/v1',
       input: { prompt: 'hello' },
