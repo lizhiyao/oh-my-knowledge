@@ -59,6 +59,7 @@ import { sealRunPlan } from '../internal/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';
+export { assertSealedRunPlan } from '../internal/sealed-run-plan.js';
 export { validateDefinitionSemantics } from './validation.js';
 
 interface StageExtensions {

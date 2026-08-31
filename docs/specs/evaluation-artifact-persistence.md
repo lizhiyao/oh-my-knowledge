@@ -1,6 +1,6 @@
 # Evaluation Core artifact persistence
 
-> Status: host persistence contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), slice 1. It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
+> Status: host persistence and reuse contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531), slices 1–2. It does not switch `omk eval`, read legacy reports, or make transported JSON a trusted Core capability.
 
 ## 1. Boundary
 
@@ -47,11 +47,29 @@ The Node content store implements the existing Execution and Evaluation content 
 
 Resolution revalidates envelope digest, descriptor, canonical value digest, media type, byte size, and classification. Failures use stable, redacted codes; raw filesystem paths and content do not become Core errors.
 
-## 6. Non-goals
+## 6. Resume admission
+
+Resume is complete-fact reuse, not record copying or cross-process checkpoint continuation. The host first prepares the current Definition and MeasurementPolicy to obtain a fresh `SealedRunPlan`. The admission adapter rejects a transported Plan that merely has the same JSON shape, then loads the located run and invokes the Core Execution, Evaluation, Analysis, Decision, and Report verifiers in order.
+
+Only a completed run with complete evidence can be reused. A missing, corrupt, partial, contract-mismatched, under-trusted, cache-indeterminate, or budget-indeterminate source produces a stable reason code. The caller must explicitly choose `fail-closed` or `start-fresh`, a minimum source trust, and whether cache receipts and budget accounting must be verified. Rejection never copies successful rows, creates a new trial, or changes the old lineage.
+
+Verification contexts are independent host evidence. A caller must never construct provenance attestations or cache receipts from Bundle claims. The admission digest records only artifact identities, normalized Core verification facts, and the explicit policy; it excludes raw Dataset, Gold, outputs, traces, and receipt material.
+
+## 7. Project and global overlay
+
+An overlay writes only to its primary store and reads primary before fallback layers. Its index card includes a rebuildable artifact-set digest over the five document references. The same `runId` may appear in multiple layers only when this digest is identical; otherwise `get`, `list`, and `exists` fail explicitly. Writes never shadow an existing fallback ID, including an identical one, so project and global stores cannot silently select different facts.
+
+## 8. Batch child runs
+
+`omk.core-batch-manifest/v1` is a host index, not a Core Report. Each ordered item contains a qualified `batchItemKind`, stable `itemId`, independent child `runId` locator, artifact-set and Report identities, status, and maximum captured-content classification. The child keeps its own Plan, Bundles, Report, provenance, and statistical unit.
+
+Publication resolves and fully verifies every child before atomically publishing the private batch manifest. A missing, corrupt, duplicate, or identity-changed child fails. Full batch reads revalidate child locators; batch listing validates only the manifest and therefore does not claim child evidence availability. Interrupted staging directories remain invisible.
+
+## 9. Non-goals
 
 - legacy `EvaluationReport` readers, migration, or dual writes;
-- resume admission or cache reuse;
-- batch, evolve, gold compare, artifact graph, or Studio projections;
+- partial-record resume or a cross-process checkpoint engine;
+- evolve, gold compare, artifact graph, or Studio projections;
 - the production CLI cutover and old pipeline deletion;
 - artifact signatures or provenance attestation.
 
