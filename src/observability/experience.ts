@@ -85,7 +85,8 @@ import {
 } from './trace-segmenter.js';
 import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
 import { reconstructExperienceTurns } from './turn-index.js';
-import { hasAssistantDeliverableArtifactText, hasUserHardRuleText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText, USER_INTERRUPTION_RE } from './text-signals.js';
+import { isToolResultFailureText } from '../executors/tool-call-status.js';
+import { hasAssistantDeliverableArtifactText, hasUserHardRuleText, isSyntheticUserMessageText, isUserInteractionMetricText, USER_INTERRUPTION_RE } from './text-signals.js';
 import {
   compareTimelineEvents,
   hashParts,

@@ -86,6 +86,11 @@ const RULES: ForbiddenRule[] = [
     reason: 'Artifact Graph 只拥有图 contracts、schema 与领域投影；文件持久化和 Core workflow composition 由 production host 拥有。',
   },
   {
+    from: 'executors/',
+    to: 'observability/',
+    reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observability 投影。',
+  },
+  {
     from: 'observability/',
     to: 'studio/',
     reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',
@@ -438,6 +443,20 @@ describe('架构边界守门', () => {
       ].join('\n'));
     }
     expect(violations).toEqual([]);
+  });
+
+  it('工具结果失败语义由 Executor 状态模块拥有', () => {
+    const executorStatus = readFileSync(
+      join(SRC_DIR, 'executors', 'tool-call-status.ts'),
+      'utf-8',
+    );
+    const observationSignals = readFileSync(
+      join(SRC_DIR, 'observability', 'text-signals.ts'),
+      'utf-8',
+    );
+
+    expect(executorStatus).toContain('export function isToolResultFailureText(');
+    expect(observationSignals).not.toContain('function isToolResultFailureText(');
   });
 
   it('Experience 时间线投影由独立模块拥有', () => {

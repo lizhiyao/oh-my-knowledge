@@ -3,6 +3,7 @@ import { describe, it } from 'vitest';
 import {
   isToolCallFailure,
   isToolCallUnknown,
+  isToolResultFailureText,
   toolCallStatus,
 } from '../../src/executors/tool-call-status.js';
 
@@ -28,5 +29,17 @@ describe('toolCallStatus', () => {
     const malformed = { status: 'completed', success: true } as never;
     assert.equal(toolCallStatus(malformed), 'unknown');
     assert.equal(isToolCallUnknown(malformed), true);
+  });
+});
+
+describe('isToolResultFailureText', () => {
+  it('detects structured tool result failures without requiring string input', () => {
+    assert.equal(isToolResultFailureText({ status: 'error', body: { message: 'boom' } }), true);
+    assert.equal(isToolResultFailureText({ result: { success: false } }), true);
+    assert.equal(isToolResultFailureText([{ state: 'failed' }]), true);
+  });
+
+  it('does not treat structured successful tool results as failures', () => {
+    assert.equal(isToolResultFailureText({ status: 'completed', body: { success: true } }), false);
   });
 });

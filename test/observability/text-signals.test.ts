@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { isAssistantProtocolReplyText, isToolResultFailureText } from '../../src/observability/text-signals.js';
+import { isAssistantProtocolReplyText } from '../../src/observability/text-signals.js';
 
 describe('isAssistantProtocolReplyText', () => {
   it('classifies bare protocol tokens as protocol reply', () => {
@@ -35,17 +35,5 @@ describe('isAssistantProtocolReplyText', () => {
     for (const text of ['', '   ', '\n', '\t']) {
       assert.equal(isAssistantProtocolReplyText(text), false, `should reject blank: ${JSON.stringify(text)}`);
     }
-  });
-});
-
-describe('isToolResultFailureText', () => {
-  it('detects structured tool result failures without requiring string input', () => {
-    assert.equal(isToolResultFailureText({ status: 'error', body: { message: 'boom' } }), true);
-    assert.equal(isToolResultFailureText({ result: { success: false } }), true);
-    assert.equal(isToolResultFailureText([{ state: 'failed' }]), true);
-  });
-
-  it('does not treat structured successful tool results as failures', () => {
-    assert.equal(isToolResultFailureText({ status: 'completed', body: { success: true } }), false);
   });
 });
