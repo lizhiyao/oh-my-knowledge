@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
 import { PROMPTS_DIR } from '../../src/observability/soft-standards/index.js';
 
-// llm-enhanced-review prompt 的 byte-level 冻结已统一进 test/shared/prompt-registry-freeze.test.ts
+// llm-enhanced-review prompt 的 byte-level 冻结已统一进 test/measurement-governance/prompt-registry-freeze.test.ts
 // (registry 条目 `observe-llm-enhanced-review`)。这里只保留 prompt 文件的 cwd 可移植性测试 ——
 // 它不属于「评分类 prompt 编目」,但对 npm 安装场景至关重要,故留在 observability 旁。
 describe('llm-enhanced-review prompt portability', () => {

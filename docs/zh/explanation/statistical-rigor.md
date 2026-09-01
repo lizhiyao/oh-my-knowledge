@@ -45,7 +45,7 @@ LLM 评委可能在正确性之外奖励冗长、精致排版或自信语气。o
 - 排版与语气中性化始终开启；
 - 长度去偏默认开启；`--no-debias-length` 只关闭长度指令，用于受控研究或复现；
 - 每条评分类 prompt 都有 registry identity 与 hash；evaluator identity 或 prompt variant 不同时，报告不会被当作可盲比事实；
-- hash 由 `src/shared/llm-prompts/registry.ts` 驱动，并由 `test/shared/prompt-registry-freeze.test.ts` 冻结。
+- hash 由 `test/measurement-governance/prompt-registry.ts` 统一编目，并由同目录 `prompt-registry-freeze.test.ts` 冻结。这份治理清单仅用于维护与 CI，不进入发布运行时。
 
 Prompt 指令只能降低已知偏差风险，不能证明评委无偏；Gold calibration 才是外部校验。
 
