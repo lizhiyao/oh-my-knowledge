@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isReportFileName, randomRunToken, reportFilePath } from '../eval-core/artifact-file-names.js';
-import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,
@@ -762,7 +761,6 @@ export function saveObservationInboxReport(report: ObservationInboxReport, outDi
     throw new Error('拒绝写入无法回读的 observe inbox 报告。');
   }
   mkdirSync(outDir, { recursive: true });
-  migrateLegacyReportFiles(outDir, 'observe-inbox');
   // 保留毫秒并追加随机段；即使同一毫秒生成两份 report，也不能静默互相覆盖。
   // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
@@ -797,7 +795,6 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
     }
     return [];
   }
-  migrateLegacyReportFiles(dir, 'observe-inbox');
   return readdirSync(dir)
     .filter(isReportFileName)
     .map((file) => {

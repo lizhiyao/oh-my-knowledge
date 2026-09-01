@@ -11,7 +11,6 @@ import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defa
 import { DEFAULT_DOCTORS_DIR } from '../../eval-core/default-dirs.js';
 import { indexDoctorWrite, removeDoctorCard } from '../../eval-core/artifact-index.js';
 import { doctorReportFileStem, isReportFileName, reportFilePath, reportFileStem } from '../../eval-core/artifact-file-names.js';
-import { migrateLegacyReportFiles } from '../../eval-core/report-file-migration.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../eval-core/measurement-dirs.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
 import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../types/index.js';
@@ -297,7 +296,6 @@ const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 function persistDoctorReport(report: DoctorReport, outputDir?: string, lang: 'zh' | 'en' = 'zh'): void {
   const dir = outputDir ?? DEFAULT_DOCTORS_DIR;
   mkdirSync(dir, { recursive: true });
-  migrateLegacyReportFiles(dir, 'doctor');
   for (const skill of report.skills) {
     const counts: Pick<DoctorReport['ruleStats'], 'pass' | 'warn' | 'fail' | 'skipped'> = {
       pass: 0,
@@ -364,7 +362,6 @@ export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: numb
   if (!Number.isSafeInteger(maxKeep) || maxKeep < 0) {
     throw new TypeError('maxKeep must be a non-negative safe integer');
   }
-  migrateLegacyReportFiles(dir, 'doctor');
   const candidates: { file: string; graphStem: string; timestamp: string }[] = [];
   for (const file of readdirSync(dir)) {
     if (!isReportFileName(file)) continue;
