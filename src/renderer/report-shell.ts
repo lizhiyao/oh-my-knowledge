@@ -9,7 +9,7 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { icon, dimIconName } from './icons.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 
 /** 维度中/英文名(面包屑、历史分组等复用)。 */
 function dimLabel(dim: keyof typeof DIM_COLORS, lang: Lang): string {

@@ -21,7 +21,7 @@ OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。它�
 
 这些是跨版本报告可比性的锚点，不要静默修改：
 
-- `src/types/report.ts` 里的 Report JSON schema 字段语义。
+- `src/evaluation-core/contracts/artifacts.ts` 里的 `EvaluationReportSchema` 字段语义。
 - `test/shared/prompt-registry-freeze.test.ts` 冻结的全部评分类 prompt hash（rubric 评委 / RAG / semantic / observe LLM 增强复盘），由 `src/shared/llm-prompts/registry.ts` 的 `PROMPT_REGISTRY` 驱动；评分类 prompt 文本统一在 `src/shared/llm-prompts/`。
 - 五层评分管道语义：assertion / llm / judge / dimension / composite。
 - Bootstrap CI 和 Krippendorff alpha 公式。

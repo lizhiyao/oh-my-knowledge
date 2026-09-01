@@ -9,7 +9,7 @@
  * 足够呈现可审计的事件时间线。跨版本量化趋势由 Evaluation Core Studio 负责。
  */
 import { layout, e, fmtLocalTime } from './layout.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../managed/contracts.js';
 import type { ManagedListRow } from '../managed/index.js';
 

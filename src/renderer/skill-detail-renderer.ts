@@ -1,5 +1,6 @@
 import { DEFAULT_LANG, e, layout } from './layout.js';
-import type { Insight, Lang, SkillIndexEntry, SkillObserveSnapshot } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
+import type { Insight, SkillIndexEntry, SkillObserveSnapshot } from '../studio/view-models/index.js';
 
 export type HealthGrade = 'excellent' | 'good' | 'fair' | 'unhealthy' | 'unscored';
 

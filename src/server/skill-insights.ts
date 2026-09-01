@@ -9,7 +9,7 @@ import type {
   SkillDoctorSnapshot,
   SkillIndexEntry,
   SkillObserveSnapshot,
-} from '../types/index.js';
+} from '../studio/view-models/index.js';
 import type {
   Diagnosis,
   DiagnosisAudience,
@@ -26,7 +26,7 @@ export type {
   InsightEvidence,
   InsightRecommendation,
   InsightSeverity,
-} from '../types/index.js';
+} from '../studio/view-models/index.js';
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 

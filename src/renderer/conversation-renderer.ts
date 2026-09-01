@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,

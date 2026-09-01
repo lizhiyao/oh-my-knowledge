@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderManagedList, renderManagedHistory } from '../../src/renderer/managed-history-renderer.js';
 import { buildManagedListRows, type ManagedListRow } from '../../src/managed/index.js';
-import type { Lang } from '../../src/types/index.js';
+import type { Lang } from '../../src/shared/language.js';
 import type { ManagedArtifactRecord } from '../../src/managed/contracts.js';
 import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 

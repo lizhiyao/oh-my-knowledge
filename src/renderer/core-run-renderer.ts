@@ -4,7 +4,7 @@ import type {
   CoreStudioRunCard,
   CoreStudioRunDetail,
 } from '../eval-workflows/studio-catalog/index.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import { e, fmtDuration, layout } from './layout.js';
 
 export interface CoreStudioRenderRoutes {

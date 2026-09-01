@@ -7,7 +7,7 @@ import {
   renderCoreStudioError,
   type CoreStudioRenderRoutes,
 } from '../renderer/core-run-renderer.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 
 export interface CoreStudioRouteRequest {
   readonly method?: string;

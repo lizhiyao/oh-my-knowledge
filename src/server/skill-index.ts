@@ -27,7 +27,7 @@ import type {
   SkillIndexEntry,
   SkillIndexSummary,
   SkillObserveSnapshot,
-} from '../types/index.js';
+} from '../studio/view-models/index.js';
 import type { Diagnosis } from '../diagnosis/contracts.js';
 import type { DoctorReport } from '../doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../artifact-graph/contracts.js';
@@ -40,7 +40,7 @@ export type {
   SkillIndexEntry,
   SkillIndexSummary,
   SkillObserveSnapshot,
-} from '../types/index.js';
+} from '../studio/view-models/index.js';
 
 interface SkillIndexCache {
   fingerprint: string;

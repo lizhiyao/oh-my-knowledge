@@ -47,7 +47,7 @@
  *    e. 自查: 措辞自然度 — 把中文版念出来, 像不像中文项目的命令行输出?
  *    f. test/cli-i18n.test.ts 会跑 runtime parity 检查
  *
- * 未来扩 Lang (zh-TW / ja / ko ...): 改 src/types/shared.ts 的 Lang union,
+ * 未来扩 Lang (zh-TW / ja / ko ...): 改 src/shared/language.ts 的 Lang union,
  * Record 类型自动强制每 key 加新语言版本。
  */
 

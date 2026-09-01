@@ -24,7 +24,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { tDoctorMessage } from './messages.js';
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../shared/language.js';
 import { preflightDependencies } from '../preflight/dependencies.js';
 import { validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 import type { DependencyIssue } from '../preflight/dependencies.js';

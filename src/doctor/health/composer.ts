@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { tDoctorMessage } from '../messages.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { ExecResult } from '../../executors/contracts/result.js';
-import type { Lang } from '../../types/shared.js';
+import type { Lang } from '../../shared/language.js';
 import { createExecutor } from '../../executors/index.js';
 import type {
   ComposerOutcome,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { detectInsights, flattenRecommendations } from '../../src/server/skill-insights.js';
 import type { Diagnosis } from '../../src/diagnosis/contracts.js';
-import type { SkillIndexEntry } from '../../src/types/index.js';
+import type { SkillIndexEntry } from '../../src/studio/view-models/skill-index.js';
 
 function entry(overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
   return {

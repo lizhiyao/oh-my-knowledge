@@ -1,4 +1,4 @@
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import { brandLogo, BRAND_LOGO_RAW } from './icons.js';
 
 export function e(text: unknown): string {
