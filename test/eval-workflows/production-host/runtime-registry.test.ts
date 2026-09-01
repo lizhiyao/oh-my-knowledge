@@ -48,7 +48,6 @@ function configurations(): ReadonlyMap<string, ProductionExecutorAdapterConfigur
       },
       command: {
         executablePath: '/not-probed/custom-tool',
-        workingDirectory: { workingDirectoryKind: 'ephemeral-run' },
       },
     }],
   ] as readonly [string, ProductionExecutorAdapterConfiguration][]);

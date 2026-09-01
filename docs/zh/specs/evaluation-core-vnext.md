@@ -170,6 +170,14 @@ interface TargetDefinition {
     skillDiscovery: 'runtime-default' | 'disabled' | 'allow-list';
     sandboxId?: string;
   };
+  executionControls: {
+    defaults: EffectiveExecutionControl;
+    sampleOverrides: readonly Array<{
+      sampleId: string;
+      workspace?: WorkspaceExecutionControl;
+      tools?: ToolExecutionControl;
+    }>;
+  };
   config?: JsonValue;
 }
 ```
@@ -1027,7 +1035,17 @@ admission 采用 reservation。一个 scheduling block 会在一次操作中提�
 
 该设计采用 resource-quota admission 的思路，而不是 billing dashboard 的思路：开工前预留、settle 后记实际消耗，并把 limit、usage 与 uncertainty 分开。它也采用结构化 deadline／cancellation：Run deadline 是父边界，attempt timeout 是更窄的子边界。GenAI telemetry convention 只定义 usage observation；带明确信任与 reporting status 的 provider telemetry 仍然不是授权 budget admission 的 authority。
 
-## 二十三、行业参考
+## 二十三、Sample-scoped execution control
+
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约。这属于 `BREAKING-SCHEMA` 变更，不提供旧 schema reader 或迁移路径。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace 字段、tools 字段或两者；继承只按字段发生，工具集合永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default` 则是另一种明确策略。
+
+workspace control 只能是 `not-required`，或携带内容寻址 descriptor 的 `copy-on-write-overlay`。descriptor 只包含 `resourceId`、digest、media type、classification 与 size；Core JSON 禁止 locator、credential、资源字节和 `gold` classification。宿主持有 resource lease，在使用前完成 descriptor、locator 与内容的校验。`TargetDefinition.executionRequirements` 只是全部有效 Sample control 的聚合 capability 请求，不代表授予单个 Trial 聚合后的权限。
+
+Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace 或工具策略时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的 workspace locator 与工具授权永远不能进入 Trial 投影。
+
+Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table，并通过聚合 resource lease 绑定全部必要 workspace。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace 与工具策略，并且只暴露被选中的 workspace lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
+
+## 二十四、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；

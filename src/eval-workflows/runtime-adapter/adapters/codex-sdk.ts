@@ -41,6 +41,7 @@ import {
   captureCodexTarget,
   promptForCodexTrial,
   selectCodexSandbox,
+  workingDirectoryForCodexTrial,
   type CapturedCodexTarget,
   type CodexRunState,
 } from './codex-resources.js';
@@ -113,8 +114,9 @@ function fail(
 
 function selectCodexSdkSandbox(
   target: CapturedCodexTarget,
+  workspaceMode: ExecutorTrialContext['executionControl']['workspace']['workspaceMode'],
 ): 'read-only' | 'workspace-write' {
-  return selectCodexSandbox(target.config, CODEX_SDK_RESOURCE_PROFILE);
+  return selectCodexSandbox(target.config, workspaceMode, CODEX_SDK_RESOURCE_PROFILE);
 }
 
 function captureConfiguration(
@@ -234,13 +236,11 @@ function identityManifest(
       effort: target.binding.qualification.effort ?? null,
       model: target.binding.qualification.model,
       protocolId: target.binding.protocolId,
-      sandbox: selectCodexSdkSandbox(target),
+      sandbox: 'sample-scoped-sealed-control',
       skillDiscovery: 'runtime-default',
       toolPolicy: 'runtime-default',
       toolSchemaCoverage: 'runtime-default-unresolved',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
@@ -301,6 +301,12 @@ async function executeCodexSdk(
   if (attempt.signal.aborted) {
     fail('OMK_CODEX_SDK_CANCELLED', 'execution', 'Codex SDK execution was cancelled.');
   }
+  const workingDirectory = workingDirectoryForCodexTrial(
+    trial,
+    state.resources,
+    CODEX_SDK_RESOURCE_PROFILE,
+    target,
+  );
   let streamed: { readonly events: AsyncIterable<unknown> };
   try {
     const client = await runtime.createClient({
@@ -314,8 +320,11 @@ async function executeCodexSdk(
     });
     const thread = client.startThread({
       model: target.binding.qualification.model,
-      sandboxMode: selectCodexSdkSandbox(target),
-      workingDirectory: state.resources.workingDirectory,
+      sandboxMode: selectCodexSdkSandbox(
+        target,
+        trial.executionControl.workspace.workspaceMode,
+      ),
+      workingDirectory,
       skipGitRepoCheck: true,
       ...(target.binding.qualification.effort === undefined ? {} : {
         modelReasoningEffort: target.binding.qualification.effort,

@@ -98,6 +98,13 @@ const definition: EvaluationDefinition = {
       toolPolicy: 'runtime-default',
       skillDiscovery: 'runtime-default',
     },
+    executionControls: {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: { toolPolicyKind: 'runtime-default' },
+      },
+      sampleOverrides: [],
+    },
   }],
   evaluators: [{
     evaluatorId: 'exact',

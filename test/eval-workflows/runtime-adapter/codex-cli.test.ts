@@ -24,6 +24,7 @@ import {
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
   executeRunPlan,
 } from '../../../src/evaluation-core/execution/index.js';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
@@ -112,9 +113,7 @@ async function adapterFixture(options: Readonly<{
   const config = {
     behavior: {
       artifact: artifactDescriptor,
-      ...(options.workspace ? { workspace: workspaceDescriptor } : {}),
       ...(options.sandboxId === undefined ? {} : { sandbox: { sandboxId: options.sandboxId } }),
-      ...(options.allowedTools === undefined ? {} : { allowedTools: [...options.allowedTools] }),
     },
     runtime: { model: 'gpt-test', effort: 'high' as const },
   };
@@ -133,6 +132,17 @@ async function adapterFixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'codex',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: options.workspace
+          ? { workspaceMode: 'copy-on-write-overlay', descriptor: workspaceDescriptor }
+          : { workspaceMode: 'not-required' },
+        tools: options.allowedTools === undefined
+          ? { toolPolicyKind: 'runtime-default' }
+          : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
+      },
+      sampleOverrides: [],
+    },
     config,
   };
   const binding: RuntimeBindingOf<'executor'> = {
@@ -142,6 +152,7 @@ async function adapterFixture(options: Readonly<{
     implementationId: 'codex',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: [{
       resourceId: 'artifact-a',
       resourceRole: 'artifact',
@@ -241,11 +252,17 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
     sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: 'a' }),
+    executionControl,
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
     executionContext: { locale: 'zh-CN' },
@@ -366,6 +383,8 @@ describe('Codex CLI Core Executor adapter', () => {
     await execute(
       await createAdapter(fixture, { OMK_TEST_CAPTURE: capture }),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      fixture.target.executionControls.defaults,
     );
     const captured = JSON.parse(await readFile(capture, 'utf8')) as { prompt: string };
     const envelope = JSON.parse(captured.prompt.split('\n').at(-1) ?? '') as Record<string, unknown>;
@@ -441,6 +460,8 @@ describe('Codex CLI Core Executor adapter', () => {
     const result = await execute(
       await createAdapter(fixture, { OMK_TEST_CAPTURE: capture }),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      fixture.target.executionControls.defaults,
     );
     const captured = JSON.parse(await readFile(capture, 'utf8')) as {
       args: string[];
@@ -553,10 +574,8 @@ describe('Codex CLI Core Executor adapter', () => {
   it('fails unsupported behavior before a business process starts', async () => {
     const fixture = await adapterFixture({ allowedTools: ['shell'] });
     const invocations = join(fixture.root, 'invocations');
-    const port = await createAdapter(fixture, { OMK_TEST_INVOCATIONS: invocations });
-    await expect(execute(port, fixture.target.config as JsonValue)).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CODEX_CLI_BEHAVIOR_UNSUPPORTED' },
-    });
+    await expect(createAdapter(fixture, { OMK_TEST_INVOCATIONS: invocations }))
+      .rejects.toThrow(/tool allow-list/);
     await expect(readFile(invocations, 'utf8')).rejects.toThrow();
   });
 

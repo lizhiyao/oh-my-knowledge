@@ -131,13 +131,15 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
   const records: ExecutionRecord[] = coordinates.map((coordinate) => {
     const runtime = runtimes.get(coordinate.targetId);
     if (runtime === undefined) throw new Error('missing test Runtime');
+    const { executionControl: _executionControl, ...recordCoordinate } = coordinate;
+    void _executionControl;
     return {
-      ...coordinate,
+      ...recordCoordinate,
       runtime: mutableJson(runtime) as RuntimeIdentity,
       provenance: {
         provenanceKind: 'native',
         trust: 'verified',
-        parentDigests: [plan.execution.executionPlanDigest],
+        parentDigests: [coordinate.executionCoordinateDigest],
       },
       attempts: [{
         attemptId: deriveAttemptId({ trialId: coordinate.trialId, attemptNumber: 1 }),
@@ -159,8 +161,8 @@ function makeBundle(plan: PreparedPlan): ExecutionBundle {
         : {
           cacheStatus: 'miss',
           cacheKeyDigest: digestCanonicalJson({
-            derivation: 'omk.execution-cache-key/v1',
-            executionPlanDigest: plan.execution.executionPlanDigest,
+            derivation: 'omk.execution-cache-key/v2',
+            executionCoordinateDigest: coordinate.executionCoordinateDigest,
             trialId: coordinate.trialId,
           }),
         },
@@ -612,7 +614,7 @@ describe('ExecutionBundle RunPlan binding', () => {
     const record = foreignCoordinate.records[0];
     record.sampleId = 'foreign-sample';
     record.trialId = deriveTrialId({
-      executionPlanDigest: foreignCoordinate.executionPlanDigest as Sha256Digest,
+      executionCoordinateDigest: record.executionCoordinateDigest as Sha256Digest,
       targetId: record.targetId,
       sampleId: record.sampleId,
       trialIndex: record.trialIndex,
@@ -721,6 +723,7 @@ describe('ExecutionBundle RunPlan binding', () => {
       randomizationSlotId: first.randomizationSlotId,
       sampleId: first.sampleId,
       trialIndex: first.trialIndex,
+      executionCoordinateDigest: first.executionCoordinateDigest,
       trialId: first.trialId,
       trialSeed: first.trialSeed,
       schedulingBlockId: first.schedulingBlockId,

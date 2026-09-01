@@ -16,6 +16,7 @@ import {
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
 } from '../../src/evaluation-core/execution/index.js';
 import {
   createDshHostCoreExecutorAdapter,
@@ -325,7 +326,6 @@ async function fixture(options: Readonly<{
   };
   const behavior = {
     artifact: descriptor,
-    ...(options.allowedTools === undefined ? {} : { allowedTools: options.allowedTools }),
     ...(options.allowedSkills === undefined ? { allowedSkills: [] } : {
       allowedSkills: options.allowedSkills,
     }),
@@ -352,6 +352,15 @@ async function fixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'test.omk.dsh-host/v1',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' as const },
+        tools: options.allowedTools === undefined
+          ? { toolPolicyKind: 'runtime-default' as const }
+          : { toolPolicyKind: 'allow-list' as const, allowedTools: [...options.allowedTools] },
+      },
+      sampleOverrides: [],
+    },
     config,
   } as EvaluationDefinition['targets'][number];
   const binding: RuntimeBindingOf<'executor'> = {
@@ -361,6 +370,7 @@ async function fixture(options: Readonly<{
     implementationId: 'test.omk.dsh-host/v1',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: [{
       resourceId: 'artifact-a',
       resourceRole: 'artifact',
@@ -417,11 +427,17 @@ async function execute(
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
   runId = 'run-a',
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId, executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
     sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: 'a' }),
+    executionControl,
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },
     executionContext: { locale: 'zh-CN' },
@@ -574,7 +590,13 @@ describe('DSH host-only Core Executor adapter', () => {
   it('enforces a host tool allow-list before dispatch', async () => {
     const value = await fixture({ allowedTools: ['read'] });
     const host = new FakeCoreDshHost();
-    await execute(await createAdapter(value, host), value.target.config as JsonValue);
+    await execute(
+      await createAdapter(value, host),
+      value.target.config as JsonValue,
+      undefined,
+      'run-a',
+      value.target.executionControls.defaults,
+    );
 
     expect(host.allowedToolSets).toEqual([['read']]);
     expect(host.toolGuards[0]?.({ name: 'read' })).toBeUndefined();

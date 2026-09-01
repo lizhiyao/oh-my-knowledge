@@ -124,6 +124,11 @@ function executorTrial(trialLabel = 'trial-a'): ExecutorTrialContext {
   return {
     sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ trialLabel, coordinate: 0 }),
+    executionControl: {
+      workspace: { workspaceMode: 'not-required' },
+      tools: { toolPolicyKind: 'runtime-default' },
+    },
     protocolId: 'omk.invoke/v1',
     input: { prompt: 'hello' },
     targetConfig: { runtime: { model: 'test-model' } },

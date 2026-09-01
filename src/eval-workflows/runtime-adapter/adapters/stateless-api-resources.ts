@@ -32,10 +32,8 @@ const DescriptorSchema = z.object({
 const StatelessApiTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: DescriptorSchema,
-    workspace: DescriptorSchema.optional(),
     mcpConfig: DescriptorSchema.optional(),
     mocks: z.array(z.unknown()).optional(),
-    allowedTools: z.array(z.string()).optional(),
     allowedSkills: z.array(z.string()).optional(),
     sandbox: z.unknown().optional(),
     config: z.object({
@@ -104,6 +102,7 @@ export function captureStatelessApiTarget(
     || canonicalizeJson(target.executionRequirements)
       !== canonicalizeJson(binding.qualification.executionRequirements)
     || digestCanonicalJson(target.config ?? null) !== binding.behaviorConfigDigest
+    || digestCanonicalJson(target.executionControls) !== binding.executionControlsDigest
   ) throw new TypeError(`${profile.adapterLabel} Target and Runtime binding are inconsistent.`);
   if (target.protocolId !== 'omk.invoke/v1') {
     throw new TypeError(`${profile.adapterLabel} Core adapter supports only omk.invoke/v1.`);
@@ -114,10 +113,8 @@ export function captureStatelessApiTarget(
     || config.runtime.effort !== binding.qualification.effort
   ) throw new TypeError(`${profile.adapterLabel} Runtime qualification does not match Target config.`);
   if (
-    config.behavior.workspace !== undefined
-    || config.behavior.mcpConfig !== undefined
+    config.behavior.mcpConfig !== undefined
     || config.behavior.mocks !== undefined
-    || config.behavior.allowedTools !== undefined
     || config.behavior.allowedSkills !== undefined
     || config.behavior.sandbox !== undefined
     || target.executionRequirements.workspace !== 'not-required'
@@ -302,6 +299,10 @@ export function openStatelessApiTrial(
   maxInputBytes: number,
   profile: StatelessApiResourceProfile,
 ): StatelessApiTrialState {
+  if (trial.executionControl.workspace.workspaceMode !== 'not-required'
+      || trial.executionControl.tools.toolPolicyKind !== 'runtime-default') {
+    fail(profile, 'EXECUTION_CONTROL_UNSUPPORTED', 'received unsupported Trial controls.');
+  }
   const envelope = {
     schemaVersion: profile.promptSchemaVersion,
     ...(runState.supportingFiles === undefined ? {} : {

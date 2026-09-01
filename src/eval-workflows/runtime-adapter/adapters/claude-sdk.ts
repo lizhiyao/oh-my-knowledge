@@ -304,12 +304,8 @@ function identityManifest(
       skillDiscovery: target.config.behavior.allowedSkills === undefined
         ? 'runtime-default-with-private-user-config'
         : 'disabled',
-      toolPolicy: target.config.behavior.allowedTools === undefined
-        ? 'runtime-default'
-        : 'built-in-allow-list-with-mcp-disabled',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      toolPolicy: 'sample-scoped-sealed-control',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
@@ -379,18 +375,19 @@ function sdkOptions(
   configuration: CapturedConfiguration,
   target: CapturedClaudeCliTarget,
   runState: ClaudeCliRunState,
+  trialState: ClaudeCliTrialState,
   attemptDirectory: string,
   hookHandle: SdkHookHandle | undefined,
 ): ClaudeSdkQueryOptions {
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
   const disallowedTools = [
-    ...(target.config.behavior.allowedTools === undefined ? [] : ['mcp__*']),
+    ...(trialState.allowedTools === undefined ? [] : ['mcp__*']),
     ...(disableSkills ? ['Skill'] : []),
   ];
   return {
       abortController: new AbortController(),
       allowDangerouslySkipPermissions: true,
-      cwd: runState.workingDirectory,
+      cwd: trialState.workingDirectory,
       ...(disallowedTools.length === 0 ? {} : { disallowedTools }),
       ...(target.binding.qualification.effort === undefined
         ? {}
@@ -424,9 +421,9 @@ function sdkOptions(
           append: runState.systemInstructions,
         },
       }),
-      ...(target.config.behavior.allowedTools === undefined
+      ...(trialState.allowedTools === undefined
         ? {}
-        : { tools: target.config.behavior.allowedTools }),
+        : { tools: trialState.allowedTools }),
   };
 }
 
@@ -540,7 +537,14 @@ async function executeAttempt(
     ? undefined
     : buildSdkHookCallback([...trialState.mocks], undefined, trialState.mocksStrict);
   try {
-    options = sdkOptions(configuration, target, runState, attemptDirectory, hookHandle);
+    options = sdkOptions(
+      configuration,
+      target,
+      runState,
+      trialState,
+      attemptDirectory,
+      hookHandle,
+    );
   } catch {
     await disposeAttemptDirectory(attemptDirectory);
     fail(

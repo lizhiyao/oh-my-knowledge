@@ -20,19 +20,24 @@ import {
   type SchemaIdentity,
   type Sha256Digest,
 } from '../../../src/index.js';
+import type {
+  EvaluationDefinition,
+  TargetExecutionControls,
+} from '../../../src/evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   InMemoryRuntimeEventSequencer,
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
   CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
   createCustomCommandExecutorAdapter,
-  type CreateCustomCommandExecutorAdapterInput,
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
+  type RuntimeBindingOf,
 } from '../../../src/eval-workflows/runtime-adapter/index.js';
 import {
   testRuntime,
@@ -77,7 +82,7 @@ function capabilities(): ExecutorCapabilities {
           workspace: ['copy-on-write-overlay'],
           mcp: [],
           mockInterception: [],
-          toolPolicies: ['runtime-default'],
+          toolPolicies: ['allow-list', 'runtime-default'],
           skillDiscovery: ['runtime-default'],
           sandboxIds: [],
         },
@@ -103,13 +108,13 @@ function resourceAccess(
 }
 
 async function createAdapter(
-  workingDirectory: string,
+  _workingDirectory: string,
   options: Readonly<{
     environment?: Readonly<Record<string, string>>;
     identityFile?: string | false;
     maxOutputBytes?: number;
     resourceLeases?: OmkBindingResourceLeaseAccess;
-    workingDirectoryConfig?: CreateCustomCommandExecutorAdapterInput['command']['workingDirectory'];
+    executionControls?: TargetExecutionControls;
   }> = {},
 ): Promise<ExecutionExecutor> {
   const identityFile = options.identityFile === false ? undefined : options.identityFile ?? FIXTURE;
@@ -127,7 +132,71 @@ async function createAdapter(
         ? { identityKind: 'effect-locator' as const }
         : { identityKind: 'behavior' as const, value },
   }]));
+  const executionControls: TargetExecutionControls = options.executionControls ?? {
+    defaults: {
+      workspace: { workspaceMode: 'not-required' },
+      tools: { toolPolicyKind: 'runtime-default' },
+    },
+    sampleOverrides: [],
+  };
+  const workspaceRequirements = [
+    executionControls.defaults.workspace,
+    ...executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ].flatMap((workspace) => workspace.workspaceMode === 'copy-on-write-overlay'
+    ? [{
+        resourceId: workspace.descriptor.resourceId,
+        resourceRole: 'workspace' as const,
+        leaseMode: 'copy-on-write-overlay' as const,
+      }]
+    : []);
+  const resourceLeaseRequirements = [...new Map(workspaceRequirements.map((requirement) => (
+    [requirement.resourceId, requirement]
+  ))).values()];
+  const executionRequirements = {
+    systemInstructions: 'not-required' as const,
+    workspace: resourceLeaseRequirements.length === 0
+      ? 'not-required' as const
+      : 'copy-on-write-overlay' as const,
+    mcp: 'not-required' as const,
+    mockInterception: 'not-required' as const,
+    toolPolicy: [
+      executionControls.defaults.tools,
+      ...executionControls.sampleOverrides.flatMap((override) => (
+        override.tools === undefined ? [] : [override.tools]
+      )),
+    ].some((tools) => tools.toolPolicyKind === 'allow-list')
+      ? 'allow-list' as const
+      : 'runtime-default' as const,
+    skillDiscovery: 'runtime-default' as const,
+  };
+  const target: EvaluationDefinition['targets'][number] = {
+    targetId: 'target-a',
+    targetKind: 'function',
+    protocolId: 'omk.invoke/v1',
+    executorId: 'test.omk.custom-command/v1',
+    executionRequirements,
+    executionControls,
+  };
+  const binding: RuntimeBindingOf<'executor'> = {
+    runtimeKind: 'executor',
+    bindingId: 'executor-a',
+    targetId: target.targetId,
+    implementationId: target.executorId,
+    protocolId: target.protocolId,
+    behaviorConfigDigest: digest(null),
+    executionControlsDigest: digest(executionControls),
+    resourceLeaseRequirements,
+    qualification: {
+      model: 'custom-command',
+      executionRequirements,
+      resourceIntegrity: 'digest-before-use',
+    },
+  };
   return createCustomCommandExecutorAdapter({
+    target,
+    binding,
     runtime: {
       implementationId: 'test.omk.custom-command/v1',
       version: '1.0.0',
@@ -140,9 +209,6 @@ async function createAdapter(
       executablePath: process.execPath,
       arguments: [identityFile ?? FIXTURE],
       environment,
-      workingDirectory: options.workingDirectoryConfig ?? {
-        workingDirectoryKind: 'ephemeral-run',
-      },
       ...(options.maxOutputBytes === undefined
         ? {}
         : { maxOutputBytes: options.maxOutputBytes }),
@@ -155,32 +221,42 @@ async function createAdapter(
 async function execute(
   port: ExecutionExecutor,
   signal: AbortSignal = new AbortController().signal,
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
+  sampleId = 'sample-a',
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({
     runId: 'run-a',
     executionPlanDigest: digest({ plan: 'a' }),
   });
-  const trial = await run.openTrial({
-    sampleId: 'sample-a',
-    targetId: 'target-a',
-    protocolId: 'omk.invoke/v1',
-    input: { prompt: 'hello' },
-    executionContext: { locale: 'zh-CN' },
-    targetConfig: { model: 'test-model' },
-    trialIndex: 0,
-    trialId: digest({ trial: 'a' }),
-    schedulingBlockId: digest({ block: 'a' }),
-    samplingUnitIds: { clusterId: digest({ cluster: 'a' }) },
-    trialSeed: digest({ seed: 'a' }),
-  });
   try {
-    return await trial.execute({
-      attemptId: digest({ attempt: 'a' }),
-      attemptNumber: 1,
-      signal,
+    const trial = await run.openTrial({
+      sampleId,
+      targetId: 'target-a',
+      executionCoordinateDigest: digest({ coordinate: 'a' }),
+      executionControl,
+      protocolId: 'omk.invoke/v1',
+      input: { prompt: 'hello' },
+      executionContext: { locale: 'zh-CN' },
+      targetConfig: { model: 'test-model' },
+      trialIndex: 0,
+      trialId: digest({ trial: 'a' }),
+      schedulingBlockId: digest({ block: 'a' }),
+      samplingUnitIds: { clusterId: digest({ cluster: 'a' }) },
+      trialSeed: digest({ seed: 'a' }),
     });
+    try {
+      return await trial.execute({
+        attemptId: digest({ attempt: 'a' }),
+        attemptNumber: 1,
+        signal,
+      });
+    } finally {
+      await trial.dispose();
+    }
   } finally {
-    await trial.dispose();
     await run.dispose();
   }
 }
@@ -389,12 +465,24 @@ describe('custom-command Core Executor adapter', () => {
       resourcesByResourceId: new Map([['workspace-a', workspace]]),
     });
     const result = await execute(await createAdapter(root, {
-      workingDirectoryConfig: {
-        workingDirectoryKind: 'workspace-overlay',
-        resourceId: 'workspace-a',
-      },
       resourceLeases: resourceAccess(lease),
-    }));
+      executionControls: {
+        defaults: {
+          workspace: {
+            workspaceMode: 'copy-on-write-overlay',
+            descriptor: workspace.descriptor,
+          },
+          tools: { toolPolicyKind: 'runtime-default' },
+        },
+        sampleOverrides: [],
+      },
+    }), new AbortController().signal, {
+      workspace: {
+        workspaceMode: 'copy-on-write-overlay',
+        descriptor: workspace.descriptor,
+      },
+      tools: { toolPolicyKind: 'runtime-default' },
+    });
 
     expect(result.trace?.value).toMatchObject({
       cwd: await realpath(overlayPath),
@@ -407,6 +495,96 @@ describe('custom-command Core Executor adapter', () => {
         }],
       },
     });
+  });
+
+  it('projects only the current Trial workspace and tool policy from an aggregate lease', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-custom-command-sample-controls-'));
+    const workspace = async (suffix: 'a' | 'b') => {
+      const baseSnapshotPath = join(root, `base-${suffix}`);
+      const overlayPath = join(root, `overlay-${suffix}`);
+      await mkdir(baseSnapshotPath);
+      await mkdir(overlayPath);
+      return Object.freeze({
+        resourceId: `workspace-${suffix}`,
+        resourceKind: 'workspace' as const,
+        descriptor: {
+          resourceId: `workspace-${suffix}`,
+          digest: digest({ workspace: suffix }),
+          mediaType: 'application/vnd.omk.workspace-tree',
+          classification: 'sensitive' as const,
+          size: 0,
+        },
+        snapshotKind: 'directory' as const,
+        leaseMode: 'copy-on-write-overlay' as const,
+        baseSnapshotPath,
+        overlayPath,
+      });
+    };
+    const [workspaceA, workspaceB] = await Promise.all([workspace('a'), workspace('b')]);
+    const lease = Object.freeze({
+      bindingId: 'executor-a',
+      consumerKind: 'executor' as const,
+      resourcesByResourceId: new Map([
+        [workspaceA.resourceId, workspaceA],
+        [workspaceB.resourceId, workspaceB],
+      ]),
+    });
+    const controlA = {
+      workspace: {
+        workspaceMode: 'copy-on-write-overlay' as const,
+        descriptor: workspaceA.descriptor,
+      },
+      tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['read'] },
+    };
+    const controlB = {
+      workspace: {
+        workspaceMode: 'copy-on-write-overlay' as const,
+        descriptor: workspaceB.descriptor,
+      },
+      tools: { toolPolicyKind: 'allow-list' as const, allowedTools: ['shell'] },
+    };
+    const port = await createAdapter(root, {
+      resourceLeases: resourceAccess(lease),
+      executionControls: {
+        defaults: controlA,
+        sampleOverrides: [{ sampleId: 'sample-b', ...controlB }],
+      },
+    });
+    const resultA = await execute(port, new AbortController().signal, {
+      ...controlA,
+    });
+    const resultB = await execute(port, new AbortController().signal, {
+      ...controlB,
+    }, 'sample-b');
+
+    expect(resultA.trace?.value).toMatchObject({
+      cwd: await realpath(workspaceA.overlayPath),
+      request: {
+        trial: {
+          executionControl: {
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+          },
+        },
+        resources: [{ resourceId: workspaceA.resourceId }],
+      },
+    });
+    expect(resultB.trace?.value).toMatchObject({
+      cwd: await realpath(workspaceB.overlayPath),
+      request: {
+        trial: {
+          executionControl: {
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['shell'] },
+          },
+        },
+        resources: [{ resourceId: workspaceB.resourceId }],
+      },
+    });
+    expect(JSON.stringify(resultA.trace?.value)).not.toContain(workspaceB.overlayPath);
+    expect(JSON.stringify(resultB.trace?.value)).not.toContain(workspaceA.overlayPath);
+    await expect(execute(port, new AbortController().signal, controlB, 'sample-a'))
+      .rejects.toMatchObject({
+        evaluationError: { code: 'OMK_CUSTOM_COMMAND_EXECUTION_CONTROL_MISMATCH' },
+      });
   });
 
   it('delivers the Core AbortSignal to the child and waits for termination', async () => {
@@ -460,6 +638,11 @@ describe('custom-command Core Executor adapter', () => {
     const trial = await run.openTrial({
       sampleId: 'sample-a',
       targetId: 'target-a',
+      executionCoordinateDigest: digest({ coordinate: 'dispose-race' }),
+      executionControl: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: { toolPolicyKind: 'runtime-default' },
+      },
       protocolId: 'omk.invoke/v1',
       input: { prompt: 'hello' },
       trialIndex: 0,

@@ -19,6 +19,7 @@ import {
 
 const runContractDigest = `sha256:${'1'.repeat(64)}` as Sha256Digest;
 const executionPlanDigest = `sha256:${'2'.repeat(64)}` as Sha256Digest;
+const executionCoordinateDigest = `sha256:${'8'.repeat(64)}` as Sha256Digest;
 const datasetRevisionDigest = `sha256:${'3'.repeat(64)}` as Sha256Digest;
 const executionInputDigest = `sha256:${'4'.repeat(64)}` as Sha256Digest;
 const trialSeed = `sha256:${'5'.repeat(64)}` as Sha256Digest;
@@ -69,7 +70,7 @@ function emptyBudgetSummary() {
 const provenance = {
   provenanceKind: 'native' as const,
   trust: 'verified' as const,
-  parentDigests: [executionPlanDigest],
+  parentDigests: [executionCoordinateDigest],
 };
 
 const bundleProvenance = {
@@ -97,7 +98,7 @@ function makeCompletedRecord(
     },
 ): ExecutionRecord {
   const trialId = deriveTrialId({
-    executionPlanDigest,
+    executionCoordinateDigest,
     targetId,
     sampleId,
     trialIndex: 0,
@@ -107,6 +108,7 @@ function makeCompletedRecord(
     randomizationSlotId: `slot-${targetId}`,
     sampleId,
     trialIndex: 0,
+    executionCoordinateDigest,
     trialId,
     trialSeed,
     schedulingBlockId,
@@ -243,7 +245,7 @@ describe('ExecutionBundle contract', () => {
   it('applies replayability to traces from failed and cancelled executions', () => {
     const completed = makeCompletedRecord('target-a', 'sample-a');
     const trialId = deriveTrialId({
-      executionPlanDigest,
+      executionCoordinateDigest,
       targetId: 'target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
@@ -254,6 +256,7 @@ describe('ExecutionBundle contract', () => {
       randomizationSlotId: 'slot-target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
+      executionCoordinateDigest,
       trialId,
       trialSeed,
       schedulingBlockId,
@@ -296,7 +299,7 @@ describe('ExecutionBundle contract', () => {
 
   it('models budget censoring without pretending an attempt started', () => {
     const trialId = deriveTrialId({
-      executionPlanDigest,
+      executionCoordinateDigest,
       targetId: 'target-a',
       sampleId: 'sample-a',
       trialIndex: 0,
@@ -306,6 +309,7 @@ describe('ExecutionBundle contract', () => {
       randomizationSlotId: 'slot-target-a',
       sampleId: 'sample-a',
       trialIndex: 0,
+      executionCoordinateDigest,
       trialId,
       trialSeed,
       schedulingBlockId,
@@ -365,7 +369,7 @@ describe('ExecutionBundle contract', () => {
   it('rejects a scheduling block split between active and budget-censored records', () => {
     const active = makeCompletedRecord('target-a', 'sample-a');
     const trialId = deriveTrialId({
-      executionPlanDigest,
+      executionCoordinateDigest,
       targetId: 'target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
@@ -375,6 +379,7 @@ describe('ExecutionBundle contract', () => {
       randomizationSlotId: 'slot-target-b',
       sampleId: 'sample-a',
       trialIndex: 0,
+      executionCoordinateDigest,
       trialId,
       trialSeed,
       schedulingBlockId,

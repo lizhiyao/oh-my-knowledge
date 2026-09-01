@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+import { derivePlannedExecutionCoordinates } from '../../../src/evaluation-core/contracts/index.js';
 import { testRuntime, validDefinition, validPolicy } from './fixtures.js';
 
 async function compile(
@@ -54,6 +55,65 @@ describe('Compiler digest invalidation boundaries', () => {
       definition.dataset.samples[0].expected = { answer: 'B' };
     });
     expectStages(before, after, ['evaluation', 'analysis', 'decision', 'run']);
+  });
+
+  it('invalidates only the execution coordinate whose effective control changed', async () => {
+    const workspace = (resourceId: string, fill: string) => ({
+      workspaceMode: 'copy-on-write-overlay' as const,
+      descriptor: {
+        resourceId,
+        digest: `sha256:${fill.repeat(64)}` as `sha256:${string}`,
+        mediaType: 'application/vnd.omk.workspace-tree',
+        classification: 'sensitive' as const,
+        size: 1,
+      },
+    });
+    const configure = (definition: ReturnType<typeof validDefinition>): void => {
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+      });
+      definition.targets[0].executionRequirements.workspace = 'copy-on-write-overlay';
+      definition.targets[0].executionRequirements.toolPolicy = 'allow-list';
+      definition.targets[0].executionControls.sampleOverrides = [
+        {
+          sampleId: 'sample-1',
+          workspace: workspace('workspace-a', 'a'),
+          tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+        },
+        {
+          sampleId: 'sample-2',
+          workspace: workspace('workspace-b', 'b'),
+          tools: { toolPolicyKind: 'allow-list', allowedTools: ['shell'] },
+        },
+      ];
+    };
+    const before = await compile(configure);
+    const after = await compile((definition) => {
+      configure(definition);
+      definition.targets[0].executionControls.sampleOverrides[0] = {
+        sampleId: 'sample-1',
+        workspace: workspace('workspace-c', 'c'),
+        tools: { toolPolicyKind: 'allow-list', allowedTools: ['write'] },
+      };
+    });
+    const coordinates = (plan: Awaited<ReturnType<typeof compile>>) => new Map(
+      derivePlannedExecutionCoordinates(plan)
+        .filter((coordinate) => coordinate.targetId === 'control')
+        .map((coordinate) => [coordinate.sampleId, coordinate]),
+    );
+    const beforeCoordinates = coordinates(before);
+    const afterCoordinates = coordinates(after);
+
+    expect(after.execution.executionPlanDigest).not.toBe(before.execution.executionPlanDigest);
+    expect(afterCoordinates.get('sample-1')?.executionCoordinateDigest)
+      .not.toBe(beforeCoordinates.get('sample-1')?.executionCoordinateDigest);
+    expect(afterCoordinates.get('sample-1')?.trialId)
+      .not.toBe(beforeCoordinates.get('sample-1')?.trialId);
+    expect(afterCoordinates.get('sample-2')?.executionCoordinateDigest)
+      .toBe(beforeCoordinates.get('sample-2')?.executionCoordinateDigest);
+    expect(afterCoordinates.get('sample-2')?.trialId)
+      .toBe(beforeCoordinates.get('sample-2')?.trialId);
   });
 
   it('invalidates Evaluation and downstream for Evaluator and Metric changes', async () => {

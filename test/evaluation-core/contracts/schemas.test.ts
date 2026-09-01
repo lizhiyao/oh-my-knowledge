@@ -126,6 +126,13 @@ describe('Evaluation Core wire schemas', () => {
           toolPolicy: 'runtime-default',
           skillDiscovery: 'runtime-default',
         },
+        executionControls: {
+          defaults: {
+            workspace: { workspaceMode: 'not-required' },
+            tools: { toolPolicyKind: 'runtime-default' },
+          },
+          sampleOverrides: [],
+        },
       }],
       evaluators: [],
       metrics: [],
@@ -210,6 +217,13 @@ describe('Evaluation Core wire schemas', () => {
           mockInterception: 'not-required',
           toolPolicy: 'runtime-default',
           skillDiscovery: 'runtime-default',
+        },
+        executionControls: {
+          defaults: {
+            workspace: { workspaceMode: 'not-required' },
+            tools: { toolPolicyKind: 'runtime-default' },
+          },
+          sampleOverrides: [],
         },
       }],
       evaluators: [],

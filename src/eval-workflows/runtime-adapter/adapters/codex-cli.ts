@@ -45,6 +45,7 @@ import {
   captureCodexCliTarget,
   promptForCodexCliTrial,
   selectCodexCliSandbox,
+  workingDirectoryForCodexCliTrial,
   type CapturedCodexCliTarget,
   type CodexCliRunState,
 } from './codex-cli-resources.js';
@@ -250,13 +251,11 @@ function identityManifest(
       effort: target.binding.qualification.effort ?? null,
       model: target.binding.qualification.model,
       protocolId: target.binding.protocolId,
-      sandbox: selectCodexCliSandbox(target.config),
+      sandbox: 'sample-scoped-sealed-control',
       skillDiscovery: 'runtime-default',
       toolPolicy: 'runtime-default',
       toolSchemaCoverage: 'runtime-default-unresolved',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
@@ -364,13 +363,17 @@ async function executeCodex(
   if (attempt.signal.aborted) {
     fail('OMK_CODEX_CLI_CANCELLED', 'execution', 'Codex CLI execution was cancelled.');
   }
+  const workingDirectory = workingDirectoryForCodexCliTrial(trial, state, target);
   const args = buildCodexCliCoreArguments({
     model: target.binding.qualification.model,
     ...(target.binding.qualification.effort === undefined
       ? {}
       : { effort: target.binding.qualification.effort }),
-    sandbox: selectCodexCliSandbox(target.config),
-    workingDirectory: state.workingDirectory,
+    sandbox: selectCodexCliSandbox(
+      target.config,
+      trial.executionControl.workspace.workspaceMode,
+    ),
+    workingDirectory,
     prompt: promptForCodexCliTrial(trial, state, configuration.maxPromptBytes),
   });
   const internalAbort = new AbortController();
@@ -379,7 +382,7 @@ async function executeCodex(
     configuration.executablePath,
     args,
     {
-      cwd: state.workingDirectory,
+      cwd: workingDirectory,
       env: { ...configuration.environment },
       maxBuffer: configuration.maxOutputBytes,
       abortSignal: processSignal,

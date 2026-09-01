@@ -215,12 +215,20 @@ function expectedExecutorResourceRequirements(
     resourceRole: 'artifact',
     leaseMode: 'immutable-snapshot',
   }];
-  const workspaceId = descriptorResourceId(behavior?.workspace);
-  if (workspaceId !== undefined) requirements.push({
-    resourceId: workspaceId,
-    resourceRole: 'workspace',
-    leaseMode: 'copy-on-write-overlay',
-  });
+  const workspaceControls = [
+    target.executionControls.defaults.workspace,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ];
+  for (const workspace of workspaceControls) {
+    if (workspace.workspaceMode !== 'copy-on-write-overlay') continue;
+    requirements.push({
+      resourceId: workspace.descriptor.resourceId,
+      resourceRole: 'workspace',
+      leaseMode: 'copy-on-write-overlay',
+    });
+  }
   const mcpConfigId = descriptorResourceId(behavior?.mcpConfig);
   if (mcpConfigId !== undefined) requirements.push({
     resourceId: mcpConfigId,
@@ -286,6 +294,7 @@ function assertExecutorBinding(
       || !sameOptionalString(binding.versionConstraint, target.versionConstraint)
       || binding.protocolId !== target.protocolId
       || binding.behaviorConfigDigest !== digestCanonicalJson(target.config ?? null)
+      || binding.executionControlsDigest !== digestCanonicalJson(target.executionControls)
       || canonicalizeJson(binding.resourceLeaseRequirements)
         !== canonicalizeJson(expectedExecutorResourceRequirements(target))
       || canonicalizeJson(binding.qualification.executionRequirements)
