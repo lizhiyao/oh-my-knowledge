@@ -8,8 +8,6 @@ import { renderDoctorDetail } from '../presentation/doctor-detail-renderer.js';
 import type { SkillReportContext } from '../presentation/report-shell.js';
 import { assessHealth, renderSkillDetail } from '../presentation/skill-detail-renderer.js';
 import type { SkillIndexEntry, Insight } from '../view-models/index.js';
-import { renderObservationInboxPage } from '../presentation/observation-inbox-renderer.js';
-import { renderKnowledgeDebuggerPage } from '../presentation/knowledge-debugger-renderer.js';
 import { DEFAULT_LANG, e, t, layout } from '../presentation/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../presentation/managed-history-renderer.js';
@@ -27,30 +25,24 @@ import {
   type SkillHealthReport,
 } from '../../observability/skill-health-analyzer.js';
 import { parseSkillHealthReport } from '../../observability/skill-health-report.js';
-import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../../observability/inbox.js';
-import { buildObservationInboxViewModel } from '../../observability/inbox-view-model.js';
-import { buildKnowledgeDebuggerViewModel } from '../../observability/knowledge-debugger.js';
+import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox.js';
 import {
   createCodexConversationCatalog,
 } from '../../observability/conversation-catalog.js';
 import {
-  loadObservationSourceRecordArchive,
-  summarizeObservationSourceRecordArchive,
-} from '../../observability/source-record-archive.js';
-import { activeStudioDiagnostics } from '../../diagnosis/studio-projection.js';
-import {
-  deleteObservationReviewState,
-  loadObservationReviewState,
   ObservationReviewStateValidationError,
-  updateObservationReviewState,
-  type ObservationReviewStateUpdate,
 } from '../../observability/review-state.js';
 import {
   createCoreStudioRouteHandler,
 } from '../core-runs/index.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage } from './errors.js';
+import {
+  assertTrustedMutationRequest,
+  RequestBodyError,
+} from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
+import { createObservationRoutes } from './routes/observations.js';
 
 interface AnalysisListItem {
   id: string;
@@ -390,84 +382,6 @@ function fmtPct(v: number | null | undefined): string {
   return `${Math.round(v * 100)}%`;
 }
 
-class RequestBodyError extends Error {
-  override readonly name = 'RequestBodyError';
-
-  constructor(
-    message: string,
-    readonly statusCode: 400 | 403 | 413 | 415,
-  ) {
-    super(message);
-  }
-}
-
-function assertTrustedMutationRequest(req: IncomingMessage): void {
-  const fetchSite = req.headers['sec-fetch-site'];
-  if (fetchSite === 'cross-site') {
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
-  }
-
-  const origin = req.headers.origin;
-  if (!origin) return;
-  if (Array.isArray(origin) || !req.headers.host) {
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
-  }
-  try {
-    if (new URL(origin).host !== req.headers.host) {
-      throw new RequestBodyError('cross-origin mutation is not allowed', 403);
-    }
-  } catch (error) {
-    if (error instanceof RequestBodyError) throw error;
-    throw new RequestBodyError('cross-origin mutation is not allowed', 403);
-  }
-}
-
-function assertJsonContentType(req: IncomingMessage): void {
-  const contentType = req.headers['content-type'];
-  const mediaType = typeof contentType === 'string'
-    ? contentType.split(';', 1)[0].trim().toLowerCase()
-    : '';
-  if (mediaType === 'application/json' || mediaType.endsWith('+json')) return;
-  req.resume();
-  throw new RequestBodyError('content-type must be application/json', 415);
-}
-
-function readJsonObjectBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<Record<string, unknown>> {
-  assertJsonContentType(req);
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    let tooLarge = false;
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > maxBytes) {
-        tooLarge = true;
-        chunks.length = 0;
-        return;
-      }
-      if (!tooLarge) chunks.push(chunk);
-    });
-    req.on('end', () => {
-      if (tooLarge) {
-        reject(new RequestBodyError('request body too large', 413));
-        return;
-      }
-      try {
-        const raw = Buffer.concat(chunks).toString('utf-8').trim();
-        const parsed = raw ? JSON.parse(raw) as unknown : {};
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          reject(new RequestBodyError('json body must be an object', 400));
-          return;
-        }
-        resolve(parsed as Record<string, unknown>);
-      } catch {
-        reject(new RequestBodyError('invalid json body', 400));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
 function fmtHistDate(ts: string | undefined, lang: Lang): string {
   if (!ts) return '-';
   try {
@@ -697,19 +611,6 @@ function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG
   return layout(t('skillHealthTitle', lang), body, lang);
 }
 
-function findKnowledgeDebuggerContext(observationsDir: string, experienceSessionId: string) {
-  const inbox = buildObservationInboxViewModel(observationsDir);
-  const report = inbox.reports.find((candidate) =>
-    candidate.experience?.sessions.some((session) => session.id === experienceSessionId)
-  );
-  const session = report?.experience?.sessions.find((candidate) => candidate.id === experienceSessionId);
-  if (!report || !session) return undefined;
-  const sourceRecordRef = report.meta.sourceRecordArchives?.find((candidate) =>
-    candidate.experienceSessionId === experienceSessionId
-  );
-  return { report, session, sourceRecordRef };
-}
-
 type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
   requestShutdown(): void;
 };
@@ -768,6 +669,11 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         : (): string => resolveDoctorsDir(projectDoctorsDir());
 
   const skillIndexOptions = (): Parameters<typeof buildSkillIndex>[3] => ({
+    includeObserveCards,
+    includeDoctorCards,
+  });
+  const observationRoutes = createObservationRoutes({
+    observationsDir,
     includeObserveCards,
     includeDoctorCards,
   });
@@ -840,21 +746,16 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         return;
       }
 
-      // 旧 observe 路由 → observe-* 词根 canonical 的兜底(querystring 透传),防外链 / 书签 / 已打开页面的旧 fetch 失效。
-      // 页面用 302(临时);API 用 307 —— review-state 有 POST/DELETE,302 会被客户端降级成 GET,307 保留 method+body。
-      // 复合名 /analyses-diff、/api/analyses-diff、/skill-trend 维持原名,不在此重定向。
+      // 旧 observe-health 路由 → canonical 词根(querystring 透传)。Observation Inbox
+      // 的旧入口由其能力路由统一处理；复合名 /analyses-diff、/api/analyses-diff、
+      // /skill-trend 维持原名，不在此重定向。
       const legacyObserveRedirect = ((): { to: string; status: 302 | 307 } | null => {
         if (path === '/analyses') return { to: '/observe-health', status: 302 };
-        if (path === '/observations' || path === '/observations/inbox') return { to: '/observe-inbox', status: 302 };
         const detail = path.match(/^\/analyses\/(.+)$/);
         if (detail) return { to: `/observe-health/${detail[1]}`, status: 302 };
         if (path === '/api/analyses') return { to: '/api/observe-health', status: 307 };
         const apiDetail = path.match(/^\/api\/analyses\/(.+)$/);
         if (apiDetail) return { to: `/api/observe-health/${apiDetail[1]}`, status: 307 };
-        if (path === '/api/observations/inbox') return { to: '/api/observe-inbox', status: 307 };
-        if (path === '/api/observations/show') return { to: '/api/observe-inbox/show', status: 307 };
-        if (path === '/api/observations/diagnostics') return { to: '/api/observe-inbox/diagnostics', status: 307 };
-        if (path === '/api/observations/review-state') return { to: '/api/observe-inbox/review-state', status: 307 };
         return null;
       })();
       if (legacyObserveRedirect) {
@@ -905,14 +806,6 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         return;
       }
 
-      if (path === '/observe-inbox') {
-        const skill = parsed.searchParams.get('skill') || undefined;
-        const html = renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(html);
-        return;
-      }
-
       if (await conversationRoutes({
         request: req,
         response: res,
@@ -920,160 +813,15 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         path,
         lang,
       })) return;
-      const knowledgeDebuggerMatch = path.match(/^\/observe-debugger\/(.+)$/);
-      if (knowledgeDebuggerMatch) {
-        let experienceSessionId = '';
-        try { experienceSessionId = decodeURIComponent(knowledgeDebuggerMatch[1]); } catch { /* invalid path */ }
-        const context = experienceSessionId
-          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-          : undefined;
-        if (!context) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(lang === 'en' ? 'experience session not found' : '观测会话不存在');
-          return;
-        }
-        const targetTurnId = parsed.searchParams.get('turnId')?.trim();
-        if (!targetTurnId) {
-          const langQuery = lang === DEFAULT_LANG ? '' : '?lang=en';
-          res.writeHead(302, {
-            Location: `/conversations/${encodeURIComponent(context.session.threadId)}${langQuery}`,
-          });
-          res.end();
-          return;
-        }
-        if (!context.session.turns.some((turn) => turn.turnId === targetTurnId)) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(lang === 'en' ? 'task turn not found' : '任务不存在');
-          return;
-        }
-        const html = renderKnowledgeDebuggerPage(
-          buildKnowledgeDebuggerViewModel(
-            context.session,
-            targetTurnId,
-            context.report.meta.ingestion,
-            summarizeObservationSourceRecordArchive(context.sourceRecordRef),
-          ),
-          lang,
-          {
-            sourceRecordsEndpoint: `/api/observe-debugger/${encodeURIComponent(experienceSessionId)}/source-records`,
-          },
-        );
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(html);
-        return;
-      }
-
-      const knowledgeDebuggerSourceMatch = path.match(/^\/api\/observe-debugger\/(.+)\/source-records$/);
-      if (knowledgeDebuggerSourceMatch) {
-        let experienceSessionId = '';
-        try { experienceSessionId = decodeURIComponent(knowledgeDebuggerSourceMatch[1]); } catch { /* invalid path */ }
-        const context = experienceSessionId
-          ? findKnowledgeDebuggerContext(observationsDir, experienceSessionId)
-          : undefined;
-        if (!context) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'experience_session_not_found' }));
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(JSON.stringify(loadObservationSourceRecordArchive(context.sourceRecordRef, observationsDir)));
-        return;
-      }
-
-      if (path === '/api/observe-inbox') {
-        const severity = parsed.searchParams.get('severity');
-        const skill = parsed.searchParams.get('skill');
-        const limitRaw = parsed.searchParams.get('limit');
-        const limit = limitRaw ? Math.max(1, Number(limitRaw) || 0) : 0;
-        let items = queryObservationInbox(observationsDir);
-        if (skill) {
-          items = items.filter((item) => item.skillName === skill);
-        }
-        if (severity === 'high' || severity === 'medium' || severity === 'low' || severity === 'noise') {
-          items = items.filter((item) => item.severity === severity);
-        }
-        if (limit > 0) items = items.slice(0, limit);
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(items));
-        return;
-      }
-
-      if (path === '/api/observe-inbox/diagnostics') {
-        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({
-          sourceCoverage: idx.diagnosisSummary.sourceCoverage,
-          summary: idx.diagnosisSummary,
-          bySkill: Object.fromEntries(idx.diagnosticsBySkill),
-          active: activeStudioDiagnostics({
-            schemaVersion: 1,
-            generatedAt: new Date().toISOString(),
-            sourceCoverage: idx.diagnosisSummary.sourceCoverage,
-            bySkill: Object.fromEntries(idx.diagnosticsBySkill),
-          }),
-        }));
-        return;
-      }
-
-      if (path === '/api/observe-inbox/show') {
-        const id = parsed.searchParams.get('id') || '';
-        const item = id ? findObservationInboxItem(id, observationsDir) : null;
-        res.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(item ? { id, text: formatObservationShow(item) } : { error: 'observation not found' }));
-        return;
-      }
-
-      if (path === '/api/observe-inbox/review-state') {
-        if (req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify(loadObservationReviewState(observationsDir)));
-          return;
-        }
-        if (req.method === 'POST') {
-          assertTrustedMutationRequest(req);
-          const body = await readJsonObjectBody(req) as Partial<ObservationReviewStateUpdate>;
-          const targetType = body.targetType as ObservationReviewStateUpdate['targetType'];
-          const targetId = body.targetId as string;
-          const verdict = body.verdict as ObservationReviewStateUpdate['verdict'];
-          const now = new Date().toISOString();
-          const state = updateObservationReviewState(observationsDir, {
-            targetType,
-            targetId,
-            verdict,
-            note: body.note,
-            reason: body.reason,
-            metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
-            metricScope: body.metricScope as ObservationReviewStateUpdate['metricScope'],
-            metricScopeId: body.metricScopeId,
-            traceId: body.traceId,
-            sourceTrace: body.sourceTrace,
-            sessionId: body.sessionId,
-            messageIndex: body.messageIndex,
-            messageUuid: body.messageUuid,
-            callInstanceId: body.callInstanceId,
-            toolUseId: body.toolUseId,
-            snippet: body.snippet,
-          }, now);
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify(state));
-          return;
-        }
-        if (req.method === 'DELETE') {
-          assertTrustedMutationRequest(req);
-          const targetType = parsed.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
-          const targetId = parsed.searchParams.get('targetId') ?? '';
-          const state = deleteObservationReviewState(observationsDir, targetType, targetId);
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify(state));
-          return;
-        }
-        res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ error: 'method not allowed' }));
-        return;
-      }
+      if (await observationRoutes({
+        request: req,
+        response: res,
+        url: parsed,
+        path,
+        lang,
+        analysesDir,
+        doctorsDir,
+      })) return;
 
       const doctorDetailMatch = path.match(/^\/doctors\/(.+)$/);
       if (doctorDetailMatch) {
