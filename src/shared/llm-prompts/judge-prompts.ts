@@ -20,7 +20,7 @@ import {
  * The version string encodes WHICH debias / context features the judge sees, so sealed
  * evaluation plans carrying the same prompt hash use the same instrument. A mismatched
  * hash means "we changed how we ask the judge to think". Bump it (and the
- * frozen hashes in `test/shared/prompt-registry-freeze.test.ts`) whenever the template's bytes
+ * frozen hashes in `test/measurement-governance/prompt-registry-freeze.test.ts`) whenever the template's bytes
  * change — that change is BREAKING-COMPARABILITY.
  *
  * Naming: a single main version (`v5`) + a `-feature` suffix per debias/context capability.

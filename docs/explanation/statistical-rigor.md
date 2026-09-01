@@ -45,7 +45,7 @@ LLM judges can reward verbosity, polished formatting, or confident tone independ
 - Presentation and tone neutrality are always enabled.
 - Length debiasing is enabled by default; `--no-debias-length` disables only the length instruction for controlled research or replication.
 - Every scoring prompt has a registry identity and hash. Reports with different evaluator identities or prompt variants are not treated as blind equivalents.
-- The frozen hashes are driven by `src/shared/llm-prompts/registry.ts` and guarded by `test/shared/prompt-registry-freeze.test.ts`.
+- The frozen hashes are catalogued and guarded by `test/measurement-governance/prompt-registry.ts` and `prompt-registry-freeze.test.ts`. This governance-only manifest is excluded from the published runtime.
 
 Prompt instructions reduce a known bias risk; they do not prove that a judge is unbiased. Gold calibration is the external check.
 

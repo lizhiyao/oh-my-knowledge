@@ -91,6 +91,11 @@ const RULES: ForbiddenRule[] = [
     reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observability 投影。',
   },
   {
+    from: 'measurement-artifacts/',
+    to: 'observability/',
+    reason: 'Measurement Artifacts 只拥有产物命名、目录、索引与定位能力；跨域 prompt 冻结属于 CI 测量治理。',
+  },
+  {
     from: 'observability/',
     to: 'studio/',
     reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',

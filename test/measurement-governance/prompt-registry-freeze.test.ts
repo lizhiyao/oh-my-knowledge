@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROMPT_REGISTRY } from '../../src/measurement-artifacts/prompt-registry.js';
+import { PROMPT_REGISTRY } from './prompt-registry.js';
 
 // 统一冻结:omk 所有「直接决定分数」的评委 prompt 的 byte-level 锚点。任何动其模板字节(含
 // 标点 / 空白 / 版本串 / 共享去偏块)都会让对应 hash 变,从而让历史报告不可比。除非显式想 bump

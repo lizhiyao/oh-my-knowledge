@@ -2,13 +2,13 @@ import {
   getJudgePromptHash,
   getRagJudgePromptHash,
   getSemanticPromptHash,
-} from '../shared/llm-prompts/judge-prompts.js';
-import { readPromptDocument } from '../shared/llm-prompts/index.js';
+} from '../../src/shared/llm-prompts/judge-prompts.js';
+import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
 import {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
-} from '../observability/soft-standards/constants.js';
+} from '../../src/observability/soft-standards/constants.js';
 
 /**
  * omk 所有 LLM prompt 的单一编目 —— 发现入口 + 测量学冻结入口。
@@ -16,7 +16,7 @@ import {
  * 解决「prompt 散在多个目录、难管理」与「只有 2 个 prompt 被冻结」两个问题:
  *   - 每条登记 prompt 的位置(module)+ 用途,一处可查全。
  *   - measurementInvariant 为 true 的(直接决定分数的评委 prompt)带 getHash,
- *     由 test/shared/prompt-registry-freeze.test.ts 统一冻结,文本漂移即 CI 红。
+ *     由 test/measurement-governance/prompt-registry-freeze.test.ts 统一冻结,文本漂移即 CI 红。
  *
  * 注意:hash 形状按各自历史口径,不强行统一 ——
  *   - rubric 评委:12 位(getJudgePromptHash,持久化进 report.meta.judgePromptHash 的同口径);

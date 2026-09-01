@@ -59,6 +59,7 @@ describe('领域契约所有权', () => {
       'src/server',
       'src/renderer',
       'src/artifact-graph/core.ts',
+      'src/measurement-artifacts/prompt-registry.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }
