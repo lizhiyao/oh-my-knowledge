@@ -14,7 +14,7 @@ export const OMK_HOME: string = process.env.OMK_HOME || join(homedir(), '.oh-my-
 
 /**
  * 耐久测量数据(要留、被 reportId 等引用,绝不自动删)的默认根目录。这几个是 cli 写、server(Studio)读
- * 的同一处,必须一致 —— 否则 cli 把产物写到一处、studio 从另一处读,页面就空。放在中立的 eval-core 层,
+ * 的同一处,必须一致 —— 否则 cli 把产物写到一处、studio 从另一处读,页面就空。放在中立的 measurement-artifacts 层,
  * 让 cli/ 与 server/ 两个交付层都能合法 import 同一个常量,而不必让 server 反向 import cli
  * (那是 #242 清掉的分层倒挂)。
  */

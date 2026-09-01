@@ -4,7 +4,7 @@ import { BaseCommand } from '../../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
-import { projectReportsDir, globalReportsDir } from '../../../../eval-core/measurement-dirs.js';
+import { projectReportsDir, globalReportsDir } from '../../../../measurement-artifacts/directories.js';
 
 export default class EvalGoldCompare extends BaseCommand {
   static description = bilingual({

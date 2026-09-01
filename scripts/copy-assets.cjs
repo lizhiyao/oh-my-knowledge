@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ASSETS = [
-  ['src/eval-core/mock-hook.cjs', 'dist/eval-core/mock-hook.cjs'],
+  ['src/executors/mock-runtime/mock-hook.cjs', 'dist/executors/mock-runtime/mock-hook.cjs'],
   ['src/observability/prompts/llm-enhanced-review.prompt.md', 'dist/observability/prompts/llm-enhanced-review.prompt.md'],
   ['src/dsh-plugin/cordis.patch.yml', 'dist/dsh-plugin/cordis.patch.yml'],
 ];

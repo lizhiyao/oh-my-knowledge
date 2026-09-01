@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { doctorReportFileStem } from '../../src/eval-core/artifact-file-names.js';
+import { doctorReportFileStem } from '../../src/measurement-artifacts/file-names.js';
 
 describe('artifact file names', () => {
   it('doctor stem preserves ordinary names and separates lossy-safe collisions', () => {

@@ -95,7 +95,7 @@ export function extractClaudeTrace(messages: ClaudeMessage[], timestamps?: numbe
 
         // Mock 命中:omk 用 permissionDecision='deny' 把 stub 数据塞进 result.content,
         // is_error 因此为 true,但语义上是"mock 成功返回"。识别前缀 → 覆盖 success=true。
-        // 见 src/eval-core/mocks-runtime.ts 的 wrappedReason 前缀。
+        // 见 executors/mock-runtime/runtime.ts 的 wrappedReason 前缀。
         const isMockHit = outputText.startsWith('[mock] simulated tool output');
         const inferredFailure = !hasRuntimeStatus && isToolResultFailureText(outputText);
 

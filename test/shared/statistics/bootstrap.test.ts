@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, ciLevelLabel, DEFAULT_BOOTSTRAP_SEED } from '../../src/eval-core/bootstrap.js';
+import { bootstrapMeanCI, bootstrapDiffCI, bootstrapPairedDiffCI, bootstrapWithMetric, ciLevelLabel, DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
 
 describe('bootstrapMeanCI', () => {
   it('CI on a tight sample contains the true mean', () => {

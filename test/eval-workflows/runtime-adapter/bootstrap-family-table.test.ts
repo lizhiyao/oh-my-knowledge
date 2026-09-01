@@ -4,7 +4,7 @@ import {
   bootstrapDiffCI,
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
-} from '../../../src/eval-core/bootstrap.js';
+} from '../../../src/shared/statistics/bootstrap.js';
 import {
   digestCanonicalJson,
   schemaIdentityKey,

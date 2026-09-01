@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../eval-core/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../shared/statistics/bootstrap.js';
 import {
   IdentifierSchema,
   schemaIdentityKey,

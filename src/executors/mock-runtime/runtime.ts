@@ -18,9 +18,9 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Mock, MockReturn } from '../types/eval.js';
-import { incrementRecordCount, setOwnRecordValue } from '../shared/record-count.js';
-import { toolIdentityMatches } from '../shared/tool-identity.js';
+import type { Mock, MockReturn } from '../../types/eval.js';
+import { incrementRecordCount, setOwnRecordValue } from '../../shared/record-count.js';
+import { toolIdentityMatches } from '../../shared/tool-identity.js';
 
 // ─── Match logic ────────────────────────────────────────────────────────────
 
@@ -668,13 +668,14 @@ rl.on('line', (line) => {
 let _hookTemplate: string | null = null;
 function readMockHookTemplate(): string {
   if (_hookTemplate) return _hookTemplate;
-  // hook 跟本文件共置在 src/eval-core/(开发模式)或 dist/eval-core/(npm 安装模式),
+  // hook 跟本文件共置在 src/executors/mock-runtime/(开发模式)或
+  // dist/executors/mock-runtime/(npm 安装模式),
   // build script 把 mock-hook.cjs 复制到 dist/。读 sibling 路径就行,不再依赖外层 assets/。
   const here = dirname(fileURLToPath(import.meta.url));
   const hookPath = resolve(here, 'mock-hook.cjs');
   if (!existsSync(hookPath)) {
     throw new Error(`omk-mock: mock-hook.cjs not found at ${hookPath}. ` +
-      `如果是从源码运行,确认 src/eval-core/mock-hook.cjs 存在;如果是 npm 安装,` +
+      `如果是从源码运行,确认 src/executors/mock-runtime/mock-hook.cjs 存在;如果是 npm 安装,` +
       `package 漏发了 hook,提 issue 并附 omk 版本。`);
   }
   _hookTemplate = readFileSync(hookPath, 'utf8');

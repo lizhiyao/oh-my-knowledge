@@ -13,7 +13,7 @@ export function hashPromptText(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-// dir 由 caller 用 sibling-relative 解析(参考 src/eval-core/mocks-runtime.ts 的 mock-hook 加载),
+// dir 由 caller 用 sibling-relative 解析(参考 executors/mock-runtime 的 mock-hook 加载),
 // 这样 dev(src/)和 npm 安装(dist/)都能从相对自己的位置找到 prompt 文件,无需 walk-up package.json。
 // build script 把 src/<module>/prompts/*.md 复制到 dist/<module>/prompts/ 让 sibling 路径在 dist 下也通。
 export function readPromptDocument(options: {

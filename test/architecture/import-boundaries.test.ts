@@ -3,7 +3,7 @@
  *
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
- *   - types 反向看 eval-core / 业务实现(已修)
+ *   - types 反向看业务实现(已修)
  *   - renderer 直接 import observability 内部(已 facade 化)
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
@@ -37,8 +37,18 @@ interface ForbiddenRule {
 const RULES: ForbiddenRule[] = [
   {
     from: 'evaluation-core/',
-    to: 'eval-core/',
-    reason: 'Evaluation Core vNext 必须与旧 eval-core pipeline 物理隔离，旧实现只作为算法与失败案例参考。',
+    to: 'measurement-artifacts/',
+    reason: 'Evaluation Core vNext 是纯计算内核，不依赖文件命名、目录布局或产物发现。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'preflight/',
+    reason: 'Evaluation Core vNext 是宿主无关内核，不依赖宿主环境与依赖探测。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'shared/statistics/',
+    reason: 'Evaluation Core vNext 的 Analysis 自持统计语义，不反向依赖应用层兼容工具。',
   },
   {
     from: 'evaluation-core/',
@@ -74,11 +84,6 @@ const RULES: ForbiddenRule[] = [
     from: 'evaluation-core/',
     to: 'renderer/',
     reason: 'Bundle 是事实契约，Report renderer 属于宿主物化视图。',
-  },
-  {
-    from: 'types/',
-    to: 'eval-core/',
-    reason: 'types/ 是底层契约层,不应反向 import 业务实现 (eval-core)。DTO 应该下沉到 types/。',
   },
   {
     from: 'types/',

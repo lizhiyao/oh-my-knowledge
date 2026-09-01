@@ -11,7 +11,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runFileSuffix } from '../eval-core/artifact-file-names.js';
+import { runFileSuffix } from '../measurement-artifacts/file-names.js';
 import { discoverVariants, resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
   Artifact,

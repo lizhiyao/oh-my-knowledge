@@ -3,7 +3,7 @@ import {
   bootstrapWithMetric,
   drawBootstrapMetric,
   summarizeBootstrapMetric,
-} from '../../../src/eval-core/bootstrap.js';
+} from '../../../src/shared/statistics/bootstrap.js';
 import {
   computeAgreementWithCI,
   computeKrippendorffAlpha,

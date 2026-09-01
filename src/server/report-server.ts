@@ -19,9 +19,9 @@ import {
 import { DEFAULT_LANG, e, t, layout } from '../renderer/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
-import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../eval-core/measurement-dirs.js';
-import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../eval-core/artifact-index.js';
-import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
+import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../measurement-artifacts/directories.js';
+import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../measurement-artifacts/discovery-index.js';
+import { isReportFileName, reportFilePath, reportFileStem } from '../measurement-artifacts/file-names.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import type { DoctorReport } from '../types/index.js';

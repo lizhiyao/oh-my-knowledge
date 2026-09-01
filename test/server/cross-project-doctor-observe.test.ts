@@ -12,8 +12,8 @@ import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
   listDoctorCards,
-} from '../../src/eval-core/artifact-index.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+} from '../../src/measurement-artifacts/discovery-index.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
 import type { DoctorReport } from '../../src/types/index.js';
 

@@ -7,9 +7,9 @@ import {
   type JsonValue,
   type MetricDefinition,
 } from '../../evaluation-core/contracts/index.js';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../eval-core/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../shared/statistics/bootstrap.js';
 import { splitHoldout } from '../../shared/holdout.js';
-import { renderEnvironmentSection } from '../../eval-core/environment-renderer.js';
+import { renderEnvironmentSection } from './environment.js';
 import { deterministicAssertionInputSourceKinds } from '../../shared/assertions/deterministic.js';
 import { resolveAssertionLayer } from '../../shared/assertions/layers.js';
 import type { Assertion, Sample } from '../../types/index.js';

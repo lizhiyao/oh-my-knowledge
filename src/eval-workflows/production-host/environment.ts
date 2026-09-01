@@ -1,4 +1,4 @@
-import type { SampleEnvironment } from '../types/index.js';
+import type { SampleEnvironment } from '../../types/index.js';
 
 /**
  * 把 sample.environment 渲染成自然语言段落,放在用户 prompt 前。

@@ -10,8 +10,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReportServer } from '../../src/server/report-server.js';
-import { indexDoctorWrite, indexObserveWrite } from '../../src/eval-core/artifact-index.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { indexDoctorWrite, indexObserveWrite } from '../../src/measurement-artifacts/discovery-index.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 
 interface Srv { stop(): Promise<void> }
 

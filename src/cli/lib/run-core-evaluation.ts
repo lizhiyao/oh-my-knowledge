@@ -26,7 +26,7 @@ import {
   projectCoreManagedEvidence,
 } from '../../eval-workflows/downstream-projections/index.js';
 import { discoverBatchSkills } from '../../inputs/skill-loader.js';
-import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
+import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { generateRunId } from '../../shared/run-id.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';

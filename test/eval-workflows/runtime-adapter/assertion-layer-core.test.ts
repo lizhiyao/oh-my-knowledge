@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-core/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
 import {
   canonicalizeJson,
   schemaIdentityKey,

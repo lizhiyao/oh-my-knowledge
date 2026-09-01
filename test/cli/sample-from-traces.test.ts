@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runSampleFromTraces } from '../../src/cli/commands/sample.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 import { withCapturedStderr } from '../helpers/stderr.js';
 
 describe('sample --from-traces', () => {

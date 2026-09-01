@@ -129,7 +129,7 @@ function listSiblingSkills(skillRoot: string | null): string[] {
 // 有界并发 map
 // ---------------------------------------------------------------------------
 
-/** 最多 limit 个任务并发,返回与 items 同序的结果(worker-pool,对齐 eval-core 口径)。 */
+/** 最多 limit 个任务并发,返回与 items 同序的结果(worker-pool,对齐评测执行口径)。 */
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,

@@ -1,4 +1,4 @@
-import { randomRunToken, runTimestamp } from '../eval-core/artifact-file-names.js';
+import { randomRunToken, runTimestamp } from '../measurement-artifacts/file-names.js';
 
 function runIdSuffix(): string {
   return `${runTimestamp()}-${randomRunToken()}`;

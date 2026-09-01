@@ -5,7 +5,7 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
 import { shortContentHash } from '../shared/content-hash.js';
-import { OMK_HOME } from '../eval-core/default-dirs.js';
+import { OMK_HOME } from '../measurement-artifacts/default-dirs.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';

@@ -2,7 +2,7 @@
 /**
  * omk-mock PreToolUse hook (CLI fallback path).
  *
- * 由 src/eval-core/mocks-runtime.ts:materializeForCliConfigDir 写到临时
+ * 由 src/executors/mock-runtime/runtime.ts:materializeForCliConfigDir 写到临时
  * CLAUDE_CONFIG_DIR/mock-hook.cjs。Claude Code 子进程会以 hook 形式调它,
  * stdin 收 PreToolUseHookInput,stdout 出 PreToolUseHookOutput JSON。
  *

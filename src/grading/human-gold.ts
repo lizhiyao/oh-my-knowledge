@@ -30,7 +30,7 @@
  * see uncertainty on the agreement number itself when N is small.
  */
 
-import { bootstrapWithMetric, type BootstrapCI } from '../eval-core/bootstrap.js';
+import { bootstrapWithMetric, type BootstrapCI } from '../shared/statistics/bootstrap.js';
 
 export interface RatingPair {
   /** Per-sample identifier; used only for diagnostics. */

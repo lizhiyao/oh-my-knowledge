@@ -19,7 +19,7 @@ import {
 } from '../../../evaluation-core/execution/index.js';
 import {
   type CliMockHandle,
-} from '../../../eval-core/mocks-runtime.js';
+} from '../../../executors/mock-runtime/runtime.js';
 import type { Mock, MockMatch, MockReturn } from '../../../types/eval.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type {
