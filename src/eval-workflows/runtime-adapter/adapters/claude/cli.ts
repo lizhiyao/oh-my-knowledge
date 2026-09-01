@@ -11,40 +11,40 @@ import {
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
-} from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/execution/index.js';
 import {
   materializeForCliConfigDir,
   type CliMockHandle,
-} from '../../../executors/mock-runtime/runtime.js';
+} from '../../../../executors/mock-runtime/runtime.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,
-} from '../../../executors/core/subprocess.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+} from '../../../../executors/core/subprocess.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {
   captureClassifiedEnvironment,
   mergeOutputClassification,
   type ClassifiedEnvironmentEntry,
-} from './shared/classified-environment.js';
+} from '../shared/classified-environment.js';
 import {
   assertIdentityFilesUnchanged,
   captureIdentityFiles,
   type CapturedIdentityFile,
   type ContentIdentityFile,
-} from './shared/content-identity.js';
+} from '../shared/content-identity.js';
 import {
   CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   claudeCliExecutorCapabilities,
   parseClaudeCliStream,
   type ParsedClaudeCliStream,
-} from './claude-cli-protocol.js';
+} from './cli-protocol.js';
 import {
   captureClaudeCliRunState,
   captureClaudeCliTarget,
@@ -54,14 +54,14 @@ import {
   type CapturedClaudeCliTarget,
   type ClaudeCliRunState,
   type ClaudeCliTrialState,
-} from './claude-cli-resources.js';
-import { createSameProcessExecutorAdapter } from './shared/same-process.js';
-import { attachSourceNeutralMockStats } from '../source-neutral-trace.js';
+} from './resources.js';
+import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
+import { attachSourceNeutralMockStats } from '../../source-neutral-trace.js';
 
 export {
   CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createClaudeCliCoreSchemaValidators,
-} from './claude-cli-protocol.js';
+} from './cli-protocol.js';
 
 export const DEFAULT_CLAUDE_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CLAUDE_CLI_MAX_INPUT_BYTES = 2 * 1024 * 1024;

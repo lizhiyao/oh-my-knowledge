@@ -20,15 +20,15 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../src/evaluation-core/contracts/index.js';
-import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../../../src/evaluation-core/contracts/index.js';
+import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/evaluation-core/execution/index.js';
 import {
   buildClaudeCliCoreArguments,
   createClaudeCliCoreSchemaValidators,
@@ -39,15 +39,15 @@ import {
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
   type RuntimeBindingOf,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
 import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../../../evaluation-core/compiler/fixtures.js';
 
 const FIXTURE = fileURLToPath(new URL(
-  '../../fixtures/claude-cli-core-runtime.mjs',
+  '../../../../fixtures/claude-cli-core-runtime.mjs',
   import.meta.url,
 ));
 const fixtureRoots = new Set<string>();

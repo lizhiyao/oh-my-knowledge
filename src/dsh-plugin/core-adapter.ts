@@ -27,7 +27,7 @@ import {
   type ClaudeCliRunState,
   type ClaudeCliTrialState,
   type ClaudeResourceProjectionProfile,
-} from '../eval-workflows/runtime-adapter/adapters/claude-cli-resources.js';
+} from '../eval-workflows/runtime-adapter/adapters/claude/resources.js';
 import { createSameProcessExecutorAdapter } from '../eval-workflows/runtime-adapter/adapters/shared/same-process.js';
 import type { OmkBindingResourceLeaseAccess } from '../eval-workflows/runtime-adapter/resource-leases/types.js';
 import type { RuntimeBindingOf } from '../eval-workflows/runtime-adapter/types.js';

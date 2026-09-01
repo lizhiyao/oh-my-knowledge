@@ -11,21 +11,21 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
 import {
   extractClaudeTrace,
   isClaudeResultMessage,
-} from '../../../executors/anthropic/claude/trace.js';
+} from '../../../../executors/anthropic/claude/trace.js';
 import type {
   ClaudeMessage,
   ClaudeResultMessage,
-} from '../../../executors/anthropic/claude/protocol.js';
+} from '../../../../executors/anthropic/claude/protocol.js';
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
   SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION,
   SourceNeutralTraceSchema,
-} from '../source-neutral-trace.js';
+} from '../../source-neutral-trace.js';
 
 export const CLAUDE_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.2.0' as const;
 
