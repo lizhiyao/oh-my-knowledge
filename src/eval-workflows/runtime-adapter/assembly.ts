@@ -204,6 +204,7 @@ function expectedExecutorResourceRequirements(
 ): RuntimeResourceLeaseRequirement[] {
   const config = record(target.config);
   const behavior = record(config?.behavior);
+  const runtime = record(config?.runtime);
   const artifactId = descriptorResourceId(behavior?.artifact);
   if (artifactId === undefined) fail({
     code: 'OMK_RUNTIME_BINDING_DEFINITION_MISMATCH',
@@ -249,6 +250,12 @@ function expectedExecutorResourceRequirements(
       }
     }
   }
+  const runtimeImplementationId = descriptorResourceId(runtime?.implementationResource);
+  if (runtimeImplementationId !== undefined) requirements.push({
+    resourceId: runtimeImplementationId,
+    resourceRole: 'runtime-implementation',
+    leaseMode: 'immutable-snapshot',
+  });
   return [...new Map(requirements.map((requirement) => [
     `${requirement.resourceRole}\u0000${requirement.resourceId}`,
     requirement,
@@ -267,7 +274,8 @@ function assertResourceRequirements(
       ? 'copy-on-write-overlay'
       : 'immutable-snapshot';
     const allowedRole = binding.runtimeKind === 'executor'
-      ? ['artifact', 'workspace', 'mcp-config', 'mock-payload'].includes(requirement.resourceRole)
+      ? ['artifact', 'workspace', 'mcp-config', 'mock-payload', 'runtime-implementation']
+        .includes(requirement.resourceRole)
       : requirement.resourceRole === 'content';
     const key = `${requirement.resourceRole}\u0000${requirement.resourceId}`;
     if (requirement.resourceId === '' || !allowedRole

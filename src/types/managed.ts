@@ -32,15 +32,23 @@ export interface ManagedDistributionTarget {
  *  解析),让受管记录自解释、可 grep、不依赖 report 文件仍在盘。旧记录(eval 写入前)无这三项,按
  *  optional 读;deriveManagedState 不依赖它们,故缺失不影响生命周期推导。 */
 export interface ManagedEvidenceRef {
+  /** New production evidence is admitted only from the authenticated Evaluation Core projection. */
+  evidenceSource?: 'evaluation-core';
+  runId?: string;
   reportId: string;
+  reportDigest?: string;
   /** 该 report 测的是哪份内容(artifact contentHash)。读时只把与记录当前 contentHash 匹配的
    *  evidence 算作当前有效证据——重装到新内容后旧证据保留供回滚,但不让新内容显得已测。 */
   contentHash: string;
+  artifactDigest?: string;
+  targetId?: string;
   recordedAt: string;
   /** §5 mandatory:report 时计算的 verdict 等级(PROGRESS / CAUTIOUS / REGRESS / NOISE /
    *  UNDERPOWERED / SOLO)。存字符串而非 import VerdictLevel —— 保 types 层为叶子、不依赖 eval-core。
    *  measurable 不看 verdict(任何评测都算"已测");verdict 是 promote 门控的事。 */
   verdict?: string;
+  decisionReasonCodes?: string[];
+  evidenceReadiness?: 'decision-ready' | 'measurement-only' | 'insufficient';
   /** §5 mandatory:样本集覆盖。`count`=被测样本数,`hash`=report 的 sampleHashes 排序后摘要
    *  (同一样本集 ⇒ 同 hash),供 promote / list 不加载重 report 即可判覆盖与"同一用例集"。 */
   sampleCoverage?: { count: number; hash: string };
@@ -49,6 +57,14 @@ export interface ManagedEvidenceRef {
     cliVersion: string;
     judgePromptHash?: string;
     debiasMode?: Array<'length' | 'position'>;
+  };
+  coreComparability?: {
+    runContractDigest: string;
+    datasetRevisionDigest: string;
+    executionPlanDigest: string;
+    evaluationPlanDigest: string;
+    analysisPlanDigest: string;
+    decisionPlanDigest: string;
   };
   /** §7 #234/#236:这一版被测内容所在的 git commit(full SHA)= 评测时该 variant 的 git ref 解析出的 commit
    *  (resolveArtifacts 物化时 `git rev-parse <ref>^{commit}`),作每版「还原坐标」指针 —— list / Studio 据此给

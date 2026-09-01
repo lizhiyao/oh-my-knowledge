@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
 const FIXTURES_ROOT = join(__dirname, 'fixtures');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
-const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'fixture-executor.sh');
+const CUSTOM_EXECUTOR = join(FIXTURES_ROOT, 'custom-executor', 'core-fixture-executor.sh');
 
 async function runEvalCommand(
   args: string[],
@@ -133,8 +133,8 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     'PROMOTE_TARGET_E2E',
   ].join('\n'));
 
-  // 该夹具验证 managed evidence 绑定与提示，不验证统计功效。稳定的全通过/全失败
-  // 配对差用 5 条即可得到确定 verdict，避免为每个场景启动 40 个 executor 子进程。
+  // 该夹具只验证 Core evidence 的内容身份绑定。自定义命令的身份覆盖并不完整，因此它生成的
+  // evidence 必须保持非 decision-ready，不能伪装成可发布证据。
   const samples = Array.from({ length: 5 }, (_, i) => ({
     sample_id: `s${String(i + 1).padStart(2, '0')}`,
     prompt: 'Return the pass token.',
@@ -153,7 +153,7 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     `  *PROMOTE_TARGET_E2E*) output=${candidateOutput} ;;`,
     `  *) output=${baselineOutput} ;;`,
     'esac',
-    'printf \'{"output":"%s"}\\n\' "$output"',
+    'printf \'{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"completed","output":{"value":"%s","classification":"public"}}\\n\' "$output"',
   ].join('\n'));
   await chmod(executor, 0o755);
 
@@ -195,10 +195,9 @@ async function runManagedSkillEvalFixture(dir: string, candidatePasses: boolean)
     });
     stdout = result.stdout;
     stderr = result.stderr;
-    assert.equal(candidatePasses, true, `expected non-PROGRESS eval to exit 1:\n${stderr}`);
+    assert.fail(`custom-command evidence must not pass a production gate:\n${stderr}`);
   } catch (err) {
     const e = err as ExecError;
-    assert.equal(candidatePasses, false, e.stderr);
     assert.equal(e.code, 1, e.stderr);
     stdout = e.stdout;
     stderr = e.stderr;
@@ -363,7 +362,6 @@ describe('CLI', () => {
           '--judge-models', 'openai-api:gpt-4o-mini',
           '--rounds', '1',
           '--skip-doctor',
-          '--skip-connectivity',
           '--lang', 'zh',
         ], { cwd: dir, env: { ...process.env, OPENAI_API_KEY: '', CODEX_HOME: join(dir, '.codex-empty') } }),
         (err: unknown) => {
@@ -398,6 +396,8 @@ describe('CLI', () => {
       '--skill-dir', skillDir,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
       '--repeat', '2',
       '--no-debias-length',
       '--threshold', '3.2',
@@ -405,13 +405,15 @@ describe('CLI', () => {
       '--no-gate',
       '--lang', 'zh',
     ]);
-    assert.ok(stdout.includes('eval dry-run'));
-    assert.ok(stdout.includes('去掉 --dry-run 运行正式评测'));
-    assert.ok(stderr.includes('只能识别很大的效果'));
+    const projection = JSON.parse(stdout);
+    assert.equal(projection.projectionKind, 'core-cli-dry-run');
+    assert.equal(projection.experiment.trials, 1);
+    assert.equal(projection.targets.length, 2);
+    assert.ok(projection.preflight.passed > 0);
     assert.ok(!stderr.includes('exploration-only'));
   });
 
-  it('eval gold compare reads reports through the eval workflow', async () => {
+  it('eval gold compare rejects legacy reports at the Core-only boundary', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-cli-gold-compare-'));
     try {
       const reportsDir = join(dir, 'reports');
@@ -432,15 +434,20 @@ describe('CLI', () => {
         '    score: 5',
       ].join('\n'));
 
-      const { stdout } = await runCommand(EvalGoldCompare, [
+      await assert.rejects(() => runCommand(EvalGoldCompare, [
         reportId,
         '--gold-dir', goldDir,
         '--reports-dir', reportsDir,
-        '--variant', 'v1',
+        '--target', 'v1',
+        '--evaluator', 'assertions-v1',
+        '--metric', 'assertion-score',
         '--bootstrap-samples', '100',
-      ]);
-      assert.ok(stdout.includes('Krippendorff'), stdout);
-      assert.ok(stdout.includes('human-team'), stdout);
+        '--lang', 'en',
+      ]), (error: unknown) => {
+        const failure = error as ExecError;
+        assert.ok(failure.stderr.includes('legacy evaluation reports are no longer supported'));
+        return true;
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -448,11 +455,14 @@ describe('CLI', () => {
 
   it('eval --batch --dry-run exits 0', async () => {
     const skillDir = join(FIXTURES_ROOT, 'multi-skills', 'skills');
-    await runEvalCommand([
+    const { stdout } = await runEvalCommand([
       '--batch',
       '--dry-run',
       '--skill-dir', skillDir,
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
     ]);
+    assert.equal(JSON.parse(stdout).projectionKind, 'core-cli-batch-dry-run');
   });
 
   it('eval non-dry-run persists a report, prints export hint, and exits by verdict', async () => {
@@ -475,11 +485,10 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          // 非 TTY:verdict 文案走 stderr,stdout 留作纯 report JSON。verdict 随 lang 本地化(判定：/ Verdict:)。
-          assert.ok(/判定：|Verdict:/.test(e.stderr), e.stderr);
-          assert.ok(/下一步：|Next:/.test(e.stderr), e.stderr);
-          const parsed = JSON.parse(e.stdout) as { kind?: unknown };
-          assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${e.stdout.slice(0, 200)}`);
+          const parsed = JSON.parse(e.stdout);
+          assert.equal(parsed.projectionKind, 'core-cli-run-outcome');
+          assert.equal(parsed.gate.exitCode, 1);
+          assert.equal(parsed.status.runStatus, 'completed');
           assert.ok(e.stderr.includes('omk studio'), e.stderr);
           assert.ok(e.stderr.includes(`--reports-dir ${join(dir, 'reports')}`), e.stderr);
           return true;
@@ -509,26 +518,26 @@ describe('CLI', () => {
       });
       // 回归(reviewer #290):非 TTY 下 stdout 必须是纯 report JSON,`omk eval | jq` 能直接消费;
       // verdict 文案走 stderr,不再拼到 stdout 末尾把 JSON.parse 噎死。
-      const parsed = JSON.parse(stdout) as { kind?: unknown };
-      assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 report JSON:\n${stdout.slice(0, 200)}`);
-      assert.ok(/判定：|Verdict:/.test(stderr), stderr);
-      assert.ok(/下一步：|Next:/.test(stderr), stderr);
-      assert.ok(stderr.includes('report-only'), stderr);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.projectionKind, 'core-cli-run-outcome');
+      assert.equal(parsed.gate.exitCode, 0);
+      assert.equal(parsed.status.runStatus, 'completed');
+      assert.ok(stderr.includes('Core 评测产物已保存'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('eval config alias promotes the managed skill NAME, not the treatment label', async () => {
+  it('eval config alias binds Core evidence to the managed skill NAME, not the treatment label', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-cli-promote-target-'));
     try {
       const { stdout, stderr, record } = await runManagedSkillEvalFixture(dir, true);
 
-      assert.equal((JSON.parse(stdout) as { kind?: unknown }).kind, 'evaluation', `stdout 应为 report JSON:\n${stdout.slice(0, 200)}`);
-      assert.match(stderr, /Verdict: PROGRESS/, stderr);
-      assert.ok(stderr.includes('omk promote review'), stderr);
-      assert.ok(!stderr.includes('omk promote candidate'), stderr);
-      assert.ok(stderr.includes('Recorded eval evidence for managed skill "review" → measurable. Run omk promote review to accept this version.'), stderr);
+      const projection = JSON.parse(stdout);
+      assert.equal(projection.projectionKind, 'core-cli-run-outcome');
+      assert.equal(projection.decision?.decisionStatus, 'not-decided');
+      assert.equal(projection.gate.gateStatus, 'blocked');
+      assert.ok(stderr.includes('Recorded 1 Core managed evidence reference(s).'), stderr);
       assert.equal(record.evidence?.length, 1, 'eval should append evidence to the managed review record');
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -540,10 +549,10 @@ describe('CLI', () => {
     try {
       const { stdout, stderr, record } = await runManagedSkillEvalFixture(dir, false);
 
-      assert.equal((JSON.parse(stdout) as { kind?: unknown }).kind, 'evaluation', `stdout 应为 report JSON:\n${stdout.slice(0, 200)}`);
-      assert.match(stderr, /Verdict: (REGRESS|CAUTIOUS|NOISE|UNDERPOWERED)/, stderr);
-      assert.ok(stderr.includes('Recorded eval evidence for managed skill "review" → measurable'), stderr);
-      assert.ok(!stderr.includes('Run omk promote review to accept this version.'), stderr);
+      const projection = JSON.parse(stdout);
+      assert.equal(projection.projectionKind, 'core-cli-run-outcome');
+      assert.notEqual(projection.decision?.verdict, 'PROGRESS');
+      assert.ok(stderr.includes('Recorded 1 Core managed evidence reference(s).'), stderr);
       assert.equal(record.evidence?.length, 1, 'eval should still append non-PROGRESS evidence to the managed review record');
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -568,14 +577,11 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          // 非 TTY:批量结论文案走 stderr,stdout 留作纯 batch report JSON(machine 消费)。
-          const parsed = JSON.parse(e.stdout) as { kind?: unknown };
-          assert.ok(typeof parsed.kind === 'string', `stdout 应为纯 batch report JSON:\n${e.stdout.slice(0, 200)}`);
-          assert.ok(e.stderr.includes('批量评测结论：未通过'), e.stderr);
-          assert.ok(e.stderr.includes('下一步：先处理未通过的 skill'), e.stderr);
-          assert.ok(!e.stderr.includes('Batch verdict:'), e.stderr);
-          assert.ok(e.stderr.includes('UNDERPOWERED:'), e.stderr);
-          assert.ok(e.stderr.includes('omk studio'), e.stderr);
+          const parsed = JSON.parse(e.stdout);
+          assert.equal(parsed.projectionKind, 'core-cli-batch-outcome');
+          assert.equal(parsed.gate.exitCode, 1);
+          assert.ok(parsed.children.length > 0);
+          assert.ok(e.stderr.includes('Core Batch：'), e.stderr);
           return true;
         },
       );

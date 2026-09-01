@@ -213,7 +213,7 @@ omk eval --control baseline --treatment my-skill                # 单 skill 必�
 omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset
 ```
 
 运行离线评测，应用 verdict gate，持久化报告，并用 exit code 表示 ship/no-ship。这个工作流默认开启 bootstrap CI。
@@ -247,7 +247,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --model <value>                 被测模型
   --no-cache                      跳过 executor cache
   --no-debias-length              关 length-debias（默认开）
-  --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+  --no-diagnostic                 关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
   --no-evidence                   不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
@@ -256,7 +256,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --output-dir <value>            报告输出目录（默认项目级 .omk/reports）
   --repeat <value>                每个 sample 重复跑 N 次
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
-  --resume <value>                从契约兼容的报告恢复成功项；不兼容则从头运行
+  --resume <value>                复用经过完整契约校验的 Core runId；拒绝时失败关闭
   --retry <value>                 失败 sample 重试次数
   --samples <value>               用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。
   --skill-dir <value>             skill 目录，默认 skills
@@ -364,32 +364,22 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --auto-fix-samples              每轮先修 skill，再修 sample，随后一起评估候选结果
   --concurrency <value>           评测并发数，默认 1
   --edit-budget <value>           单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
   --executor <value>              执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-  --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
   --improve-mode <agent|rewrite>  改写策略（默认：agent）
   --improve-model <value>         负责重写 skill 的 LLM，默认沿用被测模型
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认跟随所选执行器；Codex 沿用被测模型。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>                 被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。
-  --no-diagnostic                 关 LLM diagnostic 调用
   --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
   --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
-  --no-significance-gate          关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）
-  --reuse-latest-eval             复用可比的最新 eval 报告作为 round-0
   --rounds <value>                最大迭代轮数，默认 5
-  --sample-fix-max-attempts <value>每条 sample 自动修复最多尝试次数（默认：2）
   --samples <value>               用例文件路径，默认 eval-samples.json
-  --significance-alpha <value>    显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
-  --skip-connectivity             跳过 LLM 连通性预检
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。
-  --stop-on-assertions-pass       普通用例断言全过时提前停止
+  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
-  --test-ratio <value>            锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
   --timeout <value>               单用例超时秒，默认 600
 ```
 

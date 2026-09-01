@@ -24,10 +24,6 @@ import {
   type OpenAIApiCoreConfiguration,
 } from '../runtime-adapter/adapters/index.js';
 import { captureCoreApiTransport } from '../runtime-adapter/adapters/api-http.js';
-import {
-  createBuiltinOmkAnalysisBindingFactories,
-  createBuiltinOmkScoringBindingFactories,
-} from '../runtime-adapter/builtins.js';
 import type { OmkEvaluationRuntimeSupportPorts } from '../runtime-adapter/composition.js';
 import {
   createLlmAssertionEvaluatorBindingFactory,
@@ -305,8 +301,9 @@ export function createProductionRuntimeFactoryRegistry(
     );
   }
 
-  const scoring = createBuiltinOmkScoringBindingFactories();
-  const evaluatorsByImplementationId = new Map(scoring.evaluatorsByImplementationId);
+  // Built-ins are owned and merged exactly once by createOmkEvaluationRuntime.
+  // This host registry contributes only platform adapters and provider-backed judges.
+  const evaluatorsByImplementationId = new Map();
   if (input.resolveJudgeInvocation !== undefined) {
     evaluatorsByImplementationId.set(
       LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID,
@@ -317,19 +314,12 @@ export function createProductionRuntimeFactoryRegistry(
       createRubricJudgeEvaluatorBindingFactory(input.resolveJudgeInvocation),
     );
   }
-  const analysis = createBuiltinOmkAnalysisBindingFactories();
   return Object.freeze({
     executorsByImplementationId: readonlyMapSnapshot(executorsByImplementationId),
     evaluatorsByImplementationId: readonlyMapSnapshot(evaluatorsByImplementationId),
-    analysisNodesByImplementationId: readonlyMapSnapshot(
-      analysis.analysisNodesByImplementationId,
-    ),
-    missingPoliciesByImplementationId: readonlyMapSnapshot(
-      analysis.missingPoliciesByImplementationId,
-    ),
-    decisionPoliciesByImplementationId: readonlyMapSnapshot(
-      analysis.decisionPoliciesByImplementationId,
-    ),
+    analysisNodesByImplementationId: readonlyMapSnapshot(new Map()),
+    missingPoliciesByImplementationId: readonlyMapSnapshot(new Map()),
+    decisionPoliciesByImplementationId: readonlyMapSnapshot(new Map()),
     seriesAnalysisNodesByImplementationId: readonlyMapSnapshot(new Map()),
     seriesDecisionPoliciesByImplementationId: readonlyMapSnapshot(new Map()),
   });

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -126,6 +126,35 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect((await stat(join(root, '.omk', 'resolved', 'content'))).mode & 0o777).toBe(0o700);
   });
 
+  it('binds a custom Runtime implementation into every sealed executor lease', async () => {
+    const root = await fixture('custom-runtime-lease');
+    const executable = join(root, 'runtime.sh');
+    await writeFile(executable, '#!/bin/sh\nexit 0\n');
+    await chmod(executable, 0o700);
+    const compiled = compileCliEvaluationInput(await resolveNodeCliEvaluationRequest(request(root, {
+      executor: 'runtime.sh',
+    }), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    }));
+    const runtime = compiled.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'runtime-implementation'
+    ));
+    expect(runtime).toBeDefined();
+    expect(runtime!.descriptor.classification).toBe('sensitive');
+    expect(compiled.definition.targets.every((target) => (
+      target.executorId === `custom-command-${runtime!.descriptor.digest.slice('sha256:'.length)}`
+    ))).toBe(true);
+    const executorBindings = compiled.runtimeBinding.bindings.filter((binding) => (
+      binding.runtimeKind === 'executor'
+    ));
+    expect(executorBindings.every((binding) => binding.resourceLeaseRequirements.some((requirement) => (
+      requirement.resourceRole === 'runtime-implementation'
+      && requirement.resourceId === runtime!.descriptor.resourceId
+      && requirement.leaseMode === 'immutable-snapshot'
+    )))).toBe(true);
+  });
+
   it('keeps behavior digests invariant when identical bytes move to another root', async () => {
     const first = await fixture('move-a');
     const second = await fixture('move-b');
@@ -160,7 +189,27 @@ describe('resolveNodeCliEvaluationRequest', () => {
     expect(artifacts).toHaveLength(2);
     expect(new Set(artifacts.map((resource) => resource.descriptor.digest)).size).toBe(1);
     expect(new Set(artifacts.map((resource) => resource.descriptor.resourceId)).size).toBe(2);
-    expect(new Set(artifacts.map((resource) => resource.locator)).size).toBe(2);
+    expect(new Set(artifacts.map((resource) => resource.locator)).size).toBe(1);
+    expect(new Set(artifacts.map((resource) => (
+      (resource.lineage as { targetId?: string }).targetId
+    )))).toEqual(new Set(['control', 'treatment']));
+  });
+
+  it('seals file artifacts before preflight so source drift cannot change measured bytes', async () => {
+    const root = await fixture('sealed-file-artifact');
+    const resolved = await resolveNodeCliEvaluationRequest(request(root), {
+      projectRoot: root,
+      materializationRoot: join(root, '.omk', 'resolved'),
+    });
+    const treatment = resolved.hostResources.resources.find((resource) => (
+      resource.resourceKind === 'artifact'
+      && (resource.lineage as { targetId?: string }).targetId === 'treatment'
+    ));
+    expect(treatment).toBeDefined();
+    expect(treatment!.locator).not.toBe(join(root, 'skills', 'treatment.md'));
+    const sealed = await readFile(treatment!.locator, 'utf8');
+    await writeFile(join(root, 'skills', 'treatment.md'), '# drifted after resolve\n');
+    expect(await readFile(treatment!.locator, 'utf8')).toBe(sealed);
   });
 
   it('compiles equivalent CLI and eval.yaml requests to the same measurement digests', async () => {

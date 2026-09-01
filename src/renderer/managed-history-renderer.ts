@@ -72,6 +72,8 @@ interface TimelineEvent {
   contentHash?: string;
   verdict?: string;
   reportId?: string;
+  /** Studio 的 Core 详情路由以 runId 为主键；旧审计证据才退回 reportId。 */
+  reportLocatorId?: string;
   actor?: string;
   reason?: string;
   override?: { verdict: string; overriddenBlocks?: string[] };
@@ -86,20 +88,31 @@ interface TimelineEvent {
 
 function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+  const runIdByReportId = new Map(record.evidence.flatMap((ev) => (
+    ev.evidenceSource === 'evaluation-core' && ev.runId
+      ? [[ev.reportId, ev.runId] as const]
+      : []
+  )));
   // install 不带 contentHash：record.contentHash 是「当前基线」（evolve 会 re-baseline），不是安装时那份；
   // 拿它标安装事件会误导，故安装只作时间起点，版本分段只用 evidence / decision 自带的 contentHash。
   events.push({ at: record.installedAt, type: 'install' });
   for (const ev of record.evidence) {
     events.push({
       at: ev.recordedAt, type: 'eval', contentHash: ev.contentHash, verdict: ev.verdict,
-      reportId: ev.reportId, sampleCount: ev.sampleCoverage?.count, cliVersion: ev.comparability?.cliVersion,
+      reportId: ev.reportId,
+      reportLocatorId: ev.evidenceSource === 'evaluation-core' ? ev.runId : ev.reportId,
+      sampleCount: ev.sampleCoverage?.count, cliVersion: ev.comparability?.cliVersion,
       ...(ev.gitCommit ? { gitCommit: ev.gitCommit } : {}),
     });
   }
   for (const d of record.decisions) {
     events.push({
       at: d.decidedAt, type: d.decisionKind, contentHash: d.contentHash,
-      reportId: d.reportId, actor: d.actor, reason: d.reason, override: d.override,
+      reportId: d.reportId,
+      reportLocatorId: d.reportId === undefined
+        ? undefined
+        : runIdByReportId.get(d.reportId) ?? d.reportId,
+      actor: d.actor, reason: d.reason, override: d.override,
     });
   }
   // observe 生产健康观测(#235):每条一个事件。**不带 contentHash** —— observe 是版本无关的生产信号
@@ -183,7 +196,7 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
     }
   }
   if (ev.cliVersion) detail.push(`<span class="mh-detail-item">omk ${e(ev.cliVersion)}</span>`);
-  if (ev.reportId) detail.push(reportLink(ev.reportId, lang));
+  if (ev.reportLocatorId) detail.push(reportLink(ev.reportLocatorId, lang));
   if (ev.reason) detail.push(`<span class="mh-reason">「${e(ev.reason)}」</span>`);
   // #234/#236 还原指针:这一版有 git 坐标 + 能解析出仓内路径 → 给现成的 `git checkout <sha> -- <path>` 把
   // 该路径还原进工作树(字节级还原交给 git)。必须带 `-- <path>`:不带 pathspec 的 `git checkout <sha>` 是切

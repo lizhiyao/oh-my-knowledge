@@ -18,14 +18,18 @@ import {
   CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION,
   CORE_CLI_DRY_RUN_SCHEMA_VERSION,
   CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION,
+  CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION,
   CoreDownstreamProjectionError,
   type CoreCliBatchOutcome,
   type CoreCliDryRunProjection,
   type CoreCliGateProjection,
   type CoreCliRunOutcome,
+  type CoreCliSeriesOutcome,
+  type CoreEvolutionEvidence,
 } from './contracts.js';
 import { projectCompletedCoreCliGate } from './cli-gate.js';
 import { projectCoreDecision } from './decision.js';
+import { projectCoreDiagnostics } from './diagnostic.js';
 import { assertCoreProjectionSource } from './source.js';
 
 export interface ProjectCoreCliDryRunInput {
@@ -46,6 +50,7 @@ export interface ProjectCoreCliDryRunInput {
 
 export interface ProjectCoreCliRunOutcomeOptions {
   readonly exitMode: 'gate' | 'report-only';
+  readonly diagnosticMode?: 'enabled' | 'disabled';
 }
 
 export interface ProjectCoreCliBatchOutcomeInput
@@ -105,6 +110,15 @@ function assertExitMode(
     throw new CoreDownstreamProjectionError(
       'CORE_CLI_OPTIONS_INVALID',
       'CLI outcome projection requires an explicit gate or report-only exit mode.',
+    );
+  }
+}
+
+function assertDiagnosticMode(mode: ProjectCoreCliRunOutcomeOptions['diagnosticMode']): void {
+  if (mode !== undefined && mode !== 'enabled' && mode !== 'disabled') {
+    throw new CoreDownstreamProjectionError(
+      'CORE_CLI_OPTIONS_INVALID',
+      'CLI outcome projection requires an explicit enabled or disabled diagnostic mode.',
     );
   }
 }
@@ -227,6 +241,7 @@ export function projectCoreCliRunOutcome(
   options: Readonly<ProjectCoreCliRunOutcomeOptions>,
 ): CoreCliRunOutcome {
   assertExitMode(options?.exitMode);
+  assertDiagnosticMode(options?.diagnosticMode);
   assertCoreProjectionSource(source);
   const totals = runBudgetTotals(source);
   const projectedDecision = projectCoreDecision(source.report.decision);
@@ -267,6 +282,9 @@ export function projectCoreCliRunOutcome(
       unreportedProviderCostInvocations: totals.unreportedProviderCostInvocations,
     },
     ...(projectedDecision === undefined ? {} : { decision: projectedDecision }),
+    ...(options.diagnosticMode === 'enabled'
+      ? { diagnostic: projectCoreDiagnostics(source) }
+      : {}),
     gate: projectGate(source, options.exitMode),
   });
 }
@@ -276,6 +294,7 @@ export function projectCoreCliBatchOutcome(
   input: Readonly<ProjectCoreCliBatchOutcomeInput>,
 ): CoreCliBatchOutcome {
   assertExitMode(input?.exitMode);
+  assertDiagnosticMode(input?.diagnosticMode);
   let manifest;
   try {
     manifest = parseCoreBatchManifestDocument(input.batch.manifest);
@@ -314,7 +333,7 @@ export function projectCoreCliBatchOutcome(
     runId: reference.locator.runId,
     outcome: projectCoreCliRunOutcome(
       byRunId.get(reference.locator.runId)!,
-      { exitMode: input.exitMode },
+      { exitMode: input.exitMode, diagnosticMode: input.diagnosticMode },
     ),
   }));
   const blocked = children.filter(({ outcome }) => outcome.gate.exitCode !== 0);
@@ -334,6 +353,89 @@ export function projectCoreCliBatchOutcome(
     batchManifestDigest: manifest.batchManifestDigest,
     createdAt: manifest.createdAt,
     children,
+    gate,
+  });
+}
+
+/** Projects preregistered independent runs without pooling their measurements. */
+export function projectCoreCliSeriesOutcome(input: Readonly<{
+  evolution: Readonly<CoreEvolutionEvidence>;
+  members: readonly Readonly<StoredCoreRunArtifacts>[];
+  exitMode: ProjectCoreCliRunOutcomeOptions['exitMode'];
+  diagnosticMode?: ProjectCoreCliRunOutcomeOptions['diagnosticMode'];
+}>): CoreCliSeriesOutcome {
+  assertExitMode(input?.exitMode);
+  assertDiagnosticMode(input?.diagnosticMode);
+  const evolution = input?.evolution;
+  const byReportDigest = new Map(input.members.map((member) => [
+    member.report.reportDigest,
+    member,
+  ]));
+  if (evolution?.projectionKind !== 'core-evolution-evidence'
+      || evolution.members.length !== input.members.length
+      || byReportDigest.size !== input.members.length
+      || evolution.members.some((member) => {
+        const source = byReportDigest.get(member.reportDigest);
+        if (source === undefined) return true;
+        try {
+          assertCoreProjectionSource(source);
+        } catch {
+          return true;
+        }
+        return source.plan.digests.runContractDigest !== member.runContractDigest
+          || canonicalizeJson(source.report.status) !== canonicalizeJson(member.status);
+      })) {
+    throw new CoreDownstreamProjectionError(
+      'CORE_CLI_SERIES_SOURCE_INVALID',
+      'CLI Series projection requires every exact Core member referenced by evolution evidence.',
+    );
+  }
+  const members = evolution.members.map((member) => {
+    const source = byReportDigest.get(member.reportDigest)!;
+    return {
+      memberId: member.memberId,
+      replicateIndex: member.replicateIndex,
+      runId: source.manifest.runId,
+      outcome: projectCoreCliRunOutcome(source, {
+        exitMode: input.exitMode,
+        diagnosticMode: input.diagnosticMode,
+      }),
+    };
+  });
+  const blocked = members.some(({ outcome }) => outcome.gate.exitCode !== 0);
+  const complete = evolution.coverage.planned === members.length
+    && evolution.coverage.missing === 0
+    && evolution.coverage.failed === 0
+    && evolution.coverage.cancelled === 0
+    && evolution.coverage.budgetExhausted === 0;
+  const seriesDecisionGate = projectCompletedCoreCliGate(evolution.decision);
+  const gate: CoreCliGateProjection = input.exitMode === 'report-only'
+    ? { gateStatus: 'skipped', exitCode: 0, reasonCodes: ['core-report-only'] }
+    : !complete
+      ? { gateStatus: 'blocked', exitCode: 1, reasonCodes: ['core-series-coverage-incomplete'] }
+      : evolution.evidenceReadiness !== 'decision-ready'
+        ? {
+            gateStatus: 'blocked',
+            exitCode: 1,
+            reasonCodes: ['core-series-decision-not-ready'],
+          }
+        : blocked
+          ? {
+              gateStatus: 'blocked',
+              exitCode: 1,
+              reasonCodes: ['core-series-member-blocked'],
+            }
+          : seriesDecisionGate;
+  return freeze({
+    projectionKind: 'core-cli-series-outcome',
+    schemaVersion: CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION,
+    seriesId: evolution.seriesId,
+    seriesPlanDigest: evolution.seriesPlanDigest,
+    reportDigest: evolution.reportDigest,
+    evidenceReadiness: evolution.evidenceReadiness,
+    coverage: evolution.coverage,
+    members,
+    ...(evolution.decision === undefined ? {} : { decision: evolution.decision }),
     gate,
   });
 }

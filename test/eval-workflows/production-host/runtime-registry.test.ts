@@ -54,7 +54,7 @@ function configurations(): ReadonlyMap<string, ProductionExecutorAdapterConfigur
 }
 
 describe('production Runtime registry', () => {
-  it('registers every official adapter family lazily and composes single-owner builtins', () => {
+  it('registers every official adapter family lazily and leaves Core built-ins single-owned', () => {
     const resolveJudgeInvocation = vi.fn();
     const factories = createProductionRuntimeFactoryRegistry({
       executorsByImplementationId: configurations(),
@@ -65,12 +65,12 @@ describe('production Runtime registry', () => {
       'codex', 'codex-sdk', 'claude', 'claude-sdk',
       'openai-api', 'anthropic-api', 'custom-tool',
     ]);
-    expect(factories.evaluatorsByImplementationId.has('omk.assertions.output/v1')).toBe(true);
-    expect(factories.evaluatorsByImplementationId.has('omk.assertions.execution/v1')).toBe(true);
+    expect(factories.evaluatorsByImplementationId.has('omk.assertions.output/v1')).toBe(false);
+    expect(factories.evaluatorsByImplementationId.has('omk.assertions.execution/v1')).toBe(false);
     expect(factories.evaluatorsByImplementationId.has('omk.llm-assertions/v2')).toBe(true);
     expect(factories.evaluatorsByImplementationId.has('omk.rubric-judge/v1')).toBe(true);
-    expect(factories.analysisNodesByImplementationId.has('omk.bootstrap-family-table/v1')).toBe(true);
-    expect(factories.decisionPoliciesByImplementationId.has('omk.release-decision/v1')).toBe(true);
+    expect(factories.analysisNodesByImplementationId.size).toBe(0);
+    expect(factories.decisionPoliciesByImplementationId.size).toBe(0);
     expect(resolveJudgeInvocation).not.toHaveBeenCalled();
   });
 

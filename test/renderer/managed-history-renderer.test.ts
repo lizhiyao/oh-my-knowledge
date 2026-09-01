@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { renderManagedList, renderManagedHistory } from '../../src/renderer/managed-history-renderer.js';
 import { buildManagedListRows, type ManagedListRow, type VersionScorePoint } from '../../src/managed/index.js';
 import type { Lang, ManagedArtifactRecord } from '../../src/types/index.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 // 只快照 <main> 结构块:剥掉 layout 全局壳与 CSS（在别处测）—— 快照聚焦受管渲染的结构/文案,
 // 且不被 layout.ts 的样式改动无端弄红。时间戳归一化跨机器稳定。
@@ -32,9 +33,9 @@ const RECORD: ManagedArtifactRecord = {
   installedAt: '2026-03-01T00:00:00.000Z',
   distribution: [],
   evidence: [
-    { reportId: 'evolve-review-000', contentHash: 'hashV0contenthashlong', recordedAt: '2026-03-01T12:00:00.000Z', verdict: 'INCONCLUSIVE' },
-    { reportId: 'evolve-review-001', contentHash: 'hashV1contenthashlong', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'NOISE', sampleCoverage: { count: 6, hash: 'sh1' }, comparability: { cliVersion: '0.37.0' } },
-    { reportId: 'evolve-review-002', contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, comparability: { cliVersion: '0.37.0' } },
+    coreManagedEvidence('hashV0contenthashlong', { reportId: 'evolve-review-000', recordedAt: '2026-03-01T12:00:00.000Z', verdict: 'INCONCLUSIVE' }),
+    coreManagedEvidence('hashV1contenthashlong', { reportId: 'evolve-review-001', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'NOISE', sampleCoverage: { count: 6, hash: 'sh1' } }),
+    coreManagedEvidence('hashV2contenthashlong', { reportId: 'evolve-review-002', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' } }),
   ],
   decisions: [
     { decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: 'hashV2contenthashlong', reportId: 'evolve-review-002', reason: '已人工复核' },
@@ -83,7 +84,7 @@ const GIT_RESTORE_RECORD: ManagedArtifactRecord = {
   installedAt: '2026-03-01T00:00:00.000Z',
   distribution: [],
   evidence: [
-    { reportId: 'evolve-review-002', contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, comparability: { cliVersion: '0.39.0' }, gitCommit: 'abc1234567890deffeed' },
+    coreManagedEvidence('hashV2contenthashlong', { reportId: 'evolve-review-002', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, gitCommit: 'abc1234567890deffeed' }),
   ],
   decisions: [],
 };
@@ -143,6 +144,25 @@ describe('managed-history-renderer snapshots', () => {
   });
   it('renderManagedHistory en', () => {
     expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'en' as Lang))).toMatchSnapshot();
+  });
+  it('Core evidence 与决定链接使用 runId，而不是 reportId', () => {
+    const record: ManagedArtifactRecord = {
+      ...RECORD,
+      evidence: [coreManagedEvidence('hashV2contenthashlong', {
+        runId: 'core-run-route',
+        reportId: 'core-run-route.report',
+      })],
+      decisions: [{
+        decisionKind: 'promote',
+        actor: 'alice',
+        decidedAt: '2026-03-06T00:00:00.000Z',
+        contentHash: 'hashV2contenthashlong',
+        reportId: 'core-run-route.report',
+      }],
+    };
+    const html = renderManagedHistory(record, 'zh' as Lang);
+    expect(html).toContain('/reports/core-run-route');
+    expect(html).not.toContain('/reports/core-run-route.report');
   });
   it('renderManagedHistory 带版本回归曲线 zh', () => {
     expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE))).toMatchSnapshot();

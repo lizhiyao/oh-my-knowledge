@@ -18,6 +18,10 @@ export const CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION =
   'omk.cli-core-run-outcome/v1' as const;
 export const CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION =
   'omk.cli-core-batch-outcome/v1' as const;
+export const CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION =
+  'omk.cli-core-series-outcome/v1' as const;
+export const CORE_DIAGNOSTIC_PROJECTION_SCHEMA_VERSION =
+  'omk.core-diagnostic-projection/v1' as const;
 export const CORE_MANAGED_EVIDENCE_SCHEMA_VERSION =
   'omk.core-managed-evidence/v1' as const;
 
@@ -31,6 +35,7 @@ export type CoreDownstreamProjectionErrorCode =
   | 'CORE_CLI_PLAN_INVALID'
   | 'CORE_CLI_OPTIONS_INVALID'
   | 'CORE_CLI_BATCH_SOURCE_INVALID'
+  | 'CORE_CLI_SERIES_SOURCE_INVALID'
   | 'CORE_MANAGED_EVIDENCE_SOURCE_INVALID';
 
 export class CoreDownstreamProjectionError extends Error {
@@ -274,7 +279,34 @@ export interface CoreCliRunOutcome {
     readonly unreportedProviderCostInvocations: number;
   };
   readonly decision?: CoreDecisionProjection;
+  readonly diagnostic?: CoreDiagnosticProjection;
   readonly gate: CoreCliGateProjection;
+}
+
+export interface CoreDiagnosticFinding {
+  readonly findingId: string;
+  readonly stage: 'execution' | 'evaluation' | 'analysis' | 'decision';
+  readonly severity: 'info' | 'warning' | 'error';
+  readonly reasonCode: string;
+  readonly sourceDigest: string;
+  readonly scope?: {
+    readonly targetId?: string;
+    readonly sampleId?: string;
+    readonly trialIndex?: number;
+    readonly evaluatorId?: string;
+    readonly metricId?: string;
+    readonly nodeId?: string;
+  };
+}
+
+/** Recomputable, non-authoritative diagnostics over an authenticated Core artifact chain. */
+export interface CoreDiagnosticProjection {
+  readonly projectionKind: 'core-diagnostic';
+  readonly schemaVersion: typeof CORE_DIAGNOSTIC_PROJECTION_SCHEMA_VERSION;
+  readonly runId: string;
+  readonly reportDigest: string;
+  readonly status: EvaluationStatus;
+  readonly findings: readonly CoreDiagnosticFinding[];
 }
 
 export interface CoreCliBatchOutcome {
@@ -289,6 +321,24 @@ export interface CoreCliBatchOutcome {
     readonly runId: string;
     readonly outcome: CoreCliRunOutcome;
   }[];
+  readonly gate: CoreCliGateProjection;
+}
+
+export interface CoreCliSeriesOutcome {
+  readonly projectionKind: 'core-cli-series-outcome';
+  readonly schemaVersion: typeof CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION;
+  readonly seriesId: string;
+  readonly seriesPlanDigest: string;
+  readonly reportDigest: string;
+  readonly evidenceReadiness: CoreEvolutionEvidence['evidenceReadiness'];
+  readonly coverage: SeriesMemberCoverage;
+  readonly members: readonly {
+    readonly memberId: string;
+    readonly replicateIndex: number;
+    readonly runId: string;
+    readonly outcome: CoreCliRunOutcome;
+  }[];
+  readonly decision?: CoreDecisionProjection;
   readonly gate: CoreCliGateProjection;
 }
 

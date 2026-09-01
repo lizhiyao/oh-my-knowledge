@@ -162,7 +162,7 @@ function normalizeHostResources(
   const resources = [...input.resources]
     .sort((left, right) => compareStrings(left.descriptor.resourceId, right.descriptor.resourceId))
     .map((resource) => {
-      if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'content']
+      if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
         .includes(resource.resourceKind)
           || !['public', 'sensitive', 'secret', 'gold']
             .includes(resource.descriptor.classification)
@@ -221,7 +221,8 @@ function validateHostResourceMaterializationSemantics(
   hostResources: ResolvedHostResources,
 ): void {
   for (const resource of hostResources.resources) {
-    const fileOnly = ['mcp-config', 'mock-payload', 'content'].includes(resource.resourceKind);
+    const fileOnly = ['mcp-config', 'mock-payload', 'runtime-implementation', 'content']
+      .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact'
       || resource.resourceKind === 'workspace';
     if ((fileOnly && resource.verification.verificationKind !== 'content-digest')
@@ -533,6 +534,9 @@ function behaviorConfig(
     runtime: {
       model: runtime.model,
       ...(runtime.effort === undefined ? {} : { effort: runtime.effort }),
+      ...(runtime.implementationResource === undefined ? {} : {
+        implementationResource: descriptorSnapshot(runtime.implementationResource),
+      }),
     },
   });
 }
@@ -899,6 +903,7 @@ function compilePolicy(input: ResolvedCliEvaluationInput): MeasurementPolicy {
 function resourceLeaseRequirementsForTarget(
   behavior: ResolvedTargetBehavior,
   controls: ResolvedCliEvaluationInput['targets'][number]['executionControls'],
+  runtime: ResolvedCliEvaluationInput['targets'][number]['executor'],
 ): Extract<RuntimeBinding, { runtimeKind: 'executor' }>['resourceLeaseRequirements'] {
   const workspaces = [
     controls.defaults.workspace,
@@ -929,6 +934,11 @@ function resourceLeaseRequirementsForTarget(
       resourceRole: 'mock-payload' as const,
       leaseMode: 'immutable-snapshot' as const,
     }))),
+    ...(runtime.implementationResource === undefined ? [] : [{
+      resourceId: runtime.implementationResource.resourceId,
+      resourceRole: 'runtime-implementation' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }]),
   ];
   return [...new Map(requirements.map((requirement) => [
     `${requirement.resourceRole}\u0000${requirement.resourceId}`,
@@ -1041,6 +1051,7 @@ function compileRuntimeBinding(
       resourceLeaseRequirements: resourceLeaseRequirementsForTarget(
         resolved.behavior,
         resolved.executionControls,
+        resolved.executor,
       ),
       qualification: {
         model: resolved.executor.model,

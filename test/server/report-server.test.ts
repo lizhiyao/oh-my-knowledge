@@ -10,6 +10,7 @@ import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
 import { buildVariantSummary } from '../../src/eval-core/schema.js';
 import { managedRecordId } from '../../src/managed/store.js';
 import type { ArtifactKind, VariantResult } from '../../src/types/index.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
@@ -144,8 +145,8 @@ const MANAGED_RECORD = {
   installedAt: '2026-03-01T00:00:00.000Z',
   distribution: [],
   evidence: [
-    { reportId: 'r1', contentHash: 'hashV1smoke', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'NOISE', sampleCoverage: { count: 6, hash: 'sh1' }, comparability: { cliVersion: '0.37.0' } },
-    { reportId: 'test-run-001', contentHash: 'hashV2smoke', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, comparability: { cliVersion: '0.37.0' } },
+    coreManagedEvidence('hashV1smoke', { reportId: 'r1', recordedAt: '2026-03-02T00:00:00.000Z', verdict: 'NOISE', sampleCoverage: { count: 6, hash: 'sh1' } }),
+    coreManagedEvidence('hashV2smoke', { reportId: 'test-run-001', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' } }),
   ],
   decisions: [
     { decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: 'hashV2smoke', reportId: 'test-run-001' },

@@ -15,12 +15,9 @@ function mkFlags(over: Partial<EvolveFlags>): EvolveFlags {
   return {
     lang: 'zh', rounds: '5', samples: 'eval-samples.json', model: 'sonnet',
     'judge-models': 'claude:haiku', 'improve-model': 'sonnet', concurrency: '1',
-    timeout: '120', executor: 'claude', 'skip-connectivity': false,
-    'no-diagnostic': false, 'skip-doctor': false, 'stop-on-assertions-pass': false,
-    'auto-fix-samples': false, 'sample-fix-max-attempts': '2', 'reuse-latest-eval': false,
-    'improve-mode': 'agent', 'holdout-ratio': '0', 'no-significance-gate': false,
-    'significance-alpha': '0.05', 'test-ratio': '0', 'edit-budget': '0.2',
-    'no-edit-budget': false, 'no-reject-memory': false,
+    timeout: '120', executor: 'claude', 'skip-doctor': false,
+    'improve-mode': 'agent', 'edit-budget': '0.2', 'no-edit-budget': false,
+    'no-reject-memory': false, 'snapshot-only': false,
     ...over,
   } as EvolveFlags;
 }

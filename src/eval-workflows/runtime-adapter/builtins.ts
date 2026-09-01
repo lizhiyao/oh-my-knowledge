@@ -22,12 +22,17 @@ import { createCompositeAnalysisNodes } from './analysis/composite-node.js';
 import { createBootstrapFamilyAnalysisNodes } from './analysis/bootstrap-family-node.js';
 import { createAgreementAnalysisNodes } from './analysis/agreement-node.js';
 import { createReleaseDecisionPolicies } from './analysis/release-decision.js';
+import {
+  createOmkSeriesVarianceRuntime,
+  OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+} from './series-variance.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
   | 'analysisNodesByImplementationId'
   | 'missingPoliciesByImplementationId'
   | 'decisionPoliciesByImplementationId'
+  | 'seriesAnalysisNodesByImplementationId'
 >;
 
 export type OmkBuiltinScoringBindingFactories = Pick<
@@ -126,5 +131,13 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
       satisfiesVersionConstraint: true,
       preflightDeclarations: [],
     })])),
+    seriesAnalysisNodesByImplementationId: new Map([[
+      OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+      () => ({
+        port: createOmkSeriesVarianceRuntime(),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [],
+      }),
+    ]]),
   };
 }

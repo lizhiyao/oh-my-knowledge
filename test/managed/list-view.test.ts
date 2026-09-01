@@ -25,7 +25,7 @@ function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
 }
 
 function ev(over: Partial<ManagedEvidenceRef> = {}): ManagedEvidenceRef {
-  return { reportId: 'r1', contentHash: 'hashAAA', recordedAt: '2026-06-08T00:00:00.000Z', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' }, ...over };
+  return { evidenceSource: 'evaluation-core', evidenceReadiness: 'decision-ready', reportId: 'r1', contentHash: 'hashAAA', recordedAt: '2026-06-08T00:00:00.000Z', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' }, ...over };
 }
 
 function obs(over: Partial<ManagedObservation> = {}): ManagedObservation {
@@ -58,6 +58,16 @@ describe('buildManagedListRow', () => {
     assert.equal(row.comparability?.cliVersion, '0.35.0');
     assert.equal(row.currentEvidenceCount, 1);
     assert.equal(row.totalEvidenceCount, 1);
+  });
+
+  it('insufficient Core 证据只留审计，不驱动 measurable 或 latest verdict', () => {
+    const row = buildManagedListRow(rec({
+      evidence: [ev({ evidenceReadiness: 'insufficient' })],
+    }), reach('hashAAA'));
+    assert.equal(row.state, 'installed');
+    assert.equal(row.currentEvidenceCount, 0);
+    assert.equal(row.totalEvidenceCount, 1);
+    assert.equal(row.latestVerdict, undefined);
   });
 
   it('stale:reachable 且源哈漂移(≠ 记录)→ stale + drifted,旧证据仍计入 total 但不计 current', () => {

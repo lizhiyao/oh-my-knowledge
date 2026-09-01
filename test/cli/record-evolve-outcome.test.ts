@@ -112,7 +112,7 @@ describe('recordEvolveOutcome', () => {
   const load = (id = 'evolve-review-abc123') => async (): Promise<EvaluationReport | null> =>
     id === 'evolve-review-abc123' ? fixtureReport(oldHash, newHash) : null;
 
-  it('受管 + 有改进 → re-baseline + 记证据 + 状态 measurable', async () => {
+  it('旧 evolve report 仅留审计证据，不再把状态提升为 measurable', async () => {
     writeRecord();
     const out = await recordEvolveOutcome({
       reportId: 'evolve-review-abc123', bestRound: 1, skillPath, skillDir: dirname(skillPath), isDirectorySkill: false, dir,
@@ -129,7 +129,7 @@ describe('recordEvolveOutcome', () => {
     assert.equal(rec.decisions.length, 0, 'A 方案:evolve 不写 promote 决定');
 
     const state = deriveManagedState({ record: rec, currentContentHash: newHash });
-    assert.equal(state.label, 'measurable', '有当前证据、无漂移、未 promote → measurable');
+    assert.equal(state.label, 'installed', '只有 Evaluation Core evidence 才能提升生命周期状态');
   });
 
   it('未纳管(无匹配源的记录) → no-op 返回 null', async () => {
@@ -201,7 +201,7 @@ describe('recordEvolveOutcome', () => {
     assert.equal(saved.contentHash, dirNewHash, '记录 re-baseline 到整树新哈(不再 stale)');
     assert.equal(saved.evidence.length, 1, '追加一条证据');
     assert.equal(saved.evidence[0].contentHash, dirNewHash, '证据锚定整树当前内容');
-    assert.equal(deriveManagedState({ record: saved, currentContentHash: dirNewHash }).label, 'measurable');
+    assert.equal(deriveManagedState({ record: saved, currentContentHash: dirNewHash }).label, 'installed');
   });
 
   it('无改进(bestRound=0) → no-op', async () => {

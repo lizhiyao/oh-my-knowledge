@@ -213,7 +213,7 @@ omk eval --control baseline --treatment my-skill                # single-skill n
 omk eval --control code-review-v1 --treatment code-review-v2    # multi-variant A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset
 ```
 
 Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
@@ -247,7 +247,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --model <value>                 Evaluated model
   --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
-  --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
+  --no-diagnostic                 Disable the diagnostic projection over Core failures, missing evidence, exclusions, and stable reason codes.
   --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
@@ -256,7 +256,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --output-dir <value>            Report output dir (default project .omk/reports)
   --repeat <value>                Repeat each sample N times
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
-  --resume <value>                Reuse successful entries from a contract-compatible report; otherwise start over
+  --resume <value>                Reuse a fully verified Core runId; fail closed when rejected
   --retry <value>                 Per-sample retry count
   --samples <value>               Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.
   --skill-dir <value>             Skill dir, default skills
@@ -364,32 +364,22 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --auto-fix-samples              Fix the skill, then fix samples, then evaluate the combined candidate
   --concurrency <value>           Eval concurrency, default 1
   --edit-budget <value>           Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
-  --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
   --improve-model <value>         LLM that rewrites the skill; defaults to the evaluated model
   --judge-models <value>          Judge model (single judge required), executor:model format. Defaults to the selected executor; Codex reuses the evaluated model.
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>                 Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.
-  --no-diagnostic                 Disable diagnostic LLM call
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
-  --no-significance-gate          Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)
-  --reuse-latest-eval             Reuse the latest comparable eval report as round-0
   --rounds <value>                Max iteration rounds, default 5
-  --sample-fix-max-attempts <value>Max auto-fix attempts per sample (default: 2)
   --samples <value>               Samples file, default eval-samples.json
-  --significance-alpha <value>    Significance level for the accept gate diff CI (default 0.05 = 95% CI)
-  --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
-  --snapshot-only                 Produce candidates only, do not write back to source: the winner stays in evolve/<skillName>.r{N}.md for you to pick and then omk promote. By default a managed skill is written back and evidence is recorded (measurable).
-  --stop-on-assertions-pass       Stop early when normal samples pass assertions
+  --snapshot-only                 Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
-  --test-ratio <value>            Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score
   --timeout <value>               Per-sample timeout sec, default 600
 ```
 

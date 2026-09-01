@@ -126,7 +126,7 @@ function normalizeSdkEvent(event: unknown): CodexEvent {
   return normalizeCodexProtocolEvent(event) ?? {};
 }
 
-export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose }: ExecutorInput): Promise<ExecResult> {
+export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal }: ExecutorInput): Promise<ExecResult> {
   isolateCodexCwd(allowedSkills, cwd, 'codex-sdk');
 
   const finalPrompt = system ? `${system}\n\n---\n\n${prompt}` : prompt;
@@ -161,6 +161,9 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
   // this, Ctrl+C in a nested host orphans the codex SDK child until DEFAULT
   // timeout elapses, regressing PR #33's nested-host fix.
   const unregisterSigint = registerSigintSubscriber(() => abort('interrupted'));
+  const abortListener = (): void => abort('interrupted');
+  abortSignal?.addEventListener('abort', abortListener, { once: true });
+  if (abortSignal?.aborted) abort('interrupted');
 
   const events: CodexEvent[] = [];
   let isolatedCodexHome: string | undefined;
@@ -202,6 +205,7 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
   } finally {
     clearTimeout(timer);
     unregisterSigint();
+    abortSignal?.removeEventListener('abort', abortListener);
     if (isolatedCodexHome) {
       try {
         await rm(isolatedCodexHome, {

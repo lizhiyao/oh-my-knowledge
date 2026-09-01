@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
   appendFile,
@@ -153,10 +154,42 @@ async function createAdapter(
     : []);
   const resourceLeaseRequirements = [...new Map(workspaceRequirements.map((requirement) => (
     [requirement.resourceId, requirement]
-  ))).values()];
+  ))).values(), {
+    resourceId: 'runtime-implementation-test',
+    resourceRole: 'runtime-implementation' as const,
+    leaseMode: 'immutable-snapshot' as const,
+  }];
+  const runtimeBytes = await readFile(process.execPath);
+  const runtimeResource = Object.freeze({
+    resourceId: 'runtime-implementation-test',
+    resourceKind: 'runtime-implementation' as const,
+    descriptor: {
+      resourceId: 'runtime-implementation-test',
+      digest: `sha256:${createHash('sha256').update(runtimeBytes).digest('hex')}` as Sha256Digest,
+      mediaType: 'application/vnd.omk.custom-command-runtime',
+      classification: 'sensitive' as const,
+      size: runtimeBytes.byteLength,
+    },
+    snapshotKind: 'file' as const,
+    leaseMode: 'immutable-snapshot' as const,
+    snapshotPath: process.execPath,
+  });
+  const sourceResourceLeases = options.resourceLeases ?? resourceAccess();
+  const resourceLeases: OmkBindingResourceLeaseAccess = {
+    forRun(runId) {
+      const source = sourceResourceLeases.forRun(runId);
+      return Object.freeze({
+        ...source,
+        resourcesByResourceId: new Map([
+          ...source.resourcesByResourceId,
+          [runtimeResource.resourceId, runtimeResource] as const,
+        ]),
+      });
+    },
+  };
   const executionRequirements = {
     systemInstructions: 'not-required' as const,
-    workspace: resourceLeaseRequirements.length === 0
+    workspace: workspaceRequirements.length === 0
       ? 'not-required' as const
       : 'copy-on-write-overlay' as const,
     mcp: 'not-required' as const,
@@ -214,7 +247,7 @@ async function createAdapter(
         : { maxOutputBytes: options.maxOutputBytes }),
     },
     sessionIsolationKey: 'binding-session-a',
-    resourceLeases: options.resourceLeases ?? resourceAccess(),
+    resourceLeases,
   });
 }
 

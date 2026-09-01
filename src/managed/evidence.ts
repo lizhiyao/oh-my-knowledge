@@ -26,6 +26,7 @@
  */
 import { basename, dirname } from 'node:path';
 import type { EvaluationReport, ManagedArtifactSource, ManagedEvidenceRef, VariantConfig } from '../types/index.js';
+import type { CoreManagedEvidenceProjection } from '../eval-workflows/downstream-projections/index.js';
 import { hashString } from '../eval-core/evaluation-reporting.js';
 import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir, isShaLike } from './store.js';
 
@@ -91,6 +92,75 @@ export interface RecordedEvidence {
   /** true ⇒ evidence.contentHash 等于记录当前 contentHash → deriveManagedState 计为当前证据 →
    *  measurable。false ⇒ 测的是旧内容(已 drift),证据留存但不绑当前版本。 */
   bound: boolean;
+}
+
+function contentHashOfDigest(digest: string): string {
+  if (!/^sha256:[0-9a-f]{64}$/.test(digest)) {
+    throw new TypeError('Core managed evidence artifact digest is invalid.');
+  }
+  return digest.slice('sha256:'.length);
+}
+
+/**
+ * Appends managed evidence from the Core projection only. Locator aliases and
+ * legacy report summaries never participate in identity or decision binding.
+ */
+export function recordCoreEvalEvidence(
+  projection: Readonly<CoreManagedEvidenceProjection>,
+  opts: { dir?: string } = {},
+): RecordedEvidence[] {
+  if (projection.projectionKind !== 'core-managed-evidence') {
+    throw new TypeError('Managed evidence requires an Evaluation Core projection.');
+  }
+  const dir = resolveManagedDir(opts.dir ?? managedDir());
+  const records = loadAllManagedRecords(dir);
+  if (records.length === 0) return [];
+  const eligible = projection.targets.filter((target) => target.managedEvidenceEligible);
+  const targetByRecord = new Map<string, CoreManagedEvidenceProjection['targets'][number]>();
+  for (const target of eligible) {
+    const contentHash = contentHashOfDigest(target.artifact.digest);
+    const matching = records.filter((record) => record.contentHash === contentHash);
+    const exact = matching.filter((record) => record.name === target.targetId);
+    const selected = exact.length === 1 ? exact[0] : matching.length === 1 ? matching[0] : undefined;
+    if (selected !== undefined && !targetByRecord.has(selected.id)) targetByRecord.set(selected.id, target);
+  }
+  const out: RecordedEvidence[] = [];
+  for (const record of records) {
+    const target = targetByRecord.get(record.id);
+    if (target === undefined) continue;
+    const contentHash = contentHashOfDigest(target.artifact.digest);
+    const decision = projection.decision;
+    const evidence: ManagedEvidenceRef = {
+      evidenceSource: 'evaluation-core',
+      runId: projection.runId,
+      reportId: projection.reportId,
+      reportDigest: projection.reportDigest,
+      artifactDigest: target.artifact.digest,
+      targetId: target.targetId,
+      contentHash,
+      recordedAt: projection.runCreatedAt,
+      ...(decision?.decisionStatus === 'decided' ? {
+        verdict: decision.verdict,
+        decisionReasonCodes: [...decision.reasonCodes],
+      } : {}),
+      evidenceReadiness: projection.evidenceReadiness,
+      sampleCoverage: {
+        count: projection.sampleCount,
+        hash: projection.comparability.datasetRevisionDigest,
+      },
+      coreComparability: { ...projection.comparability },
+    };
+    const merged = appendManagedEvidence(dir, record.id, evidence);
+    if (merged === null) continue;
+    out.push({
+      recordId: record.id,
+      name: record.name,
+      variant: target.targetId,
+      contentHash,
+      bound: contentHash === merged.contentHash,
+    });
+  }
+  return out;
 }
 
 /**

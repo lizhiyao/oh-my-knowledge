@@ -6,19 +6,20 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
-import { makeOnProgress } from '../lib/progress.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
-import type { EvolveOutcomeInput, EvolveOutcomeResult } from '../lib/record-evolve-outcome.js';
+import type {
+  CoreEvolveOutcomeInput,
+  EvolveOutcomeResult,
+} from '../lib/record-evolve-outcome.js';
 import { envJudgeModels, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import type { ProgressCallback } from '../../types/index.js';
 
 /** 受管联动旁路:evolve 写回 source 后记证据 + re-baseline。任何异常都不该让 evolve 失败,
  *  故 try/catch 吞掉、返回 null(同 eval 的 recordEvidenceSafely 口径)。 */
-async function recordEvolveOutcomeSafely(input: EvolveOutcomeInput): Promise<EvolveOutcomeResult | null> {
+async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise<EvolveOutcomeResult | null> {
   try {
-    const { recordEvolveOutcome } = await import('../lib/record-evolve-outcome.js');
-    return await recordEvolveOutcome(input);
+    const { recordCoreEvolveOutcome } = await import('../lib/record-evolve-outcome.js');
+    return recordCoreEvolveOutcome(input);
   } catch {
     return null;
   }
@@ -43,9 +44,6 @@ interface TrajectoryEntry {
   delta: number;
   accepted: boolean;
   costUSD: number;
-  trainScore?: number;
-  holdoutScore?: number;
-  diffCI?: { low: number; high: number; estimate: number; significant: boolean };
   editRatio?: number;
   rejectedPreEval?: boolean;
 }
@@ -70,14 +68,11 @@ interface EvolveResult {
   totalRounds: number;
   totalCostUSD: number;
   costReported?: boolean;
-  holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
-  test?: { ratio: number; count: number; disabled?: boolean };
-  generalizationScore?: number;
-  gate?: { enabled: boolean; alpha: number; underpowered?: boolean };
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
-  reportId?: string;
+  runId?: string;
+  evidence?: import('../../eval-workflows/artifact-store/index.js').StoredCoreRunArtifacts;
 }
 
 /** 路径处是否已存在「用例源」:按 statSync 判型 —— 文件(含无扩展名)直接算存在;
@@ -119,18 +114,10 @@ export async function runEvolve(
     throw new CliExit(1);
   }
 
-  // A locked test set needs a separate val set to decide on; --test-ratio alone is a no-op.
-  if ((Number(flags['test-ratio']) || 0) > 0 && (Number(flags['holdout-ratio']) || 0) === 0) {
-    console.error(lang === 'zh'
-      ? '--test-ratio 需要配合 --holdout-ratio 使用（test 集只在留出 val 集时才有意义）。'
-      : '--test-ratio requires --holdout-ratio (a locked test set only makes sense alongside a held-out val set).');
-    throw new CliExit(2);
-  }
-
   const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
   let resolvedInput;
   try { resolvedInput = resolveSkillInput(skillPathArg, lang); } catch (err) {
-    console.error((err as Error).message);
+    console.error(err instanceof Error ? err.message : String(err));
     throw new CliExit(1);
   }
   const skillPath = resolvedInput.skillPath;
@@ -210,7 +197,7 @@ export async function runEvolve(
         : `Generated ${samples.length} samples${cost}; starting evolution.\n`);
     } catch (err: unknown) {
       if (err instanceof CliExit) throw err;
-      const message = (err as Error).message;
+      const message = err instanceof Error ? err.message : String(err);
       console.error(tCli('cli.common.error_prefix', lang, {
         message: `${message}${formatSampleGenerationFailureHint(message, flags.executor, lang)}`,
       }));
@@ -218,13 +205,14 @@ export async function runEvolve(
     }
   }
 
-  const { evolveSkill } = await import('../../authoring/evolver.js');
+  const { evolveSkillCore } = await import('../../authoring/core-evolver.js');
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
-    const result: EvolveResult = await evolveSkill({
+    const result: EvolveResult = await evolveSkillCore({
       skillPath: resolve(skillPath),
+      isDirectorySkill: skillIsDir,
       samplesPath: resolve(samplesFile),
       rounds: Math.max(1, Number(flags.rounds) || 5),
       target: flags.target ? Number(flags.target) : null,
@@ -234,26 +222,13 @@ export async function runEvolve(
       executorName: flags.executor,
       concurrency: Math.max(1, Number(flags.concurrency) || 1),
       timeoutMs: Math.max(1, Number(flags.timeout) || 600) * 1000,
-      skipConnectivity: flags['skip-connectivity'],
       effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
-      noDiagnostic: flags['no-diagnostic'],
       skipDoctor: flags['skip-doctor'],
-      stopOnAssertionsPass: flags['stop-on-assertions-pass'],
-      autoFixSamples: flags['auto-fix-samples'],
-      sampleFixMaxAttempts: Math.max(1, Number(flags['sample-fix-max-attempts']) || 2),
-      reuseLatestEval: flags['reuse-latest-eval'],
-      holdoutRatio: Number(flags['holdout-ratio']) || 0,
-      significanceGate: !flags['no-significance-gate'],
-      // parser 已保证是合法数字串；用 Number() 直取，不用 `|| default`——否则
-      // `--edit-budget 0`（关预算）/ `--significance-alpha 0` 会被 falsy 吞成默认值。
-      significanceAlpha: Number(flags['significance-alpha']),
-      testRatio: Number(flags['test-ratio']),
       editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
       rejectMemory: !flags['no-reject-memory'],
       // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
       writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
-      onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, significant }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
@@ -287,31 +262,14 @@ export async function runEvolve(
       start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
       percent: improvement, rounds: result.totalRounds, cost: totalCostStr,
     }));
-    if (result.holdout) {
-      process.stderr.write(result.holdout.disabled
-        ? tCli('cli.evolve.holdout_disabled', lang, { ratio: result.holdout.ratio })
-        : tCli('cli.evolve.holdout_active', lang, {
-          train: result.holdout.trainCount, holdout: result.holdout.holdoutCount,
-        }));
-    }
-    if (result.gate?.underpowered) {
-      process.stderr.write(tCli('cli.evolve.gate_underpowered', lang));
-    }
-    if (result.test?.disabled) {
-      process.stderr.write(tCli('cli.evolve.test_disabled', lang, { ratio: result.test.ratio }));
-    } else if (result.test && typeof result.generalizationScore === 'number') {
-      process.stderr.write(tCli('cli.evolve.generalization', lang, {
-        count: result.test.count, score: result.generalizationScore.toFixed(2),
-      }));
-    }
     process.stderr.write(tCli('cli.evolve.best_path', lang, {
       best: result.bestSkillPath, target: resolve(skillPath),
     }));
     process.stderr.write(tCli('cli.evolve.versions_saved', lang, {
       dir: join(resolve(skillPath, '..'), 'evolve'),
     }));
-    if (result.reportId) {
-      process.stderr.write(tCli('cli.evolve.report_link', lang, { id: result.reportId }));
+    if (result.runId) {
+      process.stderr.write(tCli('cli.evolve.report_link', lang, { id: result.runId }));
     }
 
     if (flags['snapshot-only']) {
@@ -323,7 +281,7 @@ export async function runEvolve(
       // 受管 skill:把胜出版本记成带 verdict 的证据 + re-baseline → omk list 显 measurable。
       // 升 promoted 仍由人 omk promote 决定(统计门 ≠ 人的接受)。未纳管 / 无改进 → 静默 no-op。
       const recorded = await recordEvolveOutcomeSafely({
-        reportId: result.reportId,
+        source: result.evidence!,
         bestRound: result.bestRound,
         skillPath: resolvedInput.skillPath,
         skillDir: resolvedInput.skillDir,
@@ -336,10 +294,14 @@ export async function runEvolve(
       }
     }
 
-    console.log(JSON.stringify(result, null, 2));
+    const publicResult: Omit<EvolveResult, 'evidence'> = { ...result };
+    delete (publicResult as Partial<EvolveResult>).evidence;
+    console.log(JSON.stringify(publicResult, null, 2));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
-    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
+    console.error(tCli('cli.common.error_prefix', lang, {
+      message: err instanceof Error ? err.message : String(err),
+    }));
     throw new CliExit(1);
   }
 }
@@ -432,26 +394,12 @@ export default class Evolve extends BaseCommand {
         en: 'Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
-    'skip-connectivity': Flags.boolean({
-      description: bilingual({
-        zh: '跳过 LLM 连通性预检',
-        en: 'Skip LLM connectivity preflight',
-      }),
-      default: false,
-    }),
     effort: Flags.string({
       description: bilingual({
         zh: 'reasoning effort: low/medium/high/xhigh/max',
         en: 'Reasoning effort: low/medium/high/xhigh/max',
       }),
       parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
-    }),
-    'no-diagnostic': Flags.boolean({
-      description: bilingual({
-        zh: '关 LLM diagnostic 调用',
-        en: 'Disable diagnostic LLM call',
-      }),
-      default: false,
     }),
     'skip-doctor': Flags.boolean({
       description: bilingual({
@@ -460,39 +408,10 @@ export default class Evolve extends BaseCommand {
       }),
       default: false,
     }),
-    'stop-on-assertions-pass': Flags.boolean({
-      description: bilingual({
-        zh: '普通用例断言全过时提前停止',
-        en: 'Stop early when normal samples pass assertions',
-      }),
-      default: false,
-    }),
-    'auto-fix-samples': Flags.boolean({
-      description: bilingual({
-        zh: '每轮先修 skill，再修 sample，随后一起评估候选结果',
-        en: 'Fix the skill, then fix samples, then evaluate the combined candidate',
-      }),
-      default: false,
-    }),
-    'sample-fix-max-attempts': Flags.string({
-      description: bilingual({
-        zh: '每条 sample 自动修复最多尝试次数（默认：2）',
-        en: 'Max auto-fix attempts per sample (default: 2)',
-      }),
-      default: '2',
-      parse: integerStringParser('--sample-fix-max-attempts', { min: 1 }),
-    }),
-    'reuse-latest-eval': Flags.boolean({
-      description: bilingual({
-        zh: '复用可比的最新 eval 报告作为 round-0',
-        en: 'Reuse the latest comparable eval report as round-0',
-      }),
-      default: false,
-    }),
     'snapshot-only': Flags.boolean({
       description: bilingual({
-        zh: '只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。',
-        en: 'Produce candidates only, do not write back to source: the winner stays in evolve/<skillName>.r{N}.md for you to pick and then omk promote. By default a managed skill is written back and evidence is recorded (measurable).',
+        zh: '只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。',
+        en: 'Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.',
       }),
       default: false,
     }),
@@ -503,37 +422,6 @@ export default class Evolve extends BaseCommand {
       }),
       default: 'agent',
       options: ['agent', 'rewrite'],
-    }),
-    'holdout-ratio': Flags.string({
-      description: bilingual({
-        zh: '留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test',
-        en: 'Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test',
-      }),
-      default: '0',
-      parse: numberStringParser('--holdout-ratio', { min: 0, max: 1 }),
-    }),
-    'no-significance-gate': Flags.boolean({
-      description: bilingual({
-        zh: '关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）',
-        en: 'Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)',
-      }),
-      default: false,
-    }),
-    'significance-alpha': Flags.string({
-      description: bilingual({
-        zh: '显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）',
-        en: 'Significance level for the accept gate diff CI (default 0.05 = 95% CI)',
-      }),
-      default: '0.05',
-      parse: numberStringParser('--significance-alpha', { min: 0, max: 1 }),
-    }),
-    'test-ratio': Flags.string({
-      description: bilingual({
-        zh: '锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分',
-        en: 'Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score',
-      }),
-      default: '0',
-      parse: numberStringParser('--test-ratio', { min: 0, max: 1 }),
     }),
     'edit-budget': Flags.string({
       description: bilingual({

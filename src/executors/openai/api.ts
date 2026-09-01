@@ -17,7 +17,7 @@ interface OpenAiResponse {
   error?: { message?: string };
 }
 
-export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
+export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY environment variable is not set');
 
@@ -32,7 +32,9 @@ export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEF
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model: model || 'gpt-4o', messages }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: abortSignal === undefined
+        ? AbortSignal.timeout(timeoutMs)
+        : AbortSignal.any([abortSignal, AbortSignal.timeout(timeoutMs)]),
     });
     const { data, rawBody } = await readJsonResponse<OpenAiResponse>(res);
     const durationMs = Date.now() - start;

@@ -22,6 +22,7 @@ function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
 }
 function ev(over: Partial<ManagedEvidenceRef> = {}): ManagedEvidenceRef {
   return {
+    evidenceSource: 'evaluation-core', evidenceReadiness: 'decision-ready',
     reportId: 'r1', contentHash: CUR, recordedAt: '2026-06-07T00:00:00.000Z', verdict: 'PROGRESS',
     comparability: { cliVersion: '0.36.0', judgePromptHash: JUDGE }, ...over,
   };
@@ -62,6 +63,16 @@ describe('evaluatePromoteGate', () => {
     assert.ok(g.blocked.some((b) => b.blockKind === 'no_current_evidence'));
   });
 
+  it('insufficient Core 证据不可作为 promote 锚点', () => {
+    const g = evaluatePromoteGate({
+      record: rec({ evidence: [ev({ evidenceReadiness: 'insufficient' })] }),
+      currentContentHash: CUR,
+      currentJudgeHashes: judgeSet,
+    });
+    assert.deepEqual(g.blocked.map((block) => block.blockKind), ['no_current_evidence']);
+    assert.equal(g.evidence, undefined);
+  });
+
   it('judgePromptHash 不属当前评委 → incomparable 拦截', () => {
     const g = evaluatePromoteGate({ record: rec({ evidence: [ev({ comparability: { cliVersion: '0.30.0', judgePromptHash: 'STALE_JUDGE' } })] }), currentContentHash: CUR, currentJudgeHashes: judgeSet });
     assert.equal(g.ok, false);
@@ -70,10 +81,10 @@ describe('evaluatePromoteGate', () => {
     assert.equal(inc?.detail?.judgePromptHash, 'STALE_JUDGE');
   });
 
-  it('judgePromptHash 缺失 → warn 不拦(其余达标仍通过)', () => {
+  it('Core evidence 不依赖旧 judgePromptHash，完整 Core comparability 自证可比', () => {
     const g = evaluatePromoteGate({ record: rec({ evidence: [ev({ comparability: { cliVersion: '0.36.0' } })] }), currentContentHash: CUR, currentJudgeHashes: judgeSet });
     assert.equal(g.ok, true, 'judge hash 缺失不拦门禁');
-    assert.ok(g.warnings.some((w) => w.blockKind === 'incomparable'));
+    assert.deepEqual(g.warnings, []);
   });
 
   it('judgePromptHash 在场但 currentJudgeHashes 省略 → 静默放行(取不到当前评委时跳过核对,不 block 不 warn)', () => {

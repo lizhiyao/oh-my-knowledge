@@ -16,7 +16,7 @@ interface AnthropicResponse {
   error?: { message?: string };
 }
 
-export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
+export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY environment variable is not set');
 
@@ -39,7 +39,9 @@ export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = 
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify(reqBody),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: abortSignal === undefined
+        ? AbortSignal.timeout(timeoutMs)
+        : AbortSignal.any([abortSignal, AbortSignal.timeout(timeoutMs)]),
     });
     const { data, rawBody } = await readJsonResponse<AnthropicResponse>(res);
     const durationMs = Date.now() - start;

@@ -15,7 +15,10 @@ import {
   projectCoreCliBatchOutcome,
   projectCoreCliDryRun,
   projectCoreCliRunOutcome,
+  projectCoreCliSeriesOutcome,
+  projectCoreDiagnostics,
   projectCoreManagedEvidence,
+  type CoreEvolutionEvidence,
 } from '../../src/eval-workflows/downstream-projections/index.js';
 import { projectCompletedCoreCliGate } from '../../src/eval-workflows/downstream-projections/cli-gate.js';
 import { projectCoreStudioRunDetail } from '../../src/eval-workflows/studio-catalog/index.js';
@@ -229,7 +232,10 @@ describe('Evaluation Core consumer cutover projections', () => {
     'keeps CLI, Studio, graph, and managed views on one authenticated %s chain',
     async (target) => {
       const source = await storedScenario(target, `cutover-${target}`);
-      const cli = projectCoreCliRunOutcome(source, { exitMode: 'gate' });
+      const cli = projectCoreCliRunOutcome(source, {
+        exitMode: 'gate',
+        diagnosticMode: 'enabled',
+      });
       const studio = projectCoreStudioRunDetail(source);
       const graph = projectCoreArtifactGraph({
         source,
@@ -246,6 +252,12 @@ describe('Evaluation Core consumer cutover projections', () => {
       assert.equal(managed.reportDigest, cli.reportDigest);
       assert.equal(managed.runCreatedAt, source.manifest.createdAt);
       assert.equal(managed.comparability.runContractDigest, cli.runContractDigest);
+      assert.equal(cli.diagnostic?.projectionKind, 'core-diagnostic');
+      assert.equal(cli.diagnostic?.reportDigest, cli.reportDigest);
+      assert.ok(cli.diagnostic?.findings.every((finding) => (
+        /^sha256:[0-9a-f]{64}$/.test(finding.findingId)
+        && /^sha256:[0-9a-f]{64}$/.test(finding.sourceDigest)
+      )));
       assert.ok(graph.nodes.some((node) => (
         node.nodeKind === 'evaluation_run'
         && node.binding?.keys.reportDigest === cli.reportDigest
@@ -346,6 +358,11 @@ describe('Evaluation Core consumer cutover projections', () => {
       exitCode: 1,
       reasonCodes: ['core-run-cancelled'],
     });
+    const diagnostic = projectCoreDiagnostics(cancelled);
+    assert.ok(diagnostic.findings.some((finding) => (
+      finding.stage === 'execution' && finding.severity === 'warning'
+    )));
+    assert.ok(!JSON.stringify(diagnostic).includes('fixture-cancelled'));
   });
 
   it('projects Batch children without pooling their identities or conclusions', async () => {
@@ -410,6 +427,56 @@ describe('Evaluation Core consumer cutover projections', () => {
       }),
       projectionError('CORE_CLI_BATCH_SOURCE_INVALID'),
     );
+  });
+
+  it('fails Series gate closed when run-level analysis has no preregistered decision', async () => {
+    const [first, second] = await Promise.all([
+      storedScenario('function', 'series-function-0'),
+      storedScenario('function', 'series-function-1'),
+    ]);
+    const sources = [first, second];
+    const coverage = {
+      planned: 2,
+      completed: 2,
+      partial: 0,
+      cancelled: 0,
+      budgetExhausted: 0,
+      failed: 0,
+      missing: 0,
+      comparable: 2,
+    };
+    const evolution: CoreEvolutionEvidence = {
+      projectionKind: 'core-evolution-evidence',
+      schemaVersion: 'omk.core-evolution-evidence/v1',
+      seriesId: 'series-without-decision',
+      seriesPlanDigest: digestCanonicalJson({ series: 'plan' }),
+      analysisBundleDigest: digestCanonicalJson({ series: 'analysis' }),
+      reportDigest: digestCanonicalJson({ series: 'report' }),
+      analysisMode: 'preregistered',
+      experimentalUnit: 'run',
+      evidenceReadiness: 'analysis-only',
+      coverage,
+      members: sources.map((source, replicateIndex) => ({
+        memberId: `member-${replicateIndex}`,
+        replicateIndex,
+        reportDigest: source.report.reportDigest,
+        runContractDigest: source.plan.digests.runContractDigest,
+        status: source.report.status,
+        effectiveTrust: 'unknown',
+        comparabilityStatus: replicateIndex === 0 ? 'anchor' : 'compatible',
+      })),
+      analyses: [],
+    };
+    const projected = projectCoreCliSeriesOutcome({
+      evolution,
+      members: sources,
+      exitMode: 'gate',
+    });
+    assert.deepEqual(projected.gate, {
+      gateStatus: 'blocked',
+      exitCode: 1,
+      reasonCodes: ['core-series-decision-not-ready'],
+    });
   });
 
   it('refuses to invent managed identity when the sealed Target lacks an artifact descriptor', async () => {

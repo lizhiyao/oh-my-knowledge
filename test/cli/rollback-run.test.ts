@@ -19,6 +19,7 @@ import PromoteCommand from '../../src/cli/commands/promote.js';
 import RollbackCommand from '../../src/cli/commands/rollback.js';
 import ListCommand from '../../src/cli/commands/list.js';
 import { runCommand } from '../helpers/run-command.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 interface RunResult { code: number; stdout: string; stderr: string; }
 
@@ -38,10 +39,10 @@ describe('omk rollback command', () => {
       source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
       contentHash: curHash, installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],
-      evidence: [{
-        reportId: 'rep1', contentHash: curHash, recordedAt: '2026-06-07T00:00:00.000Z',
-        verdict: 'PROGRESS', comparability: { cliVersion: '0.36.0', judgePromptHash: getJudgePromptHash(true) },
-      }],
+      evidence: [coreManagedEvidence(curHash, {
+        reportId: 'rep1',
+        comparability: { cliVersion: '0.36.0', judgePromptHash: getJudgePromptHash(true) },
+      })],
       decisions: [],
     };
     writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
