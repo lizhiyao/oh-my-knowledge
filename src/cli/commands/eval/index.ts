@@ -10,7 +10,7 @@ import { parseRunConfig, type RunConfig } from '../../lib/parse-run-config.js';
 import { codexModelFlagValue, codexModelHint } from '../../lib/codex-model-hint.js';
 import { looksLikeModelUnavailableFailure } from '../../lib/llm-failure-classifier.js';
 import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
-import { DEFAULT_GATE_THRESHOLD } from '../../../eval-core/verdict.js';
+import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../../../eval-workflows/evaluation-defaults.js';
 import {
   findSingleTreatmentDeprecatedSamplesHint,
   hasUsableSamplesPath,

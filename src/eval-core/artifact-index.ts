@@ -1,27 +1,25 @@
 /**
- * 产物发现索引(report / doctor / observe-health 三域)。
+ * 产物发现索引（doctor / observe-health 两域）。
  *
  * 每类测量产物的正文(含逐样本 / 逐规则 / 逐信号重体)永远单份留它的项目本地 `.omk/<域>/`;产物落盘后,
  * 在全局 `state/artifact-index/<域>/<id>.json` 留一张轻卡片(元数据 + 必要标量,剥掉重体,`path` 指向真身),
  * 让 `omk studio` 跨项目聚合成「机器级总览」—— 当前项目 + 全局靠 live-scan 永远新鲜,别的项目靠卡片发现。
  *
  * 索引是可重生 scratch:写失败永不阻断正文落盘(正文是 source of truth);丢了由 live-scan / 重跑重建。
- * 三域共用 `artifactIndexDir(domain)` + tmp-rename 原子写 + 指纹缓存读 的同一套机制,各域只差「投影成卡片」
+ * 两域共用 `artifactIndexDir(domain)` + tmp-rename 原子写 + 指纹缓存读 的同一套机制,各域只差「投影成卡片」
  * 与「卡片还原成 snapshot」两段域特定逻辑。
  */
 import { existsSync, readdirSync, readFileSync, unlinkSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DEFAULT_ARTIFACT_INDEX_DIR } from './default-dirs.js';
-import { globalReportsDir, globalDoctorsDir, globalObserveHealthDir } from './measurement-dirs.js';
-import type { ReportDocument, ReportIndexCard } from '../types/index.js';
+import { globalDoctorsDir, globalObserveHealthDir } from './measurement-dirs.js';
 import type { DoctorSkillStatus } from '../types/doctor.js';
 import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import { reportFilePath, safeArtifactFileStem } from './artifact-file-names.js';
-import { parseReportDocument, parseReportIndexCard } from './report-document.js';
 
-export type ArtifactDomain = 'report' | 'doctor' | 'observe-health';
+export type ArtifactDomain = 'doctor' | 'observe-health';
 
 // ── 通用机制(域无关)──────────────────────────────────────────────────────────
 
@@ -39,11 +37,6 @@ export function artifactIndexDir(domain: ArtifactDomain): string {
  *  卡片唯一价值是别项目的项目级 `.omk/<域>`。 */
 function shouldIndexDir(outputDir: string, globalDir: string): boolean {
   return resolve(outputDir) !== resolve(globalDir);
-}
-
-/** report 域口径(保持向后兼容的既有导出)。 */
-export function shouldIndexReport(outputDir: string): boolean {
-  return shouldIndexDir(outputDir, globalReportsDir());
 }
 
 function safeFileName(id: string): string {
@@ -124,14 +117,12 @@ function liveCards<T extends { path: string }>(cards: T[]): T[] {
 
 /**
  * 某域所有卡片「真身(card.path)」的存在性 + mtime/size 指纹。
- * 消费方(indexed-report-store / buildSkillIndex)的缓存指纹必须纳入它:卡片 JSON 本身没变、只靠卡片目录
+ * 消费方 buildSkillIndex 的缓存指纹必须纳入它:卡片 JSON 本身没变、只靠卡片目录
  * mtime 的指纹检测不到「真身被带外删」,长会话会继续命中旧缓存展示悬空卡片。真身删/改 → 此 sentinel 变 →
  * 缓存失效 → live 过滤生效。读卡片只为拿 path,字段宽松。
  */
 export function cardTargetSentinel(domain: ArtifactDomain): string {
-  const cards = domain === 'report'
-    ? listReportCards()
-    : domain === 'doctor'
+  const cards = domain === 'doctor'
       ? listDoctorCards()
       : listObserveCards();
   const parts: string[] = [];
@@ -144,48 +135,6 @@ export function cardTargetSentinel(domain: ArtifactDomain): string {
     }
   }
   return parts.sort().join(',');
-}
-
-// ── report 域 ───────────────────────────────────────────────────────────────
-
-/** 报告投影成卡片(剥掉 results 重体)。 */
-function reportCard(report: ReportDocument, sourcePath: string): ReportIndexCard {
-  return report.kind === 'evaluation'
-    ? { domain: 'report', id: report.id, path: resolve(sourcePath), kind: 'evaluation', meta: report.meta, summary: report.summary }
-    : { domain: 'report', id: report.id, path: resolve(sourcePath), kind: 'batch-evaluation', meta: report.meta, items: report.items };
-}
-
-/**
- * persistReport 的索引钩子:报告落盘后 best-effort 追加卡片。永不抛、永不阻断报告落盘。
- * 入参故意收 `{id}` 宽松(同 persistReport 的 PersistableReport):非完整报告(无 canonical kind)防御式跳过。
- */
-export function indexReportWrite(report: ReportDocument, sourcePath: string, outputDir: string): void {
-  try {
-    if (!shouldIndexReport(outputDir)) return;
-    const parsed = parseReportDocument(report, report.id, report.id);
-    if (!parsed) return;
-    writeCard('report', report.id, reportCard(parsed, sourcePath));
-  } catch {
-    // 索引可重建,失败静默(可选 stderr warn);正文已落盘不受影响。
-  }
-}
-
-/** 读 report 域全部卡片(跳过坏文件 / 缺字段 / 坏 kind)。 */
-export function listReportCards(): ReportIndexCard[] {
-  return readArtifactCards(
-    'report',
-    (value): value is ReportIndexCard => parseReportIndexCard(value) !== null,
-  );
-}
-
-/** report 卡片(过滤悬空真身):供 studio 机器级 list / findBy 展示。 */
-export function listLiveReportCards(): ReportIndexCard[] {
-  return liveCards(listReportCards());
-}
-
-/** 删 report 域某 id 的卡片(DELETE 报告时连卡片一起删,使其从机器级 list 消失)。幂等、best-effort。 */
-export function removeReportCard(id: string): boolean {
-  return removeArtifactCard('report', id);
 }
 
 // ── doctor 域 ───────────────────────────────────────────────────────────────

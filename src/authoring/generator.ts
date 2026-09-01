@@ -1,6 +1,6 @@
 import { createExecutor } from '../executors/index.js';
 import { executorSupportsSampleMocks } from '../executors/core/capabilities.js';
-import { DEFAULT_GATE_THRESHOLD } from '../eval-core/verdict.js';
+import { DEFAULT_EVALUATION_GATE_THRESHOLD as DEFAULT_GATE_THRESHOLD } from '../eval-workflows/evaluation-defaults.js';
 import { sampleMockReferenceKeys } from '../shared/sample-contract.js';
 import type {
   Assertion,

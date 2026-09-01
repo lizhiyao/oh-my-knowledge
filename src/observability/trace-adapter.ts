@@ -1,14 +1,14 @@
 /**
- * Source traces / agent markdown logs → omk ResultEntry adapter.
+ * Source traces / agent markdown logs → source-neutral analysis adapter.
  *
  * This file is intentionally thin: source parsing, attribution, and segmentation
  * live in sibling modules so studio/report code does not inherit one large adapter.
  */
 
-import type { ResultEntry, TraceIngestionSummary } from '../types/index.js';
+import type { AnalysisEntry, TraceIngestionSummary } from '../types/index.js';
 import { loadTraceCorpus } from './trace-source.js';
 import type { TraceSession } from './trace-ir.js';
-import { segmentTraceBySkill, segmentsToResultEntries, type SkillSegment } from './trace-segmenter.js';
+import { segmentTraceBySkill, segmentsToAnalysisEntries, type SkillSegment } from './trace-segmenter.js';
 
 export type {
   CcAssistantContent,
@@ -52,25 +52,22 @@ export type { SkillSegment } from './trace-segmenter.js';
 export {
   segmentBySkill,
   segmentTraceBySkill,
-  segmentsToResultEntries,
+  segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,
   UNOBSERVED_TRACE_TIMESTAMP,
 } from './trace-segmenter.js';
 
 /**
- * One-stop conversion: trace path → ResultEntry[].
+ * One-stop conversion: trace path → AnalysisEntry[].
  */
-export function tracesToResultEntries(path: string): {
-  entries: ResultEntry[];
+export function tracesToAnalysisEntries(path: string): {
+  entries: AnalysisEntry[];
   sessions: TraceSession[];
   segments: SkillSegment[];
   ingestion: TraceIngestionSummary;
 } {
   const { sessions, ingestion } = loadTraceCorpus(path);
   const segments = sessions.flatMap(segmentTraceBySkill);
-  const entries = segmentsToResultEntries(segments);
+  const entries = segmentsToAnalysisEntries(segments);
   return { entries, sessions, segments, ingestion };
 }
-
-/** @deprecated Use `tracesToResultEntries`. */
-export const ccTracesToResultEntries = tracesToResultEntries;

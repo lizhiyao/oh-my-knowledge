@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import Eval from '../../src/cli/commands/eval/index.js';
-import { DEFAULT_GATE_THRESHOLD } from '../../src/eval-core/verdict.js';
+import { DEFAULT_EVALUATION_GATE_THRESHOLD } from '../../src/eval-workflows/evaluation-defaults.js';
 import EvalGoldCompare from '../../src/cli/commands/eval/gold/compare.js';
 import Doctor from '../../src/cli/commands/doctor.js';
 import Evolve from '../../src/cli/commands/evolve.js';
@@ -97,15 +97,14 @@ describe('oclif custom parsers', () => {
     await assert.rejects(() => parseDoctorRepeat('11'), /--repeat.*1.*10/);
   });
 
-  it('keeps the --threshold help text wired to DEFAULT_GATE_THRESHOLD', () => {
-    // 默认阈值的单一来源是 verdict.ts 的 DEFAULT_GATE_THRESHOLD。help 文案若再写死
+  it('keeps the --threshold help text wired to the shared Core input default', () => {
     // 裸字面量,常量调整后用户会读到错误默认值。断言 help 里出现的就是常量插值结果,
     // 防止有人把它退回成硬编码。
     const description = flagsOf(Eval.flags).threshold?.description;
     assert.equal(typeof description, 'string', 'threshold flag should carry a help description');
     assert.ok(
-      (description as string).includes(String(DEFAULT_GATE_THRESHOLD)),
-      `--threshold help 应反映 DEFAULT_GATE_THRESHOLD(${DEFAULT_GATE_THRESHOLD}），实际为:${String(description)}`,
+      (description as string).includes(String(DEFAULT_EVALUATION_GATE_THRESHOLD)),
+      `--threshold help 应反映默认值(${DEFAULT_EVALUATION_GATE_THRESHOLD})，实际为:${String(description)}`,
     );
   });
 

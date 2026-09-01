@@ -81,7 +81,7 @@ export function resolveDoctorsDir(
 // —— reports(eval 评测报告)——
 // reports 与 observe-health / doctors 不同:它不是「选一个权威目录」就够的展示列表,而是按 id
 // 寻址的 store(get(id) / findByArtifactHash 被 resume / gold-compare / baseline 复用依赖)。
-// 故记录优先在 store 层做(见 createOverlayReportStore:项目盖全局),此处只给写入侧与 --global
+// 故记录优先在消费层合并项目与全局目录，此处只给写入侧与 --global
 // 用的项目 / 全局目录 getter,不给 resolveReportsDir(单目录二选一会让目标 id 在另一目录时 get 落空)。
 
 /** 项目级 reports 目录(相对调用时 cwd)。 */

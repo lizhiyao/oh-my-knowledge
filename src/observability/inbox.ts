@@ -26,7 +26,7 @@ import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
   loadTraceSessions,
   segmentTraceBySkill,
-  tracesToResultEntries,
+  tracesToAnalysisEntries,
   skillSegmentTimestampObserved,
   type TraceSession,
   type SkillSegment,
@@ -425,7 +425,7 @@ function skillSessionCountKey(segment: SkillSegment): string {
  * `buildObserveDiagnosticsFromReport(report)` 写入 `report.diagnostics`。
  */
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
-  const { sessions, ingestion } = tracesToResultEntries(tracePath);
+  const { sessions, ingestion } = tracesToAnalysisEntries(tracePath);
   return buildObservationInboxReportFromTraceSessions(tracePath, sessions, ingestion, options);
 }
 

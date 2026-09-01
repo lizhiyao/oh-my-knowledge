@@ -32,7 +32,7 @@ describe('omk promote command', () => {
   /** 写一条受管记录,带一条「当前内容」证据。 */
   function writeRecord(opts: { verdict?: string; contentHash?: string; evidenceReadiness?: 'decision-ready' | 'measurement-only'; withoutEvidence?: boolean } = {}): void {
     const rec = {
-      recordKind: 'managed-artifact', schemaVersion: 2, id: recId, name: 'review', kind: 'skill',
+      recordKind: 'managed-artifact', schemaVersion: 3, id: recId, name: 'review', kind: 'skill',
       source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
       contentHash: opts.contentHash ?? curHash, installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],

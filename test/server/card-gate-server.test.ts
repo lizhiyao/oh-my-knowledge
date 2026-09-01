@@ -50,8 +50,8 @@ describe('卡片合并 include 开关(server 级)', () => {
 
   function mkServer(include: boolean): Promise<{ url: string; srv: Srv }> {
     const srv = createReportServer({
-      port: 0, reportsDir: emptyReports, analysesDir: emptyAnalyses, doctorsDir: emptyDoctors,
-      observationsDir: emptyObs, jobsDir: emptyJobs, managedDir: emptyManaged,
+      port: 0, analysesDir: emptyAnalyses, doctorsDir: emptyDoctors,
+      observationsDir: emptyObs, managedDir: emptyManaged,
       includeObserveCards: include, includeDoctorCards: include,
     });
     return srv.start().then((url) => ({ url, srv }));
@@ -81,8 +81,8 @@ describe('卡片合并 include 开关(server 级)', () => {
     // 默认机器级模式下当前项目还没 .omk/observe-health、全局也空 → 传给 server 的是不存在的目录。
     const missing = join(emptyAnalyses, 'does-not-exist');
     const srv = createReportServer({
-      port: 0, reportsDir: emptyReports, analysesDir: missing, doctorsDir: emptyDoctors,
-      observationsDir: emptyObs, jobsDir: emptyJobs, managedDir: emptyManaged,
+      port: 0, analysesDir: missing, doctorsDir: emptyDoctors,
+      observationsDir: emptyObs, managedDir: emptyManaged,
       includeObserveCards: true, includeDoctorCards: true,
     });
     const url = await srv.start();

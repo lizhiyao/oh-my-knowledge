@@ -4,7 +4,7 @@ import type { ArtifactKind } from './eval.js';
  * 受管 artifact 记录(managed record)——证据门控管理的最小持久单元。
  *
  * 设计原则(见 docs/specs/evidence-gated-management.md §5/§6):**只落盘事实与指针**。
- * verdict / 可比性 / underpowered 是从 Report 推导出来的,不是这里的持久列;生命周期标签
+ * verdict / 可比性 / underpowered 是从 Evaluation Core 投影得到的事实；生命周期标签
  * (installed / measurable / stale)也是读时推导(见 `deriveManagedState`),不持久 ——
  * 持久一个会随源文件漂移而过期的标签等于让记录"撒谎"。需要"状态随时间"时持久化
  * append-only 事件(installedAt、未来的 promote/reject/rollback 决定),而非可变标签。
@@ -24,41 +24,26 @@ export interface ManagedDistributionTarget {
   copiedAt: string;
 }
 
-/** 指向一份 Report 的引用 + 该 report 的最小可比性快照——不是 verdict 本体。install 时为空,
- *  eval 完成后追加(见 `src/managed/evidence.ts`)。
- *
- *  `reportId` / `contentHash` 是承重的两根(读时门控只认这俩,validator 也只硬查这俩);其余三项是
- *  `evidence-gated-management.md` §5 的 mandatory bundle —— **denormalize** 进记录(而非读时回 report
- *  解析),让受管记录自解释、可 grep、不依赖 report 文件仍在盘。旧记录(eval 写入前)无这三项,按
- *  optional 读;deriveManagedState 不依赖它们,故缺失不影响生命周期推导。 */
+/** Evaluation Core 认证产物的最小受管证据投影。install 时为空，eval 完成后追加。 */
 export interface ManagedEvidenceRef {
-  /** New production evidence is admitted only from the authenticated Evaluation Core projection. */
-  evidenceSource?: 'evaluation-core';
-  runId?: string;
+  evidenceSource: 'evaluation-core';
+  runId: string;
   reportId: string;
-  reportDigest?: string;
-  /** 该 report 测的是哪份内容(artifact contentHash)。读时只把与记录当前 contentHash 匹配的
+  reportDigest: string;
+  /** 该 report 测的是哪份内容（artifact contentHash）。读时只把与记录当前 contentHash 匹配的
    *  evidence 算作当前有效证据——重装到新内容后旧证据保留供回滚,但不让新内容显得已测。 */
   contentHash: string;
-  artifactDigest?: string;
-  targetId?: string;
+  artifactDigest: string;
+  targetId: string;
   recordedAt: string;
-  /** §5 mandatory:report 时计算的 verdict 等级(PROGRESS / CAUTIOUS / REGRESS / NOISE /
-   *  UNDERPOWERED / SOLO)。存字符串而非 import VerdictLevel —— 保 types 层为叶子、不依赖 eval-core。
-   *  measurable 不看 verdict(任何评测都算"已测");verdict 是 promote 门控的事。 */
+  /** Core decision policy 产生的 verdict。存字符串而非引用 policy 类型，保持 types 层为叶子；
+   *  promote 门禁只接受明确列入白名单的值。 */
   verdict?: string;
   decisionReasonCodes?: string[];
-  evidenceReadiness?: 'decision-ready' | 'measurement-only' | 'insufficient';
-  /** §5 mandatory:样本集覆盖。`count`=被测样本数,`hash`=report 的 sampleHashes 排序后摘要
-   *  (同一样本集 ⇒ 同 hash),供 promote / list 不加载重 report 即可判覆盖与"同一用例集"。 */
-  sampleCoverage?: { count: number; hash: string };
-  /** §5 mandatory:可比性 marker。跨 report 比 verdict / Δ 前必须三者一致,否则不可比。 */
-  comparability?: {
-    cliVersion: string;
-    judgePromptHash?: string;
-    debiasMode?: Array<'length' | 'position'>;
-  };
-  coreComparability?: {
+  evidenceReadiness: 'decision-ready' | 'measurement-only' | 'insufficient';
+  /** §5 mandatory：`count` 是 Core execution plan 的样本数，`hash` 是 sealed dataset revision digest。 */
+  sampleCoverage: { count: number; hash: string };
+  coreComparability: {
     runContractDigest: string;
     datasetRevisionDigest: string;
     executionPlanDigest: string;
@@ -66,13 +51,6 @@ export interface ManagedEvidenceRef {
     analysisPlanDigest: string;
     decisionPlanDigest: string;
   };
-  /** §7 #234/#236:这一版被测内容所在的 git commit(full SHA)= 评测时该 variant 的 git ref 解析出的 commit
-   *  (resolveArtifacts 物化时 `git rev-parse <ref>^{commit}`),作每版「还原坐标」指针 —— list / Studio 据此给
-   *  `git checkout <sha> -- <path>` 把源带回这一版(字节级还原由 git 做,omk 不存版本字节)。是 variant 自己的
-   *  ref(可能 branch/tag/HEAD/旧 SHA)而非进程 cwd 的 HEAD —— 内容从 object DB 按 ref 取,故与工作树 dirty
-   *  与否无关。只对本地 git variant 记(远端源还原是重装 fetch-pin SHA;file 源无 git 坐标)。缺失 = 无坐标可
-   *  还原,诚实留空,不臆造。 */
-  gitCommit?: string;
 }
 
 export type ManagedDecisionKind = 'promote' | 'reject' | 'rollback';
@@ -86,11 +64,11 @@ export interface ManagedDecision {
   /** 被该决定接受 / 回滚到的内容 hash —— 锚定「决定的是哪份内容」。promote 取决定时的 record.contentHash;
    *  读时只把与当前 contentHash 匹配的 promote 决定算作「当前版本已 promoted」(旧内容的决定不冒充当前)。 */
   contentHash?: string;
-  /** 该决定锚定的证据 report(promote 取 latestCurrentEvidence 那条的 reportId)——可回溯「凭什么 ship」。 */
-  reportId?: string;
+  /** 该决定锚定的 Core run，可回溯「凭什么 ship」。 */
+  runId?: string;
   /** 越门记录:门禁本应拦下,经 --force 显式越过时记下供审计(spec §7「Overrides must be explicit and
    *  recorded」)。无此字段 = 正常通过门禁。`verdict` 是越门时证据的 verdict(上下文);`overriddenBlocks`
-   *  是真正被越过的判据(drifted / incomparable / verdict_blocked),让审计能回答「越过了什么」—— 只看
+   *  是真正被越过的判据（drifted / verdict_blocked），让审计能回答「越过了什么」—— 只看
    *  verdict 会误导(仅因 drift 越门时 verdict 可能仍是 PROGRESS)。 */
   override?: { verdict: string; overriddenBlocks?: string[] };
 }
@@ -140,8 +118,8 @@ export interface ManagedArtifactSource {
 /** 一条记录一个文件 `.omk/managed/<id>.json`,自带 recordKind + schemaVersion 便于单独迁移。 */
 export interface ManagedArtifactRecord {
   recordKind: 'managed-artifact';
-  /** v2 起 source 带 sourceKind(多源化)。v1(仅 #211)无,按去兼容直接判脏丢弃、不迁移。 */
-  schemaVersion: 2;
+  /** v3 仅接受 Evaluation Core 认证证据；旧记录不迁移。 */
+  schemaVersion: 3;
   /** 稳定身份 = hash(kind, name);源路径是可变属性、不进 id——挪动源文件不孤儿化记录。 */
   id: string;
   name: string;

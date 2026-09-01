@@ -326,7 +326,7 @@ function captureHost(
   });
 }
 
-function legacyEvidence(
+function hostRuntimeEvidence(
   target: CapturedClaudeCliTarget,
   host: CapturedHost,
 ) {
@@ -342,7 +342,7 @@ function resolveIdentity(
   host: CapturedHost,
 ): RuntimeIdentity {
   const capabilities = dshHostCoreExecutorCapabilities();
-  const evidence = legacyEvidence(target, host);
+  const evidence = hostRuntimeEvidence(target, host);
   const facets: RuntimeImplementationFacet[] = [{
     facetId: 'adapter.composition',
     value: {

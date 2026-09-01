@@ -1,5 +1,5 @@
 /**
- * 命令退出信号。业务逻辑 / requireEvaluationReport 等想以特定 exit code 终止时,
+ * 命令退出信号。业务逻辑想以特定 exit code 终止时，
  * throw 这个,不要直接 process.exit。
  *
  * oclif Command.run() 末尾的 try/catch 把 CliExit 转成 this.exit(code);main()

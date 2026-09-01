@@ -7,8 +7,8 @@ import {
   loadCcSessions,
   loadTraceCorpus,
   segmentBySkill,
-  segmentsToResultEntries,
-  ccTracesToResultEntries,
+  segmentsToAnalysisEntries,
+  tracesToAnalysisEntries,
   normalizeSkillName,
   type TraceSession,
 } from '../../src/observability/trace-adapter.js';
@@ -947,7 +947,7 @@ describe('loadCcSessions', () => {
     assert.deepEqual(new Set(sessions.map((session) => session.rootRunId)), new Set(['sessionA']));
     assert.deepEqual(sessions.map((session) => session.role).sort(), ['main', 'subagent']);
 
-    const { segments } = ccTracesToResultEntries(sessionDir);
+    const { segments } = tracesToAnalysisEntries(sessionDir);
     const child = segments.find((segment) => segment.skillName === 'child-skill');
     assert.ok(child);
     assert.equal(child.sessionId, 'sessionA');
@@ -2669,7 +2669,7 @@ done
 【知识缺口】缺少字段 B。
 `);
 
-    const { sessions, segments } = ccTracesToResultEntries(path);
+    const { sessions, segments } = tracesToAnalysisEntries(path);
     const report = buildObservationExperienceReport({
       sessions,
       segments,
@@ -3364,11 +3364,11 @@ describe('source-neutral Trace IR', () => {
       sourcePath: '/trace/subagents/child.jsonl',
       records: [asstRec('a-child', [{ type: 'text', text: 'child' }], { sessionId: 'child' })],
     };
-    const entries = segmentsToResultEntries([
+    const entries = segmentsToAnalysisEntries([
       ...segmentBySkill(main),
       ...segmentBySkill(child),
     ]);
-    assert.equal(new Set(entries.map((entry) => entry.sample_id)).size, 2);
+    assert.equal(new Set(entries.map((entry) => entry.sampleId)).size, 2);
   });
 
   it('keeps record ranges local to each physical trace in grouped timelines', () => {
@@ -4059,7 +4059,7 @@ describe('segmentBySkill', () => {
     assert.equal(segment.metrics.numToolFailures, 0);
     assert.equal(segment.metrics.numToolCancelled, 1);
     assert.equal(segment.metrics.numToolUnknown, 0);
-    const result = segmentsToResultEntries([segment])[0].variants.general;
+    const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.equal(result.numToolFailures, 0);
     assert.equal(result.numToolCancelled, 1);
     assert.equal(result.numToolUnknown, 0);
@@ -4079,7 +4079,7 @@ describe('segmentBySkill', () => {
     assert.equal(segs[0].toolCalls[0].status, 'unknown');
     assert.equal(segs[0].metrics.numToolFailures, 0);
     assert.equal(segs[0].metrics.numToolUnknown, 1);
-    const result = segmentsToResultEntries(segs)[0].variants.general;
+    const result = segmentsToAnalysisEntries(segs)[0].variants.general;
     assert.equal(result.numToolUnknown, 1);
     assert.equal(result.toolSuccessRate, undefined);
   });
@@ -4689,7 +4689,7 @@ describe('segmentBySkill', () => {
     const [segment] = segmentBySkill(session);
     assert.equal(segment.metrics.inputTokens, 0);
     assert.equal(segment.metrics.tokenUsageObserved, false);
-    const projected = segmentsToResultEntries([segment])[0].variants.general;
+    const projected = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.equal(projected.totalTokens, 0);
     assert.equal(projected.tokenUsageReportedByExecutor, false);
   });
@@ -4697,8 +4697,8 @@ describe('segmentBySkill', () => {
 
 // ---------- Segments → ResultEntries ----------
 
-describe('segmentsToResultEntries', () => {
-  it('each segment → one ResultEntry with skill as variant key', () => {
+describe('segmentsToAnalysisEntries', () => {
+  it('each segment → one AnalysisEntry with skill as variant key', () => {
     const s = {
       sessionId: 's1',
       sourcePath: '/t',
@@ -4709,13 +4709,12 @@ describe('segmentsToResultEntries', () => {
       ],
     };
     const segs = segmentBySkill(s);
-    const entries = segmentsToResultEntries(segs);
+    const entries = segmentsToAnalysisEntries(segs);
     assert.equal(entries.length, 1);
-    assert.match(entries[0].sample_id, /^trace:[a-f0-9]{32}$/);
+    assert.match(entries[0].sampleId, /^trace:[a-f0-9]{32}$/);
     assert.ok('audit' in entries[0].variants);
     assert.equal(entries[0].variants.audit.toolCalls?.length, 1);
     assert.equal(entries[0].variants.audit.numToolCalls, 1);
-    assert.equal(entries[0].variants.audit.costReportedByExecutor, false);
     assert.deepEqual(entries[0].variants.audit.toolDistribution, { Read: 1 });
   });
 
@@ -4730,7 +4729,7 @@ describe('segmentsToResultEntries', () => {
         ]),
       ],
     });
-    const result = segmentsToResultEntries([segment])[0].variants.general;
+    const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.deepEqual(result.toolNames, ['Read']);
     assert.deepEqual(result.toolDistribution, { Read: 2 });
   });
@@ -4765,7 +4764,7 @@ describe('segmentsToResultEntries', () => {
     segment.toolCalls[2].statusSource = 'runtime';
     segment.toolCalls[2].success = false;
 
-    const result = segmentsToResultEntries([segment])[0].variants.general;
+    const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.equal(result.toolSuccessRate, 0.67);
   });
 
@@ -4782,7 +4781,7 @@ describe('segmentsToResultEntries', () => {
       ],
     });
 
-    const result = segmentsToResultEntries([segment])[0].variants.general;
+    const result = segmentsToAnalysisEntries([segment])[0].variants.general;
     assert.equal(result.turns?.[0].content.length, 2001);
     assert.equal(String(result.toolCalls?.[0].output).length, 1001);
     assert.equal(segment.turns[0].content, longTurn);
@@ -4798,20 +4797,20 @@ describe('segmentsToResultEntries', () => {
         asstRec('a1', [{ type: 'text', text: 'done' }]),
       ],
     });
-    const original = segmentsToResultEntries([segment])[0].sample_id;
-    const shiftedOrdinal = segmentsToResultEntries([{
+    const original = segmentsToAnalysisEntries([segment])[0].sampleId;
+    const shiftedOrdinal = segmentsToAnalysisEntries([{
       ...segment,
       segmentIndex: segment.segmentIndex + 3,
       endRecordIndex: (segment.endRecordIndex ?? 0) + 20,
-    }])[0].sample_id;
-    const changedBoundary = segmentsToResultEntries([{
+    }])[0].sampleId;
+    const changedBoundary = segmentsToAnalysisEntries([{
       ...segment,
       startRecordIndex: (segment.startRecordIndex ?? 0) + 1,
-    }])[0].sample_id;
-    const changedSkill = segmentsToResultEntries([{
+    }])[0].sampleId;
+    const changedSkill = segmentsToAnalysisEntries([{
       ...segment,
       skillName: 'other',
-    }])[0].sample_id;
+    }])[0].sampleId;
 
     assert.equal(shiftedOrdinal, original);
     assert.notEqual(changedBoundary, original);
@@ -4835,22 +4834,21 @@ describe('segmentsToResultEntries', () => {
       sourcePath: '/t',
       records: [first],
     });
-    const result = segmentsToResultEntries([segment])[0].variants.general;
+    const result = segmentsToAnalysisEntries([segment])[0].variants.general;
 
     assert.equal(result.totalTokens, 42);
     assert.equal(result.tokenUsageReportedByExecutor, undefined);
-    assert.equal(result.durationApiMs, 0);
   });
 });
 
-describe('ccTracesToResultEntries (end-to-end)', () => {
+describe('tracesToAnalysisEntries (end-to-end)', () => {
   it('loads dir, segments, converts to entries', () => {
     writeSession(tmpDir, 'x.jsonl', [
       { type: 'permission-mode', sessionId: 'sx' },
       asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }], { sessionId: 'sx' }),
       userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }], { sessionId: 'sx' }),
     ]);
-    const { entries, sessions, segments } = ccTracesToResultEntries(tmpDir);
+    const { entries, sessions, segments } = tracesToAnalysisEntries(tmpDir);
     assert.equal(sessions.length, 1);
     assert.equal(segments.length, 1);
     assert.equal(entries.length, 1);

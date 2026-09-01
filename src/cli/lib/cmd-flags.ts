@@ -167,9 +167,6 @@ export interface SampleFlags {
   focus?: string;
   append: boolean;
   'no-mock': boolean;
-  fix: boolean;
-  'reports-dir'?: string;
-  treatment?: string;
   'from-traces': boolean;
   'observations-dir'?: string;
   skill?: string;

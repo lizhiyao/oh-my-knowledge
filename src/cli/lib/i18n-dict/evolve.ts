@@ -4,19 +4,13 @@ export type EvolveMessageKey =
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
-  | 'cli.evolve.round_baseline_reused'
   | 'cli.evolve.round_error'
   | 'cli.evolve.round_done'
   | 'cli.evolve.summary'
   | 'cli.evolve.best_path'
   | 'cli.evolve.versions_saved'
   | 'cli.evolve.report_link'
-  | 'cli.evolve.holdout_active'
-  | 'cli.evolve.holdout_disabled'
-  | 'cli.evolve.gate_underpowered'
-  | 'cli.evolve.generalization'
-  | 'cli.evolve.test_disabled'
-  | 'cli.evolve.reject_not_significant'
+  | 'cli.evolve.reject_core_decision'
   | 'cli.evolve.evidence_recorded_managed'
   | 'cli.evolve.snapshot_only_hint';
 
@@ -32,10 +26,6 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.round_baseline': {
     zh: '第 0 轮（基线）：score={score}（{cost}）\n',
     en: 'Round 0 (baseline): score={score} ({cost})\n',
-  },
-  'cli.evolve.round_baseline_reused': {
-    zh: '第 0 轮（基线）：score={score}（复用最新 eval 报告）\n',
-    en: 'Round 0 (baseline): score={score} (reused latest eval report)\n',
   },
   'cli.evolve.round_error': {
     zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
@@ -69,28 +59,8 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
     zh: '📎 --snapshot-only：未写回 source，候选留在 {dir}/。挑选后手动应用，再 omk eval / omk promote。\n',
     en: '📎 --snapshot-only: source not modified; candidates kept in {dir}/. Apply your pick manually, then omk eval / omk promote.\n',
   },
-  'cli.evolve.holdout_active': {
-    zh: '🔀 holdout 切分：训练 {train} / 验收 {holdout}，accept 看 holdout 分（防 train-on-test）\n',
-    en: '🔀 Holdout split: {train} train / {holdout} holdout; accepted on holdout score (guards train-on-test)\n',
-  },
-  'cli.evolve.holdout_disabled': {
-    zh: '⚠️ holdout-ratio={ratio} 样本太少无法切分，已回退全集打分\n',
-    en: '⚠️ holdout-ratio={ratio} too few samples to split; using full-set scoring\n',
-  },
-  'cli.evolve.gate_underpowered': {
-    zh: '⚠️ 决策样本量不足以做显著性门禁，本轮退回点估计接受；增大用例集或降 --holdout-ratio 可启用严格门\n',
-    en: '⚠️ Too few decision samples for the significance gate; fell back to point-estimate accept. Add samples or lower --holdout-ratio to enable the strict gate\n',
-  },
-  'cli.evolve.generalization': {
-    zh: '🔒 锁定 test 集（{count} 条，全程不参与选择）：泛化分 {score}\n',
-    en: '🔒 Locked test set ({count} samples, never used for selection): generalization {score}\n',
-  },
-  'cli.evolve.reject_not_significant': {
-    zh: '（差异不显著）',
-    en: ' (not significant)',
-  },
-  'cli.evolve.test_disabled': {
-    zh: '⚠️ test-ratio={ratio} 样本太少无法做三路切分，已回退两路 holdout，本次无泛化分\n',
-    en: '⚠️ test-ratio={ratio} too few samples for a 3-way split; fell back to 2-way holdout, no generalization score this run\n',
+  'cli.evolve.reject_core_decision': {
+    zh: '（Core 决策门禁未通过）',
+    en: ' (Core decision gate did not pass)',
   },
 };

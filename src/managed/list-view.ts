@@ -39,8 +39,6 @@ export interface ManagedListRow {
   reachable: boolean;
   /** 当前有效证据(若有)里 recordedAt 最新那条的 verdict。 */
   latestVerdict?: string;
-  /** 该证据的可比性 marker —— 跨报告比 verdict 前需一致。 */
-  comparability?: { cliVersion: string; judgePromptHash?: string; debiasMode?: Array<'length' | 'position'> };
   /** 当前 promoted 版本是否经 `--force` override 采用(只读审计标);非越门 / 已 rollback / 未采用 → undefined。
    *  override 的写仍只在 CLI(`promote --force`),Studio 只读展示 —— 见 spec §9(#238)。 */
   override?: { verdict: string; overriddenBlocks?: string[] };
@@ -111,7 +109,6 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     drifted,
     reachable: probe.reachable,
     ...(latest?.verdict ? { latestVerdict: latest.verdict } : {}),
-    ...(latest?.comparability ? { comparability: latest.comparability } : {}),
     ...(latest?.recordedAt ? { recordedAt: latest.recordedAt } : {}),
     ...(override ? { override } : {}),
     ...(gap.marker === 'gap' && gap.latest

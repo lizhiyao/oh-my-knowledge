@@ -228,7 +228,7 @@ function dependencyDoctor(
   });
 }
 
-function executorPreflight(
+export function createNodeHostPreflightDeclarations(
   compiled: CliEvaluationCompileResult,
   environment: NodeJS.ProcessEnv,
   projectRoot: string,
@@ -320,7 +320,11 @@ async function executorConfiguration(
   environment: NodeJS.ProcessEnv,
   projectRoot: string,
 ): Promise<ProductionExecutorAdapterConfiguration> {
-  const preflightDeclarations = executorPreflight(compiled, environment, projectRoot);
+  const preflightDeclarations = createNodeHostPreflightDeclarations(
+    compiled,
+    environment,
+    projectRoot,
+  );
   const capturedEnvironment = classifiedEnvironment(environment);
   switch (implementationId) {
     case 'codex':

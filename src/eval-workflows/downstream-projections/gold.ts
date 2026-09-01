@@ -51,6 +51,20 @@ function normalizedIdentity(value: string): string {
   return value.trim().toLocaleLowerCase('en-US');
 }
 
+function sealedEvaluatorRuntimeAliases(config: unknown): string[] {
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) return [];
+  const runtime = (config as Record<string, unknown>).runtime;
+  if (runtime === null || typeof runtime !== 'object' || Array.isArray(runtime)) return [];
+  const { executorId, model } = runtime as Record<string, unknown>;
+  if (typeof model !== 'string' || model.trim() === '') return [];
+  return [
+    model,
+    ...(typeof executorId === 'string' && executorId.trim() !== ''
+      ? [`${executorId}:${model}`]
+      : []),
+  ];
+}
+
 function jsonNumber(value: number): number | null {
   return Number.isFinite(value) ? value : null;
 }
@@ -200,6 +214,7 @@ export function compareGoldToCoreRun(
     evaluator.implementationId,
     evaluatorRuntime.identity.implementationId,
     evaluatorRuntime.identity.fingerprint,
+    ...sealedEvaluatorRuntimeAliases(evaluator.config),
   ].map(normalizedIdentity);
   const contaminationWarning = runtimeIds.includes(annotator)
     ? `gold annotator "${gold.metadata.annotator}" exactly matches the selected evaluator identity; agreement may be inflated`

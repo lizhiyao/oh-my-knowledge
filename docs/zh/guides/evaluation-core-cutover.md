@@ -12,8 +12,11 @@
 - `omk eval gold compare` 接受 Core `runId`，并要求显式提供 `--target`、`--evaluator` 和 `--metric`；
 - Studio 只列出 Core evaluation run；doctor 与 observe 文档继续保持独立；
 - managed evidence 与 evolve 接受决定只接纳通过验证的 Core projection；
+- managed 记录使用 schema v3。schema v2 记录会被拒绝而不是迁移；请重新安装 artifact，并重新运行 Core 评测以建立证据；
 - 诊断后处理只投影经过验证的 Core 失败、缺失证据、排除项和稳定 reason code，不读取旧结果行，也不虚构建议；
 - 独立 `--repeat` run 只把 run-level variance 发布为 Series analysis；没有预注册的 Series 总体决定时，release gate 会失败关闭，单次 member 也不会写入受管证据；
 - `--dry-run` 只完成 Runtime assembly 与 sealed plan prepare，不打开 Target 或 Evaluator。
+
+迁移方式有意保持为人工操作，而不是程序转换：如有需要，可归档或删除旧的扁平报告文件，然后重新运行评测。OMK 不会根据旧报告臆造 Core Run Plan、lineage、digest 或决策证据，也不会从旧文件重建历史分数曲线。
 
 这是存储和应用 schema 的切换，不改变测量 construct。冻结的评分类 prompt、五层评分、Bootstrap CI、Krippendorff alpha 与 length-debias 语义保持不变。

@@ -1,13 +1,10 @@
 import { dirname, join, resolve } from 'node:path';
-import { computeVerdict } from '../eval-core/verdict.js';
-import { configVariantsToSpecs, loadEvalConfig } from '../inputs/eval-config.js';
-import { runEvaluation, runMultiple } from '../eval-workflows/run-evaluation.js';
-import type { Report } from '../types/index.js';
+import { loadEvalConfig } from '../inputs/eval-config.js';
 import {
-  createDshHostExecutor,
   type DshAgentLike,
   type DshHostContextLike,
 } from './host-executor.js';
+import { runDshCoreEvaluation } from './core-command.js';
 
 export {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -95,30 +92,6 @@ function projectRoot(configPath: string): string {
   return dirname(configPath);
 }
 
-function modelFor(agent: DshAgentLike, configured: string | undefined): string {
-  const model = configured?.trim() || agent.options.model?.trim();
-  if (!model) {
-    throw new Error('当前 DSH session 没有可继承的模型，且 eval.yaml 未配置 model。');
-  }
-  return model;
-}
-
-function normalizeJudgeModels(
-  configured: import('../types/index.js').JudgeConfig[] | undefined,
-  model: string,
-): import('../types/index.js').JudgeConfig[] {
-  if (!configured || configured.length === 0) return [{ executor: 'dsh-host', model }];
-  return configured.map((judge) => {
-    if (judge.executor === 'dsh-host') {
-      throw new Error('dsh-host 是 OMK 内部执行器标识；评委要复用当前 DSH 时，请使用 executor: dsh 或省略 judgeModels。');
-    }
-    return {
-      ...judge,
-      executor: judge.executor === 'dsh' ? 'dsh-host' : judge.executor,
-    };
-  });
-}
-
 async function executeEvalCommand(
   ctx: DshPluginContextLike,
   invocation: DshCommandInvocationLike,
@@ -140,78 +113,31 @@ async function executeEvalCommand(
     };
   }
 
-  const model = modelFor(invocation.agent, config.model);
-  const executor = createDshHostExecutor(ctx, {
+  const root = projectRoot(configPath);
+  const result = await runDshCoreEvaluation({
+    host: ctx,
     parentAgent: invocation.agent,
     signal: invocation.signal,
+    config,
+    projectRoot: root,
   });
-  const judgeModels = normalizeJudgeModels(config.judgeModels, model);
-  const currentSessionProvesConnectivity = config.model === undefined
-    && ((config.noJudge ?? false) || judgeModels.every((judge) => (
-      judge.executor === 'dsh-host' && judge.model === model
-    )));
-  const root = projectRoot(configPath);
-  const outputDir = join(root, '.omk', 'reports');
-  const options = {
-    samplesPath: config.samples,
-    skillDir: join(root, 'skills'),
-    variantSpecs: configVariantsToSpecs(config.variants),
-    model,
-    outputDir,
-    noJudge: config.noJudge ?? false,
-    concurrency: config.concurrency ?? 1,
-    timeoutMs: config.timeoutMs,
-    noCache: config.noCache ?? false,
-    executorName: 'dsh-host',
-    executorOverrides: { 'dsh-host': executor },
-    judgeModels,
-    skipConnectivity: currentSessionProvesConnectivity,
-    skipDoctor: config.skipDoctor ?? false,
-    lang: 'zh' as const,
-    mcpConfig: config.mcpConfig,
-    bootstrap: config.bootstrap ?? true,
-    bootstrapSamples: config.bootstrapSamples,
-    holdoutRatio: config.holdoutRatio,
-    judgeRepeat: config.judgeRepeat,
-    lengthDebias: config.lengthDebias,
-    budget: config.budget,
-    strictBaseline: config.strictBaseline,
-    noDiagnostic: config.noDiagnostic,
-  };
-  const result = config.repeat && config.repeat > 1
-    ? await runMultiple({ ...options, repeat: config.repeat })
-    : await runEvaluation(options);
-  const report = result.report as Report;
-  const goldMessages: string[] = [];
-  if (config.goldDir) {
-    const { attachGoldAgreementToReport } = await import('../grading/gold-cli.js');
-    const gold = attachGoldAgreementToReport({
-      report,
-      goldDir: config.goldDir,
-      outputDir,
-      samples: config.bootstrapSamples,
-    });
-    if (gold.result && gold.gold) {
-      const alpha = Number.isFinite(gold.result.agreement.alpha)
-        ? gold.result.agreement.alpha.toFixed(3)
-        : '不可计算';
-      goldMessages.push(`Gold 一致性：Krippendorff α=${alpha}，N=${gold.result.agreement.sampleCount}，标注者=${gold.gold.metadata.annotator}`);
-      if (gold.result.contaminationWarning) {
-        goldMessages.push(`⚠ Gold 污染提示：${gold.result.contaminationWarning}`);
-      }
-    } else {
-      goldMessages.push(`⚠ Gold 数据未加载：${gold.loadIssues.join('；') || config.goldDir}`);
-    }
-  }
-  const verdict = computeVerdict(report);
+  const decision = result.outcome.decision;
+  const verdict = decision?.decisionStatus === 'decided'
+    ? decision.verdict
+    : result.outcome.gate.gateStatus.toUpperCase();
+  const reasonCodes = decision === undefined || decision.decisionStatus === 'failed'
+    ? result.outcome.gate.reasonCodes
+    : decision.reasonCodes;
+  const runId = result.outcomeKind === 'run'
+    ? result.outcome.runId
+    : result.outcome.seriesId;
   return {
     kind: 'success',
     text: [
-      `OMK 评测完成：${verdict.level}`,
-      verdict.headline,
-      `报告：${report.id}`,
-      ...(result.filePath ? [`文件：${result.filePath}`] : []),
-      ...goldMessages,
+      `OMK Core 评测完成：${verdict}`,
+      `原因：${reasonCodes.join('、') || '无'}`,
+      `Run：${runId}`,
+      `产物目录：${result.outputDirectory}`,
     ].join('\n'),
   };
 }
@@ -244,13 +170,21 @@ async function studioUrl(
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const omkDir = join(cwd, '.omk');
   const { createReportServer } = await import('../server/report-server.js');
+  const {
+    createNodeCoreContentStore,
+    createNodeCoreRunArtifactStore,
+  } = await import('../eval-workflows/artifact-store/index.js');
+  const { createCoreStudioCatalog } = await import('../eval-workflows/studio-catalog/index.js');
+  const reportsDir = join(omkDir, 'reports');
+  const contentStore = createNodeCoreContentStore(join(reportsDir, 'content'));
   state.server = createReportServer({
     port: 0,
-    reportsDir: join(omkDir, 'reports'),
+    coreStudioCatalog: createCoreStudioCatalog(createNodeCoreRunArtifactStore(reportsDir, {
+      contentResolver: contentStore,
+    })),
     analysesDir: join(omkDir, 'observe-health'),
     doctorsDir: join(omkDir, 'doctors'),
     observationsDir: join(omkDir, 'observe-inbox'),
-    jobsDir: join(omkDir, 'jobs'),
     managedDir: join(omkDir, 'managed'),
     conversationCatalog: state.catalog,
   });

@@ -1,6 +1,6 @@
 # Evaluation Core Studio 投影
 
-> 状态：[#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535) 的只读 catalog／view model 边界，以及 [#537](https://github.com/lizhiyao/oh-my-knowledge/issues/537) 的隔离 renderer／route adapter。本阶段不切换生产 Studio route，也不读取旧报告。
+> 状态：已实现。[#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535) 的只读 catalog／view model 边界与 [#537](https://github.com/lizhiyao/oh-my-knowledge/issues/537) 的 renderer／route adapter 已成为生产 Evaluation 视图，只读取通过认证的 Core run。
 
 ## 一、权威边界
 
@@ -45,10 +45,10 @@ detail view 明确省略原始 input、execution context、expected、evaluation
 
 renderer 会转义所有投影值。全部导航路径都由调用方通过 `CoreStudioRenderRoutes` 注入，不假设 host、port 或部署方式。表格具备 caption 与限定作用域的列标题，status group 带无障碍标签，中英文视图保留完全相同的事实。
 
-`createCoreStudioRouteHandler()` 是 `CoreStudioCatalog` 之上的纯 HTTP 形状 adapter。它返回不可变 response envelope，不依赖 Node request／response object，因此后续 host 可以挂载它，而不必把 server authority 交给 catalog。调用方分别提供 HTML／API base path，并暴露列表与详情资源。不匹配的路径返回 `undefined`，非法或不存在的 identifier 返回稳定 404，不支持的方法返回 405；source failure 只返回脱敏的 `core_studio_source_unavailable`，不暴露 exception text 或 filesystem path。
+`createCoreStudioRouteHandler()` 是 `CoreStudioCatalog` 之上的纯 HTTP 形状 adapter。它返回不可变 response envelope，不依赖 Node request／response object，因此生产 host 可以挂载它，而不必把 server authority 交给 catalog。调用方分别提供 HTML／API base path，并暴露列表与详情资源。不匹配的路径返回 `undefined`，非法或不存在的 identifier 返回稳定 404，不支持的方法返回 405；source failure 只返回脱敏的 `core_studio_source_unavailable`，不暴露 exception text 或 filesystem path。
 
 ## 五、迁移边界
 
-Core Studio 模块不导入旧 `ReportStore`、`EvaluationReport`、`VariantResult` 或结果行。本切片不修改现有生产 server、skill index、route 与旧 renderer；后续 PR 会挂载独立 handler，并把 consumer 单向切到版本化 view，不引入 legacy reader、adapter、shadow read 或双视图。
+Core Studio 模块不导入已删除的旧 `ReportStore`、旧 `EvaluationReport`、`VariantResult` 或结果行。生产 server 直接挂载 Core handler，skill index 消费 Core card，旧 evaluation route 与 renderer 已不存在；没有 legacy reader、adapter、shadow read 或双视图。
 
-最终 `omk eval` 与报告 wire 切换仍是 [#450](https://github.com/lizhiyao/oh-my-knowledge/issues/450) 下独立的 `BREAKING-SCHEMA` 步骤。本 projection 不改变 evaluator、analysis formula、prompt、missing-data policy 或 verdict 语义，因此不属于 `BREAKING-COMPARABILITY`。
+这次单向删除属于 `BREAKING-SCHEMA`：旧报告文件不会迁移，也不会读取。本 projection 不改变 evaluator、analysis formula、prompt、missing-data policy 或 verdict 语义，因此不属于 `BREAKING-COMPARABILITY`。

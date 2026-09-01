@@ -8,7 +8,7 @@ import {
 
 // 评分类 prompt 单一来源 —— 直接决定分数的 LLM 评委 prompt（rubric 主评委 + RAG + 语义相似度）。
 // 这些是测量学不变量:文本字节决定可比性,改动须配合 prompt-registry 的冻结 hash bump
-// (BREAKING-COMPARABILITY)。执行器调用 / JSON 解析逻辑留在 grading/judge.ts 与 grading/assertions.ts。
+// (BREAKING-COMPARABILITY)。执行器调用 / JSON 解析逻辑位于 Evaluation Core runtime adapter。
 
 // ===========================================================================
 // Rubric 主评委 prompt
@@ -17,9 +17,9 @@ import {
 /**
  * Judge prompt template version.
  *
- * The version string encodes WHICH debias / context features the judge sees, so reports
- * tagged with the same hash are score-comparable; a mismatched hash means "we changed how
- * we ask the judge to think" and the reports should not be compared blind. Bump it (and the
+ * The version string encodes WHICH debias / context features the judge sees, so sealed
+ * evaluation plans carrying the same prompt hash use the same instrument. A mismatched
+ * hash means "we changed how we ask the judge to think". Bump it (and the
  * frozen hashes in `test/shared/prompt-registry-freeze.test.ts`) whenever the template's bytes
  * change — that change is BREAKING-COMPARABILITY.
  *
@@ -85,8 +85,8 @@ export function buildJudgePrompt(
 }
 
 /**
- * Stable hash of the judge prompt template. Saved into ReportMeta.judgePromptHash so
- * downstream readers can detect "the judge prompt changed between these two reports".
+ * Stable hash of the judge prompt template. Evaluation Core incorporates it into evaluator
+ * instrument identity so plan and report authentication can detect a changed instrument.
  *
  * `lengthDebias` defaults to true. Pass false (via `--no-debias-length`) to drop the
  * length-debias instruction; that produces the debias-off prompt variant, whose hash

@@ -87,12 +87,9 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   },
 
   // —— 非评分类:不决定 composite / verdict / assertion 分数,不冻结,仅登记供发现 ——
-  { promptId: 'failure-diagnostic', purpose: '失败诊断(root cause / 修复建议)', module: 'src/grading/diagnostic.ts', measurementInvariant: false },
-  { promptId: 'failure-clusterer', purpose: '失败案例聚类', module: 'src/analysis/failure-clusterer.ts', measurementInvariant: false },
   { promptId: 'hedging-classifier', purpose: 'hedging 判定(喂 gap-signal,非评分)', module: 'src/analysis/hedging-classifier.ts', measurementInvariant: false },
   { promptId: 'sample-generator', purpose: '用例生成(skill / trace → samples)', module: 'src/authoring/generator.ts', measurementInvariant: false },
-  { promptId: 'sample-fixer', purpose: '坏用例修复', module: 'src/authoring/sample-fixer.ts', measurementInvariant: false },
-  { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/authoring/evolver.ts', measurementInvariant: false },
+  { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/authoring/core-evolver.ts', measurementInvariant: false },
   { promptId: 'doctor-fixer', purpose: 'doctor 健康项修复向导', module: 'src/doctor/fixer.ts', measurementInvariant: false },
   { promptId: 'skill-health', purpose: 'skill 健康度审计(仅 CLI doctor,不进 eval 评分门禁)', module: 'src/shared/llm-prompts/skill-health.ts', measurementInvariant: false },
   { promptId: 'skill-health-merge', purpose: '多采样 finding 同根因归并(doctor 多采样默认 llm 归并)', module: 'src/shared/llm-prompts/skill-health-merge.ts', measurementInvariant: false },

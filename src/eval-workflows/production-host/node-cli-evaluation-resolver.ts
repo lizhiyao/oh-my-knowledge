@@ -34,6 +34,10 @@ export interface ResolveNodeCliEvaluationRequestOptions {
   readonly materializationRoot: string;
   /** Required when repeatCount > 1; identity allocation remains host-owned. */
   readonly seriesInstanceId?: string;
+  /** Host-owned in-process Runtime implementations that need no executable resource. */
+  readonly hostExecutorImplementationIds?: readonly string[];
+  /** Host Runtime implementations whose reasoning configuration is provider-owned. */
+  readonly hostOwnedEffortImplementationIds?: readonly string[];
 }
 
 interface ResourceRegistry {
@@ -125,8 +129,10 @@ async function resolveTargetRuntime(
   resources: ResourceRegistry,
   projectRoot: string,
   requestedExecutorId: string,
+  hostExecutorImplementationIds: ReadonlySet<string>,
 ): Promise<ResolvedTargetRuntime> {
-  if (PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS.has(requestedExecutorId)) {
+  if (PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS.has(requestedExecutorId)
+      || hostExecutorImplementationIds.has(requestedExecutorId)) {
     return { implementationId: requestedExecutorId };
   }
   const executablePath = absolute(projectRoot, requestedExecutorId);
@@ -542,6 +548,28 @@ export async function resolveNodeCliEvaluationRequest(
     fieldPath: 'resolver.options',
     message: 'projectRoot 与 materializationRoot 必须是绝对路径。',
   });
+  const hostExecutorImplementationIds = new Set(
+    options.hostExecutorImplementationIds ?? [],
+  );
+  const hostOwnedEffortImplementationIds = new Set(
+    options.hostOwnedEffortImplementationIds ?? [],
+  );
+  if ([...hostExecutorImplementationIds].some((implementationId) => (
+    typeof implementationId !== 'string'
+      || implementationId.trim() === ''
+      || implementationId !== implementationId.trim()
+  ))) fail({
+    code: 'CLI_INPUT_RESOLUTION_FAILED',
+    fieldPath: 'resolver.options.hostExecutorImplementationIds',
+    message: '宿主 Runtime implementationId 必须是非空规范字符串。',
+  });
+  if ([...hostOwnedEffortImplementationIds].some((implementationId) => (
+    !hostExecutorImplementationIds.has(implementationId)
+  ))) fail({
+    code: 'CLI_INPUT_RESOLUTION_FAILED',
+    fieldPath: 'resolver.options.hostOwnedEffortImplementationIds',
+    message: '宿主管理 effort 的 Runtime 必须同时声明为宿主 Runtime。',
+  });
   if (request.values.orchestration.batch) fail({
     code: 'CLI_INPUT_RESOLUTION_FAILED',
     fieldPath: 'orchestration.batch',
@@ -602,6 +630,7 @@ export async function resolveNodeCliEvaluationRequest(
     resources,
     options.projectRoot,
     request.values.targetRuntime.executorId,
+    hostExecutorImplementationIds,
   );
   const mocks = await resolvedMocks(
     resources,
@@ -649,7 +678,9 @@ export async function resolveNodeCliEvaluationRequest(
           implementationResource: targetRuntime.implementationResource,
         }),
         model: request.values.targetRuntime.model,
-        effort: request.values.targetRuntime.effort,
+        ...(hostOwnedEffortImplementationIds.has(targetRuntime.implementationId)
+          ? {}
+          : { effort: request.values.targetRuntime.effort }),
       },
       behavior: {
         systemInstructions: artifact.content === null ? 'not-required' as const : 'required' as const,

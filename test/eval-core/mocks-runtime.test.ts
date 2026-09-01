@@ -421,15 +421,15 @@ describe('materializeForCliConfigDir', () => {
   });
 });
 
-describe('renderEnvironmentSection (task-planner)', () => {
+describe('renderEnvironmentSection', () => {
   it('returns null when no environment field', async () => {
-    const { renderEnvironmentSection } = await import('../../src/eval-core/task-planner.js');
+    const { renderEnvironmentSection } = await import('../../src/eval-core/environment-renderer.js');
     assert.equal(renderEnvironmentSection(undefined), null);
     assert.equal(renderEnvironmentSection({}), null);
   });
 
   it('renders cli_available', async () => {
-    const { renderEnvironmentSection } = await import('../../src/eval-core/task-planner.js');
+    const { renderEnvironmentSection } = await import('../../src/eval-core/environment-renderer.js');
     const out = renderEnvironmentSection({ cli_available: ['node', 'git'] });
     assert.ok(out!.includes('题设声明可用的 CLI'));
     assert.ok(out!.includes('`node`'));
@@ -438,7 +438,7 @@ describe('renderEnvironmentSection (task-planner)', () => {
   });
 
   it('renders files_available + notes', async () => {
-    const { renderEnvironmentSection } = await import('../../src/eval-core/task-planner.js');
+    const { renderEnvironmentSection } = await import('../../src/eval-core/environment-renderer.js');
     const out = renderEnvironmentSection({
       files_available: ['~/.req-tool-api.json', '$SKILL_DIR/scripts/x.js'],
       notes: 'DevAPI 凭证有效',
@@ -446,33 +446,6 @@ describe('renderEnvironmentSection (task-planner)', () => {
     assert.ok(out!.includes('~/.req-tool-api.json'));
     assert.ok(out!.includes('$SKILL_DIR/scripts/x.js'));
     assert.ok(out!.includes('DevAPI 凭证有效'));
-  });
-});
-
-describe('buildTasksFromArtifacts — environment injection', () => {
-  it('prepends environment section to user prompt', async () => {
-    const { buildTasksFromArtifacts } = await import('../../src/eval-core/task-planner.js');
-    const tasks = buildTasksFromArtifacts(
-      [{
-        sample_id: 's1',
-        prompt: '查询Daily标签的工作项',
-        environment: { cli_available: ['node'] },
-      }],
-      [{ name: 'baseline', kind: 'baseline', source: 'baseline', content: null }],
-    );
-    assert.equal(tasks.length, 1);
-    assert.ok(tasks[0].prompt.includes('题设环境声明'));
-    assert.ok(tasks[0].prompt.includes('`node`'));
-    assert.ok(tasks[0].prompt.endsWith('查询Daily标签的工作项'));
-  });
-
-  it('plain prompt (no env) unchanged', async () => {
-    const { buildTasksFromArtifacts } = await import('../../src/eval-core/task-planner.js');
-    const tasks = buildTasksFromArtifacts(
-      [{ sample_id: 's1', prompt: 'hello' }],
-      [{ name: 'baseline', kind: 'baseline', source: 'baseline', content: null }],
-    );
-    assert.equal(tasks[0].prompt, 'hello');
   });
 });
 

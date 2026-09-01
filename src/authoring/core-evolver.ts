@@ -14,7 +14,7 @@ import type { StoredCoreRunArtifacts } from '../eval-workflows/artifact-store/in
 import { parseCompositeTableValue } from '../eval-workflows/runtime-adapter/analysis/composite-table.js';
 import { createExecutor } from '../executors/index.js';
 import { runCoreEvaluationCommand } from '../cli/lib/run-core-evaluation.js';
-import { buildImprovementPrompt, computeEditDelta } from './evolver.js';
+import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
 import { distributableCopyFilter } from '../inputs/content-hash.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请依据真实评测弱项对 skill 做最小、可审查的修改。保留有效内容，不重排无关结构，不添加泛化空话。直接输出改进后的完整 skill，不要添加代码围栏或解释。`;
@@ -47,7 +47,7 @@ export interface CoreEvolverOptions {
     accepted?: boolean;
     costUSD?: number;
     costReported?: boolean;
-    significant?: boolean;
+    decisionAccepted?: boolean;
     error?: string;
   }>) => void) | null;
 }
@@ -338,8 +338,11 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     const refreshedCurrent = targetMeasurement(artifacts, 'control');
     totalCostUSD += candidate.costUSD;
     if (!candidate.costReported) costReported = false;
-    const accepted = coreAccepted(artifacts) && candidate.score > bestScore;
-    const delta = Number((candidate.score - bestScore).toFixed(4));
+    // Core Decision is the sole admission authority. Comparing the candidate score with a score
+    // from an earlier run would add an unsealed, cross-run gate whose sampling/runtime noise is
+    // not represented by the current comparison family.
+    const accepted = coreAccepted(artifacts);
+    const delta = Number((candidate.score - refreshedCurrent.score).toFixed(4));
     if (accepted) {
       currentContent = candidateContent!;
       currentPath = candidatePath!;
@@ -369,13 +372,14 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
       accepted,
       costUSD: improvement.costUSD + candidate.costUSD,
       costReported: improvement.costReportedByExecutor !== false && candidate.costReported,
-      significant: accepted,
+      decisionAccepted: accepted,
     });
     if (options.target !== null && bestScore >= options.target) break;
     if (consecutiveRejects >= 2) break;
   }
 
   let evidence: StoredCoreRunArtifacts | undefined;
+  let finalScore = bestScore;
   if (bestRound > 0 && options.writeBackToSource) {
     // Final admission compares the untouched original source with the selected snapshot. The source
     // is written only after that authenticated Core decision passes, so a failed final run cannot
@@ -385,13 +389,14 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
       throw new Error('Core evolve 最终写回门禁未通过；源文件保持不变。');
     }
     const finalMeasurement = targetMeasurement(evidence, 'treatment');
+    finalScore = finalMeasurement.score;
     totalCostUSD += finalMeasurement.costUSD;
     if (!finalMeasurement.costReported) costReported = false;
     writeFileSync(sourcePath, currentContent);
   }
   return {
     startScore: baseline.score,
-    finalScore: bestScore,
+    finalScore,
     bestRound,
     totalRounds: trajectory.length - 1,
     totalCostUSD: Number(totalCostUSD.toFixed(6)),

@@ -35,7 +35,7 @@ interface RoundProgressInfo {
   costUSD?: number;
   costReported?: boolean;
   error?: string;
-  significant?: boolean;
+  decisionAccepted?: boolean;
 }
 
 interface TrajectoryEntry {
@@ -229,7 +229,7 @@ export async function runEvolve(
       // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
       writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, significant }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
@@ -242,8 +242,7 @@ export async function runEvolve(
           }));
         } else if (phase === 'done') {
           const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
-          // 门拒掉「均分上升但不显著」的候选时，补一句原因，否则 (+0.0x) ✗ REJECT 看着矛盾。
-          const rejectNote = !accepted && significant === false ? tCli('cli.evolve.reject_not_significant', lang) : '';
+          const rejectNote = !accepted && decisionAccepted === false ? tCli('cli.evolve.reject_core_decision', lang) : '';
           const status: string = accepted ? '✓ ACCEPT' : `✗ REJECT${rejectNote}`;
           process.stderr.write(tCli('cli.evolve.round_done', lang, {
             round, score: score!.toFixed(2), delta: delta_, status, cost: fmtRoundCost(costUSD!, costReported !== false),

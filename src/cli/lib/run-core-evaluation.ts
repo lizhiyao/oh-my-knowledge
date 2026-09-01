@@ -27,7 +27,7 @@ import {
 } from '../../eval-workflows/downstream-projections/index.js';
 import { discoverBatchSkills } from '../../inputs/skill-loader.js';
 import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
-import { generateRunId } from '../../eval-core/evaluation-reporting.js';
+import { generateRunId } from '../../shared/run-id.js';
 import type { RunConfig } from './parse-run-config.js';
 import type { CliLang } from './i18n.js';
 
@@ -115,7 +115,6 @@ async function announceCoreReport(
   const { createCoreStudioCatalog } = await import('../../eval-workflows/studio-catalog/index.js');
   const { createReportServer } = await import('../../server/report-server.js');
   const server = createReportServer({
-    reportsDir: outputDirectory,
     coreStudioCatalog: createCoreStudioCatalog(store),
   });
   const serverUrl = await server.start();

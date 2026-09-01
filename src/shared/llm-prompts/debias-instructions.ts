@@ -1,7 +1,6 @@
 // 评委 prompt 的共享去偏 / 中性化指令 —— 单一来源。
 //
-// 此前这几段在 grading/judge.ts(rubric 评委)与 grading/assertions.ts(RAG 评委)各写一份,
-// 改一处漏一处(J3 即如此)。统一收口于此,两侧 import。
+// Rubric 与 RAG 评委共享这些片段，统一收口于此，避免不同 evaluator 漂移。
 //
 // 两套变体是有意的、不要强并成一条:
 //   - 全版(LENGTH_DEBIAS_INSTRUCTION / PRESENTATION_NEUTRALITY_INSTRUCTION):给 rubric 评委,

@@ -2,7 +2,6 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { renderReportDocumentDetail, renderTrendsPage, renderRunList } from '../renderer/html-renderer.js';
 import { renderSkillList } from '../renderer/skill-list-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderDoctorDetail } from '../renderer/doctor-detail-renderer.js';
@@ -18,20 +17,15 @@ import {
   renderConversationIndexPage,
 } from '../renderer/conversation-renderer.js';
 import { DEFAULT_LANG, e, t, layout } from '../renderer/layout.js';
-import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows, buildVersionScores, type ReportScoreView } from '../managed/index.js';
+import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../renderer/managed-history-renderer.js';
-import { DEFAULT_JOBS_DIR } from '../eval-core/default-dirs.js';
-import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir, projectReportsDir, globalReportsDir } from '../eval-core/measurement-dirs.js';
-import { evalGraphDirForReportOutput } from '../artifact-graph/eval.js';
+import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../eval-core/measurement-dirs.js';
 import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../eval-core/artifact-index.js';
 import { isReportFileName, reportFilePath, reportFileStem } from '../eval-core/artifact-file-names.js';
 import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
-import { createFileJobStore } from './job-store.js';
-import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
-import { createIndexedReportStore } from './indexed-report-store.js';
-import type { JobStore, ReportStore, DoctorReport } from '../types/index.js';
+import type { DoctorReport } from '../types/index.js';
 import { parseDoctorReport } from '../shared/doctor-report.js';
 import {
   confidenceOf,
@@ -71,7 +65,6 @@ interface ReportServerOptions {
   /** 监听 host。默认 '127.0.0.1'(只允许本机访问,容器/远程场景看不到)。
    *  暴露到容器外 / 局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */
   host?: string;
-  reportsDir?: string;
   /** observe-health 报告目录(项目 .omk/observe-health 或全局),或一个按请求动态解析它的函数。
    *  传函数 → 每次请求重解析(长会话里项目首次 omk observe 后从 global 实时切回 project);
    *  传字符串 → 固定到该目录(测试 / 显式覆盖);默认动态解析 project→global 权威目录。 */
@@ -79,13 +72,10 @@ interface ReportServerOptions {
   /** 体检报告目录(项目 .omk/doctors 或全局),或一个按请求动态解析它的函数。三模式同 analysesDir。 */
   doctorsDir?: string | (() => string);
   observationsDir?: string;
-  jobsDir?: string;
   /** 受管目录(.omk/managed 或全局),或一个按请求动态解析它的函数。只读消费,供 /managed 决策史页。
    *  传函数 → 每次请求重解析(长会话里跟 omk list 同口径:项目首次 install 后从 global 实时切回 project);
    *  传字符串 → 固定到该目录(测试 / 显式覆盖);默认动态解析 project→global 权威目录。 */
   managedDir?: string | (() => string);
-  store?: ReportStore;
-  jobStore?: JobStore;
   /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */
   conversationCatalog?: ConversationCatalog;
   /** Evaluation 页面唯一事实源。提供后，/reports 与 /api/reports 只读 Core artifacts。 */
@@ -96,19 +86,6 @@ interface ReportServerOptions {
   /** 是否把别项目的 doctor 索引卡片合进 skill 首页 / 详情兜底(机器级总览)。
    *  默认 false;studio 仅在「无 --doctors-dir 且无 --global」的默认机器级模式传 true。 */
   includeDoctorCards?: boolean;
-}
-
-function createEvaluationDisabledReportStore(): ReportStore {
-  return Object.freeze({
-    list: async () => [],
-    get: async () => null,
-    save: async () => { throw new Error('Legacy evaluation report writes are disabled.'); },
-    update: async () => null,
-    remove: async () => false,
-    exists: async () => false,
-    findByVariant: async () => [],
-    findByArtifactHash: async () => [],
-  });
 }
 
 interface AnalysisListItem {
@@ -538,79 +515,39 @@ function fmtHistDate(ts: string | undefined, lang: Lang): string {
   } catch { return ts; }
 }
 
-// 报告详情页顶部「skill 上下文」:doctor/eval/observe 维度切换器 + 「全部历史」弹框(该 skill 历次 run)。
-// observe 详情是 fleet 级日报,无 per-skill 页,observe chip 只当状态点不可点。
-function buildSkillContext(entry: SkillIndexEntry, currentDim: 'doctor' | 'eval', currentReportId: string, insights: Insight[], lang: Lang): SkillReportContext {
+// Doctor 详情只链接 doctor／observe 独立事实源。Evaluation 由 Core Studio 单独呈现。
+function buildSkillContext(entry: SkillIndexEntry, currentReportId: string, insights: Insight[], lang: Lang): SkillReportContext {
   const zh = lang === 'zh';
-  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const amp = lang === DEFAULT_LANG ? '' : `&lang=${lang}`;
   type Band = 'green' | 'yellow' | 'red' | 'gray';
-  // 综合健康分(= 跨维度聚合,与首页列表同一口径)— 报告页只显单维度分数,这里把「总分」也带上。
   const health = assessHealth(entry, insights, lang);
-
-  const d = entry.doctor;
-  const dTotal = d ? d.passCount + d.warnCount + d.failCount : 0;
-  const dScore = d && dTotal > 0 ? Math.round(((d.passCount + d.warnCount * 0.5) / dTotal) * 100) : null;
-  const dBand: Band = d ? (d.failCount > 0 ? 'red' : d.warnCount > 0 ? 'yellow' : 'green') : 'gray';
-
-  const ev = entry.eval;
-  const evScore = ev && ev.compositeScore != null ? Math.round((ev.compositeScore / 5) * 100) : null;
-  const evBand: Band = ev && ev.compositeScore != null
-    ? (ev.compositeScore >= 4 ? 'green' : ev.compositeScore >= 3 ? 'yellow' : 'red') : 'gray';
-
-  const ob = entry.observe;
-  const obTrustworthy = ob != null && ob.confidence !== 'underpowered';
-  const obScore = obTrustworthy ? Math.round((1 - ob.gapRate) * 100) : null;
-  const obBand: Band = obTrustworthy ? ob.healthBand : 'gray';
-
-  // 历史:eval + doctor 历次 run,各自新→旧。点行跳到那次报告。
-  // evalHistory 是「每轮一条」,但一份 evolve 报告(多轮)是同一个 reportId —— 按 reportId 去重,
-  // 一份报告只算一条(取末轮 treatment 分数,与报告头部一致),否则同一报告的多轮会都标「当前」。
-  const evalRoundCount = new Map<string, number>();
-  const evalByReport = new Map<string, typeof entry.evalHistory[number]>();
-  for (const h of entry.evalHistory) {
-    evalRoundCount.set(h.reportId, (evalRoundCount.get(h.reportId) ?? 0) + 1);
-    evalByReport.set(h.reportId, h); // 末轮(最高 round)胜出 —— history 已按 timestamp#round 升序
-  }
-  const evalHist = [...evalByReport.values()].reverse().map((h) => {
-    const rounds = evalRoundCount.get(h.reportId) ?? 1;
-    return {
-      dim: 'eval' as const,
-      dateText: fmtHistDate(h.timestamp, lang),
-      scoreText: h.compositeScore != null ? `${h.compositeScore.toFixed(2)} / 5` : '—',
-      band: (h.compositeScore == null ? 'gray' : h.compositeScore >= 4 ? 'green' : h.compositeScore >= 3 ? 'yellow' : 'red') as Band,
-      metaText: `${h.passCount}/${h.totalSamples} ${zh ? '通过' : 'pass'}${h.failCount > 0 ? ` · ${h.failCount} ${zh ? '失败' : 'fail'}` : ''}${rounds > 1 ? ` · ${rounds} ${zh ? '轮' : 'rounds'}` : ''}`,
-      href: `/reports/${encodeURIComponent(h.reportId)}${langQ}`,
-      current: h.reportId === currentReportId,
-    };
-  });
-  const doctorHist = [...entry.doctorHistory].reverse().map((h) => {
-    const tot = h.passCount + h.warnCount + h.failCount;
+  const doctor = entry.doctor;
+  const doctorBand: Band = doctor
+    ? doctor.failCount > 0 ? 'red' : doctor.warnCount > 0 ? 'yellow' : 'green'
+    : 'gray';
+  const observe = entry.observe;
+  const observeTrustworthy = observe !== null && observe.confidence !== 'underpowered';
+  const observeBand: Band = observeTrustworthy ? observe.healthBand : 'gray';
+  const history = [...entry.doctorHistory].reverse().map((snapshot) => {
+    const total = snapshot.passCount + snapshot.warnCount + snapshot.failCount;
     return {
       dim: 'doctor' as const,
-      dateText: fmtHistDate(h.timestamp, lang),
-      scoreText: tot > 0 ? `${Math.round(((h.passCount + h.warnCount * 0.5) / tot) * 100)}` : '—',
-      band: (h.failCount > 0 ? 'red' : h.warnCount > 0 ? 'yellow' : 'green') as Band,
-      metaText: `${h.passCount}✓ ${h.warnCount}⚠ ${h.failCount}✗`,
-      href: `/doctors/${encodeURIComponent(h.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`,
-      current: h.reportId === currentReportId,
+      dateText: fmtHistDate(snapshot.timestamp, lang),
+      scoreText: total > 0 ? String(Math.round(((snapshot.passCount + snapshot.warnCount * 0.5) / total) * 100)) : '—',
+      band: (snapshot.failCount > 0 ? 'red' : snapshot.warnCount > 0 ? 'yellow' : 'green') as Band,
+      metaText: `${snapshot.passCount}✓ ${snapshot.warnCount}⚠ ${snapshot.failCount}✗`,
+      href: `/doctors/${encodeURIComponent(snapshot.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`,
+      current: snapshot.reportId === currentReportId,
     };
   });
-
   return {
     skillName: entry.skillName,
     overall: { score: health.score, band: health.color },
-    // 当前维度 chip 不显分数(hero ring 已显示「本报告」分数,避免与「最新」分数冲突);非当前维度显「最新」分数 + 链接。
     chips: [
-      { dim: 'doctor', label: zh ? '体检' : 'Doctor', score: currentDim === 'doctor' ? null : dScore, band: dBand,
-        href: currentDim === 'doctor' || !d ? null : `/doctors/${encodeURIComponent(d.reportId)}?skill=${encodeURIComponent(entry.skillName)}${amp}`,
-        active: currentDim === 'doctor' },
-      { dim: 'eval', label: zh ? '评测' : 'Eval', score: currentDim === 'eval' ? null : evScore, band: evBand,
-        href: currentDim === 'eval' || !ev ? null : `/reports/${encodeURIComponent(ev.reportId)}${langQ}`,
-        active: currentDim === 'eval' },
-      { dim: 'observe', label: zh ? '观察' : 'Observe', score: obScore, band: obBand, href: null, active: false },
+      { dim: 'doctor', label: zh ? '体检' : 'Doctor', score: null, band: doctorBand, href: null, active: true },
+      { dim: 'observe', label: zh ? '观察' : 'Observe', score: observeTrustworthy ? Math.round((1 - observe.gapRate) * 100) : null, band: observeBand, href: null, active: false },
     ],
-    history: [...evalHist, ...doctorHist],
+    history,
   };
 }
 
@@ -863,21 +800,11 @@ function findKnowledgeDebuggerContext(observationsDir: string, experienceSession
   return { report, session, sourceRecordRef };
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, conversationCatalog, coreStudioCatalog, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, managedDir, conversationCatalog, coreStudioCatalog, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
   const liveStreamClosers = new Set<() => void>();
 
-  // reports store:显式注入 store > 显式 reportsDir(eval serve 的本次 outputDir / 测试 / 覆盖,固定单目录)
-  // > 缺省 indexed(机器级总览:当前项目 + 全局 live ∪ 别项目的索引卡片,按 id dedup)。indexed 在 store 层做
-  // merge,底层 createFileStore 的 mtime 指纹自动反映内容变化,一次构建即可。
-  const reportStore: ReportStore = coreStudioCatalog !== undefined
-    ? createEvaluationDisabledReportStore()
-    : store
-      ?? (reportsDir !== undefined
-        ? createFileStore(reportsDir)
-        : createIndexedReportStore({ projectDir: projectReportsDir(), globalDir: globalReportsDir() }));
-  const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
   const resolvedConversationCatalog = conversationCatalog ?? createCodexConversationCatalog();
   const coreStudioRoute = coreStudioCatalog === undefined
     ? undefined
@@ -918,19 +845,9 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         ? (): string => doctorsDir
         : (): string => resolveDoctorsDir(projectDoctorsDir());
 
-  const includeReportCards = coreStudioCatalog === undefined && reportsDir === undefined && store == null;
-  const evalGraphDirs = coreStudioCatalog !== undefined
-    ? []
-    : reportsDir !== undefined
-    ? [evalGraphDirForReportOutput(reportsDir)]
-    : store
-      ? []
-      : [evalGraphDirForReportOutput(projectReportsDir()), evalGraphDirForReportOutput(globalReportsDir())];
-  const skillIndexOptions = (): Parameters<typeof buildSkillIndex>[4] => ({
+  const skillIndexOptions = (): Parameters<typeof buildSkillIndex>[3] => ({
     includeObserveCards,
     includeDoctorCards,
-    includeReportCards,
-    evalGraphDirs,
   });
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -997,13 +914,6 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         return;
       }
 
-      if (path === '/api/reports') {
-        const runs = await queryRunList(reportStore);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(runs));
-        return;
-      }
-
       // 旧 observe 路由 → observe-* 词根 canonical 的兜底(querystring 透传),防外链 / 书签 / 已打开页面的旧 fetch 失效。
       // 页面用 302(临时);API 用 307 —— review-state 有 POST/DELETE,302 会被客户端降级成 GET,307 保留 method+body。
       // 复合名 /analyses-diff、/api/analyses-diff、/skill-trend 维持原名,不在此重定向。
@@ -1064,16 +974,8 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end(lang === 'en' ? 'managed record not found' : '受管记录不存在');
           return;
         }
-        // 版本回归曲线要每版的 composite/CI —— 按 evidence.reportId 把报告读出来(去重),读不到的点
-        // buildVersionScores 自会跳过。曲线数据在路由侧算好,renderManagedHistory 保持纯函数、可 snapshot。
-        const reportsById = new Map<string, ReportScoreView | null>();
-        for (const ev of record.evidence) {
-          // 按「打分视角」结构化看报告:受管证据指向的是单次 eval 报告(带 artifactHashes / summary);
-          // 万一是 batch 报告,meta 无 artifactHashes → buildVersionScores 自会跳过,不会误画。
-          if (!reportsById.has(ev.reportId)) reportsById.set(ev.reportId, (await reportStore.get(ev.reportId)) as ReportScoreView | null);
-        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderManagedHistory(record, lang, buildVersionScores(record, reportsById)));
+        res.end(renderManagedHistory(record, lang));
         return;
       }
 
@@ -1382,8 +1284,7 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       }
 
       if (path === '/api/observe-inbox/diagnostics') {
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           sourceCoverage: idx.diagnosisSummary.sourceCoverage,
@@ -1468,10 +1369,9 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         }
         let ctx: SkillReportContext | undefined;
         if (skillName) {
-          const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+          const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
           const entry = idx.entries.find((en) => en.skillName === skillName);
-          if (entry) ctx = buildSkillContext(entry, 'doctor', id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
+          if (entry) ctx = buildSkillContext(entry, id, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
@@ -1561,106 +1461,6 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         return;
       }
 
-      if (path === '/api/jobs') {
-        const limitParam = parsed.searchParams.get('limit');
-        const jobs = await queryJobList(resolvedJobStore, {
-          status: parsed.searchParams.get('status') || undefined,
-          reportId: parsed.searchParams.get('reportId') || undefined,
-          project: parsed.searchParams.get('project') || undefined,
-          owner: parsed.searchParams.get('owner') || undefined,
-          tag: parsed.searchParams.get('tag') || undefined,
-          limit: limitParam ? Number(limitParam) : undefined,
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(jobs));
-        return;
-      }
-
-      const jobApiMatch = path.match(/^\/api\/job\/(.+)$/);
-      if (jobApiMatch) {
-        const job = await queryJob(resolvedJobStore, decodeURIComponent(jobApiMatch[1]));
-        if (!job) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'job not found' }));
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(job));
-        return;
-      }
-
-      const reportApiMatch = path.match(/^\/api\/reports\/(.+)$/);
-      if (reportApiMatch) {
-        const id = decodeURIComponent(reportApiMatch[1]);
-
-        if (req.method === 'DELETE') {
-          assertTrustedMutationRequest(req);
-          const removed = await reportStore.remove(id);
-          if (!removed) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'report not found' }));
-          } else {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: true }));
-          }
-          return;
-        }
-
-        const report = await queryRun(reportStore, id);
-        if (!report) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'report not found' }));
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(report));
-        return;
-      }
-
-      // Trends API
-      const trendsApiMatch = path.match(/^\/api\/trends\/(.+)$/);
-      if (trendsApiMatch) {
-        const variantName = decodeURIComponent(trendsApiMatch[1]);
-        const trend = await queryTrend(reportStore, variantName);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ variant: trend.variant, points: trend.points }));
-        return;
-      }
-
-      // Trends page
-      const trendsPageMatch = path.match(/^\/trends\/(.+)$/);
-      if (trendsPageMatch) {
-        const variantName = decodeURIComponent(trendsPageMatch[1]);
-        const trend = await queryTrend(reportStore, variantName);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderTrendsPage(variantName, trend.runs, lang));
-        return;
-      }
-
-      const reportPageMatch = path.match(/^\/reports\/(.+)$/);
-      if (reportPageMatch) {
-        const reportId = decodeURIComponent(reportPageMatch[1]);
-        const report = await queryRun(reportStore, reportId);
-        let ctx: SkillReportContext | undefined;
-        if (report && report.kind === 'evaluation') {
-          const runs = await reportStore.list();
-          const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
-          // 按 evalHistory 匹配(非仅最新),历史 eval 报告也能定位到所属 skill。
-          const entry = idx.entries.find((en) => en.evalHistory.some((h) => h.reportId === reportId));
-          if (entry) ctx = buildSkillContext(entry, 'eval', reportId, idx.insightsBySkill.get(entry.skillName) ?? [], lang);
-        }
-        res.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderReportDocumentDetail(report, lang, ctx));
-        return;
-      }
-
-      // 老 run 列表 — 兼容老书签。/skills/ 切换为默认后,run 列表挪这里。
-      if (path === '/runs') {
-        const runs = await reportStore.list();
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderRunList(runs, lang));
-        return;
-      }
 
       // Studio 先呈现机器上的 Codex 主对话，再从某次对话进入原生 turn 任务轨迹。
       // /conversations 保留为同义入口，避免旧书签失效。
@@ -1674,16 +1474,14 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       // 原 skill-centric 工作台迁到 /knowledge。insightsBySkill 在 buildSkillIndex 里
       // 跟 SkillIndex 一起算好并享受同一份缓存，renderer 只负责呈现。
       if (path === '/knowledge') {
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
         return;
       }
 
       if (path === '/api/skills') {
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           entries: idx.entries.map((entry) => ({
@@ -1707,26 +1505,22 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
           res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
           return;
         }
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         const entry = idx.entries.find((en) => en.skillName === skillName);
         if (!entry) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end(lang === 'en' ? 'skill not found' : '未找到该 skill');
           return;
         }
-        const report = entry.eval ? await queryRun(reportStore, entry.eval.reportId) : null;
-        const evalReport = report?.kind === 'evaluation' ? report : null;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillDetail(entry, evalReport, lang, idx.insightsBySkill.get(entry.skillName) ?? []));
+        res.end(renderSkillDetail(entry, lang, idx.insightsBySkill.get(entry.skillName) ?? []));
         return;
       }
 
       const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
       if (skillDiagnosticsApiMatch) {
         const skillName = decodeURIComponent(skillDiagnosticsApiMatch[1]);
-        const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir, skillIndexOptions());
+        const idx = buildSkillIndex(analysesDir, doctorsDir, observationsDir, skillIndexOptions());
         const diagnostics = idx.diagnosticsBySkill.get(skillName);
         if (!diagnostics) {
           res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1761,11 +1555,8 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
 
   async function start(): Promise<string> {
     if (server) return serverUrl!;
-    // reports / analyses / doctors 都不在启动时 mkdir —— studio 只读消费,readers 都 existsSync 守卫、
-    // writer(omk eval / observe / doctor)各自建目录;reports 默认走 overlay(项目盖全局),启动时往随机
-    // cwd 建空 .omk/reports 既无意义又是噪声。observationsDir / jobsDir 仍预建(既有行为)。
+    // Studio 只读消费测量产物；只有观察收件箱需要预建本地目录。
     if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
-    if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
     // host 默认 127.0.0.1(本机回环,默认安全)。容器/远程场景需对外暴露时:

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrateLegacyReportFiles } from '../../src/eval-core/report-file-migration.js';
@@ -27,21 +27,6 @@ describe('migrateLegacyReportFiles', () => {
       doctorReportFileStem('skill', 'doctor-a_b'),
     );
   });
-
-  it('迁移 eval report 裸 .json 到 .report.json', () => withDir((dir) => {
-    writeFileSync(join(dir, 'r1.json'), JSON.stringify({
-      kind: 'evaluation',
-      id: 'r1',
-      meta: {},
-      summary: {},
-      results: [],
-    }));
-
-    migrateLegacyReportFiles(dir, 'report');
-
-    expect(existsSync(join(dir, 'r1.json'))).toBe(false);
-    expect(existsSync(join(dir, reportFileName('r1')))).toBe(true);
-  }));
 
   it('迁移 doctor report 时使用 canonical skill-run stem', () => withDir((dir) => {
     writeFileSync(join(dir, 'code-review-doctor-r1.json'), JSON.stringify({
@@ -78,32 +63,4 @@ describe('migrateLegacyReportFiles', () => {
     expect(existsSync(join(dir, reportFileName('2026-06-20T00-00-00-efgh')))).toBe(true);
   }));
 
-  it('目标文件已存在且内容相同时删除 legacy duplicate', () => withDir((dir) => {
-    const target = join(dir, reportFileName('r1'));
-    const report = { kind: 'evaluation', id: 'r1', meta: {}, summary: {}, results: [] };
-    writeFileSync(target, JSON.stringify(report));
-    writeFileSync(join(dir, 'r1.json'), JSON.stringify(report, null, 2));
-
-    migrateLegacyReportFiles(dir, 'report');
-
-    expect(existsSync(join(dir, 'r1.json'))).toBe(false);
-    expect(JSON.parse(readFileSync(target, 'utf-8')).meta).toEqual({});
-  }));
-
-  it('目标文件与 legacy 内容冲突时两份都保留，迁移不得静默丢数据', () => withDir((dir) => {
-    const target = join(dir, reportFileName('r1'));
-    writeFileSync(target, JSON.stringify({ kind: 'evaluation', id: 'r1', meta: {}, summary: {}, results: [] }));
-    writeFileSync(join(dir, 'r1.json'), JSON.stringify({
-      kind: 'evaluation',
-      id: 'r1',
-      meta: { old: true },
-      summary: {},
-      results: [],
-    }));
-
-    migrateLegacyReportFiles(dir, 'report');
-
-    expect(existsSync(join(dir, 'r1.json'))).toBe(true);
-    expect(JSON.parse(readFileSync(target, 'utf-8')).meta).toEqual({});
-  }));
 });

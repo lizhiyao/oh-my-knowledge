@@ -1,7 +1,7 @@
 /**
  * assessHealth — Diagnosis-only skill 的健康等级判定。
  *
- * 重点覆盖:三大维度(doctor / eval / observe)都没跑过时,如果 insights 含
+ * 重点覆盖:doctor / observe 都没跑过时,如果 insights 含
  * high/medium 信号(来自 Diagnosis 投影),卡片不应该落到灰色「未评估」,
  * 否则只跑了 observe ingest 拿到 `skill_md_not_found` 的 skill 会被红色筛选
  * 漏掉。
@@ -16,10 +16,8 @@ function mkEntry(overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
   return {
     skillName: 'test-skill',
     doctor: null,
-    eval: null,
     observe: null,
     doctorHistory: [],
-    evalHistory: [],
     observeHistory: [],
     band: 'gray',
     ...overrides,
@@ -111,5 +109,20 @@ describe('assessHealth — observe confidence guard', () => {
     const h = assessHealth(mkEntry({ observe: observe('high', 'red') }), [], 'zh');
     assert.equal(h.grade, 'unhealthy');
     assert.equal(h.color, 'red');
+  });
+
+  it('green observe 但可比工具结果少于 5 条 → 不把稳定性当成硬绿结论', () => {
+    const sparse = {
+      ...observe('high', 'green'),
+      gapRate: 0,
+      failureRate: 0,
+      toolCallCount: 2,
+      toolResolvedCount: 2,
+      toolCancelledCount: 0,
+    };
+    const h = assessHealth(mkEntry({ observe: sparse }), [], 'zh');
+    assert.equal(h.grade, 'unscored');
+    assert.equal(h.color, 'gray');
+    assert.equal(h.score, null);
   });
 });
