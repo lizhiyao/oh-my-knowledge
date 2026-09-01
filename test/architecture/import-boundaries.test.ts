@@ -519,6 +519,19 @@ describe('架构边界守门', () => {
     expect(textSignals).toContain('export const USER_INTERRUPTION_RE =');
   });
 
+  it('Experience reviewer report 由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const reviewerReport = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'reviewer-report.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/reviewer-report.js');
+    expect(facade).not.toContain('function buildReviewerReport(');
+    expect(facade).not.toContain('function reviewerFindingsForSession(');
+    expect(reviewerReport).not.toContain("from '../experience.js'");
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
