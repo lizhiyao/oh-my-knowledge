@@ -11,7 +11,8 @@ import {
   applyHedgingClassifier,
 } from '../../src/analysis/gap-analyzer.js';
 import { clearHedgingCache } from '../../src/analysis/hedging-classifier.js';
-import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, AnalysisVariantResult, AnalysisEntry } from '../../src/types/index.js';
+import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo } from '../../src/types/index.js';
+import type { AnalysisVariantResult, AnalysisEntry } from '../../src/analysis/contracts.js';
 
 // ---------- Helpers for building test fixtures ----------
 

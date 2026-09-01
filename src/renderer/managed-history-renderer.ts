@@ -10,7 +10,7 @@
  */
 import { layout, e, fmtLocalTime } from './layout.js';
 import type { Lang } from '../types/index.js';
-import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
+import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../managed/contracts.js';
 import type { ManagedListRow } from '../managed/index.js';
 
 const shortHash = (h: string): string => h.slice(0, 12);
@@ -216,7 +216,7 @@ function stateBand(state: string): string {
 
 /** 生命周期状态的面向用户文案 + 一句话释义(挂 title)。原始 token 仍在 /api/managed 的 row.state（机读口径不变）,
  *  此处只本地化人看的 HTML —— measurable / installed 这类内部枚举对首次接触管理支柱的人并不自解释。
- *  用 Record<ManagedLifecycleLabel> 让 TS 编译期强制列全所有状态 —— types/managed 新增 label（如已声明
+ *  用 Record<ManagedLifecycleLabel> 让 TS 编译期强制列全所有状态 —— managed/contracts 新增 label（如已声明
  *  却尚未在列表出现的 discovered）时这里报错、逼同步,避免新状态被静默当原始 token 渲染。 */
 const STATE_LABELS: Record<ManagedLifecycleLabel, { zh: [string, string]; en: [string, string] }> = {
   discovered: { zh: ['已发现', '已发现，尚未纳管取证'], en: ['Discovered', 'Discovered, not yet under management'] },

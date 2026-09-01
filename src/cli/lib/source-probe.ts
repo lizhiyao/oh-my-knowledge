@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, type Dirent } from 'node:fs';
 import { isAbsolute, resolve, join } from 'node:path';
 import { resolveInstallSource } from '../../inputs/source-resolver.js';
 import { hashArtifactSource, isDistributablePath, type SourceProbe } from '../../managed/index.js';
-import type { ManagedArtifactRecord } from '../../types/index.js';
+import type { ManagedArtifactRecord } from '../../managed/contracts.js';
 
 /**
  * 受管记录**当前源**的状态探测——`omk list`(drift / 生命周期)与 `omk promote`(门禁前先确认源未漂)共用

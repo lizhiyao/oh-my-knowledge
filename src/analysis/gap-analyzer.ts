@@ -16,7 +16,8 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { AnalysisEntry, AnalysisVariantResult, ExecutorFn, GapReport, GapSignalRef, ToolCallInfo, TurnInfo } from '../types/index.js';
+import type { ExecutorFn, ToolCallInfo, TurnInfo } from '../types/index.js';
+import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } from './contracts.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { toolCallStatus } from '../shared/tool-call-status.js';

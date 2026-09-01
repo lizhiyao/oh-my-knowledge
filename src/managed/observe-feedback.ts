@@ -15,7 +15,7 @@
  * 版本无关:观测的是线上**正在跑那一版**(无 skill contentHash),故产读时 marker、**绝不翻 stale**
  * (§6.1 只有内容漂移翻 stale;observe 是信号源不是受控 eval)。
  */
-import type { ManagedObservation } from '../types/index.js';
+import type { ManagedObservation } from './contracts.js';
 import {
   loadAllManagedRecords,
   appendManagedObservation,

@@ -5,7 +5,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildManagedListRow, buildManagedListRows } from '../../src/managed/list-view.js';
-import type { ManagedArtifactRecord, ManagedEvidenceRef, ManagedObservation } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedEvidenceRef, ManagedObservation } from '../../src/managed/contracts.js';
 import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {

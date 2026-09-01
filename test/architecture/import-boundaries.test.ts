@@ -88,7 +88,7 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'types/',
     to: 'eval-workflows/',
-    reason: 'types/ 是底层契约层,不应反向 import eval-workflows。',
+    reason: 'types/ 是待消解的遗留契约层，不应反向 import eval-workflows；新增契约应归属到领域 contracts。',
   },
   {
     from: 'types/',
@@ -98,12 +98,12 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'types/',
     to: 'observability/',
-    reason: 'types/ 不应反向 import observability。observability schema 应下沉到 types/(已部分完成,见 types/diagnosis.ts)。',
+    reason: 'types/ 不应反向 import observability；跨模块 DTO 应归属到领域 contracts。',
   },
   {
     from: 'types/',
     to: 'diagnosis/',
-    reason: 'types/ 不应反向 import diagnosis(已切除,见 types/diagnosis.ts)。',
+    reason: 'types/ 不应反向 import diagnosis；共享诊断契约应由 diagnosis 领域拥有。',
   },
   {
     from: 'types/',
@@ -133,7 +133,7 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'renderer/',
     to: 'server/',
-    reason: 'renderer 是视图层,不应 import server。server 内部类型应抽到 types/ 给两边共享。',
+    reason: 'renderer 是视图层，不应 import server；共享 DTO 应归属到明确领域的 contracts 或 view-models。',
   },
   {
     from: 'renderer/',
@@ -376,7 +376,7 @@ describe('架构边界守门', () => {
         `发现 ${violations.length} 处 import 违反架构边界:`,
         ...lines,
         '',
-        '修复路径:把目标符号挪到 types/(纯类型)或抽 facade(运行时);',
+        '修复路径：把共享契约归属到明确领域的 contracts，或抽 facade（运行时）；',
         '若是 P2 known-debt 暂未修,在本测试文件 RULES.whitelist 显式登记并加 TODO。',
       ].join('\n');
       throw new Error(msg);

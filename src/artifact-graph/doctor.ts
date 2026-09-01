@@ -12,20 +12,22 @@ import {
   parseSkillFrontmatter,
 } from '../shared/hard-rules.js';
 import type {
-  ArtifactGraphDocument,
-  ArtifactGraphEdge,
-  ArtifactGraphEdgeKind,
-  ArtifactGraphEvidenceRef,
-  ArtifactGraphBinding,
-  ArtifactGraphNode,
-  ArtifactGraphNodeKind,
-  ArtifactGraphNodeRole,
-  ArtifactGraphStatus,
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
   Lang,
 } from '../types/index.js';
+import type {
+  ArtifactGraphBinding,
+  ArtifactGraphDocument,
+  ArtifactGraphEdge,
+  ArtifactGraphEdgeKind,
+  ArtifactGraphEvidenceRef,
+  ArtifactGraphNode,
+  ArtifactGraphNodeKind,
+  ArtifactGraphNodeRole,
+  ArtifactGraphStatus,
+} from './contracts.js';
 
 export interface BuildDoctorGraphOptions {
   report: DoctorReport;

@@ -23,7 +23,7 @@ import {
   isProductionGapObservation,
   isCurrentlyPromoted,
 } from '../../src/managed/store.js';
-import type { ManagedArtifactRecord, ManagedDecision, ManagedObservation } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedDecision, ManagedObservation } from '../../src/managed/contracts.js';
 import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };

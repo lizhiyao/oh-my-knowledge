@@ -13,7 +13,7 @@ import type {
   ArtifactGraphNode,
   ArtifactGraphNodeKind,
   ArtifactGraphStatus,
-} from '../../types/artifact-graph.js';
+} from '../../artifact-graph/contracts.js';
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { CoreDownstreamProjectionError } from './contracts.js';
 import { assertCoreProjectionSource } from './source.js';

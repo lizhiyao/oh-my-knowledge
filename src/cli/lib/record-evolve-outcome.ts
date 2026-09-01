@@ -6,7 +6,7 @@ import {
   rebaselineManagedContentHash,
   probeSourceState,
 } from '../../managed/index.js';
-import type { ManagedArtifactRecord } from '../../types/index.js';
+import type { ManagedArtifactRecord } from '../../managed/contracts.js';
 import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store/index.js';
 import { projectCoreManagedEvidence } from '../../eval-workflows/downstream-projections/index.js';
 import {

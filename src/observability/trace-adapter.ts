@@ -5,7 +5,8 @@
  * live in sibling modules so studio/report code does not inherit one large adapter.
  */
 
-import type { AnalysisEntry, TraceIngestionSummary } from '../types/index.js';
+import type { TraceIngestionSummary } from '../types/index.js';
+import type { AnalysisEntry } from '../analysis/contracts.js';
 import { loadTraceCorpus } from './trace-source.js';
 import type { TraceSession } from './trace-ir.js';
 import { segmentTraceBySkill, segmentsToAnalysisEntries, type SkillSegment } from './trace-segmenter.js';

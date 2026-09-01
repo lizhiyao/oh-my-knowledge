@@ -11,18 +11,20 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import type {
   Artifact,
+  Sample,
+} from '../types/index.js';
+import type {
   DependencyCheckResult,
   DependencyIssue,
   DependencyRequirements,
-  Sample,
-} from '../types/index.js';
+} from './contracts.js';
 
 export type {
   DependencyCheckResult,
   DependencyIssue,
   DependencyReasonCode,
   DependencyRequirements,
-} from '../types/index.js';
+} from './contracts.js';
 
 // ---------------------------------------------------------------------------
 // Extraction — scan text for dependencies

@@ -16,7 +16,8 @@ import {
   extractReferencedPaths,
   normalizeKnowledgePath,
 } from '../../src/analysis/coverage-analyzer.js';
-import type { AnalysisEntry, ToolCallInfo, AnalysisVariantResult } from '../../src/types/index.js';
+import type { ToolCallInfo } from '../../src/types/index.js';
+import type { AnalysisEntry, AnalysisVariantResult } from '../../src/analysis/contracts.js';
 
 function variantWithRead(filePath: string): AnalysisVariantResult {
   return {

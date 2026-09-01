@@ -14,7 +14,8 @@
 
 import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
 import { computeGapReport } from '../analysis/gap-analyzer.js';
-import type { AnalysisEntry, GapReport, TraceIngestionSummary } from '../types/index.js';
+import type { TraceIngestionSummary } from '../types/index.js';
+import type { AnalysisEntry, GapReport } from '../analysis/contracts.js';
 import {
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,

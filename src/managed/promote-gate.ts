@@ -8,7 +8,7 @@
  * force(越门)不在此处:门禁只产「客观判定」。CLI 拿到结果后决定是否 `--force` 越过——但**无当前证据时
  * 无 evidence 可锚定,force 也越不过**(返回的 evidence 为 undefined,CLI 据此拒绝空证据 promote)。
  */
-import type { ManagedArtifactRecord, ManagedEvidenceRef } from '../types/index.js';
+import type { ManagedArtifactRecord, ManagedEvidenceRef } from './contracts.js';
 import { latestCurrentEvidence } from './list-view.js';
 
 export type PromoteBlockKind =
