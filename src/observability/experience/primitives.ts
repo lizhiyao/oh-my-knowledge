@@ -49,3 +49,43 @@ export function fullText(value: unknown): string | undefined {
 export function hashParts(...parts: string[]): string {
   return createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 16);
 }
+
+export function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function uniqueBy<T>(values: T[], keyOf: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const value of values) {
+    const key = keyOf(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+export function minString(values: Array<string | undefined>): string | undefined {
+  const filtered = values.filter((value): value is string => Boolean(value));
+  return filtered.length > 0
+    ? filtered.reduce(
+        (min, value) => Date.parse(value) < Date.parse(min) ? value : min,
+        filtered[0],
+      )
+    : undefined;
+}
+
+export function maxString(values: Array<string | undefined>): string | undefined {
+  const filtered = values.filter((value): value is string => Boolean(value));
+  return filtered.length > 0
+    ? filtered.reduce(
+        (max, value) => Date.parse(value) > Date.parse(max) ? value : max,
+        filtered[0],
+      )
+    : undefined;
+}
+
+export function unique<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}

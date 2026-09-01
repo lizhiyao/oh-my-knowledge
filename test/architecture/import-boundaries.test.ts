@@ -444,6 +444,25 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(timeline)).not.toContain('../experience.js');
   });
 
+  it('Experience 报告结构与派生事实由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const reportStructure = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'report-structure.ts'),
+      'utf-8',
+    );
+    const reportDerivations = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'report-derivations.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/report-structure.js');
+    expect(extractSpecifiers(facade)).toContain('./experience/report-derivations.js');
+    expect(facade).not.toContain('function traceTimelinesFromSessions(');
+    expect(facade).not.toContain('function scoreForIndicators(');
+    expect(extractSpecifiers(reportStructure)).not.toContain('../experience.js');
+    expect(extractSpecifiers(reportDerivations)).not.toContain('../experience.js');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
