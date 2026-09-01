@@ -30,8 +30,8 @@ import {
   synchronizeCurrentCodexRolloutIndex,
   type CodexIndexedTask,
   type CodexRolloutIndex,
-} from './codex-conversation-index.js';
-import { parseCodexSessionFile } from './codex-trace-adapter.js';
+} from './trace/adapters/codex/conversation-index.js';
+import { parseCodexSessionFile } from './trace/adapters/codex/trace.js';
 import { projectTraceSessionTimeline } from './experience.js';
 import { reconstructExperienceTurns } from './turn-index.js';
 import { observationSourceRecordFromLine } from './source-record-archive.js';

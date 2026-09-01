@@ -6,22 +6,22 @@ import type {
   TraceSession,
   TraceToolRef,
   TraceToolStatus,
-} from './trace/trace-ir.js';
+} from '../../trace-ir.js';
 import {
   correlateTraceToolEvents,
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
-} from './trace/trace-ir.js';
-import type { TraceSourceMetadata } from './contracts/trace.js';
+} from '../../trace-ir.js';
+import type { TraceSourceMetadata } from '../../../contracts/trace.js';
 import {
   nonNegativeMetric,
   optionalTokenCount,
   splitInclusiveInputTokens,
   tokenCount,
-} from '../shared/token-usage.js';
-import { normalizeToolIdentity } from '../shared/tool-identity.js';
-import { extractCodexExecCommands } from './codex-exec-command.js';
+} from '../../../../shared/token-usage.js';
+import { normalizeToolIdentity } from '../../../../shared/tool-identity.js';
+import { extractCodexExecCommands } from './exec-command.js';
 import {
   codexUserAttachments,
   codexUserDisplayText,
@@ -29,12 +29,12 @@ import {
   isCodexEventMessageType,
   isCodexRecordConsumedWithoutDirectEvent,
   isCodexResponseItemType,
-} from './codex-protocol.js';
+} from './protocol.js';
 import {
   codexRuntimeToolOutcome,
   codexToolOutputOutcome,
   codexToolStatusFromValue,
-} from './codex-tool-status.js';
+} from './tool-status.js';
 
 interface CodexRecord {
   timestamp?: unknown;

@@ -82,7 +82,7 @@ import {
   skillSegmentTimestampObserved,
   UNOBSERVED_TRACE_TIMESTAMP,
   type SkillSegment,
-} from './trace-segmenter.js';
+} from './trace/segmentation.js';
 import { createTraceSessionIndex, traceSessionRefIdentity } from './trace/session-index.js';
 import { reconstructExperienceTurns } from './turn-index.js';
 import { isToolResultFailureText } from '../executors/tool-call-status.js';

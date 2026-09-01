@@ -5,11 +5,11 @@
  * live in sibling modules so studio/report code does not inherit one large adapter.
  */
 
-import type { TraceIngestionSummary } from './contracts/trace.js';
-import type { AnalysisEntry } from './analysis/contracts.js';
-import { loadTraceCorpus } from './trace-source.js';
-import type { TraceSession } from './trace/trace-ir.js';
-import { segmentTraceBySkill, segmentsToAnalysisEntries, type SkillSegment } from './trace-segmenter.js';
+import type { TraceIngestionSummary } from '../contracts/trace.js';
+import type { AnalysisEntry } from '../analysis/contracts.js';
+import { loadTraceCorpus } from './source.js';
+import type { TraceSession } from './trace-ir.js';
+import { segmentTraceBySkill, segmentsToAnalysisEntries, type SkillSegment } from './segmentation.js';
 
 export type {
   CcAssistantContent,
@@ -19,7 +19,7 @@ export type {
   CcUserRecord,
   CcUserTextContent,
   CcUserToolResultContent,
-} from './trace-source.js';
+} from './source.js';
 export type {
   TraceEvent,
   TraceLifecycleEvent,
@@ -31,9 +31,9 @@ export type {
   TraceToolResultEvent,
   TraceToolStatus,
   TraceUsageEvent,
-} from './trace/trace-ir.js';
-export type { TraceIngestionSummary } from './contracts/trace.js';
-export { loadCcSessions, loadTraceCorpus, loadTraceSessions } from './trace-source.js';
+} from './trace-ir.js';
+export type { TraceIngestionSummary } from '../contracts/trace.js';
+export { loadCcSessions, loadTraceCorpus, loadTraceSessions } from './source.js';
 export {
   extractAttributionSkill,
   extractAttributionSkillRef,
@@ -48,15 +48,15 @@ export {
   normalizeSkillName,
   parseSkillRef,
   stripCommandEnvelopeText,
-} from './trace-attribution.js';
-export type { SkillSegment } from './trace-segmenter.js';
+} from './attribution.js';
+export type { SkillSegment } from './segmentation.js';
 export {
   segmentBySkill,
   segmentTraceBySkill,
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,
   UNOBSERVED_TRACE_TIMESTAMP,
-} from './trace-segmenter.js';
+} from './segmentation.js';
 
 /**
  * One-stop conversion: trace path → AnalysisEntry[].

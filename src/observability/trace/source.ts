@@ -16,18 +16,18 @@ import {
   isCodexGuardianRollout,
   isCodexJsonl,
   parseCodexSessionFile,
-} from './codex-trace-adapter.js';
+} from './adapters/codex/trace.js';
 import {
   extractMarkdownLogSkill,
   isClaudeBuiltinCommand,
   stripCommandEnvelopeText,
-} from './trace-attribution.js';
+} from './attribution.js';
 import {
   isRuntimeProtocolPromptText,
   isSyntheticUserMessageText,
-} from './text-signals.js';
-import { isToolResultFailureText } from '../executors/tool-call-status.js';
-import type { TraceIngestionSummary, TraceSourceMetadata } from './contracts/trace.js';
+} from '../text-signals.js';
+import { isToolResultFailureText } from '../../executors/tool-call-status.js';
+import type { TraceIngestionSummary, TraceSourceMetadata } from '../contracts/trace.js';
 import type {
   TraceEvent,
   TraceCorpus,
@@ -36,19 +36,19 @@ import type {
   TraceSession,
   TraceSourceKind,
   TraceUsageEvent,
-} from './trace/trace-ir.js';
-import { normalizeToolIdentity } from '../shared/tool-identity.js';
+} from './trace-ir.js';
+import { normalizeToolIdentity } from '../../shared/tool-identity.js';
 import {
   correlateTraceToolEvents,
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
-} from './trace/trace-ir.js';
-import { nonNegativeMetric, tokenCount } from '../shared/token-usage.js';
+} from './trace-ir.js';
+import { nonNegativeMetric, tokenCount } from '../../shared/token-usage.js';
 import {
   emptyTraceIngestionSummary,
   mergeTraceIngestionSummaries,
-} from './trace/ingestion.js';
+} from './ingestion.js';
 
 const TRACE_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_JSONL_RECORD_CHARS = 32 * 1024 * 1024;
@@ -116,7 +116,7 @@ export interface CcUserRecord {
 
 export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: string]: unknown };
 
-export type { TraceSourceMetadata } from './contracts/trace.js';
+export type { TraceSourceMetadata } from '../contracts/trace.js';
 
 // ---------- Legacy session compatibility ----------
 
@@ -151,7 +151,7 @@ export interface CcSession {
   endTimestamp?: string;
 }
 
-export type { TraceEvent, TraceSession } from './trace/trace-ir.js';
+export type { TraceEvent, TraceSession } from './trace-ir.js';
 
 // ---------- Load ----------
 

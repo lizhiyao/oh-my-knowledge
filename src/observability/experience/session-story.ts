@@ -38,7 +38,7 @@ import type {
 } from '../contracts/review.js';
 import {
   UNOBSERVED_TRACE_TIMESTAMP,
-} from '../trace-segmenter.js';
+} from '../trace/segmentation.js';
 import {
   hasAssistantDeliverableArtifactText,
   isUserInteractionMetricText,

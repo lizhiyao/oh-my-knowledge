@@ -11,15 +11,15 @@ import {
   tracesToAnalysisEntries,
   normalizeSkillName,
   type TraceSession,
-} from '../../src/observability/trace-adapter.js';
+} from '../../../src/observability/trace/index.js';
 import {
   buildObservationExperienceReport,
   compactObservationExperienceReport,
   normalizeObservationExperienceReport,
   projectTraceSessionTimeline,
-} from '../../src/observability/experience.js';
-import { isInstalledSkillAssetPath } from '../../src/observability/trace-attribution.js';
-import { reconstructExperienceTurns } from '../../src/observability/turn-index.js';
+} from '../../../src/observability/experience.js';
+import { isInstalledSkillAssetPath } from '../../../src/observability/trace/attribution.js';
+import { reconstructExperienceTurns } from '../../../src/observability/turn-index.js';
 
 // ---------- Helpers ----------
 
