@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const PURE_DOMAIN_TYPE_FILES = [
   'src/analysis/contracts.ts',
   'src/artifact-graph/contracts.ts',
+  'src/diagnosis/contracts.ts',
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
@@ -39,12 +40,9 @@ const PURE_DOMAIN_TYPE_FILES = [
 ] as const;
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
-const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
-  'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
-]);
+const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set<string>();
 
 const ALLOWED_LEGACY_TYPE_FILES = new Set([
-  'diagnosis.ts',
   'doctor.ts',
   'index.ts',
   'shared.ts',

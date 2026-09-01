@@ -53,7 +53,7 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // ResolvedSkillStandard 非持久（view-model），但与持久 standard 同源、且被 renderer 多处 .kind 消费，
   // 跨模块改名风险高，渐进式留待后续单独处理。
   // —— 持久化 diagnosis JSON（payload spread 进 Diagnosis）——
-  'src/types/diagnosis.ts::DiagnosisEvidenceRef::string',
+  'src/diagnosis/contracts.ts::DiagnosisEvidenceRef::string',
   // 持久化进 experience evidence-pack 的 runtime check 节点
   // 外部 codex JSONL 事件的镜像 shape（omk 解析 codex stdout，非 omk 自有判别字段；codex 实际用 type）
 ]);

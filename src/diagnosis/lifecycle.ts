@@ -1,20 +1,4 @@
-export type {
-  Diagnosis,
-  DiagnosisAudience,
-  DiagnosisBundle,
-  DiagnosisEvidenceRef,
-  DiagnosisLifecycle,
-  DiagnosisOccurrence,
-  DiagnosisPatch,
-  DiagnosisScope,
-  DiagnosisSeverity,
-  DiagnosisSource,
-  DiagnosisSourceCoverage,
-  DiagnosisType,
-  StudioDiagnosisSummary,
-} from '../types/diagnosis.js';
-
-import type { DiagnosisLifecycle } from '../types/diagnosis.js';
+import type { DiagnosisLifecycle } from './contracts.js';
 
 /** Diagnosis 是否「active problem」的唯一权威定义。
  *

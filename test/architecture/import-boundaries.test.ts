@@ -104,6 +104,10 @@ const RULES: ForbiddenRule[] = [
     from: 'types/',
     to: 'diagnosis/',
     reason: 'types/ 不应反向 import diagnosis；共享诊断契约应由 diagnosis 领域拥有。',
+    whitelist: [
+      // 最终 types 收尾迁移的中间提交；skill-index 随后迁入 Studio view model 并删除此项。
+      'types/skill-index.ts::diagnosis/contracts.ts',
+    ],
   },
   {
     from: 'types/',
@@ -128,7 +132,10 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'observability/',
     to: 'diagnosis/',
-    reason: 'observability 是 diagnosis 的下游消费者,不应反向 driving diagnosis(见 commit 4d38ca6 之前的层级倒置)。如需共用类型,放 src/types/diagnosis.ts。',
+    reason: 'observability 是 diagnosis 的下游消费者，不应反向依赖 diagnosis 实现；只允许引用纯 contracts。',
+    whitelist: [
+      'observability/contracts/inbox.ts::diagnosis/contracts.ts',
+    ],
   },
   {
     from: 'renderer/',

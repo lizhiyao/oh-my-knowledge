@@ -5,7 +5,7 @@
  * 不直接 import server 装配层。runtime 函数(buildSkillIndex / detectInsights 等)
  * 仍在 src/server/skill-index.ts 与 src/server/skill-insights.ts。
  */
-import type { Diagnosis, StudioDiagnosisSummary } from './diagnosis.js';
+import type { Diagnosis, StudioDiagnosisSummary } from '../diagnosis/contracts.js';
 import type { DoctorRuleResult, DoctorSkillStatus } from './doctor.js';
 
 export interface SkillDoctorSnapshot {

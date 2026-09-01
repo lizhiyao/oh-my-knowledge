@@ -1,9 +1,5 @@
 import type {
   DetectInsightsOptions,
-  Diagnosis,
-  DiagnosisAudience,
-  DiagnosisSeverity,
-  DiagnosisType,
   Insight,
   InsightAudience,
   InsightCategory,
@@ -14,7 +10,13 @@ import type {
   SkillIndexEntry,
   SkillObserveSnapshot,
 } from '../types/index.js';
-import { isActiveDiagnosisLifecycle } from '../diagnosis/types.js';
+import type {
+  Diagnosis,
+  DiagnosisAudience,
+  DiagnosisSeverity,
+  DiagnosisType,
+} from '../diagnosis/contracts.js';
+import { isActiveDiagnosisLifecycle } from '../diagnosis/lifecycle.js';
 
 export type {
   DetectInsightsOptions,

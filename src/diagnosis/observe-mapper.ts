@@ -8,8 +8,8 @@ import type {
   DiagnosisOccurrence,
   DiagnosisSeverity,
   DiagnosisType,
-} from './types.js';
-import { maxDiagnosisLifecycle } from './types.js';
+} from './contracts.js';
+import { maxDiagnosisLifecycle } from './lifecycle.js';
 import {
   ownRecordValue,
   setOwnRecordValue,

@@ -9,7 +9,7 @@ import type {
 } from '../observability/experience.js';
 import type { ExperienceProblemPattern } from '../observability/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
-import type { DiagnosisBundle, DiagnosisEvidenceRef } from './types.js';
+import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
 import { setOwnRecordValue } from '../shared/record-count.js';
 
 export interface BuildObserveDiagnosticsFromReportOptions {
