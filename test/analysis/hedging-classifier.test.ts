@@ -6,7 +6,8 @@ import {
   type HedgingCandidate,
 } from '../../src/analysis/hedging-classifier.js';
 import { withCapturedStderr } from '../helpers/stderr.js';
-import type { ExecResult, ExecutorFn } from '../../src/types/index.js';
+import type { ExecResult } from '../../src/executors/contracts/result.js';
+import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
 
 const TEST_MODEL = 'test-classifier-model';
 

@@ -33,13 +33,15 @@ import {
 } from '../eval-workflows/downstream-projections/index.js';
 import { persistCoreArtifactGraph } from '../artifact-graph/core.js';
 import { managedDir, recordCoreEvalEvidence } from '../managed/index.js';
+import type { ExecResult } from '../executors/contracts/result.js';
+import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type {
+  OmkExecutorBindingContext,
   OmkLlmJudgeInvocationBinding,
   OmkLlmJudgeInvocationRequest,
-  OmkExecutorBindingContext,
   OmkRuntimeBindingFactories,
 } from '../eval-workflows/runtime-adapter/index.js';
-import type { EvalConfig, ExecResult, ExecutorFn, JudgeConfig } from '../types/index.js';
+import type { EvalConfig, JudgeConfig } from '../types/index.js';
 import { generateRunId } from '../shared/run-id.js';
 import {
   createDshHostCoreExecutorAdapter,

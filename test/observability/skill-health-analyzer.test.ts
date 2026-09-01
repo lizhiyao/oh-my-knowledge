@@ -9,7 +9,7 @@ import {
   type SkillSegment,
   type TraceSession,
 } from '../../src/observability/trace-adapter.js';
-import type { ToolCallStatus } from '../../src/types/index.js';
+import type { ToolCallStatus } from '../../src/executors/contracts/trace.js';
 
 // ---------- Helpers ----------
 

@@ -1,4 +1,4 @@
-import type { ExecutorFn } from '../../types/index.js';
+import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type {
   ObservationSkillChain,
   SkillRuntimeEvidencePack,

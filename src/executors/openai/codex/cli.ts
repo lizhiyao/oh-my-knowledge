@@ -1,4 +1,5 @@
-import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import type { ExecResult } from '../../contracts/result.js';
+import type { ExecutorInput } from '../../contracts/ports.js';
 import {
   buildCodexResult,
   normalizeCodexProtocolEvent,

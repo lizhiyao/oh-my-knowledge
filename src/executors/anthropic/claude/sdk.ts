@@ -1,7 +1,8 @@
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import type { ExecResult } from '../../contracts/result.js';
+import type { ExecutorInput } from '../../contracts/ports.js';
 import type { ClaudeMessage, ClaudeSdkModule } from './protocol.js';
 import { DEFAULT_TIMEOUT_MS } from '../../core/limits.js';
 import {

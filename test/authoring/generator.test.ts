@@ -9,7 +9,8 @@ import {
   sanitizeGeneratedSamples,
   stratifyTraceSignals,
 } from '../../src/authoring/generator.js';
-import type { ExecutorFn, Sample } from '../../src/types/index.js';
+import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
+import type { Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
   it('is a function', () => {

@@ -48,7 +48,7 @@ import {
   JUDGE_SYSTEM_PROMPT,
 } from '../../../src/shared/llm-prompts/judge-prompts.js';
 import { buildJudgeTraceSummary } from '../../../src/shared/llm-prompts/judge-trace.js';
-import type { ExecutorFn } from '../../../src/types/index.js';
+import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import { testRuntime, validDefinition, validPolicy } from '../../evaluation-core/compiler/fixtures.js';
 
 const PROVIDER_IMPLEMENTATION_ID = 'test.rubric-provider/v1';

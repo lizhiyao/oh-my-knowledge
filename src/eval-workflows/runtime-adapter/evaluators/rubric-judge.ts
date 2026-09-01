@@ -22,7 +22,7 @@ import {
   buildJudgeTraceSummary,
   JUDGE_TRACE_SUMMARY_ALGORITHM_VERSION,
 } from '../../../shared/llm-prompts/judge-trace.js';
-import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
+import type { ToolCallInfo, TurnInfo } from '../../../executors/contracts/trace.js';
 import type { SameProcessEvaluatorImplementation } from '../adapters/same-process.js';
 import { createSameProcessEvaluatorAdapter } from '../adapters/same-process.js';
 import {

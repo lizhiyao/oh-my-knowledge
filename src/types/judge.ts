@@ -1,4 +1,4 @@
-import type { ExecutorRuntimeFingerprint } from './executor.js';
+import type { ExecutorRuntimeFingerprint } from '../executors/contracts/runtime.js';
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
 export interface JudgeConfig {

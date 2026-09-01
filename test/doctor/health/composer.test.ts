@@ -10,8 +10,9 @@ import {
   __resetHealthDimensionsForTest,
 } from '../../../src/doctor/health/dimension-registry.js';
 import type { Artifact } from '../../../src/types/index.js';
+import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
+import type { ExecResult } from '../../../src/executors/contracts/result.js';
 import type { DoctorContext } from '../../../src/types/doctor.js';
-import type { ExecResult, ExecutorFn } from '../../../src/types/executor.js';
 import type { HealthDimensionSpec } from '../../../src/doctor/health/dimension-spec.js';
 
 const stubDim = (id: string, severity: 'fatal' | 'warn' | 'info' = 'warn'): HealthDimensionSpec => ({

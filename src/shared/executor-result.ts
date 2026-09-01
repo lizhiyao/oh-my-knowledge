@@ -1,8 +1,5 @@
-import type {
-  ExecResult,
-  ToolCallInfo,
-  TurnInfo,
-} from '../types/index.js';
+import type { ExecResult } from '../executors/contracts/result.js';
+import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
 import { checkedSumTokenCounts, optionalTokenCount } from './token-usage.js';
 import { normalizeRfc3339Timestamp } from './timestamp.js';
 import { normalizeToolIdentity } from './tool-identity.js';

@@ -1,4 +1,4 @@
-import type { ToolCallInfo, ToolCallStatus } from '../types/index.js';
+import type { ToolCallInfo, ToolCallStatus } from '../executors/contracts/trace.js';
 
 type ToolCallOutcomeInput = Partial<Pick<ToolCallInfo, 'status' | 'success'>>;
 

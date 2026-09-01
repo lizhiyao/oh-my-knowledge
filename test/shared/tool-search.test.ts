@@ -5,7 +5,7 @@ import {
   isSearchToolCall,
   toolCallQuery,
 } from '../../src/shared/tool-search.js';
-import type { ToolCallInfo } from '../../src/types/index.js';
+import type { ToolCallInfo } from '../../src/executors/contracts/trace.js';
 
 function bashTc(command: string): ToolCallInfo {
   return {

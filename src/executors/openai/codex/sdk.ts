@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import type { ExecResult } from '../../contracts/result.js';
+import type { ExecutorInput } from '../../contracts/ports.js';
 import {
   buildCodexResult,
   normalizeCodexProtocolEvent,
