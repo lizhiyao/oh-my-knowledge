@@ -431,6 +431,19 @@ describe('架构边界守门', () => {
     expect(violations).toEqual([]);
   });
 
+  it('Experience 时间线投影由独立模块拥有', () => {
+    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const timeline = readFileSync(
+      join(SRC_DIR, 'observability', 'experience', 'timeline.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(facade)).toContain('./experience/timeline.js');
+    expect(facade).not.toContain('function timelineEventsFromTraceEvent(');
+    expect(facade).not.toContain('function buildTimelineWindow(');
+    expect(extractSpecifiers(timeline)).not.toContain('../experience.js');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
