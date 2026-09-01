@@ -1,7 +1,7 @@
-/** Skill segmentation and ResultEntry projection for loaded traces. */
+/** Skill segmentation and source-neutral analysis projection for loaded traces. */
 
 import { createHash } from 'node:crypto';
-import type { ResultEntry, ToolCallInfo, TraceSourceMetadata, TurnInfo, VariantResult } from '../types/index.js';
+import type { AnalysisEntry, AnalysisVariantResult, ToolCallInfo, TraceSourceMetadata, TurnInfo } from '../types/index.js';
 import { incrementRecordCount } from '../shared/record-count.js';
 import {
   truncateToolCallsForPersistence,
@@ -557,19 +557,19 @@ function safeTokenCountSum(values: number[]): number | undefined {
   return total;
 }
 
-// ---------- Segment → ResultEntry ----------
+// ---------- Segment → AnalysisEntry ----------
 
 /**
- * SkillSegment[] → ResultEntry[] (omk 内部分析路径的标准输入)。
+ * SkillSegment[] → AnalysisEntry[]（omk 内部观测分析路径的标准输入）。
  *
  * 映射规则(详见 docs/skill-health-spec.md):
- *   - 每 segment 一个 ResultEntry
+ *   - 每 segment 一个 AnalysisEntry
  *   - sample_id 锚定 traceId + skillName + startRecordIndex
  *   - variant key = skill 名(复用 omk 的 variant 维度作为 skill 分组维度)
  */
-export function segmentsToResultEntries(segments: SkillSegment[]): ResultEntry[] {
-  return segments.map((seg): ResultEntry => ({
-    sample_id: `trace:${createHash('sha256')
+export function segmentsToAnalysisEntries(segments: SkillSegment[]): AnalysisEntry[] {
+  return segments.map((seg): AnalysisEntry => ({
+    sampleId: `trace:${createHash('sha256')
       .update([
         seg.traceId ?? seg.traceSessionId ?? seg.sessionId,
         seg.skillName,
@@ -583,7 +583,7 @@ export function segmentsToResultEntries(segments: SkillSegment[]): ResultEntry[]
   }));
 }
 
-function buildVariantResult(seg: SkillSegment): VariantResult {
+function buildVariantResult(seg: SkillSegment): AnalysisVariantResult {
   const totalTokens = sumTokenCounts(
     seg.metrics.inputTokens,
     seg.metrics.outputTokens,
@@ -602,17 +602,12 @@ function buildVariantResult(seg: SkillSegment): VariantResult {
   return {
     ok: true,
     durationMs: seg.metrics.durationMs,
-    durationApiMs: 0,
     inputTokens: seg.metrics.inputTokens,
     outputTokens: seg.metrics.outputTokens,
     totalTokens,
     cacheReadTokens: seg.metrics.cacheReadTokens,
     cacheCreationTokens: seg.metrics.cacheCreationTokens,
     ...(!seg.metrics.tokenUsageObserved && { tokenUsageReportedByExecutor: false }),
-    execCostUSD: 0,
-    judgeCostUSD: 0,
-    costUSD: 0,
-    costReportedByExecutor: false,
     numTurns: seg.metrics.numTurns,
     numToolCalls: seg.metrics.numToolCalls,
     numToolFailures: seg.metrics.numToolFailures,
@@ -625,7 +620,6 @@ function buildVariantResult(seg: SkillSegment): VariantResult {
     }),
     toolNames: Array.from(new Set(seg.toolCalls.map((tc) => tc.tool))),
     toolDistribution,
-    outputPreview: null,
     turns: truncateTurnsForPersistence(seg.turns),
     toolCalls: truncateToolCallsForPersistence(seg.toolCalls),
   };

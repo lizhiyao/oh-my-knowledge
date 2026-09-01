@@ -8,8 +8,8 @@ import {
   type MetricDefinition,
 } from '../../evaluation-core/contracts/index.js';
 import { DEFAULT_BOOTSTRAP_SEED } from '../../eval-core/bootstrap.js';
-import { splitHoldout } from '../../eval-core/holdout.js';
-import { renderEnvironmentSection } from '../../eval-core/task-planner.js';
+import { splitHoldout } from '../../shared/holdout.js';
+import { renderEnvironmentSection } from '../../eval-core/environment-renderer.js';
 import { deterministicAssertionInputSourceKinds } from '../../shared/assertions/deterministic.js';
 import { resolveAssertionLayer } from '../../shared/assertions/layers.js';
 import type { Assertion, Sample } from '../../types/index.js';
@@ -164,7 +164,7 @@ function llmCriterion(
   };
 }
 
-/** Converts legacy authoring DTOs once; no legacy object escapes this boundary. */
+/** Converts authoring DTOs once; only Evaluation Core contracts escape this boundary. */
 export function buildProductionMeasurementDesign(
   request: Readonly<CliEvaluationRequest>,
   sourceSamples: readonly Readonly<Sample>[],

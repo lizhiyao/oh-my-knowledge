@@ -6,7 +6,7 @@
  * 定位是"真实使用 trace 的 skill 维度观察",不是通用 APM / 生产监控。
  *
  * 分析流水线:
- *   1. tracesToResultEntries(path) → segments + ResultEntry[]
+ *   1. tracesToAnalysisEntries(path) → segments + AnalysisEntry[]
  *   2. 时间窗 / skill 白名单过滤
  *   3. 按 skill name (variant key) 分别 computeCoverage + computeGapReport
  *   4. 聚合 overall 指标 + 健康度色带
@@ -14,11 +14,11 @@
 
 import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
 import { computeGapReport } from '../analysis/gap-analyzer.js';
-import type { GapReport, ResultEntry, TraceIngestionSummary } from '../types/index.js';
+import type { AnalysisEntry, GapReport, TraceIngestionSummary } from '../types/index.js';
 import {
-  segmentsToResultEntries,
+  segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,
-  tracesToResultEntries,
+  tracesToAnalysisEntries,
   type CcSession,
   type TraceSession,
   type SkillSegment,
@@ -255,7 +255,7 @@ function inferKbRoot(sessions: HealthSession[]): string | null {
  * 主入口：从受支持的 trace 输入生成 SkillHealthReport。
  */
 export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions = {}): SkillHealthReport {
-  const { sessions, segments, ingestion } = tracesToResultEntries(tracePath);
+  const { sessions, segments, ingestion } = tracesToAnalysisEntries(tracePath);
   return computeSkillHealthFromSegments(segments, sessions, tracePath, opts, ingestion);
 }
 
@@ -280,7 +280,7 @@ export function computeSkillHealthFromSegments(
   const finalSegs = scopedCandidateSegs.filter(
     (segment) => withinTimeWindow(segment, opts.from, opts.to),
   );
-  const finalEntries = segmentsToResultEntries(finalSegs);
+  const finalEntries = segmentsToAnalysisEntries(finalSegs);
   return buildReport(
     finalSegs,
     finalEntries,
@@ -312,7 +312,7 @@ function sessionsForSegments(
 
 function buildReport(
   segments: SkillSegment[],
-  entries: ResultEntry[],
+  entries: AnalysisEntry[],
   sessions: HealthSession[],
   tracePath: string,
   opts: AnalyzeOptions,

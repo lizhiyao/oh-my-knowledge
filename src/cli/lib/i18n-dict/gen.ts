@@ -85,8 +85,8 @@ export const genDict: Record<GenMessageKey, CliMessage> = {
     en: '✅ Appended {added} samples (colliding ids auto-renamed), {total} total → {path}{cost}\n',
   },
   'cli.gen.append_single_only': {
-    zh: '--append 目前仅支持单 skill 模式，不能与 --batch / --from-traces / --fix 同用。\n',
-    en: '--append currently supports single-skill mode only; it cannot be combined with --batch / --from-traces / --fix.\n',
+    zh: '--append 目前仅支持单 skill 模式，不能与 --batch / --from-traces 同用。\n',
+    en: '--append currently supports single-skill mode only; it cannot be combined with --batch / --from-traces.\n',
   },
   'cli.gen.review_hint': {
     zh: '\n下一步：\n  1. 人工审查生成的评测用例，删掉不可信样本，补边界、反例\n  2. 预览任务：{command} --dry-run\n  3. 跑评测：{command}',

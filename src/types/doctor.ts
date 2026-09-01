@@ -185,7 +185,7 @@ export interface DoctorRunOptions {
   requires?: DependencyRequirements;
   /** 解析 requires.files / requires.preflight 路径时的基准目录(优先级低于
    *  artifact.cwd，高于 cwd）。CLI 嵌入 eval 时传 skillDir，与 evaluation
-   *  preflight 的 cwd 选择规则保持一致(参见 evaluation-pipeline.ts dependency check)。 */
+   *  Evaluation Core preflight 的 cwd 选择规则保持一致。 */
   dependencyCwd?: string;
   /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。
    *  既可以是普通 DoctorRule,也可以是 ComposerRule(健康度体检走这条)。 */

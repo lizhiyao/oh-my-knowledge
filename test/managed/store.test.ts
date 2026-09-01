@@ -38,7 +38,7 @@ function makeObs(over: Partial<ManagedObservation> = {}): ManagedObservation {
 function makeRecord(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
     recordKind: 'managed-artifact',
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: managedRecordId('skill', 'review'),
     name: 'review',
     kind: 'skill',
@@ -77,7 +77,7 @@ describe('managed store', () => {
       distribution: [],
     });
     assert.equal(rec.recordKind, 'managed-artifact');
-    assert.equal(rec.schemaVersion, 2);
+    assert.equal(rec.schemaVersion, 3);
     assert.equal(rec.id, managedRecordId('skill', 'review'));
     assert.deepEqual(rec.evidence, []);
     assert.deepEqual(rec.decisions, []);
@@ -86,7 +86,7 @@ describe('managed store', () => {
   it('rebaselineManagedContentHash:把基线重锚到新哈,保留 evidence/decisions', () => {
     const store = managedDir(dir);
     upsertManagedRecord(store, makeRecord({
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-06T00:00:00.000Z' }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: '2026-06-06T00:00:00.000Z' })],
       decisions: [{ decisionKind: 'promote', actor: 't', decidedAt: '2026-06-07T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa' }],
     }));
     const merged = rebaselineManagedContentHash(store, managedRecordId('skill', 'review'), 'cccccccccccc');
@@ -123,7 +123,7 @@ describe('managed store', () => {
 
   it('mergeManagedRecord:distribution 按 path 去重,evidence/decisions 保留旧值', () => {
     const prev = makeRecord({
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-06T00:00:00.000Z' }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: '2026-06-06T00:00:00.000Z' })],
       decisions: [{ decisionKind: 'promote', actor: 'me', decidedAt: '2026-06-06T00:00:00.000Z' }],
       distribution: [{ label: 'Claude Code', path: '/p/claude', contentHash: 'aaaaaaaaaaaa', copiedAt: TEST_AT }],
     });
@@ -206,37 +206,15 @@ describe('managed store', () => {
     write({ kind: 'baseline' });
     assert.equal(loadManagedRecord(store, id), null, 'kind 非可安装 ArtifactKind 判脏');
 
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: TEST_AT, comparability: { cliVersion: 1 } }] });
-    assert.equal(loadManagedRecord(store, id), null, 'evidence.comparability.cliVersion 非 string 判脏');
+    write({ schemaVersion: 2 });
+    assert.equal(loadManagedRecord(store, id), null, 'v2 旧受管 schema 不迁移');
 
-    // comparability 的可选 marker 同样收窄(否则任意类型脏值穿过 validator 进 list --json / 未来 promote)。
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: TEST_AT, comparability: { cliVersion: '0.35.0', judgePromptHash: { nested: true } } }] });
-    assert.equal(loadManagedRecord(store, id), null, 'comparability.judgePromptHash 非 string 判脏');
+    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: TEST_AT }] });
+    assert.equal(loadManagedRecord(store, id), null, '非 Core 证据判脏');
 
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: TEST_AT, comparability: { cliVersion: '0.35.0', debiasMode: 42 } }] });
-    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 非数组判脏');
+    write({ evidence: [{ ...coreManagedEvidence('aaaaaaaaaaaa'), reportDigest: 'not-a-digest' }] });
+    assert.equal(loadManagedRecord(store, id), null, 'Core digest 形态错误判脏');
 
-    write({ evidence: [{ reportId: 'r', contentHash: 'h', recordedAt: TEST_AT, comparability: { cliVersion: '0.35.0', debiasMode: ['length', 'evil'] } }] });
-    assert.equal(loadManagedRecord(store, id), null, 'comparability.debiasMode 含非法枚举值判脏');
-
-    // gitCommit 是纯展示的还原指针:脏值(非 SHA 形态)只剥该字段、保留整条记录(不像测量关键字段判脏丢弃),
-    // 否则一处装饰字段 typo 会让整条记录连同 evidence / decision 历史从 list / Studio 消失;剥后 Studio 渲染
-    // `ev.gitCommit.slice()` 也不再触雷(字段已不存在)。
-    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT, gitCommit: { nested: true } }] });
-    let loaded = loadManagedRecord(store, id);
-    assert.ok(loaded, 'gitCommit 非 string 不丢记录');
-    assert.equal(loaded!.evidence[0].gitCommit, undefined, 'gitCommit 非 string → 剥掉该字段');
-
-    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT, gitCommit: 'nothex-zzz' }] });
-    loaded = loadManagedRecord(store, id);
-    assert.ok(loaded, 'gitCommit 非 SHA 形态不丢记录');
-    assert.equal(loaded!.evidence[0].gitCommit, undefined, 'gitCommit 非 SHA 形态(含非 hex)→ 剥掉该字段');
-
-    // 合法记录仍放行,且合法 gitCommit 保留(确认没把合法值误剥)。
-    write({ evidence: [{ reportId: 'r', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT, verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0', judgePromptHash: 'abc123', debiasMode: ['length', 'position'] }, gitCommit: 'abc1234567890def' }] });
-    loaded = loadManagedRecord(store, id);
-    assert.ok(loaded, '合法记录正常加载');
-    assert.equal(loaded!.evidence[0].gitCommit, 'abc1234567890def', '合法 gitCommit 保留');
   });
 
   it('loadAllManagedRecords:跳过损坏文件,只收合法记录', () => {
@@ -298,7 +276,7 @@ describe('managed store', () => {
     // 先有 review 的证据(测的是旧内容 aaaa),后把同名 review 重装到新内容 cccc。
     const record = makeRecord({
       contentHash: 'cccccccccccc',
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: TEST_AT })],
     });
     // 当前文件就是新内容 cccc:不漂移,但旧证据 hash 不匹配 → 不能算 measurable。
     const state = deriveManagedState({ record, currentContentHash: 'cccccccccccc' });
@@ -324,7 +302,7 @@ describe('managed store', () => {
 
   // --- promote 决定 ---
   const promoteDecision = (over: Partial<ManagedDecision> = {}): ManagedDecision => ({
-    decisionKind: 'promote', actor: 'tester', decidedAt: '2026-06-08T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa', reportId: 'r1', ...over,
+    decisionKind: 'promote', actor: 'tester', decidedAt: '2026-06-08T00:00:00.000Z', contentHash: 'aaaaaaaaaaaa', runId: 'r1', ...over,
   });
 
   it('appendManagedDecision:append-only 追加,记录不存在返 null', () => {
@@ -334,7 +312,7 @@ describe('managed store', () => {
     const merged = appendManagedDecision(store, written.id, promoteDecision());
     assert.equal(merged?.decisions.length, 1);
     assert.equal(merged?.decisions[0].decisionKind, 'promote');
-    assert.deepEqual(loadManagedRecord(store, written.id)?.decisions[0].reportId, 'r1', '落盘可读回');
+    assert.deepEqual(loadManagedRecord(store, written.id)?.decisions[0].runId, 'r1', '落盘可读回');
   });
 
   it('appendManagedDecision:当前内容已 promote 同 kind → 幂等不重复追加', () => {
@@ -554,7 +532,7 @@ describe('managed store — observations(#235)', () => {
     // 重新加闸门,这条会红)。源码 bump 后旧观测仍有效(旧副本还部署着),闸门会错误压掉它。
     const rec = makeRecord({
       contentHash: 'bbbbbbbbbbbb',
-      evidence: [{ reportId: 'evB', contentHash: 'bbbbbbbbbbbb', recordedAt: '2026-06-20T00:00:00.000Z' }],
+      evidence: [coreManagedEvidence('bbbbbbbbbbbb', { reportId: 'evB', recordedAt: '2026-06-20T00:00:00.000Z' })],
       observations: [makeObs({ observedAt: '2026-06-05T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })],
     });
     assert.equal(deriveProductionGap(rec).marker, 'gap');

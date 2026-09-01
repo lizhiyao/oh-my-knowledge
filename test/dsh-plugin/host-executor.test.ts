@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { load } from 'js-yaml';
@@ -11,6 +11,14 @@ import {
   type DshSessionLike,
 } from '../../src/dsh-plugin/host-executor.js';
 import { apply, inject } from '../../src/dsh-plugin/index.js';
+import {
+  buildManagedArtifactRecord,
+  hashArtifactSource,
+  loadManagedRecord,
+  managedDir,
+  managedRecordId,
+  upsertManagedRecord,
+} from '../../src/managed/index.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -387,6 +395,9 @@ describe('DSH plugin config boundary', () => {
     text?: string;
     created: number;
     models: string[];
+    artifactFiles: string[];
+    graphFiles: string[];
+    managedEvidenceCount: number;
   }> {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
@@ -396,6 +407,18 @@ describe('DSH plugin config boundary', () => {
         prompt: 'test',
         assertions: [{ type: 'contains', value: 'host' }],
       }]));
+      mkdirSync(join(dir, 'skills'));
+      const skillPath = join(dir, 'skills', 'review.md');
+      writeFileSync(skillPath, '# Review\nReturn a host-backed answer.\n');
+      const managed = managedDir(dir);
+      upsertManagedRecord(managed, buildManagedArtifactRecord({
+        name: 'review',
+        kind: 'skill',
+        source: { sourceKind: 'file', locator: skillPath, isDirectorySkill: false },
+        contentHash: hashArtifactSource(skillPath, false),
+        installedAt: '2026-09-01T00:00:00.000Z',
+        distribution: [],
+      }));
       const host = new FakeDshHost();
       let handler: ((invocation: UnknownRecord) => unknown) | undefined;
       const ctx = Object.assign(host, {
@@ -416,10 +439,22 @@ describe('DSH plugin config boundary', () => {
         rawInput: 'eval eval.yaml',
         signal: new AbortController().signal,
       }) as { kind: string; text?: string };
+      const reportsDir = join(dir, '.omk', 'reports');
+      const graphsDir = join(dir, '.omk', 'graphs', 'eval');
       return {
         ...result,
         created: host.created.length,
         models: host.created.map(({ model }) => model),
+        artifactFiles: existsSync(reportsDir)
+          ? readdirSync(reportsDir, { recursive: true, encoding: 'utf8' }).sort()
+          : [],
+        graphFiles: existsSync(graphsDir)
+          ? readdirSync(graphsDir, { recursive: true, encoding: 'utf8' }).sort()
+          : [],
+        managedEvidenceCount: loadManagedRecord(
+          managed,
+          managedRecordId('skill', 'review'),
+        )?.evidence.length ?? 0,
       };
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -431,6 +466,9 @@ variants:
   - name: baseline
     role: control
     artifact: baseline
+  - name: review
+    role: treatment
+    artifact: review
 `;
 
   it('requires omitting the top-level executor inside DSH', async () => {
@@ -458,6 +496,11 @@ variants:
     const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\n`);
     assert.equal(result.kind, 'success', result.text);
     assert.equal(result.created, 1);
+    assert.ok(result.artifactFiles.some((file) => file.endsWith('manifest.json')));
+    assert.ok(result.artifactFiles.some((file) => file.endsWith('evaluation-report.json')));
+    assert.equal(result.artifactFiles.some((file) => /(^|\/)r?eports?\.json$/u.test(file)), false);
+    assert.equal(result.graphFiles.filter((file) => file.endsWith('.graph.json')).length, 1);
+    assert.equal(result.managedEvidenceCount, 1);
   });
 
   it('reuses inherited connectivity for the default same-model DSH judge', async () => {
@@ -466,14 +509,10 @@ variants:
     assert.deepEqual(result.models, ['configured-model']);
   });
 
-  it('preflights an explicitly configured different DSH judge model', async () => {
+  it('does not invoke an explicitly configured judge when the sample has no LLM-scored layer', async () => {
     const result = await invokeConfig(`${minimal}noDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\njudgeModels:\n  - executor: dsh\n    model: unproven-judge\n`);
     assert.equal(result.kind, 'success', result.text);
-    assert.deepEqual(result.models, [
-      'configured-model',
-      'unproven-judge',
-      'configured-model',
-    ]);
+    assert.deepEqual(result.models, ['configured-model']);
   });
 
   it('ignores unused judge models when noJudge is enabled', async () => {
@@ -482,10 +521,10 @@ variants:
     assert.deepEqual(result.models, ['configured-model']);
   });
 
-  it('surfaces gold loading failures instead of silently ignoring goldDir', async () => {
+  it('fails closed on gold loading failures instead of silently ignoring goldDir', async () => {
     const result = await invokeConfig(`${minimal}noJudge: true\nnoDiagnostic: true\nskipDoctor: true\nnoCache: true\nbootstrap: false\ngoldDir: ./missing-gold\n`);
-    assert.equal(result.kind, 'success', result.text);
-    assert.match(result.text ?? '', /Gold 数据未加载/);
-    assert.match(result.text ?? '', /missing-gold/);
+    assert.equal(result.kind, 'error');
+    assert.match(result.text ?? '', /无法读取可选宿主资源/);
+    assert.equal(result.created, 0);
   });
 });

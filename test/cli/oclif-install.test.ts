@@ -324,7 +324,7 @@ describe('oclif install', () => {
 
       const record = await readSoleManagedRecord(dir);
       assert.equal(record.recordKind, 'managed-artifact');
-      assert.equal(record.schemaVersion, 2);
+      assert.equal(record.schemaVersion, 3);
       assert.equal(record.name, 'review');
       assert.equal(record.kind, 'skill');
       assert.equal((record.source as Record<string, unknown>).sourceKind, 'file');

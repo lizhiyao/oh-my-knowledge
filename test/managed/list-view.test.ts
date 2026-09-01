@@ -6,11 +6,12 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildManagedListRow, buildManagedListRows } from '../../src/managed/list-view.js';
 import type { ManagedArtifactRecord, ManagedEvidenceRef, ManagedObservation } from '../../src/types/index.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
     recordKind: 'managed-artifact',
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: 'id-review',
     name: 'review',
     kind: 'skill',
@@ -25,7 +26,7 @@ function rec(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
 }
 
 function ev(over: Partial<ManagedEvidenceRef> = {}): ManagedEvidenceRef {
-  return { evidenceSource: 'evaluation-core', evidenceReadiness: 'decision-ready', reportId: 'r1', contentHash: 'hashAAA', recordedAt: '2026-06-08T00:00:00.000Z', verdict: 'PROGRESS', comparability: { cliVersion: '0.35.0' }, ...over };
+  return coreManagedEvidence('hashAAA', { reportId: 'r1', recordedAt: '2026-06-08T00:00:00.000Z', ...over });
 }
 
 function obs(over: Partial<ManagedObservation> = {}): ManagedObservation {
@@ -51,11 +52,10 @@ describe('buildManagedListRow', () => {
     assert.equal(row.distributionCount, 1);
   });
 
-  it('measurable:有当前证据(同哈)→ measurable + 带 verdict/可比性,证据 1/1', () => {
+  it('measurable:有当前 Core 证据(同哈)→ measurable + 带 verdict,证据 1/1', () => {
     const row = buildManagedListRow(rec({ evidence: [ev()] }), reach('hashAAA'));
     assert.equal(row.state, 'measurable');
     assert.equal(row.latestVerdict, 'PROGRESS');
-    assert.equal(row.comparability?.cliVersion, '0.35.0');
     assert.equal(row.currentEvidenceCount, 1);
     assert.equal(row.totalEvidenceCount, 1);
   });
@@ -125,12 +125,12 @@ describe('buildManagedListRow', () => {
     assert.equal(row.reachable, false);
   });
 
-  const promoteOverrideDecision = { decisionKind: 'promote' as const, actor: 't', decidedAt: '2026-06-11T00:00:00.000Z', contentHash: 'hashAAA', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable'] } };
+  const promoteOverrideDecision = { decisionKind: 'promote' as const, actor: 't', decidedAt: '2026-06-11T00:00:00.000Z', contentHash: 'hashAAA', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['drifted'] } };
 
   it('promote 经 override → row.override 带被绕过的门(只读审计标)', () => {
     const row = buildManagedListRow(rec({ evidence: [ev()], decisions: [promoteOverrideDecision] }), reach('hashAAA'));
     assert.equal(row.state, 'promoted');
-    assert.deepEqual(row.override, { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable'] });
+    assert.deepEqual(row.override, { verdict: 'CAUTIOUS', overriddenBlocks: ['drifted'] });
   });
 
   it('普通 promote(非 override)→ row.override undefined', () => {

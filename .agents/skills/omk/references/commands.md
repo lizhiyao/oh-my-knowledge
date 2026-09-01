@@ -169,7 +169,7 @@ omk eval gold compare <runId> [flags]
 - `--gold-dir` `option`:gold dataset 目录，必填
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--metric` `option`:显式选择 Core metric ID。
-- `--reports-dir` `option`:报告目录，默认 ~/.oh-my-knowledge/reports
+- `--reports-dir` `option`:只读取指定 Core 报告目录（默认当前项目 + 全局）
 - `--seed` `option`:bootstrap seed，可复现
 - `--target` `option`:显式选择 Core target ID。
 - `--trial-index` `option`:显式选择 trial index。
@@ -572,7 +572,7 @@ omk rollback review --reason "线上发现回归"
 
 ## omk sample
 
-为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。
+为指定 skill 生成评测用例，支持 batch、single 与 from-traces 模式。
 
 **用法:**
 
@@ -582,25 +582,22 @@ omk sample [skillPath] [flags]
 
 **参数:**
 
-- `skillPath`(可选):skill 文件路径或 SKILL.md 路径。batch 模式不需要；single / fix 模式必填。
+- `skillPath`(可选):skill 文件路径或 SKILL.md 路径。batch 模式不需要；single 模式必填。
 
 **Flags:**
 
-- `--append` `boolean`:在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。
+- `--append` `boolean`:在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
 - `--batch` `boolean`:批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
 - `--count` `option`:生成用例条数。不传由 LLM 按 skill 类型自动决定。
 - `--executor` `option`:执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-- `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
 - `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
 - `--no-mock` `boolean`:不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
 - `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
-- `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill` `option`:仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
-- `--treatment` `option`:指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 
 **示例:**
 
@@ -614,12 +611,6 @@ omk sample skills/my-skill/SKILL.md
 
 ```bash
 omk sample --batch --skill-dir skills
-```
-
-> 根据最近评测报告自动修复 sample_design 类型失败
-
-```bash
-omk sample skills/my-skill/SKILL.md --fix
 ```
 
 > 从 observe inbox 的失败信号回流生成评测用例草稿
@@ -649,7 +640,7 @@ omk studio [flags]
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe-inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配
-- `--reports-dir` `option`:只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）
+- `--reports-dir` `option`:只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
 
 **示例:**
 

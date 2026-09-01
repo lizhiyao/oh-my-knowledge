@@ -4,7 +4,7 @@ import {
   readdirSync,
 } from 'node:fs';
 import { isAbsolute, join, normalize } from 'node:path';
-import { hashString } from '../eval-core/evaluation-reporting.js';
+import { shortContentHash } from '../shared/content-hash.js';
 import { OMK_HOME } from '../eval-core/default-dirs.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
@@ -22,7 +22,7 @@ import type {
 } from '../types/index.js';
 
 /**
- * 受管记录的 per-record 文件存储。一条记录一个 `.omk/managed/<id>.json`,镜像 report-store 的
+ * 受管记录的 per-record 文件存储。一条记录一个 `.omk/managed/<id>.json`，采用
  * 成熟模式(原子 tmp+rename):每次 install 只碰自己那个文件,independent write、不丢别人、
  * 天然可扩展。无数据库——这个规模(每项目几十条、CLI 单写者)JSON 文件足够,且保住"可读可
  * grep 可 diff"的透明价值。
@@ -47,7 +47,7 @@ export function recordPath(dir: string, id: string): string {
 
 /** 稳定身份 = hash(kind, name)。源路径是可变属性、不进 id。kind 取自固定枚举(无 `|`),分隔可注入。 */
 export function managedRecordId(kind: ArtifactKind, name: string): string {
-  return hashString(`${kind}|${name}`);
+  return shortContentHash(`${kind}|${name}`);
 }
 
 // 内容指纹工具已下沉到 inputs 层(install 与 eval 共用同一处,保证指纹同空间);此处 re-export
@@ -79,31 +79,14 @@ function isOptionalString(v: unknown): boolean {
   return v === undefined || typeof v === 'string';
 }
 
-/** git commit SHA 形态:7–64 位 hex。写入(evidence.ts)与读取校验共用同一判定,避免写读不对称
- *  (写时不校验、读时却要求 SHA → 自己写进去的值重载时被自己判脏)。 */
-export function isShaLike(v: unknown): v is string {
-  return typeof v === 'string' && /^[0-9a-f]{7,64}$/i.test(v);
-}
-
-/** 可选 git SHA 字段守卫(evidence.gitCommit):缺省或合法 SHA 形态。脏值会让 Studio 渲染
- *  `ev.gitCommit.slice()` 抛 TypeError(整页打不开),故读时按 SHA 形态收窄(脏值只剥字段,见下)。 */
-function isOptionalSha(v: unknown): boolean {
-  return v === undefined || isShaLike(v);
+function isSha256Digest(v: unknown): v is string {
+  return typeof v === 'string' && /^sha256:[0-9a-f]{64}$/.test(v);
 }
 
 // 受管记录可安装的 kind(managed 记录绝不是 baseline)。
 const MANAGED_KINDS = new Set(['skill', 'prompt', 'agent', 'workflow']);
 const MANAGED_DECISIONS = new Set(['promote', 'reject', 'rollback']);
-const VERDICTS = new Set([
-  'PROGRESS',
-  'CAUTIOUS',
-  'REGRESS',
-  'NOISE',
-  'UNDERPOWERED',
-  'SOLO',
-]);
-const OVERRIDE_VERDICTS = new Set([...VERDICTS, 'UNKNOWN']);
-const OVERRIDDEN_BLOCKS = new Set(['drifted', 'no_evidence', 'incomparable', 'verdict_blocked']);
+const OVERRIDDEN_BLOCKS = new Set(['drifted', 'no_evidence', 'verdict_blocked']);
 
 // 校验到**运行时实际收窄**的边界,不止「字段是 string」:记录文件是用户可手改、且可能随仓库分发(被
 // loadAllManagedRecords 无 opt-in 读到)的不可信输入。若只查 string,畸形记录(如 source.url 是对象、
@@ -116,7 +99,7 @@ function isManagedArtifactRecord(
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<ManagedArtifactRecord>;
   if (!(r.recordKind === 'managed-artifact'
-    && r.schemaVersion === 2
+    && r.schemaVersion === 3
     && isManagedRecordId(r.id)
     && (expectedId === undefined || r.id === expectedId)
     && isNonEmptyString(r.name)
@@ -161,57 +144,37 @@ function isManagedArtifactRecord(
       !isNonEmptyString(ev.reportId)
       || !isNonEmptyString(ev.contentHash)
       || !isRfc3339Timestamp(ev.recordedAt)
-      || (ev.verdict !== undefined && !VERDICTS.has(String(ev.verdict)))
+      || (ev.verdict !== undefined && !isNonEmptyString(ev.verdict))
     ) return false;
-    if (ev.evidenceSource !== undefined && ev.evidenceSource !== 'evaluation-core') return false;
-    if (ev.evidenceSource === 'evaluation-core') {
-      if (!isNonEmptyString(ev.runId)
-          || !isNonEmptyString(ev.reportDigest)
-          || !isNonEmptyString(ev.artifactDigest)
-          || !isNonEmptyString(ev.targetId)
-          || !['decision-ready', 'measurement-only', 'insufficient'].includes(
-            String(ev.evidenceReadiness),
-          )) return false;
-      const core = ev.coreComparability as Record<string, unknown> | undefined;
-      if (core === undefined || typeof core !== 'object'
-          || ![
-            'runContractDigest',
-            'datasetRevisionDigest',
-            'executionPlanDigest',
-            'evaluationPlanDigest',
-            'analysisPlanDigest',
-            'decisionPlanDigest',
-          ].every((field) => isNonEmptyString(core[field]))) return false;
-      if (ev.decisionReasonCodes !== undefined
-          && (!Array.isArray(ev.decisionReasonCodes)
-            || !ev.decisionReasonCodes.every(isNonEmptyString))) return false;
-    }
+    if (ev.evidenceSource !== 'evaluation-core'
+        || !isNonEmptyString(ev.runId)
+        || !isSha256Digest(ev.reportDigest)
+        || !isSha256Digest(ev.artifactDigest)
+        || !isNonEmptyString(ev.targetId)
+        || !['decision-ready', 'measurement-only', 'insufficient'].includes(
+          String(ev.evidenceReadiness),
+        )) return false;
+    const core = ev.coreComparability as Record<string, unknown> | undefined;
+    if (core === undefined || typeof core !== 'object'
+        || ![
+          'runContractDigest',
+          'datasetRevisionDigest',
+          'executionPlanDigest',
+          'evaluationPlanDigest',
+          'analysisPlanDigest',
+          'decisionPlanDigest',
+        ].every((field) => isSha256Digest(core[field]))) return false;
+    if (ev.decisionReasonCodes !== undefined
+        && (!Array.isArray(ev.decisionReasonCodes)
+          || !ev.decisionReasonCodes.every(isNonEmptyString))) return false;
     const evidenceKey = `${ev.reportId}\0${ev.contentHash}`;
     if (evidenceKeys.has(evidenceKey)) return false;
     evidenceKeys.add(evidenceKey);
-    if (ev.sampleCoverage !== undefined) {
-      const coverage = ev.sampleCoverage as Record<string, unknown>;
-      if (
-        !coverage
-        || typeof coverage !== 'object'
-        || !isNonNegativeSafeInteger(coverage.count)
-        || !isNonEmptyString(coverage.hash)
-      ) return false;
-    }
-    // comparability 若存在:必须是带 string cliVersion 的对象(list / promote 会读它)。可选 marker
-    // judgePromptHash / debiasMode 同样收窄到声明类型 —— 否则任意类型脏值会穿过 validator 原样进 `omk list
-    // --json`(及未来 promote gate)消费方。
-    if (ev.comparability !== undefined) {
-      const c = ev.comparability as Record<string, unknown>;
-      if (!c || typeof c !== 'object' || !isNonEmptyString(c.cliVersion)) return false;
-      if (!isOptionalString(c.judgePromptHash)) return false;
-      if (c.debiasMode !== undefined
-        && !(Array.isArray(c.debiasMode) && c.debiasMode.every((m) => m === 'length' || m === 'position'))) return false;
-    }
-    // gitCommit 是纯展示的还原指针:脏值(非 SHA 形态)只剥掉该字段,不像测量关键字段那样判脏丢整条记录
-    // —— 一处装饰字段的 typo 不该让整条记录连同 evidence / decision 历史从 list / Studio 消失。剥后剩余
-    // 字段仍是合法 evidence,Studio 渲染 `ev.gitCommit.slice()` 也不再触雷(字段已不存在)。
-    if (!isOptionalSha(ev.gitCommit)) delete ev.gitCommit;
+    const coverage = ev.sampleCoverage as Record<string, unknown> | undefined;
+    if (!coverage
+      || typeof coverage !== 'object'
+      || !isNonNegativeSafeInteger(coverage.count)
+      || !isSha256Digest(coverage.hash)) return false;
     return true;
   });
   const okDec = r.decisions.every((d) => {
@@ -228,7 +191,7 @@ function isManagedArtifactRecord(
     if (!isOptionalString(dec.reason)) return false;
     if (
       (dec.contentHash !== undefined && !isNonEmptyString(dec.contentHash))
-      || (dec.reportId !== undefined && !isNonEmptyString(dec.reportId))
+      || (dec.runId !== undefined && !isNonEmptyString(dec.runId))
     ) return false;
     if (
       (dec.decisionKind === 'promote' || dec.decisionKind === 'rollback')
@@ -240,7 +203,7 @@ function isManagedArtifactRecord(
         dec.decisionKind !== 'promote'
         || !o
         || typeof o !== 'object'
-        || !OVERRIDE_VERDICTS.has(String(o.verdict))
+        || !isNonEmptyString(o.verdict)
       ) return false;
       if (o.overriddenBlocks !== undefined
         && !(
@@ -578,7 +541,7 @@ export function buildManagedArtifactRecord(input: {
   }
   return {
     recordKind: 'managed-artifact',
-    schemaVersion: 2,
+    schemaVersion: 3,
     id,
     name: input.name,
     kind: input.kind,
@@ -628,8 +591,7 @@ export function isCurrentMeasurementEvidence(
   evidence: Readonly<ManagedEvidenceRef>,
   contentHash: string,
 ): boolean {
-  return evidence.evidenceSource === 'evaluation-core'
-    && evidence.contentHash === contentHash
+  return evidence.contentHash === contentHash
     && evidence.evidenceReadiness !== 'insufficient';
 }
 

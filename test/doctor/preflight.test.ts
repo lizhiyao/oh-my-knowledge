@@ -56,7 +56,7 @@ describe('buildDoctorPreflightContext', () => {
     assert.equal(ctx.dependencyCwd, resolve('examples/skills'));
   });
 
-  it('artifact.cwd takes priority over skillDir for dependencyCwd (matches evaluation-pipeline rule)', () => {
+  it('artifact.cwd takes priority over skillDir for dependencyCwd (matches Core preflight)', () => {
     const ctx = buildDoctorPreflightContext({
       artifacts: [skillArtifact({ name: 'v1', cwd: '/tmp/explicit-cwd' }), skillArtifact({ name: 'v2' })],
       skillDir: '/tmp/skills',

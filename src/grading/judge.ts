@@ -100,7 +100,7 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
   });
 
   // 透传 executor 是否报告 cost。codex executor `costReportedByExecutor: false`,
-  // 让 grade / VariantResult / renderer 跨 judge 路径仍能识别 cost 非真值。
+  // 让各评委消费路径仍能识别 cost 非真值。
   const reportedField = result.costReportedByExecutor === false ? { judgeCostReportedByExecutor: false } : {};
   if (!result.ok) return { score: 0, reason: `judge error: ${result.error}`, judgeCostUSD: result.costUSD, ...reportedField };
 

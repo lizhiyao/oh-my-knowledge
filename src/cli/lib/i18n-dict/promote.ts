@@ -6,8 +6,6 @@ export type PromoteMessageKey =
   | 'cli.promote.blocked_header'
   | 'cli.promote.drifted'
   | 'cli.promote.no_current_evidence'
-  | 'cli.promote.incomparable'
-  | 'cli.promote.incomparable_unverified'
   | 'cli.promote.verdict_blocked'
   | 'cli.promote.force_hint'
   | 'cli.promote.force_reason_required'
@@ -36,14 +34,6 @@ export const promoteDict: Record<PromoteMessageKey, CliMessage> = {
     zh: '· 当前内容没有评测证据，无法 promote（force 也不行）。先跑 omk eval 取证（omk list 看证据状态）。',
     en: '· no evaluation evidence for the current content; cannot promote (not even with --force). Run omk eval first (omk list shows evidence status).',
   },
-  'cli.promote.incomparable': {
-    zh: '· 证据的评委提示词指纹 {judgePromptHash} 不是当前评委：judge prompt 已变、旧 verdict 不可比。重跑 omk eval。',
-    en: '· evidence judge-prompt fingerprint {judgePromptHash} is not the current judge: the judge prompt changed, the old verdict is incomparable. Re-run omk eval.',
-  },
-  'cli.promote.incomparable_unverified': {
-    zh: '⚠️ 证据缺评委提示词指纹，无法核对可比性（按未核处理，不拦门禁）。',
-    en: '⚠️ evidence has no judge-prompt fingerprint; comparability cannot be verified (treated as unchecked, not blocking).',
-  },
   'cli.promote.verdict_blocked': {
     zh: '· 当前证据 verdict={verdict}，不在接受集（默认仅 PROGRESS；CAUTIOUS 需 --accept-cautious）。',
     en: '· current evidence verdict={verdict} is not in the accepted set (default PROGRESS only; CAUTIOUS needs --accept-cautious).',
@@ -57,8 +47,8 @@ export const promoteDict: Record<PromoteMessageKey, CliMessage> = {
     en: '--force requires a non-empty --reason explaining the human override.',
   },
   'cli.promote.promoted': {
-    zh: '已 promote {name}：接受内容 {hash}（verdict={verdict},report={reportId}）。',
-    en: 'Promoted {name}: accepted content {hash} (verdict={verdict}, report={reportId}).',
+    zh: '已 promote {name}：接受内容 {hash}（verdict={verdict},run={runId}）。',
+    en: 'Promoted {name}: accepted content {hash} (verdict={verdict}, run={runId}).',
   },
   'cli.promote.forced_override': {
     zh: '⚠️ 已 --force 越门 promote {name}：接受内容 {hash}（被越过的 verdict={verdict}）。越门已记为人工决定。',

@@ -93,7 +93,7 @@ interface BoxParts {
 }
 
 /** 缓存落盘走仓库既有约定 `~/.oh-my-knowledge/<...>`(见 src/eval-core/cache.ts、
- *  src/server/job-store.ts)。home 可注入,方便测试传 tmp 目录。 */
+ *  CLI 命令）。home 可注入，方便测试传 tmp 目录。 */
 export function defaultCachePath(home: string = homedir()): string {
   return join(home, '.oh-my-knowledge', 'update-check.json');
 }

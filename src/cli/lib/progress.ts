@@ -1,7 +1,7 @@
 import { tCli, type CliLang } from './i18n.js';
 import type { DoctorProgressInfo } from '../../types/doctor.js';
 
-// CLI progress info — superset of all possible fields from ProgressInfo union members
+// CLI 展示层的进度事件投影。
 export interface ProgressInfo {
   phase: string;
   completed?: number;

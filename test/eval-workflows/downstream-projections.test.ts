@@ -228,6 +228,45 @@ describe('Evaluation Core downstream projections', () => {
       expectProjectionError('CORE_GOLD_SCALE_INCOMPATIBLE'),
     );
   });
+
+  it('warns when the gold annotator matches the sealed evaluator model identity', async () => {
+    const source = await storedScenario('rag', (definition) => {
+      definition.evaluators[0].config = {
+        runtime: { executorId: 'anthropic-api', model: 'judge-a' },
+      };
+    });
+    const record = source.evaluation.records.find((entry) => (
+      entry.targetId === 'control' && entry.evaluationStatus === 'completed'
+    ));
+    assert.ok(record?.evaluationStatus === 'completed');
+    const observation = record.observations.find((entry) => entry.metricId === 'ndcg');
+    assert.ok(observation?.observationStatus === 'observed');
+    assert.equal(observation.valueType, 'numeric');
+
+    const result = compareGoldToCoreRun({
+      source,
+      gold: {
+        metadata: {
+          annotator: 'ANTHROPIC-API:JUDGE-A',
+          annotatedAt: '2026-08-30',
+          version: '1',
+          scale: { min: 0, max: 1 },
+        },
+        annotations: [{ sample_id: record.sampleId, score: observation.value }],
+        sourcePaths: ['/gold/annotations.yaml'],
+      },
+      selector: {
+        targetId: 'control',
+        evaluatorId: 'retrieval',
+        metricId: 'ndcg',
+        trialIndex: 0,
+      },
+      bootstrapSamples: 100,
+      bootstrapSeed: 42,
+    });
+
+    assert.match(result.contaminationWarning ?? '', /exactly matches/);
+  });
 });
 
 const seriesOutputSchema = {

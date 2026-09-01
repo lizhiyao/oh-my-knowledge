@@ -23,8 +23,8 @@ export async function runStudio(
   flags: StudioFlags,
   lang: CliLang,
 ): Promise<void> {
-  // reports 读取目录:显式 --reports-dir 固定该目录;--global 钉全局;默认 = undefined,交给
-  // createReportServer 建 indexed(机器级聚合:当前项目 + 全局 live ∪ 别项目索引卡片)。
+  // reports 读取目录：显式 --reports-dir 固定该目录；--global 钉全局；默认只聚合
+  // 当前项目 + 全局 Core run。旧 eval report index 已删除，不再扫描其它项目。
   const reportsDirOpt = flags['reports-dir']
     ? resolve(flags['reports-dir'])
     : flags.global
@@ -94,9 +94,6 @@ export async function runStudio(
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
-    // reportsDir 缺省 undefined → server 建 indexed(机器级:当前项目 + 全局 + 别项目索引卡片);
-    // 显式 --reports-dir / --global 固定单目录(逃生舱,不走聚合)。
-    ...(reportsDirOpt !== undefined ? { reportsDir: reportsDirOpt } : {}),
     coreStudioCatalog: createCoreStudioCatalog(coreStore),
     // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
     // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
@@ -106,8 +103,7 @@ export async function runStudio(
     doctorsDir: flags['doctors-dir']
       ? resolve(flags['doctors-dir'])
       : (flags.global ? globalDoctorsDir : (): string => resolveDoctorsDir(projectDoctorsDir())),
-    // 只有默认机器级模式才合别项目的索引卡片;--global / 显式 --analyses-dir / --doctors-dir 是逃生舱,
-    // 只看固定目录(与 reports 的 --reports-dir 关闭 indexed store 对称)。observe / doctor 各自独立判定。
+    // observe / doctor 仍可通过各自的索引卡片发现别项目产物；--global 或显式目录只看固定目录。
     includeObserveCards: !flags.global && !flags['analyses-dir'],
     includeDoctorCards: !flags.global && !flags['doctors-dir'],
     // observe-inbox 缺省按请求项目优先→全局兜底(report-server 默认即此);显式 --observations-dir 固定该目录;
@@ -168,8 +164,8 @@ export default class Studio extends BaseCommand {
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）',
-        en: 'View only this reports dir (optional; default aggregates machine-wide: current project + global + other projects via index)',
+        zh: '只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）',
+        en: 'View only this Core reports dir (optional; default aggregates current project + global)',
       }),
     }),
     'analyses-dir': Flags.string({

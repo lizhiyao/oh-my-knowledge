@@ -12,8 +12,11 @@ Operational changes:
 - pass a Core `runId` to `omk eval gold compare`, with explicit `--target`, `--evaluator`, and `--metric` selectors;
 - Studio lists only Core evaluation runs; doctor and observe documents remain independent;
 - managed evidence and evolve acceptance are admitted only from authenticated Core projections;
+- managed records use schema v3. Schema-v2 records are rejected rather than migrated; reinstall the artifact and run a new Core evaluation to establish evidence;
 - diagnostic post-processing projects only authenticated Core failures, missing evidence, exclusions, and stable reason codes; it does not read legacy result rows or invent recommendations;
 - independent `--repeat` runs publish run-level variance as Series analysis; without a preregistered Series decision, the release gate fails closed and member runs are not admitted as managed evidence;
 - `--dry-run` assembles Runtime and prepares a sealed plan without opening a Target or Evaluator.
+
+Migration is deliberately operational, not programmatic: archive or remove old flat report files if desired, then run the evaluation again. OMK does not infer a Core Run Plan, lineage, digests, or decision evidence from a legacy report. Historical score curves are likewise not reconstructed from legacy files.
 
 This cutover changes the storage and application schema, not the measurement construct. Frozen evaluator prompts, the five scoring layers, Bootstrap confidence intervals, Krippendorff alpha, and length-debias semantics are unchanged.

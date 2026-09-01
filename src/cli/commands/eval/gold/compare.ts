@@ -42,8 +42,8 @@ export default class EvalGoldCompare extends BaseCommand {
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录，默认 ~/.oh-my-knowledge/reports',
-        en: 'Reports dir, default ~/.oh-my-knowledge/reports',
+        zh: '只读取指定 Core 报告目录（默认当前项目 + 全局）',
+        en: 'Read only this Core reports dir (default: current project + global)',
       }),
     }),
     'bootstrap-samples': Flags.string({

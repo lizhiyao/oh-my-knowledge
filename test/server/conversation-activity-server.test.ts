@@ -56,8 +56,6 @@ describe('Conversation activity server', () => {
     };
     server = createReportServer({
       port: 0,
-      reportsDir: join(root, 'reports'),
-      jobsDir: join(root, 'jobs'),
       observationsDir: join(root, 'observations'),
       conversationCatalog: catalog,
     });

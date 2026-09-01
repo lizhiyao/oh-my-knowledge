@@ -11,7 +11,7 @@ import {
   applyHedgingClassifier,
 } from '../../src/analysis/gap-analyzer.js';
 import { clearHedgingCache } from '../../src/analysis/hedging-classifier.js';
-import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, VariantResult, ResultEntry } from '../../src/types/index.js';
+import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, AnalysisVariantResult, AnalysisEntry } from '../../src/types/index.js';
 
 // ---------- Helpers for building test fixtures ----------
 
@@ -23,7 +23,7 @@ function turn(role: 'assistant' | 'tool', content: string, toolCalls?: ToolCallI
   return { role, content, toolCalls };
 }
 
-function vr(opts: Partial<VariantResult> & { ok?: boolean } = {}): VariantResult {
+function vr(opts: Partial<AnalysisVariantResult> & { ok?: boolean } = {}): AnalysisVariantResult {
   return {
     ok: true,
     durationMs: 100,
@@ -39,7 +39,7 @@ function vr(opts: Partial<VariantResult> & { ok?: boolean } = {}): VariantResult
     numTurns: 1,
     outputPreview: null,
     ...opts,
-  } as VariantResult;
+  } as AnalysisVariantResult;
 }
 
 // ---------- isFailedSearchTool ----------
@@ -347,9 +347,9 @@ describe('extractGapSignalsFromSample', () => {
 
 describe('computeGapReport', () => {
   it('computes gap rate as samples with gap / successful samples', () => {
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: {
           v1: vr({
             turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])],
@@ -357,13 +357,13 @@ describe('computeGapReport', () => {
         },
       },
       {
-        sample_id: 's002',
+        sampleId: 's002',
         variants: {
           v1: vr({ turns: [turn('assistant', 'clean', [])] }),
         },
       },
       {
-        sample_id: 's003',
+        sampleId: 's003',
         variants: {
           v1: vr({ turns: [turn('assistant', '【推断】', [])] }),
         },
@@ -376,13 +376,13 @@ describe('computeGapReport', () => {
   });
 
   it('excludes failed samples (ok: false) from denominator', () => {
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
-        variants: { v1: vr({ ok: false, error: 'timeout' }) },
+        sampleId: 's001',
+        variants: { v1: vr({ ok: false }) },
       },
       {
-        sample_id: 's002',
+        sampleId: 's002',
         variants: { v1: vr({ turns: [turn('assistant', 'clean', [])] }) },
       },
     ];
@@ -393,9 +393,9 @@ describe('computeGapReport', () => {
   });
 
   it('same sample multiple signals only counts as 1 sample-with-gap', () => {
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: {
           v1: vr({
             turns: [
@@ -414,9 +414,9 @@ describe('computeGapReport', () => {
   });
 
   it('fills byType classification counts', () => {
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: {
           v1: vr({
             turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])],
@@ -424,7 +424,7 @@ describe('computeGapReport', () => {
         },
       },
       {
-        sample_id: 's002',
+        sampleId: 's002',
         variants: { v1: vr({ turns: [turn('assistant', '【推断】', [])] }) },
       },
     ];
@@ -451,9 +451,9 @@ describe('computeGapReport', () => {
   // ---------- v0.2 严重度加权 (SIGNAL_WEIGHTS + weightedGapRate) ----------
 
   it('每个 signal 自带 weight (strong 1.0 / weak 0.5)', () => {
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: {
           v1: vr({
             turns: [
@@ -480,17 +480,17 @@ describe('computeGapReport', () => {
     // 3 个用例:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
     // gapRate = 2/3 ≈ 0.6667
     // weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: { v1: vr({ turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])] }) },
       },
       {
-        sample_id: 's002',
+        sampleId: 's002',
         variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
       },
       {
-        sample_id: 's003',
+        sampleId: 's003',
         variants: { v1: vr({ turns: [turn('assistant', 'clean', [])] }) },
       },
     ];
@@ -503,9 +503,9 @@ describe('computeGapReport', () => {
 
   it('同一用例多信号时取最强权重(不是累加)', () => {
     // 一个用例同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's001',
+        sampleId: 's001',
         variants: {
           v1: vr({
             turns: [
@@ -527,8 +527,8 @@ describe('computeGapReport', () => {
     // gapRate = 4/4 = 1.0 (100% 触发信号)
     // weightedGapRate = 4*0.5 / 4 = 0.5 (加权严重度只到 50%)
     // 读者据此判断:100% 触发率但加权只到一半,大概率是软信号噪声,该复核
-    const results: ResultEntry[] = Array.from({ length: 4 }, (_, i) => ({
-      sample_id: `s${i + 1}`,
+    const results: AnalysisEntry[] = Array.from({ length: 4 }, (_, i) => ({
+      sampleId: `s${i + 1}`,
       variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
     }));
     const report = computeGapReport(results, 'v1');
@@ -564,11 +564,11 @@ describe('applyHedgingClassifier (v0.2)', () => {
   it('classifier 剔除假阳 hedging:byType.hedging 减少, gapRate 重算', async () => {
     clearHedgingCache();
     // 4 个用例全只有 hedging,classifier 判 2 个真不确定 / 2 个业务推理
-    const results: ResultEntry[] = [
-      { sample_id: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定数据库结构', [])] }) } },
-      { sample_id: 's2', variants: { v1: vr({ turns: [turn('assistant', '没有足够信息回答', [])] }) } },
-      { sample_id: 's3', variants: { v1: vr({ turns: [turn('assistant', '需要查证一下', [])] }) } },
-      { sample_id: 's4', variants: { v1: vr({ turns: [turn('assistant', '无法确认这条', [])] }) } },
+    const results: AnalysisEntry[] = [
+      { sampleId: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定数据库结构', [])] }) } },
+      { sampleId: 's2', variants: { v1: vr({ turns: [turn('assistant', '没有足够信息回答', [])] }) } },
+      { sampleId: 's3', variants: { v1: vr({ turns: [turn('assistant', '需要查证一下', [])] }) } },
+      { sampleId: 's4', variants: { v1: vr({ turns: [turn('assistant', '无法确认这条', [])] }) } },
     ];
     const before = computeGapReport(results, 'v1');
     assert.equal(before.byType.hedging, 4);
@@ -599,9 +599,9 @@ describe('applyHedgingClassifier (v0.2)', () => {
 
   it('classifier 失败降级:hedging 全保留, byType / weightedGapRate 不变', async () => {
     clearHedgingCache();
-    const results: ResultEntry[] = [
-      { sample_id: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) } },
-      { sample_id: 's2', variants: { v1: vr({ turns: [turn('assistant', '需要查证', [])] }) } },
+    const results: AnalysisEntry[] = [
+      { sampleId: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) } },
+      { sampleId: 's2', variants: { v1: vr({ turns: [turn('assistant', '需要查证', [])] }) } },
     ];
     const before = computeGapReport(results, 'v1');
     const failExec: ExecutorFn = async (): Promise<ExecResult> => ({
@@ -634,9 +634,9 @@ describe('applyHedgingClassifier (v0.2)', () => {
   it('不影响其他 type signal:classifier 只过滤 hedging', async () => {
     clearHedgingCache();
     // 一个 sample 同时有 failed_search + hedging,classifier 判 hedging 假阳
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's1',
+        sampleId: 's1',
         variants: {
           v1: vr({
             turns: [turn('assistant', '我不确定哪里出错 ' + '#'.repeat(20), [
@@ -668,9 +668,9 @@ describe('applyHedgingClassifier (v0.2)', () => {
 
   it('无 hedging signal 时直接返回原 report,不调 executor', async () => {
     clearHedgingCache();
-    const results: ResultEntry[] = [
+    const results: AnalysisEntry[] = [
       {
-        sample_id: 's1',
+        sampleId: 's1',
         variants: {
           v1: vr({ turns: [turn('assistant', '已找到', [tc('Grep', { pattern: 'x' }, '', true)])] }),
         },

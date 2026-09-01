@@ -166,15 +166,14 @@ export interface Artifact {
   source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
   content: string | null;
   // 整树内容指纹(hashArtifactSource:目录-skill 覆盖整棵可分发树、文件-skill 为单文件字节)。
-  // 解析期算好挂在这里,供 report 的 artifactHashes 与 install 受管记录的 contentHash 落在同一空间
-  // (证据随 artifact 走的前提)。与 `content`(executor 注入的 trim 文本)解耦——指纹不依赖正文文本。
+  // 解析期算好挂在这里，供 Core 封存 artifact descriptor 与 managed contentHash 落在同一空间。
+  // 与 `content`(executor 注入的 trim 文本)解耦——指纹不依赖正文文本。
   // baseline / 无 skill 留空。
   contentHash?: string;
   locator?: string;
   ref?: string;
-  // 本地 git variant 物化时 `git rev-parse <ref>^{commit}` 出的实际 commit SHA(#234/#236 还原坐标)。
-  // 内容是从 object DB 按 ref 物化的(非工作树),故这才是被测字节的精确坐标 —— 不是进程 cwd 的 HEAD。
-  // 只对本地 git skill 填(远端源走 fetch-pin SHA、不经此;file 源无 git 坐标)。
+  // 本地 git variant 物化时 ref 解析出的 commit SHA。作为 sealed resource provenance 进入 Core；
+  // 不作为 managed 身份，也不生成工作树恢复命令。
   resolvedCommit?: string;
   cwd?: string;
   // SKILL.md 约定的 directory-skill **真源**根目录(doctor 校验、dependency-checker 解析、
@@ -198,35 +197,7 @@ export interface Artifact {
   metadata?: Record<string, unknown>;
 }
 
-export type ExperimentType = 'baseline' | 'runtime-context-only' | 'artifact-injection';
-
 export type ExperimentRole = 'control' | 'treatment';
-
-export type ExecutionStrategyKind =
-  | 'baseline'
-  | 'system-prompt'
-  | 'user-prompt'
-  | 'agent-session'
-  | 'workflow-session';
-
-export interface VariantConfig {
-  variant: string;
-  artifactKind: ArtifactKind;
-  artifactSource: Artifact['source'];
-  executionStrategy: ExecutionStrategyKind;
-  experimentType: ExperimentType;
-  experimentRole: ExperimentRole;
-  hasArtifactContent: boolean;
-  cwd: string | null;
-  locator?: string;
-  ref?: string;
-  // 本地 git variant 解析出的实际 commit SHA(还原坐标,#234/#236):从 Artifact.resolvedCommit 透传,
-  // evidence.ts 按 variant 匹配后写入证据。raw `ref`(可能是 branch/tag/HEAD)会漂,这个是物化当刻的定点。
-  resolvedCommit?: string;
-  // 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离;非空白名单已移除(无法真正隔离)。
-  // 来源:Artifact.allowedSkills(由 strict-baseline 默认 + eval.yaml 显式合并而成)。
-  allowedSkills?: string[];
-}
 
 /** 远端 git 源的结构化引用 —— url/ref/spec 分字段,永不拼成单串再 split(避开 parseGitInput 的 `:`
  *  与 parseVariantCwd 的 `@`)。eval 经 eval.yaml 结构化携带,install 经 --git-url/--git-ref。 */
@@ -321,173 +292,4 @@ export interface EvalBudget {
   perSampleUSD?: number;
   /** Per-sample wall-clock latency ceiling in milliseconds. */
   perSampleMs?: number;
-}
-
-export interface EvaluationRequest {
-  samplesPath: string;
-  skillDir: string;
-  artifacts: Artifact[];
-  project?: string;
-  owner?: string;
-  tags?: string[];
-  model: string;
-  executor: string;
-  noJudge: boolean;
-  concurrency: number;
-  timeoutMs?: number;
-  noCache: boolean;
-  dryRun: boolean;
-  /** --repeat N; 1 表示单次跑,> 1 走 runMultiple 做 variance 分析 */
-  repeat?: number;
-  /** --holdout-ratio R; 0 / 缺省表示不切分(默认)。> 0 时 report-finalize 在结果上
-   *  post-hoc 切出 train / holdout 子集算综合分(`report.analysis.holdout`),供 verdict
-   *  的过拟合门控读取。see src/eval-core/holdout.ts */
-  holdoutRatio?: number;
-  /** --batch; default absent/false. True means skill-batch mode. */
-  batch?: boolean;
-  /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
-  judgeRepeat?: number;
-  /** Unified judge config — always non-empty.
-   *  - length === 1: single judge (degenerate ensemble of size 1).
-   *  - length >= 2: multi-judge ensemble. Each (sample × dimension) is scored by every judge,
-   *    inter-judge agreement (Pearson + mean absolute difference) reported as a rebuttal to
-   *    "judge same-model bias" — but only when judges span vendors; a single-vendor ensemble's
-   *    high agreement reflects shared bias, not independence (flagged by `single_vendor_ensemble`).
-   *  When `noJudge: true` the entry is preserved for audit but no judge call actually runs. */
-  judgeModels: JudgeConfig[];
-  /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.
-   *  与原 t-interval 共存 (ReportMeta.evaluationFramework='both'), renderer 优先 bootstrap. */
-  bootstrap?: boolean;
-  /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
-  bootstrapSamples?: number;
-  /** length-debias toggle. Default true — judge prompt carries the length-debias
-   *  instruction. CLI flag --no-debias-length flips to false (drops that instruction,
-   *  the debias-off prompt variant). The active value is reflected in
-   *  ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
-  lengthDebias?: boolean;
-  /** hard budget caps. See EvalBudget. */
-  budget?: EvalBudget;
-  /** Skill isolation default (CLI `--strict-baseline` default true).
-   *  true = baseline-kind variants 没显式 allowedSkills 时自动设为 [];
-   *  false = 全部 variants 没显式 allowedSkills 时保持 undefined(旧行为)。
-   *  显式 eval.yaml `allowedSkills` 总是优先于此默认。 */
-  strictBaseline?: boolean;
-  /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort。 */
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  /** 每个执行任务失败后的最大重试次数。缺省 / 0 表示不重试。 */
-  retry?: number;
-  /** true 时关闭 assertion 失败后的诊断 LLM 调用。缺省等价于 false。 */
-  noDiagnostic?: boolean;
-}
-
-export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type EvaluationErrorCategory = 'user' | 'executor' | 'judge' | 'system';
-
-export interface EvaluationRun {
-  runId: string;
-  startedAt: string;
-  finishedAt?: string;
-  status: Extract<EvaluationJobStatus, 'running' | 'succeeded' | 'failed' | 'cancelled'>;
-}
-
-export interface EvaluationJob {
-  jobId: string;
-  status: EvaluationJobStatus;
-  createdAt: string;
-  updatedAt?: string;
-  startedAt?: string;
-  finishedAt?: string;
-  request: EvaluationRequest;
-  runId?: string;
-  resultReportId?: string;
-  error?: string;
-  errorCategory?: EvaluationErrorCategory;
-}
-
-export interface ProgressStart {
-  phase: 'start';
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-}
-
-export interface ProgressExecDone {
-  phase: 'exec_done';
-  strategy: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUSD: number;
-  outputPreview: string | null;
-}
-
-export interface ProgressGrading {
-  phase: 'grading';
-  strategy: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-}
-
-export interface ProgressDone {
-  phase: 'done';
-  strategy?: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  durationMs?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  costUSD?: number;
-  score?: number;
-  ok?: boolean;
-  error?: string;
-  skipped?: boolean;
-}
-
-export interface ProgressRetry {
-  phase: 'retry';
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  attempt: number;
-  maxAttempts: number;
-}
-
-export interface ProgressError {
-  phase: 'error';
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  error: string;
-}
-
-export interface ProgressPreflight {
-  phase: 'preflight';
-  jobId?: string;
-}
-
-export type ProgressInfo = ProgressStart | ProgressExecDone | ProgressGrading | ProgressDone | ProgressRetry | ProgressError | ProgressPreflight;
-export type ProgressCallback = (info: ProgressInfo) => void;
-
-export interface Task {
-  sample_id: string;
-  variant: string;
-  artifact: Artifact;
-  prompt: string;
-  rubric: string | null;
-  assertions: Assertion[] | null;
-  dimensions: Record<string, string> | null;
-  artifactContent: string | null;
-  cwd: string | null;
-  _sample: Sample;
 }

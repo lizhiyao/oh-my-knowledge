@@ -63,12 +63,13 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
 - **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
 
-旧格式迁移是一次性的、按目录域限定：`reports` / `doctors` / `observe-health` / `observe-inbox` 里的旧运行产物会在目录被访问时改名成 `.report.json` 形态。迁移后裸 `.json` 不是正常读格式；这些目录里的无关 JSON 会被跳过。
+Evaluation Core 按 `runId` 一次一个目录存储；manifest 与 sealed documents 在目录内使用固定 schema 文件名。旧的扁平 evaluation report 不再读取，也不迁移。一次性的 `.report.json` 文件名迁移只保留给 `doctors` / `observe-health` / `observe-inbox`；无关 JSON 会被跳过。
 
 示例：
 
 ```
-.omk/reports/service-guide-20260620T105109-aqgq.report.json
+.omk/reports/01JY.../manifest.json
+.omk/reports/01JY.../evaluation-report.json
 .omk/doctors/service-guide-20260620T105109-aqgq.report.json
 .omk/observe-health/20260620T105109-aqgq.report.json
 .omk/observe-inbox/20260620T105109-aqgq.report.json
@@ -103,28 +104,21 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 
 `omk init` 会自动写一个 `.omk/.gitignore`（挡住会涨的目录、放行 `managed` 和配置），像 `dvc init` 那样，你不会手滑提交。全队想看完整报告？走 `--global` / 搭个共享 server / 导出证据包——跟 MLflow「本地不提交、要分享就起个 server」一个路子。
 
-## 六、报告各回各家，studio 还能一眼看全机器
+## 六、测量产物保持项目归属
 
-报告默认进各自项目，带来一个矛盾：那 `omk studio` 还能不能当「整台机器的总览面板」、一眼看到本机所有项目的产物？
+Evaluation Core run 正文只存在于一个项目本地目录，或用户显式选择的全局目录。Studio 扫描所选的项目 / 全局根目录，并在列出前验证 Core manifest。它不使用旧 evaluation report 索引，不打开扁平报告文件，也不重建跨项目分数曲线。
 
-**能。** 关键是想通一句话：**「不能跨用例集比分」管的是「能不能比」，不是「能不能一起看」。** 把不同项目的报告列在一个页面上翻看，没问题；只有真把分数拉过来排高下，才必须锁死同一套用例。所以浏览列表跨项目合法，比较那一层照旧锁口径、不可比照旧 warn。
-
-实现上不是把报告搬回全局桶（那等于把第一节的归属问题又焊回去），而是加一层很轻的**索引卡片**：
-
-- 报告**正文永远只有一份**，留在它的项目里。
-- 每出一份产物，就在全局 `state/artifact-index/<domain>/<id>.json` 留一张**小卡片**：只记摘要（`meta` + 汇总），不记逐条明细，卡片上写着正文在哪（`path` 指过去）。`domain` 三类：`report` / `doctor` / `observe-health`。
-- `omk studio` 把「别的项目的卡片」和「当前项目 + 全局实扫到的」拼起来，按 `id` 去重（实扫到的盖卡片）。点详情顺着卡片 `path` 去读正文；正文被那个项目挪走了，就降级显示卡片摘要、不崩页。
+Doctor 与 observe-health 仍保留轻量全局索引卡，因为它们独立的报告 schema 仍采用这套发现模型。卡片位于 `state/artifact-index/<domain>/<id>.json`，其中 `domain` 仅为 `doctor` 或 `observe-health`。Evaluation 与 observe-inbox 都有意排除在外。
 
 几条要点：
 
-- **不用回填**：当前项目和全局靠实扫永远最新，卡片只补「别的项目」这块实扫够不到的。
-- **全局写不留卡片**：全局就一个目录、谁都实扫得到，再留卡片就重复了。卡片的唯一价值是「别的项目」的本地目录。
-- **写卡片是尽力而为**：永远不报错、不挡着正文落盘（正文才是真身，卡片丢了重跑就有）——所以卡片收在「删了能重建」的 `state/` 里。
-- **卡片当活指针**：正文被删了的「悬空卡片」，列表/合并时直接过滤掉（卡片缓存连正文的存在性一起算指纹，长时间开着 studio 也不会显示已删的）；studio 里删一条会连卡片一起删，别的项目的正文不受影响。
-- **逃生舱不掺卡片**：`--global` 和显式指定的 `--reports-dir` / `--doctors-dir` / `--analyses-dir` 只看你点名的那一个目录，不并卡片，干净。
-- **`observe-inbox` 故意不进索引**：`domain` 只有 `report` / `doctor` / `observe-health` 三类、没有 `observe-inbox`。发现索引服务的是「可比的复盘产物」（你会跨项目浏览、对照的结论）；收件箱是当前项目的 triage 工作台，在 A 项目的 studio 里翻 B 项目的待办队列价值低又容易误操作。所以汇总（observe-health）进索引、原始待办（observe-inbox）不进，是有意的边界——它照样支持 `--global` 写 / 读，只是不做机器级跨项目聚合。
+- **evaluation 不回填**：旧的扁平 evaluation report 永远不会生成 Core run 或索引卡。
+- **全局写不留卡片**：全局 doctor / observe 根目录本来就会被直接扫描。
+- **doctor / observe 卡片尽力写入**：正文始终是权威来源。
+- **卡片是活指针**：正文已经消失的卡片会从发现结果中过滤。
+- **显式根目录不合并卡片**：只读取用户点名的位置。
 
-另外 `id` 统一加了随机后缀防撞名（两个项目同一秒出产物，撞了 id 会被去重误并、悄悄丢数据）：report、doctor、observe-health 文件名都带「秒 + 随机」。`id` 只是个标签、不是算出来的分数，这个改动**不影响跨版本可比性**。
+Core `runId` 与独立的 doctor / observe id 都具备防碰撞身份。id 只是标签，不是算出来的分数，因此不影响跨版本可比性。
 
 ## 七、什么自动清、什么永远留
 
@@ -132,7 +126,7 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 
 - **已经在自动清的（草稿）**：`doctor` 每个 skill 留最近 50 份；`cache` 最多 2000 条；`trees` / `isolated-cwd` 最多 200 条（带正在用的进程锁保护）。三个都能用环境变量调。
 - **故意不清的（数据）**：`reports` / `observe-health` / `observe-inbox` 永不后台删。两个理由：(1) `reports` 被治理档案和任务记录按 `id` 引着，自动删会断链；(2) 报告的全部价值就是「拿历史比新版」，自动删等于偷偷毁掉比较的底子。也就几个 json，不占地方。
-- **暂时没上限的**：`jobs`（studio 异步任务记录）每个几 KB、还记着指向报告的 `id`，落在「引用了报告的别乱删」这条里，一并不自动清。`backups`（doctor --fix 每次改 skill 前存的原件）也一样无上限——它是撤销用的安全网，删早了就没法回退，所以不自动清，真撑爆再加宽松上限。
+- **暂时没上限的**：`backups`（doctor --fix 每次改 skill 前存的原件）是撤销安全网，删早了就没法回退；只有确实膨胀时才应增加宽松上限。
 
 ## 八、这套不是拍脑袋，业界都这么干
 
@@ -149,8 +143,8 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 ## 九、几个关键决策
 
 - **测量产物默认放项目**（reports / observe-health / doctors / graphs 默认 `.omk/`，主写入命令通过 `--global` 主动写全局，sidecar 跟随该根目录）。理由：跟 omk 的项目模型（用例集就是上下文）一致；让「放对地方」成为默认行为，而不是一条容易被忘的约定。
-- **reports 读的时候用 overlay**（先看项目、项目没有再看全局；列表两边合并、项目优先），不是「二选一目录」。因为 reports 是按 `id` 取的（resume、跟 gold 对比、批量子报告都靠它），二选一会让目标 `id` 在另一个目录时取不到、断掉复用。
-- **studio 当机器级总览**（索引卡片聚合），不是「默认只看当前项目」。因为「不能比」管的是比较、不是看（见第六节）。
+- **Evaluation Core 按 `runId` 从通过认证的 run 目录读取**。项目与全局根可以共同搜索，但绝不会从旧报告或索引卡合成 run。
+- **Studio 列出通过认证的 Core run，以及独立的 doctor / observe 域**，不合并旧 evaluation 卡片。
 - **项目级保留全局兜底**（`.omk/x` 不存在就读全局），不是纯项目级。跟 `observe-inbox` 一个样，迁移更平滑。
 - **`managed` 跟 skill 装在哪走**，不跟测量走。三层解耦：测量绑用例集、治理绑 skill、中间靠内容指纹连。
 
@@ -160,4 +154,4 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 
 - [who-omk-is-for](../explanation/who-omk-is-for.md)——「不能跨用例集比分」和「omk 为谁做」，是这套归属设计的上游依据。
 - [terminology-spec](terminology-spec.md)——`artifact` / `kind` / `domain` 这些词的命名归档。
-- [evidence-gated-management](evidence-gated-management.md)——`managed` 治理档案和「报告 id + 内容指纹」证据引用机制。
+- [evidence-gated-management](evidence-gated-management.md)——`managed` 治理档案与通过认证的 Core evidence projection。

@@ -19,7 +19,7 @@ interface Rec { name: string; locator: string; isDirectorySkill: boolean; conten
 function writeRecord(dir: string, r: Rec): void {
   const id = managedRecordId('skill', r.name);
   const rec = {
-    recordKind: 'managed-artifact', schemaVersion: 2, id, name: r.name, kind: 'skill',
+    recordKind: 'managed-artifact', schemaVersion: 3, id, name: r.name, kind: 'skill',
     source: { sourceKind: 'file', locator: r.locator, isDirectorySkill: r.isDirectorySkill },
     contentHash: r.contentHash, installedAt: '2026-06-06T00:00:00.000Z',
     distribution: [], evidence: [], decisions: [],

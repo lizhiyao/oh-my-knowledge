@@ -30,7 +30,7 @@ describe('oclif sample', () => {
     const stdout = await renderCommandHelp('sample');
     assert.ok(stdout.includes('为指定 skill 生成评测用例'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--batch'), 'stdout missing --batch flag');
-    assert.ok(stdout.includes('--fix'), 'stdout missing --fix flag');
+    assert.ok(!stdout.includes('--fix'), 'removed --fix flag must stay absent');
     assert.ok(stdout.includes('--skill'), 'stdout missing --skill flag');
   });
 

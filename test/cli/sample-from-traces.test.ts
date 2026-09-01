@@ -51,7 +51,6 @@ describe('sample --from-traces', () => {
         'skill-dir': 'skills',
         append: false,
         'no-mock': false,
-        fix: false,
         'from-traces': true,
         'observations-dir': dir,
         skill: 'audit',

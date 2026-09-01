@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { doctorReportFileStem, isReportFileName, reportFilePath, stripDomainPrefix } from './artifact-file-names.js';
 
-export type LegacyReportDomain = 'report' | 'doctor' | 'observe-health' | 'observe-inbox';
+export type LegacyReportDomain = 'doctor' | 'observe-health' | 'observe-inbox';
 
 function legacyJsonStem(fileName: string): string | null {
   if (!fileName.endsWith('.json')) return null;
@@ -24,13 +24,6 @@ function targetStemForLegacyReport(domain: LegacyReportDomain, fileName: string,
   const fileStem = legacyJsonStem(fileName);
   if (!fileStem || !isObject(data)) return null;
 
-  if (domain === 'report') {
-    const kind = data.kind;
-    return (kind === 'evaluation' || kind === 'batch-evaluation') && typeof data.id === 'string' && data.id
-      ? data.id
-      : null;
-  }
-
   if (domain === 'doctor') {
     if (data.kind !== 'doctor' || typeof data.id !== 'string' || !Array.isArray(data.skills) || data.skills.length !== 1) return null;
     const skill = data.skills[0];
@@ -49,10 +42,11 @@ function targetStemForLegacyReport(domain: LegacyReportDomain, fileName: string,
 }
 
 /**
- * One-shot migration for pre-`.report.json` run artifacts.
+ * One-shot migration for pre-`.report.json` doctor and observe artifacts.
  *
  * This is deliberately scoped to measurement report directories. It does not make
- * bare `.json` a normal reader format again; it just renames known legacy report
+ * bare `.json` a normal reader format again; Evaluation reports are intentionally
+ * excluded because Evaluation Core has no legacy reader or migration. This only renames known doctor/observe
  * files into the canonical name so old local data can be discovered, rotated, and
  * eventually garbage-collected by the new code paths.
  */

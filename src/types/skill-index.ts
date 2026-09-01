@@ -18,22 +18,6 @@ export interface SkillDoctorSnapshot {
   results: DoctorRuleResult[];
 }
 
-export interface SkillEvalSnapshot {
-  reportId: string;
-  timestamp: string;
-  variantName: string;
-  verdictLevel: string;
-  verdictHeadline: string;
-  compositeScore: number | null;
-  passCount: number;
-  failCount: number;
-  tripwireCount: number;
-  totalSamples: number;
-  /** 该快照来自别项目的「索引卡片」(results 被剥掉,逐样本断言分布不可得),passCount/failCount 留 0
-   *  仅占位、不代表真实通过率。渲染端据此用占位替代 0% pass / 全通过 / 0-of-N 等会误读的派生量。 */
-  resultsStripped?: boolean;
-}
-
 export interface SkillObserveSnapshot {
   analysisId: string;
   generatedAt: string;
@@ -52,7 +36,7 @@ export interface SkillObserveSnapshot {
 }
 
 export interface SkillGraphStageSnapshot {
-  sourceKind: 'doctor' | 'eval' | 'observe';
+  sourceKind: 'doctor';
   sourceId: string;
   graphId: string;
   generatedAt: string;
@@ -94,17 +78,6 @@ export interface SkillGraphSnapshot {
     hardRules: number;
     definitionNodes: SkillGraphNodePreview[];
   };
-  eval?: SkillGraphStageSnapshot & {
-    variantName?: string;
-    samples: number;
-    assertions: number;
-    failedAssertionEdges: number;
-    diagnostics: number;
-    measurementNodes: SkillGraphNodePreview[];
-    coverageEdges: number;
-    declaredCoverageStableKeys: string[];
-    declaredCoverageEdges: SkillGraphCoverageEdgePreview[];
-  };
 }
 
 export interface SkillIndexEntry {
@@ -112,22 +85,19 @@ export interface SkillIndexEntry {
   /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。renderer
    *  老路径直接读这个,不必动 history。 */
   doctor: SkillDoctorSnapshot | null;
-  eval: SkillEvalSnapshot | null;
   observe: SkillObserveSnapshot | null;
   /** 历史 snapshot,chronological 升序(最早 → 最近)。renderer 用它画 sparkline 趋势。 */
   doctorHistory: SkillDoctorSnapshot[];
-  evalHistory: SkillEvalSnapshot[];
   observeHistory: SkillObserveSnapshot[];
-  /** 综合健康灯。doctor / eval / observe 任一红 → red;任一黄 → yellow;
+  /** 综合健康灯。doctor / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
   band: 'green' | 'yellow' | 'red' | 'gray';
-  /** doctor/eval/observe graph sidecar 的轻量 Studio 投影。 */
+  /** doctor graph sidecar 的轻量 Studio 投影。 */
   graph?: SkillGraphSnapshot;
 }
 
 export interface SkillIndexSummary {
   totalSkills: number;
-  withEval: number;
   withObserve: number;
   withDoctor: number;
   red: number;
@@ -163,7 +133,7 @@ export type InsightSeverity = 'high' | 'medium' | 'low';
 
 export type InsightAudience = 'skill-author' | 'sample-author' | 'omk-maintainer';
 
-export type InsightPerspective = 'doctor' | 'eval-score' | 'eval-functional' | 'observe';
+export type InsightPerspective = 'doctor' | 'observe';
 
 /** 现象证据:把抽象"X 模式 N 条"翻译成用户能看到的具体行为。 */
 export interface InsightIllustration {
@@ -206,7 +176,6 @@ export interface InsightRecommendation {
 /** 该 insight 关联的具体阶段元素 — UI 渲染 timeline 时用来在阶段卡内挂 #N 徽章。 */
 export interface InsightStageRefs {
   doctorRuleIds?: string[];
-  evalSampleIds?: string[];
   /** observe 信号类型标签:'high-failure-rate' / 'gap' / 'uncovered-files'。
    *  observe 内单条信号没像 doctor rule / eval sample 那么细的 id,用类型标即可。 */
   observeRefs?: string[];

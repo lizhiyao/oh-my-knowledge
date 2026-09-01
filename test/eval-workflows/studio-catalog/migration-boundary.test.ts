@@ -25,10 +25,8 @@ describe('#537 migration boundary', () => {
 
   it('wires the Core-only handler into the production report server', () => {
     const server = readFileSync('src/server/report-server.ts', 'utf8');
-    const legacyRenderer = readFileSync('src/renderer/html-renderer.ts', 'utf8');
 
     expect(server).toContain('createCoreStudioRouteHandler');
     expect(server).toContain('core-studio-route-handler');
-    expect(legacyRenderer).not.toContain('core-run-renderer');
   });
 });

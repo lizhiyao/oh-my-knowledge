@@ -407,21 +407,18 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 **Flags:**
 
 ```text
-  --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。
+  --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
   --executor <value>          执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-  --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --no-mock                   不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
   --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
-  --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill <value>             仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
   --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
-  --treatment <value>         指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 ```
 
 完整描述见 `omk sample --help`。
@@ -455,7 +452,7 @@ omk studio --no-open
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe-inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
-  --reports-dir <value>       只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）
+  --reports-dir <value>       只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
 ```
 
 完整描述见 `omk studio --help`。

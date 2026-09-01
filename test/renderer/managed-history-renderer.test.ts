@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { renderManagedList, renderManagedHistory } from '../../src/renderer/managed-history-renderer.js';
-import { buildManagedListRows, type ManagedListRow, type VersionScorePoint } from '../../src/managed/index.js';
+import { buildManagedListRows, type ManagedListRow } from '../../src/managed/index.js';
 import type { Lang, ManagedArtifactRecord } from '../../src/types/index.js';
 import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
@@ -24,7 +24,7 @@ function normalizeForSnapshot(html: string): string {
 //   - decisions:promote(带 reason)+ reject(缺 reason,测守卫 + dot--reject 配色)+ 带 override 的 rollback。
 const RECORD: ManagedArtifactRecord = {
   recordKind: 'managed-artifact',
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: 'skill-review-fixture',
   name: 'review',
   kind: 'skill',
@@ -38,7 +38,7 @@ const RECORD: ManagedArtifactRecord = {
     coreManagedEvidence('hashV2contenthashlong', { reportId: 'evolve-review-002', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' } }),
   ],
   decisions: [
-    { decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: 'hashV2contenthashlong', reportId: 'evolve-review-002', reason: '已人工复核' },
+    { decisionKind: 'promote', actor: 'alice', decidedAt: '2026-03-06T00:00:00.000Z', contentHash: 'hashV2contenthashlong', runId: 'evolve-review-002', reason: '已人工复核' },
     { decisionKind: 'reject', actor: 'carol', decidedAt: '2026-03-07T00:00:00.000Z', contentHash: 'hashV1contenthashlong' },
     { decisionKind: 'rollback', actor: 'bob', decidedAt: '2026-03-08T00:00:00.000Z', contentHash: 'hashV2contenthashlong', override: { verdict: 'PROGRESS', overriddenBlocks: ['drifted'] } },
   ],
@@ -58,51 +58,8 @@ const STATE_ROWS: ManagedListRow[] = [
   mkRow({ id: 'i-inst', name: 'installed-skill', state: 'installed', currentEvidenceCount: 0, totalEvidenceCount: 0 }),
   mkRow({ id: 'i-stale', name: 'stale-skill', state: 'stale', drifted: true }),
   mkRow({ id: 'i-unre', name: 'unreachable-skill', state: 'measurable', reachable: false }),
-  mkRow({ id: 'i-over', name: 'override-skill', state: 'promoted', latestVerdict: 'CAUTIOUS', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['incomparable', 'verdict_blocked'] } }),
+  mkRow({ id: 'i-over', name: 'override-skill', state: 'promoted', latestVerdict: 'CAUTIOUS', override: { verdict: 'CAUTIOUS', overriddenBlocks: ['drifted', 'verdict_blocked'] } }),
 ];
-
-// 版本回归曲线 fixture:三版从旧到新,首版不可比(换过评委 / 改过样本集)→ 测空心点 + 虚线段 + 不可比提示文案。
-const CURVE: VersionScorePoint[] = [
-  { contentHash: 'hashV0contenthashlong', recordedAt: '2026-03-01T12:00:00.000Z', composite: 3.1, ciLow: 2.8, ciHigh: 3.4, verdict: 'NOISE', comparable: false },
-  { contentHash: 'hashV1contenthashlong', recordedAt: '2026-03-02T00:00:00.000Z', composite: 3.6, ciLow: 3.3, ciHigh: 3.9, verdict: 'CAUTIOUS', comparable: true },
-  { contentHash: 'hashV2contenthashlong', recordedAt: '2026-03-05T00:00:00.000Z', composite: 4.0, ciLow: 3.7, ciHigh: 4.3, verdict: 'PROGRESS', comparable: true },
-];
-
-// 全可比(无空心点 / 虚线)→ 测 note 的「else」分支文案,与上面含不可比点的分支区分开。
-const CURVE_ALL_COMPARABLE: VersionScorePoint[] = CURVE.map((p) => ({ ...p, comparable: true }));
-
-// 本地 git 源 + 证据带 gitCommit → 测 eval 行渲染 `git checkout <sha> -- <仓内路径>` 还原提示(#234/#236)。
-// 源是 git:HEAD:skills/review(无 url = 本地 git),locator 里 spec=skills/review 进 `-- <path>`。
-const GIT_RESTORE_RECORD: ManagedArtifactRecord = {
-  recordKind: 'managed-artifact',
-  schemaVersion: 2,
-  id: 'skill-restore-fixture',
-  name: 'review',
-  kind: 'skill',
-  source: { sourceKind: 'git', locator: 'git:HEAD:skills/review', ref: 'HEAD', isDirectorySkill: true },
-  contentHash: 'hashV2contenthashlong',
-  installedAt: '2026-03-01T00:00:00.000Z',
-  distribution: [],
-  evidence: [
-    coreManagedEvidence('hashV2contenthashlong', { reportId: 'evolve-review-002', recordedAt: '2026-03-05T00:00:00.000Z', verdict: 'PROGRESS', sampleCoverage: { count: 6, hash: 'sh2' }, gitCommit: 'abc1234567890deffeed' }),
-  ],
-  decisions: [],
-};
-
-// 仓内路径含空格 + 分号 + 单引号 + $() → 测 `git checkout` 提示对路径做 POSIX 单引号 quoting(含内部 ' 的
-// `'\''` 转义),防复制粘贴被改写命令语义。
-const GIT_RESTORE_NASTY_PATH: ManagedArtifactRecord = {
-  ...GIT_RESTORE_RECORD,
-  id: 'skill-restore-nasty',
-  source: { sourceKind: 'git', locator: "git:HEAD:skills/a b; it's $(echo pwned)", ref: 'HEAD', isDirectorySkill: true },
-};
-
-// 裸名 file-skill(isDirectorySkill=false,locator spec 不带 .md)→ 还原路径须补 `.md`(实际文件是 review.md)。
-const GIT_RESTORE_FILE_SKILL: ManagedArtifactRecord = {
-  ...GIT_RESTORE_RECORD,
-  id: 'skill-restore-file',
-  source: { sourceKind: 'git', locator: 'git:HEAD:review', ref: 'HEAD', isDirectorySkill: false },
-};
 
 // observe 观测(#235)三条覆盖渲染分支:red+高(生产盲区徽标 + 盲区区域 + 补样本提示)、underpowered(数据
 // 不足带标)、green(健康带标)。三条 observedAt 各异且**无 contentHash** —— 用来锁「观测事件不重置版本分段」。
@@ -157,35 +114,13 @@ describe('managed-history-renderer snapshots', () => {
         actor: 'alice',
         decidedAt: '2026-03-06T00:00:00.000Z',
         contentHash: 'hashV2contenthashlong',
-        reportId: 'core-run-route.report',
+        runId: 'core-run-route',
       }],
     };
     const html = renderManagedHistory(record, 'zh' as Lang);
     expect(html).toContain('/reports/core-run-route');
     expect(html).not.toContain('/reports/core-run-route.report');
   });
-  it('renderManagedHistory 带版本回归曲线 zh', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE))).toMatchSnapshot();
-  });
-  it('renderManagedHistory 带版本回归曲线 en', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'en' as Lang, CURVE))).toMatchSnapshot();
-  });
-  it('renderManagedHistory 曲线全可比(note else 分支)zh', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(RECORD, 'zh' as Lang, CURVE_ALL_COMPARABLE))).toMatchSnapshot();
-  });
-  it('renderManagedHistory 带 git 还原提示 zh', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_RECORD, 'zh' as Lang))).toMatchSnapshot();
-  });
-  it('renderManagedHistory 带 git 还原提示 en', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_RECORD, 'en' as Lang))).toMatchSnapshot();
-  });
-  it('renderManagedHistory git 还原路径含空格 / 元字符 → shell quoting zh', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_NASTY_PATH, 'zh' as Lang))).toMatchSnapshot();
-  });
-  it('renderManagedHistory 裸名 file-skill 还原路径补 .md zh', () => {
-    expect(normalizeForSnapshot(renderManagedHistory(GIT_RESTORE_FILE_SKILL, 'zh' as Lang))).toMatchSnapshot();
-  });
-
   // ── observe 生产健康观测时间线 + 列表徽标(#235)──
   it('renderManagedHistory 带 observe 观测(生产盲区 / 数据不足 / 健康)zh', () => {
     expect(normalizeForSnapshot(renderManagedHistory(OBSERVE_RECORD, 'zh' as Lang))).toMatchSnapshot();

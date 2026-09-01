@@ -37,6 +37,7 @@ describe('#539 production host migration boundary', () => {
     expect(runner).toContain('createNodeCliProductionComposition');
     expect(runner).toContain('createProductionEvaluationHost');
     expect(server).toContain('createCoreStudioRouteHandler');
-    expect(server).toContain('createEvaluationDisabledReportStore');
+    expect(server).not.toContain('createEvaluationDisabledReportStore');
+    expect(server).not.toContain('ReportStore');
   });
 });

@@ -5,22 +5,13 @@
  * 便于 snapshot 测试。把 install / 每次 eval 证据 / 每次 promote·reject·rollback 决定合并成一条按时间
  * 倒序的事件流，按内容版本（contentHash）分段，让「这个 skill 的一生」一眼可读——#203 管理支柱的可视化出口。
  *
- * 本切片只用受管记录自带数据（不读 report 文件）：evidence 上有 denormalize 的 verdict / 样本数 / 可比性，
- * 够画事件时间线。带数字 Δ/95%CI 的版本回归曲线（要读 report 文件）是 Slice 2。
+ * 只用受管记录自带数据（不读评测报告文件）：evidence 上有归一化后的 verdict / 样本数 / 可比性，
+ * 足够呈现可审计的事件时间线。跨版本量化趋势由 Evaluation Core Studio 负责。
  */
 import { layout, e, fmtLocalTime } from './layout.js';
-import { levelLabel } from './summary.js';
 import type { Lang } from '../types/index.js';
 import type { ManagedArtifactRecord, ManagedLifecycleLabel } from '../types/index.js';
-import type { ManagedListRow, VersionScorePoint } from '../managed/index.js';
-import type { VerdictLevel } from '../eval-core/verdict.js';
-
-// Record<VerdictLevel, true> 让 TS 编译期强制列全所有 level —— eval-core 新增 level 时这里报错、逼同步,
-// 避免新 verdict 被静默当未知字符串降级渲染（无运行时 level 清单可 import,故用穷举 Record 做编译期闸门）。
-const VERDICT_LEVELS: Record<VerdictLevel, true> = {
-  PROGRESS: true, CAUTIOUS: true, REGRESS: true, NOISE: true, UNDERPOWERED: true, SOLO: true,
-};
-const isVerdictLevel = (v: string): v is VerdictLevel => Object.prototype.hasOwnProperty.call(VERDICT_LEVELS, v);
+import type { ManagedListRow } from '../managed/index.js';
 
 const shortHash = (h: string): string => h.slice(0, 12);
 const L = (lang: Lang) => (zh: string, en: string): string => (lang === 'zh' ? zh : en);
@@ -56,13 +47,10 @@ function cmpDesc(a: string, b: string): number {
   return a < b ? 1 : a > b ? -1 : 0;
 }
 
-/** verdict 徽标：已知 VerdictLevel 走本地化标签 + 配色（复用 layout.ts 的 .verdict-<LEVEL> 全局样式）；
- *  未知字符串降级为纯文本徽标，绝不假装是某个 level。 */
+/** Core decision policy owns verdict vocabulary; Studio renders the authenticated value verbatim. */
 function verdictBadge(verdict: string | undefined, lang: Lang): string {
+  void lang;
   if (!verdict) return '';
-  if (isVerdictLevel(verdict)) {
-    return `<span class="verdict-${verdict}"><span class="page-verdict-badge"><span class="page-verdict-badge-dot">●</span>${e(levelLabel(verdict, lang))}</span></span>`;
-  }
   return `<span class="mh-badge-raw">${e(verdict)}</span>`;
 }
 
@@ -71,15 +59,12 @@ interface TimelineEvent {
   type: 'install' | 'eval' | 'promote' | 'reject' | 'rollback' | 'observe';
   contentHash?: string;
   verdict?: string;
-  reportId?: string;
-  /** Studio 的 Core 详情路由以 runId 为主键；旧审计证据才退回 reportId。 */
+  /** Studio 的 Core 详情路由以 runId 为主键。 */
   reportLocatorId?: string;
   actor?: string;
   reason?: string;
   override?: { verdict: string; overriddenBlocks?: string[] };
   sampleCount?: number;
-  cliVersion?: string;
-  gitCommit?: string;
   // observe 观测(#235):版本无关的生产信号,无 contentHash → 不参与版本分段。
   healthBand?: 'green' | 'yellow' | 'red';
   confidence?: 'high' | 'low' | 'underpowered';
@@ -88,30 +73,20 @@ interface TimelineEvent {
 
 function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
   const events: TimelineEvent[] = [];
-  const runIdByReportId = new Map(record.evidence.flatMap((ev) => (
-    ev.evidenceSource === 'evaluation-core' && ev.runId
-      ? [[ev.reportId, ev.runId] as const]
-      : []
-  )));
   // install 不带 contentHash：record.contentHash 是「当前基线」（evolve 会 re-baseline），不是安装时那份；
   // 拿它标安装事件会误导，故安装只作时间起点，版本分段只用 evidence / decision 自带的 contentHash。
   events.push({ at: record.installedAt, type: 'install' });
   for (const ev of record.evidence) {
     events.push({
       at: ev.recordedAt, type: 'eval', contentHash: ev.contentHash, verdict: ev.verdict,
-      reportId: ev.reportId,
-      reportLocatorId: ev.evidenceSource === 'evaluation-core' ? ev.runId : ev.reportId,
-      sampleCount: ev.sampleCoverage?.count, cliVersion: ev.comparability?.cliVersion,
-      ...(ev.gitCommit ? { gitCommit: ev.gitCommit } : {}),
+      reportLocatorId: ev.runId,
+      sampleCount: ev.sampleCoverage.count,
     });
   }
   for (const d of record.decisions) {
     events.push({
       at: d.decidedAt, type: d.decisionKind, contentHash: d.contentHash,
-      reportId: d.reportId,
-      reportLocatorId: d.reportId === undefined
-        ? undefined
-        : runIdByReportId.get(d.reportId) ?? d.reportId,
+      reportLocatorId: d.runId,
       actor: d.actor, reason: d.reason, override: d.override,
     });
   }
@@ -126,32 +101,12 @@ function buildTimeline(record: ManagedArtifactRecord): TimelineEvent[] {
   return events.sort((a, b) => cmpDesc(a.at, b.at));
 }
 
-function reportLink(reportId: string | undefined, lang: Lang): string {
-  if (!reportId) return '';
-  return `<a class="mh-link" href="/reports/${encodeURIComponent(reportId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
+function reportLink(runId: string | undefined, lang: Lang): string {
+  if (!runId) return '';
+  return `<a class="mh-link" href="/reports/${encodeURIComponent(runId)}${langQuery(lang)}">${L(lang)('查看报告', 'report')} →</a>`;
 }
 
-/** 本地 git 源的仓内路径(`git:<ref>:<spec>` → spec),给 `git checkout <sha> -- <path>` 提示带上 `-- <path>`。
- *  远端 / file 源 → undefined(本地 git 才有 cwd checkout 语义)。
- *  file-skill 的实际仓内文件是 `<spec>.md`(install 裸名 spec 经 classifyGitSkillRef 解到 `<spec>.md`),
- *  故 file-skill 且 spec 未带 `.md` 时补上 —— 否则 `git checkout … -- review` 匹配不到 `review.md`。
- *  已知局限:locator 的 spec 是**安装时 cwd 相对**的(不含 gitRelDir 前缀),在仓库子目录里 install 的 skill,
- *  还原路径会缺该子目录前缀。彻底修需在记录上另存仓库根相对路径(与 drift 重解析的 cwd 相对语义解耦),留 follow-up。 */
-function gitRestorePath(source: ManagedArtifactRecord['source']): string | undefined {
-  if (source.sourceKind !== 'git' || source.url) return undefined;
-  const m = /^git:[^:]*:(.+)$/.exec(source.locator);
-  if (!m) return undefined;
-  const spec = m[1];
-  return (!source.isDirectorySkill && !/\.md$/i.test(spec)) ? `${spec}.md` : spec;
-}
-
-/** POSIX 单引号包裹,内部 `'` 按 `'\''` 标准转义。还原提示是给用户复制粘贴的 shell 命令,git 路径可含
- *  空格 / 分号 / 反引号 / `$()` 等元字符 —— e()(HTML escaping)挡不住 shell,不 quote 会被改写命令语义。 */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
+function eventRow(ev: TimelineEvent, lang: Lang): string {
   const t = L(lang);
   const typeLabel: Record<TimelineEvent['type'], string> = {
     install: t('安装纳管', 'Installed'),
@@ -195,19 +150,8 @@ function eventRow(ev: TimelineEvent, lang: Lang, restorePath?: string): string {
       detail.push(`<span class="mh-detail-item mh-gap-hint">${t('建议补对应用例后重跑 omk eval', 'add matching samples, then re-run omk eval')}</span>`);
     }
   }
-  if (ev.cliVersion) detail.push(`<span class="mh-detail-item">omk ${e(ev.cliVersion)}</span>`);
   if (ev.reportLocatorId) detail.push(reportLink(ev.reportLocatorId, lang));
   if (ev.reason) detail.push(`<span class="mh-reason">「${e(ev.reason)}」</span>`);
-  // #234/#236 还原指针:这一版有 git 坐标 + 能解析出仓内路径 → 给现成的 `git checkout <sha> -- <path>` 把
-  // 该路径还原进工作树(字节级还原交给 git)。必须带 `-- <path>`:不带 pathspec 的 `git checkout <sha>` 是切
-  // detached HEAD、整棵工作树被换,语义完全不同且危险 —— 故解析不出路径时干脆不显,不退化成那条命令。显
-  // full SHA(精确坐标、无歧义);路径 shell-quote 防注入(见 shellQuote)。
-  // 注:对目录-skill,checkout 还原该版的跟踪文件,但不会删除其后新增的文件 —— git pathspec 的固有语义。
-  if (ev.gitCommit && restorePath) {
-    const cmd = `git checkout ${ev.gitCommit} -- ${shellQuote(restorePath)}`;
-    detail.push(`<span class="mh-detail-item mh-restore">${t('还原', 'restore')} <code>${e(cmd)}</code></span>`);
-  }
-
   // 圆点配色:多数事件按 type 取色;observe 事件按**健康 band** 取色(盲区红 / 数据不足灰 / 注意黄 / 健康绿)
   // —— observe 是 type 内有强弱的事件,健康或注意观测画错色会撒谎,故按实际健康度上色,与上面徽标四分支同口径。
   const dotClass = ev.type === 'observe'
@@ -230,66 +174,11 @@ function versionHeader(hash: string, isCurrent: boolean, lang: Lang): string {
   return `<li class="mh-vhead"><span class="mh-vhead-label">${L(lang)('版本', 'version')}</span><code class="mh-hash">${e(shortHash(hash))}</code>${cur}</li>`;
 }
 
-/** 版本回归曲线(纯 SVG,确定性、可 snapshot):每版 composite 均值 + 95%CI 竖须,按时间从旧到新。
- *  不可比的版本(换过评委 / 改过样本集,或缺指纹无法核对)点画空心、连线画虚 —— 不糊一条误导的「在变好」线(spec §3)。
- *  数据由 buildVersionScores 算好;少于 2 个点不画(单点无趋势可言)。composite 量纲不定,y 轴按数据自适应。 */
-function renderVersionCurve(points: VersionScorePoint[], lang: Lang): string {
-  if (points.length < 2) return '';
-  const t = L(lang);
-  const width = 620, height = 250, padL = 46, padR = 16, padT = 16, padB = 46;
-  const plotW = width - padL - padR;
-  const plotH = height - padT - padB;
-  const n = points.length;
-  let yLo = Math.min(...points.map((p) => p.ciLow));
-  let yHi = Math.max(...points.map((p) => p.ciHigh));
-  if (yHi - yLo < 1e-9) { yLo -= 0.5; yHi += 0.5; } // 全相等退化:给个最小跨度,免除零。
-  const pad = (yHi - yLo) * 0.08;
-  yLo -= pad; yHi += pad;
-  const xAt = (i: number): number => padL + (plotW * i) / (n - 1);
-  const yAt = (v: number): number => padT + plotH - (plotH * (v - yLo)) / (yHi - yLo);
-
-  const parts: string[] = [];
-  // 连线逐段;任一端不可比 → 虚线,提示别把跨不可比的差值读作进步 / 回退。
-  for (let i = 1; i < n; i++) {
-    const a = points[i - 1], b = points[i];
-    const dash = (!a.comparable || !b.comparable) ? ' stroke-dasharray="4 3"' : '';
-    parts.push(`<line x1="${xAt(i - 1).toFixed(1)}" y1="${yAt(a.composite).toFixed(1)}" x2="${xAt(i).toFixed(1)}" y2="${yAt(b.composite).toFixed(1)}" stroke="var(--accent)" stroke-width="2"${dash} />`);
-  }
-  // 每点:CI 竖须 + 上下端帽 + 点(可比实心 / 不可比空心)+ 短 hash 轴标。
-  points.forEach((p, i) => {
-    const x = xAt(i), yL = yAt(p.ciLow), yH = yAt(p.ciHigh), yM = yAt(p.composite);
-    parts.push(`<line x1="${x.toFixed(1)}" y1="${yH.toFixed(1)}" x2="${x.toFixed(1)}" y2="${yL.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
-    parts.push(`<line x1="${(x - 3).toFixed(1)}" y1="${yH.toFixed(1)}" x2="${(x + 3).toFixed(1)}" y2="${yH.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
-    parts.push(`<line x1="${(x - 3).toFixed(1)}" y1="${yL.toFixed(1)}" x2="${(x + 3).toFixed(1)}" y2="${yL.toFixed(1)}" stroke="var(--accent)" stroke-width="1" stroke-opacity="0.5" />`);
-    parts.push(p.comparable
-      ? `<circle cx="${x.toFixed(1)}" cy="${yM.toFixed(1)}" r="4" fill="var(--accent)" />`
-      : `<circle cx="${x.toFixed(1)}" cy="${yM.toFixed(1)}" r="4" fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="1.5" />`);
-    parts.push(`<text x="${x.toFixed(1)}" y="${height - padB + 14}" font-size="9" text-anchor="middle" fill="var(--text-muted)">${e(p.contentHash.slice(0, 7))}</text>`);
-  });
-  const yTicks = [0, 0.5, 1].map((f) => {
-    const v = yLo + (yHi - yLo) * f;
-    const y = yAt(v);
-    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${width - padR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" /><text x="${padL - 6}" y="${(y + 3).toFixed(1)}" font-size="10" text-anchor="end" fill="var(--text-muted)">${v.toFixed(2)}</text>`;
-  }).join('');
-
-  const anyIncomparable = points.some((p) => !p.comparable);
-  const note = anyIncomparable
-    ? t('空心点 = 测量条件不同或无法核对（换过评委 / 改过样本集 / 缺指纹），与当前版不可比；虚线段别直接读作进步或回退。', 'Hollow dots = measured under a different or unverifiable instrument (judge / sample set changed, or fingerprint missing) than the current version, not comparable; do not read dashed segments as progress or regression.')
-    : t('每个版本的 composite 均值与 95% 置信区间，按时间从旧到新。', 'Composite mean and 95% CI per version, oldest to newest.');
-
-  return `<section class="mh-curve">
-    <h2 class="mh-curve-title">${t('版本回归曲线', 'Version regression')}</h2>
-    <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="mh-curve-svg">${yTicks}${parts.join('')}</svg>
-    <p class="mh-curve-note">${note}</p>
-  </section>`;
-}
-
-export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, versionScores: VersionScorePoint[] = []): string {
+export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang): string {
   const t = L(lang);
   const events = buildTimeline(record);
 
   // 倒序遍历：内容版本（contentHash）变化处插版本段头；install 等无 hash 事件不重置分段。
-  const restorePath = gitRestorePath(record.source);
   const rows: string[] = [];
   let prevHash: string | undefined;
   for (const ev of events) {
@@ -297,7 +186,7 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, 
       rows.push(versionHeader(ev.contentHash, ev.contentHash === record.contentHash, lang));
       prevHash = ev.contentHash;
     }
-    rows.push(eventRow(ev, lang, restorePath));
+    rows.push(eventRow(ev, lang));
   }
 
   const meta = [
@@ -314,7 +203,6 @@ export function renderManagedHistory(record: ManagedArtifactRecord, lang: Lang, 
       <h1 class="mh-name">${e(record.name)}</h1>
       <div class="mh-meta">${meta}</div>
     </header>
-    ${renderVersionCurve(versionScores, lang)}
     <ol class="mh-timeline">${rows.join('')}</ol>
   </main>
   <style>${MANAGED_CSS}</style>`;
@@ -429,12 +317,6 @@ const MANAGED_CSS = `
 .mh-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;color:var(--text-muted);font-size:12px}
 .mh-meta span{display:inline-flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
 
-/* ── 版本回归曲线 ── */
-.mh-curve{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);padding:16px 20px;margin-bottom:18px}
-.mh-curve-title{margin:0 0 4px;font-size:15px;font-weight:700;color:var(--text-primary);letter-spacing:-.2px}
-.mh-curve-svg{width:100%;max-width:620px;height:auto;display:block;margin:6px 0}
-.mh-curve-note{font-size:12px;color:var(--text-muted);margin:6px 0 0}
-
 /* ── 时间线 ── */
 .mh-timeline{list-style:none;padding:0;margin:0;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden}
 .mh-vhead{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--bg-elevated);border-top:1px solid var(--border);font-size:12px;color:var(--text-secondary)}
@@ -460,7 +342,6 @@ const MANAGED_CSS = `
 .mh-gap-hint{color:var(--red)}
 .mh-badge-raw{font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 8px;border-radius:9px}
 .mh-detail{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;color:var(--text-muted)}
-.mh-restore code{font-family:"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:1px 6px;border-radius:5px;user-select:all}
 .mh-reason{color:var(--text-secondary);font-style:italic}
 .mh-link{color:var(--accent);text-decoration:none}
 .mh-link:hover{text-decoration:underline}

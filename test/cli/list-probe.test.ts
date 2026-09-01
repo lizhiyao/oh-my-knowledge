@@ -17,7 +17,7 @@ import type { ManagedArtifactRecord, ManagedArtifactSource } from '../../src/typ
 
 function record(source: ManagedArtifactSource, contentHash = 'pinnedHash00'): ManagedArtifactRecord {
   return {
-    recordKind: 'managed-artifact', schemaVersion: 2, id: 'id', name: 'x', kind: 'skill',
+    recordKind: 'managed-artifact', schemaVersion: 3, id: 'id', name: 'x', kind: 'skill',
     source, contentHash, installedAt: '2026-06-06T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
   };
 }
