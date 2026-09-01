@@ -1,4 +1,4 @@
-import { resolve, join, basename, dirname, extname, relative, sep } from 'node:path';
+import { resolve, join, dirname, extname, relative, sep } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -8,13 +8,11 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
-import { loadSamples, listSampleFilesInDir, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import { listSampleFilesInDir } from '../../inputs/load-samples.js';
 import {
   getSamplesArray,
   parseSampleDocument,
   stringifySampleDocument,
-  writeFixedSamplesToSources,
 } from '../../inputs/sample-document.js';
 import {
   defaultFlatSkillSamplesFile,
@@ -22,11 +20,9 @@ import {
   findFlatSkillSamplesPath,
   findSkillSamplesPath,
 } from '../../inputs/sample-locator.js';
-import { hashSample } from '../../eval-core/evaluation-reporting.js';
-import { hashArtifactSource } from '../../inputs/content-hash.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
-import type { Report, Sample as SampleType } from '../../types/index.js';
+import type { Sample as SampleType } from '../../types/index.js';
 import type { ResolvedSkillInput } from '../lib/resolve-skill-input.js';
 
 interface GenerateSamplesResult {
@@ -115,282 +111,6 @@ export function appendSamplesToFile(
   return merged.length;
 }
 
-function formatIdList(ids: string[]): string {
-  const shown = ids.slice(0, 5);
-  const suffix = ids.length > shown.length ? ` +${ids.length - shown.length}` : '';
-  return shown.join(', ') + suffix;
-}
-
-// 下面 3 个 helper 在 sample-fix.test.ts 单测内 in-process import 验证 fix 逻辑。
-
-export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, treatmentName: string): Set<string> {
-  const ids = new Set<string>();
-  for (const entry of report.results) {
-    const rootCause = entry.variants[treatmentName]?.diagnostic?.rootCause ?? [];
-    if (rootCause.includes('sample_design')) ids.add(entry.sample_id);
-  }
-  return ids;
-}
-
-export function assertFixReportMatchesCurrentInputs(params: {
-  report: Pick<Report, 'meta'>;
-  treatmentName: string;
-  currentContentHash: string;
-  samples: SampleType[];
-  samplesBaseDir?: string;
-  sampleIds: Set<string>;
-  lang?: CliLang;
-}): void {
-  const {
-    report,
-    treatmentName,
-    currentContentHash,
-    samples,
-    samplesBaseDir,
-    sampleIds,
-  } = params;
-  const lang = params.lang ?? 'zh';
-  const issues: string[] = [];
-
-  // schemaVersion < 2 的报告:artifactHashes 是旧「仅 SKILL.md 正文文本」哈,与当前「整棵可分发树」哈
-  // 不同空间,直接比对会必然误报不一致。识别后给可见提示(归入 issues → 触发「请先重跑 eval」),
-  // 不拿旧文本哈与当前树哈错配比对。sample 指纹口径未变,下面照常校。
-  if ((report.meta.schemaVersion ?? 0) < 2) {
-    issues.push(lang === 'zh'
-      ? `报告早于树哈纪元（skill 指纹口径已从「仅 SKILL.md 文本」改为「整棵可分发树」），无法与当前指纹比对。`
-      : `Report predates the tree-hash era (skill fingerprint changed from SKILL.md-body-text to whole-tree); cannot compare against the current fingerprint.`);
-  } else {
-    const expectedSkillHash = report.meta.artifactHashes?.[treatmentName];
-    if (!expectedSkillHash) {
-      issues.push(lang === 'zh'
-        ? `报告缺少 ${treatmentName} 的 skill 指纹，无法确认诊断对应当前 SKILL.md。`
-        : `Report is missing the skill hash for ${treatmentName}; cannot verify it matches the current SKILL.md.`);
-    } else if (expectedSkillHash !== currentContentHash) {
-      issues.push(lang === 'zh'
-        ? `skill 指纹不一致：报告 ${expectedSkillHash}，当前 ${currentContentHash}。`
-        : `Skill hash mismatch: report ${expectedSkillHash}, current ${currentContentHash}.`);
-    }
-  }
-
-  const reportSampleHashes = report.meta.sampleHashes;
-  if (!reportSampleHashes) {
-    issues.push(lang === 'zh'
-      ? '报告缺少用例指纹，无法确认 sample_design 诊断对应当前 samples。'
-      : 'Report is missing sample hashes; cannot verify sample_design diagnostics match the current samples.');
-  } else {
-    const samplesById = new Map(samples.map((sample) => [sample.sample_id, sample]));
-    const missingCurrentSamples: string[] = [];
-    const missingReportHashes: string[] = [];
-    const mismatchedSamples: string[] = [];
-    for (const sampleId of sampleIds) {
-      const currentSample = samplesById.get(sampleId);
-      if (!currentSample) {
-        missingCurrentSamples.push(sampleId);
-        continue;
-      }
-      const expectedSampleHash = reportSampleHashes[sampleId];
-      if (!expectedSampleHash) {
-        missingReportHashes.push(sampleId);
-        continue;
-      }
-      const currentSampleHash = hashSample(currentSample, samplesBaseDir);
-      if (expectedSampleHash !== currentSampleHash) {
-        mismatchedSamples.push(sampleId);
-      }
-    }
-    if (missingCurrentSamples.length > 0) {
-      issues.push(lang === 'zh'
-        ? `当前 samples 缺少报告中的用例：${formatIdList(missingCurrentSamples)}。`
-        : `Current samples are missing report sample(s): ${formatIdList(missingCurrentSamples)}.`);
-    }
-    if (missingReportHashes.length > 0) {
-      issues.push(lang === 'zh'
-        ? `报告缺少这些用例的指纹：${formatIdList(missingReportHashes)}。`
-        : `Report is missing hashes for sample(s): ${formatIdList(missingReportHashes)}.`);
-    }
-    if (mismatchedSamples.length > 0) {
-      issues.push(lang === 'zh'
-        ? `用例指纹不一致：${formatIdList(mismatchedSamples)}。`
-        : `Sample hash mismatch: ${formatIdList(mismatchedSamples)}.`);
-    }
-  }
-
-  if (issues.length === 0) return;
-
-  const heading = lang === 'zh'
-    ? '报告与当前输入不一致，已停止自动修复。'
-    : 'Report does not match the current inputs; automatic fixing stopped.';
-  const hint = lang === 'zh'
-    ? '请先重新运行 omk eval，再执行 omk sample --fix。'
-    : 'Re-run omk eval first, then run omk sample --fix again.';
-  throw new Error([heading, ...issues, hint].join('\n'));
-}
-
-export { writeFixedSamplesToSources };
-
-async function runSampleFix(
-  args: SampleArgs,
-  flags: SampleFlags,
-  lang: CliLang,
-): Promise<void> {
-  const { fixSamples } = await import('../../authoring/sample-fixer.js');
-  const { createFileStore, createOverlayReportStore } = await import('../../server/report-store.js');
-
-  const model = flags.model;
-  const executorName = flags.executor;
-  if (!model || !executorName) {
-    throw new Error(
-      'internal error: sample fix requires runtime selection before execution',
-    );
-  }
-
-  const skillPath = args.skillPath;
-  if (!skillPath) {
-    console.error(lang === 'zh' ? '请指定 skill 路径，如: omk sample skills/my-skill/SKILL.md --fix' : 'Specify skill path: omk sample skills/my-skill/SKILL.md --fix');
-    throw new CliExit(1);
-  }
-
-  const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
-  let resolvedInput;
-  try {
-    resolvedInput = resolveSkillInput(skillPath, lang);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    throw new CliExit(1);
-  }
-
-  const samplesInput = resolvedInput.samplesPath;
-
-  if (!existsSync(samplesInput)) {
-    console.error(lang === 'zh' ? `samples 路径不存在: ${samplesInput}，先运行 omk sample 生成` : `Samples path not found: ${samplesInput}, run omk sample first`);
-    throw new CliExit(1);
-  }
-
-  const defaultTreatmentName = resolvedInput.isDirectorySkill
-    ? basename(resolvedInput.skillDir)
-    : basename(resolvedInput.skillPath, extname(resolvedInput.skillPath));
-  const treatmentName = flags.treatment ?? defaultTreatmentName;
-
-  process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
-  // 显式 --reports-dir 固定该目录;默认 overlay(项目 .omk/reports 盖全局),findByVariant 记录优先看项目、
-  // 空则全局兜底,不因 eval 写默认翻项目而查不到报告。
-  const store = flags['reports-dir']
-    ? createFileStore(resolve(flags['reports-dir']))
-    : createOverlayReportStore(projectReportsDir(), globalReportsDir());
-  const reports = await store.findByVariant(treatmentName);
-
-  if (reports.length === 0) {
-    const where = flags['reports-dir']
-      ? resolve(flags['reports-dir'])
-      : (lang === 'zh' ? '项目 .omk/reports 或全局 ~/.oh-my-knowledge/reports' : 'project .omk/reports or global ~/.oh-my-knowledge/reports');
-    console.error(lang === 'zh' ? `未找到 ${treatmentName} 的评测报告（报告目录: ${where}）` : `No eval report found for ${treatmentName} in ${where}`);
-    throw new CliExit(1);
-  }
-
-  const report = reports[0];
-  process.stderr.write(lang === 'zh' ? `📄 使用报告: ${report.id} (${report.meta?.timestamp ?? '?'})\n` : `📄 Using report: ${report.id} (${report.meta?.timestamp ?? '?'})\n`);
-
-  let loadedSamples: LoadSamplesResult;
-  try {
-    loadedSamples = loadSamples(samplesInput);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(lang === 'zh' ? `samples 加载失败: ${message}` : `Failed to load samples: ${message}`);
-    throw new CliExit(1);
-  }
-  const samples = loadedSamples.samples;
-  const skillContent = readFileSync(resolvedInput.skillPath, 'utf-8');
-
-  const sampleDesignIds = collectSampleDesignFailureIds(report, treatmentName);
-  const sampleDesignCount = sampleDesignIds.size;
-
-  if (sampleDesignCount === 0) {
-    process.stderr.write(lang === 'zh' ? '✅ 没有 sample_design 类型的失败，无需修复\n' : '✅ No sample_design failures found, nothing to fix\n');
-    return;
-  }
-
-  // 当前内容指纹走整树哈,与 eval 报告口径一致:dir-skill(用户传 .../SKILL.md)哈整棵 skill 目录、
-  // 单文件 .md 哈单文件字节。
-  const currentContentHash = hashArtifactSource(
-    resolvedInput.isDirectorySkill ? resolvedInput.skillDir : resolvedInput.skillPath,
-    resolvedInput.isDirectorySkill,
-  );
-
-  try {
-    assertFixReportMatchesCurrentInputs({
-      report,
-      treatmentName,
-      currentContentHash,
-      samples,
-      samplesBaseDir: loadedSamples.baseDir,
-      sampleIds: sampleDesignIds,
-      lang,
-    });
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    throw new CliExit(1);
-  }
-
-  process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
-
-  const {
-    createExecutor,
-    executorSupportsSampleMocks,
-  } = await import('../../executors/index.js');
-  const exec = createExecutor(executorName);
-  const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
-    const result = await exec({
-      model: opts.model,
-      system: opts.system,
-      prompt: opts.prompt,
-      timeoutMs: opts.timeoutMs,
-      lean: opts.lean,
-    });
-    return {
-      ok: result.ok,
-      text: result.output ?? '',
-      costUSD: result.costUSD,
-      costReported: result.costReportedByExecutor !== false,
-    };
-  };
-
-  const result = await fixSamples({
-    skillContent,
-    samples,
-    report,
-    treatmentKey: treatmentName,
-    executor: executorFn,
-    model,
-    mockless: !executorSupportsSampleMocks(executorName),
-  });
-
-  let writtenFiles: string[] = [];
-  if (result.fixedCount > 0) {
-    const changedIds = new Set(result.fixes.filter((f) => f.changed).map((f) => f.sampleId));
-    writtenFiles = writeFixedSamplesToSources(loadedSamples, result.samples as unknown as SampleType[], changedIds);
-  }
-
-  for (const f of result.fixes) {
-    if (f.changed) {
-      process.stderr.write(lang === 'zh' ? `  ✅ ${f.sampleId} 已修复\n` : `  ✅ ${f.sampleId} fixed\n`);
-    } else {
-      process.stderr.write(lang === 'zh' ? `  ⚠ ${f.sampleId} 未修改${f.error ? `: ${f.error}` : ''}\n` : `  ⚠ ${f.sampleId} unchanged${f.error ? `: ${f.error}` : ''}\n`);
-    }
-  }
-
-  const cost = result.costReported
-    ? ` $${result.costUSD.toFixed(4)}`
-    : ` ${lang === 'zh' ? '成本未完整上报' : 'cost not fully reported'}`;
-  const outputTarget = writtenFiles.length === 0
-    ? samplesInput
-    : writtenFiles.length === 1
-      ? writtenFiles[0]
-      : `${writtenFiles.length} files`;
-  process.stderr.write(lang === 'zh'
-    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${outputTarget}${cost}\n`
-    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${outputTarget}${cost}\n`);
-}
-
 export async function runSampleFromTraces(
   flags: SampleFlags,
   lang: CliLang,
@@ -477,9 +197,9 @@ async function runSample(
     console.error(lang === 'zh' ? '--skill 仅支持 --from-traces 模式。' : '--skill is only supported with --from-traces.');
     throw new CliExit(2);
   }
-  // --append 目前只在单 skill 生成路径实现;batch / from-traces / fix 不处理它,
+  // --append 目前只在单 skill 生成路径实现；batch / from-traces 不处理它，
   // 静默忽略会误导(用户以为在追加,实际没有)。提前互斥校验,明确报错。
-  if (flags.append && (flags.batch || flags['from-traces'] || flags.fix)) {
+  if (flags.append && (flags.batch || flags['from-traces'])) {
     console.error(tCli('cli.gen.append_single_only', lang));
     throw new CliExit(2);
   }
@@ -487,11 +207,6 @@ async function runSample(
     await runSampleFromTraces(flags, lang);
     return;
   }
-  if (flags.fix) {
-    await runSampleFix(args, flags, lang);
-    return;
-  }
-
   const { generateSamples } = await import('../../authoring/generator.js');
   const count: number | undefined = flags.count !== undefined
     ? Math.max(1, Number(flags.count) || 5)
@@ -655,8 +370,8 @@ async function runSample(
 
 export default class Sample extends BaseCommand {
   static description = bilingual({
-    zh: '为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。',
-    en: 'Generate eval samples for the given skill. Supports batch / single / fix / from-traces modes.',
+    zh: '为指定 skill 生成评测用例，支持 batch、single 与 from-traces 模式。',
+    en: 'Generate eval samples for a skill in batch, single, or from-traces mode.',
   });
 
   static examples = [
@@ -676,13 +391,6 @@ export default class Sample extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '根据最近评测报告自动修复 sample_design 类型失败',
-        en: 'Auto-fix sample_design failures using the most recent eval report',
-      }),
-      command: '<%= config.bin %> sample skills/my-skill/SKILL.md --fix',
-    },
-    {
-      description: bilingual({
         zh: '从 observe inbox 的失败信号回流生成评测用例草稿',
         en: 'Recycle observe-inbox failure signals into draft regression samples',
       }),
@@ -693,8 +401,8 @@ export default class Sample extends BaseCommand {
   static args = {
     skillPath: Args.string({
       description: bilingual({
-        zh: 'skill 文件路径或 SKILL.md 路径。batch 模式不需要；single / fix 模式必填。',
-        en: 'Skill file or SKILL.md path. Not required in batch mode; required for single / fix.',
+        zh: 'skill 文件路径或 SKILL.md 路径。batch 模式不需要；single 模式必填。',
+        en: 'Skill file or SKILL.md path. Not required in batch mode; required for single mode.',
       }),
       required: false,
     }),
@@ -743,8 +451,8 @@ export default class Sample extends BaseCommand {
     }),
     append: Flags.boolean({
       description: bilingual({
-        zh: '在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。',
-        en: 'Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces / --fix. Without it, an existing file errors out. Often paired with --focus.',
+        zh: '在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。',
+        en: 'Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.',
       }),
       default: false,
     }),
@@ -754,25 +462,6 @@ export default class Sample extends BaseCommand {
         en: 'Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.',
       }),
       default: false,
-    }),
-    fix: Flags.boolean({
-      description: bilingual({
-        zh: 'fix 模式：基于最近评测报告自动修复 sample_design 类型失败。',
-        en: 'Fix mode: auto-fix sample_design failures using the latest eval report.',
-      }),
-      default: false,
-    }),
-    'reports-dir': Flags.string({
-      description: bilingual({
-        zh: '报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。',
-        en: 'Reports dir (fix mode), default ~/.oh-my-knowledge/reports.',
-      }),
-    }),
-    treatment: Flags.string({
-      description: bilingual({
-        zh: '指定 treatment 名（fix 模式用），默认推断自 skill 路径。',
-        en: 'Treatment name (fix mode), defaults to skill-path inference.',
-      }),
     }),
     'from-traces': Flags.boolean({
       description: bilingual({

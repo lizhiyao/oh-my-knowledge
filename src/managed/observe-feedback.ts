@@ -15,7 +15,7 @@
  * 版本无关:观测的是线上**正在跑那一版**(无 skill contentHash),故产读时 marker、**绝不翻 stale**
  * (§6.1 只有内容漂移翻 stale;observe 是信号源不是受控 eval)。
  */
-import type { ManagedObservation } from '../types/index.js';
+import type { ManagedObservation } from './contracts.js';
 import {
   loadAllManagedRecords,
   appendManagedObservation,
@@ -24,7 +24,7 @@ import {
   isProductionGapObservation,
 } from './store.js';
 
-/** 结构化最小入参(仿 `version-scores.ts` 的 `ReportScoreView`):observe CLI 侧从 `SkillHealthReport` 抽出
+/** 结构化最小入参：observe CLI 侧从 `SkillHealthReport` 抽出
  *  这几样传入,`managed/` 不 import `observability/`(避免跨支柱反向依赖)。`healthBand` 由 CLI 用 observability
  *  自己的 `healthBandOf` 算好传入 —— 阈值单一来源,managed 不复制阈值、不伪造 observe 不出的 per-skill band。 */
 export interface ObservedSkillHealthView {

@@ -1,184 +1,78 @@
 <!--
-title: 综合分（composite）—— 怎么算的、能/不能用来回答什么
-description: omk 综合分的完整推导：五层评分管道架构、ratioToScore 公式、缺失维度处理、三个 ad hoc 局限直白说、与多层独立 gate 的关系。诚实交代构造效度边界，避免被当成 absolute psychometric measure 误用。
+title: 综合分——推导、coverage 与 Decision 边界
+description: Evaluation Core 如何推导 fact、behavior、judge、dimension 与 composite 证据，同时避免把缺失观测变成零分或把展示分数当作发布授权。
 -->
 
-# 综合分（composite）
+# 综合分
 
-omk 报告里出现的「综合分 4.28 / 1.71」是这份文档的主角。它在 omk 内部承担「跨 run 排序 / bootstrap CI / verdict 比较信号」三个角色，是 omk 测量学叙事的 **核心标量**。这份文档讲清楚两件事：
+Evaluation Core 把评分表达成经过认证的 evidence graph，而不是一行可变 report 数据。历史五层契约保持稳定：`assertion`、`llm`、`judge`、`dimension` 与 `composite`；这些名称表示职责，不是五次连续求平均。
 
-1. **怎么算的** —— 五层评分管道、ratioToScore 公式、缺失维度处理
-2. **能/不能用来回答什么** —— 它适合做 A/B 比较，不适合做 absolute psychometric measure
-
----
-
-## 1. 核心公式
-
-```
-composite = mean({fact, behavior, judge})   // 等权算术平均
-```
-
-**fact / behavior**：断言（assertion）通过率经线性映射到 1-5 制：
-
-```
-factScore = 1 + (passed_weight / total_weight) × 4
-behaviorScore = 1 + (passed_weight / total_weight) × 4
+```text
+criterion observation          raw rubric reading
+          │                              │
+          ▼                              ▼
+ assertion-layer table      replicate → ensemble table
+     fact / behavior                    │
+          │                       dimension table
+          └──────────────┬───────────────┘
+                         ▼
+                  composite table
+                         │
+             Bootstrap comparison family
+                         │
+                 Release Decision
 ```
 
-通过率 0% → 1 分，100% → 5 分。带权重的断言（`weight: 2` 比 `weight: 1` 重要）按权重和算，不是计数。
+## Assertion layer
 
-**judge**：LLM 评委按 rubric 直接给 1-5 分。omk 不做后处理（不归一化、不去 anchor 偏移），原始读数直接进 composite。
+每条 Boolean criterion 都会通过封存的 Analysis parameter 显式绑定为 `fact`、`behavior` 或 `excluded-mixed-layer`，并携带有限正权重。实现不会根据 assertion 名称或 evaluator ID 猜测分类。
 
-**缺失维度**：
+对一个 Target／Sample／Trial coordinate，观测到的 assertion layer 按下式计算：
 
-```ts
-const scores = [factScore, behaviorScore, judgeScore].filter(non-null);
-const composite = scores.reduce(+) / scores.length;
+```text
+layerScore = 1 + passedObservedWeight / observedWeight × 4
 ```
 
-任一层缺失（没配 assertion / 没配 judge / 评分失败）→ composite 在剩余层上取均值。
+结果在 1–5 量尺上保留两位小数。结构性不适用不进入 planned coverage；missing、invalid、failed、unavailable 与 not-started observation 会保持为显式 coverage 状态，绝不变成 `false`。没有任何权重被观测到时，该层为 missing，不是零分。
 
-实现位置：`src/grading/layered-scores.ts`。被 `test/grading/judge-hash-frozen.test.ts` 冻结，公式漂移会触发可比性 break。
+实现：`src/eval-workflows/runtime-adapter/analysis/assertion-layer.ts` 中的 `omk.assertion-layer-table/v1`。
 
----
+## Judge 与 dimension 推导
 
-## 2. 五层评分管道架构
+原始 rubric reading 会保留 evaluator、metric、instrument、ensemble member、replicate group、replicate index、Sample、Trial 与 sampling-unit identity。
 
-omk 的评分实际上是个分层管道：
+- replicate table 对同一计划 member 的 observed reading 求平均，并保留未观测行；
+- ensemble table 对每个 observed member mean 等权聚合，只有证据满足要求时才报告 agreement；
+- dimension table 把每个 dimension 绑定到一个 Metric 和一个上游 ensemble result。上游证据缺失时继续保持 missing；零个 observed dimension 不会变成零分。
 
-```
-原始观测 (LLM 输出 / 工具调用 / 成本 / 耗时)
-   ↓
-[Layer 1] assertion       —— 规则断言通过率（contains / regex / json_schema / tool_called / ...）
-   ↓
-[Layer 2] llm (raw judge) —— LLM 评委原始 1-5 分
-   ↓
-[Layer 3] judge (rubric)  —— rubric 锚定的语义分（默认就是 llm，omk 0.x 阶段两者重合）
-   ↓
-[Layer 4] dimension       —— capability-aligned 维度分（capability 评分体系，0.x 后期接入）
-   ↓
-[Layer 5] composite       —— fact / behavior / judge 等权均值
+这能避免把 retry attempt、judge repeat、ensemble member、Trial 与独立 Run 压成同一个统计单位。
+
+## Composite 推导
+
+封存参数最多绑定三个 present layer：`fact`、`behavior` 与 `judge`。judge source 可以是 ensemble consensus，也可以是 dimension aggregate。
+
+```text
+composite = mean(observed present layers)
 ```
 
-**当前（v0.x）实际进 composite 的只有三层**：fact + behavior + judge。dimension 层在 capability spec 完整落地前不参与 composite。assertion 在表里被拆成 fact（语义类断言）和 behavior（执行过程类断言）两类，分类规则见 `src/grading/layered-scores.ts` 顶部的 `FACTUAL_ASSERTION_TYPES` / `BEHAVIORAL_ASSERTION_TYPES`。
+聚合值保留两位小数。不存在的 layer 属于结构性不适用；存在但缺失的 layer 仍是显式 missing evidence。所有计划 layer 都未观测到时，composite 为 missing，而不是数值零。每个 source group 与 binding 都会保留在 lineage 中，传输后的 table 也会在校验时重新计算。
 
----
+实现：`src/eval-workflows/runtime-adapter/analysis/composite-table.ts` 中的 `omk.composite-table/v1`。
 
-## 3. 局限：直白说
+## Composite 能回答什么
 
-### ① 等权聚合是 ad hoc
+composite 是同一 sealed design 内的比较信号。Dataset、Target 条件、evaluator identity、policy 与 layer binding 保持不变时，它适合进入预注册的 treatment-minus-control Bootstrap 比较。
 
-三层（fact / behavior / judge）各 1/3 权重，**不是从 stakeholder 需求 derive 的**。「三层同等重要」是断言而非论证。psychometric 教科书会要求显式 weighting 论证（专家共识 / PCA / 因子分析），omk 当前没做。
+它不是绝对 psychometric level。等权聚合属于务实选择，assertion 通过率与 rubric score 具有不同测量性质，不同 present layer 的设计也在测量不同 construct。不要用 raw composite 给互不相关的 artifact、dataset 或 run 排名。
 
-**实际后果**：fact 大幅提升 + judge 略下降，composite 可能持平，掩盖结构性变化。omk 用「多层独立 gate」（见 §4）削弱这个风险，但风险没消除。
+## Decision 边界
 
-### ② 量尺不一致直接相加
+composite score 或正向点估计本身不能授权发布。`omk.release-decision/v1` 消费精确绑定的 Composite 与 Bootstrap-family result，以及可选的 Judge Ensemble result，并先校验证据完整性与 source lineage。
 
-- **fact / behavior**：binary（pass/fail）→ 通过率 → `1 + ratio × 4` stretch 到 1-5
-- **judge**：真序数评分（LLM 给 1/2/3/4/5）
+它的六种结论是 `PROGRESS`、`CAUTIOUS`、`REGRESSION`、`NOISE`、`UNDERPOWERED` 与 `SOLO`。常规发布路由要求 Decision 已决定为 `PROGRESS`，且携带 `release-gates-passed`。区间缺失时保持 not-decided；多 treatment 使用已注册的最差结论；跨 run 稳定性属于 Evaluation Series，不能从单次 run 分数推断。
 
-binary 数据 stretch 到 5 桶 + 真序数评分 **直接相加再均值**，违反 measurement scale homogeneity 原则。严格做法是先 standardize（z-score 或 rank），再加权聚合。omk 当前没做。
+不确定性、一致性、去偏与 coverage gate 详见[统计严谨性](../explanation/statistical-rigor.md)。
 
-**实际后果**：fact 通过率 80% → factScore 4.2；judge 给 4 分 → judgeScore 4.0。两个 4.x 数字数量级近似，但 fact 的「4.2」和 judge 的「4.0」承载的信息密度不同（前者是 5 个 binary 检查中通过 4 个，后者是评委对整体输出的语义判断）。
+## 可比性不变量
 
-### ③ 缺失维度自动降维 → 不可比
-
-```
-A skill: composite = mean(fact=4.5, behavior=4.0, judge=4.5) = 4.33
-B skill: composite = mean(judge=4.33) = 4.33
-```
-
-两个 4.33 数字相同，**construct 完全不同**。跨 variant / 跨 skill 机械比较综合分会得到误判。
-
-**实际后果**：报告里两个 variant 一个配了 assertion 一个没配时，综合分比较是 apples-to-oranges。omk 当前 UI 没有显式标注「这次 composite 由几层算」，是已知 gap。
-
----
-
-## 4. 多层独立 gate 与综合分的关系
-
-omk 的 verdict 系统（`src/eval-core/verdict.ts`）**不只看 composite**。它对 fact / behavior / judge 三层各跑独立显著性检验：
-
-```
-verdict 算法（精简版）：
-  对每对 (control, treatment) 跑 bootstrap CI on (treatment - control) for each layer
-  - 任一层 layer-gate FAIL（threshold 默认 3.5）  → REGRESS / CAUTIOUS
-  - 全部层 CI 不显著                            → NOISE
-  - composite 显著 + 全层 gate PASS              → PROGRESS · SHIP
-  - composite 显著但某层 gate FAIL              → CAUTIOUS · INVESTIGATE
-  - 本应 PROGRESS,但评委 ensemble 强烈分歧
-    (inter-judge Pearson < 0.4,对照或实验组任一)  → CAUTIOUS · 评委信号不可靠
-```
-
-**意义**：composite 单分 +2.78 不能让 omk 给出 `PROGRESS`（可安全发布）判定，必须 **每个存在的层都过自己的 gate**（没数据的层会被剔除，跟它从 composite 均值里被剔除一样；三层全缺则 gate 直接 FAIL）。这削弱（不是消除）composite ad hoc 聚合的误导风险。
-
-**门控阈值**是务实默认、非外部标准，且 doc↔code 校验（`test/scripts/doc-constants-drift.test.ts`）：layer-gate threshold 默认 3.5（明显高于 1-5 量程中点 3.0，`omk eval --threshold` 可覆盖）。评委一致性门控沿用惯例 Pearson 强度带 —— 强一致 Pearson ≥ 0.7，强分歧 Pearson < 0.4（后者把本应 PROGRESS 降为 CAUTIOUS）。在 `omk eval --holdout-ratio` 下，train/holdout 综合分差超过 0.5 把本应 PROGRESS 降为 CAUTIOUS（用例集过拟合 —— 提升不泛化到 holdout 切片）；该门控只在存在 holdout 切分时触发，默认评测不受影响。
-
-「方法学审计」section 里的 4 个 badge（评委一致 / 差异显著 / 已饱和 / 人工对齐）就是把这套独立检验的结论可视化，让用户在 review 时能 spot 到「composite 看上去不错但某层有问题」的情况。其中「评委一致」（inter-judge Pearson）不只是可视化：多评委强烈分歧（Pearson < 0.4）会把本应 PROGRESS 的判定降级为 CAUTIOUS —— 评委自己都谈不拢时，驱动这次「变好」的评委层信号不可靠。
-
-### 六档 verdict 一览
-
-报告顶部 pill（以及 `omk eval` 的 exit 信号）给出的 verdict 是六档之一：
-
-| Verdict | 含义 | 该怎么办 |
-|---|---|---|
-| **PROGRESS** | diff CI 显示真实正向位移，无层回退 | 发布 |
-| **CAUTIOUS** | 有正向位移，但某层破了 gate、评委 ensemble 强烈分歧、或还没到功效 | 发布前先查 |
-| **REGRESS** | diff CI 明确为负，或某层掉了 gate | 别发 |
-| **NOISE** | diff CI 含 0 —— 改动与噪声分不开 | 不确定；需要更多信号 |
-| **UNDERPOWERED** | N 太小（低于前置功效带）/ 饱和低可信、无信号 | 补用例或 `--repeat` |
-| **SOLO** | 单变体报告；没有可对比对象 | 加一个对照变体 |
-
-来源：`src/eval-core/verdict.ts` 的 `computeVerdict`。同一套规则引擎同时驱动简洁的 CLI 行和报告 verdict pill，二者永远一致。
-
----
-
-## 5. 推荐用法
-
-| 场景 | 用 composite？ |
-|---|---|
-| 同一份 eval-samples 上跑 A/B 比较，看分差 + bootstrap CI + 多层 gate | ✓ 站得住 |
-| 跨 run 排序「哪次跑分最高」，挑某次报告深读 | ✓ 站得住（list / trends 页用法） |
-| 给 verdict 算法吃，判 SHIP / NO-SHIP | ✓ 站得住（受多层 gate 校验） |
-| 报告里说「这个 skill 4.28/5 分」当作绝对评价指标 | ✗ 等权 + 量尺不一致 + 缺失降维三重 ad hoc |
-| 跨 skill 比综合分（A skill 4.5 比 B skill 3.8 强） | ✗ A/B 用的 eval-samples / 配置层数不同时不可比 |
-| 跨版本声明「skill v2 的绝对水平是 4.28」 | ✗ 同上 |
-
-**口诀**：composite 是「**比较信号**」，不是「**绝对水平**」。前者由 bootstrap CI + 多层 gate 撑住，后者撑不住。
-
----
-
-## 6. 测量学不变量与未来路径
-
-`CLAUDE.md` 里登记的不变量包含：
-
-- Report JSON schema 字段语义
-- 五层评分管道语义（assertion / llm / judge / dimension / composite）
-- `judge-hash-frozen.test.ts` 冻结的 judge prompt hash
-- Bootstrap CI 公式
-- Length-debias toggle 语义
-
-**改 composite 算法 = `BREAKING-COMPARABILITY`**：所有历史 report 失效，跨版本比分功能失能。这是 omk 长期信任的红线。
-
-未来要做更严谨的聚合，路径是 **v1.0 milestone**：
-
-1. **显式权重**：让 SKILL.md / config 声明 `weights: {fact: w1, behavior: w2, judge: w3}`，权重需论证
-2. **standardize 后聚合**：各维度先 z-score 或 rank 化，再加权
-3. **multivariate verdict**：把当前的「composite + 多层独立 gate 联合」升级为 multivariate hypothesis testing（Hotelling T² 或类似）
-4. **scoring whitepaper**：把这套方案沉淀成可被外部审计的方法论文档
-
-这是季度级架构变更，不是 patch 改动，也是 omk 下一步可能的 differentiator（「omk 是测量学认真的 AI eval 工具」）。
-
----
-
-## 7. 引用与代码指针
-
-- 公式实现：`src/grading/layered-scores.ts` （`computeLayeredScores` 函数）
-- verdict 算法：`src/eval-core/verdict.ts` （`computeVerdict` 函数 + `verdictForPair` 多层 gate 逻辑）
-- bootstrap CI：`src/eval-core/bootstrap.ts` （pairwise diff CI 实现）
-- 不变量冻结测试：`test/grading/judge-hash-frozen.test.ts`
-- 报告 UI：`src/renderer/summary.ts` （`renderSummaryCards` 渲染综合分列 + scoring modal）
-
-姊妹文档：
-
-- [统计严谨性](../explanation/statistical-rigor.md) —— Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线
-- [omk vs 同类工具](../reference/comparison.md)
+五层语义、冻结的评分类 prompt、Bootstrap 公式、缺失证据语义与 length-debias toggle 是跨版本比较的锚点。改变这些语义时，必须显式经过 `BREAKING-COMPARABILITY` 评审。纯展示性质的 Studio projection 绝不能重新定义 score 或 Decision。

@@ -5,6 +5,7 @@ import {
   canonicalizeJson,
   deriveSchedulingTargetGroups,
   projectExecutionInputs,
+  resolveEffectiveExecutionControl,
   type AnalysisNodeDefinition,
   type EvaluationDefinition,
   type MeasurementPolicy,
@@ -92,7 +93,23 @@ function validateDesignPointers(definition: EvaluationDefinition): void {
 }
 
 function validateEvaluatorBindings(definition: EvaluationDefinition): void {
+  const datasetSampleIds = new Set(definition.dataset.samples.map((sample) => sample.sampleId));
   for (const evaluator of definition.evaluators) {
+    const applicableSampleIds = evaluator.applicableSampleIds;
+    if (applicableSampleIds !== undefined) {
+      assertUnique(applicableSampleIds, `evaluator:${evaluator.evaluatorId}:applicable-sample`);
+      for (const sampleId of applicableSampleIds) {
+        assertReference(
+          datasetSampleIds,
+          sampleId,
+          `evaluators.${evaluator.evaluatorId}.applicableSampleIds`,
+          'EvaluationSample',
+        );
+      }
+    }
+    const applicableSampleIdSet = applicableSampleIds === undefined
+      ? undefined
+      : new Set(applicableSampleIds);
     assertUnique(
       evaluator.inputs.map((binding) => binding.bindingId),
       `evaluator:${evaluator.evaluatorId}:binding`,
@@ -116,21 +133,23 @@ function validateEvaluatorBindings(definition: EvaluationDefinition): void {
         continue;
       }
       const field = binding.sourceKind === 'expected' ? 'expected' : 'evaluationContext';
-      const samplesWithSource = definition.dataset.samples.filter(
-        (sample) => sample[field] !== undefined,
+      const applicableSamples = definition.dataset.samples.filter(
+        (sample) => applicableSampleIdSet === undefined
+          || applicableSampleIdSet.has(sample.sampleId),
       );
-      if (samplesWithSource.length === 0) {
-        throw definitionError(
-          'EVAL_DEFINITION_MISSING_REFERENCE',
-          `Evaluator binding 引用了 Dataset 中不存在的“${binding.sourceKind}”数据源。`,
-          {
-            evaluatorId: evaluator.evaluatorId,
-            bindingId: binding.bindingId,
-            sourceKind: binding.sourceKind,
-          },
-        );
-      }
-      for (const sample of samplesWithSource) {
+      for (const sample of applicableSamples) {
+        if (sample[field] === undefined) {
+          throw definitionError(
+            'EVAL_DEFINITION_MISSING_REFERENCE',
+            `Evaluator binding 的适用 sample 缺少“${binding.sourceKind}”数据源。`,
+            {
+              evaluatorId: evaluator.evaluatorId,
+              bindingId: binding.bindingId,
+              sourceKind: binding.sourceKind,
+              sampleId: sample.sampleId,
+            },
+          );
+        }
         if (resolvesPointer(sample[field], binding.pointer)) continue;
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
@@ -142,6 +161,55 @@ function validateEvaluatorBindings(definition: EvaluationDefinition): void {
           },
         );
       }
+    }
+  }
+}
+
+function validateTargetExecutionControls(definition: EvaluationDefinition): void {
+  const sampleIds = new Set(definition.dataset.samples.map((sample) => sample.sampleId));
+  for (const target of definition.targets) {
+    const overrides = target.executionControls.sampleOverrides;
+    assertUnique(
+      overrides.map((override) => override.sampleId),
+      `target:${target.targetId}:sample-execution-control`,
+    );
+    for (const override of overrides) {
+      assertReference(
+        sampleIds,
+        override.sampleId,
+        `targets.${target.targetId}.executionControls.sampleOverrides`,
+        'EvaluationSample',
+      );
+    }
+    const toolPolicies = [
+      target.executionControls.defaults.tools,
+      ...overrides.flatMap((override) => override.tools === undefined ? [] : [override.tools]),
+    ];
+    for (const policy of toolPolicies) {
+      if (policy.toolPolicyKind === 'allow-list') {
+        assertUnique(policy.allowedTools, `target:${target.targetId}:allowed-tool`);
+      }
+    }
+    const effective = definition.dataset.samples.map((sample) => (
+      resolveEffectiveExecutionControl(target.executionControls, sample.sampleId)
+    ));
+    const expectedWorkspace = effective.some((control) => (
+      control.workspace.workspaceMode === 'copy-on-write-overlay'
+    )) ? 'copy-on-write-overlay' : 'not-required';
+    const expectedToolPolicy = effective.some((control) => (
+      control.tools.toolPolicyKind === 'allow-list'
+    )) ? 'allow-list' : 'runtime-default';
+    if (target.executionRequirements.workspace !== expectedWorkspace
+        || target.executionRequirements.toolPolicy !== expectedToolPolicy) {
+      throw definitionError(
+        'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
+        'Target executionRequirements 必须精确覆盖所有 sample 的 effective execution control。',
+        {
+          targetId: target.targetId,
+          expectedWorkspace,
+          expectedToolPolicy,
+        },
+      );
     }
   }
 }
@@ -496,6 +564,7 @@ export function validateDefinitionSemantics(
     'analysis-result',
   );
   assertUnique(definition.comparisons.map((comparison) => comparison.comparisonId), 'comparison');
+  validateTargetExecutionControls(definition);
 
   const targetIds = new Set(definition.targets.map((target) => target.targetId));
   const metricIds = new Set(definition.metrics.map((metric) => metric.metricId));
@@ -663,7 +732,21 @@ export function validateDefinitionSemantics(
       ),
     );
     assertUnique(hypothesisMembers.map((member) => member.hypothesisId), 'decision-policy:hypothesis');
-    assertUnique(family.map((member) => member.analysisResultId), 'decision-policy:family-analysis-result');
+    const familyResultId = definition.decisionPolicy.comparisonFamilyResultId;
+    if (familyResultId === undefined) {
+      assertUnique(
+        family.map((member) => member.analysisResultId),
+        'decision-policy:family-analysis-result',
+      );
+    } else if (family.length === 0
+        || !definition.decisionPolicy.analysisResultIds.includes(familyResultId)
+        || family.some((member) => member.analysisResultId !== familyResultId)) {
+      throw definitionError(
+        'EVAL_DEFINITION_MISSING_REFERENCE',
+        '权威 comparison family result 必须由每个 member 共同绑定并被 DecisionPolicy 消费。',
+        { referenceId: familyResultId },
+      );
+    }
     assertUnique(
       family.map((member) => canonicalizeJson([
         member.comparisonId,
@@ -704,7 +787,8 @@ export function validateDefinitionSemantics(
       ].sort();
       const actualInputs = producer?.inputs.map((input) => canonicalizeJson(input)).sort();
       if (producer === undefined
-          || canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs)) {
+          || (familyResultId === undefined
+            && canonicalizeJson(actualInputs) !== canonicalizeJson(expectedInputs))) {
         throw definitionError(
           'EVAL_DEFINITION_MISSING_REFERENCE',
           'Comparison family member 必须精确绑定只消费该 contrast 的 AnalysisResult。',
@@ -719,7 +803,7 @@ export function validateDefinitionSemantics(
         '多个 comparison family member 必须声明 correction，单个或空 family 不得伪装成多重比较。',
       );
     }
-    if (correctionId !== undefined) {
+    if (correctionId !== undefined && familyResultId === undefined) {
       const correctionNodes = definition.analysisGraph.nodes.filter((node) => (
         node.analysisNodeKind === 'correction'
         && node.implementationId === correctionId
@@ -756,7 +840,17 @@ export function validateDefinitionSemantics(
           { referenceId: correctionId },
         );
       }
-    } else {
+    } else if (correctionId !== undefined) {
+      const familyProducer = nodeByResultId.get(familyResultId as string);
+      if (familyProducer?.analysisNodeKind !== 'estimator'
+          || familyProducer.implementationId !== correctionId) {
+        throw definitionError(
+          'EVAL_DEFINITION_MISSING_REFERENCE',
+          '权威 comparison family result 必须由声明的 estimator-owned standard 产生。',
+          { referenceId: correctionId },
+        );
+      }
+    } else if (correctionId === undefined) {
       for (const member of family) {
         if (!definition.decisionPolicy.analysisResultIds.includes(member.analysisResultId)) {
           throw definitionError(

@@ -170,6 +170,14 @@ interface TargetDefinition {
     skillDiscovery: 'runtime-default' | 'disabled' | 'allow-list';
     sandboxId?: string;
   };
+  executionControls: {
+    defaults: EffectiveExecutionControl;
+    sampleOverrides: readonly Array<{
+      sampleId: string;
+      workspace?: WorkspaceExecutionControl;
+      tools?: ToolExecutionControl;
+    }>;
+  };
   config?: JsonValue;
 }
 ```
@@ -272,7 +280,7 @@ interface MetricDefinition {
 
 复杂分析由有向无环的 AnalysisGraph 表达。每个节点声明输入、输出 schema、实现身份和参数；已解析 capability 会分别封存 parameter schema，以及 Metric、上游 result、Comparison 三类输入基数。Core 在计算 plan digest 前校验 parameter 并物化默认值，因此缺省、非法或被实现静默忽略的选项不会折叠成相同 runtime 行为。completed result 校验还会接收这些 sealed parameter 作为上下文：estimator 回显的区间置信度、重采样次数，以及 correction 回显的 alpha，都必须在在线执行和 Bundle 重验时与 plan 一致。区间的 `unitCount` 由 Core 根据 included row 和 sealed resampling unit 独立推导；paired block 只有同时纳入声明 contrast 的两侧 target 才计数。percentile interval 不要求包含其点估计，但端点仍须有序（`lower <= upper`）。prepare 检查循环、缺失依赖、值域不匹配和输入基数不匹配。
 
-DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, treatmentTargetId, metricId, analysisResultId)`。该 AnalysisResult 的 producer 必须精确且仅消费这个 member 的 Metric 与 Comparison selector，不能混入 family 外输入。未校正的 singleton result 必须由 DecisionPolicy 直接消费。需要校正的 family 还要为每个 member 声明 canonical `hypothesisId`；correction node 必须精确消费全部 member 的 `analysisResultId`，DecisionPolicy 则消费唯一 correction result。超过一个 member 的 family 必须绑定 correction；空或单 member family 不能伪装成多重比较。Decision 只能收到带 result identity 和可选 hypothesis identity 的投影 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。correction table 的 canonical hypothesis ID、family size 和 raw p-value 必须全部一致，才能产生 verdict。内建 `progress/v1` 只选择 singleton contrast 绑定的唯一 result；没有 family 时只接受唯一声明 result，输入有歧义则返回 not-decided，并且不声称支持 multiple-comparison。多 contrast 的发布语义必须由专用 DecisionPolicy 明确定义。
+DecisionPolicy 的每个 comparison family member 都声明 `(comparisonId, treatmentTargetId, metricId, analysisResultId)`。family 有两种显式形态。通用 correction 形态中，每个 member 拥有独立 AnalysisResult，其 producer 必须精确且仅消费该 member 的 Metric 与 Comparison selector；需要校正时，每个 member 还要声明 canonical `hypothesisId`，correction node 精确消费这些 member result，DecisionPolicy 消费唯一 correction result。estimator-owned 形态则由 `comparisonFamilyResultId` 指向所有 member 共同绑定、且由 DecisionPolicy 消费的权威 result；family producer 自己封存并校验整个 family。超过一个 member 时始终必须声明 `multipleComparisonPolicyId`，权威 result 必须由使用该 implementation identity 的 estimator 产生，已解析 DecisionPolicy capability 也必须支持同一标准；但 estimator-owned 形态不需要额外 correction node，Core 绝不为迁就通用形态而伪造 p-value。空或 singleton family 不能伪装成多重比较。Decision 只能收到带 result identity 和可选 hypothesis identity 的投影 contrast，不能看到所属 Comparison 中无关的 treatment 或 Metric。通用 correction table 必须匹配 canonical hypothesis ID、family size 与 raw p-value；estimator-owned table 则必须通过版本化输出 schema 与 DecisionPolicy lineage 校验，之后才能产生 verdict。内建 `progress/v1` 只选择 singleton contrast 绑定的唯一 result；没有 family 时只接受唯一声明 result，输入有歧义则返回 not-decided，并且不声称支持 multiple-comparison。多 contrast 的发布语义必须由专用 DecisionPolicy 明确定义。
 
 v1 内建的 reducer／estimator 保持最小：
 
@@ -881,7 +889,7 @@ ExecutionBundle 以 `runContractDigest` 和 `datasetRevisionDigest` 记录产出
 
 ## 十七、Contracts v1 实现基线
 
-第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入历史 `src/eval-core/`、CLI、executor、grading、renderer 或 server 层。
+第一阶段实现由 [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427) 跟踪。单一来源隔离在 `src/evaluation-core/contracts/`，不导入 CLI、executor、grading、renderer、server 或其它应用层；历史评测实现已经删除。
 
 Catalog 当前在 `schemas/evaluation-core/v1/` 发布二十个 JSON Schema 2020-12 根契约：ExecutorCapabilities、EvaluationDefinition、MeasurementPolicy、四个阶段 Plan 与 RunPlan、ComparabilityPolicy、ComparabilityAssessment、Event、BudgetSummary、三个单 Run Bundle、EvaluationReport，以及四个 Evaluation Series 契约。TypeScript 类型从同一组 Zod 4 schema 推导。`yarn build:schemas` 重新生成文件；`yarn build` 检查已提交产物是否漂移，并把它们复制到 package build。
 
@@ -1027,7 +1035,17 @@ admission 采用 reservation。一个 scheduling block 会在一次操作中提�
 
 该设计采用 resource-quota admission 的思路，而不是 billing dashboard 的思路：开工前预留、settle 后记实际消耗，并把 limit、usage 与 uncertainty 分开。它也采用结构化 deadline／cancellation：Run deadline 是父边界，attempt timeout 是更窄的子边界。GenAI telemetry convention 只定义 usage observation；带明确信任与 reporting status 的 provider telemetry 仍然不是授权 budget admission 的 authority。
 
-## 二十三、行业参考
+## 二十三、Sample-scoped execution control
+
+[#542](https://github.com/lizhiyao/oh-my-knowledge/issues/542) 将 workspace 与工具授权提升为显式的 sample-scoped Core 契约。这属于 `BREAKING-SCHEMA` 变更，不提供旧 schema reader 或迁移路径。Target 声明 canonical `executionControls.defaults` 与稀疏的 `sampleOverrides`。每条 override 完整替换 workspace 字段、tools 字段或两者；继承只按字段发生，工具集合永远不做 union。`allow-list` 的空列表因此表示禁用全部工具，`runtime-default` 则是另一种明确策略。
+
+workspace control 只能是 `not-required`，或携带内容寻址 descriptor 的 `copy-on-write-overlay`。descriptor 只包含 `resourceId`、digest、media type、classification 与 size；Core JSON 禁止 locator、credential、资源字节和 `gold` classification。宿主持有 resource lease，在使用前完成 descriptor、locator 与内容的校验。`TargetDefinition.executionRequirements` 只是全部有效 Sample control 的聚合 capability 请求，不代表授予单个 Trial 聚合后的权限。
+
+Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `EffectiveExecutionControl`，并把这一冻结值准确传给 Executor Trial。execution-coordinate digest、Trial identity、native provenance 与 v2 cache key 都绑定该有效 control。只改变 Sample A 的 workspace 或工具策略时，只有 Sample A 的 coordinate 与 cache entry 失效，Sample B identity 保持稳定。Gold、expected、evaluation context、annotations、其它 Sample 的 workspace locator 与工具授权永远不能进入 Trial 投影。
+
+Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table，并通过聚合 resource lease 绑定全部必要 workspace。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace 与工具策略，并且只暴露被选中的 workspace lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
+
+## 二十四、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；

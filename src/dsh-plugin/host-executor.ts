@@ -308,7 +308,7 @@ export function createDshHostExecutor(
       const { outcome, cleanupTimedOut } = await waitForIdle(
         handle.agent,
         timeoutMs,
-        options.signal,
+        input.abortSignal ?? options.signal,
         cleanupTimeoutMs,
       );
       const wallClockDurationMs = Date.now() - startedAt;

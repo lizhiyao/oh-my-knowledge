@@ -71,6 +71,9 @@
           "minItems": 1,
           "type": "array"
         },
+        "comparisonFamilyResultId": {
+          "$ref": "#/$defs/__schema3"
+        },
         "decisionPolicyId": {
           "$ref": "#/$defs/__schema3"
         },

@@ -17,12 +17,22 @@ import {
 import type { OmkRuntimeBindingFactories } from './types.js';
 import { createJudgeAggregationAnalysisNodes } from './analysis/judge-aggregation.js';
 import { createAssertionLayerAnalysisNodes } from './analysis/assertion-layer-node.js';
+import { createDimensionAnalysisNodes } from './analysis/dimension-node.js';
+import { createCompositeAnalysisNodes } from './analysis/composite-node.js';
+import { createBootstrapFamilyAnalysisNodes } from './analysis/bootstrap-family-node.js';
+import { createAgreementAnalysisNodes } from './analysis/agreement-node.js';
+import { createReleaseDecisionPolicies } from './analysis/release-decision.js';
+import {
+  createOmkSeriesVarianceRuntime,
+  OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+} from './series-variance.js';
 
 export type OmkBuiltinAnalysisBindingFactories = Pick<
   OmkRuntimeBindingFactories,
   | 'analysisNodesByImplementationId'
   | 'missingPoliciesByImplementationId'
   | 'decisionPoliciesByImplementationId'
+  | 'seriesAnalysisNodesByImplementationId'
 >;
 
 export type OmkBuiltinScoringBindingFactories = Pick<
@@ -90,9 +100,16 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
     ...createBuiltinAnalysisNodes(),
     ...createAssertionLayerAnalysisNodes(),
     ...createJudgeAggregationAnalysisNodes(),
+    ...createDimensionAnalysisNodes(),
+    ...createCompositeAnalysisNodes(),
+    ...createBootstrapFamilyAnalysisNodes(),
+    ...createAgreementAnalysisNodes(),
   ]);
   const missingPolicies = createBuiltinMissingPolicies();
-  const decisionPolicies = createBuiltinDecisionPolicies();
+  const decisionPolicies = new Map([
+    ...createBuiltinDecisionPolicies(),
+    ...createReleaseDecisionPolicies(),
+  ]);
   return {
     analysisNodesByImplementationId: new Map([...analysisNodes].map(([implementationId, port]) => [
       implementationId,
@@ -114,5 +131,13 @@ export function createBuiltinOmkAnalysisBindingFactories(): OmkBuiltinAnalysisBi
       satisfiesVersionConstraint: true,
       preflightDeclarations: [],
     })])),
+    seriesAnalysisNodesByImplementationId: new Map([[
+      OMK_SERIES_VARIANCE_IMPLEMENTATION_ID,
+      () => ({
+        port: createOmkSeriesVarianceRuntime(),
+        satisfiesVersionConstraint: true,
+        preflightDeclarations: [],
+      }),
+    ]]),
   };
 }

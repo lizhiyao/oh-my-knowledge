@@ -9,6 +9,13 @@ import { runCommand } from '../helpers/run-command.js';
 const PROJECT_ROOT = process.cwd();
 const EXAMPLE_SAMPLES = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'eval-samples.json');
 const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'test', 'fixtures', 'code-review', 'skills');
+const CUSTOM_EXECUTOR = join(
+  PROJECT_ROOT,
+  'test',
+  'fixtures',
+  'custom-executor',
+  'core-fixture-executor.sh',
+);
 
 interface ExecError extends Error {
   code: number;
@@ -25,7 +32,11 @@ function setupBrokenSkillDir(): string {
   writeFileSync(join(skillDir, 'v2.md'), 'hi'); // need at least 2 variants for control/treatment
   // 写 minimal samples
   writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify({
-    samples: [{ sample_id: 's1', prompt: 'test prompt' }],
+    samples: [{
+      sample_id: 's1',
+      prompt: 'test prompt',
+      assertions: [{ type: 'contains', value: 'test' }],
+    }],
   }));
   return tmp;
 }
@@ -39,12 +50,20 @@ function setupBatchMixedSkillDir(): string {
   // broken: 内容过短, doctor skill_readable 必 fail
   writeFileSync(join(skillDir, 'broken.md'), 'hi');
   writeFileSync(join(skillDir, 'broken.eval-samples.json'), JSON.stringify({
-    samples: [{ sample_id: 'b1', prompt: 'test prompt for broken' }],
+    samples: [{
+      sample_id: 'b1',
+      prompt: 'test prompt for broken',
+      assertions: [{ type: 'contains', value: 'test' }],
+    }],
   }));
   // healthy: batch 至少有一个 entry; 单独跑会 pass
   writeFileSync(join(skillDir, 'healthy.md'), '你是一个版本健康的 skill, 内容足够长以通过 skill_readable rule。');
   writeFileSync(join(skillDir, 'healthy.eval-samples.json'), JSON.stringify({
-    samples: [{ sample_id: 'h1', prompt: 'test prompt for healthy' }],
+    samples: [{
+      sample_id: 'h1',
+      prompt: 'test prompt for healthy',
+      assertions: [{ type: 'contains', value: 'test' }],
+    }],
   }));
   return tmp;
 }
@@ -59,6 +78,8 @@ describe('omk eval doctor preflight embedding', () => {
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
           '--treatment', 'v2',
+          '--executor', CUSTOM_EXECUTOR,
+          '--no-judge',
           '--dry-run',
         ], { cwd: broken }),
         (err: unknown) => {
@@ -88,6 +109,8 @@ describe('omk eval doctor preflight embedding', () => {
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
           '--treatment', 'v2',
+          '--executor', CUSTOM_EXECUTOR,
+          '--no-judge',
           '--dry-run',
           '--lang', 'en',
         ], { cwd: broken }),
@@ -113,12 +136,14 @@ describe('omk eval doctor preflight embedding', () => {
       '--skill-dir', EXAMPLE_SKILLS_DIR,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
       '--dry-run',
       '--lang', 'zh',
     ]);
     // Should NOT fail with doctor
     assert.ok(!stderr.includes('doctor failed:'), `stderr should not have doctor failure: ${stderr.slice(0, 500)}`);
-    assert.ok(stdout.includes('eval dry-run'));
+    assert.equal(JSON.parse(stdout).projectionKind, 'core-cli-dry-run');
   });
 
   it('--skip-connectivity does not bypass doctor', async () => {
@@ -132,6 +157,8 @@ describe('omk eval doctor preflight embedding', () => {
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
           '--treatment', 'v2',
+          '--executor', CUSTOM_EXECUTOR,
+          '--no-judge',
           '--dry-run',
           '--skip-connectivity',
         ], { cwd: broken }),
@@ -158,12 +185,15 @@ describe('omk eval doctor preflight embedding', () => {
           '--skill-dir', join(tmp, 'skills'),
           '--batch',
           '--dry-run',
+          '--executor', CUSTOM_EXECUTOR,
+          '--no-judge',
         ], { cwd: tmp }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stderr.includes('doctor failed:'), `batch dry-run should gate on doctor: ${e.stderr.slice(0, 500)}`);
-          assert.ok(e.stderr.includes('skill=broken'), `error should name the failing skill: ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('Core Batch：broken') && e.stderr.includes('[broken]'),
+            `error should name the failing skill: ${e.stderr.slice(0, 500)}`);
           assert.ok(e.stderr.includes('发布前 doctor 门禁未通过'), `batch error should keep the actionable gate text: ${e.stderr.slice(0, 800)}`);
           return true;
         },
@@ -184,7 +214,11 @@ describe('omk eval doctor preflight embedding', () => {
       writeFileSync(join(skillDir, 'v2.md'), '你是一个版本 2 的代码审查助手,加了安全检查。');
       writeFileSync(join(skillDir, 'draft.md'), 'hi');  // < 10 字符,本来会 fail
       writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify({
-        samples: [{ sample_id: 's1', prompt: 'review' }],
+        samples: [{
+          sample_id: 's1',
+          prompt: 'review',
+          assertions: [{ type: 'contains', value: 'review' }],
+        }],
       }));
 
       const { stdout, stderr } = await runCommand(EvalCommand, [
@@ -192,13 +226,15 @@ describe('omk eval doctor preflight embedding', () => {
         '--skill-dir', skillDir,
         '--control', 'v1',
         '--treatment', 'v2',
+        '--executor', CUSTOM_EXECUTOR,
+        '--no-judge',
         '--dry-run',
         '--lang', 'zh',
       ], { cwd: tmp });
 
       // doctor 应该只检查 v1 + v2 (健康), 完全忽略 draft.md
       assert.ok(!stderr.includes('doctor failed:'), `expected no doctor failure when draft.md is unrelated to this run; stderr: ${stderr.slice(0, 400)}`);
-      assert.ok(stdout.includes('eval dry-run'));
+      assert.equal(JSON.parse(stdout).projectionKind, 'core-cli-dry-run');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

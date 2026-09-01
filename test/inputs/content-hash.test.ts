@@ -4,10 +4,11 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { hashArtifactSource, isDistributablePath } from '../../src/inputs/content-hash.js';
+import { digestNodeFileResource, digestNodeTreeResource } from '../../src/eval-workflows/runtime-adapter/resource-leases/node.js';
 
 describe('content-hash', () => {
   let dir: string;
@@ -33,6 +34,21 @@ describe('content-hash', () => {
     const f1 = hashArtifactSource(file, false);
     writeFileSync(file, 'body v2\n');
     assert.notEqual(f1, hashArtifactSource(file, false), '文件-skill hash 随内容变');
+  });
+
+  it('与 Evaluation Core file/tree resource digest 严格同空间', async () => {
+    const root = join(dir, 'canonical');
+    mkdirSync(join(root, 'empty'), { recursive: true });
+    writeFileSync(join(root, 'SKILL.md'), '# canonical\n');
+    const executable = join(root, 'run.sh');
+    writeFileSync(executable, '#!/bin/sh\n');
+    chmodSync(executable, 0o755);
+
+    const tree = await digestNodeTreeResource(root);
+    assert.equal(`sha256:${hashArtifactSource(root, true)}`, tree.digest);
+
+    const file = await digestNodeFileResource(join(root, 'SKILL.md'));
+    assert.equal(`sha256:${hashArtifactSource(join(root, 'SKILL.md'), false)}`, file.digest);
   });
 
   it('忽略 .omk / evolve 等非分发产物,只补样本不算 artifact 漂移', () => {

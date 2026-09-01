@@ -9,6 +9,7 @@ import type {
   RuntimeIdentity,
   Sha256Digest,
   UsageRecord,
+  EffectiveExecutionControl,
 } from '../contracts/index.js';
 import type { SealedRunPlan } from '../compiler/index.js';
 import type { RuntimeEventSequencer } from '../runtime/events.js';
@@ -51,7 +52,11 @@ export interface ExecutorRunContext {
 }
 
 export interface ExecutorTrialContext {
+  /** Stable Dataset identity for selecting sample-scoped host controls; adapters must not prompt it. */
+  sampleId: string;
   targetId: string;
+  executionCoordinateDigest: Sha256Digest;
+  executionControl: EffectiveExecutionControl;
   protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   input: JsonValue;
   executionContext?: JsonValue;

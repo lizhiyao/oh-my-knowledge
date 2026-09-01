@@ -196,7 +196,7 @@ describe('compileCliEvaluationInput', () => {
     ]);
     const judgeBindings = result.runtimeBinding.bindings.filter((binding) => (
       binding.runtimeKind === 'evaluator'
-      && binding.implementationId.includes('judge-adapter')
+      && binding.implementationId === 'omk.rubric-judge/v1'
     ));
     expect(judgeBindings).toHaveLength(4);
   });
@@ -222,6 +222,7 @@ describe('compileCliEvaluationInput', () => {
     expect(series?.memberships.every((membership) => (
       membership.seriesDesignDigest === series.definition.seriesDesignDigest
     ))).toBe(true);
+    expect(series?.definition.comparabilityPolicy.minimumStatus).toBe('conditional');
     expect(result.definition.experiment.trials).toBe(1);
     expect(result.policy.retry.maxAttempts).toBe(3);
   });
@@ -407,7 +408,11 @@ describe('compileCliEvaluationInput', () => {
 
   it.each([
     ['artifact-control', 'workspace', 'targets.control.behavior.artifact'],
-    ['workspace-tree', 'artifact', 'targets.treatment.behavior.workspace'],
+    [
+      'workspace-tree',
+      'artifact',
+      'targets.treatment.executionControls.workspace.0.descriptor',
+    ],
     ['mcp-config', 'artifact', 'targets.treatment.behavior.mcpConfig'],
     ['mock-search-response', 'content', 'targets.treatment.behavior.mocks.0.payloads.0'],
     ['rubric-correctness', 'artifact', 'evaluatorTemplates.rubric.resources.0'],
@@ -472,7 +477,10 @@ describe('compileCliEvaluationInput', () => {
         implementationId: target.executorId,
         protocolId: target.protocolId,
         behaviorConfigDigest: digestCanonicalJson(target.config ?? null),
+        executionControlsDigest: digestCanonicalJson(target.executionControls),
       });
+      expect(JSON.stringify(target.config)).not.toContain('allowedTools');
+      expect(JSON.stringify(target.config)).not.toContain('workspace');
       expect(binding).not.toHaveProperty('model');
       expect(binding).not.toHaveProperty('config');
       if (binding?.runtimeKind === 'executor') {
@@ -500,7 +508,9 @@ describe('compileCliEvaluationInput', () => {
       },
     });
     const judgeBinding = result.runtimeBinding.bindings.find((binding) => (
-      binding.runtimeKind === 'evaluator' && binding.implementationId === 'anthropic-judge-adapter/v1'
+      binding.runtimeKind === 'evaluator'
+      && binding.implementationId === 'omk.rubric-judge/v1'
+      && binding.measurement.ensembleMemberId === 'judge-a'
     ));
     expect(judgeBinding).toMatchObject({
       qualification: {
@@ -543,6 +553,30 @@ describe('compileCliEvaluationInput', () => {
       .every((binding) => (
         binding.qualification.executionRequirements.mockInterception === 'not-required'
       ))).toBe(true);
+  });
+
+  it('preserves mock return-sequence order as observable Target behavior', () => {
+    const input = deepClone(validResolvedCliInput());
+    const resource = input.hostResources.resources.find((candidate) => (
+      candidate.resourceKind === 'mock-payload'
+    ))!;
+    const second = {
+      ...structuredClone(resource),
+      descriptor: { ...structuredClone(resource.descriptor), resourceId: 'mock-second' },
+      locator: '/repo/mocks/second.json',
+    };
+    input.hostResources.resources.push(second);
+    const target = input.targets.find((candidate) => candidate.targetId === 'treatment')!;
+    target.behavior.mocks![0].payloads = [second.descriptor, resource.descriptor];
+
+    const compiled = compileCliEvaluationInput(input);
+    const behavior = compiled.definition.targets.find((candidate) => (
+      candidate.targetId === 'treatment'
+    ))!.config as { behavior: { mocks: Array<{ payloads: Array<{ resourceId: string }> }> } };
+
+    expect(behavior.behavior.mocks[0].payloads.map((payload) => payload.resourceId)).toEqual([
+      'mock-second', 'mock-search-response',
+    ]);
   });
 
   it('rejects inline secret evaluator or target configuration', () => {

@@ -213,7 +213,7 @@ omk eval --control baseline --treatment my-skill                # 单 skill 必�
 omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset
 ```
 
 运行离线评测，应用 verdict gate，持久化报告，并用 exit code 表示 ship/no-ship。这个工作流默认开启 bootstrap CI。
@@ -247,7 +247,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --model <value>                 被测模型
   --no-cache                      跳过 executor cache
   --no-debias-length              关 length-debias（默认开）
-  --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+  --no-diagnostic                 关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
   --no-evidence                   不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
@@ -256,7 +256,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --output-dir <value>            报告输出目录（默认项目级 .omk/reports）
   --repeat <value>                每个 sample 重复跑 N 次
   --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
-  --resume <value>                从契约兼容的报告恢复成功项；不兼容则从头运行
+  --resume <value>                复用经过完整契约校验的 Core runId；拒绝时失败关闭
   --retry <value>                 失败 sample 重试次数
   --samples <value>               用例文件路径。默认项目级 eval-samples.json，也接受 .yaml/.yml；单 treatment 时可自动发现 <skill>/.omk/。
   --skill-dir <value>             skill 目录，默认 skills
@@ -275,9 +275,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 
 <!-- omk:cli:eval:flags:end -->
 
-HTML 报告有两个 tab：
-- **📊 评分视角** — verdict 驱动的 A/B 对比（[事实/行为/judge 三层](../specs/scoring)、bootstrap CI、length-debias）。
-- **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
+Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
 
 ## `omk observe`
 
@@ -364,32 +362,22 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --auto-fix-samples              每轮先修 skill，再修 sample，随后一起评估候选结果
   --concurrency <value>           评测并发数，默认 1
   --edit-budget <value>           单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
   --executor <value>              执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-  --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
   --improve-mode <agent|rewrite>  改写策略（默认：agent）
   --improve-model <value>         负责重写 skill 的 LLM，默认沿用被测模型
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认跟随所选执行器；Codex 沿用被测模型。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>                 被评测的 LLM。Codex 自动读取本机配置；无用例时也用作自动生成用例的出题模型。
-  --no-diagnostic                 关 LLM diagnostic 调用
   --no-edit-budget                关掉 edit budget 约束（允许任意大小的单轮改动）
   --no-reject-memory              关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
-  --no-significance-gate          关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）
-  --reuse-latest-eval             复用可比的最新 eval 报告作为 round-0
   --rounds <value>                最大迭代轮数，默认 5
-  --sample-fix-max-attempts <value>每条 sample 自动修复最多尝试次数（默认：2）
   --samples <value>               用例文件路径，默认 eval-samples.json
-  --significance-alpha <value>    显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
-  --skip-connectivity             跳过 LLM 连通性预检
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/<skillName>.r{N}.md 供你挑选，再 omk promote 接受。受管 skill 默认会写回 source 并记证据（measurable）。
-  --stop-on-assertions-pass       普通用例断言全过时提前停止
+  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
-  --test-ratio <value>            锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
   --timeout <value>               单用例超时秒，默认 600
 ```
 
@@ -417,21 +405,18 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 **Flags:**
 
 ```text
-  --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces / --fix。不传则已有文件时报错保护。常配 --focus 补特定场景。
+  --append                    在已有用例文件上追加新生成的用例（撞 sample_id 自动加后缀去重，保留原 json/yaml 格式）。仅单 skill 模式，不支持 --batch / --from-traces。不传则已有文件时报错保护。常配 --focus 补特定场景。
   --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>             生成用例条数。不传由 LLM 按 skill 类型自动决定。
   --executor <value>          执行器名。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
-  --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成评测用例草稿（provenance: production-trace），落草稿待人工 review。
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>             生成 LLM model 名。Codex 自动读取本机配置；也可用 OMK_MODEL 设置环境偏好。
   --no-mock                   不生成 mocks。执行器不支持工具拦截时会自动启用，避免产生必然失败的 mock_hit。
   --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observe-inbox。
-  --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill <value>             仅从指定 skill 的 observe inbox 信号生成草稿（仅 from-traces 模式用）。
   --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
-  --treatment <value>         指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 ```
 
 完整描述见 `omk sample --help`。
@@ -465,7 +450,7 @@ omk studio --no-open
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe-inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
-  --reports-dir <value>       只看指定报告目录（可选；默认机器级聚合：当前项目 + 全局 + 别项目索引）
+  --reports-dir <value>       只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
 ```
 
 完整描述见 `omk studio --help`。
@@ -474,4 +459,4 @@ omk studio --no-open
 
 启动本地知识工作台。首页直接索引本机 Codex 对话，进行中的对话优先展示；选择对话和任务后，可在四条泳道中查看任务轨迹，并在语义轨迹、规范化事件与原始日志之间相互核对。进行中的任务支持实时跟随，旧的未闭合任务会显示为「未记录结束状态」。这条浏览路径不要求先运行 `omk observe ingest`。
 
-顶部「知识载体」入口继续提供 doctor / eval / observe 报告浏览，包括 verdict、用例 diff、饱和曲线和单用例 drill-down。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 仍使用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），自动化读取使用 report JSON。
+顶部「知识载体」入口提供 doctor、Core eval 与 observe 视图。Core run 页面从已校验产物投影运行状态、evidence coverage、数值观测、Analysis result、Decision reason code 与 lineage。访问 `/observe-inbox` 可查看 observation reviewer 队列。CI gate 使用 `omk eval` 的 exit route，自动化应读取 Core report 产物。

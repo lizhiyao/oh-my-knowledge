@@ -3,7 +3,7 @@
  *
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
- *   - types 反向看 eval-core / 业务实现(已修)
+ *   - types 反向看业务实现(已修)
  *   - renderer 直接 import observability 内部(已 facade 化)
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
@@ -37,8 +37,18 @@ interface ForbiddenRule {
 const RULES: ForbiddenRule[] = [
   {
     from: 'evaluation-core/',
-    to: 'eval-core/',
-    reason: 'Evaluation Core vNext 必须与旧 eval-core pipeline 物理隔离，旧实现只作为算法与失败案例参考。',
+    to: 'measurement-artifacts/',
+    reason: 'Evaluation Core vNext 是纯计算内核，不依赖文件命名、目录布局或产物发现。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'preflight/',
+    reason: 'Evaluation Core vNext 是宿主无关内核，不依赖宿主环境与依赖探测。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'shared/statistics/',
+    reason: 'Evaluation Core vNext 的 Analysis 自持统计语义，不反向依赖应用层兼容工具。',
   },
   {
     from: 'evaluation-core/',
@@ -77,13 +87,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'types/',
-    to: 'eval-core/',
-    reason: 'types/ 是底层契约层,不应反向 import 业务实现 (eval-core)。DTO 应该下沉到 types/。',
-  },
-  {
-    from: 'types/',
     to: 'eval-workflows/',
-    reason: 'types/ 是底层契约层,不应反向 import eval-workflows。',
+    reason: 'types/ 是待消解的遗留契约层，不应反向 import eval-workflows；新增契约应归属到领域 contracts。',
   },
   {
     from: 'types/',
@@ -93,12 +98,12 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'types/',
     to: 'observability/',
-    reason: 'types/ 不应反向 import observability。observability schema 应下沉到 types/(已部分完成,见 types/diagnosis.ts)。',
+    reason: 'types/ 不应反向 import observability；跨模块 DTO 应归属到领域 contracts。',
   },
   {
     from: 'types/',
     to: 'diagnosis/',
-    reason: 'types/ 不应反向 import diagnosis(已切除,见 types/diagnosis.ts)。',
+    reason: 'types/ 不应反向 import diagnosis；共享诊断契约应由 diagnosis 领域拥有。',
   },
   {
     from: 'types/',
@@ -128,13 +133,16 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'renderer/',
     to: 'server/',
-    reason: 'renderer 是视图层,不应 import server。server 内部类型应抽到 types/ 给两边共享。',
+    reason: 'renderer 是视图层，不应 import server；共享 DTO 应归属到明确领域的 contracts 或 view-models。',
   },
   {
     from: 'renderer/',
     to: 'observability/',
-    reason: 'renderer 只能通过 facade 访问 observability,不应直接 import observability 内部实现。facade 见 observability/inbox-view-model.ts、observability/feedback-projection.ts、observability/skill-health-analyzer.ts。',
+    reason: 'renderer 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox-view-model.ts、observability/feedback-projection.ts、observability/skill-health-analyzer.ts。',
     whitelist: [
+      'renderer/conversation-renderer.ts::observability/view-models/index.ts',
+      'renderer/knowledge-debugger-renderer.ts::observability/view-models/index.ts',
+      'renderer/trajectory-evidence.ts::observability/view-models/index.ts',
       // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
       'renderer/observation-inbox-renderer.ts::observability/inbox-view-model.ts',
       'renderer/observation-inbox-renderer.ts::observability/feedback-projection.ts',
@@ -371,7 +379,7 @@ describe('架构边界守门', () => {
         `发现 ${violations.length} 处 import 违反架构边界:`,
         ...lines,
         '',
-        '修复路径:把目标符号挪到 types/(纯类型)或抽 facade(运行时);',
+        '修复路径：把共享契约归属到明确领域的 contracts，或抽 facade（运行时）；',
         '若是 P2 known-debt 暂未修,在本测试文件 RULES.whitelist 显式登记并加 TODO。',
       ].join('\n');
       throw new Error(msg);

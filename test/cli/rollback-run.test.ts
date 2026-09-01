@@ -14,11 +14,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
-import { getJudgePromptHash } from '../../src/grading/judge.js';
 import PromoteCommand from '../../src/cli/commands/promote.js';
 import RollbackCommand from '../../src/cli/commands/rollback.js';
 import ListCommand from '../../src/cli/commands/list.js';
 import { runCommand } from '../helpers/run-command.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 interface RunResult { code: number; stdout: string; stderr: string; }
 
@@ -34,14 +34,13 @@ describe('omk rollback command', () => {
   /** 写一条受管记录,带一条「当前内容」PROGRESS 证据(够 promote 门禁)。 */
   function writeRecord(): void {
     const rec = {
-      recordKind: 'managed-artifact', schemaVersion: 2, id: recId, name: 'review', kind: 'skill',
+      recordKind: 'managed-artifact', schemaVersion: 3, id: recId, name: 'review', kind: 'skill',
       source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
       contentHash: curHash, installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],
-      evidence: [{
-        reportId: 'rep1', contentHash: curHash, recordedAt: '2026-06-07T00:00:00.000Z',
-        verdict: 'PROGRESS', comparability: { cliVersion: '0.36.0', judgePromptHash: getJudgePromptHash(true) },
-      }],
+      evidence: [coreManagedEvidence(curHash, {
+        reportId: 'rep1',
+      })],
       decisions: [],
     };
     writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ObservationInboxItem } from '../types/index.js';
+import type { ObservationInboxItem } from './contracts/inbox.js';
 
 type ObservationIdentityInput = Pick<
   ObservationInboxItem,

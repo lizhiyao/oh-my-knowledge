@@ -20,6 +20,7 @@ import {
   InMemoryRuntimeEventSequencer,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
+  type ExecutorTrialContext,
   executeRunPlan,
 } from '../../../src/evaluation-core/execution/index.js';
 import {
@@ -117,13 +118,9 @@ async function adapterFixture(options: Readonly<{
   const config = {
     behavior: {
       artifact: artifactDescriptor,
-      ...(options.workspace ? { workspace: workspaceDescriptor } : {}),
       ...(options.workspace ? {
         sandbox: { sandboxId: CODEX_SDK_WORKSPACE_WRITE_SANDBOX_ID },
       } : {}),
-      ...(options.allowedTools === undefined ? {} : {
-        allowedTools: [...options.allowedTools],
-      }),
     },
     runtime: { model: 'gpt-test', effort: 'high' as const },
   };
@@ -142,6 +139,17 @@ async function adapterFixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'test.omk.codex-sdk/v1',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: options.workspace
+          ? { workspaceMode: 'copy-on-write-overlay', descriptor: workspaceDescriptor }
+          : { workspaceMode: 'not-required' },
+        tools: options.allowedTools === undefined
+          ? { toolPolicyKind: 'runtime-default' }
+          : { toolPolicyKind: 'allow-list', allowedTools: [...options.allowedTools] },
+      },
+      sampleOverrides: [],
+    },
     config,
   };
   const binding: RuntimeBindingOf<'executor'> = {
@@ -151,6 +159,7 @@ async function adapterFixture(options: Readonly<{
     implementationId: 'test.omk.codex-sdk/v1',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: [{
       resourceId: 'artifact-a',
       resourceRole: 'artifact',
@@ -333,10 +342,17 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
+  executionControl: ExecutorTrialContext['executionControl'] = {
+    workspace: { workspaceMode: 'not-required' },
+    tools: { toolPolicyKind: 'runtime-default' },
+  },
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: 'a' }),
+    executionControl,
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
     executionContext: { locale: 'zh-CN' },
@@ -425,7 +441,13 @@ describe('Codex SDK Core Executor adapter', () => {
     const port = await createAdapter(fixture);
     const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
+      executionCoordinateDigest: digest({ coordinate: 'a' }),
+      executionControl: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: { toolPolicyKind: 'runtime-default' },
+      },
       protocolId: 'omk.invoke/v1',
       input: 'Q',
       targetConfig: fixture.target.config as JsonValue,
@@ -454,6 +476,8 @@ describe('Codex SDK Core Executor adapter', () => {
     const withUsage = await execute(
       await createAdapter(fixture),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      fixture.target.executionControls.defaults,
     );
     expect(withUsage.usage).toEqual({
       inputTokens: 8,
@@ -485,6 +509,8 @@ describe('Codex SDK Core Executor adapter', () => {
     const result = await execute(
       await createAdapter(fixture),
       fixture.target.config as JsonValue,
+      new AbortController().signal,
+      fixture.target.executionControls.defaults,
     );
     expect(fixture.observations.threadOptions[0]).toMatchObject({
       sandboxMode: 'workspace-write',
@@ -574,7 +600,13 @@ describe('Codex SDK Core Executor adapter', () => {
     const port = await createAdapter(fixture);
     const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
     const trial = await run.openTrial({
+      sampleId: 'sample-a',
       targetId: 'target-a',
+      executionCoordinateDigest: digest({ coordinate: 'a' }),
+      executionControl: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: { toolPolicyKind: 'runtime-default' },
+      },
       protocolId: 'omk.invoke/v1',
       input: 'Q',
       targetConfig: fixture.target.config as JsonValue,
@@ -642,12 +674,7 @@ describe('Codex SDK Core Executor adapter', () => {
 
   it('fails unsupported behavior and inconsistent leases before an SDK thread starts', async () => {
     const unsupported = await adapterFixture({ allowedTools: ['shell'] });
-    await expect(execute(
-      await createAdapter(unsupported),
-      unsupported.target.config as JsonValue,
-    )).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_CODEX_SDK_BEHAVIOR_UNSUPPORTED' },
-    });
+    await expect(createAdapter(unsupported)).rejects.toThrow(/tool allow-list/);
     expect(unsupported.observations.threadOptions).toHaveLength(0);
 
     const inconsistent = await adapterFixture({ leasedArtifactResourceId: 'poisoned' });

@@ -34,27 +34,21 @@ const SRC_DIR = join(PROJECT_ROOT, 'src');
 // 文件,要走单独的数据/schema 迁移(序列化向后兼容,非统计可比性),本轮冻结。
 // 这是债务登记,不是「允许裸 kind」的背书。
 const FROZEN_KIND_EXCEPTIONS = new Set<string>([
-  // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
-  "src/types/report.ts::EvaluationReport::'evaluation'",
-  "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
-  // ReportIndexCard 是产物发现索引卡片,kind 镜像 ReportDocument['kind'](evaluation/batch-evaluation)同
-  // 持久化 report 顶层 kind;RunListItem 现复用其投影(Omit),kind 声明点从 RunListItem 移到此处。
-  "src/types/report.ts::ReportIndexCard::ReportDocument['kind']",
   "src/types/doctor.ts::DoctorReport::'doctor'",
-  "src/types/observability.ts::ObservationReviewState::'observe-review-state'",
-  "src/types/observability.ts::ObservationInboxReport::'observe-inbox'",
-  "src/types/observability.ts::ObservationExperienceReport::'observe-experience'",
+  "src/observability/contracts/review.ts::ObservationReviewState::'observe-review-state'",
+  "src/observability/contracts/inbox.ts::ObservationInboxReport::'observe-inbox'",
+  "src/observability/contracts/experience.ts::ObservationExperienceReport::'observe-experience'",
   "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
   "src/observability/skill-health-analyzer.ts::SkillHealthReport::'observe-health'",
   // —— 持久化 observe / experience JSON ——
-  'src/types/observability.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
-  'src/types/observability.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',
-  "src/types/observability.ts::ExperienceGoalEvidenceRef::'user_message' | 'goal_slice' | 'llm_goal'",
-  'src/types/observability.ts::ExperienceEpisodeArtifact::ExperienceEpisodeArtifactKind',
-  'src/types/observability.ts::ExperienceSessionStoryGraphNode::ExperienceSessionStoryNodeKind',
-  'src/types/observability.ts::ExperienceReviewerReport::ExperienceReviewerReportScope',
-  'src/types/observability.ts::ExperienceProblemEvidenceRef::string',
-  'src/types/observability.ts::ProblemTimelineEvent::string',
+  'src/observability/contracts/experience.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
+  'src/observability/contracts/experience.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',
+  "src/observability/contracts/experience.ts::ExperienceGoalEvidenceRef::'user_message' | 'goal_slice' | 'llm_goal'",
+  'src/observability/contracts/experience.ts::ExperienceEpisodeArtifact::ExperienceEpisodeArtifactKind',
+  'src/observability/contracts/experience.ts::ExperienceSessionStoryGraphNode::ExperienceSessionStoryNodeKind',
+  'src/observability/contracts/experience.ts::ExperienceReviewerReport::ExperienceReviewerReportScope',
+  'src/observability/contracts/problem-patterns.ts::ExperienceProblemEvidenceRef::string',
+  'src/observability/contracts/problem-patterns.ts::ProblemTimelineEvent::string',
   // —— 持久化 soft-standards JSON（含 enhancedReview 内嵌结构）——
   // ResolvedSkillStandard 非持久（view-model），但与持久 standard 同源、且被 renderer 多处 .kind 消费，
   // 跨模块改名风险高，渐进式留待后续单独处理。

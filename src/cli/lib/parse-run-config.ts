@@ -3,8 +3,7 @@
  *
  * 主体 `parseRunConfig` 是「CLI > eval.yaml > 硬编码 default」精度链的统一落点 ——
  * 把 oclif strict 模式接受过的 flag values + 可选 eval.yaml 合并成 eval 子命令运行
- * 所需的完整 `RunConfig`,后续 `executeEvaluationPipeline` 与 doctor / batch 都从这
- * 里读字段。
+ * 所需的完整 `RunConfig`，后续 Evaluation Core 编译与运行从这里读取字段。
  *
  * 3 个 sub-routine 拆到同级 parse-run-config/ 目录,主文件保留它们的 re-export
  * 让外部 import surface(`parseJudgeModelsArg` / `parseJudgeModelsArgOrExit`)
@@ -19,7 +18,7 @@
  */
 
 import { resolve } from 'node:path';
-import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
+import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { setOwnRecordValue } from '../../shared/record-count.js';
 import type {
@@ -27,7 +26,6 @@ import type {
   VariantSpec,
   JudgeConfig,
   EvalBudget,
-  ProgressCallback,
 } from '../../types/index.js';
 import { parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 import { discoverSamplesPath } from './parse-run-config/samples-discovery.js';
@@ -67,8 +65,7 @@ export interface RunConfig {
   retry?: number;
   resume?: string;
   layeredStats?: boolean;
-  /** --holdout-ratio R (0 < R < 1). Hold out a deterministic sample slice; report-finalize
-   *  computes train vs holdout composite (report.analysis.holdout) for the overfitting gate. */
+  /** --holdout-ratio R (0 < R < 1). Evaluation Core preregisters deterministic train / holdout cohorts. */
   holdoutRatio?: number;
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
@@ -97,7 +94,6 @@ export interface RunConfig {
   /** 关闭 diagnostic LLM call。Default false(总是给 failed sample 跑诊断)。
    *  跟 noJudge 完全独立 — judge 答打分,diagnostic 答怎么改。 */
   noDiagnostic?: boolean;
-  onProgress?: ProgressCallback | null;
 }
 
 export interface ParseRunConfigResult {

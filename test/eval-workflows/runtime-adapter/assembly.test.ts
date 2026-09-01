@@ -35,6 +35,18 @@ import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
   ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID,
+  DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+  COMPOSITE_PARAMETERS_SCHEMA,
+  COMPOSITE_TABLE_SCHEMA,
+  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
+  BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+  AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+  AGREEMENT_PARAMETERS_SCHEMA,
+  AGREEMENT_TABLE_SCHEMA,
+  RELEASE_DECISION_PARAMETERS_SCHEMA,
+  RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
   JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
   JUDGE_REPLICATE_ANALYSIS_IMPLEMENTATION_ID,
   resourceLeaseRequestsFromBindingEntries,
@@ -69,12 +81,7 @@ function runtimeAssemblyInput(): Mutable<ReturnType<typeof validResolvedCliInput
   const input = clone(validResolvedCliInput());
   for (const target of input.targets) target.executor.implementationId = 'test.executor/v1';
   for (const template of input.evaluatorTemplates) {
-    if (template.implementationId !== undefined) {
-      template.implementationId = `test.evaluator.${template.evaluatorId}/v1`;
-    }
-  }
-  for (const member of input.judges.members) {
-    member.implementationId = `test.evaluator.${member.ensembleMemberId}/v1`;
+    template.implementationId = `test.evaluator.${template.evaluatorId}/v1`;
   }
   for (const metric of input.metrics) metric.missingPolicyId = 'test.missing.exclude/v1';
   for (const node of input.analysisGraph.nodes) {
@@ -1144,8 +1151,23 @@ describe('OMK Evaluation Runtime binding assembly', () => {
     expect(builtins.analysisNodesByImplementationId.has(
       JUDGE_ENSEMBLE_ANALYSIS_IMPLEMENTATION_ID,
     )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
+    expect(builtins.analysisNodesByImplementationId.has(
+      AGREEMENT_ANALYSIS_IMPLEMENTATION_ID,
+    )).toBe(true);
     expect(builtins.missingPoliciesByImplementationId.has('exclude/v1')).toBe(true);
     expect(builtins.decisionPoliciesByImplementationId.has('progress/v1')).toBe(true);
+    expect(builtins.decisionPoliciesByImplementationId.has(
+      RELEASE_DECISION_POLICY_IMPLEMENTATION_ID,
+    )).toBe(true);
   });
 });
 
@@ -1219,7 +1241,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(preflightCalls).toBe(0);
   });
 
-  it('qualifies Independent Series Runtime before any preflight effect', async () => {
+  it('reserves the built-in Independent Series Runtime before any preflight effect', async () => {
     const input = runtimeAssemblyInput();
     delete input.orchestration.gold;
     input.policy.evidence = {
@@ -1239,7 +1261,7 @@ describe('OMK Evaluation Runtime composition root', () => {
       });
     }
     let preflightCalls = 0;
-    const runtime = await createOmkEvaluationRuntime({
+    await expect(createOmkEvaluationRuntime({
       compiled,
       factories: observePreflight(
         { ...base, seriesAnalysisNodesByImplementationId: seriesFactories },
@@ -1250,11 +1272,10 @@ describe('OMK Evaluation Runtime composition root', () => {
       ),
       support: compositionSupport(),
       resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_FACTORY_CONFLICT',
+      fieldPath: 'factories.seriesAnalysisNodesByImplementationId',
     });
-
-    await expect(runtime.prepare()).rejects.toThrow(
-      'Series Analysis Runtime must match the declared implementation and run unit.',
-    );
     expect(preflightCalls).toBe(0);
   });
 
@@ -2407,4 +2428,35 @@ describe('OMK Evaluation Runtime composition root', () => {
     })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_CACHE_SOURCE_MISMATCH' });
     expect(cacheCompiled.policy.cache.executionMode).toBe('replay-only');
   });
+
+  it.each([
+    COMPOSITE_PARAMETERS_SCHEMA,
+    COMPOSITE_TABLE_SCHEMA,
+    BOOTSTRAP_FAMILY_PARAMETERS_SCHEMA,
+    BOOTSTRAP_FAMILY_TABLE_SCHEMA,
+    AGREEMENT_PARAMETERS_SCHEMA,
+    AGREEMENT_TABLE_SCHEMA,
+    RELEASE_DECISION_PARAMETERS_SCHEMA,
+  ])(
+    'reserves Analysis builtin SchemaValidator URI $schemaUri',
+    async (schema) => {
+      const compiled = compositionInput();
+      const support = compositionSupport();
+      const validators = new Map(support.schemaValidators);
+      const conflict = {
+        ...schema,
+        schemaVersion: `${schema.schemaVersion}.host-conflict`,
+      };
+      validators.set(schemaIdentityKey(conflict), {
+        schema: conflict,
+        parse: (value) => value as JsonValue,
+      });
+      await expect(createOmkEvaluationRuntime({
+        compiled,
+        factories: factoriesFor(compiled, []),
+        support: { ...support, schemaValidators: validators },
+        resources: { leaseRoot: '/unused-test-lease-root' },
+      })).rejects.toMatchObject({ code: 'OMK_EVALUATION_RUNTIME_SCHEMA_VALIDATOR_CONFLICT' });
+    },
+  );
 });

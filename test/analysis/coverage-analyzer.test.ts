@@ -16,23 +16,19 @@ import {
   extractReferencedPaths,
   normalizeKnowledgePath,
 } from '../../src/analysis/coverage-analyzer.js';
-import type { ResultEntry, ToolCallInfo, VariantResult } from '../../src/types/index.js';
+import type { ToolCallInfo } from '../../src/types/index.js';
+import type { AnalysisEntry, AnalysisVariantResult } from '../../src/analysis/contracts.js';
 
-function variantWithRead(filePath: string): VariantResult {
+function variantWithRead(filePath: string): AnalysisVariantResult {
   return {
     ok: true,
     durationMs: 1,
-    durationApiMs: 1,
     inputTokens: 1,
     outputTokens: 1,
     totalTokens: 2,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
-    execCostUSD: 0,
-    judgeCostUSD: 0,
-    costUSD: 0,
     numTurns: 1,
-    outputPreview: 'done',
     toolCalls: [{
       tool: 'Read',
       input: { file_path: filePath },
@@ -42,7 +38,7 @@ function variantWithRead(filePath: string): VariantResult {
   };
 }
 
-function variantWithTool(toolCall: ToolCallInfo): VariantResult {
+function variantWithTool(toolCall: ToolCallInfo): AnalysisVariantResult {
   return {
     ...variantWithRead('unused'),
     toolCalls: [toolCall],
@@ -92,8 +88,8 @@ describe('source-neutral knowledge coverage', () => {
       assert.equal(index.entries[0].path, '.agents/skills/shared/SKILL.md');
       assert.deepEqual(index.entries[0].aliases, ['.claude/skills/shared/SKILL.md']);
 
-      const results: ResultEntry[] = [{
-        sample_id: 's1',
+      const results: AnalysisEntry[] = [{
+        sampleId: 's1',
         variants: {
           treatment: variantWithRead(join(root, '.claude', 'skills', 'shared', 'SKILL.md')),
         },
@@ -130,8 +126,8 @@ describe('source-neutral knowledge coverage', () => {
   it('does not count a suffix-colliding filename as accessed', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-coverage-match-'));
     try {
-      const results: ResultEntry[] = [{
-        sample_id: 's1',
+      const results: AnalysisEntry[] = [{
+        sampleId: 's1',
         variants: {
           treatment: variantWithRead(join(root, 'references', 'notfoo.md')),
         },
@@ -159,8 +155,8 @@ describe('source-neutral knowledge coverage', () => {
       totalFiles: 1,
       totalLines: 0,
     };
-    const successful: ResultEntry[] = [{
-      sample_id: 's1',
+    const successful: AnalysisEntry[] = [{
+      sampleId: 's1',
       variants: {
         treatment: variantWithTool({
           tool: 'Bash',
@@ -173,8 +169,8 @@ describe('source-neutral knowledge coverage', () => {
         }),
       },
     }];
-    const failed: ResultEntry[] = [{
-      sample_id: 's1',
+    const failed: AnalysisEntry[] = [{
+      sampleId: 's1',
       variants: {
         treatment: variantWithTool({
           tool: 'Read',

@@ -61,8 +61,8 @@ describe('oclif eval', () => {
 
   it('eval gold compare --help', async () => {
     const stdout = await renderCommandHelp('eval:gold:compare');
-    assert.ok(stdout.includes('evaluation report 跟 gold dataset 对比'), `gold compare --help missing zh:\n${stdout}`);
-    assert.ok(stdout.includes('REPORTID'), 'should list REPORTID positional');
+    assert.ok(stdout.includes('Core run 观测跟 gold dataset 对比'), `gold compare --help missing zh:\n${stdout}`);
+    assert.ok(stdout.includes('RUNID'), 'should list RUNID positional');
     assert.ok(stdout.includes('--gold-dir'), 'should list --gold-dir');
   });
 

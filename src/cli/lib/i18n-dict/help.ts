@@ -234,7 +234,7 @@ omk studio——打开本地知识工作台
 选项：
   --port <n>                          本地服务端口（默认：7799）
   --host <host>                       监听地址（默认：127.0.0.1；局域网访问可用 0.0.0.0）
-  --reports-dir <path>                只看指定报告目录（默认机器级聚合：当前项目 + 全局 + 别项目索引）
+  --reports-dir <path>                只看指定 Core 报告目录（默认聚合当前项目 + 全局）
   --analyses-dir <path>               观测健康报告目录（默认：项目级 .omk/observe-health，空则全局兜底）
   --doctors-dir <path>                体检报告目录（默认：项目级 .omk/doctors，空则全局兜底）
   --observations-dir <path>           observe inbox 数据目录（默认：.omk/observe-inbox）
@@ -257,7 +257,7 @@ Usage:
 Options:
   --port <n>                          Local server port (default: 7799)
   --host <host>                       Listen address (default: 127.0.0.1; use 0.0.0.0 for LAN access)
-  --reports-dir <path>                View only this reports dir (default aggregates machine-wide: current project + global + other projects via index)
+  --reports-dir <path>                View only this Core reports dir (default aggregates current project + global)
   --analyses-dir <path>               Observe-health reports dir (default: project .omk/observe-health, falls back to global)
   --doctors-dir <path>                Doctor reports dir (default: project .omk/doctors, falls back to global)
   --observations-dir <path>           Observe inbox data directory (default: .omk/observe-inbox)

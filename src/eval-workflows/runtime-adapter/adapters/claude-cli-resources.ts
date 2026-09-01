@@ -8,6 +8,7 @@ import {
   canonicalizeJson,
   deepFreezeCanonicalJson,
   digestCanonicalJson,
+  resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type JsonValue,
 } from '../../../evaluation-core/contracts/index.js';
@@ -18,7 +19,7 @@ import {
 } from '../../../evaluation-core/execution/index.js';
 import {
   type CliMockHandle,
-} from '../../../eval-core/mocks-runtime.js';
+} from '../../../executors/mock-runtime/runtime.js';
 import type { Mock, MockMatch, MockReturn } from '../../../types/eval.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type {
@@ -49,21 +50,22 @@ const ClaudeMockRulesSchema = z.object({
   match: ClaudeMockMatchSchema.optional(),
 }).strict();
 
+const ClaudeAllowedToolSchema = z.string().min(1).refine((value) => (
+  !/[\u0000-\u001f\u007f]/.test(value)
+  && !value.startsWith('-')
+  && !value.includes(',')
+));
+
 const ClaudeTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: DescriptorSchema,
-    workspace: DescriptorSchema.optional(),
     mcpConfig: DescriptorSchema.optional(),
     mocks: z.array(z.object({
+      sampleIds: z.array(z.string().min(1)).min(1),
       matchRules: JsonValueSchema,
       strict: z.boolean(),
       payloads: z.array(DescriptorSchema),
     }).strict()).optional(),
-    allowedTools: z.array(z.string().min(1).refine((value) => (
-      !/[\u0000-\u001f\u007f]/.test(value)
-      && !value.startsWith('-')
-      && !value.includes(',')
-    ))).optional(),
     allowedSkills: z.array(z.string().min(1)).optional(),
     sandbox: z.object({
       sandboxId: z.string().min(1),
@@ -92,14 +94,15 @@ export interface CapturedClaudeCliTarget {
 }
 
 export interface ClaudeCliRunState {
-  readonly workingDirectory: string;
+  readonly privateWorkingDirectory: string;
+  readonly workspaceDirectoriesByResourceId: ReadonlyMap<string, string>;
+  readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
   readonly systemInstructions?: string;
   readonly systemPromptBytes: number;
   readonly supportingFiles?: readonly { readonly path: string; readonly content: string }[];
   readonly mcpConfigFile?: string;
   readonly mcpServers?: Readonly<Record<string, unknown>>;
-  readonly mocks?: readonly Mock[];
-  readonly mocksStrict: boolean;
+  readonly mockControlsBySampleId: ReadonlyMap<string, ClaudeTrialMockControls>;
   readonly classification: ExecutionContent['classification'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
@@ -108,6 +111,17 @@ export interface ClaudeCliRunState {
 
 export interface ClaudeCliTrialState {
   readonly prompt: string;
+  readonly workingDirectory: string;
+  readonly allowedTools?: readonly string[];
+  readonly mocks?: readonly Mock[];
+  readonly mocksStrict: boolean;
+  readonly classification: ExecutionContent['classification'];
+}
+
+export interface ClaudeTrialMockControls {
+  readonly mocks: readonly Mock[];
+  readonly strict: boolean;
+  readonly classification: ExecutionContent['classification'];
 }
 
 export interface ClaudeResourceProjectionProfile {
@@ -169,14 +183,29 @@ export function captureClaudeCliTarget(
     || canonicalizeJson(target.executionRequirements)
       !== canonicalizeJson(binding.qualification.executionRequirements)
     || digestCanonicalJson(target.config ?? null) !== binding.behaviorConfigDigest
+    || digestCanonicalJson(target.executionControls) !== binding.executionControlsDigest
   ) throw new TypeError(`${profile.adapterLabel} Target and Runtime binding are inconsistent.`);
   if (target.protocolId !== 'omk.invoke/v1') {
     throw new TypeError(`${profile.adapterLabel} Core adapter supports only omk.invoke/v1.`);
   }
   const config = ClaudeTargetConfigSchema.parse(target.config);
+  const workspaceControls = [
+    target.executionControls.defaults.workspace,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ];
+  const toolControls = [
+    target.executionControls.defaults.tools,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.tools === undefined ? [] : [override.tools]
+    )),
+  ];
   const configuredDescriptors = [
     config.behavior.artifact,
-    ...(config.behavior.workspace === undefined ? [] : [config.behavior.workspace]),
+    ...workspaceControls.flatMap((workspace) => (
+      workspace.workspaceMode === 'copy-on-write-overlay' ? [workspace.descriptor] : []
+    )),
     ...(config.behavior.mcpConfig === undefined ? [] : [config.behavior.mcpConfig]),
     ...(config.behavior.mocks ?? []).flatMap((mock) => mock.payloads),
   ];
@@ -201,12 +230,14 @@ export function captureClaudeCliTarget(
     expectedRequirements.set(resourceId, next);
   };
   addRequirement(config.behavior.artifact.resourceId, 'artifact', 'immutable-snapshot');
-  if (config.behavior.workspace !== undefined) {
-    addRequirement(
-      config.behavior.workspace.resourceId,
-      'workspace',
-      'copy-on-write-overlay',
-    );
+  for (const workspace of workspaceControls) {
+    if (workspace.workspaceMode === 'copy-on-write-overlay') {
+      addRequirement(
+        workspace.descriptor.resourceId,
+        'workspace',
+        'copy-on-write-overlay',
+      );
+    }
   }
   if (config.behavior.mcpConfig !== undefined) {
     addRequirement(config.behavior.mcpConfig.resourceId, 'mcp-config', 'immutable-snapshot');
@@ -239,8 +270,18 @@ export function captureClaudeCliTarget(
     throw new TypeError(`${profile.adapterLabel} Core adapter does not accept opaque provider config.`);
   }
   const mockBindings = config.behavior.mocks ?? [];
-  if (new Set(mockBindings.map((mock) => mock.strict)).size > 1) {
-    throw new TypeError(`${profile.adapterLabel} mock bindings must use one strictness policy.`);
+  if (mockBindings.some((mock) => new Set(mock.sampleIds).size !== mock.sampleIds.length)) {
+    throw new TypeError(`${profile.adapterLabel} mock binding sampleIds must be unique.`);
+  }
+  const strictBySampleId = new Map<string, boolean>();
+  for (const mock of mockBindings) {
+    for (const sampleId of mock.sampleIds) {
+      const existing = strictBySampleId.get(sampleId);
+      if (existing !== undefined && existing !== mock.strict) {
+        throw new TypeError(`${profile.adapterLabel} mock bindings for one sample must use one strictness policy.`);
+      }
+      strictBySampleId.set(sampleId, mock.strict);
+    }
   }
   if (mockBindings.some((mock) => !ClaudeMockRulesSchema.safeParse(mock.matchRules).success)) {
     throw new TypeError(`${profile.adapterLabel} mock matchRules do not satisfy the hook contract.`);
@@ -253,16 +294,16 @@ export function captureClaudeCliTarget(
   })) {
     throw new TypeError(`${profile.adapterLabel} MCP mock tool names must identify one server and tool.`);
   }
-  if (
-    config.behavior.mcpConfig !== undefined
-    && config.behavior.allowedTools !== undefined
-  ) {
+  const toolAllowLists = toolControls.flatMap((control) => (
+    control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
+  ));
+  if (config.behavior.mcpConfig !== undefined && toolAllowLists.length > 0) {
     throw new TypeError(
       `${profile.adapterLabel} cannot enforce one complete tool allow-list across built-in and dynamic MCP tools.`,
     );
   }
   if (
-    config.behavior.allowedTools !== undefined
+    toolAllowLists.length > 0
     && mockBindings.some((mock) => {
       const rules = ClaudeMockRulesSchema.safeParse(mock.matchRules);
       return rules.success && rules.data.tool.startsWith('mcp__');
@@ -272,16 +313,20 @@ export function captureClaudeCliTarget(
       `${profile.adapterLabel} cannot combine a built-in tool allow-list with MCP tool mocks.`,
     );
   }
-  if (config.behavior.allowedTools !== undefined
-      && new Set(config.behavior.allowedTools).size !== config.behavior.allowedTools.length) {
+  if (toolAllowLists.some((tools) => new Set(tools).size !== tools.length)) {
     throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain duplicates.`);
   }
-  if (config.behavior.allowedTools?.some((tool) => tool.startsWith('mcp__'))) {
+  if (toolAllowLists.some((tools) => tools.some((tool) => (
+    !ClaudeAllowedToolSchema.safeParse(tool).success
+  )))) {
+    throw new TypeError(`${profile.adapterLabel} built-in tool allow-list contains an invalid tool name.`);
+  }
+  if (toolAllowLists.some((tools) => tools.some((tool) => tool.startsWith('mcp__')))) {
     throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain MCP tools.`);
   }
   if (
     config.behavior.allowedSkills !== undefined
-    && config.behavior.allowedTools?.includes('Skill')
+    && toolAllowLists.some((tools) => tools.includes('Skill'))
   ) {
     throw new TypeError(`${profile.adapterLabel} disabled skills conflict with the Skill tool.`);
   }
@@ -394,6 +439,14 @@ function maxClassification(
   ), 'public');
 }
 
+function higherClassification(
+  left: ExecutionContent['classification'],
+  right: ExecutionContent['classification'],
+): ExecutionContent['classification'] {
+  const rank = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
+  return rank[right] > rank[left] ? right : left;
+}
+
 async function validateMcpConfig(
   profile: ClaudeResourceProjectionProfile,
   resource: OmkLeasedHostResource,
@@ -455,6 +508,26 @@ function mockReturn(profile: ClaudeResourceProjectionProfile, value: unknown): M
   fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload must be a string or JSON object.');
 }
 
+function readonlyMapSnapshot<Key, Value>(source: ReadonlyMap<Key, Value>): ReadonlyMap<Key, Value> {
+  const snapshot = new Map(source);
+  const view: ReadonlyMap<Key, Value> = Object.freeze({
+    get size() { return snapshot.size; },
+    get(key: Key) { return snapshot.get(key); },
+    has(key: Key) { return snapshot.has(key); },
+    keys() { return snapshot.keys(); },
+    values() { return snapshot.values(); },
+    entries() { return snapshot.entries(); },
+    [Symbol.iterator]() { return snapshot[Symbol.iterator](); },
+    forEach(
+      callback: (value: Value, key: Key, map: ReadonlyMap<Key, Value>) => void,
+      thisArg?: unknown,
+    ) {
+      snapshot.forEach((value, key) => callback.call(thisArg, value, key, view));
+    },
+  });
+  return view;
+}
+
 async function readMockPayload(
   profile: ClaudeResourceProjectionProfile,
   resource: OmkLeasedHostResource,
@@ -486,17 +559,19 @@ async function projectMocks(
   lease: OmkBindingResourceLease,
   config: ClaudeCliTargetConfig,
 ): Promise<{
-  mocks?: readonly Mock[];
-  strict: boolean;
+  bySampleId: ReadonlyMap<string, ClaudeTrialMockControls>;
   mcpServerNames: readonly string[];
 }> {
   const bindings = config.behavior.mocks ?? [];
-  if (bindings.length === 0) return { strict: false, mcpServerNames: [] };
-  const strictValues = new Set(bindings.map((binding) => binding.strict));
-  if (strictValues.size !== 1) {
-    fail(profile, 'MOCK_CONFIG_INVALID', 'mock bindings must agree on one strictness policy.');
-  }
-  const mocks: Mock[] = [];
+  if (bindings.length === 0) return {
+    bySampleId: readonlyMapSnapshot(new Map()),
+    mcpServerNames: [],
+  };
+  const mutableBySampleId = new Map<string, {
+    mocks: Mock[];
+    strict: boolean;
+    classification: ExecutionContent['classification'];
+  }>();
   const mcpServerNames = new Set<string>();
   for (const binding of bindings) {
     const rules = ClaudeMockRulesSchema.safeParse(binding.matchRules);
@@ -522,11 +597,39 @@ async function projectMocks(
           ? { return: returns[0] }
           : { return_seq: returns }),
     };
-    mocks.push(mock);
+    for (const sampleId of binding.sampleIds) {
+      const existing = mutableBySampleId.get(sampleId);
+      if (existing !== undefined && existing.strict !== binding.strict) {
+        fail(profile, 'MOCK_CONFIG_INVALID', 'mock bindings for one sample must agree on strictness.');
+      }
+      if (existing === undefined) {
+        mutableBySampleId.set(sampleId, {
+          mocks: [mock],
+          strict: binding.strict,
+          classification: binding.payloads.reduce<ExecutionContent['classification']>(
+            (current, descriptor) => higherClassification(current, descriptor.classification),
+            'public',
+          ),
+        });
+      } else {
+        existing.mocks.push(mock);
+        existing.classification = binding.payloads.reduce<ExecutionContent['classification']>(
+          (current, descriptor) => higherClassification(current, descriptor.classification),
+          existing.classification,
+        );
+      }
+    }
   }
+  const bySampleId = new Map([...mutableBySampleId.entries()].map(([sampleId, controls]) => [
+    sampleId,
+    Object.freeze({
+      mocks: Object.freeze(controls.mocks),
+      strict: controls.strict,
+      classification: controls.classification,
+    }),
+  ]));
   return {
-    mocks: Object.freeze(mocks),
-    strict: bindings[0]!.strict,
+    bySampleId: readonlyMapSnapshot(bySampleId),
     mcpServerNames: Object.freeze([...mcpServerNames].sort()),
   };
 }
@@ -606,22 +709,27 @@ export async function captureClaudeCliRunState(
   ))) {
     fail(profile, 'MCP_CONFIG_INVALID', 'SDK MCP mocks require the matching sealed MCP server config.');
   }
-  let workingDirectory: string | undefined;
-  let privateWorkingDirectory = false;
+  let privateWorkingDirectory: string | undefined;
   try {
-    const workspaceDescriptor = target.config.behavior.workspace;
-    if (workspaceDescriptor === undefined) {
-      workingDirectory = await mkdtemp(join(tmpdir(), 'omk-claude-run-'));
-      privateWorkingDirectory = true;
-    } else {
+    const workspaceDirectoriesByResourceId = new Map<string, string>();
+    const workspaceControls = [
+      target.target.executionControls.defaults.workspace,
+      ...target.target.executionControls.sampleOverrides.flatMap((override) => (
+        override.workspace === undefined ? [] : [override.workspace]
+      )),
+    ];
+    for (const workspaceControl of workspaceControls) {
+      if (workspaceControl.workspaceMode !== 'copy-on-write-overlay') continue;
+      const workspaceDescriptor = workspaceControl.descriptor;
       const workspace = lease.resourcesByResourceId.get(workspaceDescriptor.resourceId);
       if (
         workspace?.resourceKind !== 'workspace'
         || workspace.leaseMode !== 'copy-on-write-overlay'
         || !sameDescriptor(workspace, workspaceDescriptor)
       ) fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
-      workingDirectory = workspace.overlayPath;
+      workspaceDirectoriesByResourceId.set(workspaceDescriptor.resourceId, workspace.overlayPath);
     }
+    privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-claude-run-'));
     let systemPromptBytes = 0;
     if (requiresInstructions && projectedArtifact !== undefined) {
       systemPromptBytes = Buffer.byteLength(projectedArtifact.instructions);
@@ -632,7 +740,7 @@ export async function captureClaudeCliRunState(
     let activeTrials = 0;
     let disposeRequested = false;
     let disposeResult: Promise<void> | undefined;
-    const runPaths = privateWorkingDirectory ? [workingDirectory] : [];
+    const runPaths = [privateWorkingDirectory];
     const startDispose = (): Promise<void> => {
       disposeResult ??= (async () => {
         const results = await Promise.allSettled(runPaths.map((path) => (
@@ -645,7 +753,9 @@ export async function captureClaudeCliRunState(
       return disposeResult;
     };
     return Object.freeze({
-      workingDirectory,
+      privateWorkingDirectory,
+      workspaceDirectoriesByResourceId,
+      executionControls: target.target.executionControls,
       ...(projectedArtifact?.instructions === undefined
         ? {}
         : { systemInstructions: projectedArtifact.instructions }),
@@ -657,9 +767,10 @@ export async function captureClaudeCliRunState(
       ),
       ...(mcpConfig === undefined ? {} : { mcpConfigFile: mcpConfig.path }),
       ...(mcpConfig === undefined ? {} : { mcpServers: mcpConfig.servers }),
-      ...(mockProjection.mocks === undefined ? {} : { mocks: mockProjection.mocks }),
-      mocksStrict: mockProjection.strict,
-      classification: maxClassification(resources),
+      mockControlsBySampleId: mockProjection.bySampleId,
+      classification: maxClassification(resources.filter((resource) => (
+        resource.resourceKind !== 'mock-payload'
+      ))),
       acquireTrial() {
         if (disposeRequested) fail(profile, 'RUN_DISPOSED', 'run is disposing.');
         activeTrials += 1;
@@ -678,7 +789,7 @@ export async function captureClaudeCliRunState(
     });
   } catch (error) {
     const paths = [
-      ...(privateWorkingDirectory && workingDirectory !== undefined ? [workingDirectory] : []),
+      ...(privateWorkingDirectory === undefined ? [] : [privateWorkingDirectory]),
     ];
     const cleanup = await Promise.allSettled(
       paths.map((path) => rm(path, { recursive: true, force: true })),
@@ -697,6 +808,21 @@ export function openClaudeCliTrial(
   maxInputBytes: number,
   profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
 ): ClaudeCliTrialState {
+  if (canonicalizeJson(trial.executionControl) !== canonicalizeJson(
+    resolveEffectiveExecutionControl(runState.executionControls, trial.sampleId),
+  )) {
+    fail(profile, 'EXECUTION_CONTROL_MISMATCH', 'Trial control differs from the sealed Target.');
+  }
+  const workspace = trial.executionControl.workspace;
+  const workingDirectory = workspace.workspaceMode === 'not-required'
+    ? runState.privateWorkingDirectory
+    : runState.workspaceDirectoriesByResourceId.get(workspace.descriptor.resourceId)
+      ?? fail(profile, 'WORKSPACE_INVALID', 'Trial workspace is absent from the sealed lease.');
+  const toolControl = trial.executionControl.tools;
+  const allowedTools = toolControl.toolPolicyKind === 'runtime-default'
+    ? undefined
+    : [...toolControl.allowedTools];
+  const mockControls = runState.mockControlsBySampleId.get(trial.sampleId);
   const envelope = {
     schemaVersion: profile.promptSchemaVersion,
     ...(runState.supportingFiles === undefined
@@ -717,7 +843,17 @@ export function openClaudeCliTrial(
   if (Buffer.byteLength(prompt) + runState.systemPromptBytes > maxInputBytes) {
     fail(profile, 'INPUT_LIMIT_EXCEEDED', 'prompt exceeds the adapter input limit.');
   }
-  return Object.freeze({ prompt });
+  return Object.freeze({
+    prompt,
+    workingDirectory,
+    ...(allowedTools === undefined ? {} : { allowedTools: Object.freeze(allowedTools) }),
+    ...(mockControls === undefined ? {} : { mocks: mockControls.mocks }),
+    mocksStrict: mockControls?.strict ?? false,
+    classification: higherClassification(
+      runState.classification,
+      mockControls?.classification ?? 'public',
+    ),
+  });
 }
 
 export async function disposeClaudeCliTrial(

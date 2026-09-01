@@ -202,6 +202,7 @@ export interface DecisionPolicyContext {
 export type DecisionPolicyOutput = {
   decisionStatus: 'decided';
   verdict: string;
+  reasonCodes: readonly string[];
 } | {
   decisionStatus: 'not-decided';
   reasonCodes: readonly string[];
@@ -211,6 +212,7 @@ export const DecisionPolicyOutputSchema = z.discriminatedUnion('decisionStatus',
   z.object({
     decisionStatus: z.literal('decided'),
     verdict: IdentifierSchema,
+    reasonCodes: z.array(IdentifierSchema).min(1),
   }).strict(),
   z.object({
     decisionStatus: z.literal('not-decided'),

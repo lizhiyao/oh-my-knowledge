@@ -10,16 +10,16 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import type { ExperienceTurnStatus } from './contracts/experience.js';
+import type { ObservationSourceRecordArchiveView } from './contracts/inbox.js';
+import type { TraceIngestionSummary } from './contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-  ExperienceTurnStatus,
-  ObservationSourceRecordArchiveView,
-  TaskTrajectorySession,
-  TraceIngestionSummary,
-} from '../types/index.js';
-import { DEFAULT_CACHE_DIR } from '../eval-core/default-dirs.js';
+} from './view-models/conversation.js';
+import type { TaskTrajectorySession } from './view-models/knowledge-debugger.js';
+import { DEFAULT_CACHE_DIR } from '../measurement-artifacts/default-dirs.js';
 import { durationMsBetween } from '../shared/time.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {

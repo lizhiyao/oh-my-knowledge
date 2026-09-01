@@ -9,6 +9,13 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+const CUSTOM_EXECUTOR = join(
+  PROJECT_ROOT,
+  'test',
+  'fixtures',
+  'custom-executor',
+  'core-fixture-executor.sh',
+);
 
 interface ExecError extends Error {
   code: number;
@@ -54,6 +61,18 @@ describe('removed CLI options', () => {
     );
   });
 
+  it('omk evolve rejects removed legacy-report reuse during argument parsing', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'evolve', 'skill.md', '--reuse-latest-eval']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(e.stderr.includes('--reuse-latest-eval'));
+        return true;
+      },
+    );
+  });
+
   it('omk eval --skip-doctor parses as valid flag (escape hatch)', async () => {
     // --skip-doctor 是 v0.30 重新引入的 escape hatch (parse-run-config 注册);
     // strict:true 下必须能被识别,不报 Unknown option。
@@ -65,12 +84,14 @@ describe('removed CLI options', () => {
       '--skill-dir', SKILLS,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--executor', CUSTOM_EXECUTOR,
+      '--no-judge',
       '--dry-run',
       '--skip-connectivity',
       '--skip-doctor',
       '--lang', 'zh',
     ]);
-    assert.ok(stdout.includes('eval dry-run'), 'dry-run reaches task-planning output');
+    assert.equal(JSON.parse(stdout).projectionKind, 'core-cli-dry-run', 'dry-run reaches Core planning output');
     assert.ok(stderr.includes('--skip-doctor'), 'stderr emits the escape-hatch warning');
   });
 });

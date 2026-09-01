@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import type { ConversationCatalog } from '../../src/observability/conversation-catalog.js';
 import { createReportServer } from '../../src/server/report-server.js';
-import type { ConversationListItem } from '../../src/types/index.js';
+import type { ConversationListItem } from '../../src/observability/view-models/conversation.js';
 
 describe('Conversation activity server', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-conversation-activity-'));
@@ -56,8 +56,6 @@ describe('Conversation activity server', () => {
     };
     server = createReportServer({
       port: 0,
-      reportsDir: join(root, 'reports'),
-      jobsDir: join(root, 'jobs'),
       observationsDir: join(root, 'observations'),
       conversationCatalog: catalog,
     });

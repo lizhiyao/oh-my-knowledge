@@ -174,6 +174,89 @@ export {
   createBuiltinMissingPolicies,
   resolveBuiltinAnalysisRuntime,
 } from './evaluation-core/analysis/index.js';
+
+export {
+  CORE_CLI_BATCH_OUTCOME_SCHEMA_VERSION,
+  CORE_CLI_DRY_RUN_SCHEMA_VERSION,
+  CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION,
+  CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION,
+  CORE_DIAGNOSTIC_PROJECTION_SCHEMA_VERSION,
+  CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION,
+  CORE_GOLD_COMPARISON_SCHEMA_VERSION,
+  CORE_MANAGED_EVIDENCE_SCHEMA_VERSION,
+  CoreDownstreamProjectionError,
+  compareGoldToCoreRun,
+  projectCoreArtifactGraph,
+  projectCoreCliBatchOutcome,
+  projectCoreCliDryRun,
+  projectCoreCliRunOutcome,
+  projectCoreCliSeriesOutcome,
+  projectCoreDiagnostics,
+  projectCoreEvolutionEvidence,
+  projectCoreManagedEvidence,
+} from './eval-workflows/downstream-projections/index.js';
+
+export {
+  CORE_STUDIO_RUN_CARD_SCHEMA_VERSION,
+  CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION,
+  createCoreStudioCatalog,
+  projectCoreStudioRunCard,
+  projectCoreStudioRunDetail,
+} from './eval-workflows/studio-catalog/index.js';
+export type {
+  CoreStudioAnalysisRecord,
+  CoreStudioBudget,
+  CoreStudioCatalog,
+  CoreStudioDecision,
+  CoreStudioEvaluationRecord,
+  CoreStudioExecutionRecord,
+  CoreStudioMetricObservation,
+  CoreStudioProvenance,
+  CoreStudioRunCard,
+  CoreStudioRunDetail,
+  CoreStudioRuntimeIdentity,
+  CoreStudioUsage,
+} from './eval-workflows/studio-catalog/index.js';
+export {
+  renderCoreRunDetail,
+  renderCoreRunList,
+} from './renderer/core-run-renderer.js';
+export type { CoreStudioRenderRoutes } from './renderer/core-run-renderer.js';
+export { createCoreStudioRouteHandler } from './server/core-studio-route-handler.js';
+export type {
+  CoreStudioRouteHandler,
+  CoreStudioRouteHandlerOptions,
+  CoreStudioRouteRequest,
+  CoreStudioRouteResponse,
+} from './server/core-studio-route-handler.js';
+export type {
+  CompareGoldToCoreRunInput,
+  CoreCliBatchOutcome,
+  CoreCliDryRunProjection,
+  CoreCliGateProjection,
+  CoreCliRunOutcome,
+  CoreCliSeriesOutcome,
+  CoreDecisionProjection,
+  CoreDiagnosticFinding,
+  CoreDiagnosticProjection,
+  CoreGoldDatasetInput,
+  CoreDownstreamProjectionErrorCode,
+  CoreEvolutionAnalysisEvidence,
+  CoreEvolutionDecisionEvidence,
+  CoreEvolutionEvidence,
+  CoreEvolutionMemberEvidence,
+  CoreGoldComparisonResult,
+  CoreGoldAgreementResult,
+  CoreGoldComparisonRow,
+  CoreGoldMetricSelector,
+  CoreManagedEvidenceProjection,
+  CoreRuntimeIdentityReference,
+  ProjectCoreCliBatchOutcomeInput,
+  ProjectCoreCliDryRunInput,
+  ProjectCoreCliRunOutcomeOptions,
+  ProjectCoreArtifactGraphInput,
+  ProjectCoreEvolutionEvidenceInput,
+} from './eval-workflows/downstream-projections/index.js';
 export type {
   AnalysisDecisionPolicy,
   AnalysisMetricRow,

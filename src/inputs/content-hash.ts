@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
+/** Evaluation Core 对目录资源采用的唯一规范化摘要算法。 */
+export const OMK_TREE_DIGEST_ALGORITHM = 'omk.tree-sha256/v1' as const;
+
 /**
  * artifact「可分发树」与内容指纹 —— inputs 层的纯内容哈希工具。install(受管记录)与 eval
  * (report 的 artifactHashes)共用同一处,保证「同一个 skill,装出来与测出来的指纹落在同一空间」,
@@ -59,46 +62,59 @@ export function distributableCopyFilter(sourceRoot: string): (src: string) => bo
  * artifact 内容 hash —— drift baseline 与 evidence 绑定的依据。
  *   - 文件-skill:单个 .md 的字节;
  *   - 目录-skill:覆盖**整棵可分发目录树**(SKILL.md + references/ 等资产,但排除 .omk / .git /
- *     evolve 等评测迭代产物),按相对路径排序后把每个文件的`路径 + 字节长度 + 内容`喂进同一个
- *     sha256 —— 改任意资产都会令 hash 变化、drift 不漏;只补样本则 hash 不动。
+ *     evolve 等评测迭代产物),严格按 `omk.tree-sha256/v1` 编码目录条目、相对路径、文件可执行位、
+ *     字节长度、内容和文件结束标记后计算 sha256 —— 改任意资产都会令 hash 变化、drift 不漏;
+ *     只补样本则 hash 不动。
  * 用 createHash 直接喂 Buffer(字节级,二进制资产也稳;分隔符是运行时字节,源码里不引入任何不可见字符)。
  * 读时(list / drift 检查 / eval 报告)用同一函数重算比对。
  */
-/** sha256 前 12 位的字节摘要 —— 单文件 / 单 blob 内容指纹的共用底座(整树哈、git 单文件哈都走它)。 */
+/** 完整 sha256 字节摘要 —— 与 Evaluation Core file resource digest 去掉 `sha256:` 后同值。 */
 export function hashBytes(buf: Buffer): string {
-  return createHash('sha256').update(buf).digest('hex').slice(0, 12);
+  return createHash('sha256').update(buf).digest('hex');
+}
+
+function updateField(hash: ReturnType<typeof createHash>, value: string | Buffer): void {
+  const bytes = typeof value === 'string' ? Buffer.from(value) : value;
+  hash.update(String(bytes.length));
+  hash.update(Buffer.from([0]));
+  hash.update(bytes);
+  hash.update(Buffer.from([0]));
 }
 
 export function hashArtifactSource(source: string, isDirectorySkill: boolean): string {
   if (!isDirectorySkill) {
     return hashBytes(readFileSync(source));
   }
-  const rels: string[] = [];
+  const h = createHash('sha256');
+  updateField(h, OMK_TREE_DIGEST_ALGORITHM);
   const walk = (dir: string, segments: string[]): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entries = readdirSync(dir, { withFileTypes: true })
+      .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+    for (const entry of entries) {
       const segs = [...segments, entry.name];
       if (!isDistributablePath(segs)) continue;
-      // 软链既非 isFile 也非 isDirectory,天然跳过 —— 与 copyArtifactToTarget 的 filter 一致
-      // (hash 覆盖的 == 分发出去的),避免软链目标改变却不触发 drift,也回避软链环。
-      if (entry.isDirectory()) walk(join(dir, entry.name), segs);
-      else if (entry.isFile()) rels.push(segs.join('/'));
+      const path = join(dir, entry.name);
+      const stat = lstatSync(path);
+      // 与 distributableCopyFilter 一致：symlink 不属于可分发内容。
+      if (stat.isSymbolicLink()) continue;
+      const rel = segs.join('/');
+      if (stat.isDirectory()) {
+        updateField(h, 'directory');
+        updateField(h, rel);
+        walk(path, segs);
+      } else if (stat.isFile()) {
+        const content = readFileSync(path);
+        updateField(h, 'file');
+        updateField(h, rel);
+        updateField(h, (stat.mode & 0o111) === 0 ? 'non-executable' : 'executable');
+        updateField(h, String(content.length));
+        h.update(content);
+        updateField(h, 'end-file');
+      } else {
+        throw new TypeError(`Artifact tree contains unsupported entry: ${rel}`);
+      }
     }
   };
   walk(source, []);
-  rels.sort();
-  const h = createHash('sha256');
-  const sep = Buffer.from([0]);
-  for (const rel of rels) {
-    const content = readFileSync(join(source, rel));
-    // 路径与内容都做长度前缀,彻底排除"不同树拼出同一串"的歧义(文件名虽不含 NUL,核心层仍按可注入防)。
-    h.update(String(Buffer.byteLength(rel)));
-    h.update(sep);
-    h.update(rel);
-    h.update(sep);
-    h.update(String(content.length));
-    h.update(sep);
-    h.update(content);
-    h.update(sep);
-  }
-  return h.digest('hex').slice(0, 12);
+  return h.digest('hex');
 }

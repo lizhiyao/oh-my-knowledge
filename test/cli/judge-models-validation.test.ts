@@ -31,7 +31,7 @@ const CASES: Array<{ name: string; command: CommandClass; argv: string[] }> = [
   {
     name: 'evolve',
     command: EvolveCommand,
-    argv: ['test/fixtures/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
+    argv: ['test/fixtures/code-review/skills/v1.md', '--rounds', '1'],
   },
 ];
 
@@ -65,7 +65,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     await assert.rejects(
       () => runCommand(EvolveCommand, [
         'test/fixtures/code-review/skills/v1.md',
-        '--rounds', '1', '--skip-connectivity',
+        '--rounds', '1',
         '--judge-models', 'claude:haiku,claude:sonnet',
       ]),
       (err: unknown) => {

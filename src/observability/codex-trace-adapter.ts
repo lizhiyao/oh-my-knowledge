@@ -13,7 +13,7 @@ import {
   normalizeTraceTimestamp,
   traceTimestampBounds,
 } from './trace-ir.js';
-import type { TraceSourceMetadata } from '../types/index.js';
+import type { TraceSourceMetadata } from './contracts/trace.js';
 import {
   nonNegativeMetric,
   optionalTokenCount,

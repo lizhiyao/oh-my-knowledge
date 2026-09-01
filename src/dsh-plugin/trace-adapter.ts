@@ -1,4 +1,4 @@
-import type { ExperienceTurnStatus } from '../types/index.js';
+import type { ExperienceTurnStatus } from '../observability/contracts/experience.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
 import {
   correlateTraceToolEvents,

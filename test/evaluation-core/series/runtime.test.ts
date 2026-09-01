@@ -332,7 +332,11 @@ describe('Evaluation Series Runtime', () => {
         decisionPoliciesByDecisionPolicyId: new Map([['series-release-gate', {
           identity: decisionIdentity,
           async decide() {
-            return { decisionStatus: 'decided' as const, verdict: 'stable' };
+            return {
+              decisionStatus: 'decided' as const,
+              verdict: 'stable',
+              reasonCodes: ['stability-gate-passed'],
+            };
           },
         }]]),
         schemaValidators: seriesSchemaValidators,
@@ -365,6 +369,7 @@ describe('Evaluation Series Runtime', () => {
       policyExecutionStatus: 'executed',
       decisionStatus: 'decided',
       verdict: 'stable',
+      reasonCodes: ['stability-gate-passed'],
     });
   });
 
@@ -556,7 +561,11 @@ describe('Evaluation Series Runtime', () => {
         identity: decisionIdentity,
         async decide() {
           decisionCalls += 1;
-          return { decisionStatus: 'decided' as const, verdict: 'must-not-run' };
+          return {
+            decisionStatus: 'decided' as const,
+            verdict: 'must-not-run',
+            reasonCodes: ['test-policy-ran'],
+          };
         },
       }]]),
       schemaValidators: seriesSchemaValidators,

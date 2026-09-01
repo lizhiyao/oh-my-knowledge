@@ -15,6 +15,21 @@ import { createBuiltinAnalysisSchemaValidators } from '../../evaluation-core/ana
 import { createJudgeAggregationSchemaValidators } from './analysis/judge-aggregation.js';
 import { createAssertionLayerParameterSchemaValidators } from './analysis/assertion-layer-parameters.js';
 import { createAssertionLayerTableSchemaValidators } from './analysis/assertion-layer.js';
+import { createDimensionParameterSchemaValidators } from './analysis/dimension-parameters.js';
+import { createDimensionTableSchemaValidators } from './analysis/dimension-table.js';
+import { createCompositeParameterSchemaValidators } from './analysis/composite-parameters.js';
+import { createCompositeTableSchemaValidators } from './analysis/composite-table.js';
+import {
+  createBootstrapFamilyParameterSchemaValidators,
+} from './analysis/bootstrap-family-parameters.js';
+import {
+  createBootstrapFamilyTableSchemaValidators,
+} from './analysis/bootstrap-family-table.js';
+import { createAgreementParameterSchemaValidators } from './analysis/agreement-parameters.js';
+import { createAgreementTableSchemaValidators } from './analysis/agreement-table.js';
+import {
+  createReleaseDecisionParameterSchemaValidators,
+} from './analysis/release-decision-parameters.js';
 import type { SealedRunPlan } from '../../evaluation-core/compiler/index.js';
 import {
   createEvaluationEngine,
@@ -41,6 +56,7 @@ import {
   createBuiltinOmkAnalysisBindingFactories,
   createBuiltinOmkScoringBindingFactories,
 } from './builtins.js';
+import { createOmkSeriesVarianceSchemaValidators } from './series-variance.js';
 import {
   OmkResourceLeaseError,
   materializeNodeRunResourceLeases,
@@ -316,7 +332,12 @@ function captureClock(clock: EvaluationEngineClock): EvaluationEngineClock {
   return capturePort(clock, ['monotonicNow', 'timestamp', 'sleep'], 'support.clock');
 }
 
-function captureSchemaValidators(
+/**
+ * Build the exact validator registry shared by execution, resume admission,
+ * and Series verification. Keeping this merge in one place prevents a host
+ * workflow from accepting evidence that the executing Runtime would reject.
+ */
+export function createOmkEvaluationSchemaValidators(
   hostValidators: ReadonlyMap<string, CoreSchemaValidator> | undefined,
 ): ReadonlyMap<string, CoreSchemaValidator> {
   let hostEntries: Array<[string, CoreSchemaValidator]>;
@@ -341,6 +362,36 @@ function captureSchemaValidators(
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...[...createJudgeAggregationSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createDimensionParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createDimensionTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createCompositeParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createCompositeTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createBootstrapFamilyParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createBootstrapFamilyTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createAgreementParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createAgreementTableSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createReleaseDecisionParameterSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
+    ...[...createOmkSeriesVarianceSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
     ...hostEntries.map((entry) => (
@@ -532,6 +583,11 @@ function withBuiltinFactories(
       analysisBuiltin.decisionPoliciesByImplementationId,
       captured.decisionPoliciesByImplementationId,
       'factories.decisionPoliciesByImplementationId',
+    ),
+    seriesAnalysisNodesByImplementationId: mergeFactoryMap(
+      analysisBuiltin.seriesAnalysisNodesByImplementationId,
+      captured.seriesAnalysisNodesByImplementationId,
+      'factories.seriesAnalysisNodesByImplementationId',
     ),
   });
 }
@@ -736,7 +792,9 @@ export async function createOmkEvaluationRuntime(
   const compiled = snapshotCompiled(input.compiled);
   const resources = captureResourceOptions(input.resources);
   const clock = captureClock(input.support.clock);
-  const schemaValidators = captureSchemaValidators(input.support.schemaValidators);
+  const schemaValidators = createOmkEvaluationSchemaValidators(
+    input.support.schemaValidators,
+  );
   const executionCache = captureCachePort({
     binding: input.support.executionCache,
     expectedSource: compiled.orchestration.cacheSources?.executionSourceLocator,

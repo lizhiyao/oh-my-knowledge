@@ -8,8 +8,15 @@
  * reachable 时才走 `deriveManagedState`(哈不等 → stale)。verdict / 可比性取**当前有效证据**
  * (contentHash == record.contentHash)里 recordedAt 最新那条 —— 旧内容的证据不冒充当前。
  */
-import type { ArtifactKind, ManagedArtifactRecord, ManagedLifecycleLabel, ManagedObservation } from '../types/index.js';
-import { deriveManagedState, isCurrentlyPromoted, currentPromoteOverride, deriveProductionGap } from './store.js';
+import type { ArtifactKind } from '../types/index.js';
+import type { ManagedArtifactRecord, ManagedLifecycleLabel, ManagedObservation } from './contracts.js';
+import {
+  currentPromoteOverride,
+  deriveManagedState,
+  deriveProductionGap,
+  isCurrentMeasurementEvidence,
+  isCurrentlyPromoted,
+} from './store.js';
 
 /** 当前源探测结果(三态)。`reachable:false` = 不可达 / 解析失败 / 拒读,**不等于**已 drift。 */
 export interface SourceProbe {
@@ -33,8 +40,6 @@ export interface ManagedListRow {
   reachable: boolean;
   /** 当前有效证据(若有)里 recordedAt 最新那条的 verdict。 */
   latestVerdict?: string;
-  /** 该证据的可比性 marker —— 跨报告比 verdict 前需一致。 */
-  comparability?: { cliVersion: string; judgePromptHash?: string; debiasMode?: Array<'length' | 'position'> };
   /** 当前 promoted 版本是否经 `--force` override 采用(只读审计标);非越门 / 已 rollback / 未采用 → undefined。
    *  override 的写仍只在 CLI(`promote --force`),Studio 只读展示 —— 见 spec §9(#238)。 */
   override?: { verdict: string; overriddenBlocks?: string[] };
@@ -57,7 +62,9 @@ export interface ManagedListRow {
 /** 当前有效证据(contentHash == record.contentHash)里 recordedAt 最新那条;无则 undefined。
  *  list(展示最新 verdict)与 promote(门禁取证)共用同一口径——旧内容的证据不冒充当前。 */
 export function latestCurrentEvidence(record: ManagedArtifactRecord) {
-  const current = record.evidence.filter((e) => e.contentHash === record.contentHash);
+  const current = record.evidence.filter((e) => (
+    isCurrentMeasurementEvidence(e, record.contentHash)
+  ));
   if (current.length === 0) return undefined;
   // 取 recordedAt 最新的一条。omk 自写恒 UTC `Z`、字典序即时间序;但记录可手改 / 随仓库分发,异偏移
   // 或异精度的 ISO 串字典序会乱 → 优先按解析后的真实时刻比,两端都可解析才用;否则退回字典序(不劣化
@@ -71,7 +78,9 @@ export function latestCurrentEvidence(record: ManagedArtifactRecord) {
 }
 
 export function buildManagedListRow(record: ManagedArtifactRecord, probe: SourceProbe): ManagedListRow {
-  const currentEvidenceCount = record.evidence.filter((e) => e.contentHash === record.contentHash).length;
+  const currentEvidenceCount = record.evidence.filter((e) => (
+    isCurrentMeasurementEvidence(e, record.contentHash)
+  )).length;
   let state: ManagedLifecycleLabel;
   let drifted: boolean;
   if (probe.reachable) {
@@ -101,7 +110,6 @@ export function buildManagedListRow(record: ManagedArtifactRecord, probe: Source
     drifted,
     reachable: probe.reachable,
     ...(latest?.verdict ? { latestVerdict: latest.verdict } : {}),
-    ...(latest?.comparability ? { comparability: latest.comparability } : {}),
     ...(latest?.recordedAt ? { recordedAt: latest.recordedAt } : {}),
     ...(override ? { override } : {}),
     ...(gap.marker === 'gap' && gap.latest

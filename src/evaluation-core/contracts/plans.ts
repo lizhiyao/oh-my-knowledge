@@ -178,6 +178,7 @@ export const RunPlanSchema = z.object({
 });
 
 export type ExecutionInputSample = z.infer<typeof ExecutionInputSampleSchema>;
+export type ExecutionPlanPolicy = z.infer<typeof ExecutionPlanPolicySchema>;
 export type EvaluationInputSample = z.infer<typeof EvaluationInputSampleSchema>;
 export type AnalysisInputSample = z.infer<typeof AnalysisInputSampleSchema>;
 export type ResolvedRuntime = z.infer<typeof ResolvedRuntimeSchema>;

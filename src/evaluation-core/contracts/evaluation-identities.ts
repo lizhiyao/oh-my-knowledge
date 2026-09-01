@@ -79,7 +79,11 @@ export interface EvaluationIdentityPlanContext {
   execution: Parameters<typeof derivePlannedExecutionCoordinates>[0]['execution'];
   evaluation: {
     evaluationPlanDigest: string;
-    evaluators: readonly { evaluatorId: string; measurement: EvaluatorMeasurementIdentity }[];
+    evaluators: readonly {
+      evaluatorId: string;
+      applicableSampleIds?: readonly string[];
+      measurement: EvaluatorMeasurementIdentity;
+    }[];
   };
 }
 
@@ -114,7 +118,10 @@ export function derivePlannedEvaluationCoordinates(
     throw new TypeError('evaluation.evaluators must not contain duplicate identifiers');
   }
   return derivePlannedExecutionCoordinates(plan)
-    .flatMap((execution) => evaluators.map((evaluator) => ({
+    .flatMap((execution) => evaluators
+      .filter((evaluator) => evaluator.applicableSampleIds === undefined
+        || evaluator.applicableSampleIds.includes(execution.sampleId))
+      .map((evaluator) => ({
       targetId: execution.targetId,
       sampleId: execution.sampleId,
       trialIndex: execution.trialIndex,
@@ -127,6 +134,6 @@ export function derivePlannedEvaluationCoordinates(
         evaluatorId: evaluator.evaluatorId,
         measurement: evaluator.measurement,
       }),
-    })))
+      })))
     .sort(compareCoordinates);
 }

@@ -1,6 +1,6 @@
 # omk storage layout spec
 
-> **Scope**: For omk maintainers. It explains where the various files omk produces should live, why, and when they get cleaned up. Two places are involved: the global directory on your machine, `~/.oh-my-knowledge/`, and each project's own `<project>/.omk/`. Bilingual versions coexist (`docs/specs/` English / `docs/zh/specs/` Chinese). The exact directory names are defined in the source (`src/eval-core/default-dirs.ts` etc.); this doc covers the "why". For everyday usage see the [README](../README.md).
+> **Scope**: For omk maintainers. It explains where the various files omk produces should live, why, and when they get cleaned up. Two places are involved: the global directory on your machine, `~/.oh-my-knowledge/`, and each project's own `<project>/.omk/`. Bilingual versions coexist (`docs/specs/` English / `docs/zh/specs/` Chinese). The exact directory names are defined in the source (`src/measurement-artifacts/default-dirs.ts` etc.); this doc covers the "why". For everyday usage see the [README](../README.md).
 
 ## 1. Storing files has to satisfy three things at once
 
@@ -68,16 +68,17 @@ Directories and filenames deliberately carry different bits of meaning:
 - **Human and machine twins must differ before the extension.** Prefer `.graph.json`, `.card.md`, `.summary.json`, etc. over sibling files that only differ by `.json` versus `.md`.
 - **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
 
-Legacy migration is one-shot and directory-scoped: old run artifacts in
-`reports` / `doctors` / `observe-health` / `observe-inbox` are renamed into
-`.report.json` form when those directories are touched. Bare `.json` is not a
-normal reader format after migration, and unrelated JSON files in those
-directories are skipped.
+Evaluation Core stores one directory per `runId`; its manifest and sealed
+documents keep their fixed schema filenames inside that directory. Readers only
+discover current canonical artifacts: Core run directories and `.report.json`
+files for `doctors` / `observe-health` / `observe-inbox`. Legacy flat JSON files
+are neither read nor renamed automatically.
 
 Examples:
 
 ```
-.omk/reports/service-guide-20260620T105109-aqgq.report.json
+.omk/reports/01JY.../manifest.json
+.omk/reports/01JY.../evaluation-report.json
 .omk/doctors/service-guide-20260620T105109-aqgq.report.json
 .omk/observe-health/20260620T105109-aqgq.report.json
 .omk/observe-inbox/20260620T105109-aqgq.report.json
@@ -112,28 +113,30 @@ Inside `.omk/` there are two kinds:
 
 `omk init` auto-writes a `.omk/.gitignore` (ignoring the growing dirs, allowing `managed` and config), like `dvc init`, so you won't commit it by accident. Whole team wants the full reports? Go through `--global` / a shared server / an exported evidence bundle — the same pattern as MLflow's "don't commit locally, stand up a server to share".
 
-## 6. Reports go home to their own projects, yet studio still sees the whole machine at a glance
+## 6. Measurement artifacts stay project-owned
 
-With reports defaulting into their own projects, there's a tension: can `omk studio` still be a "whole-machine overview panel" that shows every project's artifacts at once?
+Evaluation Core run bodies exist in exactly one project-local or explicitly
+global run directory. Studio discovers Core runs by scanning the selected
+project/global roots and authenticates their manifests before listing them. It
+does not use a legacy report index, open flat evaluation reports, or reconstruct
+cross-project score curves.
 
-**Yes.** The key is one sentence: **"can't compare scores across sample sets" governs *comparison*, not *viewing together*.** Listing different projects' reports on one page to browse is fine; only pulling the scores out to rank them requires locking to one sample set. So a cross-project browse list is legitimate, while the comparison layer still locks scope and still warns on incomparability.
-
-The implementation isn't "move reports back to the global bucket" (that re-welds section 1's ownership problem) but adds a very light **index card** layer:
-
-- The report **body always exists in exactly one copy**, staying in its project.
-- Each artifact leaves a **small card** at the global `state/artifact-index/<domain>/<id>.json`: it records only the summary (`meta` + rollup), not the per-item detail, and the card says where the body is (`path` points at it). Three `domain`s: `report` / `doctor` / `observe-health`.
-- `omk studio` stitches together "other projects' cards" and "what it live-scans from the current project + global", deduped by `id` (live-scan overrides cards). Click into detail and it follows the card's `path` to read the body; if the project moved the body away, it degrades to the card summary instead of crashing the page.
+Doctor and observe-health retain lightweight global index cards because their
+independent report schemas still support that discovery model. Their cards live
+under `state/artifact-index/<domain>/<id>.json`, where `domain` is `doctor` or
+`observe-health`. Evaluation and observe-inbox are deliberately excluded.
 
 A few points:
 
-- **No backfill**: the current project and global stay fresh via live-scan; cards only cover the "other projects" slice live-scan can't reach.
-- **Global writes leave no card**: global is a single directory everyone live-scans, so a card there would just duplicate. A card's only value is another project's local directory.
-- **Writing a card is best-effort**: it never errors and never blocks the body landing on disk (the body is the real thing; lose a card and a re-run regenerates it) — which is why cards live in the rebuildable `state/`.
-- **Cards are live pointers**: a "dangling card" whose body was deleted is filtered out of lists/merges (the card cache folds in the body's existence as part of its fingerprint, so a long-open studio won't show deleted ones); deleting one in studio deletes the card too, and another project's body is untouched.
-- **Escape hatches don't mix in cards**: `--global` and an explicit `--reports-dir` / `--doctors-dir` / `--analyses-dir` look only at the one directory you named, no cards merged — clean.
-- **`observe-inbox` is deliberately not indexed**: the `domain`s are only `report` / `doctor` / `observe-health`, not `observe-inbox`. The discovery index serves *comparable review artifacts* (conclusions you'd browse and compare across projects); the inbox is the current project's triage workbench, and browsing project B's to-do queue inside project A's studio is low-value and easy to act on by mistake. So the summary (observe-health) is indexed while the raw queue (observe-inbox) is not — an intentional boundary; it still supports `--global` write / read, it just isn't aggregated machine-wide.
+- **No evaluation backfill**: old flat evaluation reports never produce Core runs or index cards.
+- **Global writes leave no card**: the global doctor/observe roots are already live-scanned.
+- **Writing a doctor/observe card is best-effort**: the body remains authoritative.
+- **Cards are live pointers**: a card whose body has disappeared is filtered from discovery.
+- **Escape hatches don't merge cards**: explicit roots read only the named location.
 
-Separately, `id`s get a uniform random suffix to prevent name collisions (two projects producing artifacts in the same second could collide, and dedup would wrongly merge them and silently lose data): report, doctor, and observe-health filenames all carry "second + random". An `id` is just a label, not a computed score, so this change **does not affect cross-version comparability**.
+Core `runId`s and standalone doctor/observe ids include collision-resistant
+identity. An id is a label, not a computed score, so this does not affect
+cross-version comparability.
 
 ## 7. What gets auto-cleaned vs kept forever
 
@@ -141,7 +144,7 @@ Split by "can it rebuild itself if deleted":
 
 - **Already auto-cleaning (scratch)**: `doctor` keeps the latest 50 per skill; `cache` caps at 2000; `trees` / `isolated-cwd` cap at 200 (with a lock protecting the in-use process). All three are env-tunable.
 - **Deliberately not cleaned (data)**: `reports` / `observe-health` / `observe-inbox` are never background-deleted. Two reasons: (1) `reports` is referenced by `id` from governance archives and task records, so auto-deleting breaks links; (2) a report's entire value is "compare history against the new version", so auto-deleting quietly destroys the basis for comparison. They're just a few JSON files anyway.
-- **No cap yet**: `jobs` (studio async task records) are a few KB each and carry an `id` pointing at a report, landing in the "don't randomly delete anything that references a report" rule — so they're not auto-cleaned either. `backups` (pre-fix skill originals saved on every `doctor --fix`) is likewise uncapped — it's the undo safety net, so deleting it early loses the ability to roll back; not auto-cleaned, add a lenient cap if it ever bloats.
+- **No cap yet**: `backups` (pre-fix skill originals saved on every `doctor --fix`) are the undo safety net, so deleting them early loses the ability to roll back; add a lenient cap only if they become material.
 
 ## 8. This isn't made up — the industry does it this way
 
@@ -158,8 +161,8 @@ The one reality friendly to "keep a global default" is that plenty of tools do k
 ## 9. A few key decisions
 
 - **Measurement artifacts default to the project** (reports / observe-health / doctors / graphs default to `.omk/`, `--global` deliberately writes global for the primary writer and sidecars inherit that root). Rationale: consistency with omk's project model (the sample set *is* the context); making "put it in the right place" the default behavior rather than an easily-forgotten convention.
-- **reports reads via an overlay** (check the project first, fall back to global; lists merge both, project first), not "pick one directory". Because reports is fetched by `id` (resume, gold comparison, batch sub-reports all rely on it), and "pick one directory" would fail to fetch when the target `id` is in the other directory, breaking reuse.
-- **studio is the machine-wide overview** (index cards aggregated), not "default to current project only". Because "can't compare" governs comparison, not viewing (section 6).
+- **Evaluation Core reads by `runId` from authenticated run directories**. Project and global roots may both be searched, but a run is never synthesized from a legacy report or an index card.
+- **Studio lists authenticated Core runs plus the independent doctor/observe domains**. It does not merge legacy evaluation cards.
 - **Project-level keeps a global fallback** (read global when `.omk/x` is absent), not pure project-level. Same as `observe-inbox`; smoother migration.
 - **`managed` travels with where the skill is installed**, not with measurement. The three layers decouple: measurement binds to the sample set, governance to the skill, joined by content fingerprint in between.
 
@@ -169,4 +172,4 @@ The whole layout **does not affect cross-version comparability**: it only change
 
 - [who-omk-is-for](../explanation/who-omk-is-for.md) — "can't compare across sample sets" and "who omk is for", the upstream basis for this ownership design.
 - [terminology-spec](terminology-spec.md) — the naming archive for `artifact` / `kind` / `domain` and friends.
-- [evidence-gated-management](evidence-gated-management.md) — the `managed` governance archive and the "report id + content fingerprint" evidence reference mechanism.
+- [evidence-gated-management](evidence-gated-management.md) — the `managed` governance archive and authenticated Core evidence projections.

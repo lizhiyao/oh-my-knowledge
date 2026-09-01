@@ -763,6 +763,78 @@ describe('Evaluation Core Execution runtime', () => {
     expect(cache.gets).toBe(2);
   });
 
+  it('reuses an unaffected sample cache entry when another sample control changes', async () => {
+    const cache = new MemoryCache();
+    const workspace = (resourceId: string, fill: string) => ({
+      workspaceMode: 'copy-on-write-overlay' as const,
+      descriptor: {
+        resourceId,
+        digest: `sha256:${fill.repeat(64)}` as Sha256Digest,
+        mediaType: 'application/vnd.omk.workspace-tree',
+        classification: 'sensitive' as const,
+        size: 1,
+      },
+    });
+    const configure = (
+      definition: ReturnType<typeof validDefinition>,
+      policy: ReturnType<typeof validPolicy>,
+      sampleOneWorkspace: ReturnType<typeof workspace>,
+    ): void => {
+      definition.targets = [definition.targets[0]];
+      definition.comparisons = [];
+      definition.dataset.samples.push({
+        ...structuredClone(definition.dataset.samples[0]),
+        sampleId: 'sample-2',
+      });
+      definition.targets[0].executionRequirements.workspace = 'copy-on-write-overlay';
+      definition.targets[0].executionRequirements.toolPolicy = 'allow-list';
+      definition.targets[0].executionControls.sampleOverrides = [
+        {
+          sampleId: 'sample-1',
+          workspace: sampleOneWorkspace,
+          tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+        },
+        {
+          sampleId: 'sample-2',
+          workspace: workspace('workspace-b', 'b'),
+          tools: { toolPolicyKind: 'allow-list', allowedTools: ['shell'] },
+        },
+      ];
+      policy.cache.executionMode = 'transparent-deterministic';
+    };
+    const firstPlan = await makePlan((definition, policy) => {
+      configure(definition, policy, workspace('workspace-a', 'a'));
+    });
+    const secondPlan = await makePlan((definition, policy) => {
+      configure(definition, policy, workspace('workspace-c', 'c'));
+    });
+    const firstRuntime = portsFor(firstPlan, undefined, { cache });
+    const secondRuntime = portsFor(secondPlan, undefined, { cache });
+
+    await executeRunPlan(firstPlan, firstRuntime.ports, {
+      runId: 'run-cache-controls-1',
+      bundleId: 'bundle-cache-controls-1',
+    });
+    const second = await executeRunPlan(secondPlan, secondRuntime.ports, {
+      runId: 'run-cache-controls-2',
+      bundleId: 'bundle-cache-controls-2',
+    });
+    const records = new Map(second.records.map((record) => [record.sampleId, record]));
+    const sampleOne = records.get('sample-1');
+    const sampleTwo = records.get('sample-2');
+    if (sampleOne?.executionStatus !== 'completed'
+        || sampleTwo?.executionStatus !== 'completed') throw new Error('expected completed records');
+
+    expect(firstRuntime.state.attempts).toBe(2);
+    expect(secondRuntime.state.attempts).toBe(1);
+    expect(secondRuntime.state.trialContexts.map((context) => context.sampleId))
+      .toEqual(['sample-1']);
+    expect(sampleOne.cache.cacheStatus).toBe('miss');
+    expect(sampleTwo.cache.cacheStatus).toBe('transparent-hit');
+    expect(cache.gets).toBe(4);
+    expect(cache.puts).toBe(3);
+  });
+
   it('fails closed when a cached record claims a different randomization slot', async () => {
     const cache = new MemoryCache();
     const plan = await makePlan((definition, policy) => {
@@ -967,8 +1039,8 @@ describe('Evaluation Core Execution runtime', () => {
     const coordinate = deriveExecutionSchedule(plan)[0].coordinates[0];
     const runtime = expectedExecutorIdentity(plan);
     const cacheKeyDigest = digestCanonicalJson({
-      derivation: 'omk.execution-cache-key/v1',
-      executionPlanDigest: plan.execution.executionPlanDigest,
+      derivation: 'omk.execution-cache-key/v2',
+      executionCoordinateDigest: coordinate.executionCoordinateDigest,
       trialId: coordinate.trialId,
     });
     const usage = {
@@ -979,6 +1051,7 @@ describe('Evaluation Core Execution runtime', () => {
       randomizationSlotId: coordinate.randomizationSlotId,
       sampleId: coordinate.sampleId,
       trialIndex: coordinate.trialIndex,
+      executionCoordinateDigest: coordinate.executionCoordinateDigest,
       trialId: coordinate.trialId,
       trialSeed: coordinate.trialSeed,
       schedulingBlockId: coordinate.schedulingBlockId,
@@ -987,7 +1060,7 @@ describe('Evaluation Core Execution runtime', () => {
       provenance: {
         provenanceKind: 'native',
         trust: runtime.assuranceLevel,
-        parentDigests: [plan.execution.executionPlanDigest],
+        parentDigests: [coordinate.executionCoordinateDigest],
       },
       attempts: [{
         attemptId: deriveAttemptId({ trialId: coordinate.trialId, attemptNumber: 1 }),

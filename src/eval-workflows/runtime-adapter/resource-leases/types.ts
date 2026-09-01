@@ -4,7 +4,7 @@ import type {
   RuntimeResourceLeaseRequirement,
 } from '../../input-compilation/index.js';
 
-export const OMK_TREE_DIGEST_ALGORITHM = 'omk.tree-sha256/v1' as const;
+export { OMK_TREE_DIGEST_ALGORITHM } from '../../../inputs/content-hash.js';
 
 export type OmkBindingResourceLeaseRequest =
   | {
@@ -54,6 +54,7 @@ interface OmkLeasedHostResourceBase {
     | 'mcp-config'
     | 'mock-payload'
     | 'gold-dataset'
+    | 'runtime-implementation'
     | 'content';
   readonly descriptor: ResolvedResourceDescriptor;
   readonly snapshotKind: 'file' | 'directory';

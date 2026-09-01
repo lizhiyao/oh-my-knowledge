@@ -1,6 +1,6 @@
 # Evaluation scoring equivalence RFC
 
-> Status: migration contract for [#480](https://github.com/lizhiyao/oh-my-knowledge/issues/480). This RFC does not switch `omk eval`, persist Evaluation Core artifacts, or change the legacy Report schema.
+> Status: implemented migration contract for [#480](https://github.com/lizhiyao/oh-my-knowledge/issues/480). The phased statements below preserve the migration rationale; production `omk eval` now executes this Core scoring graph and persists only Core artifacts after the atomic `BREAKING-SCHEMA` cutover.
 
 ## 1. Decision
 
@@ -16,7 +16,7 @@ sealed sample evaluation context
 
 The migration is validated offline against fixed execution outputs and fixed provider responses. Production dual-run, dual-write, fallback selection, and old-artifact migration are out of scope.
 
-The old pipeline remains the equivalence oracle only while #480 is in progress. New code must not import legacy graders as its implementation. Once production cutover is complete, the duplicated legacy path can be removed instead of becoming a compatibility layer.
+The old pipeline served only as the bounded equivalence oracle while #480 was in progress. Production cutover is complete, the duplicated path has been removed, and current code must not reintroduce legacy graders as an implementation or compatibility layer.
 
 ## 2. Construct model
 
@@ -52,13 +52,13 @@ The host owns provider calls, prompt registry access, custom-module loading, and
 |---|---|---|---|
 | deterministic assertion | output and evaluation context; execution-aware leaves additionally require Core-owned execution facts | Boolean criterion result; assertion detail as evidence | assertion algorithm version and supported type registry |
 | custom assertion | output and evaluation context; verified resource lease | Boolean criterion result or structured evaluator failure | module content identity and sandbox/resource policy |
-| semantic similarity | output, expected/evaluation context | Boolean threshold result; fixed-response parse evidence | semantic prompt hash, model Runtime identity, threshold |
-| RAG metric | output and evaluation context | Boolean threshold result; fixed-response parse evidence | metric-specific prompt hash, model Runtime identity, threshold |
+| semantic similarity | output, expected/evaluation context | Boolean threshold result; fixed-response parse evidence | semantic prompt hash, model Runtime identity, threshold, negation |
+| RAG metric | output and evaluation context | Boolean threshold result; fixed-response parse evidence | metric-specific prompt hash, model Runtime identity, threshold, negation |
 | rubric judge | output, optional trace, evaluation context | Raw numeric reading on the 1–5 scale | rubric prompt hash, debias variant, ensemble member, replicate index, model Runtime identity |
 
 The Core never imports `PROMPT_REGISTRY`. The composition root resolves a frozen prompt and places its hash in the host Runtime identity. `lengthDebias=false` selects only the existing rubric debias-off instrument. Presentation and tone neutrality remain enabled. RAG and semantic prompts have no length-debias switch.
 
-Semantic and RAG assertions use `omk.llm-assertions/v1`. One Evaluator coordinate owns exactly one criterion and one Boolean Metric, so a provider failure cannot suppress or falsify an unrelated criterion. The sealed criterion retains threshold, positive weight, and fact-layer identity for downstream aggregation. The sealed instrument records the assertion type, registry prompt ID, and frozen prompt hash; the Runtime fingerprint additionally binds the selected model configuration and the host invocation Runtime identity. The host invocation port performs exactly one cooperative-cancellation-aware call. It has no retry, timeout, budget, or cache policy of its own.
+Semantic and RAG assertions use `omk.llm-assertions/v2`. One Evaluator coordinate owns exactly one criterion and one Boolean Metric, so a provider failure cannot suppress or falsify an unrelated criterion. Canonical `applicableSampleIds` removes non-applicable coordinates before evaluation and analysis without merging criteria into a shared provider call. The sealed criterion retains threshold, positive weight, explicit negation, and fact-layer identity for downstream aggregation. Negation is applied only after a valid raw score is compared with the threshold; evidence retains both `rawPassed` and `negated`, and provider failure, invalid response, timeout, cancellation, or budget censoring cannot become an observed pass. The sealed instrument records the assertion type, registry prompt ID, and frozen prompt hash; the Runtime fingerprint additionally binds the selected model configuration and the host invocation Runtime identity. The host invocation port performs exactly one cooperative-cancellation-aware call. It has no retry, timeout, budget, or cache policy of its own.
 
 A strict integer reading in `[1, 5]` with a non-empty explanation produces an observed Boolean threshold result. Non-JSON, malformed JSON, malformed score, out-of-range score, and missing explanation produce distinct invalid observations. Provider failure produces a failed Evaluation record with a redacted stable code. Core timeout and cancellation remain attempt states, and admission failure remains budget censoring. Unknown usage or provider cost stays absent. This is the intentional `BREAKING-COMPARABILITY` correction owned by [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481); no compatibility mode or legacy reader is provided.
 
@@ -98,7 +98,11 @@ Planned nodes are:
 
 The first two derivations are implemented by the host-owned Analysis nodes `omk.judge-replicate-table/v2` and `omk.judge-ensemble-table/v2`. The replicate table groups by the complete target／sample／trial／metric／instrument／ensemble-member／replicate-group coordinate, orders the explicitly planned replicate indices without requiring them to be contiguous, and retains every observed or non-observed row. It rounds member means to two decimals and sample standard deviation (`n - 1`) to three decimals. The ensemble table consumes that schema-validated result, gives every observed member mean equal weight, rounds consensus to two decimals, and computes pairwise mean absolute difference over observed members only to three decimals. Fewer than two observed members produces missing agreement. Both output schemas enforce canonical ordering, coverage conservation, content-derived lineage identities, and recomputable statistics during live execution and transported Bundle validation; their Runtime fingerprints bind these estimators, scale, missing policy, rounding rules, and Core-derived pairing／cluster／stratum sampling-unit identities. The v2 identity replaces the pre-cutover v1 contract rather than mutating its schema digest; this correction is owned by [#497](https://github.com/lizhiyao/oh-my-knowledge/issues/497), with no v1 registration or compatibility reader.
 
-The fourth derivation is implemented by the host-owned `omk.assertion-layer-table/v1` node from [#496](https://github.com/lizhiyao/oh-my-knowledge/issues/496). Its sealed parameters explicitly map each unique criterion and Boolean Metric to `fact`, `behavior`, or `excluded-mixed-layer` plus a finite positive weight; the node never infers classification from assertion names, Evaluator IDs, or evidence. Every target／sample／trial row retains the complete criterion status and Core-derived sampling-unit lineage. `criterion-not-applicable` is structural and excluded from planned coverage, while every other non-observed status reduces coverage without becoming `false` or score zero. The table validator recomputes weighted scores, coverage, canonical ordering, globally unique source lineage, content-derived group identity, and a criterion design that must remain identical across all measurement units. Runtime fingerprinting binds these semantics and both schema identities. The node is available to explicit AnalysisGraph plans, but formal CLI and Report cutover remain separate work.
+The third derivation is implemented by the host-owned `omk.dimension-table/v1` node from [#505](https://github.com/lizhiyao/oh-my-knowledge/issues/505). Sealed parameters form a one-to-one mapping among dimension, Metric, and upstream judge-ensemble Analysis result identities. Each target／sample／trial row contains only dimensions with a planned upstream group; absence is structural non-applicability, while an upstream missing group remains explicit missing evidence. The node takes the equal mean of observed, two-decimal ensemble consensus scores and rounds the result to two decimals; zero observed dimensions is missing rather than numeric zero. Its table validator recomputes coverage and the aggregate, enforces canonical unit／dimension ordering, stable bindings, globally unique source-group lineage, and content-derived group identity. Because it consumes Analysis results rather than Metric rows, record-level direct-row coverage is empty and provenance follows source Analysis／group identities. Runtime fingerprinting binds these semantics and all upstream／parameter／output schema identities. The production CLI consumes this node through the registered Core AnalysisGraph.
+
+The fourth derivation is implemented by the host-owned `omk.assertion-layer-table/v1` node from [#496](https://github.com/lizhiyao/oh-my-knowledge/issues/496). Its sealed parameters explicitly map each unique criterion and Boolean Metric to `fact`, `behavior`, or `excluded-mixed-layer` plus a finite positive weight; the node never infers classification from assertion names, Evaluator IDs, or evidence. Every target／sample／trial row retains the complete criterion status and Core-derived sampling-unit lineage. `criterion-not-applicable` is structural and excluded from planned coverage, while every other non-observed status reduces coverage without becoming `false` or score zero. The table validator recomputes weighted scores, coverage, canonical ordering, globally unique source lineage, content-derived group identity, and a criterion design that must remain identical across all measurement units. Runtime fingerprinting binds these semantics and both schema identities. The production CLI consumes this node through the registered Core AnalysisGraph.
+
+The fifth derivation is implemented by the host-owned `omk.composite-table/v1` node from [#512](https://github.com/lizhiyao/oh-my-knowledge/issues/512). Sealed parameters bind fact and behavior layers to an assertion-layer result and bind the judge layer to either an ensemble consensus or a dimension aggregate; no source is inferred from graph position or labels. For each target／sample／trial unit, the node takes the equal mean of present observed layers and rounds to two decimals. An absent source group is structural non-applicability and creates no layer entry, while a present missing group remains explicit evidence; zero observed layers is authoritative missing rather than numeric zero. The validator recomputes the aggregate and coverage, enforces canonical unit／layer ordering, stable bindings, globally unique source-result／source-group lineage, and content-derived group identity. Direct Metric-row coverage is empty because all provenance follows upstream Analysis groups. Real Core DAG conformance covers assertion-only and dimension-backed judge-only plans, including transported Bundle validation, parent-failure blocking, cancellation, and exactly-once disposal. The production CLI consumes this node through the registered Core AnalysisGraph.
 
 This migration intentionally breaks the legacy convention that allowed a failed member's score-zero sentinel to pollute agreement while excluding it from consensus. Failed, invalid, unavailable, and not-started coordinates now remain distinct missing evidence and never become numeric zero. The correction is owned by [#494](https://github.com/lizhiyao/oh-my-knowledge/issues/494), has no compatibility mode, and does not aggregate Evaluator usage into Analysis artifacts.
 
@@ -106,7 +110,7 @@ Mixed-layer `assert-set` criteria remain visible assertion observations but are 
 
 The legacy RAG and semantic paths convert provider/parse failure into a failed Boolean assertion. That behavior remains frozen only as historical differential evidence. The Core deliberately does not reproduce it: invalid readings and failed attempts are excluded from assertion-layer pass ratios and reduce coverage instead. A valid reading below the threshold remains observed `false`, so negative content evidence is still counted.
 
-The legacy async path also ignores the otherwise-public `Assertion.not` contract. That independent Boolean-semantics defect is tracked by [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) and is not folded into the #481 failure-state correction.
+The legacy async path now applies the public `Assertion.not` contract only to valid semantic, RAG, or custom pass/fail readings. Provider failure, malformed or incomplete judge output, missing RAG input, custom exceptions, and invalid custom results remain failed under negation. The Core seals the same Boolean criterion rule into its v2 Definition and evidence contract. This independent `BREAKING-COMPARABILITY` correction is owned by [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489); it does not weaken the #481 rule that Core infrastructure and protocol failures remain structured missing evidence instead of observed Boolean false.
 
 ## 7. Statistical standards
 
@@ -124,7 +128,11 @@ The equivalence bootstrap standard resamples the declared experimental unit, pre
 
 Degenerate inputs are part of the standard rather than implementation accidents. A legacy mean interval over one observation is the point interval with `samples=0`; a paired difference over one complete pair performs the requested resamples and returns the constant difference. Empty inputs map to an inconclusive authoritative Core result, with the historical all-zero object allowed only in the legacy projection. These cases receive separate golden vectors before the statistical implementation lands.
 
+The exact mean／paired-difference／independent-difference standards and comparison-family correction are implemented by the host-owned `omk.bootstrap-family-table/v1` Analysis node from [#519](https://github.com/lizhiyao/oh-my-knowledge/issues/519). It consumes only `omk.composite-table/v1`, seals target and sample order, comparison bindings, one family-wide paired or independent design, resamples, nominal alpha, and the fixed Mulberry32 stream. Repeated trials are averaged within the declared sample or pairing block; paired families require an explicit `pairingKey` and never fall back to independent sampling. The output retains every observed or missing Composite group and recomputes target intervals, eligible-family `K`, effective `alpha/K`, comparison intervals, coverage, ordering, and lineage under transported Bundle validation. Its Runtime fingerprint binds the legacy random stream, linear percentile interpolation, four-decimal rounding, and rounded-bound significance. The production CLI consumes this node through the registered Core AnalysisGraph.
+
 Krippendorff alpha uses interval distance `delta^2=(c-k)^2`; nominal or ordinal variants are not equivalent. Empty input, one total rating pair, or zero expected disagreement is inconclusive, not numeric zero. The alpha bootstrap resamples paired rating units.
+
+The standard is implemented by the host-owned `omk.agreement-table/v1` Analysis node from [#522](https://github.com/lizhiyao/oh-my-knowledge/issues/522). It consumes one schema-sealed Dimension table plus Gold ratings that exist only in Analysis sample context; Execution and Evaluation plans and Bundles never receive that context. The node seals one target, annotator identity, annotation version, numeric scale, JSON pointer, sample order, bootstrap configuration, and the interval-distance alpha definition. Repeated Dimension trials are averaged within each sample while retaining per-sample group coverage and lineage. The output reports Krippendorff alpha as the primary statistic, weighted kappa and Pearson as auxiliary diagnostics, finite-draw bootstrap coverage, and structured missing results for insufficient pairs, zero expected disagreement, undefined statistics, or invalid draws. The table is statistically recomputed during transported Bundle validation. Production Gold comparison consumes this authenticated Core projection with explicit selectors.
 
 ## 8. DecisionPolicy boundary
 
@@ -133,6 +141,8 @@ The release DecisionPolicy consumes named, plan-bound Analysis results and expli
 Before a directional conclusion, it checks coverage, required results, assumptions, source trust, and the comparison family. The policy then applies paired confidence intervals, layer gates, sample-size/power status, judge disagreement, stability, and holdout-gap rules. Presentation strings and CLI next-step text remain outside the policy; stable reason codes are authoritative.
 
 `SOLO`, `UNDERPOWERED`, `NOISE`, `PROGRESS`, `CAUTIOUS`, and `REGRESSION` are conclusions, not run statuses. Infrastructure failure remains a failed or not-decided decision.
+
+The contract is implemented by the host-owned `omk.release-decision/v1` policy from [#525](https://github.com/lizhiyao/oh-my-knowledge/issues/525). Its parameters explicitly bind the Composite table, Bootstrap Family table, optional Judge Ensemble selector, sealed target and sample order, all gate thresholds, and an optional disjoint train／holdout partition. The policy validates the estimator-owned `comparisonFamilyResultId`, exact result/schema universe, Composite-to-Bootstrap observation lineage, comparison bindings, and configured Judge Ensemble coverage before applying the six-tier precedence. A missing comparison interval remains not-decided; the Core path never falls back to a point estimate. Cross-run stability remains a Series DecisionPolicy concern rather than being inferred from a single Run.
 
 ## 9. Field mapping and rejection rules
 
@@ -165,7 +175,49 @@ The first baseline is `test/fixtures/evaluation-core/scoring-equivalence-v1.json
 
 Later migration tests consume the same fixture through the new Core path and compare observations, coverage, evidence, per-unit tables, interval results, usage provenance, and reason codes. Exact identity and status comparisons never use numeric tolerance. Floating-point tolerance is allowed only in formula property tests that are not artifact equality tests.
 
-The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate.
+The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, valid negation, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate. Legacy custom assertion vectors cover valid pass/fail, negation, thrown and timed-out modules, and invalid result objects.
+
+The final offline differential harness was delivered by
+[#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) and removed with its legacy oracle
+after cutover. Its immutable input fixture remains at
+`test/fixtures/evaluation-core/scoring-equivalence-v1.json`. Current Core and production-boundary
+coverage lives under `test/evaluation-core/conformance/` and
+`test/eval-workflows/production-host/`. The differential harness prepared and executed one
+real sealed plan across two Targets and four paired samples, then traversed
+`Execution -> Evaluation -> Analysis -> Decision` through the public engine facade. The plan
+contains output-only and execution-aware deterministic assertions, all four semantic/RAG
+instruments, two rubric ensemble members with two measurement replicates each, assertion-layer,
+replicate, ensemble, dimension, composite, Bootstrap-family, Agreement, and release-decision
+nodes. The legacy projection is generated independently from the same outputs, fixed provider
+readings, Gold ratings, thresholds, and seed.
+
+The harness compares exact criterion readings, structured failure states, coverage, usage and
+provider-cost provenance, prompt IDs and frozen hashes, sample/trial/member/replicate/pairing
+identities, layer and composite rows, Bootstrap source lineage, Gold lineage, agreement
+statistics, release conclusion, and stable reason codes. Runtime-produced schema validators and
+artifact digest checks remain active; the test does not construct final tables by calling their
+pure functions. No production CLI, Report reader/writer, Studio, resume, batch, evolve, or
+persistence path participates in the run.
+
+### 10.1 Historical typed differential exception inventory
+
+The differential harness admits only the following issue-owned differences. Each entry is a
+typed value with an explicit `accepted` or `blocking` status; an unlisted mismatch fails exact
+comparison.
+
+| Owning issue | Status | Deliberate difference |
+|---|---|---|
+| [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) | accepted | Provider or parse failure remains failed/invalid/missing evidence instead of a Boolean content failure. The full-chain failure probe checks both projections and downstream coverage. |
+| [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) | accepted | `json_schema` validator sessions are isolated instead of sharing legacy process-global state. |
+| [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) | accepted | Malformed, coerced, out-of-range, empty-reason, and zero-sentinel rubric responses are not valid readings. |
+| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | accepted | Async assertion negation is sealed and applies only after a valid raw pass/fail reading; invalidity and infrastructure failure cannot become success. |
+
+This inventory is not a compatibility mode. Accepted entries describe the authoritative Core
+semantics, and the harness has no remaining differential exception blocking formal cutover.
+The production dependency direction remains Core contracts/runtime inward and host
+adapters outward: Evaluation Core does not import the legacy Report, CLI, provider SDK,
+environment, filesystem, or prompt-registry text. Provider invocation and prompt construction
+remain injected host ports; only sealed identities and captured artifacts cross the boundary.
 
 ## 11. Delivery slices
 
@@ -177,4 +229,4 @@ The semantic/RAG conformance vectors additionally freeze the intentional failure
 6. Six-tier release DecisionPolicy.
 7. Full offline old/new differential conformance and dependency audit.
 
-Every implementation slice must exercise a prepared Core plan and real Runtime lifecycle, including cancellation and exactly-once disposal. Test implementations use the `test.*` namespace. Production `omk eval`, legacy Report readers/writers, Studio, resume, batch, evolve, gold compare, and artifact graph stay untouched until the separate cutover phase.
+Every implementation slice exercised a prepared Core plan and real Runtime lifecycle, including cancellation and exactly-once disposal. Test implementations use the `test.*` namespace. The later cutover phase connected production `omk eval`, Studio, resume, batch, evolve, Gold comparison, and artifact graph to these contracts and deleted legacy Report readers and writers.

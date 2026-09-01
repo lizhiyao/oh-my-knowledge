@@ -11,13 +11,14 @@ import type {
   MeasurementPolicy,
   MetricDefinition,
   Sha256Digest,
+  TargetExecutionControls,
   TargetExecutionRequirements,
 } from '../../evaluation-core/contracts/index.js';
 
 export const CLI_EVALUATION_REQUEST_SCHEMA_VERSION =
   'omk.cli-evaluation-request/v1' as const;
 export const RESOLVED_CLI_EVALUATION_INPUT_SCHEMA_VERSION =
-  'omk.resolved-cli-evaluation-input/v2' as const;
+  'omk.resolved-cli-evaluation-input/v3' as const;
 export const RESOLVED_HOST_RESOURCES_SCHEMA_VERSION =
   'omk.resolved-host-resources/v2' as const;
 export const RUNTIME_BINDING_REQUEST_SCHEMA_VERSION =
@@ -146,6 +147,7 @@ export interface ResolvedHostResource {
     | 'mcp-config'
     | 'mock-payload'
     | 'gold-dataset'
+    | 'runtime-implementation'
     | 'content';
   readonly descriptor: ResolvedResourceDescriptor;
   readonly locator: string;
@@ -169,6 +171,8 @@ export interface ResolvedHostResources {
 }
 
 export interface ResolvedMockBinding {
+  /** Samples whose Trial may observe this mock. Mock controls are never Target-global. */
+  readonly sampleIds: readonly string[];
   readonly matchRules: JsonValue;
   readonly strict: boolean;
   readonly payloads: readonly ResolvedResourceDescriptor[];
@@ -182,10 +186,8 @@ export interface ResolvedInlineConfig {
 export interface ResolvedTargetBehavior {
   readonly systemInstructions: TargetExecutionRequirements['systemInstructions'];
   readonly artifact: ResolvedResourceDescriptor;
-  readonly workspace?: ResolvedResourceDescriptor;
   readonly mcpConfig?: ResolvedResourceDescriptor;
   readonly mocks?: readonly ResolvedMockBinding[];
-  readonly allowedTools?: readonly string[];
   readonly allowedSkills?: readonly string[];
   readonly sandbox?: {
     readonly sandboxId: string;
@@ -201,20 +203,28 @@ export interface ResolvedCliTarget {
   readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   readonly executor: {
     readonly implementationId: string;
+    /** Host resource that contains a custom out-of-process Runtime implementation. */
+    readonly implementationResource?: ResolvedResourceDescriptor;
     readonly versionConstraint?: string;
     readonly model: string;
     readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   };
   readonly behavior: ResolvedTargetBehavior;
+  readonly executionControls: TargetExecutionControls;
 }
 
 export interface ResolvedEvaluatorTemplate {
   readonly evaluatorId: string;
   readonly evaluatorKind: string;
   readonly runtimeBindingKind: 'builtin' | 'judge';
-  readonly implementationId?: string;
+  /** Evaluator algorithm identity; judge provider identity belongs to the member runtime. */
+  readonly implementationId: string;
   readonly versionConstraint?: string;
+  /** Omit only when the Evaluator applies to every Dataset sample. */
+  readonly applicableSampleIds?: readonly string[];
   readonly instrumentId: string;
+  /** Provider prompt/instrument variant owned by this Evaluator family. */
+  readonly runtimePromptVariant?: string;
   readonly replicateGroupId: string;
   readonly metricIds: readonly string[];
   readonly inputs: readonly EvaluatorDefinition['inputs'][number][];
@@ -224,12 +234,9 @@ export interface ResolvedEvaluatorTemplate {
 
 export interface ResolvedJudgeMember {
   readonly ensembleMemberId: string;
-  readonly implementationId: string;
-  readonly versionConstraint?: string;
   readonly executorId: string;
   readonly model: string;
   readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  readonly promptVariant: string;
 }
 
 export interface ResolvedIndependentSeriesInput {
@@ -250,6 +257,15 @@ export interface ResolvedEvaluationOrchestrationInput {
   };
   readonly diagnostic: 'enabled-outside-core' | 'disabled';
   readonly managedEvidence: 'append' | 'skip';
+  /** Normalized sample-bundle readiness requirements for the host doctor phase. */
+  readonly dependencyRequirements?: {
+    /** Host-only base for relative files and preflight commands. */
+    readonly baseDirectoryLocator: string;
+    readonly tools?: readonly string[];
+    readonly files?: readonly string[];
+    readonly env?: readonly string[];
+    readonly preflight?: readonly string[];
+  };
   /** Effect locators used to assemble cache ports; never enter Core canonical JSON. */
   readonly cacheSources?: {
     readonly executionSourceLocator?: string;
@@ -327,7 +343,13 @@ export interface ResolvedCliEvaluationInput {
 
 export interface RuntimeResourceLeaseRequirement {
   readonly resourceId: string;
-  readonly resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-payload' | 'content';
+  readonly resourceRole:
+    | 'artifact'
+    | 'workspace'
+    | 'mcp-config'
+    | 'mock-payload'
+    | 'runtime-implementation'
+    | 'content';
   readonly leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
 }
 
@@ -360,6 +382,7 @@ export type RuntimeBinding =
       readonly versionConstraint?: string;
       readonly protocolId: ResolvedCliTarget['protocolId'];
       readonly behaviorConfigDigest: Sha256Digest;
+      readonly executionControlsDigest: Sha256Digest;
       readonly resourceLeaseRequirements: readonly RuntimeResourceLeaseRequirement[];
       readonly qualification: {
         readonly model: string;

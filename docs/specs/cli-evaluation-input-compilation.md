@@ -1,6 +1,6 @@
 # CLI Evaluation Input Compilation
 
-> **Status**: implemented as the migration foundation for [#451](https://github.com/lizhiyao/oh-my-knowledge/issues/451), under the [Evaluation Core vNext RFC](./evaluation-core-vnext.md). This layer does not switch the production `omk eval` pipeline and does not call `createEvaluationEngine()`.
+> **Status**: implemented production input boundary under the [Evaluation Core vNext RFC](./evaluation-core-vnext.md). Parse, resolve, compile, Runtime assembly, host workflow, Core execution, and artifact persistence now form the authoritative `omk eval` path.
 
 ## 1. Purpose and boundary
 
@@ -39,6 +39,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 - `RuntimeBindingRequest` v3 contains only implementation and resource-lease requirements derived from Definition／resolved host resources. Executor qualification reuses the exact canonical `TargetDefinition.executionRequirements`; it does not maintain a second approximation. A registry may resolve bindings, but cannot override execution requirements, model, effort, prompt variant, protocol, evaluator identity, or behavior config. Its complete assembly contract is specified in [Evaluation Runtime Adapter](./evaluation-runtime-adapter.md).
 - `ResolvedHostResources` binds a stable resource ID and digest to an effect locator. It is not a Core schema and never enters canonical measurement JSON.
 - `EvaluationOrchestrationOptions` owns dry-run, resume locator, batch, independent Series repeats, preflight switches, diagnostic post-processing, gold post-hoc workflows, and managed-evidence append behavior.
+- Sample-bundle `requires` is normalized as host-only `dependencyRequirements`, together with its `baseDirectoryLocator`, for the later doctor/preflight workflow. Relative files and preflight commands therefore keep the sample bundle's resolution semantics. This host context does not enter Core measurement digests and is never silently discarded.
 - `EvaluationPresentationOptions` owns output locator, index scope, language, server, verbosity, layered view, and CLI exit presentation. None changes `DecisionResult`.
 - Static RunOptions metadata may contain serializable annotations and summaries. The orchestrator creates run ID, cancellation, event writer, and buffers only when a Run actually starts.
 
@@ -48,12 +49,12 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 Behavior identity and source lineage are separate axes:
 
-- Target config contains the bytes/configuration that affect behavior as `{resourceId, digest, mediaType, classification}` descriptors, plus normalized workspace, tool, mock, sandbox, model, and effort facts.
-- Target `executionRequirements` is derived purely from resolved behavior: explicit system-instruction use, copy-on-write workspace, native MCP config, pre-tool-call mock interception, tool allow-list, skill-discovery policy, and sandbox ID. It enters Definition and ExecutionPlan identity; only Core prepare may compare it with Runtime features.
+- Target config contains Target-wide behavior facts such as artifact, mock, sandbox, model, and effort. Canonical `executionControls` separately holds Target defaults and sample overrides for workspace and tool authority; its workspace descriptors contain no locator.
+- Target `executionRequirements` is the aggregate capability request derived from resolved behavior and every effective sample control: explicit system-instruction use, copy-on-write workspace, native MCP config, pre-tool-call mock interception, tool allow-list, skill-discovery policy, and sandbox ID. It enters Definition and ExecutionPlan identity; only Core prepare may compare it with Runtime features. It never grants the aggregate workspace or tool authority to one Trial.
 - Host resources contain locator, resolved commit, repository origin, and materialization evidence. Moving the same content between absolute/relative paths or machines does not invalidate execution identity.
 - A behavior change changes the Definition digest. A lineage-only change is assessed later by explicit comparability and provenance policy, not smuggled into Target config.
 
-Mock rules and strict mode enter Target behavior. Every payload is a digest-bound descriptor; inline secret or gold content is forbidden. Compile also requires every reference role to match its host resource kind: artifact, workspace, MCP config, mock payload, evaluator content, and gold dataset cannot be substituted for one another even when a descriptor happens to match. Runtime adapters must verify the digest immediately before use. Missing interception, allowed-tool, skill-discovery, MCP, cancellation, seed, or sandbox capability fails closed during Core prepare; adapters must never drop mocks or fall back to real external calls.
+Mock rules and strict mode enter Target behavior, while each binding explicitly lists the `sampleIds` whose Trials may observe it. `sampleId` is supplied by Core to the adapter and is never appended to the model prompt. Every payload is a digest-bound descriptor; inline secret or gold content is forbidden. Compile also requires every reference role to match its host resource kind: artifact, workspace, MCP config, mock payload, evaluator content, and gold dataset cannot be substituted for one another even when a descriptor happens to match. Runtime adapters must verify the digest immediately before use. Missing interception, allowed-tool, skill-discovery, MCP, cancellation, seed, or sandbox capability fails closed during Core prepare; adapters must never drop mocks or fall back to real external calls. Heterogeneous sample `cwd` and `allowedTools` values compile into canonical sample overrides; they are never unioned, and adapters receive only the exact effective Trial control.
 
 `ResolvedHostResources` v2 makes `descriptor.size` mandatory and represents pinned Git verification as `{verificationKind, verifiedDigest, commitId}`. The commit ID is a normalized 40–64 character lowercase hexadecimal object identity; a branch or tag name is not a pin. File-only MCP, mock, and evaluator-content resources require `content-digest`; workspaces require `tree-digest` or `pinned-git`; pinned Git is limited to artifacts and workspaces. `gold` classification and `gold-dataset` kind are mutually required. The incomplete v1 shape is rejected without a compatibility reader.
 
@@ -62,10 +63,13 @@ Dataset projections preserve the Gold boundary: Executors see only `input + exec
 ## 4. Measurement mapping
 
 - Control/treatment is represented only by `Comparison`; artifact contents are Target behavior.
-- Assertions, rubric judges, dimensions, composites, and RAG metrics remain distinct Evaluator/Metric/AnalysisGraph concepts.
+- Assertions, rubric judges, dimensions, composites, and RAG metrics remain distinct Evaluator/Metric/AnalysisGraph concepts. An Evaluator template owns its algorithm `implementationId`, instrument, and runtime prompt variant; a judge member owns only provider executor, model, effort, and ensemble identity.
 - Judge members carry explicit instrument, ensemble member, replicate group, and replicate index. No analysis may parse evaluator IDs to infer hierarchy.
 - Holdout/cohort membership is analysis-only and fixed before execution.
 - Bootstrap, correction, thresholds, and trivial-difference gates are Definition facts in AnalysisGraph or DecisionPolicy.
+- Every treatment has its own explicit paired control comparison; multi-treatment requests never collapse into one ambiguous treatment identifier.
+- Deterministic assertion evaluators emit explicit structural-missing observations when a criterion does not apply. LLM assertions and rubric dimensions instead seal canonical `applicableSampleIds`; Core omits non-applicable Evaluator coordinates from plan identity, coverage, execution, and analysis rather than scoring an unintended sample.
+- The production design uses paired blocks with `seedCoupling: uncontrolled`: current provider adapters expose no exact sampling-seed control. The host may deterministically randomize coordinate order, but it must not claim coupled model randomness.
 - Length debias changes rubric evaluator config; presentation/tone neutralization remains always on.
 - Legacy total USD maps to a shared Run provider-cost limit. Per-sample USD and milliseconds map to per-coordinate provider-cost and active-duration limits. They are not implemented by a host `AbortController` or report rewrite.
 
@@ -96,7 +100,7 @@ cache:
 
 `replay-only` is a fail-closed read path. A missing, unavailable, corrupt, or identity-mismatched coordinate terminates the run and never falls back to a live Target call. Replayed records retain the original trial identity, Runtime identity, usage, cost, and provenance; they add neither a native invocation nor an independent replicate. Until Series has an explicit effective-independent-sample model, compilation rejects every non-disabled cache mode together with an independent Series repeat. It also rejects mixing cache reuse with resume in one request. `transparent-deterministic` is available only when Core prepare verifies deterministic execution and a verified Runtime identity. Evaluation `reuse` is independent and remains bound to the complete evaluation contract, including evaluator/model/prompt variant, replicate identity, Gold-facing inputs, metrics, and evidence policy.
 
-The names reserved for the final CLI cutover are `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` will use `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. Resolve maps the source inputs to `orchestration.cacheSources.executionSourceLocator` and `evaluationSourceLocator`. These are not live production flags yet: the legacy pipeline remains unchanged. In the migration-only parser, omitted cache input and legacy disable-only input both normalize to the fresh double-disabled policy; an explicit legacy cache-enable request fails instead of being guessed as transparent reuse.
+The Core contract reserves `--execution-cache-mode`, `--evaluation-cache-mode`, `--execution-cache-source`, and `--evaluation-cache-source`; `eval.yaml` reserves `cache.executionMode`, `cache.evaluationMode`, `cache.executionSource`, and `cache.evaluationSource`. These explicit reuse controls are not exposed by the current production CLI. Production runs normalize omitted cache input and the disable-only `--no-cache` input to a fresh, double-disabled policy. An explicit cache-enable request fails instead of being guessed as transparent reuse.
 
 ## 5. Determinism and validation
 
@@ -108,11 +112,11 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 
 ## 6. Migration boundary
 
-This layer is additive. The production `omk eval` command continues to use `RunConfig → runEvaluation → executeEvaluationPipeline`; it does not double-run, shadow-run, persist Core Bundles, or change legacy reports. A later Runtime-adapter change may consume only the contracts emitted here and may not parse CLI inputs again.
+This layer is the production boundary. `omk eval` consumes its contracts through Runtime assembly and the Core host workflow, then persists the Core Plan, Bundles, and Report. The deleted legacy pipeline is neither double-run nor shadow-run, and no later layer reparses CLI input.
 
-Target execution requirements make the migration contracts intentionally incompatible: resolved compiler input is `omk.resolved-cli-evaluation-input/v2`, and binding output is `omk.runtime-binding-request/v3`. Earlier shapes are rejected without inference or a compatibility reader. The Core v1 Definition／Plan JSON Schemas gain a required Target field and this change is released as `BREAKING-SCHEMA`; no scoring or statistical comparability invariant changes.
+The migration contracts are intentionally incompatible: resolved compiler input is `omk.resolved-cli-evaluation-input/v3`, including sample-scoped mock bindings and Evaluator-owned implementation identity; binding output is `omk.runtime-binding-request/v3`. Earlier shapes are rejected without inference or a compatibility reader. No scoring or statistical comparability invariant changes.
 
-The legacy `--no-cache`／`noCache` boolean has no faithful Core equivalent: its enabled state meant stochastic read-through execution reuse and said nothing about Evaluation cache. The registry therefore marks it for replacement rather than mapping it to `transparent-deterministic` or `reuse`. The final cutover may remove the old cache files and behavior without a compatibility reader.
+The disable-only `--no-cache`／`noCache` surface has no faithful Core cache-enable equivalent: the removed implementation used stochastic read-through execution reuse and expressed nothing about Evaluation cache. The current registry therefore normalizes only the disabled state and marks explicit cache reuse for a future, separately designed interface. Old cache files are not read.
 
 ## 7. Exhaustive input registry
 

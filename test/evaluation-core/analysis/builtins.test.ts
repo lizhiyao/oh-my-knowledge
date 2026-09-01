@@ -414,6 +414,7 @@ describe('Evaluation Core built-in estimators', () => {
     await expect(progress.decide(context)).resolves.toEqual({
       decisionStatus: 'decided',
       verdict: 'REGRESSION',
+      reasonCodes: ['effect-below-regression-threshold'],
     });
     await expect(progress.decide({
       ...context,

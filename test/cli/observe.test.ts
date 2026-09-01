@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {

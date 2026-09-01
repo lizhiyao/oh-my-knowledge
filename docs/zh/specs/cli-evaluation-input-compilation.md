@@ -1,6 +1,6 @@
 # CLI 评测输入编译规范
 
-> **状态**：作为 [#451](https://github.com/lizhiyao/oh-my-knowledge/issues/451) 的迁移基础实现，服从 [Evaluation Core vNext RFC](./evaluation-core-vnext.md)。本层不切换正式 `omk eval` pipeline，也不调用 `createEvaluationEngine()`。
+> **状态**：本规范已成为 [Evaluation Core vNext RFC](./evaluation-core-vnext.md) 下的正式输入边界。Parse、Resolve、Compile、Runtime 装配、宿主 workflow、Core 执行与产物持久化共同组成权威 `omk eval` 路径。
 
 ## 一、目的与边界
 
@@ -39,6 +39,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 - `RuntimeBindingRequest` v3 只保存从 Definition／已解析宿主资源派生的 implementation 和 resource lease requirement。Executor qualification 直接复用 canonical `TargetDefinition.executionRequirements`，不维护第二份近似语义。宿主 registry 可以解析 binding，但不能覆盖 execution requirement、model、effort、prompt variant、protocol、evaluator identity 或行为配置。完整装配契约见 [Evaluation Runtime Adapter 规范](./evaluation-runtime-adapter.md)；
 - `ResolvedHostResources` 用稳定 resource ID 和 digest 绑定 effect locator。它不是 Core schema，也不进入 canonical measurement JSON；
 - `EvaluationOrchestrationOptions` 负责 dry-run、resume locator、batch、独立 Series repeat、preflight 开关、diagnostic 后处理、gold post-hoc workflow 和受管证据追加；
+- Sample bundle 的 `requires` 会连同 `baseDirectoryLocator` 规范化成宿主侧 `dependencyRequirements`，供后续 doctor／preflight workflow 消费；相对文件与 preflight 命令因此继续锚定 sample bundle 根目录。该宿主上下文不进入 Core 测量 digest，也不能被静默丢弃；
 - `EvaluationPresentationOptions` 负责输出 locator、索引范围、语言、server、verbose、layered view 和 CLI exit 展示。这些字段都不能改变 `DecisionResult`；
 - 静态 RunOptions metadata 可以保存可序列化的 annotation 和 summary。只有真正启动 Run 时，orchestrator 才创建 run ID、取消信号、EventWriter 和 buffer。
 
@@ -48,12 +49,12 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 行为身份和来源 lineage 是两条不同轴：
 
-- Target config 通过 `{resourceId, digest, mediaType, classification}` descriptor 保存会影响行为的字节／配置，并包含规范化的 workspace、tool、mock、sandbox、model 和 effort 事实；
-- Target `executionRequirements` 从 resolved behavior 纯确定地派生：显式 system instruction 使用、copy-on-write workspace、native MCP config、pre-tool-call mock interception、tool allow-list、skill discovery policy 和 sandbox ID。它进入 Definition 与 ExecutionPlan identity，只有 Core prepare 可以把它与 Runtime feature 做匹配；
+- Target config 保存 artifact、mock、sandbox、model 与 effort 等 Target-wide behavior fact。canonical `executionControls` 单独保存 workspace 与工具授权的 Target 默认值和 Sample override；其中的 workspace descriptor 不包含 locator；
+- Target `executionRequirements` 是从 resolved behavior 与全部 effective sample control 派生的聚合 capability 请求：显式 system instruction 使用、copy-on-write workspace、native MCP config、pre-tool-call mock interception、tool allow-list、skill discovery policy 和 sandbox ID。它进入 Definition 与 ExecutionPlan identity，只有 Core prepare 可以把它与 Runtime feature 做匹配；它绝不把聚合 workspace 或工具权限授予某个 Trial；
 - Host resources 保存 locator、resolved commit、仓库来源和 materialization 证据。同一内容在绝对／相对路径或不同机器间移动，不会让 execution identity 失效；
 - 行为变化会改变 Definition digest。只有 lineage 变化时，后续由显式 comparability／provenance policy 判断，不能偷偷塞进 Target config。
 
-Mock match rule 和 strict mode 进入 Target 行为。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。
+Mock match rule 和 strict mode 进入 Target 行为，每个 binding 通过 `sampleIds` 显式限定可观察它的 Trial。`sampleId` 由 Core 交给 adapter，绝不拼入模型 prompt。每份 payload 都是 digest-bound descriptor；禁止内联 secret 或 gold 内容。Compile 还要求每个引用角色匹配对应的宿主资源类型：artifact、workspace、MCP config、mock payload、evaluator content 和 gold dataset 即使 descriptor 恰好相同，也不能相互替代。Runtime adapter 在使用前必须重新校验 digest。缺少 interception、allowed-tool、skill-discovery、MCP、cancellation、seed 或 sandbox capability 时，Core prepare 必须 fail closed；adapter 不能删除 mock，也不能降级成真实外部调用。不同 Sample 的 `cwd` 与 `allowedTools` 会编译成 canonical sample override，永远不做 union；adapter 只能收到准确的 effective Trial control。
 
 `ResolvedHostResources` v2 要求 `descriptor.size` 必填，并把 pinned Git verification 表达为 `{verificationKind, verifiedDigest, commitId}`。`commitId` 必须是规范化的 40–64 位小写十六进制对象身份，branch 或 tag 名不是 pin。仅文件的 MCP、mock 和 evaluator content 资源必须使用 `content-digest`；workspace 必须使用 `tree-digest` 或 `pinned-git`；pinned Git 仅适用于 artifact 和 workspace。`gold` classification 与 `gold-dataset` kind 必须同时成立。不完整的 v1 结构会被直接拒绝，不提供 compatibility reader。
 
@@ -62,10 +63,13 @@ Dataset 投影保护 Gold 边界：Executor 只看到 `input + executionContext`
 ## 四、测量映射
 
 - control／treatment 角色只进入 `Comparison`，artifact 内容属于 Target 行为；
-- assertion、rubric 评委、dimension、composite 和 RAG metric 仍是不同的 Evaluator／Metric／AnalysisGraph 概念；
+- assertion、rubric 评委、dimension、composite 和 RAG metric 仍是不同的 Evaluator／Metric／AnalysisGraph 概念。Evaluator template 持有算法 `implementationId`、instrument 与 runtime prompt variant；judge member 只持有 provider executor、model、effort 与 ensemble identity；
 - 评委成员显式携带 instrument、ensemble member、replicate group 和 replicate index。分析代码不得解析 evaluator ID 推断层级；
 - holdout／cohort membership 只进入 analysis，并在执行前固定；
 - bootstrap、correction、threshold 和 trivial-difference gate 是 AnalysisGraph 或 DecisionPolicy 中的 Definition 事实；
+- 每个 treatment 都有独立、显式的 paired control comparison，多 treatment 请求不能压成一个含混的 treatment identity；
+- 确定性 assertion evaluator 在 criterion 不适用时产出显式 structural-missing observation。LLM assertion 与 rubric dimension 则封存 canonical `applicableSampleIds`；Core 会从 plan identity、coverage、execution 与 analysis 中排除不适用的 Evaluator coordinate，不能误评到其它 sample；
+- 生产设计使用 paired block 与 `seedCoupling: uncontrolled`：当前 provider adapter 都不具备精确 sampling seed control。宿主可以确定性随机化 coordinate 顺序，但不能声称模型随机性已经耦合；
 - length debias 改变 rubric evaluator config；排版／语气中性化恒开；
 - 旧 total USD 映射为共享 Run provider-cost limit；per-sample USD 和毫秒映射为 per-coordinate provider-cost／active-duration limit。不得用宿主 `AbortController` 或事后改写 report 实现。
 
@@ -96,7 +100,7 @@ cache:
 
 `replay-only` 是 fail-closed 只读路径。coordinate 缺失、source 不可用、entry 损坏或 identity 不匹配都会终止运行，绝不回退为实时 Target 调用。Replay record 沿用原 trial identity、Runtime identity、usage、cost 和 provenance；既不新增 native invocation，也不增加独立 replicate。在 Series 具备显式 effective-independent-sample 模型前，Compile 会拒绝任何非 disabled cache mode 与独立 Series repeat 组合，也会拒绝在同一请求中混用 cache reuse 与 resume。只有 Core prepare 验证 execution 为 deterministic 且 Runtime identity 为 verified 时，才能使用 `transparent-deterministic`。Evaluation `reuse` 与 Execution 独立，并继续绑定完整 evaluation contract，包括 evaluator／model／prompt variant、replicate identity、Gold-facing input、metric 和 evidence policy。
 
-正式 CLI 切换预留名称为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source`；`eval.yaml` 使用 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。Resolve 把 source 输入映射为 `orchestration.cacheSources.executionSourceLocator` 和 `evaluationSourceLocator`。这些暂时不是正式生产 flag，旧 pipeline 的运行行为保持不变。迁移层 Parse 中，省略 cache 输入和旧 disable-only 输入都会规范化为 fresh 双 disabled policy；显式请求旧 cache enable 则直接失败，不猜测成透明复用。
+Core contract 为 `--execution-cache-mode`、`--evaluation-cache-mode`、`--execution-cache-source` 和 `--evaluation-cache-source` 预留语义；`eval.yaml` 相应预留 `cache.executionMode`、`cache.evaluationMode`、`cache.executionSource` 和 `cache.evaluationSource`。当前正式 CLI 尚未开放这些显式复用控制。省略 cache 输入或传入 disable-only 的 `--no-cache` 都会规范化为 fresh 双 disabled policy；显式请求 cache enable 会直接失败，不猜测成透明复用。
 
 ## 五、确定性与校验
 
@@ -108,11 +112,11 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 ## 六、迁移边界
 
-本层是增量架构。正式 `omk eval` 仍走 `RunConfig → runEvaluation → executeEvaluationPipeline`；不双跑、不 shadow run、不持久化 Core Bundle，也不改变旧 Report。后续 Runtime adapter 只能消费这里产出的 contract，不能重新解析 CLI 输入。
+本层已经是正式生产边界。`omk eval` 把这里产出的 contract 交给 Runtime 装配与 Core 宿主 workflow，并持久化 Core Plan、Bundle 和 Report。已删除的旧 pipeline 不会双跑或 shadow run，后续层也不会重新解析 CLI 输入。
 
-Target execution requirement 会让迁移 contract 有意不兼容：resolved compiler input 升级为 `omk.resolved-cli-evaluation-input/v2`，binding output 升级为 `omk.runtime-binding-request/v3`。旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。Core v1 Definition／Plan JSON Schema 增加 Target 必填字段，本次改动按 `BREAKING-SCHEMA` 发布；评分与统计可比性不变量不变。
+迁移 contract 有意不兼容：resolved compiler input 使用 `omk.resolved-cli-evaluation-input/v3`，包含 sample-scoped mock binding 与 Evaluator 自有 implementation identity；binding output 使用 `omk.runtime-binding-request/v3`。旧结构会直接被拒绝，不做推断，也不提供 compatibility reader。评分与统计可比性不变量不变。
 
-旧 `--no-cache`／`noCache` boolean 没有忠实的 Core 等价语义：它的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。Registry 因此把它标记为 replace，不再映射成 `transparent-deterministic` 或 `reuse`。最终切换可以直接删除旧 cache 文件与旧行为，不保留 compatibility reader。
+disable-only 的 `--no-cache`／`noCache` 没有忠实的 Core cache-enable 等价语义：已删除实现中的 enabled 状态表示 stochastic read-through execution reuse，却没有表达 Evaluation cache。当前 Registry 只规范化 disabled 状态，并把显式 cache reuse 留给未来单独设计的接口；旧 cache 文件不会被读取。
 
 ## 七、完整输入 registry
 

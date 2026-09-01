@@ -1,6 +1,6 @@
 # Evaluation Runtime Adapter 规范
 
-> **状态**：已建立 [#457](https://github.com/lizhiyao/oh-my-knowledge/issues/457) 的 binding assembly、verified resource lease 与 Core composition root。本层是增量架构，不切换正式 `omk eval` pipeline。
+> **状态**：本规范已成为正式生产宿主边界。binding assembly、verified resource lease、adapter preflight、非阻塞事件投影、Core composition root，以及 factory registry／support port 现已驱动 `omk eval`。
 
 ## 一、边界
 
@@ -44,6 +44,8 @@ Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Samplin
 
 Assembly 首先复制并深度冻结 Definition、Series 和 RuntimeBindingRequest。Factory 按 `implementationId` 查找，但按 binding 分别调用，因此共享同一实现的两个 reference 仍得到不同 port instance。
 
+`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、Claude CLI／SDK、OpenAI API、Anthropic API、custom command，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
+
 Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Executor binding 还必须与 `TargetDefinition.executionRequirements` 精确相等；qualification 直接复用该 canonical 值，不重新派生 feature 语义。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。只有 Core 能把 requirements 与实际 port capability manifest 做匹配。
 
 每个 entry 保存：
@@ -68,15 +70,15 @@ Composition root conformance 使用 `test.*` 命名空间下、根据输入和 b
 
 ## 五、Custom-command Runtime adapter
 
-`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它只接受绝对 executable path、显式 argument vector、完整且逐项分类的 child environment，以及 ephemeral-run 或 workspace overlay 两种工作目录策略。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory；没有 workspace lease 时，它会创建并最终删除 run 私有目录，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
+`createCustomCommandExecutorAdapter()` 是进程外 Runtime 的基准桥接层。它接受 sealed Target 与 RuntimeBinding、绝对 executable path、显式 argument vector，以及完整且逐项分类的 child environment。每个环境变量必须分类为公开 behavior identity、credential 或 effect locator；behavior identity 进入 Runtime facet，credential 与 locator 的值既不持久化，也不计算持久化 hash。Adapter 不启动 shell、不搜索 `PATH`、不继承 `process.env`／`process.cwd()`、不解析 command string，也不接受任意 live directory。它从准确的 sample-scoped Trial control 选择工作目录：需要 workspace 时使用已验证的 copy-on-write overlay，否则创建并最终删除 run 私有目录，从执行契约中排除宿主环境漂移、可变目录 locator 与 shell quoting 差异。
 
-每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-command-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、内容寻址的 isolation key，以及当前 binding 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。若工作目录要求 workspace，则必须解析到当前 binding 的精确 copy-on-write overlay。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
+每次 attempt 只启动一个进程，并通过 stdin 发送一份 canonical `omk.custom-command-exchange/v1` JSON 文档。文档只包含 Core run／trial／attempt context、准确的 effective execution control、内容寻址的 isolation key，以及当前 Trial 已验证的 resource lease 投影。Resource entry 按 resource ID canonical 排序。自定义 Runtime 实现本身是每个 executor binding 中一项 sensitive、内容寻址的资源；adapter 只启动其 Run 级 immutable snapshot，绝不启动原始 locator。adapter 会拒绝与 sealed Target 不一致的 Trial control，要求 binding lease 精确覆盖，并从 child request 中排除 Runtime 实现及其它 Sample 的全部 workspace。Gold classification 和 analysis-only resource kind 会在创建进程前 fail closed。响应是严格、source-neutral、带版本的文档：成功响应可包含 output／trace 和已报告 usage；结构化失败只暴露稳定 code 与 execution／infrastructure stage。未报告 usage 继续保持缺失；多余字段和非法 JSON fail closed；child stderr 不进入 Core error。
 
 这版 process-per-attempt contract 只支持 `omk.invoke/v1`，不声明 `omk.session/v1`。Session adapter 必须真正持有 per-trial 隔离 session 的生命周期，不能把互相独立的子进程伪装成保留了对话状态。
 
 Adapter 把 Core attempt 的原始 `AbortSignal` 直接交给进程协调器；协调器先发 SIGTERM，再以有界 SIGKILL 兜底，并等待 child 真正 settle。即使 child 捕获 SIGTERM 后以零码退出，取消仍是权威结果。Adapter 不拥有 timeout、retry、budget 或 cache。每条输出流另有显式 byte limit 作为宿主内存保护；该限制进入 Runtime implementation facet，不属于 measurement Policy。
 
-Custom-command identity 采用保守模型。每个 assembly 周期都重新解析，不使用进程级缓存。若宿主明确提供本地实现文件，adapter 会对实际字节计算 hash，记录 canonical role／digest／size 证据，并在每次 spawn 前复核；由于 adapter 无法证明调用方列出的文件覆盖完整，assurance 仍为 `declared`。没有内容证据时，basis 是 `opaque`，assurance 是 `unknown`。Argument、executable path digest、分类后的 environment identity、工作目录策略、输出限制、exchange version、进程组合与 identity coverage 都作为不泄露 secret 的 implementation facet 捕获。因此，command string 或 path 本身绝不可能产生 `verified` identity。Capability 是 factory 持有的固定 manifest，不根据 Target requirement 动态补齐，并且必须诚实声明本 adapter 的 best-effort cancellation 与 per-invocation stateless lifecycle。
+Custom-command identity 采用保守模型。每个 assembly 周期都重新解析，不使用进程级缓存。若宿主明确提供本地实现文件，adapter 会对实际字节计算 hash，记录 canonical role／digest／size 证据，并在每次 spawn 前复核；由于 adapter 无法证明调用方列出的文件覆盖完整，assurance 仍为 `declared`。没有内容证据时，basis 是 `opaque`，assurance 是 `unknown`。Argument、executable path digest、分类后的 environment identity、sample-scoped 工作目录执行方式、输出限制、exchange version、进程组合与 identity coverage 都作为不泄露 secret 的 implementation facet 捕获。因此，command string 或 path 本身绝不可能产生 `verified` identity。Capability 是 factory 持有的固定 manifest，不根据 Target requirement 动态补齐，并且必须诚实声明本 adapter 的 best-effort cancellation 与 per-invocation stateless lifecycle。
 
 ## 六、资源需求
 

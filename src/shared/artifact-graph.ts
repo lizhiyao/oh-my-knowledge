@@ -4,7 +4,7 @@ import type {
   ArtifactGraphEvidenceRef,
   ArtifactGraphNode,
   ArtifactGraphSummary,
-} from '../types/index.js';
+} from '../artifact-graph/contracts.js';
 import { normalizeRfc3339Timestamp } from './timestamp.js';
 
 const SOURCE_KINDS = new Set(['doctor', 'eval', 'observe']);
@@ -34,6 +34,14 @@ const NODE_KINDS = new Set([
   'skill_invocation',
   'tool_call',
   'gap_signal',
+  'evaluation_run',
+  'target',
+  'evaluator',
+  'metric',
+  'execution_result',
+  'evaluation_result',
+  'analysis_result',
+  'decision',
 ]);
 const STATUSES = new Set(['ok', 'warning', 'failed', 'skipped', 'unknown', 'not_measured']);
 const BINDING_STRENGTHS = new Set([
@@ -69,6 +77,7 @@ const EVIDENCE_SOURCE_KINDS = new Set([
   'observe-report',
   'trace',
   'sample',
+  'evaluation-core-document',
   'managed-record',
 ]);
 const SELECTOR_KINDS = new Set([

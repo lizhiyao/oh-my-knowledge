@@ -450,10 +450,10 @@ async function executeWithTimeout(
   }
 }
 
-function cacheKey(plan: SealedRunPlan, coordinate: PlannedExecutionCoordinate): Sha256Digest {
+function cacheKey(coordinate: PlannedExecutionCoordinate): Sha256Digest {
   return digestCanonicalJson({
-    derivation: 'omk.execution-cache-key/v1',
-    executionPlanDigest: plan.execution.executionPlanDigest,
+    derivation: 'omk.execution-cache-key/v2',
+    executionCoordinateDigest: coordinate.executionCoordinateDigest,
     trialId: coordinate.trialId,
   });
 }
@@ -477,7 +477,7 @@ function assertCachedRecord(
   const expectedProvenance = {
     provenanceKind: 'native' as const,
     trust: runtime.assuranceLevel,
-    parentDigests: [plan.execution.executionPlanDigest],
+    parentDigests: [coordinate.executionCoordinateDigest],
   };
   if (entry.cacheKeyDigest !== key
       || entry.sourceRecordDigest !== digestCanonicalJson(record)
@@ -485,6 +485,7 @@ function assertCachedRecord(
       || record.randomizationSlotId !== coordinate.randomizationSlotId
       || record.sampleId !== coordinate.sampleId
       || record.trialIndex !== coordinate.trialIndex
+      || record.executionCoordinateDigest !== coordinate.executionCoordinateDigest
       || record.trialId !== coordinate.trialId
       || record.trialSeed !== coordinate.trialSeed
       || record.schedulingBlockId !== coordinate.schedulingBlockId
@@ -635,7 +636,10 @@ function trialContext(
   if (sample === undefined) throw new Error('Planned sample disappeared');
   const controlled = plan.execution.experiment.sampling.seedCoupling !== 'uncontrolled';
   return deepFreeze(snapshotJson({
+    sampleId: coordinate.sampleId,
     targetId: coordinate.targetId,
+    executionCoordinateDigest: coordinate.executionCoordinateDigest,
+    executionControl: coordinate.executionControl,
     protocolId: binding.target.protocolId,
     input: sample.input,
     ...(sample.executionContext !== undefined
@@ -648,6 +652,20 @@ function trialContext(
     samplingUnitIds: coordinate.samplingUnitIds,
     ...(controlled ? { trialSeed: coordinate.trialSeed } : {}),
   })) as ExecutorTrialContext;
+}
+
+function executionRecordIdentity(coordinate: PlannedExecutionCoordinate) {
+  return {
+    targetId: coordinate.targetId,
+    randomizationSlotId: coordinate.randomizationSlotId,
+    sampleId: coordinate.sampleId,
+    trialIndex: coordinate.trialIndex,
+    executionCoordinateDigest: coordinate.executionCoordinateDigest,
+    trialId: coordinate.trialId,
+    trialSeed: coordinate.trialSeed,
+    schedulingBlockId: coordinate.schedulingBlockId,
+    samplingUnitIds: coordinate.samplingUnitIds,
+  };
 }
 
 async function executeCoordinate(
@@ -698,7 +716,7 @@ async function executeCoordinate(
   let terminalStatus: 'completed' | 'failed' | 'cancelled' = 'failed';
   let reservationId = coordinate.reservationId;
   let cacheEligible = true;
-  const key = cacheKey(plan, coordinate.coordinate);
+  const key = cacheKey(coordinate.coordinate);
   try {
     const trialEventDelivered = await events.emit(
       'execution.trial.started',
@@ -981,12 +999,12 @@ async function executeCoordinate(
   const usage = aggregateExecutionAttemptUsage(attempts);
   const completedAt = ports.clock.timestamp();
   const recordBase = {
-    ...coordinate.coordinate,
+    ...executionRecordIdentity(coordinate.coordinate),
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native' as const,
       trust: binding.runtime.assuranceLevel,
-      parentDigests: [plan.execution.executionPlanDigest],
+      parentDigests: [coordinate.coordinate.executionCoordinateDigest],
     },
     attempts,
     timing: {
@@ -1060,7 +1078,7 @@ async function prepareBlock(
     }
     const binding = prepared.bindings.get(coordinate.targetId);
     if (binding === undefined) throw new Error('Target binding disappeared');
-    const key = cacheKey(plan, coordinate);
+    const key = cacheKey(coordinate);
     try {
       const entry = await ports.cache?.get(key);
       if (entry !== undefined) {
@@ -1137,12 +1155,12 @@ function censoredRecord(
   const binding = prepared.bindings.get(coordinate.targetId);
   if (binding === undefined) throw new Error('Target binding disappeared');
   return {
-    ...coordinate,
+    ...executionRecordIdentity(coordinate),
     runtime: snapshotJson(binding.runtime),
     provenance: {
       provenanceKind: 'native',
       trust: 'verified',
-      parentDigests: [plan.execution.executionPlanDigest],
+      parentDigests: [coordinate.executionCoordinateDigest],
     },
     executionStatus: 'budget-censored',
     censorReasonCode: reason,

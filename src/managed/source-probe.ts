@@ -3,7 +3,7 @@ import { isAbsolute, resolve, join } from 'node:path';
 import { resolveInstallSource } from '../inputs/source-resolver.js';
 import { hashArtifactSource, isDistributablePath } from '../inputs/content-hash.js';
 import type { SourceProbe } from './list-view.js';
-import type { ManagedArtifactRecord } from '../types/index.js';
+import type { ManagedArtifactRecord } from './contracts.js';
 
 /**
  * 受管记录**当前源**的状态探测——`omk list`(drift / 生命周期)与 `omk promote`(门禁前先确认源未漂)共用

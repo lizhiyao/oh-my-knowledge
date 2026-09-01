@@ -7,6 +7,7 @@ import {
   NonEmptyStringSchema,
 } from './common.js';
 import { JsonValueSchema } from './json.js';
+import { TargetExecutionControlsSchema } from './execution-controls.js';
 
 export const EVALUATION_DEFINITION_SCHEMA_VERSION = 'omk.evaluation-definition/v1' as const;
 export const MEASUREMENT_POLICY_SCHEMA_VERSION = 'omk.measurement-policy/v1' as const;
@@ -77,6 +78,7 @@ export const TargetDefinitionSchema = z.object({
   executorId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
   executionRequirements: TargetExecutionRequirementsSchema,
+  executionControls: TargetExecutionControlsSchema,
   config: JsonValueSchema.optional(),
 }).strict();
 
@@ -97,6 +99,8 @@ export const EvaluatorDefinitionSchema = z.object({
   evaluatorKind: IdentifierSchema,
   implementationId: IdentifierSchema,
   versionConstraint: NonEmptyStringSchema.optional(),
+  /** Omitted means every Dataset sample; present values are a canonical non-empty subset. */
+  applicableSampleIds: z.array(IdentifierSchema).min(1).optional(),
   measurement: z.object({
     instrumentId: IdentifierSchema,
     ensembleMemberId: IdentifierSchema,
@@ -255,6 +259,7 @@ export const DecisionPolicyDefinitionSchema = z.object({
   versionConstraint: NonEmptyStringSchema.optional(),
   analysisResultIds: z.array(IdentifierSchema).min(1),
   comparisonFamily: z.array(ComparisonFamilyMemberSchema).min(1).optional(),
+  comparisonFamilyResultId: IdentifierSchema.optional(),
   multipleComparisonPolicyId: IdentifierSchema.optional(),
   minimumEvidenceStatus: z.enum(['complete', 'partial', 'unresolvable']),
   parameters: JsonValueSchema.optional(),

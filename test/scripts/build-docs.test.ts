@@ -219,7 +219,10 @@ describe('scripts/build-docs codegen', () => {
     const content = readFileSync(CLI_EN, 'utf8');
     // 这些 prose 在 marker 之外,本 codegen 不应触碰
     assert.ok(content.includes('Runs the offline evaluation, applies the verdict gate'), 'eval intro prose missing');
-    assert.ok(content.includes('The HTML report has two tabs'), 'HTML report two-tabs prose missing');
+    assert.ok(
+      content.includes('Studio opens the validated Core run'),
+      'Core Studio projection prose missing',
+    );
     assert.ok(content.includes('pre-evaluation gate'), 'doctor sampling / eval-gate prose missing');
     assert.ok(content.includes('The homepage indexes local Codex conversations directly'), 'Studio IA prose missing');
   });
@@ -227,7 +230,10 @@ describe('scripts/build-docs codegen', () => {
   it('docs/zh/reference/cli.md hand-curated prose preserved', () => {
     const content = readFileSync(CLI_ZH, 'utf8');
     assert.ok(content.includes('运行离线评测'), 'eval intro zh prose missing');
-    assert.ok(content.includes('HTML 报告有两个 tab'), 'HTML 报告 tabs zh prose missing');
+    assert.ok(
+      content.includes('Studio 打开的是经过校验的 Core run'),
+      'Core Studio projection zh prose missing',
+    );
     assert.ok(content.includes('评测前置门禁'), 'doctor sampling / eval-gate zh prose missing');
     assert.ok(content.includes('首页直接索引本机 Codex 对话'), 'Studio IA zh prose missing');
   });

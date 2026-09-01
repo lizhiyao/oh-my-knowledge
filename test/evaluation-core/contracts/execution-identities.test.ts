@@ -9,18 +9,18 @@ import {
   type Sha256Digest,
 } from '../../../src/evaluation-core/contracts/index.js';
 
-const executionPlanDigest = `sha256:${'1'.repeat(64)}` as Sha256Digest;
+const executionCoordinateDigest = `sha256:${'1'.repeat(64)}` as Sha256Digest;
 const randomizationDesignDigest = `sha256:${'3'.repeat(64)}` as Sha256Digest;
 
 describe('Execution identity derivation', () => {
   it('matches the v1 domain-separated golden vector', () => {
     const pairingBlockId = deriveSamplingUnitId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       unitKind: 'pairing',
       memberSampleIds: ['s2', 's1'],
     });
     const schedulingBlockId = deriveSchedulingBlockId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       trialIndex: 0,
       coordinates: [
         { targetId: 'treatment', sampleId: 's1' },
@@ -29,20 +29,20 @@ describe('Execution identity derivation', () => {
       pairingBlockId,
     });
     const trialId = deriveTrialId({
-      executionPlanDigest,
+      executionCoordinateDigest,
       targetId: 'control',
       sampleId: 's1',
       trialIndex: 0,
     });
 
     expect(pairingBlockId).toBe(
-      'sha256:ebadbb4f19e742a368d1cba4013a295ff7eaf36b58b5b4da0f0306909cebd4fe',
+      'sha256:a89efa6127d254c2dfe97878808d0986bbc693a37717872f4524404a398c8fee',
     );
     expect(schedulingBlockId).toBe(
-      'sha256:c3b78a4903377b684c7a120d8f00bf360613107fc5968ff43214c91f03727cd0',
+      'sha256:4b14106cee0bcaead82843c8b0117e37df0b729c0be1009870879486dcfcc2f6',
     );
     expect(trialId).toBe(
-      'sha256:6627fa21a900f74e3d5c6aa726ca5e5090595c0617d2385fff59afcf0b84dfa8',
+      'sha256:7398b9ac60fd180d014db3b68779dc86a11a0353b754a7bf6ba035a9719e15e0',
     );
     expect(deriveTrialSeed({
       randomizationDesignDigest,
@@ -71,29 +71,29 @@ describe('Execution identity derivation', () => {
       'sha256:f1b4f0911478ff68d7c94ad818dbb4ca145f69cfbbd7626d1e8fa46ff4c70b9d',
     );
     expect(deriveAttemptId({ trialId, attemptNumber: 1 })).toBe(
-      'sha256:f664c308f4675c875006748ec0893aa279b47a2eb97d52e8845a13fcd27cc833',
+      'sha256:f99341d83962e6ff9bef6c9ba6e8d8188cc71b3d9bbcb4c2e831ca2d7166e1ba',
     );
   });
 
   it('treats sampling members and scheduling arms as sets', () => {
     expect(deriveSamplingUnitId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       unitKind: 'pairing',
       memberSampleIds: ['s1', 's2'],
     })).toBe(deriveSamplingUnitId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       unitKind: 'pairing',
       memberSampleIds: ['s2', 's1'],
     }));
     expect(deriveSchedulingBlockId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       trialIndex: 0,
       coordinates: [
         { targetId: 't2', sampleId: 's2' },
         { targetId: 't1', sampleId: 's1' },
       ],
     })).toBe(deriveSchedulingBlockId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       trialIndex: 0,
       coordinates: [
         { targetId: 't1', sampleId: 's1' },
@@ -104,14 +104,14 @@ describe('Execution identity derivation', () => {
 
   it('preserves target/sample coordinate incidence in scheduling identity', () => {
     expect(deriveSchedulingBlockId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       trialIndex: 0,
       coordinates: [
         { targetId: 't1', sampleId: 's1' },
         { targetId: 't2', sampleId: 's2' },
       ],
     })).not.toBe(deriveSchedulingBlockId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       trialIndex: 0,
       coordinates: [
         { targetId: 't1', sampleId: 's2' },
@@ -173,12 +173,12 @@ describe('Execution identity derivation', () => {
 
   it('rejects ambiguous identity inputs', () => {
     expect(() => deriveSamplingUnitId({
-      executionPlanDigest,
+      randomizationDesignDigest,
       unitKind: 'cluster',
       memberSampleIds: ['s1', 's1'],
     })).toThrow(/duplicate/);
     expect(() => deriveTrialId({
-      executionPlanDigest,
+      executionCoordinateDigest,
       targetId: 't',
       sampleId: 's',
       trialIndex: -1,

@@ -16,11 +16,12 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
+import type { ExecutorFn, ToolCallInfo, TurnInfo } from '../types/index.js';
+import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } from './contracts.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
-import { setOwnRecordValue } from '../shared/record-count.js';
 import { toolCallStatus } from '../shared/tool-call-status.js';
+import { setOwnRecordValue } from '../shared/record-count.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -140,7 +141,7 @@ export function extractFailedSearchSignals(toolCalls: ToolCallInfo[]): GapSignal
 
 // ---------- Signals 2 & 3: text-based (markers + hedging) ----------
 
-function collectAssistantText(vr: VariantResult): string {
+function collectAssistantText(vr: AnalysisVariantResult): string {
   const parts: string[] = [];
   if (vr.turns) {
     for (const turn of vr.turns) {
@@ -288,7 +289,7 @@ export function extractRepeatedFailureSignals(turns: TurnInfo[] | undefined): Ga
  * Run all four signal extractors on a single variant's result for one sample.
  * Output signals carry the provided sampleId.
  */
-export function extractGapSignalsFromSample(variantResult: VariantResult, sampleId: string): GapSignal[] {
+export function extractGapSignalsFromSample(variantResult: AnalysisVariantResult, sampleId: string): GapSignal[] {
   // 1. Failed searches — flatten all tool calls across turns + top-level fallback
   const toolCalls: ToolCallInfo[] = [];
   if (variantResult.turns) {
@@ -347,7 +348,7 @@ export function extractGapSignalsFromTrace(input: {
  * failed to execute) are EXCLUDED from both numerator and denominator.
  * gap_rate is computed only on samples that actually produced a trace.
  */
-export function computeGapReport(results: ResultEntry[], variant: string): GapReport {
+export function computeGapReport(results: AnalysisEntry[], variant: string): GapReport {
   const signals: GapSignal[] = [];
   const sampleIdsWithGap = new Set<string>();
   // 每用例取信号中的最强权重,用于 weightedGapRate(v0.2 §6)。
@@ -360,12 +361,12 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
     if (!vr || vr.ok === false) continue;
     sampleCount += 1;
 
-    const sampleSignals = extractGapSignalsFromSample(vr, entry.sample_id);
+    const sampleSignals = extractGapSignalsFromSample(vr, entry.sampleId);
     if (sampleSignals.length > 0) {
-      sampleIdsWithGap.add(entry.sample_id);
+      sampleIdsWithGap.add(entry.sampleId);
       signals.push(...sampleSignals);
       const maxW = sampleSignals.reduce((m, s) => (s.weight > m ? s.weight : m), 0);
-      sampleMaxWeight.set(entry.sample_id, maxW);
+      sampleMaxWeight.set(entry.sampleId, maxW);
     }
   }
 
@@ -396,16 +397,6 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
   };
 }
 
-/**
- * Compute gap reports for every variant in a Report. Convenience wrapper.
- */
-export function computeReportGapRates(results: ResultEntry[], variants: string[]): Record<string, GapReport> {
-  const out: Record<string, GapReport> = {};
-  for (const v of variants) {
-    setOwnRecordValue(out, v, computeGapReport(results, v));
-  }
-  return out;
-}
 
 // ---------- v0.2 hedging classifier integration ----------
 

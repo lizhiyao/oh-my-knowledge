@@ -71,13 +71,9 @@ function resolveWithDeterministicTestResources(
   resolved.judges.replicateCount = request.values.judges.replicateCount;
   resolved.judges.members = request.values.judges.members.map((member, index) => ({
     ensembleMemberId: `judge-${index}`,
-    implementationId: `${member.executorId}-judge-adapter/v1`,
     executorId: member.executorId,
     model: member.model,
     effort: request.values.targetRuntime.effort,
-    promptVariant: request.values.judges.lengthDebias
-      ? 'rubric-length-debias-on/v1'
-      : 'rubric-length-debias-off/v1',
   }));
   resolved.policy.executionConcurrency = request.values.measurement.executionConcurrency;
   resolved.policy.evaluationConcurrency = request.values.measurement.executionConcurrency;

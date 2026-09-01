@@ -19,6 +19,7 @@ import {
   projectAnalysisCohorts,
   projectAnalysisGraph,
   projectExecutionInputs,
+  normalizeTargetExecutionControls,
   schemaIdentityKey,
   type CoreSchemaValidator,
   type ExtensionEntry,
@@ -59,6 +60,7 @@ import { sealRunPlan } from '../internal/sealed-run-plan.js';
 
 export * from './errors.js';
 export * from './types.js';
+export { assertSealedRunPlan } from '../internal/sealed-run-plan.js';
 export { validateDefinitionSemantics } from './validation.js';
 
 interface StageExtensions {
@@ -81,13 +83,16 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'derivation', 'algorithmId', 'membershipValue', 'context', 'annotations', 'targets',
   'targetId', 'targetKind', 'protocolId', 'executorId', 'versionConstraint', 'config',
   'executionRequirements', 'systemInstructions', 'workspace', 'mcp',
+  'executionControls', 'defaults', 'sampleOverrides', 'workspaceMode', 'descriptor',
+  'resourceId', 'digest', 'mediaType', 'size', 'tools', 'toolPolicyKind', 'allowedTools',
   'mockInterception', 'toolPolicy', 'toolPolicies', 'skillDiscovery',
   'sandboxId', 'sandboxIds', 'protocols', 'inputSchema', 'outputSchema', 'traceSchema',
   'concurrency', 'safety', 'maxInFlight', 'cancellation', 'state',
   'resourceLifecycle', 'trialState', 'seedControl', 'determinism', 'features',
   'telemetry', 'usage', 'providerCost', 'reporting', 'trustedUpperBound',
   'evaluators', 'evaluatorId', 'evaluatorKind', 'implementationId', 'measurement',
-  'instrumentId', 'ensembleMemberId', 'replicateGroupId', 'replicateIndex', 'metricIds',
+  'applicableSampleIds', 'instrumentId', 'ensembleMemberId', 'replicateGroupId',
+  'replicateIndex', 'metricIds',
   'inputs', 'bindingId', 'sourceKind', 'pointer', 'metrics', 'metricId', 'valueType',
   'scope', 'scale', 'min', 'max', 'target', 'unit', 'direction', 'missingPolicyId',
   'experiment', 'trials', 'seed', 'sampling', 'experimentalUnit', 'pairingKey',
@@ -98,7 +103,7 @@ const CONTRACT_PATH_SEGMENTS = new Set([
   'includeCohortIds', 'excludeCohortIds', 'parameters',
   'comparisons', 'comparisonId', 'controlTargetId', 'treatmentTargetIds',
   'decisionPolicy', 'decisionPolicyId', 'analysisResultIds', 'comparisonFamily',
-  'hypothesisId', 'treatmentTargetId',
+  'comparisonFamilyResultId', 'hypothesisId', 'treatmentTargetId',
   'multipleComparisonPolicyId', 'minimumEvidenceStatus', 'execution', 'timeoutMs',
   'maxConcurrency', 'retry', 'maxAttempts', 'retryableErrorCodes', 'backoff',
   'backoffKind', 'initialDelayMs', 'maxDelayMs', 'budget', 'run', 'stages',
@@ -1223,6 +1228,16 @@ export function normalizeEvaluationDefinition(
         analysisCohorts: projectAnalysisCohorts(definition.dataset),
       }),
     },
+    targets: definition.targets.map((target) => ({
+      ...target,
+      executionControls: normalizeTargetExecutionControls(target.executionControls),
+    })),
+    evaluators: definition.evaluators.map((evaluator) => ({
+      ...evaluator,
+      ...(evaluator.applicableSampleIds === undefined ? {} : {
+        applicableSampleIds: [...evaluator.applicableSampleIds].sort(compareStrings),
+      }),
+    })),
     analysisGraph: projectAnalysisGraph(definition.analysisGraph),
   }, 'EvaluationDefinition');
 }

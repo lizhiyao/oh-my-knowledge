@@ -1,6 +1,6 @@
 import type { EvalConfig, EvalConfigVariant, JudgeConfig } from '../../types/index.js';
 import { deepFreezeCanonicalJson } from '../../evaluation-core/contracts/index.js';
-import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../eval-core/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../shared/statistics/bootstrap.js';
 import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../evaluation-defaults.js';
 import { CliEvaluationInputError } from './error.js';
 import {

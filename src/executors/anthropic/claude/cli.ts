@@ -1,5 +1,5 @@
 import type { ExecResult, ExecutorInput } from '../../../types/index.js';
-import { materializeForCliConfigDir } from '../../../eval-core/mocks-runtime.js';
+import { materializeForCliConfigDir } from '../../mock-runtime/runtime.js';
 import { buildClaudeResult, parseClaudeStreamJson } from './protocol.js';
 import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';
 import {
@@ -31,7 +31,7 @@ function applySkillIsolationToCliArgs(args: string[], allowedSkills: string[] | 
   args.push('--disable-slash-commands', '--disallowedTools', 'Skill');
 }
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort, abortSignal }: ExecutorInput): Promise<ExecResult> {
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model,
     // 评测必须 bypass permission,否则 Bash / Edit / Write 等工具调用会卡在交互式确认。
     // sdk executor 用 options.permissionMode='bypassPermissions',cli 用此 flag 等价。
@@ -75,6 +75,7 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
       maxBuffer: MAX_BUFFER,
       timeoutMs,
       env,
+      abortSignal,
       ...(cwd && { cwd }),
     });
     // claude binary 不读 stdin(prompt 走 -p flag),关掉避免 codex 那种 pipe 卡死风险

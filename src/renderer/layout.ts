@@ -26,7 +26,7 @@ export function fmtDuration(ms: number | undefined | null): string {
 export function fmtCost(usd: number | undefined | null, reported: boolean = true): string {
   // reported=false 时 executor 不报 cost(如 codex CLI),`usd` 是占位 0,
   // 显示 "—" 跟"真的花了 $0"区分开。callsite 传 reported 时通常来自
-  // `VariantSummary.execCostReported !== false` 或 `VariantResult.costReportedByExecutor !== false`。
+  // 评测报告的执行成本是否由 executor 明确报告，由 Evaluation Core 产物负责表达。
   if (!reported) return '—';
   return `$${Number(usd || 0).toFixed(4)}`;
 }
@@ -392,13 +392,22 @@ function langToggleButton(lang: Lang): string {
   return `<button id="lang-toggle" onclick="switchLang()" class="lang-toggle">${t('switchLang', lang)}</button>`;
 }
 
-export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
+export interface LayoutOptions {
+  homeHref?: string;
+}
+
+export function layout(
+  title: string,
+  body: string,
+  lang: Lang = DEFAULT_LANG,
+  options: LayoutOptions = {},
+): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   const favicon = encodeURIComponent(BRAND_LOGO_RAW);
   // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
   // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
   void langToggleButton;
-  const appBar = `<header class="app-bar"><a class="app-brand" href="/"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
+  const appBar = `<header class="app-bar"><a class="app-brand" href="${e(options.homeHref ?? '/')}"><span class="app-brand-logo">${brandLogo(30)}</span><span class="app-brand-tag">Studio</span></a><span class="app-bar-spacer"></span></header>`;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${e(title)}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>

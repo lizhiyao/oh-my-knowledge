@@ -7,6 +7,7 @@ import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   parseWireDocument,
+  resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type EvaluatorDefinition,
   type JsonValue,
@@ -161,7 +162,7 @@ function normalizeHostResources(
   const resources = [...input.resources]
     .sort((left, right) => compareStrings(left.descriptor.resourceId, right.descriptor.resourceId))
     .map((resource) => {
-      if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'content']
+      if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
         .includes(resource.resourceKind)
           || !['public', 'sensitive', 'secret', 'gold']
             .includes(resource.descriptor.classification)
@@ -220,7 +221,8 @@ function validateHostResourceMaterializationSemantics(
   hostResources: ResolvedHostResources,
 ): void {
   for (const resource of hostResources.resources) {
-    const fileOnly = ['mcp-config', 'mock-payload', 'content'].includes(resource.resourceKind);
+    const fileOnly = ['mcp-config', 'mock-payload', 'runtime-implementation', 'content']
+      .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact'
       || resource.resourceKind === 'workspace';
     if ((fileOnly && resource.verification.verificationKind !== 'content-digest')
@@ -263,6 +265,27 @@ function validateHostOptions(input: ResolvedCliEvaluationInput): void {
     fieldPath: 'presentation',
     message: 'EvaluationPresentationOptions 包含不合法的规范值。',
   });
+  const dependencyRequirements = orchestration.dependencyRequirements;
+  if (dependencyRequirements !== undefined
+      && (typeof dependencyRequirements.baseDirectoryLocator !== 'string'
+        || dependencyRequirements.baseDirectoryLocator.trim() === '')) fail({
+    code: 'CLI_INPUT_INVALID',
+    fieldPath: 'orchestration.dependencyRequirements.baseDirectoryLocator',
+    message: 'Dependency requirement 必须声明非空的宿主 base directory locator。',
+  });
+  for (const [requirementKind, values] of Object.entries(
+    dependencyRequirements ?? {},
+  ).filter(([key]) => key !== 'baseDirectoryLocator')) {
+    if (!['tools', 'files', 'env', 'preflight'].includes(requirementKind)
+        || !Array.isArray(values)
+        || values.length === 0
+        || values.some((value) => typeof value !== 'string' || value.trim() === '')
+        || new Set(values).size !== values.length) fail({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: `orchestration.dependencyRequirements.${requirementKind}`,
+      message: 'Dependency requirement 必须是非空、无重复的字符串数组。',
+    });
+  }
   const cache = input.policy.cache;
   if (cache === null || typeof cache !== 'object' || Array.isArray(cache)) fail({
     code: 'CLI_INPUT_INVALID',
@@ -382,14 +405,60 @@ function validateResourceReferences(
   }
   for (const target of input.targets) {
     const prefix = `targets.${target.targetId}.behavior`;
+    const sampleIds = new Set(input.dataset.samples.map((sample) => sample.sampleId));
+    if (target.behavior.allowedSkills !== undefined) {
+      assertUnique(target.behavior.allowedSkills, `${prefix}.allowedSkills`);
+    }
     validateReference(target.behavior.artifact, ['artifact'], `${prefix}.artifact`);
-    if (target.behavior.workspace !== undefined) {
-      validateReference(target.behavior.workspace, ['workspace'], `${prefix}.workspace`);
+    const controlPrefix = `targets.${target.targetId}.executionControls`;
+    assertUnique(
+      target.executionControls.sampleOverrides.map((override) => override.sampleId),
+      `${controlPrefix}.sampleOverrides[].sampleId`,
+    );
+    for (const override of target.executionControls.sampleOverrides) {
+      if (!sampleIds.has(override.sampleId)) fail({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `${controlPrefix}.sampleOverrides[].sampleId`,
+        message: 'Sample execution control override 必须引用存在的 sampleId。',
+      });
+    }
+    const workspaceControls = [
+      target.executionControls.defaults.workspace,
+      ...target.executionControls.sampleOverrides.flatMap((override) => (
+        override.workspace === undefined ? [] : [override.workspace]
+      )),
+    ];
+    for (const [controlIndex, workspace] of workspaceControls.entries()) {
+      if (workspace.workspaceMode === 'copy-on-write-overlay') {
+        validateReference(
+          workspace.descriptor as ResolvedResourceDescriptor,
+          ['workspace'],
+          `${controlPrefix}.workspace.${controlIndex}.descriptor`,
+        );
+      }
+    }
+    const toolControls = [
+      target.executionControls.defaults.tools,
+      ...target.executionControls.sampleOverrides.flatMap((override) => (
+        override.tools === undefined ? [] : [override.tools]
+      )),
+    ];
+    for (const [controlIndex, tools] of toolControls.entries()) {
+      if (tools.toolPolicyKind === 'allow-list') {
+        assertUnique(tools.allowedTools, `${controlPrefix}.tools.${controlIndex}.allowedTools`);
+      }
     }
     if (target.behavior.mcpConfig !== undefined) {
       validateReference(target.behavior.mcpConfig, ['mcp-config'], `${prefix}.mcpConfig`);
     }
     for (const [mockIndex, mock] of (target.behavior.mocks ?? []).entries()) {
+      if (mock.sampleIds.length === 0
+          || new Set(mock.sampleIds).size !== mock.sampleIds.length
+          || mock.sampleIds.some((sampleId) => !sampleIds.has(sampleId))) fail({
+        code: 'CLI_INPUT_INVALID',
+        fieldPath: `${prefix}.mocks.${mockIndex}.sampleIds`,
+        message: 'Mock binding 必须引用至少一个存在且不重复的 sampleId。',
+      });
       for (const [payloadIndex, payload] of mock.payloads.entries()) {
         validateReference(
           payload,
@@ -431,19 +500,15 @@ function behaviorConfig(
   return canonicalSnapshot({
     behavior: {
       artifact: descriptorSnapshot(behavior.artifact),
-      ...(behavior.workspace === undefined ? {} : { workspace: descriptorSnapshot(behavior.workspace) }),
       ...(behavior.mcpConfig === undefined ? {} : { mcpConfig: descriptorSnapshot(behavior.mcpConfig) }),
       ...(behavior.mocks === undefined ? {} : {
         mocks: behavior.mocks.map((mock) => ({
+          sampleIds: [...mock.sampleIds].sort(compareStrings),
           matchRules: canonicalSnapshot(mock.matchRules),
           strict: mock.strict,
-          payloads: [...mock.payloads]
-            .sort((left, right) => compareStrings(left.resourceId, right.resourceId))
-            .map(descriptorSnapshot),
+          // Payload order is the observable return-sequence contract.
+          payloads: mock.payloads.map(descriptorSnapshot),
         })),
-      }),
-      ...(behavior.allowedTools === undefined ? {} : {
-        allowedTools: [...behavior.allowedTools].sort(compareStrings),
       }),
       ...(behavior.allowedSkills === undefined ? {} : {
         allowedSkills: [...behavior.allowedSkills].sort(compareStrings),
@@ -469,21 +534,33 @@ function behaviorConfig(
     runtime: {
       model: runtime.model,
       ...(runtime.effort === undefined ? {} : { effort: runtime.effort }),
+      ...(runtime.implementationResource === undefined ? {} : {
+        implementationResource: descriptorSnapshot(runtime.implementationResource),
+      }),
     },
   });
 }
 
-function executionRequirementsForBehavior(
+function executionRequirementsForTarget(
   behavior: ResolvedTargetBehavior,
+  controls: ResolvedCliEvaluationInput['targets'][number]['executionControls'],
 ): TargetExecutionRequirements {
+  const effectiveControls = controls.sampleOverrides.map((override) => (
+    resolveEffectiveExecutionControl(controls, override.sampleId)
+  ));
+  effectiveControls.push(controls.defaults);
   return {
     systemInstructions: behavior.systemInstructions,
-    workspace: behavior.workspace === undefined ? 'not-required' : 'copy-on-write-overlay',
+    workspace: effectiveControls.some((control) => (
+      control.workspace.workspaceMode === 'copy-on-write-overlay'
+    )) ? 'copy-on-write-overlay' : 'not-required',
     mcp: behavior.mcpConfig === undefined ? 'not-required' : 'native-config',
     mockInterception: (behavior.mocks?.length ?? 0) === 0
       ? 'not-required'
       : 'pre-tool-call',
-    toolPolicy: behavior.allowedTools === undefined ? 'runtime-default' : 'allow-list',
+    toolPolicy: effectiveControls.some((control) => (
+      control.tools.toolPolicyKind === 'allow-list'
+    )) ? 'allow-list' : 'runtime-default',
     skillDiscovery: behavior.allowedSkills === undefined
       ? 'runtime-default'
       : behavior.allowedSkills.length === 0
@@ -521,7 +598,7 @@ function evaluatorConfig(
       runtime: {
         executorId: member.executorId,
         model: member.model,
-        promptVariant: member.promptVariant,
+        promptVariant: template.runtimePromptVariant,
         ...(member.effort === undefined ? {} : { effort: member.effort }),
       },
     }),
@@ -545,6 +622,9 @@ function makeEvaluator(
     evaluatorKind: template.evaluatorKind,
     implementationId: input.implementationId,
     ...(input.versionConstraint === undefined ? {} : { versionConstraint: input.versionConstraint }),
+    ...(template.applicableSampleIds === undefined ? {} : {
+      applicableSampleIds: [...template.applicableSampleIds].sort(compareStrings),
+    }),
     measurement: {
       instrumentId: template.instrumentId,
       ensembleMemberId: input.ensembleMemberId,
@@ -578,11 +658,6 @@ function compileEvaluators(input: ResolvedCliEvaluationInput): EvaluatorDefiniti
   const evaluators: EvaluatorDefinition[] = [];
   for (const template of input.evaluatorTemplates) {
     if (template.runtimeBindingKind === 'builtin') {
-      if (template.implementationId === undefined) fail({
-        code: 'CLI_INPUT_INVALID',
-        fieldPath: `evaluatorTemplates.${template.evaluatorId}.implementationId`,
-        message: `内置 evaluator「${template.evaluatorId}」缺少 implementationId。`,
-      });
       evaluators.push(makeEvaluator(template, {
         evaluatorId: template.evaluatorId,
         implementationId: template.implementationId,
@@ -593,13 +668,18 @@ function compileEvaluators(input: ResolvedCliEvaluationInput): EvaluatorDefiniti
       continue;
     }
     if (!input.judges.enabled) continue;
+    if (template.runtimePromptVariant === undefined) fail({
+      code: 'CLI_INPUT_INVALID',
+      fieldPath: `evaluatorTemplates.${template.evaluatorId}.runtimePromptVariant`,
+      message: `评委 evaluator「${template.evaluatorId}」缺少 runtimePromptVariant。`,
+    });
     for (const member of [...input.judges.members]
       .sort((left, right) => compareStrings(left.ensembleMemberId, right.ensembleMemberId))) {
       for (let replicateIndex = 0; replicateIndex < input.judges.replicateCount; replicateIndex += 1) {
         evaluators.push(makeEvaluator(template, {
           evaluatorId: `${template.evaluatorId}--${member.ensembleMemberId}--r${replicateIndex}`,
-          implementationId: member.implementationId,
-          versionConstraint: member.versionConstraint,
+          implementationId: template.implementationId,
+          versionConstraint: template.versionConstraint,
           ensembleMemberId: member.ensembleMemberId,
           replicateIndex,
           member,
@@ -642,7 +722,11 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
       ...(target.executor.versionConstraint === undefined
         ? {}
         : { versionConstraint: target.executor.versionConstraint }),
-      executionRequirements: executionRequirementsForBehavior(target.behavior),
+      executionRequirements: executionRequirementsForTarget(
+        target.behavior,
+        target.executionControls,
+      ),
+      executionControls: target.executionControls,
       config: behaviorConfig(target.behavior, target.executor),
     }));
   const analysisNodes = [...input.analysisGraph.nodes]
@@ -689,12 +773,12 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
       })),
     },
     analysisGraph: { analysisMode: input.analysisGraph.analysisMode, nodes: analysisNodes },
-    comparisons: [{
-      comparisonId: 'control-vs-treatments',
+    comparisons: treatments.map((target) => ({
+      comparisonId: `control-vs-${target.targetId}`,
       controlTargetId: controls[0].targetId,
-      treatmentTargetIds: treatments.map((target) => target.targetId).sort(compareStrings),
+      treatmentTargetIds: [target.targetId],
       metricIds: input.metrics.map((metric) => metric.metricId).sort(compareStrings),
-    }],
+    })),
     ...(decisionPolicy === undefined ? {} : { decisionPolicy }),
   });
   try {
@@ -816,20 +900,30 @@ function compilePolicy(input: ResolvedCliEvaluationInput): MeasurementPolicy {
   }
 }
 
-function resourceLeaseRequirementsForBehavior(
+function resourceLeaseRequirementsForTarget(
   behavior: ResolvedTargetBehavior,
+  controls: ResolvedCliEvaluationInput['targets'][number]['executionControls'],
+  runtime: ResolvedCliEvaluationInput['targets'][number]['executor'],
 ): Extract<RuntimeBinding, { runtimeKind: 'executor' }>['resourceLeaseRequirements'] {
+  const workspaces = [
+    controls.defaults.workspace,
+    ...controls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ].flatMap((workspace) => workspace.workspaceMode === 'copy-on-write-overlay'
+    ? [workspace.descriptor]
+    : []);
   const requirements = [
     {
       resourceId: behavior.artifact.resourceId,
       resourceRole: 'artifact' as const,
       leaseMode: 'immutable-snapshot' as const,
     },
-    ...(behavior.workspace === undefined ? [] : [{
-      resourceId: behavior.workspace.resourceId,
+    ...workspaces.map((workspace) => ({
+      resourceId: workspace.resourceId,
       resourceRole: 'workspace' as const,
       leaseMode: 'copy-on-write-overlay' as const,
-    }]),
+    })),
     ...(behavior.mcpConfig === undefined ? [] : [{
       resourceId: behavior.mcpConfig.resourceId,
       resourceRole: 'mcp-config' as const,
@@ -840,6 +934,11 @@ function resourceLeaseRequirementsForBehavior(
       resourceRole: 'mock-payload' as const,
       leaseMode: 'immutable-snapshot' as const,
     }))),
+    ...(runtime.implementationResource === undefined ? [] : [{
+      resourceId: runtime.implementationResource.resourceId,
+      resourceRole: 'runtime-implementation' as const,
+      leaseMode: 'immutable-snapshot' as const,
+    }]),
   ];
   return [...new Map(requirements.map((requirement) => [
     `${requirement.resourceRole}\u0000${requirement.resourceId}`,
@@ -870,7 +969,7 @@ function compileSeries(
     measurementDesignDigest: designDigest,
     repeatCount: series.repeatCount,
     comparisonScope: series.comparisonScope ?? 'analysis',
-    minimumStatus: series.minimumStatus ?? 'compatible',
+    minimumStatus: series.minimumStatus ?? 'conditional',
   });
   const seriesId = `${series.seriesInstanceId}-${seriesDesignIdentity.slice(
     'sha256:'.length,
@@ -890,7 +989,7 @@ function compileSeries(
       comparabilityPolicy: {
         designMode: 'exact-measurement-design',
         comparisonScope: series.comparisonScope ?? 'analysis',
-        minimumStatus: series.minimumStatus ?? 'compatible',
+        minimumStatus: series.minimumStatus ?? 'conditional',
       },
       analysisGraph: {
         nodes: [{
@@ -948,7 +1047,12 @@ function compileRuntimeBinding(
       ...(target.versionConstraint === undefined ? {} : { versionConstraint: target.versionConstraint }),
       protocolId: target.protocolId,
       behaviorConfigDigest: digestCanonicalJson(target.config ?? null),
-      resourceLeaseRequirements: resourceLeaseRequirementsForBehavior(resolved.behavior),
+      executionControlsDigest: digestCanonicalJson(target.executionControls),
+      resourceLeaseRequirements: resourceLeaseRequirementsForTarget(
+        resolved.behavior,
+        resolved.executionControls,
+        resolved.executor,
+      ),
       qualification: {
         model: resolved.executor.model,
         ...(resolved.executor.effort === undefined ? {} : { effort: resolved.executor.effort }),
@@ -983,7 +1087,12 @@ function compileRuntimeBinding(
           executorId: judgeMember.executorId,
           model: judgeMember.model,
           ...(judgeMember.effort === undefined ? {} : { effort: judgeMember.effort }),
-          promptVariant: judgeMember.promptVariant,
+          promptVariant: template?.runtimePromptVariant
+            ?? fail({
+              code: 'CLI_INPUT_INVALID',
+              fieldPath: `evaluatorTemplates.${template?.evaluatorId ?? '<missing>'}.runtimePromptVariant`,
+              message: '评委 evaluator 缺少 runtimePromptVariant。',
+            }),
           resourceIntegrity: 'digest-before-use',
         },
       }),
@@ -1083,6 +1192,16 @@ export function compileCliEvaluationInput(
     preflight: resolvedInput.orchestration.preflight,
     diagnostic: resolvedInput.orchestration.diagnostic,
     managedEvidence: resolvedInput.orchestration.managedEvidence,
+    ...(resolvedInput.orchestration.dependencyRequirements === undefined ? {} : {
+      dependencyRequirements: {
+        baseDirectoryLocator:
+          resolvedInput.orchestration.dependencyRequirements.baseDirectoryLocator,
+        ...Object.fromEntries(Object.entries(
+          resolvedInput.orchestration.dependencyRequirements,
+        ).filter(([key]) => key !== 'baseDirectoryLocator')
+          .map(([key, values]) => [key, [...values].sort(compareStrings)])),
+      },
+    }),
     ...(resolvedInput.orchestration.cacheSources === undefined ? {} : {
       cacheSources: resolvedInput.orchestration.cacheSources,
     }),

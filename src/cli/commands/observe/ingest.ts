@@ -4,7 +4,7 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
-import type { ObservationInboxReport } from '../../../types/observability.js';
+import type { ObservationInboxReport } from '../../../observability/contracts/inbox.js';
 
 export function formatIngestSummary(report: ObservationInboxReport, lang: 'zh' | 'en'): string {
   const severityCounts = {

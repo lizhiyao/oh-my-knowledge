@@ -13,10 +13,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { hashArtifactSource, managedRecordId } from '../../src/managed/index.js';
-import { getJudgePromptHash } from '../../src/grading/judge.js';
 import PromoteCommand from '../../src/cli/commands/promote.js';
 import ListCommand from '../../src/cli/commands/list.js';
 import { runCommand } from '../helpers/run-command.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 interface RunResult { code: number; stdout: string; stderr: string; }
 
@@ -30,17 +30,17 @@ describe('omk promote command', () => {
   let curHash: string;
 
   /** 写一条受管记录,带一条「当前内容」证据。 */
-  function writeRecord(opts: { verdict?: string; contentHash?: string; judgeHash?: string; withoutEvidence?: boolean } = {}): void {
-    const judge = opts.judgeHash ?? getJudgePromptHash(true);
+  function writeRecord(opts: { verdict?: string; contentHash?: string; evidenceReadiness?: 'decision-ready' | 'measurement-only'; withoutEvidence?: boolean } = {}): void {
     const rec = {
-      recordKind: 'managed-artifact', schemaVersion: 2, id: recId, name: 'review', kind: 'skill',
+      recordKind: 'managed-artifact', schemaVersion: 3, id: recId, name: 'review', kind: 'skill',
       source: { sourceKind: 'file', locator: srcPath, isDirectorySkill: false },
       contentHash: opts.contentHash ?? curHash, installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],
-      evidence: opts.withoutEvidence ? [] : [{
-        reportId: 'rep1', contentHash: opts.contentHash ?? curHash, recordedAt: '2026-06-07T00:00:00.000Z',
-        verdict: opts.verdict ?? 'PROGRESS', comparability: { cliVersion: '0.36.0', judgePromptHash: judge },
-      }],
+      evidence: opts.withoutEvidence ? [] : [coreManagedEvidence(opts.contentHash ?? curHash, {
+        reportId: 'rep1',
+        verdict: opts.verdict ?? 'PROGRESS',
+        evidenceReadiness: opts.evidenceReadiness ?? 'decision-ready',
+      })],
       decisions: [],
     };
     writeFileSync(join(managed, `${recId}.json`), JSON.stringify(rec));
@@ -169,14 +169,14 @@ describe('omk promote command', () => {
     assert.equal(readRecord().decisions.length, 0);
   });
 
-  it('旧评委指纹 → incomparable；--force 记录被越过的门禁', async () => {
-    writeRecord({ judgeHash: 'STALE_JUDGE_NOT_CURRENT' });
+  it('Core evidence 仅 measurement-only → 默认阻断；--force 留下显式审计', async () => {
+    writeRecord({ evidenceReadiness: 'measurement-only' });
     const blocked = await run(['promote', 'review']);
     assert.equal(blocked.code, 1);
-    assert.ok(blocked.stderr.includes('not the current judge'), blocked.stderr);
-    const forced = await run(['promote', 'review', '--force', '--reason', '已核对评委变更']);
+    assert.ok(blocked.stderr.includes('CORE_EVIDENCE_NOT_DECISION_READY'), blocked.stderr);
+    const forced = await run(['promote', 'review', '--force', '--reason', '已人工复核测量证据']);
     assert.equal(forced.code, 0, forced.stderr);
-    assert.deepEqual(readRecord().decisions[0].override?.overriddenBlocks, ['incomparable']);
+    assert.deepEqual(readRecord().decisions[0].override?.overriddenBlocks, ['verdict_blocked']);
   });
 
   it('记录不存在 → 退 1 not_managed', async () => {

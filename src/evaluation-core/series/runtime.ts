@@ -77,6 +77,7 @@ export interface SeriesDecisionContext {
 export type SeriesDecisionOutput = {
   decisionStatus: 'decided';
   verdict: string;
+  reasonCodes: readonly string[];
 } | {
   decisionStatus: 'not-decided';
   reasonCodes: readonly string[];
@@ -86,6 +87,7 @@ const SeriesDecisionOutputSchema = z.discriminatedUnion('decisionStatus', [
   z.object({
     decisionStatus: z.literal('decided'),
     verdict: z.string().min(1).max(256),
+    reasonCodes: z.array(z.string().min(1).max(256)).min(1),
   }).strict(),
   z.object({
     decisionStatus: z.literal('not-decided'),
@@ -565,6 +567,7 @@ async function makeDecision(
       policyExecutionStatus: 'executed' as const,
       decisionStatus: 'decided' as const,
       verdict: output.verdict,
+      reasonCodes: [...new Set(output.reasonCodes)].sort(compareStrings),
     }
     : {
       ...base,

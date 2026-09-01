@@ -139,6 +139,15 @@ async function fixture(options: Readonly<{
     protocolId: 'omk.invoke/v1',
     executorId: 'test.omk.anthropic-api/v1',
     executionRequirements,
+    executionControls: {
+      defaults: {
+        workspace: { workspaceMode: 'not-required' },
+        tools: options.requirementPatch?.toolPolicy === 'allow-list'
+          ? { toolPolicyKind: 'allow-list', allowedTools: [] }
+          : { toolPolicyKind: 'runtime-default' },
+      },
+      sampleOverrides: [],
+    },
     config,
   } as EvaluationDefinition['targets'][number];
   const binding: RuntimeBindingOf<'executor'> = {
@@ -148,6 +157,7 @@ async function fixture(options: Readonly<{
     implementationId: 'test.omk.anthropic-api/v1',
     protocolId: 'omk.invoke/v1',
     behaviorConfigDigest: digest(config),
+    executionControlsDigest: digest(target.executionControls),
     resourceLeaseRequirements: [{
       resourceId: 'artifact-a',
       resourceRole: 'artifact',
@@ -231,7 +241,13 @@ async function execute(
 ): Promise<ExecutorAttemptResult> {
   const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
   const trial = await run.openTrial({
+    sampleId: 'sample-a',
     targetId: 'target-a',
+    executionCoordinateDigest: digest({ coordinate: 'a' }),
+    executionControl: {
+      workspace: { workspaceMode: 'not-required' },
+      tools: { toolPolicyKind: 'runtime-default' },
+    },
     protocolId: 'omk.invoke/v1',
     input: { question: 'Q' },
     executionContext: { locale: 'zh-CN' },
@@ -535,7 +551,6 @@ describe('Anthropic API Core Executor adapter', () => {
 
   it('rejects unsupported agent controls and deprecated sampling config before calls', async () => {
     const tools = await fixture({
-      behaviorPatch: { allowedTools: [] },
       requirementPatch: { toolPolicy: 'allow-list' },
     });
     await expect(createAdapter(tools)).rejects.toThrow(/supports no workspace, MCP, mocks/);

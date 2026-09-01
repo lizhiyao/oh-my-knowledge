@@ -213,7 +213,7 @@ omk eval --control baseline --treatment my-skill                # single-skill n
 omk eval --control code-review-v1 --treatment code-review-v2    # multi-variant A/B
 omk eval --config eval.yaml
 omk eval --batch
-omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval gold compare <run-id> --gold-dir gold-dataset
 ```
 
 Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
@@ -247,7 +247,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --model <value>                 Evaluated model
   --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
-  --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
+  --no-diagnostic                 Disable the diagnostic projection over Core failures, missing evidence, exclusions, and stable reason codes.
   --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
@@ -256,7 +256,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --output-dir <value>            Report output dir (default project .omk/reports)
   --repeat <value>                Repeat each sample N times
   --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
-  --resume <value>                Reuse successful entries from a contract-compatible report; otherwise start over
+  --resume <value>                Reuse a fully verified Core runId; fail closed when rejected
   --retry <value>                 Per-sample retry count
   --samples <value>               Samples path. Defaults to project-level eval-samples.json (also .yaml/.yml); single-treatment runs can auto-discover <skill>/.omk/.
   --skill-dir <value>             Skill dir, default skills
@@ -275,9 +275,7 @@ For full descriptions: `omk eval --help`.
 
 <!-- omk:cli:eval:flags:end -->
 
-The HTML report has two tabs:
-- **📊 Score view** — the verdict-driven A/B comparison ([fact / behavior / judge layers](../specs/scoring), bootstrap CI, length-debias).
-- **✅ Functional view** — each sample as a unit test: design (prompt / rubric / mocks / environment) + execution trace + assertion results + actionable diagnostic. Diagnostic emits root cause (skill_doc_unclear / llm_misread / sample_design / tripwire_intentional / ...), workflow checks (rubric step ✓/✗ with evidence), and failure-mode tags (工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他). For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
+Studio opens the validated Core run rather than a second report model. The run detail projects operational, evidence, and conclusion status separately; shows numeric observations, Analysis results, Decision reason codes, cost, coverage, and provenance; and links every view back to immutable Core artifacts. Diagnostic post-processing is limited to authenticated Core failures, missing evidence, exclusions, and stable reason codes. For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
 
 ## `omk observe`
 
@@ -364,32 +362,22 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --auto-fix-samples              Fix the skill, then fix samples, then evaluate the combined candidate
   --concurrency <value>           Eval concurrency, default 1
   --edit-budget <value>           Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
-  --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
   --improve-model <value>         LLM that rewrites the skill; defaults to the evaluated model
   --judge-models <value>          Judge model (single judge required), executor:model format. Defaults to the selected executor; Codex reuses the evaluated model.
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>                 Evaluated LLM. Codex reads the local configured model. Also used to generate samples when none exist.
-  --no-diagnostic                 Disable diagnostic LLM call
   --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
   --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
-  --no-significance-gate          Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)
-  --reuse-latest-eval             Reuse the latest comparable eval report as round-0
   --rounds <value>                Max iteration rounds, default 5
-  --sample-fix-max-attempts <value>Max auto-fix attempts per sample (default: 2)
   --samples <value>               Samples file, default eval-samples.json
-  --significance-alpha <value>    Significance level for the accept gate diff CI (default 0.05 = 95% CI)
-  --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
-  --snapshot-only                 Produce candidates only, do not write back to source: the winner stays in evolve/<skillName>.r{N}.md for you to pick and then omk promote. By default a managed skill is written back and evidence is recorded (measurable).
-  --stop-on-assertions-pass       Stop early when normal samples pass assertions
+  --snapshot-only                 Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
-  --test-ratio <value>            Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score
   --timeout <value>               Per-sample timeout sec, default 600
 ```
 
@@ -417,21 +405,18 @@ omk sample --batch                  # generate for skills missing eval-samples
 **Flags:**
 
 ```text
-  --append                    Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces / --fix. Without it, an existing file errors out. Often paired with --focus.
+  --append                    Append newly generated samples to the existing samples file (colliding sample_id auto-suffixed, original json/yaml shape kept). Single-skill mode only; not supported with --batch / --from-traces. Without it, an existing file errors out. Often paired with --focus.
   --batch                     Batch mode: scan --skill-dir, generate samples for any skill missing them.
   --count <value>             Number of samples to generate. Defaults to LLM auto-selection by skill type.
   --executor <value>          Executor name. Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
-  --fix                       Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
   --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>             Generation LLM model name. Codex reads the local configured model; OMK_MODEL sets an environment preference.
   --no-mock                   Skip mocks. Automatically enabled when the executor cannot intercept tools, preventing impossible mock_hit assertions.
   --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observe-inbox.
-  --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill <value>             Only draft from observe-inbox signals for the specified skill (from-traces mode only).
   --skill-dir <value>         Skill root dir, default skills. Used by batch mode.
-  --treatment <value>         Treatment name (fix mode), defaults to skill-path inference.
 ```
 
 For full descriptions: `omk sample --help`.
@@ -465,7 +450,7 @@ omk studio --no-open
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe-inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
-  --reports-dir <value>       View only this reports dir (optional; default aggregates machine-wide: current project + global + other projects via index)
+  --reports-dir <value>       View only this Core reports dir (optional; default aggregates current project + global)
 ```
 
 For full descriptions: `omk studio --help`.
@@ -474,4 +459,4 @@ For full descriptions: `omk studio --help`.
 
 Starts the local knowledge workbench. The homepage indexes local Codex conversations directly and prioritizes running work. Select a conversation and task to inspect its four-lane Task Trajectory, then cross-check the semantic trajectory against normalized events and raw logs. Running tasks support live following; stale unclosed tasks are labeled **End status not recorded**. This browsing path does not require `omk observe ingest` first.
 
-The top-level **Knowledge artifacts** entry continues to expose doctor, eval, and observe reports, including verdicts, sample diffs, saturation curves, and per-sample drill-downs. Visit `/observe-inbox` for the observation reviewer queue. CI gates still use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise), while automation should read the report JSON.
+The top-level **Knowledge artifacts** entry exposes doctor, Core eval, and observe views. Core run pages project operational status, evidence coverage, numeric observations, Analysis results, Decision reason codes, and lineage from validated artifacts. Visit `/observe-inbox` for the observation reviewer queue. CI gates use `omk eval`'s exit route, while automation should read the Core report artifacts.

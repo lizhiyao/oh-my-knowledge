@@ -4,7 +4,10 @@ import {
   prepareEvaluationPlan,
   type PreparationRuntime,
 } from '../../../src/evaluation-core/compiler/index.js';
-import type { RuntimeIdentity } from '../../../src/evaluation-core/contracts/index.js';
+import {
+  derivePlannedEvaluationCoordinates,
+  type RuntimeIdentity,
+} from '../../../src/evaluation-core/contracts/index.js';
 import {
   validateAnalysisInputs,
   validateDefinitionSemantics,
@@ -88,6 +91,69 @@ describe('Compiler definition validation', () => {
       validPolicy(),
       'EVAL_DEFINITION_VALUE_DOMAIN_INVALID',
     );
+  });
+
+  it('seals Evaluator applicability and omits non-applicable evaluation coordinates', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples.push({
+      sampleId: 'sample-2',
+      input: { question: 'Q2' },
+      expected: { incompatible: true },
+    });
+    definition.evaluators[0].applicableSampleIds = ['sample-1'];
+
+    const plan = await prepareEvaluationPlan(definition, validPolicy(), testRuntime());
+    const coordinates = derivePlannedEvaluationCoordinates(plan);
+
+    expect(coordinates).toHaveLength(2);
+    expect(coordinates.every((coordinate) => coordinate.sampleId === 'sample-1')).toBe(true);
+  });
+
+  it('rejects duplicate or unknown Evaluator applicability references', async () => {
+    const duplicate = validDefinition();
+    duplicate.evaluators[0].applicableSampleIds = ['sample-1', 'sample-1'];
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const unknown = validDefinition();
+    unknown.evaluators[0].applicableSampleIds = ['missing-sample'];
+    await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
+  });
+
+  it('rejects ambiguous or unknown sample execution-control overrides', async () => {
+    const duplicate = validDefinition();
+    duplicate.targets[0].executionControls.sampleOverrides = [
+      { sampleId: 'sample-1', tools: { toolPolicyKind: 'allow-list', allowedTools: [] } },
+      { sampleId: 'sample-1', workspace: { workspaceMode: 'not-required' } },
+    ];
+    duplicate.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(duplicate, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+
+    const unknown = validDefinition();
+    unknown.targets[0].executionControls.sampleOverrides = [{
+      sampleId: 'missing-sample',
+      tools: { toolPolicyKind: 'allow-list', allowedTools: [] },
+    }];
+    unknown.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(unknown, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
+
+    const duplicateTools = validDefinition();
+    duplicateTools.targets[0].executionControls.defaults.tools = {
+      toolPolicyKind: 'allow-list',
+      allowedTools: ['read', 'read'],
+    };
+    duplicateTools.targets[0].executionRequirements.toolPolicy = 'allow-list';
+    await expectCode(duplicateTools, validPolicy(), 'EVAL_DEFINITION_DUPLICATE_ID');
+  });
+
+  it('requires every applicable sample to satisfy evaluator input bindings', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples.push({
+      sampleId: 'sample-2',
+      input: { question: 'Q2' },
+    });
+    definition.evaluators[0].applicableSampleIds = ['sample-1', 'sample-2'];
+
+    await expectCode(definition, validPolicy(), 'EVAL_DEFINITION_MISSING_REFERENCE');
   });
 
   it('requires execution-facts bindings to consume the complete canonical projection', async () => {
@@ -333,6 +399,22 @@ describe('Compiler definition validation', () => {
       toolPolicy: 'allow-list',
       skillDiscovery: 'disabled',
       sandboxId: 'sandbox-required',
+    };
+    required.targets[0].executionControls = {
+      defaults: {
+        workspace: {
+          workspaceMode: 'copy-on-write-overlay',
+          descriptor: {
+            resourceId: 'workspace-1',
+            digest: `sha256:${'a'.repeat(64)}`,
+            mediaType: 'application/vnd.omk.workspace-tree',
+            classification: 'sensitive',
+            size: 1,
+          },
+        },
+        tools: { toolPolicyKind: 'allow-list', allowedTools: ['read'] },
+      },
+      sampleOverrides: [],
     };
 
     await expectCode(
@@ -753,6 +835,55 @@ describe('Compiler definition validation', () => {
       inputKind: 'analysis-result',
       referenceId: 'raw-secondary-result',
     });
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+  });
+
+  it('admits one authoritative estimator-owned result for an exact comparison family', () => {
+    const definition = validDefinition();
+    definition.targets.push({
+      ...structuredClone(definition.targets[1]),
+      targetId: 'treatment-secondary',
+    });
+    definition.experiment.randomizationSlots.push({
+      targetId: 'treatment-secondary',
+      randomizationSlotId: 'slot-treatment-secondary',
+    });
+    definition.comparisons[0].treatmentTargetIds.push('treatment-secondary');
+    definition.analysisGraph.nodes[0].analysisNodeKind = 'estimator';
+    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
+    definition.decisionPolicy = {
+      decisionPolicyId: 'release-gate',
+      implementationId: 'progress/v1',
+      analysisResultIds: ['correct-rate'],
+      comparisonFamily: [
+        {
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment',
+          metricId: 'correct',
+          analysisResultId: 'correct-rate',
+        },
+        {
+          comparisonId: 'control-vs-treatment',
+          treatmentTargetId: 'treatment-secondary',
+          metricId: 'correct',
+          analysisResultId: 'correct-rate',
+        },
+      ],
+      comparisonFamilyResultId: 'correct-rate',
+      multipleComparisonPolicyId: 'estimator-owned-family/v1',
+      minimumEvidenceStatus: 'complete',
+    };
+
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).not.toThrow();
+
+    definition.analysisGraph.nodes[0].implementationId = 'other-estimator/v1';
+    expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
+      expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
+    );
+    definition.analysisGraph.nodes[0].implementationId = 'estimator-owned-family/v1';
+    definition.decisionPolicy.comparisonFamily![1].analysisResultId = 'other-result';
     expect(() => validateDefinitionSemantics(definition, validPolicy())).toThrowError(
       expect.objectContaining({ code: 'EVAL_DEFINITION_MISSING_REFERENCE' }),
     );

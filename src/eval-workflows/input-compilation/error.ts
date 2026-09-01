@@ -18,7 +18,9 @@ export type CliEvaluationInputErrorCode =
   | 'CLI_INPUT_SERIES_INVALID'
   | 'CLI_INPUT_CORE_SCHEMA_INVALID'
   | 'CLI_INPUT_CORE_SEMANTICS_INVALID'
-  | 'CLI_INPUT_RESTRICTED_INLINE_CONTENT';
+  | 'CLI_INPUT_RESTRICTED_INLINE_CONTENT'
+  | 'CLI_INPUT_RESOLUTION_FAILED'
+  | 'CLI_INPUT_SAMPLE_CONTROL_CONFLICT';
 
 export class CliEvaluationInputError extends Error {
   readonly code: CliEvaluationInputErrorCode;

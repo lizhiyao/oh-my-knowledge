@@ -1,12 +1,11 @@
 import { loadLatestObservationInboxReports } from './inbox.js';
+import type { ExperienceSessionSummary, ExperienceTurnSummary } from './contracts/experience.js';
+import type { ObservationSourceKind } from './contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-  ExperienceSessionSummary,
-  ExperienceTurnSummary,
-  ObservationSourceKind,
-} from '../types/index.js';
+} from './view-models/conversation.js';
 import { durationMsBetween } from '../shared/time.js';
 import type { ConversationCatalog } from './conversation-catalog.js';
 

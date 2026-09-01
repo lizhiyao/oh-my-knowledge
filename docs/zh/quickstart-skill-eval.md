@@ -30,7 +30,7 @@ omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
 omk eval --control code-review-v1 --treatment code-review-v2
 ```
 
-`omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览任务计划和预估调用次数；真跑后会打开 HTML 报告。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
+`omk init` 会创建两版 skill 和三条评测用例。`--dry-run` 先预览 sealed task plan 和预估调用次数；真跑后会在 Studio 打开 Core run。demo 只有三条用例，verdict 经常是 `UNDERPOWERED`，这是正常教学结果，不是运行失败。
 
 在 Codex 任务里，上面的最短命令无需添加 runtime 参数。普通终端想固定使用 Codex，可以把偏好加入 shell 配置，例如 `~/.zshrc`：
 
@@ -130,7 +130,7 @@ CLI 会尽量把首跑失败变成可执行的下一步：
 
 报告浏览器自动弹出（默认 `http://127.0.0.1:7799/`），重点看三个地方：
 
-**verdict**（跨版本结论）：`PROGRESS`（变好）/ `NOISE`（差距在置信区间内不可区分）/ `REGRESS`（变差）/ `CAUTIOUS`（趋势好但置信不足）；外加两档边界情况 `UNDERPOWERED`（用例太少不足以下结论）与 `SOLO`（单变体，无可对比）。这是你能直接拿出去对焦的一句话结论。
+**verdict**（跨版本结论）：`PROGRESS`（变好）/ `NOISE`（差距在置信区间内不可区分）/ `REGRESSION`（变差）/ `CAUTIOUS`（趋势好但置信不足）；外加两档边界情况 `UNDERPOWERED`（用例太少不足以下结论）与 `SOLO`（单变体，无可对比）。这是你能直接拿出去对焦的一句话结论。
 
 **综合分**：每版 0-5 分平均，跟基线比 `+Δ` 多少。Δ 旁边的置信区间决定 verdict 落点 —— 默认 95%，多个实验组共用一个对照时按 Bonferroni 提到更高置信水平。
 
@@ -142,7 +142,7 @@ CLI 会尽量把首跑失败变成可执行的下一步：
 |---|---|
 | `PROGRESS` | 可以走正常发布流程。留存报告作为发布证据；如果这是已用 `omk install` 纳管的 skill，再运行 `omk promote <name>` 记录接受决定。 |
 | `CAUTIOUS` | 不要盲发。先看触发的告警（分层门控、评委分歧、稳定性或 holdout），修完再重跑；只有明确人工复核后才放宽门禁。 |
-| `REGRESS` | 不要发布。从最差层和失败用例开始定位，修好 artifact 后重跑评测。 |
+| `REGRESSION` | 不要发布。从最差层和失败用例开始定位，修好 artifact 后重跑评测。 |
 | `NOISE` | 暂不做发布判断。增加用例，或提高用例集区分度，让差异能从噪声里分离出来，再重跑。 |
 | `UNDERPOWERED` | 把用例扩到约 20 条以上，或至少按当前规模 2× 扩充后重跑。 |
 | `SOLO` | 先补对照组，通常用 `omk eval --control baseline --treatment <name>`，再做发布 / 不发布判断。 |

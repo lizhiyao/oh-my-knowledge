@@ -358,7 +358,14 @@ export function createAssertionLayerTableSchemaValidators(): ReadonlyMap<
 > {
   const validator = createAnalysisSchemaValidator(
     ASSERTION_LAYER_TABLE_SCHEMA,
-    (value) => AssertionLayerEnvelopeSchema.parse(value) as JsonValue,
+    (value) => parseAssertionLayerTableEnvelope(value) as JsonValue,
   );
   return new Map([[schemaIdentityKey(validator.schema), validator]]);
+}
+
+export function parseAssertionLayerTableEnvelope(value: unknown): Readonly<{
+  resultType: 'table';
+  value: AssertionLayerTableValue;
+}> {
+  return AssertionLayerEnvelopeSchema.parse(value);
 }

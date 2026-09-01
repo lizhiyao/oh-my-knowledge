@@ -1,115 +1,86 @@
 <!--
-title: Statistical rigor — Bootstrap CI, Krippendorff α, length-debias, saturation curves
-description: Why omk's eval results are auditable, not just claimed. Distribution-free CIs, judge ↔ human agreement, length-debiased scoring, saturation curves — bootstrap CI, length-debias and saturation on by default; Krippendorff α the moment you add a gold set.
+title: Statistical rigor — uncertainty, calibration, debiasing, and evidence gates
+description: Why Evaluation Core decisions are auditable: preregistered Bootstrap families, explicit Gold comparison, frozen judge prompts, and fail-closed evidence coverage.
 -->
 
 # Statistical rigor
 
-omk's job is to answer **"the knowledge you give your LLM — what's it actually worth?"** with objective data. The biggest LLM-eval failure mode is **confident bias** — narrow CIs around the wrong answer. omk ships four pieces — bootstrap CI, length-debias and saturation on by default, plus Krippendorff α the moment you add a gold set — so conclusions can be externally audited.
+omk evaluates a knowledge change by fixing the model and sample design, changing the artifact, and carrying the resulting evidence through a sealed Evaluation Core plan. A higher display score is not release authority. The registered Core Decision must be able to trace its conclusion back to complete, comparable observations and preregistered analysis.
 
-This page is the depth reference. The README hero callout is the entry; come here for formulas, flags, and the why.
+Four safeguards cover different failure modes.
 
-## 1. Bootstrap CI(`--bootstrap`)
+## 1. Bootstrap comparison families
 
-**Distribution-free confidence intervals.**
+`omk eval` estimates uncertainty from the observed sampling units with a percentile Bootstrap rather than assuming a parametric score distribution.
 
-The t-test breaks on ordinal LLM scores (Likert-like buckets, not normal-distributed continuous values). Bootstrap directly resamples the raw observations and stays valid at small N (< 30) and on skewed distributions.
+- Target means and treatment-minus-control intervals are produced by `omk.bootstrap-family-table/v1`.
+- Paired designs require an explicit pairing key and never fall back to an independent estimator.
+- Multiple treatments share one sealed comparison family. The effective level is `alpha / K`, so adding comparisons cannot silently inflate the family-wise false-positive rate.
+- The resample count, nominal alpha, design, target／sample order, and deterministic Mulberry32 stream are part of the Analysis identity. Default CLI resampling uses 1000 draws.
+- Missing comparison intervals remain inconclusive. The release policy never substitutes a point estimate.
 
-- **Mean CI** per variant — resampled with replacement N times (default 1000)
-- **Pairwise diff CI** between two variants — diff of resampled means; if the CI does not cross 0, the difference is significant at the chosen α (default 0.05 → 95% CI)
-- **Output**: each `VariantResult.bootstrapCI` carries `[lo, hi]` for mean and pairwise; HTML report draws CI bands; CLI `omk eval` consumes them in the 6-tier verdict logic
-- **Reproducible by default**: CIs use a fixed internal seed, so the same eval run twice yields byte-identical CIs and a stable verdict — no run-to-run coin-flip on `significant` near the boundary (a non-deterministic CI would silently flip the ship/no-ship call)
+Implementation: `src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.ts` and `bootstrap-family-parameters.ts`.
 
-**Reference**: Efron & Tibshirani (1993), "An Introduction to the Bootstrap". omk implementation: `src/eval-core/bootstrap.ts` — the formula is covered by `test/eval-core/bootstrap.test.ts`, and the documented defaults (resample count, α) are kept in sync with the code constants by `test/scripts/doc-constants-drift.test.ts`.
+## 2. Gold agreement is explicit calibration
 
-## 2. Human Gold + Krippendorff α(`--gold-dir`)
+Bootstrap uncertainty answers whether the observed difference is distinguishable from resampling noise. It does not prove that an LLM judge agrees with a human standard.
 
-**Judge ↔ human agreement, anchored externally.**
+Gold comparison is therefore a separate authenticated Core projection. The caller selects an exact run, Target, Evaluator, numeric Metric, and optional trial coordinate. Gold and Metric scales must match; ambiguous observations fail instead of being averaged across trials or ensemble members.
 
-CI tells you "is the judge stable across resamples". α tells you "is the judge agreeing with a human standard". Two complementary axes:
+The projection reports:
 
-- **Stable + low α** = judge is consistently wrong (systematic bias)
-- **Unstable + high α** = judge agrees with humans on average but is noisy
-- **Stable + high α** = trust the judge for this rubric
-- **Unstable + low α** = judge is broken
+- interval-distance Krippendorff alpha as the primary agreement statistic;
+- weighted kappa and Pearson correlation as supporting diagnostics;
+- paired-unit Bootstrap uncertainty and structured missing states;
+- contamination warnings when annotator and judge identities make agreement optimistic.
 
-omk auto-detects gold-judge collusion: if the gold annotator is the same model as the judge (e.g., both `claude-3.5-sonnet`), α inflates because both share the same biases. omk warns and treats that α as an upper-bound calibration signal, not as an adjusted score.
+Post-hoc Gold comparison is exploratory calibration. It does not retroactively rewrite the preregistered release Decision.
 
-The same logic applies on the judge-vs-output axis. The default judge follows the evaluated runtime and is usually from the same model family: on the Claude path, `claude:haiku` judges `claude:sonnet`; on the Codex path, the same Codex model executes and judges by default. That self-preference can inflate scores. omk flags it (`judge_self_preference`, plus `single_vendor_ensemble` when a multi-judge panel is all one vendor) and points to the fix: a cross-vendor judge (`--judge-models openai-api:gpt-4o`) or gold calibration. Because omk holds the model fixed across baseline and treatment, self-preference largely cancels in the A/B **delta** — it bites absolute scores, version-regression curves, and cross-model comparisons, which is what the warning scopes itself to.
+Implementation: the explicit projection is `src/eval-workflows/downstream-projections/gold.ts`; the preregistered Core Analysis node is `src/eval-workflows/runtime-adapter/analysis/agreement-table.ts`.
 
-Today gold is reported as calibration evidence in the report and CLI output. It does not by itself change the headline verdict; use it to decide whether the judge is trustworthy enough for the decision context.
+## 3. Judge debiasing and prompt identity
 
-**Formula**: standard Krippendorff α with interval distance metric (δ²=(c−k)²; a defensible choice for 1-5 Likert). Implementation: `src/grading/human-gold.ts`. Inputs: a gold dataset directory with `metadata.yaml` and one or more annotation YAML files containing `annotations: [{ sample_id, score, reason? }]`.
+LLM judges can reward verbosity, polished formatting, or confident tone independently of correctness. omk's rubric prompts explicitly neutralize these signals.
 
-## 3. Debiased judge prompt: length / presentation / tone (default ON)
+- Presentation and tone neutrality are always enabled.
+- Length debiasing is enabled by default; `--no-debias-length` disables only the length instruction for controlled research or replication.
+- Every scoring prompt has a registry identity and hash. Reports with different evaluator identities or prompt variants are not treated as blind equivalents.
+- The frozen hashes are driven by `src/shared/llm-prompts/registry.ts` and guarded by `test/shared/prompt-registry-freeze.test.ts`.
 
-**Research shows LLM judges over-weight verbosity, polished formatting, and confident tone** — longer, prettier, more assertive answers score higher independent of quality (format / markdown bias; sycophancy / authority bias). omk's judge prompt explicitly states both "length is not a quality signal" and "presentation and tone are not quality signals" + uses chain-of-thought against the rubric. The wording is deliberately symmetric — it neither rewards polish/confidence nor penalizes plainness/hedging — so the debias instruction does not over-correct into a reverse bias.
+Prompt instructions reduce a known bias risk; they do not prove that a judge is unbiased. Gold calibration is the external check.
 
-- Report metadata records the judge prompt hash (template version); changing any debias instruction changes the hash, and reports with different hashes are never compared blind
-- Presentation/tone neutrality is always on with no toggle; length-debias can be opted out via `--no-debias-length` for research / replication — for a dedicated length-bias audit, compare reports with and without that flag
-- These are "research says judges generally have this bias" prompt instructions; omk does not run a before/after bias measurement on its own judge. The real channel to validate that debiasing works is gold calibration (Krippendorff α vs human)
-- Reference: Saito et al. (2023), "Verbosity Bias in Preference Labeling by Large Language Models"
+## 4. Evidence and coverage fail closed
 
-**Frozen by**: `test/grading/judge-hash-frozen.test.ts` — byte-level hash freeze prevents silent prompt drift across versions.
+Missing evidence is not a zero score and is not silently dropped from the decision boundary.
 
-## 4. Saturation curve
+- Assertion, judge, dimension, and composite tables preserve observed, missing, invalid, failed, unavailable, and not-started states.
+- Structural non-applicability is distinct from a planned observation that was not obtained.
+- Coverage is conserved through Analysis lineage and validated again when transported Bundles are read.
+- The release Decision requires complete evidence and exact source binding before issuing a directional conclusion.
 
-**Answers "have I run enough samples?"**
+This prevents a run from looking better merely because difficult coordinates failed to produce a score.
 
-With `--repeat ≥ 5`, omk accumulates cumulative N → bootstrap CI sequence. When CI shrink rate stays under 5% across 3 windows, the eval is **saturated** — more samples buy nothing, additional cost is wasted.
+## Release Decision
 
-- HTML report inlines an SVG saturation curve + verdict label
-- `omk eval` uses saturation as one input to the 6-tier verdict logic
-- Default window size: 3 consecutive measurements; threshold: 5% relative shrink in CI width
-- Reference: this is omk's own design, not a published method. Implementation: `src/eval-core/saturation.ts`
+`omk.release-decision/v1` consumes the authenticated Composite table, Bootstrap family, and optional Judge Ensemble table. Its conclusions are:
 
-## Why these four together
-
-Each piece guards a different failure mode:
-
-| Failure mode | Guard |
+| Verdict | Meaning |
 |---|---|
-| "v2 looks better but it's within margin of error" | Bootstrap CI(pairwise diff CI not crossing 0) |
-| "Judge says v2 is better but I don't trust the judge" | Krippendorff α (judge ↔ human) |
-| "Judge favors verbose / polished / confident answers" | Length / presentation / tone debiased judge prompt |
-| "I ran 10 samples and stopped — was that enough?" | Saturation curve |
+| `PROGRESS` | Significant positive comparison and all registered release gates passed |
+| `CAUTIOUS` | Positive signal, but a practical-effect, layer, judge-dissent, or holdout gate requires review |
+| `REGRESSION` | Significant negative comparison |
+| `NOISE` | The comparison interval overlaps zero with sufficient planned sample count |
+| `UNDERPOWERED` | The interval overlaps zero and the planned sample count is below the registered minimum |
+| `SOLO` | One Target is present and no comparison exists |
 
-Skip any one and you have a hole. Bootstrap CI, length-debias and saturation are on by default — you can opt out of length-debias for research replication, but those are otherwise unconditional; Krippendorff α turns on automatically once you supply a gold set (`--gold-dir`).
+Operational status, evidence status, conclusion status, and verdict remain separate. `PROGRESS` authorizes the normal release route only when it also carries `release-gates-passed`. Cross-run stability is an Evaluation Series concern and is never inferred from a single run.
 
-## Verdict robustness — multiple comparisons + stability gate
+Implementation: `src/eval-workflows/runtime-adapter/analysis/release-decision.ts`.
 
-The 6-tier verdict aggregates the pieces above into one ship/no-ship call. Two corrections keep that call honest when the design stresses it:
+## Construct validity and audit trail
 
-- **Multiple-comparison correction (Bonferroni).** With K treatments compared against one control, testing each pairwise diff at α independently inflates the family-wise false-positive rate — the worst-case roll-up takes the loudest pair, so any single spurious "significant" pulls the headline. omk tests each comparison at **α / K** instead, holding the family-wise error at the nominal α. K = 1 (classic A/B) is unchanged. Each corrected `VariantPairComparison` records its effective `alpha`, and the report relabels the CI accordingly — a Bonferroni-widened interval is never shown as "95%".
-- **Stability gate.** A statistically significant gain that does not reproduce across runs is not shippable. When stability is actually measured (`--repeat ≥ 2`) and run-to-run variation is high (median CV > 15%), a PROGRESS verdict is downgraded to CAUTIOUS, with the instability surfaced in the headline. Single-run reports are **not** gated — stability is simply unmeasured there (the rationale says so), and auto-downgrading every single-run eval would be over-aggressive.
+Statistical machinery cannot rescue a contaminated experiment. Strict baseline isolation prevents the control from discovering the treatment through local skills, workspace files, or agent tooling. Artifact, Dataset, Runtime, evaluator, prompt, policy, and stage identities are sealed before the first Target call.
 
-Implementation: `src/eval-core/verdict.ts` and `src/eval-core/evaluation-reporting.ts`. The CV threshold is kept in sync with the code by `test/scripts/doc-constants-drift.test.ts`.
+Each persisted run contains the exact Run Plan, Execution Bundle, Evaluation Bundle, Analysis Bundle, and Evaluation Report, linked by digests. Studio is a rebuildable projection over those artifacts, not a second source of measurement truth. Changes to frozen prompts, five-layer scoring semantics, Bootstrap formulas, Krippendorff alpha, missing-evidence treatment, or length-debias semantics require an explicit `BREAKING-COMPARABILITY` review.
 
-## Construct-validity isolation(`--strict-baseline`, default ON)
-
-A fifth invariant, separate from the four above but also default-on:
-
-baseline gets the prompt **without** the skill being tested. omk cuts three contamination paths so baseline doesn't silently see the skill it's compared against:
-
-1. SDK skill auto-discovery
-2. subagent Skill tool
-3. cwd file-system access via the `skills/<name>/` symlink
-
-`eval.yaml` `allowedSkills: []` can force strict isolation on any variant. Without isolation, any "v2 is better than baseline" claim is suspect because baseline may have been reading v2's own SKILL.md through one of the three channels.
-
-See: [docs/specs/sample-design-spec.md](../specs/sample-design-spec.md) for related sample-design considerations.
-
----
-
-## Reproducibility / audit trail
-
-Every report carries:
-- omk version (`reportMeta.cliVersion`)
-- Node version (`reportMeta.nodeVersion`)
-- Judge models + prompt hash (`reportMeta.judgeModels` — each entry carries its judge model and runtime fingerprint — and `reportMeta.judgePromptHash`)
-- Executor runtime fingerprint (`reportMeta.executorRuntime`)
-- Sample fingerprints (`reportMeta.sampleHashes`)
-- Skill isolation snapshot (`reportMeta.skillIsolation`)
-- Schema version (`reportMeta.schemaVersion`)
-
-Cross-version comparability is enforced by `BREAKING-COMPARABILITY` callouts in [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases) — when a measurement invariant changes, you'll see it.
+See also [Composite scoring](../specs/scoring.md), [Sample design](../specs/sample-design-spec.md), and the [Evaluation Core cutover guide](../guides/evaluation-core-cutover.md).

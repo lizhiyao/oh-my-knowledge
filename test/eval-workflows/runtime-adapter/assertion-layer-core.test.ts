@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
 import {
+  canonicalizeJson,
+  schemaIdentityKey,
   verifyAnalysisBundle,
   type RuntimeIdentity,
 } from '../../../src/evaluation-core/contracts/index.js';
@@ -14,6 +17,7 @@ import {
   createBuiltinMissingPolicies,
   resolveBuiltinAnalysisRuntime,
   type AnalysisNodeImplementation,
+  type AnalysisNodeRunContext,
 } from '../../../src/evaluation-core/analysis/index.js';
 import {
   executeRunPlanSource,
@@ -37,6 +41,26 @@ import {
 import {
   createAssertionLayerTableSchemaValidators,
 } from '../../../src/eval-workflows/runtime-adapter/analysis/assertion-layer.js';
+import {
+  COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+  createCompositeAnalysisNodes,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-node.js';
+import {
+  createCompositeParameterSchemaValidators,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-parameters.js';
+import {
+  createCompositeTableSchemaValidators,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/composite-table.js';
+import {
+  BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+  createBootstrapFamilyAnalysisNodes,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-node.js';
+import {
+  createBootstrapFamilyParameterSchemaValidators,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-parameters.js';
+import {
+  createBootstrapFamilyTableSchemaValidators,
+} from '../../../src/eval-workflows/runtime-adapter/analysis/bootstrap-family-table.js';
 import {
   testRuntime,
   validDefinition,
@@ -106,20 +130,29 @@ function sealedCriteria(source: readonly Criterion[] = criteria) {
 
 describe('assertion-layer Evaluation Core integration', () => {
   it('prepares, executes, verifies, and preserves the raw Evaluation boundary', async () => {
-    const implementations = createAssertionLayerAnalysisNodes();
+    const implementations = new Map([
+      ...createAssertionLayerAnalysisNodes(),
+      ...createCompositeAnalysisNodes(),
+      ...createBootstrapFamilyAnalysisNodes(),
+    ]);
     const base = testRuntime({ evaluatorValueTypes: ['boolean'] });
     const schemaValidators = new Map([
       ...base.schemaValidators,
       ...createBuiltinAnalysisSchemaValidators(),
       ...createAssertionLayerParameterSchemaValidators(),
       ...createAssertionLayerTableSchemaValidators(),
+      ...createCompositeParameterSchemaValidators(),
+      ...createCompositeTableSchemaValidators(),
+      ...createBootstrapFamilyParameterSchemaValidators(),
+      ...createBootstrapFamilyTableSchemaValidators(),
     ]);
     const preparationRuntime: PreparationRuntime = {
       schemaValidators,
       resolveExecutor: (requirement) => base.resolveExecutor(requirement),
       resolveEvaluator: (requirement) => base.resolveEvaluator(requirement),
       resolveAnalysis(requirement: Readonly<AnalysisRuntimeRequirement>) {
-        if (requirement.requirementKind === 'analysis-node') {
+        if (requirement.requirementKind === 'analysis-node'
+            || requirement.requirementKind === 'sampling-estimator') {
           const implementation = implementations.get(requirement.implementationId);
           if (implementation !== undefined) {
             return { identity: implementation.identity, satisfiesVersionConstraint: true };
@@ -132,6 +165,17 @@ describe('assertion-layer Evaluation Core integration', () => {
       validateExtension: (request) => base.validateExtension?.(request),
     };
     const definition = validDefinition();
+    definition.dataset.samples[0].input = {
+      question: 'Q', cohort: 'a', pair: 'sample-1',
+    };
+    definition.experiment.sampling = {
+      experimentalUnit: 'sample',
+      repeatedMeasures: false,
+      resamplingUnit: 'paired-block',
+      estimatorId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+      seedCoupling: 'shared-within-block',
+      pairingKey: '/input/pair',
+    };
     definition.evaluators = criteria.map((criterion) => ({
       evaluatorId: `evaluator-${criterion.criterionId}`,
       evaluatorKind: 'deterministic-assertion' as const,
@@ -162,6 +206,45 @@ describe('assertion-layer Evaluation Core integration', () => {
       })),
       outputResultId: 'assertion-layer-table',
       parameters: { criteria: sealedCriteria([...criteria].reverse()) },
+    }, {
+      analysisNodeKind: 'reducer',
+      nodeId: 'composite-table',
+      implementationId: COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'assertion-layer-table' }],
+      outputResultId: 'composite-table',
+      parameters: {
+        layers: [{
+          layerId: 'fact', analysisResultId: 'assertion-layer-table',
+          sourceKind: 'assertion-layer', selector: 'fact',
+        }, {
+          layerId: 'behavior', analysisResultId: 'assertion-layer-table',
+          sourceKind: 'assertion-layer', selector: 'behavior',
+        }],
+      },
+    }, {
+      analysisNodeKind: 'estimator',
+      nodeId: 'bootstrap-family-table',
+      implementationId: BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+      inputs: [{ inputKind: 'analysis-result', referenceId: 'composite-table' }],
+      outputResultId: 'bootstrap-family-table',
+      parameters: {
+        source: {
+          analysisResultId: 'composite-table',
+          sourceKind: 'composite',
+          selector: 'aggregate',
+        },
+        targetIds: ['control', 'treatment'],
+        sampleIds: ['sample-1'],
+        comparisons: [{
+          comparisonId: 'control-vs-treatment',
+          controlTargetId: 'control',
+          treatmentTargetId: 'treatment',
+          comparisonDesign: 'paired',
+        }],
+        resamples: 100,
+        alpha: 0.05,
+        seed: DEFAULT_BOOTSTRAP_SEED,
+      },
     }];
     definition.comparisons[0].metricIds = criteria.map((criterion) => criterion.metricId);
     delete definition.decisionPolicy;
@@ -268,29 +351,45 @@ describe('assertion-layer Evaluation Core integration', () => {
       eventSequencer,
     }, { runId: 'assertion-core-run', bundleId: 'assertion-evaluation' });
 
-    const implementation = implementations.get(ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID);
-    if (implementation === undefined) throw new Error('missing assertion implementation');
-    const lifecycle = { opened: 0, executed: 0, disposed: 0 };
-    const observedImplementation: AnalysisNodeImplementation = {
-      identity: implementation.identity,
-      outputSchema: implementation.outputSchema,
-      async openRun(runContext) {
-        lifecycle.opened += 1;
-        const run = await implementation.openRun(runContext);
-        return {
-          async execute(nodeContext) {
-            lifecycle.executed += 1;
-            return run.execute(nodeContext);
-          },
-          async dispose() {
-            lifecycle.disposed += 1;
-            await run.dispose();
-          },
-        };
-      },
-    };
+    const lifecycle = new Map<string, { opened: number; executed: number; disposed: number }>();
+    const analysisNodesByNodeId = new Map(plan.analysis.analysisGraph.nodes.map((node) => {
+      const implementation = implementations.get(node.implementationId);
+      if (implementation === undefined) throw new Error(`missing ${node.implementationId}`);
+      const counts = { opened: 0, executed: 0, disposed: 0 };
+      lifecycle.set(node.nodeId, counts);
+      const observed: AnalysisNodeImplementation = {
+        identity: implementation.identity,
+        outputSchema: implementation.outputSchema,
+        async openRun(runContext) {
+          counts.opened += 1;
+          const run = await implementation.openRun(runContext);
+          return {
+            async execute(nodeContext) {
+              counts.executed += 1;
+              return run.execute(nodeContext);
+            },
+            async dispose() {
+              counts.disposed += 1;
+              await run.dispose();
+            },
+          };
+        },
+      };
+      return [node.nodeId, observed] as const;
+    }));
+    for (const node of plan.analysis.analysisGraph.nodes) {
+      const runtime = plan.analysis.runtimes.find((candidate) => (
+        candidate.runtimeKind === 'analysis-node' && candidate.referenceId === node.nodeId
+      ));
+      const implementation = analysisNodesByNodeId.get(node.nodeId);
+      if (runtime === undefined || implementation === undefined) {
+        throw new Error(`missing sealed runtime ${node.nodeId}`);
+      }
+      expect(canonicalizeJson(runtime.identity)).toBe(canonicalizeJson(implementation.identity));
+      expect(schemaValidators.get(schemaIdentityKey(implementation.outputSchema))).toBeDefined();
+    }
     const analysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodesByNodeId: new Map([['assertion-layer-table', observedImplementation]]),
+      analysisNodesByNodeId,
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
       decisionPoliciesByDecisionPolicyId: new Map(),
@@ -306,8 +405,15 @@ describe('assertion-layer Evaluation Core integration', () => {
       { schemaValidators },
     )).not.toThrow();
     expect(analysis.bundle.analysisBundleStatus).toBe('completed');
-    expect(lifecycle).toEqual({ opened: 1, executed: 1, disposed: 1 });
-    const record = analysis.bundle.records[0];
+    expect([...lifecycle.values()]).toEqual([
+      { opened: 1, executed: 1, disposed: 1 },
+      { opened: 1, executed: 1, disposed: 1 },
+      { opened: 1, executed: 1, disposed: 1 },
+    ]);
+    const record = analysis.bundle.records.find((candidate) => (
+      candidate.resultId === 'assertion-layer-table'
+    ));
+    if (record === undefined) throw new Error('missing assertion-layer record');
     expect(record.analysisStatus).toBe('completed');
     if (record.analysisStatus !== 'completed') return;
     expect(record.value).toMatchObject({
@@ -323,21 +429,99 @@ describe('assertion-layer Evaluation Core integration', () => {
     expect(JSON.stringify(analysis.bundle)).not.toContain('assertion-secret-token');
     expect(JSON.stringify(analysis.bundle)).not.toContain('providerCost');
     expect(JSON.stringify(analysis.bundle)).not.toContain('inputTokens');
+    const compositeRecord = analysis.bundle.records.find((candidate) => (
+      candidate.resultId === 'composite-table'
+    ));
+    expect(compositeRecord?.analysisStatus).toBe('completed');
+    if (compositeRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing composite record');
+    }
+    expect(compositeRecord.coverage).toMatchObject({ planned: 0, included: 0, comparable: 0 });
+    expect(compositeRecord.value).toMatchObject({
+      groups: expect.arrayContaining([expect.objectContaining({
+        coverage: { plannedLayers: 2, observedLayers: 2, missingLayers: 0 },
+        aggregate: { aggregateStatus: 'observed', score: 4.14 },
+      })]),
+    });
+    const bootstrapRecord = analysis.bundle.records.find((candidate) => (
+      candidate.resultId === 'bootstrap-family-table'
+    ));
+    expect(bootstrapRecord?.analysisStatus).toBe('completed');
+    if (bootstrapRecord?.analysisStatus !== 'completed') {
+      throw new Error('missing Bootstrap family record');
+    }
+    expect(bootstrapRecord.coverage).toMatchObject({ planned: 0, included: 0, comparable: 0 });
+    expect(bootstrapRecord.value).toMatchObject({
+      targetIntervals: [{
+        targetId: 'control',
+        intervalStatus: 'observed',
+        unitCount: 1,
+        interval: { lower: 4.14, upper: 4.14, estimate: 4.14, samples: 0 },
+      }, {
+        targetId: 'treatment',
+        intervalStatus: 'observed',
+        unitCount: 1,
+        interval: { lower: 4.14, upper: 4.14, estimate: 4.14, samples: 0 },
+      }],
+      comparisons: [{
+        binding: { comparisonId: 'control-vs-treatment', comparisonDesign: 'paired' },
+        comparisonStatus: 'observed',
+        counts: { controlUnits: 1, treatmentUnits: 1, comparableUnits: 1 },
+        interval: { lower: 0, upper: 0, estimate: 0, samples: 100, significant: false },
+      }],
+      family: {
+        plannedComparisons: 1,
+        observedComparisons: 1,
+        missingComparisons: 0,
+        nominalAlpha: 0.05,
+        effectiveAlpha: 0.05,
+      },
+    });
 
+    const implementation = implementations.get(ASSERTION_LAYER_ANALYSIS_IMPLEMENTATION_ID);
+    const compositeImplementation = implementations.get(COMPOSITE_ANALYSIS_IMPLEMENTATION_ID);
+    const bootstrapImplementation = implementations.get(
+      BOOTSTRAP_FAMILY_ANALYSIS_IMPLEMENTATION_ID,
+    );
+    if (implementation === undefined
+        || compositeImplementation === undefined
+        || bootstrapImplementation === undefined) {
+      throw new Error('missing assertion, composite, or Bootstrap implementation');
+    }
     let failedDisposeCalls = 0;
+    let blockedCompositeOpened = 0;
+    let blockedBootstrapOpened = 0;
     const failedAnalysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodesByNodeId: new Map([['assertion-layer-table', {
-        identity: implementation.identity,
-        outputSchema: implementation.outputSchema,
-        async openRun() {
-          return {
-            async execute() {
-              throw new Error('assertion-layer-private-failure');
-            },
-            dispose() { failedDisposeCalls += 1; },
-          };
-        },
-      }]]),
+      analysisNodesByNodeId: new Map([
+        ['assertion-layer-table', {
+          identity: implementation.identity,
+          outputSchema: implementation.outputSchema,
+          async openRun() {
+            return {
+              async execute() {
+                throw new Error('assertion-layer-private-failure');
+              },
+              dispose() { failedDisposeCalls += 1; },
+            };
+          },
+        }],
+        ['composite-table', {
+          identity: compositeImplementation.identity,
+          outputSchema: compositeImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedCompositeOpened += 1;
+            return compositeImplementation.openRun(runContext);
+          },
+        }],
+        ['bootstrap-family-table', {
+          identity: bootstrapImplementation.identity,
+          outputSchema: bootstrapImplementation.outputSchema,
+          async openRun(runContext: Readonly<AnalysisNodeRunContext>) {
+            blockedBootstrapOpened += 1;
+            return bootstrapImplementation.openRun(runContext);
+          },
+        }],
+      ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
       decisionPoliciesByDecisionPolicyId: new Map(),
@@ -349,23 +533,29 @@ describe('assertion-layer Evaluation Core integration', () => {
       records: [{
         analysisStatus: 'failed',
         error: { code: 'analysis-runtime-failed' },
-      }],
+      }, { analysisStatus: 'not-evaluated' }, { analysisStatus: 'not-evaluated' }],
     });
     expect(failedDisposeCalls).toBe(1);
+    expect(blockedCompositeOpened).toBe(0);
+    expect(blockedBootstrapOpened).toBe(0);
     expect(JSON.stringify(failedAnalysis.bundle)).not.toContain('assertion-layer-private-failure');
 
     let cancelledOpenCalls = 0;
     const controller = new AbortController();
     controller.abort();
     const cancelledAnalysis = await analyzeEvaluationBundleSource(plan, execution, evaluation, {
-      analysisNodesByNodeId: new Map([['assertion-layer-table', {
-        identity: implementation.identity,
-        outputSchema: implementation.outputSchema,
-        async openRun(runContext) {
-          cancelledOpenCalls += 1;
-          return implementation.openRun(runContext);
-        },
-      }]]),
+      analysisNodesByNodeId: new Map([
+        ['assertion-layer-table', {
+          identity: implementation.identity,
+          outputSchema: implementation.outputSchema,
+          async openRun(runContext) {
+            cancelledOpenCalls += 1;
+            return implementation.openRun(runContext);
+          },
+        }],
+        ['composite-table', compositeImplementation],
+        ['bootstrap-family-table', bootstrapImplementation],
+      ]),
       schemaValidators,
       missingPoliciesByPolicyId: createBuiltinMissingPolicies(),
       decisionPoliciesByDecisionPolicyId: new Map(),
@@ -378,7 +568,11 @@ describe('assertion-layer Evaluation Core integration', () => {
     });
     expect(cancelledAnalysis.bundle).toMatchObject({
       analysisBundleStatus: 'cancelled',
-      records: [{ analysisStatus: 'not-evaluated', runtimeDependencies: [] }],
+      records: [
+        { analysisStatus: 'not-evaluated', runtimeDependencies: [] },
+        { analysisStatus: 'not-evaluated' },
+        { analysisStatus: 'not-evaluated' },
+      ],
     });
     expect(cancelledOpenCalls).toBe(0);
   });

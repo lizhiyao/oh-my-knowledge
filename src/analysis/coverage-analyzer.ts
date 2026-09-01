@@ -17,11 +17,8 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import type { ToolCallInfo, ResultEntry, Report } from '../types/index.js';
-import {
-  ownRecordValue,
-  setOwnRecordValue,
-} from '../shared/record-count.js';
+import type { ToolCallInfo } from '../types/index.js';
+import type { AnalysisEntry } from './contracts.js';
 import { toolCallQuery } from '../shared/tool-search.js';
 import { isToolCallSuccess } from '../shared/tool-call-status.js';
 
@@ -335,7 +332,7 @@ export interface CoverageReport {
  * Compute knowledge coverage for a single variant across all samples.
  */
 export function computeCoverage(
-  results: ResultEntry[],
+  results: AnalysisEntry[],
   variant: string,
   index: KnowledgeIndex,
   cwd?: string | null,
@@ -397,29 +394,4 @@ export function computeCoverage(
     grepPatternsUsed,
     overallRate,
   };
-}
-
-/**
- * Compute coverage reports for all variants in a report.
- * Returns a map of variant → CoverageReport.
- */
-export function computeReportCoverage(
-  report: Report,
-  artifactContents: Record<string, string | null>,
-  cwds: Record<string, string | null>,
-): Record<string, CoverageReport> {
-  const coverageMap: Record<string, CoverageReport> = {};
-
-  for (const variant of report.meta.variants) {
-    const content = ownRecordValue(artifactContents, variant) || null;
-    const cwd = ownRecordValue(cwds, variant) || null;
-
-    // Build knowledge index for this variant
-    const index = buildFullKnowledgeIndex(content, cwd);
-    if (index.totalFiles === 0) continue;
-
-    setOwnRecordValue(coverageMap, variant, computeCoverage(report.results, variant, index, cwd));
-  }
-
-  return coverageMap;
 }

@@ -52,7 +52,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
     'public',
     'text/markdown',
   );
-  const workspace = descriptor('workspace-tree', { files: ['README.md'] });
+  const workspace = descriptor('workspace-tree', { files: ['README.md'] }, 'sensitive');
   const mcp = descriptor('mcp-config', { servers: ['search'] }, 'sensitive');
   const mockPayload = descriptor('mock-search-response', { answer: 'A' }, 'secret');
   const rubric = descriptor('rubric-correctness', { rubric: 'correctness' });
@@ -141,18 +141,27 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         behavior: {
           systemInstructions: 'required',
           artifact: treatmentArtifact,
-          workspace,
           mcpConfig: mcp,
-          allowedTools: ['search'],
           sandbox: {
             sandboxId: 'omk.local-sandbox/v1',
             config: { classification: 'public', value: { network: 'mock-only' } },
           },
           mocks: [{
+            sampleIds: ['sample-2'],
             strict: true,
             matchRules: { tool: 'search', query: { exact: 'Q' } },
             payloads: [mockPayload],
           }],
+        },
+        executionControls: {
+          defaults: {
+            workspace: {
+              workspaceMode: 'copy-on-write-overlay',
+              descriptor: { ...workspace, classification: 'sensitive' },
+            },
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+          },
+          sampleOverrides: [],
         },
       },
       {
@@ -169,15 +178,24 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         behavior: {
           systemInstructions: 'not-required',
           artifact: controlArtifact,
-          workspace,
           mcpConfig: mcp,
-          allowedTools: ['search'],
           allowedSkills: [],
           mocks: [{
+            sampleIds: ['sample-2'],
             strict: true,
             matchRules: { query: { exact: 'Q' }, tool: 'search' },
             payloads: [mockPayload],
           }],
+        },
+        executionControls: {
+          defaults: {
+            workspace: {
+              workspaceMode: 'copy-on-write-overlay',
+              descriptor: { ...workspace, classification: 'sensitive' },
+            },
+            tools: { toolPolicyKind: 'allow-list', allowedTools: ['search'] },
+          },
+          sampleOverrides: [],
         },
       },
     ],
@@ -199,7 +217,9 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         evaluatorId: 'rubric',
         evaluatorKind: 'llm-rubric',
         runtimeBindingKind: 'judge',
+        implementationId: 'omk.rubric-judge/v1',
         instrumentId: 'rubric-correctness-v1',
+        runtimePromptVariant: 'rubric-length-debias-on/v1',
         replicateGroupId: 'rubric-primary',
         metricIds: ['rubric-score', 'dimension-score', 'rag-score'],
         inputs: [
@@ -223,17 +243,13 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       members: [
         {
           ensembleMemberId: 'judge-b',
-          implementationId: 'openai-judge-adapter/v1',
           executorId: 'openai-api',
           model: 'judge-b',
-          promptVariant: 'rubric-length-debias-on/v1',
         },
         {
           ensembleMemberId: 'judge-a',
-          implementationId: 'anthropic-judge-adapter/v1',
           executorId: 'anthropic-api',
           model: 'judge-a',
-          promptVariant: 'rubric-length-debias-on/v1',
         },
       ],
     },
@@ -288,7 +304,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
           implementationId: 'bootstrap.mean-difference/v1',
           inputs: [{
             inputKind: 'comparison',
-            referenceId: 'control-vs-treatments',
+            referenceId: 'control-vs-treatment',
             treatmentTargetId: 'treatment',
             metricId: 'rubric-score',
           }],

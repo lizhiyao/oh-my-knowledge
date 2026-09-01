@@ -13,14 +13,14 @@
  */
 
 import { resolve } from 'node:path';
-import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
+import type { DependencyRequirements } from '../preflight/contracts.js';
 import type { Artifact, Sample } from '../types/index.js';
 
 export interface DoctorPreflightContext {
   /** 过滤掉 baseline-kind 后的 artifact 列表; doctor 只检查实际被测的 skill。 */
   doctorArtifacts: Artifact[];
   /** dependency / preflight 路径基准。
-   *  解析规则与 src/eval-workflows/evaluation-pipeline.ts 的 dependency check 严格对齐:
+   *  解析规则与生产 Evaluation Core host 的 dependency check 严格对齐：
    *  artifacts.find(a => a.cwd)?.cwd > resolve(skillDir) > process.cwd()。 */
   dependencyCwd: string;
   samples?: Sample[];

@@ -68,7 +68,7 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].skillRoot, join(MULTI_SKILL_DIR, 'classifier'));
   });
 
-  it('显式 cwd 覆盖,但 skillRoot 仍记录在 artifact 上(优先级在 task-planner 处理)', () => {
+  it('显式 cwd 覆盖，但 skillRoot 仍作为 artifact 来源元数据保留', () => {
     const artifacts = resolveArtifacts(MULTI_SKILL_DIR, [{ expr: 'classifier', cwd: '/tmp/override' }]);
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].cwd, '/tmp/override');
@@ -215,7 +215,7 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     assert.notEqual(h3, h2, '改 SKILL.md 也改变整树指纹');
   });
 
-  it('resolvedCommit = variant ref 解析出的 commit,而非 cwd HEAD(显式旧 SHA 钉旧版,#234/#236)', () => {
+  it('resolvedCommit 精确记录 variant ref provenance，而非 cwd HEAD', () => {
     mkRepo();
     const sh = (args: string[]): void => { execFileSync('git', args, { cwd: repo, stdio: 'ignore' }); };
     const head = (): string => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8' }).trim();

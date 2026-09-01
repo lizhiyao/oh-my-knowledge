@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { cardFileName, graphFileName, safeArtifactFileStem } from '../eval-core/artifact-file-names.js';
+import { cardFileName, graphFileName, safeArtifactFileStem } from '../measurement-artifacts/file-names.js';
 import { hashArtifactSource } from '../inputs/content-hash.js';
 import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
@@ -12,20 +12,22 @@ import {
   parseSkillFrontmatter,
 } from '../shared/hard-rules.js';
 import type {
-  ArtifactGraphDocument,
-  ArtifactGraphEdge,
-  ArtifactGraphEdgeKind,
-  ArtifactGraphEvidenceRef,
-  ArtifactGraphBinding,
-  ArtifactGraphNode,
-  ArtifactGraphNodeKind,
-  ArtifactGraphNodeRole,
-  ArtifactGraphStatus,
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
   Lang,
 } from '../types/index.js';
+import type {
+  ArtifactGraphBinding,
+  ArtifactGraphDocument,
+  ArtifactGraphEdge,
+  ArtifactGraphEdgeKind,
+  ArtifactGraphEvidenceRef,
+  ArtifactGraphNode,
+  ArtifactGraphNodeKind,
+  ArtifactGraphNodeRole,
+  ArtifactGraphStatus,
+} from './contracts.js';
 
 export interface BuildDoctorGraphOptions {
   report: DoctorReport;

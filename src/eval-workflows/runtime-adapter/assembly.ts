@@ -204,6 +204,7 @@ function expectedExecutorResourceRequirements(
 ): RuntimeResourceLeaseRequirement[] {
   const config = record(target.config);
   const behavior = record(config?.behavior);
+  const runtime = record(config?.runtime);
   const artifactId = descriptorResourceId(behavior?.artifact);
   if (artifactId === undefined) fail({
     code: 'OMK_RUNTIME_BINDING_DEFINITION_MISMATCH',
@@ -215,12 +216,20 @@ function expectedExecutorResourceRequirements(
     resourceRole: 'artifact',
     leaseMode: 'immutable-snapshot',
   }];
-  const workspaceId = descriptorResourceId(behavior?.workspace);
-  if (workspaceId !== undefined) requirements.push({
-    resourceId: workspaceId,
-    resourceRole: 'workspace',
-    leaseMode: 'copy-on-write-overlay',
-  });
+  const workspaceControls = [
+    target.executionControls.defaults.workspace,
+    ...target.executionControls.sampleOverrides.flatMap((override) => (
+      override.workspace === undefined ? [] : [override.workspace]
+    )),
+  ];
+  for (const workspace of workspaceControls) {
+    if (workspace.workspaceMode !== 'copy-on-write-overlay') continue;
+    requirements.push({
+      resourceId: workspace.descriptor.resourceId,
+      resourceRole: 'workspace',
+      leaseMode: 'copy-on-write-overlay',
+    });
+  }
   const mcpConfigId = descriptorResourceId(behavior?.mcpConfig);
   if (mcpConfigId !== undefined) requirements.push({
     resourceId: mcpConfigId,
@@ -241,6 +250,12 @@ function expectedExecutorResourceRequirements(
       }
     }
   }
+  const runtimeImplementationId = descriptorResourceId(runtime?.implementationResource);
+  if (runtimeImplementationId !== undefined) requirements.push({
+    resourceId: runtimeImplementationId,
+    resourceRole: 'runtime-implementation',
+    leaseMode: 'immutable-snapshot',
+  });
   return [...new Map(requirements.map((requirement) => [
     `${requirement.resourceRole}\u0000${requirement.resourceId}`,
     requirement,
@@ -259,7 +274,8 @@ function assertResourceRequirements(
       ? 'copy-on-write-overlay'
       : 'immutable-snapshot';
     const allowedRole = binding.runtimeKind === 'executor'
-      ? ['artifact', 'workspace', 'mcp-config', 'mock-payload'].includes(requirement.resourceRole)
+      ? ['artifact', 'workspace', 'mcp-config', 'mock-payload', 'runtime-implementation']
+        .includes(requirement.resourceRole)
       : requirement.resourceRole === 'content';
     const key = `${requirement.resourceRole}\u0000${requirement.resourceId}`;
     if (requirement.resourceId === '' || !allowedRole
@@ -286,6 +302,7 @@ function assertExecutorBinding(
       || !sameOptionalString(binding.versionConstraint, target.versionConstraint)
       || binding.protocolId !== target.protocolId
       || binding.behaviorConfigDigest !== digestCanonicalJson(target.config ?? null)
+      || binding.executionControlsDigest !== digestCanonicalJson(target.executionControls)
       || canonicalizeJson(binding.resourceLeaseRequirements)
         !== canonicalizeJson(expectedExecutorResourceRequirements(target))
       || canonicalizeJson(binding.qualification.executionRequirements)

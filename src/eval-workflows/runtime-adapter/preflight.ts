@@ -82,6 +82,14 @@ export class OmkEvaluationPreflightError extends Error {
   }
 }
 
+/** Trusted host checks may attach an already-sanitized actionable message. */
+export class OmkUserFacingPreflightFailure extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OmkUserFacingPreflightFailure';
+  }
+}
+
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -306,7 +314,7 @@ export async function runOmkEvaluationPreflight(input: Readonly<{
       let result: void;
       try {
         result = await candidate.run(context);
-      } catch {
+      } catch (cause) {
         if (signalAborted(input.options?.signal)) cancelled(entry, candidate);
         throw new OmkEvaluationPreflightError({
           code: 'OMK_EVALUATION_PREFLIGHT_CHECK_FAILED',
@@ -315,7 +323,7 @@ export async function runOmkEvaluationPreflight(input: Readonly<{
           referenceId: entry.referenceId,
           preflightKind: candidate.preflightKind,
           checkId: candidate.checkId,
-          message: `Active binding "${entry.binding.bindingId}" 的 ${candidate.preflightKind} preflight 失败。`,
+          message: `Active binding "${entry.binding.bindingId}" 的 ${candidate.preflightKind} preflight 失败。${cause instanceof OmkUserFacingPreflightFailure ? `\n${cause.message}` : ''}`,
         });
       }
       if (signalAborted(input.options?.signal)) cancelled(entry, candidate);

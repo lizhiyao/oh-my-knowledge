@@ -67,8 +67,6 @@ describe('Knowledge Debugger task trajectory server', () => {
     server = createReportServer({
       port: 0,
       observationsDir,
-      reportsDir,
-      jobsDir,
       conversationCatalog: createObservationConversationCatalog(observationsDir),
     });
     baseUrl = await server.start();

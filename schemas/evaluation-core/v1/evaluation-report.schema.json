@@ -464,6 +464,13 @@
             "policyDigest": {
               "$ref": "#/$defs/__schema2"
             },
+            "reasonCodes": {
+              "items": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
             "verdict": {
               "$ref": "#/$defs/__schema1"
             }
@@ -478,6 +485,7 @@
             "decidedAt",
             "decisionStatus",
             "verdict",
+            "reasonCodes",
             "decisionDigest"
           ],
           "type": "object"

@@ -12,7 +12,7 @@ import {
   timeoutExecResult,
 } from '../../core/runtime.js';
 import { registerSigintSubscriber } from '../../core/subprocess.js';
-import { buildSdkHookCallback } from '../../../eval-core/mocks-runtime.js';
+import { buildSdkHookCallback } from '../../mock-runtime/runtime.js';
 import { buildClaudeResult } from './protocol.js';
 
 export { normalizeClaudeMeasurements } from './protocol.js';
@@ -52,7 +52,7 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   return sdkQuery;
 }
 
-export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
+export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort, abortSignal }: ExecutorInput): Promise<ExecResult> {
   // 隔离选项在 timer / try 之前解析:非空 allowedSkills(不再支持的 skill 白名单)必须在这里
   // fail-fast 抛错,而不是被下面的 catch 吞成 ok:false 的 ExecResult(那会把配置错误伪装成
   // 每个 sample 执行失败、产出全失败报告,与 claude-cli / codex 的硬抛口径不一致)。lean 仍
@@ -69,6 +69,9 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
   };
   const timer = setTimeout(() => abort('timeout'), timeoutMs);
   const unregisterSigint = registerSigintSubscriber(() => abort('interrupted'));
+  const abortListener = (): void => abort('interrupted');
+  abortSignal?.addEventListener('abort', abortListener, { once: true });
+  if (abortSignal?.aborted) abort('interrupted');
 
   const env = buildExecEnv(skillDir);
 
@@ -165,5 +168,6 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
   } finally {
     clearTimeout(timer);
     unregisterSigint();
+    abortSignal?.removeEventListener('abort', abortListener);
   }
 }

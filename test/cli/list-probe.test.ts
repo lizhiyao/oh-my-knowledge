@@ -13,11 +13,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { sanitizeCell } from '../../src/cli/commands/list.js';
 import { probeSourceState, hashArtifactSource } from '../../src/managed/index.js';
-import type { ManagedArtifactRecord, ManagedArtifactSource } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedArtifactSource } from '../../src/managed/contracts.js';
 
 function record(source: ManagedArtifactSource, contentHash = 'pinnedHash00'): ManagedArtifactRecord {
   return {
-    recordKind: 'managed-artifact', schemaVersion: 2, id: 'id', name: 'x', kind: 'skill',
+    recordKind: 'managed-artifact', schemaVersion: 3, id: 'id', name: 'x', kind: 'skill',
     source, contentHash, installedAt: '2026-06-06T00:00:00.000Z', distribution: [], evidence: [], decisions: [],
   };
 }

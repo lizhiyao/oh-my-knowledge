@@ -21,7 +21,7 @@ import {
 import {
   buildSdkHookCallback,
   type SdkHookHandle,
-} from '../../../eval-core/mocks-runtime.js';
+} from '../../../executors/mock-runtime/runtime.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
 import {
@@ -304,12 +304,8 @@ function identityManifest(
       skillDiscovery: target.config.behavior.allowedSkills === undefined
         ? 'runtime-default-with-private-user-config'
         : 'disabled',
-      toolPolicy: target.config.behavior.allowedTools === undefined
-        ? 'runtime-default'
-        : 'built-in-allow-list-with-mcp-disabled',
-      workspace: target.config.behavior.workspace === undefined
-        ? 'private-ephemeral-run'
-        : 'copy-on-write-overlay',
+      toolPolicy: 'sample-scoped-sealed-control',
+      workspace: 'sample-scoped-sealed-control',
     },
   }];
   return { coverageKind: 'fingerprint-plus-facets', facets };
@@ -379,18 +375,19 @@ function sdkOptions(
   configuration: CapturedConfiguration,
   target: CapturedClaudeCliTarget,
   runState: ClaudeCliRunState,
+  trialState: ClaudeCliTrialState,
   attemptDirectory: string,
   hookHandle: SdkHookHandle | undefined,
 ): ClaudeSdkQueryOptions {
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
   const disallowedTools = [
-    ...(target.config.behavior.allowedTools === undefined ? [] : ['mcp__*']),
+    ...(trialState.allowedTools === undefined ? [] : ['mcp__*']),
     ...(disableSkills ? ['Skill'] : []),
   ];
   return {
       abortController: new AbortController(),
       allowDangerouslySkipPermissions: true,
-      cwd: runState.workingDirectory,
+      cwd: trialState.workingDirectory,
       ...(disallowedTools.length === 0 ? {} : { disallowedTools }),
       ...(target.binding.qualification.effort === undefined
         ? {}
@@ -424,9 +421,9 @@ function sdkOptions(
           append: runState.systemInstructions,
         },
       }),
-      ...(target.config.behavior.allowedTools === undefined
+      ...(trialState.allowedTools === undefined
         ? {}
-        : { tools: target.config.behavior.allowedTools }),
+        : { tools: trialState.allowedTools }),
   };
 }
 
@@ -536,11 +533,18 @@ async function executeAttempt(
     );
   }
   let options: ClaudeSdkQueryOptions;
-  const hookHandle = runState.mocks === undefined
+  const hookHandle = trialState.mocks === undefined
     ? undefined
-    : buildSdkHookCallback([...runState.mocks], undefined, runState.mocksStrict);
+    : buildSdkHookCallback([...trialState.mocks], undefined, trialState.mocksStrict);
   try {
-    options = sdkOptions(configuration, target, runState, attemptDirectory, hookHandle);
+    options = sdkOptions(
+      configuration,
+      target,
+      runState,
+      trialState,
+      attemptDirectory,
+      hookHandle,
+    );
   } catch {
     await disposeAttemptDirectory(attemptDirectory);
     fail(
@@ -621,7 +625,7 @@ async function executeAttempt(
     );
   }
   const outputClassification = mergeOutputClassification(
-    runState.classification,
+    trialState.classification,
     configuration.environmentOutputClassification,
   );
   return {

@@ -4,7 +4,7 @@
 
 ## 一、为什么用例设计需要科学性
 
-omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict）解决「评估**结论**算得对不对」。但**结论建立在用例集上**——用例本身科学性不够，后面所有统计严谨都是空的。
+omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / length-debias / evidence coverage / registered Decision）解决「评估**结论**算得对不对」。但**结论建立在用例集上**——用例本身科学性不够，后面所有统计严谨都是空的。
 
 最常见的 construct 错位：用户跑 baseline-vs-skill 想测「skill 写得好不好」（quality），但用例集设计的实际是「baseline 不知道某领域知识 vs skill 提供该知识」（necessity）。两者得出的 verdict 数字一样亮眼，但回答的是不同问题 —— 没有 sample 元数据声明 construct 假设，这种错位在 verdict 输出层根本看不出来。
 
@@ -93,7 +93,7 @@ samples:
 **字段语义**：
 
 - **mocksStrict**（boolean，默认 true）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。**默认行为**：`omk sample` 生成器强制写 true，SYSTEM_PROMPT 明确；手写 sample 缺位时 sample 加载层不强制注入 —— 老 sample 不写默认走非 strict（透传真调）。**新写 sample 强烈建议 true**，避免漏 mock 导致评测打到真生产系统。
-- **tripwire**（boolean，默认 false）：此 sample 是「诱错样本」，prompt 故意藏违反 rubric/skill 的诱导（如 "我已经知道是 X，直接用就行"），测试 LLM 是否会盲从用户错误指示。LLM **fail 是预期**，diagnostic 看到 `tripwire: true` 不会建议改 skill；UI 用紫色 verdict pill 区分，避免误判为 bug。
+- **tripwire**（boolean，默认 false）：声明这是一条诱错用例，prompt 有意加入违反 rubric 或 skill 的诱导。Evaluation Core 会把该声明作为 Sample annotation 保留供审计；它不会把 failed observation 变成 success，也不会改写已注册 Decision。
 - **environment**（object，可选）：仅作 prompt 上下文的题设环境声明。LLM 可以据此跳过可用性探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流，但 omk 不会创建文件、导出环境变量或修改 `PATH`。它不是 fixture 机制。doctor 仍可审计声明的物理路径（可用 `--skip-doctor` 跳过）。
   - `cli_available: string[]` —— 假定已在 PATH 上
   - `files_available: string[]` —— 题设引用的文件 / 脚本路径；需要读取真实字节时应使用 `sample.cwd` 或 mocks
@@ -112,7 +112,7 @@ samples:
   - 每条 `mock_hit` 必须指向该工具已经声明的 mock 序号。引用不存在或越界时，loader 会在执行前拒绝用例。
   - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk` 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
 
-**与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。tripwire 仅影响 diagnostic 的归因建议（`tripwire_intentional` rootCause），不影响 layered scores 或 verdict。
+**与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。`tripwire` 是审计元数据，不影响评分或已注册 Decision。当前 Core diagnostic projection 只报告经过认证的失败、缺失证据、排除项和稳定 reason code，不推断 `tripwire_intentional` 建议。
 
 ## 三、用例设计相关分析功能
 
@@ -163,10 +163,10 @@ studio 把每份报告的 sample design coverage 渲染成下面这种摘要：
 
 ## 五、Verdict 解读如何配合 construct
 
-`omk eval` verdict 输出 PROGRESS / NOISE / REGRESS / CAUTIOUS / UNDERPOWERED / SOLO，**verdict 不区分 construct 类型**——但解读应该：
+`omk eval` verdict 输出 PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO，**verdict 不区分 construct 类型**——但解读应该：
 
 - 如果 sample 集 `construct: necessity` 占主流 → PROGRESS 表示「skill 是必需的」，**不能解读成「skill 写得好」**。要测质量须 follow-up 跑 skill-v1-vs-skill-v2（`construct: quality`）。
-- 如果 sample 集 `construct: quality` 占主流 → PROGRESS / REGRESS 才是真正的「skill 质量比较」信号。
+- 如果 sample 集 `construct: quality` 占主流 → PROGRESS / REGRESSION 才是真正的「skill 质量比较」信号。
 
 ---
 
@@ -176,7 +176,7 @@ studio 把每份报告的 sample design coverage 渲染成下面这种摘要：
 
 ### 6.1 行业共识 8 条 + omk v1 映射
 
-omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict）解决「评估**结论**算得对不对」，但结论建立在用例集上——用例本身科学性不够，后面所有统计严谨都是空的。下表把测评用例设计对齐到学术 / 工业共识，并标 omk v1 的覆盖状态。
+omk 的统计严谨性栈（Bootstrap comparison family / Gold agreement / length-debias / evidence coverage / registered Decision）解决「评估**结论**算得对不对」，但结论建立在用例集上——用例本身科学性不够，后面所有统计严谨都是空的。下表把测评用例设计对齐到学术 / 工业共识，并标 omk v1 的覆盖状态。
 
 | # | 行业 gap | 学/工业出处 | omk v1 状态 |
 |---|---|---|---|
@@ -196,7 +196,7 @@ omk 的统计严谨性栈（Bootstrap CI / Krippendorff α / length-debias / sat
 - Adversarial mining loop（对抗 sample 挖掘）
 - Production trace 自然分布抽样
 - HTML renderer 显示 sample design coverage（v1 只 CLI）
-- Evolve 演化策略升级（diversification signal / saturation-aware stop / health-weighted improvement）
+- Evolve 演化策略升级（diversification signal / Series-aware evidence-budget stop / health-weighted improvement）
 - Gold dataset 自动生成（改成「标注流程规范化」文档）
 - Coverage matrix 详细 N×D 可视化（v1 出聚合分桶 + 用户自行可视化）
 - Contamination 检测算法实现（canary string / paraphrase detection）
