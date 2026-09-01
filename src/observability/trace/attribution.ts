@@ -1,8 +1,8 @@
 /** Skill attribution rules for trace records. */
 
-import type { CcAssistantRecord, CcUserRecord } from './trace-source.js';
-import type { TraceMessageEvent, TraceToolCallEvent } from './trace/trace-ir.js';
-import { extractCodexExecCommands } from './codex-exec-command.js';
+import type { CcAssistantRecord, CcUserRecord } from './source.js';
+import type { TraceMessageEvent, TraceToolCallEvent } from './trace-ir.js';
+import { extractCodexExecCommands } from './adapters/codex/exec-command.js';
 
 // ---------- Skill signal detection ----------
 

@@ -8,7 +8,7 @@ import {
   type CcSession,
   type SkillSegment,
   type TraceSession,
-} from '../../src/observability/trace-adapter.js';
+} from '../../src/observability/trace/index.js';
 import type { ToolCallStatus } from '../../src/executors/contracts/trace.js';
 
 // ---------- Helpers ----------

@@ -9,11 +9,11 @@ import {
   type TraceMessageEvent,
   type TraceSession,
 } from '../trace/trace-ir.js';
-import type { SkillSegment } from '../trace-segmenter.js';
+import type { SkillSegment } from '../trace/segmentation.js';
 import {
   extractCommandEnvelopeText,
   stripCommandEnvelopeText,
-} from '../trace-attribution.js';
+} from '../trace/attribution.js';
 import {
   hasAssistantDeliverySignalText,
   isAssistantProtocolReplyText,

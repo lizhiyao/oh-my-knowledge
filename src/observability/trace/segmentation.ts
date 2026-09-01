@@ -1,24 +1,24 @@
 /** Skill segmentation and source-neutral analysis projection for loaded traces. */
 
 import { createHash } from 'node:crypto';
-import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
-import type { TraceSourceMetadata } from './contracts/trace.js';
-import type { AnalysisEntry, AnalysisVariantResult } from './analysis/contracts.js';
-import { incrementRecordCount } from '../shared/record-count.js';
+import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js';
+import type { TraceSourceMetadata } from '../contracts/trace.js';
+import type { AnalysisEntry, AnalysisVariantResult } from '../analysis/contracts.js';
+import { incrementRecordCount } from '../../shared/record-count.js';
 import {
   truncateToolCallsForPersistence,
   truncateTurnsForPersistence,
-} from './trace/projection.js';
-import { sumTokenCounts, tokenCount } from '../shared/token-usage.js';
-import { legacyCcSessionToTraceSession, type CcSession } from './trace-source.js';
+} from './projection.js';
+import { sumTokenCounts, tokenCount } from '../../shared/token-usage.js';
+import { legacyCcSessionToTraceSession, type CcSession } from './source.js';
 import type {
   TraceEvent,
   TraceMessageEvent,
   TraceSession,
   TraceSourceKind,
   TraceToolCallEvent,
-} from './trace/trace-ir.js';
-import { normalizeTraceTimestamp } from './trace/trace-ir.js';
+} from './trace-ir.js';
+import { normalizeTraceTimestamp } from './trace-ir.js';
 import {
   extractAttributionSkillRefFromEvent,
   extractBusinessActionSkillRefFromEvent,
@@ -28,7 +28,7 @@ import {
   extractSkillToolUseRefFromEvent,
   stripCommandEnvelopeText,
   type SkillRef,
-} from './trace-attribution.js';
+} from './attribution.js';
 
 export interface SkillSegment {
   skillName: string;

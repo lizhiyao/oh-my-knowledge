@@ -4,7 +4,7 @@ import {
   extendCodexRolloutIndex,
   isReusableCodexRolloutIndex,
   type CodexRolloutIndex,
-} from './codex-conversation-index.js';
+} from './trace/adapters/codex/conversation-index.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 
 const [sourcePath, sourceThreadId, cachePath] = process.argv.slice(2);

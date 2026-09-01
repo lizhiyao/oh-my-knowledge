@@ -20,7 +20,7 @@ import {
   sumRecordCounts as sumSafeCounts,
 } from '../../shared/record-count.js';
 import { checkedSumTokenCounts } from '../../shared/token-usage.js';
-import { UNOBSERVED_TRACE_TIMESTAMP } from '../trace-segmenter.js';
+import { UNOBSERVED_TRACE_TIMESTAMP } from '../trace/segmentation.js';
 import { isAssistantProgressUpdateText } from '../text-signals.js';
 import { isAssistantDeliveryEvent } from './timeline.js';
 import {

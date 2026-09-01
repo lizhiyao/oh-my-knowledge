@@ -1,11 +1,11 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import type { ExperienceTurnStatus } from './contracts/experience.js';
-import type { TraceToolStatus } from './trace/trace-ir.js';
-import { codexUserDisplayText, codexUserMessageOrigin } from './codex-protocol.js';
+import type { ExperienceTurnStatus } from '../../../contracts/experience.js';
+import type { TraceToolStatus } from '../../trace-ir.js';
+import { codexUserDisplayText, codexUserMessageOrigin } from './protocol.js';
 import {
   codexRuntimeToolOutcomeFromPayload,
   codexToolOutputOutcome,
-} from './codex-tool-status.js';
+} from './tool-status.js';
 
 const READ_CHUNK_BYTES = 256 * 1024;
 const MAX_RECORD_BYTES = 32 * 1024 * 1024;

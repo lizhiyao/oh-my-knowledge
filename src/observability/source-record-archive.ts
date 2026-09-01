@@ -11,7 +11,7 @@ import type {
 } from './contracts/inbox.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { normalizeTraceTimestamp } from './trace/trace-ir.js';
-import { forEachNonEmptyUtf8Line } from './trace-source.js';
+import { forEachNonEmptyUtf8Line } from './trace/source.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;
 const MAX_ARCHIVE_SOURCE_BYTES = 16 * 1024 * 1024;

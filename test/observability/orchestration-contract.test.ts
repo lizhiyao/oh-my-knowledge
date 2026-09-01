@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it } from 'vitest';
 import {
   loadCcSessions,
   segmentBySkill,
-} from '../../src/observability/trace-adapter.js';
+} from '../../src/observability/trace/index.js';
 import {
   buildObservationExperienceReport,
   compactObservationExperienceReport,
