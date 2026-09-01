@@ -10,6 +10,11 @@ import type {
 import type {
   EvaluationRunOptions,
 } from '../../../src/evaluation-core/evaluation/index.js';
+import type {
+  ExecutionBundle,
+  SealedRunPlan,
+} from '../../../src/index.js';
+import type { RunPlan } from '../../../src/evaluation-core/contracts/index.js';
 
 declare const executorContext: ExecutorTrialContext;
 declare const budgetSource: NonNullable<ExecutionRunOptions['budgetSource']>;
@@ -22,6 +27,33 @@ void executorContext.evaluationContext;
 
 // @ts-expect-error 宿主只能转交 opaque budget capability，不能直接改写账本。
 void budgetSource.reserve;
+
+declare const wirePlan: RunPlan;
+declare const wireExecution: ExecutionBundle;
+
+// @ts-expect-error 可序列化 RunPlan 不是 prepare() 签发的 sealed capability。
+const forgedPlan: SealedRunPlan = wirePlan;
+void forgedPlan;
+
+declare const stageSession: import('../../../src/index.js').PreparedEvaluationStageSession;
+// @ts-expect-error 裸 ExecutionBundle 不是 plan-aware admission 签发的 source capability。
+stageSession.evaluate({ execution: wireExecution });
+
+stageSession.evaluate({
+  // @ts-expect-error 即使伪造 Bundle 与 verification 字段，也缺少 Core 私有 source brand。
+  execution: {
+    bundle: wireExecution,
+    planVerification: {
+      provenanceTrustStatus: 'indeterminate',
+      cacheReceiptStatus: 'indeterminate',
+      invocationBudgetStatus: 'indeterminate',
+      providerCostBudgetStatus: 'indeterminate',
+      minimumTargetInvocations: 0,
+      maximumTargetInvocations: 0,
+      unverifiedCacheRecordDigests: [],
+    },
+  },
+});
 
 type KeysOfUnion<Value> = Value extends unknown ? keyof Value : never;
 

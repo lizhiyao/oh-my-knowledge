@@ -1055,7 +1055,43 @@ The Compiler resolves one canonical `EffectiveExecutionControl` for every `(targ
 
 Runtime preparation separately binds the complete canonical control table through `RuntimeBinding.executionControlsDigest` and binds every required workspace through the aggregate resource lease. This prevents a host from pairing a validated Runtime with a different control table while preserving coordinate-local cache identity. An adapter must enforce the exact Trial workspace and exact tool policy, expose only the selected workspace lease, or fail closed during preparation when its backend cannot represent that policy. It may not approximate sample controls with a Target-wide union, common subset, process working directory, or best-effort filtering.
 
-## 24. Industry references
+## 24. ADR: publish staged execution through prepared capabilities
+
+**Status:** accepted for the public API tracked by [#597](https://github.com/lizhiyao/oh-my-knowledge/issues/597).
+
+The advanced API is issued by `PreparedEvaluation`, not by exporting a second engine that accepts
+wire-shaped plans. `prepared.stages(options)` creates one run-scoped stage session. The session owns
+the host-assigned run identity, AbortSignal, bounded event settings, EventWriter, and one shared
+EventSequencer. Each of Execution, Evaluation, Analysis, Decision, and Report materialization may be
+started once, in the suffix required by the host. Every method delegates directly to the existing
+stage runtime, so scheduling, cache, budget, failure, cancellation, and resource teardown semantics
+remain single-sourced.
+
+The session owns its `runId` in the Engine while it is open, rejects overlapping stages, and releases
+the identity automatically after Report termination. Hosts that intentionally stop at an earlier
+Bundle call `await stages.close()`; close aborts any in-flight stage, waits for its existing runtime
+teardown, and only then releases the identity. This prevents event identifier collisions with the
+one-call facade without introducing another scheduler.
+
+Execution and Evaluation in the same session share the authenticated in-memory budget capability.
+A detached Evaluation instead seeds a new budget capability from the admitted Execution source's
+verified ledger prefix, as the low-level runtime already requires. Stage outputs expose both their
+serializable document and the non-serializable source envelope. Event streams remain lossy,
+bounded observations and never gate the authoritative result.
+
+Transported artifacts re-enter through `PreparedEvaluation.admitExecutionBundle()`,
+`admitEvaluationBundle()`, `admitAnalysisBundle()`, and `admitDecisionResult()`. These methods close
+over the freshly sealed plan and Core-owned schema validators, recursively validate the exact parent
+chain, and return runtime-authenticated source capabilities. `admitReport()` validates the complete
+chain without creating a new authority. A copied plan, Bundle, verification summary, or provenance
+claim therefore cannot substitute for a capability issued by prepare, runtime execution, or
+plan-aware admission. Missing external attestations remain indeterminate and never become verified
+because their digest can be recomputed.
+
+This ADR publishes composition only. It changes no wire schema, Plan digest, scoring rule,
+statistical implementation, prompt, trust calculation, or comparability reason.
+
+## 25. Industry references
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html), [Scorers](https://inspect.aisi.org.uk/scorers.html), and [Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/) and [LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)

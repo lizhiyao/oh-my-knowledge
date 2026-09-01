@@ -1045,7 +1045,39 @@ Compiler 为每个 `(targetId, sampleId)` coordinate 解析唯一 canonical `Eff
 
 Runtime prepare 通过 `RuntimeBinding.executionControlsDigest` 单独绑定完整 canonical control table，并通过聚合 resource lease 绑定全部必要 workspace。这既防止宿主把已验证 Runtime 与另一份 control table 拼接，又保留 coordinate-local cache identity。adapter 必须执行准确的 Trial workspace 与工具策略，并且只暴露被选中的 workspace lease；若后端无法准确表达该策略，则必须在 prepare 阶段 fail closed。adapter 不得退化为 Target-wide union、公共子集、进程级工作目录或 best-effort filter。
 
-## 二十四、行业参考
+## 二十四、ADR：通过 prepared capability 发布分阶段执行
+
+**状态**：接受，公共 API 交付由 [#597](https://github.com/lizhiyao/oh-my-knowledge/issues/597) 跟踪。
+
+高级 API 由 `PreparedEvaluation` 签发，不导出另一套接收 wire-shaped plan 的 Engine。
+`prepared.stages(options)` 创建一个 run-scoped stage session，由它持有宿主分配的 run identity、
+AbortSignal、有界 Event 配置、EventWriter 与一个共享 EventSequencer。Execution、Evaluation、
+Analysis、Decision 和 Report materialization 在同一 session 中各自最多启动一次；宿主可以从所需的
+任意有效阶段开始，只重算必要后缀。每个方法都直接委托现有 stage runtime，因此调度、cache、预算、
+失败、取消和资源释放语义继续只有一份来源。
+
+session 打开期间会在 Engine 内独占其 `runId`，拒绝阶段并发，并在 Report 到达终态后自动释放
+identity。宿主若有意停在更早的 Bundle，必须调用 `await stages.close()`；close 会取消仍在运行的
+阶段，等待既有 runtime 完成资源释放，再归还 identity。这样可以避免与一键 façade 产生 Event
+identifier 冲突，同时不引入另一套 scheduler。
+
+同一 session 中的 Execution 与 Evaluation 共享经过认证的内存预算 capability。Detached Evaluation
+则按照低层 runtime 的既有约束，从已接纳 Execution source 的 verified ledger prefix 创建新预算
+capability。阶段输出同时暴露可序列化 document 与不可序列化 source envelope。Event stream 继续是
+有界、允许丢失的观测通道，不会阻塞权威结果。
+
+传输后的 artifact 必须通过 `PreparedEvaluation.admitExecutionBundle()`、
+`admitEvaluationBundle()`、`admitAnalysisBundle()` 与 `admitDecisionResult()` 重新进入 Core。
+这些方法闭包捕获 freshly sealed plan 与 Core-owned schema validator，递归验证准确的 parent chain，
+并返回 runtime 认证过的 source capability。`admitReport()` 只验证完整来源链，不签发新的 authority。
+因此，复制 plan、Bundle、verification summary 或 provenance claim 都不能替代 prepare、runtime 执行或
+plan-aware admission 签发的 capability。缺少外部 attestation 时仍为 indeterminate，不能仅凭重算
+digest 升级为 verified。
+
+本 ADR 只发布组合能力，不改变 wire schema、Plan digest、评分规则、统计实现、prompt、trust 计算或
+comparability reason。
+
+## 二十五、行业参考
 
 - [Inspect AI Tasks](https://inspect.aisi.org.uk/tasks.html)、[Scorers](https://inspect.aisi.org.uk/scorers.html)、[Eval Logs](https://inspect.aisi.org.uk/eval-logs.html)；
 - [MLflow Evaluation Datasets](https://mlflow.org/docs/latest/genai/datasets/)、[LLM Judges and Scorers](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/index.html)；

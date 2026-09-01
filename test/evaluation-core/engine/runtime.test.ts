@@ -9,6 +9,7 @@ import {
   type Evaluator,
   type Executor,
   type RuntimeIdentity,
+  type Sha256Digest,
 } from '../../../src/index.js';
 import {
   createBuiltinAnalysisNodes,
@@ -197,7 +198,256 @@ async function consume(run: {
   return { events, result };
 }
 
+async function collectEvents(events: AsyncIterable<EvaluationEvent>): Promise<EvaluationEvent[]> {
+  const collected: EvaluationEvent[] = [];
+  for await (const event of events) collected.push(event);
+  return collected;
+}
+
 describe('embedded Evaluation Engine', () => {
+  it('runs and re-scores through a prepared stage capability without re-executing Targets', async () => {
+    const fixture = await createRuntime();
+    let executorRuns = 0;
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        async resolveExecutor(requirement) {
+          const binding = await fixture.runtime.bindings.resolveExecutor(requirement);
+          return {
+            ...binding,
+            port: {
+              identity: binding.port.identity,
+              async openRun(context) {
+                executorRuns += 1;
+                return binding.port.openRun(context);
+              },
+            },
+          };
+        },
+      },
+    };
+    const engine = createEvaluationEngine(runtime);
+    const original = await engine.prepare(fixture.definition, fixture.policy);
+    const executionStages = original.stages({ runId: 'staged-execution' });
+    const executionRun = executionStages.execute();
+    const execution = await executionRun.source;
+    await executionStages.close();
+
+    expect(executorRuns).toBe(2);
+    const changedDefinition = structuredClone(fixture.definition);
+    changedDefinition.dataset.samples[0].expected = { answer: 'B' };
+    const rescored = await engine.prepare(changedDefinition, fixture.policy);
+    const executionSource = rescored.admitExecutionBundle(
+      structuredClone(execution.bundle),
+      {
+        verifiedProvenanceBundleDigests: new Set([
+          execution.bundle.bundleDigest as Sha256Digest,
+        ]),
+      },
+    );
+    executorRuns = 0;
+
+    const stages = rescored.stages({
+      runId: 'staged-rescore',
+      annotations: { source: 'persisted-execution' },
+    });
+    const evaluationRun = stages.evaluate({ execution: executionSource });
+    const evaluation = await evaluationRun.source;
+    const analysisRun = stages.analyze({ execution: executionSource, evaluation });
+    const analysis = await analysisRun.source;
+    const decisionRun = stages.decide({ execution: executionSource, evaluation, analysis });
+    const decision = await decisionRun.source;
+    const reportRun = stages.materializeReport({
+      execution: executionSource,
+      evaluation,
+      analysis,
+      ...(decision === undefined ? {} : { decision }),
+    });
+    const report = await reportRun.result;
+    await stages.close();
+
+    expect(executorRuns).toBe(0);
+    expect(evaluation.bundle.executionBundleDigest).toBe(execution.bundle.bundleDigest);
+    expect(report.annotations).toEqual({ source: 'persisted-execution' });
+    expect(report.bundles.map((bundle) => bundle.bundleDigest)).toEqual([
+      execution.bundle.bundleDigest,
+      evaluation.bundle.bundleDigest,
+      analysis.bundle.bundleDigest,
+    ]);
+
+    const stageEvents = (await Promise.all([
+      collectEvents(evaluationRun.events),
+      collectEvents(analysisRun.events),
+      collectEvents(decisionRun.events),
+      collectEvents(reportRun.events),
+    ])).flat();
+    expect(stageEvents.map((event) => event.sequence)).toEqual(
+      stageEvents.map((_, index) => index),
+    );
+    expect(stageEvents.every((event) => event.runId === 'staged-rescore')).toBe(true);
+
+    const importedEvaluation = rescored.admitEvaluationBundle(
+      structuredClone(evaluation.bundle),
+      {
+        execution: executionSource,
+        verification: {
+          verifiedProvenanceBundleDigests: new Set([
+            evaluation.bundle.bundleDigest as Sha256Digest,
+          ]),
+          executionSourceTrust: execution.bundle.provenance.trust,
+        },
+      },
+    );
+    const importedAnalysis = rescored.admitAnalysisBundle(
+      structuredClone(analysis.bundle),
+      {
+        execution: executionSource,
+        evaluation: importedEvaluation,
+        verification: {
+          verifiedProvenanceBundleDigests: new Set([
+            analysis.bundle.bundleDigest as Sha256Digest,
+          ]),
+          evaluationSourceTrust: evaluation.bundle.provenance.trust,
+        },
+      },
+    );
+    const importedDecision = decision === undefined
+      ? undefined
+      : rescored.admitDecisionResult(structuredClone(decision.result), {
+          execution: executionSource,
+          evaluation: importedEvaluation,
+          analysis: importedAnalysis,
+          verification: {
+            verifiedPolicyExecutionDigests: new Set([
+              decision.result.decisionDigest as Sha256Digest,
+            ]),
+            analysisSourceTrust: analysis.bundle.provenance.trust,
+          },
+        });
+    expect(rescored.admitReport(structuredClone(report), {
+      execution: executionSource,
+      evaluation: importedEvaluation,
+      analysis: importedAnalysis,
+      ...(importedDecision === undefined ? {} : { decision: importedDecision }),
+    })).toEqual(report);
+  });
+
+  it('binds imported stage documents to the prepared Plan and opaque source chain', async () => {
+    const fixture = await createRuntime();
+    const prepared = await createEvaluationEngine(fixture.runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    const sourceStages = prepared.stages({ runId: 'staged-admission-source' });
+    const source = await sourceStages.execute().source;
+    await sourceStages.close();
+    const transported = structuredClone(source.bundle);
+    const admitted = prepared.admitExecutionBundle(transported);
+
+    const changedDefinition = structuredClone(fixture.definition);
+    changedDefinition.dataset.samples[0].input = { question: 'changed' };
+    const mismatched = await createEvaluationEngine(fixture.runtime).prepare(
+      changedDefinition,
+      fixture.policy,
+    );
+    expect(() => mismatched.admitExecutionBundle(transported)).toThrowError(
+      /Execution source|ExecutionBundle|Execution bundle/,
+    );
+    expect(() => prepared.stages({ runId: 'staged-forged-source' }).evaluate({
+      execution: {
+        bundle: admitted.bundle,
+        planVerification: admitted.planVerification,
+      } as unknown as typeof admitted,
+    })).toThrowError(/source returned by parseExecutionBundle/);
+
+    const tampered = structuredClone(transported);
+    tampered.records[0].executionCoordinateDigest = digestCanonicalJson({ tampered: true });
+    expect(() => prepared.admitExecutionBundle(tampered)).toThrowError();
+  });
+
+  it('owns the Engine runId until the stage session reaches a terminal close', async () => {
+    const fixture = await createRuntime();
+    const engine = createEvaluationEngine(fixture.runtime);
+    const prepared = await engine.prepare(fixture.definition, fixture.policy);
+    const session = prepared.stages({ runId: 'staged-owned-run-id' });
+    const executionRun = session.execute();
+
+    expect(() => prepared.stages({ runId: 'staged-owned-run-id' })).toThrowError(
+      expect.objectContaining({ code: 'EVALUATION_STAGE_SESSION_RUN_ID_ACTIVE' }),
+    );
+    expect(() => session.execute()).toThrowError(
+      expect.objectContaining({ code: 'EVALUATION_STAGE_SESSION_BUSY' }),
+    );
+    await executionRun.source;
+    expect(() => session.execute()).toThrowError(
+      expect.objectContaining({ code: 'EVALUATION_STAGE_ALREADY_STARTED' }),
+    );
+    await session.close();
+    await expect(prepared.stages({ runId: 'staged-owned-run-id' }).close())
+      .resolves.toBeUndefined();
+  });
+
+  it('cancels an in-flight stage and waits for Runtime disposal before releasing runId', async () => {
+    const fixture = await createRuntime();
+    let startedResolve: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { startedResolve = resolve; });
+    let disposedRuns = 0;
+    let disposedTrials = 0;
+    const runtime: EvaluationEngineRuntime = {
+      ...fixture.runtime,
+      bindings: {
+        ...fixture.runtime.bindings,
+        async resolveExecutor(requirement) {
+          const binding = await fixture.runtime.bindings.resolveExecutor(requirement);
+          const port: Executor = {
+            identity: binding.port.identity,
+            async openRun() {
+              return {
+                async openTrial() {
+                  return {
+                    async execute(attempt) {
+                      startedResolve?.();
+                      return await new Promise<never>((_resolve, reject) => {
+                        if (attempt.signal.aborted) {
+                          reject(attempt.signal.reason);
+                          return;
+                        }
+                        attempt.signal.addEventListener(
+                          'abort',
+                          () => { reject(attempt.signal.reason); },
+                          { once: true },
+                        );
+                      });
+                    },
+                    dispose() { disposedTrials += 1; },
+                  };
+                },
+                dispose() { disposedRuns += 1; },
+              };
+            },
+          };
+          return { ...binding, port };
+        },
+      },
+    };
+    const prepared = await createEvaluationEngine(runtime).prepare(
+      fixture.definition,
+      fixture.policy,
+    );
+    const session = prepared.stages({ runId: 'staged-close-cancellation' });
+    const run = session.execute();
+    await started;
+    await session.close();
+    const source = await run.source;
+
+    expect(source.bundle.executionBundleStatus).toBe('cancelled');
+    expect(disposedTrials).toBeGreaterThan(0);
+    expect(disposedRuns).toBe(2);
+    await expect(prepared.stages({ runId: 'staged-close-cancellation' }).close())
+      .resolves.toBeUndefined();
+  });
+
   it('seals and runs distinct Target bindings that share one implementation', async () => {
     const fixture = await createRuntime();
     const opened: string[] = [];
