@@ -36,19 +36,19 @@ import type {
   TraceSession,
   TraceSourceKind,
   TraceUsageEvent,
-} from './trace-ir.js';
+} from './trace/trace-ir.js';
 import { normalizeToolIdentity } from '../shared/tool-identity.js';
 import {
   correlateTraceToolEvents,
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
-} from './trace-ir.js';
+} from './trace/trace-ir.js';
 import { nonNegativeMetric, tokenCount } from '../shared/token-usage.js';
 import {
   emptyTraceIngestionSummary,
   mergeTraceIngestionSummaries,
-} from './trace-ingestion.js';
+} from './trace/ingestion.js';
 
 const TRACE_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_JSONL_RECORD_CHARS = 32 * 1024 * 1024;
@@ -151,7 +151,7 @@ export interface CcSession {
   endTimestamp?: string;
 }
 
-export type { TraceEvent, TraceSession } from './trace-ir.js';
+export type { TraceEvent, TraceSession } from './trace/trace-ir.js';
 
 // ---------- Load ----------
 

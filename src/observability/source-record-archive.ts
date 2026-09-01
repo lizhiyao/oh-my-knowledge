@@ -10,7 +10,7 @@ import type {
   ObservationSourceRecordArchiveView,
 } from './contracts/inbox.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
-import { normalizeTraceTimestamp } from './trace-ir.js';
+import { normalizeTraceTimestamp } from './trace/trace-ir.js';
 import { forEachNonEmptyUtf8Line } from './trace-source.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;

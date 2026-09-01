@@ -8,7 +8,7 @@ import {
   type TraceEvent,
   type TraceMessageEvent,
   type TraceSession,
-} from '../trace-ir.js';
+} from '../trace/trace-ir.js';
 import type { SkillSegment } from '../trace-segmenter.js';
 import {
   extractCommandEnvelopeText,

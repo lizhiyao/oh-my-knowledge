@@ -29,8 +29,8 @@ import {
   type TraceSession,
   type SkillSegment,
 } from './trace-adapter.js';
-import { normalizeTraceTimestamp, type TraceEvent } from './trace-ir.js';
-import { isSearchToolCall, toolCallQuery } from './tool-search.js';
+import { normalizeTraceTimestamp, type TraceEvent } from './trace/trace-ir.js';
+import { isSearchToolCall, toolCallQuery } from './trace/tool-search.js';
 import { isToolCallFailure, isToolCallSuccess } from '../executors/tool-call-status.js';
 import { isTraceSourceKind as isObservationSourceKind } from '../shared/trace-source-kind.js';
 import {
@@ -47,8 +47,8 @@ import {
   type PersistedObservationExperienceReport,
 } from './experience.js';
 import { parseDiagnosisBundle } from '../diagnosis/contracts/parser.js';
-import { parseTraceIngestionSummary } from './trace-ingestion.js';
-import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
+import { parseTraceIngestionSummary } from './trace/ingestion.js';
+import { createTraceSessionIndex, traceSessionRefIdentity } from './trace/session-index.js';
 import { isInstalledSkillAssetPath } from './trace-attribution.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { writeObservationSourceRecordArchives } from './source-record-archive.js';
