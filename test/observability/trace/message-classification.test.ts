@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { isAssistantProtocolReplyText } from '../../src/observability/text-signals.js';
+import { isAssistantProtocolReplyText } from '../../../src/observability/trace/message-classification.js';
 
 describe('isAssistantProtocolReplyText', () => {
   it('classifies bare protocol tokens as protocol reply', () => {

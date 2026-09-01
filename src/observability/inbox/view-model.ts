@@ -249,10 +249,12 @@ export {
   hasUserHardRuleText,
   HARD_RULE_TEXT_RE,
   isAssistantProgressUpdateText,
+} from '../experience/text-signals.js';
+export {
   isScheduledTaskPromptText,
   isSyntheticUserMessageText,
   isUserInteractionMetricText,
-} from '../text-signals.js';
+} from '../trace/message-classification.js';
 
 export type { ObservationInboxItem } from './index.js';
 export type { ObservationMetricKey } from './review-state.js';
