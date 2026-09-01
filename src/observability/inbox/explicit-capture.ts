@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ObservationCaptureCoverage, ObservationEvidence, ObservationInboxItem } from './contracts/inbox.js';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
-import { withFileLock } from '../shared/file-lock.js';
+import type { ObservationCaptureCoverage, ObservationEvidence, ObservationInboxItem } from '../contracts/inbox.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { withFileLock } from '../../shared/file-lock.js';
 import {
   buildExplicitObservationCaptureCoverage,
   isObservationCaptureCoverage,
 } from './capture-coverage.js';
-import { aggregateObservationInboxItemId } from './inbox-identity.js';
+import { aggregateObservationInboxItemId } from './identity.js';
 import {
   DEFAULT_GLOBAL_OBSERVATIONS_DIR,
   DEFAULT_OBSERVATIONS_DIR,
   DEFAULT_PROJECT_OBSERVATIONS_DIR,
-} from './observation-paths.js';
+} from './paths.js';
 
 const CAPTURE_SCHEMA_VERSION = 1;
 const CAPTURES_DIR_NAME = 'captures';

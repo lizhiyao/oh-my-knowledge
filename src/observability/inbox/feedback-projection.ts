@@ -48,4 +48,4 @@ export type {
   ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from './experience.js';
+} from '../experience.js';

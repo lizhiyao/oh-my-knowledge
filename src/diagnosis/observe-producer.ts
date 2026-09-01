@@ -1,13 +1,13 @@
 import { buildObservationSkillChain, buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-chain.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-chain-advisories.js';
-import type { ObservationInboxReport } from '../observability/inbox.js';
+import type { ObservationInboxReport } from '../observability/inbox/index.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceRuleFinding,
   ExperienceSkillSummary,
   ObservationExperienceReport,
 } from '../observability/experience.js';
-import type { ExperienceProblemPattern } from '../observability/problem-patterns.js';
+import type { ExperienceProblemPattern } from '../observability/inbox/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
 import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
 import { setOwnRecordValue } from '../shared/record-count.js';

@@ -34,7 +34,7 @@ import {
 import { parseCodexSessionFile } from './trace/adapters/codex/trace.js';
 import { projectTraceSessionTimeline } from './experience.js';
 import { reconstructExperienceTurns } from './turn-index.js';
-import { observationSourceRecordFromLine } from './source-record-archive.js';
+import { observationSourceRecordFromLine } from './inbox/source-record-archive.js';
 import {
   PollingSubscriptionHub,
   type PollingSnapshot,

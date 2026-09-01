@@ -11,7 +11,7 @@ import {
   projectTraceSessionTimeline,
 } from '../observability/experience.js';
 import { reconstructExperienceTurns } from '../observability/turn-index.js';
-import { observationSourceRecordFromLine } from '../observability/source-record-archive.js';
+import { observationSourceRecordFromLine } from '../observability/inbox/source-record-archive.js';
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,

@@ -77,7 +77,7 @@ import {
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
   hasUserGoalShiftSignal,
-} from '../feedback-matchers.js';
+} from '../inbox/feedback-matchers.js';
 
 export interface ExperienceEpisodeRange {
   startMessageIndex: number;

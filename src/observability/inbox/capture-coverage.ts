@@ -1,4 +1,4 @@
-import type { ObservationCaptureCoverage } from './contracts/inbox.js';
+import type { ObservationCaptureCoverage } from '../contracts/inbox.js';
 
 export function buildExplicitObservationCaptureCoverage(
   hasSubmittedEvidence: boolean,

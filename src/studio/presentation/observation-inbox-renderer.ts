@@ -10,7 +10,7 @@ import {
   hasUserHardRuleText,
   isSyntheticUserMessageText,
   isUserInteractionMetricText,
-} from '../../observability/inbox-view-model.js';
+} from '../../observability/inbox/view-model.js';
 import type {
   ObservationInboxItem,
   ObservationInboxViewModel,
@@ -23,8 +23,8 @@ import type {
   ExperienceProblemSignal,
   SkillDerivedStandard,
   SkillLlmEnhancedReviewSections,
-} from '../../observability/inbox-view-model.js';
-import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserGoalShiftSignal } from '../../observability/feedback-projection.js';
+} from '../../observability/inbox/view-model.js';
+import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserGoalShiftSignal } from '../../observability/inbox/feedback-projection.js';
 import { durationMsBetween } from '../../shared/time.js';
 import { incrementRecordCount } from '../../shared/record-count.js';
 import { OBSERVATION_INBOX_STYLES } from './observation-inbox/styles.js';
@@ -71,7 +71,7 @@ import type {
   ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from '../../observability/feedback-projection.js';
+} from '../../observability/inbox/feedback-projection.js';
 
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
 	  const {

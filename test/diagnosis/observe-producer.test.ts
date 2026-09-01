@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildObserveDiagnosticsFromReport } from '../../src/diagnosis/observe-producer.js';
-import type { ObservationInboxReport } from '../../src/observability/inbox.js';
+import type { ObservationInboxReport } from '../../src/observability/inbox/index.js';
 
 describe('buildObserveDiagnosticsFromReport', () => {
   it('uses real observe skill-chain, runtime checks, patterns, and rule findings', () => {

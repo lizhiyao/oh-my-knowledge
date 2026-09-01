@@ -1,9 +1,9 @@
 import { e } from '../layout.js';
-import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
+import type { ObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceReviewerReport,
-} from '../../../observability/feedback-projection.js';
+} from '../../../observability/inbox/feedback-projection.js';
 import { renderFeedbackAttributionLabel } from './helpers.js';
 
 interface ReviewerReportRenderers {

@@ -74,6 +74,18 @@ describe('领域契约所有权', () => {
       'src/observability/codex-tool-status.ts',
       'src/observability/codex-exec-command.ts',
       'src/observability/codex-conversation-index.ts',
+      'src/observability/inbox.ts',
+      'src/observability/inbox-identity.ts',
+      'src/observability/inbox-view-model.ts',
+      'src/observability/explicit-capture.ts',
+      'src/observability/capture-coverage.ts',
+      'src/observability/observation-paths.ts',
+      'src/observability/source-record-archive.ts',
+      'src/observability/review-state.ts',
+      'src/observability/resolved-review.ts',
+      'src/observability/feedback-matchers.ts',
+      'src/observability/feedback-projection.ts',
+      'src/observability/problem-patterns.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }

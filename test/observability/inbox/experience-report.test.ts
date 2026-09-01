@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
+import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import {
   compactObservationExperienceReport,
   normalizeObservationExperienceReport,
@@ -11,7 +11,7 @@ import {
 import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,
-} from '../../../src/observability/review-state.js';
+} from '../../../src/observability/inbox/review-state.js';
 import {
   renderFeedbackAttributionLabel,
   renderObservationInboxPage,

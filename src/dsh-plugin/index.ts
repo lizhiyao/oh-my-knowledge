@@ -245,8 +245,8 @@ async function executeObserveCommand(
   const {
     buildObservationInboxReportFromTraceSessions,
     saveObservationInboxReport,
-  } = await import('../observability/inbox.js');
-  const { loadObservationReviewState } = await import('../observability/review-state.js');
+  } = await import('../observability/inbox/index.js');
+  const { loadObservationReviewState } = await import('../observability/inbox/review-state.js');
   const { buildObserveDiagnosticsFromReport } = await import('../diagnosis/observe-producer.js');
   const report = buildObservationInboxReportFromTraceSessions(
     `dsh:${group.rootSessionId}`,

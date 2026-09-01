@@ -3,19 +3,19 @@ import {
   findObservationInboxItem,
   formatObservationShow,
   queryObservationInbox,
-} from '../../../observability/inbox.js';
-import { buildObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
+} from '../../../observability/inbox/index.js';
+import { buildObservationInboxViewModel } from '../../../observability/inbox/view-model.js';
 import { buildKnowledgeDebuggerViewModel } from '../../../observability/knowledge-debugger.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
-} from '../../../observability/review-state.js';
+} from '../../../observability/inbox/review-state.js';
 import {
   loadObservationSourceRecordArchive,
   summarizeObservationSourceRecordArchive,
-} from '../../../observability/source-record-archive.js';
+} from '../../../observability/inbox/source-record-archive.js';
 import { buildSkillIndex } from '../../application/index.js';
 import { renderKnowledgeDebuggerPage } from '../../presentation/knowledge-debugger-renderer.js';
 import { DEFAULT_LANG } from '../../presentation/layout.js';

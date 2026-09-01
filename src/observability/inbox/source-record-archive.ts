@@ -1,17 +1,17 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import type { ExperienceSessionSummary, ExperienceTraceRecordRange } from './contracts/experience.js';
+import type { ExperienceSessionSummary, ExperienceTraceRecordRange } from '../contracts/experience.js';
 import type {
   ObservationInboxReport,
   ObservationSourceRecord,
   ObservationSourceRecordArchive,
   ObservationSourceRecordArchiveRef,
   ObservationSourceRecordArchiveView,
-} from './contracts/inbox.js';
-import { writeJsonFileAtomic } from '../shared/atomic-json.js';
-import { normalizeTraceTimestamp } from './trace/trace-ir.js';
-import { forEachNonEmptyUtf8Line } from './trace/source.js';
+} from '../contracts/inbox.js';
+import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { normalizeTraceTimestamp } from '../trace/trace-ir.js';
+import { forEachNonEmptyUtf8Line } from '../trace/source.js';
 
 const ARCHIVE_SCHEMA_VERSION = 1;
 const MAX_ARCHIVE_SOURCE_BYTES = 16 * 1024 * 1024;

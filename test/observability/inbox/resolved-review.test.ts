@@ -1,8 +1,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { resolveObservationReviewSession } from '../../src/observability/resolved-review.js';
-import type { ObservationReviewState } from '../../src/observability/review-state.js';
-import type { ExperienceSessionStoryAnswer } from '../../src/observability/experience.js';
+import { resolveObservationReviewSession } from '../../../src/observability/inbox/resolved-review.js';
+import type { ObservationReviewState } from '../../../src/observability/inbox/review-state.js';
+import type { ExperienceSessionStoryAnswer } from '../../../src/observability/experience.js';
 
 const emptyReviewState: ObservationReviewState = {
   kind: 'observe-review-state',

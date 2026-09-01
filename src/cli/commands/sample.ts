@@ -115,7 +115,7 @@ export async function runSampleFromTraces(
   flags: SampleFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
+  const { queryObservationInbox, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox/index.js');
   const { generateSamplesFromTraces } = await import('../../authoring/generator.js');
   const model = flags.model;
   const executorName = flags.executor;

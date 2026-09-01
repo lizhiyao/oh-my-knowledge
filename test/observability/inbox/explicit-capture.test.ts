@@ -6,15 +6,15 @@ import { describe, it } from 'vitest';
 import {
   captureExplicitObservation,
   loadExplicitObservationCaptureRecords,
-} from '../../src/observability/explicit-capture.js';
+} from '../../../src/observability/inbox/explicit-capture.js';
 import {
   findObservationInboxItem,
   formatObservationShow,
   loadLatestObservationInboxReports,
   queryObservationInbox,
   saveObservationInboxReport,
-} from '../../src/observability/inbox.js';
-import { baseItem } from './inbox/_helpers.js';
+} from '../../../src/observability/inbox/index.js';
+import { baseItem } from './_helpers.js';
 
 describe('explicit observation capture', () => {
   it('persists an append-only record and projects it into the inbox', () => {

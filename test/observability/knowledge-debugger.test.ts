@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
-import { buildObservationInboxReport } from '../../src/observability/inbox.js';
+import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
 import {
   buildKnowledgeDebuggerViewModel,
   projectKnowledgeEvidence,

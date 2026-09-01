@@ -7,13 +7,13 @@ import {
   buildObservationInboxReport,
   loadObservationInboxReports,
   saveObservationInboxReport,
-} from '../../src/observability/inbox.js';
+} from '../../../src/observability/inbox/index.js';
 import {
   loadObservationSourceRecordArchive,
   writeObservationSourceRecordArchives,
-} from '../../src/observability/source-record-archive.js';
-import { forEachNonEmptyUtf8Line } from '../../src/observability/trace/source.js';
-import type { ObservationSourceRecordArchiveRef } from '../../src/observability/contracts/inbox.js';
+} from '../../../src/observability/inbox/source-record-archive.js';
+import { forEachNonEmptyUtf8Line } from '../../../src/observability/trace/source.js';
+import type { ObservationSourceRecordArchiveRef } from '../../../src/observability/contracts/inbox.js';
 
 function jsonl(records: unknown[]): string {
   return records.map((record) => JSON.stringify(record)).join('\n');

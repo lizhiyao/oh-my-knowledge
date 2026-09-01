@@ -7,8 +7,8 @@ import {
   resolveObserveHealthDir,
 } from '../../measurement-artifacts/directories.js';
 import { createCodexConversationCatalog } from '../../observability/conversation-catalog.js';
-import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox.js';
-import { ObservationReviewStateValidationError } from '../../observability/review-state.js';
+import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
+import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
 import type { Lang } from '../../shared/language.js';
 import { createCoreStudioRouteHandler } from '../core-runs/index.js';
 import { DEFAULT_LANG } from '../presentation/layout.js';

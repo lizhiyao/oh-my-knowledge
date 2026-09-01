@@ -4,7 +4,7 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { buildObservationInboxReport } from '../../../src/observability/inbox.js';
+import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,

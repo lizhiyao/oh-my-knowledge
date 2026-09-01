@@ -5,12 +5,12 @@ import {
   explicitObservationCaptureResult,
   loadExplicitObservationCaptureRecords,
   type ExplicitObservationCaptureRecord,
-} from '../observability/explicit-capture.js';
+} from '../observability/inbox/explicit-capture.js';
 import {
   loadObservationReviewState,
   observationReviewStateKey,
   updateObservationReviewState,
-} from '../observability/review-state.js';
+} from '../observability/inbox/review-state.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import type { ObservationCaptureCoverage } from '../observability/contracts/inbox.js';

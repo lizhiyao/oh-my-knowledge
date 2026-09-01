@@ -11,11 +11,11 @@ import {
   isUserInteractionMetricText,
   observationMetricAnnotationEntry,
   observationMetricAnnotationTargetId,
-} from '../../../observability/inbox-view-model.js';
+} from '../../../observability/inbox/view-model.js';
 import type {
   ObservationInboxViewModel,
   ObservationMetricKey,
-} from '../../../observability/inbox-view-model.js';
+} from '../../../observability/inbox/view-model.js';
 import {
   findNegativeFeedbackMatches,
   findPositiveFeedbackMatches,
@@ -23,12 +23,12 @@ import {
   findUserGoalShiftMatches,
   hasUserCorrectionSignal,
   hasUserGoalShiftSignal,
-} from '../../../observability/feedback-projection.js';
+} from '../../../observability/inbox/feedback-projection.js';
 import type {
   ExperienceFeedbackSignal,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from '../../../observability/feedback-projection.js';
+} from '../../../observability/inbox/feedback-projection.js';
 
 interface ObservationTimelineDependencies {
   experience: ObservationInboxViewModel['experienceReports'][number] | undefined;
