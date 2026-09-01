@@ -12,7 +12,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ExecutorFn } from '../executors/contracts/ports.js';
+import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { HedgingVerdict } from './contracts.js';
 
 export interface HedgingCandidate {

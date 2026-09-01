@@ -1,4 +1,4 @@
-import type { CoreStudioCatalog } from '../eval-workflows/studio-catalog/index.js';
+import type { CoreStudioCatalog } from '../studio/core-runs/index.js';
 import {
   coreStudioMethodNotAllowedMessage,
   coreStudioSourceUnavailableMessage,

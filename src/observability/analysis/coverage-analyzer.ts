@@ -17,10 +17,10 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import type { ToolCallInfo } from '../executors/contracts/trace.js';
+import type { ToolCallInfo } from '../../executors/contracts/trace.js';
 import type { AnalysisEntry } from './contracts.js';
-import { toolCallQuery } from '../shared/tool-search.js';
-import { isToolCallSuccess } from '../shared/tool-call-status.js';
+import { toolCallQuery } from '../../shared/tool-search.js';
+import { isToolCallSuccess } from '../../shared/tool-call-status.js';
 
 export interface KnowledgeEntry {
   path: string;

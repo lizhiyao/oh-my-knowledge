@@ -116,7 +116,7 @@ A two-stage pipeline (the v0.1 regex stage from §4 stays unchanged; a classifie
 2. **Judgment stage (LLM classifier)**: for each candidate, call a small model with the matched sentence + sample context, and let the model decide "is this sentence knowledge-level uncertainty, or business reasoning / hypothesis / polite phrasing."
 3. **Filter**: candidates with `isUncertainty=false` are dropped; those with `isUncertainty=true` are kept as a hedging signal, with the verdict (confidence + reason) attached to `signal.classifierVerdict` for the report side to display.
 
-**Classifier interface contract** (`src/analysis/hedging-classifier.ts`):
+**Classifier interface contract** (`src/observability/analysis/hedging-classifier.ts`):
 
 ```typescript
 type HedgingCandidate = {

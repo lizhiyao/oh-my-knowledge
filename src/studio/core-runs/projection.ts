@@ -13,8 +13,8 @@ import {
   projectCoreRunArtifactIndexCard,
   type CoreRunArtifactIndexCard,
   type StoredCoreRunArtifacts,
-} from '../artifact-store/index.js';
-import { assertCoreProjectionSource } from '../downstream-projections/source.js';
+} from '../../eval-workflows/artifact-store/index.js';
+import { assertCoreProjectionSource } from '../../eval-workflows/downstream-projections/index.js';
 import {
   CORE_STUDIO_RUN_CARD_SCHEMA_VERSION,
   CORE_STUDIO_RUN_DETAIL_SCHEMA_VERSION,

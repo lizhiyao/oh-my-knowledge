@@ -1,6 +1,6 @@
-import type { CoverageReport } from '../analysis/coverage-analyzer.js';
-import type { GapReport, GapSignalRef } from '../analysis/contracts.js';
-import { SIGNAL_WEIGHTS } from '../analysis/gap-analyzer.js';
+import type { CoverageReport } from './analysis/coverage-analyzer.js';
+import type { GapReport, GapSignalRef } from './analysis/contracts.js';
+import { SIGNAL_WEIGHTS } from './analysis/gap-analyzer.js';
 import type { SkillHealth, SkillHealthReport } from './skill-health-analyzer.js';
 import { confidenceOf, healthBandOf, toolStabilityOf } from './skill-health-analyzer.js';
 import { parseTraceIngestionSummary } from './trace-ingestion.js';

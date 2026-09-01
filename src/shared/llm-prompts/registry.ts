@@ -87,7 +87,7 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   },
 
   // —— 非评分类:不决定 composite / verdict / assertion 分数,不冻结,仅登记供发现 ——
-  { promptId: 'hedging-classifier', purpose: 'hedging 判定(喂 gap-signal,非评分)', module: 'src/analysis/hedging-classifier.ts', measurementInvariant: false },
+  { promptId: 'hedging-classifier', purpose: 'hedging 判定(喂 gap-signal,非评分)', module: 'src/observability/analysis/hedging-classifier.ts', measurementInvariant: false },
   { promptId: 'sample-generator', purpose: '用例生成(skill / trace → samples)', module: 'src/authoring/generator.ts', measurementInvariant: false },
   { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/authoring/core-evolver.ts', measurementInvariant: false },
   { promptId: 'doctor-fixer', purpose: 'doctor 健康项修复向导', module: 'src/doctor/fixer.ts', measurementInvariant: false },

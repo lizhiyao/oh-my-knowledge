@@ -3,7 +3,7 @@
  *
  * Studio 的 list / detail 视图层(renderer/skill-*-renderer)只依赖这些稳定形状,
  * 不直接 import server 装配层。runtime 函数(buildSkillIndex / detectInsights 等)
- * 仍在 src/server/skill-index.ts 与 src/server/skill-insights.ts。
+ * 运行逻辑归属于 src/studio/application/，与 HTTP host 解耦。
  */
 import type { Diagnosis, StudioDiagnosisSummary } from '../../diagnosis/contracts.js';
 import type { DoctorRuleResult, DoctorSkillStatus } from '../../doctor/contracts.js';

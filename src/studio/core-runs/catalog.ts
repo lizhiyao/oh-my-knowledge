@@ -1,4 +1,4 @@
-import type { CoreRunArtifactStore } from '../artifact-store/index.js';
+import type { CoreRunArtifactStore } from '../../eval-workflows/artifact-store/index.js';
 import type { CoreStudioCatalog } from './contracts.js';
 import {
   projectCoreStudioRunCard,

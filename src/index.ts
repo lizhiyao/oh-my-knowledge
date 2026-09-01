@@ -202,7 +202,7 @@ export {
   createCoreStudioCatalog,
   projectCoreStudioRunCard,
   projectCoreStudioRunDetail,
-} from './eval-workflows/studio-catalog/index.js';
+} from './studio/core-runs/index.js';
 export type {
   CoreStudioAnalysisRecord,
   CoreStudioBudget,
@@ -216,7 +216,7 @@ export type {
   CoreStudioRunDetail,
   CoreStudioRuntimeIdentity,
   CoreStudioUsage,
-} from './eval-workflows/studio-catalog/index.js';
+} from './studio/core-runs/index.js';
 export {
   renderCoreRunDetail,
   renderCoreRunList,

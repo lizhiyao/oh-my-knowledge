@@ -15,9 +15,9 @@ import {
   computeCoverage,
   extractReferencedPaths,
   normalizeKnowledgePath,
-} from '../../src/analysis/coverage-analyzer.js';
-import type { ToolCallInfo } from '../../src/executors/contracts/trace.js';
-import type { AnalysisEntry, AnalysisVariantResult } from '../../src/analysis/contracts.js';
+} from '../../../src/observability/analysis/coverage-analyzer.js';
+import type { ToolCallInfo } from '../../../src/executors/contracts/trace.js';
+import type { AnalysisEntry, AnalysisVariantResult } from '../../../src/observability/analysis/contracts.js';
 
 function variantWithRead(filePath: string): AnalysisVariantResult {
   return {

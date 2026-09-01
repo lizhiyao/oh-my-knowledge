@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const PURE_DOMAIN_TYPE_FILES = [
-  'src/analysis/contracts.ts',
+  'src/observability/analysis/contracts.ts',
   'src/artifact-graph/contracts.ts',
   'src/diagnosis/contracts.ts',
   'src/doctor/contracts.ts',
@@ -49,6 +49,17 @@ const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 describe('领域契约所有权', () => {
   it('保持遗留 src/types 目录已删除', () => {
     expect(existsSync(resolve('src/types'))).toBe(false);
+  });
+
+  it('保持已归位的 observe analysis 与 Studio application 不回退到旧目录', () => {
+    for (const legacyPath of [
+      'src/analysis',
+      'src/eval-workflows/studio-catalog',
+      'src/server/skill-index.ts',
+      'src/server/skill-insights.ts',
+    ]) {
+      expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
+    }
   });
 
   it('领域 contracts 与 view-models 保持为无运行时实现的纯类型模块', () => {
