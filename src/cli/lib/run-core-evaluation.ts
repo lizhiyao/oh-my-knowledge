@@ -16,6 +16,7 @@ import {
   createNodeCliProductionComposition,
   createProductionEvaluationHost,
   executeProductionEvaluationSeries,
+  persistCoreArtifactGraph,
   resolveNodeCliEvaluationRequest,
 } from '../../eval-workflows/production-host/index.js';
 import {
@@ -151,7 +152,6 @@ async function persistArtifactGraph(
   outputDirectory: string,
   cwd: string,
 ): Promise<void> {
-  const { persistCoreArtifactGraph } = await import('../../artifact-graph/core.js');
   await persistCoreArtifactGraph({ source: stored, outputDirectory, cwd });
 }
 
