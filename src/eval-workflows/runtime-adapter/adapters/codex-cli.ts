@@ -34,7 +34,7 @@ import {
   captureCodexEnvironment,
   type CodexEnvironmentEntry,
 } from './codex-environment.js';
-import { mergeOutputClassification } from './classified-environment.js';
+import { mergeOutputClassification } from './shared/classified-environment.js';
 import {
   codexCliExecutorCapabilities,
   parseCodexCliStream,
@@ -49,7 +49,7 @@ import {
   type CapturedCodexCliTarget,
   type CodexCliRunState,
 } from './codex-cli-resources.js';
-import { createSameProcessExecutorAdapter } from './same-process.js';
+import { createSameProcessExecutorAdapter } from './shared/same-process.js';
 
 export {
   CODEX_CLI_READ_ONLY_SANDBOX_ID,

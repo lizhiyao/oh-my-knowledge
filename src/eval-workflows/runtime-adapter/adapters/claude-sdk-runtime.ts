@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { arch, platform } from 'node:process';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { ContentIdentityFile } from './content-identity.js';
+import type { ContentIdentityFile } from './shared/content-identity.js';
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 

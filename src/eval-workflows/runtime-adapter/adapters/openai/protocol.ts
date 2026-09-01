@@ -2,14 +2,14 @@ import {
   UsageRecordSchema,
   type JsonValue,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
-import { ExecutionPortFailure } from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
+import { ExecutionPortFailure } from '../../../../evaluation-core/execution/index.js';
 import {
   createStatelessApiCoreSchemaValidators,
   statelessApiExecutorCapabilities,
   type StatelessApiProtocolProfile,
-} from './api-protocol-core.js';
-import { SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION } from '../source-neutral-trace.js';
+} from '../shared/api-protocol-core.js';
+import { SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION } from '../../source-neutral-trace.js';
 
 export const OPENAI_API_CORE_ADAPTER_IMPLEMENTATION_VERSION = '1.1.0' as const;
 

@@ -4,7 +4,7 @@ import {
   digestCanonicalJson,
   type RuntimeIdentity,
   type Sha256Digest,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import type {
   EvaluationEvaluator,
   EvaluationEvaluatorRecord,
@@ -13,7 +13,7 @@ import type {
   EvaluatorAttemptResult,
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../evaluation-core/evaluation/index.js';
+} from '../../../../evaluation-core/evaluation/index.js';
 import type {
   ExecutionExecutor,
   ExecutionExecutorRun,
@@ -22,11 +22,11 @@ import type {
   ExecutorAttemptResult,
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/execution/index.js';
 import type {
   OmkBindingResourceLease,
   OmkBindingResourceLeaseAccess,
-} from '../resource-leases/types.js';
+} from '../../resource-leases/types.js';
 
 type MaybePromise<Value> = Value | Promise<Value>;
 

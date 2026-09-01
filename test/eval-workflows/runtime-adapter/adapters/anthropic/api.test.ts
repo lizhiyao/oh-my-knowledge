@@ -9,14 +9,14 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../src/evaluation-core/contracts/index.js';
-import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../../../src/evaluation-core/contracts/index.js';
+import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
 import {
   InMemoryRuntimeEventSequencer,
   executeRunPlan,
   type ExecutionExecutor,
   type ExecutorAttemptResult,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/evaluation-core/execution/index.js';
 import {
   createAnthropicApiCoreSchemaValidators,
   createAnthropicApiExecutorAdapter,
@@ -27,12 +27,12 @@ import {
   type OmkBindingResourceLeaseAccess,
   type OmkLeasedHostResource,
   type RuntimeBindingOf,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
 import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
+} from '../../../../evaluation-core/compiler/fixtures.js';
 
 const roots = new Set<string>();
 

@@ -26,7 +26,7 @@ import {
   type SchemaIdentity,
   type Sha256Digest,
   type UsageRecord,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
@@ -34,21 +34,21 @@ import {
   type ExecutorAttemptContext,
   type ExecutorRunContext,
   type ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
+} from '../../../../evaluation-core/execution/index.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,
-} from '../../../executors/core/subprocess.js';
+} from '../../../../executors/core/subprocess.js';
 import type {
   OmkBindingResourceLease,
   OmkBindingResourceLeaseAccess,
   OmkLeasedHostResource,
-} from '../resource-leases/types.js';
-import type { RuntimeBindingOf } from '../types.js';
+} from '../../resource-leases/types.js';
+import type { RuntimeBindingOf } from '../../types.js';
 import {
   createSameProcessExecutorAdapter,
   type SameProcessOperationScope,
-} from './same-process.js';
+} from '../shared/same-process.js';
 
 export const CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION =
   'omk.custom-command-exchange/v1' as const;

@@ -6,22 +6,22 @@ import {
   type RuntimeIdentity,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../src/index.js';
+} from '../../../../../src/index.js';
 import type {
   EvaluatorRecordContext,
   EvaluatorRunContext,
-} from '../../../src/evaluation-core/evaluation/index.js';
+} from '../../../../../src/evaluation-core/evaluation/index.js';
 import type {
   ExecutorRunContext,
   ExecutorTrialContext,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/evaluation-core/execution/index.js';
 import {
   createSameProcessEvaluatorAdapter,
   createSameProcessExecutorAdapter,
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type SameProcessOperationScope,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);

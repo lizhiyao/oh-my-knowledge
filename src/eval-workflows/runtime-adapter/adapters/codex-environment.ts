@@ -2,7 +2,7 @@ import {
   captureClassifiedEnvironment,
   type CapturedClassifiedEnvironment,
   type ClassifiedEnvironmentEntry,
-} from './classified-environment.js';
+} from './shared/classified-environment.js';
 
 export type CodexEnvironmentEntry = ClassifiedEnvironmentEntry;
 export type CapturedCodexEnvironment = CapturedClassifiedEnvironment;
