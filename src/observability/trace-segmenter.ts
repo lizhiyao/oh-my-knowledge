@@ -8,7 +8,7 @@ import { incrementRecordCount } from '../shared/record-count.js';
 import {
   truncateToolCallsForPersistence,
   truncateTurnsForPersistence,
-} from '../shared/trace-projection.js';
+} from './trace-projection.js';
 import { sumTokenCounts, tokenCount } from '../shared/token-usage.js';
 import { legacyCcSessionToTraceSession, type CcSession } from './trace-source.js';
 import type {

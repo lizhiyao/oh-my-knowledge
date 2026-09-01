@@ -4,7 +4,7 @@ import { materializeForCliConfigDir } from '../mock-runtime/runtime.js';
 import {
   executorResultValidationError,
   normalizeExecResultToolIdentities,
-} from '../../shared/executor-result.js';
+} from '../result-validation.js';
 import { resolveScriptCommand } from './command.js';
 import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
 import {

@@ -1,11 +1,6 @@
-/** Stable source identity shared by execution evidence and Trace IR. */
-export type TraceSourceKind =
-  | 'claude'
-  | 'codex'
-  | 'dsh'
-  | 'openclaw'
-  | 'markdown_log'
-  | 'unknown';
+import type { TraceSourceKind } from '../../shared/contracts/trace-source.js';
+
+export type { TraceSourceKind } from '../../shared/contracts/trace-source.js';
 
 export interface TraceIngestionSummary {
   fileCount: number;

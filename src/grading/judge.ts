@@ -7,7 +7,7 @@ import type { JudgeConfig } from './contracts/config.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
 import { buildJudgePrompt, JUDGE_SYSTEM_PROMPT } from '../shared/llm-prompts/judge-prompts.js';
-import { buildJudgeTraceSummary } from '../shared/llm-prompts/judge-trace.js';
+import { buildJudgeTraceSummary } from './judge-trace.js';
 // 评分类 prompt 已收口到 shared/llm-prompts/judge-prompts.ts(单一来源 + prompt-registry 冻结)。
 // 这里 re-export 保对外 API 不破:既有消费方仍从 grading/judge.js import 这两个符号。
 export { buildJudgePrompt, getJudgePromptHash } from '../shared/llm-prompts/judge-prompts.js';

@@ -131,6 +131,25 @@ const RULES: ForbiddenRule[] = [
     reason: 'shared 是跨领域叶子依赖；run id 分配依赖产物命名策略，应由 measurement-artifacts 拥有。',
   },
   {
+    from: 'shared/',
+    to: 'executors/',
+    reason: 'shared 是跨领域叶子依赖；执行结果校验与工具状态解释由 executors 拥有。',
+  },
+  {
+    from: 'shared/',
+    to: 'inputs/',
+    reason: 'shared 是跨领域叶子依赖；断言树算法由 eval-workflows 消费 inputs contracts。',
+  },
+  {
+    from: 'shared/',
+    to: 'observability/',
+    reason: 'shared 是跨领域叶子依赖；观测投影与 prompt 编目由上层能力拥有。',
+    whitelist: [
+      // PR7c 迁移 prompt registry 后删除该例外。
+      'shared/llm-prompts/registry.ts::observability/soft-standards/constants.ts',
+    ],
+  },
+  {
     from: 'observability/',
     to: 'diagnosis/',
     reason: 'observability 是 diagnosis 的下游消费者，不应反向依赖 diagnosis 实现；只允许引用纯 contracts。',

@@ -30,8 +30,8 @@ import {
   type SkillSegment,
 } from './trace-adapter.js';
 import { normalizeTraceTimestamp, type TraceEvent } from './trace-ir.js';
-import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
-import { isToolCallFailure, isToolCallSuccess } from '../shared/tool-call-status.js';
+import { isSearchToolCall, toolCallQuery } from './tool-search.js';
+import { isToolCallFailure, isToolCallSuccess } from '../executors/tool-call-status.js';
 import { isTraceSourceKind as isObservationSourceKind } from '../shared/trace-source-kind.js';
 import {
   incrementRecordCount,

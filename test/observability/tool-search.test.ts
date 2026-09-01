@@ -4,7 +4,7 @@ import {
   isFailedSearchToolCall,
   isSearchToolCall,
   toolCallQuery,
-} from '../../src/shared/tool-search.js';
+} from '../../src/observability/tool-search.js';
 import type { ToolCallInfo } from '../../src/executors/contracts/trace.js';
 
 function bashTc(command: string): ToolCallInfo {
