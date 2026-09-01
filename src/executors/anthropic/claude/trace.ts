@@ -1,6 +1,6 @@
 import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
 import type { ClaudeMessage } from './protocol.js';
-import { safeSliceForJson } from '../../../util/safe-slice.js';
+import { safeSliceForJson } from '../../../shared/json-safe-truncation.js';
 import { isToolResultFailureText } from '../../../observability/text-signals.js';
 import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
 

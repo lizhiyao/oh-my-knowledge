@@ -1,5 +1,5 @@
 import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
-import { safeSliceForJson } from '../../../util/safe-slice.js';
+import { safeSliceForJson } from '../../../shared/json-safe-truncation.js';
 import type { CodexEvent } from './protocol.js';
 import { normalizeToolIdentity } from '../../../shared/tool-identity.js';
 
