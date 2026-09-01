@@ -39,7 +39,7 @@ import {
   mergeHealthSamplesLlm,
   parseMergeClusters,
 } from './consensus.js';
-import { buildHealthMergePrompt } from '../../shared/llm-prompts/skill-health-merge.js';
+import { buildHealthMergePrompt } from './merge-prompt.js';
 
 export const SKILL_HEALTH_COMPOSER_ID = 'skill_health';
 

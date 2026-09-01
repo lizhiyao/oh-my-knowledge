@@ -114,11 +114,6 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'doctor/',
     reason: 'shared 是跨领域叶子依赖；Doctor parser 与 prompt 由 doctor 领域拥有。',
-    whitelist: [
-      // PR7c 迁移 doctor prompt 后删除这两条例外。
-      'shared/llm-prompts/skill-health.ts::doctor/health/dimension-spec.ts',
-      'shared/llm-prompts/skill-health-merge.ts::doctor/health/dimension-spec.ts',
-    ],
   },
   {
     from: 'shared/',
@@ -144,10 +139,6 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'observability/',
     reason: 'shared 是跨领域叶子依赖；观测投影与 prompt 编目由上层能力拥有。',
-    whitelist: [
-      // PR7c 迁移 prompt registry 后删除该例外。
-      'shared/llm-prompts/registry.ts::observability/soft-standards/constants.ts',
-    ],
   },
   {
     from: 'observability/',
@@ -391,6 +382,23 @@ function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] 
   return violations;
 }
 
+function collectSharedLeafViolations(): string[] {
+  const sharedDir = join(SRC_DIR, 'shared');
+  const violations: string[] = [];
+  for (const file of listTsFiles(sharedDir)) {
+    const importer = toSrcRelative(file);
+    for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+      const target = resolveSpecifier(file, specifier);
+      if (target === null) continue;
+      const targetRelative = toSrcRelative(target);
+      if (!targetRelative.startsWith('shared/')) {
+        violations.push(`${importer} → ${targetRelative}`);
+      }
+    }
+  }
+  return violations;
+}
+
 describe('架构边界守门', () => {
   it('禁止反向 / 跨层 import(规则集见本文件 RULES)', () => {
     const violations = collectViolations();
@@ -406,6 +414,19 @@ describe('架构边界守门', () => {
         '若是 P2 known-debt 暂未修,在本测试文件 RULES.whitelist 显式登记并加 TODO。',
       ].join('\n');
       throw new Error(msg);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('shared 只依赖自身纯工具与契约', () => {
+    const violations = collectSharedLeafViolations();
+    if (violations.length > 0) {
+      throw new Error([
+        `发现 ${violations.length} 处 shared 反向领域依赖：`,
+        ...violations.map((violation) => `  ${violation}`),
+        '',
+        'shared 必须保持为依赖图叶子；把实现迁回领域，或把真正跨域的纯类型下沉到 shared/contracts。',
+      ].join('\n'));
     }
     expect(violations).toEqual([]);
   });

@@ -1,6 +1,14 @@
-import { getJudgePromptHash, getSemanticPromptHash, getRagJudgePromptHash } from './judge-prompts.js';
-import { readPromptDocument } from './index.js';
-import { PROMPTS_DIR, SOFT_STANDARD_PROMPT_ID, SOFT_STANDARD_PROMPT_VERSION } from '../../observability/soft-standards/constants.js';
+import {
+  getJudgePromptHash,
+  getRagJudgePromptHash,
+  getSemanticPromptHash,
+} from '../shared/llm-prompts/judge-prompts.js';
+import { readPromptDocument } from '../shared/llm-prompts/index.js';
+import {
+  PROMPTS_DIR,
+  SOFT_STANDARD_PROMPT_ID,
+  SOFT_STANDARD_PROMPT_VERSION,
+} from '../observability/soft-standards/constants.js';
 
 /**
  * omk 所有 LLM prompt 的单一编目 —— 发现入口 + 测量学冻结入口。
@@ -91,6 +99,6 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   { promptId: 'sample-generator', purpose: '用例生成(skill / trace → samples)', module: 'src/authoring/generator.ts', measurementInvariant: false },
   { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/authoring/core-evolver.ts', measurementInvariant: false },
   { promptId: 'doctor-fixer', purpose: 'doctor 健康项修复向导', module: 'src/doctor/fixer.ts', measurementInvariant: false },
-  { promptId: 'skill-health', purpose: 'skill 健康度审计(仅 CLI doctor,不进 eval 评分门禁)', module: 'src/shared/llm-prompts/skill-health.ts', measurementInvariant: false },
-  { promptId: 'skill-health-merge', purpose: '多采样 finding 同根因归并(doctor 多采样默认 llm 归并)', module: 'src/shared/llm-prompts/skill-health-merge.ts', measurementInvariant: false },
+  { promptId: 'skill-health', purpose: 'skill 健康度审计(仅 CLI doctor,不进 eval 评分门禁)', module: 'src/doctor/health/prompt-builder.ts', measurementInvariant: false },
+  { promptId: 'skill-health-merge', purpose: '多采样 finding 同根因归并(doctor 多采样默认 llm 归并)', module: 'src/doctor/health/merge-prompt.ts', measurementInvariant: false },
 ];
