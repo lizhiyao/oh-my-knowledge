@@ -23,8 +23,8 @@ import {
   JUDGE_TRACE_SUMMARY_ALGORITHM_VERSION,
 } from '../../../grading/judge-trace.js';
 import type { ToolCallInfo, TurnInfo } from '../../../executors/contracts/trace.js';
-import type { SameProcessEvaluatorImplementation } from '../adapters/same-process.js';
-import { createSameProcessEvaluatorAdapter } from '../adapters/same-process.js';
+import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
+import { createSameProcessEvaluatorAdapter } from '../adapters/shared/same-process.js';
 import {
   SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR,
   SourceNeutralTraceSchema,

@@ -29,7 +29,7 @@ import {
   captureCodexEnvironment,
   type CodexEnvironmentEntry,
 } from './codex-environment.js';
-import { mergeOutputClassification } from './classified-environment.js';
+import { mergeOutputClassification } from './shared/classified-environment.js';
 import {
   codexSdkExecutorCapabilities,
   parseCodexSdkStream,
@@ -50,7 +50,7 @@ import {
   type CodexSdkRuntimeResolver,
   type ResolvedCodexSdkRuntime,
 } from './codex-sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from './same-process.js';
+import { createSameProcessExecutorAdapter } from './shared/same-process.js';
 
 export {
   CODEX_SDK_READ_ONLY_SANDBOX_ID,

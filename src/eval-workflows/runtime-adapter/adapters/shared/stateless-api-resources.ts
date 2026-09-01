@@ -9,17 +9,17 @@ import {
   digestCanonicalJson,
   type EvaluationDefinition,
   type JsonValue,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
   type ExecutorTrialContext,
-} from '../../../evaluation-core/execution/index.js';
-import type { RuntimeBindingOf } from '../types.js';
+} from '../../../../evaluation-core/execution/index.js';
+import type { RuntimeBindingOf } from '../../types.js';
 import type {
   OmkBindingResourceLease,
   OmkLeasedHostResource,
-} from '../resource-leases/types.js';
+} from '../../resource-leases/types.js';
 
 const DescriptorSchema = z.object({
   resourceId: z.string().min(1),

@@ -4,7 +4,7 @@ import {
   deepFreezeCanonicalJson,
   digestCanonicalJson,
   type JsonValue,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 
 export type ClassifiedEnvironmentEntry = {
   readonly value: string;

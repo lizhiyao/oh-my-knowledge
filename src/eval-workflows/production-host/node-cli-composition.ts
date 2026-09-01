@@ -31,7 +31,7 @@ import {
   createOpenAIApiCoreSchemaValidators,
   customCommandExecutorCapabilities,
 } from '../runtime-adapter/adapters/index.js';
-import type { ClassifiedEnvironmentEntry } from '../runtime-adapter/adapters/classified-environment.js';
+import type { ClassifiedEnvironmentEntry } from '../runtime-adapter/adapters/shared/classified-environment.js';
 import {
   createNodeEvaluationRuntimeSupportPorts,
   createProductionRuntimeFactoryRegistry,

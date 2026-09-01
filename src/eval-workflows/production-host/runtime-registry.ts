@@ -23,7 +23,7 @@ import {
   type CustomCommandRuntimeDescription,
   type OpenAIApiCoreConfiguration,
 } from '../runtime-adapter/adapters/index.js';
-import { captureCoreApiTransport } from '../runtime-adapter/adapters/api-http.js';
+import { captureCoreApiTransport } from '../runtime-adapter/adapters/shared/api-http.js';
 import type { OmkEvaluationRuntimeSupportPorts } from '../runtime-adapter/composition.js';
 import {
   createLlmAssertionEvaluatorBindingFactory,

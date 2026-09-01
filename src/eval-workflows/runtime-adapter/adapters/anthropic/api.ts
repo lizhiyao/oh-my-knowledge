@@ -8,19 +8,19 @@ import {
   type JsonValue,
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
-} from '../../../evaluation-core/contracts/index.js';
+} from '../../../../evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionExecutor,
   type ExecutorAttemptContext,
   type ExecutorAttemptResult,
-} from '../../../evaluation-core/execution/index.js';
-import type { RuntimeBindingOf } from '../types.js';
-import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
+} from '../../../../evaluation-core/execution/index.js';
+import type { RuntimeBindingOf } from '../../types.js';
+import type { OmkBindingResourceLeaseAccess } from '../../resource-leases/types.js';
 import {
   captureClassifiedEnvironment,
   mergeOutputClassification,
-} from './classified-environment.js';
+} from '../shared/classified-environment.js';
 import {
   ApiResponseBodyError,
   ApiResponseLimitError,
@@ -31,12 +31,12 @@ import {
   requiredApiHeaderValue,
   type CapturedCoreApiTransport,
   type CoreApiTransport,
-} from './api-http.js';
+} from '../shared/api-http.js';
 import {
   ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   anthropicApiExecutorCapabilities,
   parseAnthropicApiMessage,
-} from './anthropic-api-protocol.js';
+} from './protocol.js';
 import {
   captureStatelessApiRunState,
   captureStatelessApiTarget,
@@ -44,18 +44,18 @@ import {
   type CapturedStatelessApiTarget,
   type StatelessApiRunState,
   type StatelessApiTrialState,
-} from './stateless-api-resources.js';
-import { createSameProcessExecutorAdapter } from './same-process.js';
+} from '../shared/stateless-api-resources.js';
+import { createSameProcessExecutorAdapter } from '../shared/same-process.js';
 
 export {
   ANTHROPIC_API_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   createAnthropicApiCoreSchemaValidators,
-} from './anthropic-api-protocol.js';
+} from './protocol.js';
 export type {
   ApiTransportIdentity,
   CoreApiTransport,
   CoreApiTransportRequest,
-} from './api-http.js';
+} from '../shared/api-http.js';
 
 export const DEFAULT_ANTHROPIC_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 export const DEFAULT_ANTHROPIC_API_MAX_REQUEST_BYTES = 2 * 1024 * 1024;

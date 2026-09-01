@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson } from '../../../src/evaluation-core/contracts/index.js';
-import { captureClassifiedEnvironment } from '../../../src/eval-workflows/runtime-adapter/adapters/classified-environment.js';
+import { digestCanonicalJson } from '../../../../../src/evaluation-core/contracts/index.js';
+import { captureClassifiedEnvironment } from '../../../../../src/eval-workflows/runtime-adapter/adapters/shared/classified-environment.js';
 
 describe('classified environment', () => {
   it('makes effect locator values identity-bearing without exposing them', () => {

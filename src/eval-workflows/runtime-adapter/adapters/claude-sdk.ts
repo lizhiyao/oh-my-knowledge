@@ -28,12 +28,12 @@ import {
   captureClassifiedEnvironment,
   mergeOutputClassification,
   type ClassifiedEnvironmentEntry,
-} from './classified-environment.js';
+} from './shared/classified-environment.js';
 import {
   assertIdentityFilesUnchanged,
   captureIdentityFiles,
   type CapturedIdentityFile,
-} from './content-identity.js';
+} from './shared/content-identity.js';
 import {
   CLAUDE_SDK_CORE_ADAPTER_IMPLEMENTATION_VERSION,
   claudeSdkExecutorCapabilities,
@@ -57,7 +57,7 @@ import {
   type ClaudeSdkRuntimeResolver,
   type ResolvedClaudeSdkRuntime,
 } from './claude-sdk-runtime.js';
-import { createSameProcessExecutorAdapter } from './same-process.js';
+import { createSameProcessExecutorAdapter } from './shared/same-process.js';
 import { attachSourceNeutralMockStats } from '../source-neutral-trace.js';
 
 export {

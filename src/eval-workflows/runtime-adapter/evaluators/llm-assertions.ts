@@ -20,8 +20,8 @@ import {
   SEMANTIC_SIMILARITY_SYSTEM,
   type RagJudgeType,
 } from '../../../shared/llm-prompts/judge-prompts.js';
-import type { SameProcessEvaluatorImplementation } from '../adapters/same-process.js';
-import { createSameProcessEvaluatorAdapter } from '../adapters/same-process.js';
+import type { SameProcessEvaluatorImplementation } from '../adapters/shared/same-process.js';
+import { createSameProcessEvaluatorAdapter } from '../adapters/shared/same-process.js';
 import type {
   OmkEvaluatorBindingContext,
   OmkRuntimePortBinding,

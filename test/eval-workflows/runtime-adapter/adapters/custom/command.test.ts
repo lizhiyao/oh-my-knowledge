@@ -20,11 +20,11 @@ import {
   type JsonValue,
   type SchemaIdentity,
   type Sha256Digest,
-} from '../../../src/index.js';
+} from '../../../../../src/index.js';
 import type {
   EvaluationDefinition,
   TargetExecutionControls,
-} from '../../../src/evaluation-core/contracts/index.js';
+} from '../../../../../src/evaluation-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   InMemoryRuntimeEventSequencer,
@@ -32,23 +32,23 @@ import {
   type ExecutionExecutor,
   type ExecutorAttemptResult,
   type ExecutorTrialContext,
-} from '../../../src/evaluation-core/execution/index.js';
+} from '../../../../../src/evaluation-core/execution/index.js';
 import {
   CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
   createCustomCommandExecutorAdapter,
   type OmkBindingResourceLease,
   type OmkBindingResourceLeaseAccess,
   type RuntimeBindingOf,
-} from '../../../src/eval-workflows/runtime-adapter/index.js';
+} from '../../../../../src/eval-workflows/runtime-adapter/index.js';
 import {
   testRuntime,
   validDefinition,
   validPolicy,
-} from '../../evaluation-core/compiler/fixtures.js';
-import { prepareEvaluationPlan } from '../../../src/evaluation-core/compiler/index.js';
+} from '../../../../evaluation-core/compiler/fixtures.js';
+import { prepareEvaluationPlan } from '../../../../../src/evaluation-core/compiler/index.js';
 
 const FIXTURE = fileURLToPath(new URL(
-  '../../fixtures/custom-command-core-runtime.mjs',
+  '../../../../fixtures/custom-command-core-runtime.mjs',
   import.meta.url,
 ));
 
