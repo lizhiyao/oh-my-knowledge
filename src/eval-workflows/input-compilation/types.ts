@@ -147,6 +147,7 @@ export interface ResolvedHostResource {
     | 'mcp-config'
     | 'mock-payload'
     | 'gold-dataset'
+    | 'runtime-implementation'
     | 'content';
   readonly descriptor: ResolvedResourceDescriptor;
   readonly locator: string;
@@ -202,6 +203,8 @@ export interface ResolvedCliTarget {
   readonly protocolId: 'omk.invoke/v1' | 'omk.session/v1';
   readonly executor: {
     readonly implementationId: string;
+    /** Host resource that contains a custom out-of-process Runtime implementation. */
+    readonly implementationResource?: ResolvedResourceDescriptor;
     readonly versionConstraint?: string;
     readonly model: string;
     readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -340,7 +343,13 @@ export interface ResolvedCliEvaluationInput {
 
 export interface RuntimeResourceLeaseRequirement {
   readonly resourceId: string;
-  readonly resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-payload' | 'content';
+  readonly resourceRole:
+    | 'artifact'
+    | 'workspace'
+    | 'mcp-config'
+    | 'mock-payload'
+    | 'runtime-implementation'
+    | 'content';
   readonly leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
 }
 

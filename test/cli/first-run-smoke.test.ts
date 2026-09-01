@@ -1,8 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,31 +53,36 @@ describe('first-run smoke path', () => {
       assert.match(init.stdout, /直接跑通/);
       assert.match(init.stdout, /看报告里的 verdict/);
 
-      await writeFile(join(project, 'offline-executor.mjs'), [
-        'import { readFileSync } from "node:fs";',
-        'const req = JSON.parse(readFileSync(0, "utf8"));',
-        'const isV2 = req.system.includes("高级代码审查专家");',
-        'const output = isV2',
-        '  ? "SQL injection: use parameterized queries. Handle error status. XSS via innerHTML: use textContent."',
-        '  : "Looks okay."; ',
-        'console.log(JSON.stringify({ output, durationApiMs: 0, inputTokens: 1, outputTokens: 1 }));',
+      const executor = join(project, 'offline-executor.sh');
+      await writeFile(executor, [
+        '#!/bin/sh',
+        'IFS= read -r request',
+        'case "$request" in',
+        '  *code-review-v2*) output="SQL injection: use parameterized queries. Handle error status. XSS via innerHTML: use textContent." ;;',
+        '  *) output="Looks okay." ;;',
+        'esac',
+        'printf \'{"schemaVersion":"omk.custom-command-exchange/v1","resultStatus":"completed","output":{"value":"%s","classification":"public"}}\\n\' "$output"',
       ].join('\n'));
+      await chmod(executor, 0o755);
 
       const baseArgs = [
         'eval',
         '--control', 'code-review-v1',
         '--treatment', 'code-review-v2',
-        '--executor', 'node offline-executor.mjs',
+        '--executor', executor,
         '--skip-connectivity',
         '--lang', 'zh',
       ];
 
       const dryRun = await execFileAsync('node', [CLI, ...baseArgs, '--dry-run'], { cwd: project });
-      const dryRunReport = parseFirstJsonObject(dryRun.stdout) as { dryRun?: boolean; totalTasks?: number; variants?: string[] };
-      assert.equal(dryRunReport.dryRun, true);
-      assert.equal(dryRunReport.totalTasks, 6);
-      assert.deepEqual(dryRunReport.variants, ['code-review-v1', 'code-review-v2']);
-      assert.match(dryRun.stdout, /eval dry-run：仅预览任务，不检查分数/);
+      const dryRunReport = parseFirstJsonObject(dryRun.stdout) as {
+        projectionKind?: string;
+        dataset?: { sampleCount?: number };
+        targets?: Array<{ targetId?: string }>;
+      };
+      assert.equal(dryRunReport.projectionKind, 'core-cli-dry-run');
+      assert.equal(dryRunReport.dataset?.sampleCount, 3);
+      assert.deepEqual(dryRunReport.targets?.map((target) => target.targetId), ['code-review-v1', 'code-review-v2']);
 
       const run = await execFileAsync('node', [
         CLI,
@@ -89,25 +95,19 @@ describe('first-run smoke path', () => {
         '--report-only',
       ], { cwd: project });
       const report = parseFirstJsonObject(run.stdout) as {
-        id: string;
-        kind?: string;
-        meta?: { variants?: string[]; sampleCount?: number };
-        summary?: Record<string, { avgCompositeScore?: number }>;
-        results?: unknown[];
+        projectionKind?: string;
+        runId: string;
+        status?: { runStatus?: string };
+        usage?: { executionInvocations?: number };
+        gate?: { gateStatus?: string };
       };
 
-      assert.equal(report.kind, 'evaluation');
-      assert.deepEqual(report.meta?.variants, ['code-review-v1', 'code-review-v2']);
-      assert.equal(report.meta?.sampleCount, 3);
-      assert.equal(report.results?.length, 3);
-      assert.ok(
-        (report.summary?.['code-review-v2']?.avgCompositeScore ?? 0)
-        > (report.summary?.['code-review-v1']?.avgCompositeScore ?? 0),
-        'v2 should score higher than the starter v1 in the offline smoke executor',
-      );
-      assert.match(run.stderr, /判定：/);
-      assert.match(run.stderr, /下一步：/);
-      assert.ok(existsSync(join(project, '.omk', 'reports', `${report.id}.report.json`)));
+      assert.equal(report.projectionKind, 'core-cli-run-outcome');
+      assert.equal(report.status?.runStatus, 'completed');
+      assert.equal(report.usage?.executionInvocations, 6);
+      assert.equal(report.gate?.gateStatus, 'skipped');
+      const runDirectory = `run-${createHash('sha256').update(report.runId).digest('hex')}`;
+      assert.ok(existsSync(join(project, '.omk', 'reports', runDirectory, 'manifest.json')));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

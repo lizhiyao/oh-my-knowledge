@@ -126,18 +126,19 @@ export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: st
 
 // codex 看到 stdin 是 pipe 就当作 `<stdin>` 块读,会卡到 timeout。spawn 后立刻
 // child.stdin.end() 发 EOF。SIGINT 传播 / timeout / maxBuffer / kill 由 helper 统一处理。
-function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number }): Promise<{ stdout: string; stderr: string }> {
+function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number; abortSignal?: AbortSignal }): Promise<{ stdout: string; stderr: string }> {
   const { child, done } = spawnWithSigintPropagation('codex', args, {
     env: options.env,
     cwd: options.cwd,
     timeoutMs: options.timeout,
     maxBuffer: options.maxBuffer,
+    abortSignal: options.abortSignal,
   });
   child.stdin?.end();
   return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
 }
 
-export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose }: ExecutorInput): Promise<ExecResult> {
+export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal }: ExecutorInput): Promise<ExecResult> {
   isolateCodexCwd(allowedSkills, cwd);
 
   // codex CLI 没有 --system-prompt flag。降级:把 system 拼到 prompt 头部,
@@ -161,6 +162,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       maxBuffer: MAX_BUFFER,
       timeout: timeoutMs,
       env,
+      abortSignal,
       ...(cwd && { cwd }),
     });
     const durationMs = Date.now() - start;

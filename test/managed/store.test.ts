@@ -24,6 +24,7 @@ import {
   isCurrentlyPromoted,
 } from '../../src/managed/store.js';
 import type { ManagedArtifactRecord, ManagedDecision, ManagedObservation } from '../../src/types/index.js';
+import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 const GAP0 = { failed_search: 0, explicit_marker: 0, hedging: 0, repeated_failure: 0 };
 const TEST_AT = '2026-06-10T00:00:00.000Z';
@@ -263,9 +264,34 @@ describe('managed store', () => {
     assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa', hasSamplesOrDoctorPass: true }).label, 'measurable');
     const withEvidence = makeRecord({
       contentHash: 'aaaaaaaaaaaa',
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: TEST_AT })],
     });
     assert.equal(deriveManagedState({ record: withEvidence, currentContentHash: 'aaaaaaaaaaaa' }).label, 'measurable');
+    const withInsufficientEvidence = makeRecord({
+      contentHash: 'aaaaaaaaaaaa',
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', {
+        reportId: 'r-insufficient',
+        evidenceReadiness: 'insufficient',
+      })],
+    });
+    assert.deepEqual(
+      deriveManagedState({
+        record: withInsufficientEvidence,
+        currentContentHash: 'aaaaaaaaaaaa',
+      }),
+      { label: 'installed', drifted: false, hasEvidence: false },
+    );
+    const withMeasurementEvidence = makeRecord({
+      contentHash: 'aaaaaaaaaaaa',
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', {
+        reportId: 'r-measurement',
+        evidenceReadiness: 'measurement-only',
+      })],
+    });
+    assert.equal(deriveManagedState({
+      record: withMeasurementEvidence,
+      currentContentHash: 'aaaaaaaaaaaa',
+    }).label, 'measurable');
   });
 
   it('deriveManagedState:旧内容的 evidence 不算当前证据,新内容不被读成 measurable(#203 不变量)', () => {
@@ -338,7 +364,7 @@ describe('managed store', () => {
   it('deriveManagedState:当前内容有 promote 决定 → promoted(高于 measurable)', () => {
     const record = makeRecord({
       contentHash: 'aaaaaaaaaaaa',
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT, verdict: 'PROGRESS' }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: TEST_AT })],
       decisions: [promoteDecision({ contentHash: 'aaaaaaaaaaaa' })],
     });
     assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa' }).label, 'promoted');
@@ -380,7 +406,7 @@ describe('managed store', () => {
   it('deriveManagedState:当前内容最近一条是 rollback → 落回 measurable(不是 promoted)', () => {
     const record = makeRecord({
       contentHash: 'aaaaaaaaaaaa',
-      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: TEST_AT, verdict: 'PROGRESS' }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'r1', recordedAt: TEST_AT })],
       decisions: [promoteDecision({ decidedAt: '2026-06-08T00:00:00.000Z' }), rollbackDecision({ decidedAt: '2026-06-09T00:00:00.000Z' })],
     });
     assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa' }).label, 'measurable', 'rollback 后有当前证据 → measurable');
@@ -536,7 +562,7 @@ describe('managed store — observations(#235)', () => {
 
   it('承重不变量:有 red 观测但 contentHash 匹配 → 仍 measurable,绝不 stale', () => {
     const rec = makeRecord({
-      evidence: [{ reportId: 'e', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-07T00:00:00.000Z' }],
+      evidence: [coreManagedEvidence('aaaaaaaaaaaa', { reportId: 'e' })],
       observations: [makeObs({ observedAt: '2026-06-12T00:00:00.000Z', healthBand: 'red', confidence: 'high', weightedGapRate: 0.4 })],
     });
     // 生产盲区是 marker,不进生命周期:当前 hash 匹配 → measurable(观测不翻 stale)。

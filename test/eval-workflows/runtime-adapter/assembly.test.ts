@@ -1241,7 +1241,7 @@ describe('OMK Evaluation Runtime composition root', () => {
     expect(preflightCalls).toBe(0);
   });
 
-  it('qualifies Independent Series Runtime before any preflight effect', async () => {
+  it('reserves the built-in Independent Series Runtime before any preflight effect', async () => {
     const input = runtimeAssemblyInput();
     delete input.orchestration.gold;
     input.policy.evidence = {
@@ -1261,7 +1261,7 @@ describe('OMK Evaluation Runtime composition root', () => {
       });
     }
     let preflightCalls = 0;
-    const runtime = await createOmkEvaluationRuntime({
+    await expect(createOmkEvaluationRuntime({
       compiled,
       factories: observePreflight(
         { ...base, seriesAnalysisNodesByImplementationId: seriesFactories },
@@ -1272,11 +1272,10 @@ describe('OMK Evaluation Runtime composition root', () => {
       ),
       support: compositionSupport(),
       resources: { leaseRoot: '/unused-test-lease-root' },
+    })).rejects.toMatchObject({
+      code: 'OMK_EVALUATION_RUNTIME_FACTORY_CONFLICT',
+      fieldPath: 'factories.seriesAnalysisNodesByImplementationId',
     });
-
-    await expect(runtime.prepare()).rejects.toThrow(
-      'Series Analysis Runtime must match the declared implementation and run unit.',
-    );
     expect(preflightCalls).toBe(0);
   });
 

@@ -26,13 +26,17 @@ describe('#539 production host migration boundary', () => {
     }
   });
 
-  it('keeps the production CLI and report server disconnected in this migration slice', () => {
-    const production = [
-      'src/eval-workflows/run-evaluation.ts',
-      'src/server/report-server.ts',
-    ].map((file) => readFileSync(file, 'utf8')).join('\n');
+  it('pins the production CLI to the Core host and the report route to Core Studio', () => {
+    const command = readFileSync('src/cli/commands/eval/index.ts', 'utf8');
+    const runner = readFileSync('src/cli/lib/run-core-evaluation.ts', 'utf8');
+    const server = readFileSync('src/server/report-server.ts', 'utf8');
 
-    expect(production).not.toContain('production-host');
-    expect(production).not.toContain('resolveNodeCliEvaluationRequest');
+    expect(command).toContain('runCoreEvaluationCommand');
+    expect(command).not.toContain('runEvaluation');
+    expect(runner).toContain("from '../../eval-workflows/production-host/index.js'");
+    expect(runner).toContain('createNodeCliProductionComposition');
+    expect(runner).toContain('createProductionEvaluationHost');
+    expect(server).toContain('createCoreStudioRouteHandler');
+    expect(server).toContain('createEvaluationDisabledReportStore');
   });
 });

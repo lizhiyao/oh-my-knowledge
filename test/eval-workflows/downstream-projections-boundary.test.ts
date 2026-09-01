@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('#531/#547 Core downstream projection boundary', () => {
-  it('does not import legacy Report/result contracts or switch production consumers', () => {
+  it('keeps projections legacy-free and switches every production consumer once', () => {
     const projectionFiles = [
       'src/eval-workflows/downstream-projections/artifact-graph.ts',
       'src/eval-workflows/downstream-projections/cli.ts',
       'src/eval-workflows/downstream-projections/cli-gate.ts',
       'src/eval-workflows/downstream-projections/contracts.ts',
       'src/eval-workflows/downstream-projections/decision.ts',
+      'src/eval-workflows/downstream-projections/diagnostic.ts',
       'src/eval-workflows/downstream-projections/evolution.ts',
       'src/eval-workflows/downstream-projections/gold.ts',
       'src/eval-workflows/downstream-projections/managed.ts',
@@ -22,24 +23,24 @@ describe('#531/#547 Core downstream projection boundary', () => {
     expect(projectionSource).not.toMatch(/\.llmScore\b/);
     expect(projectionSource).not.toMatch(/\.compositeScore\b/);
 
-    const pendingCutoverConsumers = [
+    const cutoverConsumers = [
       'src/cli/commands/eval/index.ts',
+      'src/cli/lib/run-core-evaluation.ts',
       'src/managed/evidence.ts',
+      'src/cli/commands/eval/gold/compare.ts',
+      'src/authoring/core-evolver.ts',
+      'src/artifact-graph/core.ts',
       'src/server/report-server.ts',
     ].map((file) => readFileSync(file, 'utf8')).join('\n');
-    expect(pendingCutoverConsumers).not.toContain('projectCoreCliDryRun');
-    expect(pendingCutoverConsumers).not.toContain('projectCoreCliRunOutcome');
-    expect(pendingCutoverConsumers).not.toContain('projectCoreCliBatchOutcome');
-    expect(pendingCutoverConsumers).not.toContain('projectCoreManagedEvidence');
-
-    const legacyConsumers = [
-      'src/artifact-graph/eval.ts',
-      'src/grading/gold-cli.ts',
-      'src/authoring/evolver.ts',
-    ].map((file) => readFileSync(file, 'utf8')).join('\n');
-    expect(legacyConsumers).not.toContain('downstream-projections');
-    expect(legacyConsumers).not.toContain('projectCoreArtifactGraph');
-    expect(legacyConsumers).not.toContain('compareGoldToCoreRun');
-    expect(legacyConsumers).not.toContain('projectCoreEvolutionEvidence');
+    expect(cutoverConsumers).toContain('projectCoreCliDryRun');
+    expect(cutoverConsumers).toContain('projectCoreCliRunOutcome');
+    expect(cutoverConsumers).toContain('projectCoreCliBatchOutcome');
+    expect(cutoverConsumers).toContain('projectCoreCliSeriesOutcome');
+    expect(cutoverConsumers).toContain('projectCoreManagedEvidence');
+    expect(cutoverConsumers).toContain('projectCoreArtifactGraph');
+    expect(cutoverConsumers).toContain('compareGoldToCoreRun');
+    expect(cutoverConsumers).not.toContain("from '../../eval-workflows/run-evaluation.js'");
+    expect(cutoverConsumers).not.toContain('requireEvaluationReport');
+    expect(cutoverConsumers).not.toContain('compareGoldToReport');
   });
 });

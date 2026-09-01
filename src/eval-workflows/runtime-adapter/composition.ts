@@ -56,6 +56,7 @@ import {
   createBuiltinOmkAnalysisBindingFactories,
   createBuiltinOmkScoringBindingFactories,
 } from './builtins.js';
+import { createOmkSeriesVarianceSchemaValidators } from './series-variance.js';
 import {
   OmkResourceLeaseError,
   materializeNodeRunResourceLeases,
@@ -390,6 +391,9 @@ export function createOmkEvaluationSchemaValidators(
     ...[...createReleaseDecisionParameterSchemaValidators()].map((entry) => (
       [entry[0], entry[1], 'builtin'] as const
     )),
+    ...[...createOmkSeriesVarianceSchemaValidators()].map((entry) => (
+      [entry[0], entry[1], 'builtin'] as const
+    )),
     ...hostEntries.map((entry) => (
       [entry[0], entry[1], 'host'] as const
     )),
@@ -579,6 +583,11 @@ function withBuiltinFactories(
       analysisBuiltin.decisionPoliciesByImplementationId,
       captured.decisionPoliciesByImplementationId,
       'factories.decisionPoliciesByImplementationId',
+    ),
+    seriesAnalysisNodesByImplementationId: mergeFactoryMap(
+      analysisBuiltin.seriesAnalysisNodesByImplementationId,
+      captured.seriesAnalysisNodesByImplementationId,
+      'factories.seriesAnalysisNodesByImplementationId',
     ),
   });
 }

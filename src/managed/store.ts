@@ -163,6 +163,29 @@ function isManagedArtifactRecord(
       || !isRfc3339Timestamp(ev.recordedAt)
       || (ev.verdict !== undefined && !VERDICTS.has(String(ev.verdict)))
     ) return false;
+    if (ev.evidenceSource !== undefined && ev.evidenceSource !== 'evaluation-core') return false;
+    if (ev.evidenceSource === 'evaluation-core') {
+      if (!isNonEmptyString(ev.runId)
+          || !isNonEmptyString(ev.reportDigest)
+          || !isNonEmptyString(ev.artifactDigest)
+          || !isNonEmptyString(ev.targetId)
+          || !['decision-ready', 'measurement-only', 'insufficient'].includes(
+            String(ev.evidenceReadiness),
+          )) return false;
+      const core = ev.coreComparability as Record<string, unknown> | undefined;
+      if (core === undefined || typeof core !== 'object'
+          || ![
+            'runContractDigest',
+            'datasetRevisionDigest',
+            'executionPlanDigest',
+            'evaluationPlanDigest',
+            'analysisPlanDigest',
+            'decisionPlanDigest',
+          ].every((field) => isNonEmptyString(core[field]))) return false;
+      if (ev.decisionReasonCodes !== undefined
+          && (!Array.isArray(ev.decisionReasonCodes)
+            || !ev.decisionReasonCodes.every(isNonEmptyString))) return false;
+    }
     const evidenceKey = `${ev.reportId}\0${ev.contentHash}`;
     if (evidenceKeys.has(evidenceKey)) return false;
     evidenceKeys.add(evidenceKey);
@@ -587,7 +610,10 @@ export function recordManagedArtifact(
  */
 export function deriveManagedState(input: DeriveManagedStateInput): DerivedManagedState {
   const { record, currentContentHash, hasSamplesOrDoctorPass } = input;
-  const hasEvidence = record.evidence.some((e) => e.contentHash === record.contentHash);
+  const hasEvidence = record.evidence.some((e) => isCurrentMeasurementEvidence(
+    e,
+    record.contentHash,
+  ));
   const drifted = currentContentHash === undefined || currentContentHash !== record.contentHash;
   if (drifted) return { label: 'stale', drifted: true, hasEvidence };
   // 当前内容(contentHash 匹配)最近一条 promote/rollback 决定是 promote → 已人工接受当前版本,排在 measurable
@@ -595,6 +621,16 @@ export function deriveManagedState(input: DeriveManagedStateInput): DerivedManag
   if (isCurrentlyPromoted(record)) return { label: 'promoted', drifted: false, hasEvidence };
   if (hasEvidence || hasSamplesOrDoctorPass) return { label: 'measurable', drifted: false, hasEvidence };
   return { label: 'installed', drifted: false, hasEvidence };
+}
+
+/** Insufficient Core runs remain auditable but cannot claim that the current artifact was measured. */
+export function isCurrentMeasurementEvidence(
+  evidence: Readonly<ManagedEvidenceRef>,
+  contentHash: string,
+): boolean {
+  return evidence.evidenceSource === 'evaluation-core'
+    && evidence.contentHash === contentHash
+    && evidence.evidenceReadiness !== 'insufficient';
 }
 
 /** 一条观测是否构成「确诊生产盲区」:healthBand 红 **且** 统计够力。underpowered(数据不足)是 §6.1 的

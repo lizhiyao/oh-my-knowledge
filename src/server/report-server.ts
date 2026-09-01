@@ -60,6 +60,8 @@ import {
   type ObservationReviewStateUpdate,
 } from '../observability/review-state.js';
 import type { AddressInfo } from 'node:net';
+import type { CoreStudioCatalog } from '../eval-workflows/studio-catalog/index.js';
+import { createCoreStudioRouteHandler } from './core-studio-route-handler.js';
 
 const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
@@ -86,12 +88,27 @@ interface ReportServerOptions {
   jobStore?: JobStore;
   /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */
   conversationCatalog?: ConversationCatalog;
+  /** Evaluation 页面唯一事实源。提供后，/reports 与 /api/reports 只读 Core artifacts。 */
+  coreStudioCatalog?: CoreStudioCatalog;
   /** 是否把别项目的 observe-health 索引卡片合进列表 / 详情 / skill 首页(机器级总览)。
    *  默认 false(固定目录 / 测试 hermetic);studio 仅在「无 --analyses-dir 且无 --global」的默认机器级模式传 true。 */
   includeObserveCards?: boolean;
   /** 是否把别项目的 doctor 索引卡片合进 skill 首页 / 详情兜底(机器级总览)。
    *  默认 false;studio 仅在「无 --doctors-dir 且无 --global」的默认机器级模式传 true。 */
   includeDoctorCards?: boolean;
+}
+
+function createEvaluationDisabledReportStore(): ReportStore {
+  return Object.freeze({
+    list: async () => [],
+    get: async () => null,
+    save: async () => { throw new Error('Legacy evaluation report writes are disabled.'); },
+    update: async () => null,
+    remove: async () => false,
+    exists: async () => false,
+    findByVariant: async () => [],
+    findByArtifactHash: async () => [],
+  });
 }
 
 interface AnalysisListItem {
@@ -846,7 +863,7 @@ function findKnowledgeDebuggerContext(observationsDir: string, experienceSession
   return { report, session, sourceRecordRef };
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, conversationCatalog, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir, analysesDir, doctorsDir, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, managedDir, store, jobStore, conversationCatalog, coreStudioCatalog, includeObserveCards = false, includeDoctorCards = false }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
   const liveStreamClosers = new Set<() => void>();
@@ -854,12 +871,22 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
   // reports store:显式注入 store > 显式 reportsDir(eval serve 的本次 outputDir / 测试 / 覆盖,固定单目录)
   // > 缺省 indexed(机器级总览:当前项目 + 全局 live ∪ 别项目的索引卡片,按 id dedup)。indexed 在 store 层做
   // merge,底层 createFileStore 的 mtime 指纹自动反映内容变化,一次构建即可。
-  const reportStore: ReportStore = store
-    ?? (reportsDir !== undefined
-      ? createFileStore(reportsDir)
-      : createIndexedReportStore({ projectDir: projectReportsDir(), globalDir: globalReportsDir() }));
+  const reportStore: ReportStore = coreStudioCatalog !== undefined
+    ? createEvaluationDisabledReportStore()
+    : store
+      ?? (reportsDir !== undefined
+        ? createFileStore(reportsDir)
+        : createIndexedReportStore({ projectDir: projectReportsDir(), globalDir: globalReportsDir() }));
   const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
   const resolvedConversationCatalog = conversationCatalog ?? createCodexConversationCatalog();
+  const coreStudioRoute = coreStudioCatalog === undefined
+    ? undefined
+    : createCoreStudioRouteHandler({
+        catalog: coreStudioCatalog,
+        htmlBasePath: '/reports',
+        apiBasePath: '/api/reports',
+        defaultLang: DEFAULT_LANG,
+      });
   // 受管根目录按**请求**解析,不在启动时冻结 —— 否则长会话里会跟 omk list 分叉:Studio 启动时项目 .omk/managed
   // 还空、回退到 global,随后用户在项目里首次 omk install,omk list 下次会切到 project,而冻结了 root 的 Studio
   // 仍盯着旧 global,页面与 CLI 不一致。cwd 在进程内不变,变的是目录里有没有记录,故每次请求重判。
@@ -891,8 +918,10 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
         ? (): string => doctorsDir
         : (): string => resolveDoctorsDir(projectDoctorsDir());
 
-  const includeReportCards = reportsDir === undefined && store == null;
-  const evalGraphDirs = reportsDir !== undefined
+  const includeReportCards = coreStudioCatalog === undefined && reportsDir === undefined && store == null;
+  const evalGraphDirs = coreStudioCatalog !== undefined
+    ? []
+    : reportsDir !== undefined
     ? [evalGraphDirForReportOutput(reportsDir)]
     : store
       ? []
@@ -917,6 +946,20 @@ export function createReportServer({ port, host: hostOption, reportsDir, analyse
       }
       const langParam = parsed.searchParams.get('lang');
       const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
+
+      if (coreStudioRoute !== undefined) {
+        if (path === '/') {
+          res.writeHead(302, { Location: `/reports${parsed.search}` });
+          res.end();
+          return;
+        }
+        const coreResponse = await coreStudioRoute({ method: req.method, url: req.url });
+        if (coreResponse !== undefined) {
+          res.writeHead(coreResponse.status, coreResponse.headers);
+          res.end(coreResponse.body);
+          return;
+        }
+      }
 
       // observe-health / doctors 目录每请求解析一次(项目优先→全局兜底),下面各 handler 用这两个 local 字符串。
       const analysesDir = resolveAnalysesDir();

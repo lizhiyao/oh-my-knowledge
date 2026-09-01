@@ -29,30 +29,9 @@ describe('oclif evolve', () => {
     assert.ok(stdout.includes('--rounds'), 'stdout missing --rounds flag');
     assert.ok(stdout.includes('--target'), 'stdout missing --target flag');
     assert.ok(stdout.includes('--improve-model'), 'stdout missing --improve-model flag');
-    assert.ok(stdout.includes('--no-significance-gate'), 'stdout missing --no-significance-gate flag');
-    assert.ok(stdout.includes('--test-ratio'), 'stdout missing --test-ratio flag');
     assert.ok(stdout.includes('--edit-budget'), 'stdout missing --edit-budget flag');
-  });
-
-  it('非法 --significance-alpha → exit 2', async () => {
-    try {
-      await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--significance-alpha', '2']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-    }
-  });
-
-  it('--test-ratio 不配 --holdout-ratio → exit 2', async () => {
-    try {
-      await runCommand(EvolveCommand, ['skills/demo/SKILL.md', '--test-ratio', '0.2']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
-      assert.match(e.stderr, /--test-ratio[\s\S]*--holdout-ratio/, `stderr missing guard message:\n${e.stderr}`);
-    }
+    assert.ok(stdout.includes('--snapshot-only'), 'stdout missing --snapshot-only flag');
+    assert.ok(!stdout.includes('--reuse-latest-eval'), 'stdout contains removed legacy flag');
   });
 
   it('--help --lang en', async () => {

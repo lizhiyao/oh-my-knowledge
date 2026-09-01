@@ -23,12 +23,12 @@ describe('#537 migration boundary', () => {
     expect(surface).toContain('CoreStudioRunDetail');
   });
 
-  it('does not wire the new handler into the production report server yet', () => {
+  it('wires the Core-only handler into the production report server', () => {
     const server = readFileSync('src/server/report-server.ts', 'utf8');
     const legacyRenderer = readFileSync('src/renderer/html-renderer.ts', 'utf8');
 
-    expect(server).not.toContain('createCoreStudioRouteHandler');
-    expect(server).not.toContain('core-studio-route-handler');
+    expect(server).toContain('createCoreStudioRouteHandler');
+    expect(server).toContain('core-studio-route-handler');
     expect(legacyRenderer).not.toContain('core-run-renderer');
   });
 });

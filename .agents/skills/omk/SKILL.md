@@ -126,11 +126,11 @@ omk eval --config eval.yaml
 ```bash
 omk evolve skills/my-skill.md --rounds 5
 omk evolve skills/my-skill.md --rounds 10 --target 4.5
-# 严格留出 + 锁定 test：按 val 显著性接受、收尾给无偏泛化分
-omk evolve skills/my-skill.md --holdout-ratio 0.2 --test-ratio 0.2
+# 只生成候选，不写回源文件
+omk evolve skills/my-skill.md --snapshot-only
 ```
 
-evolve 默认开**显著性接受门**：候选只在相对当前最优**统计显著更好**时才被接受（`bootstrapDiffCI` 的 95% CI 排除 0），而不是「分数高一点点就收」—— 拒绝与评委噪声不可分的提升。决策样本太少时退回点估计并 warn；`--no-significance-gate` 可关。配 `--holdout-ratio` 留出 val 选择集、`--test-ratio` 再锁一份全程不参与选择的 test 集，收尾读一次给无偏泛化分。改动过大的候选评测前直接判拒（`--edit-budget`，默认 0.2）。
+evolve 的每个候选都必须通过 Evaluation Core 的 control／treatment A/B 决策：只有带 `release-gates-passed` 的 `PROGRESS` 且候选分数确实更高才接受。写回源文件前还会重新评测原始版本与胜出快照；最终门禁失败时源文件保持不变。改动过大的候选在评测前直接判拒（`--edit-budget`，默认 0.2）。选择集不能提供无偏泛化结论；需要发布判断时，在 evolve 外保留独立验证集并运行新的 `omk eval`，不要把该验证集反馈回同一次迭代。
 
 **重要：evolve 必须在前台运行（不要用 `run_in_background`）。** 原因：evolve 自带实时进度输出，每个 sample 执行时会打印 `[1/5] s001/... ⏳ 执行中...`，每轮完成会打印 `Round N: score=... ✓ ACCEPT / ✗ REJECT`。前台运行时用户能实时看到这些进度，无需手动询问。设置足够长的 timeout（建议 600000ms）以确保命令不会中途超时。
 

@@ -70,11 +70,18 @@ export function evaluatePromoteGate(input: PromoteGateInput): PromoteGateResult 
   // 3. 可比性:judgePromptHash 在场且不属当前任一评委模板 → 评委已变、旧 verdict 不可比 → 拦。
   //    缺失 → 无从核对(旧报告 / 无 judge 评测)→ warn 不拦。cliVersion 仅展示、不硬卡(否则每次发版即全失效)。
   const judgeHash = evidence.comparability?.judgePromptHash;
+  if (evidence.evidenceSource === 'evaluation-core'
+      && evidence.evidenceReadiness !== 'decision-ready') {
+    blocked.push({
+      blockKind: 'verdict_blocked',
+      detail: { verdict: 'CORE_EVIDENCE_NOT_DECISION_READY' },
+    });
+  }
   if (judgeHash !== undefined && currentJudgeHashes && currentJudgeHashes.size > 0) {
     if (!currentJudgeHashes.has(judgeHash)) {
       blocked.push({ blockKind: 'incomparable', detail: { judgePromptHash: judgeHash } });
     }
-  } else if (judgeHash === undefined) {
+  } else if (judgeHash === undefined && evidence.evidenceSource !== 'evaluation-core') {
     warnings.push({ blockKind: 'incomparable' });
   }
 

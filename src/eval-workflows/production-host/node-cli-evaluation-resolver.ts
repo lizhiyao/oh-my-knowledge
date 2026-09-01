@@ -80,7 +80,7 @@ function resourceId(
   digest: ResolvedResourceDescriptor['digest'],
   identityScope?: string,
 ): string {
-  const contentId = digest.slice('sha256:'.length, 'sha256:'.length + 24);
+  const contentId = digest.slice('sha256:'.length);
   return identityScope === undefined
     ? `${resourceKind}-${contentId}`
     : `${resourceKind}-${createHash('sha256').update(identityScope).digest('hex').slice(0, 16)}-${contentId}`;
@@ -104,6 +104,45 @@ function registry(): ResourceRegistry {
       resourcesById.set(resource.descriptor.resourceId, resource);
       return resource.descriptor;
     },
+  };
+}
+
+const PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS = new Set([
+  'codex',
+  'codex-sdk',
+  'claude',
+  'claude-sdk',
+  'openai-api',
+  'anthropic-api',
+]);
+
+interface ResolvedTargetRuntime {
+  readonly implementationId: string;
+  readonly implementationResource?: ResolvedResourceDescriptor;
+}
+
+async function resolveTargetRuntime(
+  resources: ResourceRegistry,
+  projectRoot: string,
+  requestedExecutorId: string,
+): Promise<ResolvedTargetRuntime> {
+  if (PRODUCTION_EXECUTOR_IMPLEMENTATION_IDS.has(requestedExecutorId)) {
+    return { implementationId: requestedExecutorId };
+  }
+  const executablePath = absolute(projectRoot, requestedExecutorId);
+  const descriptor = await fileResource(resources, {
+    resourceKind: 'runtime-implementation',
+    path: executablePath,
+    classification: 'sensitive',
+    mediaType: 'application/vnd.omk.custom-command-runtime',
+    lineage: {
+      lineageKind: 'custom-command-runtime',
+      exchangeSchemaVersion: 'omk.custom-command-exchange/v1',
+    },
+  });
+  return {
+    implementationId: `custom-command-${descriptor.digest.slice('sha256:'.length)}`,
+    implementationResource: descriptor,
   };
 }
 
@@ -261,12 +300,15 @@ async function artifactResource(
   materializationRoot: string,
 ): Promise<ResolvedResourceDescriptor> {
   const lineage: JsonValue = {
+    targetId,
     sourceKind: artifact.source,
     artifactKind: artifact.kind,
     ...(artifact.locator === undefined ? {} : { sourceLocator: artifact.locator }),
+    ...(artifact.skillRoot === undefined ? {} : { skillRootLocator: artifact.skillRoot }),
+    ...(artifact.cwd === undefined ? {} : { workingDirectoryLocator: artifact.cwd }),
     ...(artifact.ref === undefined ? {} : { ref: artifact.ref }),
     ...(artifact.resolvedCommit === undefined ? {} : { commitId: artifact.resolvedCommit }),
-    ...(artifact.contentHash === undefined ? {} : { legacyContentHash: artifact.contentHash }),
+    ...(artifact.contentHash === undefined ? {} : { sourceContentHash: artifact.contentHash }),
   };
   const candidate = artifact.execRoot ?? artifact.skillRoot ?? artifact.locator;
   if (candidate !== undefined && isAbsolute(candidate)) {
@@ -289,13 +331,28 @@ async function artifactResource(
       lineage,
       identityScope: targetId,
     });
-    if (stat?.isFile()) return fileResource(resources, {
-      resourceKind: 'artifact',
-      path: candidate,
-      classification: 'sensitive',
-      lineage,
-      identityScope: targetId,
-    });
+    if (stat?.isFile()) {
+      let path: string;
+      try {
+        path = await materializeBytes(materializationRoot, await readFile(candidate), '.md');
+      } catch (cause) {
+        if (cause instanceof CliEvaluationInputError) throw cause;
+        return fail({
+          code: 'CLI_INPUT_RESOLUTION_FAILED',
+          sourcePath: candidate,
+          message: '无法封存 knowledge artifact 文件。',
+          cause,
+        });
+      }
+      return fileResource(resources, {
+        resourceKind: 'artifact',
+        path,
+        classification: 'sensitive',
+        mediaType: mediaType(candidate),
+        lineage,
+        identityScope: targetId,
+      });
+    }
     if (stat !== undefined) {
       fail({
         code: 'CLI_INPUT_RESOLUTION_FAILED',
@@ -541,6 +598,11 @@ export async function resolveNodeCliEvaluationRequest(
   });
 
   const resources = registry();
+  const targetRuntime = await resolveTargetRuntime(
+    resources,
+    options.projectRoot,
+    request.values.targetRuntime.executorId,
+  );
   const mocks = await resolvedMocks(
     resources,
     loaded.samples,
@@ -582,7 +644,10 @@ export async function resolveNodeCliEvaluationRequest(
       targetKind: artifact.kind,
       protocolId: 'omk.invoke/v1' as const,
       executor: {
-        implementationId: request.values.targetRuntime.executorId,
+        implementationId: targetRuntime.implementationId,
+        ...(targetRuntime.implementationResource === undefined ? {} : {
+          implementationResource: targetRuntime.implementationResource,
+        }),
         model: request.values.targetRuntime.model,
         effort: request.values.targetRuntime.effort,
       },
@@ -648,10 +713,8 @@ export async function resolveNodeCliEvaluationRequest(
       dryRun: request.values.orchestration.dryRun,
       batch: false,
       ...(request.values.orchestration.resumeSourceLocator === undefined ? {} : {
-        resumeSourceLocator: absolute(
-          options.projectRoot,
-          request.values.orchestration.resumeSourceLocator,
-        ),
+        // Core resume locators are stable run identities, never legacy report paths.
+        resumeSourceLocator: request.values.orchestration.resumeSourceLocator,
       }),
       preflight: request.values.orchestration.preflight,
       diagnostic: request.values.orchestration.diagnostic,

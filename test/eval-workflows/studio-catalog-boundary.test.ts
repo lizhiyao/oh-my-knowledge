@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('#535 Core Studio catalog boundary', () => {
-  it('does not import legacy report/storage types or switch Studio consumers', () => {
+  it('does not import legacy report/storage types and is the production evaluation catalog', () => {
     const files = [
       'src/eval-workflows/studio-catalog/catalog.ts',
       'src/eval-workflows/studio-catalog/contracts.ts',
@@ -17,14 +17,12 @@ describe('#535 Core Studio catalog boundary', () => {
     expect(source).not.toMatch(/\.llmScore\b/);
     expect(source).not.toMatch(/\.compositeScore\b/);
 
-    const production = [
-      'src/server/report-server.ts',
-      'src/server/report-store.ts',
-      'src/server/skill-index.ts',
-      'src/cli/commands/studio.ts',
-    ].map((file) => readFileSync(file, 'utf8')).join('\n');
-    expect(production).not.toContain('studio-catalog');
-    expect(production).not.toContain('createCoreStudioCatalog');
-    expect(production).not.toContain('projectCoreStudioRunDetail');
+    const studioCommand = readFileSync('src/cli/commands/studio.ts', 'utf8');
+    const reportServer = readFileSync('src/server/report-server.ts', 'utf8');
+    expect(studioCommand).toContain('createCoreStudioCatalog');
+    expect(studioCommand).toContain('createOverlayCoreRunArtifactStore');
+    expect(studioCommand).not.toContain('createOverlayReportStore');
+    expect(reportServer).toContain('coreStudioCatalog');
+    expect(reportServer).toContain('createCoreStudioRouteHandler');
   });
 });

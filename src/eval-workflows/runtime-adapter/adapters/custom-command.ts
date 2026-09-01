@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import {
+  EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
   ExecutorCapabilitiesSchema,
   EffectiveExecutionControlSchema,
   IdentifierSchema,
@@ -18,9 +19,11 @@ import {
   resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type ExecutorCapabilities,
+  type CoreSchemaValidator,
   type JsonValue,
   type RuntimeIdentity,
   type RuntimeImplementationFacet,
+  type SchemaIdentity,
   type Sha256Digest,
   type UsageRecord,
 } from '../../../evaluation-core/contracts/index.js';
@@ -50,6 +53,61 @@ import {
 export const CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION =
   'omk.custom-command-exchange/v1' as const;
 export const DEFAULT_CUSTOM_COMMAND_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+
+function customCommandSchemaIdentity(name: 'input' | 'output' | 'trace'): SchemaIdentity {
+  const schemaVersion = `omk.custom-command-${name}/v1`;
+  return {
+    schemaVersion,
+    schemaUri: `urn:omk:runtime:custom-command:${name}:v1`,
+    schemaDigest: digestCanonicalJson({
+      schemaVersion,
+      exchangeSchemaVersion: CUSTOM_COMMAND_EXCHANGE_SCHEMA_VERSION,
+      contract: { valueKind: 'json-value' },
+    }),
+  };
+}
+
+export function createCustomCommandCoreSchemaValidators(): readonly CoreSchemaValidator[] {
+  return Object.freeze((['input', 'output', 'trace'] as const).map((name) => Object.freeze({
+    schema: deepFreezeCanonicalJson(customCommandSchemaIdentity(name)),
+    parse(value: unknown): JsonValue {
+      return JsonValueSchema.parse(value);
+    },
+  })));
+}
+
+export function customCommandExecutorCapabilities(): ExecutorCapabilities {
+  return deepFreezeCanonicalJson(ExecutorCapabilitiesSchema.parse({
+    schemaVersion: EXECUTOR_CAPABILITIES_SCHEMA_VERSION,
+    protocols: [{
+      protocolId: 'omk.invoke/v1',
+      inputSchema: customCommandSchemaIdentity('input'),
+      outputSchema: customCommandSchemaIdentity('output'),
+      traceSchema: customCommandSchemaIdentity('trace'),
+      execution: {
+        concurrency: { safety: 'parallel-safe' },
+        cancellation: 'best-effort',
+        state: { resourceLifecycle: 'per-invocation', trialState: 'stateless' },
+        seedControl: 'optional',
+        determinism: 'unknown',
+        features: {
+          systemInstructions: 'native',
+          workspace: ['copy-on-write-overlay'],
+          mcp: ['native-config'],
+          mockInterception: ['pre-tool-call'],
+          toolPolicies: ['allow-list', 'runtime-default'],
+          skillDiscovery: ['allow-list', 'disabled', 'runtime-default'],
+          sandboxIds: [],
+        },
+        telemetry: {
+          trace: 'optional',
+          usage: 'optional',
+          providerCost: { reporting: 'optional' },
+        },
+      },
+    }],
+  })) as ExecutorCapabilities;
+}
 
 const ExecutionContentSchema = z.object({
   value: JsonValueSchema,
@@ -89,7 +147,13 @@ const ResourceDescriptorSchema = z.object({
 const CustomCommandResourceSchema = z.discriminatedUnion('leaseMode', [
   z.object({
     resourceId: IdentifierSchema,
-    resourceKind: z.enum(['artifact', 'mcp-config', 'mock-payload', 'content']),
+    resourceKind: z.enum([
+      'artifact',
+      'mcp-config',
+      'mock-payload',
+      'runtime-implementation',
+      'content',
+    ]),
     descriptor: ResourceDescriptorSchema,
     snapshotKind: z.enum(['file', 'directory']),
     leaseMode: z.literal('immutable-snapshot'),
@@ -248,6 +312,7 @@ interface CapturedConfiguration {
 
 interface CustomCommandRunState {
   readonly privateWorkingDirectory: string;
+  readonly executablePath: string;
   readonly resources: readonly CustomCommandRequest['resources'][number][];
   readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
   acquireTrial(): void;
@@ -570,6 +635,18 @@ async function captureRunState(
   const capturedResources = deepFreezeCanonicalJson(
     CustomCommandResourcesSchema.parse(resources),
   );
+  const runtimeImplementations = capturedResources.filter((resource) => (
+    resource.resourceKind === 'runtime-implementation'
+  ));
+  if (runtimeImplementations.length !== 1
+      || runtimeImplementations[0]?.leaseMode !== 'immutable-snapshot'
+      || runtimeImplementations[0].snapshotKind !== 'file') {
+    fail(
+      'OMK_CUSTOM_COMMAND_RUNTIME_LEASE_INVALID',
+      'infrastructure',
+      'Custom-command Executor requires exactly one immutable Runtime implementation lease.',
+    );
+  }
   let privateWorkingDirectory: string;
   try {
     privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-custom-command-run-'));
@@ -600,7 +677,10 @@ async function captureRunState(
   };
   return Object.freeze({
     privateWorkingDirectory,
-    resources: capturedResources,
+    executablePath: runtimeImplementations[0].snapshotPath,
+    resources: Object.freeze(capturedResources.filter((resource) => (
+      resource.resourceKind !== 'runtime-implementation'
+    ))),
     executionControls,
     acquireTrial() {
       if (disposeRequested) {
@@ -737,6 +817,7 @@ function reportedUsage(usage: UsageRecord | undefined): UsageRecord | undefined 
 
 async function runCommand(
   configuration: CapturedConfiguration,
+  executablePath: string,
   workingDirectory: string,
   request: CustomCommandRequest,
   signal: AbortSignal,
@@ -745,7 +826,7 @@ async function runCommand(
     fail('OMK_CUSTOM_COMMAND_CANCELLED', 'execution', 'Custom-command execution was cancelled.');
   }
   const { child, done } = spawnWithSigintPropagation(
-    configuration.executablePath,
+    executablePath,
     [...configuration.arguments],
     {
       cwd: workingDirectory,
@@ -851,13 +932,14 @@ export async function createCustomCommandExecutorAdapter(
           throw error;
         }
       },
-      async execute({ run, trial, trialState, attempt, scope }) {
+      async execute({ run, runState, trial, trialState, attempt, scope }) {
         if (attempt.signal.aborted) {
           fail('OMK_CUSTOM_COMMAND_CANCELLED', 'execution', 'Custom-command execution was cancelled.');
         }
         await assertIdentityFilesUnchanged(files, attempt.signal);
         const response = await runCommand(
           configuration,
+          runState.executablePath,
           trialState.workingDirectory,
           requestDocument(run, trial, attempt, scope, trialState),
           attempt.signal,

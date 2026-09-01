@@ -13,6 +13,9 @@ import {
   probeSourceState,
 } from '../../managed/index.js';
 import type { EvaluationReport, ManagedArtifactRecord, ManagedEvidenceRef } from '../../types/index.js';
+import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store/index.js';
+import { projectCoreManagedEvidence } from '../../eval-workflows/downstream-projections/index.js';
+import { recordCoreEvalEvidence } from '../../managed/evidence.js';
 
 export interface EvolveOutcomeInput {
   /** 合并 evolve 报告 id（evolveSkill 返回的 reportId）。 */
@@ -35,6 +38,44 @@ export interface EvolveOutcomeResult {
   name: string;
   contentHash: string;
   verdict: string;
+}
+
+export interface CoreEvolveOutcomeInput {
+  source: Readonly<StoredCoreRunArtifacts>;
+  bestRound: number;
+  skillPath: string;
+  skillDir: string;
+  isDirectorySkill: boolean;
+  dir?: string;
+}
+
+/** Re-baselines and records an evolved source only when the exact Core artifact digest matches it. */
+export function recordCoreEvolveOutcome(
+  input: Readonly<CoreEvolveOutcomeInput>,
+): EvolveOutcomeResult | null {
+  if (input.bestRound <= 0) return null;
+  const dir = input.dir ?? resolveManagedDir(managedDir());
+  const record = findRecordBySource(
+    loadAllManagedRecords(dir),
+    input.skillPath,
+    input.skillDir,
+    input.isDirectorySkill,
+  );
+  if (record === undefined) return null;
+  const probe = probeSourceState(record);
+  if (!probe.reachable || probe.hash === undefined) return null;
+  const projection = projectCoreManagedEvidence(input.source);
+  const target = projection.targets.find((candidate) => candidate.managedEvidenceEligible);
+  if (target === undefined || target.artifact.digest !== `sha256:${probe.hash}`) return null;
+  if (!rebaselineManagedContentHash(dir, record.id, probe.hash)) return null;
+  const written = recordCoreEvalEvidence(projection, { dir }).find(
+    (candidate) => candidate.recordId === record.id,
+  );
+  if (written === undefined) return null;
+  const verdict = projection.decision?.decisionStatus === 'decided'
+    ? projection.decision.verdict
+    : 'UNKNOWN';
+  return { name: written.name, contentHash: written.contentHash, verdict };
 }
 
 /**

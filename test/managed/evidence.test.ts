@@ -195,7 +195,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     return upsertManagedRecord(managed, rec);
   }
 
-  it('真实指纹相等 → evidence 绑定 → deriveManagedState = measurable', () => {
+  it('旧 report evidence 即使指纹相等也不再驱动 measurable', () => {
     // install 与 eval 同取真实整树哈(同一口径)—— 这正是 #214 指纹统一要保证的。
     const realHash = hashArtifactSource(skillDir, true);
     install(realHash);
@@ -211,8 +211,8 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(rec.evidence.length, 1);
     assert.equal(rec.evidence[0].contentHash, realHash);
     const state = deriveManagedState({ record: rec, currentContentHash: realHash });
-    assert.equal(state.label, 'measurable', '端到端命中 measurable(#214 验收第 3 条)');
-    assert.equal(state.hasEvidence, true);
+    assert.equal(state.label, 'installed');
+    assert.equal(state.hasEvidence, false);
   });
 
   it('eval 测的是旧内容(hash 不等)→ 证据留存但 unbound,不冒充 measurable', () => {
@@ -228,7 +228,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(state.label, 'installed', '旧内容证据不让当前版本显得已测');
   });
 
-  it('本地 git:受管记录名 review、报告 variant 键是整串 git:HEAD:skills/review,哈相等 → 按 contentHash 绑定', () => {
+  it('旧 report evidence 可留存审计，但不再驱动生命周期', () => {
     const realHash = hashArtifactSource(skillDir, true);
     install(realHash);
     // install 受管记录名是短名 review,eval 报告里 variant 键保留整串表达式 —— 名字对不上,但指纹同空间。
@@ -242,7 +242,7 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(written[0].variant, 'git:HEAD:skills/review', '同时保留报告里的 treatment variant 供 CLI 对齐');
     assert.equal(written[0].bound, true);
     const rec = loadManagedRecord(managed, managedRecordId('skill', 'review'))!;
-    assert.equal(deriveManagedState({ record: rec, currentContentHash: realHash }).label, 'measurable');
+    assert.equal(deriveManagedState({ record: rec, currentContentHash: realHash }).label, 'installed');
   });
 
   it('远端 git:eval.yaml 自定义别名 candidate,install 记录名 review,哈相等 → 绑定', () => {

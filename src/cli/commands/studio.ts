@@ -8,31 +8,12 @@ import { resolveManagedDir, managedDir } from '../../managed/index.js';
 import {
   resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
-  globalReportsDir,
+  projectReportsDir, globalReportsDir,
 } from '../../eval-core/measurement-dirs.js';
 import { DEFAULT_GLOBAL_OBSERVATIONS_DIR } from '../../observability/inbox.js';
 import type { ReportServer } from '../lib/shared.js';
 import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
-
-async function openWorkbench(url: string, lang: CliLang): Promise<void> {
-  const { execFile } = await import('node:child_process');
-  const { platform } = await import('node:os');
-  const browser = process.env.BROWSER?.trim();
-  if (browser?.toLowerCase() === 'none') return;
-
-  const os = platform();
-  const command = browser || (os === 'win32' ? 'cmd' : os === 'darwin' ? 'open' : 'xdg-open');
-  const args = os === 'win32' && !browser
-    ? ['/c', 'start', '', url]
-    : [url];
-  execFile(command, args, (err) => {
-    if (!err) return;
-    process.stderr.write(tCli('cli.studio.open_failed', lang, {
-      command,
-      message: err.message,
-    }));
-  });
-}
+import { openWorkbench } from '../lib/open-workbench.js';
 
 // dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
 // import 直接调用。把业务作为 module-level helper export 从 Command file 暴露,
@@ -95,12 +76,28 @@ export async function runStudio(
   }
 
   const { createReportServer } = await import('../../server/report-server.js');
+  const {
+    createNodeCoreContentStore,
+    createNodeCoreRunArtifactStore,
+    createOverlayCoreRunArtifactStore,
+  } = await import('../../eval-workflows/artifact-store/index.js');
+  const { createCoreStudioCatalog } = await import('../../eval-workflows/studio-catalog/index.js');
+  const coreStoreFor = (directory: string) => createNodeCoreRunArtifactStore(directory, {
+    contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),
+  });
+  const coreStore = reportsDirOpt !== undefined
+    ? coreStoreFor(reportsDirOpt)
+    : createOverlayCoreRunArtifactStore(
+        coreStoreFor(projectReportsDir()),
+        [coreStoreFor(globalReportsDir())],
+      );
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
     // reportsDir 缺省 undefined → server 建 indexed(机器级:当前项目 + 全局 + 别项目索引卡片);
     // 显式 --reports-dir / --global 固定单目录(逃生舱,不走聚合)。
     ...(reportsDirOpt !== undefined ? { reportsDir: reportsDirOpt } : {}),
+    coreStudioCatalog: createCoreStudioCatalog(coreStore),
     // 测量产物(observe-health / doctors)默认按请求项目优先→全局兜底(同 managed);
     // 显式 --analyses-dir/--doctors-dir 固定该目录;--global 钉全局目录。
     analysesDir: flags['analyses-dir']

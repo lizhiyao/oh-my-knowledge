@@ -127,6 +127,8 @@ export interface ExecutorInput {
    * lean=true 时 effort 一定 = 'low'(lean 路径强制省思考),即使外面传了 high 也以 lean 为准。
    */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Cooperative cancellation owned by the caller; executors forward it to I/O. */
+  abortSignal?: AbortSignal;
 }
 
 export type ExecutorRuntimeFingerprintResolver = (

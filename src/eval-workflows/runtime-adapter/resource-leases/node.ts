@@ -329,7 +329,9 @@ function roleResourceKind(role: RuntimeResourceLeaseRequirement['resourceRole'])
         ? 'mcp-config' as const
         : role === 'mock-payload'
           ? 'mock-payload' as const
-          : 'content' as const;
+          : role === 'runtime-implementation'
+            ? 'runtime-implementation' as const
+            : 'content' as const;
 }
 
 function validateLimits(input: Partial<OmkResourceLeaseLimits> | undefined): OmkResourceLeaseLimits {
@@ -365,7 +367,14 @@ function snapshotBindingRequests(
     bindingIds.add(binding.bindingId);
     const keys = new Set<string>();
     const requirements = binding.requirements.map((requirement: RuntimeResourceLeaseRequirement) => {
-      const validRole = ['artifact', 'workspace', 'mcp-config', 'mock-payload', 'content']
+      const validRole = [
+        'artifact',
+        'workspace',
+        'mcp-config',
+        'mock-payload',
+        'runtime-implementation',
+        'content',
+      ]
         .includes(requirement.resourceRole);
       const roleAllowed = binding.consumerKind === 'executor'
         ? requirement.resourceRole !== 'content' && validRole
@@ -414,7 +423,7 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'HostResource inventory 包含重复 resourceId。',
     });
-    if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'content']
+    if (!['artifact', 'workspace', 'mcp-config', 'mock-payload', 'gold-dataset', 'runtime-implementation', 'content']
       .includes(resource.resourceKind)
         || !['public', 'sensitive', 'secret', 'gold'].includes(descriptor.classification)
         || !['content-digest', 'tree-digest', 'pinned-git']
@@ -439,7 +448,8 @@ function validateInventory(input: MaterializeNodeRunResourceLeasesInput): Map<st
       resourceId: descriptor.resourceId,
       message: 'Gold classification 只能用于 gold-dataset，且 gold-dataset 必须标记为 gold。',
     });
-    const fileOnly = ['mcp-config', 'mock-payload', 'content'].includes(resource.resourceKind);
+    const fileOnly = ['mcp-config', 'mock-payload', 'runtime-implementation', 'content']
+      .includes(resource.resourceKind);
     const gitAllowed = resource.resourceKind === 'artifact' || resource.resourceKind === 'workspace';
     if ((fileOnly && verification.verificationKind !== 'content-digest')
         || (resource.resourceKind === 'workspace'
