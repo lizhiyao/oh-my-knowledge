@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
-import { buildKnowledgeDebuggerViewModel } from '../../src/observability/knowledge-debugger.js';
+import { buildKnowledgeDebuggerViewModel } from '../../src/observability/conversation/knowledge-debugger.js';
 import { renderKnowledgeDebuggerPage } from '../../src/studio/presentation/knowledge-debugger-renderer.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');

@@ -8,7 +8,7 @@ import { buildObservationInboxReport } from '../../../src/observability/inbox/in
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,
-} from '../../../src/observability/conversation-catalog.js';
+} from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 
 describe('Live task trajectory server', () => {

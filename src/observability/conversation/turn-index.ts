@@ -4,7 +4,7 @@ import type {
   ExperienceTurnStatus,
   ExperienceTurnSummary,
   TaskWindowBasis,
-} from './contracts/experience.js';
+} from '../contracts/experience.js';
 
 interface TurnCandidate {
   basis: Exclude<TaskWindowBasis, 'unresolved'>;

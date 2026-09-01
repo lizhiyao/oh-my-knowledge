@@ -10,12 +10,12 @@ import { durationMsBetween } from '../shared/time.js';
 import {
   projectTraceSessionTimeline,
 } from '../observability/experience.js';
-import { reconstructExperienceTurns } from '../observability/turn-index.js';
+import { reconstructExperienceTurns } from '../observability/conversation/turn-index.js';
 import { observationSourceRecordFromLine } from '../observability/inbox/source-record-archive.js';
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,
-} from '../observability/conversation-catalog.js';
+} from '../observability/conversation/catalog.js';
 import {
   adaptDshSession,
   type DshSessionEventLike,

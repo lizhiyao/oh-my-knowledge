@@ -8,7 +8,7 @@ import type {
 } from '../contracts/experience.js';
 import {
   reconstructExperienceTurns,
-} from '../turn-index.js';
+} from '../conversation/turn-index.js';
 import {
   unique,
 } from './primitives.js';

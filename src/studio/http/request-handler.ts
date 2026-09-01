@@ -6,7 +6,7 @@ import {
   resolveDoctorsDir,
   resolveObserveHealthDir,
 } from '../../measurement-artifacts/directories.js';
-import { createCodexConversationCatalog } from '../../observability/conversation-catalog.js';
+import { createCodexConversationCatalog } from '../../observability/conversation/catalog.js';
 import { DEFAULT_OBSERVATIONS_DIR } from '../../observability/inbox/index.js';
 import { ObservationReviewStateValidationError } from '../../observability/inbox/review-state.js';
 import type { Lang } from '../../shared/language.js';

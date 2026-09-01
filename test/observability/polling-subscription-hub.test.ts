@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, it } from 'vitest';
-import { PollingSubscriptionHub } from '../../src/observability/polling-subscription-hub.js';
+import { PollingSubscriptionHub } from '../../src/observability/conversation/polling-subscription-hub.js';
 
 describe('PollingSubscriptionHub', () => {
   it('shares a sequential poll loop and releases it after the last unsubscribe', async () => {

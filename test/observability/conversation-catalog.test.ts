@@ -13,7 +13,7 @@ import {
   readCodexTaskRecords,
   synchronizeCurrentCodexRolloutIndex,
 } from '../../src/observability/trace/adapters/codex/conversation-index.js';
-import { createCodexConversationCatalog } from '../../src/observability/conversation-catalog.js';
+import { createCodexConversationCatalog } from '../../src/observability/conversation/catalog.js';
 
 const roots: string[] = [];
 

@@ -1,13 +1,13 @@
-import { loadLatestObservationInboxReports } from './inbox/index.js';
-import type { ExperienceSessionSummary, ExperienceTurnSummary } from './contracts/experience.js';
-import type { ObservationSourceKind } from './contracts/trace.js';
+import { loadLatestObservationInboxReports } from '../inbox/index.js';
+import type { ExperienceSessionSummary, ExperienceTurnSummary } from '../contracts/experience.js';
+import type { ObservationSourceKind } from '../contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-} from './view-models/conversation.js';
-import { durationMsBetween } from '../shared/time.js';
-import type { ConversationCatalog } from './conversation-catalog.js';
+} from '../view-models/conversation.js';
+import { durationMsBetween } from '../../shared/time.js';
+import type { ConversationCatalog } from './catalog.js';
 
 interface MutableTask {
   turn: ExperienceTurnSummary;
