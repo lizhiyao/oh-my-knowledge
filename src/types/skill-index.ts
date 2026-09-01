@@ -6,7 +6,7 @@
  * 仍在 src/server/skill-index.ts 与 src/server/skill-insights.ts。
  */
 import type { Diagnosis, StudioDiagnosisSummary } from '../diagnosis/contracts.js';
-import type { DoctorRuleResult, DoctorSkillStatus } from './doctor.js';
+import type { DoctorRuleResult, DoctorSkillStatus } from '../doctor/contracts.js';
 
 export interface SkillDoctorSnapshot {
   reportId: string;

@@ -13,7 +13,7 @@ import { existsSync, readdirSync, readFileSync, unlinkSync, statSync } from 'nod
 import { dirname, join, resolve } from 'node:path';
 import { DEFAULT_ARTIFACT_INDEX_DIR } from './default-dirs.js';
 import { globalDoctorsDir, globalObserveHealthDir } from './directories.js';
-import type { DoctorSkillStatus } from '../types/doctor.js';
+import type { DoctorSkillStatus } from '../doctor/contracts.js';
 import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';

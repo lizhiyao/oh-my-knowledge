@@ -9,8 +9,8 @@ import {
   __resetHealthDimensionsForTest,
 } from '../../../src/doctor/health/dimension-registry.js';
 import { getRegisteredRules, __resetCustomRulesForTest } from '../../../src/doctor/rules.js';
-import { isComposerRule } from '../../../src/types/doctor.js';
-import type { DoctorContext, DoctorRule } from '../../../src/types/doctor.js';
+import type { DoctorContext, DoctorRule } from '../../../src/doctor/contracts.js';
+import { isComposerRule } from '../../../src/doctor/rule-kind.js';
 import type { Artifact } from '../../../src/artifacts/contracts.js';
 
 let dir: string;

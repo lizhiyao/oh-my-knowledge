@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
 import { registerRule, __resetCustomRulesForTest } from '../../src/doctor/rules.js';
 import type { Artifact } from '../../src/artifacts/contracts.js';
-import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/types/doctor.js';
+import type { ComposerRule, DoctorRule, DoctorProgressInfo } from '../../src/doctor/contracts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE_SKILLS_DIR = join(__dirname, '..', 'fixtures', 'code-review', 'skills');

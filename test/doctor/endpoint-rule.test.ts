@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeEndpointRule } from '../../src/doctor/endpoint-rule.js';
-import type { DoctorContext } from '../../src/types/doctor.js';
+import type { DoctorContext } from '../../src/doctor/contracts.js';
 import type { Artifact } from '../../src/artifacts/contracts.js';
 
 const artifact: Artifact = {

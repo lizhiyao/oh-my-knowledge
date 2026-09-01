@@ -24,7 +24,7 @@ import type {
   ComposerRule,
   DoctorContext,
   DoctorRuleStatus,
-} from '../../types/doctor.js';
+} from '../contracts.js';
 import type {
   HealthDimensionLevel,
   HealthDimensionResult,

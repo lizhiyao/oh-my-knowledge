@@ -2,7 +2,7 @@ import { confirm, select, input } from '@inquirer/prompts';
 import { existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createExecutor } from '../executors/index.js';
-import type { DoctorReport, DoctorRuleResult } from '../types/doctor.js';
+import type { DoctorReport, DoctorRuleResult } from './contracts.js';
 
 interface FixIssue {
   id: string;

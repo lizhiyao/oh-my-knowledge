@@ -2,7 +2,7 @@ import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillStatus,
-} from '../types/index.js';
+} from '../doctor/contracts.js';
 import { normalizeRfc3339Timestamp } from './timestamp.js';
 
 const RULE_STATUSES = new Set(['pass', 'warn', 'fail', 'skipped']);

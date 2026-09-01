@@ -9,7 +9,7 @@
  * subtype 作为 finding 一级字段),后续可以加可选 hooks(parseFindings 等)。
  */
 
-import type { DoctorSeverity } from '../../types/doctor.js';
+import type { DoctorSeverity } from '../contracts.js';
 
 export type HealthDimensionLevel = '健康' | '亚健康' | '不健康' | '不适用';
 export type HealthFindingLevel = '错误' | '警告' | '建议';

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderDoctorActionPlanText } from '../../src/doctor/renderer.js';
-import type { DoctorReport, DoctorRuleResult } from '../../src/types/index.js';
+import type { DoctorReport, DoctorRuleResult } from '../../src/doctor/contracts.js';
 
 const result = (idx: number): DoctorRuleResult => ({
   ruleId: `rule-${idx}`,

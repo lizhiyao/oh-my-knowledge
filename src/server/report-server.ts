@@ -24,7 +24,7 @@ import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../meas
 import { isReportFileName, reportFilePath, reportFileStem } from '../measurement-artifacts/file-names.js';
 import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
-import type { DoctorReport } from '../types/index.js';
+import type { DoctorReport } from '../doctor/contracts.js';
 import { parseDoctorReport } from '../shared/doctor-report.js';
 import {
   confidenceOf,

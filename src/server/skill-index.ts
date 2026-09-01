@@ -20,7 +20,6 @@ import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
 import { parseDoctorReport } from '../shared/doctor-report.js';
 import { ownRecordValue } from '../shared/record-count.js';
 import type {
-  DoctorReport,
   Insight,
   SkillDoctorSnapshot,
   SkillGraphSnapshot,
@@ -30,6 +29,7 @@ import type {
   SkillObserveSnapshot,
 } from '../types/index.js';
 import type { Diagnosis } from '../diagnosis/contracts.js';
+import type { DoctorReport } from '../doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../artifact-graph/contracts.js';
 import { detectInsights } from './skill-insights.js';
 

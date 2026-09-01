@@ -33,7 +33,7 @@ import type {
   DoctorRuleLike,
   DoctorContext,
   DoctorRuleCheckOutcome,
-} from '../types/doctor.js';
+} from './contracts.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

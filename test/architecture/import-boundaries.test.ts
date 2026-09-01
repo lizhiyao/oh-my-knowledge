@@ -123,6 +123,10 @@ const RULES: ForbiddenRule[] = [
     from: 'types/',
     to: 'doctor/',
     reason: 'types/ 不应反向 import doctor 实现层。',
+    whitelist: [
+      // 最终 types 收尾迁移的中间提交；skill-index 随后迁入 Studio view model 并删除此项。
+      'types/skill-index.ts::doctor/contracts.ts',
+    ],
   },
   {
     from: 'types/',

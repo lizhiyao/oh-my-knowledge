@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderDoctorDetail } from '../../src/renderer/doctor-detail-renderer.js';
-import type { DoctorReport } from '../../src/types/index.js';
+import type { DoctorReport } from '../../src/doctor/contracts.js';
 
 const report: DoctorReport = {
   kind: 'doctor',

@@ -17,7 +17,7 @@ import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorRuleStatus,
-} from '../types/index.js';
+} from './contracts.js';
 
 const STATUS_SYMBOL: Record<DoctorRuleStatus, string> = {
   pass: '✓',

@@ -34,7 +34,7 @@ const SRC_DIR = join(PROJECT_ROOT, 'src');
 // 文件,要走单独的数据/schema 迁移(序列化向后兼容,非统计可比性),本轮冻结。
 // 这是债务登记,不是「允许裸 kind」的背书。
 const FROZEN_KIND_EXCEPTIONS = new Set<string>([
-  "src/types/doctor.ts::DoctorReport::'doctor'",
+  "src/doctor/contracts.ts::DoctorReport::'doctor'",
   "src/observability/contracts/review.ts::ObservationReviewState::'observe-review-state'",
   "src/observability/contracts/inbox.ts::ObservationInboxReport::'observe-inbox'",
   "src/observability/contracts/experience.ts::ObservationExperienceReport::'observe-experience'",

@@ -13,7 +13,7 @@ import { indexDoctorWrite, removeDoctorCard } from '../../measurement-artifacts/
 import { doctorReportFileStem, isReportFileName, reportFilePath, reportFileStem } from '../../measurement-artifacts/file-names.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../measurement-artifacts/directories.js';
 import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../artifact-graph/doctor.js';
-import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../types/index.js';
+import type { DoctorOutcome, DoctorReport, DoctorRule, DoctorRuleLike } from '../../doctor/contracts.js';
 import { parseDoctorReport } from '../../shared/doctor-report.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 
@@ -205,7 +205,7 @@ export default class Doctor extends BaseCommand {
       const { runDoctor } = await import('../../doctor/index.js');
       const { renderDoctorReportText, renderDoctorReportJson, renderDoctorActionPlanText } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
-      const { isComposerRule } = await import('../../types/doctor.js');
+      const { isComposerRule } = await import('../../doctor/rule-kind.js');
       // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
       // --static-only:只跑静态检测(纯静态内置 rule),但排除 samples_contract_aligned
       // (那条要 samples.json,与离线解耦) → 且不加载 samples,依赖检查只扫 skill 正文。

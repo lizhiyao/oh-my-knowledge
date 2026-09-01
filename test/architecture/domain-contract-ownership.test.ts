@@ -7,6 +7,7 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/analysis/contracts.ts',
   'src/artifact-graph/contracts.ts',
   'src/diagnosis/contracts.ts',
+  'src/doctor/contracts.ts',
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
@@ -43,7 +44,6 @@ const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set<string>();
 
 const ALLOWED_LEGACY_TYPE_FILES = new Set([
-  'doctor.ts',
   'index.ts',
   'shared.ts',
   'skill-index.ts',
