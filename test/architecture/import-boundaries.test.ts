@@ -532,6 +532,21 @@ describe('架构边界守门', () => {
     expect(reviewerReport).not.toContain("from '../experience.js'");
   });
 
+  it('Observation Inbox 浏览器交互脚本与服务端 renderer 分离', () => {
+    const renderer = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox-renderer.ts'),
+      'utf-8',
+    );
+    const clientScript = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox', 'client-script.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(renderer)).toContain('./observation-inbox/client-script.js');
+    expect(renderer).not.toContain("var observeSeverityFilter = 'all';");
+    expect(extractSpecifiers(clientScript)).not.toContain('../observation-inbox-renderer.js');
+  });
+
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
     const files = listTsFiles(SRC_DIR);
     const realEdges = new Set<string>();
