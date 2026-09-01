@@ -6,6 +6,7 @@ describe('#531/#547 Core downstream projection boundary', () => {
     const projectionFiles = [
       'src/eval-workflows/downstream-projections/artifact-graph.ts',
       'src/eval-workflows/downstream-projections/cli.ts',
+      'src/eval-workflows/downstream-projections/cli-gate.ts',
       'src/eval-workflows/downstream-projections/contracts.ts',
       'src/eval-workflows/downstream-projections/decision.ts',
       'src/eval-workflows/downstream-projections/evolution.ts',

@@ -321,7 +321,10 @@ export interface CoreManagedEvidenceProjection {
   readonly targets: readonly {
     readonly targetId: string;
     readonly targetKind: string;
-    readonly experimentRole: 'control' | 'treatment' | 'unassigned';
+    readonly comparisonRoles: readonly {
+      readonly comparisonId: string;
+      readonly comparisonRole: 'control' | 'treatment';
+    }[];
     readonly managedEvidenceEligible: boolean;
     readonly artifact: {
       readonly resourceId: string;

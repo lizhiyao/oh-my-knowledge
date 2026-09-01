@@ -17,6 +17,7 @@ import {
   projectCoreCliRunOutcome,
   projectCoreManagedEvidence,
 } from '../../src/eval-workflows/downstream-projections/index.js';
+import { projectCompletedCoreCliGate } from '../../src/eval-workflows/downstream-projections/cli-gate.js';
 import { projectCoreStudioRunDetail } from '../../src/eval-workflows/studio-catalog/index.js';
 import { digestCanonicalJson } from '../../src/evaluation-core/contracts/index.js';
 import {
@@ -26,6 +27,7 @@ import {
 } from '../evaluation-core/conformance/harness.js';
 
 const temporaryDirectories: string[] = [];
+type ConformanceMutator = NonNullable<Parameters<typeof prepareConformancePlan>[1]>;
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => (
@@ -55,12 +57,16 @@ function bindArtifactDescriptors(
 async function storedScenario(
   target: ConformanceTarget,
   runId: string,
-  options: { readonly cancelled?: boolean; readonly withArtifacts?: boolean } = {},
+  options: {
+    readonly cancelled?: boolean;
+    readonly withArtifacts?: boolean;
+    readonly mutate?: ConformanceMutator;
+  } = {},
 ): Promise<StoredCoreRunArtifacts> {
-  const plan = await prepareConformancePlan(
-    target,
-    options.withArtifacts === false ? undefined : bindArtifactDescriptors,
-  );
+  const plan = await prepareConformancePlan(target, (definition, policy) => {
+    options.mutate?.(definition, policy);
+    if (options.withArtifacts !== false) bindArtifactDescriptors(definition);
+  });
   const cancellation = new AbortController();
   if (options.cancelled === true) cancellation.abort('fixture-cancelled');
   const result = await runConformanceScenario(target, {
@@ -165,6 +171,60 @@ describe('Evaluation Core consumer cutover projections', () => {
     );
   });
 
+  it('requires stable release-gate reasons instead of trusting verdict labels', () => {
+    const decision = {
+      decisionStatus: 'decided' as const,
+      decisionPolicyId: 'release-decision',
+      decisionDigest: digestCanonicalJson({ decision: 'fixture' }),
+      verdict: 'PROGRESS',
+      reasonCodes: ['comparison-significant-progress'],
+    };
+    assert.deepEqual(projectCompletedCoreCliGate(decision), {
+      gateStatus: 'blocked',
+      exitCode: 1,
+      reasonCodes: ['core-release-gate-not-passed', 'comparison-significant-progress'],
+    });
+    assert.deepEqual(projectCompletedCoreCliGate({
+      ...decision,
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
+    }), {
+      gateStatus: 'passed',
+      exitCode: 0,
+      reasonCodes: ['comparison-significant-progress', 'release-gates-passed'],
+    });
+    assert.deepEqual(projectCompletedCoreCliGate({
+      ...decision,
+      verdict: 'SOLO',
+      reasonCodes: ['single-target-no-comparison', 'solo-layer-gate-failed'],
+    }), {
+      gateStatus: 'blocked',
+      exitCode: 1,
+      reasonCodes: [
+        'core-release-gate-not-passed',
+        'single-target-no-comparison',
+        'solo-layer-gate-failed',
+      ],
+    });
+    assert.deepEqual(projectCompletedCoreCliGate({
+      ...decision,
+      verdict: 'SOLO',
+      reasonCodes: ['single-target-no-comparison', 'solo-layer-gate-passed'],
+    }), {
+      gateStatus: 'passed',
+      exitCode: 0,
+      reasonCodes: ['single-target-no-comparison', 'solo-layer-gate-passed'],
+    });
+    assert.deepEqual(projectCompletedCoreCliGate({
+      ...decision,
+      verdict: 'NOISE',
+      reasonCodes: ['release-gates-passed'],
+    }), {
+      gateStatus: 'blocked',
+      exitCode: 1,
+      reasonCodes: ['core-release-verdict-blocked', 'release-gates-passed'],
+    });
+  });
+
   it.each(['function', 'rag', 'agent'] as const)(
     'keeps CLI, Studio, graph, and managed views on one authenticated %s chain',
     async (target) => {
@@ -179,8 +239,9 @@ describe('Evaluation Core consumer cutover projections', () => {
       const managed = projectCoreManagedEvidence(source);
 
       assert.equal(cli.reportDigest, source.report.reportDigest);
-      assert.equal(cli.gate.gateStatus, 'passed');
-      assert.equal(cli.gate.exitCode, 0);
+      assert.equal(cli.gate.gateStatus, 'blocked');
+      assert.equal(cli.gate.exitCode, 1);
+      assert.ok(cli.gate.reasonCodes.includes('core-release-gate-not-passed'));
       assert.equal(studio.run.reportDigest, cli.reportDigest);
       assert.equal(managed.reportDigest, cli.reportDigest);
       assert.equal(managed.runCreatedAt, source.manifest.createdAt);
@@ -191,12 +252,22 @@ describe('Evaluation Core consumer cutover projections', () => {
       )));
       assert.deepEqual(managed.targets.map((entry) => ({
         targetId: entry.targetId,
-        role: entry.experimentRole,
+        roles: entry.comparisonRoles,
         eligible: entry.managedEvidenceEligible,
       })), [{
-        targetId: 'control', role: 'control', eligible: false,
+        targetId: 'control',
+        roles: [{
+          comparisonId: 'control-vs-treatment',
+          comparisonRole: 'control',
+        }],
+        eligible: false,
       }, {
-        targetId: 'treatment', role: 'treatment', eligible: true,
+        targetId: 'treatment',
+        roles: [{
+          comparisonId: 'control-vs-treatment',
+          comparisonRole: 'treatment',
+        }],
+        eligible: true,
       }]);
       assert.match(managed.targets[1].artifact.digest, /^sha256:[0-9a-f]{64}$/);
       const encodedManaged = JSON.stringify(managed);
@@ -206,6 +277,51 @@ describe('Evaluation Core consumer cutover projections', () => {
       assert.equal(Object.isFrozen(managed), true);
     },
   );
+
+  it('preserves comparison-scoped roles for a Target used on both sides', async () => {
+    const source = await storedScenario('function', 'managed-comparison-roles', {
+      mutate(definition) {
+        const treatment = definition.targets.find((target) => target.targetId === 'treatment');
+        if (treatment === undefined) throw new Error('missing treatment fixture');
+        definition.targets.splice(1, 0, {
+          ...structuredClone(treatment),
+          targetId: 'middle',
+        });
+        definition.experiment.randomizationSlots.splice(1, 0, {
+          targetId: 'middle',
+          randomizationSlotId: 'slot-middle',
+        });
+        definition.comparisons = [{
+          comparisonId: 'control-vs-middle',
+          controlTargetId: 'control',
+          treatmentTargetIds: ['middle'],
+          metricIds: ['correct'],
+        }, {
+          comparisonId: 'middle-vs-treatment',
+          controlTargetId: 'middle',
+          treatmentTargetIds: ['treatment'],
+          metricIds: ['correct'],
+        }];
+      },
+    });
+    const targets = projectCoreManagedEvidence(source).targets;
+
+    assert.deepEqual(targets.find((target) => target.targetId === 'middle')?.comparisonRoles, [{
+      comparisonId: 'control-vs-middle',
+      comparisonRole: 'treatment',
+    }, {
+      comparisonId: 'middle-vs-treatment',
+      comparisonRole: 'control',
+    }]);
+    assert.deepEqual(targets.find((target) => target.targetId === 'control')?.comparisonRoles, [{
+      comparisonId: 'control-vs-middle',
+      comparisonRole: 'control',
+    }]);
+    assert.deepEqual(targets.find((target) => target.targetId === 'treatment')?.comparisonRoles, [{
+      comparisonId: 'middle-vs-treatment',
+      comparisonRole: 'treatment',
+    }]);
+  });
 
   it('separates report-only gate skipping from operational failure', async () => {
     const completed = await storedScenario('function', 'report-only-completed');

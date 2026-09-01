@@ -77,9 +77,9 @@ evolution evidence 消费同一条 Evaluation Series Plan → SeriesAnalysisBund
 
 CLI dry-run projection 只接收 prepare 返回的进程内 `SealedRunPlan` capability，投影 stage digest、Dataset／Target／Evaluator／Metric 数量、实验单位身份、Analysis 输出、Decision policy 身份与脱敏 preflight record。它不包含 input、expected、evaluation context、artifact config、locator 或 provider secret。传输后的 Plan document 不能冒充成功 prepare 的结果。
 
-CLI run projection 只接收一条经过完整校验的持久化 artifact chain。运行是否完成、证据是否完整、结论是否可下以及已注册 Decision 分别参与 gate，保持正交。`report-only` 只能对 completed run 跳过发布门禁；取消、预算耗尽与失败仍是非零 operational outcome。Batch projection 必须把 manifest 中每个 child 与精确 artifact-set identity 对齐，并投影独立 child outcome，不汇总 score、Report 或统计单位。
+CLI run projection 只接收一条经过完整校验的持久化 artifact chain。运行是否完成、证据是否完整、结论是否可下以及已注册 Decision 分别参与 gate，保持正交。verdict 本身不是发布授权；`PROGRESS` 必须携带稳定的 `release-gates-passed` reason，`SOLO` 必须携带 `solo-layer-gate-passed`。`report-only` 只能对 completed run 跳过发布门禁；取消、预算耗尽与失败仍是非零 operational outcome。Batch projection 必须把 manifest 中每个 child 与精确 artifact-set identity 对齐，并投影独立 child outcome，不汇总 score、Report 或统计单位。
 
-受管证据 projection 使用 Target config 中封存的完整 SHA-256 artifact descriptor、精确 Executor Runtime fingerprint reference、Dataset revision、全部 stage-plan digest、Report identity、状态与已注册 Decision 建立绑定。它明确不包含旧 12 位 content hash、locator 猜测、别名、展示分数、Runtime capabilities 或 implementation facets。baseline Target 为审计继续可见，但显式标记为不能写入受管证据。后续切换 writer 必须直接消费该 projection，并把 managed record 迁入相同的内容身份空间；禁止再把它翻译成旧 `EvaluationReport`。
+受管证据 projection 使用 Target config 中封存的完整 SHA-256 artifact descriptor、精确 Executor Runtime fingerprint reference、comparison-scoped role、Dataset revision、全部 stage-plan digest、Report identity、状态与已注册 Decision 建立绑定。因此，同一 Target 可以在一个 Comparison 中是 treatment、在另一个 Comparison 中是 control，而不会让合法 Core chain 无法投影。它明确不包含旧 12 位 content hash、locator 猜测、别名、展示分数、Runtime capabilities 或 implementation facets。baseline Target 为审计继续可见，但显式标记为不能写入受管证据。后续切换 writer 必须直接消费该 projection，并把 managed record 迁入相同的内容身份空间；禁止再把它翻译成旧 `EvaluationReport`。
 
 ## 十、非目标
 

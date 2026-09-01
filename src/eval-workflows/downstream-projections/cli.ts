@@ -23,8 +23,8 @@ import {
   type CoreCliDryRunProjection,
   type CoreCliGateProjection,
   type CoreCliRunOutcome,
-  type CoreDecisionProjection,
 } from './contracts.js';
+import { projectCompletedCoreCliGate } from './cli-gate.js';
 import { projectCoreDecision } from './decision.js';
 import { assertCoreProjectionSource } from './source.js';
 
@@ -109,36 +109,6 @@ function assertExitMode(
   }
 }
 
-function completedRunGate(
-  decision: CoreDecisionProjection | undefined,
-): CoreCliGateProjection {
-  if (decision === undefined) return {
-    gateStatus: 'blocked',
-    exitCode: 1,
-    reasonCodes: ['core-decision-missing'],
-  };
-  if (decision.decisionStatus === 'not-decided') return {
-    gateStatus: 'blocked',
-    exitCode: 1,
-    reasonCodes: ['core-decision-not-decided', ...decision.reasonCodes],
-  };
-  if (decision.decisionStatus === 'failed') return {
-    gateStatus: 'blocked',
-    exitCode: 1,
-    reasonCodes: ['core-decision-failed', decision.errorCode],
-  };
-  const passes = decision.verdict === 'PROGRESS'
-    || (decision.verdict === 'SOLO'
-      && decision.reasonCodes.includes('solo-layer-gate-passed'));
-  return passes
-    ? { gateStatus: 'passed', exitCode: 0, reasonCodes: [...decision.reasonCodes] }
-    : {
-      gateStatus: 'blocked',
-      exitCode: 1,
-      reasonCodes: ['core-release-verdict-blocked', ...decision.reasonCodes],
-    };
-}
-
 function projectGate(
   source: Readonly<StoredCoreRunArtifacts>,
   exitMode: ProjectCoreCliRunOutcomeOptions['exitMode'],
@@ -164,7 +134,7 @@ function projectGate(
     exitCode: 1,
     reasonCodes: [`core-conclusion-${status.conclusionStatus}`],
   };
-  return completedRunGate(projectCoreDecision(source.report.decision));
+  return projectCompletedCoreCliGate(projectCoreDecision(source.report.decision));
 }
 
 function runBudgetTotals(source: Readonly<StoredCoreRunArtifacts>) {

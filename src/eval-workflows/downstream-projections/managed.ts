@@ -15,6 +15,7 @@ import { projectCoreDecision } from './decision.js';
 import { assertCoreProjectionSource } from './source.js';
 
 type ArtifactDescriptor = CoreManagedEvidenceProjection['targets'][number]['artifact'];
+type ComparisonRoles = CoreManagedEvidenceProjection['targets'][number]['comparisonRoles'];
 
 function freeze<T>(value: T): T {
   return deepFreezeCanonicalJson(value as unknown as JsonValue) as unknown as T;
@@ -76,6 +77,22 @@ function executorRuntime(
   };
 }
 
+function comparisonRoles(
+  source: Readonly<StoredCoreRunArtifacts>,
+  targetId: string,
+): ComparisonRoles {
+  return source.plan.definition.comparisons.flatMap((comparison) => [
+    ...(comparison.controlTargetId === targetId ? [{
+      comparisonId: comparison.comparisonId,
+      comparisonRole: 'control' as const,
+    }] : []),
+    ...(comparison.treatmentTargetIds.includes(targetId) ? [{
+      comparisonId: comparison.comparisonId,
+      comparisonRole: 'treatment' as const,
+    }] : []),
+  ]);
+}
+
 /**
  * Projects append-only managed evidence candidates from Core identities. The
  * content-addressed artifact digest replaces legacy short content hashes; no
@@ -85,18 +102,6 @@ export function projectCoreManagedEvidence(
   source: Readonly<StoredCoreRunArtifacts>,
 ): CoreManagedEvidenceProjection {
   assertCoreProjectionSource(source);
-  const controlIds = new Set(source.plan.definition.comparisons.map((entry) => (
-    entry.controlTargetId
-  )));
-  const treatmentIds = new Set(source.plan.definition.comparisons.flatMap((entry) => (
-    entry.treatmentTargetIds
-  )));
-  if ([...controlIds].some((targetId) => treatmentIds.has(targetId))) {
-    throw new CoreDownstreamProjectionError(
-      'CORE_MANAGED_EVIDENCE_SOURCE_INVALID',
-      'A managed evidence Target cannot be both control and treatment.',
-    );
-  }
   const projectedDecision = projectCoreDecision(source.report.decision);
   const evidenceReadiness = source.report.status.evidenceStatus !== 'complete'
     || source.report.status.runStatus !== 'completed'
@@ -126,11 +131,7 @@ export function projectCoreManagedEvidence(
     targets: source.plan.execution.targets.map((target) => ({
       targetId: target.targetId,
       targetKind: target.targetKind,
-      experimentRole: controlIds.has(target.targetId)
-        ? 'control' as const
-        : treatmentIds.has(target.targetId)
-          ? 'treatment' as const
-          : 'unassigned' as const,
+      comparisonRoles: comparisonRoles(source, target.targetId),
       managedEvidenceEligible: target.targetKind !== 'baseline',
       artifact: artifactDescriptor(target.config),
       executorRuntime: executorRuntime(source, target.targetId),
