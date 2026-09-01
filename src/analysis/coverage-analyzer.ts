@@ -17,7 +17,8 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import type { AnalysisEntry, ToolCallInfo } from '../types/index.js';
+import type { ToolCallInfo } from '../types/index.js';
+import type { AnalysisEntry } from './contracts.js';
 import { toolCallQuery } from '../shared/tool-search.js';
 import { isToolCallSuccess } from '../shared/tool-call-status.js';
 

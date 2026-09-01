@@ -14,7 +14,8 @@ import {
   managedRecordId,
   resolveManagedDir,
 } from '../../managed/index.js';
-import type { ArtifactKind, ManagedDecision } from '../../types/index.js';
+import type { ArtifactKind } from '../../types/index.js';
+import type { ManagedDecision } from '../../managed/contracts.js';
 
 const SUPPORTED_KINDS: ArtifactKind[] = ['skill'];
 

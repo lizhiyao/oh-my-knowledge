@@ -11,6 +11,8 @@ import { withFileLock } from '../shared/file-lock.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import type {
   ArtifactKind,
+} from '../types/index.js';
+import type {
   DeriveManagedStateInput,
   DerivedManagedState,
   ManagedArtifactRecord,
@@ -19,7 +21,7 @@ import type {
   ManagedDistributionTarget,
   ManagedEvidenceRef,
   ManagedObservation,
-} from '../types/index.js';
+} from './contracts.js';
 
 /**
  * 受管记录的 per-record 文件存储。一条记录一个 `.omk/managed/<id>.json`，采用

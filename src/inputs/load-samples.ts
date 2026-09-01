@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
-import type { DependencyRequirements, Sample } from '../types/index.js';
+import type { Sample } from '../types/index.js';
+import type { DependencyRequirements } from '../preflight/contracts.js';
 import {
   dependencyRequirementsValidationError,
   sampleContractValidationError,

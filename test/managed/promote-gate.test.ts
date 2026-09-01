@@ -6,7 +6,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { evaluatePromoteGate } from '../../src/managed/promote-gate.js';
-import type { ManagedArtifactRecord, ManagedEvidenceRef } from '../../src/types/index.js';
+import type { ManagedArtifactRecord, ManagedEvidenceRef } from '../../src/managed/contracts.js';
 import { coreManagedEvidence } from '../helpers/core-managed-evidence.js';
 
 const CUR = 'HASH_CUR';

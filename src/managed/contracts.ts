@@ -1,4 +1,4 @@
-import type { ArtifactKind } from './eval.js';
+import type { ArtifactKind } from '../types/eval.js';
 
 /**
  * 受管 artifact 记录(managed record)——证据门控管理的最小持久单元。
@@ -36,7 +36,7 @@ export interface ManagedEvidenceRef {
   artifactDigest: string;
   targetId: string;
   recordedAt: string;
-  /** Core decision policy 产生的 verdict。存字符串而非引用 policy 类型，保持 types 层为叶子；
+  /** Core decision policy 产生的 verdict。存字符串而非引用 policy 类型，保持受管契约不反向依赖 Core；
    *  promote 门禁只接受明确列入白名单的值。 */
   verdict?: string;
   decisionReasonCodes?: string[];

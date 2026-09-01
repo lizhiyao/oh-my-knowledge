@@ -67,7 +67,7 @@ describe('legacy evaluation implementation removal', () => {
   });
 
   it('does not retain legacy managed evidence compatibility', () => {
-    const managed = readFileSync(resolve('src/types/managed.ts'), 'utf8');
+    const managed = readFileSync(resolve('src/managed/contracts.ts'), 'utf8');
     expect(managed).toContain("evidenceSource: 'evaluation-core'");
     expect(managed).not.toContain("evidenceSource?: 'evaluation-core'");
     expect(managed).not.toContain('comparability?:');

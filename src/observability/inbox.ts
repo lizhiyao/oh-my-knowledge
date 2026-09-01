@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { isReportFileName, randomRunToken, reportFilePath } from '../measurement-artifacts/file-names.js';
 import type {
   BuildObservationInboxReportOptions,
-  GapSignalRef,
   ObservationCaptureCoverage,
   ObservationEvidence,
   ObservationExperienceReport,
@@ -21,6 +20,7 @@ import type {
   TraceIngestionSummary,
   ToolCallInfo,
 } from '../types/index.js';
+import type { GapSignalRef } from '../analysis/contracts.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import {
   loadTraceSessions,

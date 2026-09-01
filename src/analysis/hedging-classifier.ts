@@ -12,7 +12,8 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ExecutorFn, HedgingVerdict } from '../types/index.js';
+import type { ExecutorFn } from '../types/index.js';
+import type { HedgingVerdict } from './contracts.js';
 
 export interface HedgingCandidate {
   sampleId: string;
