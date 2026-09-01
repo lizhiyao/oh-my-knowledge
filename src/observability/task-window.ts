@@ -1,8 +1,5 @@
-import type {
-  ExperienceTimelineEvent,
-  TaskTrajectorySession,
-  TaskWindowScope,
-} from '../types/index.js';
+import type { ExperienceTimelineEvent } from './contracts/experience.js';
+import type { TaskTrajectorySession, TaskWindowScope } from './view-models/knowledge-debugger.js';
 import { hasExplicitFollowUpCorrectionSignal } from './feedback-matchers.js';
 import { projectTaskSemanticEvents } from './task-semantic-projection.js';
 

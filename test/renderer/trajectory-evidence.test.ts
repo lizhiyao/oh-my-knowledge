@@ -4,7 +4,7 @@ import {
   primaryTrajectoryEvidenceRef,
   trajectoryEvidenceRef,
 } from '../../src/renderer/trajectory-evidence.js';
-import type { ExperienceTimelineEvent } from '../../src/types/index.js';
+import type { ExperienceTimelineEvent } from '../../src/observability/contracts/experience.js';
 
 function event(
   id: string,

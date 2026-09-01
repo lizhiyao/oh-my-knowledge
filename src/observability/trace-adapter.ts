@@ -5,7 +5,7 @@
  * live in sibling modules so studio/report code does not inherit one large adapter.
  */
 
-import type { TraceIngestionSummary } from '../types/index.js';
+import type { TraceIngestionSummary } from './contracts/trace.js';
 import type { AnalysisEntry } from '../analysis/contracts.js';
 import { loadTraceCorpus } from './trace-source.js';
 import type { TraceSession } from './trace-ir.js';
@@ -32,7 +32,7 @@ export type {
   TraceToolStatus,
   TraceUsageEvent,
 } from './trace-ir.js';
-export type { TraceIngestionSummary } from '../types/index.js';
+export type { TraceIngestionSummary } from './contracts/trace.js';
 export { loadCcSessions, loadTraceCorpus, loadTraceSessions } from './trace-source.js';
 export {
   extractAttributionSkill,

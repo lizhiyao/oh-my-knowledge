@@ -8,7 +8,7 @@ import type {
   Sample,
   SampleProvenance,
 } from '../types/index.js';
-import type { ObservationInboxItem } from '../types/observability.js';
+import type { ObservationInboxItem } from '../observability/contracts/inbox.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 

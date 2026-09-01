@@ -1,14 +1,36 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-const DOMAIN_CONTRACT_FILES = [
+const PURE_DOMAIN_TYPE_FILES = [
   'src/analysis/contracts.ts',
   'src/artifact-graph/contracts.ts',
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
+  'src/skill-definition/contracts.ts',
+  'src/observability/contracts/index.ts',
+  'src/observability/contracts/trace.ts',
+  'src/observability/contracts/review.ts',
+  'src/observability/contracts/problem-patterns.ts',
+  'src/observability/contracts/skill-chain-advisories.ts',
+  'src/observability/contracts/inbox.ts',
+  'src/observability/contracts/experience.ts',
+  'src/observability/contracts/skill-chain.ts',
+  'src/observability/view-models/index.ts',
+  'src/observability/view-models/conversation.ts',
+  'src/observability/view-models/knowledge-debugger.ts',
 ] as const;
+
+const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
+const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
+  'src/analysis/contracts.ts::../types/executor.js',
+  'src/managed/contracts.ts::../types/eval.js',
+  'src/observability/contracts/trace.ts::../../types/trace.js',
+  'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
+  'src/observability/contracts/experience.ts::../../types/executor.js',
+  'src/observability/view-models/knowledge-debugger.ts::../../types/executor.js',
+]);
 
 const ALLOWED_LEGACY_TYPE_FILES = new Set([
   'diagnosis.ts',
@@ -17,7 +39,6 @@ const ALLOWED_LEGACY_TYPE_FILES = new Set([
   'executor.ts',
   'index.ts',
   'judge.ts',
-  'observability.ts',
   'shared.ts',
   'skill-index.ts',
   'trace.ts',
@@ -38,9 +59,9 @@ describe('领域契约所有权', () => {
     expect(unexpected).toEqual([]);
   });
 
-  it('领域 contracts 保持为无运行时实现的纯契约', () => {
+  it('领域 contracts 与 view-models 保持为无运行时实现的纯类型模块', () => {
     const violations: string[] = [];
-    for (const file of DOMAIN_CONTRACT_FILES) {
+    for (const file of PURE_DOMAIN_TYPE_FILES) {
       const source = ts.createSourceFile(
         file,
         readFileSync(resolve(file), 'utf8'),
@@ -51,6 +72,24 @@ describe('领域契约所有权', () => {
         if (ts.isImportDeclaration(statement)) {
           if (statement.importClause?.isTypeOnly !== true) {
             violations.push(`${file}：只允许 import type`);
+          }
+          if (ts.isStringLiteral(statement.moduleSpecifier)) {
+            const specifier = statement.moduleSpecifier.text;
+            const target = relative(
+              process.cwd(),
+              resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
+            );
+            const edge = `${file}::${specifier}`;
+            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target)
+                && !ALLOWED_LEGACY_CONTRACT_IMPORTS.has(edge)) {
+              violations.push(`${file}：依赖了非契约模块 ${specifier}`);
+            }
+          }
+          continue;
+        }
+        if (ts.isExportDeclaration(statement)) {
+          if (statement.isTypeOnly !== true) {
+            violations.push(`${file}：只允许 export type`);
           }
           continue;
         }

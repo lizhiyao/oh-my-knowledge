@@ -1,13 +1,11 @@
+import type { ExperienceTimelineEvent, ExperienceTurnSummary } from '../observability/contracts/experience.js';
+import type { ObservationSourceRecord, ObservationSourceRecordArchiveView } from '../observability/contracts/inbox.js';
+import type { TraceIngestionSummary } from '../observability/contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-  ExperienceTimelineEvent,
-  ExperienceTurnSummary,
-  ObservationSourceRecord,
-  ObservationSourceRecordArchiveView,
-  TraceIngestionSummary,
-} from '../types/index.js';
+} from '../observability/view-models/conversation.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
   projectTraceSessionTimeline,

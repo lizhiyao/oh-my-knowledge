@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
+import type { Lang } from '../types/index.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
   ExperienceTurnStatus,
-  Lang,
-} from '../types/index.js';
+} from '../observability/view-models/index.js';
 import { DEFAULT_LANG, e, layout } from './layout.js';
 import { brandLogo, icon } from './icons.js';
 import { inlineMarkdownText, renderSafeInlineMarkdown } from './inline-markdown.js';

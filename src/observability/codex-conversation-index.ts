@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import type { ExperienceTurnStatus } from '../types/index.js';
+import type { ExperienceTurnStatus } from './contracts/experience.js';
 import type { TraceToolStatus } from './trace-ir.js';
 import { codexUserDisplayText, codexUserMessageOrigin } from './codex-protocol.js';
 import {

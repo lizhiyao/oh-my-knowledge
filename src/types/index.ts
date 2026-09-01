@@ -6,4 +6,3 @@ export * from './eval.js';
 export * from './doctor.js';
 export * from './diagnosis.js';
 export * from './skill-index.js';
-export * from './observability.js';

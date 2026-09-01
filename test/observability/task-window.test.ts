@@ -7,7 +7,7 @@ import { reconstructExperienceTurns } from '../../src/observability/turn-index.j
 import type {
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from '../../src/types/index.js';
+} from '../../src/observability/contracts/experience.js';
 
 function timelineEvent(
   id: string,

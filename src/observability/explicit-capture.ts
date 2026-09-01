@@ -1,11 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type {
-  ObservationCaptureCoverage,
-  ObservationEvidence,
-  ObservationInboxItem,
-} from '../types/index.js';
+import type { ObservationCaptureCoverage, ObservationEvidence, ObservationInboxItem } from './contracts/inbox.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
 import {
