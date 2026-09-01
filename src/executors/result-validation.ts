@@ -1,10 +1,10 @@
-import type { ExecResult } from '../executors/contracts/result.js';
-import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
-import { checkedSumTokenCounts, optionalTokenCount } from './token-usage.js';
-import { normalizeRfc3339Timestamp } from './timestamp.js';
-import { normalizeToolIdentity } from './tool-identity.js';
-import { isTraceSourceKind } from './trace-source-kind.js';
-import { isJsonValue } from './json-value.js';
+import type { ExecResult } from './contracts/result.js';
+import type { ToolCallInfo, TurnInfo } from './contracts/trace.js';
+import { isJsonValue } from '../shared/json-value.js';
+import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
+import { checkedSumTokenCounts, optionalTokenCount } from '../shared/token-usage.js';
+import { normalizeToolIdentity } from '../shared/tool-identity.js';
+import { isTraceSourceKind } from '../shared/trace-source-kind.js';
 
 const TOOL_STATUSES = new Set(['success', 'failure', 'cancelled', 'unknown']);
 const TOOL_STATUS_SOURCES = new Set(['runtime', 'tool-output', 'inferred', 'unknown']);

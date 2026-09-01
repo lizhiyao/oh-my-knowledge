@@ -10,8 +10,8 @@ import {
 import { DEFAULT_BOOTSTRAP_SEED } from '../../shared/statistics/bootstrap.js';
 import { splitHoldout } from '../../shared/holdout.js';
 import { renderEnvironmentSection } from './environment.js';
-import { deterministicAssertionInputSourceKinds } from '../../shared/assertions/deterministic.js';
-import { resolveAssertionLayer } from '../../shared/assertions/layers.js';
+import { deterministicAssertionInputSourceKinds } from '../assertions/deterministic.js';
+import { resolveAssertionLayer } from '../assertions/layers.js';
 import type { Assertion } from '../../inputs/contracts/assertion.js';
 import type { Sample } from '../../inputs/contracts/sample.js';
 import type {

@@ -1,5 +1,5 @@
 import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
-import { safeSliceForJson } from './json-safe-truncation.js';
+import { safeSliceForJson } from '../shared/json-safe-truncation.js';
 
 export const MAX_PERSISTED_TURN_CONTENT = 2000;
 export const MAX_PERSISTED_TOOL_OUTPUT = 1000;

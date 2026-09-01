@@ -1,5 +1,9 @@
 import type { ToolCallInfo } from '../executors/contracts/trace.js';
-import { isToolCallCancelled, isToolCallFailure, isToolCallSuccess } from './tool-call-status.js';
+import {
+  isToolCallCancelled,
+  isToolCallFailure,
+  isToolCallSuccess,
+} from '../executors/tool-call-status.js';
 
 export function toolCallQuery(tc: ToolCallInfo): { query?: string; path?: string } {
   const input = (tc.input && typeof tc.input === 'object') ? tc.input as Record<string, unknown> : {};

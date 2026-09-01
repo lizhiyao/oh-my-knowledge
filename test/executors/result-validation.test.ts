@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   executorResultValidationError,
   parseExecResult,
-} from '../../src/shared/executor-result.js';
+} from '../../src/executors/result-validation.js';
 
 function validResult(): Record<string, unknown> {
   return {

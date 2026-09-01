@@ -7,7 +7,7 @@ import {
   isValidMockStats,
   isValidToolCallInfo,
   isValidTurnInfo,
-} from '../../shared/executor-result.js';
+} from '../../executors/result-validation.js';
 
 export const SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION =
   'omk.source-neutral-trace/v2' as const;

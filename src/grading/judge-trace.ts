@@ -1,12 +1,12 @@
-import { incrementRecordCount } from '../record-count.js';
+import { incrementRecordCount } from '../shared/record-count.js';
 import {
   isToolCallCancelled,
   isToolCallFailure,
   isToolCallSuccess,
   isToolCallUnknown,
   toolCallStatus,
-} from '../tool-call-status.js';
-import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js';
+} from '../executors/tool-call-status.js';
+import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
 
 const INPUT_PREVIEW_MAX = 280;
 const TOOL_DETAIL_MAX_CALLS = 12;
