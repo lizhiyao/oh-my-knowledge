@@ -6,7 +6,7 @@ import type {
 } from '../../../observability/inbox/feedback-projection.js';
 import { renderFeedbackAttributionLabel } from './helpers.js';
 
-interface ReviewerReportRenderers {
+export interface ReviewerReportRenderers {
   cleanReportCopy(value: string): string;
   fallbackSessionStory(report: ExperienceReviewerReport): ExperienceReviewerReport['sessionStory'];
   renderReviewerReport(report?: ExperienceReviewerReport): string;

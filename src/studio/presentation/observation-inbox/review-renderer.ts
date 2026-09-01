@@ -27,6 +27,8 @@ import type { ObservationSignalRenderers } from './signal-renderer.js';
 import type { ObservationSkillChainRenderers } from './skill-chain-renderer.js';
 import { createObservationTimelineRenderers } from './timeline.js';
 
+export type ObservationReviewRenderers = ReturnType<typeof createObservationReviewRenderers>;
+
 export function createObservationReviewRenderers({
   experience,
   lang,
