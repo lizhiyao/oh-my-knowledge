@@ -6,7 +6,7 @@ import type {
   SkillWorkflow,
   SkillWorkflowNode,
   SkillWorkflowsValidationResult,
-} from '../skill-definition/contracts.js';
+} from './contracts.js';
 
 interface YamlErrorLike {
   mark?: { line: number };

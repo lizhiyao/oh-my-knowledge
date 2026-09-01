@@ -2,8 +2,8 @@ import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillStatus,
-} from '../doctor/contracts.js';
-import { normalizeRfc3339Timestamp } from './timestamp.js';
+} from './contracts.js';
+import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
 
 const RULE_STATUSES = new Set(['pass', 'warn', 'fail', 'skipped']);
 const SEVERITIES = new Set(['fatal', 'warn', 'info']);

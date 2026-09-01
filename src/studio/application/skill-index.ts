@@ -16,8 +16,8 @@ import {
 import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox.js';
 import { parseSkillHealthReport } from '../../observability/skill-health-report.js';
-import { parseArtifactGraphDocument } from '../../shared/artifact-graph.js';
-import { parseDoctorReport } from '../../shared/doctor-report.js';
+import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
+import { parseDoctorReport } from '../../doctor/report-parser.js';
 import { ownRecordValue } from '../../shared/record-count.js';
 import type {
   Insight,

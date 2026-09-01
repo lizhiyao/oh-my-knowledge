@@ -46,7 +46,7 @@ import {
   normalizeObservationExperienceReport,
   type PersistedObservationExperienceReport,
 } from './experience.js';
-import { parseDiagnosisBundle } from '../shared/diagnosis-schema.js';
+import { parseDiagnosisBundle } from '../diagnosis/contracts/parser.js';
 import { parseTraceIngestionSummary } from './trace-ingestion.js';
 import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
 import { isInstalledSkillAssetPath } from './trace-attribution.js';

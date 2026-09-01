@@ -43,7 +43,7 @@ import type {
 } from '../eval-workflows/runtime-adapter/index.js';
 import type { EvalConfig } from '../inputs/contracts/config.js';
 import type { JudgeConfig } from '../grading/contracts/config.js';
-import { generateRunId } from '../shared/run-id.js';
+import { generateRunId } from '../measurement-artifacts/run-id.js';
 import {
   createDshHostCoreExecutorAdapter,
   createDshHostCoreSchemaValidators,

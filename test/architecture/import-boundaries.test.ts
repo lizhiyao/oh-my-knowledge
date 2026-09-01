@@ -101,11 +101,42 @@ const RULES: ForbiddenRule[] = [
     reason: 'Studio presentation 是无 HTTP 状态的纯呈现层，不依赖请求、响应或 server 生命周期。',
   },
   {
+    from: 'shared/',
+    to: 'artifact-graph/',
+    reason: 'shared 是跨领域叶子依赖；Artifact Graph parser 由 artifact-graph 领域拥有。',
+  },
+  {
+    from: 'shared/',
+    to: 'diagnosis/',
+    reason: 'shared 是跨领域叶子依赖；Diagnosis parser 由 diagnosis 领域拥有。',
+  },
+  {
+    from: 'shared/',
+    to: 'doctor/',
+    reason: 'shared 是跨领域叶子依赖；Doctor parser 与 prompt 由 doctor 领域拥有。',
+    whitelist: [
+      // PR7c 迁移 doctor prompt 后删除这两条例外。
+      'shared/llm-prompts/skill-health.ts::doctor/health/dimension-spec.ts',
+      'shared/llm-prompts/skill-health-merge.ts::doctor/health/dimension-spec.ts',
+    ],
+  },
+  {
+    from: 'shared/',
+    to: 'skill-definition/',
+    reason: 'shared 是跨领域叶子依赖；skill frontmatter 与 hard rules 由 skill-definition 领域拥有。',
+  },
+  {
+    from: 'shared/',
+    to: 'measurement-artifacts/',
+    reason: 'shared 是跨领域叶子依赖；run id 分配依赖产物命名策略，应由 measurement-artifacts 拥有。',
+  },
+  {
     from: 'observability/',
     to: 'diagnosis/',
     reason: 'observability 是 diagnosis 的下游消费者，不应反向依赖 diagnosis 实现；只允许引用纯 contracts。',
     whitelist: [
       'observability/contracts/inbox.ts::diagnosis/contracts.ts',
+      'observability/inbox.ts::diagnosis/contracts/parser.ts',
     ],
   },
   {

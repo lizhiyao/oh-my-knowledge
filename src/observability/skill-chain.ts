@@ -5,7 +5,7 @@ import {
   extractMarkdownStepWorkflows,
   validateSkillHardRules,
   validateSkillWorkflows,
-} from '../shared/hard-rules.js';
+} from '../skill-definition/hard-rules.js';
 import type { SkillHardRule, SkillWorkflow } from '../skill-definition/contracts.js';
 import { incrementRecordCount } from '../shared/record-count.js';
 import type {
