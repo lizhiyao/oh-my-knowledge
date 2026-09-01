@@ -1,24 +1,24 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { doctorGraphDirForDoctorOutput } from '../artifact-graph/doctor.js';
-import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
+import { doctorGraphDirForDoctorOutput } from '../../artifact-graph/doctor.js';
+import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../diagnosis/studio-projection.js';
 import {
   GRAPH_FILE_SUFFIX,
   isReportFileName,
   reportFileStem,
-} from '../measurement-artifacts/file-names.js';
+} from '../../measurement-artifacts/file-names.js';
 import {
   artifactIndexDir,
   cardTargetSentinel,
   listLiveDoctorCards,
   listLiveObserveCards,
-} from '../measurement-artifacts/discovery-index.js';
-import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
-import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
-import { parseSkillHealthReport } from '../observability/skill-health-report.js';
-import { parseArtifactGraphDocument } from '../shared/artifact-graph.js';
-import { parseDoctorReport } from '../shared/doctor-report.js';
-import { ownRecordValue } from '../shared/record-count.js';
+} from '../../measurement-artifacts/discovery-index.js';
+import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health-analyzer.js';
+import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox.js';
+import { parseSkillHealthReport } from '../../observability/skill-health-report.js';
+import { parseArtifactGraphDocument } from '../../shared/artifact-graph.js';
+import { parseDoctorReport } from '../../shared/doctor-report.js';
+import { ownRecordValue } from '../../shared/record-count.js';
 import type {
   Insight,
   SkillDoctorSnapshot,
@@ -27,10 +27,10 @@ import type {
   SkillIndexEntry,
   SkillIndexSummary,
   SkillObserveSnapshot,
-} from '../studio/view-models/index.js';
-import type { Diagnosis } from '../diagnosis/contracts.js';
-import type { DoctorReport } from '../doctor/contracts.js';
-import type { ArtifactGraphDocument, ArtifactGraphNode } from '../artifact-graph/contracts.js';
+} from '../view-models/index.js';
+import type { Diagnosis } from '../../diagnosis/contracts.js';
+import type { DoctorReport } from '../../doctor/contracts.js';
+import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../artifact-graph/contracts.js';
 import { detectInsights } from './skill-insights.js';
 
 export type {
@@ -40,7 +40,7 @@ export type {
   SkillIndexEntry,
   SkillIndexSummary,
   SkillObserveSnapshot,
-} from '../studio/view-models/index.js';
+} from '../view-models/index.js';
 
 interface SkillIndexCache {
   fingerprint: string;

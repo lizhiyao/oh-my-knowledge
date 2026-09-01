@@ -16,13 +16,13 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { ExecutorFn } from '../executors/contracts/ports.js';
-import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
+import type { ExecutorFn } from '../../executors/contracts/ports.js';
+import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js';
 import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } from './contracts.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
-import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
-import { toolCallStatus } from '../shared/tool-call-status.js';
-import { setOwnRecordValue } from '../shared/record-count.js';
+import { isFailedSearchToolCall, toolCallQuery } from '../../shared/tool-search.js';
+import { toolCallStatus } from '../../shared/tool-call-status.js';
+import { setOwnRecordValue } from '../../shared/record-count.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;

@@ -22,7 +22,7 @@ import { renderManagedList, renderManagedHistory } from '../renderer/managed-his
 import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, projectDoctorsDir } from '../measurement-artifacts/directories.js';
 import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../measurement-artifacts/discovery-index.js';
 import { isReportFileName, reportFilePath, reportFileStem } from '../measurement-artifacts/file-names.js';
-import { buildSkillIndex } from './skill-index.js';
+import { buildSkillIndex } from '../studio/application/index.js';
 import type { Lang } from '../shared/language.js';
 import type { DoctorReport } from '../doctor/contracts.js';
 import { parseDoctorReport } from '../shared/doctor-report.js';
@@ -53,7 +53,7 @@ import {
   type ObservationReviewStateUpdate,
 } from '../observability/review-state.js';
 import type { AddressInfo } from 'node:net';
-import type { CoreStudioCatalog } from '../eval-workflows/studio-catalog/index.js';
+import type { CoreStudioCatalog } from '../studio/core-runs/index.js';
 import { createCoreStudioRouteHandler } from './core-studio-route-handler.js';
 
 const DEFAULT_PORT = 7799;

@@ -6,7 +6,7 @@
  */
 
 import type { TraceIngestionSummary } from './contracts/trace.js';
-import type { AnalysisEntry } from '../analysis/contracts.js';
+import type { AnalysisEntry } from './analysis/contracts.js';
 import { loadTraceCorpus } from './trace-source.js';
 import type { TraceSession } from './trace-ir.js';
 import { segmentTraceBySkill, segmentsToAnalysisEntries, type SkillSegment } from './trace-segmenter.js';

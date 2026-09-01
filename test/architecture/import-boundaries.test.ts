@@ -3,7 +3,7 @@
  *
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
- *   - types 反向看业务实现(已修)
+ *   - Studio application / catalog 散落在交付层与 workflow(已修)
  *   - renderer 直接 import observability 内部(已 facade 化)
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
@@ -57,11 +57,6 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'evaluation-core/',
-    to: 'types/',
-    reason: 'Evaluation Core vNext 拥有独立 wire contracts，不复用历史 public schema 或领域 DTO。',
-  },
-  {
-    from: 'evaluation-core/',
     to: 'cli/',
     reason: 'Evaluation Core vNext 不得依赖 CLI、配置或命令装配。',
   },
@@ -84,6 +79,31 @@ const RULES: ForbiddenRule[] = [
     from: 'evaluation-core/',
     to: 'renderer/',
     reason: 'Bundle 是事实契约，Report renderer 属于宿主物化视图。',
+  },
+  {
+    from: 'evaluation-core/',
+    to: 'studio/',
+    reason: 'Evaluation Core vNext 是纯计算内核，不依赖 Studio 的查询投影、HTTP 或呈现能力。',
+  },
+  {
+    from: 'eval-workflows/',
+    to: 'studio/',
+    reason: '应用工作流产出事实与存储能力，由 Studio 单向消费；workflow 不反向依赖具体工作台。',
+  },
+  {
+    from: 'observability/',
+    to: 'studio/',
+    reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',
+  },
+  {
+    from: 'studio/',
+    to: 'server/',
+    reason: 'Studio application 与 core-run catalog 不反向依赖历史 HTTP host；交付层只能向内依赖 Studio。',
+  },
+  {
+    from: 'studio/',
+    to: 'renderer/',
+    reason: 'Studio application 与 view-model 不依赖具体 HTML renderer；呈现层只能消费 Studio 契约。',
   },
   {
     from: 'observability/',

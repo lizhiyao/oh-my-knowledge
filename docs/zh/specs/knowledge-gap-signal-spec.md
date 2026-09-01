@@ -116,7 +116,7 @@ agent 输出文本里出现确定性降级的措辞，例如：
 2. **判定阶段（LLM classifier）**：对每个 candidate 调用小模型，传入命中句子 + 用例上下文，让模型判断"这一句是知识层面的不确定，还是业务推理 / 假设 / 礼貌表达"
 3. **过滤**：`isUncertainty=false` 的 candidate 直接丢弃；`isUncertainty=true` 的保留为 hedging signal，并把 verdict（confidence + reason）挂到 `signal.classifierVerdict` 供报告侧展示
 
-**Classifier 接口契约**（`src/analysis/hedging-classifier.ts`）：
+**Classifier 接口契约**（`src/observability/analysis/hedging-classifier.ts`）：
 
 ```typescript
 type HedgingCandidate = {

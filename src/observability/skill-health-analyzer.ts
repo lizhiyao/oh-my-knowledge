@@ -12,10 +12,10 @@
  *   4. 聚合 overall 指标 + 健康度色带
  */
 
-import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
-import { computeGapReport } from '../analysis/gap-analyzer.js';
+import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from './analysis/coverage-analyzer.js';
+import { computeGapReport } from './analysis/gap-analyzer.js';
 import type { TraceIngestionSummary } from './contracts/trace.js';
-import type { AnalysisEntry, GapReport } from '../analysis/contracts.js';
+import type { AnalysisEntry, GapReport } from './analysis/contracts.js';
 import {
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,

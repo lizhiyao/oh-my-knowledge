@@ -19,8 +19,8 @@ import type {
   ObservationSkillRollup,
 } from './contracts/inbox.js';
 import type { ObservationSourceKind, TraceIngestionSummary } from './contracts/trace.js';
-import type { GapSignalRef } from '../analysis/contracts.js';
-import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
+import type { GapSignalRef } from './analysis/contracts.js';
+import { extractGapSignalsFromTrace } from './analysis/gap-analyzer.js';
 import {
   loadTraceSessions,
   segmentTraceBySkill,

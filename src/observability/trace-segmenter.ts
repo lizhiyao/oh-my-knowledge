@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
 import type { TraceSourceMetadata } from './contracts/trace.js';
-import type { AnalysisEntry, AnalysisVariantResult } from '../analysis/contracts.js';
+import type { AnalysisEntry, AnalysisVariantResult } from './analysis/contracts.js';
 import { incrementRecordCount } from '../shared/record-count.js';
 import {
   truncateToolCallsForPersistence,

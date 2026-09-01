@@ -1,4 +1,4 @@
-import type { ToolCallInfo, TurnInfo } from '../executors/contracts/trace.js';
+import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js';
 
 /** Source-neutral trace projection consumed by observe coverage and gap analysis. */
 export interface AnalysisVariantResult {

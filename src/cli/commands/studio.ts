@@ -81,7 +81,7 @@ export async function runStudio(
     createNodeCoreRunArtifactStore,
     createOverlayCoreRunArtifactStore,
   } = await import('../../eval-workflows/artifact-store/index.js');
-  const { createCoreStudioCatalog } = await import('../../eval-workflows/studio-catalog/index.js');
+  const { createCoreStudioCatalog } = await import('../../studio/core-runs/index.js');
   const coreStoreFor = (directory: string) => createNodeCoreRunArtifactStore(directory, {
     contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),
   });

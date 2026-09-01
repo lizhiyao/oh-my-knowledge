@@ -7,15 +7,15 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildSkillIndex, _resetSkillIndexCache } from '../../src/server/skill-index.js';
+import { buildSkillIndex, _resetSkillIndexCache } from '../../../src/studio/application/index.js';
 import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
   listDoctorCards,
-} from '../../src/measurement-artifacts/discovery-index.js';
-import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
-import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
-import type { DoctorReport } from '../../src/doctor/contracts.js';
+} from '../../../src/measurement-artifacts/discovery-index.js';
+import { reportFileName } from '../../../src/measurement-artifacts/file-names.js';
+import { pruneDoctorHistory } from '../../../src/cli/commands/doctor.js';
+import type { DoctorReport } from '../../../src/doctor/contracts.js';
 
 type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
 type ObserveSource = Parameters<typeof writeObserveIndex>[0];

@@ -3,7 +3,7 @@ import type {
   CoreStudioBudget,
   CoreStudioRunCard,
   CoreStudioRunDetail,
-} from '../eval-workflows/studio-catalog/index.js';
+} from '../studio/core-runs/index.js';
 import type { Lang } from '../shared/language.js';
 import { e, fmtDuration, layout } from './layout.js';
 
