@@ -1,7 +1,4 @@
-import type {
-  ExecutorRuntimeCapabilities,
-  ExecutorRuntimeKind,
-} from '../../types/index.js';
+import type { ExecutorRuntimeCapabilities, ExecutorRuntimeKind } from '../contracts/runtime.js';
 
 export type ExecutorVendor = 'anthropic' | 'openai' | 'unknown';
 

@@ -15,9 +15,10 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tDoctorMessage } from '../messages.js';
+import type { ExecutorFn } from '../../executors/contracts/ports.js';
+import type { ExecResult } from '../../executors/contracts/result.js';
 import type { Lang } from '../../types/shared.js';
 import { createExecutor } from '../../executors/index.js';
-import type { ExecResult, ExecutorFn } from '../../types/executor.js';
 import type {
   ComposerOutcome,
   ComposerRule,

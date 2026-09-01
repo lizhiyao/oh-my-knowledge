@@ -12,7 +12,7 @@ import {
 } from '../../evaluation-core/contracts/index.js';
 import { checkDependencies } from '../../preflight/dependencies.js';
 import { createExecutor } from '../../executors/index.js';
-import type { ExecutorFn } from '../../types/index.js';
+import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { Artifact } from '../../types/index.js';
 import type { CliEvaluationCompileResult } from '../input-compilation/index.js';
 import type {

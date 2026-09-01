@@ -10,14 +10,14 @@ import {
   resolveScriptCommand,
 } from '../script/command.js';
 import { getExecutorDescriptor } from './registry.js';
+import type { ExecutorFn } from '../contracts/ports.js';
 import type {
-  ExecutorFn,
   ExecutorRuntimeBinary,
   ExecutorRuntimeCapabilities,
   ExecutorRuntimeFingerprint,
   ExecutorRuntimeKind,
   ExecutorRuntimePackage,
-} from '../../types/index.js';
+} from '../contracts/runtime.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);

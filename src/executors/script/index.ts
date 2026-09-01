@@ -1,4 +1,5 @@
-import type { ExecResult, ExecutorFn, ExecutorInput } from '../../types/index.js';
+import type { ExecResult } from '../contracts/result.js';
+import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
 import { materializeForCliConfigDir } from '../mock-runtime/runtime.js';
 import {
   executorResultValidationError,

@@ -9,6 +9,12 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
+  'src/executors/contracts/index.ts',
+  'src/executors/contracts/trace.ts',
+  'src/executors/contracts/ports.ts',
+  'src/executors/contracts/result.ts',
+  'src/executors/contracts/mcp.ts',
+  'src/executors/contracts/runtime.ts',
   'src/observability/contracts/index.ts',
   'src/observability/contracts/trace.ts',
   'src/observability/contracts/review.ts',
@@ -24,24 +30,19 @@ const PURE_DOMAIN_TYPE_FILES = [
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
-  'src/analysis/contracts.ts::../types/executor.js',
+  'src/executors/contracts/ports.ts::../../types/eval.js',
   'src/managed/contracts.ts::../types/eval.js',
-  'src/observability/contracts/trace.ts::../../types/trace.js',
   'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
-  'src/observability/contracts/experience.ts::../../types/executor.js',
-  'src/observability/view-models/knowledge-debugger.ts::../../types/executor.js',
 ]);
 
 const ALLOWED_LEGACY_TYPE_FILES = new Set([
   'diagnosis.ts',
   'doctor.ts',
   'eval.ts',
-  'executor.ts',
   'index.ts',
   'judge.ts',
   'shared.ts',
   'skill-index.ts',
-  'trace.ts',
 ]);
 
 function listTypeFiles(directory: string, prefix = ''): string[] {

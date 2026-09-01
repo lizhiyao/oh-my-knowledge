@@ -1,4 +1,4 @@
-import type { ToolCallInfo, TurnInfo } from '../../../types/index.js';
+import type { ToolCallInfo, TurnInfo } from '../../contracts/trace.js';
 import { safeSliceForJson } from '../../../shared/json-safe-truncation.js';
 import type { CodexEvent } from './protocol.js';
 import { normalizeToolIdentity } from '../../../shared/tool-identity.js';

@@ -1,4 +1,4 @@
-import type { TraceSourceKind } from '../types/trace.js';
+import type { TraceSourceKind } from '../observability/contracts/trace.js';
 
 const TRACE_SOURCE_KINDS = new Set<TraceSourceKind>([
   'claude',

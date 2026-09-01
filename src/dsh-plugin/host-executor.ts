@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
+import type { ExecResult } from '../executors/contracts/result.js';
+import type { ExecutorFn, ExecutorInput } from '../executors/contracts/ports.js';
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { createDshHostRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import { DEFAULT_TIMEOUT_MS } from '../executors/core/limits.js';

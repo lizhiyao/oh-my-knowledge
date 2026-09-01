@@ -5,7 +5,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { withCapturedStderr } from '../helpers/stderr.js';
-import type { McpServers } from '../../src/types/index.js';
+import type { McpServers } from '../../src/executors/contracts/mcp.js';
 
 describe('loadMcpConfig', () => {
   let tmpDir: string;

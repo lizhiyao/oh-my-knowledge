@@ -36,7 +36,8 @@ import { resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { isPlaceholderUrl } from './url-fetcher.js';
-import type { Sample, McpServers, McpServerDef, McpFetchTool } from '../types/index.js';
+import type { McpServers, McpServerDef, McpFetchTool } from '../executors/contracts/mcp.js';
+import type { Sample } from '../types/index.js';
 import { ownRecordValue, setOwnRecordValue } from '../shared/record-count.js';
 
 // Reuse the same URL regex from url-fetcher.mjs

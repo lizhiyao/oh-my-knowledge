@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isReportFileName, randomRunToken, reportFilePath } from '../measurement-artifacts/file-names.js';
-import type { ToolCallInfo } from '../types/index.js';
+import type { ToolCallInfo } from '../executors/contracts/trace.js';
 import type { ObservationExperienceReport } from './contracts/experience.js';
 import type {
   BuildObservationInboxReportOptions,

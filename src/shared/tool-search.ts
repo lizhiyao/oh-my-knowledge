@@ -1,4 +1,4 @@
-import type { ToolCallInfo } from '../types/index.js';
+import type { ToolCallInfo } from '../executors/contracts/trace.js';
 import { isToolCallCancelled, isToolCallFailure, isToolCallSuccess } from './tool-call-status.js';
 
 export function toolCallQuery(tc: ToolCallInfo): { query?: string; path?: string } {

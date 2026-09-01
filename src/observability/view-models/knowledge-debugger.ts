@@ -1,4 +1,4 @@
-import type { ToolCallStatus } from '../../types/executor.js';
+import type { ToolCallStatus } from '../../executors/contracts/trace.js';
 import type { ObservationSourceRecordArchiveView } from '../contracts/inbox.js';
 import type { ObservationSourceKind, TraceSourceMetadata } from '../contracts/trace.js';
 import type {

@@ -1,4 +1,5 @@
-import type { ExecResult, ExecutorInput } from '../../../types/index.js';
+import type { ExecResult } from '../../contracts/result.js';
+import type { ExecutorInput } from '../../contracts/ports.js';
 import { materializeForCliConfigDir } from '../../mock-runtime/runtime.js';
 import { buildClaudeResult, parseClaudeStreamJson } from './protocol.js';
 import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';

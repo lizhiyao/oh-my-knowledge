@@ -1,4 +1,4 @@
-import type { ToolCallStatus } from '../../types/executor.js';
+import type { ToolCallStatus } from '../../executors/contracts/trace.js';
 import type { ExperienceProblemPattern } from './problem-patterns.js';
 import type { ObservationSourceKind, TraceSourceMetadata } from './trace.js';
 

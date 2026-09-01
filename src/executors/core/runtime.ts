@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
-import type { ExecResult } from '../../types/index.js';
+import type { ExecResult } from '../contracts/result.js';
 
 export interface ExecutorErrorLike {
   message?: string;

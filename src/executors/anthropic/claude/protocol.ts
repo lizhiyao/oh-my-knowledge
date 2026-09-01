@@ -1,4 +1,4 @@
-import type { ExecResult } from '../../../types/index.js';
+import type { ExecResult } from '../../contracts/result.js';
 import {
   checkedSumTokenCounts,
   nonNegativeMetric,
