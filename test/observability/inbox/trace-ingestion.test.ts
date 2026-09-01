@@ -10,7 +10,7 @@ import {
   loadObservationInboxReports,
   saveObservationInboxReport,
 } from '../../../src/observability/inbox.js';
-import { renderObservationInboxPage } from '../../../src/renderer/observation-inbox-renderer.js';
+import { renderObservationInboxPage } from '../../../src/studio/presentation/observation-inbox-renderer.js';
 import { baseItem, businessActionTag, businessChannel, resolvedReviewSessionsForFixture } from './_helpers.js';
 
 describe('observe inbox - trace ingestion', () => {

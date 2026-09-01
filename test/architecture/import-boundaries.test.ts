@@ -4,7 +4,7 @@
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
  *   - observability 反向 driving diagnosis(已修)
  *   - Studio application / catalog 散落在交付层与 workflow(已修)
- *   - renderer 直接 import observability 内部(已 facade 化)
+ *   - Studio presentation 直接 import observability 内部(已 facade 化)
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
  * 规则形态:每条规则声明 from / to / 可选 whitelist + 注解。匹配 src-relative
@@ -72,16 +72,6 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'evaluation-core/',
-    to: 'server/',
-    reason: 'Evaluation Core vNext 不依赖持久化、HTTP 或 Studio host。',
-  },
-  {
-    from: 'evaluation-core/',
-    to: 'renderer/',
-    reason: 'Bundle 是事实契约，Report renderer 属于宿主物化视图。',
-  },
-  {
-    from: 'evaluation-core/',
     to: 'studio/',
     reason: 'Evaluation Core vNext 是纯计算内核，不依赖 Studio 的查询投影、HTTP 或呈现能力。',
   },
@@ -96,14 +86,19 @@ const RULES: ForbiddenRule[] = [
     reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',
   },
   {
-    from: 'studio/',
-    to: 'server/',
-    reason: 'Studio application 与 core-run catalog 不反向依赖历史 HTTP host；交付层只能向内依赖 Studio。',
+    from: 'studio/application/',
+    to: 'studio/http/',
+    reason: 'Studio application 不依赖 HTTP host；HTTP 交付层只能向内调用应用能力。',
   },
   {
-    from: 'studio/',
-    to: 'renderer/',
-    reason: 'Studio application 与 view-model 不依赖具体 HTML renderer；呈现层只能消费 Studio 契约。',
+    from: 'studio/application/',
+    to: 'studio/presentation/',
+    reason: 'Studio application 不依赖 HTML 呈现；presentation 只能消费应用结果与 view-model。',
+  },
+  {
+    from: 'studio/presentation/',
+    to: 'studio/http/',
+    reason: 'Studio presentation 是无 HTTP 状态的纯呈现层，不依赖请求、响应或 server 生命周期。',
   },
   {
     from: 'observability/',
@@ -114,23 +109,18 @@ const RULES: ForbiddenRule[] = [
     ],
   },
   {
-    from: 'renderer/',
-    to: 'server/',
-    reason: 'renderer 是视图层，不应 import server；共享 DTO 应归属到明确领域的 contracts 或 view-models。',
-  },
-  {
-    from: 'renderer/',
+    from: 'studio/presentation/',
     to: 'observability/',
-    reason: 'renderer 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox-view-model.ts、observability/feedback-projection.ts、observability/skill-health-analyzer.ts。',
+    reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox-view-model.ts、observability/feedback-projection.ts、observability/skill-health-analyzer.ts。',
     whitelist: [
-      'renderer/conversation-renderer.ts::observability/view-models/index.ts',
-      'renderer/knowledge-debugger-renderer.ts::observability/view-models/index.ts',
-      'renderer/trajectory-evidence.ts::observability/view-models/index.ts',
+      'studio/presentation/conversation-renderer.ts::observability/view-models/index.ts',
+      'studio/presentation/knowledge-debugger-renderer.ts::observability/view-models/index.ts',
+      'studio/presentation/trajectory-evidence.ts::observability/view-models/index.ts',
       // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
-      'renderer/observation-inbox-renderer.ts::observability/inbox-view-model.ts',
-      'renderer/observation-inbox-renderer.ts::observability/feedback-projection.ts',
-      'renderer/observation-inbox/helpers.ts::observability/feedback-projection.ts',
-      'renderer/skill-health-renderer.ts::observability/skill-health-analyzer.ts',
+      'studio/presentation/observation-inbox-renderer.ts::observability/inbox-view-model.ts',
+      'studio/presentation/observation-inbox-renderer.ts::observability/feedback-projection.ts',
+      'studio/presentation/observation-inbox/helpers.ts::observability/feedback-projection.ts',
+      'studio/presentation/skill-health-renderer.ts::observability/skill-health-analyzer.ts',
     ],
   },
 ];

@@ -247,7 +247,7 @@ weightedGapRate = Σ sample_weight / sampleCount
 
 单次评测的 gap rate 是基线，真正的价值在于跨多次评测的趋势。
 
-omk 已有 `src/renderer/trends.ts` 跨评测时间序列表。本规范要求在该表新增一列：
+omk 已有 `src/studio/presentation/trends.ts` 跨评测时间序列表。本规范要求在该表新增一列：
 
 ```
 | 时间 | git commit | composite | coverage | gap_rate | 用例集 | 用例数 | 成本 |

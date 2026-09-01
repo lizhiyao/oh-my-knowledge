@@ -49,7 +49,7 @@ vi.mock('node:os', async () => {
   };
 });
 
-vi.mock('../../src/server/report-server.js', () => ({
+vi.mock('../../src/studio/http/report-server.js', () => ({
   createReportServer: vi.fn(() => ({
     start: vi.fn(async () => 'http://127.0.0.1:7799'),
   })),
@@ -123,7 +123,7 @@ describe('studio --dev child spawn argv', () => {
 
   it('server 模式 --global → observationsDir 钉全局(与 observe-health / doctors 一致)', async () => {
     const { runStudio } = await import('../../src/cli/commands/studio.js');
-    const { createReportServer } = await import('../../src/server/report-server.js');
+    const { createReportServer } = await import('../../src/studio/http/report-server.js');
     const { DEFAULT_GLOBAL_OBSERVATIONS_DIR } = await import('../../src/observability/inbox.js');
     await runStudio({}, { lang: 'zh', port: '7799', 'no-open': true, dev: false, global: true }, 'zh');
     const opts = vi.mocked(createReportServer).mock.calls.at(-1)?.[0];
@@ -132,7 +132,7 @@ describe('studio --dev child spawn argv', () => {
 
   it('server 模式默认(无 --global / --observations-dir）→ observationsDir 不设(交给 server 项目优先+全局兜底)', async () => {
     const { runStudio } = await import('../../src/cli/commands/studio.js');
-    const { createReportServer } = await import('../../src/server/report-server.js');
+    const { createReportServer } = await import('../../src/studio/http/report-server.js');
     await runStudio({}, { lang: 'zh', port: '7799', 'no-open': true, dev: false }, 'zh');
     const opts = vi.mocked(createReportServer).mock.calls.at(-1)?.[0];
     expect(opts?.observationsDir).toBeUndefined();

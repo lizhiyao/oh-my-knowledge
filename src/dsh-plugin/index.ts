@@ -169,7 +169,7 @@ async function studioUrl(
   if (state.serverUrl) return state.serverUrl;
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const omkDir = join(cwd, '.omk');
-  const { createReportServer } = await import('../server/report-server.js');
+  const { createReportServer } = await import('../studio/http/report-server.js');
   const {
     createNodeCoreContentStore,
     createNodeCoreRunArtifactStore,
