@@ -93,9 +93,13 @@ import { hasAssistantDeliverableArtifactText, hasUserHardRuleText, isAssistantPr
 import {
   compareTimelineEvents,
   hashParts,
+  isObjectRecord,
+  maxString,
+  minString,
   snippet,
+  unique,
   uniqueTimelineEvents,
-} from './experience/support.js';
+} from './experience/primitives.js';
 import {
   buildInvocationTimeline,
   buildSessionTimelineTree,
@@ -105,13 +109,42 @@ import {
   isAssistantDeliveryEvent,
   segmentRecordBounds,
 } from './experience/timeline.js';
+import {
+  OBSERVATION_EXPERIENCE_SCHEMA_VERSION,
+  storyContextRefForSessionGroup,
+  storyContextsFromSessions,
+  TIMELINE_PREVIEW_EVENT_LIMIT,
+  timelineRefForSessionGroup,
+  traceRecordRanges,
+  traceTimelinesFromSessions,
+  flattenTimelineTree,
+} from './experience/report-structure.js';
+import {
+  assistantFinalDeliveryEvents,
+  assistantProgressUpdateEvents,
+  basisCodesForIndicators,
+  currentSkillRuntimeModel,
+  enrichRouterDownstreamIndicators,
+  evidenceRefFromTimeline,
+  invocationTimestampObserved,
+  isAssistantProgressUpdateEvent,
+  primarySourceTraceForSession,
+  priorityForReviewerFindings,
+  priorityForScore,
+  scoreForIndicators,
+  sumIndicators,
+  sumRecordCounts,
+  sumTokenUsage,
+  uniqueEvidenceRefs,
+  userFacingClosureForSession,
+  type CurrentSkillRuntimeModel,
+} from './experience/report-derivations.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
   incrementRecordCount,
   ownRecordValue,
   sumRecordCounts as sumSafeCounts,
 } from '../shared/record-count.js';
-import { checkedSumTokenCounts } from '../shared/token-usage.js';
 import {
   loadExpectedToolsForSkill,
   loadFrontmatterSkillType,
@@ -140,6 +173,7 @@ export {
 } from './feedback-matchers.js';
 export type { TextMatchRange } from './feedback-matchers.js';
 export { projectTraceSessionTimeline } from './experience/timeline.js';
+export { OBSERVATION_EXPERIENCE_SCHEMA_VERSION };
 
 export type {
   ExperienceAssistiveInference,
@@ -210,8 +244,6 @@ export type {
   ObservationExperienceReport,
   ObservationReviewState,
 };
-
-export const OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 3;
 const LEGACY_OBSERVATION_EXPERIENCE_SCHEMA_VERSION = 2;
 
 export type PersistedExperienceInvocation = Omit<
@@ -280,7 +312,6 @@ interface ExperienceEpisodeRange {
 }
 
 const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断|停止任务|停一下|先别|别动|等一下|等下|等等|取消(?:任务|执行)?|先暂停|暂停一下/i;
-const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
 interface BuildExperienceInput {
   sessions: TraceSession[];
@@ -289,32 +320,6 @@ interface BuildExperienceInput {
   generatedAt: string;
   reviewState?: ObservationReviewState;
 }
-
-const ZERO_INDICATORS: ExperienceReviewIndicators = {
-  userMessageCount: 0,
-  userFollowUpCount: 0,
-  userCorrectionCount: 0,
-  userInterruptionCount: 0,
-  sessionInterruptedCount: 0,
-  negativeFeedbackCount: 0,
-  positiveFeedbackCount: 0,
-  userGoalShiftCount: 0,
-  hardRuleTextHitCount: 0,
-  assistantDeliverySignalCount: 0,
-  deliverableArtifactSignalCount: 0,
-  routerDownstreamCompleted: 0,
-  routerDownstreamFailed: 0,
-  selfCorrectionCount: 0,
-  repeatedExecutionCount: 0,
-  toolCallCount: 0,
-  toolFailureCount: 0,
-  toolCancelledCount: 0,
-  toolUnknownCount: 0,
-  highObservationCount: 0,
-  mediumObservationCount: 0,
-  hedgingCount: 0,
-  explicitMarkerCount: 0,
-};
 
 export function buildObservationExperienceReport(input: BuildExperienceInput): ObservationExperienceReport {
   const traceSessions = input.sessions.map((session) => ({
@@ -690,10 +695,6 @@ function normalizeStoryContexts(values: unknown[]): ExperienceStoryContext[] | n
   return values as ExperienceStoryContext[];
 }
 
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
@@ -736,11 +737,6 @@ function isOptionalTimestamp(value: unknown): boolean {
 function isTimestampRange(start: unknown, end: unknown): boolean {
   if (!isTimestamp(start) || !isTimestamp(end)) return false;
   return Date.parse(start) <= Date.parse(end);
-}
-
-function invocationTimestampObserved(invocation: ExperienceInvocation): boolean {
-  return invocation.timestampObserved
-    ?? invocation.startTimestamp !== UNOBSERVED_TRACE_TIMESTAMP;
 }
 
 function sessionTimestampedInvocationCount(session: ExperienceSessionSummary): number {
@@ -2112,40 +2108,6 @@ function hydrateExperienceTimelines(
   };
 }
 
-function traceTimelinesFromSessions(
-  sessions: ExperienceSessionSummary[],
-  invocations: ExperienceInvocation[],
-): ExperienceTraceTimeline[] {
-  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
-  const timelines = new Map<string, ExperienceTraceTimeline>();
-  for (const session of sessions) {
-    const invocation = session.invocationIds
-      .map((id) => invocationById.get(id))
-      .find((value): value is ExperienceInvocation => Boolean(value));
-    const sessionGroupKey = invocation?.sessionGroupKey ?? session.sessionId;
-    const id = session.timelineRef
-      ?? invocation?.timelineRef
-      ?? timelineRefForSessionGroup(sessionGroupKey);
-    if (timelines.has(id)) continue;
-    const fallbackEvents = session.fullSessionTimeline.length > 0
-      ? session.fullSessionTimeline
-      : session.timelinePreview;
-    const tree = session.timelineTree ?? {
-      sessionId: session.sessionId,
-      main: fallbackEvents,
-      branches: [],
-    };
-    timelines.set(id, {
-      id,
-      sessionGroupKey,
-      sessionId: session.sessionId,
-      eventCount: flattenTimelineTree(tree).length,
-      tree,
-    });
-  }
-  return Array.from(timelines.values());
-}
-
 function validateExperienceReferences(
   report: ObservationExperienceReport,
   strict: boolean,
@@ -2866,47 +2828,6 @@ function sameStringSet(left: string[], right: Set<string>): boolean {
     && left.every((value) => right.has(value));
 }
 
-function storyContextsFromSessions(
-  sessions: ExperienceSessionSummary[],
-  invocations: ExperienceInvocation[],
-): ExperienceStoryContext[] {
-  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
-  const contexts = new Map<string, ExperienceStoryContext>();
-  for (const session of sessions) {
-    const story = session.sessionStory;
-    if (!story) continue;
-    const invocation = session.invocationIds
-      .map((id) => invocationById.get(id))
-      .find((value): value is ExperienceInvocation => Boolean(value));
-    const sessionGroupKey = invocation?.sessionGroupKey ?? session.sessionId;
-    const id = story.contextRef ?? storyContextRefForSessionGroup(sessionGroupKey);
-    if (contexts.has(id)) continue;
-    contexts.set(id, {
-      id,
-      sessionGroupKey,
-      goalSlices: story.goalSlices,
-      subagentDispatches: story.subagentDispatches,
-      episodes: story.episodes ?? [],
-    });
-  }
-  return Array.from(contexts.values());
-}
-
-function timelineRefForSessionGroup(sessionGroupKey: string): string {
-  return hashParts('trace-timeline', sessionGroupKey);
-}
-
-function storyContextRefForSessionGroup(sessionGroupKey: string): string {
-  return hashParts('story-context', sessionGroupKey);
-}
-
-function flattenTimelineTree(tree: ExperienceTimelineTree): ExperienceTimelineEvent[] {
-  return uniqueTimelineEvents([
-    ...tree.main,
-    ...tree.branches.flatMap((branch) => branch.events),
-  ]).sort(compareTimelineEvents);
-}
-
 function compactSessionStory(
   story: ExperienceSessionStory,
   contextRef: string,
@@ -2981,12 +2902,6 @@ function isAssistantDeliverableArtifactEvent(event: ExperienceTimelineEvent): bo
   return hasAssistantDeliverableArtifactText(text);
 }
 
-function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean {
-  if (event.kind !== 'assistant_message') return false;
-  const text = event.fullText ?? event.snippet ?? '';
-  return isAssistantProgressUpdateText(text);
-}
-
 function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
@@ -3025,33 +2940,6 @@ function observationEvidenceRef(item: ObservationInboxItem): ExperienceEvidenceR
       || item.evidence.markerToken,
       700,
     ),
-  };
-}
-
-function evidenceRefFromTimeline(event: ExperienceTimelineEvent): ExperienceEvidenceRef {
-  return {
-    id: event.id,
-    kind: event.kind,
-    traceId: event.traceId,
-    sourceTrace: event.sourceTrace,
-    sessionId: event.sessionId,
-    traceRole: event.traceRole,
-    traceLabel: event.traceLabel,
-    messageIndex: event.messageIndex,
-    logicalMessageIndex: event.logicalMessageIndex ?? event.messageIndex,
-    sourceLineIndex: event.sourceLineIndex ?? event.messageIndex,
-    messageUuid: event.messageUuid,
-    callInstanceId: event.callInstanceId,
-    toolUseId: event.toolUseId,
-    timestamp: event.timestamp,
-    role: event.role,
-    modelActivityKind: event.modelActivityKind,
-    contentVisibility: event.contentVisibility,
-    contentSource: event.contentSource,
-    sourceType: event.sourceType,
-    runtimeKind: event.runtimeKind,
-    label: event.label,
-    snippet: event.snippet,
   };
 }
 
@@ -4030,14 +3918,6 @@ function primaryTraceIdForSession(
     )?.traceId;
 }
 
-function primarySourceTraceForSession(session: ExperienceSessionSummary): string | undefined {
-  return session.sourceTrace
-    ?? session.evidenceChain.firstUserMessage?.sourceTrace
-    ?? session.fullSessionTimeline.find((event) => event.traceRole === 'main')?.sourceTrace
-    ?? session.fullSessionTimeline[0]?.sourceTrace
-    ?? session.timelinePreview[0]?.sourceTrace;
-}
-
 function episodeRangeContainsRef(
   range: ExperienceEpisodeRange,
   ref?: Pick<ExperienceEvidenceRef, 'messageIndex' | 'traceId' | 'sourceTrace' | 'sessionId'>,
@@ -4758,18 +4638,6 @@ function compactObjectText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '');
 }
 
-function uniqueBy<T>(values: T[], keyOf: (value: T) => string): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const value of values) {
-    const key = keyOf(value);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(value);
-  }
-  return out;
-}
-
 function actionOwnerForFeedback(
   evidenceRef: ExperienceEvidenceRef,
   text: string,
@@ -4985,16 +4853,6 @@ function sessionStoryAcceptanceCriteria(
     return '下次同类任务中，应看到明确最终答复、产物路径，或清晰的阻塞说明。';
   }
   return undefined;
-}
-
-function assistantFinalDeliveryEvents(session: ExperienceSessionSummary): ExperienceTimelineEvent[] {
-  return (session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview)
-    .filter(isAssistantDeliveryEvent);
-}
-
-function assistantProgressUpdateEvents(session: ExperienceSessionSummary): ExperienceTimelineEvent[] {
-  return (session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview)
-    .filter(isAssistantProgressUpdateEvent);
 }
 
 function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: ExperienceInvocation[]): ExperienceSessionStoryGoalSlice[] {
@@ -5548,53 +5406,6 @@ function skillTypeClosureChecklistItems(
   return [];
 }
 
-interface CurrentSkillRuntimeModel {
-  skillType: ExperienceRuntimeSkillType;
-  isDelegator: boolean;
-  hasDownstreamEdges: boolean;
-  segments: ExperienceSkillSegment[];
-  downstreamEdges: ExperienceOrchestrationEdge[];
-  downstreamSignals: ExperienceFeedbackSignal[];
-  primarySignals: ExperienceFeedbackSignal[];
-  contextSignals: ExperienceFeedbackSignal[];
-}
-
-function currentSkillRuntimeModel(session: ExperienceSessionSummary, episodesOverride?: ExperienceEpisode[]): CurrentSkillRuntimeModel | undefined {
-  const episodes = episodesOverride ?? session.sessionStory?.episodes ?? [];
-  const segments = uniqueBy(
-    episodes.flatMap((episode) => episode.skillSegments).filter((segment) => segment.skillName === session.skillName),
-    (segment) => segment.id,
-  );
-  if (segments.length === 0) return undefined;
-  const segmentIds = new Set(segments.map((segment) => segment.id));
-  const downstreamEdges = episodes.flatMap((episode) => episode.orchestrationEdges)
-    .filter((edge) => edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId));
-  const signals = episodes.flatMap((episode) => episode.feedbackSignals ?? []);
-  const signalsForRole = (role: ExperienceFeedbackAttributionRole) => signals.filter((signal) =>
-    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
-      attribution.skillName === session.skillName && attribution.attributionRole === role
-    )
-  );
-  const declaredType = segments.map((segment) => segment.skillType).find((type) => type !== 'unknown') ?? 'unknown';
-  const inferredType: ExperienceRuntimeSkillType = declaredType !== 'unknown'
-    ? declaredType
-    : downstreamEdges.length > 0
-      ? 'router'
-      : segments.some((segment) => segment.episodeRole === 'delegator')
-        ? 'delegation'
-        : 'unknown';
-  return {
-    skillType: inferredType,
-    isDelegator: segments.some((segment) => segment.episodeRole === 'delegator'),
-    hasDownstreamEdges: downstreamEdges.length > 0,
-    segments,
-    downstreamEdges,
-    downstreamSignals: signalsForRole('downstream_related'),
-    primarySignals: signalsForRole('primary_fault'),
-    contextSignals: signalsForRole('context_only'),
-  };
-}
-
 function workflowOwnerClosureChecklistItems(
   session: ExperienceSessionSummary,
   runtime: CurrentSkillRuntimeModel,
@@ -5916,57 +5727,6 @@ function deliveryStepText(session: ExperienceSessionSummary): string {
     return `看到 ${closure.deliveryCount} 次完成态或结果反馈${artifact}。`;
   }
   return '没有发现最后结果反馈；当前不能把过程进展当成完成。';
-}
-
-function userFacingClosureForSession(
-  session: ExperienceSessionSummary,
-  episodesOverride?: ExperienceEpisode[],
-): { deliveryCount: number; artifactCount: number; evidenceRefs: ExperienceEvidenceRef[] } {
-  const runtime = currentSkillRuntimeModel(session, episodesOverride);
-  const canUseDownstream = Boolean(runtime && (runtime.skillType === 'router' || runtime.skillType === 'delegation' || runtime.hasDownstreamEdges || runtime.isDelegator));
-  if (!canUseDownstream) {
-    return {
-      deliveryCount: session.indicators.assistantDeliverySignalCount,
-      artifactCount: session.indicators.deliverableArtifactSignalCount,
-      evidenceRefs: uniqueEvidenceRefs([
-        session.evidenceChain.lastAssistantMessage,
-      ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
-    };
-  }
-  const primarySourceTrace = primarySourceTraceForSession(session);
-  const finalDeliveryEvents = assistantFinalDeliveryEvents(session)
-    .filter((event) => isMainlineEvidenceRef(event, primarySourceTrace));
-  const episodes = episodesOverride ?? session.sessionStory?.episodes ?? [];
-  const artifacts = episodes
-    .flatMap((episode) => episode.outcome.artifacts ?? [])
-    .filter((artifact) => isMainlineEvidenceRef(artifact.evidenceRef, primarySourceTrace));
-  const deliveryRefs = finalDeliveryEvents.map(evidenceRefFromTimeline);
-  const artifactRefs = artifacts.map((artifact) => artifact.evidenceRef);
-  return {
-    deliveryCount: finalDeliveryEvents.length,
-    artifactCount: artifacts.length,
-    evidenceRefs: uniqueEvidenceRefs([...deliveryRefs, ...artifactRefs, session.evidenceChain.lastAssistantMessage].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
-  };
-}
-
-function isMainlineEvidenceRef(ref: Pick<ExperienceEvidenceRef, 'sourceTrace'> | undefined, primarySourceTrace?: string): boolean {
-  if (!ref || !primarySourceTrace || !ref.sourceTrace) return true;
-  return ref.sourceTrace === primarySourceTrace;
-}
-
-function enrichRouterDownstreamIndicators(session: ExperienceSessionSummary): ExperienceReviewIndicators {
-  const runtime = currentSkillRuntimeModel(session);
-  if (!runtime || !(runtime.skillType === 'router' || runtime.hasDownstreamEdges)) return session.indicators;
-  const closure = userFacingClosureForSession(session);
-  const completedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'completed' || edge.runnerCompletedRef);
-  const failedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'failed');
-  const completed = closure.deliveryCount > 0 || closure.artifactCount > 0 || completedByEdge;
-  const failed = failedByEdge || (!completed && runtime.downstreamSignals.length > 0);
-  return {
-    ...session.indicators,
-    routerDownstreamCompleted: completed ? 1 : 0,
-    routerDownstreamFailed: failed ? 1 : 0,
-  };
 }
 
 function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): Pick<ExperienceReviewIndicators,
@@ -6321,38 +6081,6 @@ function suggestionTextForChecklistItem(key: string): string | undefined {
   return suggestions[key];
 }
 
-function sumTokenUsage(invocations: ExperienceInvocation[]): Omit<ExperienceReviewerReport['oneLookMetrics']['tokenUsage'], 'attribution'> {
-  const observed = invocations.filter((invocation) => invocation.metrics.tokenUsageObserved);
-  const inputTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.inputTokens));
-  const outputTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.outputTokens));
-  const cacheReadTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.cacheReadTokens));
-  const cacheCreationTokens = checkedSumTokenCounts(...observed.map((invocation) => invocation.metrics.cacheCreationTokens));
-  const aggregateValid = [
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheCreationTokens,
-  ].every((value) => value !== undefined)
-    && checkedSumTokenCounts(
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      cacheCreationTokens,
-    ) !== undefined;
-  const observedInvocationCount = aggregateValid ? observed.length : 0;
-  return {
-    inputTokens: inputTokens ?? 0,
-    outputTokens: outputTokens ?? 0,
-    cacheReadTokens: cacheReadTokens ?? 0,
-    cacheCreationTokens: cacheCreationTokens ?? 0,
-    observedInvocationCount,
-    invocationCount: invocations.length,
-    coverage: invocations.length > 0
-      ? Number((observedInvocationCount / invocations.length).toFixed(4))
-      : 1,
-  };
-}
-
 function summarizeExperienceSkills(
   sessions: ExperienceSessionSummary[],
   invocations: ExperienceInvocation[],
@@ -6470,69 +6198,6 @@ function sourceSenderLabel(value?: TraceSourceMetadata): string | undefined {
   return value.sender ?? value.senderId;
 }
 
-function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
-  return sumSafeCounts(
-    weightedCount(indicators.highObservationCount, 3),
-    indicators.mediumObservationCount,
-    weightedCount(indicators.userCorrectionCount, 2),
-    weightedCount(indicators.userInterruptionCount, 2),
-    weightedCount(indicators.sessionInterruptedCount, 2),
-    weightedCount(indicators.negativeFeedbackCount, 2),
-    indicators.hardRuleTextHitCount,
-    indicators.toolFailureCount,
-    weightedCount(indicators.routerDownstreamFailed, 2),
-    indicators.hedgingCount,
-    weightedCount(indicators.explicitMarkerCount, 2),
-  );
-}
-
-function weightedCount(count: number, weight: number): number {
-  const weighted = count * weight;
-  if (!Number.isSafeInteger(weighted) || weighted < 0) {
-    throw new RangeError('Weighted observation count exceeds Number.MAX_SAFE_INTEGER');
-  }
-  return weighted;
-}
-
-function priorityForScore(score: number): ExperienceReviewPriority {
-  if (score >= 3) return 'review_first';
-  if (score > 0) return 'sample_review';
-  return 'routine_sample';
-}
-
-function priorityForReviewerFindings(
-  session: ExperienceSessionSummary,
-  findings: ExperienceReviewerReportFinding[],
-): ExperienceReviewPriority {
-  const fallback = priorityForScore(session.reviewPriorityScore);
-  const attentionFindings = findings.filter((finding) => finding.level === 'attention');
-  if (attentionFindings.length === 0) return fallback;
-  const criticalMissing = attentionFindings.some((finding) =>
-    finding.ruleSource === 'final_delivery_absent'
-    || finding.ruleSource === 'router_user_facing_closure_absent'
-    || finding.ruleSource === 'session_interrupted'
-    || finding.ruleSource === 'expected_tools_missed')
-    || session.indicators.userMessageCount === 0
-    || session.indicators.toolCallCount === 0;
-  if (criticalMissing) return 'review_first';
-  return fallback === 'routine_sample' ? 'sample_review' : fallback;
-}
-
-function basisCodesForIndicators(indicators: ExperienceReviewIndicators): ExperienceReviewBasisCode[] {
-  const codes: ExperienceReviewBasisCode[] = [];
-  if (indicators.highObservationCount > 0) codes.push('has_high_observation');
-  if (indicators.mediumObservationCount > 0) codes.push('has_medium_observation');
-  if (indicators.userCorrectionCount > 0) codes.push('user_correction');
-  if (indicators.userInterruptionCount > 0) codes.push('user_interruption');
-  if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted');
-  if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback');
-  if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_text_hit');
-  if (indicators.toolFailureCount > 0) codes.push('tool_failure');
-  if (indicators.hedgingCount > 0) codes.push('hedging_signal');
-  if (indicators.explicitMarkerCount > 0) codes.push('explicit_marker');
-  return codes;
-}
-
 function countTools(segment: SkillSegment): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const toolCall of segment.toolCalls) {
@@ -6547,44 +6212,6 @@ function countBy(values: string[]): Record<string, number> {
     incrementRecordCount(counts, value);
   }
   return counts;
-}
-
-function sumRecordCounts(values: Array<Record<string, number>>): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const value of values) {
-    for (const [key, count] of Object.entries(value)) {
-      incrementRecordCount(counts, key, count);
-    }
-  }
-  return counts;
-}
-
-function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIndicators {
-  return values.reduce((acc, value) => ({
-    userMessageCount: sumSafeCounts(acc.userMessageCount, value.userMessageCount),
-    userFollowUpCount: sumSafeCounts(acc.userFollowUpCount, value.userFollowUpCount),
-    userCorrectionCount: sumSafeCounts(acc.userCorrectionCount, value.userCorrectionCount),
-    userInterruptionCount: sumSafeCounts(acc.userInterruptionCount, value.userInterruptionCount),
-    sessionInterruptedCount: sumSafeCounts(acc.sessionInterruptedCount, value.sessionInterruptedCount ?? 0),
-    negativeFeedbackCount: sumSafeCounts(acc.negativeFeedbackCount, value.negativeFeedbackCount ?? 0),
-    positiveFeedbackCount: sumSafeCounts(acc.positiveFeedbackCount, value.positiveFeedbackCount ?? 0),
-    userGoalShiftCount: sumSafeCounts(acc.userGoalShiftCount, value.userGoalShiftCount ?? 0),
-    hardRuleTextHitCount: sumSafeCounts(acc.hardRuleTextHitCount, value.hardRuleTextHitCount),
-    assistantDeliverySignalCount: sumSafeCounts(acc.assistantDeliverySignalCount, value.assistantDeliverySignalCount ?? 0),
-    deliverableArtifactSignalCount: sumSafeCounts(acc.deliverableArtifactSignalCount, value.deliverableArtifactSignalCount ?? 0),
-    routerDownstreamCompleted: sumSafeCounts(acc.routerDownstreamCompleted, value.routerDownstreamCompleted ?? 0),
-    routerDownstreamFailed: sumSafeCounts(acc.routerDownstreamFailed, value.routerDownstreamFailed ?? 0),
-    selfCorrectionCount: sumSafeCounts(acc.selfCorrectionCount, value.selfCorrectionCount ?? 0),
-    repeatedExecutionCount: sumSafeCounts(acc.repeatedExecutionCount, value.repeatedExecutionCount ?? 0),
-    toolCallCount: sumSafeCounts(acc.toolCallCount, value.toolCallCount),
-    toolFailureCount: sumSafeCounts(acc.toolFailureCount, value.toolFailureCount),
-    toolCancelledCount: sumSafeCounts(acc.toolCancelledCount ?? 0, value.toolCancelledCount ?? 0),
-    toolUnknownCount: sumSafeCounts(acc.toolUnknownCount ?? 0, value.toolUnknownCount ?? 0),
-    highObservationCount: sumSafeCounts(acc.highObservationCount, value.highObservationCount),
-    mediumObservationCount: sumSafeCounts(acc.mediumObservationCount, value.mediumObservationCount),
-    hedgingCount: sumSafeCounts(acc.hedgingCount, value.hedgingCount),
-    explicitMarkerCount: sumSafeCounts(acc.explicitMarkerCount, value.explicitMarkerCount),
-  }), { ...ZERO_INDICATORS });
 }
 
 function sumEvidenceChains(values: ExperienceEvidenceChain[]): ExperienceEvidenceChain {
@@ -6633,29 +6260,6 @@ function mergeRuleFindings(values: ExperienceRuleFinding[]): ExperienceRuleFindi
   });
 }
 
-function traceRecordRanges(events: ExperienceTimelineEvent[]): ExperienceTraceRecordRange[] {
-  const byTrace = new Map<string, ExperienceTimelineEvent[]>();
-  for (const event of events) {
-    if (typeof event.messageIndex !== 'number') continue;
-    const traceId = event.traceId ?? event.sourceTrace;
-    const group = byTrace.get(traceId) ?? [];
-    group.push(event);
-    byTrace.set(traceId, group);
-  }
-  return Array.from(byTrace.entries())
-    .map(([traceId, group]): ExperienceTraceRecordRange => {
-      const indexes = group.map((event) => event.messageIndex as number);
-      return {
-        traceId,
-        sourceTrace: group[0].sourceTrace,
-        startRecordIndex: Math.min(...indexes),
-        endRecordIndex: Math.max(...indexes),
-        eventCount: group.length,
-      };
-    })
-    .sort((a, b) => a.traceId.localeCompare(b.traceId));
-}
-
 function minDefined(values: Array<number | undefined>): number | undefined {
   const filtered = values.filter((value): value is number => typeof value === 'number');
   return filtered.length > 0 ? Math.min(...filtered) : undefined;
@@ -6666,39 +6270,7 @@ function maxDefined(values: Array<number | undefined>): number | undefined {
   return filtered.length > 0 ? Math.max(...filtered) : undefined;
 }
 
-function minString(values: Array<string | undefined>): string | undefined {
-  const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0
-    ? filtered.reduce(
-        (min, value) => Date.parse(value) < Date.parse(min) ? value : min,
-        filtered[0],
-      )
-    : undefined;
-}
-
-function maxString(values: Array<string | undefined>): string | undefined {
-  const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0
-    ? filtered.reduce(
-        (max, value) => Date.parse(value) > Date.parse(max) ? value : max,
-        filtered[0],
-      )
-    : undefined;
-}
-
-function uniqueEvidenceRefs(refs: ExperienceEvidenceRef[]): ExperienceEvidenceRef[] {
-  const byId = new Map<string, ExperienceEvidenceRef>();
-  for (const ref of refs) {
-    byId.set(ref.id, ref);
-  }
-  return Array.from(byId.values());
-}
-
 function inferUserGoal(userRefs: ExperienceTimelineEvent[]): string | undefined {
   const first = userRefs.find((ref) => ref.snippet && !ref.snippet.includes('tool_result'));
   return snippet(first?.snippet, 180);
-}
-
-function unique<T>(values: T[]): T[] {
-  return Array.from(new Set(values));
 }

@@ -24,7 +24,7 @@ import {
   hashParts,
   snippet,
   uniqueTimelineEvents,
-} from './support.js';
+} from './primitives.js';
 
 export function logicalSessionId(session: TraceSession): string {
   return session.rootRunId;
