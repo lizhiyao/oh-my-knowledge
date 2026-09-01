@@ -1,5 +1,5 @@
 import { tCli, type CliLang } from './i18n.js';
-import type { DoctorProgressInfo } from '../../types/doctor.js';
+import type { DoctorProgressInfo } from '../../doctor/contracts.js';
 
 // CLI 展示层的进度事件投影。
 export interface ProgressInfo {

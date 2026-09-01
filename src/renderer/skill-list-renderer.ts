@@ -1,6 +1,7 @@
 import { DEFAULT_LANG, e, layout } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
-import type { Lang, SkillIndex } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
+import type { SkillIndex } from '../studio/view-models/skill-index.js';
 
 function dateText(timestamp: string | null): string {
   if (timestamp === null) return '—';

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 const PURE_DOMAIN_TYPE_FILES = [
   'src/analysis/contracts.ts',
   'src/artifact-graph/contracts.ts',
+  'src/diagnosis/contracts.ts',
+  'src/doctor/contracts.ts',
   'src/preflight/contracts.ts',
   'src/managed/contracts.ts',
   'src/skill-definition/contracts.ts',
@@ -19,6 +21,10 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/grading/contracts/index.ts',
   'src/grading/contracts/config.ts',
   'src/grading/contracts/result.ts',
+  'src/shared/language.ts',
+  'src/studio/view-models/index.ts',
+  'src/studio/view-models/insight.ts',
+  'src/studio/view-models/skill-index.ts',
   'src/executors/contracts/index.ts',
   'src/executors/contracts/trace.ts',
   'src/executors/contracts/ports.ts',
@@ -39,31 +45,10 @@ const PURE_DOMAIN_TYPE_FILES = [
 ] as const;
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
-const ALLOWED_LEGACY_CONTRACT_IMPORTS = new Set([
-  'src/observability/contracts/inbox.ts::../../types/diagnosis.js',
-]);
-
-const ALLOWED_LEGACY_TYPE_FILES = new Set([
-  'diagnosis.ts',
-  'doctor.ts',
-  'index.ts',
-  'shared.ts',
-  'skill-index.ts',
-]);
-
-function listTypeFiles(directory: string, prefix = ''): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) return listTypeFiles(resolve(directory, entry.name), relativePath);
-    return entry.isFile() && entry.name.endsWith('.ts') ? [relativePath] : [];
-  });
-}
 
 describe('领域契约所有权', () => {
-  it('禁止向遗留 src/types 增加新的领域类型文件', () => {
-    const unexpected = listTypeFiles(resolve('src/types'))
-      .filter((file) => !ALLOWED_LEGACY_TYPE_FILES.has(file));
-    expect(unexpected).toEqual([]);
+  it('保持遗留 src/types 目录已删除', () => {
+    expect(existsSync(resolve('src/types'))).toBe(false);
   });
 
   it('领域 contracts 与 view-models 保持为无运行时实现的纯类型模块', () => {
@@ -86,9 +71,7 @@ describe('领域契约所有权', () => {
               process.cwd(),
               resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
             );
-            const edge = `${file}::${specifier}`;
-            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target)
-                && !ALLOWED_LEGACY_CONTRACT_IMPORTS.has(edge)) {
+            if (!PURE_DOMAIN_TYPE_FILE_SET.has(target)) {
               violations.push(`${file}：依赖了非契约模块 ${specifier}`);
             }
           }

@@ -86,49 +86,12 @@ const RULES: ForbiddenRule[] = [
     reason: 'Bundle 是事实契约，Report renderer 属于宿主物化视图。',
   },
   {
-    from: 'types/',
-    to: 'eval-workflows/',
-    reason: 'types/ 是待消解的遗留契约层，不应反向 import eval-workflows；新增契约应归属到领域 contracts。',
-  },
-  {
-    from: 'types/',
-    to: 'cli/',
-    reason: 'types/ 不应反向 import CLI 装配层。',
-  },
-  {
-    from: 'types/',
-    to: 'observability/',
-    reason: 'types/ 不应反向 import observability；跨模块 DTO 应归属到领域 contracts。',
-  },
-  {
-    from: 'types/',
-    to: 'diagnosis/',
-    reason: 'types/ 不应反向 import diagnosis；共享诊断契约应由 diagnosis 领域拥有。',
-  },
-  {
-    from: 'types/',
-    to: 'renderer/',
-    reason: 'types/ 不应反向 import renderer(视图层)。',
-  },
-  {
-    from: 'types/',
-    to: 'server/',
-    reason: 'types/ 不应反向 import server。',
-  },
-  {
-    from: 'types/',
-    to: 'doctor/',
-    reason: 'types/ 不应反向 import doctor 实现层。',
-  },
-  {
-    from: 'types/',
-    to: 'grading/',
-    reason: 'types/ 不应反向 import grading。',
-  },
-  {
     from: 'observability/',
     to: 'diagnosis/',
-    reason: 'observability 是 diagnosis 的下游消费者,不应反向 driving diagnosis(见 commit 4d38ca6 之前的层级倒置)。如需共用类型,放 src/types/diagnosis.ts。',
+    reason: 'observability 是 diagnosis 的下游消费者，不应反向依赖 diagnosis 实现；只允许引用纯 contracts。',
+    whitelist: [
+      'observability/contracts/inbox.ts::diagnosis/contracts.ts',
+    ],
   },
   {
     from: 'renderer/',

@@ -32,7 +32,7 @@ import type {
   DoctorRuleCheckOutcome,
   DoctorContext,
   DoctorSeverity,
-} from '../types/doctor.js';
+} from './contracts.js';
 
 export interface EndpointDimensionSpec {
   id: string;

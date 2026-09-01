@@ -1,9 +1,5 @@
 import type {
   DetectInsightsOptions,
-  Diagnosis,
-  DiagnosisAudience,
-  DiagnosisSeverity,
-  DiagnosisType,
   Insight,
   InsightAudience,
   InsightCategory,
@@ -13,8 +9,14 @@ import type {
   SkillDoctorSnapshot,
   SkillIndexEntry,
   SkillObserveSnapshot,
-} from '../types/index.js';
-import { isActiveDiagnosisLifecycle } from '../diagnosis/types.js';
+} from '../studio/view-models/index.js';
+import type {
+  Diagnosis,
+  DiagnosisAudience,
+  DiagnosisSeverity,
+  DiagnosisType,
+} from '../diagnosis/contracts.js';
+import { isActiveDiagnosisLifecycle } from '../diagnosis/lifecycle.js';
 
 export type {
   DetectInsightsOptions,
@@ -24,7 +26,7 @@ export type {
   InsightEvidence,
   InsightRecommendation,
   InsightSeverity,
-} from '../types/index.js';
+} from '../studio/view-models/index.js';
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 

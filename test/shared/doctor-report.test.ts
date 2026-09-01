@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { parseDoctorReport } from '../../src/shared/doctor-report.js';
-import type { DoctorReport } from '../../src/types/index.js';
+import type { DoctorReport } from '../../src/doctor/contracts.js';
 
 function report(): DoctorReport {
   return {

@@ -1,11 +1,13 @@
+import type {
+  Diagnosis,
+  DiagnosisBundle,
+  DiagnosisSeverity,
+  StudioDiagnosisSummary,
+} from './contracts.js';
 import {
   isActiveDiagnosisLifecycle,
   maxDiagnosisLifecycle,
-  type Diagnosis,
-  type DiagnosisBundle,
-  type DiagnosisSeverity,
-  type StudioDiagnosisSummary,
-} from './types.js';
+} from './lifecycle.js';
 import {
   incrementRecordCount,
   ownRecordValue,

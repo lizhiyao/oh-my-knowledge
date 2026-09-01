@@ -12,10 +12,6 @@ export type DoctorSkillStatus = 'pass' | 'warn' | 'fail';
  *    'passed'        — all skills pass cleanly */
 export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
 
-/** Bumped whenever DoctorReport schema changes in a way CI consumers should
- *  be able to detect. CI can pin/check this when parsing the JSON. */
-export const DOCTOR_REPORT_SCHEMA_VERSION = '3.0.0';
-
 export interface DoctorRuleResult {
   ruleId: string;
   severity: DoctorSeverity;
@@ -63,10 +59,6 @@ export interface ComposerRule {
 
 /** doctor engine 接受的 rule 类型: 普通 DoctorRule 或 ComposerRule。 */
 export type DoctorRuleLike = DoctorRule | ComposerRule;
-
-export function isComposerRule(r: DoctorRuleLike): r is ComposerRule {
-  return (r as ComposerRule).ruleKind === 'composer';
-}
 
 export interface DoctorContext {
   artifact: Artifact;

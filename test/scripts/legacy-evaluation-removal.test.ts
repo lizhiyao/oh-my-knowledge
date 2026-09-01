@@ -8,6 +8,11 @@ const FORBIDDEN_FILES = [
   'src/types/storage.ts',
   'src/types/eval.ts',
   'src/types/judge.ts',
+  'src/types/diagnosis.ts',
+  'src/types/doctor.ts',
+  'src/types/index.ts',
+  'src/types/shared.ts',
+  'src/types/skill-index.ts',
   'src/eval-workflows/run-evaluation.ts',
   'src/eval-workflows/evaluation-pipeline.ts',
   'src/eval-workflows/batch-evaluation-workflow.ts',
@@ -25,6 +30,9 @@ const FORBIDDEN_SPECIFIER_FRAGMENTS = [
   '/types/storage',
   '/types/eval',
   '/types/judge',
+  '/types/diagnosis',
+  '/types/doctor',
+  '/types/',
   '/eval-workflows/run-evaluation',
   '/eval-workflows/evaluation-pipeline',
   '/server/report-store',
@@ -61,10 +69,7 @@ describe('legacy evaluation implementation removal', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps the public type barrel free of the legacy report and storage schemas', () => {
-    const barrel = readFileSync(resolve('src/types/index.ts'), 'utf8');
-    expect(barrel).not.toMatch(/['"]\.\/report\.js['"]/);
-    expect(barrel).not.toMatch(/['"]\.\/storage\.js['"]/);
+  it('keeps input contracts free of the legacy evaluation job schemas', () => {
     const inputContracts = sourceFiles(resolve('src/inputs/contracts'))
       .map((file) => readFileSync(file, 'utf8'))
       .join('\n');

@@ -1,5 +1,5 @@
 import { e } from '../layout.js';
-import type { Lang } from '../../types/index.js';
+import type { Lang } from '../../shared/language.js';
 import type { ExperienceFeedbackAttribution } from '../../observability/feedback-projection.js';
 
 export function feedbackAttributionRoleLabel(role?: string): string {

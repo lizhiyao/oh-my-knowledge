@@ -4,7 +4,7 @@ import { registerHealthDimension } from './dimension-registry.js';
 import { registerRule } from '../rules.js';
 import { makeEndpointRule } from '../endpoint-rule.js';
 import type { HealthDimensionSpec } from './dimension-spec.js';
-import type { DoctorSeverity } from '../../types/doctor.js';
+import type { DoctorSeverity } from '../contracts.js';
 
 interface RawDimension {
   id: string;

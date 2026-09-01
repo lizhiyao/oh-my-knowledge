@@ -7,7 +7,8 @@
 import { reportShell, healthColor, type SkillReportContext } from './report-shell.js';
 import { icon as svgIcon } from './icons.js';
 import { e, DEFAULT_LANG } from './layout.js';
-import type { Lang, DoctorReport, DoctorSkillReport, DoctorRuleResult } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
+import type { DoctorReport, DoctorSkillReport, DoctorRuleResult } from '../doctor/contracts.js';
 
 interface Finding { level?: string; description?: string; suggestion?: string; support?: { k?: number; n?: number } }
 interface SummarySamples { requested?: number; succeeded?: number; concurrency?: number; degraded?: boolean }

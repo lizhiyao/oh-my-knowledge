@@ -1,4 +1,4 @@
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../shared/language.js';
 
 export type EvalWorkflowMessageCode =
   | 'power_warning_tiny_n'

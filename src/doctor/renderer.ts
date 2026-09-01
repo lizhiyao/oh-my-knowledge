@@ -12,12 +12,12 @@
  */
 
 import { DOCTOR_MESSAGES, tDoctorMessage, type DoctorMessageKey } from './messages.js';
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../shared/language.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorRuleStatus,
-} from '../types/index.js';
+} from './contracts.js';
 
 const STATUS_SYMBOL: Record<DoctorRuleStatus, string> = {
   pass: '✓',

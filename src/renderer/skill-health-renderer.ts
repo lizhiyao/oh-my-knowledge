@@ -14,7 +14,7 @@
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { confidenceOf, toolStabilityOf } from '../observability/skill-health-analyzer.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import { COLORS, e, t } from './layout.js';
 import { icon } from './icons.js';
 import { reportShell } from './report-shell.js';

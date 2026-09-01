@@ -3,7 +3,7 @@ import type {
   DiagnosisBundle,
   DiagnosisEvidenceRef,
   DiagnosisOccurrence,
-} from '../types/diagnosis.js';
+} from '../diagnosis/contracts.js';
 import { isRfc3339Timestamp } from './timestamp.js';
 
 const DIAGNOSIS_TYPES = new Set([

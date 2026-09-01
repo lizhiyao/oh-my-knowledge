@@ -23,8 +23,9 @@ import type {
   DoctorRunOptions,
   DoctorSkillReport,
   DoctorSkillStatus,
-} from '../types/index.js';
-import { DOCTOR_REPORT_SCHEMA_VERSION, isComposerRule } from '../types/doctor.js';
+} from './contracts.js';
+import { DOCTOR_REPORT_SCHEMA_VERSION } from './report-schema.js';
+import { isComposerRule } from './rule-kind.js';
 import { getRegisteredRules } from './rules.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

@@ -1,4 +1,4 @@
-import type { DiagnosisBundle } from '../../types/diagnosis.js';
+import type { DiagnosisBundle } from '../../diagnosis/contracts.js';
 import type { ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review.js';
 import type { ObservationSourceKind, TraceIngestionSummary } from './trace.js';

@@ -15,8 +15,8 @@ import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
-  Lang,
-} from '../types/index.js';
+} from '../doctor/contracts.js';
+import type { Lang } from '../shared/language.js';
 import type {
   ArtifactGraphBinding,
   ArtifactGraphDocument,

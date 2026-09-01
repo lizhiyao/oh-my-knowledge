@@ -9,7 +9,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderSkillList } from '../../src/renderer/skill-list-renderer.js';
 import { renderSkillDetail } from '../../src/renderer/skill-detail-renderer.js';
-import type { SkillIndex, SkillIndexEntry } from '../../src/types/skill-index.js';
+import type { SkillIndex, SkillIndexEntry } from '../../src/studio/view-models/skill-index.js';
 
 function underpoweredEntry(): SkillIndexEntry {
   return {

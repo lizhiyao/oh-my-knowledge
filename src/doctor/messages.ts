@@ -1,4 +1,4 @@
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../shared/language.js';
 
 /**
  * doctor 子系统自有的 i18n 字典。

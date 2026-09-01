@@ -15,7 +15,7 @@ import {
 } from '../../src/doctor/rules.js';
 import type { Artifact } from '../../src/artifacts/contracts.js';
 import type { Sample } from '../../src/inputs/contracts/sample.js';
-import type { DoctorContext, DoctorRule } from '../../src/types/doctor.js';
+import type { DoctorContext, DoctorRule } from '../../src/doctor/contracts.js';
 
 function ctxWith(artifact: Artifact, overrides: Partial<DoctorContext> = {}): DoctorContext {
   return {

@@ -7,7 +7,7 @@ import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderDoctorDetail } from '../renderer/doctor-detail-renderer.js';
 import type { SkillReportContext } from '../renderer/report-shell.js';
 import { assessHealth, renderSkillDetail } from '../renderer/skill-detail-renderer.js';
-import type { SkillIndexEntry, Insight } from '../types/skill-index.js';
+import type { SkillIndexEntry, Insight } from '../studio/view-models/index.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../renderer/knowledge-debugger-renderer.js';
 import {
@@ -23,8 +23,8 @@ import { resolveObserveHealthDir, projectObserveHealthDir, resolveDoctorsDir, pr
 import { listObserveCards, listDoctorCards, listLiveObserveCards } from '../measurement-artifacts/discovery-index.js';
 import { isReportFileName, reportFilePath, reportFileStem } from '../measurement-artifacts/file-names.js';
 import { buildSkillIndex } from './skill-index.js';
-import type { Lang } from '../types/index.js';
-import type { DoctorReport } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
+import type { DoctorReport } from '../doctor/contracts.js';
 import { parseDoctorReport } from '../shared/doctor-report.js';
 import {
   confidenceOf,

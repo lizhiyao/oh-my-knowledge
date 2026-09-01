@@ -1,5 +1,5 @@
 import { DEFAULT_LANG, layout, e } from './layout.js';
-import type { Lang } from '../types/index.js';
+import type { Lang } from '../shared/language.js';
 import {
   severityReasonFor,
   observationMetricAnnotationEntry,

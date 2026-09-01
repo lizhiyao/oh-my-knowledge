@@ -1,4 +1,4 @@
-import type { Lang } from '../../types/shared.js';
+import type { Lang } from '../../shared/language.js';
 import { CLI_DICT, type CliMessageKey } from './i18n-dict.js';
 
 export type CliLang = Lang;
