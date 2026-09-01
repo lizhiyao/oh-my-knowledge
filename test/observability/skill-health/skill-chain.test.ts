@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { __resetSkillIndexCacheForTests, buildObservationSkillChain, findSkillMdPath } from '../../src/observability/skill-chain.js';
-import type { ObservationExperienceReport } from '../../src/observability/experience.js';
+import { __resetSkillIndexCacheForTests, buildObservationSkillChain, findSkillMdPath } from '../../../src/observability/skill-health/skill-chain.js';
+import type { ObservationExperienceReport } from '../../../src/observability/experience.js';
 
 describe('observation skill chain runtime checks', () => {
   it('checks observable hardRules and workflow nodes without LLM', () => {

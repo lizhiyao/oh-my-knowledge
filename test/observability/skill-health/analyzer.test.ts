@@ -2,14 +2,14 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   computeSkillHealthFromSegments,
-} from '../../src/observability/skill-health-analyzer.js';
+} from '../../../src/observability/skill-health/analyzer.js';
 import {
   segmentBySkill,
   type CcSession,
   type SkillSegment,
   type TraceSession,
-} from '../../src/observability/trace/index.js';
-import type { ToolCallStatus } from '../../src/executors/contracts/trace.js';
+} from '../../../src/observability/trace/index.js';
+import type { ToolCallStatus } from '../../../src/executors/contracts/trace.js';
 
 // ---------- Helpers ----------
 

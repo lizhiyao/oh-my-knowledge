@@ -21,7 +21,7 @@ import {
   skillDerivedStandardsPath,
   updateSkillDerivedStandardStatus,
 } from '../../../src/observability/soft-standards/index.js';
-import type { ObservationSkillChain } from '../../../src/observability/skill-chain.js';
+import type { ObservationSkillChain } from '../../../src/observability/skill-health/skill-chain.js';
 
 describe('observe inbox - review state', () => {
   it('persists local reviewer state for D1 workflow', () => {

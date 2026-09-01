@@ -3,7 +3,7 @@ import type {
   ObservationSkillChain,
   SkillRuntimeEvidencePack,
   SkillRuntimeEvidencePackRef,
-} from '../skill-chain.js';
+} from '../skill-health/skill-chain.js';
 import type { SOFT_STANDARD_PROMPT_ID, SOFT_STANDARD_PROMPT_VERSION } from './constants.js';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';

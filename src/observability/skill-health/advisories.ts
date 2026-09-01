@@ -6,7 +6,7 @@
  * 这样将来 doctor 若也要展示同样的提示，code 可复用。
  */
 
-import type { SkillChainAdvisory, SkillChainAdvisoryCode } from './contracts/skill-chain-advisories.js';
+import type { SkillChainAdvisory, SkillChainAdvisoryCode } from '../contracts/skill-chain-advisories.js';
 
 export type { SkillChainAdvisory, SkillChainAdvisoryCode };
 

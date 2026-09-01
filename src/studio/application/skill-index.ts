@@ -13,9 +13,9 @@ import {
   listLiveDoctorCards,
   listLiveObserveCards,
 } from '../../measurement-artifacts/discovery-index.js';
-import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health-analyzer.js';
+import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../../observability/skill-health/analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../../observability/inbox/index.js';
-import { parseSkillHealthReport } from '../../observability/skill-health-report.js';
+import { parseSkillHealthReport } from '../../observability/skill-health/report.js';
 import { parseArtifactGraphDocument } from '../../artifact-graph/schema.js';
 import { parseDoctorReport } from '../../doctor/report-parser.js';
 import { ownRecordValue } from '../../shared/record-count.js';

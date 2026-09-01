@@ -167,7 +167,7 @@ const RULES: ForbiddenRule[] = [
   {
     from: 'studio/presentation/',
     to: 'observability/',
-    reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox/view-model.ts、observability/inbox/feedback-projection.ts、observability/skill-health-analyzer.ts。',
+    reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox/view-model.ts、observability/inbox/feedback-projection.ts、observability/skill-health/analyzer.ts。',
     whitelist: [
       'studio/presentation/conversation-renderer.ts::observability/view-models/index.ts',
       'studio/presentation/knowledge-debugger-renderer.ts::observability/view-models/index.ts',
@@ -180,7 +180,7 @@ const RULES: ForbiddenRule[] = [
       'studio/presentation/observation-inbox/reviewer-report.ts::observability/inbox/feedback-projection.ts',
       'studio/presentation/observation-inbox/timeline.ts::observability/inbox/view-model.ts',
       'studio/presentation/observation-inbox/timeline.ts::observability/inbox/feedback-projection.ts',
-      'studio/presentation/skill-health-renderer.ts::observability/skill-health-analyzer.ts',
+      'studio/presentation/skill-health-renderer.ts::observability/skill-health/analyzer.ts',
     ],
   },
 ];

@@ -5,14 +5,14 @@ import {
   extractMarkdownStepWorkflows,
   validateSkillHardRules,
   validateSkillWorkflows,
-} from '../skill-definition/hard-rules.js';
-import type { SkillHardRule, SkillWorkflow } from '../skill-definition/contracts.js';
-import { incrementRecordCount } from '../shared/record-count.js';
+} from '../../skill-definition/hard-rules.js';
+import type { SkillHardRule, SkillWorkflow } from '../../skill-definition/contracts.js';
+import { incrementRecordCount } from '../../shared/record-count.js';
 import type {
   ExperienceInvocation,
   ExperienceTimelineEvent,
   ObservationExperienceReport,
-} from './contracts/experience.js';
+} from '../contracts/experience.js';
 import type {
   ObservationRuntimeCheck,
   ObservationRuntimeCheckStatus,
@@ -21,7 +21,7 @@ import type {
   SkillRuntimeEvidencePackNode,
   SkillRuntimeEvidencePackRef,
   SkillRuntimeEvidencePackSourceType,
-} from './contracts/skill-chain.js';
+} from '../contracts/skill-chain.js';
 
 export type {
   ObservationRuntimeCheck,

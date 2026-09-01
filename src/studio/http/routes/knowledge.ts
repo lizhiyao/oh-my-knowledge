@@ -23,8 +23,8 @@ import {
   toolStabilityOf,
   type SkillHealth,
   type SkillHealthReport,
-} from '../../../observability/skill-health-analyzer.js';
-import { parseSkillHealthReport } from '../../../observability/skill-health-report.js';
+} from '../../../observability/skill-health/analyzer.js';
+import { parseSkillHealthReport } from '../../../observability/skill-health/report.js';
 import { parseDoctorReport } from '../../../doctor/report-parser.js';
 import type { Lang } from '../../../shared/language.js';
 import { buildSkillIndex } from '../../application/index.js';

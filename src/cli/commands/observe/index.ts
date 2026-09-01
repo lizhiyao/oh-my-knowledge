@@ -9,7 +9,7 @@ import { parseLastWindow } from '../../lib/shared.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../measurement-artifacts/directories.js';
 import { indexObserveWrite } from '../../../measurement-artifacts/discovery-index.js';
 import { reportFilePath, runFileSuffix } from '../../../measurement-artifacts/file-names.js';
-import type { SkillHealthReport } from '../../../observability/skill-health-analyzer.js';
+import type { SkillHealthReport } from '../../../observability/skill-health/analyzer.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 
 /**
@@ -82,7 +82,7 @@ export function buildObserveReportView(
  */
 async function recordObserveFeedback(report: SkillHealthReport, reportId: string, lang: CliLang): Promise<void> {
   try {
-    const { healthBandOf } = await import('../../../observability/skill-health-analyzer.js');
+    const { healthBandOf } = await import('../../../observability/skill-health/analyzer.js');
     const { recordObserveHealth } = await import('../../../managed/index.js');
     const written = recordObserveHealth(buildObserveReportView(report, reportId, healthBandOf));
     for (const w of written) {
@@ -197,7 +197,7 @@ export default class Observe extends BaseCommand {
       const skills = flags.skills ? flags.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
       console.log(`[omk] analyzing ${tracePath}...`);
-      const { computeSkillHealthReport } = await import('../../../observability/skill-health-analyzer.js');
+      const { computeSkillHealthReport } = await import('../../../observability/skill-health/analyzer.js');
       const report = computeSkillHealthReport(tracePath, {
         kbRoot: flags.kb ? resolve(flags.kb) : undefined,
         from,

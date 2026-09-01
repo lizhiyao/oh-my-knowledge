@@ -10,7 +10,7 @@ import {
   resolveObservationReviewSession,
   type ResolvedObservationReviewSession,
 } from './resolved-review.js';
-import { buildObservationSkillChains, type ObservationSkillChain } from '../skill-chain.js';
+import { buildObservationSkillChains, type ObservationSkillChain } from '../skill-health/skill-chain.js';
 import {
   loadSkillDerivedStandards,
   resolveSkillStandards,
@@ -241,7 +241,7 @@ export {
   observationMetricAnnotationTargetId,
 } from './review-state.js';
 export { resolveObservationReviewSession } from './resolved-review.js';
-export { getSkillChainAdvisory, resolveAdvisoryCommand } from '../skill-chain-advisories.js';
+export { getSkillChainAdvisory, resolveAdvisoryCommand } from '../skill-health/advisories.js';
 export {
   ASSISTANT_DELIVERABLE_ARTIFACT_RE,
   hasAssistantDeliverableArtifactText,
@@ -257,6 +257,6 @@ export {
 export type { ObservationInboxItem } from './index.js';
 export type { ObservationMetricKey } from './review-state.js';
 export type { ResolvedObservationReviewSession, ResolvedOwnerSuggestion } from './resolved-review.js';
-export type { SkillChainAdvisoryCode } from '../skill-chain-advisories.js';
+export type { SkillChainAdvisoryCode } from '../skill-health/advisories.js';
 export type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from './problem-patterns.js';
 export type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../soft-standards/index.js';
