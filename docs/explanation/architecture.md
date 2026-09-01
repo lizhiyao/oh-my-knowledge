@@ -31,6 +31,36 @@ flowchart TD
 - **Persistence is immutable.** Each run publishes its Run Plan, Execution, Evaluation, and Analysis Bundles, and Evaluation Report as one digest-linked artifact set. Corruption or broken lineage fails explicitly.
 - **Studio is a projection.** UI cards and pages can be rebuilt from Core artifacts and never become a second measurement model.
 
+## Source dependency model
+
+Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
+
+- **Runtime implementation edges** must remain acyclic. A domain implementation may depend on facts it consumes or lower-level capabilities, but it may not create a reverse dependency through a facade, dynamic import, or utility module.
+- **Contract edges** share stable data shapes across domains. A bidirectional domain relationship is valid only when its type-only contract return edge has been audited and registered; architecture tests reject new bidirectional relationships.
+- **Composition edges** belong to delivery and host entry points such as `cli`, `dsh-plugin`, and `eval-workflows/production-host`. They may assemble domains and effects, while domain implementations may not import delivery composition.
+
+`shared` is a cross-domain leaf and depends only on itself. `evaluation-core` is the host-neutral measurement kernel. Filesystems, directories, persistence, provider runtimes, and UI remain outside Core and are assembled by hosts.
+
+Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
+
+## Observability subdomains
+
+The `src/observability` root retains only the stable `experience.ts` facade. Private implementations belong to vertical subdomains:
+
+```text
+observability/
+├── contracts/
+├── trace/           # source-neutral IR, message classification, ingestion, adapters
+├── inbox/           # observation inbox, review, and feedback projections
+├── conversation/    # conversation catalog, windows, and debugger projections
+├── experience/      # experience facts, report derivation, and text signals
+├── skill-health/    # skill chain, health checks, and advisories
+├── soft-standards/
+└── view-models/     # stable presentation facades
+```
+
+Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
+
 ## Scoring and release decisions
 
 Assertions and rubric judges remain separate evaluator instruments. Analysis derives assertion layers, judge replicates and ensembles, dimensions, composite values, Bootstrap comparison families, and agreement tables without collapsing their identities.

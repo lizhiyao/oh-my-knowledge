@@ -206,6 +206,41 @@ export async function runEvolve(
   }
 
   const { evolveSkillCore } = await import('../../authoring/core-evolver.js');
+  const { runCoreEvaluationCommand } = await import('../lib/run-core-evaluation.js');
+  const evolveEffort = flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined;
+  const evaluatePair = async (control: string, treatment: string) => {
+    const evaluation = await runCoreEvaluationCommand({
+      flags: {
+        control,
+        treatment,
+        samples: resolve(samplesFile),
+        executor: flags.executor,
+        model: flags.model,
+        'judge-models': evolveJudges.map((judge) => `${judge.executor}:${judge.model}`).join(','),
+        concurrency: Math.max(1, Number(flags.concurrency) || 1),
+        timeout: Math.max(1, Math.ceil(Number(flags.timeout) || 600)),
+        effort: evolveEffort,
+        'skip-doctor': flags['skip-doctor'],
+        'no-evidence': true,
+        'no-serve': true,
+        'report-only': true,
+      },
+      config: {
+        samplesPath: resolve(samplesFile),
+        skillDir: dirname(resolve(skillPath)),
+        executorName: flags.executor,
+        model: flags.model,
+        effort: evolveEffort,
+        judgeModels: evolveJudges,
+      },
+      evalConfig: null,
+      lang: 'zh',
+    });
+    if (evaluation.stored === undefined) {
+      throw new Error('Core evolve evaluation 未持久化 artifact chain。');
+    }
+    return evaluation.stored;
+  };
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
@@ -213,17 +248,14 @@ export async function runEvolve(
     const result: EvolveResult = await evolveSkillCore({
       skillPath: resolve(skillPath),
       isDirectorySkill: skillIsDir,
-      samplesPath: resolve(samplesFile),
       rounds: Math.max(1, Number(flags.rounds) || 5),
       target: flags.target ? Number(flags.target) : null,
       model: flags.model,
-      judgeModels: evolveJudges,
       improveModel: flags['improve-model'],
       executorName: flags.executor,
-      concurrency: Math.max(1, Number(flags.concurrency) || 1),
       timeoutMs: Math.max(1, Number(flags.timeout) || 600) * 1000,
-      effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
-      skipDoctor: flags['skip-doctor'],
+      effort: evolveEffort,
+      evaluatePair,
       editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
       rejectMemory: !flags['no-reject-memory'],
       // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。

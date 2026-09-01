@@ -9,11 +9,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { JudgeConfig } from '../grading/contracts/config.js';
 import type { StoredCoreRunArtifacts } from '../eval-workflows/artifact-store/index.js';
 import { parseCompositeTableValue } from '../eval-workflows/runtime-adapter/analysis/composite-table.js';
 import { createExecutor } from '../executors/index.js';
-import { runCoreEvaluationCommand } from '../cli/lib/run-core-evaluation.js';
 import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
 import { distributableCopyFilter } from '../inputs/content-hash.js';
 
@@ -23,17 +21,14 @@ const IMPROVE_AGENT_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请
 export interface CoreEvolverOptions {
   skillPath: string;
   isDirectorySkill: boolean;
-  samplesPath: string;
   rounds: number;
   target: number | null;
   model: string;
-  judgeModels: JudgeConfig[];
   improveModel: string;
   executorName: string;
-  concurrency: number;
   timeoutMs: number;
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  skipDoctor: boolean;
+  evaluatePair: (control: string, treatment: string) => Promise<StoredCoreRunArtifacts>;
   writeBackToSource: boolean;
   improveMode: 'agent' | 'rewrite';
   editBudget: number;
@@ -187,42 +182,6 @@ function coreAccepted(stored: StoredCoreRunArtifacts): boolean {
     && decision.reasonCodes.includes('release-gates-passed');
 }
 
-async function evaluatePair(
-  options: CoreEvolverOptions,
-  control: string,
-  treatment: string,
-): Promise<StoredCoreRunArtifacts> {
-  const result = await runCoreEvaluationCommand({
-    flags: {
-      control,
-      treatment,
-      samples: options.samplesPath,
-      executor: options.executorName,
-      model: options.model,
-      'judge-models': options.judgeModels.map((judge) => `${judge.executor}:${judge.model}`).join(','),
-      concurrency: options.concurrency,
-      timeout: Math.max(1, Math.ceil(options.timeoutMs / 1000)),
-      effort: options.effort,
-      'skip-doctor': options.skipDoctor,
-      'no-evidence': true,
-      'no-serve': true,
-      'report-only': true,
-    },
-    config: {
-      samplesPath: options.samplesPath,
-      skillDir: dirname(options.skillPath),
-      executorName: options.executorName,
-      model: options.model,
-      effort: options.effort,
-      judgeModels: options.judgeModels,
-    },
-    evalConfig: null,
-    lang: 'zh',
-  });
-  if (result.stored === undefined) throw new Error('Core evolve evaluation 未持久化 artifact chain。');
-  return result.stored;
-}
-
 /** Core-native authoring loop: every acceptance is an explicit Core A/B decision. */
 export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Promise<CoreEvolverResult> {
   const sourcePath = resolve(options.skillPath);
@@ -245,7 +204,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
   const baselinePath = snapshot(0, currentContent).root;
   const allVersions = [baselinePath];
   const baseline = targetMeasurement(
-    await evaluatePair(options, 'baseline', baselinePath),
+    await options.evaluatePair('baseline', baselinePath),
     'treatment',
   );
   let currentMeasurement = baseline;
@@ -333,7 +292,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
       if (consecutiveRejects >= 2) break;
       continue;
     }
-    const artifacts = await evaluatePair(options, currentPath, candidatePath!);
+    const artifacts = await options.evaluatePair(currentPath, candidatePath!);
     const candidate = targetMeasurement(artifacts, 'treatment');
     const refreshedCurrent = targetMeasurement(artifacts, 'control');
     totalCostUSD += candidate.costUSD;
@@ -384,7 +343,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     // Final admission compares the untouched original source with the selected snapshot. The source
     // is written only after that authenticated Core decision passes, so a failed final run cannot
     // leave a half-committed evolve result on disk.
-    evidence = await evaluatePair(options, baselinePath, currentPath);
+    evidence = await options.evaluatePair(baselinePath, currentPath);
     if (!coreAccepted(evidence)) {
       throw new Error('Core evolve 最终写回门禁未通过；源文件保持不变。');
     }

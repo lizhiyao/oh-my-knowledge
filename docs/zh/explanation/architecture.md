@@ -31,6 +31,36 @@ flowchart TD
 - **持久化不可变。** 每个 run 会把 Run Plan、Execution／Evaluation／Analysis Bundle 与 Evaluation Report 作为一组 digest-linked 产物原子发布。损坏或 lineage 断裂必须显式失败；
 - **Studio 只是 projection。** UI 卡片与页面可以从 Core 产物重建，绝不成为第二套测量模型。
 
+## 源码依赖模型
+
+`src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
+
+- **运行时实现边**必须保持无环。领域实现只能依赖它所消费的事实或更低层能力，不能借 facade、动态 import 或工具函数形成反向依赖；
+- **contracts 边**允许跨领域共享稳定数据形状。双向领域关系只有经过审计并登记的 type-only contract 回边才成立，新增双向关系会被架构测试拒绝；
+- **composition edge**由 `cli`、`dsh-plugin` 与 `eval-workflows/production-host` 等交付／宿主入口拥有。它们可以装配领域与 effect，领域实现不得反向 import delivery composition。
+
+`shared` 是跨领域叶子，只依赖自身。`evaluation-core` 是宿主无关的测量内核。文件系统、目录、持久化、provider Runtime 与 UI 都在 Core 外由宿主装配。
+
+Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
+
+## Observability 子域
+
+`src/observability` 根目录只保留稳定的 `experience.ts` facade，私有实现按垂直子域归属：
+
+```text
+observability/
+├── contracts/
+├── trace/           # source-neutral IR、来源分类、ingestion、adapter
+├── inbox/           # 观测收件箱、复核与反馈投影
+├── conversation/    # 对话目录、窗口与调试投影
+├── experience/      # 体验事实、报告派生与文本信号
+├── skill-health/    # Skill chain、健康检查与建议
+├── soft-standards/
+└── view-models/     # 稳定的呈现 facade
+```
+
+Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。
+
 ## 评分与发布决定
 
 Assertion 与 rubric 评委保持为不同 evaluator instrument。Analysis 会推导 assertion layer、judge replicate／ensemble、dimension、composite、Bootstrap comparison family 与 agreement table，但不会压平它们的身份。

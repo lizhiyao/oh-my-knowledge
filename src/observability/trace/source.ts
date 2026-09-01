@@ -25,7 +25,7 @@ import {
 import {
   isRuntimeProtocolPromptText,
   isSyntheticUserMessageText,
-} from '../text-signals.js';
+} from './message-classification.js';
 import { isToolResultFailureText } from '../../executors/tool-call-status.js';
 import type { TraceIngestionSummary, TraceSourceMetadata } from '../contracts/trace.js';
 import type {

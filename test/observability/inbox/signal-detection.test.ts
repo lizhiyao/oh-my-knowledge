@@ -23,12 +23,14 @@ import {
   hasAssistantDeliverySignalText,
   hasUserHardRuleText,
   isAssistantProgressUpdateText,
+} from '../../../src/observability/experience/text-signals.js';
+import {
   isRuntimeProtocolPromptText,
   isScheduledTaskPromptText,
   isSyntheticUserMessageText,
   isUserInteractionMetricText,
   isWorkflowSystemUserMessageText,
-} from '../../../src/observability/text-signals.js';
+} from '../../../src/observability/trace/message-classification.js';
 import {
   observationMetricAnnotationTargetId,
   observationReviewStateKey,

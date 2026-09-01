@@ -41,9 +41,9 @@ import {
 } from '../trace/segmentation.js';
 import {
   hasAssistantDeliverableArtifactText,
-  isUserInteractionMetricText,
   USER_INTERRUPTION_RE,
-} from '../text-signals.js';
+} from './text-signals.js';
+import { isUserInteractionMetricText } from '../trace/message-classification.js';
 import {
   compareTimelineEvents,
   hashParts,

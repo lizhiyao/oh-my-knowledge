@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { observationMetricAnnotationVerdict } from './review-state.js';
 import type { ObservationMetricKey, ObservationReviewState } from '../contracts/review.js';
-import { hasUserHardRuleText, isUserInteractionMetricText } from '../text-signals.js';
+import { hasUserHardRuleText } from '../experience/text-signals.js';
+import { isUserInteractionMetricText } from '../trace/message-classification.js';
 import type {
   ExperienceProblemBucket,
   ExperienceProblemEvidenceRef,

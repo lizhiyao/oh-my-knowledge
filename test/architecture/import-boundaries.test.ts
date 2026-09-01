@@ -156,15 +156,6 @@ const RULES: ForbiddenRule[] = [
     reason: 'shared 是跨领域叶子依赖；观测投影与 prompt 编目由上层能力拥有。',
   },
   {
-    from: 'observability/',
-    to: 'diagnosis/',
-    reason: 'observability 是 diagnosis 的下游消费者，不应反向依赖 diagnosis 实现；只允许引用纯 contracts。',
-    whitelist: [
-      'observability/contracts/inbox.ts::diagnosis/contracts.ts',
-      'observability/inbox/index.ts::diagnosis/contracts/parser.ts',
-    ],
-  },
-  {
     from: 'studio/presentation/',
     to: 'observability/',
     reason: 'Studio presentation 只能通过 facade 访问 observability，不应直接 import observability 内部实现。facade 见 observability/view-models/index.ts、observability/inbox/view-model.ts、observability/inbox/feedback-projection.ts、observability/skill-health/analyzer.ts。',
@@ -456,7 +447,7 @@ describe('架构边界守门', () => {
       'utf-8',
     );
     const observationSignals = readFileSync(
-      join(SRC_DIR, 'observability', 'text-signals.ts'),
+      join(SRC_DIR, 'observability', 'experience', 'text-signals.ts'),
       'utf-8',
     );
 
@@ -540,7 +531,7 @@ describe('架构边界守门', () => {
       'utf-8',
     );
     const textSignals = readFileSync(
-      join(SRC_DIR, 'observability', 'text-signals.ts'),
+      join(SRC_DIR, 'observability', 'experience', 'text-signals.ts'),
       'utf-8',
     );
 

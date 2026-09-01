@@ -16,8 +16,8 @@ import {
 } from '../trace/attribution.js';
 import {
   hasAssistantDeliverySignalText,
-  isAssistantProtocolReplyText,
-} from '../text-signals.js';
+} from './text-signals.js';
+import { isAssistantProtocolReplyText } from '../trace/message-classification.js';
 import {
   compareTimelineEvents,
   fullText,

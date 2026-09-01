@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -99,9 +99,18 @@ describe('领域契约所有权', () => {
       'src/observability/skill-chain.ts',
       'src/observability/skill-chain-advisories.ts',
       'src/observability/experience-frontmatter.ts',
+      'src/observability/text-signals.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }
+  });
+
+  it('observability 根目录只保留稳定 facade', () => {
+    const rootModules = readdirSync(resolve('src/observability'))
+      .filter((entry) => entry.endsWith('.ts'))
+      .sort();
+
+    expect(rootModules).toEqual(['experience.ts']);
   });
 
   it('领域 contracts 与 view-models 保持为无运行时实现的纯类型模块', () => {

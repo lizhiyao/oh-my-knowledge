@@ -21,7 +21,7 @@ import {
 } from '../inbox/review-state.js';
 import {
   isAssistantProgressUpdateText,
-} from '../text-signals.js';
+} from './text-signals.js';
 import {
   unique,
 } from './primitives.js';
