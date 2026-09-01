@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync, readdirSync, statSync, utimesSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { hashArtifactSource, distributableCopyFilter } from './content-hash.js';
-import { DEFAULT_TREES_DIR } from '../eval-core/default-dirs.js';
+import { DEFAULT_TREES_DIR } from '../measurement-artifacts/default-dirs.js';
 
 /**
  * 内容寻址隔离副本 —— eval 把任意源(本地目录-skill / 本地单文件-skill / 本地 git ref / 远端 git)

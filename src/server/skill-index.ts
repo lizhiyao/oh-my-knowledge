@@ -6,13 +6,13 @@ import {
   GRAPH_FILE_SUFFIX,
   isReportFileName,
   reportFileStem,
-} from '../eval-core/artifact-file-names.js';
+} from '../measurement-artifacts/file-names.js';
 import {
   artifactIndexDir,
   cardTargetSentinel,
   listLiveDoctorCards,
   listLiveObserveCards,
-} from '../eval-core/artifact-index.js';
+} from '../measurement-artifacts/discovery-index.js';
 import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { parseSkillHealthReport } from '../observability/skill-health-report.js';

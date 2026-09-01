@@ -10,9 +10,9 @@ import { tmpdir } from 'node:os';
 import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, removeObserveCard, artifactIndexDir,
-} from '../../src/eval-core/artifact-index.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
-import { globalDoctorsDir, globalObserveHealthDir } from '../../src/eval-core/measurement-dirs.js';
+} from '../../src/measurement-artifacts/discovery-index.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
+import { globalDoctorsDir, globalObserveHealthDir } from '../../src/measurement-artifacts/directories.js';
 
 describe('artifact-index 写侧(doctor 域)', () => {
   let indexRoot: string;

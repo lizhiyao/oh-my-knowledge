@@ -12,7 +12,7 @@ import {
   timeoutExecResult,
 } from '../../core/runtime.js';
 import { registerSigintSubscriber } from '../../core/subprocess.js';
-import { buildSdkHookCallback } from '../../../eval-core/mocks-runtime.js';
+import { buildSdkHookCallback } from '../../mock-runtime/runtime.js';
 import { buildClaudeResult } from './protocol.js';
 
 export { normalizeClaudeMeasurements } from './protocol.js';

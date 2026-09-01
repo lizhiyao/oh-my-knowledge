@@ -893,7 +893,7 @@ These decisions close the architectural choices required before Contracts. Confo
 
 ## 17. Contracts v1 implementation baseline
 
-The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/evaluation-core/contracts/`; it does not import the historical `src/eval-core/`, CLI, executor, grading, renderer, or server layers.
+The first implementation phase is tracked by [#427](https://github.com/lizhiyao/oh-my-knowledge/issues/427). Its source of truth is isolated under `src/evaluation-core/contracts/`; it does not import CLI, executor, grading, renderer, server, or other application layers. The historical evaluation implementation has been removed.
 
 The catalog currently publishes twenty JSON Schema 2020-12 roots under `schemas/evaluation-core/v1/`: ExecutorCapabilities, EvaluationDefinition, MeasurementPolicy, four stage Plans plus RunPlan, ComparabilityPolicy, ComparabilityAssessment, Event, BudgetSummary, three single-Run Bundles, EvaluationReport, and four Evaluation Series contracts. TypeScript types are inferred from the same Zod 4 schemas. `yarn build:schemas` regenerates the files, while `yarn build` checks committed output for drift and copies it into the package build.
 

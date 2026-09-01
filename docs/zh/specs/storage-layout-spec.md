@@ -1,6 +1,6 @@
 # omk 存储布局规范
 
-> **范围**: 这篇写给 omk 维护者，讲清 omk 跑出来的各种文件到底放哪、为什么这么放、什么时候清。涉及两个地方：你电脑上的全局目录 `~/.oh-my-knowledge/`，和每个项目自己的 `<project>/.omk/`。中英双版并存（`docs/specs/` 英文 / `docs/zh/specs/` 中文）。具体目录名以源码（`src/eval-core/default-dirs.ts` 等）为准，这篇只讲「为什么」。日常怎么用看 [README](../README.md)。
+> **范围**: 这篇写给 omk 维护者，讲清 omk 跑出来的各种文件到底放哪、为什么这么放、什么时候清。涉及两个地方：你电脑上的全局目录 `~/.oh-my-knowledge/`，和每个项目自己的 `<project>/.omk/`。中英双版并存（`docs/specs/` 英文 / `docs/zh/specs/` 中文）。具体目录名以源码（`src/measurement-artifacts/default-dirs.ts` 等）为准，这篇只讲「为什么」。日常怎么用看 [README](../README.md)。
 
 ## 一、放文件这件事，要同时满足三条
 

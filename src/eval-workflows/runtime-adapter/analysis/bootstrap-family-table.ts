@@ -3,7 +3,7 @@ import {
   bootstrapDiffCI,
   bootstrapMeanCI,
   bootstrapPairedDiffCI,
-} from '../../../eval-core/bootstrap.js';
+} from '../../../shared/statistics/bootstrap.js';
 import {
   IdentifierSchema,
   SamplingUnitIdsSchema,

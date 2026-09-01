@@ -1,5 +1,5 @@
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../../types/index.js';
-import { materializeForCliConfigDir } from '../../eval-core/mocks-runtime.js';
+import { materializeForCliConfigDir } from '../mock-runtime/runtime.js';
 import {
   executorResultValidationError,
   normalizeExecResultToolIdentities,

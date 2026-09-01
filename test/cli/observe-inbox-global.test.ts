@@ -14,7 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync 
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isReportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { isReportFileName } from '../../src/measurement-artifacts/file-names.js';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import {

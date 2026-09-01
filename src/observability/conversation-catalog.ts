@@ -19,7 +19,7 @@ import type {
   TaskTrajectorySession,
   TraceIngestionSummary,
 } from '../types/index.js';
-import { DEFAULT_CACHE_DIR } from '../eval-core/default-dirs.js';
+import { DEFAULT_CACHE_DIR } from '../measurement-artifacts/default-dirs.js';
 import { durationMsBetween } from '../shared/time.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import {

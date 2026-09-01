@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import type { StoredCoreRunArtifacts } from '../eval-workflows/artifact-store/index.js';
 import { projectCoreArtifactGraph } from '../eval-workflows/downstream-projections/index.js';
-import { graphFileName } from '../eval-core/artifact-file-names.js';
+import { graphFileName } from '../measurement-artifacts/file-names.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 
 function coreEvalGraphDirectory(outputDirectory: string): string {

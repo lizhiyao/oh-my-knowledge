@@ -18,7 +18,7 @@
  */
 
 import { resolve } from 'node:path';
-import { projectReportsDir, globalReportsDir } from '../../eval-core/measurement-dirs.js';
+import { projectReportsDir, globalReportsDir } from '../../measurement-artifacts/directories.js';
 import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { setOwnRecordValue } from '../../shared/record-count.js';
 import type {

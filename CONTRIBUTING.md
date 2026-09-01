@@ -152,7 +152,7 @@ Use Conventional Commits with a stable scope and a Chinese subject:
 
 ```
 feat(cli): 新增工作流命令
-fix(eval-core): 修复事实检查误报
+fix(evaluation-core): 修复事实检查误报
 docs(readme): 补充评测用例说明
 ```
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pruneDoctorHistory } from '../../src/cli/commands/doctor.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 
 function doctorReport(skillName: string, id: string, timestamp: string) {
   return {

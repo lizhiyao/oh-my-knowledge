@@ -1,5 +1,5 @@
 import type { ExecResult, ExecutorInput } from '../../../types/index.js';
-import { materializeForCliConfigDir } from '../../../eval-core/mocks-runtime.js';
+import { materializeForCliConfigDir } from '../../mock-runtime/runtime.js';
 import { buildClaudeResult, parseClaudeStreamJson } from './protocol.js';
 import { DEFAULT_TIMEOUT_MS, MAX_BUFFER } from '../../core/limits.js';
 import {

@@ -32,7 +32,7 @@ import {
   decideAnalysisSource,
   resolveBuiltinAnalysisRuntime,
 } from '../../../src/evaluation-core/analysis/index.js';
-import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/eval-core/bootstrap.js';
+import { DEFAULT_BOOTSTRAP_SEED } from '../../../src/shared/statistics/bootstrap.js';
 import {
   executeRunPlanSource,
   InMemoryRuntimeEventSequencer,

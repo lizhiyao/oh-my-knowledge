@@ -8,9 +8,9 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
-import { globalReportsDir } from '../../src/eval-core/measurement-dirs.js';
-import { globalObserveHealthDir, globalDoctorsDir } from '../../src/eval-core/measurement-dirs.js';
+import { OMK_HOME } from '../../src/measurement-artifacts/default-dirs.js';
+import { globalReportsDir } from '../../src/measurement-artifacts/directories.js';
+import { globalObserveHealthDir, globalDoctorsDir } from '../../src/measurement-artifacts/directories.js';
 
 describe('OMK_HOME 测试隔离守卫', () => {
   const realHome = join(homedir(), '.oh-my-knowledge');

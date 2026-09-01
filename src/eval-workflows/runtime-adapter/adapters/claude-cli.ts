@@ -21,7 +21,7 @@ import {
 import {
   materializeForCliConfigDir,
   type CliMockHandle,
-} from '../../../eval-core/mocks-runtime.js';
+} from '../../../executors/mock-runtime/runtime.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,

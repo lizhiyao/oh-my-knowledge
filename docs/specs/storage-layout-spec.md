@@ -1,6 +1,6 @@
 # omk storage layout spec
 
-> **Scope**: For omk maintainers. It explains where the various files omk produces should live, why, and when they get cleaned up. Two places are involved: the global directory on your machine, `~/.oh-my-knowledge/`, and each project's own `<project>/.omk/`. Bilingual versions coexist (`docs/specs/` English / `docs/zh/specs/` Chinese). The exact directory names are defined in the source (`src/eval-core/default-dirs.ts` etc.); this doc covers the "why". For everyday usage see the [README](../README.md).
+> **Scope**: For omk maintainers. It explains where the various files omk produces should live, why, and when they get cleaned up. Two places are involved: the global directory on your machine, `~/.oh-my-knowledge/`, and each project's own `<project>/.omk/`. Bilingual versions coexist (`docs/specs/` English / `docs/zh/specs/` Chinese). The exact directory names are defined in the source (`src/measurement-artifacts/default-dirs.ts` etc.); this doc covers the "why". For everyday usage see the [README](../README.md).
 
 ## 1. Storing files has to satisfy three things at once
 

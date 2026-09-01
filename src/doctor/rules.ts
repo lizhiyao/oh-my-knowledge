@@ -25,9 +25,9 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { tDoctorMessage } from './messages.js';
 import type { Lang } from '../types/shared.js';
-import { preflightDependencies } from '../eval-core/dependency-checker.js';
+import { preflightDependencies } from '../preflight/dependencies.js';
 import { validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
-import type { DependencyIssue } from '../eval-core/dependency-checker.js';
+import type { DependencyIssue } from '../preflight/dependencies.js';
 import type {
   DoctorRule,
   DoctorRuleLike,

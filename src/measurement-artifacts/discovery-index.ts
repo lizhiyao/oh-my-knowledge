@@ -12,12 +12,12 @@
 import { existsSync, readdirSync, readFileSync, unlinkSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DEFAULT_ARTIFACT_INDEX_DIR } from './default-dirs.js';
-import { globalDoctorsDir, globalObserveHealthDir } from './measurement-dirs.js';
+import { globalDoctorsDir, globalObserveHealthDir } from './directories.js';
 import type { DoctorSkillStatus } from '../types/doctor.js';
 import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { isRfc3339Timestamp } from '../shared/timestamp.js';
-import { reportFilePath, safeArtifactFileStem } from './artifact-file-names.js';
+import { reportFilePath, safeArtifactFileStem } from './file-names.js';
 
 export type ArtifactDomain = 'doctor' | 'observe-health';
 
@@ -204,7 +204,7 @@ export function removeDoctorCard(id: string): boolean {
 
 // ── observe-health 域 ─────────────────────────────────────────────────────────
 
-/** observe 报告投影到卡片所需的结构子集(不 import observability/SkillHealthReport,保持 eval-core 解耦)。 */
+/** observe 报告投影到卡片所需的结构子集(不 import observability/SkillHealthReport,保持产物发现层解耦)。 */
 interface ObserveCardSkill {
   toolFailureRate: number;
   toolFailureCount?: number;

@@ -13,7 +13,7 @@
  */
 
 import { resolve } from 'node:path';
-import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
+import type { DependencyRequirements } from '../preflight/dependencies.js';
 import type { Artifact, Sample } from '../types/index.js';
 
 export interface DoctorPreflightContext {

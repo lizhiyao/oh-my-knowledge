@@ -9,7 +9,6 @@ describe('#537 migration boundary', () => {
     ].map((file) => readFileSync(file, 'utf8')).join('\n');
 
     for (const forbidden of [
-      "from '../eval-core/",
       "from '../types/report",
       'ReportStore',
       'ReportDocument',

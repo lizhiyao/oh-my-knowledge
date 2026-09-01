@@ -7,9 +7,9 @@ import {
   projectObserveHealthDir, globalObserveHealthDir, resolveObserveHealthDir,
   projectDoctorsDir, globalDoctorsDir, resolveDoctorsDir,
   projectReportsDir, globalReportsDir,
-} from '../../src/eval-core/measurement-dirs.js';
-import { OMK_HOME } from '../../src/eval-core/default-dirs.js';
-import { reportFileName } from '../../src/eval-core/artifact-file-names.js';
+} from '../../src/measurement-artifacts/directories.js';
+import { OMK_HOME } from '../../src/measurement-artifacts/default-dirs.js';
+import { reportFileName } from '../../src/measurement-artifacts/file-names.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-mdir-${tag}-${Date.now()}-${Math.round(performance.now())}`);

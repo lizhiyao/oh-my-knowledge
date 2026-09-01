@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isReportFileName, randomRunToken, reportFilePath } from '../eval-core/artifact-file-names.js';
+import { isReportFileName, randomRunToken, reportFilePath } from '../measurement-artifacts/file-names.js';
 import type {
   BuildObservationInboxReportOptions,
   GapSignalRef,

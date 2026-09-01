@@ -8,8 +8,8 @@ import {
   extractFilesByBase,
   checkDependencies,
   preflightDependencies,
-} from '../src/eval-core/dependency-checker.js';
-import type { Artifact, Sample } from '../src/types/index.js';
+} from '../../src/preflight/dependencies.js';
+import type { Artifact, Sample } from '../../src/types/index.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 
@@ -283,7 +283,7 @@ describe('extractFilesByBase', () => {
 });
 
 describe('loadSamples 对象包装格式', async () => {
-  const { loadSamples } = await import('../src/inputs/load-samples.js');
+  const { loadSamples } = await import('../../src/inputs/load-samples.js');
   const cleanups: string[] = [];
 
   it('支持 { requires, samples } 格式', () => {

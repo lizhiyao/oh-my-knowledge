@@ -21,7 +21,7 @@ import {
 import {
   buildSdkHookCallback,
   type SdkHookHandle,
-} from '../../../eval-core/mocks-runtime.js';
+} from '../../../executors/mock-runtime/runtime.js';
 import type { RuntimeBindingOf } from '../types.js';
 import type { OmkBindingResourceLeaseAccess } from '../resource-leases/types.js';
 import {
