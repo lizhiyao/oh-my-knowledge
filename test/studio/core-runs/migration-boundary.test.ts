@@ -23,7 +23,7 @@ describe('#537 migration boundary', () => {
   });
 
   it('wires the Core-only handler into the production report server', () => {
-    const server = readFileSync('src/studio/http/report-server.ts', 'utf8');
+    const server = readFileSync('src/studio/http/request-handler.ts', 'utf8');
 
     expect(server).toContain('createCoreStudioRouteHandler');
     expect(server).toContain("from '../core-runs/index.js'");

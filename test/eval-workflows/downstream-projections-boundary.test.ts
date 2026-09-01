@@ -30,7 +30,7 @@ describe('#531/#547 Core downstream projection boundary', () => {
       'src/cli/commands/eval/gold/compare.ts',
       'src/authoring/core-evolver.ts',
       'src/artifact-graph/core.ts',
-      'src/studio/http/report-server.ts',
+      'src/studio/http/request-handler.ts',
     ].map((file) => readFileSync(file, 'utf8')).join('\n');
     expect(cutoverConsumers).toContain('projectCoreCliDryRun');
     expect(cutoverConsumers).toContain('projectCoreCliRunOutcome');
