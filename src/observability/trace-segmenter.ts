@@ -8,7 +8,7 @@ import { incrementRecordCount } from '../shared/record-count.js';
 import {
   truncateToolCallsForPersistence,
   truncateTurnsForPersistence,
-} from './trace-projection.js';
+} from './trace/projection.js';
 import { sumTokenCounts, tokenCount } from '../shared/token-usage.js';
 import { legacyCcSessionToTraceSession, type CcSession } from './trace-source.js';
 import type {
@@ -17,8 +17,8 @@ import type {
   TraceSession,
   TraceSourceKind,
   TraceToolCallEvent,
-} from './trace-ir.js';
-import { normalizeTraceTimestamp } from './trace-ir.js';
+} from './trace/trace-ir.js';
+import { normalizeTraceTimestamp } from './trace/trace-ir.js';
 import {
   extractAttributionSkillRefFromEvent,
   extractBusinessActionSkillRefFromEvent,

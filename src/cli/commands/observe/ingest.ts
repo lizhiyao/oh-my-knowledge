@@ -108,7 +108,7 @@ export default class ObserveIngest extends BaseCommand {
       console.log(flags.json
         ? JSON.stringify(compactObservationInboxReport(report), null, 2)
         : formatIngestSummary(report, lang));
-      const { traceIngestionNotices } = await import('../../../observability/trace-ingestion.js');
+      const { traceIngestionNotices } = await import('../../../observability/trace/ingestion.js');
       for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
         process.stderr.write(`${notice.text}\n`);
       }

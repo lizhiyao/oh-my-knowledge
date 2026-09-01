@@ -3,7 +3,7 @@ import type { GapReport, GapSignalRef } from './analysis/contracts.js';
 import { SIGNAL_WEIGHTS } from './analysis/gap-analyzer.js';
 import type { SkillHealth, SkillHealthReport } from './skill-health-analyzer.js';
 import { confidenceOf, healthBandOf, toolStabilityOf } from './skill-health-analyzer.js';
-import { parseTraceIngestionSummary } from './trace-ingestion.js';
+import { parseTraceIngestionSummary } from './trace/ingestion.js';
 import { sumRecordCounts } from '../shared/record-count.js';
 import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
 

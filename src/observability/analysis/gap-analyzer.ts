@@ -20,7 +20,7 @@ import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js';
 import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } from './contracts.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
-import { isFailedSearchToolCall, toolCallQuery } from '../tool-search.js';
+import { isFailedSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
 import { toolCallStatus } from '../../executors/tool-call-status.js';
 import { setOwnRecordValue } from '../../shared/record-count.js';
 

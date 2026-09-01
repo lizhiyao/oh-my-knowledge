@@ -6,13 +6,13 @@ import type {
   TraceSession,
   TraceToolRef,
   TraceToolStatus,
-} from './trace-ir.js';
+} from './trace/trace-ir.js';
 import {
   correlateTraceToolEvents,
   createTraceId,
   normalizeTraceTimestamp,
   traceTimestampBounds,
-} from './trace-ir.js';
+} from './trace/trace-ir.js';
 import type { TraceSourceMetadata } from './contracts/trace.js';
 import {
   nonNegativeMetric,

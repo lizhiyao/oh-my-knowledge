@@ -210,7 +210,7 @@ export default class Observe extends BaseCommand {
         ? resolve(flags['output-dir'])
         : (flags.global ? globalObserveHealthDir() : projectObserveHealthDir());
       const { id, jsonPath } = persistObserveHealthReport(report, outDir);
-      const { traceIngestionNotices } = await import('../../../observability/trace-ingestion.js');
+      const { traceIngestionNotices } = await import('../../../observability/trace/ingestion.js');
       for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
         process.stderr.write(`${notice.text}\n`);
       }

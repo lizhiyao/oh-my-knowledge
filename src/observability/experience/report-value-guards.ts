@@ -14,7 +14,7 @@ import type {
 } from '../contracts/experience.js';
 import {
   normalizeTraceTimestamp,
-} from '../trace-ir.js';
+} from '../trace/trace-ir.js';
 import {
   hashParts,
   isObjectRecord,

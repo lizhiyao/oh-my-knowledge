@@ -7,7 +7,7 @@ import {
   type TraceEvent,
   type TraceMessageOrigin,
   type TraceSession,
-} from '../observability/trace-ir.js';
+} from '../observability/trace/trace-ir.js';
 
 type UnknownRecord = Record<string, unknown>;
 

@@ -4,7 +4,7 @@ import {
   mergeTraceIngestionSummaries,
   parseTraceIngestionSummary,
   traceIngestionNotices,
-} from '../../src/observability/trace-ingestion.js';
+} from '../../../src/observability/trace/ingestion.js';
 
 const summary = {
   fileCount: 2,

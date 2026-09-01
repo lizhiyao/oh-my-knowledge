@@ -77,13 +77,13 @@ import { observationMetricAnnotationVerdict } from './review-state.js';
 import {
   correlateTraceToolEvents,
   type TraceSession,
-} from './trace-ir.js';
+} from './trace/trace-ir.js';
 import {
   skillSegmentTimestampObserved,
   UNOBSERVED_TRACE_TIMESTAMP,
   type SkillSegment,
 } from './trace-segmenter.js';
-import { createTraceSessionIndex, traceSessionRefIdentity } from './trace-session-index.js';
+import { createTraceSessionIndex, traceSessionRefIdentity } from './trace/session-index.js';
 import { reconstructExperienceTurns } from './turn-index.js';
 import { isToolResultFailureText } from '../executors/tool-call-status.js';
 import { hasAssistantDeliverableArtifactText, hasUserHardRuleText, isSyntheticUserMessageText, isUserInteractionMetricText, USER_INTERRUPTION_RE } from './text-signals.js';

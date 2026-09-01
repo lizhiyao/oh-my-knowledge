@@ -60,6 +60,11 @@ describe('领域契约所有权', () => {
       'src/renderer',
       'src/artifact-graph/core.ts',
       'src/measurement-artifacts/prompt-registry.ts',
+      'src/observability/trace-ir.ts',
+      'src/observability/trace-ingestion.ts',
+      'src/observability/trace-projection.ts',
+      'src/observability/trace-session-index.ts',
+      'src/observability/tool-search.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }

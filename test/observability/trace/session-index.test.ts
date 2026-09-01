@@ -3,8 +3,8 @@ import { describe, it } from 'vitest';
 import {
   createTraceSessionIndex,
   type TraceSessionRef,
-} from '../../src/observability/trace-session-index.js';
-import type { TraceSession } from '../../src/observability/trace-ir.js';
+} from '../../../src/observability/trace/session-index.js';
+import type { TraceSession } from '../../../src/observability/trace/trace-ir.js';
 
 function session(overrides: Partial<TraceSession>): TraceSession {
   return {
