@@ -48,12 +48,6 @@ export function runFileSuffix(): string {
   return `${runTimestamp()}-${randomRunToken()}`;
 }
 
-export function stripDomainPrefix(id: string, domain: string): string {
-  const safeId = safeArtifactFileStem(id);
-  const prefix = `${domain}-`;
-  return safeId.startsWith(prefix) ? safeId.slice(prefix.length) : safeId;
-}
-
 export function doctorReportFileStem(skillName: string, reportId: string): string {
   const reportSuffix = reportId.startsWith('doctor-')
     ? reportId.slice('doctor-'.length)

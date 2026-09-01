@@ -63,7 +63,7 @@ doctor 和 eval graph sidecar 对标准报告目录保留 sibling 布局：`.omk
 - **人读 / 机读双文件要在扩展名前区分**。优先用 `.graph.json`、`.card.md`、`.summary.json`，不要只靠 `.json` 和 `.md` 区分一对 sidecar。
 - **固定源文件 / 配置文件保留人类可读名**。`eval-samples.json`、`<skill>/.omk/samples.json`、`eval.yaml`、`metadata.yaml`、`review-state.json` 是源数据 / 配置 / 状态约定，不套 run-derived 语法。
 
-Evaluation Core 按 `runId` 一次一个目录存储；manifest 与 sealed documents 在目录内使用固定 schema 文件名。旧的扁平 evaluation report 不再读取，也不迁移。一次性的 `.report.json` 文件名迁移只保留给 `doctors` / `observe-health` / `observe-inbox`；无关 JSON 会被跳过。
+Evaluation Core 按 `runId` 一次一个目录存储；manifest 与 sealed documents 在目录内使用固定 schema 文件名。读取侧只发现当前规范产物：Core run 目录，以及 `doctors`／`observe-health`／`observe-inbox` 的 `.report.json` 文件。旧的扁平 JSON 既不读取，也不自动改名。
 
 示例：
 

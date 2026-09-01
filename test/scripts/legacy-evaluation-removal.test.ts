@@ -15,6 +15,8 @@ const FORBIDDEN_FILES = [
   'src/eval-core/schema.ts',
   'src/eval-core/verdict.ts',
   'src/eval-core/task-planner.ts',
+  'src/eval-core/report-file-migration.ts',
+  'src/eval-core/statistics.ts',
   'src/server/report-store.ts',
   'src/server/indexed-report-store.ts',
   'src/server/job-store.ts',
@@ -34,6 +36,8 @@ const FORBIDDEN_SPECIFIER_FRAGMENTS = [
   '/eval-core/report-document',
   '/eval-core/schema',
   '/eval-core/verdict',
+  '/eval-core/report-file-migration',
+  '/eval-core/statistics',
   '/server/report-store',
   '/server/indexed-report-store',
   '/server/job-store',
@@ -77,9 +81,7 @@ describe('legacy evaluation implementation removal', () => {
     expect(evaluationTypes).not.toContain('interface EvaluationRequest');
   });
 
-  it('does not migrate legacy evaluation reports or managed evidence', () => {
-    const migration = readFileSync(resolve('src/eval-core/report-file-migration.ts'), 'utf8');
-    expect(migration).not.toContain("domain === 'report'");
+  it('does not retain legacy managed evidence compatibility', () => {
     const managed = readFileSync(resolve('src/types/managed.ts'), 'utf8');
     expect(managed).toContain("evidenceSource: 'evaluation-core'");
     expect(managed).not.toContain("evidenceSource?: 'evaluation-core'");

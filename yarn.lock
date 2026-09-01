@@ -3758,7 +3758,6 @@ __metadata:
     js-yaml: "npm:^4.1.1"
     lint-staged: "npm:17.3.0"
     npm-run-all2: "npm:^9.0.3"
-    simple-statistics: "npm:^7.8.9"
     typescript: "npm:^6.0.2"
     typescript-eslint: "npm:^8.58.0"
     vitepress: "npm:^1.6.4"
@@ -4391,13 +4390,6 @@ __metadata:
   version: 4.1.0
   resolution: "signal-exit@npm:4.1.0"
   checksum: 10c0/41602dce540e46d599edba9d9860193398d135f7ff72cab629db5171516cfae628d21e7bfccde1bbfdf11c48726bc2a6d1a8fb8701125852fbfda7cf19c6aa83
-  languageName: node
-  linkType: hard
-
-"simple-statistics@npm:^7.8.9":
-  version: 7.10.2
-  resolution: "simple-statistics@npm:7.10.2"
-  checksum: 10c0/2404212d24a5111b3dcc8873b021dccd368efdc6b27bf5c13402c86d55bd19d0bad0190b6fc852d492e3c1ca393496e191eefd291ccf87b2c8b1d9f40f5f9f89
   languageName: node
   linkType: hard
 

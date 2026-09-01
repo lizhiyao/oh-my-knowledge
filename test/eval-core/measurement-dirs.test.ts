@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -52,14 +52,21 @@ describe('measurement-dirs 项目优先→全局兜底(记录优先)', () => {
     }
   });
 
-  it('observe-health 记录优先按后缀:无关 .json 不算报告', () => {
+  it('observe-health 忽略旧裸 JSON 且不自动改名', () => {
     const proj = mkTmp('h-suffix');
     const glob = mkTmp('h-suffix-g');
     try {
-      writeFileSync(join(proj, 'random.json'), '{}'); // 非 .report.json
+      const legacyName = '20260101T000000-a111-observe-health.json';
+      writeFileSync(join(proj, legacyName), JSON.stringify({
+        kind: 'observe-health',
+        meta: {},
+        bySkill: {},
+        overall: {},
+      }));
       writeFileSync(join(glob, reportFileName('20260101T000000-a111')), '{}');
-      // 项目只有无关 .json → 不算有报告 → 回退全局
+      // 项目只有旧裸 JSON → 不算当前报告、也不改用户文件 → 回退全局。
       assert.equal(resolveObserveHealthDir(proj, glob), glob, '后缀不匹配不算报告');
+      assert.deepEqual(readdirSync(proj), [legacyName]);
     } finally {
       rmSync(proj, { recursive: true, force: true });
       rmSync(glob, { recursive: true, force: true });

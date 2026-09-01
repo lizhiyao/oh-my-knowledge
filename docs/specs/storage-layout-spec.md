@@ -69,10 +69,10 @@ Directories and filenames deliberately carry different bits of meaning:
 - **Fixed source/config files keep human names.** `eval-samples.json`, `<skill>/.omk/samples.json`, `eval.yaml`, `metadata.yaml`, and `review-state.json` are source/config/state conventions, not run sidecars, so they do not need the run-derived grammar.
 
 Evaluation Core stores one directory per `runId`; its manifest and sealed
-documents keep their fixed schema filenames inside that directory. Legacy flat
-evaluation reports are not read or migrated. The one-shot `.report.json`
-filename migration remains limited to `doctors` / `observe-health` /
-`observe-inbox`; unrelated JSON files are skipped.
+documents keep their fixed schema filenames inside that directory. Readers only
+discover current canonical artifacts: Core run directories and `.report.json`
+files for `doctors` / `observe-health` / `observe-inbox`. Legacy flat JSON files
+are neither read nor renamed automatically.
 
 Examples:
 

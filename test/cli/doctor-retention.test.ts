@@ -75,7 +75,7 @@ describe('pruneDoctorHistory', () => {
     expect(remaining.filter((f) => f.startsWith('code-review-'))).toHaveLength(2);
   });
 
-  it('迁移旧 `{name}.json` doctor 文件后参与轮换', () => {
+  it('忽略旧 `{name}.json` doctor 文件且不修改用户文件', () => {
     writeFileSync(
       join(dir, 'code-review.json'),
       JSON.stringify(doctorReport('code-review', 'bare-json', '2025-01-01T00:00:00.000Z')),
@@ -83,10 +83,11 @@ describe('pruneDoctorHistory', () => {
     seedDoctorHistory(dir, 'code-review', 3);
     pruneDoctorHistory(dir, 'code-review', 2);
     const remaining = readdirSync(dir).sort();
-    expect(remaining).not.toContain('code-review.json');
+    expect(remaining).toContain('code-review.json');
     expect(remaining).toEqual([
       reportFileName('code-review-r001'),
       reportFileName('code-review-r002'),
+      'code-review.json',
     ]);
   });
 

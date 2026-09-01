@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -333,6 +333,28 @@ describe('observe inbox - aggregation', () => {
 
     assert.notEqual(firstPath, secondPath);
     assert.equal(loadObservationInboxReports(dir).length, 2);
+  });
+
+  it('ignores a valid inbox document stored under a legacy bare JSON name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-legacy-name-'));
+    const report = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 2 as const,
+      meta: {
+        tracePath: '/tmp/legacy-name.jsonl',
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+      },
+      items: [baseItem({ id: 'legacy-name' })],
+    };
+    const canonicalPath = saveObservationInboxReport(report, dir);
+    const legacyPath = join(dir, 'legacy-observe-inbox.json');
+    renameSync(canonicalPath, legacyPath);
+
+    assert.deepEqual(loadObservationInboxReports(dir), []);
+    assert.equal(existsSync(legacyPath), true);
   });
 
   it('refuses to persist a report that cannot be read back', () => {

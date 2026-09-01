@@ -9,7 +9,6 @@ import { parseLastWindow } from '../../lib/shared.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../eval-core/measurement-dirs.js';
 import { indexObserveWrite } from '../../../eval-core/artifact-index.js';
 import { reportFilePath, runFileSuffix } from '../../../eval-core/artifact-file-names.js';
-import { migrateLegacyReportFiles } from '../../../eval-core/report-file-migration.js';
 import type { SkillHealthReport } from '../../../observability/skill-health-analyzer.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 
@@ -20,7 +19,6 @@ import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
  */
 export function persistObserveHealthReport(report: SkillHealthReport, outDir: string): { id: string; jsonPath: string } {
   mkdirSync(outDir, { recursive: true });
-  migrateLegacyReportFiles(outDir, 'observe-health');
   const id = runFileSuffix();
   const jsonPath = reportFilePath(outDir, id);
   writeJsonFileAtomic(jsonPath, report);

@@ -13,7 +13,6 @@ import {
   listLiveDoctorCards,
   listLiveObserveCards,
 } from '../eval-core/artifact-index.js';
-import { migrateLegacyReportFiles } from '../eval-core/report-file-migration.js';
 import { confidenceOf, toolStabilityOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
 import { parseSkillHealthReport } from '../observability/skill-health-report.js';
@@ -102,7 +101,6 @@ function doctorSnapshot(report: DoctorReport, skillName: string): SkillDoctorSna
 
 function scanDoctorReports(directory: string): Record<string, SkillDoctorSnapshot[]> {
   const bySkill: Record<string, SkillDoctorSnapshot[]> = Object.create(null);
-  migrateLegacyReportFiles(directory, 'doctor');
   if (!existsSync(directory)) return bySkill;
   for (const file of readdirSync(directory)) {
     if (!isReportFileName(file)) continue;
@@ -154,7 +152,6 @@ function observeSnapshot(
 
 function scanObserveReports(directory: string): Record<string, SkillObserveSnapshot[]> {
   const bySkill: Record<string, SkillObserveSnapshot[]> = Object.create(null);
-  migrateLegacyReportFiles(directory, 'observe-health');
   if (!existsSync(directory)) return bySkill;
   for (const file of readdirSync(directory)) {
     const id = reportFileStem(file);

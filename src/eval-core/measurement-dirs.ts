@@ -2,7 +2,6 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_OBSERVE_HEALTH_DIR, DEFAULT_DOCTORS_DIR, DEFAULT_REPORTS_DIR } from './default-dirs.js';
 import { isReportFileName } from './artifact-file-names.js';
-import { migrateLegacyReportFiles } from './report-file-migration.js';
 
 /**
  * 测量产物的「项目优先 → 全局兜底」目录解析,镜像 managed 的 `resolveManagedDir`
@@ -43,8 +42,6 @@ export function resolveObserveHealthDir(
   dir: string = projectObserveHealthDir(),
   global: string = globalObserveHealthDir(),
 ): string {
-  migrateLegacyReportFiles(dir, 'observe-health');
-  migrateLegacyReportFiles(global, 'observe-health');
   const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
   if (has(dir)) return dir;
   if (dir !== global && has(global)) return global;
@@ -70,8 +67,6 @@ export function resolveDoctorsDir(
   dir: string = projectDoctorsDir(),
   global: string = globalDoctorsDir(),
 ): string {
-  migrateLegacyReportFiles(dir, 'doctor');
-  migrateLegacyReportFiles(global, 'doctor');
   const has = (d: string): boolean => hasMatchingFile(d, isReportFileName);
   if (has(dir)) return dir;
   if (dir !== global && has(global)) return global;
