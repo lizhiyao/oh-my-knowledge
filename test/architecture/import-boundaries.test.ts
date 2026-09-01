@@ -161,6 +161,8 @@ const RULES: ForbiddenRule[] = [
       'studio/presentation/observation-inbox-renderer.ts::observability/inbox-view-model.ts',
       'studio/presentation/observation-inbox-renderer.ts::observability/feedback-projection.ts',
       'studio/presentation/observation-inbox/helpers.ts::observability/feedback-projection.ts',
+      'studio/presentation/observation-inbox/reviewer-report.ts::observability/inbox-view-model.ts',
+      'studio/presentation/observation-inbox/reviewer-report.ts::observability/feedback-projection.ts',
       'studio/presentation/skill-health-renderer.ts::observability/skill-health-analyzer.ts',
     ],
   },
@@ -545,6 +547,21 @@ describe('架构边界守门', () => {
     expect(extractSpecifiers(renderer)).toContain('./observation-inbox/client-script.js');
     expect(renderer).not.toContain("var observeSeverityFilter = 'all';");
     expect(extractSpecifiers(clientScript)).not.toContain('../observation-inbox-renderer.js');
+  });
+
+  it('Observation Inbox reviewer report 由独立组件拥有', () => {
+    const renderer = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox-renderer.ts'),
+      'utf-8',
+    );
+    const reviewerReport = readFileSync(
+      join(SRC_DIR, 'studio', 'presentation', 'observation-inbox', 'reviewer-report.ts'),
+      'utf-8',
+    );
+
+    expect(extractSpecifiers(renderer)).toContain('./observation-inbox/reviewer-report.js');
+    expect(renderer).not.toContain('const renderReviewerReport =');
+    expect(extractSpecifiers(reviewerReport)).not.toContain('../observation-inbox-renderer.js');
   });
 
   it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
