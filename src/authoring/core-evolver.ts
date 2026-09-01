@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { JudgeConfig } from '../types/index.js';
+import type { JudgeConfig } from '../grading/contracts/config.js';
 import type { StoredCoreRunArtifacts } from '../eval-workflows/artifact-store/index.js';
 import { parseCompositeTableValue } from '../eval-workflows/runtime-adapter/analysis/composite-table.js';
 import { createExecutor } from '../executors/index.js';

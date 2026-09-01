@@ -20,7 +20,7 @@
  */
 
 import { CliExit } from '../cli-exit.js';
-import type { JudgeConfig } from '../../../types/index.js';
+import type { JudgeConfig } from '../../../grading/contracts/config.js';
 
 export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
   const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);

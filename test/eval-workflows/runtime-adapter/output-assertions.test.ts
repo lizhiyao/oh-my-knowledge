@@ -41,14 +41,13 @@ import {
   createIsolatedDeterministicAssertionEvaluator,
 } from '../../../src/shared/assertions/deterministic.js';
 import type { Assertion } from '../../../src/inputs/contracts/assertion.js';
-import type { AssertionDetail } from '../../../src/types/index.js';
 import { testRuntime, validDefinition, validPolicy } from '../../evaluation-core/compiler/fixtures.js';
 
 interface ScoringFixture {
   deterministicAssertions: {
     output: string;
     assertions: Assertion[];
-    expected: { details: AssertionDetail[] };
+    expected: { details: JsonValue[] };
   };
 }
 

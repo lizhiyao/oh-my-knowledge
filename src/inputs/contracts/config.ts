@@ -1,4 +1,4 @@
-import type { JudgeConfig } from '../../types/judge.js';
+import type { JudgeConfig } from '../../grading/contracts/config.js';
 import type { ExperimentRole } from '../../artifacts/contracts.js';
 import type { RemoteGitRef } from './variant.js';
 
