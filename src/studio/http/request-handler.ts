@@ -10,12 +10,6 @@ import { assessHealth, renderSkillDetail } from '../presentation/skill-detail-re
 import type { SkillIndexEntry, Insight } from '../view-models/index.js';
 import { renderObservationInboxPage } from '../presentation/observation-inbox-renderer.js';
 import { renderKnowledgeDebuggerPage } from '../presentation/knowledge-debugger-renderer.js';
-import {
-  buildConversationActivitySnapshot,
-  buildConversationDetailActivitySnapshot,
-  renderConversationDetailPage,
-  renderConversationIndexPage,
-} from '../presentation/conversation-renderer.js';
 import { DEFAULT_LANG, e, t, layout } from '../presentation/layout.js';
 import { loadAllManagedRecords, resolveManagedDir, managedDir as projectManagedDir, listManagedRows } from '../../managed/index.js';
 import { renderManagedList, renderManagedHistory } from '../presentation/managed-history-renderer.js';
@@ -56,6 +50,7 @@ import {
 } from '../core-runs/index.js';
 import type { ReportServerOptions } from './contracts.js';
 import { getErrorMessage } from './errors.js';
+import { createConversationRoutes } from './routes/conversations.js';
 
 interface AnalysisListItem {
   id: string;
@@ -729,6 +724,10 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
   const liveStreamClosers = new Set<() => void>();
 
   const resolvedConversationCatalog = conversationCatalog ?? createCodexConversationCatalog();
+  const conversationRoutes = createConversationRoutes({
+    catalog: resolvedConversationCatalog,
+    liveStreams: liveStreamClosers,
+  });
   const coreStudioRoute = coreStudioCatalog === undefined
     ? undefined
     : createCoreStudioRouteHandler({
@@ -914,221 +913,13 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         return;
       }
 
-      if (path === '/api/conversations/activity') {
-        const snapshot = buildConversationActivitySnapshot(
-          await resolvedConversationCatalog.listConversations(),
-        );
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(JSON.stringify(snapshot));
-        return;
-      }
-
-      const conversationActivityMatch = path.match(/^\/api\/conversations\/([^/]+)\/activity$/);
-      if (conversationActivityMatch) {
-        let threadId = '';
-        try { threadId = decodeURIComponent(conversationActivityMatch[1]); } catch { /* invalid path */ }
-        const conversation = threadId ? await resolvedConversationCatalog.getConversation(threadId) : undefined;
-        if (!conversation) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'conversation_not_found' }));
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(JSON.stringify(buildConversationDetailActivitySnapshot(conversation)));
-        return;
-      }
-
-      if (path === '/conversations') {
-        const html = renderConversationIndexPage(await resolvedConversationCatalog.listConversations(), lang);
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(html);
-        return;
-      }
-
-      const conversationTaskLiveMatch = path.match(/^\/api\/conversations\/([^/]+)\/tasks\/([^/]+)\/live$/);
-      if (conversationTaskLiveMatch) {
-        let threadId = '';
-        let turnId = '';
-        try {
-          threadId = decodeURIComponent(conversationTaskLiveMatch[1]);
-          turnId = decodeURIComponent(conversationTaskLiveMatch[2]);
-        } catch { /* invalid path */ }
-        const initial = threadId && turnId
-          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
-          : undefined;
-        if (!initial) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
-          return;
-        }
-        if (!resolvedConversationCatalog.observeTaskTrajectory) {
-          res.writeHead(501, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'live_task_trajectory_unavailable' }));
-          return;
-        }
-
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        });
-        res.flushHeaders();
-
-        let closed = false;
-        let unsubscribe: (() => void) | undefined;
-        const lifecycle = new AbortController();
-        const heartbeat = setInterval(() => {
-          if (!res.destroyed && !res.writableEnded) res.write(': keepalive\n\n');
-        }, 15_000);
-        heartbeat.unref?.();
-        const close = (): void => {
-          if (closed) return;
-          closed = true;
-          clearInterval(heartbeat);
-          lifecycle.abort();
-          unsubscribe?.();
-          liveStreamClosers.delete(close);
-          if (!res.destroyed && !res.writableEnded) res.end();
-        };
-        liveStreamClosers.add(close);
-        req.once('close', close);
-        res.once('close', close);
-
-        try {
-          unsubscribe = await resolvedConversationCatalog.observeTaskTrajectory(
-            threadId,
-            turnId,
-            {
-              next: (trajectory) => {
-                if (closed || res.destroyed || res.writableEnded) return;
-                res.write(`id: ${trajectory.revision}\n`);
-                res.write('event: trajectory\n');
-                res.write(`data: ${JSON.stringify({
-                  revision: trajectory.revision,
-                  status: trajectory.status,
-                  liveObservable: trajectory.liveObservable,
-                })}\n\n`);
-              },
-              complete: close,
-              error: (cause) => {
-                if (!closed && !res.destroyed && !res.writableEnded) {
-                  res.write('event: trajectory-error\n');
-                  res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
-                }
-                close();
-              },
-            },
-            { signal: lifecycle.signal },
-          );
-          if (closed) unsubscribe();
-        } catch (cause) {
-          if (!closed && !res.destroyed && !res.writableEnded) {
-            res.write('event: trajectory-error\n');
-            res.write(`data: ${JSON.stringify({ error: getErrorMessage(cause) })}\n\n`);
-          }
-          close();
-        }
-        return;
-      }
-
-      const conversationTaskMatch = path.match(/^\/conversations\/([^/]+)\/tasks\/([^/]+)$/);
-      if (conversationTaskMatch) {
-        let threadId = '';
-        let turnId = '';
-        try {
-          threadId = decodeURIComponent(conversationTaskMatch[1]);
-          turnId = decodeURIComponent(conversationTaskMatch[2]);
-        } catch { /* invalid path */ }
-        const trajectory = threadId && turnId
-          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
-          : undefined;
-        if (!trajectory) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(lang === 'en' ? 'task trajectory not found' : '任务轨迹不存在');
-          return;
-        }
-        const sourceRecords = {
-          ...trajectory.sourceRecords,
-          records: [],
-        };
-        const html = renderKnowledgeDebuggerPage(
-          buildKnowledgeDebuggerViewModel(
-            trajectory.session,
-            turnId,
-            trajectory.ingestion,
-            sourceRecords,
-          ),
-          lang,
-          {
-            sourceRecordsEndpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/source-records`,
-            ...(trajectory.liveObservable && resolvedConversationCatalog.observeTaskTrajectory ? {
-              live: {
-                endpoint: `/api/conversations/${encodeURIComponent(threadId)}/tasks/${encodeURIComponent(turnId)}/live`,
-                revision: trajectory.revision,
-              },
-            } : {}),
-          },
-        );
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(html);
-        return;
-      }
-
-      const conversationTaskSourceMatch = path.match(/^\/api\/conversations\/([^/]+)\/tasks\/([^/]+)\/source-records$/);
-      if (conversationTaskSourceMatch) {
-        let threadId = '';
-        let turnId = '';
-        try {
-          threadId = decodeURIComponent(conversationTaskSourceMatch[1]);
-          turnId = decodeURIComponent(conversationTaskSourceMatch[2]);
-        } catch { /* invalid path */ }
-        const trajectory = threadId && turnId
-          ? await resolvedConversationCatalog.loadTaskTrajectory(threadId, turnId)
-          : undefined;
-        if (!trajectory) {
-          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'task_trajectory_not_found' }));
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(JSON.stringify(trajectory.sourceRecords));
-        return;
-      }
-
-      const conversationDetailMatch = path.match(/^\/conversations\/([^/]+)$/);
-      if (conversationDetailMatch) {
-        let threadId = '';
-        try { threadId = decodeURIComponent(conversationDetailMatch[1]); } catch { /* invalid path */ }
-        const conversation = threadId ? await resolvedConversationCatalog.getConversation(threadId) : undefined;
-        if (!conversation) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(lang === 'en' ? 'conversation not found' : '对话不存在');
-          return;
-        }
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-        });
-        res.end(renderConversationDetailPage(conversation, lang));
-        return;
-      }
-
+      if (await conversationRoutes({
+        request: req,
+        response: res,
+        url: parsed,
+        path,
+        lang,
+      })) return;
       const knowledgeDebuggerMatch = path.match(/^\/observe-debugger\/(.+)$/);
       if (knowledgeDebuggerMatch) {
         let experienceSessionId = '';
@@ -1385,16 +1176,6 @@ export function createStudioRequestHandler({ requestShutdown, analysesDir, docto
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(diff));
-        return;
-      }
-
-
-      // Studio 先呈现机器上的 Codex 主对话，再从某次对话进入原生 turn 任务轨迹。
-      // /conversations 保留为同义入口，避免旧书签失效。
-      if (path === '/') {
-        const html = renderConversationIndexPage(await resolvedConversationCatalog.listConversations(), lang);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(html);
         return;
       }
 
