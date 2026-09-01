@@ -12,8 +12,8 @@
  *   - 报告视觉和 eval HTML 保持一致，读者无学习成本切换
  */
 
-import type { SkillHealth, SkillHealthReport } from '../../observability/skill-health-analyzer.js';
-import { confidenceOf, toolStabilityOf } from '../../observability/skill-health-analyzer.js';
+import type { SkillHealth, SkillHealthReport } from '../../observability/skill-health/analyzer.js';
+import { confidenceOf, toolStabilityOf } from '../../observability/skill-health/analyzer.js';
 import type { Lang } from '../../shared/language.js';
 import { COLORS, e, t } from './layout.js';
 import { icon } from './icons.js';

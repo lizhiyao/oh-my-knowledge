@@ -5,7 +5,7 @@ import type {
   ObservationSkillChain,
   SkillRuntimeEvidencePack,
   SkillRuntimeEvidencePackNode,
-} from '../skill-chain.js';
+} from '../skill-health/skill-chain.js';
 import {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,

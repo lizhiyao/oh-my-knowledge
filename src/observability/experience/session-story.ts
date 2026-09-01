@@ -71,7 +71,7 @@ import {
 } from './review-checklist.js';
 import {
   loadFrontmatterSkillType,
-} from '../experience-frontmatter.js';
+} from '../skill-health/experience-frontmatter.js';
 import {
   hasNegativeFeedbackSignal,
   hasPositiveFeedbackSignal,

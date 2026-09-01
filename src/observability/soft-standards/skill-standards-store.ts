@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildObservationSkillChain } from '../skill-chain.js';
+import { buildObservationSkillChain } from '../skill-health/skill-chain.js';
 import {
   ownRecordValue,
   setOwnRecordValue,

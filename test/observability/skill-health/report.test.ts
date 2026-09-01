@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { computeSkillHealthFromSegments } from '../../src/observability/skill-health-analyzer.js';
-import { parseSkillHealthReport } from '../../src/observability/skill-health-report.js';
+import { computeSkillHealthFromSegments } from '../../../src/observability/skill-health/analyzer.js';
+import { parseSkillHealthReport } from '../../../src/observability/skill-health/report.js';
 
 function legacyReport(): Record<string, unknown> {
   return {

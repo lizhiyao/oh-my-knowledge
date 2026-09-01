@@ -1,5 +1,5 @@
-import { buildObservationSkillChain, buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-chain.js';
-import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-chain-advisories.js';
+import { buildObservationSkillChain, buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-health/skill-chain.js';
+import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-health/advisories.js';
 import type { ObservationInboxReport } from '../observability/inbox/index.js';
 import type {
   ExperienceEvidenceRef,

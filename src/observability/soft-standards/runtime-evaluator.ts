@@ -2,7 +2,7 @@ import type {
   SkillRuntimeEvidencePack,
   SkillRuntimeEvidencePackNode,
   SkillRuntimeEvidencePackRef,
-} from '../skill-chain.js';
+} from '../skill-health/skill-chain.js';
 import type {
   RuntimeMatchedSignal,
   RuntimeNodeResult,

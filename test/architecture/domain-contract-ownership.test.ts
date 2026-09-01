@@ -94,6 +94,11 @@ describe('领域契约所有权', () => {
       'src/observability/task-semantic-projection.ts',
       'src/observability/task-window.ts',
       'src/observability/turn-index.ts',
+      'src/observability/skill-health-analyzer.ts',
+      'src/observability/skill-health-report.ts',
+      'src/observability/skill-chain.ts',
+      'src/observability/skill-chain-advisories.ts',
+      'src/observability/experience-frontmatter.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }

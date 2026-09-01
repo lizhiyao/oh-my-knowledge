@@ -12,10 +12,10 @@
  *   4. 聚合 overall 指标 + 健康度色带
  */
 
-import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from './analysis/coverage-analyzer.js';
-import { computeGapReport } from './analysis/gap-analyzer.js';
-import type { TraceIngestionSummary } from './contracts/trace.js';
-import type { AnalysisEntry, GapReport } from './analysis/contracts.js';
+import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
+import { computeGapReport } from '../analysis/gap-analyzer.js';
+import type { TraceIngestionSummary } from '../contracts/trace.js';
+import type { AnalysisEntry, GapReport } from '../analysis/contracts.js';
 import {
   segmentsToAnalysisEntries,
   skillSegmentTimestampObserved,
@@ -23,11 +23,11 @@ import {
   type CcSession,
   type TraceSession,
   type SkillSegment,
-} from './trace/index.js';
-import { legacyCcSessionToTraceSession } from './trace/source.js';
-import { createTraceSessionIndex } from './trace/session-index.js';
-import { setOwnRecordValue, sumRecordCounts } from '../shared/record-count.js';
-import { checkedSumTokenCounts } from '../shared/token-usage.js';
+} from '../trace/index.js';
+import { legacyCcSessionToTraceSession } from '../trace/source.js';
+import { createTraceSessionIndex } from '../trace/session-index.js';
+import { setOwnRecordValue, sumRecordCounts } from '../../shared/record-count.js';
+import { checkedSumTokenCounts } from '../../shared/token-usage.js';
 
 export interface SkillHealth {
   skillName: string;

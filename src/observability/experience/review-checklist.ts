@@ -34,7 +34,7 @@ import {
 import {
   loadExpectedToolsForSkill,
   loadSkillDeclarationCheck,
-} from '../experience-frontmatter.js';
+} from '../skill-health/experience-frontmatter.js';
 
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
   if (statuses.includes('degraded')) return 'degraded';

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { persistObserveHealthReport } from '../../src/cli/commands/observe/index.js';
 import { listObserveCards } from '../../src/measurement-artifacts/discovery-index.js';
 import { isReportFileName } from '../../src/measurement-artifacts/file-names.js';
-import type { SkillHealthReport } from '../../src/observability/skill-health-analyzer.js';
+import type { SkillHealthReport } from '../../src/observability/skill-health/analyzer.js';
 
 function mkReport(): SkillHealthReport {
   return {

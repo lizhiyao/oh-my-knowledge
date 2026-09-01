@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderSkillHealthReport } from '../../../src/studio/presentation/skill-health-renderer.js';
-import type { SkillHealthReport } from '../../../src/observability/skill-health-analyzer.js';
+import type { SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
 
 // Legacy *-skill-health.json predate the `confidence` field. The renderer must derive
 // it from segmentCount instead of rendering `undefined confidence`, and an underpowered
